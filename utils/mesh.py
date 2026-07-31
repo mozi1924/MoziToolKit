@@ -101,7 +101,10 @@ def get_connected_faces(bm, seed_faces):
 def get_target_faces(bm, scope: str = "ALL"):
     """Get faces from BMesh according to selection scope ('ALL', 'SELECTED', or 'LINKED')."""
     if scope == "SELECTED":
-        return [f for f in bm.faces if f.select and f.is_valid]
+        selected = [f for f in bm.faces if f.select and f.is_valid]
+        if selected:
+            return selected
+        return [f for f in bm.faces if f.is_valid]
     elif scope == "LINKED":
         selected = [f for f in bm.faces if f.select and f.is_valid]
         if selected:

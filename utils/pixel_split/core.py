@@ -2,7 +2,6 @@ import bmesh
 from typing import Dict, List, Optional
 from .types import SplitConfig
 from .uv_analyzer import get_texture_resolution_for_face, calculate_face_target_grid
-from .dissolver import dissolve_pre_split_edges
 from .subdivider import subdivide_quad_face
 from ..mesh import bmesh_context, get_target_faces
 
@@ -31,15 +30,8 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
 
         initial_count = len(target_faces)
 
-        # Step 2: Dissolve pre-split edges if configured
-        if config.dissolve_pre_split:
-            dissolve_pre_split_edges(bm, target_faces)
-            bm.faces.ensure_lookup_table()
-            target_faces = get_target_faces(bm, config.selection_scope)
+        # Step 2: Subdivide base quad faces according to texture pixel density
 
-        uv_layer = bm.loops.layers.uv.verify()
-
-        # Step 3: Subdivide base quad faces according to texture pixel density
         new_faces: List[bmesh.types.BMFace] = []
         for face in target_faces:
             if not face.is_valid:
@@ -65,7 +57,9 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
             new_faces.extend(created_sub_faces)
 
         # Step 4: Weld duplicate boundary vertices to eliminate open seams & dark shading borders
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        sub_verts = list(set(v for f in new_faces if f.is_valid for v in f.verts if v.is_valid))
+        if sub_verts:
+            bmesh.ops.remove_doubles(bm, verts=sub_verts, dist=0.0001)
 
         # Step 5: Clean up orphan loose edges (0 linked faces) and loose vertices
         loose_edges = [e for e in bm.edges if len(e.link_faces) == 0]

@@ -47,12 +47,6 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         max=64,
     )
 
-    dissolve_pre_split: bpy.props.BoolProperty(
-        name="Dissolve Pre-Split Edges",
-        description="Dissolve coplanar inner split edges before re-subdividing",
-        default=True,
-    )
-
     @classmethod
     def poll(cls, context):
         return poll_edit_mesh(context)
@@ -75,7 +69,6 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             row.prop(self, "resolution_height")
 
         layout.prop(self, "pixels_per_face")
-        layout.prop(self, "dissolve_pre_split")
 
     def execute(self, context):
         set_select_mode(context, "FACE")
@@ -84,7 +77,6 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             auto_resolution=self.auto_resolution,
             manual_resolution=(self.resolution_width, self.resolution_height),
             pixels_per_face=self.pixels_per_face,
-            dissolve_pre_split=self.dissolve_pre_split,
             selection_scope=self.selection_scope,
         )
 
@@ -95,3 +87,4 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             f"Adaptive Pixel Split: {stats['initial_faces']} face(s) -> {stats['final_faces']} face(s)",
         )
         return {"FINISHED"}
+

@@ -18,5 +18,5 @@ class SplitConfig:
     auto_resolution: bool = True
     manual_resolution: Tuple[int, int] = (64, 64)
     pixels_per_face: int = 1  # 1 means 1 face = 1 pixel grid cell
-    dissolve_pre_split: bool = True
     selection_scope: str = "ALL"  # 'ALL', 'SELECTED', or 'LINKED'
+
