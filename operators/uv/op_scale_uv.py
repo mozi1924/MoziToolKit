@@ -1,0 +1,36 @@
+import bpy
+from ...utils.mesh import bmesh_context, poll_edit_mesh
+from ...utils.uv import get_face_uv_center
+
+
+class MOZI_OT_scale_uv(bpy.types.Operator):
+    """Scale individual UV faces in place"""
+
+    bl_idname = "mozi.scale_uv"
+    bl_label = "Scale UV Faces"
+    bl_options = {"REGISTER", "UNDO"}
+
+    scale_factor: bpy.props.FloatProperty(
+        name="Scale Factor",
+        description="Scale factor for UV faces",
+        default=0.8,
+        min=0.0,
+        max=10.0,
+        precision=3,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return poll_edit_mesh(context)
+
+    def execute(self, context):
+        with bmesh_context(context) as (obj, bm):
+            uv_layer = bm.loops.layers.uv.verify()
+
+            for face in bm.faces:
+                uv_center = get_face_uv_center(face, uv_layer)
+                for loop in face.loops:
+                    uv = loop[uv_layer].uv
+                    loop[uv_layer].uv = uv_center + (uv - uv_center) * self.scale_factor
+
+        return {"FINISHED"}
