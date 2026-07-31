@@ -17,7 +17,7 @@ bl_info = {
     "description": "Quick utility toolkit for Blender modelling & UV editing",
     "blender": (4, 2, 0),
     "version": (1, 0, 0),
-    "location": "UV > Scale UV Faces / Select Transparent Faces, Edge > Select Hard & Sharp Edges",
+    "location": "UV > Scale UV Faces / Select Transparent Faces, Edge > Select Hard & Sharp Edges, Object > Set Image Interpolation to Closest",
     "warning": "",
     "category": "3D View",
 }

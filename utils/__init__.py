@@ -20,6 +20,10 @@ from .pixel_split import (
     process_adaptive_pixel_split,
     SplitConfig,
 )
+from .material import (
+    set_materials_texture_interpolation_closest,
+    process_node_tree_interpolation,
+)
 
 __all__ = [
     "poll_edit_mesh",
@@ -37,4 +41,7 @@ __all__ = [
     "get_image_from_face",
     "process_adaptive_pixel_split",
     "SplitConfig",
+    "set_materials_texture_interpolation_closest",
+    "process_node_tree_interpolation",
 ]
+

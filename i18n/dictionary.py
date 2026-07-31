@@ -50,9 +50,12 @@ translations_dict = {
         ("*", "Dissolve coplanar inner split edges before re-subdividing"): "重新切分前先合并已切分的共面内部边",
         ("*", "Weight Preservation Active"): "骨骼权重自动迁移已启用",
         ("*", "Subdivided vertices auto-inherit bone weights."): "细分生成的新顶点将自动插值继承原骨骼蒙皮权重。",
+        ("*", "Set Image Interpolation to Closest"): "图像纹理插值设为最近",
+        ("*", "Set interpolation of all image texture nodes in selected objects' materials to Closest for pixel art"): "将所选物体的所有材质中的图像纹理插值修改为“最近”，以适配像素材质贴图",
         ("Operator", "Scale UV Faces"): "缩放 UV 面",
         ("Operator", "Select Hard & Sharp Edges"): "选择常用硬边",
         ("Operator", "Select Transparent Faces"): "选择透明面",
         ("Operator", "Adaptive Pixel Split"): "自适应像素切分",
+        ("Operator", "Set Image Interpolation to Closest"): "图像纹理插值设为最近",
     }
 }
