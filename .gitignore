@@ -218,3 +218,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# MacOS
+# General macOS user preferences
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Icon files containing custom folder formatting
+Icon?
+
+# Thumbnails and system index metadata
+._*
+.Spotlight-V100
+.Trashes
+
+# Files created when working with external disks
+.DocumentRevisions-V100
