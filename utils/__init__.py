@@ -11,6 +11,10 @@ from .uv import (
     get_face_uv_center,
     get_image_from_face,
 )
+from .pixel_split import (
+    process_adaptive_pixel_split,
+    SplitConfig,
+)
 
 __all__ = [
     "poll_edit_mesh",
@@ -21,4 +25,7 @@ __all__ = [
     "SELECT_MODES",
     "get_face_uv_center",
     "get_image_from_face",
+    "process_adaptive_pixel_split",
+    "SplitConfig",
 ]
+

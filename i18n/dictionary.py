@@ -29,9 +29,23 @@ translations_dict = {
         ("*", "Remove from current face selection"): "从当前选择中减去透明面",
         ("*", "Only Selected Faces"): "仅限已选面",
         ("*", "Only check currently selected faces"): "仅在当前已选择的面中筛选透明面",
+        ("*", "Adaptive Pixel Split"): "自适应像素切分",
+        ("*", "Subdivide or adjust mesh faces to match texture pixel resolution (1 face = 1 pixel)"): "按贴图分辨率自适应切分网格面（1 面 = 1 像素）",
+        ("*", "Auto Resolution"): "自动分辨率",
+        ("*", "Automatically detect texture resolution from face material"): "自动从面材质提取贴图分辨率",
+        ("*", "Resolution Width"): "分辨率宽度",
+        ("*", "Texture width override when Auto Resolution is disabled"): "禁用自动分辨率时的手动贴图宽度",
+        ("*", "Resolution Height"): "分辨率高度",
+        ("*", "Texture height override when Auto Resolution is disabled"): "禁用自动分辨率时的手动贴图高度",
+        ("*", "Pixels Per Face"): "单面像素数",
+        ("*", "Number of pixels mapped to each 3D face grid cell"): "每个 3D 细分网格面所对应的贴图像素数（默认 1）",
+        ("*", "Dissolve Pre-Split Edges"): "融解预切分硬边",
+        ("*", "Dissolve coplanar inner split edges before re-subdividing"): "重新切分前先合并已切分的共面内部边",
         ("Operator", "Scale UV Faces"): "缩放 UV 面",
         ("Operator", "Select Hard & Sharp Edges"): "选择常用硬边",
         ("Operator", "Select Transparent Faces"): "选择透明面",
+        ("Operator", "Adaptive Pixel Split"): "自适应像素切分",
     }
 }
+
 
