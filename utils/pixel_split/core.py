@@ -73,9 +73,14 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
             created_sub_faces = subdivide_quad_face(bm, face, uv_layer, grid)
             new_faces.extend(created_sub_faces)
 
-        # Step 4: Recalculate face normals and update BMesh lookup tables
+        # Step 4: Weld duplicate boundary vertices to eliminate open seams & dark shading borders
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+
+        # Step 5: Recalculate face normals and update BMesh lookup tables
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.faces.ensure_lookup_table()
+        bm.verts.ensure_lookup_table()
+
 
         return {
             "initial_faces": initial_count,
