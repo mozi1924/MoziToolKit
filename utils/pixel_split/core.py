@@ -17,7 +17,12 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
     config = config or SplitConfig()
 
     with bmesh_context(context, auto_update=True, flush_selection=True) as (obj, bm):
+        # Ensure deform weights layer exists if object has vertex groups
+        if len(obj.vertex_groups) > 0:
+            bm.verts.layers.deform.verify()
+
         uv_layer = bm.loops.layers.uv.verify()
+
 
         # Step 1: Select target faces
         if config.only_selected:
@@ -32,7 +37,16 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
 
         # Step 2: Dissolve pre-split edges if configured
         if config.dissolve_pre_split:
-            target_faces = dissolve_pre_split_edges(bm, target_faces)
+            dissolve_pre_split_edges(bm, target_faces)
+            bm.faces.ensure_lookup_table()
+            if config.only_selected:
+                target_faces = [f for f in bm.faces if f.select and f.is_valid]
+            else:
+                target_faces = [f for f in bm.faces if f.is_valid]
+
+        uv_layer = bm.loops.layers.uv.verify()
+
+
 
         # Step 3: Subdivide base quad faces according to texture pixel density
         new_faces: List[bmesh.types.BMFace] = []

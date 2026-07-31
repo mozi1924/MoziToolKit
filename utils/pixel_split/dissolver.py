@@ -56,9 +56,26 @@ def dissolve_pre_split_edges(bm, faces: List[bmesh.types.BMFace]) -> List[bmesh.
     if edges_to_dissolve:
         # Dissolve edges and clean up unused vertices
         bmesh.ops.dissolve_edges(bm, edges=list(edges_to_dissolve), use_verts=True, use_face_split=False)
+
+        # Dissolve 2-valence collinear vertices along boundaries
+        collinear_verts = []
+        for v in bm.verts:
+            if v.is_valid and len(v.link_edges) == 2:
+                e1, e2 = v.link_edges
+                v1 = e1.other_vert(v)
+                v2 = e2.other_vert(v)
+                dir1 = (v1.co - v.co).normalized()
+                dir2 = (v2.co - v.co).normalized()
+                if dir1.dot(dir2) <= -0.999:
+                    collinear_verts.append(v)
+
+        if collinear_verts:
+            bmesh.ops.dissolve_verts(bm, verts=collinear_verts, use_face_split=False)
+
         bm.faces.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
+
 
     # Return valid remaining faces from original selection area
     return [f for f in bm.faces if f.is_valid]

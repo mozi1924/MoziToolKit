@@ -56,6 +56,26 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
     def poll(cls, context):
         return poll_edit_mesh(context)
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=320)
+
+    def draw(self, context):
+        layout = self.layout
+
+        box = layout.box()
+        box.label(text="Weight Preservation Active", icon="CHECKMARK")
+        box.label(text="Subdivided vertices auto-inherit bone weights.")
+
+        layout.prop(self, "auto_resolution")
+        if not self.auto_resolution:
+            row = layout.row(align=True)
+            row.prop(self, "resolution_width")
+            row.prop(self, "resolution_height")
+
+        layout.prop(self, "pixels_per_face")
+        layout.prop(self, "dissolve_pre_split")
+        layout.prop(self, "only_selected")
+
     def execute(self, context):
         set_select_mode(context, "FACE")
 
@@ -74,3 +94,4 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             f"Adaptive Pixel Split: {stats['initial_faces']} face(s) -> {stats['final_faces']} face(s)",
         )
         return {"FINISHED"}
+

@@ -41,7 +41,10 @@ translations_dict = {
         ("*", "Number of pixels mapped to each 3D face grid cell"): "每个 3D 细分网格面所对应的贴图像素数（默认 1）",
         ("*", "Dissolve Pre-Split Edges"): "融解预切分硬边",
         ("*", "Dissolve coplanar inner split edges before re-subdividing"): "重新切分前先合并已切分的共面内部边",
+        ("*", "Weight Preservation Active"): "骨骼权重自动迁移已启用",
+        ("*", "Subdivided vertices auto-inherit bone weights."): "细分生成的新顶点将自动插值继承原骨骼蒙皮权重。",
         ("Operator", "Scale UV Faces"): "缩放 UV 面",
+
         ("Operator", "Select Hard & Sharp Edges"): "选择常用硬边",
         ("Operator", "Select Transparent Faces"): "选择透明面",
         ("Operator", "Adaptive Pixel Split"): "自适应像素切分",
