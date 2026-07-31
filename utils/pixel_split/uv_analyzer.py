@@ -1,22 +1,6 @@
 from typing import Tuple
-from .types import UVBounds, TargetGrid
-from ..uv import get_image_from_face
-
-
-def get_face_uv_bounds(face, uv_layer) -> UVBounds:
-    """Calculate min/max UV coordinates for a face."""
-    if not face.loops:
-        return UVBounds(0.0, 0.0, 0.0, 0.0)
-
-    u_coords = [loop[uv_layer].uv.x for loop in face.loops]
-    v_coords = [loop[uv_layer].uv.y for loop in face.loops]
-
-    return UVBounds(
-        min_u=min(u_coords),
-        max_u=max(u_coords),
-        min_v=min(v_coords),
-        max_v=max(v_coords),
-    )
+from .types import TargetGrid
+from ..uv import get_face_uv_bounds, get_image_from_face
 
 
 def get_texture_resolution_for_face(face, obj, context, default_res: Tuple[int, int] = (64, 64)) -> Tuple[int, int]:

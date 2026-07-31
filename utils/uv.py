@@ -1,5 +1,39 @@
+from dataclasses import dataclass
 import bpy
 from mathutils import Vector
+
+
+@dataclass
+class UVBounds:
+    """Bounding box of UV coordinates for a face or group of faces."""
+    min_u: float
+    max_u: float
+    min_v: float
+    max_v: float
+
+    @property
+    def width(self) -> float:
+        return self.max_u - self.min_u
+
+    @property
+    def height(self) -> float:
+        return self.max_v - self.min_v
+
+
+def get_face_uv_bounds(face, uv_layer) -> UVBounds:
+    """Calculate min/max UV coordinates for a face."""
+    if not face.loops:
+        return UVBounds(0.0, 0.0, 0.0, 0.0)
+
+    u_coords = [loop[uv_layer].uv.x for loop in face.loops]
+    v_coords = [loop[uv_layer].uv.y for loop in face.loops]
+
+    return UVBounds(
+        min_u=min(u_coords),
+        max_u=max(u_coords),
+        min_v=min(v_coords),
+        max_v=max(v_coords),
+    )
 
 
 def get_face_uv_center(face, uv_layer) -> Vector:

@@ -4,7 +4,7 @@ from .types import SplitConfig
 from .uv_analyzer import get_texture_resolution_for_face, calculate_face_target_grid
 from .dissolver import dissolve_pre_split_edges
 from .subdivider import subdivide_quad_face
-from ..mesh import bmesh_context
+from ..mesh import bmesh_context, get_target_faces
 
 
 def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) -> Dict[str, int]:
@@ -23,12 +23,8 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
 
         uv_layer = bm.loops.layers.uv.verify()
 
-
-        # Step 1: Select target faces
-        if config.only_selected:
-            target_faces = [f for f in bm.faces if f.select]
-        else:
-            target_faces = list(bm.faces)
+        # Step 1: Select target faces according to selection scope ('ALL', 'SELECTED', 'LINKED')
+        target_faces = get_target_faces(bm, config.selection_scope)
 
         if not target_faces:
             return {"initial_faces": 0, "final_faces": len(bm.faces)}
@@ -39,14 +35,9 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
         if config.dissolve_pre_split:
             dissolve_pre_split_edges(bm, target_faces)
             bm.faces.ensure_lookup_table()
-            if config.only_selected:
-                target_faces = [f for f in bm.faces if f.select and f.is_valid]
-            else:
-                target_faces = [f for f in bm.faces if f.is_valid]
+            target_faces = get_target_faces(bm, config.selection_scope)
 
         uv_layer = bm.loops.layers.uv.verify()
-
-
 
         # Step 3: Subdivide base quad faces according to texture pixel density
         new_faces: List[bmesh.types.BMFace] = []
@@ -89,8 +80,6 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.faces.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
-
-
 
         return {
             "initial_faces": initial_count,

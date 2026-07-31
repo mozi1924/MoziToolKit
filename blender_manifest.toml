@@ -5,13 +5,13 @@ schema_version = "1.0.0"
 id = "mozitoolkit"
 version = "1.0.0"
 name = "MoziToolKit"
-tagline = "This is another extension"
+tagline = "A suite of tools to enhance the productivity and workflow of Blender artists."
 maintainer = "Mozi Arasaka"
 # Supported types: "add-on", "theme"
 type = "add-on"
 
 # Optional link to documentation, support, source files, etc
-# website = "https://extensions.blender.org/add-ons/my-example-package/"
+website = "https://mozi1924.com/"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html

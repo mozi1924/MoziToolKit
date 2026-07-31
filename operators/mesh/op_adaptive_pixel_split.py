@@ -1,6 +1,6 @@
 import bpy
-from ...utils.mesh import poll_edit_mesh, set_select_mode
-from ...utils.pixel_split import process_adaptive_pixel_split, SplitConfig
+from ...utils.mesh import SELECTION_SCOPE_ITEMS, poll_edit_mesh, set_select_mode
+from ...utils.pixel_split import SplitConfig, process_adaptive_pixel_split
 
 
 class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
@@ -9,6 +9,13 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
     bl_idname = "mozi.adaptive_pixel_split"
     bl_label = "Adaptive Pixel Split"
     bl_options = {"REGISTER", "UNDO"}
+
+    selection_scope: bpy.props.EnumProperty(
+        name="Selection Scope",
+        description="Filter which faces to process (All, Selected, or Connected Mesh)",
+        items=SELECTION_SCOPE_ITEMS,
+        default="SELECTED",
+    )
 
     auto_resolution: bpy.props.BoolProperty(
         name="Auto Resolution",
@@ -46,12 +53,6 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         default=True,
     )
 
-    only_selected: bpy.props.BoolProperty(
-        name="Only Selected Faces",
-        description="Only process currently selected mesh faces",
-        default=False,
-    )
-
     @classmethod
     def poll(cls, context):
         return poll_edit_mesh(context)
@@ -66,6 +67,7 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         box.label(text="Weight Preservation Active", icon="CHECKMARK")
         box.label(text="Subdivided vertices auto-inherit bone weights.")
 
+        layout.prop(self, "selection_scope")
         layout.prop(self, "auto_resolution")
         if not self.auto_resolution:
             row = layout.row(align=True)
@@ -74,7 +76,6 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
 
         layout.prop(self, "pixels_per_face")
         layout.prop(self, "dissolve_pre_split")
-        layout.prop(self, "only_selected")
 
     def execute(self, context):
         set_select_mode(context, "FACE")
@@ -84,7 +85,7 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             manual_resolution=(self.resolution_width, self.resolution_height),
             pixels_per_face=self.pixels_per_face,
             dissolve_pre_split=self.dissolve_pre_split,
-            only_selected=self.only_selected,
+            selection_scope=self.selection_scope,
         )
 
         stats = process_adaptive_pixel_split(context, config)
@@ -94,4 +95,3 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             f"Adaptive Pixel Split: {stats['initial_faces']} face(s) -> {stats['final_faces']} face(s)",
         )
         return {"FINISHED"}
-

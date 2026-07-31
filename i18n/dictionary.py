@@ -27,8 +27,15 @@ translations_dict = {
         ("*", "Add to current face selection"): "将透明面追加到当前选择",
         ("*", "Subtract"): "减去选择",
         ("*", "Remove from current face selection"): "从当前选择中减去透明面",
-        ("*", "Only Selected Faces"): "仅限已选面",
-        ("*", "Only check currently selected faces"): "仅在当前已选择的面中筛选透明面",
+        ("*", "Selection Scope"): "作用范围",
+        ("*", "Filter which faces to process (All, Selected, or Connected Mesh)"): "选择需要处理的面范围（全部面、仅已选面或相连网格）",
+        ("*", "Filter which faces to check for transparency"): "选择需要筛选透明度的面范围（全部面、仅已选面或相连网格）",
+        ("*", "All Faces"): "全部面",
+        ("*", "Process all faces in the mesh"): "处理网格中的所有面",
+        ("*", "Selected Only"): "仅已选面",
+        ("*", "Process only currently selected faces"): "仅处理当前选中的面",
+        ("*", "Connected Mesh"): "相连网格",
+        ("*", "Process connected mesh faces of current selection"): "处理选中面所在的相连网格/连通体",
         ("*", "Adaptive Pixel Split"): "自适应像素切分",
         ("*", "Subdivide or adjust mesh faces to match texture pixel resolution (1 face = 1 pixel)"): "按贴图分辨率自适应切分网格面（1 面 = 1 像素）",
         ("*", "Auto Resolution"): "自动分辨率",
@@ -44,11 +51,8 @@ translations_dict = {
         ("*", "Weight Preservation Active"): "骨骼权重自动迁移已启用",
         ("*", "Subdivided vertices auto-inherit bone weights."): "细分生成的新顶点将自动插值继承原骨骼蒙皮权重。",
         ("Operator", "Scale UV Faces"): "缩放 UV 面",
-
         ("Operator", "Select Hard & Sharp Edges"): "选择常用硬边",
         ("Operator", "Select Transparent Faces"): "选择透明面",
         ("Operator", "Adaptive Pixel Split"): "自适应像素切分",
     }
 }
-
-

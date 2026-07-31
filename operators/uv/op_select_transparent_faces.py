@@ -2,8 +2,10 @@ import bpy
 import numpy as np
 from ...utils.mesh import (
     SELECTION_ACTION_ITEMS,
+    SELECTION_SCOPE_ITEMS,
     apply_selection,
     bmesh_context,
+    get_target_faces,
     poll_edit_mesh,
     set_select_mode,
 )
@@ -44,10 +46,11 @@ class MOZI_OT_select_transparent_faces(bpy.types.Operator):
         default="SET",
     )
 
-    only_selected: bpy.props.BoolProperty(
-        name="Only Selected Faces",
-        description="Only check currently selected faces",
-        default=False,
+    selection_scope: bpy.props.EnumProperty(
+        name="Selection Scope",
+        description="Filter which faces to check for transparency",
+        items=SELECTION_SCOPE_ITEMS,
+        default="ALL",
     )
 
     @classmethod
@@ -84,7 +87,7 @@ class MOZI_OT_select_transparent_faces(bpy.types.Operator):
                 return float(arr[y, x, 3])
 
             transparent_faces = []
-            faces_to_check = [f for f in bm.faces if f.select] if self.only_selected else bm.faces
+            faces_to_check = get_target_faces(bm, self.selection_scope)
 
             for face in faces_to_check:
                 img = get_image_from_face(face, obj, context)
