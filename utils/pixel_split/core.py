@@ -6,16 +6,18 @@ from .subdivider import subdivide_quad_face
 from ..mesh import bmesh_context, get_target_faces
 
 
-def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) -> Dict[str, int]:
-    """Orchestrate adaptive pixel split pipeline on active edit mesh.
+def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, target_obj=None) -> Dict[str, int]:
+    """Orchestrate adaptive pixel split pipeline on active or specified edit mesh object.
 
     :param context: Blender context
     :param config: SplitConfig dataclass instance
+    :param target_obj: Optional target mesh object
     :return: Dictionary containing stats: {'initial_faces': int, 'final_faces': int}
     """
     config = config or SplitConfig()
 
-    with bmesh_context(context, auto_update=True, flush_selection=True) as (obj, bm):
+    with bmesh_context(context, target_obj=target_obj, auto_update=True, flush_selection=True) as (obj, bm):
+
         # Ensure deform weights layer exists if object has vertex groups
         if len(obj.vertex_groups) > 0:
             bm.verts.layers.deform.verify()

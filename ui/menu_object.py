@@ -1,11 +1,14 @@
 import bpy
+from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
 from ..operators.object.op_texture_interpolation import MOZI_OT_set_texture_interpolation_closest
 
 
 def draw_object_menu_func(self, context):
     self.layout.separator()
     self.layout.label(text="MoziToolKit")
+    self.layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
     self.layout.operator(MOZI_OT_set_texture_interpolation_closest.bl_idname)
+
 
 
 def register():

@@ -31,6 +31,14 @@ def poll_edit_mesh(context) -> bool:
     return bool(obj and obj.type == "MESH" and context.mode == "EDIT_MESH")
 
 
+def poll_mesh_object(context) -> bool:
+    """Check if there is at least one Mesh object selected or active in Object or Edit Mode."""
+    if not context:
+        return False
+    selected = context.selected_objects or ([context.active_object] if context.active_object else [])
+    return any(obj and obj.type == "MESH" for obj in selected)
+
+
 def set_select_mode(context, mode: str):
     """Set mesh selection mode ('VERT', 'EDGE', 'FACE', etc.)."""
     mode_upper = mode.upper()
@@ -41,14 +49,14 @@ def set_select_mode(context, mode: str):
 
 
 @contextmanager
-def bmesh_context(context, auto_update: bool = True, flush_selection: bool = False):
+def bmesh_context(context, target_obj=None, auto_update: bool = True, flush_selection: bool = False):
     """Context manager for BMesh edit operations.
 
-    Yields (active_object, bm).
+    Yields (target_object, bm).
     Automatically calls select_flush_mode() if flush_selection is True,
     and update_edit_mesh() if auto_update is True upon exit.
     """
-    obj = context.active_object
+    obj = target_obj or context.active_object
     me = obj.data
     bm = bmesh.from_edit_mesh(me)
     try:
@@ -58,6 +66,7 @@ def bmesh_context(context, auto_update: bool = True, flush_selection: bool = Fal
             bm.select_flush_mode()
         if auto_update:
             bmesh.update_edit_mesh(me)
+
 
 
 def apply_selection(elements, target_elements, action: str = "SET"):

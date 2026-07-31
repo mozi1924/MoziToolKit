@@ -1,6 +1,7 @@
 # Utility functions package
 from .mesh import (
     poll_edit_mesh,
+    poll_mesh_object,
     set_select_mode,
     bmesh_context,
     apply_selection,
@@ -27,6 +28,7 @@ from .material import (
 
 __all__ = [
     "poll_edit_mesh",
+    "poll_mesh_object",
     "set_select_mode",
     "bmesh_context",
     "apply_selection",
@@ -44,4 +46,5 @@ __all__ = [
     "set_materials_texture_interpolation_closest",
     "process_node_tree_interpolation",
 ]
+
 
