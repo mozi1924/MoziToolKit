@@ -76,10 +76,20 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None) 
         # Step 4: Weld duplicate boundary vertices to eliminate open seams & dark shading borders
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
 
-        # Step 5: Recalculate face normals and update BMesh lookup tables
+        # Step 5: Clean up orphan loose edges (0 linked faces) and loose vertices
+        loose_edges = [e for e in bm.edges if len(e.link_faces) == 0]
+        if loose_edges:
+            bmesh.ops.delete(bm, geom=loose_edges, context='EDGES')
+
+        loose_verts = [v for v in bm.verts if len(v.link_edges) == 0]
+        if loose_verts:
+            bmesh.ops.delete(bm, geom=loose_verts, context='VERTS')
+
+        # Step 6: Recalculate face normals and update BMesh lookup tables
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         bm.faces.ensure_lookup_table()
         bm.verts.ensure_lookup_table()
+
 
 
         return {

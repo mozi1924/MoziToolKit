@@ -142,7 +142,12 @@ def subdivide_quad_face(bm, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid
                 # Face already exists or invalid geometry
                 pass
 
-    # Remove the original base face
+    # Remove the original base face and any orphan outer edges
+    orig_edges = list(face.edges)
     bm.faces.remove(face)
+    for edge in orig_edges:
+        if edge.is_valid and len(edge.link_faces) == 0:
+            bm.edges.remove(edge)
 
     return new_faces
+
