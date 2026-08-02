@@ -244,7 +244,13 @@ def repair_extruded_side_faces(
                     l_3d = (v_top_b.co - v_top_a.co).length
                     u_edge = uv_b - uv_a
                     l_uv = u_edge.length
-                    scale = (l_uv / l_3d) if l_3d > 1e-6 else 1.0
+
+                    h_3d = (v_base_a.co - v_top_a.co).length
+                    ratio = (h_3d / l_3d) if l_3d > 1e-6 else 1.0
+                    h_uv = l_uv * ratio
+
+                    if uv_mode == "INWARD":
+                        h_uv = min(h_uv, l_uv)
 
                     edge_uv_mid = (uv_a + uv_b) * 0.5
                     uv_outward_dir = edge_uv_mid - ref_uv_center
@@ -258,17 +264,12 @@ def repair_extruded_side_faces(
                     else:
                         uv_dir = uv_outward_dir
 
-                    h_3d = (v_base_a.co - v_top_a.co).length
-                    h_uv = h_3d * scale
-
-                    if uv_mode == "INWARD":
-                        h_uv = min(h_uv, l_uv * 0.5)
-
                     uv_base_a_val = uv_a.copy()
                     uv_base_b_val = uv_b.copy()
 
                     uv_top_a_val = uv_a + uv_dir * h_uv
                     uv_top_b_val = uv_b + uv_dir * h_uv
+
 
                     for l in side_face.loops:
                         if l.vert == v_top_a:
