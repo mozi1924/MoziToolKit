@@ -202,12 +202,17 @@ def repair_extruded_side_faces(
     selected_faces_set = set(selected_faces)
     repaired_count = 0
 
-    for top_face in selected_faces:
-        ref_uv_center = mathutils.Vector((0.0, 0.0))
-        for l in top_face.loops:
-            ref_uv_center += l[uv_layer].uv
-        ref_uv_center /= len(top_face.loops)
+    # Calculate center of the ENTIRE selected region in UV space
+    region_uv_center = mathutils.Vector((0.0, 0.0))
+    total_loops = 0
+    for f in selected_faces:
+        for l in f.loops:
+            region_uv_center += l[uv_layer].uv
+            total_loops += 1
+    if total_loops > 0:
+        region_uv_center /= total_loops
 
+    for top_face in selected_faces:
         ref_vert_uv = {l.vert: l[uv_layer].uv.copy() for l in top_face.loops}
 
         for e in top_face.edges:
@@ -263,54 +268,27 @@ def repair_extruded_side_faces(
                     ratio = (h_3d / l_3d) if l_3d > 1e-6 else 1.0
                     h_uv = l_uv * ratio
 
-                    if uv_mode == "INWARD":
-                        edge_uv_mid = (uv_a + uv_b) * 0.5
-                        uv_outward_dir = edge_uv_mid - ref_uv_center
-                        if uv_outward_dir.length > 1e-6:
-                            uv_outward_dir.normalize()
-                        else:
-                            uv_outward_dir = mathutils.Vector((1.0, 0.0))
+                    # Calculate outward direction perpendicular to boundary edge
+                    edge_uv_mid = (uv_a + uv_b) * 0.5
+                    v_out = edge_uv_mid - region_uv_center
+                    if u_edge.length > 1e-6:
+                        perp = mathutils.Vector((-u_edge.y, u_edge.x))
+                        if perp.dot(v_out) < 0:
+                            perp = -perp
+                        uv_outward_dir = perp.normalized()
+                    else:
+                        uv_outward_dir = mathutils.Vector((1.0, 0.0))
 
+                    if uv_mode == "INWARD":
                         h_uv = min(h_uv, l_uv)
                         uv_dir = -uv_outward_dir
-                        uv_base_a_val = uv_a.copy()
-                        uv_base_b_val = uv_b.copy()
-                        uv_top_a_val = uv_a + uv_dir * h_uv
-                        uv_top_b_val = uv_b + uv_dir * h_uv
                     else:
-                        edge_uv_mid = (uv_a + uv_b) * 0.5
-                        uv_outward_dir = edge_uv_mid - ref_uv_center
-                        if uv_outward_dir.length > 1e-6:
-                            if abs(uv_outward_dir.x) > abs(uv_outward_dir.y):
-                                uv_outward_dir = mathutils.Vector((1.0 if uv_outward_dir.x > 0 else -1.0, 0.0))
-                            else:
-                                uv_outward_dir = mathutils.Vector((0.0, 1.0 if uv_outward_dir.y > 0 else -1.0))
-                        else:
-                            uv_outward_dir = mathutils.Vector((1.0, 0.0))
+                        uv_dir = uv_outward_dir
 
-                        # Mirror across pixel grid border line into adjacent pixel (keeps UV adjacent to original face)
-                        def mirror_across_pixel_border(uv_pt):
-                            res = uv_pt.copy()
-                            if uv_outward_dir.x > 0:
-                                border = math.ceil(uv_pt.x / p_step) * p_step
-                                res.x = border + (border - uv_pt.x)
-                            elif uv_outward_dir.x < 0:
-                                border = math.floor(uv_pt.x / p_step) * p_step
-                                res.x = border - (uv_pt.x - border)
-                            elif uv_outward_dir.y > 0:
-                                border = math.ceil(uv_pt.y / p_step) * p_step
-                                res.y = border + (border - uv_pt.y)
-                            elif uv_outward_dir.y < 0:
-                                border = math.floor(uv_pt.y / p_step) * p_step
-                                res.y = border - (uv_pt.y - border)
-                            return res
-
-                        uv_base_a_val = mirror_across_pixel_border(uv_a)
-                        uv_base_b_val = mirror_across_pixel_border(uv_b)
-                        uv_top_a_val = uv_base_a_val + uv_outward_dir * h_uv
-                        uv_top_b_val = uv_base_b_val + uv_outward_dir * h_uv
-
-
+                    uv_base_a_val = uv_a.copy()
+                    uv_base_b_val = uv_b.copy()
+                    uv_top_a_val = uv_a + uv_dir * h_uv
+                    uv_top_b_val = uv_b + uv_dir * h_uv
 
                     for l in side_face.loops:
                         if l.vert == v_top_a:
@@ -321,7 +299,6 @@ def repair_extruded_side_faces(
                             l[uv_layer].uv = uv_base_a_val.copy()
                         elif l.vert == v_base_b:
                             l[uv_layer].uv = uv_base_b_val.copy()
-
 
                 repaired_count += 1
 
