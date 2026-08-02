@@ -61,11 +61,11 @@ translations_dict = {
         ("*", "Extrude Mode"): "UV 修正模式",
         ("*", "Smart"): "智能",
         ("*", "Auto-detect inward or outward mode based on extrude direction"): "根据挤出方向自动判断使用向内或向外模式",
-        ("*", "Direction for side UV extension (Inward uses reference face pixel color)"): "侧面 UV 延伸方向（向内收缩可直接使用原挤出面的像素颜色）",
-        ("*", "Inward (Use Face Pixel)"): "向内 (使用原面像素)",
-        ("*", "Shrink side UVs into reference face pixel area (default for Minecraft)"): "侧面 UV 向内收缩，采用原挤出面的像素颜色（适用于 Minecraft 模型）",
-        ("*", "Outward (Extend UVs)"): "向外 (向外延伸包围盒)",
-        ("*", "Extend side UVs outwards from reference face UV bounds"): "侧面 UV 向外延伸扩展包围盒",
+        ("*", "Inward uses selected face pixels; outward uses adjacent face pixels"): "向内使用选中面的像素；向外使用相邻面的像素",
+        ("*", "Inward (Use Selected Face Pixel)"): "向内（使用选中面像素）",
+        ("*", "Shrink side UVs into selected face pixel area (default for Minecraft)"): "侧面 UV 向内收缩，采用选中面的像素颜色（适用于 Minecraft 模型）",
+        ("*", "Outward (Use Adjacent Face Pixels)"): "向外（使用相邻面像素）",
+        ("*", "Map each side UV strip into its adjacent face pixel"): "将每个侧面的 UV 窄条映射到其相邻面的像素上",
         ("*", "Add Mean Crease"): "添加 Mean Crease 边折痕",
         ("*", "Automatically add Mean Crease to extruded side edges to prevent rounding during subdivision"): "自动给挤出生成侧面的边加上 Mean Crease 边折痕，防止细分时变圆",
         ("*", "Crease Weight"): "折痕权重",
@@ -92,4 +92,3 @@ translations_dict = {
         ("*", "Move Down"): "下移",
     }
 }
-

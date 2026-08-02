@@ -3,6 +3,7 @@ import mathutils
 import bpy
 from .types import ExtrudeRepairConfig
 from .uv_analyzer import is_face_uv_collapsed, get_active_texture_pixel_step
+from ..mesh import is_hard_edge
 
 
 def _resolve_smart_uv_mode(top_face, v_top_a, v_top_b, v_base_a, v_base_b) -> str:
@@ -10,10 +11,67 @@ def _resolve_smart_uv_mode(top_face, v_top_a, v_top_b, v_base_a, v_base_b) -> st
     extrusion = ((v_top_a.co - v_base_a.co) + (v_top_b.co - v_base_b.co)) * 0.5
     normal = top_face.normal
     # Along the face normal is a protrusion: use source-face pixels.  Against
-    # it is an indentation: extend from outside the source-face UV bounds.
+    # it is an indentation: use the UV pixels of the adjacent faces.
     if normal.length_squared > 1e-12 and extrusion.dot(normal) < -1e-6:
         return "OUTWARD"
     return "INWARD"
+
+
+def _get_adjacent_face_uv_strip(
+    side_face, base_a, base_b, selected_faces_set, uv_layer
+):
+    """Return UVs for the side edge and the direction into its adjacent face.
+
+    After a region extrusion, the bottom edge of each newly-created side face
+    is still shared with the original, unselected neighbouring face.  Its UV
+    loops are therefore the only reliable source of the neighbour's texture
+    pixel (UV seams mean the side face's own loops cannot be used for this).
+    """
+    base_edge = next(
+        (
+            edge
+            for edge in side_face.edges
+            if base_a in edge.verts and base_b in edge.verts
+        ),
+        None,
+    )
+    if base_edge is None:
+        return None
+
+    adjacent_face = next(
+        (
+            face
+            for face in base_edge.link_faces
+            if face != side_face and face.is_valid and face not in selected_faces_set
+        ),
+        None,
+    )
+    if adjacent_face is None:
+        return None
+
+    adjacent_uvs = {loop.vert: loop[uv_layer].uv.copy() for loop in adjacent_face.loops}
+    if base_a not in adjacent_uvs or base_b not in adjacent_uvs:
+        return None
+
+    uv_a = adjacent_uvs[base_a]
+    uv_b = adjacent_uvs[base_b]
+    uv_edge = uv_b - uv_a
+    if uv_edge.length_squared < 1e-12:
+        return None
+
+    # Pick the perpendicular direction that enters the neighbouring face's
+    # UV island, so the generated strip samples that face rather than the
+    # transparent space outside its island.
+    adjacent_uv_center = sum(
+        (loop[uv_layer].uv for loop in adjacent_face.loops),
+        mathutils.Vector((0.0, 0.0)),
+    ) / len(adjacent_face.loops)
+    uv_edge_mid = (uv_a + uv_b) * 0.5
+    uv_inward_dir = mathutils.Vector((-uv_edge.y, uv_edge.x)).normalized()
+    if uv_inward_dir.dot(adjacent_uv_center - uv_edge_mid) < 0.0:
+        uv_inward_dir = -uv_inward_dir
+
+    return uv_a, uv_b, uv_inward_dir
 
 
 def repair_extruded_side_faces(
@@ -24,6 +82,7 @@ def repair_extruded_side_faces(
     only_collapsed: bool = False,
     uv_mode: str = "INWARD",
     smart_side_face_indices=None,
+    sharp_angle: float = 30.0,
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
@@ -33,10 +92,12 @@ def repair_extruded_side_faces(
     :param crease_val: Crease weight value (0.0 to 1.0).
     :param only_collapsed: If True, only repair collapsed side faces or active extruded side faces.
     :param uv_mode: 'SMART' (derive from extrusion direction), 'INWARD'
-        (shrink side UVs into face pixel area), or 'OUTWARD' (extend side UVs).
+        (shrink side UVs into the selected face pixel), or 'OUTWARD' (use the
+        pixel from each adjacent, unselected face when one exists).
     :param smart_side_face_indices: Mutable set of side-face indices belonging
         to the current interactive smart extrusion. New faces are added only
         when their UVs are collapsed, then remain tracked for direction changes.
+    :param sharp_angle: Angle threshold in degrees to identify sharp/hard edges.
     :return: Number of repaired side faces.
     """
     bm.faces.ensure_lookup_table()
@@ -173,25 +234,6 @@ def repair_extruded_side_faces(
 
                 uv_repaired = False
                 if repair_uv:
-                    uv_base_a_val = uv_a.copy()
-                    uv_base_b_val = uv_b.copy()
-
-                    if p_step > 0:
-                        if abs(uv_outward_dir.x) > 0.5:
-                            if uv_outward_dir.x > 0:
-                                uv_base_a_val.x = math.ceil(uv_a.x / p_step - 1e-5) * p_step
-                                uv_base_b_val.x = math.ceil(uv_b.x / p_step - 1e-5) * p_step
-                            else:
-                                uv_base_a_val.x = math.floor(uv_a.x / p_step + 1e-5) * p_step
-                                uv_base_b_val.x = math.floor(uv_b.x / p_step + 1e-5) * p_step
-                        elif abs(uv_outward_dir.y) > 0.5:
-                            if uv_outward_dir.y > 0:
-                                uv_base_a_val.y = math.ceil(uv_a.y / p_step - 1e-5) * p_step
-                                uv_base_b_val.y = math.ceil(uv_b.y / p_step - 1e-5) * p_step
-                            else:
-                                uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
-                                uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
-
                     resolved_uv_mode = (
                         _resolve_smart_uv_mode(
                             top_face, v_top_a, v_top_b, v_base_a, v_base_b
@@ -199,10 +241,50 @@ def repair_extruded_side_faces(
                         if uv_mode == "SMART"
                         else uv_mode
                     )
-                    if resolved_uv_mode == "INWARD":
-                        uv_dir = -uv_outward_dir
+
+                    adjacent_uv_strip = (
+                        _get_adjacent_face_uv_strip(
+                            side_face,
+                            v_base_a,
+                            v_base_b,
+                            selected_faces_set,
+                            uv_layer,
+                        )
+                        if resolved_uv_mode == "OUTWARD"
+                        else None
+                    )
+                    if adjacent_uv_strip:
+                        # Outward extrusion: colour each side from the face
+                        # immediately outside that boundary edge.
+                        uv_base_a_val, uv_base_b_val, uv_dir = adjacent_uv_strip
                     else:
-                        uv_dir = uv_outward_dir
+                        # Inward extrusion (and open boundaries without a
+                        # neighbour) retains the selected face's existing
+                        # behaviour and pixel-boundary alignment.
+                        uv_base_a_val = uv_a.copy()
+                        uv_base_b_val = uv_b.copy()
+
+                        if p_step > 0:
+                            if abs(uv_outward_dir.x) > 0.5:
+                                if uv_outward_dir.x > 0:
+                                    uv_base_a_val.x = math.ceil(uv_a.x / p_step - 1e-5) * p_step
+                                    uv_base_b_val.x = math.ceil(uv_b.x / p_step - 1e-5) * p_step
+                                else:
+                                    uv_base_a_val.x = math.floor(uv_a.x / p_step + 1e-5) * p_step
+                                    uv_base_b_val.x = math.floor(uv_b.x / p_step + 1e-5) * p_step
+                            elif abs(uv_outward_dir.y) > 0.5:
+                                if uv_outward_dir.y > 0:
+                                    uv_base_a_val.y = math.ceil(uv_a.y / p_step - 1e-5) * p_step
+                                    uv_base_b_val.y = math.ceil(uv_b.y / p_step - 1e-5) * p_step
+                                else:
+                                    uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
+                                    uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
+
+                        uv_dir = (
+                            -uv_outward_dir
+                            if resolved_uv_mode == "INWARD"
+                            else uv_outward_dir
+                        )
 
                     uv_top_a_val = uv_base_a_val + uv_dir * h_uv
                     uv_top_b_val = uv_base_b_val + uv_dir * h_uv
@@ -223,13 +305,12 @@ def repair_extruded_side_faces(
 
                 crease_repaired = False
                 if add_crease:
-                    crease_repaired = any(
-                        abs(se[crease_layer] - crease_val) > 1e-6
-                        for se in side_face.edges
-                    )
-                    if crease_repaired:
-                        for se in side_face.edges:
-                            se[crease_layer] = crease_val
+                    sharp_angle_rad = math.radians(sharp_angle)
+                    for se in side_face.edges:
+                        target_val = crease_val if is_hard_edge(se, sharp_angle_rad) else 0.0
+                        if abs(se[crease_layer] - target_val) > 1e-6:
+                            se[crease_layer] = target_val
+                            crease_repaired = True
 
                 if uv_repaired or crease_repaired:
                     repaired_count += 1

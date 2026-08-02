@@ -96,6 +96,7 @@ class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
         sub_crease = layout.column()
         sub_crease.active = props.add_mean_crease
         sub_crease.prop(props, "crease_value", text="Crease Weight")
+        sub_crease.prop(props, "sharp_angle", text="Sharp Angle")
 
 
 

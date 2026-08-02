@@ -125,6 +125,20 @@ def get_target_faces(bm, scope: str = "ALL"):
         return [f for f in bm.faces if f.is_valid]
 
 
+def is_hard_edge(edge, sharp_angle_rad: float = math.radians(30.0)) -> bool:
+    """Check if a BMesh edge is considered a hard/sharp edge.
+
+    An edge is hard if it is a boundary edge, marked sharp (not smooth),
+    or has 2 linked faces whose angle exceeds sharp_angle_rad.
+    """
+    if edge.is_boundary or not edge.smooth:
+        return True
+    if len(edge.link_faces) == 2 and edge.calc_face_angle(0) > sharp_angle_rad:
+        return True
+    return False
+
+
+
 
 
 

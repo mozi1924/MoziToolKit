@@ -1,6 +1,6 @@
 import math
 import bpy
-from ...utils.mesh import bmesh_context, poll_edit_mesh, set_select_mode
+from ...utils.mesh import bmesh_context, poll_edit_mesh, set_select_mode, is_hard_edge
 from ...utils.menu_config import register_menu_item
 
 
@@ -30,16 +30,9 @@ class MOZI_OT_select_hard_edges(bpy.types.Operator):
         set_select_mode(context, "EDGE")
 
         with bmesh_context(context) as (obj, bm):
-            # Deselect all edges
-            for edge in bm.edges:
-                edge.select = False
-
             sharp_angle_rad = math.radians(self.sharp_angle)
 
             for edge in bm.edges:
-                if edge.is_boundary or not edge.smooth:
-                    edge.select = True
-                elif len(edge.link_faces) == 2 and edge.calc_face_angle(0) > sharp_angle_rad:
-                    edge.select = True
+                edge.select = is_hard_edge(edge, sharp_angle_rad)
 
         return {"FINISHED"}

@@ -11,8 +11,8 @@ _SMART_EXTRUDE_POLL_INTERVAL = 0.03
 
 UV_MODE_ITEMS = [
     ("SMART", "Smart", "Auto-detect inward or outward mode based on extrude direction"),
-    ("INWARD", "Inward (Use Face Pixel)", "Shrink side UVs into reference face pixel area (default for Minecraft)"),
-    ("OUTWARD", "Outward (Extend UVs)", "Extend side UVs outwards from reference face UV bounds"),
+    ("INWARD", "Inward (Use Selected Face Pixel)", "Shrink side UVs into selected face pixel area (default for Minecraft)"),
+    ("OUTWARD", "Outward (Use Adjacent Face Pixels)", "Map each side UV strip into its adjacent face pixel"),
 ]
 
 
@@ -24,7 +24,7 @@ class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
     )
     uv_mode: bpy.props.EnumProperty(
         name="UV Correction Mode",
-        description="Direction for side UV extension (Inward uses reference face pixel color)",
+        description="Inward uses selected face pixels; outward uses adjacent face pixels",
         items=UV_MODE_ITEMS,
         default="SMART",
     )
@@ -44,6 +44,15 @@ class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
         default=1.0,
         min=0.0,
         max=1.0,
+    )
+    sharp_angle: bpy.props.FloatProperty(
+        name="Sharp Angle",
+        description="Angle threshold in degrees to treat as sharp edge for crease",
+        default=30.0,
+        min=0.0,
+        max=180.0,
+        precision=1,
+        subtype="ANGLE",
     )
 
 
@@ -57,7 +66,7 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
 
     uv_mode: bpy.props.EnumProperty(
         name="UV Correction Mode",
-        description="Direction for side UV extension (Inward uses reference face pixel color)",
+        description="Inward uses selected face pixels; outward uses adjacent face pixels",
         items=UV_MODE_ITEMS,
         default="SMART",
     )
@@ -80,6 +89,16 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
         default=1.0,
         min=0.0,
         max=1.0,
+    )
+
+    sharp_angle: bpy.props.FloatProperty(
+        name="Sharp Angle",
+        description="Angle threshold in degrees to treat as sharp edge for crease",
+        default=30.0,
+        min=0.0,
+        max=180.0,
+        precision=1,
+        subtype="ANGLE",
     )
 
     @classmethod
@@ -96,6 +115,7 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
             add_crease=self.add_mean_crease,
             crease_val=self.crease_value,
             uv_mode=self.uv_mode,
+            sharp_angle=self.sharp_angle,
         )
 
         if count > 0:
@@ -186,6 +206,7 @@ def _monitor_smart_extrusions():
             only_collapsed=True,
             uv_mode="SMART",
             smart_side_face_indices=session["side_face_indices"],
+            sharp_angle=props.sharp_angle,
         )
         if count > 0:
             bmesh.update_edit_mesh(obj.data)
@@ -233,6 +254,7 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
                 only_collapsed=True,
                 uv_mode="SMART",
                 smart_side_face_indices=session["side_face_indices"],
+                sharp_angle=props.sharp_angle,
             )
             if count > 0:
                 bmesh.update_edit_mesh(obj.data)
@@ -247,6 +269,7 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
             crease_val=props.crease_value,
             only_collapsed=True,
             uv_mode=props.uv_mode,
+            sharp_angle=props.sharp_angle,
         )
 
         if count > 0:
