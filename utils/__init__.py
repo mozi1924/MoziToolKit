@@ -21,6 +21,10 @@ from .pixel_split import (
     process_adaptive_pixel_split,
     SplitConfig,
 )
+from .extrude_repair import (
+    repair_extruded_side_faces,
+    ExtrudeRepairConfig,
+)
 from .material import (
     set_materials_texture_interpolation_closest,
     process_node_tree_interpolation,
@@ -43,6 +47,8 @@ __all__ = [
     "get_image_from_face",
     "process_adaptive_pixel_split",
     "SplitConfig",
+    "repair_extruded_side_faces",
+    "ExtrudeRepairConfig",
     "set_materials_texture_interpolation_closest",
     "process_node_tree_interpolation",
 ]

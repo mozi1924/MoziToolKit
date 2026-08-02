@@ -2,7 +2,8 @@ import bmesh
 import bpy
 
 from ...utils.menu_config import register_menu_item
-from ...utils.mesh import poll_edit_mesh, repair_extruded_side_faces
+from ...utils.mesh import poll_edit_mesh
+from ...utils.extrude_repair import repair_extruded_side_faces
 
 _last_processed_extrude_op = None
 
