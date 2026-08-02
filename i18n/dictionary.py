@@ -67,7 +67,7 @@ translations_dict = {
         ("*", "Outward (Use Adjacent Face Pixels)"): "向外（使用相邻面像素）",
         ("*", "Map each side UV strip into its adjacent face pixel"): "将每个侧面的 UV 窄条映射到其相邻面的像素上",
         ("*", "Add Mean Crease"): "添加 Mean Crease 边折痕",
-        ("*", "Automatically add Mean Crease to extruded side edges to prevent rounding during subdivision"): "自动给挤出生成侧面的边加上 Mean Crease 边折痕，防止细分时变圆",
+        ("*", "Automatically add Mean Crease to all extruded face edges to prevent rounding during subdivision"): "自动给挤出生成的所有面边添加 Mean Crease 折痕，防止细分时变圆",
         ("*", "Crease Weight"): "折痕权重",
         ("*", "Edge Mean Crease weight value"): "边 Mean Crease 折痕权重值",
         ("*", "Auto Extrude Repair Options"): "自动挤出修复选项",

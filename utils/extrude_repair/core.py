@@ -3,7 +3,6 @@ import mathutils
 import bpy
 from .types import ExtrudeRepairConfig
 from .uv_analyzer import is_face_uv_collapsed, get_active_texture_pixel_step
-from ..mesh import is_hard_edge
 
 
 def _resolve_smart_uv_mode(top_face, v_top_a, v_top_b, v_base_a, v_base_b) -> str:
@@ -74,25 +73,12 @@ def _get_adjacent_face_uv_strip(
     return uv_a, uv_b, uv_inward_dir
 
 
-def _normalize_sharp_angle(sharp_angle: float) -> float:
-    """Return an angle in radians, accepting legacy saved degree values.
-
-    Blender ANGLE properties are stored as radians.  Older versions of this
-    tool declared the property as an angle but used a degree default and then
-    converted it again here.  Values above pi can only come from that legacy
-    representation, so convert them once for backwards-compatible scenes.
-    """
-    sharp_angle = max(0.0, sharp_angle)
-    return math.radians(sharp_angle) if sharp_angle > math.pi else sharp_angle
-
-
-def _repair_hard_edge_creases(edges, crease_layer, crease_val, sharp_angle_rad) -> bool:
-    """Apply crease to every hard edge in *edges* and clear it otherwise."""
+def _repair_extruded_edge_creases(edges, crease_layer, crease_val) -> bool:
+    """Apply the requested crease to every edge of an extruded face."""
     repaired = False
     for edge in edges:
-        target_val = crease_val if is_hard_edge(edge, sharp_angle_rad) else 0.0
-        if abs(edge[crease_layer] - target_val) > 1e-6:
-            edge[crease_layer] = target_val
+        if abs(edge[crease_layer] - crease_val) > 1e-6:
+            edge[crease_layer] = crease_val
             repaired = True
     return repaired
 
@@ -105,7 +91,6 @@ def repair_extruded_side_faces(
     only_collapsed: bool = False,
     uv_mode: str = "INWARD",
     smart_side_face_indices=None,
-    sharp_angle: float = math.radians(30.0),
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
@@ -120,8 +105,6 @@ def repair_extruded_side_faces(
     :param smart_side_face_indices: Mutable set of side-face indices belonging
         to the current interactive smart extrusion. New faces are added only
         when their UVs are collapsed, then remain tracked for direction changes.
-    :param sharp_angle: Angle threshold in radians to identify sharp/hard
-        edges. Legacy values greater than pi are interpreted as degrees.
     :return: Number of repaired side faces.
     """
     bm.faces.ensure_lookup_table()
@@ -141,7 +124,6 @@ def repair_extruded_side_faces(
 
     selected_faces_set = set(selected_faces)
     repaired_count = 0
-    sharp_angle_rad = _normalize_sharp_angle(sharp_angle)
 
     for top_face in selected_faces:
         ref_vert_uv = {l.vert: l[uv_layer].uv.copy() for l in top_face.loops}
@@ -329,22 +311,19 @@ def repair_extruded_side_faces(
 
                 crease_repaired = False
                 if add_crease:
-                    # The cap can contain hard edges shared by two selected
-                    # faces when an extrusion wraps around a model corner.
-                    # Those edges are not part of any generated side face,
-                    # so repairing only side-face edges misses them and
-                    # subdivision rounds the corner.
-                    crease_repaired = _repair_hard_edge_creases(
+                    # Minecraft-style models are pixel blocks, so every edge
+                    # of both the new cap and side faces must remain sharp.
+                    # This also covers cap edges shared by selected faces
+                    # when an extrusion wraps around a 3D corner.
+                    crease_repaired = _repair_extruded_edge_creases(
                         top_face.edges,
                         crease_layer,
                         crease_val,
-                        sharp_angle_rad,
                     )
-                    crease_repaired = _repair_hard_edge_creases(
+                    crease_repaired = _repair_extruded_edge_creases(
                         side_face.edges,
                         crease_layer,
                         crease_val,
-                        sharp_angle_rad,
                     ) or crease_repaired
 
                 if uv_repaired or crease_repaired:

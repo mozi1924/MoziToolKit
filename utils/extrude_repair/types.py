@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 
 
@@ -11,4 +10,3 @@ class ExtrudeRepairConfig:
     crease_val: float = 1.0
     only_collapsed: bool = False
     uv_mode: str = "SMART"  # 'SMART', 'INWARD', or 'OUTWARD'
-    sharp_angle: float = math.radians(30.0)

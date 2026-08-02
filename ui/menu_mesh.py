@@ -96,7 +96,6 @@ class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
         sub_crease = layout.column()
         sub_crease.active = props.add_mean_crease
         sub_crease.prop(props, "crease_value", text="Crease Weight")
-        sub_crease.prop(props, "sharp_angle", text="Sharp Angle")
 
 
 
@@ -133,4 +132,3 @@ def unregister():
         bpy.types.VIEW3D_MT_edit_mesh_edges.remove(draw_edge_workspace_menu_func)
     if hasattr(bpy.types, "VIEW3D_MT_edit_mesh"):
         bpy.types.VIEW3D_MT_edit_mesh.remove(draw_mesh_workspace_menu_func)
-
