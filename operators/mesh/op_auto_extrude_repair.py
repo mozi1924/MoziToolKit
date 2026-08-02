@@ -6,7 +6,8 @@ from ...utils.mesh import poll_edit_mesh
 from ...utils.extrude_repair import repair_extruded_side_faces
 
 _last_processed_extrude_op = None
-_smart_side_faces_by_object = {}
+_smart_extrude_sessions = {}
+_SMART_EXTRUDE_POLL_INTERVAL = 0.03
 
 
 UV_MODE_ITEMS = [
@@ -113,10 +114,20 @@ _is_updating = False
 def _is_modal_mesh_operation_active(context):
     """Return whether an extrusion or its modal transform is still running."""
     window_manager = getattr(context, "window_manager", None)
-    if not window_manager:
-        return False
+    window = getattr(context, "window", None)
+    operators = []
+    if window:
+        # This is Blender's authoritative collection of operations that are
+        # currently modal (including the Transform spawned by mesh.extrude).
+        operators.extend(window.modal_operators)
+    active_operator = getattr(context, "active_operator", None)
+    if active_operator:
+        # Keep these as compatibility fallbacks for contexts without a Window.
+        operators.append(active_operator)
+    if window_manager:
+        operators.extend(window_manager.operators)
 
-    for operator in window_manager.operators:
+    for operator in operators:
         identifier = getattr(operator, "bl_idname", "")
         if not identifier:
             bl_rna = getattr(operator, "bl_rna", None)
@@ -127,11 +138,58 @@ def _is_modal_mesh_operation_active(context):
     return False
 
 
-def _clear_finished_smart_extrusions():
-    """End smart tracking immediately after an extrusion is confirmed/cancelled."""
-    if _smart_side_faces_by_object and not _is_modal_mesh_operation_active(bpy.context):
-        _smart_side_faces_by_object.clear()
-    return 0.1
+def _monitor_smart_extrusions():
+    """Continuously update smart UVs until the modal extrusion ends."""
+    global _is_updating
+
+    if not _smart_extrude_sessions:
+        return _SMART_EXTRUDE_POLL_INTERVAL
+
+    context = bpy.context
+    if (
+        not context
+        or context.mode != "EDIT_MESH"
+        or not _is_modal_mesh_operation_active(context)
+    ):
+        _smart_extrude_sessions.clear()
+        return _SMART_EXTRUDE_POLL_INTERVAL
+
+    props = getattr(context.scene, "mozi_auto_extrude_repair", None)
+    obj = context.active_object
+    if (
+        not props
+        or not props.enabled
+        or props.uv_mode != "SMART"
+        or not obj
+        or obj.type != "MESH"
+    ):
+        _smart_extrude_sessions.clear()
+        return _SMART_EXTRUDE_POLL_INTERVAL
+
+    session = _smart_extrude_sessions.get(obj.as_pointer())
+    if not session or _is_updating:
+        return _SMART_EXTRUDE_POLL_INTERVAL
+
+    try:
+        _is_updating = True
+        bm = bmesh.from_edit_mesh(obj.data)
+        count = repair_extruded_side_faces(
+            bm,
+            repair_uv=props.repair_uv,
+            add_crease=props.add_mean_crease,
+            crease_val=props.crease_value,
+            only_collapsed=True,
+            uv_mode="SMART",
+            smart_side_face_indices=session["side_face_indices"],
+        )
+        if count > 0:
+            bmesh.update_edit_mesh(obj.data)
+    except Exception:
+        pass
+    finally:
+        _is_updating = False
+
+    return _SMART_EXTRUDE_POLL_INTERVAL
 
 
 def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
@@ -154,12 +212,28 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
         if not obj or obj.type != "MESH":
             return
 
-        _is_updating = True
-        bm = bmesh.from_edit_mesh(obj.data)
-        smart_side_face_indices = None
         if props.uv_mode == "SMART":
             object_key = obj.as_pointer()
-            smart_side_face_indices = _smart_side_faces_by_object.setdefault(object_key, set())
+            session = _smart_extrude_sessions.setdefault(
+                object_key, {"side_face_indices": set()}
+            )
+            _is_updating = True
+            bm = bmesh.from_edit_mesh(obj.data)
+            count = repair_extruded_side_faces(
+                bm,
+                repair_uv=props.repair_uv,
+                add_crease=props.add_mean_crease,
+                crease_val=props.crease_value,
+                only_collapsed=True,
+                uv_mode="SMART",
+                smart_side_face_indices=session["side_face_indices"],
+            )
+            if count > 0:
+                bmesh.update_edit_mesh(obj.data)
+            return
+
+        _is_updating = True
+        bm = bmesh.from_edit_mesh(obj.data)
         count = repair_extruded_side_faces(
             bm,
             repair_uv=props.repair_uv,
@@ -167,7 +241,6 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
             crease_val=props.crease_value,
             only_collapsed=True,
             uv_mode=props.uv_mode,
-            smart_side_face_indices=smart_side_face_indices,
         )
 
         if count > 0:
@@ -186,15 +259,15 @@ def register():
     )
     if depsgraph_auto_extrude_repair_handler not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(depsgraph_auto_extrude_repair_handler)
-    if not bpy.app.timers.is_registered(_clear_finished_smart_extrusions):
-        bpy.app.timers.register(_clear_finished_smart_extrusions, persistent=True)
+    if not bpy.app.timers.is_registered(_monitor_smart_extrusions):
+        bpy.app.timers.register(_monitor_smart_extrusions, persistent=True)
 
 
 def unregister():
     if depsgraph_auto_extrude_repair_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(depsgraph_auto_extrude_repair_handler)
-    if bpy.app.timers.is_registered(_clear_finished_smart_extrusions):
-        bpy.app.timers.unregister(_clear_finished_smart_extrusions)
-    _smart_side_faces_by_object.clear()
+    if bpy.app.timers.is_registered(_monitor_smart_extrusions):
+        bpy.app.timers.unregister(_monitor_smart_extrusions)
+    _smart_extrude_sessions.clear()
     if hasattr(bpy.types.Scene, "mozi_auto_extrude_repair"):
         del bpy.types.Scene.mozi_auto_extrude_repair
