@@ -1,3 +1,4 @@
+import math
 import mathutils
 import bpy
 from .types import ExtrudeRepairConfig
@@ -88,11 +89,7 @@ def repair_extruded_side_faces(
                 if not v_base_a or not v_base_b or v_base_a == v_base_b:
                     continue
 
-                if add_crease:
-                    for se in side_face.edges:
-                        se[crease_layer] = crease_val
-
-                if repair_uv:
+                if repair_uv or only_collapsed:
                     uv_a = ref_vert_uv[v_top_a]
                     uv_b = ref_vert_uv[v_top_b]
 
@@ -115,6 +112,31 @@ def repair_extruded_side_faces(
                     else:
                         uv_outward_dir = mathutils.Vector((1.0, 0.0))
 
+                    if only_collapsed:
+                        uv_top_a_pt = None
+                        uv_base_a_pt = None
+                        for l in side_face.loops:
+                            if l.vert == v_top_a:
+                                uv_top_a_pt = l[uv_layer].uv
+                            elif l.vert == v_base_a:
+                                uv_base_a_pt = l[uv_layer].uv
+
+                        height_uv_dir = (
+                            abs((uv_top_a_pt - uv_base_a_pt).dot(uv_outward_dir))
+                            if (uv_top_a_pt and uv_base_a_pt)
+                            else 0.0
+                        )
+                        is_unrepaired = (height_uv_dir < 1e-4) or is_face_uv_collapsed(
+                            side_face, uv_layer
+                        )
+                        if not is_unrepaired:
+                            continue
+
+                if add_crease:
+                    for se in side_face.edges:
+                        se[crease_layer] = crease_val
+
+                if repair_uv:
                     if uv_mode == "INWARD":
                         h_uv = min(h_uv, l_uv)
                         uv_dir = -uv_outward_dir
@@ -123,8 +145,25 @@ def repair_extruded_side_faces(
 
                     uv_base_a_val = uv_a.copy()
                     uv_base_b_val = uv_b.copy()
-                    uv_top_a_val = uv_a + uv_dir * h_uv
-                    uv_top_b_val = uv_b + uv_dir * h_uv
+
+                    if uv_mode == "OUTWARD" and p_step > 0:
+                        if abs(uv_outward_dir.x) > 0.5:
+                            if uv_outward_dir.x > 0:
+                                uv_base_a_val.x = math.ceil(uv_a.x / p_step - 1e-5) * p_step
+                                uv_base_b_val.x = math.ceil(uv_b.x / p_step - 1e-5) * p_step
+                            else:
+                                uv_base_a_val.x = math.floor(uv_a.x / p_step + 1e-5) * p_step
+                                uv_base_b_val.x = math.floor(uv_b.x / p_step + 1e-5) * p_step
+                        elif abs(uv_outward_dir.y) > 0.5:
+                            if uv_outward_dir.y > 0:
+                                uv_base_a_val.y = math.ceil(uv_a.y / p_step - 1e-5) * p_step
+                                uv_base_b_val.y = math.ceil(uv_b.y / p_step - 1e-5) * p_step
+                            else:
+                                uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
+                                uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
+
+                    uv_top_a_val = uv_base_a_val + uv_dir * h_uv
+                    uv_top_b_val = uv_base_b_val + uv_dir * h_uv
 
                     for l in side_face.loops:
                         if l.vert == v_top_a:
