@@ -11,7 +11,7 @@ def repair_extruded_side_faces(
     add_crease: bool = False,
     crease_val: float = 1.0,
     only_collapsed: bool = False,
-    uv_mode: str = "INWARD",
+    uv_mode: str = "SMART",
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
@@ -20,7 +20,7 @@ def repair_extruded_side_faces(
     :param add_crease: Whether to add Mean Crease to side edges.
     :param crease_val: Crease weight value (0.0 to 1.0).
     :param only_collapsed: If True, only repair collapsed side faces or active extruded side faces.
-    :param uv_mode: 'INWARD' (use face pixel color/shrink inward) or 'OUTWARD' (extend UV box outward).
+    :param uv_mode: 'SMART' (auto-detect based on extrude direction), 'INWARD', or 'OUTWARD'.
     :return: Number of repaired side faces.
     """
     bm.faces.ensure_lookup_table()
@@ -156,7 +156,15 @@ def repair_extruded_side_faces(
                                 uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
                                 uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
 
-                    if uv_mode == "INWARD":
+                    effective_uv_mode = uv_mode
+                    if uv_mode == "SMART":
+                        disp = (v_top_a.co - v_base_a.co) + (v_top_b.co - v_base_b.co)
+                        if disp.dot(top_face.normal) < -1e-6:
+                            effective_uv_mode = "OUTWARD"
+                        else:
+                            effective_uv_mode = "INWARD"
+
+                    if effective_uv_mode == "INWARD":
                         h_uv = min(h_uv, l_uv)
                         uv_dir = -uv_outward_dir
                     else:

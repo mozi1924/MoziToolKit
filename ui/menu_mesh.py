@@ -88,7 +88,7 @@ class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
 
         sub_uv = layout.column()
         sub_uv.active = props.repair_uv
-        sub_uv.prop(props, "uv_mode", text="Extrude Mode")
+        sub_uv.prop(props, "uv_mode", text="UV Correction Mode")
 
         layout.separator()
         layout.prop(props, "add_mean_crease", text="Add Mean Crease")

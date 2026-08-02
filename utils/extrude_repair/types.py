@@ -9,4 +9,4 @@ class ExtrudeRepairConfig:
     add_crease: bool = False
     crease_val: float = 1.0
     only_collapsed: bool = False
-    uv_mode: str = "INWARD"  # 'INWARD' or 'OUTWARD'
+    uv_mode: str = "SMART"  # 'SMART', 'INWARD', or 'OUTWARD'

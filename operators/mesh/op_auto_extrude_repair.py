@@ -9,6 +9,7 @@ _last_processed_extrude_op = None
 
 
 UV_MODE_ITEMS = [
+    ("SMART", "Smart", "Auto-detect inward or outward mode based on extrude direction"),
     ("INWARD", "Inward (Use Face Pixel)", "Shrink side UVs into reference face pixel area (default for Minecraft)"),
     ("OUTWARD", "Outward (Extend UVs)", "Extend side UVs outwards from reference face UV bounds"),
 ]
@@ -21,10 +22,10 @@ class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
         default=False,
     )
     uv_mode: bpy.props.EnumProperty(
-        name="UV Mode",
+        name="UV Correction Mode",
         description="Direction for side UV extension (Inward uses reference face pixel color)",
         items=UV_MODE_ITEMS,
-        default="INWARD",
+        default="SMART",
     )
     repair_uv: bpy.props.BoolProperty(
         name="Repair UV Overlap",
@@ -54,10 +55,10 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     uv_mode: bpy.props.EnumProperty(
-        name="UV Mode",
+        name="UV Correction Mode",
         description="Direction for side UV extension (Inward uses reference face pixel color)",
         items=UV_MODE_ITEMS,
-        default="INWARD",
+        default="SMART",
     )
 
     repair_uv: bpy.props.BoolProperty(
