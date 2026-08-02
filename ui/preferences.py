@@ -74,6 +74,27 @@ class MOZI_UL_unadded_items_list(bpy.types.UIList):
             layout.label(text=item.label, icon="ADD")
 
 
+OPERATOR_ORDER = list(ALL_OPERATORS.keys())
+
+
+def sort_unadded_items(unadded_coll):
+    """Sort unadded CollectionProperty items by fixed OPERATOR_ORDER."""
+    items = [
+        {"operator_id": elem.operator_id, "label": elem.label}
+        for elem in unadded_coll
+    ]
+    items.sort(
+        key=lambda x: OPERATOR_ORDER.index(x["operator_id"])
+        if x["operator_id"] in OPERATOR_ORDER
+        else 999
+    )
+    unadded_coll.clear()
+    for item in items:
+        elem = unadded_coll.add()
+        elem.operator_id = item["operator_id"]
+        elem.label = item["label"]
+
+
 def sync_prefs_from_json(prefs):
     """Populate preferences PropertyGroups from JSON configuration."""
     config_data = load_config()
@@ -102,6 +123,8 @@ def sync_prefs_from_json(prefs):
                 elem = unadded_coll.add()
                 elem.operator_id = op_id
                 elem.label = op_info.get("label", op_id)
+
+        sort_unadded_items(unadded_coll)
 
 
 def save_prefs_to_json(prefs):
@@ -145,6 +168,7 @@ class MOZI_OT_menu_add_item(bpy.types.Operator):
             unadded_coll.remove(idx)
             setattr(prefs, unadded_idx_prop, min(idx, max(0, len(unadded_coll) - 1)))
             setattr(prefs, f"added_{view}_index", len(added_coll) - 1)
+            sort_unadded_items(unadded_coll)
             save_prefs_to_json(prefs)
 
         return {"FINISHED"}
@@ -173,10 +197,12 @@ class MOZI_OT_menu_remove_item(bpy.types.Operator):
             elem.label = ALL_OPERATORS.get(item_to_remove.operator_id, {}).get("label", item_to_remove.operator_id)
             added_coll.remove(idx)
             setattr(prefs, added_idx_prop, min(idx, max(0, len(added_coll) - 1)))
-            setattr(prefs, f"unadded_{view}_index", len(unadded_coll) - 1)
+            sort_unadded_items(unadded_coll)
+            setattr(prefs, f"unadded_{view}_index", 0)
             save_prefs_to_json(prefs)
 
         return {"FINISHED"}
+
 
 
 class MOZI_OT_menu_move_item(bpy.types.Operator):
@@ -364,34 +390,35 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             edit_box.prop(item, "label", text="Description")
 
 
-        # Middle Column: Action Buttons
+        # Middle Column: Action Buttons (Icon-Only Compact Column)
         mid_col = main_row.column(align=True)
         mid_col.alignment = "CENTER"
-        mid_col.separator(factor=2)
+        mid_col.separator(factor=3)
 
-        # Add Button (<--)
+        # Add Button (Left Arrow)
         sub_row1 = mid_col.row(align=True)
         sub_row1.enabled = len(unadded_coll) > 0 and 0 <= unadded_idx < len(unadded_coll)
-        sub_row1.operator(MOZI_OT_menu_add_item.bl_idname, text="<-- Add", icon="BACK")
+        sub_row1.operator(MOZI_OT_menu_add_item.bl_idname, text="", icon="BACK")
 
-        # Remove Button (-->)
+        # Remove Button (Right Arrow)
         sub_row2 = mid_col.row(align=True)
         sub_row2.enabled = len(added_coll) > 0 and 0 <= added_idx < len(added_coll)
-        sub_row2.operator(MOZI_OT_menu_remove_item.bl_idname, text="Remove -->", icon="FORWARD")
+        sub_row2.operator(MOZI_OT_menu_remove_item.bl_idname, text="", icon="FORWARD")
 
-        mid_col.separator(factor=2)
+        mid_col.separator(factor=3)
 
         # Move Up Button
         sub_row3 = mid_col.row(align=True)
         sub_row3.enabled = len(added_coll) > 0 and added_idx > 0
-        op_up = sub_row3.operator(MOZI_OT_menu_move_item.bl_idname, text="Move Up", icon="TRIA_UP")
+        op_up = sub_row3.operator(MOZI_OT_menu_move_item.bl_idname, text="", icon="TRIA_UP")
         op_up.direction = "UP"
 
         # Move Down Button
         sub_row4 = mid_col.row(align=True)
         sub_row4.enabled = len(added_coll) > 0 and added_idx < len(added_coll) - 1
-        op_down = sub_row4.operator(MOZI_OT_menu_move_item.bl_idname, text="Move Down", icon="TRIA_DOWN")
+        op_down = sub_row4.operator(MOZI_OT_menu_move_item.bl_idname, text="", icon="TRIA_DOWN")
         op_down.direction = "DOWN"
+
 
         # Right Column: Available / Unadded Options
         right_col = main_row.column(align=False)
