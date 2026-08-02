@@ -5,6 +5,17 @@ from .types import ExtrudeRepairConfig
 from .uv_analyzer import is_face_uv_collapsed, get_active_texture_pixel_step
 
 
+def _resolve_smart_uv_mode(top_face, v_top_a, v_top_b, v_base_a, v_base_b) -> str:
+    """Select the UV direction from the signed distance of the extrusion."""
+    extrusion = ((v_top_a.co - v_base_a.co) + (v_top_b.co - v_base_b.co)) * 0.5
+    normal = top_face.normal
+    # Along the face normal is a protrusion: use source-face pixels.  Against
+    # it is an indentation: extend from outside the source-face UV bounds.
+    if normal.length_squared > 1e-12 and extrusion.dot(normal) < -1e-6:
+        return "OUTWARD"
+    return "INWARD"
+
+
 def repair_extruded_side_faces(
     bm,
     repair_uv: bool = True,
@@ -12,6 +23,7 @@ def repair_extruded_side_faces(
     crease_val: float = 1.0,
     only_collapsed: bool = False,
     uv_mode: str = "INWARD",
+    smart_side_face_indices=None,
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
@@ -20,12 +32,18 @@ def repair_extruded_side_faces(
     :param add_crease: Whether to add Mean Crease to side edges.
     :param crease_val: Crease weight value (0.0 to 1.0).
     :param only_collapsed: If True, only repair collapsed side faces or active extruded side faces.
-    :param uv_mode: 'INWARD' (shrink side UVs into face pixel area) or 'OUTWARD' (extend UVs outward).
+    :param uv_mode: 'SMART' (derive from extrusion direction), 'INWARD'
+        (shrink side UVs into face pixel area), or 'OUTWARD' (extend side UVs).
+    :param smart_side_face_indices: Mutable set of side-face indices belonging
+        to the current interactive smart extrusion. New faces are added only
+        when their UVs are collapsed, then remain tracked for direction changes.
     :return: Number of repaired side faces.
     """
     bm.faces.ensure_lookup_table()
+    bm.faces.index_update()
     bm.edges.ensure_lookup_table()
     bm.verts.ensure_lookup_table()
+    bm.normal_update()
 
     uv_layer = bm.loops.layers.uv.verify()
     crease_layer = bm.edges.layers.float.get("crease_edge") or bm.edges.layers.float.new("crease_edge")
@@ -71,9 +89,6 @@ def repair_extruded_side_faces(
                 if len(base_verts) != 2:
                     continue
 
-                if only_collapsed and not is_face_uv_collapsed(side_face, uv_layer):
-                    continue
-
                 v_base_a = None
                 v_base_b = None
                 for se in side_face.edges:
@@ -111,14 +126,32 @@ def repair_extruded_side_faces(
                     else:
                         uv_outward_dir = mathutils.Vector((1.0, 0.0))
 
+                    is_active_extrusion = (
+                        v_top_a.select
+                        and v_top_b.select
+                        and (not v_base_a.select)
+                        and (not v_base_b.select)
+                    )
                     if only_collapsed:
-                        is_active_extrusion = (
-                            v_top_a.select
-                            and v_top_b.select
-                            and (not v_base_a.select)
-                            and (not v_base_b.select)
-                        )
-                        if not is_active_extrusion:
+                        is_collapsed = is_face_uv_collapsed(side_face, uv_layer)
+                        if uv_mode == "SMART":
+                            # A newly extruded side starts with collapsed UVs.
+                            # Once found, retain only that side for the rest of
+                            # this extrusion so a direction reversal can update
+                            # it without treating an arbitrary selected face as
+                            # a fresh extrusion.
+                            if smart_side_face_indices is None:
+                                if not is_collapsed:
+                                    continue
+                            elif side_face.index not in smart_side_face_indices:
+                                if not is_collapsed:
+                                    continue
+                                smart_side_face_indices.add(side_face.index)
+                            if not is_active_extrusion:
+                                continue
+                        elif not is_collapsed:
+                            continue
+                        elif not is_active_extrusion:
                             uv_top_a_pt = None
                             uv_base_a_pt = None
                             for l in side_face.loops:
@@ -138,10 +171,7 @@ def repair_extruded_side_faces(
                             if not is_unrepaired:
                                 continue
 
-                if add_crease:
-                    for se in side_face.edges:
-                        se[crease_layer] = crease_val
-
+                uv_repaired = False
                 if repair_uv:
                     uv_base_a_val = uv_a.copy()
                     uv_base_b_val = uv_b.copy()
@@ -162,7 +192,14 @@ def repair_extruded_side_faces(
                                 uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
                                 uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
 
-                    if uv_mode == "INWARD":
+                    resolved_uv_mode = (
+                        _resolve_smart_uv_mode(
+                            top_face, v_top_a, v_top_b, v_base_a, v_base_b
+                        )
+                        if uv_mode == "SMART"
+                        else uv_mode
+                    )
+                    if resolved_uv_mode == "INWARD":
                         uv_dir = -uv_outward_dir
                     else:
                         uv_dir = uv_outward_dir
@@ -170,16 +207,31 @@ def repair_extruded_side_faces(
                     uv_top_a_val = uv_base_a_val + uv_dir * h_uv
                     uv_top_b_val = uv_base_b_val + uv_dir * h_uv
 
-                    for l in side_face.loops:
-                        if l.vert == v_top_a:
-                            l[uv_layer].uv = uv_top_a_val.copy()
-                        elif l.vert == v_top_b:
-                            l[uv_layer].uv = uv_top_b_val.copy()
-                        elif l.vert == v_base_a:
-                            l[uv_layer].uv = uv_base_a_val.copy()
-                        elif l.vert == v_base_b:
-                            l[uv_layer].uv = uv_base_b_val.copy()
+                    expected_uvs = {
+                        v_top_a: uv_top_a_val,
+                        v_top_b: uv_top_b_val,
+                        v_base_a: uv_base_a_val,
+                        v_base_b: uv_base_b_val,
+                    }
+                    uv_repaired = any(
+                        (l[uv_layer].uv - expected_uvs[l.vert]).length_squared > 1e-12
+                        for l in side_face.loops
+                    )
+                    if uv_repaired:
+                        for l in side_face.loops:
+                            l[uv_layer].uv = expected_uvs[l.vert].copy()
 
-                repaired_count += 1
+                crease_repaired = False
+                if add_crease:
+                    crease_repaired = any(
+                        abs(se[crease_layer] - crease_val) > 1e-6
+                        for se in side_face.edges
+                    )
+                    if crease_repaired:
+                        for se in side_face.edges:
+                            se[crease_layer] = crease_val
+
+                if uv_repaired or crease_repaired:
+                    repaired_count += 1
 
     return repaired_count

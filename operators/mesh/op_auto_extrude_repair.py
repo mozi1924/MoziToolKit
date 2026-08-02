@@ -6,9 +6,11 @@ from ...utils.mesh import poll_edit_mesh
 from ...utils.extrude_repair import repair_extruded_side_faces
 
 _last_processed_extrude_op = None
+_smart_side_faces_by_object = {}
 
 
 UV_MODE_ITEMS = [
+    ("SMART", "Smart", "Auto-detect inward or outward mode based on extrude direction"),
     ("INWARD", "Inward (Use Face Pixel)", "Shrink side UVs into reference face pixel area (default for Minecraft)"),
     ("OUTWARD", "Outward (Extend UVs)", "Extend side UVs outwards from reference face UV bounds"),
 ]
@@ -24,7 +26,7 @@ class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
         name="UV Correction Mode",
         description="Direction for side UV extension (Inward uses reference face pixel color)",
         items=UV_MODE_ITEMS,
-        default="INWARD",
+        default="SMART",
     )
     repair_uv: bpy.props.BoolProperty(
         name="Repair UV Overlap",
@@ -57,7 +59,7 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
         name="UV Correction Mode",
         description="Direction for side UV extension (Inward uses reference face pixel color)",
         items=UV_MODE_ITEMS,
-        default="INWARD",
+        default="SMART",
     )
 
     repair_uv: bpy.props.BoolProperty(
@@ -108,6 +110,30 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
 _is_updating = False
 
 
+def _is_modal_mesh_operation_active(context):
+    """Return whether an extrusion or its modal transform is still running."""
+    window_manager = getattr(context, "window_manager", None)
+    if not window_manager:
+        return False
+
+    for operator in window_manager.operators:
+        identifier = getattr(operator, "bl_idname", "")
+        if not identifier:
+            bl_rna = getattr(operator, "bl_rna", None)
+            identifier = getattr(bl_rna, "identifier", "")
+        identifier = identifier.upper()
+        if "EXTRUDE" in identifier or identifier.startswith("TRANSFORM_OT_"):
+            return True
+    return False
+
+
+def _clear_finished_smart_extrusions():
+    """End smart tracking immediately after an extrusion is confirmed/cancelled."""
+    if _smart_side_faces_by_object and not _is_modal_mesh_operation_active(bpy.context):
+        _smart_side_faces_by_object.clear()
+    return 0.1
+
+
 def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
     global _is_updating
     if _is_updating:
@@ -130,6 +156,10 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
 
         _is_updating = True
         bm = bmesh.from_edit_mesh(obj.data)
+        smart_side_face_indices = None
+        if props.uv_mode == "SMART":
+            object_key = obj.as_pointer()
+            smart_side_face_indices = _smart_side_faces_by_object.setdefault(object_key, set())
         count = repair_extruded_side_faces(
             bm,
             repair_uv=props.repair_uv,
@@ -137,6 +167,7 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
             crease_val=props.crease_value,
             only_collapsed=True,
             uv_mode=props.uv_mode,
+            smart_side_face_indices=smart_side_face_indices,
         )
 
         if count > 0:
@@ -155,10 +186,15 @@ def register():
     )
     if depsgraph_auto_extrude_repair_handler not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(depsgraph_auto_extrude_repair_handler)
+    if not bpy.app.timers.is_registered(_clear_finished_smart_extrusions):
+        bpy.app.timers.register(_clear_finished_smart_extrusions, persistent=True)
 
 
 def unregister():
     if depsgraph_auto_extrude_repair_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(depsgraph_auto_extrude_repair_handler)
+    if bpy.app.timers.is_registered(_clear_finished_smart_extrusions):
+        bpy.app.timers.unregister(_clear_finished_smart_extrusions)
+    _smart_side_faces_by_object.clear()
     if hasattr(bpy.types.Scene, "mozi_auto_extrude_repair"):
         del bpy.types.Scene.mozi_auto_extrude_repair
