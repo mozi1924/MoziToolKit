@@ -18,25 +18,11 @@ def draw_object_workspace_menu_func(self, context):
     self.layout.menu("MOZI_MT_object_menu", text="MoziToolKit", icon="TOOL_SETTINGS")
 
 
-from ..utils.menu_config import load_config
+from ..utils.menu_config import draw_dynamic_menu
 
 
 def draw_object_menu_func(self, context):
-    config = load_config()
-    items = config.get("object", [])
-    if not items:
-        return
-    self.layout.separator()
-    self.layout.label(text="MoziToolKit")
-    for item in items:
-        if item.get("enabled", True):
-            op_id = item.get("operator")
-            label = item.get("label")
-            if op_id:
-                if label:
-                    self.layout.operator(op_id, text=label)
-                else:
-                    self.layout.operator(op_id)
+    draw_dynamic_menu(self.layout, "object")
 
 
 

@@ -1,8 +1,10 @@
 import bpy
 from ...utils.mesh import bmesh_context, poll_edit_mesh
 from ...utils.uv import get_face_uv_center
+from ...utils.menu_config import register_menu_item
 
 
+@register_menu_item(views=["uv"])
 class MOZI_OT_scale_uv(bpy.types.Operator):
     """Scale individual UV faces in place"""
 

@@ -10,8 +10,10 @@ from ...utils.mesh import (
     set_select_mode,
 )
 from ...utils.uv import get_image_from_face
+from ...utils.menu_config import register_menu_item
 
 
+@register_menu_item(views=["mesh", "uv"])
 class MOZI_OT_select_transparent_faces(bpy.types.Operator):
     """Select mesh faces mapped to transparent texture pixels"""
 

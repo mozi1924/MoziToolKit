@@ -1,8 +1,10 @@
 import math
 import bpy
 from ...utils.mesh import bmesh_context, poll_edit_mesh, set_select_mode
+from ...utils.menu_config import register_menu_item
 
 
+@register_menu_item(views=["mesh"])
 class MOZI_OT_select_hard_edges(bpy.types.Operator):
     """Select boundary edges, sharp marked edges, and edges exceeding sharp angle threshold"""
 

@@ -74,18 +74,16 @@ class MOZI_UL_unadded_items_list(bpy.types.UIList):
             layout.label(text=item.label, icon="ADD")
 
 
-OPERATOR_ORDER = list(ALL_OPERATORS.keys())
-
-
 def sort_unadded_items(unadded_coll):
-    """Sort unadded CollectionProperty items by fixed OPERATOR_ORDER."""
+    """Sort unadded CollectionProperty items by live OPERATOR_ORDER."""
+    op_order = list(ALL_OPERATORS.keys())
     items = [
         {"operator_id": elem.operator_id, "label": elem.label}
         for elem in unadded_coll
     ]
     items.sort(
-        key=lambda x: OPERATOR_ORDER.index(x["operator_id"])
-        if x["operator_id"] in OPERATOR_ORDER
+        key=lambda x: op_order.index(x["operator_id"])
+        if x["operator_id"] in op_order
         else 999
     )
     unadded_coll.clear()
