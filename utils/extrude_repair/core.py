@@ -74,6 +74,29 @@ def _get_adjacent_face_uv_strip(
     return uv_a, uv_b, uv_inward_dir
 
 
+def _normalize_sharp_angle(sharp_angle: float) -> float:
+    """Return an angle in radians, accepting legacy saved degree values.
+
+    Blender ANGLE properties are stored as radians.  Older versions of this
+    tool declared the property as an angle but used a degree default and then
+    converted it again here.  Values above pi can only come from that legacy
+    representation, so convert them once for backwards-compatible scenes.
+    """
+    sharp_angle = max(0.0, sharp_angle)
+    return math.radians(sharp_angle) if sharp_angle > math.pi else sharp_angle
+
+
+def _repair_hard_edge_creases(edges, crease_layer, crease_val, sharp_angle_rad) -> bool:
+    """Apply crease to every hard edge in *edges* and clear it otherwise."""
+    repaired = False
+    for edge in edges:
+        target_val = crease_val if is_hard_edge(edge, sharp_angle_rad) else 0.0
+        if abs(edge[crease_layer] - target_val) > 1e-6:
+            edge[crease_layer] = target_val
+            repaired = True
+    return repaired
+
+
 def repair_extruded_side_faces(
     bm,
     repair_uv: bool = True,
@@ -82,7 +105,7 @@ def repair_extruded_side_faces(
     only_collapsed: bool = False,
     uv_mode: str = "INWARD",
     smart_side_face_indices=None,
-    sharp_angle: float = 30.0,
+    sharp_angle: float = math.radians(30.0),
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
@@ -97,7 +120,8 @@ def repair_extruded_side_faces(
     :param smart_side_face_indices: Mutable set of side-face indices belonging
         to the current interactive smart extrusion. New faces are added only
         when their UVs are collapsed, then remain tracked for direction changes.
-    :param sharp_angle: Angle threshold in degrees to identify sharp/hard edges.
+    :param sharp_angle: Angle threshold in radians to identify sharp/hard
+        edges. Legacy values greater than pi are interpreted as degrees.
     :return: Number of repaired side faces.
     """
     bm.faces.ensure_lookup_table()
@@ -117,6 +141,7 @@ def repair_extruded_side_faces(
 
     selected_faces_set = set(selected_faces)
     repaired_count = 0
+    sharp_angle_rad = _normalize_sharp_angle(sharp_angle)
 
     for top_face in selected_faces:
         ref_vert_uv = {l.vert: l[uv_layer].uv.copy() for l in top_face.loops}
@@ -304,12 +329,23 @@ def repair_extruded_side_faces(
 
                 crease_repaired = False
                 if add_crease:
-                    sharp_angle_rad = math.radians(sharp_angle)
-                    for se in side_face.edges:
-                        target_val = crease_val if is_hard_edge(se, sharp_angle_rad) else 0.0
-                        if abs(se[crease_layer] - target_val) > 1e-6:
-                            se[crease_layer] = target_val
-                            crease_repaired = True
+                    # The cap can contain hard edges shared by two selected
+                    # faces when an extrusion wraps around a model corner.
+                    # Those edges are not part of any generated side face,
+                    # so repairing only side-face edges misses them and
+                    # subdivision rounds the corner.
+                    crease_repaired = _repair_hard_edge_creases(
+                        top_face.edges,
+                        crease_layer,
+                        crease_val,
+                        sharp_angle_rad,
+                    )
+                    crease_repaired = _repair_hard_edge_creases(
+                        side_face.edges,
+                        crease_layer,
+                        crease_val,
+                        sharp_angle_rad,
+                    ) or crease_repaired
 
                 if uv_repaired or crease_repaired:
                     repaired_count += 1

@@ -1,3 +1,5 @@
+import math
+
 import bmesh
 import bpy
 
@@ -7,6 +9,20 @@ from ...utils.extrude_repair import repair_extruded_side_faces
 
 _smart_extrude_sessions = {}
 _SMART_EXTRUDE_POLL_INTERVAL = 0.03
+
+
+def _migrate_saved_sharp_angles():
+    """Migrate old scene values after Blender has finished add-on registration."""
+    scenes = getattr(bpy.data, "scenes", None)
+    if scenes is None:
+        # bpy.data is a restricted proxy while an add-on is registering.
+        return 0.1
+
+    for scene in scenes:
+        props = getattr(scene, "mozi_auto_extrude_repair", None)
+        if props and props.sharp_angle > math.pi:
+            props.sharp_angle = math.radians(props.sharp_angle)
+    return None
 
 
 UV_MODE_ITEMS = [
@@ -48,9 +64,13 @@ class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
     sharp_angle: bpy.props.FloatProperty(
         name="Sharp Angle",
         description="Angle threshold in degrees to treat as sharp edge for crease",
-        default=30.0,
+        default=math.radians(30.0),
         min=0.0,
+        # Keep the old raw range long enough for saved pre-fix values (such
+        # as 30.0) to be migrated by the timer below.  soft_max keeps the UI
+        # slider at the intended 180-degree limit.
         max=180.0,
+        soft_max=math.pi,
         precision=1,
         subtype="ANGLE",
     )
@@ -94,9 +114,10 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
     sharp_angle: bpy.props.FloatProperty(
         name="Sharp Angle",
         description="Angle threshold in degrees to treat as sharp edge for crease",
-        default=30.0,
+        default=math.radians(30.0),
         min=0.0,
         max=180.0,
+        soft_max=math.pi,
         precision=1,
         subtype="ANGLE",
     )
@@ -287,6 +308,10 @@ def register():
     bpy.types.Scene.mozi_auto_extrude_repair = bpy.props.PointerProperty(
         type=MOZI_PG_auto_extrude_repair
     )
+    # Delay migration until after registration, when bpy.data is no longer
+    # Blender's restricted _RestrictData proxy.
+    if not bpy.app.timers.is_registered(_migrate_saved_sharp_angles):
+        bpy.app.timers.register(_migrate_saved_sharp_angles, first_interval=0.0)
     if depsgraph_auto_extrude_repair_handler not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(depsgraph_auto_extrude_repair_handler)
     if not bpy.app.timers.is_registered(_monitor_smart_extrusions):
@@ -298,6 +323,8 @@ def unregister():
         bpy.app.handlers.depsgraph_update_post.remove(depsgraph_auto_extrude_repair_handler)
     if bpy.app.timers.is_registered(_monitor_smart_extrusions):
         bpy.app.timers.unregister(_monitor_smart_extrusions)
+    if bpy.app.timers.is_registered(_migrate_saved_sharp_angles):
+        bpy.app.timers.unregister(_migrate_saved_sharp_angles)
     _smart_extrude_sessions.clear()
     if hasattr(bpy.types.Scene, "mozi_auto_extrude_repair"):
         del bpy.types.Scene.mozi_auto_extrude_repair
