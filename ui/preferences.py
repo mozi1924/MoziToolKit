@@ -6,6 +6,7 @@ from ..utils.menu_config import (
     export_config,
     import_config,
     load_config,
+    normalize_operator_id,
     reset_config,
     save_config,
 )
@@ -23,6 +24,16 @@ def get_prefs(context=None):
     return None
 
 
+def refresh_ui_and_menus(context=None):
+    """Force Blender UI regions to redraw so menu modifications take effect immediately."""
+    if context is None:
+        context = bpy.context
+    try:
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                area.tag_redraw()
+    except Exception:
+        pass
 
 
 def on_item_label_changed(self, context):
@@ -30,6 +41,7 @@ def on_item_label_changed(self, context):
     try:
         prefs = get_prefs(context)
         save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
     except Exception:
         pass
 
@@ -106,7 +118,7 @@ def sync_prefs_from_json(prefs):
         added_op_ids = set()
         view_items = config_data.get(view, [])
         for item_data in view_items:
-            op_id = item_data.get("operator")
+            op_id = normalize_operator_id(item_data.get("operator"))
             if not op_id:
                 continue
             added_op_ids.add(op_id)
@@ -117,10 +129,11 @@ def sync_prefs_from_json(prefs):
             elem.enabled = item_data.get("enabled", True)
 
         for op_id, op_info in ALL_OPERATORS.items():
-            if op_id not in added_op_ids:
+            norm_op_id = normalize_operator_id(op_id)
+            if norm_op_id not in added_op_ids:
                 elem = unadded_coll.add()
-                elem.operator_id = op_id
-                elem.label = op_info.get("label", op_id)
+                elem.operator_id = norm_op_id
+                elem.label = op_info.get("label", norm_op_id)
 
         sort_unadded_items(unadded_coll)
 
@@ -133,7 +146,7 @@ def save_prefs_to_json(prefs):
         items_list = []
         for elem in added_coll:
             items_list.append({
-                "operator": elem.operator_id,
+                "operator": normalize_operator_id(elem.operator_id),
                 "label": elem.label,
                 "enabled": elem.enabled,
             })
@@ -160,7 +173,7 @@ class MOZI_OT_menu_add_item(bpy.types.Operator):
         if 0 <= idx < len(unadded_coll):
             item_to_add = unadded_coll[idx]
             elem = added_coll.add()
-            elem.operator_id = item_to_add.operator_id
+            elem.operator_id = normalize_operator_id(item_to_add.operator_id)
             elem.label = item_to_add.label
             elem.enabled = True
             unadded_coll.remove(idx)
@@ -168,6 +181,7 @@ class MOZI_OT_menu_add_item(bpy.types.Operator):
             setattr(prefs, f"added_{view}_index", len(added_coll) - 1)
             sort_unadded_items(unadded_coll)
             save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
 
         return {"FINISHED"}
 
@@ -190,17 +204,18 @@ class MOZI_OT_menu_remove_item(bpy.types.Operator):
 
         if 0 <= idx < len(added_coll):
             item_to_remove = added_coll[idx]
+            op_id = normalize_operator_id(item_to_remove.operator_id)
             elem = unadded_coll.add()
-            elem.operator_id = item_to_remove.operator_id
-            elem.label = ALL_OPERATORS.get(item_to_remove.operator_id, {}).get("label", item_to_remove.operator_id)
+            elem.operator_id = op_id
+            elem.label = ALL_OPERATORS.get(op_id, {}).get("label", op_id)
             added_coll.remove(idx)
             setattr(prefs, added_idx_prop, min(idx, max(0, len(added_coll) - 1)))
             sort_unadded_items(unadded_coll)
             setattr(prefs, f"unadded_{view}_index", 0)
             save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
 
         return {"FINISHED"}
-
 
 
 class MOZI_OT_menu_move_item(bpy.types.Operator):
@@ -224,10 +239,12 @@ class MOZI_OT_menu_move_item(bpy.types.Operator):
             added_coll.move(idx, idx - 1)
             setattr(prefs, added_idx_prop, idx - 1)
             save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
         elif self.direction == "DOWN" and idx < len(added_coll) - 1:
             added_coll.move(idx, idx + 1)
             setattr(prefs, added_idx_prop, idx + 1)
             save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
 
         return {"FINISHED"}
 
@@ -243,6 +260,7 @@ class MOZI_OT_menu_reset_config(bpy.types.Operator):
         reset_config()
         prefs = get_prefs(context)
         sync_prefs_from_json(prefs)
+        refresh_ui_and_menus(context)
         self.report({"INFO"}, "Menu configuration reset to default presets.")
         return {"FINISHED"}
 
@@ -264,7 +282,7 @@ class MOZI_OT_menu_export_config(bpy.types.Operator, ExportHelper):
         for view in ["mesh", "object", "uv"]:
             added_coll = getattr(prefs, f"added_{view}")
             views_data[view] = [
-                {"operator": elem.operator_id, "label": elem.label, "enabled": elem.enabled}
+                {"operator": normalize_operator_id(elem.operator_id), "label": elem.label, "enabled": elem.enabled}
                 for elem in added_coll
             ]
 
@@ -290,11 +308,13 @@ class MOZI_OT_menu_import_config(bpy.types.Operator, ImportHelper):
         if imported is not None:
             prefs = get_prefs(context)
             sync_prefs_from_json(prefs)
+            refresh_ui_and_menus(context)
             self.report({"INFO"}, f"Configuration imported from {self.filepath}")
             return {"FINISHED"}
         else:
             self.report({"ERROR"}, "Failed to import configuration JSON")
             return {"CANCELLED"}
+
 
 
 class MOZI_AddonPreferences(bpy.types.AddonPreferences):

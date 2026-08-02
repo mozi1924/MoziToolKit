@@ -36,6 +36,25 @@ import bpy
 _REGISTERED_MENU_ITEMS = {}
 
 
+def normalize_operator_id(op_id: str) -> str:
+    """
+    Normalize legacy or category-prefixed operator IDs (e.g. 'object.mozi_adaptive_pixel_split')
+    to canonical registered operator bl_idnames (e.g. 'mozi.adaptive_pixel_split').
+    """
+    if not op_id:
+        return op_id
+    if op_id in _REGISTERED_MENU_ITEMS:
+        info = _REGISTERED_MENU_ITEMS[op_id]
+        return info.get("canonical_id", op_id)
+    if "." in op_id:
+        prefix, name = op_id.split(".", 1)
+        if name.startswith("mozi_"):
+            canonical = f"mozi.{name[5:]}"
+            if canonical in _REGISTERED_MENU_ITEMS:
+                return canonical
+    return op_id
+
+
 def register_operator_menu_item(op_id: str, label: str, views: list = None, enabled: bool = True):
     """
     Register an operator's menu metadata into the central Menu Manager.
@@ -49,6 +68,7 @@ def register_operator_menu_item(op_id: str, label: str, views: list = None, enab
         views = ["mesh"]
     
     item_info = {
+        "canonical_id": op_id,
         "label": label,
         "default_label": label,
         "views": list(views),
@@ -143,7 +163,6 @@ class _AllOperatorsDict(dict):
 ALL_OPERATORS = _AllOperatorsDict()
 
 
-
 class _DefaultPresetsDict(dict):
     """Fallback dict wrapper that dynamically delegates to get_default_presets()."""
     def __getitem__(self, key):
@@ -172,6 +191,26 @@ def get_config_path() -> Path:
     return config_dir / "context_menus.json"
 
 
+def _normalize_views_data(views_data: dict) -> dict:
+    """Helper to convert legacy operator IDs in views data to canonical IDs."""
+    if not isinstance(views_data, dict):
+        return views_data
+    normalized = {}
+    for view, items in views_data.items():
+        if isinstance(items, list):
+            norm_items = []
+            for item in items:
+                if isinstance(item, dict):
+                    norm_item = dict(item)
+                    if "operator" in norm_item:
+                        norm_item["operator"] = normalize_operator_id(norm_item["operator"])
+                    norm_items.append(norm_item)
+            normalized[view] = norm_items
+        else:
+            normalized[view] = items
+    return normalized
+
+
 def load_config() -> dict:
     """Load configuration from JSON file or initialize with DEFAULT_PRESETS."""
     filepath = get_config_path()
@@ -180,10 +219,9 @@ def load_config() -> dict:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                if isinstance(data, dict) and "views" in data:
-                    return data["views"]
-                elif isinstance(data, dict):
-                    return data
+                views = data.get("views", data) if isinstance(data, dict) else None
+                if isinstance(views, dict):
+                    return _normalize_views_data(views)
         except Exception as e:
             print(f"[MoziToolKit] Error reading config file {filepath}: {e}")
 
@@ -196,7 +234,8 @@ def save_config(views_data: dict) -> bool:
     """Save configuration to user JSON file."""
     filepath = get_config_path()
     try:
-        data = {"version": 1, "views": views_data}
+        normalized = _normalize_views_data(views_data)
+        data = {"version": 1, "views": normalized}
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
         return True
@@ -215,7 +254,8 @@ def reset_config() -> dict:
 def export_config(filepath: str, views_data: dict) -> bool:
     """Export configuration to specified filepath."""
     try:
-        data = {"version": 1, "views": views_data}
+        normalized = _normalize_views_data(views_data)
+        data = {"version": 1, "views": normalized}
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
         return True
@@ -231,8 +271,9 @@ def import_config(filepath: str) -> dict:
             data = json.load(f)
             views = data.get("views", data) if isinstance(data, dict) else None
             if isinstance(views, dict):
-                save_config(views)
-                return views
+                normalized = _normalize_views_data(views)
+                save_config(normalized)
+                return normalized
     except Exception as e:
         print(f"[MoziToolKit] Error importing config from {filepath}: {e}")
     return None
@@ -249,15 +290,23 @@ def draw_dynamic_menu(layout, view_name: str):
     items = config.get(view_name, [])
     if not items:
         return
-    layout.separator()
-    layout.label(text="MoziToolKit")
+        
+    valid_items = []
     for item in items:
         if item.get("enabled", True):
-            op_id = item.get("operator")
-            label = item.get("label")
+            op_id = normalize_operator_id(item.get("operator"))
             if op_id:
-                if label:
-                    layout.operator(op_id, text=label)
-                else:
-                    layout.operator(op_id)
+                valid_items.append((op_id, item.get("label")))
+                
+    if not valid_items:
+        return
+
+    layout.separator()
+    layout.label(text="MoziToolKit")
+    for op_id, label in valid_items:
+        if label:
+            layout.operator(op_id, text=label)
+        else:
+            layout.operator(op_id)
+
 
