@@ -137,16 +137,10 @@ def repair_extruded_side_faces(
                         se[crease_layer] = crease_val
 
                 if repair_uv:
-                    if uv_mode == "INWARD":
-                        h_uv = min(h_uv, l_uv)
-                        uv_dir = -uv_outward_dir
-                    else:
-                        uv_dir = uv_outward_dir
-
                     uv_base_a_val = uv_a.copy()
                     uv_base_b_val = uv_b.copy()
 
-                    if uv_mode == "OUTWARD" and p_step > 0:
+                    if p_step > 0:
                         if abs(uv_outward_dir.x) > 0.5:
                             if uv_outward_dir.x > 0:
                                 uv_base_a_val.x = math.ceil(uv_a.x / p_step - 1e-5) * p_step
@@ -161,6 +155,12 @@ def repair_extruded_side_faces(
                             else:
                                 uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
                                 uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
+
+                    if uv_mode == "INWARD":
+                        h_uv = min(h_uv, l_uv)
+                        uv_dir = -uv_outward_dir
+                    else:
+                        uv_dir = uv_outward_dir
 
                     uv_top_a_val = uv_base_a_val + uv_dir * h_uv
                     uv_top_b_val = uv_base_b_val + uv_dir * h_uv
