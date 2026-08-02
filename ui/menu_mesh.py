@@ -49,12 +49,26 @@ def draw_face_workspace_menu_func(self, context):
     self.layout.menu("MOZI_MT_mesh_face_menu", text="MoziToolKit", icon="TOOL_SETTINGS")
 
 
+from ..utils.menu_config import load_config
+
+
 def draw_mesh_menu_func(self, context):
+    config = load_config()
+    items = config.get("mesh", [])
+    if not items:
+        return
     self.layout.separator()
     self.layout.label(text="MoziToolKit")
-    self.layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
-    self.layout.operator(MOZI_OT_select_hard_edges.bl_idname)
-    self.layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
+    for item in items:
+        if item.get("enabled", True):
+            op_id = item.get("operator")
+            label = item.get("label")
+            if op_id:
+                if label:
+                    self.layout.operator(op_id, text=label)
+                else:
+                    self.layout.operator(op_id)
+
 
 
 def draw_edge_menu_func(self, context):

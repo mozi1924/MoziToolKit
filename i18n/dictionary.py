@@ -57,5 +57,19 @@ translations_dict = {
         ("Operator", "Select Transparent Faces"): "选择透明面",
         ("Operator", "Adaptive Pixel Split"): "自适应像素切分",
         ("Operator", "Set Image Interpolation to Closest"): "图像纹理插值设为最近",
+        ("*", "Reset Default Presets"): "恢复默认预设",
+        ("*", "Import Presets JSON..."): "导入预设 JSON...",
+        ("*", "Export Presets JSON..."): "导出预设 JSON...",
+        ("*", "Mesh Edit Mode (3D View)"): "网格编辑模式 (3D视图)",
+        ("*", "Object Mode (3D View)"): "物体模式 (3D视图)",
+        ("*", "UV Editor"): "UV编辑器",
+        ("*", "Added Right-Click Menu Items (已添加右键菜单选项):"): "已添加右键菜单选项:",
+        ("*", "Unadded Available Options (未添加的选项):"): "未添加的选项:",
+        ("*", "Edit Menu Item Description (修改右键菜单描述):"): "修改右键菜单描述:",
+        ("*", "<-- Add"): "<-- 添加",
+        ("*", "Remove -->"): "移除 -->",
+        ("*", "Move Up"): "上移",
+        ("*", "Move Down"): "下移",
     }
 }
+
