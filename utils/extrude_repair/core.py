@@ -118,18 +118,15 @@ def repair_extruded_side_faces(
     selected_faces_set = set(selected_faces)
     repaired_count = 0
 
-    # Calculate center of the ENTIRE selected region in UV space
-    region_uv_center = mathutils.Vector((0.0, 0.0))
-    total_loops = 0
-    for f in selected_faces:
-        for l in f.loops:
-            region_uv_center += l[uv_layer].uv
-            total_loops += 1
-    if total_loops > 0:
-        region_uv_center /= total_loops
-
     for top_face in selected_faces:
         ref_vert_uv = {l.vert: l[uv_layer].uv.copy() for l in top_face.loops}
+        # A selection may wrap around a 3D corner and span several separate
+        # UV islands.  Its aggregate UV centre has no meaningful "inside" or
+        # "outside" for an individual boundary edge, so derive that direction
+        # from this source face's own UV island instead.
+        top_face_uv_center = sum(
+            ref_vert_uv.values(), mathutils.Vector((0.0, 0.0))
+        ) / len(ref_vert_uv)
 
         for e in top_face.edges:
             unselected_adj_faces = [f for f in e.link_faces if f not in selected_faces_set and f.is_valid]
@@ -176,9 +173,11 @@ def repair_extruded_side_faces(
                     # Fixed narrow strip extension length (10% of pixel step p_step) for thin edge strip UVs
                     h_uv = (p_step * 0.1) if p_step > 0 else min(0.0015, l_uv * 0.1)
 
-                    # Calculate outward direction perpendicular to boundary edge
+                    # Calculate the source face's outward direction.  This
+                    # must be per-face rather than per-selection: selections
+                    # spanning a cube corner usually have separate UV islands.
                     edge_uv_mid = (uv_a + uv_b) * 0.5
-                    v_out = edge_uv_mid - region_uv_center
+                    v_out = edge_uv_mid - top_face_uv_center
                     if u_edge.length > 1e-6:
                         perp = mathutils.Vector((-u_edge.y, u_edge.x))
                         if perp.dot(v_out) < 0:
