@@ -11,7 +11,7 @@ def repair_extruded_side_faces(
     add_crease: bool = False,
     crease_val: float = 1.0,
     only_collapsed: bool = False,
-    uv_mode: str = "SMART",
+    uv_mode: str = "INWARD",
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
@@ -20,7 +20,7 @@ def repair_extruded_side_faces(
     :param add_crease: Whether to add Mean Crease to side edges.
     :param crease_val: Crease weight value (0.0 to 1.0).
     :param only_collapsed: If True, only repair collapsed side faces or active extruded side faces.
-    :param uv_mode: 'SMART' (auto-detect based on extrude direction), 'INWARD', or 'OUTWARD'.
+    :param uv_mode: 'INWARD' (shrink side UVs into face pixel area) or 'OUTWARD' (extend UVs outward).
     :return: Number of repaired side faces.
     """
     bm.faces.ensure_lookup_table()
@@ -97,9 +97,8 @@ def repair_extruded_side_faces(
                     u_edge = uv_b - uv_a
                     l_uv = u_edge.length
 
-                    h_3d = (v_base_a.co - v_top_a.co).length
-                    ratio = (h_3d / l_3d) if l_3d > 1e-6 else 1.0
-                    h_uv = l_uv * ratio
+                    # Fixed narrow strip extension length (10% of pixel step p_step) for thin edge strip UVs
+                    h_uv = (p_step * 0.1) if p_step > 0 else min(0.0015, l_uv * 0.1)
 
                     # Calculate outward direction perpendicular to boundary edge
                     edge_uv_mid = (uv_a + uv_b) * 0.5
@@ -113,24 +112,31 @@ def repair_extruded_side_faces(
                         uv_outward_dir = mathutils.Vector((1.0, 0.0))
 
                     if only_collapsed:
-                        uv_top_a_pt = None
-                        uv_base_a_pt = None
-                        for l in side_face.loops:
-                            if l.vert == v_top_a:
-                                uv_top_a_pt = l[uv_layer].uv
-                            elif l.vert == v_base_a:
-                                uv_base_a_pt = l[uv_layer].uv
+                        is_active_extrusion = (
+                            v_top_a.select
+                            and v_top_b.select
+                            and (not v_base_a.select)
+                            and (not v_base_b.select)
+                        )
+                        if not is_active_extrusion:
+                            uv_top_a_pt = None
+                            uv_base_a_pt = None
+                            for l in side_face.loops:
+                                if l.vert == v_top_a:
+                                    uv_top_a_pt = l[uv_layer].uv
+                                elif l.vert == v_base_a:
+                                    uv_base_a_pt = l[uv_layer].uv
 
-                        height_uv_dir = (
-                            abs((uv_top_a_pt - uv_base_a_pt).dot(uv_outward_dir))
-                            if (uv_top_a_pt and uv_base_a_pt)
-                            else 0.0
-                        )
-                        is_unrepaired = (height_uv_dir < 1e-4) or is_face_uv_collapsed(
-                            side_face, uv_layer
-                        )
-                        if not is_unrepaired:
-                            continue
+                            height_uv_dir = (
+                                abs((uv_top_a_pt - uv_base_a_pt).dot(uv_outward_dir))
+                                if (uv_top_a_pt and uv_base_a_pt)
+                                else 0.0
+                            )
+                            is_unrepaired = (height_uv_dir < 1e-4) or is_face_uv_collapsed(
+                                side_face, uv_layer
+                            )
+                            if not is_unrepaired:
+                                continue
 
                 if add_crease:
                     for se in side_face.edges:
@@ -156,16 +162,7 @@ def repair_extruded_side_faces(
                                 uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
                                 uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
 
-                    effective_uv_mode = uv_mode
-                    if uv_mode == "SMART":
-                        disp = (v_top_a.co - v_base_a.co) + (v_top_b.co - v_base_b.co)
-                        if disp.dot(top_face.normal) < -1e-6:
-                            effective_uv_mode = "OUTWARD"
-                        else:
-                            effective_uv_mode = "INWARD"
-
-                    if effective_uv_mode == "INWARD":
-                        h_uv = min(h_uv, l_uv)
+                    if uv_mode == "INWARD":
                         uv_dir = -uv_outward_dir
                     else:
                         uv_dir = uv_outward_dir
