@@ -72,6 +72,8 @@ def get_image_from_face(face, obj, context):
     # 3. Fallback to first image in bpy.data.images
     for img in bpy.data.images:
         if img.source != "VIEWER" and img.size[0] > 0 and img.size[1] > 0:
+            import sys
+            print(f"[MoziToolKit Warning] Face material has no image texture. Falling back to active image in bpy.data.images: {img.name}", file=sys.stderr)
             return img
 
     return None

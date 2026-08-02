@@ -5,7 +5,6 @@ from ...utils.menu_config import register_menu_item
 from ...utils.mesh import poll_edit_mesh
 from ...utils.extrude_repair import repair_extruded_side_faces
 
-_last_processed_extrude_op = None
 _smart_extrude_sessions = {}
 _SMART_EXTRUDE_POLL_INTERVAL = 0.03
 
@@ -115,17 +114,23 @@ def _is_modal_mesh_operation_active(context):
     """Return whether an extrusion or its modal transform is still running."""
     window_manager = getattr(context, "window_manager", None)
     window = getattr(context, "window", None)
+    seen_ops = set()
     operators = []
+    
+    raw_ops = []
     if window:
-        # This is Blender's authoritative collection of operations that are
-        # currently modal (including the Transform spawned by mesh.extrude).
-        operators.extend(window.modal_operators)
+        raw_ops.extend(window.modal_operators)
     active_operator = getattr(context, "active_operator", None)
     if active_operator:
-        # Keep these as compatibility fallbacks for contexts without a Window.
-        operators.append(active_operator)
+        raw_ops.append(active_operator)
     if window_manager:
-        operators.extend(window_manager.operators)
+        raw_ops.extend(window_manager.operators)
+
+    for op in raw_ops:
+        ptr = getattr(op, "as_pointer", lambda: id(op))()
+        if ptr not in seen_ops:
+            seen_ops.add(ptr)
+            operators.append(op)
 
     for operator in operators:
         identifier = getattr(operator, "bl_idname", "")
@@ -133,7 +138,7 @@ def _is_modal_mesh_operation_active(context):
             bl_rna = getattr(operator, "bl_rna", None)
             identifier = getattr(bl_rna, "identifier", "")
         identifier = identifier.upper()
-        if "EXTRUDE" in identifier or identifier.startswith("TRANSFORM_OT_"):
+        if identifier.startswith("MESH_OT_EXTRUDE") or identifier.startswith("TRANSFORM_OT_"):
             return True
     return False
 
@@ -184,8 +189,9 @@ def _monitor_smart_extrusions():
         )
         if count > 0:
             bmesh.update_edit_mesh(obj.data)
-    except Exception:
-        pass
+    except Exception as e:
+        import sys
+        print(f"[MoziToolKit Exception] Error in timer _monitor_smart_extrusions: {e}", file=sys.stderr)
     finally:
         _is_updating = False
 
@@ -245,8 +251,9 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
 
         if count > 0:
             bmesh.update_edit_mesh(obj.data)
-    except Exception:
-        pass
+    except Exception as e:
+        import sys
+        print(f"[MoziToolKit Exception] Error in depsgraph_auto_extrude_repair_handler: {e}", file=sys.stderr)
     finally:
         _is_updating = False
 

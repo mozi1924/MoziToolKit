@@ -40,8 +40,11 @@ def normalize_operator_id(op_id: str) -> str:
     """
     Normalize legacy or category-prefixed operator IDs (e.g. 'object.mozi_adaptive_pixel_split')
     to canonical registered operator bl_idnames (e.g. 'mozi.adaptive_pixel_split').
+    Idempotent: passing an already normalized ID returns it unchanged.
     """
     if not op_id:
+        return op_id
+    if op_id.startswith("mozi."):
         return op_id
     if op_id in _REGISTERED_MENU_ITEMS:
         info = _REGISTERED_MENU_ITEMS[op_id]
@@ -52,6 +55,7 @@ def normalize_operator_id(op_id: str) -> str:
             canonical = f"mozi.{name[5:]}"
             if canonical in _REGISTERED_MENU_ITEMS:
                 return canonical
+            return canonical
     return op_id
 
 

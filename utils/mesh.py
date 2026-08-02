@@ -125,13 +125,6 @@ def get_target_faces(bm, scope: str = "ALL"):
         return [f for f in bm.faces if f.is_valid]
 
 
-from .extrude_repair import (
-    calculate_face_uv_area,
-    is_face_uv_collapsed,
-    repair_extruded_side_faces,
-)
-
-
 
 
 

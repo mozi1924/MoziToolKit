@@ -242,12 +242,12 @@ def subdivide_quad_face(bm, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid
             if c == cols - 1:
                 e_right = _get_edge_between(bm, grid_verts[r][cols], grid_verts[r + 1][cols])
                 if e_right:
-                    attrs = edge_right_attrs = edge_attrs["right"]
-                    e_right.smooth = edge_right_attrs["smooth"]
-                    e_right.seam = edge_right_attrs["seam"]
-                    for l, val in edge_right_attrs["float"].items():
+                    attrs = edge_attrs["right"]
+                    e_right.smooth = attrs["smooth"]
+                    e_right.seam = attrs["seam"]
+                    for l, val in attrs["float"].items():
                         e_right[l] = val
-                    for l, val in edge_right_attrs["int"].items():
+                    for l, val in attrs["int"].items():
                         e_right[l] = val
 
     # 5. Remove original base face and orphan outer edges
