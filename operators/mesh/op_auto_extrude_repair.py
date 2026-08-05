@@ -196,6 +196,7 @@ def _monitor_smart_extrusions():
     return _SMART_EXTRUDE_POLL_INTERVAL
 
 
+@bpy.app.handlers.persistent
 def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
     global _is_updating
     if _is_updating:
