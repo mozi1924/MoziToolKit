@@ -1,6 +1,7 @@
 import bpy
 from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
 from ..operators.object.op_texture_interpolation import MOZI_OT_set_texture_interpolation_closest
+from ..operators.mesh.op_clear_custom_normals import MOZI_OT_clear_custom_normals
 
 
 class MOZI_MT_object_menu(bpy.types.Menu):
@@ -11,6 +12,7 @@ class MOZI_MT_object_menu(bpy.types.Menu):
         layout = self.layout
         layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
         layout.operator(MOZI_OT_set_texture_interpolation_closest.bl_idname)
+        layout.operator(MOZI_OT_clear_custom_normals.bl_idname)
 
 
 def draw_object_workspace_menu_func(self, context):
