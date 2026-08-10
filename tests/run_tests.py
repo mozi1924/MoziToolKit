@@ -127,6 +127,9 @@ class TestPipelineFramework(unittest.TestCase):
         res = bpy.ops.mozi.scale_uv(scale_factor=0.9)
         self.assertIn("FINISHED", res)
 
+        res = bpy.ops.mozi.auto_extrude_repair(repair_uv=True, add_mean_crease=True, crease_value=1.0)
+        self.assertIn("FINISHED", res)
+
 
 def run_all_tests():
     print("=" * 60)
