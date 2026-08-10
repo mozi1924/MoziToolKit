@@ -84,6 +84,19 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
     def poll(cls, context):
         return poll_edit_mesh(context)
 
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "repair_uv")
+        sub_uv = layout.column()
+        sub_uv.active = self.repair_uv
+        sub_uv.prop(self, "uv_mode")
+
+        layout.separator()
+        layout.prop(self, "add_mean_crease")
+        sub_crease = layout.column()
+        sub_crease.active = self.add_mean_crease
+        sub_crease.prop(self, "crease_value")
+
     def execute(self, context):
         params = {
             "uv_mode": self.uv_mode,
