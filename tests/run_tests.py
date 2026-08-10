@@ -118,6 +118,25 @@ class TestPipelineFramework(unittest.TestCase):
         )
         self.assertTrue(res.is_success)
 
+    def test_random_extrude_step(self):
+        from pipeline.presets import run_preset_pipeline
+        bpy.ops.object.mode_set(mode="EDIT")
+        res, ctx = run_preset_pipeline(
+            "random_extrude",
+            bpy.context,
+            {
+                "min_height": 0.2,
+                "max_height": 0.8,
+                "seed": 42,
+                "noise_mode": "RANDOM",
+                "repair_uv": True,
+                "add_mean_crease": True,
+            },
+        )
+        self.assertTrue(res.is_success)
+        self.assertEqual(ctx.get_data("extruded_faces_count"), 6)
+        self.assertEqual(ctx.get_data("repaired_faces_count"), 24)
+
     def test_operators_invoking_pipelines(self):
         # Test calling operators directly
         bpy.ops.object.mode_set(mode="EDIT")
@@ -128,6 +147,9 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertIn("FINISHED", res)
 
         res = bpy.ops.mozi.auto_extrude_repair(repair_uv=True, add_mean_crease=True, crease_value=1.0)
+        self.assertIn("FINISHED", res)
+
+        res = bpy.ops.mozi.random_extrude(min_height=0.1, max_height=0.5, seed=123)
         self.assertIn("FINISHED", res)
 
 

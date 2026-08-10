@@ -13,6 +13,7 @@ from ..steps import (
     AdaptivePixelSplitStep,
     AutoExtrudeRepairStep,
     ClearCustomNormalsStep,
+    RandomExtrudeStep,
     ScaleUVStep,
     SelectHardEdgesStep,
     SelectTransparentFacesStep,
@@ -37,6 +38,11 @@ def create_preset_pipelines() -> Dict[str, Pipeline]:
             name="Clear Custom Normals Preset",
             description="Pipeline for clearing custom split normals and custom_normal attributes",
             steps=[ClearCustomNormalsStep()],
+        ),
+        "random_extrude": Pipeline(
+            name="Random Extrude Preset",
+            description="Pipeline for extruding selected faces individually with random heights and UV repair",
+            steps=[RandomExtrudeStep()],
         ),
         "select_hard_edges": Pipeline(
             name="Select Hard Edges Preset",
