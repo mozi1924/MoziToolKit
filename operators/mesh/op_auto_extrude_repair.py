@@ -85,23 +85,20 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
         return poll_edit_mesh(context)
 
     def execute(self, context):
-        obj = context.active_object
-        bm = bmesh.from_edit_mesh(obj.data)
+        params = {
+            "uv_mode": self.uv_mode,
+            "repair_uv": self.repair_uv,
+            "add_mean_crease": self.add_mean_crease,
+            "crease_value": self.crease_value,
+        }
+        from ...pipeline.presets import run_preset_pipeline
 
-        count = repair_extruded_side_faces(
-            bm,
-            repair_uv=self.repair_uv,
-            add_crease=self.add_mean_crease,
-            crease_val=self.crease_value,
-            uv_mode=self.uv_mode,
-        )
+        res, ctx = run_preset_pipeline("auto_extrude_repair", context, params)
+        for level, msg in ctx.reports:
+            self.report({level}, msg)
 
-        if count > 0:
-            bmesh.update_edit_mesh(obj.data)
-            self.report({"INFO"}, f"Repaired {count} extruded side faces")
-        else:
-            self.report({"INFO"}, "No extruded side faces to repair")
-
+        if not res.is_success:
+            return {"CANCELLED"}
         return {"FINISHED"}
 
 

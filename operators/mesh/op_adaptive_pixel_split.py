@@ -73,47 +73,21 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         layout.prop(self, "pixels_per_face")
 
     def execute(self, context):
-        # Filter out MESH type objects only (ignoring Armatures, Empties, Cameras, etc.)
-        selected_objs = context.selected_objects or ([context.active_object] if context.active_object else [])
-        mesh_objs = [obj for obj in selected_objs if obj and obj.type == "MESH"]
+        params = {
+            "selection_scope": self.selection_scope,
+            "auto_resolution": self.auto_resolution,
+            "resolution_width": self.resolution_width,
+            "resolution_height": self.resolution_height,
+            "pixels_per_face": self.pixels_per_face,
+        }
+        from ...pipeline.presets import run_preset_pipeline
 
-        if not mesh_objs:
-            self.report({"WARNING"}, "No mesh objects selected.")
+        res, ctx = run_preset_pipeline("adaptive_pixel_split", context, params)
+        for level, msg in ctx.reports:
+            self.report({level}, msg)
+
+        if not res.is_success:
             return {"CANCELLED"}
-
-        initial_mode = context.mode
-
-        # Ensure active object is a mesh before entering Edit Mode
-        if initial_mode != "EDIT_MESH":
-            if context.active_object not in mesh_objs:
-                context.view_layer.objects.active = mesh_objs[0]
-            bpy.ops.object.mode_set(mode="EDIT")
-
-        set_select_mode(context, "FACE")
-
-        config = SplitConfig(
-            auto_resolution=self.auto_resolution,
-            manual_resolution=(self.resolution_width, self.resolution_height),
-            pixels_per_face=self.pixels_per_face,
-            selection_scope=self.selection_scope,
-        )
-
-        total_initial = 0
-        total_final = 0
-
-        for obj in mesh_objs:
-            stats = process_adaptive_pixel_split(context, config, target_obj=obj)
-            total_initial += stats.get("initial_faces", 0)
-            total_final += stats.get("final_faces", 0)
-
-        # Restore initial mode if started from Object Mode
-        if initial_mode != "EDIT_MESH":
-            bpy.ops.object.mode_set(mode="OBJECT")
-
-        self.report(
-            {"INFO"},
-            f"Adaptive Pixel Split ({len(mesh_objs)} mesh object(s)): {total_initial} face(s) -> {total_final} face(s)",
-        )
         return {"FINISHED"}
 
 

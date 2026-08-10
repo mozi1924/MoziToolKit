@@ -27,12 +27,13 @@ class MOZI_OT_select_hard_edges(bpy.types.Operator):
         return poll_edit_mesh(context)
 
     def execute(self, context):
-        set_select_mode(context, "EDGE")
+        params = {"sharp_angle": self.sharp_angle}
+        from ...pipeline.presets import run_preset_pipeline
 
-        with bmesh_context(context) as (obj, bm):
-            sharp_angle_rad = math.radians(self.sharp_angle)
+        res, ctx = run_preset_pipeline("select_hard_edges", context, params)
+        for level, msg in ctx.reports:
+            self.report({level}, msg)
 
-            for edge in bm.edges:
-                edge.select = is_hard_edge(edge, sharp_angle_rad)
-
+        if not res.is_success:
+            return {"CANCELLED"}
         return {"FINISHED"}

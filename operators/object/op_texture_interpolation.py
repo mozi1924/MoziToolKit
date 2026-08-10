@@ -16,13 +16,12 @@ class MOZI_OT_set_texture_interpolation_closest(bpy.types.Operator):
         return context.mode == "OBJECT" and bool(context.selected_objects)
 
     def execute(self, context):
-        mat_count, node_count = set_materials_texture_interpolation_closest(context.selected_objects)
+        from ...pipeline.presets import run_preset_pipeline
 
-        if mat_count == 0:
-            self.report({"WARNING"}, "No materials found on selected objects")
-        elif node_count == 0:
-            self.report({"INFO"}, f"Processed {mat_count} material(s), all image texture nodes are already Closest")
-        else:
-            self.report({"INFO"}, f"Set {node_count} image texture node(s) to Closest interpolation across {mat_count} material(s)")
+        res, ctx = run_preset_pipeline("set_texture_interpolation_closest", context)
+        for level, msg in ctx.reports:
+            self.report({level}, msg)
 
+        if not res.is_success:
+            return {"CANCELLED"}
         return {"FINISHED"}
