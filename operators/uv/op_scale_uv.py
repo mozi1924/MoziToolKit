@@ -26,13 +26,13 @@ class MOZI_OT_scale_uv(bpy.types.Operator):
         return poll_edit_mesh(context)
 
     def execute(self, context):
-        with bmesh_context(context) as (obj, bm):
-            uv_layer = bm.loops.layers.uv.verify()
+        params = {"scale_factor": self.scale_factor}
+        from ...pipeline.presets import run_preset_pipeline
 
-            for face in bm.faces:
-                uv_center = get_face_uv_center(face, uv_layer)
-                for loop in face.loops:
-                    uv = loop[uv_layer].uv
-                    loop[uv_layer].uv = uv_center + (uv - uv_center) * self.scale_factor
+        res, ctx = run_preset_pipeline("scale_uv", context, params)
+        for level, msg in ctx.reports:
+            self.report({level}, msg)
 
+        if not res.is_success:
+            return {"CANCELLED"}
         return {"FINISHED"}

@@ -235,3 +235,5 @@ Icon?
 
 # Files created when working with external disks
 .DocumentRevisions-V100
+
+*.blend*
