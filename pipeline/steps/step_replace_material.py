@@ -1,8 +1,12 @@
 from pathlib import Path
 import bpy
 from ..step import PipelineStep, StepResult
-from ...utils.zip_resource_pack import ZipResourcePack
-from ...utils.material_builder import rebuild_material
+try:
+    from ...utils.zip_resource_pack import ZipResourcePack
+    from ...utils.material_builder import rebuild_material
+except (ImportError, ValueError):
+    from utils.zip_resource_pack import ZipResourcePack
+    from utils.material_builder import rebuild_material
 
 
 def _without_blender_suffix(value: str) -> str:
