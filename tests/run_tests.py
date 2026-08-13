@@ -216,6 +216,48 @@ class TestPipelineFramework(unittest.TestCase):
             # Same pack hash and texture -> Reused material datablock
             self.assertEqual(mat_res1, mat_res3)
 
+    def test_image_datablock_naming_and_deduplication(self):
+        from utils.material_builder import load_image_texture
+        from utils.zip_resource_pack import get_directory_hash
+
+        with tempfile.TemporaryDirectory() as dir_a, tempfile.TemporaryDirectory() as dir_b:
+            tex_a = Path(dir_a) / "assets/minecraft/textures/block"
+            tex_a.mkdir(parents=True)
+            img_file_a = tex_a / "dirt.png"
+            img_obj_a = bpy.data.images.new("DirtA", width=1, height=1)
+            img_obj_a.filepath_raw = str(img_file_a)
+            img_obj_a.file_format = "PNG"
+            img_obj_a.save()
+            bpy.data.images.remove(img_obj_a)
+            hash_a = get_directory_hash(Path(dir_a))
+
+            tex_b = Path(dir_b) / "assets/minecraft/textures/block"
+            tex_b.mkdir(parents=True)
+            img_file_b = tex_b / "dirt.png"
+            img_obj_b = bpy.data.images.new("DirtB", width=2, height=2)
+            img_obj_b.filepath_raw = str(img_file_b)
+            img_obj_b.file_format = "PNG"
+            img_obj_b.save()
+            bpy.data.images.remove(img_obj_b)
+            hash_b = get_directory_hash(Path(dir_b))
+
+            # First load from Pack A
+            image_a1 = load_image_texture(img_file_a, pack_hash=hash_a)
+            self.assertIsNotNone(image_a1)
+            self.assertEqual(image_a1.name, f"dirt.png:{hash_a[:12]}")
+
+            # Second load from Pack A (same pack hash) -> must reuse existing datablock
+            image_a2 = load_image_texture(img_file_a, pack_hash=hash_a)
+            self.assertEqual(image_a1, image_a2)
+
+            # Load from Pack B (different pack hash) -> must create separate image datablock with Pack B hash
+            image_b = load_image_texture(img_file_b, pack_hash=hash_b)
+            self.assertIsNotNone(image_b)
+            self.assertEqual(image_b.name, f"dirt.png:{hash_b[:12]}")
+            self.assertNotEqual(image_a1, image_b)
+            self.assertFalse(image_b.name.endswith(".001"))
+
+
 
     def test_batch_material_replacement_shares_session_material(self):
         from pipeline.presets import run_preset_pipeline

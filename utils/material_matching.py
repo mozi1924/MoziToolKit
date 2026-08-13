@@ -23,8 +23,10 @@ def without_blender_suffix(value: str) -> str:
 
 def normalized_image_key(image: bpy.types.Image) -> str:
     """Return an image datablock's basename as a resource-pack texture key."""
-    filepath = image.filepath or image.name
-    key = without_blender_suffix(Path(filepath).name.lower())
+    raw_name = Path(image.filepath).name if image.filepath else image.name
+    if ":" in raw_name:
+        raw_name = raw_name.split(":", 1)[0]
+    key = without_blender_suffix(raw_name.lower())
     if key.endswith(".png"):
         key = key[:-4]
     if len(key) > 5 and key[-5] == "_" and key[-4:].isdigit():

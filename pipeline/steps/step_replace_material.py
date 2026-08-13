@@ -78,7 +78,7 @@ class StepReplaceMaterial(PipelineStep):
             # Create a new independent material datablock for this pack
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
             mat = bpy.data.materials.new(name=mat_name)
-            if not rebuild_material(mat, texture_info, pack_textures=pack_textures):
+            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=pack.pack_hash):
                 bpy.data.materials.remove(mat)
                 return None, False
 
