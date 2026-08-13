@@ -152,6 +152,14 @@ class TestPipelineFramework(unittest.TestCase):
         res = bpy.ops.mozi.random_extrude(min_height=0.1, max_height=0.5, seed=123)
         self.assertIn("FINISHED", res)
 
+    def test_labpbr_decoder_template(self):
+        from utils.node_group_templates import ensure_labpbr_decoder
+        ng = ensure_labpbr_decoder()
+        self.assertIsNotNone(ng)
+        self.assertEqual(len(ng.nodes), 78)
+        self.assertEqual(len(ng.links), 108)
+        self.assertEqual(ng.get("mozi_template_version"), 6)
+
 
 def run_all_tests():
     print("=" * 60)
