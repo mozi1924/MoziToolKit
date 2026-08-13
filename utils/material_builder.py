@@ -127,6 +127,12 @@ def build_channel_nodes(
                 links.new(scheduler_node.outputs["Current Frame"], uv_node.inputs["Current Frame"])
             if "Next Frame" in scheduler_node.outputs and "Next Frame" in uv_node.inputs:
                 links.new(scheduler_node.outputs["Next Frame"], uv_node.inputs["Next Frame"])
+            # Keep the animation signal on the same path as the reference
+            # material: scheduler -> UV mapper -> frame compositor.  The UV
+            # group deliberately forwards Blend Factor unchanged, so every
+            # animated channel has one coherent current/next-frame contract.
+            if "Blend Factor" in scheduler_node.outputs and "Blend Factor" in uv_node.inputs:
+                links.new(scheduler_node.outputs["Blend Factor"], uv_node.inputs["Blend Factor"])
 
         # Current Frame Image Node
         tex_curr = nodes.new("ShaderNodeTexImage")
@@ -156,8 +162,8 @@ def build_channel_nodes(
         links.new(tex_curr.outputs["Alpha"], blend_node.inputs["Current Alpha"])
         links.new(tex_next.outputs["Alpha"], blend_node.inputs["Next Alpha"])
 
-        if scheduler_node and "Blend Factor" in scheduler_node.outputs:
-            links.new(scheduler_node.outputs["Blend Factor"], blend_node.inputs["Blend Factor"])
+        if "Blend Factor" in uv_node.outputs:
+            links.new(uv_node.outputs["Blend Factor"], blend_node.inputs["Blend Factor"])
 
         # Connect output to LabPBR Decoder
         if decoder_node:

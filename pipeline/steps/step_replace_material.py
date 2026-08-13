@@ -121,7 +121,25 @@ class StepReplaceMaterial(PipelineStep):
         replaced_count = 0
         processed_materials = {}
         replacement_materials = set()
+        rebuilt_materials = set()
         selected_objects = set(target_objects)
+
+        def rebuild_replacement_material(material, texture_info):
+            """Restore the complete canonical node tree once per datablock.
+
+            A canonical ``mtk:`` material can be reused by many slots.  It
+            must still be rebuilt when selected for replacement: reassigning
+            the datablock alone leaves any manually broken or stale nodes in
+            place.  Tracking rebuilt datablocks avoids doing the same work
+            repeatedly for shared slots.
+            """
+            if material in rebuilt_materials:
+                return True
+            if not rebuild_material(material, texture_info, pack_textures=pack_textures):
+                return False
+            name_replaced_material(material, texture_info, pack)
+            rebuilt_materials.add(material)
+            return True
 
         def material_is_used_outside_selection(material):
             """Whether changing this datablock would alter an unselected object."""
@@ -164,18 +182,38 @@ class StepReplaceMaterial(PipelineStep):
                     if canonical_mat and canonical_mat != original_mat:
                         # Several Ice Cube face-role materials can point to one
                         # source texture (for example, top/bottom).  Reuse one
-                        # material datablock so Blender does not append .001
-                        # and provenance names remain stable.
-                        processed_materials[original_mat] = canonical_mat
-                        for selected_obj in selected_objects:
-                            for selected_slot in selected_obj.material_slots:
-                                if selected_slot.material == original_mat:
-                                    selected_slot.material = canonical_mat
-                        replaced_count += 1
-                        pipeline_context.report("INFO", f"Assigned existing material '{canonical_mat.name}' for '{original_name}'.")
+                        # material datablock when it is scoped to the current
+                        # selection.  Crucially, do not merely assign it:
+                        # rebuilding makes replacement a reliable repair
+                        # operation for damaged node trees.
+                        material_to_assign = canonical_mat
+                        if material_is_used_outside_selection(canonical_mat):
+                            material_to_assign = canonical_mat.copy()
+                        if rebuild_replacement_material(material_to_assign, tex_info):
+                            processed_materials[original_mat] = material_to_assign
+                            for selected_obj in selected_objects:
+                                for selected_slot in selected_obj.material_slots:
+                                    if selected_slot.material == original_mat:
+                                        selected_slot.material = material_to_assign
+                            replaced_count += 1
+                            pipeline_context.report("INFO", f"Rebuilt and assigned existing material '{material_to_assign.name}' for '{original_name}'.")
+                        else:
+                            pipeline_context.report("WARNING", f"Could not rebuild existing material '{material_to_assign.name}' for '{original_name}'.")
                         continue
                     if canonical_mat == original_mat:
-                        processed_materials[original_mat] = original_mat
+                        material_to_rebuild = original_mat
+                        if material_is_used_outside_selection(original_mat):
+                            material_to_rebuild = original_mat.copy()
+                            for selected_obj in selected_objects:
+                                for selected_slot in selected_obj.material_slots:
+                                    if selected_slot.material == original_mat:
+                                        selected_slot.material = material_to_rebuild
+                        if rebuild_replacement_material(material_to_rebuild, tex_info):
+                            processed_materials[original_mat] = material_to_rebuild
+                            replaced_count += 1
+                            pipeline_context.report("INFO", f"Rebuilt existing material '{original_name}' from pack texture '{namespace}:{key}'")
+                        else:
+                            pipeline_context.report("WARNING", f"Could not rebuild existing material '{original_name}'.")
                         continue
                     mat = original_mat
                     if material_is_used_outside_selection(original_mat):
@@ -186,9 +224,8 @@ class StepReplaceMaterial(PipelineStep):
                                     selected_slot.material = mat
                     processed_materials[original_mat] = mat
                     replacement_materials.add(mat)
-                    success = rebuild_material(mat, tex_info, pack_textures=pack_textures)
+                    success = rebuild_replacement_material(mat, tex_info)
                     if success:
-                        name_replaced_material(mat, tex_info, pack)
                         replaced_count += 1
                         pipeline_context.report("INFO", f"Replaced material '{original_name}' with pack texture '{namespace}:{key}'")
                 else:
