@@ -29,6 +29,17 @@ def get_file_hash(filepath: str) -> str:
     return hasher.hexdigest()
 
 
+def get_directory_hash(directory: Path) -> str:
+    """Compute a stable provenance hash for an unpacked resource pack."""
+    hasher = hashlib.md5()
+    for filepath in sorted(path for path in directory.rglob("*") if path.is_file()):
+        hasher.update(str(filepath.relative_to(directory)).encode("utf-8"))
+        with open(filepath, "rb") as source:
+            for chunk in iter(lambda: source.read(65536), b""):
+                hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def parse_mcmeta(mcmeta_path: Path) -> dict:
     """Parse a .mcmeta JSON file into a standard animation dictionary."""
     if not mcmeta_path.exists():
@@ -51,7 +62,8 @@ def parse_mcmeta(mcmeta_path: Path) -> dict:
 
 class ZipResourcePack:
     """
-    Manages extraction, caching, and indexing of a Minecraft Java Edition Resource Pack (ZIP / JAR).
+    Manages extraction, caching, and indexing of a Minecraft Java Edition
+    resource pack supplied as a ZIP/JAR archive or an unpacked directory.
     """
 
     def __init__(self, zip_path: str, use_cache: bool = True):
@@ -65,6 +77,17 @@ class ZipResourcePack:
     def _load_pack(self):
         if not self.zip_path.exists():
             raise FileNotFoundError(f"Resource pack not found: {self.zip_path}")
+
+        if self.zip_path.is_dir():
+            # An unpacked development/resource-pack directory is already in
+            # the form consumed by _build_index.  Do not copy or mutate it.
+            self.pack_hash = get_directory_hash(self.zip_path)
+            self.extract_dir = self.zip_path
+            self._build_index()
+            return
+
+        if not zipfile.is_zipfile(self.zip_path):
+            raise ValueError(f"Resource pack must be a ZIP/JAR archive or directory: {self.zip_path}")
 
         # This is provenance metadata as well as a cache key, so it must be
         # stable even when the caller opts out of cache reuse.

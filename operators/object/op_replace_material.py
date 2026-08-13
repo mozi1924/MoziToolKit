@@ -5,7 +5,7 @@ from ...utils.menu_config import register_menu_item
 
 @register_menu_item(views=["object"], label="替换材质")
 class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
-    """Replace selected objects' materials using a Minecraft Java Edition Resource Pack (ZIP)"""
+    """Replace selected objects' materials using a Minecraft Java Edition resource pack."""
 
     bl_idname = "mozi.replace_material"
     bl_label = "Replace Material"
@@ -13,7 +13,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
 
     filepath: bpy.props.StringProperty(
         name="File Path",
-        description="Path to Minecraft Java Edition Resource Pack ZIP",
+        description="Path to a Minecraft Java Edition resource-pack ZIP/JAR or unpacked directory",
         subtype='FILE_PATH',
     )
 
