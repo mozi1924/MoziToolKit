@@ -29,30 +29,22 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from pipeline.steps.step_replace_material import extract_material_texture_keys
+from utils.material_matching import extract_material_texture_keys
+from utils.zip_resource_pack import ZipResourcePack
 
 
-def resource_pack_albedo_index(pack_dir: Path) -> dict[str, set[str]]:
-    """Return albedo texture stems by namespace from an unpacked pack.
+def resource_pack_albedo_index(pack_path: Path) -> dict[str, set[str]]:
+    """Return albedo texture stems by namespace from a pack directory/archive.
 
     ``*_n`` and ``*_s`` files are LabPBR auxiliary channels and intentionally
     cannot count as a replacement by themselves, just like the production
     replacement step.
     """
-    assets = pack_dir / "assets"
-    if not assets.is_dir():
-        raise ValueError(f"No assets directory found in resource pack: {pack_dir}")
-
+    pack = ZipResourcePack(str(pack_path), use_cache=True)
     result: dict[str, set[str]] = {}
-    for namespace_dir in assets.iterdir():
-        textures_dir = namespace_dir / "textures"
-        if not namespace_dir.is_dir() or not textures_dir.is_dir():
-            continue
-        names = result.setdefault(namespace_dir.name.lower(), set())
-        for image_path in textures_dir.rglob("*.png"):
-            stem = image_path.stem.lower()
-            if not stem.endswith(("_n", "_s")):
-                names.add(stem)
+    for (namespace, texture_name), texture_info in pack.texture_index.items():
+        if texture_info["albedo"]:
+            result.setdefault(namespace, set()).add(texture_name)
     return result
 
 
@@ -64,8 +56,24 @@ def closest_names(candidates: list[str], available: set[str]) -> list[str]:
     return list(dict.fromkeys(suggestions))[:5]
 
 
-def main(pack_dir: Path, output_path: Path) -> None:
-    index = resource_pack_albedo_index(pack_dir)
+def source_category(mat: bpy.types.Material) -> str:
+    """Classify Ice Cube source materials for focused matching summaries."""
+    image_paths = []
+    if mat.use_nodes and mat.node_tree:
+        image_paths = [
+            (node.image.filepath or node.image.name).lower()
+            for node in mat.node_tree.nodes
+            if node.type == "TEX_IMAGE" and node.image
+        ]
+    if any("mob objs" in path or "/entity/" in path for path in image_paths):
+        return "entity"
+    if any("armor objs" in path for path in image_paths):
+        return "equipment"
+    return "other"
+
+
+def main(pack_path: Path, output_path: Path) -> None:
+    index = resource_pack_albedo_index(pack_path)
     rows = []
     for mat in sorted(bpy.data.materials, key=lambda item: item.name.casefold()):
         namespace, candidates = extract_material_texture_keys(mat)
@@ -77,13 +85,14 @@ def main(pack_dir: Path, output_path: Path) -> None:
             "candidates": candidates,
             "matched_texture": matches[0] if matches else None,
             "near_matches": [] if matches else closest_names(candidates, available),
+            "source_category": source_category(mat),
         })
 
     matched = [row for row in rows if row["matched_texture"]]
     unmatched = [row for row in rows if not row["matched_texture"]]
     report = {
         "source_blend": bpy.data.filepath,
-        "resource_pack": str(pack_dir.resolve()),
+        "resource_pack": str(pack_path.resolve()),
         "materials_total": len(rows),
         "matched_exactly": len(matched),
         "unmatched": len(unmatched),
@@ -92,6 +101,16 @@ def main(pack_dir: Path, output_path: Path) -> None:
             row["candidates"][0] if row["candidates"] else "<no candidate>"
             for row in unmatched
         ).most_common(),
+        "by_source_category": {
+            category: {
+                "total": sum(row["source_category"] == category for row in rows),
+                "matched_exactly": sum(
+                    row["source_category"] == category and row["matched_texture"] is not None
+                    for row in rows
+                ),
+            }
+            for category in ("entity", "equipment", "other")
+        },
         "rows": rows,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,5 +129,5 @@ def main(pack_dir: Path, output_path: Path) -> None:
 if __name__ == "__main__":
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if len(arguments) != 2:
-        raise SystemExit("Expected: <unpacked-resource-pack-dir> <report.json>")
+        raise SystemExit("Expected: <resource-pack-directory-or-archive> <report.json>")
     main(Path(arguments[0]), Path(arguments[1]))
