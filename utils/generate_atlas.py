@@ -3,16 +3,33 @@ Atlas Generator for Minecraft Resource Packs / JARs.
 Generates unified texture atlas images (Albedo, Normal, Specular) and mapping JSON.
 """
 
+import sys
 import os
 import json
 import zipfile
 from pathlib import Path
+
+# Auto-discover user site packages for PIL when running inside Blender Python
+for site_path in [
+    Path.home() / ".local" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
+    Path.home() / "Library" / "Python" / f"{sys.version_info.major}.{sys.version_info.minor}" / "lib" / "python" / "site-packages",
+    Path.home() / "Library" / "Python" / "3.14" / "lib" / "python" / "site-packages",
+    Path.home() / "Library" / "Python" / "3.13" / "lib" / "python" / "site-packages",
+]:
+    if site_path.exists() and str(site_path) not in sys.path:
+        sys.path.append(str(site_path))
+
 try:
     from PIL import Image
     HAS_PIL = True
 except ImportError:
     Image = None
     HAS_PIL = False
+
+
+# Bump this whenever the on-disk atlas layout changes.  The replacement step
+# uses it to avoid silently reusing an atlas produced by an older layout.
+ATLAS_FORMAT_VERSION = 3
 
 
 class AtlasGenerator:
@@ -295,16 +312,34 @@ class AtlasGenerator:
             }
             anim_list.append(anim_entry)
 
-        # 4. Compute Atlas dimensions
-        tile_size = self.default_tile_size
+        # 4. Compute Atlas dimensions.
+        #
+        # Blender stores UVs as normalised coordinates, not texel positions.
+        # Consequently a 32px resource-pack texture and a 16px one can both
+        # occupy the same 0..1 UV rectangle.  Resizing every source to 16px
+        # destroys the former's intended texel density.  A common cell size
+        # equal to the largest source frame preserves every source texture;
+        # lower-resolution textures are only enlarged with nearest-neighbour
+        # sampling, which preserves their normal Minecraft pixel appearance.
+        source_widths = [self.default_tile_size]
+        source_widths.extend(img.width for img in self.static_textures.values())
+        source_widths.extend(data["image"].width for data in self.animated_textures.values())
+        tile_size = max(source_widths)
         num_static_rows = len(material_list)
         num_anim_cols = len(anim_list)
 
-        static_width = 6 * tile_size
+        # A single vertical row per material easily exceeds the maximum image
+        # height supported by Blender/GPU drivers.  Pack material strips into
+        # a near-square grid; each material still owns six adjacent face cells.
+        static_material_columns = max(1, int(len(material_list) ** 0.5))
+        static_material_rows = max(
+            1, (len(material_list) + static_material_columns - 1) // static_material_columns
+        )
+        static_width = 6 * static_material_columns * tile_size
         anim_width = num_anim_cols * tile_size
         atlas_width = static_width + anim_width
 
-        static_height = num_static_rows * tile_size
+        static_height = static_material_rows * tile_size
         max_anim_frames = max([a["total_frames"] for a in anim_list], default=1)
         anim_height = max_anim_frames * tile_size
         atlas_height = max(static_height, anim_height, tile_size)
@@ -340,11 +375,12 @@ class AtlasGenerator:
         # 5. Paste static materials into rows
         face_order = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
         for mat in material_list:
-            row = mat["material_id"]
-            y_offset = row * tile_size
+            material_col = mat["material_id"] % static_material_columns
+            material_row = mat["material_id"] // static_material_columns
+            y_offset = material_row * tile_size
 
             for face_idx, face_dir in enumerate(face_order):
-                x_offset = face_idx * tile_size
+                x_offset = (material_col * 6 + face_idx) * tile_size
                 tex_name = mat["faces"][face_dir]
 
                 alb_tile = get_tile(tex_name, "albedo").resize((tile_size, tile_size), Image.NEAREST)
@@ -408,10 +444,13 @@ class AtlasGenerator:
 
         # 8. Save mapping JSON metadata
         mapping_data = {
+            "format_version": ATLAS_FORMAT_VERSION,
             "tile_size": tile_size,
             "atlas_width": atlas_width,
             "atlas_height": atlas_height,
             "static_materials_count": len(material_list),
+            "static_material_columns": static_material_columns,
+            "static_material_rows": static_material_rows,
             "animated_columns_count": len(anim_list),
             "face_order": face_order,
             "materials": material_list,
