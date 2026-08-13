@@ -8,6 +8,10 @@ import os
 import json
 import zipfile
 from pathlib import Path
+try:
+    from .atlas_layout import FACE_ORDER
+except ImportError:
+    from atlas_layout import FACE_ORDER
 
 # Auto-discover user site packages for PIL when running inside Blender Python
 for site_path in [
@@ -373,7 +377,7 @@ class AtlasGenerator:
             return Image.new("RGBA", (tile_size, tile_size), (0, 0, 0, 0))
 
         # 5. Paste static materials into rows
-        face_order = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
+        face_order = list(FACE_ORDER)
         for mat in material_list:
             material_col = mat["material_id"] % static_material_columns
             material_row = mat["material_id"] // static_material_columns

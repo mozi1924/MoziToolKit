@@ -10,6 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.generate_atlas import AtlasGenerator
+from utils.atlas_layout import atlas_uv_from_local, static_cell
 
 try:
     from PIL import Image
@@ -76,6 +77,17 @@ class TestAtlasGenerator(unittest.TestCase):
             # corresponding source texture at the canonical tile size.
             self.assertEqual(atlas.getpixel((0, 0)), (0, 255, 0, 255))
             self.assertEqual(atlas.getpixel((0, 32)), (255, 0, 0, 255))
+
+    def test_baked_uv_uses_the_same_static_cell_layout_as_the_atlas(self):
+        column, row = static_cell(material_id=3, face_index=2, material_columns=2)
+        self.assertEqual((column, row), (8, 1))
+        self.assertEqual(
+            atlas_uv_from_local(
+                0.25, 0.75, tile_column=column, tile_row=row,
+                tile_size=16, atlas_width=192, atlas_height=64,
+            ),
+            ((8.25 * 16) / 192, 1.0 - (1.25 * 16) / 64),
+        )
 
 
 if __name__ == "__main__":
