@@ -2,9 +2,11 @@ import bpy
 
 
 TEMPLATE_VERSION = 2
+UV_TEMPLATE_VERSION = 4
+SCHEDULER_TEMPLATE_VERSION = 3
 
 
-def _group(name: str) -> bpy.types.NodeTree:
+def _group(name: str, version: int = TEMPLATE_VERSION) -> bpy.types.NodeTree:
     """Return a fresh, versioned template group.
 
     Templates used to be returned merely because a group with the same name
@@ -14,12 +16,12 @@ def _group(name: str) -> bpy.types.NodeTree:
     ng = bpy.data.node_groups.get(name)
     if ng is None:
         ng = bpy.data.node_groups.new(name=name, type="ShaderNodeTree")
-    elif ng.get("mozi_template_version") == TEMPLATE_VERSION:
+    elif ng.get("mozi_template_version") == version:
         return ng
     else:
         ng.nodes.clear()
         ng.interface.clear()
-    ng["mozi_template_version"] = TEMPLATE_VERSION
+    ng["mozi_template_version"] = version
     return ng
 
 
@@ -115,25 +117,33 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
 
 
 def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
-    ng = _group("MC_Animated_UV_Mapping")
+    ng = _group("MC_Animated_UV_Mapping", version=UV_TEMPLATE_VERSION)
     if ng.nodes: return ng
     for name, typ, default in (("Vector", "NodeSocketVector", None), ("Current Frame", "NodeSocketFloat", 0.0), ("Next Frame", "NodeSocketFloat", 1.0), ("Blend Factor", "NodeSocketFloat", 0.0), ("Frame Width", "NodeSocketFloat", 16.0), ("Frame Height", "NodeSocketFloat", 16.0), ("Image Width", "NodeSocketFloat", 16.0), ("Image Height", "NodeSocketFloat", 16.0)):
         _socket(ng, name, "INPUT", typ, default)
     for name, typ in (("Current UV", "NodeSocketVector"), ("Next UV", "NodeSocketVector"), ("Blend Factor", "NodeSocketFloat")): _socket(ng, name, "OUTPUT", typ)
     n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
     sep = n.new("ShaderNodeSeparateXYZ"); combine_current, combine_next = n.new("ShaderNodeCombineXYZ"), n.new("ShaderNodeCombineXYZ")
+    combine_current.name, combine_next.name = "Current UV", "Next UV"
     u_scale, v_scale = _math(n, "DIVIDE", "U Frame Scale", (-500, 100)), _math(n, "DIVIDE", "V Frame Scale", (-500, -100))
     u, v = _math(n, "MULTIPLY", "U in Frame", (-300, 100)), _math(n, "MULTIPLY", "V in Frame", (-300, -100))
     l.new(inp.outputs["Vector"], sep.inputs["Vector"]); l.new(inp.outputs["Frame Width"], u_scale.inputs[0]); l.new(inp.outputs["Image Width"], u_scale.inputs[1]); l.new(inp.outputs["Frame Height"], v_scale.inputs[0]); l.new(inp.outputs["Image Height"], v_scale.inputs[1]); l.new(sep.outputs["X"], u.inputs[0]); l.new(u_scale.outputs[0], u.inputs[1]); l.new(sep.outputs["Y"], v.inputs[0]); l.new(v_scale.outputs[0], v.inputs[1])
     for frame_name, combine, label, yloc in (("Current Frame", combine_current, "Current", 80), ("Next Frame", combine_next, "Next", -200)):
-        plus = _math(n, "ADD", label + " + 1", (-100, yloc), 1.0); scaled = _math(n, "MULTIPLY", label + " V Scale", (80, yloc)); offset = _math(n, "SUBTRACT", label + " V Offset", (260, yloc), 1.0); final = _math(n, "ADD", label + " V", (440, yloc))
+        # Input 0 is linked to the frame number below, so the +1 constant
+        # must be on input 1.  Leaving it on input 0 is overwritten by the
+        # link and causes a half-frame UV offset (the node's default 0.5).
+        plus = _math(n, "ADD", label + " + 1", (-100, yloc), 0.0, 1.0); scaled = _math(n, "MULTIPLY", label + " V Scale", (80, yloc)); offset = _math(n, "SUBTRACT", label + " V Offset", (260, yloc), 1.0); final = _math(n, "ADD", label + " V", (440, yloc))
         l.new(inp.outputs[frame_name], plus.inputs[0]); l.new(plus.outputs[0], scaled.inputs[0]); l.new(v_scale.outputs[0], scaled.inputs[1]); l.new(scaled.outputs[0], offset.inputs[1]); l.new(v.outputs[0], final.inputs[0]); l.new(offset.outputs[0], final.inputs[1]); l.new(u.outputs[0], combine.inputs["X"]); l.new(final.outputs[0], combine.inputs["Y"])
+    # Image Texture uses XY for flat projection, but forwarding Z makes this
+    # group a transparent UV transform and keeps it identical to the proven
+    # reference tree for non-flat projections and future reuse.
+    l.new(sep.outputs["Z"], combine_current.inputs["Z"]); l.new(sep.outputs["Z"], combine_next.inputs["Z"])
     l.new(combine_current.outputs["Vector"], out.inputs["Current UV"]); l.new(combine_next.outputs["Vector"], out.inputs["Next UV"]); l.new(inp.outputs["Blend Factor"], out.inputs["Blend Factor"])
     return ng
 
 
 def ensure_animation_scheduler() -> bpy.types.NodeTree:
-    ng = _group("MC_Animation_Scheduler_Default")
+    ng = _group("MC_Animation_Scheduler_Default", version=SCHEDULER_TEMPLATE_VERSION)
     if ng.nodes: return ng
     _socket(ng, "Total Frames", "INPUT", "NodeSocketInt", 16); _socket(ng, "Frametime", "INPUT", "NodeSocketInt", 1); _socket(ng, "Interpolate", "INPUT", "NodeSocketBool", False)
     for name in ("Current Frame", "Next Frame", "Blend Factor"): _socket(ng, name, "OUTPUT", "NodeSocketFloat")
@@ -153,7 +163,7 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
     tick = n.new("ShaderNodeValue"); tick.name = "Minecraft Tick Rate"; tick.outputs[0].default_value = 20.0
     elapsed, ticks, mc_tick = _math(n, "SUBTRACT", "Elapsed Frames", (-300, 100)), _math(n, "MULTIPLY", "Ticks Numerator", (-120, 100)), _math(n, "DIVIDE", "MC Tick", (60, 100))
     phase, current_raw, fraction = _math(n, "DIVIDE", "Frame Phase", (240, 100)), _math(n, "FLOOR", "Current Unwrapped", (420, 150)), _math(n, "FRACT", "Frame Fraction", (420, 40))
-    current = _math(n, "WRAP", "Current Frame", (600, 150), 0.0); next_raw = _math(n, "ADD", "Next Unwrapped", (600, 50), 1.0); next_frame = _math(n, "WRAP", "Next Frame", (780, 50), 0.0); blend = _math(n, "MULTIPLY", "Blend Factor", (600, -80))
+    current = _math(n, "WRAP", "Current Frame", (600, 150), 0.0); next_raw = _math(n, "ADD", "Next Unwrapped", (600, 50), 0.0, 1.0); next_frame = _math(n, "WRAP", "Next Frame", (780, 50), 0.0); blend = _math(n, "MULTIPLY", "Blend Factor", (600, -80))
     l.new(frame.outputs[0], elapsed.inputs[0]); l.new(start.outputs[0], elapsed.inputs[1])
     l.new(elapsed.outputs[0], ticks.inputs[0]); l.new(tick.outputs[0], ticks.inputs[1])
     l.new(ticks.outputs[0], mc_tick.inputs[0]); l.new(fps.outputs[0], mc_tick.inputs[1])
