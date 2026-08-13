@@ -80,6 +80,16 @@ def input_socket(created: bpy.types.Node, selector: str) -> bpy.types.NodeSocket
     return matches[occurrence]
 
 
+def output_socket(created: bpy.types.Node, selector: str) -> bpy.types.NodeSocket:
+    """Resolve an output selector, including repeated Mix-node results."""
+    match = _SOCKET_SELECTOR.fullmatch(selector)
+    name, occurrence = (match.group(1), int(match.group(2))) if match else (selector, 0)
+    matches = [socket for socket in created.outputs if socket.name == name]
+    if occurrence >= len(matches):
+        raise KeyError(f"{created.name!r} has no output socket {selector!r}")
+    return matches[occurrence]
+
+
 def link(
     links: bpy.types.NodeLinks,
     source: bpy.types.Node,
@@ -88,4 +98,4 @@ def link(
     target_socket: str,
 ) -> None:
     """Connect sockets by their semantic names."""
-    links.new(source.outputs[source_socket], input_socket(target, target_socket))
+    links.new(output_socket(source, source_socket), input_socket(target, target_socket))
