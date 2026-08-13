@@ -3,12 +3,18 @@ Unit tests for Atlas Generator and Atlas Material Builder.
 """
 
 import json
+import tempfile
 import unittest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.generate_atlas import AtlasGenerator
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 
 class TestAtlasGenerator(unittest.TestCase):
@@ -31,7 +37,9 @@ class TestAtlasGenerator(unittest.TestCase):
         with open(outputs["mapping"], "r", encoding="utf-8") as fp:
             mapping = json.load(fp)
 
-        self.assertEqual(mapping["tile_size"], 16)
+        self.assertGreaterEqual(mapping["tile_size"], 16)
+        self.assertEqual(mapping["format_version"], 3)
+        self.assertGreater(mapping["static_material_columns"], 0)
         self.assertGreater(mapping["static_materials_count"], 0)
         self.assertGreater(mapping["animated_columns_count"], 0)
         self.assertEqual(len(mapping["face_order"]), 6)
@@ -43,6 +51,31 @@ class TestAtlasGenerator(unittest.TestCase):
         self.assertIn("name", mat0)
         self.assertIn("faces", mat0)
         self.assertEqual(set(mat0["faces"].keys()), {"+X", "-X", "+Y", "-Y", "+Z", "-Z"})
+
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_atlas_keeps_the_largest_source_tile_resolution(self):
+        """A 32px pack must not be silently reduced to the 16px default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tex_dir = root / "assets" / "minecraft" / "textures" / "block"
+            tex_dir.mkdir(parents=True)
+            Image.new("RGBA", (16, 16), (255, 0, 0, 255)).save(tex_dir / "small.png")
+            Image.new("RGBA", (32, 32), (0, 255, 0, 255)).save(tex_dir / "large.png")
+
+            outputs = AtlasGenerator(root).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            self.assertEqual(mapping["format_version"], 3)
+            self.assertEqual(mapping["tile_size"], 32)
+            self.assertEqual(mapping["static_material_columns"], 1)
+            self.assertEqual(mapping["atlas_width"], 6 * 32)
+            atlas = Image.open(outputs["albedo"])
+            # Alphabetical IDs put ``large`` in the first (top) material row
+            # and ``small`` in the second.  Every face cell must contain the
+            # corresponding source texture at the canonical tile size.
+            self.assertEqual(atlas.getpixel((0, 0)), (0, 255, 0, 255))
+            self.assertEqual(atlas.getpixel((0, 32)), (255, 0, 0, 255))
 
 
 if __name__ == "__main__":

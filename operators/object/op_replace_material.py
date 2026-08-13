@@ -24,6 +24,15 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         maxlen=255,
     )
 
+    material_mode: bpy.props.EnumProperty(
+        name="Material Mode",
+        description="Choose how imported materials are structured and generated",
+        items=[
+            ('STANDALONE', "独立模式 (Standalone)", "Create individual materials for each texture (Default)"),
+            ('ATLAS', "Atlas 模式 (Atlas)", "Combine all textures into a single texture atlas material"),
+        ],
+        default='STANDALONE',
+    )
 
     pack_textures: bpy.props.BoolProperty(
         name="Pack Textures into Blend File",
@@ -50,6 +59,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         layout = self.layout
         box = layout.box()
         box.label(text="Material Options", icon='TEXTURE')
+        box.prop(self, "material_mode", text="Mode")
         box.prop(self, "pack_textures")
         box.prop(self, "use_cache")
 
@@ -60,9 +70,9 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
 
         from ...pipeline.presets import run_preset_pipeline
 
-
         params = {
             "zip_path": self.filepath,
+            "material_mode": self.material_mode,
             "pack_textures": self.pack_textures,
             "use_cache": self.use_cache,
         }
@@ -77,5 +87,5 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         if not res.is_success:
             return {"CANCELLED"}
 
-        self.report({'INFO'}, "Material replacement finished successfully.")
+        self.report({'INFO'}, f"Material replacement finished successfully in {self.material_mode} mode.")
         return {"FINISHED"}

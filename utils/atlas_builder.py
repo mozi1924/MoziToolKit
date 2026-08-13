@@ -1,6 +1,7 @@
 """
 Atlas Material Builder for Blender.
 Constructs a unified Atlas Shader Material using MC_Atlas_UV_Decoder and generated atlas textures.
+Stores mapping JSON dictionary as a custom property on mat.node_tree["mtk:atlas_mapping"].
 """
 
 import json
@@ -28,11 +29,13 @@ def build_atlas_material(
         raise FileNotFoundError(f"Atlas files missing in directory: {atlas_path}")
 
     with open(mapping_file, "r", encoding="utf-8") as fp:
-        mapping_data = json.load(fp)
+        raw_json_str = fp.read()
+        mapping_data = json.loads(raw_json_str)
 
     atlas_w = float(mapping_data.get("atlas_width", 1728))
     atlas_h = float(mapping_data.get("atlas_height", 52352))
     tile_size = float(mapping_data.get("tile_size", 16))
+    static_material_columns = float(mapping_data.get("static_material_columns", 1))
 
     # Create or fetch material
     if mat_name in bpy.data.materials:
@@ -45,6 +48,9 @@ def build_atlas_material(
     links = mat.node_tree.links
     nodes.clear()
 
+    # Store mapping JSON as custom property on node tree
+    mat.node_tree["mtk:atlas_mapping"] = raw_json_str
+
     # 1. Output & Principled BSDF
     output_node = nodes.new("ShaderNodeOutputMaterial")
     output_node.location = (800, 0)
@@ -53,9 +59,14 @@ def build_atlas_material(
     bsdf_node.location = (400, 0)
     links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
 
-    # 2. Texture Coordinate
+    # 2. Texture Coordinate & Attribute Node
     tex_coord = nodes.new("ShaderNodeTexCoord")
-    tex_coord.location = (-800, 0)
+    tex_coord.location = (-900, 200)
+
+    attr_node = nodes.new("ShaderNodeAttribute")
+    attr_node.name = "Face Material ID Attribute"
+    attr_node.attribute_name = "material_id"
+    attr_node.location = (-900, -100)
 
     # 3. Atlas UV Decoder Node Group
     decoder_tree = build_atlas_uv_decoder_node_group()
@@ -68,9 +79,11 @@ def build_atlas_material(
     decoder_node.inputs["Atlas Width"].default_value = atlas_w
     decoder_node.inputs["Atlas Height"].default_value = atlas_h
     decoder_node.inputs["Tile Size"].default_value = tile_size
+    decoder_node.inputs["Static Material Columns"].default_value = static_material_columns
 
-    # Connect UV Vector
+    # Connect UV Vector & Material ID Attribute
     links.new(tex_coord.outputs["UV"], decoder_node.inputs["Vector"])
+    links.new(attr_node.outputs["Fac"], decoder_node.inputs["Material ID"])
 
     # 4. Albedo Image Texture Node
     alb_img = load_image_texture(albedo_file, colorspace="sRGB", pack_textures=pack_textures)
@@ -78,6 +91,7 @@ def build_atlas_material(
     tex_albedo.name = "Atlas Albedo"
     tex_albedo.image = alb_img
     tex_albedo.interpolation = "Closest"
+    tex_albedo.extension = "CLIP"
     tex_albedo.location = (-100, 200)
 
     links.new(decoder_node.outputs["Atlas UV"], tex_albedo.inputs["Vector"])
@@ -91,6 +105,7 @@ def build_atlas_material(
         tex_normal.name = "Atlas Normal"
         tex_normal.image = norm_img
         tex_normal.interpolation = "Closest"
+        tex_normal.extension = "CLIP"
         tex_normal.location = (-100, -100)
 
         norm_map = nodes.new("ShaderNodeNormalMap")
@@ -107,6 +122,7 @@ def build_atlas_material(
         tex_specular.name = "Atlas Specular"
         tex_specular.image = spec_img
         tex_specular.interpolation = "Closest"
+        tex_specular.extension = "CLIP"
         tex_specular.location = (-100, -400)
 
         links.new(decoder_node.outputs["Atlas UV"], tex_specular.inputs["Vector"])

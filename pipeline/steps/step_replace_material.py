@@ -1,14 +1,19 @@
+import json
 from pathlib import Path
 import bpy
 from ..step import PipelineStep, StepResult
 try:
-    from ...utils.zip_resource_pack import ZipResourcePack
+    from ...utils.zip_resource_pack import ZipResourcePack, get_cache_dir
     from ...utils.material_builder import rebuild_material
     from ...utils.material_matching import extract_material_texture_keys
+    from ...utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
+    from ...utils.atlas_builder import build_atlas_material
 except (ImportError, ValueError):
-    from utils.zip_resource_pack import ZipResourcePack
+    from utils.zip_resource_pack import ZipResourcePack, get_cache_dir
     from utils.material_builder import rebuild_material
     from utils.material_matching import extract_material_texture_keys
+    from utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
+    from utils.atlas_builder import build_atlas_material
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -37,15 +42,16 @@ def find_existing_replacement(texture_info: dict, pack: ZipResourcePack) -> bpy.
 
 
 class StepReplaceMaterial(PipelineStep):
-    """Pipeline step to parse Minecraft Java resource pack and reconstruct LabPBR materials."""
+    """Pipeline step to parse Minecraft Java resource pack and reconstruct LabPBR or Atlas materials."""
 
     name = "replace_material"
-    description = "Replace and reconstruct LabPBR materials from Minecraft Java Resource Pack"
+    description = "Replace and reconstruct materials from Minecraft Java Resource Pack"
 
     def execute(self, pipeline_context) -> StepResult:
         zip_path = pipeline_context.get_param("zip_path")
         pack_textures = pipeline_context.get_param("pack_textures", True)
         use_cache = pipeline_context.get_param("use_cache", True)
+        material_mode = pipeline_context.get_param("material_mode", "STANDALONE")
 
         if not zip_path or not Path(zip_path).exists():
             return StepResult.failed("Resource pack ZIP file not specified or found.")
@@ -59,15 +65,111 @@ class StepReplaceMaterial(PipelineStep):
         except Exception as e:
             return StepResult.failed(f"Failed to load resource pack: {e}")
 
+        if material_mode == "ATLAS":
+            return self._execute_atlas_mode(pipeline_context, pack, target_objects, pack_textures)
+        else:
+            return self._execute_standalone_mode(pipeline_context, pack, target_objects, pack_textures)
+
+    def _execute_atlas_mode(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> StepResult:
+        """Execute material replacement in Atlas Mode (single shared atlas material)."""
+        cache_root = get_cache_dir()
+        atlas_dir = cache_root / pack.pack_hash
+        albedo_path = atlas_dir / "atlas_albedo.png"
+        mapping_path = atlas_dir / "atlas_mapping.json"
+
+        cache_is_current = False
+        if albedo_path.exists() and mapping_path.exists():
+            try:
+                with open(mapping_path, "r", encoding="utf-8") as fp:
+                    cache_is_current = (
+                        json.load(fp).get("format_version") == ATLAS_FORMAT_VERSION
+                    )
+            except (OSError, json.JSONDecodeError):
+                cache_is_current = False
+
+        if not cache_is_current:
+            pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
+            try:
+                gen = AtlasGenerator(pack.extract_dir)
+                gen.build(atlas_dir)
+            except Exception as e:
+                return StepResult.failed(f"Failed to generate Atlas texture: {e}")
+
+        # Build or get single Atlas Material
+        atlas_mat_name = f"mtk:atlas:{pack.pack_hash[:12]}"
+        atlas_mat = build_atlas_material(atlas_dir, mat_name=atlas_mat_name, pack_textures=pack_textures)
+
+        # Load mapping JSON
+        with open(mapping_path, "r", encoding="utf-8") as fp:
+            mapping_data = json.load(fp)
+
+        # Construct fast material name lookup dictionary
+        mat_id_map = {}
+        for mat_entry in mapping_data.get("materials", []):
+            mat_name = mat_entry["name"].lower()
+            mat_id = mat_entry["material_id"]
+            mat_id_map[mat_name] = mat_id
+            # Map face texture stems as fallbacks
+            for face_tex in mat_entry.get("faces", {}).values():
+                if face_tex and face_tex.lower() not in mat_id_map:
+                    mat_id_map[face_tex.lower()] = mat_id
+
+        replaced_objects = 0
+
+        for obj in target_objects:
+            if obj.type != "MESH" or not obj.data or not obj.material_slots:
+                continue
+
+            mesh = obj.data
+
+            # Fetch or create 'material_id' face attribute
+            if "material_id" not in mesh.attributes:
+                attr = mesh.attributes.new(name="material_id", type="FLOAT", domain="FACE")
+            else:
+                attr = mesh.attributes["material_id"]
+
+            mat_ids = [0.0] * len(mesh.polygons)
+            poly_updated = False
+
+            for poly_idx, poly in enumerate(mesh.polygons):
+                if poly.material_index >= len(obj.material_slots):
+                    continue
+                orig_slot = obj.material_slots[poly.material_index]
+                if not orig_slot.material:
+                    continue
+
+                namespace, candidates = extract_material_texture_keys(orig_slot.material)
+                found_id = None
+                for cand in candidates:
+                    clean_cand = cand.lower().replace(".png", "")
+                    if clean_cand in mat_id_map:
+                        found_id = mat_id_map[clean_cand]
+                        break
+
+                if found_id is not None:
+                    mat_ids[poly_idx] = float(found_id)
+                    poly_updated = True
+
+            if poly_updated:
+                attr.data.foreach_set("value", mat_ids)
+
+            # Assign single atlas material to all slots (or consolidate to slot 0)
+            obj.material_slots[0].material = atlas_mat
+            for slot_idx in range(1, len(obj.material_slots)):
+                obj.material_slots[slot_idx].material = atlas_mat
+
+            replaced_objects += 1
+
+        return StepResult.success(f"Successfully processed {replaced_objects} object(s) in Atlas Mode.")
+
+    def _execute_standalone_mode(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> StepResult:
+        """Execute material replacement in traditional Standalone Mode (individual materials)."""
         replaced_count = 0
         processed_materials = {}
         session_materials = {}
 
         def get_or_create_replacement_material(texture_info):
-            """Reuse material if exact pack hash and texture match; otherwise create a new material."""
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
-            
-            # Check for matching material in scene (same pack_hash + texture_name)
             canonical_mat = find_existing_replacement(texture_info, pack)
             if not canonical_mat:
                 canonical_mat = session_materials.get(texture_key)
@@ -75,7 +177,6 @@ class StepReplaceMaterial(PipelineStep):
             if canonical_mat:
                 return canonical_mat, False
 
-            # Create a new independent material datablock for this pack
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
             mat = bpy.data.materials.new(name=mat_name)
             if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=pack.pack_hash):
@@ -104,9 +205,6 @@ class StepReplaceMaterial(PipelineStep):
                             if pack.get_texture_info(candidate, namespace)), None)
                 tex_info = pack.get_texture_info(key, namespace) if key else None
 
-                # A normal/specular-only entry is not a complete replacement.
-                # Leave the material intact unless its exact name resolves to
-                # an albedo texture in the chosen resource pack.
                 if tex_info and tex_info.get("albedo"):
                     original_name = original_mat.name
                     mat, is_new = get_or_create_replacement_material(tex_info)
@@ -128,5 +226,3 @@ class StepReplaceMaterial(PipelineStep):
             return StepResult.success("No exact material matches found; selected objects were left unchanged.")
 
         return StepResult.success(f"Successfully replaced {len(processed_materials)} material slot(s) ({replaced_count} new material(s) created).")
-
-
