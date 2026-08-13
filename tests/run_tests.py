@@ -257,6 +257,86 @@ class TestPipelineFramework(unittest.TestCase):
             self.assertNotEqual(image_a1, image_b)
             self.assertFalse(image_b.name.endswith(".001"))
 
+    def test_pack_hash_equivalence_zip_jar_and_directory(self):
+        import zipfile
+        from utils.zip_resource_pack import get_pack_hash, ZipResourcePack
+
+        with tempfile.TemporaryDirectory() as base_dir:
+            dir_path = Path(base_dir) / "pack_dir"
+            tex_dir = dir_path / "assets/minecraft/textures/block"
+            tex_dir.mkdir(parents=True)
+
+            # Create sample files
+            (dir_path / "pack.mcmeta").write_text('{"pack":{"pack_format":15,"description":"Test Pack"}}', encoding="utf-8")
+            (tex_dir / "dirt.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01")
+            (tex_dir / "stone.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02")
+
+            # Create ZIP archive from pack_dir
+            zip_path = Path(base_dir) / "pack.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                for file_path in dir_path.rglob("*"):
+                    if file_path.is_file():
+                        rel = file_path.relative_to(dir_path).as_posix()
+                        zf.write(file_path, rel)
+
+            # Create JAR archive from pack_dir
+            jar_path = Path(base_dir) / "pack.jar"
+            with zipfile.ZipFile(jar_path, "w") as zf:
+                for file_path in dir_path.rglob("*"):
+                    if file_path.is_file():
+                        rel = file_path.relative_to(dir_path).as_posix()
+                        zf.write(file_path, rel)
+
+            # 1. Hash of directory, zip, and jar must be identical
+            hash_dir = get_pack_hash(dir_path)
+            hash_zip = get_pack_hash(zip_path)
+            hash_jar = get_pack_hash(jar_path)
+
+            self.assertEqual(hash_dir, hash_zip)
+            self.assertEqual(hash_dir, hash_jar)
+
+            # 2. ZipResourcePack instance pack_hash must match across all 3
+            pack_dir_obj = ZipResourcePack(str(dir_path), use_cache=False)
+            pack_zip_obj = ZipResourcePack(str(zip_path), use_cache=False)
+            pack_jar_obj = ZipResourcePack(str(jar_path), use_cache=False)
+
+            self.assertEqual(pack_dir_obj.pack_hash, hash_dir)
+            self.assertEqual(pack_zip_obj.pack_hash, hash_dir)
+            self.assertEqual(pack_jar_obj.pack_hash, hash_dir)
+
+    def test_pack_hash_uniqueness_and_os_metadata_filter(self):
+        from utils.zip_resource_pack import get_pack_hash
+
+        with tempfile.TemporaryDirectory() as base_dir:
+            dir_a = Path(base_dir) / "pack_a"
+            tex_a = dir_a / "assets/minecraft/textures/block"
+            tex_a.mkdir(parents=True)
+            (tex_a / "dirt.png").write_bytes(b"TEXTURE_DATA_A")
+
+            dir_b = Path(base_dir) / "pack_b"
+            tex_b = dir_b / "assets/minecraft/textures/block"
+            tex_b.mkdir(parents=True)
+            (tex_b / "dirt.png").write_bytes(b"TEXTURE_DATA_B")
+
+            hash_a = get_pack_hash(dir_a)
+            hash_b = get_pack_hash(dir_b)
+
+            # Different content -> hash must NOT be equal
+            self.assertNotEqual(hash_a, hash_b)
+
+            # Add OS junk / metadata files to pack_a
+            (dir_a / ".DS_Store").write_bytes(b"macOS_junk")
+            (dir_a / ".extracted").write_bytes(b"OK")
+            (dir_a / "Thumbs.db").write_bytes(b"windows_junk")
+            macosx_dir = dir_a / "__MACOSX"
+            macosx_dir.mkdir()
+            (macosx_dir / "._dirt.png").write_bytes(b"resource_fork")
+
+            # Hash of pack_a must remain unchanged despite OS metadata files
+            hash_a_dirty = get_pack_hash(dir_a)
+            self.assertEqual(hash_a, hash_a_dirty)
+
+
 
 
     def test_batch_material_replacement_shares_session_material(self):
