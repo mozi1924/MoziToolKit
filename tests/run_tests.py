@@ -7,6 +7,7 @@ blender -b --python tests/run_tests.py
 
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -91,6 +92,36 @@ class TestPipelineFramework(unittest.TestCase):
         res, ctx = run_preset_pipeline("set_texture_interpolation_closest", bpy.context)
         self.assertTrue(res.is_success)
         self.assertEqual(tex_node.interpolation, "Closest")
+
+    def test_ice_cube_legacy_texture_name_aliases(self):
+        from pipeline.steps.step_replace_material import _legacy_texture_name_aliases
+
+        self.assertEqual(_legacy_texture_name_aliases("item_clock_00"), ["clock_00"])
+        self.assertEqual(
+            _legacy_texture_name_aliases("blast_furnace_on_front"),
+            ["blast_furnace_front_on"],
+        )
+        self.assertEqual(
+            _legacy_texture_name_aliases("soul_campfire_lit_log"),
+            ["soul_campfire_log_lit"],
+        )
+
+    def test_unpacked_resource_pack_is_indexed(self):
+        from utils.zip_resource_pack import ZipResourcePack
+
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            texture_dir = Path(temporary_dir) / "assets/minecraft/textures/block"
+            texture_dir.mkdir(parents=True)
+            image = bpy.data.images.new("DirectoryPackTest", width=1, height=1)
+            image.filepath_raw = str(texture_dir / "directory_pack_test.png")
+            image.file_format = "PNG"
+            image.save()
+            bpy.data.images.remove(image)
+
+            pack = ZipResourcePack(temporary_dir, use_cache=False)
+            texture_info = pack.get_texture_info("directory_pack_test")
+            self.assertIsNotNone(texture_info)
+            self.assertTrue(texture_info["albedo"].exists())
 
     def test_adaptive_pixel_split_step(self):
         from pipeline.presets import run_preset_pipeline

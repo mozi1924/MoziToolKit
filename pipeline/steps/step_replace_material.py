@@ -37,6 +37,28 @@ def _ice_cube_name_aliases(name: str) -> list[str]:
     return aliases
 
 
+def _legacy_texture_name_aliases(name: str) -> list[str]:
+    """Return deterministic Minecraft texture renames used by Ice Cube.
+
+    These are versioned name migrations, not fuzzy suggestions.  Each alias
+    is tried only after the literal source key, so a pack which deliberately
+    keeps the old name remains authoritative.
+    """
+    aliases = []
+    if name.startswith("item_"):
+        # Ice Cube names an item material ``item_clock_00`` while the
+        # resource-pack file is the vanilla ``clock_00``.
+        aliases.append(name[len("item_"):])
+    if name.endswith("_on_front"):
+        # Mojang's furnace family uses ``*_front_on``.
+        aliases.append(f"{name[:-len('_on_front')]}_front_on")
+    if "_lit_log" in name:
+        # Campfire textures were renamed from ``*_lit_log`` to
+        # ``*_log_lit``.
+        aliases.append(name.replace("_lit_log", "_log_lit"))
+    return aliases
+
+
 def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[str]]:
     """Return namespace and ordered exact resource-pack texture candidates."""
     if not mat:
@@ -60,7 +82,11 @@ def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[st
             if node.type != 'TEX_IMAGE' or not node.image:
                 continue
             filepath = node.image.filepath or node.image.name
-            image_name = Path(filepath).name or node.image.name
+            # Some packed Ice Cube images have an empty filepath and retain
+            # a path-like datablock name.  Always reduce the chosen source to
+            # its basename; otherwise a literal ``block/foo.png`` can never
+            # match the resource-pack key ``foo``.
+            image_name = Path(filepath).name
             image_name = _without_blender_suffix(image_name.lower())
             if image_name.endswith(".png"):
                 image_name = image_name[:-4]
@@ -71,6 +97,12 @@ def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[st
                 candidates.append(image_name)
 
     candidates.extend(_ice_cube_name_aliases(name))
+
+    # Preserve the priority of literal image/material keys.  Compatibility
+    # aliases are appended, never used in place of an exact source name.
+    original_candidates = list(dict.fromkeys(candidates))
+    for candidate in original_candidates:
+        candidates.extend(_legacy_texture_name_aliases(candidate))
     return namespace, list(dict.fromkeys(candidates))
 
 
