@@ -36,6 +36,8 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         # Create dummy original material 'stone'
         mat = bpy.data.materials.new(name="stone")
         self.cube.data.materials.append(mat)
+        uv_layer = self.cube.data.uv_layers.active
+        self.original_uvs = [item.uv.copy() for item in uv_layer.data] if uv_layer else None
 
     def test_standalone_mode(self):
         from pipeline.presets import run_preset_pipeline
@@ -76,6 +78,15 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertIn("material_id", self.cube.data.attributes)
         attr_values = [item.value for item in self.cube.data.attributes["material_id"].data]
         self.assertEqual(len(attr_values), len(self.cube.data.polygons))
+
+        # Texture/Material Preview does not run the shader decoder.  The
+        # mesh's default UV layer must therefore point at atlas cells itself.
+        uv_layer = self.cube.data.uv_layers.active_render or self.cube.data.uv_layers.active
+        self.assertIsNotNone(uv_layer)
+        self.assertTrue(any(
+            (uv.uv - original).length > 1e-6
+            for uv, original in zip(uv_layer.data, self.original_uvs)
+        ))
 
 
 if __name__ == "__main__":

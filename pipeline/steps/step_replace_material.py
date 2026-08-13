@@ -8,12 +8,14 @@ try:
     from ...utils.material_matching import extract_material_texture_keys
     from ...utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
     from ...utils.atlas_builder import build_atlas_material
+    from ...utils.atlas_layout import atlas_uv_from_local, face_index_from_normal, static_cell
 except (ImportError, ValueError):
     from utils.zip_resource_pack import ZipResourcePack, get_cache_dir
     from utils.material_builder import rebuild_material
     from utils.material_matching import extract_material_texture_keys
     from utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
     from utils.atlas_builder import build_atlas_material
+    from utils.atlas_layout import atlas_uv_from_local, face_index_from_normal, static_cell
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -115,12 +117,26 @@ class StepReplaceMaterial(PipelineStep):
                     mat_id_map[face_tex.lower()] = mat_id
 
         replaced_objects = 0
+        atlas_width = float(mapping_data["atlas_width"])
+        atlas_height = float(mapping_data["atlas_height"])
+        tile_size = float(mapping_data["tile_size"])
+        material_columns = int(mapping_data["static_material_columns"])
 
         for obj in target_objects:
             if obj.type != "MESH" or not obj.data or not obj.material_slots:
                 continue
 
             mesh = obj.data
+
+            # Material Preview / Solid texture mode does not evaluate shader
+            # nodes.  Move the object's active UVs into the atlas as well as
+            # assigning the face id used by the render-time decoder.
+            uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
+            if uv_layer is None:
+                pipeline_context.report(
+                    "WARNING",
+                    f"'{obj.name}' has no UV map; Atlas UVs could not be written."
+                )
 
             # Fetch or create 'material_id' face attribute
             if "material_id" not in mesh.attributes:
@@ -129,6 +145,7 @@ class StepReplaceMaterial(PipelineStep):
                 attr = mesh.attributes["material_id"]
 
             mat_ids = [0.0] * len(mesh.polygons)
+            resolved_ids = [None] * len(mesh.polygons)
             poly_updated = False
 
             for poly_idx, poly in enumerate(mesh.polygons):
@@ -148,10 +165,31 @@ class StepReplaceMaterial(PipelineStep):
 
                 if found_id is not None:
                     mat_ids[poly_idx] = float(found_id)
+                    resolved_ids[poly_idx] = found_id
                     poly_updated = True
 
             if poly_updated:
                 attr.data.foreach_set("value", mat_ids)
+                if uv_layer is not None:
+                    for poly_idx, material_id in enumerate(resolved_ids):
+                        if material_id is None:
+                            continue
+                        polygon = mesh.polygons[poly_idx]
+                        tile_column, tile_row = static_cell(
+                            material_id,
+                            face_index_from_normal(polygon.normal),
+                            material_columns,
+                        )
+                        for loop_index in polygon.loop_indices:
+                            uv = uv_layer.data[loop_index].uv
+                            uv.x, uv.y = atlas_uv_from_local(
+                                uv.x, uv.y,
+                                tile_column=tile_column,
+                                tile_row=tile_row,
+                                tile_size=tile_size,
+                                atlas_width=atlas_width,
+                                atlas_height=atlas_height,
+                            )
 
             # Assign single atlas material to all slots (or consolidate to slot 0)
             obj.material_slots[0].material = atlas_mat
