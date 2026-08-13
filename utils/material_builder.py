@@ -94,14 +94,17 @@ def build_channel_nodes(
         interpolate = mcmeta_data.get("interpolate", False)
         total_frames = img_height // frame_height if frame_height > 0 else 1
 
-        # Configure scheduler parameters if available
-        if scheduler_node:
-            if "Total Frames" in scheduler_node.inputs:
-                scheduler_node.inputs["Total Frames"].default_value = total_frames
-            if "Frametime" in scheduler_node.inputs:
-                scheduler_node.inputs["Frametime"].default_value = frametime
-            if "Interpolate" in scheduler_node.inputs:
-                scheduler_node.inputs["Interpolate"].default_value = bool(interpolate)
+        # Each channel needs its own scheduler.  A single shared scheduler
+        # caused the last processed .mcmeta to overwrite every channel's
+        # frame count, timing and interpolation setting.
+        scheduler_node = nodes.new("ShaderNodeGroup")
+        scheduler_node.node_tree = templates["MC_Animation_Scheduler_Default"]
+        scheduler_node.name = f"MC .mcmeta Scheduler ({channel_name})"
+        scheduler_node.label = f"{channel_name}: {total_frames} frames, {frametime} ticks"
+        scheduler_node.location = (base_x - 250, base_y - 250)
+        scheduler_node.inputs["Total Frames"].default_value = max(1, total_frames)
+        scheduler_node.inputs["Frametime"].default_value = max(1, frametime)
+        scheduler_node.inputs["Interpolate"].default_value = bool(interpolate)
 
 
         # UV Mapping Node Group
@@ -215,20 +218,8 @@ def rebuild_material(
     tex_coord = nt.nodes.new("ShaderNodeTexCoord")
     tex_coord.location = (-1200, 0)
 
-    # Check if any channel is animated to create shared Animation Scheduler
-    has_animation = any([
-        texture_info.get("albedo_mcmeta"),
-        texture_info.get("normal_mcmeta"),
-        texture_info.get("specular_mcmeta")
-    ])
-
+    # Schedulers are created per animated channel in build_channel_nodes.
     scheduler_node = None
-    if has_animation:
-        scheduler_group = templates["MC_Animation_Scheduler_Default"]
-        scheduler_node = nt.nodes.new("ShaderNodeGroup")
-        scheduler_node.node_tree = scheduler_group
-        scheduler_node.name = "MC .mcmeta Scheduler"
-        scheduler_node.location = (-1200, -300)
 
     # Build Albedo Channel
     if texture_info.get("albedo"):

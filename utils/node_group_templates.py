@@ -1,372 +1,180 @@
 import bpy
 
 
-def ensure_labpbr_decoder() -> bpy.types.NodeTree:
-    """Ensure LabPBR 1.3 Decoder node group exists in scene. Create if missing."""
-    group_name = "LabPBR 1.3 Decoder"
-    if group_name in bpy.data.node_groups and len(bpy.data.node_groups[group_name].nodes) > 0:
-        return bpy.data.node_groups[group_name]
+TEMPLATE_VERSION = 2
 
-    if group_name in bpy.data.node_groups:
-        ng = bpy.data.node_groups[group_name]
+
+def _group(name: str) -> bpy.types.NodeTree:
+    """Return a fresh, versioned template group.
+
+    Templates used to be returned merely because a group with the same name
+    existed.  This made old, incomplete groups persist in files after an addon
+    update.  Rebuild groups created by this addon when their schema changes.
+    """
+    ng = bpy.data.node_groups.get(name)
+    if ng is None:
+        ng = bpy.data.node_groups.new(name=name, type="ShaderNodeTree")
+    elif ng.get("mozi_template_version") == TEMPLATE_VERSION:
+        return ng
     else:
-        ng = bpy.data.node_groups.new(name=group_name, type="ShaderNodeTree")
+        ng.nodes.clear()
+        ng.interface.clear()
+    ng["mozi_template_version"] = TEMPLATE_VERSION
+    return ng
 
 
-    # Interfaces (Sockets)
-    if hasattr(ng, "interface"):
-        # Blender 4.0+ interface API
-        s1 = ng.interface.new_socket(name="Enable PBR (0-1)", in_out="INPUT", socket_type="NodeSocketFloat")
-        s1.default_value = 1.0
-        
-        s2 = ng.interface.new_socket(name="Albedo Color", in_out="INPUT", socket_type="NodeSocketColor")
-        s2.default_value = (1, 1, 1, 1)
-
-        s3 = ng.interface.new_socket(name="Albedo Alpha", in_out="INPUT", socket_type="NodeSocketFloat")
-        s3.default_value = 1.0
-
-        s4 = ng.interface.new_socket(name="Normal (_n) Color", in_out="INPUT", socket_type="NodeSocketColor")
-        s4.default_value = (0.5, 0.5, 1.0, 1.0)
-
-        s5 = ng.interface.new_socket(name="Normal (_n) Alpha (Height)", in_out="INPUT", socket_type="NodeSocketFloat")
-        s5.default_value = 0.0
-
-        s6 = ng.interface.new_socket(name="Specular (_s) Color", in_out="INPUT", socket_type="NodeSocketColor")
-        s6.default_value = (0, 0, 0, 1)
-
-        s7 = ng.interface.new_socket(name="Specular (_s) Alpha (Emission)", in_out="INPUT", socket_type="NodeSocketFloat")
-        s7.default_value = 1.0
-
-        s8 = ng.interface.new_socket(name="Displacement Scale", in_out="INPUT", socket_type="NodeSocketFloat")
-        s8.default_value = 0.05
-
-        s9 = ng.interface.new_socket(name="Emission Strength", in_out="INPUT", socket_type="NodeSocketFloat")
-        s9.default_value = 1.0
-
-        ng.interface.new_socket(name="BSDF", in_out="OUTPUT", socket_type="NodeSocketShader")
-        ng.interface.new_socket(name="Displacement", in_out="OUTPUT", socket_type="NodeSocketVector")
-        ng.interface.new_socket(name="Porosity (0-1)", in_out="OUTPUT", socket_type="NodeSocketFloat")
+def _socket(ng, name, direction, socket_type, default=None):
+    socket = ng.interface.new_socket(name=name, in_out=direction, socket_type=socket_type)
+    if default is not None:
+        socket.default_value = default
+    return socket
 
 
-    nodes = ng.nodes
-    links = ng.links
+def _math(nodes, operation, name, location, *defaults):
+    node = nodes.new("ShaderNodeMath")
+    node.operation, node.name, node.label, node.location = operation, name, name, location
+    for index, value in enumerate(defaults):
+        node.inputs[index].default_value = value
+    return node
 
-    input_node = nodes.new("NodeGroupInput")
-    output_node = nodes.new("NodeGroupOutput")
-    input_node.location = (-600, 0)
-    output_node.location = (600, 0)
 
-    # Core BSDF
-    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-    bsdf.location = (300, 0)
+def ensure_labpbr_decoder() -> bpy.types.NodeTree:
+    """Build the LabPBR 1.3 decoder used by the supplied reference file."""
+    ng = _group("LabPBR 1.3 Decoder")
+    if ng.nodes:
+        return ng
+    _socket(ng, "BSDF", "OUTPUT", "NodeSocketShader")
+    _socket(ng, "Displacement", "OUTPUT", "NodeSocketVector")
+    _socket(ng, "Porosity (0-1)", "OUTPUT", "NodeSocketFloat")
+    _socket(ng, "Enable PBR (0-1)", "INPUT", "NodeSocketFloat", 1.0)
+    _socket(ng, "Albedo Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1))
+    _socket(ng, "Albedo Alpha", "INPUT", "NodeSocketFloat", 1.0)
+    _socket(ng, "Normal (_n) Color", "INPUT", "NodeSocketColor", (0.5, 0.5, 1, 1))
+    _socket(ng, "Normal (_n) Alpha (Height)", "INPUT", "NodeSocketFloat", 1.0)
+    _socket(ng, "Specular (_s) Color", "INPUT", "NodeSocketColor", (0, 0, 0, 1))
+    _socket(ng, "Specular (_s) Alpha (Emission)", "INPUT", "NodeSocketFloat", 1.0)
+    _socket(ng, "Displacement Scale", "INPUT", "NodeSocketFloat", 0.05)
+    _socket(ng, "Emission Strength", "INPUT", "NodeSocketFloat", 1.0)
 
-    # Separate Color for _n
-    sep_n = nodes.new("ShaderNodeSeparateColor")
-    sep_n.name = "Decode _n (DirectX)"
-    sep_n.location = (-300, 200)
+    n, l = ng.nodes, ng.links
+    inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
+    inp.location, out.location = (-1100, 0), (1000, 0)
+    bsdf = n.new("ShaderNodeBsdfPrincipled"); bsdf.name = "LabPBR Principled BSDF"; bsdf.location = (750, 180)
+    disp = n.new("ShaderNodeDisplacement"); disp.name = "LabPBR Height Displacement"; disp.location = (750, -180)
+    sep_n, sep_s = n.new("ShaderNodeSeparateColor"), n.new("ShaderNodeSeparateColor")
+    sep_n.name, sep_s.name = "Decode _n (DirectX)", "Decode _s"
+    sep_n.location, sep_s.location = (-850, 180), (-850, -220)
+    l.new(inp.outputs["Normal (_n) Color"], sep_n.inputs["Color"])
+    l.new(inp.outputs["Specular (_s) Color"], sep_s.inputs["Color"])
 
-    # Separate Color for _s
-    sep_s = nodes.new("ShaderNodeSeparateColor")
-    sep_s.name = "Decode _s"
-    sep_s.location = (-300, -200)
+    # LabPBR normal maps are DirectX/X+Y- encoded: reconstruct Z before
+    # passing it to Blender's Normal Map node (which handles Y inversion).
+    x = _math(n, "MULTIPLY_ADD", "Normal X: 2R − 1", (-620, 220), 2.0, -1.0)
+    y = _math(n, "MULTIPLY_ADD", "Normal Y: 1 − 2G", (-620, 140), -2.0, 1.0)
+    x2, y2 = _math(n, "MULTIPLY", "X²", (-430, 250)), _math(n, "MULTIPLY", "Y²", (-430, 100))
+    total = _math(n, "ADD", "X² + Y²", (-250, 180))
+    z2, clamp_z, z = _math(n, "SUBTRACT", "1 − X² − Y²", (-80, 180), 1.0), _math(n, "MAXIMUM", "Clamp normal Z", (80, 180), 0.0), _math(n, "SQRT", "Reconstructed normal Z", (240, 180))
+    enc_x, enc_y = _math(n, "MULTIPLY_ADD", "Encode X", (240, 280), 0.5, 0.5), _math(n, "MULTIPLY_ADD", "Encode Y", (240, 100), 0.5, 0.5)
+    normal_color = n.new("ShaderNodeCombineColor"); normal_color.name = "Reconstructed DirectX Normal"; normal_color.location = (410, 190)
+    normal = n.new("ShaderNodeNormalMap"); normal.name = "LabPBR Normal Map"; normal.location = (580, 200)
+    l.new(sep_n.outputs["Red"], x.inputs[0]); l.new(sep_n.outputs["Green"], y.inputs[0])
+    for source, square in ((x, x2), (y, y2)):
+        l.new(source.outputs[0], square.inputs[0]); l.new(source.outputs[0], square.inputs[1])
+    l.new(x2.outputs[0], total.inputs[0]); l.new(y2.outputs[0], total.inputs[1]); l.new(total.outputs[0], z2.inputs[1]); l.new(z2.outputs[0], clamp_z.inputs[1]); l.new(clamp_z.outputs[0], z.inputs[0])
+    l.new(x.outputs[0], enc_x.inputs[0]); l.new(y.outputs[0], enc_y.inputs[0]); l.new(enc_x.outputs[0], normal_color.inputs["Red"]); l.new(enc_y.outputs[0], normal_color.inputs["Green"]); l.new(z.outputs[0], normal_color.inputs["Blue"]); l.new(normal_color.outputs["Color"], normal.inputs["Color"]); l.new(normal.outputs["Normal"], bsdf.inputs["Normal"])
 
-    # Normal map node
-    norm_map = nodes.new("ShaderNodeNormalMap")
-    norm_map.location = (0, 100)
-
-    # Displacement node
-    disp = nodes.new("ShaderNodeDisplacement")
-    disp.location = (300, -300)
-
-    # Standard LabPBR decoding connections
-    links.new(input_node.outputs["Albedo Color"], bsdf.inputs["Base Color"])
-    links.new(input_node.outputs["Albedo Alpha"], bsdf.inputs["Alpha"])
-    links.new(input_node.outputs["Normal (_n) Color"], sep_n.inputs["Color"])
-    links.new(input_node.outputs["Specular (_s) Color"], sep_s.inputs["Color"])
-
-    # Roughness / Smoothness decoding (Red channel of _s = Smoothness = 1 - Roughness)
-    math_rough = nodes.new("ShaderNodeMath")
-    math_rough.operation = 'SUBTRACT'
-    math_rough.inputs[0].default_value = 1.0
-    math_rough.location = (-100, -150)
-    links.new(sep_s.outputs["Red"], math_rough.inputs[1])
-    links.new(math_rough.outputs[0], bsdf.inputs["Roughness"])
-
-    # Metallic decoding (Blue channel of _s)
-    links.new(sep_s.outputs["Blue"], bsdf.inputs["Metallic"])
-
-    # Normal map connection (DirectX normal decoding)
-    links.new(sep_n.outputs["Red"], norm_map.inputs["Color"])
-    links.new(norm_map.outputs["Normal"], bsdf.inputs["Normal"])
-
-    # Emission setup (Alpha of _s < 1.0 = emissive)
-    links.new(input_node.outputs["Albedo Color"], bsdf.inputs["Emission Color"])
-    links.new(input_node.outputs["Emission Strength"], bsdf.inputs["Emission Strength"])
-
-    # Displacement connection
-    links.new(input_node.outputs["Normal (_n) Alpha (Height)"], disp.inputs["Height"])
-    links.new(input_node.outputs["Displacement Scale"], disp.inputs["Scale"])
-
-    # Outputs
-    links.new(bsdf.outputs["BSDF"], output_node.inputs["BSDF"])
-    links.new(disp.outputs["Displacement"], output_node.inputs["Displacement"])
-
+    # Material AO is stored in _n blue.  Smoothness is _s red and Blender
+    # expects linear roughness, hence (1 - smoothness)^2.
+    ao = n.new("ShaderNodeMixRGB"); ao.blend_type = "MULTIPLY"; ao.name = "Albedo × Material AO"; ao.location = (420, 430); ao.inputs[0].default_value = 1.0
+    l.new(inp.outputs["Albedo Color"], ao.inputs[1]); l.new(sep_n.outputs["Blue"], ao.inputs[2]); l.new(ao.outputs["Color"], bsdf.inputs["Base Color"]); l.new(inp.outputs["Albedo Alpha"], bsdf.inputs["Alpha"])
+    rough = _math(n, "SUBTRACT", "1 − Smoothness", (-600, -200), 1.0)
+    rough_sq = _math(n, "MULTIPLY", "Linear Roughness", (-420, -200))
+    l.new(sep_s.outputs["Red"], rough.inputs[1]); l.new(rough.outputs[0], rough_sq.inputs[0]); l.new(rough.outputs[0], rough_sq.inputs[1]); l.new(rough_sq.outputs[0], bsdf.inputs["Roughness"])
+    metal = _math(n, "GREATER_THAN", "Metal preset / custom metal", (-430, -320), 0.8980392157)
+    l.new(sep_s.outputs["Blue"], metal.inputs[0]); l.new(metal.outputs[0], bsdf.inputs["Metallic"])
+    f0 = _math(n, "MINIMUM", "Clamp dielectric F0", (-430, -410), 0.8980392157)
+    sqrt_f0, add_f0, sub_f0 = _math(n, "SQRT", "sqrt(F0)", (-260, -410)), _math(n, "ADD", "1 + sqrt(F0)", (-80, -380), 1.0), _math(n, "SUBTRACT", "1 − sqrt(F0)", (-80, -440), 1.0)
+    ior = _math(n, "DIVIDE", "IOR from F0", (100, -410))
+    l.new(sep_s.outputs["Green"], f0.inputs[0]); l.new(f0.outputs[0], sqrt_f0.inputs[0]); l.new(sqrt_f0.outputs[0], add_f0.inputs[1]); l.new(sqrt_f0.outputs[0], sub_f0.inputs[1]); l.new(add_f0.outputs[0], ior.inputs[0]); l.new(sub_f0.outputs[0], ior.inputs[1]); l.new(ior.outputs[0], bsdf.inputs["IOR"])
+    sss_offset = _math(n, "SUBTRACT", "SSS encoded offset", (-430, -510), 0.2549019608)
+    sss = _math(n, "DIVIDE", "Subsurface Weight", (-250, -510), 0.7450980392)
+    l.new(sep_s.outputs["Blue"], sss_offset.inputs[1]); l.new(sss_offset.outputs[0], sss.inputs[0]); l.new(sss.outputs[0], bsdf.inputs["Subsurface Weight"])
+    porosity_scaled = _math(n, "MULTIPLY", "Porosity scaled", (-250, -610), 3.984375)
+    porosity_range = _math(n, "LESS_THAN", "Is porosity range", (-430, -660), 0.2549019608)
+    porosity = _math(n, "MULTIPLY", "Porosity (0-1)", (-70, -610))
+    l.new(sep_s.outputs["Blue"], porosity_scaled.inputs[1]); l.new(sep_s.outputs["Blue"], porosity_range.inputs[1]); l.new(porosity_scaled.outputs[0], porosity.inputs[0]); l.new(porosity_range.outputs[0], porosity.inputs[1]); l.new(porosity.outputs[0], out.inputs["Porosity (0-1)"])
+    emission_alpha = _math(n, "MINIMUM", "Clamp emission alpha", (-250, -730), 0.9960784314)
+    emission = _math(n, "MULTIPLY", "Emission strength", (-70, -730))
+    l.new(inp.outputs["Specular (_s) Alpha (Emission)"], emission_alpha.inputs[1]); l.new(emission_alpha.outputs[0], emission.inputs[0]); l.new(inp.outputs["Emission Strength"], emission.inputs[1]); l.new(inp.outputs["Albedo Color"], bsdf.inputs["Emission Color"]); l.new(emission.outputs[0], bsdf.inputs["Emission Strength"])
+    height = _math(n, "SUBTRACT", "Height − 1", (250, -180), 1.0)
+    depth = _math(n, "MULTIPLY", "LabPBR depth (25%)", (420, -180), 0.25)
+    scale = _math(n, "MULTIPLY", "Effective displacement scale", (580, -180))
+    l.new(inp.outputs["Normal (_n) Alpha (Height)"], height.inputs[1]); l.new(height.outputs[0], depth.inputs[1]); l.new(depth.outputs[0], scale.inputs[0]); l.new(inp.outputs["Displacement Scale"], scale.inputs[1]); l.new(scale.outputs[0], disp.inputs["Scale"]); l.new(disp.outputs["Displacement"], out.inputs["Displacement"])
+    l.new(bsdf.outputs["BSDF"], out.inputs["BSDF"])
     return ng
 
 
 def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
-    """Ensure MC_Animated_UV_Mapping node group exists in scene. Create if missing."""
-    group_name = "MC_Animated_UV_Mapping"
-    if group_name in bpy.data.node_groups and len(bpy.data.node_groups[group_name].nodes) > 0:
-        return bpy.data.node_groups[group_name]
-
-    if group_name in bpy.data.node_groups:
-        ng = bpy.data.node_groups[group_name]
-    else:
-        ng = bpy.data.node_groups.new(name=group_name, type="ShaderNodeTree")
-
-    if hasattr(ng, "interface"):
-        ng.interface.new_socket(name="Vector", in_out="INPUT", socket_type="NodeSocketVector")
-        s_cf = ng.interface.new_socket(name="Current Frame", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_cf.default_value = 0.0
-        s_nf = ng.interface.new_socket(name="Next Frame", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_nf.default_value = 1.0
-        s_fw = ng.interface.new_socket(name="Frame Width", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_fw.default_value = 16.0
-        s_fh = ng.interface.new_socket(name="Frame Height", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_fh.default_value = 16.0
-        s_iw = ng.interface.new_socket(name="Image Width", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_iw.default_value = 16.0
-        s_ih = ng.interface.new_socket(name="Image Height", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_ih.default_value = 1024.0
-
-        ng.interface.new_socket(name="Current UV", in_out="OUTPUT", socket_type="NodeSocketVector")
-        ng.interface.new_socket(name="Next UV", in_out="OUTPUT", socket_type="NodeSocketVector")
-
-    nodes = ng.nodes
-    links = ng.links
-
-    input_node = nodes.new("NodeGroupInput")
-    output_node = nodes.new("NodeGroupOutput")
-    input_node.location = (-800, 0)
-    output_node.location = (800, 0)
-
-    sep_xyz = nodes.new("ShaderNodeSeparateXYZ")
-    sep_xyz.location = (-600, 200)
-    links.new(input_node.outputs["Vector"], sep_xyz.inputs["Vector"])
-
-    # V scale = Frame Height / Image Height
-    v_scale = nodes.new("ShaderNodeMath")
-    v_scale.operation = 'DIVIDE'
-    v_scale.location = (-500, -100)
-    links.new(input_node.outputs["Frame Height"], v_scale.inputs[0])
-    links.new(input_node.outputs["Image Height"], v_scale.inputs[1])
-
-    # Scaled V = V_in * V_scale
-    scaled_v = nodes.new("ShaderNodeMath")
-    scaled_v.operation = 'MULTIPLY'
-    scaled_v.location = (-350, 100)
-    links.new(sep_xyz.outputs["Y"], scaled_v.inputs[0])
-    links.new(v_scale.outputs[0], scaled_v.inputs[1])
-
-    # --- Current Frame UV ---
-    curr_v_offset = nodes.new("ShaderNodeMath")
-    curr_v_offset.operation = 'MULTIPLY'
-    curr_v_offset.location = (-150, 200)
-    links.new(input_node.outputs["Current Frame"], curr_v_offset.inputs[0])
-    links.new(v_scale.outputs[0], curr_v_offset.inputs[1])
-
-    curr_v_final = nodes.new("ShaderNodeMath")
-    curr_v_final.operation = 'ADD'
-    curr_v_final.location = (100, 200)
-    links.new(scaled_v.outputs[0], curr_v_final.inputs[0])
-    links.new(curr_v_offset.outputs[0], curr_v_final.inputs[1])
-
-    comb_curr = nodes.new("ShaderNodeCombineXYZ")
-    comb_curr.location = (400, 200)
-    links.new(sep_xyz.outputs["X"], comb_curr.inputs["X"])
-    links.new(curr_v_final.outputs[0], comb_curr.inputs["Y"])
-
-    # --- Next Frame UV ---
-    next_v_offset = nodes.new("ShaderNodeMath")
-    next_v_offset.operation = 'MULTIPLY'
-    next_v_offset.location = (-150, -200)
-    links.new(input_node.outputs["Next Frame"], next_v_offset.inputs[0])
-    links.new(v_scale.outputs[0], next_v_offset.inputs[1])
-
-    next_v_final = nodes.new("ShaderNodeMath")
-    next_v_final.operation = 'ADD'
-    next_v_final.location = (100, -200)
-    links.new(scaled_v.outputs[0], next_v_final.inputs[0])
-    links.new(next_v_offset.outputs[0], next_v_final.inputs[1])
-
-    comb_next = nodes.new("ShaderNodeCombineXYZ")
-    comb_next.location = (400, -200)
-    links.new(sep_xyz.outputs["X"], comb_next.inputs["X"])
-    links.new(next_v_final.outputs[0], comb_next.inputs["Y"])
-
-    links.new(comb_curr.outputs["Vector"], output_node.inputs["Current UV"])
-    links.new(comb_next.outputs["Vector"], output_node.inputs["Next UV"])
-
+    ng = _group("MC_Animated_UV_Mapping")
+    if ng.nodes: return ng
+    for name, typ, default in (("Vector", "NodeSocketVector", None), ("Current Frame", "NodeSocketFloat", 0.0), ("Next Frame", "NodeSocketFloat", 1.0), ("Blend Factor", "NodeSocketFloat", 0.0), ("Frame Width", "NodeSocketFloat", 16.0), ("Frame Height", "NodeSocketFloat", 16.0), ("Image Width", "NodeSocketFloat", 16.0), ("Image Height", "NodeSocketFloat", 16.0)):
+        _socket(ng, name, "INPUT", typ, default)
+    for name, typ in (("Current UV", "NodeSocketVector"), ("Next UV", "NodeSocketVector"), ("Blend Factor", "NodeSocketFloat")): _socket(ng, name, "OUTPUT", typ)
+    n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
+    sep = n.new("ShaderNodeSeparateXYZ"); combine_current, combine_next = n.new("ShaderNodeCombineXYZ"), n.new("ShaderNodeCombineXYZ")
+    u_scale, v_scale = _math(n, "DIVIDE", "U Frame Scale", (-500, 100)), _math(n, "DIVIDE", "V Frame Scale", (-500, -100))
+    u, v = _math(n, "MULTIPLY", "U in Frame", (-300, 100)), _math(n, "MULTIPLY", "V in Frame", (-300, -100))
+    l.new(inp.outputs["Vector"], sep.inputs["Vector"]); l.new(inp.outputs["Frame Width"], u_scale.inputs[0]); l.new(inp.outputs["Image Width"], u_scale.inputs[1]); l.new(inp.outputs["Frame Height"], v_scale.inputs[0]); l.new(inp.outputs["Image Height"], v_scale.inputs[1]); l.new(sep.outputs["X"], u.inputs[0]); l.new(u_scale.outputs[0], u.inputs[1]); l.new(sep.outputs["Y"], v.inputs[0]); l.new(v_scale.outputs[0], v.inputs[1])
+    for frame_name, combine, label, yloc in (("Current Frame", combine_current, "Current", 80), ("Next Frame", combine_next, "Next", -200)):
+        plus = _math(n, "ADD", label + " + 1", (-100, yloc), 1.0); scaled = _math(n, "MULTIPLY", label + " V Scale", (80, yloc)); offset = _math(n, "SUBTRACT", label + " V Offset", (260, yloc), 1.0); final = _math(n, "ADD", label + " V", (440, yloc))
+        l.new(inp.outputs[frame_name], plus.inputs[0]); l.new(plus.outputs[0], scaled.inputs[0]); l.new(v_scale.outputs[0], scaled.inputs[1]); l.new(scaled.outputs[0], offset.inputs[1]); l.new(v.outputs[0], final.inputs[0]); l.new(offset.outputs[0], final.inputs[1]); l.new(u.outputs[0], combine.inputs["X"]); l.new(final.outputs[0], combine.inputs["Y"])
+    l.new(combine_current.outputs["Vector"], out.inputs["Current UV"]); l.new(combine_next.outputs["Vector"], out.inputs["Next UV"]); l.new(inp.outputs["Blend Factor"], out.inputs["Blend Factor"])
     return ng
 
 
 def ensure_animation_scheduler() -> bpy.types.NodeTree:
-    """Ensure MC_Animation_Scheduler_Default node group exists in scene. Create if missing."""
-    group_name = "MC_Animation_Scheduler_Default"
-    if group_name in bpy.data.node_groups and len(bpy.data.node_groups[group_name].nodes) > 0:
-        return bpy.data.node_groups[group_name]
-
-    if group_name in bpy.data.node_groups:
-        ng = bpy.data.node_groups[group_name]
-    else:
-        ng = bpy.data.node_groups.new(name=group_name, type="ShaderNodeTree")
-
-    if hasattr(ng, "interface"):
-        s_tf = ng.interface.new_socket(name="Total Frames", in_out="INPUT", socket_type="NodeSocketInt")
-        s_tf.default_value = 16
-        s_ft = ng.interface.new_socket(name="Frametime", in_out="INPUT", socket_type="NodeSocketInt")
-        s_ft.default_value = 2
-        s_ip = ng.interface.new_socket(name="Interpolate", in_out="INPUT", socket_type="NodeSocketBool")
-        s_ip.default_value = True
-
-        ng.interface.new_socket(name="Current Frame", in_out="OUTPUT", socket_type="NodeSocketFloat")
-        ng.interface.new_socket(name="Next Frame", in_out="OUTPUT", socket_type="NodeSocketFloat")
-        ng.interface.new_socket(name="Blend Factor", in_out="OUTPUT", socket_type="NodeSocketFloat")
-
-    nodes = ng.nodes
-    links = ng.links
-
-    input_node = nodes.new("NodeGroupInput")
-    output_node = nodes.new("NodeGroupOutput")
-    input_node.location = (-600, 0)
-    output_node.location = (600, 0)
-
-    # Timeline Frame value node
-    time_frame = nodes.new("ShaderNodeValue")
-    time_frame.name = "Timeline Frame"
-    time_frame.location = (-500, 200)
-
-    # Add driver to time_frame to follow scene frame_current
-    driver = time_frame.outputs[0].driver_add("default_value").driver
-    driver.expression = "frame"
-
-    # Effective Phase: (Frame / Frametime)
-    phase = nodes.new("ShaderNodeMath")
-    phase.operation = 'DIVIDE'
-    phase.location = (-300, 100)
-    links.new(time_frame.outputs[0], phase.inputs[0])
-    links.new(input_node.outputs["Frametime"], phase.inputs[1])
-
-    # Current Frame Unwrapped = floor(Phase)
-    curr_floor = nodes.new("ShaderNodeMath")
-    curr_floor.operation = 'FLOOR'
-    curr_floor.location = (-100, 200)
-    links.new(phase.outputs[0], curr_floor.inputs[0])
-
-    # Current Frame Wrapped = curr_floor % Total Frames
-    curr_wrap = nodes.new("ShaderNodeMath")
-    curr_wrap.operation = 'MODULO'
-    curr_wrap.location = (100, 200)
-    links.new(curr_floor.outputs[0], curr_wrap.inputs[0])
-    links.new(input_node.outputs["Total Frames"], curr_wrap.inputs[1])
-
-    # Next Frame Wrapped = (curr_floor + 1) % Total Frames
-    next_raw = nodes.new("ShaderNodeMath")
-    next_raw.operation = 'ADD'
-    next_raw.inputs[1].default_value = 1.0
-    next_raw.location = (-100, -100)
-    links.new(curr_floor.outputs[0], next_raw.inputs[0])
-
-    next_wrap = nodes.new("ShaderNodeMath")
-    next_wrap.operation = 'MODULO'
-    next_wrap.location = (100, -100)
-    links.new(next_raw.outputs[0], next_wrap.inputs[0])
-    links.new(input_node.outputs["Total Frames"], next_wrap.inputs[1])
-
-    # Fraction = Phase - floor(Phase)
-    fract = nodes.new("ShaderNodeMath")
-    fract.operation = 'SUBTRACT'
-    fract.location = (100, 0)
-    links.new(phase.outputs[0], fract.inputs[0])
-    links.new(curr_floor.outputs[0], fract.inputs[1])
-
-    # Blend Factor = Interpolate ? Fraction : 0
-    blend = nodes.new("ShaderNodeMath")
-    blend.operation = 'MULTIPLY'
-    blend.location = (300, 0)
-    links.new(fract.outputs[0], blend.inputs[0])
-    links.new(input_node.outputs["Interpolate"], blend.inputs[1])
-
-    links.new(curr_wrap.outputs[0], output_node.inputs["Current Frame"])
-    links.new(next_wrap.outputs[0], output_node.inputs["Next Frame"])
-    links.new(blend.outputs[0], output_node.inputs["Blend Factor"])
-
+    ng = _group("MC_Animation_Scheduler_Default")
+    if ng.nodes: return ng
+    _socket(ng, "Total Frames", "INPUT", "NodeSocketInt", 16); _socket(ng, "Frametime", "INPUT", "NodeSocketInt", 1); _socket(ng, "Interpolate", "INPUT", "NodeSocketBool", False)
+    for name in ("Current Frame", "Next Frame", "Blend Factor"): _socket(ng, name, "OUTPUT", "NodeSocketFloat")
+    n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
+    frame = n.new("ShaderNodeValue"); frame.name = "Timeline Frame"; frame.outputs[0].driver_add("default_value").driver.expression = "frame"
+    start = n.new("ShaderNodeValue"); start.name = "Timeline Start"; start.outputs[0].default_value = 1.0
+    start_driver = start.outputs[0].driver_add("default_value").driver
+    start_driver.expression = "start"
+    start_variable = start_driver.variables.new(); start_variable.name = "start"
+    start_variable.targets[0].id_type = "SCENE"; start_variable.targets[0].id = bpy.context.scene; start_variable.targets[0].data_path = "frame_start"
+    fps = n.new("ShaderNodeValue"); fps.name = "Effective FPS"
+    fps_driver = fps.outputs[0].driver_add("default_value").driver
+    fps_driver.expression = "fps / fps_base"
+    for name, path in (("fps", "render.fps"), ("fps_base", "render.fps_base")):
+        variable = fps_driver.variables.new(); variable.name = name
+        variable.targets[0].id_type = "SCENE"; variable.targets[0].id = bpy.context.scene; variable.targets[0].data_path = path
+    tick = n.new("ShaderNodeValue"); tick.name = "Minecraft Tick Rate"; tick.outputs[0].default_value = 20.0
+    elapsed, ticks, mc_tick = _math(n, "SUBTRACT", "Elapsed Frames", (-300, 100)), _math(n, "MULTIPLY", "Ticks Numerator", (-120, 100)), _math(n, "DIVIDE", "MC Tick", (60, 100))
+    phase, current_raw, fraction = _math(n, "DIVIDE", "Frame Phase", (240, 100)), _math(n, "FLOOR", "Current Unwrapped", (420, 150)), _math(n, "FRACT", "Frame Fraction", (420, 40))
+    current = _math(n, "WRAP", "Current Frame", (600, 150), 0.0); next_raw = _math(n, "ADD", "Next Unwrapped", (600, 50), 1.0); next_frame = _math(n, "WRAP", "Next Frame", (780, 50), 0.0); blend = _math(n, "MULTIPLY", "Blend Factor", (600, -80))
+    l.new(frame.outputs[0], elapsed.inputs[0]); l.new(start.outputs[0], elapsed.inputs[1])
+    l.new(elapsed.outputs[0], ticks.inputs[0]); l.new(tick.outputs[0], ticks.inputs[1])
+    l.new(ticks.outputs[0], mc_tick.inputs[0]); l.new(fps.outputs[0], mc_tick.inputs[1])
+    l.new(mc_tick.outputs[0], phase.inputs[0]); l.new(inp.outputs["Frametime"], phase.inputs[1])
+    l.new(phase.outputs[0], current_raw.inputs[0]); l.new(phase.outputs[0], fraction.inputs[0])
+    l.new(current_raw.outputs[0], current.inputs[0]); current.inputs[1].default_value = 0.0; l.new(inp.outputs["Total Frames"], current.inputs[2])
+    l.new(current_raw.outputs[0], next_raw.inputs[0]); l.new(next_raw.outputs[0], next_frame.inputs[0]); next_frame.inputs[1].default_value = 0.0; l.new(inp.outputs["Total Frames"], next_frame.inputs[2])
+    l.new(fraction.outputs[0], blend.inputs[0]); l.new(inp.outputs["Interpolate"], blend.inputs[1])
+    l.new(current.outputs[0], out.inputs["Current Frame"]); l.new(next_frame.outputs[0], out.inputs["Next Frame"]); l.new(blend.outputs[0], out.inputs["Blend Factor"])
     return ng
 
 
 def ensure_animated_frame_blend() -> bpy.types.NodeTree:
-    """Ensure MC_Animated_Frame_Blend node group exists in scene. Create if missing."""
-    group_name = "MC_Animated_Frame_Blend"
-    if group_name in bpy.data.node_groups and len(bpy.data.node_groups[group_name].nodes) > 0:
-        return bpy.data.node_groups[group_name]
-
-    if group_name in bpy.data.node_groups:
-        ng = bpy.data.node_groups[group_name]
-    else:
-        ng = bpy.data.node_groups.new(name=group_name, type="ShaderNodeTree")
-
-    if hasattr(ng, "interface"):
-        s_cc = ng.interface.new_socket(name="Current Color", in_out="INPUT", socket_type="NodeSocketColor")
-        s_cc.default_value = (1, 1, 1, 1)
-        s_nc = ng.interface.new_socket(name="Next Color", in_out="INPUT", socket_type="NodeSocketColor")
-        s_nc.default_value = (1, 1, 1, 1)
-        s_ca = ng.interface.new_socket(name="Current Alpha", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_ca.default_value = 1.0
-        s_na = ng.interface.new_socket(name="Next Alpha", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_na.default_value = 1.0
-        s_bf = ng.interface.new_socket(name="Blend Factor", in_out="INPUT", socket_type="NodeSocketFloat")
-        s_bf.default_value = 0.0
-
-        ng.interface.new_socket(name="Color", in_out="OUTPUT", socket_type="NodeSocketColor")
-        ng.interface.new_socket(name="Alpha", in_out="OUTPUT", socket_type="NodeSocketFloat")
-
-    nodes = ng.nodes
-    links = ng.links
-
-    input_node = nodes.new("NodeGroupInput")
-    output_node = nodes.new("NodeGroupOutput")
-    input_node.location = (-600, 0)
-    output_node.location = (600, 0)
-
-    # Color mix (Mix RGB)
-    mix_color = nodes.new("ShaderNodeMixRGB")
-    mix_color.location = (100, 100)
-    links.new(input_node.outputs["Blend Factor"], mix_color.inputs["Factor"])
-    links.new(input_node.outputs["Current Color"], mix_color.inputs["Color1"])
-    links.new(input_node.outputs["Next Color"], mix_color.inputs["Color2"])
-
-    # Alpha mix
-    mix_alpha = nodes.new("ShaderNodeMath")
-    mix_alpha.operation = 'MULTIPLY_ADD'
-    mix_alpha.location = (100, -100)
-    # Lerp: Current * (1 - Factor) + Next * Factor
-    # Using Math nodes or simple lerp
-    links.new(input_node.outputs["Current Alpha"], mix_alpha.inputs[0])
-    links.new(input_node.outputs["Next Alpha"], mix_alpha.inputs[1])
-    links.new(input_node.outputs["Blend Factor"], mix_alpha.inputs[2])
-
-    links.new(mix_color.outputs["Color"], output_node.inputs["Color"])
-    links.new(mix_alpha.outputs[0], output_node.inputs["Alpha"])
-
+    ng = _group("MC_Animated_Frame_Blend")
+    if ng.nodes: return ng
+    for name, typ, default in (("Current Color", "NodeSocketColor", (1,1,1,1)), ("Next Color", "NodeSocketColor", (1,1,1,1)), ("Current Alpha", "NodeSocketFloat", 1.0), ("Next Alpha", "NodeSocketFloat", 1.0), ("Blend Factor", "NodeSocketFloat", 0.0)): _socket(ng, name, "INPUT", typ, default)
+    _socket(ng, "Color", "OUTPUT", "NodeSocketColor"); _socket(ng, "Alpha", "OUTPUT", "NodeSocketFloat")
+    n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput"); color = n.new("ShaderNodeMixRGB"); color.name = "Frame Color Mix"; inverse = _math(n, "SUBTRACT", "Inverse Blend", (0, -100), 1.0); a = _math(n, "MULTIPLY", "Current Alpha Weight", (180, -100)); b = _math(n, "MULTIPLY", "Next Alpha Weight", (180, -200)); total = _math(n, "ADD", "Frame Alpha Mix", (360, -150))
+    l.new(inp.outputs["Blend Factor"], color.inputs[0]); l.new(inp.outputs["Current Color"], color.inputs[1]); l.new(inp.outputs["Next Color"], color.inputs[2]); l.new(color.outputs["Color"], out.inputs["Color"]); l.new(inp.outputs["Blend Factor"], inverse.inputs[1]); l.new(inp.outputs["Current Alpha"], a.inputs[0]); l.new(inverse.outputs[0], a.inputs[1]); l.new(inp.outputs["Next Alpha"], b.inputs[0]); l.new(inp.outputs["Blend Factor"], b.inputs[1]); l.new(a.outputs[0], total.inputs[0]); l.new(b.outputs[0], total.inputs[1]); l.new(total.outputs[0], out.inputs["Alpha"])
     return ng
 
 
 def ensure_all_templates():
-    """Ensure all 4 required Minecraft LabPBR / Animation node groups exist."""
-    return {
-        "LabPBR 1.3 Decoder": ensure_labpbr_decoder(),
-        "MC_Animated_UV_Mapping": ensure_animated_uv_mapping(),
-        "MC_Animation_Scheduler_Default": ensure_animation_scheduler(),
-        "MC_Animated_Frame_Blend": ensure_animated_frame_blend(),
-    }
+    return {"LabPBR 1.3 Decoder": ensure_labpbr_decoder(), "MC_Animated_UV_Mapping": ensure_animated_uv_mapping(), "MC_Animation_Scheduler_Default": ensure_animation_scheduler(), "MC_Animated_Frame_Blend": ensure_animated_frame_blend()}
