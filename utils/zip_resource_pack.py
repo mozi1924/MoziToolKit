@@ -29,15 +29,70 @@ def get_file_hash(filepath: str) -> str:
     return hasher.hexdigest()
 
 
-def get_directory_hash(directory: Path) -> str:
-    """Compute a stable provenance hash for an unpacked resource pack."""
+def _is_ignored_path(rel_path: str) -> bool:
+    """Check if a relative path should be excluded from resource pack hash calculation."""
+    parts = rel_path.replace("\\", "/").strip("/").split("/")
+    for part in parts:
+        if part.startswith(".") or part in ("__MACOSX", "Thumbs.db", "desktop.ini"):
+            return True
+    return False
+
+
+def get_pack_hash(pack_path: Path | str) -> str:
+    """
+    Compute a deterministic provenance content hash for a resource pack.
+    Produces identical hashes for identical content whether provided as a
+    ZIP archive, a JAR archive, or an unpacked directory.
+    """
+    path = Path(pack_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Resource pack path not found: {path}")
+
     hasher = hashlib.md5()
-    for filepath in sorted(path for path in directory.rglob("*") if path.is_file()):
-        hasher.update(str(filepath.relative_to(directory)).encode("utf-8"))
-        with open(filepath, "rb") as source:
-            for chunk in iter(lambda: source.read(65536), b""):
-                hasher.update(chunk)
-    return hasher.hexdigest()
+
+    if path.is_dir():
+        file_map = {}
+        for filepath in path.rglob("*"):
+            if not filepath.is_file():
+                continue
+            rel_path = filepath.relative_to(path).as_posix().strip("/")
+            if _is_ignored_path(rel_path):
+                continue
+            file_map[rel_path] = filepath
+
+        for rel_path in sorted(file_map.keys()):
+            hasher.update(rel_path.encode("utf-8") + b"\0")
+            fp = file_map[rel_path]
+            with open(fp, "rb") as source:
+                for chunk in iter(lambda: source.read(65536), b""):
+                    hasher.update(chunk)
+        return hasher.hexdigest()
+
+    elif zipfile.is_zipfile(path):
+        file_map = {}
+        with zipfile.ZipFile(path, "r") as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                rel_path = info.filename.replace("\\", "/").strip("/")
+                if _is_ignored_path(rel_path):
+                    continue
+                file_map[rel_path] = info
+
+            for rel_path in sorted(file_map.keys()):
+                hasher.update(rel_path.encode("utf-8") + b"\0")
+                info = file_map[rel_path]
+                with zf.open(info, "r") as source:
+                    for chunk in iter(lambda: source.read(65536), b""):
+                        hasher.update(chunk)
+        return hasher.hexdigest()
+    else:
+        raise ValueError(f"Resource pack must be a ZIP/JAR archive or directory: {path}")
+
+
+def get_directory_hash(directory: Path) -> str:
+    """Compute a stable provenance hash for an unpacked resource pack or archive path."""
+    return get_pack_hash(directory)
 
 
 def parse_mcmeta(mcmeta_path: Path) -> dict:
@@ -78,10 +133,12 @@ class ZipResourcePack:
         if not self.zip_path.exists():
             raise FileNotFoundError(f"Resource pack not found: {self.zip_path}")
 
+        # Compute content-based pack hash (identical for ZIP, JAR, or unpacked directory)
+        self.pack_hash = get_pack_hash(self.zip_path)
+
         if self.zip_path.is_dir():
             # An unpacked development/resource-pack directory is already in
             # the form consumed by _build_index.  Do not copy or mutate it.
-            self.pack_hash = get_directory_hash(self.zip_path)
             self.extract_dir = self.zip_path
             self._build_index()
             return
@@ -89,9 +146,6 @@ class ZipResourcePack:
         if not zipfile.is_zipfile(self.zip_path):
             raise ValueError(f"Resource pack must be a ZIP/JAR archive or directory: {self.zip_path}")
 
-        # This is provenance metadata as well as a cache key, so it must be
-        # stable even when the caller opts out of cache reuse.
-        self.pack_hash = get_file_hash(str(self.zip_path))
         cache_root = get_cache_dir()
         self.extract_dir = cache_root / self.pack_hash
 
