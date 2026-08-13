@@ -5,17 +5,49 @@ import bpy
 from .node_groups import ensure_all_templates
 
 
-def load_image_texture(filepath: Path, colorspace: str = 'sRGB', pack_textures: bool = True) -> bpy.types.Image:
+def load_image_texture(
+    filepath: Path,
+    colorspace: str = 'sRGB',
+    pack_textures: bool = True,
+    pack_hash: str = None
+) -> bpy.types.Image:
     """
-    Load an image into Blender with Closest interpolation (pixel art).
-    Optionally pack it into the blend file or save it to relative textures/ directory.
+    Load or reuse an image into Blender with Closest interpolation (pixel art).
+    Names the image datablock as 'filename:pack_hash_short' to prevent collision
+    (e.g., stone.png:dcddb12ac1c4) and reuses existing image datablocks when available.
     """
     if not filepath or not filepath.exists():
         return None
 
     str_path = str(filepath.resolve())
-    img = bpy.data.images.load(str_path, check_existing=True)
-    
+    short_hash = pack_hash[:12] if pack_hash else None
+    expected_name = f"{filepath.name}:{short_hash}" if short_hash else filepath.name
+
+    # 1. Check for existing matching image datablock in Blender
+    img = None
+    for existing in bpy.data.images:
+        if expected_name and existing.name == expected_name:
+            img = existing
+            break
+        if pack_hash and existing.get("mtk:pack_hash") == pack_hash and existing.get("mtk:source_file") == filepath.name:
+            img = existing
+            break
+        if existing.filepath and str(Path(bpy.path.abspath(existing.filepath)).resolve()) == str_path:
+            img = existing
+            break
+
+    # 2. Load from disk if not already present in bpy.data.images
+    if not img:
+        img = bpy.data.images.load(str_path, check_existing=False)
+        if expected_name:
+            img.name = expected_name
+        if pack_hash:
+            img["mtk:pack_hash"] = pack_hash
+            img["mtk:pack_hash_short"] = short_hash
+            img["mtk:source_file"] = filepath.name
+    elif expected_name and img.name != expected_name:
+        img.name = expected_name
+
     # Configure image properties for pixel art & color space
     if hasattr(img, "colorspace_settings"):
         try:
@@ -63,6 +95,7 @@ def build_channel_nodes(
     tex_coord_node: bpy.types.Node,
     decoder_col_socket: str,
     decoder_alpha_socket: str,
+    pack_hash: str = None,
     base_x: int = -800,
     base_y: int = 0
 ):
@@ -77,7 +110,7 @@ def build_channel_nodes(
     links = mat.node_tree.links
     templates = ensure_all_templates()
 
-    img = load_image_texture(img_path, colorspace=colorspace, pack_textures=pack_textures)
+    img = load_image_texture(img_path, colorspace=colorspace, pack_textures=pack_textures, pack_hash=pack_hash)
     if not img:
         return
 
@@ -189,7 +222,8 @@ def build_channel_nodes(
 def rebuild_material(
     mat: bpy.types.Material,
     texture_info: dict,
-    pack_textures: bool = True
+    pack_textures: bool = True,
+    pack_hash: str = None
 ) -> bool:
     """
     Completely clear an existing material's node tree and reconstruct a LabPBR 1.3 PBR material
@@ -201,6 +235,9 @@ def rebuild_material(
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
+
+    if not pack_hash:
+        pack_hash = mat.get("mtk:pack_hash") or texture_info.get("pack_hash")
 
     templates = ensure_all_templates()
 
@@ -241,6 +278,7 @@ def rebuild_material(
             tex_coord_node=tex_coord,
             decoder_col_socket="Albedo Color",
             decoder_alpha_socket="Albedo Alpha",
+            pack_hash=pack_hash,
             base_x=-800,
             base_y=300
         )
@@ -259,6 +297,7 @@ def rebuild_material(
             tex_coord_node=tex_coord,
             decoder_col_socket="Normal (_n) Color",
             decoder_alpha_socket="Normal (_n) Alpha (Height)",
+            pack_hash=pack_hash,
             base_x=-800,
             base_y=0
         )
@@ -277,6 +316,7 @@ def rebuild_material(
             tex_coord_node=tex_coord,
             decoder_col_socket="Specular (_s) Color",
             decoder_alpha_socket="Specular (_s) Alpha (Emission)",
+            pack_hash=pack_hash,
             base_x=-800,
             base_y=-300
         )
