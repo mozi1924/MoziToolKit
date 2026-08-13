@@ -10,6 +10,7 @@ from .step_scale_uv import ScaleUVStep
 from .step_select_edges import SelectHardEdgesStep
 from .step_select_transparent_faces import SelectTransparentFacesStep
 from .step_texture_interpolation import TextureInterpolationStep
+from .step_replace_material import StepReplaceMaterial
 
 __all__ = [
     "AdaptivePixelSplitStep",
@@ -20,4 +21,6 @@ __all__ = [
     "SelectHardEdgesStep",
     "SelectTransparentFacesStep",
     "TextureInterpolationStep",
+    "StepReplaceMaterial",
 ]
+
