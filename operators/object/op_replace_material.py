@@ -42,6 +42,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         return context.mode == "OBJECT" and bool(context.selected_objects)
 
     def invoke(self, context, event):
+        self.filepath = ""
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -69,6 +70,9 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         res, ctx = run_preset_pipeline("replace_material", context, params=params)
         for level, msg in ctx.reports:
             self.report({level}, msg)
+
+        # Clear filepath after execution so future invocations always open the file selector window
+        self.filepath = ""
 
         if not res.is_success:
             return {"CANCELLED"}
