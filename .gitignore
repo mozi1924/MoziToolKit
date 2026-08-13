@@ -11,6 +11,8 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+dist_atlas/
+scratch_atlas_output/
 downloads/
 eggs/
 .eggs/
