@@ -18,6 +18,7 @@ from ..steps import (
     SelectHardEdgesStep,
     SelectTransparentFacesStep,
     TextureInterpolationStep,
+    StepReplaceMaterial,
 )
 
 
@@ -64,7 +65,13 @@ def create_preset_pipelines() -> Dict[str, Pipeline]:
             description="Pipeline for selecting faces mapped to transparent texture pixels",
             steps=[SelectTransparentFacesStep()],
         ),
+        "replace_material": Pipeline(
+            name="Replace Material Preset",
+            description="Pipeline for replacing materials from Minecraft Java Resource Pack",
+            steps=[StepReplaceMaterial()],
+        ),
     }
+
 
 
 PRESET_PIPELINES: Dict[str, Pipeline] = create_preset_pipelines()
