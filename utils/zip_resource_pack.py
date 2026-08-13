@@ -58,6 +58,7 @@ class ZipResourcePack:
         self.zip_path = Path(zip_path)
         self.use_cache = use_cache
         self.extract_dir = None
+        self.pack_hash = None
         self.texture_index = {}
         self._load_pack()
 
@@ -65,9 +66,11 @@ class ZipResourcePack:
         if not self.zip_path.exists():
             raise FileNotFoundError(f"Resource pack not found: {self.zip_path}")
 
-        pack_hash = get_file_hash(str(self.zip_path)) if self.use_cache else "nocache"
+        # This is provenance metadata as well as a cache key, so it must be
+        # stable even when the caller opts out of cache reuse.
+        self.pack_hash = get_file_hash(str(self.zip_path))
         cache_root = get_cache_dir()
-        self.extract_dir = cache_root / pack_hash
+        self.extract_dir = cache_root / self.pack_hash
 
         marker_file = self.extract_dir / ".extracted"
         if not (self.use_cache and marker_file.exists()):
@@ -84,23 +87,21 @@ class ZipResourcePack:
         """Index block, item, entity, and misc textures and their matching .mcmeta files."""
         self.texture_index = {}
         
-        # Candidate texture root directories inside extracted pack
-        assets_dir = self.extract_dir / "assets" / "minecraft" / "textures"
-        search_dirs = [
-            assets_dir / "block",
-            assets_dir / "item",
-            assets_dir / "entity",
-            assets_dir,
-        ]
+        assets_root = self.extract_dir / "assets"
+        if not assets_root.exists():
+            return
 
-        # Scan all png files
-        for sdir in search_dirs:
-            if not sdir.exists():
+        # Every namespace under assets is indexed.  Vanilla packs use
+        # ``minecraft``; mod and add-on packs use their own namespace.
+        for namespace_dir in assets_root.iterdir():
+            textures_dir = namespace_dir / "textures"
+            if not namespace_dir.is_dir() or not textures_dir.is_dir():
                 continue
-            for root, _, files in os.walk(sdir):
+            namespace = namespace_dir.name.lower()
+            for root, _, files in os.walk(textures_dir):
                 root_path = Path(root)
                 for fname in files:
-                    if not fname.endswith(".png"):
+                    if not fname.lower().endswith(".png"):
                         continue
                     
                     full_path = root_path / fname
@@ -117,8 +118,12 @@ class ZipResourcePack:
                         base_stem = rel_name
                         channel = "albedo"
 
-                    if base_stem not in self.texture_index:
-                        self.texture_index[base_stem] = {
+                    base_stem = base_stem.lower()
+                    index_key = (namespace, base_stem)
+                    if index_key not in self.texture_index:
+                        self.texture_index[index_key] = {
+                            "namespace": namespace,
+                            "texture_name": base_stem,
                             "albedo": None,
                             "albedo_mcmeta": None,
                             "normal": None,
@@ -130,14 +135,18 @@ class ZipResourcePack:
                     mcmeta_file = root_path / f"{fname}.mcmeta"
                     mcmeta_data = parse_mcmeta(mcmeta_file)
 
-                    entry = self.texture_index[base_stem]
+                    entry = self.texture_index[index_key]
                     entry[channel] = full_path
                     entry[f"{channel}_mcmeta"] = mcmeta_data
 
-    def get_texture_info(self, base_name: str) -> dict:
+    def get_texture_info(self, base_name: str, namespace: str = "minecraft") -> dict:
         """
-        Query texture paths and mcmeta metadata for a given texture base name.
-        Includes fallback fuzzy matching for block names (e.g. magma_block -> magma).
+        Query texture paths and mcmeta metadata for an exact texture base name.
+
+        Material replacement must be conservative: a name such as
+        ``magma_block`` must not silently select ``magma`` just because one is
+        a substring of the other.  The only normalization retained is removal
+        of Blender's duplicate suffix (``.001``) and a file extension.
         """
         if not base_name:
             return None
@@ -147,22 +156,4 @@ class ZipResourcePack:
         if "." in clean_name and clean_name.rsplit(".", 1)[1].isdigit():
             clean_name = clean_name.rsplit(".", 1)[0]
 
-        if clean_name in self.texture_index:
-            return self.texture_index[clean_name]
-
-        # Clean common model suffixes (_all, _side, _end, _top, _bottom, _block, _texture)
-        cleaned_stem = clean_name
-        for s in ["_all", "_side", "_end", "_top", "_bottom", "_block", "_texture"]:
-            cleaned_stem = cleaned_stem.replace(s, "")
-            if cleaned_stem in self.texture_index:
-                return self.texture_index[cleaned_stem]
-
-        # Fallback: substring match against registered stems
-        for stem, info in self.texture_index.items():
-            if stem == clean_name or stem == cleaned_stem:
-                return info
-            if stem in clean_name or clean_name in stem:
-                return info
-
-        return None
-
+        return self.texture_index.get((namespace.lower(), clean_name))
