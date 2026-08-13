@@ -1,30 +1,21 @@
+"""Compatibility facade for Mozi shader-node group templates.
+
+New groups live in :mod:`utils.node_groups`.  This module keeps the historic
+public API used by the material builder and third-party scripts while the
+verified LabPBR graph remains here until it is migrated from its generated
+reference form to a declarative specification.
+"""
+
 import bpy
-from pathlib import Path
+
+from .node_groups import (
+    ensure_animated_frame_blend,
+    ensure_animated_uv_mapping,
+    ensure_animation_scheduler,
+)
 
 
-TEMPLATE_VERSION = 2
 LABPBR_TEMPLATE_VERSION = 6
-UV_TEMPLATE_VERSION = 4
-SCHEDULER_TEMPLATE_VERSION = 3
-
-
-def _group(name: str, version: int = TEMPLATE_VERSION) -> bpy.types.NodeTree:
-    """Return a fresh, versioned template group.
-
-    Templates used to be returned merely because a group with the same name
-    existed.  This made old, incomplete groups persist in files after an addon
-    update.  Rebuild groups created by this addon when their schema changes.
-    """
-    ng = bpy.data.node_groups.get(name)
-    if ng is None:
-        ng = bpy.data.node_groups.new(name=name, type="ShaderNodeTree")
-    elif ng.get("mozi_template_version") == version:
-        return ng
-    else:
-        ng.nodes.clear()
-        ng.interface.clear()
-    ng["mozi_template_version"] = version
-    return ng
 
 
 def _socket(ng, name, direction, socket_type, default=None):
@@ -641,76 +632,6 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     l.new(node_73.outputs[0], node_1.inputs[1])
     l.new(node_74.outputs[0], node_1.inputs[2])
 
-    return ng
-
-
-def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
-    ng = _group("MC_Animated_UV_Mapping", version=UV_TEMPLATE_VERSION)
-    if ng.nodes: return ng
-    for name, typ, default in (("Vector", "NodeSocketVector", None), ("Current Frame", "NodeSocketFloat", 0.0), ("Next Frame", "NodeSocketFloat", 1.0), ("Blend Factor", "NodeSocketFloat", 0.0), ("Frame Width", "NodeSocketFloat", 16.0), ("Frame Height", "NodeSocketFloat", 16.0), ("Image Width", "NodeSocketFloat", 16.0), ("Image Height", "NodeSocketFloat", 16.0)):
-        _socket(ng, name, "INPUT", typ, default)
-    for name, typ in (("Current UV", "NodeSocketVector"), ("Next UV", "NodeSocketVector"), ("Blend Factor", "NodeSocketFloat")): _socket(ng, name, "OUTPUT", typ)
-    n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
-    sep = n.new("ShaderNodeSeparateXYZ"); combine_current, combine_next = n.new("ShaderNodeCombineXYZ"), n.new("ShaderNodeCombineXYZ")
-    combine_current.name, combine_next.name = "Current UV", "Next UV"
-    u_scale, v_scale = _math(n, "DIVIDE", "U Frame Scale", (-500, 100)), _math(n, "DIVIDE", "V Frame Scale", (-500, -100))
-    u, v = _math(n, "MULTIPLY", "U in Frame", (-300, 100)), _math(n, "MULTIPLY", "V in Frame", (-300, -100))
-    l.new(inp.outputs["Vector"], sep.inputs["Vector"]); l.new(inp.outputs["Frame Width"], u_scale.inputs[0]); l.new(inp.outputs["Image Width"], u_scale.inputs[1]); l.new(inp.outputs["Frame Height"], v_scale.inputs[0]); l.new(inp.outputs["Image Height"], v_scale.inputs[1]); l.new(sep.outputs["X"], u.inputs[0]); l.new(u_scale.outputs[0], u.inputs[1]); l.new(sep.outputs["Y"], v.inputs[0]); l.new(v_scale.outputs[0], v.inputs[1])
-    for frame_name, combine, label, yloc in (("Current Frame", combine_current, "Current", 80), ("Next Frame", combine_next, "Next", -200)):
-        # Input 0 is linked to the frame number below, so the +1 constant
-        # must be on input 1.  Leaving it on input 0 is overwritten by the
-        # link and causes a half-frame UV offset (the node's default 0.5).
-        plus = _math(n, "ADD", label + " + 1", (-100, yloc), 0.0, 1.0); scaled = _math(n, "MULTIPLY", label + " V Scale", (80, yloc)); offset = _math(n, "SUBTRACT", label + " V Offset", (260, yloc), 1.0); final = _math(n, "ADD", label + " V", (440, yloc))
-        l.new(inp.outputs[frame_name], plus.inputs[0]); l.new(plus.outputs[0], scaled.inputs[0]); l.new(v_scale.outputs[0], scaled.inputs[1]); l.new(scaled.outputs[0], offset.inputs[1]); l.new(v.outputs[0], final.inputs[0]); l.new(offset.outputs[0], final.inputs[1]); l.new(u.outputs[0], combine.inputs["X"]); l.new(final.outputs[0], combine.inputs["Y"])
-    # Image Texture uses XY for flat projection, but forwarding Z makes this
-    # group a transparent UV transform and keeps it identical to the proven
-    # reference tree for non-flat projections and future reuse.
-    l.new(sep.outputs["Z"], combine_current.inputs["Z"]); l.new(sep.outputs["Z"], combine_next.inputs["Z"])
-    l.new(combine_current.outputs["Vector"], out.inputs["Current UV"]); l.new(combine_next.outputs["Vector"], out.inputs["Next UV"]); l.new(inp.outputs["Blend Factor"], out.inputs["Blend Factor"])
-    return ng
-
-
-def ensure_animation_scheduler() -> bpy.types.NodeTree:
-    ng = _group("MC_Animation_Scheduler_Default", version=SCHEDULER_TEMPLATE_VERSION)
-    if ng.nodes: return ng
-    _socket(ng, "Total Frames", "INPUT", "NodeSocketInt", 16); _socket(ng, "Frametime", "INPUT", "NodeSocketInt", 1); _socket(ng, "Interpolate", "INPUT", "NodeSocketBool", False)
-    for name in ("Current Frame", "Next Frame", "Blend Factor"): _socket(ng, name, "OUTPUT", "NodeSocketFloat")
-    n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput")
-    frame = n.new("ShaderNodeValue"); frame.name = "Timeline Frame"; frame.outputs[0].driver_add("default_value").driver.expression = "frame"
-    start = n.new("ShaderNodeValue"); start.name = "Timeline Start"; start.outputs[0].default_value = 1.0
-    start_driver = start.outputs[0].driver_add("default_value").driver
-    start_driver.expression = "start"
-    start_variable = start_driver.variables.new(); start_variable.name = "start"
-    start_variable.targets[0].id_type = "SCENE"; start_variable.targets[0].id = bpy.context.scene; start_variable.targets[0].data_path = "frame_start"
-    fps = n.new("ShaderNodeValue"); fps.name = "Effective FPS"
-    fps_driver = fps.outputs[0].driver_add("default_value").driver
-    fps_driver.expression = "fps / fps_base"
-    for name, path in (("fps", "render.fps"), ("fps_base", "render.fps_base")):
-        variable = fps_driver.variables.new(); variable.name = name
-        variable.targets[0].id_type = "SCENE"; variable.targets[0].id = bpy.context.scene; variable.targets[0].data_path = path
-    tick = n.new("ShaderNodeValue"); tick.name = "Minecraft Tick Rate"; tick.outputs[0].default_value = 20.0
-    elapsed, ticks, mc_tick = _math(n, "SUBTRACT", "Elapsed Frames", (-300, 100)), _math(n, "MULTIPLY", "Ticks Numerator", (-120, 100)), _math(n, "DIVIDE", "MC Tick", (60, 100))
-    phase, current_raw, fraction = _math(n, "DIVIDE", "Frame Phase", (240, 100)), _math(n, "FLOOR", "Current Unwrapped", (420, 150)), _math(n, "FRACT", "Frame Fraction", (420, 40))
-    current = _math(n, "WRAP", "Current Frame", (600, 150), 0.0); next_raw = _math(n, "ADD", "Next Unwrapped", (600, 50), 0.0, 1.0); next_frame = _math(n, "WRAP", "Next Frame", (780, 50), 0.0); blend = _math(n, "MULTIPLY", "Blend Factor", (600, -80))
-    l.new(frame.outputs[0], elapsed.inputs[0]); l.new(start.outputs[0], elapsed.inputs[1])
-    l.new(elapsed.outputs[0], ticks.inputs[0]); l.new(tick.outputs[0], ticks.inputs[1])
-    l.new(ticks.outputs[0], mc_tick.inputs[0]); l.new(fps.outputs[0], mc_tick.inputs[1])
-    l.new(mc_tick.outputs[0], phase.inputs[0]); l.new(inp.outputs["Frametime"], phase.inputs[1])
-    l.new(phase.outputs[0], current_raw.inputs[0]); l.new(phase.outputs[0], fraction.inputs[0])
-    l.new(current_raw.outputs[0], current.inputs[0]); current.inputs[1].default_value = 0.0; l.new(inp.outputs["Total Frames"], current.inputs[2])
-    l.new(current_raw.outputs[0], next_raw.inputs[0]); l.new(next_raw.outputs[0], next_frame.inputs[0]); next_frame.inputs[1].default_value = 0.0; l.new(inp.outputs["Total Frames"], next_frame.inputs[2])
-    l.new(fraction.outputs[0], blend.inputs[0]); l.new(inp.outputs["Interpolate"], blend.inputs[1])
-    l.new(current.outputs[0], out.inputs["Current Frame"]); l.new(next_frame.outputs[0], out.inputs["Next Frame"]); l.new(blend.outputs[0], out.inputs["Blend Factor"])
-    return ng
-
-
-def ensure_animated_frame_blend() -> bpy.types.NodeTree:
-    ng = _group("MC_Animated_Frame_Blend")
-    if ng.nodes: return ng
-    for name, typ, default in (("Current Color", "NodeSocketColor", (1,1,1,1)), ("Next Color", "NodeSocketColor", (1,1,1,1)), ("Current Alpha", "NodeSocketFloat", 1.0), ("Next Alpha", "NodeSocketFloat", 1.0), ("Blend Factor", "NodeSocketFloat", 0.0)): _socket(ng, name, "INPUT", typ, default)
-    _socket(ng, "Color", "OUTPUT", "NodeSocketColor"); _socket(ng, "Alpha", "OUTPUT", "NodeSocketFloat")
-    n, l = ng.nodes, ng.links; inp, out = n.new("NodeGroupInput"), n.new("NodeGroupOutput"); color = n.new("ShaderNodeMixRGB"); color.name = "Frame Color Mix"; inverse = _math(n, "SUBTRACT", "Inverse Blend", (0, -100), 1.0); a = _math(n, "MULTIPLY", "Current Alpha Weight", (180, -100)); b = _math(n, "MULTIPLY", "Next Alpha Weight", (180, -200)); total = _math(n, "ADD", "Frame Alpha Mix", (360, -150))
-    l.new(inp.outputs["Blend Factor"], color.inputs[0]); l.new(inp.outputs["Current Color"], color.inputs[1]); l.new(inp.outputs["Next Color"], color.inputs[2]); l.new(color.outputs["Color"], out.inputs["Color"]); l.new(inp.outputs["Blend Factor"], inverse.inputs[1]); l.new(inp.outputs["Current Alpha"], a.inputs[0]); l.new(inverse.outputs[0], a.inputs[1]); l.new(inp.outputs["Next Alpha"], b.inputs[0]); l.new(inp.outputs["Blend Factor"], b.inputs[1]); l.new(a.outputs[0], total.inputs[0]); l.new(b.outputs[0], total.inputs[1]); l.new(total.outputs[0], out.inputs["Alpha"])
     return ng
 
 
