@@ -94,17 +94,36 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertEqual(tex_node.interpolation, "Closest")
 
     def test_ice_cube_legacy_texture_name_aliases(self):
-        from pipeline.steps.step_replace_material import _legacy_texture_name_aliases
+        from utils.material_matching import ice_cube_legacy_aliases
 
-        self.assertEqual(_legacy_texture_name_aliases("item_clock_00"), ["clock_00"])
+        self.assertEqual(ice_cube_legacy_aliases("item_clock_00"), ["clock_00"])
         self.assertEqual(
-            _legacy_texture_name_aliases("blast_furnace_on_front"),
+            ice_cube_legacy_aliases("blast_furnace_on_front"),
             ["blast_furnace_front_on"],
         )
         self.assertEqual(
-            _legacy_texture_name_aliases("soul_campfire_lit_log"),
+            ice_cube_legacy_aliases("soul_campfire_lit_log"),
             ["soul_campfire_log_lit"],
         )
+
+    def test_ice_cube_preset_is_metadata_scoped(self):
+        from utils.material_matching import (
+            extract_material_texture_keys,
+            get_material_match_preset,
+        )
+
+        generic = bpy.data.materials.new(name="British Shorthair Cat")
+        generic.use_nodes = True
+        self.assertEqual(get_material_match_preset(generic).identifier, "generic")
+        self.assertNotIn("cat_british_shorthair", extract_material_texture_keys(generic)[1])
+
+        ice_cube = generic.copy()
+        ice_cube["flip_fluid_material_library"] = True
+        self.assertEqual(get_material_match_preset(ice_cube).identifier, "ice_cube")
+        self.assertIn("cat_british_shorthair", extract_material_texture_keys(ice_cube)[1])
+
+        bpy.data.materials.remove(generic)
+        bpy.data.materials.remove(ice_cube)
 
     def test_unpacked_resource_pack_is_indexed(self):
         from utils.zip_resource_pack import ZipResourcePack

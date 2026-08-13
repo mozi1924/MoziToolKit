@@ -4,106 +4,11 @@ from ..step import PipelineStep, StepResult
 try:
     from ...utils.zip_resource_pack import ZipResourcePack
     from ...utils.material_builder import rebuild_material
+    from ...utils.material_matching import extract_material_texture_keys
 except (ImportError, ValueError):
     from utils.zip_resource_pack import ZipResourcePack
     from utils.material_builder import rebuild_material
-
-
-def _without_blender_suffix(value: str) -> str:
-    """Remove Blender's duplicate suffix, without altering the actual name."""
-    if "." in value and value.rsplit(".", 1)[1].isdigit():
-        return value.rsplit(".", 1)[0]
-    return value
-
-
-def _ice_cube_name_aliases(name: str) -> list[str]:
-    """Return explicit Ice Cube material-name aliases, in priority order.
-
-    Ice Cube names materials after the face/model role (``acacia_log_side``,
-    ``ice_all``), while its image node identifies the source texture.  These
-    are deterministic suffix conventions, not substring/fuzzy matching.
-    """
-    aliases = [name]
-    for suffix in ("_all", "_side", "_end", "_top", "_bottom", "_front", "_back",
-                   "_up", "_down", "_north", "_south", "_east", "_west"):
-        if name.endswith(suffix):
-            stem = name[:-len(suffix)]
-            aliases.append(stem)
-            # Ice Cube's *_block_all convention can refer to old vanilla
-            # texture names such as magma.png.  Try the literal stem first.
-            if suffix == "_all" and stem.endswith("_block"):
-                aliases.append(stem[:-len("_block")])
-            break
-    return aliases
-
-
-def _legacy_texture_name_aliases(name: str) -> list[str]:
-    """Return deterministic Minecraft texture renames used by Ice Cube.
-
-    These are versioned name migrations, not fuzzy suggestions.  Each alias
-    is tried only after the literal source key, so a pack which deliberately
-    keeps the old name remains authoritative.
-    """
-    aliases = []
-    if name.startswith("item_"):
-        # Ice Cube names an item material ``item_clock_00`` while the
-        # resource-pack file is the vanilla ``clock_00``.
-        aliases.append(name[len("item_"):])
-    if name.endswith("_on_front"):
-        # Mojang's furnace family uses ``*_front_on``.
-        aliases.append(f"{name[:-len('_on_front')]}_front_on")
-    if "_lit_log" in name:
-        # Campfire textures were renamed from ``*_lit_log`` to
-        # ``*_log_lit``.
-        aliases.append(name.replace("_lit_log", "_log_lit"))
-    return aliases
-
-
-def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[str]]:
-    """Return namespace and ordered exact resource-pack texture candidates."""
-    if not mat:
-        return "", []
-    if mat.get("mtk:source_namespace") and mat.get("mtk:source_texture"):
-        return str(mat["mtk:source_namespace"]), [str(mat["mtk:source_texture"])]
-
-    name = _without_blender_suffix(mat.name.strip().lower())
-    namespace = "minecraft"
-    # Authoring materials can optionally use ``namespace:texture`` before
-    # their first conversion.  A plain material name means minecraft.
-    if ":" in name:
-        namespace, name = name.split(":", 1)
-
-    candidates = []
-
-    # Prefer the image that the material actually uses.  This handles Ice
-    # Cube's semantic material names without guessing from arbitrary text.
-    if mat.use_nodes and mat.node_tree:
-        for node in mat.node_tree.nodes:
-            if node.type != 'TEX_IMAGE' or not node.image:
-                continue
-            filepath = node.image.filepath or node.image.name
-            # Some packed Ice Cube images have an empty filepath and retain
-            # a path-like datablock name.  Always reduce the chosen source to
-            # its basename; otherwise a literal ``block/foo.png`` can never
-            # match the resource-pack key ``foo``.
-            image_name = Path(filepath).name
-            image_name = _without_blender_suffix(image_name.lower())
-            if image_name.endswith(".png"):
-                image_name = image_name[:-4]
-            # Ice Cube animation images conventionally end in _0000.
-            if len(image_name) > 5 and image_name[-5] == "_" and image_name[-4:].isdigit():
-                image_name = image_name[:-5]
-            if image_name:
-                candidates.append(image_name)
-
-    candidates.extend(_ice_cube_name_aliases(name))
-
-    # Preserve the priority of literal image/material keys.  Compatibility
-    # aliases are appended, never used in place of an exact source name.
-    original_candidates = list(dict.fromkeys(candidates))
-    for candidate in original_candidates:
-        candidates.extend(_legacy_texture_name_aliases(candidate))
-    return namespace, list(dict.fromkeys(candidates))
+    from utils.material_matching import extract_material_texture_keys
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
