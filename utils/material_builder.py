@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 import bpy
-from .node_group_templates import ensure_all_templates
+from .node_groups import ensure_all_templates
 
 
 def load_image_texture(filepath: Path, colorspace: str = 'sRGB', pack_textures: bool = True) -> bpy.types.Image:
