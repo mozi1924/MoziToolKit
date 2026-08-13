@@ -142,6 +142,117 @@ class TestPipelineFramework(unittest.TestCase):
             self.assertIsNotNone(texture_info)
             self.assertTrue(texture_info["albedo"].exists())
 
+    def test_independent_material_replacement(self):
+        from pipeline.presets import run_preset_pipeline
+
+        with tempfile.TemporaryDirectory() as dir_a, tempfile.TemporaryDirectory() as dir_b:
+            tex_a = Path(dir_a) / "assets/minecraft/textures/block"
+            tex_a.mkdir(parents=True)
+            img_a = bpy.data.images.new("OakLogA", width=1, height=1)
+            img_a.filepath_raw = str(tex_a / "oak_log.png")
+            img_a.file_format = "PNG"
+            img_a.save()
+            bpy.data.images.remove(img_a)
+
+            tex_b = Path(dir_b) / "assets/minecraft/textures/block"
+            tex_b.mkdir(parents=True)
+            img_b = bpy.data.images.new("OakLogB", width=2, height=2)
+            img_b.filepath_raw = str(tex_b / "oak_log.png")
+            img_b.file_format = "PNG"
+            img_b.save()
+            bpy.data.images.remove(img_b)
+
+            cube1 = self.cube
+            mat1 = bpy.data.materials.new(name="oak_log")
+            cube1.data.materials.append(mat1)
+
+            bpy.ops.mesh.primitive_cube_add(size=2.0, location=(3, 0, 0))
+            cube2 = bpy.context.active_object
+            mat2 = bpy.data.materials.new(name="oak_log")
+            cube2.data.materials.append(mat2)
+
+            bpy.ops.mesh.primitive_cube_add(size=2.0, location=(6, 0, 0))
+            cube3 = bpy.context.active_object
+            mat3 = bpy.data.materials.new(name="oak_log")
+            cube3.data.materials.append(mat3)
+
+            # Replace cube1 with Pack A
+            res1, ctx1 = run_preset_pipeline(
+                "replace_material",
+                bpy.context,
+                params={"zip_path": dir_a, "use_cache": False},
+                target_objects=[cube1],
+            )
+            self.assertTrue(res1.is_success)
+
+            # Replace cube2 with Pack B (different pack hash)
+            res2, ctx2 = run_preset_pipeline(
+                "replace_material",
+                bpy.context,
+                params={"zip_path": dir_b, "use_cache": False},
+                target_objects=[cube2],
+            )
+            self.assertTrue(res2.is_success)
+
+            # Replace cube3 with Pack A again (same pack hash as cube1)
+            res3, ctx3 = run_preset_pipeline(
+                "replace_material",
+                bpy.context,
+                params={"zip_path": dir_a, "use_cache": False},
+                target_objects=[cube3],
+            )
+            self.assertTrue(res3.is_success)
+
+            mat_res1 = cube1.material_slots[0].material
+            mat_res2 = cube2.material_slots[0].material
+            mat_res3 = cube3.material_slots[0].material
+
+            self.assertIsNotNone(mat_res1)
+            self.assertIsNotNone(mat_res2)
+            self.assertIsNotNone(mat_res3)
+
+            # Different pack hash -> Independent material datablocks
+            self.assertNotEqual(mat_res1, mat_res2)
+            # Same pack hash and texture -> Reused material datablock
+            self.assertEqual(mat_res1, mat_res3)
+
+
+    def test_batch_material_replacement_shares_session_material(self):
+        from pipeline.presets import run_preset_pipeline
+
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            texture_dir = Path(temporary_dir) / "assets/minecraft/textures/block"
+            texture_dir.mkdir(parents=True)
+            image = bpy.data.images.new("StoneTest", width=1, height=1)
+            image.filepath_raw = str(texture_dir / "stone.png")
+            image.file_format = "PNG"
+            image.save()
+            bpy.data.images.remove(image)
+
+            cube1 = self.cube
+            mat1 = bpy.data.materials.new(name="stone")
+            cube1.data.materials.append(mat1)
+
+            bpy.ops.mesh.primitive_cube_add(size=2.0, location=(3, 0, 0))
+            cube2 = bpy.context.active_object
+            mat2 = bpy.data.materials.new(name="stone")
+            cube2.data.materials.append(mat2)
+
+            res, ctx = run_preset_pipeline(
+                "replace_material",
+                bpy.context,
+                params={"zip_path": temporary_dir, "use_cache": False},
+                target_objects=[cube1, cube2],
+            )
+            self.assertTrue(res.is_success)
+
+            mat_res1 = cube1.material_slots[0].material
+            mat_res2 = cube2.material_slots[0].material
+
+            # Single batch replacement operation shares the session material datablock
+            self.assertEqual(mat_res1, mat_res2)
+
+
     def test_adaptive_pixel_split_step(self):
         from pipeline.presets import run_preset_pipeline
         bpy.ops.object.mode_set(mode="OBJECT")
