@@ -96,13 +96,17 @@ def get_directory_hash(directory: Path) -> str:
 
 
 def parse_mcmeta(mcmeta_path: Path) -> dict:
-    """Parse a .mcmeta JSON file into a standard animation dictionary."""
+    """Parse a .mcmeta JSON file into a standard animation dictionary if animation metadata is present."""
     if not mcmeta_path.exists():
         return None
     try:
         with open(mcmeta_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            anim = data.get("animation", {})
+            if not isinstance(data, dict):
+                return None
+            anim = data.get("animation")
+            if anim is None or not isinstance(anim, dict):
+                return None
             return {
                 "frametime": anim.get("frametime", 1),
                 "interpolate": anim.get("interpolate", False),

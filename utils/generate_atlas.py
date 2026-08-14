@@ -40,6 +40,35 @@ def _is_power_of_two(n: int) -> bool:
     return n > 0 and (n & (n - 1)) == 0
 
 
+def is_animated_texture(image, mcmeta: dict | None) -> bool:
+    """
+    Determine if a texture is truly animated based on its image dimensions and mcmeta metadata.
+
+    A texture is animated if and only if:
+    1. mcmeta is a dictionary containing an 'animation' dictionary; AND
+    2. The animation contains multiple frames (frame_count > 1 derived from image height / frame height,
+       or explicit frames list length > 1).
+    Textures with only 'texture' or 'gui' settings (e.g. mipmap_strategy, alpha_cutoff_bias) or
+    single-frame textures are static.
+    """
+    if not mcmeta or not isinstance(mcmeta, dict):
+        return False
+    anim = mcmeta.get("animation")
+    if anim is None or not isinstance(anim, dict):
+        return False
+
+    if image is None:
+        return True
+
+    w, h = image.size
+    frame_width = max(1, int(anim.get("width", w)))
+    frame_height = max(1, int(anim.get("height", frame_width)))
+    frame_count = max(1, h // frame_height) if frame_height > 0 else 1
+    frames = anim.get("frames", [])
+
+    return (frame_count > 1) or (isinstance(frames, list) and len(frames) > 1)
+
+
 class AtlasGenerator:
     """
     Parses Minecraft block models and textures from a JAR archive, ZIP file, or directory.
@@ -127,7 +156,7 @@ class AtlasGenerator:
                             elif channel == "specular":
                                 self.specular_textures[base_stem] = img
                             else:
-                                if base_stem in mcmetas and "animation" in mcmetas[base_stem]:
+                                if is_animated_texture(img, mcmetas.get(base_stem)):
                                     self.animated_textures[base_stem] = {
                                         "image": img,
                                         "mcmeta": mcmetas[base_stem]
@@ -194,7 +223,7 @@ class AtlasGenerator:
                             elif channel == "specular":
                                 self.specular_textures[base_stem] = img
                             else:
-                                if base_stem in mcmetas and "animation" in mcmetas[base_stem]:
+                                if is_animated_texture(img, mcmetas.get(base_stem)):
                                     self.animated_textures[base_stem] = {
                                         "image": img,
                                         "mcmeta": mcmetas[base_stem]
@@ -425,7 +454,8 @@ class AtlasGenerator:
             save_animation_chunk(pending_columns)
 
         materials = []
-        for material_id, name in enumerate(sorted(set(self.models) | set(self.static_textures))):
+        all_material_names = sorted(set(self.models) | set(self.static_textures) | set(self.animated_textures))
+        for material_id, name in enumerate(all_material_names):
             faces = self.get_6_faces_for_model(name) if name in self.models else {face: name for face in FACE_ORDER}
             materials.append({"material_id": material_id, "name": name, "faces": {
                 face: texture_locations.get(texture_name) for face, texture_name in faces.items()
