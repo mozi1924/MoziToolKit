@@ -392,6 +392,9 @@ class AtlasGenerator:
 
             x_offset = 0
             for texture_id, (name, image, metadata) in enumerate(columns):
+                target_w = image.width
+                target_h = image.height
+
                 for channel, img_canvas in images.items():
                     if channel == "albedo":
                         source_img = image
@@ -403,7 +406,26 @@ class AtlasGenerator:
                         source_img = None
 
                     if source_img is not None:
-                        img_canvas.paste(source_img, (x_offset, 0))
+                        src_w, src_h = source_img.size
+                        # Resize width to match target_w if resolutions differ
+                        if src_w != target_w:
+                            scale_ratio = target_w / src_w
+                            scaled_h = max(1, int(round(src_h * scale_ratio)))
+                            source_img = source_img.resize((target_w, scaled_h), Image.NEAREST)
+                            src_w, src_h = source_img.size
+
+                        if src_h >= target_h:
+                            img_canvas.paste(source_img.crop((0, 0, target_w, target_h)), (x_offset, 0))
+                        else:
+                            # Single frame or shorter strip: repeat/tile vertically to fill target_h
+                            y = 0
+                            while y < target_h:
+                                h_chunk = min(src_h, target_h - y)
+                                if h_chunk < src_h:
+                                    img_canvas.paste(source_img.crop((0, 0, target_w, h_chunk)), (x_offset, y))
+                                else:
+                                    img_canvas.paste(source_img, (x_offset, y))
+                                y += src_h
 
                 # Minecraft permits non-square animation frames.  The frame
                 # dimensions are defined by mcmeta when present; otherwise a
