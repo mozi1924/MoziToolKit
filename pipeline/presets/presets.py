@@ -19,6 +19,7 @@ from ..steps import (
     SelectTransparentFacesStep,
     TextureInterpolationStep,
     StepReplaceMaterial,
+    StepRepairMaterial,
 )
 
 
@@ -69,6 +70,11 @@ def create_preset_pipelines() -> Dict[str, Pipeline]:
             name="Replace Material Preset",
             description="Pipeline for replacing materials from Minecraft Java Resource Pack",
             steps=[StepReplaceMaterial()],
+        ),
+        "repair_material": Pipeline(
+            name="Repair Material Preset",
+            description="Pipeline for repairing and reconstructing LabPBR and animated UV shader nodes",
+            steps=[StepRepairMaterial()],
         ),
     }
 

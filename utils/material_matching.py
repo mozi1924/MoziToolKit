@@ -14,6 +14,10 @@ from typing import Callable
 import bpy
 
 
+import json
+from .atlas_layout import find_texture_id_from_atlas_uv
+
+
 def without_blender_suffix(value: str) -> str:
     """Remove Blender's duplicate suffix without changing an actual name."""
     if "." in value and value.rsplit(".", 1)[1].isdigit():
@@ -34,26 +38,87 @@ def normalized_image_key(image: bpy.types.Image) -> str:
     return key
 
 
+def detect_material_mode(mat: bpy.types.Material | None) -> str:
+    """Detect whether a material is Standalone, Atlas Chunk, Unified Atlas, or Generic."""
+    if not mat:
+        return "GENERIC"
+
+    if "mtk:atlas_chunk_id" in mat:
+        return "ATLAS_CHUNK"
+
+    if mat.node_tree and "mtk:atlas_mapping" in mat.node_tree:
+        if mat.name.startswith("mtk:") and "atlas_chunk" in mat.name:
+            return "ATLAS_CHUNK"
+        return "ATLAS_UNIFIED"
+
+    if mat.use_nodes and mat.node_tree:
+        for node in mat.node_tree.nodes:
+            if node.name == "MC Atlas UV Decoder" or node.type == "GROUP" and node.node_tree and node.node_tree.name == "MC_Atlas_UV_Decoder":
+                return "ATLAS_UNIFIED"
+
+    if "mtk:source_texture" in mat or "mtk:source_namespace" in mat or mat.name.startswith("mtk:"):
+        source_tex = str(mat.get("mtk:source_texture", ""))
+        if source_tex.startswith("atlas_chunk_"):
+            return "ATLAS_CHUNK"
+        return "STANDALONE"
+
+    return "GENERIC"
+
+
+def is_mozi_material(mat: bpy.types.Material | None) -> bool:
+    """Check if a material was created by MoziToolKit."""
+    if not mat:
+        return False
+    if mat.name.startswith("mtk:"):
+        return True
+    if any(k.startswith("mtk:") for k in mat.keys()):
+        return True
+    if mat.node_tree and any(k.startswith("mtk:") for k in mat.node_tree.keys()):
+        return True
+    return False
+
+
+def get_atlas_mapping_from_material(mat: bpy.types.Material | None) -> dict | None:
+    """Extract and parse atlas_mapping JSON dictionary stored on a material's node tree."""
+    if not mat or not mat.node_tree or "mtk:atlas_mapping" not in mat.node_tree:
+        return None
+    raw = mat.node_tree["mtk:atlas_mapping"]
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
 def base_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
     """Extract literal image and material-name candidates shared by all presets."""
     if not mat:
         return "", []
     if mat.get("mtk:source_namespace") and mat.get("mtk:source_texture"):
-        return str(mat["mtk:source_namespace"]), [str(mat["mtk:source_texture"])]
+        source_tex = str(mat["mtk:source_texture"])
+        if not source_tex.startswith("atlas_chunk_"):
+            return str(mat["mtk:source_namespace"]), [source_tex]
 
     name = without_blender_suffix(mat.name.strip().lower())
     namespace = "minecraft"
     if ":" in name:
-        namespace, name = name.split(":", 1)
+        parts = name.split(":")
+        if len(parts) >= 3 and parts[0] == "mtk":
+            namespace = parts[1]
+            name = parts[2]
+        else:
+            namespace, name = parts[0], parts[1]
 
     candidates = []
     if mat.use_nodes and mat.node_tree:
         for node in mat.node_tree.nodes:
             if node.type == "TEX_IMAGE" and node.image:
                 key = normalized_image_key(node.image)
-                if key:
+                if key and not key.startswith("atlas_chunk_"):
                     candidates.append(key)
-    candidates.append(name)
+    if not name.startswith("atlas_chunk_"):
+        candidates.append(name)
     return namespace, list(dict.fromkeys(candidates))
 
 
@@ -189,3 +254,70 @@ def get_material_match_preset(mat: bpy.types.Material) -> MaterialMatchPreset:
 def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[str]]:
     """Extract candidates using the preset detected from material metadata."""
     return get_material_match_preset(mat).extract_keys(mat)
+
+
+def extract_face_texture_info(
+    mesh: bpy.types.Mesh,
+    poly_idx: int,
+    slot_mat: bpy.types.Material | None,
+    atlas_mapping: dict | None = None,
+) -> tuple[str, list[str], dict | None]:
+    """
+    Extract the source (namespace, candidate_keys_list, atlas_location_or_None) for a specific polygon.
+    Handles Standalone materials, Atlas Chunk materials, Unified Atlas materials, and Generic materials.
+    """
+    if not slot_mat:
+        return "minecraft", [], None
+
+    mat_mode = detect_material_mode(slot_mat)
+    if mat_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED"):
+        mapping = atlas_mapping or get_atlas_mapping_from_material(slot_mat)
+        if mapping:
+            chunk_attr = mesh.attributes.get("atlas_chunk_id")
+            tex_attr = mesh.attributes.get("atlas_texture_id")
+
+            chunk_id = None
+            texture_id = None
+            if chunk_attr and poly_idx < len(chunk_attr.data):
+                val = chunk_attr.data[poly_idx].value
+                if val >= 0:
+                    chunk_id = int(val)
+            if tex_attr and poly_idx < len(tex_attr.data):
+                val = tex_attr.data[poly_idx].value
+                if val >= 0:
+                    texture_id = int(val)
+
+            if chunk_id is None and "mtk:atlas_chunk_id" in slot_mat:
+                chunk_id = int(slot_mat["mtk:atlas_chunk_id"])
+
+            chunks = {int(c["chunk_id"]): c for c in mapping.get("chunks", [])}
+            current_chunk = chunks.get(chunk_id) if chunk_id is not None else None
+
+            # Fallback: calculate from UV if texture_id is missing or attribute was lost
+            if texture_id is None and current_chunk is not None:
+                uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
+                if uv_layer and poly_idx < len(mesh.polygons):
+                    poly = mesh.polygons[poly_idx]
+                    if poly.loop_indices:
+                        u_coords = [uv_layer.data[li].uv.x for li in poly.loop_indices]
+                        v_coords = [uv_layer.data[li].uv.y for li in poly.loop_indices]
+                        u_center = sum(u_coords) / len(u_coords)
+                        v_center = sum(v_coords) / len(v_coords)
+                        anims_in_chunk = [a for a in mapping.get("animations", []) if int(a.get("chunk_id", -1)) == chunk_id]
+                        texture_id = find_texture_id_from_atlas_uv(u_center, v_center, current_chunk, anims_in_chunk)
+
+            # Find matching texture in mapping
+            if chunk_id is not None and texture_id is not None:
+                for tex_name, loc in mapping.get("textures", {}).items():
+                    if loc and int(loc.get("chunk_id", -1)) == chunk_id and int(loc.get("texture_id", -1)) == texture_id:
+                        return "minecraft", [tex_name], loc
+
+                for anim in mapping.get("animations", []):
+                    if int(anim.get("chunk_id", -1)) == chunk_id and int(anim.get("texture_id", -1)) == texture_id:
+                        loc = mapping.get("textures", {}).get(anim["name"])
+                        return "minecraft", [anim["name"]], loc or anim
+
+    # Standalone or Generic fallback
+    namespace, candidates = extract_material_texture_keys(slot_mat)
+    return namespace, candidates, None
+
