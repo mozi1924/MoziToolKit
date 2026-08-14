@@ -130,3 +130,60 @@ def build_atlas_material(
             links.new(tex_specular.outputs["Color"], bsdf_node.inputs["Specular IOR Level"])
 
     return mat
+
+
+def build_atlas_chunk_materials(
+    atlas_dir: str | Path,
+    material_prefix: str,
+    pack_textures: bool = True,
+    chunk_ids: set[int] | None = None,
+) -> dict[int, bpy.types.Material]:
+    """Build one UV-driven Blender material per atlas chunk.
+
+    This is intentionally node-decoder-free: Material Preview and the solid
+    texture display path sample the mesh UVs directly.  The decoder remains a
+    separate future-facing path for procedural geometry.
+    """
+    atlas_path = Path(atlas_dir)
+    with open(atlas_path / "atlas_mapping.json", "r", encoding="utf-8") as fp:
+        raw_mapping = fp.read()
+        mapping = json.loads(raw_mapping)
+
+    materials = {}
+    for chunk in mapping.get("chunks", []):
+        chunk_id = int(chunk["chunk_id"])
+        if chunk_ids is not None and chunk_id not in chunk_ids:
+            continue
+        albedo_name = chunk.get("files", {}).get("albedo")
+        if not albedo_name:
+            continue
+        albedo_path = atlas_path / albedo_name
+        if not albedo_path.exists():
+            raise FileNotFoundError(f"Missing atlas chunk image: {albedo_path}")
+        material_name = f"{material_prefix}:chunk:{chunk_id:03d}"
+        mat = bpy.data.materials.get(material_name) or bpy.data.materials.new(material_name)
+        mat.use_nodes = True
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        nodes.clear()
+        mat.node_tree["mtk:atlas_mapping"] = raw_mapping
+        mat["mtk:atlas_chunk_id"] = chunk_id
+        mat["mtk:atlas_chunk_kind"] = chunk["kind"]
+
+        output = nodes.new("ShaderNodeOutputMaterial")
+        output.location = (360, 0)
+        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.location = (120, 0)
+        coords = nodes.new("ShaderNodeTexCoord")
+        coords.location = (-520, 0)
+        texture = nodes.new("ShaderNodeTexImage")
+        texture.name = f"Atlas Chunk {chunk_id:03d} Albedo"
+        texture.image = load_image_texture(albedo_path, colorspace="sRGB", pack_textures=pack_textures)
+        texture.interpolation = "Closest"
+        texture.extension = "CLIP"
+        texture.location = (-220, 0)
+        links.new(coords.outputs["UV"], texture.inputs["Vector"])
+        links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
+        links.new(texture.outputs["Alpha"], bsdf.inputs["Alpha"])
+        links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
+        materials[chunk_id] = mat
+    return materials
