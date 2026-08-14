@@ -26,6 +26,9 @@ class TestAtlasGenerator(unittest.TestCase):
         self.output_dir = Path("./tests/scratch_atlas_output")
 
     def test_atlas_generation(self):
+        from utils.dependencies import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed in test environment")
         if not self.jar_path.exists():
             self.skipTest(f"JAR file not found: {self.jar_path}")
 
@@ -125,4 +128,4 @@ class TestAtlasGenerator(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

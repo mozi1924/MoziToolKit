@@ -19,6 +19,7 @@ try:
         local_uv_from_atlas,
         local_uv_from_rect,
     )
+    from ...utils.dependencies import has_pillow
 except (ImportError, ValueError):
     from utils.zip_resource_pack import ZipResourcePack, get_cache_dir
     from utils.material_builder import rebuild_material
@@ -36,6 +37,7 @@ except (ImportError, ValueError):
         local_uv_from_atlas,
         local_uv_from_rect,
     )
+    from utils.dependencies import has_pillow
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -109,6 +111,8 @@ class StepReplaceMaterial(PipelineStep):
                 cache_is_current = False
 
         if not cache_is_current:
+            if not has_pillow():
+                return StepResult.failed("Atlas Mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it.")
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
             try:
                 gen = AtlasGenerator(pack.extract_dir)
