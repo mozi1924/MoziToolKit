@@ -552,7 +552,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         act_row = layout.row(align=True)
         act_row.scale_y = 1.2
         act_row.operator("mozi.install_all_dependencies", text="Install All Missing Dependencies", icon="IMPORT")
-        act_row.operator("mozi.check_dependencies", text="Refresh Status", icon="VIEWREFRESH")
+        act_row.operator("mozi.check_dependencies", text="Refresh Status", icon="FILE_REFRESH")
 
         layout.separator()
 
