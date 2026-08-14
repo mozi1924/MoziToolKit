@@ -67,7 +67,21 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertTrue(res.is_success, f"Atlas mode failed: {res.message}")
 
         assigned_mat = self.cube.material_slots[0].material
-        self.assertIn("mtk:atlas:", assigned_mat.name)
+        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+
+        # Verify LabPBR 1.3 Decoder node group is present in the node tree
+        node_names = [n.name for n in assigned_mat.node_tree.nodes]
+        self.assertIn("LabPBR 1.3 Decoder", node_names)
+
+        # Check metadata on material
+        self.assertEqual(assigned_mat.get("mtk:source_namespace"), "minecraft")
+        self.assertTrue(str(assigned_mat.get("mtk:source_texture")).startswith("atlas_chunk_"))
+        self.assertIsNotNone(assigned_mat.get("mtk:pack_hash"))
+
+        # Check image datablock naming with pack hash
+        albedo_images = [img for img in bpy.data.images if img.name.startswith("atlas_chunk_")]
+        self.assertGreater(len(albedo_images), 0)
+        self.assertIn(":", albedo_images[0].name)
 
         # Check custom property on node tree
         self.assertIn("mtk:atlas_mapping", assigned_mat.node_tree)
@@ -89,6 +103,34 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
             (uv.uv - original).length > 1e-6
             for uv, original in zip(uv_layer.data, self.original_uvs)
         ))
+
+    def test_atlas_mode_animated_material(self):
+        from pipeline.presets import run_preset_pipeline
+
+        # Replace material slot with valid animated block texture 'sea_lantern'
+        mat = bpy.data.materials.new(name="sea_lantern")
+        self.cube.data.materials.clear()
+        self.cube.data.materials.append(mat)
+
+        params = {
+            "zip_path": str(self.jar_path),
+            "material_mode": "ATLAS",
+            "pack_textures": True,
+            "use_cache": True,
+        }
+
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, f"Atlas mode animated material failed: {res.message}")
+
+        assigned_mat = self.cube.material_slots[0].material
+        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+
+        # Verify animation nodes inside node tree for animated chunk
+        node_names = [n.name for n in assigned_mat.node_tree.nodes]
+        self.assertIn("LabPBR 1.3 Decoder", node_names)
+        self.assertTrue(any("Scheduler" in name for name in node_names))
+        self.assertTrue(any("UV Mapping" in name for name in node_names))
+        self.assertTrue(any("Frame Blend" in name for name in node_names))
 
 
 if __name__ == "__main__":

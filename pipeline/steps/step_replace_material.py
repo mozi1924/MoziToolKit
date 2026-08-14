@@ -124,7 +124,7 @@ class StepReplaceMaterial(PipelineStep):
 
         atlas_materials = build_atlas_chunk_materials(
             atlas_dir,
-            material_prefix=f"mtk:atlas:{pack.pack_hash[:12]}",
+            pack_hash=pack.pack_hash,
             pack_textures=pack_textures,
             chunk_ids=required_chunk_ids,
         )
