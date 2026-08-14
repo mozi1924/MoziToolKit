@@ -7,15 +7,15 @@ try:
     from ...utils.material_builder import rebuild_material
     from ...utils.material_matching import extract_material_texture_keys
     from ...utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
-    from ...utils.atlas_builder import build_atlas_material
-    from ...utils.atlas_layout import atlas_uv_from_local, face_index_from_normal, static_cell
+    from ...utils.atlas_builder import build_atlas_chunk_materials
+    from ...utils.atlas_layout import atlas_uv_from_local, atlas_uv_from_rect
 except (ImportError, ValueError):
     from utils.zip_resource_pack import ZipResourcePack, get_cache_dir
     from utils.material_builder import rebuild_material
     from utils.material_matching import extract_material_texture_keys
     from utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
-    from utils.atlas_builder import build_atlas_material
-    from utils.atlas_layout import atlas_uv_from_local, face_index_from_normal, static_cell
+    from utils.atlas_builder import build_atlas_chunk_materials
+    from utils.atlas_layout import atlas_uv_from_local, atlas_uv_from_rect
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -76,11 +76,10 @@ class StepReplaceMaterial(PipelineStep):
         """Execute material replacement in Atlas Mode (single shared atlas material)."""
         cache_root = get_cache_dir()
         atlas_dir = cache_root / pack.pack_hash
-        albedo_path = atlas_dir / "atlas_albedo.png"
         mapping_path = atlas_dir / "atlas_mapping.json"
 
         cache_is_current = False
-        if albedo_path.exists() and mapping_path.exists():
+        if mapping_path.exists():
             try:
                 with open(mapping_path, "r", encoding="utf-8") as fp:
                     cache_is_current = (
@@ -97,31 +96,40 @@ class StepReplaceMaterial(PipelineStep):
             except Exception as e:
                 return StepResult.failed(f"Failed to generate Atlas texture: {e}")
 
-        # Build or get single Atlas Material
-        atlas_mat_name = f"mtk:atlas:{pack.pack_hash[:12]}"
-        atlas_mat = build_atlas_material(atlas_dir, mat_name=atlas_mat_name, pack_textures=pack_textures)
-
         # Load mapping JSON
         with open(mapping_path, "r", encoding="utf-8") as fp:
             mapping_data = json.load(fp)
 
-        # Construct fast material name lookup dictionary
-        mat_id_map = {}
-        for mat_entry in mapping_data.get("materials", []):
-            mat_name = mat_entry["name"].lower()
-            mat_id = mat_entry["material_id"]
-            mat_id_map[mat_name] = mat_id
-            # Map face texture stems as fallbacks
-            for face_tex in mat_entry.get("faces", {}).values():
-                if face_tex and face_tex.lower() not in mat_id_map:
-                    mat_id_map[face_tex.lower()] = mat_id
+        texture_map = {
+            name.lower(): location
+            for name, location in mapping_data.get("textures", {}).items()
+            if location is not None
+        }
+        chunks_by_id = {int(chunk["chunk_id"]): chunk for chunk in mapping_data.get("chunks", [])}
+
+        # Loading all animation chunks up front is needlessly expensive.  A
+        # mesh only needs the chunk(s) referenced by its current materials.
+        required_chunk_ids = set()
+        for obj in target_objects:
+            if obj.type != "MESH":
+                continue
+            for slot in obj.material_slots:
+                if not slot.material:
+                    continue
+                _namespace, candidates = extract_material_texture_keys(slot.material)
+                for candidate in candidates:
+                    location = texture_map.get(candidate.lower().replace(".png", ""))
+                    if location is not None:
+                        required_chunk_ids.add(int(location["chunk_id"]))
+
+        atlas_materials = build_atlas_chunk_materials(
+            atlas_dir,
+            material_prefix=f"mtk:atlas:{pack.pack_hash[:12]}",
+            pack_textures=pack_textures,
+            chunk_ids=required_chunk_ids,
+        )
 
         replaced_objects = 0
-        atlas_width = float(mapping_data["atlas_width"])
-        atlas_height = float(mapping_data["atlas_height"])
-        tile_size = float(mapping_data["tile_size"])
-        material_columns = int(mapping_data["static_material_columns"])
-
         for obj in target_objects:
             if obj.type != "MESH" or not obj.data or not obj.material_slots:
                 continue
@@ -138,14 +146,17 @@ class StepReplaceMaterial(PipelineStep):
                     f"'{obj.name}' has no UV map; Atlas UVs could not be written."
                 )
 
-            # Fetch or create 'material_id' face attribute
-            if "material_id" not in mesh.attributes:
-                attr = mesh.attributes.new(name="material_id", type="FLOAT", domain="FACE")
-            else:
-                attr = mesh.attributes["material_id"]
+            def face_attribute(name):
+                attribute = mesh.attributes.get(name)
+                if attribute is None:
+                    attribute = mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
+                return attribute
 
-            mat_ids = [0.0] * len(mesh.polygons)
-            resolved_ids = [None] * len(mesh.polygons)
+            chunk_attr = face_attribute("atlas_chunk_id")
+            texture_attr = face_attribute("atlas_texture_id")
+            chunk_ids = [-1.0] * len(mesh.polygons)
+            texture_ids = [-1.0] * len(mesh.polygons)
+            resolved_locations = [None] * len(mesh.polygons)
             poly_updated = False
 
             for poly_idx, poly in enumerate(mesh.polygons):
@@ -156,45 +167,58 @@ class StepReplaceMaterial(PipelineStep):
                     continue
 
                 namespace, candidates = extract_material_texture_keys(orig_slot.material)
-                found_id = None
+                location = None
                 for cand in candidates:
                     clean_cand = cand.lower().replace(".png", "")
-                    if clean_cand in mat_id_map:
-                        found_id = mat_id_map[clean_cand]
+                    if clean_cand in texture_map:
+                        location = texture_map[clean_cand]
                         break
 
-                if found_id is not None:
-                    mat_ids[poly_idx] = float(found_id)
-                    resolved_ids[poly_idx] = found_id
+                if location is not None:
+                    chunk_ids[poly_idx] = float(location["chunk_id"])
+                    texture_ids[poly_idx] = float(location["texture_id"])
+                    resolved_locations[poly_idx] = location
                     poly_updated = True
 
             if poly_updated:
-                attr.data.foreach_set("value", mat_ids)
+                chunk_attr.data.foreach_set("value", chunk_ids)
+                texture_attr.data.foreach_set("value", texture_ids)
                 if uv_layer is not None:
-                    for poly_idx, material_id in enumerate(resolved_ids):
-                        if material_id is None:
+                    for poly_idx, location in enumerate(resolved_locations):
+                        if location is None:
                             continue
                         polygon = mesh.polygons[poly_idx]
-                        tile_column, tile_row = static_cell(
-                            material_id,
-                            face_index_from_normal(polygon.normal),
-                            material_columns,
-                        )
+                        chunk = chunks_by_id[int(location["chunk_id"])]
                         for loop_index in polygon.loop_indices:
                             uv = uv_layer.data[loop_index].uv
-                            uv.x, uv.y = atlas_uv_from_local(
-                                uv.x, uv.y,
-                                tile_column=tile_column,
-                                tile_row=tile_row,
-                                tile_size=tile_size,
-                                atlas_width=atlas_width,
-                                atlas_height=atlas_height,
-                            )
-
-            # Assign single atlas material to all slots (or consolidate to slot 0)
-            obj.material_slots[0].material = atlas_mat
-            for slot_idx in range(1, len(obj.material_slots)):
-                obj.material_slots[slot_idx].material = atlas_mat
+                            if location["kind"] == "animation":
+                                uv.x, uv.y = atlas_uv_from_rect(
+                                    uv.x, uv.y,
+                                    pixel_x=float(location["pixel_x"]), pixel_y=float(location["pixel_y"]),
+                                    rect_width=float(location["frame_width"]), rect_height=float(location["frame_height"]),
+                                    atlas_width=float(chunk["width"]), atlas_height=float(chunk["height"]),
+                                )
+                            else:
+                                uv.x, uv.y = atlas_uv_from_local(
+                                    uv.x, uv.y,
+                                    tile_column=int(location["tile_column"]),
+                                    tile_row=int(location["tile_row"]),
+                                    tile_size=float(chunk["tile_size"]),
+                                    atlas_width=float(chunk["width"]),
+                                    atlas_height=float(chunk["height"]),
+                                )
+                used_chunk_ids = sorted({int(loc["chunk_id"]) for loc in resolved_locations if loc})
+                mesh.materials.clear()
+                for chunk_id in used_chunk_ids:
+                    mesh.materials.append(atlas_materials[chunk_id])
+                chunk_slots = {chunk_id: index for index, chunk_id in enumerate(used_chunk_ids)}
+                for poly_idx, location in enumerate(resolved_locations):
+                    if location is not None:
+                        mesh.polygons[poly_idx].material_index = chunk_slots[int(location["chunk_id"])]
+                    elif used_chunk_ids:
+                        # Preserve a valid material assignment for unmatched
+                        # faces; their UVs remain unchanged for diagnosis.
+                        mesh.polygons[poly_idx].material_index = 0
 
             replaced_objects += 1
 

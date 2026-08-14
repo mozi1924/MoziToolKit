@@ -33,6 +33,13 @@ def static_cell(material_id: int, face_index: int, material_columns: int) -> tup
             material_id // material_columns)
 
 
+def chunk_cell(texture_id: int, tiles_per_row: int) -> tuple[int, int]:
+    """Return the tile column and top-origin row inside one atlas chunk."""
+    tiles_per_row = max(1, int(tiles_per_row))
+    texture_id = max(0, int(texture_id))
+    return texture_id % tiles_per_row, texture_id // tiles_per_row
+
+
 def atlas_uv_from_local(
     u: float,
     v: float,
@@ -52,4 +59,26 @@ def atlas_uv_from_local(
     return (
         (tile_column + u) * tile_size / atlas_width,
         1.0 - (tile_row + 1.0 - v) * tile_size / atlas_height,
+    )
+
+
+def atlas_uv_from_rect(
+    u: float,
+    v: float,
+    *,
+    pixel_x: float,
+    pixel_y: float,
+    rect_width: float,
+    rect_height: float,
+    atlas_width: float,
+    atlas_height: float,
+) -> tuple[float, float]:
+    """Map UVs into an arbitrary top-origin atlas rectangle.
+
+    Animation chunks use this for their first frame: each source animation is
+    a full-height vertical strip, but preview samples only its top frame.
+    """
+    return (
+        (pixel_x + u * rect_width) / atlas_width,
+        1.0 - (pixel_y + (1.0 - v) * rect_height) / atlas_height,
     )
