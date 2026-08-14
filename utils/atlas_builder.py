@@ -233,15 +233,51 @@ def build_atlas_chunk_materials(
         is_animated = (chunk.get("kind") == "animation")
 
         if is_animated:
-            # Retrieve animation metadata for frame counts and tick timing
-            chunk_animations = [a for a in mapping.get("animations", []) if int(a.get("chunk_id", -1)) == chunk_id]
-            first_anim = chunk_animations[0] if chunk_animations else {}
-            mcmeta = first_anim.get("mcmeta", {})
-            frame_width = first_anim.get("frame_width") or chunk.get("width", 16)
-            frame_height = first_anim.get("frame_height") or chunk.get("tile_size") or 16
-            frame_count = first_anim.get("frame_count") or (chunk.get("height", 16) // frame_height if frame_height else 1)
-            frametime = mcmeta.get("frametime", 2)
-            interpolate = mcmeta.get("interpolate", False)
+            # Create geometry attribute readers for dynamic per-face/object animation properties
+            attr_frames = nodes.new("ShaderNodeAttribute")
+            attr_frames.name = "Attr Total Frames"
+            attr_frames.attribute_type = "GEOMETRY"
+            attr_frames.attribute_name = "mtk_anim_total_frames"
+            attr_frames.location = (-1500, 300)
+
+            max_frames = nodes.new("ShaderNodeMath")
+            max_frames.name = "Max Total Frames"
+            max_frames.operation = "MAXIMUM"
+            max_frames.inputs[1].default_value = 1.0
+            max_frames.location = (-1300, 300)
+            links.new(attr_frames.outputs["Fac"], max_frames.inputs[0])
+
+            attr_time = nodes.new("ShaderNodeAttribute")
+            attr_time.name = "Attr Frametime"
+            attr_time.attribute_type = "GEOMETRY"
+            attr_time.attribute_name = "mtk_anim_frametime"
+            attr_time.location = (-1500, 100)
+
+            max_time = nodes.new("ShaderNodeMath")
+            max_time.name = "Max Frametime"
+            max_time.operation = "MAXIMUM"
+            max_time.inputs[1].default_value = 1.0
+            max_time.location = (-1300, 100)
+            links.new(attr_time.outputs["Fac"], max_time.inputs[0])
+
+            attr_interp = nodes.new("ShaderNodeAttribute")
+            attr_interp.name = "Attr Interpolate"
+            attr_interp.attribute_type = "GEOMETRY"
+            attr_interp.attribute_name = "mtk_anim_interpolate"
+            attr_interp.location = (-1500, -100)
+
+            attr_height = nodes.new("ShaderNodeAttribute")
+            attr_height.name = "Attr Frame Height"
+            attr_height.attribute_type = "GEOMETRY"
+            attr_height.attribute_name = "mtk_anim_frame_height"
+            attr_height.location = (-1500, -300)
+
+            max_height = nodes.new("ShaderNodeMath")
+            max_height.name = "Max Frame Height"
+            max_height.operation = "MAXIMUM"
+            max_height.inputs[1].default_value = float(chunk.get("tile_size", 16))
+            max_height.location = (-1300, -300)
+            links.new(attr_height.outputs["Fac"], max_height.inputs[0])
 
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
                 fname = chunk_files.get(channel_key)
@@ -260,17 +296,17 @@ def build_atlas_chunk_materials(
                 scheduler.node_tree = templates["MC_Animation_Scheduler_Default"]
                 scheduler.name = f"MC .mcmeta Scheduler ({channel_name})"
                 scheduler.location = (-1050, base_y - 250)
-                scheduler.inputs["Total Frames"].default_value = max(1, frame_count)
-                scheduler.inputs["Frametime"].default_value = max(1, frametime)
-                scheduler.inputs["Interpolate"].default_value = bool(interpolate)
+                links.new(max_frames.outputs["Value"], scheduler.inputs["Total Frames"])
+                links.new(max_time.outputs["Value"], scheduler.inputs["Frametime"])
+                links.new(attr_interp.outputs["Fac"], scheduler.inputs["Interpolate"])
 
                 # UV Mapper
                 uv_node = nodes.new("ShaderNodeGroup")
                 uv_node.node_tree = templates["MC_Animated_UV_Mapping"]
                 uv_node.name = f"MC UV Mapping ({channel_name})"
                 uv_node.location = (-800, base_y)
-                uv_node.inputs["Frame Width"].default_value = float(frame_width)
-                uv_node.inputs["Frame Height"].default_value = float(frame_height)
+                links.new(max_height.outputs["Value"], uv_node.inputs["Frame Width"])
+                links.new(max_height.outputs["Value"], uv_node.inputs["Frame Height"])
                 uv_node.inputs["Image Width"].default_value = float(chunk["width"])
                 uv_node.inputs["Image Height"].default_value = float(chunk["height"])
                 if "Atlas Mode" in uv_node.inputs:

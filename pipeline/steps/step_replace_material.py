@@ -179,10 +179,20 @@ class StepReplaceMaterial(PipelineStep):
 
             chunk_attr = face_attribute("atlas_chunk_id")
             texture_attr = face_attribute("atlas_texture_id")
+            anim_frames_attr = face_attribute("mtk_anim_total_frames")
+            anim_frametime_attr = face_attribute("mtk_anim_frametime")
+            anim_interp_attr = face_attribute("mtk_anim_interpolate")
+            anim_height_attr = face_attribute("mtk_anim_frame_height")
+
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
+            anim_frames = [1.0] * len(mesh.polygons)
+            anim_frametimes = [1.0] * len(mesh.polygons)
+            anim_interps = [0.0] * len(mesh.polygons)
+            anim_heights = [16.0] * len(mesh.polygons)
             resolved_locations = [None] * len(mesh.polygons)
             poly_updated = False
+            primary_anim = None
 
             # Cache old atlas mappings per slot material to avoid redundant JSON parsing
             old_mappings = {}
@@ -213,12 +223,39 @@ class StepReplaceMaterial(PipelineStep):
                 if new_location is not None:
                     chunk_ids[poly_idx] = float(new_location["chunk_id"])
                     texture_ids[poly_idx] = float(new_location["texture_id"])
+                    if new_location.get("kind") == "animation":
+                        f_count = float(new_location.get("frame_count", 1))
+                        f_time = float(new_location.get("frametime", 1))
+                        f_interp = 1.0 if new_location.get("interpolate", False) else 0.0
+                        f_height = float(new_location.get("frame_height", 16))
+                        anim_frames[poly_idx] = f_count
+                        anim_frametimes[poly_idx] = f_time
+                        anim_interps[poly_idx] = f_interp
+                        anim_heights[poly_idx] = f_height
+                        if primary_anim is None:
+                            primary_anim = (f_count, f_time, f_interp, f_height)
+                    else:
+                        anim_frames[poly_idx] = 1.0
+                        anim_frametimes[poly_idx] = 1.0
+                        anim_interps[poly_idx] = 0.0
+                        anim_heights[poly_idx] = float(new_location.get("frame_height", 16))
+
                     resolved_locations[poly_idx] = (new_location, old_loc, orig_mode, old_mapping)
                     poly_updated = True
 
             if poly_updated:
                 chunk_attr.data.foreach_set("value", chunk_ids)
                 texture_attr.data.foreach_set("value", texture_ids)
+                anim_frames_attr.data.foreach_set("value", anim_frames)
+                anim_frametime_attr.data.foreach_set("value", anim_frametimes)
+                anim_interp_attr.data.foreach_set("value", anim_interps)
+                anim_height_attr.data.foreach_set("value", anim_heights)
+
+                if primary_anim is not None:
+                    obj["mtk_anim_total_frames"] = int(primary_anim[0])
+                    obj["mtk_anim_frametime"] = int(primary_anim[1])
+                    obj["mtk_anim_interpolate"] = bool(primary_anim[2])
+                    obj["mtk_anim_frame_height"] = int(primary_anim[3])
 
                 if uv_layer is not None:
                     for poly_idx, resolved in enumerate(resolved_locations):
@@ -406,10 +443,20 @@ class StepReplaceMaterial(PipelineStep):
 
                 # If the mesh previously had atlas attributes, clean them up
                 if has_atlas_source:
-                    for attr_name in ("atlas_chunk_id", "atlas_texture_id"):
+                    for attr_name in (
+                        "atlas_chunk_id", "atlas_texture_id",
+                        "mtk_anim_total_frames", "mtk_anim_frametime",
+                        "mtk_anim_interpolate", "mtk_anim_frame_height",
+                    ):
                         attr = mesh.attributes.get(attr_name)
                         if attr:
                             mesh.attributes.remove(attr)
+                    for prop in (
+                        "mtk_anim_total_frames", "mtk_anim_frametime",
+                        "mtk_anim_interpolate", "mtk_anim_frame_height",
+                    ):
+                        if prop in obj:
+                            del obj[prop]
 
         if assigned_count == 0:
             return StepResult.success("No exact material matches found; selected objects were left unchanged.")
