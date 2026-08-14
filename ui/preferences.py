@@ -1,4 +1,6 @@
 import bpy
+import site
+import sys
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 from ..utils.menu_config import (
@@ -9,6 +11,13 @@ from ..utils.menu_config import (
     normalize_operator_id,
     reset_config,
     save_config,
+)
+from ..utils.dependencies import (
+    DEPENDENCIES,
+    ensure_sys_paths,
+    get_all_dependency_statuses,
+    get_python_executable,
+    has_all_dependencies,
 )
 
 
@@ -320,16 +329,40 @@ class MOZI_OT_menu_import_config(bpy.types.Operator, ImportHelper):
 class MOZI_AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__.rsplit(".", 1)[0]
 
-
     active_tab: EnumProperty(
         name="View Tab",
-        description="Select space/view mode right-click menu to configure",
+        description="Select preferences section to configure",
         items=[
             ("mesh", "Mesh Edit Mode (3D View)", "Mesh Edit Mode Context Menu"),
             ("object", "Object Mode (3D View)", "Object Mode Context Menu"),
             ("uv", "UV Editor", "UV Editor Context Menu"),
+            ("dependencies", "Dependencies (依赖管理)", "Manage Python dependencies required by MoziToolKit"),
         ],
         default="mesh",
+    )
+
+    pypi_mirror: EnumProperty(
+        name="PyPI Mirror",
+        description="Select PyPI mirror source for fast and reliable dependency downloads",
+        items=[
+            ("TSINGHUA", "Tsinghua (清华大学镜像源 - 推荐)", "https://pypi.tuna.tsinghua.edu.cn/simple"),
+            ("ALIYUN", "Aliyun (阿里云镜像源)", "https://mirrors.aliyun.com/pypi/simple/"),
+            ("TENCENT", "Tencent (腾讯云镜像源)", "https://mirrors.cloud.tencent.com/pypi/simple/"),
+            ("USTC", "USTC (中国科技大学镜像源)", "https://pypi.mirrors.ustc.edu.cn/simple/"),
+            ("OFFICIAL", "Official (PyPI 官方源)", "https://pypi.org/simple"),
+            ("CUSTOM", "Custom (自定义镜像源)", "Use custom index URL"),
+        ],
+        default="TSINGHUA",
+    )
+    custom_pypi_mirror: StringProperty(
+        name="Custom Mirror URL",
+        description="Custom Python Package Index URL",
+        default="",
+    )
+    last_install_log: StringProperty(
+        name="Last Install Log",
+        description="Console and pip output log from last installation",
+        default="",
     )
 
     added_mesh: CollectionProperty(type=MOZI_PG_context_menu_item)
@@ -354,21 +387,24 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             sync_prefs_from_json(self)
             self.is_initialized = True
 
-
         layout = self.layout
 
-        # Top Bar (Header Actions)
+        # View Tabs
+        tab_row = layout.row(align=True)
+        tab_row.prop(self, "active_tab", expand=True)
+
+        layout.separator()
+
+        if self.active_tab == "dependencies":
+            self.draw_dependencies(layout, context)
+            return
+
+        # Top Bar (Header Actions for Menu tabs)
         top_box = layout.box()
         top_row = top_box.row(align=True)
         top_row.operator(MOZI_OT_menu_reset_config.bl_idname, text="Reset Default Presets", icon="FILE_REFRESH")
         top_row.operator(MOZI_OT_menu_import_config.bl_idname, text="Import Presets JSON...", icon="IMPORT")
         top_row.operator(MOZI_OT_menu_export_config.bl_idname, text="Export Presets JSON...", icon="EXPORT")
-
-        layout.separator()
-
-        # View Tabs
-        tab_row = layout.row(align=True)
-        tab_row.prop(self, "active_tab", expand=True)
 
         layout.separator()
 
@@ -407,7 +443,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             edit_box.label(text="Edit Menu Item Description (修改右键菜单描述):", icon="EDITMODE_HLT")
             edit_box.prop(item, "label", text="Description")
 
-
         # Middle Column: Action Buttons (Icon-Only Compact Column)
         mid_col = main_row.column(align=True)
         mid_col.alignment = "CENTER"
@@ -437,7 +472,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         op_down = sub_row4.operator(MOZI_OT_menu_move_item.bl_idname, text="", icon="TRIA_DOWN")
         op_down.direction = "DOWN"
 
-
         # Right Column: Available / Unadded Options
         right_col = main_row.column(align=False)
         right_box = right_col.box()
@@ -451,3 +485,106 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             unadded_idx_name,
             rows=6,
         )
+
+    def draw_dependencies(self, layout, context):
+        statuses = get_all_dependency_statuses()
+        all_ok = has_all_dependencies()
+
+        # Status Summary Banner
+        status_box = layout.box()
+        banner_row = status_box.row(align=True)
+        if all_ok:
+            banner_row.label(text="All required Python dependencies are installed and ready to use.", icon="CHECKMARK")
+        else:
+            banner_row.alert = True
+            banner_row.label(text="Some dependencies are missing. Click 'Install' below to enable all features.", icon="ERROR")
+
+        layout.separator()
+
+        # Dependencies List Box
+        list_box = layout.box()
+        header_row = list_box.row()
+        header_row.label(text="Required Python Packages (所需 Python 依赖库):", icon="PACKAGE")
+
+        col = list_box.column(align=False)
+        for item in statuses:
+            dep_box = col.box()
+            row = dep_box.row(align=False)
+
+            # Left Info Column
+            info_col = row.column(align=False)
+            title_row = info_col.row(align=True)
+            title_row.label(text=item["display_name"], icon="SCRIPT")
+            if item["installed"]:
+                title_row.label(text=f"(v{item['version'] or 'unknown'})", icon="NONE")
+            else:
+                title_row.label(text="(Not Installed / 未安装)", icon="NONE")
+
+            desc_row = info_col.row(align=True)
+            desc_row.scale_y = 0.85
+            desc_row.label(text=item["description"] or "")
+
+            if item["required_by"]:
+                req_row = info_col.row(align=True)
+                req_row.scale_y = 0.85
+                req_row.label(text=f"Used by: {item['required_by']}")
+
+            # Right Action Column
+            action_col = row.column(align=True)
+            action_col.alignment = "RIGHT"
+            if item["installed"]:
+                tag_row = action_col.row(align=True)
+                tag_row.label(text="Installed (已就绪)", icon="CHECKMARK")
+                btn = action_col.operator("mozi.install_dependency", text="Update / Reinstall", icon="FILE_REFRESH")
+                btn.package_name = item["name"]
+                btn.upgrade = True
+            else:
+                tag_row = action_col.row(align=True)
+                tag_row.alert = True
+                tag_row.label(text="Missing (未安装)", icon="CANCEL")
+                btn = action_col.operator("mozi.install_dependency", text="Install Package", icon="IMPORT")
+                btn.package_name = item["name"]
+                btn.upgrade = False
+
+        layout.separator()
+
+        # Global Actions Row
+        act_row = layout.row(align=True)
+        act_row.scale_y = 1.2
+        act_row.operator("mozi.install_all_dependencies", text="Install All Missing Dependencies", icon="IMPORT")
+        act_row.operator("mozi.check_dependencies", text="Refresh Status", icon="VIEWREFRESH")
+
+        layout.separator()
+
+        # Download & Mirror Settings Box
+        mirror_box = layout.box()
+        mirror_box.label(text="Download & Mirror Configuration (下载源配置):", icon="INTERNET")
+        mirror_box.prop(self, "pypi_mirror", text="PyPI Mirror")
+        if self.pypi_mirror == "CUSTOM":
+            mirror_box.prop(self, "custom_pypi_mirror", text="Custom URL")
+
+        layout.separator()
+
+        # Python Environment Info Box
+        env_box = layout.box()
+        env_box.label(text="Python Environment Details (Python 环境信息):", icon="INFO")
+        env_col = env_box.column(align=True)
+        env_col.scale_y = 0.85
+        env_col.label(text=f"Python Executable: {get_python_executable()}")
+        env_col.label(text=f"Python Version: {sys.version.split()[0]}")
+        try:
+            user_site = site.getusersitepackages()
+            env_col.label(text=f"User Site-Packages: {user_site}")
+        except Exception:
+            pass
+
+        # Installation Output Log Box
+        if self.last_install_log:
+            layout.separator()
+            log_box = layout.box()
+            log_box.label(text="Last Installation Output Log (最新安装日志):", icon="TEXT")
+            log_col = log_box.column(align=True)
+            log_col.scale_y = 0.8
+            lines = self.last_install_log.strip().splitlines()
+            for line in lines[-15:]:
+                log_col.label(text=line)

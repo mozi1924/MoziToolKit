@@ -24,6 +24,12 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.jar_path = Path("/Users/jaxlocke/26.2-Fabric.jar")
         if not self.jar_path.exists():
             self.skipTest(f"JAR file not found: {self.jar_path}")
+        try:
+            import zipfile
+            with zipfile.ZipFile(self.jar_path, "r") as zf:
+                pass
+        except Exception:
+            self.skipTest(f"JAR file not accessible: {self.jar_path}")
 
         # Clear existing scene objects and materials
         bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -54,6 +60,10 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertIn("mtk:minecraft:stone", self.cube.material_slots[0].material.name)
 
     def test_atlas_mode(self):
+        from utils.dependencies import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed in test environment")
+
         from pipeline.presets import run_preset_pipeline
 
         params = {
@@ -105,6 +115,10 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         ))
 
     def test_atlas_mode_animated_material(self):
+        from utils.dependencies import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed in test environment")
+
         from pipeline.presets import run_preset_pipeline
 
         # Replace material slot with valid animated block texture 'sea_lantern'

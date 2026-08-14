@@ -64,7 +64,10 @@ def get_all_submodules(directory):
 
 def iter_submodules(path, package_name):
     for name in sorted(iter_submodule_names(path)):
-        yield importlib.import_module("." + name, package_name)
+        if package_name:
+            yield importlib.import_module("." + name, package_name)
+        else:
+            yield importlib.import_module(name)
 
 
 def iter_submodule_names(path, root=""):

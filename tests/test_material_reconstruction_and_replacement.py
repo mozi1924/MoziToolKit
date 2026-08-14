@@ -205,6 +205,10 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:stone"))
 
         # Step 2: Convert Standalone -> Atlas
+        from utils.dependencies import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment; skipping Atlas step")
+
         params_atlas = {
             "zip_path": str(self.pack_dir),
             "material_mode": "ATLAS",

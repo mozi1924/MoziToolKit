@@ -11,8 +11,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# Add project root directory to sys.path
+# Add project root and parent directory to sys.path
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
+PARENT_DIR = PROJECT_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
@@ -23,11 +26,19 @@ import bmesh
 class TestPipelineFramework(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Register addon if auto_load is present
+        # Register addon package dynamically
         try:
-            import auto_load
-            auto_load.init()
-            auto_load.register()
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "MoziToolKit",
+                str(PROJECT_DIR / "__init__.py"),
+                submodule_search_locations=[str(PROJECT_DIR)]
+            )
+            pkg = importlib.util.module_from_spec(spec)
+            sys.modules["MoziToolKit"] = pkg
+            spec.loader.exec_module(pkg)
+            if hasattr(pkg, "register"):
+                pkg.register()
         except Exception as e:
             print(f"[Test Init] Extension registration note: {e}")
 

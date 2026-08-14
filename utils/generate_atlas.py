@@ -13,15 +13,15 @@ try:
 except ImportError:
     from atlas_layout import FACE_ORDER
 
-# Auto-discover user site packages for PIL when running inside Blender Python
-for site_path in [
-    Path.home() / ".local" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages",
-    Path.home() / "Library" / "Python" / f"{sys.version_info.major}.{sys.version_info.minor}" / "lib" / "python" / "site-packages",
-    Path.home() / "Library" / "Python" / "3.14" / "lib" / "python" / "site-packages",
-    Path.home() / "Library" / "Python" / "3.13" / "lib" / "python" / "site-packages",
-]:
-    if site_path.exists() and str(site_path) not in sys.path:
-        sys.path.append(str(site_path))
+try:
+    from .dependencies import ensure_sys_paths, has_pillow
+    ensure_sys_paths()
+except (ImportError, ValueError):
+    try:
+        from dependencies import ensure_sys_paths, has_pillow
+        ensure_sys_paths()
+    except ImportError:
+        pass
 
 try:
     from PIL import Image

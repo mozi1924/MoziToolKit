@@ -1,6 +1,7 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from ...utils.menu_config import register_menu_item
+from ...utils.dependencies import has_pillow
 
 
 @register_menu_item(views=["object"], label="替换材质")
@@ -60,6 +61,15 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         box = layout.box()
         box.label(text="Material Options", icon='TEXTURE')
         box.prop(self, "material_mode", text="Mode")
+
+        if self.material_mode == 'ATLAS' and not has_pillow():
+            alert_box = layout.box()
+            alert_box.alert = True
+            alert_box.label(text="Atlas mode requires 'Pillow' dependency (Missing)!", icon='ERROR')
+            alert_box.label(text="Please install it in Addon Preferences > Dependencies.")
+            op = alert_box.operator("mozi.open_preferences", text="Install Dependencies (前往安装依赖)", icon='PREFERENCES')
+            op.tab = "dependencies"
+
         box.prop(self, "pack_textures")
         box.prop(self, "use_cache")
 
@@ -67,6 +77,13 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         if not self.filepath:
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
+
+        if self.material_mode == 'ATLAS' and not has_pillow():
+            self.report(
+                {'ERROR'},
+                "Atlas mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it."
+            )
+            return {"CANCELLED"}
 
         from ...pipeline.presets import run_preset_pipeline
 
