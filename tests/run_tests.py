@@ -347,8 +347,45 @@ class TestPipelineFramework(unittest.TestCase):
             hash_a_dirty = get_pack_hash(dir_a)
             self.assertEqual(hash_a, hash_a_dirty)
 
+    def test_parse_mcmeta_non_animation_metadata_returns_none(self):
+        from utils.zip_resource_pack import parse_mcmeta, ZipResourcePack
 
+        with tempfile.TemporaryDirectory() as base_dir:
+            pack_dir = Path(base_dir) / "test_pack"
+            tex_dir = pack_dir / "assets/minecraft/textures/block"
+            tex_dir.mkdir(parents=True)
 
+            # 1. Non-animated .mcmeta (leaves with mipmap_strategy)
+            leaves_meta = tex_dir / "oak_leaves.png.mcmeta"
+            leaves_meta.write_text('{"texture": {"mipmap_strategy": "dark_cutout"}}', encoding="utf-8")
+            self.assertIsNone(parse_mcmeta(leaves_meta))
+
+            # 2. Non-animated .mcmeta (tripwire with alpha_cutoff_bias)
+            tripwire_meta = tex_dir / "tripwire.png.mcmeta"
+            tripwire_meta.write_text('{"texture": {"alpha_cutoff_bias": 0.1}}', encoding="utf-8")
+            self.assertIsNone(parse_mcmeta(tripwire_meta))
+
+            # 3. Valid animated .mcmeta (lava)
+            lava_meta = tex_dir / "lava_still.png.mcmeta"
+            lava_meta.write_text('{"animation": {"frametime": 2, "interpolate": true}}', encoding="utf-8")
+            parsed_lava = parse_mcmeta(lava_meta)
+            self.assertIsNotNone(parsed_lava)
+            self.assertEqual(parsed_lava["frametime"], 2)
+            self.assertTrue(parsed_lava["interpolate"])
+
+            # 4. Check ZipResourcePack texture_index entries
+            (tex_dir / "oak_leaves.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01")
+            (tex_dir / "lava_still.png").write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x02")
+
+            pack = ZipResourcePack(str(pack_dir), use_cache=False)
+            leaves_info = pack.get_texture_info("oak_leaves")
+            self.assertIsNotNone(leaves_info)
+            self.assertIsNone(leaves_info["albedo_mcmeta"])
+
+            lava_info = pack.get_texture_info("lava_still")
+            self.assertIsNotNone(lava_info)
+            self.assertIsNotNone(lava_info["albedo_mcmeta"])
+            self.assertEqual(lava_info["albedo_mcmeta"]["frametime"], 2)
 
     def test_batch_material_replacement_shares_session_material(self):
         from pipeline.presets import run_preset_pipeline

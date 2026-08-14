@@ -167,6 +167,95 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertEqual(location["frame_count"], 3)
             self.assertEqual(location["frametime"], 3)
 
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_non_animated_mcmeta_stays_in_static_chunk(self):
+        """Textures with texture-only mcmeta (like leaves or flowers) or 1 frame must stay in static chunk."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            textures = root / "assets" / "minecraft" / "textures" / "block"
+            textures.mkdir(parents=True)
+
+            # 1. Oak leaves with mipmap_strategy (non-animation mcmeta)
+            Image.new("RGBA", (16, 16), (34, 139, 34, 255)).save(textures / "oak_leaves.png")
+            (textures / "oak_leaves.png.mcmeta").write_text(
+                '{"texture": {"mipmap_strategy": "dark_cutout"}}', encoding="utf-8"
+            )
+
+            # 2. Dandelion with strict_cutout
+            Image.new("RGBA", (16, 16), (255, 255, 0, 255)).save(textures / "dandelion.png")
+            (textures / "dandelion.png.mcmeta").write_text(
+                '{"texture": {"mipmap_strategy": "strict_cutout"}}', encoding="utf-8"
+            )
+
+            # 3. Tripwire with alpha_cutoff_bias
+            Image.new("RGBA", (16, 16), (200, 200, 200, 255)).save(textures / "tripwire.png")
+            (textures / "tripwire.png.mcmeta").write_text(
+                '{"texture": {"alpha_cutoff_bias": 0.1}}', encoding="utf-8"
+            )
+
+            # 4. Single frame texture with empty animation mcmeta (16x16 -> frame_count=1)
+            Image.new("RGBA", (16, 16), (100, 100, 100, 255)).save(textures / "single_frame.png")
+            (textures / "single_frame.png.mcmeta").write_text(
+                '{"animation": {}}', encoding="utf-8"
+            )
+
+            # 5. Truly animated texture (16x32 -> 2 frames)
+            Image.new("RGBA", (16, 32), (255, 69, 0, 255)).save(textures / "lava_still.png")
+            (textures / "lava_still.png.mcmeta").write_text(
+                '{"animation": {"frametime": 2}}', encoding="utf-8"
+            )
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            # Static textures must be kind='static'
+            self.assertEqual(mapping["textures"]["oak_leaves"]["kind"], "static")
+            self.assertEqual(mapping["textures"]["dandelion"]["kind"], "static")
+            self.assertEqual(mapping["textures"]["tripwire"]["kind"], "static")
+            self.assertEqual(mapping["textures"]["single_frame"]["kind"], "static")
+
+            # Animated texture must be kind='animation'
+            self.assertEqual(mapping["textures"]["lava_still"]["kind"], "animation")
+            self.assertEqual(mapping["textures"]["lava_still"]["frame_count"], 2)
+
+            # Check animations count in mapping
+            self.assertEqual(len(mapping["animations"]), 1)
+            self.assertEqual(mapping["animations"][0]["name"], "lava_still")
+
+            # Check that static chunk contains the static textures
+            static_chunks = [c for c in mapping["chunks"] if c["kind"] == "static"]
+            anim_chunks = [c for c in mapping["chunks"] if c["kind"] == "animation"]
+            self.assertTrue(len(static_chunks) >= 1)
+            self.assertEqual(len(anim_chunks), 1)
+
+    def test_jar_classification_leaves_and_glass_are_static(self):
+        """In 26.2-Fabric.jar, leaves/glass/flowers must be static and only real animations in animation chunk."""
+        if not self.jar_path.exists():
+            self.skipTest(f"JAR file not found: {self.jar_path}")
+
+        generator = AtlasGenerator(self.jar_path)
+        generator.load_resources()
+
+        # Check static textures
+        self.assertIn("oak_leaves", generator.static_textures)
+        self.assertIn("dark_oak_leaves", generator.static_textures)
+        self.assertIn("birch_leaves", generator.static_textures)
+        self.assertIn("glass", generator.static_textures)
+        self.assertIn("dandelion", generator.static_textures)
+
+        # Check they are NOT in animated textures
+        self.assertNotIn("oak_leaves", generator.animated_textures)
+        self.assertNotIn("dark_oak_leaves", generator.animated_textures)
+        self.assertNotIn("glass", generator.animated_textures)
+
+        # Check truly animated textures are in animated_textures
+        self.assertIn("fire_0", generator.animated_textures)
+        self.assertIn("lava_still", generator.animated_textures)
+        self.assertIn("water_flow", generator.animated_textures)
+        self.assertIn("prismarine", generator.animated_textures)
+        self.assertIn("magma", generator.animated_textures)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

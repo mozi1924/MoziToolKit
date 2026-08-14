@@ -114,18 +114,22 @@ def build_channel_nodes(
     if not img:
         return
 
-    is_animated = bool(mcmeta_data)
+    img_width = img.size[0] if img.size[0] > 0 else 16
+    img_height = img.size[1] if img.size[1] > 0 else 16
+
+    is_animated = False
+    if mcmeta_data and isinstance(mcmeta_data, dict):
+        frame_width = mcmeta_data.get("width") or img_width
+        frame_height = mcmeta_data.get("height") or frame_width
+        frametime = mcmeta_data.get("frametime", 1)
+        interpolate = mcmeta_data.get("interpolate", False)
+        frames = mcmeta_data.get("frames", [])
+        total_frames = img_height // frame_height if frame_height > 0 else 1
+        if total_frames > 1 or (isinstance(frames, list) and len(frames) > 1):
+            is_animated = True
 
     if is_animated:
         # --- ANIMATED BRANCH ---
-        img_width = img.size[0] if img.size[0] > 0 else 16
-        img_height = img.size[1] if img.size[1] > 0 else 16
-        
-        frame_width = mcmeta_data.get("width") or img_width
-        frame_height = mcmeta_data.get("height") or frame_width
-        frametime = mcmeta_data.get("frametime", 2)
-        interpolate = mcmeta_data.get("interpolate", False)
-        total_frames = img_height // frame_height if frame_height > 0 else 1
 
         # Each channel needs its own scheduler.  A single shared scheduler
         # caused the last processed .mcmeta to overwrite every channel's
