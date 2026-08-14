@@ -273,6 +273,8 @@ def build_atlas_chunk_materials(
                 uv_node.inputs["Frame Height"].default_value = float(frame_height)
                 uv_node.inputs["Image Width"].default_value = float(chunk["width"])
                 uv_node.inputs["Image Height"].default_value = float(chunk["height"])
+                if "Atlas Mode" in uv_node.inputs:
+                    uv_node.inputs["Atlas Mode"].default_value = 1.0
 
                 links.new(tex_coord.outputs["UV"], uv_node.inputs["Vector"])
                 links.new(scheduler.outputs["Current Frame"], uv_node.inputs["Current Frame"])

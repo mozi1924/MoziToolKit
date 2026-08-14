@@ -243,6 +243,122 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             self.assertAlmostEqual(v_res, v_orig, places=4)
 
 
+class TestAnimatedUVMapping(unittest.TestCase):
+    """Test animated UV node template construction, socket contract, and standalone/atlas math."""
+
+    def setUp(self):
+        if not HAS_BPY:
+            self.skipTest("bpy not available")
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+
+    def test_animated_uv_node_group_interface(self):
+        from utils.node_groups.animated import ensure_animated_uv_mapping, UV_TEMPLATE_VERSION
+        group = ensure_animated_uv_mapping()
+        self.assertIsNotNone(group)
+        self.assertEqual(group.get("mozi_template_version"), UV_TEMPLATE_VERSION)
+
+        input_names = [s.name for s in group.interface.items_tree if s.in_out == "INPUT"]
+        output_names = [s.name for s in group.interface.items_tree if s.in_out == "OUTPUT"]
+
+        expected_inputs = [
+            "Vector", "Current Frame", "Next Frame", "Blend Factor",
+            "Frame Width", "Frame Height", "Image Width", "Image Height",
+            "Atlas Mode",
+        ]
+        for name in expected_inputs:
+            self.assertIn(name, input_names, f"Missing input socket '{name}' in MC_Animated_UV_Mapping")
+
+        expected_outputs = ["Current UV", "Next UV", "Blend Factor"]
+        for name in expected_outputs:
+            self.assertIn(name, output_names, f"Missing output socket '{name}' in MC_Animated_UV_Mapping")
+
+    def test_standalone_and_atlas_uv_math(self):
+        """Verify the mathematical mapping logic for Standalone (Local UV) and Atlas (Pre-mapped UV)."""
+        def compute_animated_uv(u, v, frame, frame_w, frame_h, img_w, img_h, atlas_mode):
+            frame_step_v = frame_h / img_h
+            frame_step_u = frame_w / img_w
+            if atlas_mode == 0.0:
+                # Standalone / Local UV Mode
+                base_u = u * frame_step_u
+                base_v = 1.0 - (1.0 - v) * frame_step_v
+            else:
+                # Atlas Mode (pre-mapped UV)
+                base_u = u
+                base_v = v
+            final_u = base_u
+            final_v = base_v - frame * frame_step_v
+            return final_u, final_v
+
+        # Case 1: Standalone animated texture (16x512, 32 frames of 16x16)
+        # Face quad local UV spans (0..1, 0..1)
+        # Frame 0:
+        u0_bl, v0_bl = compute_animated_uv(0.0, 0.0, 0, 16, 16, 16, 512, 0.0)
+        u0_tr, v0_tr = compute_animated_uv(1.0, 1.0, 0, 16, 16, 16, 512, 0.0)
+        self.assertAlmostEqual(u0_bl, 0.0)
+        self.assertAlmostEqual(v0_bl, 1.0 - 16 / 512)
+        self.assertAlmostEqual(u0_tr, 1.0)
+        self.assertAlmostEqual(v0_tr, 1.0)
+
+        # Frame 1:
+        u1_bl, v1_bl = compute_animated_uv(0.0, 0.0, 1, 16, 16, 16, 512, 0.0)
+        u1_tr, v1_tr = compute_animated_uv(1.0, 1.0, 1, 16, 16, 16, 512, 0.0)
+        self.assertAlmostEqual(u1_bl, 0.0)
+        self.assertAlmostEqual(v1_bl, 1.0 - 32 / 512)
+        self.assertAlmostEqual(u1_tr, 1.0)
+        self.assertAlmostEqual(v1_tr, 1.0 - 16 / 512)
+
+        # Frame 31 (last frame):
+        u31_bl, v31_bl = compute_animated_uv(0.0, 0.0, 31, 16, 16, 16, 512, 0.0)
+        self.assertAlmostEqual(u31_bl, 0.0)
+        self.assertAlmostEqual(v31_bl, 0.0)
+
+        # Case 2: Atlas animated texture (64x512 chunk, animation at column pixel_x=16)
+        # Mesh UV was pre-mapped via atlas_uv_from_rect:
+        u_atlas_bl, v_atlas_bl = atlas_uv_from_rect(0.0, 0.0, pixel_x=16, pixel_y=0, rect_width=16, rect_height=16, atlas_width=64, atlas_height=512)
+        u_atlas_tr, v_atlas_tr = atlas_uv_from_rect(1.0, 1.0, pixel_x=16, pixel_y=0, rect_width=16, rect_height=16, atlas_width=64, atlas_height=512)
+
+        # Frame 0 in Atlas Mode (atlas_mode = 1.0):
+        u0_atlas, v0_atlas = compute_animated_uv(u_atlas_tr, v_atlas_tr, 0, 16, 16, 64, 512, 1.0)
+        self.assertAlmostEqual(u0_atlas, (16 + 16) / 64)
+        self.assertAlmostEqual(v0_atlas, 1.0)
+
+        # Frame 1 in Atlas Mode:
+        u1_atlas, v1_atlas = compute_animated_uv(u_atlas_tr, v_atlas_tr, 1, 16, 16, 64, 512, 1.0)
+        self.assertAlmostEqual(u1_atlas, (16 + 16) / 64)
+        self.assertAlmostEqual(v1_atlas, 1.0 - 16 / 512)
+
+    def test_repair_sets_correct_atlas_mode(self):
+        # 1. Standalone material with animated UV node
+        from utils.node_groups import ensure_all_templates
+        templates = ensure_all_templates()
+
+        mat_standalone = bpy.data.materials.new("mtk:minecraft:sea_lantern:abcdef123456")
+        mat_standalone["mtk:source_namespace"] = "minecraft"
+        mat_standalone["mtk:source_texture"] = "sea_lantern"
+        mat_standalone.use_nodes = True
+        uv_node_std = mat_standalone.node_tree.nodes.new("ShaderNodeGroup")
+        uv_node_std.node_tree = templates["MC_Animated_UV_Mapping"]
+        uv_node_std.name = "MC UV Mapping (Albedo)"
+        uv_node_std.inputs["Atlas Mode"].default_value = 1.0  # Wrong value
+
+        # Repair
+        repair_material_nodes(mat_standalone)
+        self.assertEqual(uv_node_std.inputs["Atlas Mode"].default_value, 0.0)
+
+        # 2. Atlas material with animated UV node
+        mat_atlas = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001:abcdef123456")
+        mat_atlas["mtk:atlas_chunk_id"] = 1
+        mat_atlas.use_nodes = True
+        uv_node_atl = mat_atlas.node_tree.nodes.new("ShaderNodeGroup")
+        uv_node_atl.node_tree = templates["MC_Animated_UV_Mapping"]
+        uv_node_atl.name = "MC UV Mapping (Albedo)"
+        uv_node_atl.inputs["Atlas Mode"].default_value = 0.0  # Wrong value
+
+        # Repair
+        repair_material_nodes(mat_atlas)
+        self.assertEqual(uv_node_atl.inputs["Atlas Mode"].default_value, 1.0)
+
+
 def run_all_tests():
     import os
     print("=" * 60)
@@ -252,6 +368,7 @@ def run_all_tests():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(TestUVTransformMath))
+    suite.addTests(loader.loadTestsFromTestCase(TestAnimatedUVMapping))
     suite.addTests(loader.loadTestsFromTestCase(TestMaterialReconstructionAndRepair))
     suite.addTests(loader.loadTestsFromTestCase(TestCrossModeMaterialReplacement))
 
@@ -268,3 +385,4 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
+

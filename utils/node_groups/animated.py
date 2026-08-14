@@ -7,13 +7,14 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-# Version 6 changes the coordinate contract: ``Vector`` is always the UV of
-# frame 0 in its *final image*, whether that image is a standalone animation
-# strip or an atlas chunk.  Advancing a Minecraft animation only moves that
-# coordinate vertically by one frame height; it must never rescale the UV
-# again.  Rescaling absolute atlas UVs was what made atlas animations sample
-# the wrong texels.
-UV_TEMPLATE_VERSION = 6
+# Version 7 supports both Standalone and Atlas material modes:
+# - In Standalone mode (Atlas Mode = 0.0), Vector is local quad UV (0..1, 0..1).
+#   The UV is mapped into Frame 0 (top of strip) using Frame/Image dimensions.
+# - In Atlas mode (Atlas Mode = 1.0), Vector is already pre-mapped into the
+#   atlas chunk's Frame 0 rectangle by mesh UV transformation.
+# In both modes, Current Frame and Next Frame subtract vertical frame steps
+# from the base Frame 0 coordinate.
+UV_TEMPLATE_VERSION = 7
 SCHEDULER_TEMPLATE_VERSION = 4
 FRAME_BLEND_TEMPLATE_VERSION = 3
 
@@ -31,32 +32,67 @@ def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
         ("Frame Height", "INPUT", "NodeSocketFloat", 16.0),
         ("Image Width", "INPUT", "NodeSocketFloat", 16.0),
         ("Image Height", "INPUT", "NodeSocketFloat", 16.0),
+        ("Atlas Mode", "INPUT", "NodeSocketFloat", 0.0),
         ("Current UV", "OUTPUT", "NodeSocketVector", None),
         ("Next UV", "OUTPUT", "NodeSocketVector", None),
         ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0),
     ))
     nodes, links = group.nodes, group.links
-    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-800, 0))
-    group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(800, 0))
-    # The incoming UV already identifies frame 0.  This is true for a
-    # standalone image (0..1) and for an atlas (a sub-rectangle of 0..1).
-    # Calculate one normalized frame step and subtract it per frame: the
-    # source images are stored top-to-bottom while Blender V grows upward.
-    frame_step = node(nodes, "ShaderNodeMath", "Frame V Step", location=(-500, -80), properties={"operation": "DIVIDE"})
-    link(links, group_input, "Frame Height", frame_step, "Value[0]")
-    link(links, group_input, "Image Height", frame_step, "Value[1]")
+    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1000, 0))
+    group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(900, 0))
+
+    # Calculate normalized step size per frame
+    frame_step_v = node(nodes, "ShaderNodeMath", "Frame V Step", location=(-750, -100), properties={"operation": "DIVIDE"})
+    link(links, group_input, "Frame Height", frame_step_v, "Value[0]")
+    link(links, group_input, "Image Height", frame_step_v, "Value[1]")
+
+    frame_step_u = node(nodes, "ShaderNodeMath", "Frame U Step", location=(-750, 100), properties={"operation": "DIVIDE"})
+    link(links, group_input, "Frame Width", frame_step_u, "Value[0]")
+    link(links, group_input, "Image Width", frame_step_u, "Value[1]")
+
+    # Standalone (Local UV) Branch: Map local 0..1 UV to Frame 0 at the top of the strip
+    separate = node(nodes, "ShaderNodeSeparateXYZ", "Separate Local UV", location=(-750, 320))
+    link(links, group_input, "Vector", separate, "Vector")
+
+    local_u = node(nodes, "ShaderNodeMath", "Local Frame 0 U", location=(-550, 320), properties={"operation": "MULTIPLY"})
+    link(links, separate, "X", local_u, "Value[0]")
+    link(links, frame_step_u, "Value", local_u, "Value[1]")
+
+    one_minus_v = node(nodes, "ShaderNodeMath", "1.0 - Local V", location=(-550, 150), properties={"operation": "SUBTRACT"}, inputs={"Value[0]": 1.0})
+    link(links, separate, "Y", one_minus_v, "Value[1]")
+
+    v_offset = node(nodes, "ShaderNodeMath", "Local Frame 0 V Offset", location=(-380, 150), properties={"operation": "MULTIPLY"})
+    link(links, one_minus_v, "Value", v_offset, "Value[0]")
+    link(links, frame_step_v, "Value", v_offset, "Value[1]")
+
+    local_v = node(nodes, "ShaderNodeMath", "Local Frame 0 V", location=(-210, 150), properties={"operation": "SUBTRACT"}, inputs={"Value[0]": 1.0})
+    link(links, v_offset, "Value", local_v, "Value[1]")
+
+    local_frame0_vec = node(nodes, "ShaderNodeCombineXYZ", "Local Frame 0 Vector", location=(-40, 240))
+    link(links, local_u, "Value", local_frame0_vec, "X")
+    link(links, local_v, "Value", local_frame0_vec, "Y")
+    link(links, separate, "Z", local_frame0_vec, "Z")
+
+    # Select base Frame 0 UV: Local Frame 0 Vector when Atlas Mode is 0.0, or raw input Vector when Atlas Mode is 1.0
+    mix_base = node(nodes, "ShaderNodeMix", "Choose Frame 0 UV", location=(140, 120), properties={"data_type": "VECTOR", "blend_type": "MIX"})
+    link(links, group_input, "Atlas Mode", mix_base, "Factor[0]")
+    link(links, local_frame0_vec, "Vector", mix_base, "A[1]")
+    link(links, group_input, "Vector", mix_base, "B[1]")
+
+    # Advance frames vertically from base Frame 0 UV
     for frame_socket, output_socket, offset_y in (("Current Frame", "Current UV", 120), ("Next Frame", "Next UV", -180)):
-        offset = node(nodes, "ShaderNodeMath", f"{frame_socket} V Offset", location=(-250, offset_y), properties={"operation": "MULTIPLY"})
-        offset_vector = node(nodes, "ShaderNodeCombineXYZ", f"{frame_socket} Offset Vector", location=(-70, offset_y))
+        offset = node(nodes, "ShaderNodeMath", f"{frame_socket} V Offset", location=(340, offset_y), properties={"operation": "MULTIPLY"})
+        offset_vector = node(nodes, "ShaderNodeCombineXYZ", f"{frame_socket} Offset Vector", location=(510, offset_y))
         offset_vector.inputs["X"].default_value = 0.0
         offset_vector.inputs["Z"].default_value = 0.0
-        final_uv = node(nodes, "ShaderNodeVectorMath", output_socket, location=(220, offset_y), properties={"operation": "SUBTRACT"})
+        final_uv = node(nodes, "ShaderNodeVectorMath", output_socket, location=(680, offset_y), properties={"operation": "SUBTRACT"})
         link(links, group_input, frame_socket, offset, "Value[0]")
-        link(links, frame_step, "Value", offset, "Value[1]")
+        link(links, frame_step_v, "Value", offset, "Value[1]")
         link(links, offset, "Value", offset_vector, "Y")
-        link(links, group_input, "Vector", final_uv, "Vector[0]")
+        link(links, mix_base, "Result[1]", final_uv, "Vector[0]")
         link(links, offset_vector, "Vector", final_uv, "Vector[1]")
         link(links, final_uv, "Vector", group_output, output_socket)
+
     link(links, group_input, "Blend Factor", group_output, "Blend Factor")
     return finalize_group(group)
 
