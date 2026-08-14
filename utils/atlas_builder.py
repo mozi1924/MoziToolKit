@@ -7,6 +7,7 @@ Stores mapping JSON dictionary as a custom property on mat.node_tree["mtk:atlas_
 import json
 from pathlib import Path
 import bpy
+from .node_groups import ensure_all_templates
 from .node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
 from .material_builder import load_image_texture
 
@@ -134,56 +135,207 @@ def build_atlas_material(
 
 def build_atlas_chunk_materials(
     atlas_dir: str | Path,
-    material_prefix: str,
+    pack_hash: str | None = None,
+    material_prefix: str | None = None,
+    namespace: str = "minecraft",
     pack_textures: bool = True,
     chunk_ids: set[int] | None = None,
 ) -> dict[int, bpy.types.Material]:
-    """Build one UV-driven Blender material per atlas chunk.
-
-    This is intentionally node-decoder-free: Material Preview and the solid
-    texture display path sample the mesh UVs directly.  The decoder remains a
-    separate future-facing path for procedural geometry.
-    """
+    """Build UV-driven Blender materials per atlas chunk aligned with LabPBR PBR & animation decoder."""
     atlas_path = Path(atlas_dir)
     with open(atlas_path / "atlas_mapping.json", "r", encoding="utf-8") as fp:
         raw_mapping = fp.read()
         mapping = json.loads(raw_mapping)
+
+    templates = ensure_all_templates()
+    short_hash = pack_hash[:12] if pack_hash else ""
 
     materials = {}
     for chunk in mapping.get("chunks", []):
         chunk_id = int(chunk["chunk_id"])
         if chunk_ids is not None and chunk_id not in chunk_ids:
             continue
-        albedo_name = chunk.get("files", {}).get("albedo")
+
+        chunk_files = chunk.get("files", {})
+        albedo_name = chunk_files.get("albedo")
         if not albedo_name:
             continue
+
         albedo_path = atlas_path / albedo_name
         if not albedo_path.exists():
             raise FileNotFoundError(f"Missing atlas chunk image: {albedo_path}")
-        material_name = f"{material_prefix}:chunk:{chunk_id:03d}"
-        mat = bpy.data.materials.get(material_name) or bpy.data.materials.new(material_name)
+
+        chunk_texture_name = Path(albedo_name).stem
+
+        # Determine material name & lookup existing material by durable metadata contract
+        if material_prefix:
+            material_name = f"{material_prefix}:chunk:{chunk_id:03d}"
+        elif short_hash:
+            material_name = f"mtk:{namespace}:{chunk_texture_name}:{short_hash}"
+        else:
+            material_name = f"mtk:{namespace}:{chunk_texture_name}"
+
+        mat = None
+        for existing in bpy.data.materials:
+            if existing.get("mtk:source_namespace") == namespace and existing.get("mtk:source_texture") == chunk_texture_name:
+                if pack_hash and existing.get("mtk:pack_hash") == pack_hash:
+                    mat = existing
+                    break
+                elif not pack_hash and existing.name == material_name:
+                    mat = existing
+                    break
+            elif existing.name == material_name:
+                mat = existing
+                break
+
+        if not mat:
+            mat = bpy.data.materials.new(name=material_name)
+
         mat.use_nodes = True
-        nodes, links = mat.node_tree.nodes, mat.node_tree.links
-        nodes.clear()
         mat.node_tree["mtk:atlas_mapping"] = raw_mapping
+        mat["mtk:source_namespace"] = namespace
+        mat["mtk:source_texture"] = chunk_texture_name
+        mat["mtk:material_id"] = f"{namespace}:{chunk_texture_name}"
+        if pack_hash:
+            mat["mtk:pack_hash"] = pack_hash
+            mat["mtk:pack_hash_short"] = short_hash
         mat["mtk:atlas_chunk_id"] = chunk_id
         mat["mtk:atlas_chunk_kind"] = chunk["kind"]
 
-        output = nodes.new("ShaderNodeOutputMaterial")
-        output.location = (360, 0)
-        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf.location = (120, 0)
-        coords = nodes.new("ShaderNodeTexCoord")
-        coords.location = (-520, 0)
-        texture = nodes.new("ShaderNodeTexImage")
-        texture.name = f"Atlas Chunk {chunk_id:03d} Albedo"
-        texture.image = load_image_texture(albedo_path, colorspace="sRGB", pack_textures=pack_textures)
-        texture.interpolation = "Closest"
-        texture.extension = "CLIP"
-        texture.location = (-220, 0)
-        links.new(coords.outputs["UV"], texture.inputs["Vector"])
-        links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
-        links.new(texture.outputs["Alpha"], bsdf.inputs["Alpha"])
-        links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
+        nodes, links = mat.node_tree.nodes, mat.node_tree.links
+        nodes.clear()
+
+        # 1. Output & LabPBR 1.3 Decoder
+        output_node = nodes.new("ShaderNodeOutputMaterial")
+        output_node.location = (600, 0)
+
+        decoder_group = templates["LabPBR 1.3 Decoder"]
+        decoder_node = nodes.new("ShaderNodeGroup")
+        decoder_node.node_tree = decoder_group
+        decoder_node.name = "LabPBR 1.3 Decoder"
+        decoder_node.location = (300, 0)
+
+        links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
+        if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
+            links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
+
+        # 2. Shared TexCoord Node
+        tex_coord = nodes.new("ShaderNodeTexCoord")
+        tex_coord.location = (-1200, 0)
+
+        # Build channels: Albedo, Normal, Specular
+        channels_info = [
+            ("albedo", "Albedo", "sRGB", "Albedo Color", "Albedo Alpha", 300),
+            ("normal", "Normal", "Non-Color", "Normal (_n) Color", "Normal (_n) Alpha (Height)", 0),
+            ("specular", "Specular", "Non-Color", "Specular (_s) Color", "Specular (_s) Alpha (Emission)", -300),
+        ]
+
+        is_animated = (chunk.get("kind") == "animation")
+
+        if is_animated:
+            # Retrieve animation metadata for frame counts and tick timing
+            chunk_animations = [a for a in mapping.get("animations", []) if int(a.get("chunk_id", -1)) == chunk_id]
+            first_anim = chunk_animations[0] if chunk_animations else {}
+            mcmeta = first_anim.get("mcmeta", {})
+            frame_width = first_anim.get("frame_width") or chunk.get("width", 16)
+            frame_height = first_anim.get("frame_height") or chunk.get("tile_size") or 16
+            frame_count = first_anim.get("frame_count") or (chunk.get("height", 16) // frame_height if frame_height else 1)
+            frametime = mcmeta.get("frametime", 2)
+            interpolate = mcmeta.get("interpolate", False)
+
+            for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
+                fname = chunk_files.get(channel_key)
+                if not fname:
+                    continue
+                fpath = atlas_path / fname
+                if not fpath.exists():
+                    continue
+
+                img = load_image_texture(fpath, colorspace=colorspace, pack_textures=pack_textures, pack_hash=pack_hash)
+                if not img:
+                    continue
+
+                # Scheduler
+                scheduler = nodes.new("ShaderNodeGroup")
+                scheduler.node_tree = templates["MC_Animation_Scheduler_Default"]
+                scheduler.name = f"MC .mcmeta Scheduler ({channel_name})"
+                scheduler.location = (-1050, base_y - 250)
+                scheduler.inputs["Total Frames"].default_value = max(1, frame_count)
+                scheduler.inputs["Frametime"].default_value = max(1, frametime)
+                scheduler.inputs["Interpolate"].default_value = bool(interpolate)
+
+                # UV Mapper
+                uv_node = nodes.new("ShaderNodeGroup")
+                uv_node.node_tree = templates["MC_Animated_UV_Mapping"]
+                uv_node.name = f"MC UV Mapping ({channel_name})"
+                uv_node.location = (-800, base_y)
+                uv_node.inputs["Frame Width"].default_value = float(frame_width)
+                uv_node.inputs["Frame Height"].default_value = float(frame_height)
+                uv_node.inputs["Image Width"].default_value = float(chunk["width"])
+                uv_node.inputs["Image Height"].default_value = float(chunk["height"])
+
+                links.new(tex_coord.outputs["UV"], uv_node.inputs["Vector"])
+                links.new(scheduler.outputs["Current Frame"], uv_node.inputs["Current Frame"])
+                links.new(scheduler.outputs["Next Frame"], uv_node.inputs["Next Frame"])
+                links.new(scheduler.outputs["Blend Factor"], uv_node.inputs["Blend Factor"])
+
+                # Tex Current & Next
+                tex_curr = nodes.new("ShaderNodeTexImage")
+                tex_curr.name = f"Tex Current ({channel_name})"
+                tex_curr.image = img
+                tex_curr.interpolation = "Closest"
+                tex_curr.extension = "CLIP"
+                tex_curr.location = (-550, base_y + 100)
+                links.new(uv_node.outputs["Current UV"], tex_curr.inputs["Vector"])
+
+                tex_next = nodes.new("ShaderNodeTexImage")
+                tex_next.name = f"Tex Next ({channel_name})"
+                tex_next.image = img
+                tex_next.interpolation = "Closest"
+                tex_next.extension = "CLIP"
+                tex_next.location = (-550, base_y - 150)
+                links.new(uv_node.outputs["Next UV"], tex_next.inputs["Vector"])
+
+                # Frame Blend
+                blend_node = nodes.new("ShaderNodeGroup")
+                blend_node.node_tree = templates["MC_Animated_Frame_Blend"]
+                blend_node.name = f"Frame Blend ({channel_name})"
+                blend_node.location = (-300, base_y)
+
+                links.new(tex_curr.outputs["Color"], blend_node.inputs["Current Color"])
+                links.new(tex_next.outputs["Color"], blend_node.inputs["Next Color"])
+                links.new(tex_curr.outputs["Alpha"], blend_node.inputs["Current Alpha"])
+                links.new(tex_next.outputs["Alpha"], blend_node.inputs["Next Alpha"])
+                links.new(uv_node.outputs["Blend Factor"], blend_node.inputs["Blend Factor"])
+
+                links.new(blend_node.outputs["Color"], decoder_node.inputs[col_socket])
+                links.new(blend_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+
+        else:
+            # Static Branch
+            for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
+                fname = chunk_files.get(channel_key)
+                if not fname:
+                    continue
+                fpath = atlas_path / fname
+                if not fpath.exists():
+                    continue
+
+                img = load_image_texture(fpath, colorspace=colorspace, pack_textures=pack_textures, pack_hash=pack_hash)
+                if not img:
+                    continue
+
+                tex_node = nodes.new("ShaderNodeTexImage")
+                tex_node.name = f"Atlas Chunk {chunk_id:03d} Static ({channel_name})"
+                tex_node.image = img
+                tex_node.interpolation = "Closest"
+                tex_node.extension = "CLIP"
+                tex_node.location = (-500, base_y)
+
+                links.new(tex_coord.outputs["UV"], tex_node.inputs["Vector"])
+                links.new(tex_node.outputs["Color"], decoder_node.inputs[col_socket])
+                links.new(tex_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+
         materials[chunk_id] = mat
+
     return materials

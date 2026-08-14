@@ -33,7 +33,7 @@ except ImportError:
 
 # Bump this whenever the on-disk atlas layout changes.  The replacement step
 # uses it to avoid silently reusing an atlas produced by an older layout.
-ATLAS_FORMAT_VERSION = 5
+ATLAS_FORMAT_VERSION = 6
 
 
 class AtlasGenerator:
@@ -343,11 +343,27 @@ class AtlasGenerator:
             chunk_id = len(chunks)
             chunk_width = sum(image.width for _name, image, _meta in columns)
             chunk_height = max(image.height for _name, image, _meta in columns)
-            chunk_image = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
-            filename = f"atlas_chunk_{chunk_id:03d}_albedo.png"
+            images = {"albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))}
+            if has_normal:
+                images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
+            if has_specular:
+                images["specular"] = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
+
             x_offset = 0
             for texture_id, (name, image, metadata) in enumerate(columns):
-                chunk_image.paste(image, (x_offset, 0))
+                for channel, img_canvas in images.items():
+                    if channel == "albedo":
+                        source_img = image
+                    elif channel == "normal":
+                        source_img = self.normal_textures.get(name)
+                    elif channel == "specular":
+                        source_img = self.specular_textures.get(name)
+                    else:
+                        source_img = None
+
+                    if source_img is not None:
+                        img_canvas.paste(source_img, (x_offset, 0))
+
                 frame_count = max(1, image.height // image.width)
                 texture_locations[name] = {
                     "chunk_id": chunk_id, "texture_id": texture_id, "kind": "animation",
@@ -361,13 +377,19 @@ class AtlasGenerator:
                     "preview_frame": 0, "mcmeta": metadata,
                 })
                 x_offset += image.width
-            chunk_image.save(output_path / filename)
+
+            files = {}
+            for channel, img_canvas in images.items():
+                filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
+                img_canvas.save(output_path / filename)
+                files[channel] = filename
+
             chunks.append({
                 "chunk_id": chunk_id, "kind": "animation", "width": chunk_width,
                 "height": chunk_height, "texture_count": len(columns),
-                "packing": "vertical_columns", "files": {"albedo": filename},
+                "packing": "vertical_columns", "files": files,
             })
-            outputs["chunks"].append(output_path / filename)
+            outputs["chunks"].append(output_path / files["albedo"])
 
         for column in animation_columns:
             column_width = column[1].width
