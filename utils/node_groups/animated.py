@@ -15,7 +15,10 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 # In both modes, Current Frame and Next Frame subtract vertical frame steps
 # from the base Frame 0 coordinate.
 UV_TEMPLATE_VERSION = 7
-SCHEDULER_TEMPLATE_VERSION = 4
+# Version 5 fixes Blender's WRAP input ordering (Value, Max, Min).  The old
+# graph supplied the bounds in reverse, so time zero evaluated as the last
+# frame and the wrap could step through invalid atlas space.
+SCHEDULER_TEMPLATE_VERSION = 5
 FRAME_BLEND_TEMPLATE_VERSION = 3
 
 
@@ -114,9 +117,9 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
         variable = driver.variables.new(); variable.name = variable_name; variable.targets[0].id_type = "SCENE"; variable.targets[0].id = bpy.context.scene; variable.targets[0].data_path = data_path
     tick_rate = nodes.new("ShaderNodeValue"); tick_rate.name = "Minecraft Tick Rate"; tick_rate.label = "Minecraft Tick Rate"; tick_rate.location = (-700, -100); tick_rate.outputs["Value"].default_value = 20.0
     elapsed = node(nodes, "ShaderNodeMath", "Elapsed Frames", location=(-500, 120), properties={"operation": "SUBTRACT"}); ticks = node(nodes, "ShaderNodeMath", "Ticks Numerator", location=(-320, 120), properties={"operation": "MULTIPLY"}); mc_tick = node(nodes, "ShaderNodeMath", "MC Tick", location=(-140, 120), properties={"operation": "DIVIDE"}); phase = node(nodes, "ShaderNodeMath", "Frame Phase", location=(40, 120), properties={"operation": "DIVIDE"})
-    current_raw = node(nodes, "ShaderNodeMath", "Current Unwrapped", location=(220, 170), properties={"operation": "FLOOR"}); fraction = node(nodes, "ShaderNodeMath", "Frame Fraction", location=(220, 50), properties={"operation": "FRACT"}); current = node(nodes, "ShaderNodeMath", "Current Frame", location=(400, 170), properties={"operation": "WRAP"}, inputs={"Value[1]": 0.0}); next_raw = node(nodes, "ShaderNodeMath", "Next Unwrapped", location=(400, 60), properties={"operation": "ADD"}, inputs={"Value[1]": 1.0}); next_frame = node(nodes, "ShaderNodeMath", "Next Frame", location=(570, 60), properties={"operation": "WRAP"}, inputs={"Value[1]": 0.0}); blend = node(nodes, "ShaderNodeMath", "Blend Factor", location=(400, -70), properties={"operation": "MULTIPLY"})
+    current_raw = node(nodes, "ShaderNodeMath", "Current Unwrapped", location=(220, 170), properties={"operation": "FLOOR"}); fraction = node(nodes, "ShaderNodeMath", "Frame Fraction", location=(220, 50), properties={"operation": "FRACT"}); current = node(nodes, "ShaderNodeMath", "Current Frame", location=(400, 170), properties={"operation": "WRAP"}, inputs={"Value[2]": 0.0}); next_raw = node(nodes, "ShaderNodeMath", "Next Unwrapped", location=(400, 60), properties={"operation": "ADD"}, inputs={"Value[1]": 1.0}); next_frame = node(nodes, "ShaderNodeMath", "Next Frame", location=(570, 60), properties={"operation": "WRAP"}, inputs={"Value[2]": 0.0}); blend = node(nodes, "ShaderNodeMath", "Blend Factor", location=(400, -70), properties={"operation": "MULTIPLY"})
     link(links, frame, "Value", elapsed, "Value[0]"); link(links, start, "Value", elapsed, "Value[1]"); link(links, elapsed, "Value", ticks, "Value[0]"); link(links, tick_rate, "Value", ticks, "Value[1]"); link(links, ticks, "Value", mc_tick, "Value[0]"); link(links, fps, "Value", mc_tick, "Value[1]"); link(links, mc_tick, "Value", phase, "Value[0]"); link(links, group_input, "Frametime", phase, "Value[1]")
-    link(links, phase, "Value", current_raw, "Value[0]"); link(links, phase, "Value", fraction, "Value[0]"); link(links, current_raw, "Value", current, "Value[0]"); link(links, group_input, "Total Frames", current, "Value[2]"); link(links, current_raw, "Value", next_raw, "Value[0]"); link(links, next_raw, "Value", next_frame, "Value[0]"); link(links, group_input, "Total Frames", next_frame, "Value[2]"); link(links, fraction, "Value", blend, "Value[0]"); link(links, group_input, "Interpolate", blend, "Value[1]")
+    link(links, phase, "Value", current_raw, "Value[0]"); link(links, phase, "Value", fraction, "Value[0]"); link(links, current_raw, "Value", current, "Value[0]"); link(links, group_input, "Total Frames", current, "Value[1]"); link(links, current_raw, "Value", next_raw, "Value[0]"); link(links, next_raw, "Value", next_frame, "Value[0]"); link(links, group_input, "Total Frames", next_frame, "Value[1]"); link(links, fraction, "Value", blend, "Value[0]"); link(links, group_input, "Interpolate", blend, "Value[1]")
     link(links, current, "Value", group_output, "Current Frame"); link(links, next_frame, "Value", group_output, "Next Frame"); link(links, blend, "Value", group_output, "Blend Factor")
     return finalize_group(group)
 

@@ -152,11 +152,13 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertIn("mtk_anim_total_frames", self.cube.data.attributes)
         self.assertIn("mtk_anim_frametime", self.cube.data.attributes)
         self.assertIn("mtk_anim_interpolate", self.cube.data.attributes)
+        self.assertIn("mtk_anim_frame_width", self.cube.data.attributes)
         self.assertIn("mtk_anim_frame_height", self.cube.data.attributes)
 
         # Check Object custom properties
         self.assertIn("mtk_anim_total_frames", self.cube)
         self.assertIn("mtk_anim_frametime", self.cube)
+        self.assertIn("mtk_anim_frame_width", self.cube)
 
 
 if __name__ == "__main__":

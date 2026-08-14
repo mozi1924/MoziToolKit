@@ -266,17 +266,30 @@ def build_atlas_chunk_materials(
             attr_interp.attribute_name = "mtk_anim_interpolate"
             attr_interp.location = (-1500, -100)
 
+            attr_width = nodes.new("ShaderNodeAttribute")
+            attr_width.name = "Attr Frame Width"
+            attr_width.attribute_type = "GEOMETRY"
+            attr_width.attribute_name = "mtk_anim_frame_width"
+            attr_width.location = (-1500, -300)
+
+            max_width = nodes.new("ShaderNodeMath")
+            max_width.name = "Max Frame Width"
+            max_width.operation = "MAXIMUM"
+            max_width.inputs[1].default_value = float(chunk.get("tile_size", 16))
+            max_width.location = (-1300, -300)
+            links.new(attr_width.outputs["Fac"], max_width.inputs[0])
+
             attr_height = nodes.new("ShaderNodeAttribute")
             attr_height.name = "Attr Frame Height"
             attr_height.attribute_type = "GEOMETRY"
             attr_height.attribute_name = "mtk_anim_frame_height"
-            attr_height.location = (-1500, -300)
+            attr_height.location = (-1500, -500)
 
             max_height = nodes.new("ShaderNodeMath")
             max_height.name = "Max Frame Height"
             max_height.operation = "MAXIMUM"
             max_height.inputs[1].default_value = float(chunk.get("tile_size", 16))
-            max_height.location = (-1300, -300)
+            max_height.location = (-1300, -500)
             links.new(attr_height.outputs["Fac"], max_height.inputs[0])
 
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
@@ -305,7 +318,7 @@ def build_atlas_chunk_materials(
                 uv_node.node_tree = templates["MC_Animated_UV_Mapping"]
                 uv_node.name = f"MC UV Mapping ({channel_name})"
                 uv_node.location = (-800, base_y)
-                links.new(max_height.outputs["Value"], uv_node.inputs["Frame Width"])
+                links.new(max_width.outputs["Value"], uv_node.inputs["Frame Width"])
                 links.new(max_height.outputs["Value"], uv_node.inputs["Frame Height"])
                 uv_node.inputs["Image Width"].default_value = float(chunk["width"])
                 uv_node.inputs["Image Height"].default_value = float(chunk["height"])
