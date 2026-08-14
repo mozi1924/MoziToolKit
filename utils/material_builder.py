@@ -322,3 +322,222 @@ def rebuild_material(
         )
 
     return True
+
+
+def inspect_material_nodes(mat: bpy.types.Material) -> dict:
+    """
+    Inspect the shader node tree of a material and report health status
+    for LabPBR Decoder, animation subgraphs, drivers, and channel links.
+    """
+    if not mat or not mat.use_nodes or not mat.node_tree:
+        return {"has_node_tree": False, "is_healthy": False, "issues": ["No node tree found"]}
+
+    nt = mat.node_tree
+    nodes = nt.nodes
+    issues = []
+
+    # 1. Output Node Check
+    output_nodes = [n for n in nodes if n.bl_idname == "ShaderNodeOutputMaterial"]
+    has_output = len(output_nodes) > 0
+    if not has_output:
+        issues.append("Missing Material Output node")
+
+    # 2. LabPBR Decoder Check
+    decoder_nodes = [
+        n for n in nodes
+        if n.bl_idname == "ShaderNodeGroup" and n.node_tree and "LabPBR" in n.node_tree.name
+    ]
+    has_decoder = len(decoder_nodes) > 0
+    bsdf_linked = False
+    displacement_linked = False
+
+    if not has_decoder:
+        issues.append("Missing LabPBR 1.3 Decoder node")
+    else:
+        decoder = decoder_nodes[0]
+        if output_nodes:
+            output = output_nodes[0]
+            # Check BSDF link
+            if "BSDF" in decoder.outputs and "Surface" in output.inputs:
+                for link in nt.links:
+                    if link.from_socket == decoder.outputs["BSDF"] and link.to_socket == output.inputs["Surface"]:
+                        bsdf_linked = True
+                        break
+            if not bsdf_linked:
+                issues.append("LabPBR BSDF output is not connected to Material Output Surface")
+
+            # Check Displacement link
+            if "Displacement" in decoder.outputs and "Displacement" in output.inputs:
+                for link in nt.links:
+                    if link.from_socket == decoder.outputs["Displacement"] and link.to_socket == output.inputs["Displacement"]:
+                        displacement_linked = True
+                        break
+
+    # 3. Channels and Animation inspection
+    schedulers = [n for n in nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree and "Scheduler" in n.node_tree.name]
+    uv_mappers = [n for n in nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree and "UV_Mapping" in n.node_tree.name]
+    frame_blends = [n for n in nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree and "Frame_Blend" in n.node_tree.name]
+    image_nodes = [n for n in nodes if n.bl_idname == "ShaderNodeTexImage" and n.image]
+
+    # Check animation chain linkage
+    for uv_node in uv_mappers:
+        has_vector_in = any(link.to_node == uv_node and link.to_socket.name == "Vector" for link in nt.links)
+        if not has_vector_in:
+            issues.append(f"Animation UV Mapping node '{uv_node.name}' has no incoming Vector connection")
+
+    is_healthy = (len(issues) == 0) and has_output and has_decoder and bsdf_linked
+
+    return {
+        "has_node_tree": True,
+        "has_output_node": has_output,
+        "has_decoder_node": has_decoder,
+        "bsdf_linked": bsdf_linked,
+        "displacement_linked": displacement_linked,
+        "image_count": len(image_nodes),
+        "scheduler_count": len(schedulers),
+        "uv_mapper_count": len(uv_mappers),
+        "frame_blend_count": len(frame_blends),
+        "is_healthy": is_healthy,
+        "issues": issues,
+    }
+
+
+def repair_material_nodes(
+    mat: bpy.types.Material,
+    resource_pack=None,
+    force_rebuild: bool = False
+) -> bool:
+    """
+    Repair or reconstruct a material's shader node tree.
+    - Updates template node groups (LabPBR 1.3 Decoder, Animation groups) in place to latest version.
+    - Reconnects broken LabPBR decoder links to Material Output.
+    - Reconnects broken animation chains and fixes timeline drivers.
+    - Rebuilds completely from resource pack if force_rebuild=True.
+    """
+    if not mat:
+        return False
+
+    templates = ensure_all_templates()
+
+    # If force_rebuild is requested and pack is provided
+    if force_rebuild and resource_pack:
+        from .material_matching import extract_material_texture_keys
+        namespace, candidates = extract_material_texture_keys(mat)
+        tex_info = None
+        for cand in candidates:
+            info = resource_pack.get_texture_info(cand, namespace)
+            if info and info.get("albedo"):
+                tex_info = info
+                break
+        if tex_info:
+            return rebuild_material(mat, tex_info, pack_textures=True, pack_hash=resource_pack.pack_hash)
+
+    # In-place repair
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nodes = nt.nodes
+    links = nt.links
+
+    # 1. Ensure Output Node
+    output_node = next((n for n in nodes if n.bl_idname == "ShaderNodeOutputMaterial"), None)
+    if not output_node:
+        output_node = nodes.new("ShaderNodeOutputMaterial")
+        output_node.location = (600, 0)
+
+    # 2. Ensure LabPBR 1.3 Decoder Node
+    decoder_node = next(
+        (n for n in nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree and "LabPBR" in n.node_tree.name),
+        None
+    )
+    if not decoder_node:
+        decoder_node = next((n for n in nodes if n.name == "LabPBR 1.3 Decoder"), None)
+
+    if not decoder_node:
+        decoder_node = nodes.new("ShaderNodeGroup")
+        decoder_node.name = "LabPBR 1.3 Decoder"
+        decoder_node.location = (300, 0)
+
+    decoder_node.node_tree = templates["LabPBR 1.3 Decoder"]
+
+    # Reconnect Decoder -> Output
+    if "BSDF" in decoder_node.outputs and "Surface" in output_node.inputs:
+        bsdf_linked = any(
+            l.from_socket == decoder_node.outputs["BSDF"] and l.to_socket == output_node.inputs["Surface"]
+            for l in links
+        )
+        if not bsdf_linked:
+            links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
+
+    if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
+        disp_linked = any(
+            l.from_socket == decoder_node.outputs["Displacement"] and l.to_socket == output_node.inputs["Displacement"]
+            for l in links
+        )
+        if not disp_linked:
+            links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
+
+    # 3. Ensure Shared TexCoord Node
+    tex_coord = next((n for n in nodes if n.bl_idname == "ShaderNodeTexCoord"), None)
+    if not tex_coord:
+        tex_coord = nodes.new("ShaderNodeTexCoord")
+        tex_coord.location = (-1200, 0)
+
+    # 4. Repair and Update Template Node Groups across all node group instances
+    for n in nodes:
+        if n.bl_idname != "ShaderNodeGroup" or not n.node_tree:
+            continue
+        tree_name = n.node_tree.name
+        if "Scheduler" in tree_name:
+            n.node_tree = templates["MC_Animation_Scheduler_Default"]
+        elif "UV_Mapping" in tree_name:
+            n.node_tree = templates["MC_Animated_UV_Mapping"]
+        elif "Frame_Blend" in tree_name:
+            n.node_tree = templates["MC_Animated_Frame_Blend"]
+        elif "Atlas_UV_Decoder" in tree_name:
+            n.node_tree = templates["MC_Atlas_UV_Decoder"]
+
+    # 5. Reconnect TexCoord to UV Mapping & Static nodes if missing
+    for n in nodes:
+        if n.bl_idname == "ShaderNodeGroup" and n.node_tree == templates["MC_Animated_UV_Mapping"]:
+            if "Vector" in n.inputs and not n.inputs["Vector"].is_linked:
+                links.new(tex_coord.outputs["UV"], n.inputs["Vector"])
+        elif n.bl_idname == "ShaderNodeTexImage" and n.name.startswith("Tex Static"):
+            if "Vector" in n.inputs and not n.inputs["Vector"].is_linked:
+                links.new(tex_coord.outputs["UV"], n.inputs["Vector"])
+
+    # 6. Reconnect Tex Current / Tex Next to Frame Blend if unlinked
+    for blend_node in [n for n in nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree == templates["MC_Animated_Frame_Blend"]]:
+        channel = ""
+        if "(" in blend_node.name and ")" in blend_node.name:
+            channel = blend_node.name.split("(", 1)[1].split(")", 1)[0]
+        if channel:
+            tex_curr = next((n for n in nodes if n.name == f"Tex Current ({channel})"), None)
+            tex_next = next((n for n in nodes if n.name == f"Tex Next ({channel})"), None)
+            uv_node = next((n for n in nodes if n.name == f"MC UV Mapping ({channel})"), None)
+
+            if tex_curr and "Color" in tex_curr.outputs and "Current Color" in blend_node.inputs:
+                if not blend_node.inputs["Current Color"].is_linked:
+                    links.new(tex_curr.outputs["Color"], blend_node.inputs["Current Color"])
+                if not blend_node.inputs["Current Alpha"].is_linked and "Alpha" in tex_curr.outputs:
+                    links.new(tex_curr.outputs["Alpha"], blend_node.inputs["Current Alpha"])
+
+            if tex_next and "Color" in tex_next.outputs and "Next Color" in blend_node.inputs:
+                if not blend_node.inputs["Next Color"].is_linked:
+                    links.new(tex_next.outputs["Color"], blend_node.inputs["Next Color"])
+                if not blend_node.inputs["Next Alpha"].is_linked and "Alpha" in tex_next.outputs:
+                    links.new(tex_next.outputs["Alpha"], blend_node.inputs["Next Alpha"])
+
+            if uv_node and "Blend Factor" in uv_node.outputs and "Blend Factor" in blend_node.inputs:
+                if not blend_node.inputs["Blend Factor"].is_linked:
+                    links.new(uv_node.outputs["Blend Factor"], blend_node.inputs["Blend Factor"])
+
+            # Connect Frame Blend to Decoder sockets
+            col_socket = "Albedo Color" if channel == "Albedo" else f"{channel} (_n) Color" if channel == "Normal" else f"{channel} (_s) Color"
+            alpha_socket = "Albedo Alpha" if channel == "Albedo" else "Normal (_n) Alpha (Height)" if channel == "Normal" else "Specular (_s) Alpha (Emission)"
+            if col_socket in decoder_node.inputs and not decoder_node.inputs[col_socket].is_linked:
+                links.new(blend_node.outputs["Color"], decoder_node.inputs[col_socket])
+            if alpha_socket in decoder_node.inputs and not decoder_node.inputs[alpha_socket].is_linked:
+                links.new(blend_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+
+    return True
+

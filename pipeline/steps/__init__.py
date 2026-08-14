@@ -11,6 +11,7 @@ from .step_select_edges import SelectHardEdgesStep
 from .step_select_transparent_faces import SelectTransparentFacesStep
 from .step_texture_interpolation import TextureInterpolationStep
 from .step_replace_material import StepReplaceMaterial
+from .step_repair_material import StepRepairMaterial
 
 __all__ = [
     "AdaptivePixelSplitStep",
@@ -22,5 +23,6 @@ __all__ = [
     "SelectTransparentFacesStep",
     "TextureInterpolationStep",
     "StepReplaceMaterial",
+    "StepRepairMaterial",
 ]
 
