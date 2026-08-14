@@ -7,7 +7,13 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-UV_TEMPLATE_VERSION = 5
+# Version 6 changes the coordinate contract: ``Vector`` is always the UV of
+# frame 0 in its *final image*, whether that image is a standalone animation
+# strip or an atlas chunk.  Advancing a Minecraft animation only moves that
+# coordinate vertically by one frame height; it must never rescale the UV
+# again.  Rescaling absolute atlas UVs was what made atlas animations sample
+# the wrong texels.
+UV_TEMPLATE_VERSION = 6
 SCHEDULER_TEMPLATE_VERSION = 4
 FRAME_BLEND_TEMPLATE_VERSION = 3
 
@@ -32,28 +38,25 @@ def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-800, 0))
     group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(800, 0))
-    separate = node(nodes, "ShaderNodeSeparateXYZ", "Separate UV", location=(-600, 0))
-    u_scale = node(nodes, "ShaderNodeMath", "U Frame Scale", location=(-450, 100), properties={"operation": "DIVIDE"})
-    v_scale = node(nodes, "ShaderNodeMath", "V Frame Scale", location=(-450, -100), properties={"operation": "DIVIDE"})
-    u = node(nodes, "ShaderNodeMath", "U in Frame", location=(-250, 100), properties={"operation": "MULTIPLY"})
-    v = node(nodes, "ShaderNodeMath", "V in Frame", location=(-250, -100), properties={"operation": "MULTIPLY"})
-    link(links, group_input, "Vector", separate, "Vector")
-    link(links, group_input, "Frame Width", u_scale, "Value[0]"); link(links, group_input, "Image Width", u_scale, "Value[1]")
-    link(links, group_input, "Frame Height", v_scale, "Value[0]"); link(links, group_input, "Image Height", v_scale, "Value[1]")
-    link(links, separate, "X", u, "Value[0]"); link(links, u_scale, "Value", u, "Value[1]")
-    link(links, separate, "Y", v, "Value[0]"); link(links, v_scale, "Value", v, "Value[1]")
+    # The incoming UV already identifies frame 0.  This is true for a
+    # standalone image (0..1) and for an atlas (a sub-rectangle of 0..1).
+    # Calculate one normalized frame step and subtract it per frame: the
+    # source images are stored top-to-bottom while Blender V grows upward.
+    frame_step = node(nodes, "ShaderNodeMath", "Frame V Step", location=(-500, -80), properties={"operation": "DIVIDE"})
+    link(links, group_input, "Frame Height", frame_step, "Value[0]")
+    link(links, group_input, "Image Height", frame_step, "Value[1]")
     for frame_socket, output_socket, offset_y in (("Current Frame", "Current UV", 120), ("Next Frame", "Next UV", -180)):
-        plus_one = node(nodes, "ShaderNodeMath", f"{frame_socket} + 1", location=(-50, offset_y), properties={"operation": "ADD"}, inputs={"Value[1]": 1.0})
-        row_scale = node(nodes, "ShaderNodeMath", f"{frame_socket} V Scale", location=(120, offset_y), properties={"operation": "MULTIPLY"})
-        row_offset = node(nodes, "ShaderNodeMath", f"{frame_socket} V Offset", location=(290, offset_y), properties={"operation": "SUBTRACT"}, inputs={"Value": 1.0})
-        final_v = node(nodes, "ShaderNodeMath", f"{frame_socket} V", location=(460, offset_y), properties={"operation": "ADD"})
-        combine = node(nodes, "ShaderNodeCombineXYZ", output_socket, location=(620, offset_y))
-        link(links, group_input, frame_socket, plus_one, "Value[0]")
-        link(links, plus_one, "Value", row_scale, "Value[0]"); link(links, v_scale, "Value", row_scale, "Value[1]")
-        link(links, row_scale, "Value", row_offset, "Value[1]")
-        link(links, v, "Value", final_v, "Value[0]"); link(links, row_offset, "Value", final_v, "Value[1]")
-        link(links, u, "Value", combine, "X"); link(links, final_v, "Value", combine, "Y"); link(links, separate, "Z", combine, "Z")
-        link(links, combine, "Vector", group_output, output_socket)
+        offset = node(nodes, "ShaderNodeMath", f"{frame_socket} V Offset", location=(-250, offset_y), properties={"operation": "MULTIPLY"})
+        offset_vector = node(nodes, "ShaderNodeCombineXYZ", f"{frame_socket} Offset Vector", location=(-70, offset_y))
+        offset_vector.inputs["X"].default_value = 0.0
+        offset_vector.inputs["Z"].default_value = 0.0
+        final_uv = node(nodes, "ShaderNodeVectorMath", output_socket, location=(220, offset_y), properties={"operation": "SUBTRACT"})
+        link(links, group_input, frame_socket, offset, "Value[0]")
+        link(links, frame_step, "Value", offset, "Value[1]")
+        link(links, offset, "Value", offset_vector, "Y")
+        link(links, group_input, "Vector", final_uv, "Vector[0]")
+        link(links, offset_vector, "Vector", final_uv, "Vector[1]")
+        link(links, final_uv, "Vector", group_output, output_socket)
     link(links, group_input, "Blend Factor", group_output, "Blend Factor")
     return finalize_group(group)
 
