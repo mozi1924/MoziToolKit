@@ -256,6 +256,92 @@ class TestAtlasGenerator(unittest.TestCase):
         self.assertIn("prismarine", generator.animated_textures)
         self.assertIn("magma", generator.animated_textures)
 
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_animated_texture_single_frame_pbr_channels_are_tiled(self):
+        """Single-frame normal or specular maps must be tiled across all animation frames in the atlas chunk."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            textures = root / "assets" / "minecraft" / "textures" / "block"
+            textures.mkdir(parents=True)
+
+            # 1. Animated albedo (16x64 -> 4 frames)
+            albedo_img = Image.new("RGBA", (16, 64), (0, 0, 0, 255))
+            for i in range(4):
+                albedo_img.paste(Image.new("RGBA", (16, 16), (i * 50, 0, 0, 255)), (0, i * 16))
+            albedo_img.save(textures / "soul_lantern.png")
+            (textures / "soul_lantern.png.mcmeta").write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
+
+            # 2. Single-frame normal (16x16)
+            norm_color = (128, 128, 255, 200)
+            Image.new("RGBA", (16, 16), norm_color).save(textures / "soul_lantern_n.png")
+
+            # 3. Single-frame specular (16x16)
+            spec_color = (160, 50, 0, 250)
+            Image.new("RGBA", (16, 16), spec_color).save(textures / "soul_lantern_s.png")
+
+            # 4. Another static texture to ensure normal/specular channels are active
+            Image.new("RGBA", (16, 16), (100, 100, 100, 255)).save(textures / "stone.png")
+            Image.new("RGBA", (16, 16), (128, 128, 255, 255)).save(textures / "stone_n.png")
+            Image.new("RGBA", (16, 16), (50, 50, 50, 255)).save(textures / "stone_s.png")
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            anim_chunks = [c for c in mapping["chunks"] if c["kind"] == "animation"]
+            self.assertEqual(len(anim_chunks), 1)
+            chunk = anim_chunks[0]
+
+            norm_atlas = Image.open(root / "atlas" / chunk["files"]["normal"])
+            spec_atlas = Image.open(root / "atlas" / chunk["files"]["specular"])
+
+            loc = mapping["textures"]["soul_lantern"]
+            px = loc["pixel_x"]
+            self.assertEqual(loc["frame_count"], 4)
+
+            # Verify normal and specular values are preserved across all 4 frames (y=4, 20, 36, 52)
+            for frame_idx in range(4):
+                y = frame_idx * 16 + 4
+                self.assertEqual(norm_atlas.getpixel((px + 4, y)), norm_color, f"Normal mismatch at frame {frame_idx}")
+                self.assertEqual(spec_atlas.getpixel((px + 4, y)), spec_color, f"Specular mismatch at frame {frame_idx}")
+
+    def test_vanilla_mashup_pbr_animated_tiling(self):
+        """If Vanilla Mashup 1.5.zip exists, verify single-frame PBR channels are tiled in atlas chunk."""
+        mashup_zip = Path("/Users/jaxlocke/Downloads/Vanilla Mashup 1.5.zip")
+        if not mashup_zip.exists():
+            self.skipTest(f"Vanilla Mashup ZIP not found: {mashup_zip}")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            gen = AtlasGenerator(mashup_zip)
+            outputs = gen.build(tmp)
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            # Check soul_lantern has 32 frames
+            self.assertIn("soul_lantern", mapping["textures"])
+            loc = mapping["textures"]["soul_lantern"]
+            self.assertEqual(loc["kind"], "animation")
+            self.assertEqual(loc["frame_count"], 32)
+
+            anim_chunk = next(c for c in mapping["chunks"] if c["chunk_id"] == loc["chunk_id"])
+            spec_img = Image.open(Path(tmp) / anim_chunk["files"]["specular"])
+            norm_img = Image.open(Path(tmp) / anim_chunk["files"]["normal"])
+
+            px = loc["pixel_x"]
+            # Sample frame 0 vs frame 1 vs frame 31
+            spec_f0 = spec_img.getpixel((px + 4, 4))
+            spec_f1 = spec_img.getpixel((px + 4, 20))
+            spec_f31 = spec_img.getpixel((px + 4, 500))
+            self.assertEqual(spec_f0, spec_f1)
+            self.assertEqual(spec_f0, spec_f31)
+            self.assertNotEqual(spec_f0, (0, 0, 0, 0))
+
+            norm_f0 = norm_img.getpixel((px + 4, 4))
+            norm_f1 = norm_img.getpixel((px + 4, 20))
+            norm_f31 = norm_img.getpixel((px + 4, 500))
+            self.assertEqual(norm_f0, norm_f1)
+            self.assertEqual(norm_f0, norm_f31)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
