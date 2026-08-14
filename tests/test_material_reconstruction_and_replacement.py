@@ -272,6 +272,20 @@ class TestAnimatedUVMapping(unittest.TestCase):
         for name in expected_outputs:
             self.assertIn(name, output_names, f"Missing output socket '{name}' in MC_Animated_UV_Mapping")
 
+    def test_scheduler_wraps_between_zero_and_total_frames(self):
+        """Blender's WRAP inputs are Value, Max, Min (not Value, Min, Max)."""
+        from utils.node_groups.animated import ensure_animation_scheduler, SCHEDULER_TEMPLATE_VERSION
+
+        scheduler = ensure_animation_scheduler()
+        self.assertEqual(scheduler.get("mozi_template_version"), SCHEDULER_TEMPLATE_VERSION)
+        for node_name in ("Current Frame", "Next Frame"):
+            wrap = scheduler.nodes[node_name]
+            # Max gets Total Frames; Min remains exactly zero.  Reversing
+            # these inputs sends time zero to the final/invalid atlas frame.
+            self.assertEqual(wrap.inputs[2].default_value, 0.0)
+            self.assertEqual(len(wrap.inputs[1].links), 1)
+            self.assertEqual(wrap.inputs[1].links[0].from_socket.name, "Total Frames")
+
     def test_standalone_and_atlas_uv_math(self):
         """Verify the mathematical mapping logic for Standalone (Local UV) and Atlas (Pre-mapped UV)."""
         def compute_animated_uv(u, v, frame, frame_w, frame_h, img_w, img_h, atlas_mode):
@@ -385,4 +399,3 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
-

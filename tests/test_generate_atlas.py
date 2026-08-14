@@ -42,7 +42,7 @@ class TestAtlasGenerator(unittest.TestCase):
             mapping = json.load(fp)
 
         self.assertGreaterEqual(mapping["tile_size"], 16)
-        self.assertEqual(mapping["format_version"], 7)
+        self.assertEqual(mapping["format_version"], 8)
         self.assertLessEqual(max(chunk["width"] for chunk in mapping["chunks"]), 4096)
         self.assertLessEqual(max(chunk["height"] for chunk in mapping["chunks"]), 4096)
         self.assertGreater(len(mapping["textures"]), 0)
@@ -75,7 +75,7 @@ class TestAtlasGenerator(unittest.TestCase):
             with open(outputs["mapping"], "r", encoding="utf-8") as fp:
                 mapping = json.load(fp)
 
-            self.assertEqual(mapping["format_version"], 7)
+            self.assertEqual(mapping["format_version"], 8)
             self.assertEqual(mapping["tile_size"], 32)
             self.assertEqual(len(mapping["chunks"]), 1)
             self.assertEqual(mapping["chunks"][0]["width"], 64)
@@ -144,6 +144,28 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertEqual(mapping["textures"]["b"]["pixel_x"], 32)
             self.assertEqual(mapping["textures"]["c"]["chunk_id"], 1)
             self.assertEqual(Image.open(outputs["chunks"][0]).getpixel((0, 0)), (255, 0, 0, 255))
+
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_animation_preserves_mcmeta_frame_dimensions(self):
+        """Rectangular mcmeta frames must not be treated as square atlas steps."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            textures = root / "assets" / "minecraft" / "textures" / "block"
+            textures.mkdir(parents=True)
+            Image.new("RGBA", (32, 24), (255, 0, 0, 255)).save(textures / "wide_animation.png")
+            (textures / "wide_animation.png.mcmeta").write_text(
+                '{"animation": {"width": 16, "height": 8, "frametime": 3}}',
+                encoding="utf-8",
+            )
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                location = json.load(fp)["textures"]["wide_animation"]
+
+            self.assertEqual(location["frame_width"], 16)
+            self.assertEqual(location["frame_height"], 8)
+            self.assertEqual(location["frame_count"], 3)
+            self.assertEqual(location["frametime"], 3)
 
 
 if __name__ == "__main__":

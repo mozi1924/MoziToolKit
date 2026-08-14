@@ -33,7 +33,7 @@ except ImportError:
 
 # Bump this whenever the on-disk atlas layout changes.  The replacement step
 # uses it to avoid silently reusing an atlas produced by an older layout.
-ATLAS_FORMAT_VERSION = 7
+ATLAS_FORMAT_VERSION = 8
 
 
 def _is_power_of_two(n: int) -> bool:
@@ -376,19 +376,26 @@ class AtlasGenerator:
                     if source_img is not None:
                         img_canvas.paste(source_img, (x_offset, 0))
 
-                frame_count = max(1, image.height // image.width)
+                # Minecraft permits non-square animation frames.  The frame
+                # dimensions are defined by mcmeta when present; otherwise a
+                # frame is as wide as the source image.  Do not infer both
+                # dimensions from ``image.width``: that makes the shader step
+                # into transparent padding for rectangular animations.
+                frame_width = max(1, int(metadata.get("width", image.width)))
+                frame_height = max(1, int(metadata.get("height", frame_width)))
+                frame_count = max(1, image.height // frame_height)
                 frametime = max(1, int(metadata.get("frametime", 2)))
                 interpolate = bool(metadata.get("interpolate", False))
                 texture_locations[name] = {
                     "chunk_id": chunk_id, "texture_id": texture_id, "kind": "animation",
                     "pixel_x": x_offset, "pixel_y": 0, "preview_frame": 0,
-                    "frame_width": image.width, "frame_height": image.width,
+                    "frame_width": frame_width, "frame_height": frame_height,
                     "frame_count": frame_count, "frametime": frametime, "interpolate": interpolate,
                 }
                 animations.append({
                     "name": name, "chunk_id": chunk_id, "texture_id": texture_id,
                     "pixel_x": x_offset, "frame_count": frame_count,
-                    "frame_width": image.width, "frame_height": image.width,
+                    "frame_width": frame_width, "frame_height": frame_height,
                     "frametime": frametime, "interpolate": interpolate,
                     "preview_frame": 0, "mcmeta": metadata,
                 })
