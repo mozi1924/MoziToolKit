@@ -42,7 +42,7 @@ class TestAtlasGenerator(unittest.TestCase):
             mapping = json.load(fp)
 
         self.assertGreaterEqual(mapping["tile_size"], 16)
-        self.assertEqual(mapping["format_version"], 5)
+        self.assertEqual(mapping["format_version"], 7)
         self.assertLessEqual(max(chunk["width"] for chunk in mapping["chunks"]), 4096)
         self.assertLessEqual(max(chunk["height"] for chunk in mapping["chunks"]), 4096)
         self.assertGreater(len(mapping["textures"]), 0)
@@ -75,7 +75,7 @@ class TestAtlasGenerator(unittest.TestCase):
             with open(outputs["mapping"], "r", encoding="utf-8") as fp:
                 mapping = json.load(fp)
 
-            self.assertEqual(mapping["format_version"], 5)
+            self.assertEqual(mapping["format_version"], 7)
             self.assertEqual(mapping["tile_size"], 32)
             self.assertEqual(len(mapping["chunks"]), 1)
             self.assertEqual(mapping["chunks"][0]["width"], 64)
@@ -88,6 +88,23 @@ class TestAtlasGenerator(unittest.TestCase):
             atlas = Image.open(outputs["chunks"][0])
             self.assertEqual(atlas.getpixel((0, 0)), (0, 255, 0, 255))
             self.assertEqual(atlas.getpixel((32, 0)), (255, 0, 0, 255))
+
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_non_standard_static_textures_do_not_inflate_tile_size(self):
+        """A random 480x320 store preview banner or non-square atlas must not inflate tile_size."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tex_dir = root / "assets" / "minecraft" / "textures" / "block"
+            tex_dir.mkdir(parents=True)
+            Image.new("RGBA", (16, 16), (255, 0, 0, 255)).save(tex_dir / "stone.png")
+            Image.new("RGBA", (480, 320), (0, 255, 0, 255)).save(tex_dir / "store_banner.png")
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            self.assertEqual(mapping["tile_size"], 16)
+            self.assertEqual(len(mapping["chunks"]), 1)
 
     def test_baked_uv_uses_the_same_chunk_cell_layout_as_the_atlas(self):
         column, row = chunk_cell(texture_id=3, tiles_per_row=2)
@@ -122,6 +139,8 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertTrue(all(chunk["packing"] == "vertical_columns" for chunk in animation_chunks))
             preview = mapping["textures"]["a"]
             self.assertEqual((preview["pixel_x"], preview["pixel_y"], preview["preview_frame"]), (0, 0, 0))
+            self.assertEqual(preview["frametime"], 2)
+            self.assertEqual(preview["frame_count"], 2)
             self.assertEqual(mapping["textures"]["b"]["pixel_x"], 32)
             self.assertEqual(mapping["textures"]["c"]["chunk_id"], 1)
             self.assertEqual(Image.open(outputs["chunks"][0]).getpixel((0, 0)), (255, 0, 0, 255))

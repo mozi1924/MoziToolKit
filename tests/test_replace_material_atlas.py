@@ -145,6 +145,18 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertTrue(any("Scheduler" in name for name in node_names))
         self.assertTrue(any("UV Mapping" in name for name in node_names))
         self.assertTrue(any("Frame Blend" in name for name in node_names))
+        self.assertTrue(any("Attr Total Frames" in name for name in node_names))
+        self.assertTrue(any("Attr Frametime" in name for name in node_names))
+
+        # Check Mesh face attributes
+        self.assertIn("mtk_anim_total_frames", self.cube.data.attributes)
+        self.assertIn("mtk_anim_frametime", self.cube.data.attributes)
+        self.assertIn("mtk_anim_interpolate", self.cube.data.attributes)
+        self.assertIn("mtk_anim_frame_height", self.cube.data.attributes)
+
+        # Check Object custom properties
+        self.assertIn("mtk_anim_total_frames", self.cube)
+        self.assertIn("mtk_anim_frametime", self.cube)
 
 
 if __name__ == "__main__":

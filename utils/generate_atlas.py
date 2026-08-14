@@ -33,7 +33,11 @@ except ImportError:
 
 # Bump this whenever the on-disk atlas layout changes.  The replacement step
 # uses it to avoid silently reusing an atlas produced by an older layout.
-ATLAS_FORMAT_VERSION = 6
+ATLAS_FORMAT_VERSION = 7
+
+
+def _is_power_of_two(n: int) -> bool:
+    return n > 0 and (n & (n - 1)) == 0
 
 
 class AtlasGenerator:
@@ -268,10 +272,16 @@ class AtlasGenerator:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        source_widths = [self.default_tile_size]
-        source_widths.extend(image.width for image in self.static_textures.values())
-        source_widths.extend(data["image"].width for data in self.animated_textures.values())
-        tile_size = max(source_widths)
+        # Determine tile size from standard square power-of-two static textures
+        square_widths = [
+            image.width for image in self.static_textures.values()
+            if image.width == image.height and _is_power_of_two(image.width)
+        ]
+        if square_widths:
+            tile_size = max(square_widths)
+        else:
+            tile_size = self.default_tile_size
+
         if tile_size > self.max_chunk_size:
             raise ValueError(f"Tile size {tile_size}px exceeds chunk limit {self.max_chunk_size}px.")
         tiles_per_row = self.max_chunk_size // tile_size
@@ -309,6 +319,8 @@ class AtlasGenerator:
                     "chunk_id": chunk_id, "texture_id": texture_id,
                     "tile_column": texture_id % tiles_per_row, "tile_row": texture_id // tiles_per_row,
                     "kind": "static",
+                    "frame_width": tile_size, "frame_height": tile_size,
+                    "frame_count": 1, "frametime": 1, "interpolate": False,
                 }
                 for channel, image in images.items():
                     image.paste(tile_for(texture_name, channel), (x, y))
@@ -365,15 +377,19 @@ class AtlasGenerator:
                         img_canvas.paste(source_img, (x_offset, 0))
 
                 frame_count = max(1, image.height // image.width)
+                frametime = max(1, int(metadata.get("frametime", 2)))
+                interpolate = bool(metadata.get("interpolate", False))
                 texture_locations[name] = {
                     "chunk_id": chunk_id, "texture_id": texture_id, "kind": "animation",
                     "pixel_x": x_offset, "pixel_y": 0, "preview_frame": 0,
                     "frame_width": image.width, "frame_height": image.width,
+                    "frame_count": frame_count, "frametime": frametime, "interpolate": interpolate,
                 }
                 animations.append({
                     "name": name, "chunk_id": chunk_id, "texture_id": texture_id,
                     "pixel_x": x_offset, "frame_count": frame_count,
                     "frame_width": image.width, "frame_height": image.width,
+                    "frametime": frametime, "interpolate": interpolate,
                     "preview_frame": 0, "mcmeta": metadata,
                 })
                 x_offset += image.width
