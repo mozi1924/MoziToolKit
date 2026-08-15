@@ -170,7 +170,9 @@ class MOZI_OT_menu_add_item(bpy.types.Operator):
 
     def execute(self, context):
         prefs = get_prefs(context)
-        view = prefs.active_tab
+        view = getattr(prefs, "context_menu_tab", getattr(prefs, "active_tab", "mesh"))
+        if view not in {"mesh", "object", "uv"}:
+            view = "mesh"
 
         added_coll = getattr(prefs, f"added_{view}")
         unadded_coll = getattr(prefs, f"unadded_{view}")
@@ -202,7 +204,9 @@ class MOZI_OT_menu_remove_item(bpy.types.Operator):
 
     def execute(self, context):
         prefs = get_prefs(context)
-        view = prefs.active_tab
+        view = getattr(prefs, "context_menu_tab", getattr(prefs, "active_tab", "mesh"))
+        if view not in {"mesh", "object", "uv"}:
+            view = "mesh"
 
         added_coll = getattr(prefs, f"added_{view}")
         unadded_coll = getattr(prefs, f"unadded_{view}")
@@ -236,7 +240,9 @@ class MOZI_OT_menu_move_item(bpy.types.Operator):
 
     def execute(self, context):
         prefs = get_prefs(context)
-        view = prefs.active_tab
+        view = getattr(prefs, "context_menu_tab", getattr(prefs, "active_tab", "mesh"))
+        if view not in {"mesh", "object", "uv"}:
+            view = "mesh"
 
         added_coll = getattr(prefs, f"added_{view}")
         added_idx_prop = f"added_{view}_index"
@@ -327,14 +333,35 @@ class MOZI_OT_menu_import_config(bpy.types.Operator, ImportHelper):
 class MOZI_AddonPreferences(bpy.types.AddonPreferences):
     bl_idname = __package__.rsplit(".", 1)[0]
 
+    category_tab: EnumProperty(
+        name="Category",
+        description="Select preferences category",
+        items=[
+            ("MISC", "Misc Settings", "Dependencies and general addon settings"),
+            ("CONTEXT_MENU", "Context Menu Settings", "Right-click context menu configuration"),
+        ],
+        default="MISC",
+    )
+
+    context_menu_tab: EnumProperty(
+        name="Context Menu View",
+        description="Select view context to configure right-click menu",
+        items=[
+            ("mesh", "Mesh Edit Mode", "Mesh Edit Mode Context Menu"),
+            ("object", "Object Mode", "Object Mode Context Menu"),
+            ("uv", "UV Editor", "UV Editor Context Menu"),
+        ],
+        default="mesh",
+    )
+
     active_tab: EnumProperty(
         name="View Tab",
         description="Select preferences section to configure",
         items=[
-            ("mesh", "Mesh Edit Mode (3D View)", "Mesh Edit Mode Context Menu"),
-            ("object", "Object Mode (3D View)", "Object Mode Context Menu"),
+            ("mesh", "Mesh Edit Mode", "Mesh Edit Mode Context Menu"),
+            ("object", "Object Mode", "Object Mode Context Menu"),
             ("uv", "UV Editor", "UV Editor Context Menu"),
-            ("dependencies", "Dependencies (依赖管理)", "Manage Python dependencies required by MoziToolKit"),
+            ("dependencies", "Dependencies", "Manage Python dependencies required by MoziToolKit"),
         ],
         default="mesh",
     )
@@ -343,12 +370,12 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         name="PyPI Mirror",
         description="Select PyPI mirror source for fast and reliable dependency downloads",
         items=[
-            ("TSINGHUA", "Tsinghua (清华大学镜像源 - 推荐)", "https://pypi.tuna.tsinghua.edu.cn/simple"),
-            ("ALIYUN", "Aliyun (阿里云镜像源)", "https://mirrors.aliyun.com/pypi/simple/"),
-            ("TENCENT", "Tencent (腾讯云镜像源)", "https://mirrors.cloud.tencent.com/pypi/simple/"),
-            ("USTC", "USTC (中国科技大学镜像源)", "https://pypi.mirrors.ustc.edu.cn/simple/"),
-            ("OFFICIAL", "Official (PyPI 官方源)", "https://pypi.org/simple"),
-            ("CUSTOM", "Custom (自定义镜像源)", "Use custom index URL"),
+            ("TSINGHUA", "Tsinghua Mirror", "https://pypi.tuna.tsinghua.edu.cn/simple"),
+            ("ALIYUN", "Aliyun Mirror", "https://mirrors.aliyun.com/pypi/simple/"),
+            ("TENCENT", "Tencent Mirror", "https://mirrors.cloud.tencent.com/pypi/simple/"),
+            ("USTC", "USTC Mirror", "https://pypi.mirrors.ustc.edu.cn/simple/"),
+            ("OFFICIAL", "Official PyPI", "https://pypi.org/simple"),
+            ("CUSTOM", "Custom Mirror", "Use custom index URL"),
         ],
         default="TSINGHUA",
     )
@@ -387,15 +414,23 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         layout = self.layout
 
-        # View Tabs
-        tab_row = layout.row(align=True)
-        tab_row.prop(self, "active_tab", expand=True)
+        # Primary Category Tabs
+        cat_row = layout.row(align=True)
+        cat_row.prop(self, "category_tab", expand=True)
 
         layout.separator()
 
-        if self.active_tab == "dependencies":
-            self.draw_dependencies(layout, context)
-            return
+        if self.category_tab == "MISC":
+            self.draw_misc(layout, context)
+        elif self.category_tab == "CONTEXT_MENU":
+            self.draw_context_menus(layout, context)
+
+    def draw_context_menus(self, layout, context):
+        # Secondary Context Menu Sub-Tabs
+        sub_row = layout.row(align=True)
+        sub_row.prop(self, "context_menu_tab", expand=True)
+
+        layout.separator()
 
         # Top Bar (Header Actions for Menu tabs)
         top_box = layout.box()
@@ -406,7 +441,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         layout.separator()
 
-        view = self.active_tab
+        view = self.context_menu_tab
         added_coll_name = f"added_{view}"
         added_idx_name = f"added_{view}_index"
         unadded_coll_name = f"unadded_{view}"
@@ -423,7 +458,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Left Column: Added Right-Click Menu Items
         left_col = main_row.column(align=False)
         left_box = left_col.box()
-        left_box.label(text="Added Right-Click Menu Items (已添加右键菜单选项):", icon="CHECKBOX_HLT")
+        left_box.label(text="Added Right-Click Menu Items:", icon="CHECKBOX_HLT")
         left_box.template_list(
             "MOZI_UL_added_items_list",
             "",
@@ -438,8 +473,8 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         if 0 <= added_idx < len(added_coll):
             item = added_coll[added_idx]
             edit_box = left_col.box()
-            edit_box.label(text="Edit Menu Item Description (修改右键菜单描述):", icon="EDITMODE_HLT")
-            edit_box.prop(item, "label", text="Description")
+            edit_box.label(text="Edit Menu Item Label:", icon="EDITMODE_HLT")
+            edit_box.prop(item, "label", text="Label")
 
         # Middle Column: Action Buttons (Icon-Only Compact Column)
         mid_col = main_row.column(align=True)
@@ -473,7 +508,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Right Column: Available / Unadded Options
         right_col = main_row.column(align=False)
         right_box = right_col.box()
-        right_box.label(text="Unadded Available Options (未添加的选项):", icon="ADD")
+        right_box.label(text="Available Unadded Options:", icon="ADD")
         right_box.template_list(
             "MOZI_UL_unadded_items_list",
             "",
@@ -484,7 +519,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             rows=6,
         )
 
-    def draw_dependencies(self, layout, context):
+    def draw_misc(self, layout, context):
         statuses = get_all_dependency_statuses()
         all_ok = has_all_dependencies()
 
@@ -502,7 +537,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Dependencies List Box
         list_box = layout.box()
         header_row = list_box.row()
-        header_row.label(text="Required Python Packages (所需 Python 依赖库):", icon="PACKAGE")
+        header_row.label(text="Required Python Packages:", icon="PACKAGE")
 
         col = list_box.column(align=False)
         for item in statuses:
@@ -516,7 +551,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             if item["installed"]:
                 title_row.label(text=f"(v{item['version'] or 'unknown'})", icon="NONE")
             else:
-                title_row.label(text="(Not Installed / 未安装)", icon="NONE")
+                title_row.label(text="(Not Installed)", icon="NONE")
 
             desc_row = info_col.row(align=True)
             desc_row.scale_y = 0.85
@@ -532,14 +567,14 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             action_col.alignment = "RIGHT"
             if item["installed"]:
                 tag_row = action_col.row(align=True)
-                tag_row.label(text="Installed (已就绪)", icon="CHECKMARK")
+                tag_row.label(text="Installed", icon="CHECKMARK")
                 btn = action_col.operator("mozi.install_dependency", text="Update / Reinstall", icon="FILE_REFRESH")
                 btn.package_name = item["name"]
                 btn.upgrade = True
             else:
                 tag_row = action_col.row(align=True)
                 tag_row.alert = True
-                tag_row.label(text="Missing (未安装)", icon="CANCEL")
+                tag_row.label(text="Missing", icon="CANCEL")
                 btn = action_col.operator("mozi.install_dependency", text="Install Package", icon="IMPORT")
                 btn.package_name = item["name"]
                 btn.upgrade = False
@@ -556,7 +591,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         # Download & Mirror Settings Box
         mirror_box = layout.box()
-        mirror_box.label(text="Download & Mirror Configuration (下载源配置):", icon="INTERNET")
+        mirror_box.label(text="Download & Mirror Configuration:", icon="INTERNET")
         mirror_box.prop(self, "pypi_mirror", text="PyPI Mirror")
         if self.pypi_mirror == "CUSTOM":
             mirror_box.prop(self, "custom_pypi_mirror", text="Custom URL")
@@ -565,7 +600,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         # Cache & Storage Management
         cache_box = layout.box()
-        cache_box.label(text="Resource Pack Cache & Storage (材质包缓存管理):", icon="DISK_DRIVE")
+        cache_box.label(text="Resource Pack Cache & Storage:", icon="DISK_DRIVE")
         cache_row = cache_box.row(align=True)
         cache_row.operator("mozi.clear_cache", text="Clear Resource Pack Cache", icon="TRASH")
 
@@ -573,7 +608,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         # Python Environment Info Box
         env_box = layout.box()
-        env_box.label(text="Python Environment Details (Python 环境信息):", icon="INFO")
+        env_box.label(text="Python Environment Details:", icon="INFO")
         env_col = env_box.column(align=True)
         env_col.scale_y = 0.85
         env_col.label(text=f"Python Executable: {get_python_executable()}")
@@ -588,7 +623,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         if self.last_install_log:
             layout.separator()
             log_box = layout.box()
-            log_box.label(text="Last Installation Output Log (最新安装日志):", icon="TEXT")
+            log_box.label(text="Last Installation Output Log:", icon="TEXT")
             log_col = log_box.column(align=True)
             log_col.scale_y = 0.8
             lines = self.last_install_log.strip().splitlines()

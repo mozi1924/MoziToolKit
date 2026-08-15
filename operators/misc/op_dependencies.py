@@ -149,7 +149,7 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
     bl_label = "Open MoziToolKit Preferences"
     bl_options = {"REGISTER", "INTERNAL"}
 
-    tab: StringProperty(name="Tab", default="dependencies")
+    tab: StringProperty(name="Tab", default="MISC")
 
     def execute(self, context):
         try:
@@ -169,8 +169,15 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
             pass
 
         prefs = get_prefs(context)
-        if prefs and hasattr(prefs, "active_tab"):
-            prefs.active_tab = self.tab
+        if prefs:
+            if self.tab in {"dependencies", "MISC", "misc"}:
+                if hasattr(prefs, "category_tab"):
+                    prefs.category_tab = "MISC"
+            elif self.tab in {"mesh", "object", "uv"}:
+                if hasattr(prefs, "category_tab"):
+                    prefs.category_tab = "CONTEXT_MENU"
+                if hasattr(prefs, "context_menu_tab"):
+                    prefs.context_menu_tab = self.tab
 
         refresh_ui_windows(context)
         return {"FINISHED"}

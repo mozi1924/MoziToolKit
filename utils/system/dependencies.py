@@ -43,23 +43,23 @@ DEPENDENCIES: Dict[str, Dependency] = {
 # Preconfigured PyPI Mirrors for fast and reliable downloads
 PYPI_MIRRORS = {
     "OFFICIAL": {
-        "label": "Official PyPI (官方默认源)",
+        "label": "Official PyPI",
         "url": "https://pypi.org/simple",
     },
     "TSINGHUA": {
-        "label": "Tsinghua Mirror (清华大学镜像源 - 国内推荐)",
+        "label": "Tsinghua Mirror",
         "url": "https://pypi.tuna.tsinghua.edu.cn/simple",
     },
     "ALIYUN": {
-        "label": "Aliyun Mirror (阿里云镜像源)",
+        "label": "Aliyun Mirror",
         "url": "https://mirrors.aliyun.com/pypi/simple/",
     },
     "TENCENT": {
-        "label": "Tencent Mirror (腾讯云镜像源)",
+        "label": "Tencent Mirror",
         "url": "https://mirrors.cloud.tencent.com/pypi/simple/",
     },
     "USTC": {
-        "label": "USTC Mirror (中国科学技术大学镜像源)",
+        "label": "USTC Mirror",
         "url": "https://pypi.mirrors.ustc.edu.cn/simple/",
     },
 }

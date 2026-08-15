@@ -2,7 +2,7 @@ import bpy
 from ...utils.system import register_menu_item
 
 
-@register_menu_item(views=["object"], label="修复/重建材质节点")
+@register_menu_item(views=["object"])
 class MOZI_OT_repair_material(bpy.types.Operator):
     """Repair and reconnect LabPBR decoder and animated UV shader nodes for selected objects' materials."""
 
