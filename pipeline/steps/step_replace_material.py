@@ -1,9 +1,17 @@
+"""
+Material replacement and reconstruction pipeline step.
+Supports Standalone and Texture Atlas generation modes.
+"""
+
+from __future__ import annotations
+
 import json
 from pathlib import Path
+from typing import Iterator, Union, Optional
 import bpy
-from typing import Iterator, Union
+
 from ..progress import ProgressUpdate
-from ..step import PipelineStep, StepResult, StepStatus
+from ..step import PipelineStep, StepResult
 try:
     from ...utils.materials import (
         ZipResourcePack,
@@ -23,10 +31,7 @@ try:
         ATLAS_FORMAT_VERSION,
         AtlasGenerator,
         build_atlas_chunk_materials,
-        atlas_uv_from_local,
-        atlas_uv_from_rect,
-        local_uv_from_atlas,
-        local_uv_from_rect,
+        remap_uv_coordinate,
         get_material_animation_info,
         get_texture_info_animation_info,
     )
@@ -51,15 +56,23 @@ except (ImportError, ValueError):
         ATLAS_FORMAT_VERSION,
         AtlasGenerator,
         build_atlas_chunk_materials,
-        atlas_uv_from_local,
-        atlas_uv_from_rect,
-        local_uv_from_atlas,
-        local_uv_from_rect,
+        remap_uv_coordinate,
         get_material_animation_info,
         get_texture_info_animation_info,
     )
     from utils.system import has_pillow
     from utils.mesh import fast_unmerge_block_quads
+
+
+ANIM_AND_ATLAS_ATTR_NAMES = (
+    "atlas_chunk_id",
+    "atlas_texture_id",
+    "mtk_anim_total_frames",
+    "mtk_anim_frametime",
+    "mtk_anim_interpolate",
+    "mtk_anim_frame_width",
+    "mtk_anim_frame_height",
+)
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -87,6 +100,56 @@ def find_existing_replacement(texture_info: dict, pack: ZipResourcePack) -> bpy.
         ):
             return material
     return None
+
+
+def apply_mesh_face_materials_and_provenance(
+    mesh: bpy.types.Mesh,
+    face_materials: list[bpy.types.Material | None],
+    source_keys: list[str],
+    source_origins: list[str],
+) -> None:
+    """Consolidate material slots and write back durable face-level provenance."""
+    unique_materials: list[bpy.types.Material] = []
+    for mat in face_materials:
+        if mat is not None and mat not in unique_materials:
+            unique_materials.append(mat)
+
+    if unique_materials:
+        mesh.materials.clear()
+        for mat in unique_materials:
+            mesh.materials.append(mat)
+        mat_slots = {m: idx for idx, m in enumerate(unique_materials)}
+        for poly_idx, mat in enumerate(face_materials):
+            if mat is not None:
+                mesh.polygons[poly_idx].material_index = mat_slots[mat]
+
+    write_face_source_provenance(mesh, source_keys, source_origins)
+
+
+def remap_polygon_loop_uvs(
+    polygon: bpy.types.MeshPolygon,
+    uv_layer: bpy.types.MeshUVLoopLayer,
+    orig_mode: str,
+    old_loc: Optional[dict] = None,
+    old_chunk: Optional[dict] = None,
+    old_anim_info: Optional[dict] = None,
+    target_location: Optional[dict] = None,
+    target_chunk: Optional[dict] = None,
+    target_anim_info: Optional[dict] = None,
+) -> None:
+    """Transform all loop UVs for a single polygon from source space to target space."""
+    for loop_index in polygon.loop_indices:
+        uv = uv_layer.data[loop_index].uv
+        uv.x, uv.y = remap_uv_coordinate(
+            uv.x, uv.y,
+            orig_mode=orig_mode,
+            old_loc=old_loc,
+            old_chunk=old_chunk,
+            old_anim_info=old_anim_info,
+            target_location=target_location,
+            target_chunk=target_chunk,
+            target_anim_info=target_anim_info,
+        )
 
 
 class StepReplaceMaterial(PipelineStep):
@@ -146,7 +209,9 @@ class StepReplaceMaterial(PipelineStep):
         else:
             yield from self._execute_standalone_mode_iter(pipeline_context, pack, valid_objects, pack_textures)
 
-    def _execute_atlas_mode_iter(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> Iterator[Union[ProgressUpdate, StepResult]]:
+    def _execute_atlas_mode_iter(
+        self, pipeline_context, pack: ZipResourcePack, valid_objects: list, pack_textures: bool
+    ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
         cache_root = get_cache_dir()
         atlas_dir = cache_root / pack.pack_hash
@@ -170,7 +235,9 @@ class StepReplaceMaterial(PipelineStep):
 
         if not cache_is_current:
             if not has_pillow():
-                yield StepResult.failed("Atlas Mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it.")
+                yield StepResult.failed(
+                    "Atlas Mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it."
+                )
                 return
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
             yield ProgressUpdate(0.15, 1.0, "Generating Atlas textures (Pillow)...")
@@ -183,7 +250,6 @@ class StepReplaceMaterial(PipelineStep):
 
         yield ProgressUpdate(0.35, 1.0, "Reading Atlas mapping and required chunks...")
 
-        # Load target mapping JSON
         with open(mapping_path, "r", encoding="utf-8") as fp:
             mapping_data = json.load(fp)
 
@@ -191,22 +257,14 @@ class StepReplaceMaterial(PipelineStep):
         for name, location in mapping_data.get("textures", {}).items():
             if location is None:
                 continue
-            # New mappings carry an explicit canonical key; legacy mappings
-            # remain addressable through their minecraft texture name.
             namespace, texture_name = split_texture_key(location.get("texture_key", name))
             texture_map[canonical_texture_key(namespace, texture_name)] = location
-            # Existing materials commonly use a filename-only texture name.
-            # Retain it as a lookup alias while persisting the full key above.
             legacy_namespace, legacy_texture = split_texture_key(name)
             texture_map.setdefault(canonical_texture_key(legacy_namespace, legacy_texture), location)
+
         chunks_by_id = {int(chunk["chunk_id"]): chunk for chunk in mapping_data.get("chunks", [])}
 
-        valid_objects = [o for o in target_objects if o and o.type == "MESH" and o.data and o.material_slots]
-        if not valid_objects:
-            yield StepResult.failed("No valid mesh objects with material slots found.")
-            return
-
-        # Collect required chunks from target objects
+        # Collect required chunks
         required_chunk_ids = set()
         for obj in valid_objects:
             mesh = obj.data
@@ -240,10 +298,7 @@ class StepReplaceMaterial(PipelineStep):
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
-            canonical_mat = find_existing_replacement(texture_info, pack)
-            if not canonical_mat:
-                canonical_mat = session_materials.get(texture_key)
-
+            canonical_mat = find_existing_replacement(texture_info, pack) or session_materials.get(texture_key)
             if canonical_mat:
                 return canonical_mat, False
 
@@ -270,15 +325,12 @@ class StepReplaceMaterial(PipelineStep):
 
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
-            if uv_layer is None:
-                pipeline_context.report(
-                    "WARNING",
-                    f"'{obj.name}' has no UV map; Atlas UVs could not be written."
-                )
 
             def face_attribute(name):
                 attribute = mesh.attributes.get(name)
-                if attribute and (attribute.domain != "FACE" or attribute.data_type != "FLOAT" or len(attribute.data) != len(mesh.polygons)):
+                if attribute and (
+                    attribute.domain != "FACE" or attribute.data_type != "FLOAT" or len(attribute.data) != len(mesh.polygons)
+                ):
                     mesh.attributes.remove(attribute)
                     attribute = None
                 return attribute or mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
@@ -336,16 +388,11 @@ class StepReplaceMaterial(PipelineStep):
                     chunk_ids[poly_idx] = float(new_location["chunk_id"])
                     texture_ids[poly_idx] = float(new_location["texture_id"])
                     if new_location.get("kind") == "animation":
-                        f_count = float(new_location.get("frame_count", 1))
-                        f_time = float(new_location.get("frametime", 1))
-                        f_interp = 1.0 if new_location.get("interpolate", False) else 0.0
-                        f_width = float(new_location.get("frame_width", 16))
-                        f_height = float(new_location.get("frame_height", 16))
-                        anim_frames[poly_idx] = f_count
-                        anim_frametimes[poly_idx] = f_time
-                        anim_interps[poly_idx] = f_interp
-                        anim_widths[poly_idx] = f_width
-                        anim_heights[poly_idx] = f_height
+                        anim_frames[poly_idx] = float(new_location.get("frame_count", 1))
+                        anim_frametimes[poly_idx] = float(new_location.get("frametime", 1))
+                        anim_interps[poly_idx] = 1.0 if new_location.get("interpolate", False) else 0.0
+                        anim_widths[poly_idx] = float(new_location.get("frame_width", 16))
+                        anim_heights[poly_idx] = float(new_location.get("frame_height", 16))
                     else:
                         anim_frames[poly_idx] = 1.0
                         anim_frametimes[poly_idx] = 1.0
@@ -359,12 +406,11 @@ class StepReplaceMaterial(PipelineStep):
                     )
                     source_keys[poly_idx] = canonical_texture_key(target_namespace, target_texture)
                     source_origins[poly_idx] = (
-                        get_face_source_origin(mesh, poly_idx)
-                        or material_source_origin(orig_slot.material)
+                        get_face_source_origin(mesh, poly_idx) or material_source_origin(orig_slot.material)
                     )
                     poly_updated = True
                 else:
-                    # Non-atlas texture fallback (e.g. entities or standalone items in resource pack)
+                    # Non-atlas texture fallback
                     fallback_tex_info = None
                     for cand in candidates:
                         info = pack.get_texture_info(cand, namespace)
@@ -378,11 +424,10 @@ class StepReplaceMaterial(PipelineStep):
                             resolved_standalone[poly_idx] = (mat, old_loc, orig_mode, old_mapping)
                             source_keys[poly_idx] = canonical_texture_key(
                                 fallback_tex_info["namespace"],
-                                fallback_tex_info.get("texture_key", fallback_tex_info["texture_name"])
+                                fallback_tex_info.get("texture_key", fallback_tex_info["texture_name"]),
                             )
                             source_origins[poly_idx] = (
-                                get_face_source_origin(mesh, poly_idx)
-                                or material_source_origin(orig_slot.material)
+                                get_face_source_origin(mesh, poly_idx) or material_source_origin(orig_slot.material)
                             )
                             poly_updated = True
                             continue
@@ -396,20 +441,16 @@ class StepReplaceMaterial(PipelineStep):
                 )
 
             if poly_updated:
-                chunk_attr = face_attribute("atlas_chunk_id")
-                texture_attr = face_attribute("atlas_texture_id")
-                anim_frames_attr = face_attribute("mtk_anim_total_frames")
-                anim_frametime_attr = face_attribute("mtk_anim_frametime")
-                anim_interp_attr = face_attribute("mtk_anim_interpolate")
-                anim_width_attr = face_attribute("mtk_anim_frame_width")
-                anim_height_attr = face_attribute("mtk_anim_frame_height")
-                chunk_attr.data.foreach_set("value", chunk_ids)
-                texture_attr.data.foreach_set("value", texture_ids)
-                anim_frames_attr.data.foreach_set("value", anim_frames)
-                anim_frametime_attr.data.foreach_set("value", anim_frametimes)
-                anim_interp_attr.data.foreach_set("value", anim_interps)
-                anim_width_attr.data.foreach_set("value", anim_widths)
-                anim_height_attr.data.foreach_set("value", anim_heights)
+                for attr_name, data in (
+                    ("atlas_chunk_id", chunk_ids),
+                    ("atlas_texture_id", texture_ids),
+                    ("mtk_anim_total_frames", anim_frames),
+                    ("mtk_anim_frametime", anim_frametimes),
+                    ("mtk_anim_interpolate", anim_interps),
+                    ("mtk_anim_frame_width", anim_widths),
+                    ("mtk_anim_frame_height", anim_heights),
+                ):
+                    face_attribute(attr_name).data.foreach_set("value", data)
 
                 if uv_layer is not None:
                     # 1. Remap atlas faces to atlas UVs
@@ -427,63 +468,30 @@ class StepReplaceMaterial(PipelineStep):
 
                         old_anim_info = None
                         if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                            orig_mat = obj.material_slots[polygon.material_index].material if polygon.material_index < len(obj.material_slots) else None
+                            orig_mat = (
+                                obj.material_slots[polygon.material_index].material
+                                if polygon.material_index < len(obj.material_slots) else None
+                            )
                             old_anim_info = get_material_animation_info(orig_mat)
 
-                        for loop_index in polygon.loop_indices:
-                            uv = uv_layer.data[loop_index].uv
-                            u_val, v_val = uv.x, uv.y
+                        remap_polygon_loop_uvs(
+                            polygon=polygon,
+                            uv_layer=uv_layer,
+                            orig_mode=orig_mode,
+                            old_loc=old_loc,
+                            old_chunk=old_chunk,
+                            old_anim_info=old_anim_info,
+                            target_location=new_location,
+                            target_chunk=target_chunk,
+                        )
 
-                            if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-                                if old_loc.get("kind") == "animation":
-                                    u_val, v_val = local_uv_from_rect(
-                                        u_val, v_val,
-                                        pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
-                                        rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
-                                        atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
-                                    )
-                                else:
-                                    u_val, v_val = local_uv_from_atlas(
-                                        u_val, v_val,
-                                        tile_column=int(old_loc["tile_column"]),
-                                        tile_row=int(old_loc["tile_row"]),
-                                        tile_size=float(old_chunk["tile_size"]),
-                                        atlas_width=float(old_chunk["width"]),
-                                        atlas_height=float(old_chunk["height"]),
-                                    )
-                            elif old_anim_info:
-                                u_val, v_val = local_uv_from_rect(
-                                    u_val, v_val,
-                                    pixel_x=0.0, pixel_y=0.0,
-                                    rect_width=float(old_anim_info["frame_width"]),
-                                    rect_height=float(old_anim_info["frame_height"]),
-                                    atlas_width=float(old_anim_info["img_width"]),
-                                    atlas_height=float(old_anim_info["img_height"]),
-                                )
-
-                            if new_location["kind"] == "animation":
-                                uv.x, uv.y = atlas_uv_from_rect(
-                                    u_val, v_val,
-                                    pixel_x=float(new_location["pixel_x"]), pixel_y=float(new_location["pixel_y"]),
-                                    rect_width=float(new_location["frame_width"]), rect_height=float(new_location["frame_height"]),
-                                    atlas_width=float(target_chunk["width"]), atlas_height=float(target_chunk["height"]),
-                                )
-                            else:
-                                uv.x, uv.y = atlas_uv_from_local(
-                                    u_val, v_val,
-                                    tile_column=int(new_location["tile_column"]),
-                                    tile_row=int(new_location["tile_row"]),
-                                    tile_size=float(target_chunk["tile_size"]),
-                                    atlas_width=float(target_chunk["width"]),
-                                    atlas_height=float(target_chunk["height"]),
-                                )
-
-                    # 2. Revert standalone fallback faces to local UVs (or bake into Standalone Frame 0 if animated)
+                    # 2. Revert standalone fallback faces to local UVs (or Standalone Frame 0)
                     for poly_idx, st_res in enumerate(resolved_standalone):
                         if st_res is None:
                             continue
                         mat, old_loc, orig_mode, old_mapping = st_res
                         polygon = mesh.polygons[poly_idx]
+
                         old_chunk = None
                         if old_loc and old_mapping:
                             old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
@@ -491,52 +499,23 @@ class StepReplaceMaterial(PipelineStep):
 
                         old_anim_info = None
                         if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                            orig_mat = obj.material_slots[polygon.material_index].material if polygon.material_index < len(obj.material_slots) else None
+                            orig_mat = (
+                                obj.material_slots[polygon.material_index].material
+                                if polygon.material_index < len(obj.material_slots) else None
+                            )
                             old_anim_info = get_material_animation_info(orig_mat)
 
                         target_anim_info = get_material_animation_info(mat)
 
-                        for loop_index in polygon.loop_indices:
-                            uv = uv_layer.data[loop_index].uv
-                            u_val, v_val = uv.x, uv.y
-                            if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping and old_chunk:
-                                if old_loc.get("kind") == "animation":
-                                    u_val, v_val = local_uv_from_rect(
-                                        u_val, v_val,
-                                        pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
-                                        rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
-                                        atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
-                                    )
-                                else:
-                                    u_val, v_val = local_uv_from_atlas(
-                                        u_val, v_val,
-                                        tile_column=int(old_loc["tile_column"]),
-                                        tile_row=int(old_loc["tile_row"]),
-                                        tile_size=float(old_chunk["tile_size"]),
-                                        atlas_width=float(old_chunk["width"]),
-                                        atlas_height=float(old_chunk["height"]),
-                                    )
-                            elif old_anim_info:
-                                u_val, v_val = local_uv_from_rect(
-                                    u_val, v_val,
-                                    pixel_x=0.0, pixel_y=0.0,
-                                    rect_width=float(old_anim_info["frame_width"]),
-                                    rect_height=float(old_anim_info["frame_height"]),
-                                    atlas_width=float(old_anim_info["img_width"]),
-                                    atlas_height=float(old_anim_info["img_height"]),
-                                )
-
-                            if target_anim_info:
-                                uv.x, uv.y = atlas_uv_from_rect(
-                                    u_val, v_val,
-                                    pixel_x=0.0, pixel_y=0.0,
-                                    rect_width=float(target_anim_info["frame_width"]),
-                                    rect_height=float(target_anim_info["frame_height"]),
-                                    atlas_width=float(target_anim_info["img_width"]),
-                                    atlas_height=float(target_anim_info["img_height"]),
-                                )
-                            else:
-                                uv.x, uv.y = u_val, v_val
+                        remap_polygon_loop_uvs(
+                            polygon=polygon,
+                            uv_layer=uv_layer,
+                            orig_mode=orig_mode,
+                            old_loc=old_loc,
+                            old_chunk=old_chunk,
+                            old_anim_info=old_anim_info,
+                            target_anim_info=target_anim_info,
+                        )
 
                 for poly_idx, resolved in enumerate(resolved_locations):
                     if resolved is not None:
@@ -546,21 +525,7 @@ class StepReplaceMaterial(PipelineStep):
                     if st_res is not None:
                         face_materials[poly_idx] = st_res[0]
 
-                # Keep the original slots for skipped/unmatched faces.  A
-                # mixed Ice Cube object can therefore replace its visible
-                # campfire faces without making internal faces visible.
-                unique_materials = []
-                for material in face_materials:
-                    if material is not None and material not in unique_materials:
-                        unique_materials.append(material)
-                mesh.materials.clear()
-                for material in unique_materials:
-                    mesh.materials.append(material)
-                material_slots = {material: index for index, material in enumerate(unique_materials)}
-                for poly_idx, material in enumerate(face_materials):
-                    if material is not None:
-                        mesh.polygons[poly_idx].material_index = material_slots[material]
-                write_face_source_provenance(mesh, source_keys, source_origins)
+                apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
 
                 for prop in (
                     "mtk_anim_total_frames", "mtk_anim_frametime",
@@ -575,25 +540,19 @@ class StepReplaceMaterial(PipelineStep):
         yield ProgressUpdate(1.0, 1.0, f"Atlas replacement finished ({replaced_objects} object(s)).")
         yield StepResult.success(f"Successfully processed {replaced_objects} object(s) in Atlas Mode.")
 
-    def _execute_standalone_mode_iter(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> Iterator[Union[ProgressUpdate, StepResult]]:
+    def _execute_standalone_mode_iter(
+        self, pipeline_context, pack: ZipResourcePack, valid_objects: list, pack_textures: bool
+    ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Standalone Mode with fine-grained progress."""
         replaced_count = 0
         assigned_count = 0
         session_materials = {}
 
-        valid_objects = [o for o in target_objects if o and o.type == 'MESH' and o.data and o.material_slots]
-        if not valid_objects:
-            yield StepResult.failed("No valid mesh objects with material slots found.")
-            return
-
         total_objs = len(valid_objects)
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
-            canonical_mat = find_existing_replacement(texture_info, pack)
-            if not canonical_mat:
-                canonical_mat = session_materials.get(texture_key)
-
+            canonical_mat = find_existing_replacement(texture_info, pack) or session_materials.get(texture_key)
             if canonical_mat:
                 return canonical_mat, False
 
@@ -623,9 +582,6 @@ class StepReplaceMaterial(PipelineStep):
                 if slot.material and slot.material not in old_mappings:
                     old_mappings[slot.material] = get_atlas_mapping_from_material(slot.material)
 
-            # Resolve per face.  An intentionally invisible Ice Cube face or
-            # an unmatched custom slot must not prevent the other faces from
-            # receiving their replacement material.
             resolved_faces = []
             unresolved_faces = []
             skipped_faces = []
@@ -634,6 +590,7 @@ class StepReplaceMaterial(PipelineStep):
                 if poly.material_index < len(obj.material_slots) else None
                 for poly in mesh.polygons
             ]
+
             for poly_idx, poly in enumerate(mesh.polygons):
                 if poly.material_index >= len(obj.material_slots):
                     unresolved_faces.append(poly_idx)
@@ -681,11 +638,10 @@ class StepReplaceMaterial(PipelineStep):
             poly_modified = False
             prepared_faces = []
             material_build_failed = False
+
             for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping in resolved_faces:
                 mat, is_new = get_or_create_replacement_material(tex_info)
                 if not mat:
-                    # Material construction failure is also atomic for this
-                    # mesh: no UVs or slots have been changed yet.
                     material_build_failed = True
                     break
                 prepared_faces.append((
@@ -697,15 +653,13 @@ class StepReplaceMaterial(PipelineStep):
                 pipeline_context.report("ERROR", f"'{obj.name}' material construction failed; no conversion was applied.")
                 continue
 
-            # Only after all target materials exist may this loop mutate UVs.
             for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping, mat, is_new in prepared_faces:
                 face_materials[poly_idx] = mat
                 source_keys[poly_idx] = canonical_texture_key(
                     tex_info["namespace"], tex_info.get("texture_key", tex_info["texture_name"])
                 )
                 source_origins[poly_idx] = (
-                    get_face_source_origin(mesh, poly_idx)
-                    or material_source_origin(original_material)
+                    get_face_source_origin(mesh, poly_idx) or material_source_origin(original_material)
                 )
                 poly_modified = True
                 assigned_count += 1
@@ -713,7 +667,6 @@ class StepReplaceMaterial(PipelineStep):
                     replaced_count += 1
                     pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
 
-                # Remap UVs: recover local [0, 1] UVs and bake into target Standalone Frame 0 if animated
                 if uv_layer:
                     old_chunk = None
                     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping:
@@ -727,67 +680,18 @@ class StepReplaceMaterial(PipelineStep):
                     target_anim_info = get_texture_info_animation_info(tex_info) or get_material_animation_info(mat)
 
                     polygon = mesh.polygons[poly_idx]
-                    for loop_index in polygon.loop_indices:
-                        uv = uv_layer.data[loop_index].uv
-                        u_local, v_local = uv.x, uv.y
-
-                        # 1. Invert incoming UV to local [0, 1]
-                        if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-                            if old_loc.get("kind") == "animation":
-                                u_local, v_local = local_uv_from_rect(
-                                    u_local, v_local,
-                                    pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
-                                    rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
-                                    atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
-                                )
-                            else:
-                                u_local, v_local = local_uv_from_atlas(
-                                    u_local, v_local,
-                                    tile_column=int(old_loc["tile_column"]),
-                                    tile_row=int(old_loc["tile_row"]),
-                                    tile_size=float(old_chunk["tile_size"]),
-                                    atlas_width=float(old_chunk["width"]),
-                                    atlas_height=float(old_chunk["height"]),
-                                )
-                        elif old_anim_info:
-                            u_local, v_local = local_uv_from_rect(
-                                u_local, v_local,
-                                pixel_x=0.0, pixel_y=0.0,
-                                rect_width=float(old_anim_info["frame_width"]),
-                                rect_height=float(old_anim_info["frame_height"]),
-                                atlas_width=float(old_anim_info["img_width"]),
-                                atlas_height=float(old_anim_info["img_height"]),
-                            )
-
-                        # 2. Map to target Standalone Frame 0 if animated, else keep local [0, 1]
-                        if target_anim_info:
-                            uv.x, uv.y = atlas_uv_from_rect(
-                                u_local, v_local,
-                                pixel_x=0.0, pixel_y=0.0,
-                                rect_width=float(target_anim_info["frame_width"]),
-                                rect_height=float(target_anim_info["frame_height"]),
-                                atlas_width=float(target_anim_info["img_width"]),
-                                atlas_height=float(target_anim_info["img_height"]),
-                            )
-                        else:
-                            uv.x, uv.y = u_local, v_local
+                    remap_polygon_loop_uvs(
+                        polygon=polygon,
+                        uv_layer=uv_layer,
+                        orig_mode=orig_mode,
+                        old_loc=old_loc,
+                        old_chunk=old_chunk,
+                        old_anim_info=old_anim_info,
+                        target_anim_info=target_anim_info,
+                    )
 
             if poly_modified:
-                unique_mats = []
-                for m in face_materials:
-                    if m is not None and m not in unique_mats:
-                        unique_mats.append(m)
-
-                if unique_mats:
-                    mesh.materials.clear()
-                    for m in unique_mats:
-                        mesh.materials.append(m)
-                    mat_indices = {m: idx for idx, m in enumerate(unique_mats)}
-                    for poly_idx, m in enumerate(face_materials):
-                        if m is not None:
-                            mesh.polygons[poly_idx].material_index = mat_indices[m]
-
-                write_face_source_provenance(mesh, source_keys, source_origins)
+                apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
 
                 has_retained_atlas_face = any(
                     face_materials[poly_idx]
@@ -795,12 +699,7 @@ class StepReplaceMaterial(PipelineStep):
                     for poly_idx in unresolved_faces + skipped_faces
                 )
                 if not has_retained_atlas_face:
-                    for attr_name in (
-                        "atlas_chunk_id", "atlas_texture_id",
-                        "mtk_anim_total_frames", "mtk_anim_frametime",
-                        "mtk_anim_interpolate", "mtk_anim_frame_width",
-                        "mtk_anim_frame_height",
-                    ):
+                    for attr_name in ANIM_AND_ATLAS_ATTR_NAMES:
                         attr = mesh.attributes.get(attr_name)
                         if attr:
                             mesh.attributes.remove(attr)

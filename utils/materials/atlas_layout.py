@@ -3,6 +3,7 @@ Shared coordinate rules for baked-UV and shader atlas paths.
 """
 
 from __future__ import annotations
+from typing import Optional, Tuple
 from .constants import FACE_ORDER
 
 
@@ -158,3 +159,113 @@ def find_texture_id_from_atlas_uv(
     col = max(0, min(tiles_per_row - 1, int(u_atlas * atlas_w // tile_size)))
     row = max(0, int((1.0 - v_atlas) * atlas_h // tile_size))
     return row * tiles_per_row + col
+
+
+def remap_uv_to_local(
+    u: float,
+    v: float,
+    orig_mode: str,
+    old_loc: Optional[dict] = None,
+    old_chunk: Optional[dict] = None,
+    old_anim_info: Optional[dict] = None,
+) -> tuple[float, float]:
+    """Invert an incoming UV coordinate from Atlas or Standalone Animation space back to local [0, 1]."""
+    if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
+        if old_loc.get("kind") == "animation":
+            return local_uv_from_rect(
+                u, v,
+                pixel_x=float(old_loc["pixel_x"]),
+                pixel_y=float(old_loc["pixel_y"]),
+                rect_width=float(old_loc["frame_width"]),
+                rect_height=float(old_loc["frame_height"]),
+                atlas_width=float(old_chunk["width"]),
+                atlas_height=float(old_chunk["height"]),
+            )
+        else:
+            return local_uv_from_atlas(
+                u, v,
+                tile_column=int(old_loc["tile_column"]),
+                tile_row=int(old_loc["tile_row"]),
+                tile_size=float(old_chunk["tile_size"]),
+                atlas_width=float(old_chunk["width"]),
+                atlas_height=float(old_chunk["height"]),
+            )
+    elif old_anim_info:
+        return local_uv_from_rect(
+            u, v,
+            pixel_x=0.0,
+            pixel_y=0.0,
+            rect_width=float(old_anim_info["frame_width"]),
+            rect_height=float(old_anim_info["frame_height"]),
+            atlas_width=float(old_anim_info["img_width"]),
+            atlas_height=float(old_anim_info["img_height"]),
+        )
+    return u, v
+
+
+def remap_local_to_target_uv(
+    u_local: float,
+    v_local: float,
+    target_location: Optional[dict] = None,
+    target_chunk: Optional[dict] = None,
+    target_anim_info: Optional[dict] = None,
+) -> tuple[float, float]:
+    """Project a local [0, 1] UV coordinate to target Atlas Chunk or Standalone Animation Frame 0 space."""
+    if target_location and target_chunk:
+        if target_location.get("kind") == "animation":
+            return atlas_uv_from_rect(
+                u_local, v_local,
+                pixel_x=float(target_location["pixel_x"]),
+                pixel_y=float(target_location["pixel_y"]),
+                rect_width=float(target_location["frame_width"]),
+                rect_height=float(target_location["frame_height"]),
+                atlas_width=float(target_chunk["width"]),
+                atlas_height=float(target_chunk["height"]),
+            )
+        else:
+            return atlas_uv_from_local(
+                u_local, v_local,
+                tile_column=int(target_location["tile_column"]),
+                tile_row=int(target_location["tile_row"]),
+                tile_size=float(target_chunk["tile_size"]),
+                atlas_width=float(target_chunk["width"]),
+                atlas_height=float(target_chunk["height"]),
+            )
+    elif target_anim_info:
+        return atlas_uv_from_rect(
+            u_local, v_local,
+            pixel_x=0.0,
+            pixel_y=0.0,
+            rect_width=float(target_anim_info["frame_width"]),
+            rect_height=float(target_anim_info["frame_height"]),
+            atlas_width=float(target_anim_info["img_width"]),
+            atlas_height=float(target_anim_info["img_height"]),
+        )
+    return u_local, v_local
+
+
+def remap_uv_coordinate(
+    u: float,
+    v: float,
+    orig_mode: str,
+    old_loc: Optional[dict] = None,
+    old_chunk: Optional[dict] = None,
+    old_anim_info: Optional[dict] = None,
+    target_location: Optional[dict] = None,
+    target_chunk: Optional[dict] = None,
+    target_anim_info: Optional[dict] = None,
+) -> tuple[float, float]:
+    """Unified two-way UV remapping: incoming UV -> local [0, 1] -> target UV space."""
+    u_loc, v_loc = remap_uv_to_local(
+        u, v,
+        orig_mode=orig_mode,
+        old_loc=old_loc,
+        old_chunk=old_chunk,
+        old_anim_info=old_anim_info,
+    )
+    return remap_local_to_target_uv(
+        u_loc, v_loc,
+        target_location=target_location,
+        target_chunk=target_chunk,
+        target_anim_info=target_anim_info,
+    )

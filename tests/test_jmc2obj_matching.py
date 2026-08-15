@@ -181,6 +181,47 @@ class TestJmc2objMatching(unittest.TestCase):
         self.assertAlmostEqual(local_u, restored_u2, places=5)
         self.assertAlmostEqual(local_v, restored_v2, places=5)
 
+    def test_importer_adapter_architecture(self):
+        from utils.materials import (
+            get_importer_adapter,
+            ICE_CUBE_ADAPTER,
+            JMC2OBJ_ADAPTER,
+            GENERIC_ADAPTER,
+        )
+
+        mat_jmc = bpy.data.materials.new(name="minecraft_block-dirt")
+        self.assertEqual(get_importer_adapter(mat_jmc).identifier, JMC2OBJ_ADAPTER.identifier)
+        self.assertTrue(get_importer_adapter(mat_jmc).requires_block_unmerge)
+
+        mat_generic = bpy.data.materials.new(name="SomeCustomCube")
+        self.assertEqual(get_importer_adapter(mat_generic).identifier, GENERIC_ADAPTER.identifier)
+        self.assertFalse(get_importer_adapter(mat_generic).requires_block_unmerge)
+
+    def test_remap_uv_coordinate_pure_function(self):
+        from utils.materials import remap_uv_coordinate
+
+        # Test remap: incoming Atlas chunk tile -> target Standalone Frame 0
+        old_loc = {"kind": "static", "tile_column": 1, "tile_row": 2}
+        old_chunk = {"width": 256.0, "height": 256.0, "tile_size": 16.0}
+        target_anim = {"frame_width": 16.0, "frame_height": 16.0, "img_width": 16.0, "img_height": 512.0}
+
+        # Calculate a point in old atlas UV
+        u_in = (1 + 0.5) * 16.0 / 256.0
+        v_in = 1.0 - (2 + 1.0 - 0.5) * 16.0 / 256.0
+
+        u_out, v_out = remap_uv_coordinate(
+            u_in, v_in,
+            orig_mode="ATLAS_CHUNK",
+            old_loc=old_loc,
+            old_chunk=old_chunk,
+            target_anim_info=target_anim,
+        )
+
+        # Expected: local (0.5, 0.5) inside frame 0 of 16x512
+        # Frame 0 is at top: Y in [1 - 16/512, 1] = [512-16/512, 1]
+        self.assertAlmostEqual(u_out, 0.5, places=5)
+        self.assertAlmostEqual(v_out, 1.0 - (0.5 * 16.0 / 512.0), places=5)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

@@ -32,34 +32,61 @@ from .resource_pack import (
     parse_mcmeta,
 )
 
+from .provenance import (
+    without_blender_suffix,
+    canonical_texture_key,
+    split_texture_key,
+    detect_material_mode,
+    is_mozi_material,
+    get_face_source_origin,
+    get_face_source_texture_key,
+    get_atlas_mapping_from_material,
+    write_face_source_provenance,
+)
+
+from .animation import (
+    get_material_animation_info,
+    get_texture_info_animation_info,
+)
+
+from .texture_finder import (
+    find_albedo_image_from_material,
+    find_face_image,
+    get_material_pixel_step,
+)
+
 try:
     from .interpolation import (
         set_materials_texture_interpolation_closest,
         process_node_tree_interpolation,
     )
     from .matching import (
-        detect_material_mode,
-        is_mozi_material,
-        get_atlas_mapping_from_material,
+        ImporterAdapter,
+        MaterialMatchPreset,
+        ICE_CUBE_ADAPTER,
+        JMC2OBJ_ADAPTER,
+        GENERIC_ADAPTER,
+        ADAPTERS,
+        ICE_CUBE_PRESET,
+        JMC2OBJ_PRESET,
+        GENERIC_PRESET,
+        MATCH_PRESETS,
+        get_importer_adapter,
+        get_material_match_preset,
+        material_source_origin,
         extract_material_texture_keys,
         extract_face_texture_info,
-        canonical_texture_key,
-        split_texture_key,
-        write_face_source_provenance,
-        get_face_source_origin,
-        get_face_source_texture_key,
-        material_source_origin,
+        is_ice_cube_material,
         is_ice_cube_internal_face_material,
+        ice_cube_texture_candidates,
+        ice_cube_name_aliases,
+        ice_cube_legacy_aliases,
         is_jmc2obj_material,
         jmc2obj_texture_candidates,
-        JMC2OBJ_PRESET,
-        get_material_match_preset,
+        generic_texture_candidates,
+        base_texture_candidates,
         normalized_image_key,
         extract_texture_provenance_from_image,
-        base_texture_candidates,
-        without_blender_suffix,
-        get_material_animation_info,
-        get_texture_info_animation_info,
     )
     from .builder import (
         load_image_texture,
@@ -84,6 +111,9 @@ from .atlas_layout import (
     local_uv_from_atlas,
     local_uv_from_rect,
     find_texture_id_from_atlas_uv,
+    remap_uv_to_local,
+    remap_local_to_target_uv,
+    remap_uv_coordinate,
 )
 
 from .atlas_generator import AtlasGenerator
@@ -117,31 +147,57 @@ __all__ = [
     "get_directory_hash",
     "parse_mcmeta",
 
+    # Provenance
+    "without_blender_suffix",
+    "canonical_texture_key",
+    "split_texture_key",
+    "detect_material_mode",
+    "is_mozi_material",
+    "get_face_source_origin",
+    "get_face_source_texture_key",
+    "get_atlas_mapping_from_material",
+    "write_face_source_provenance",
+
+    # Animation
+    "get_material_animation_info",
+    "get_texture_info_animation_info",
+
+    # Texture Finder
+    "find_albedo_image_from_material",
+    "find_face_image",
+    "get_material_pixel_step",
+
     # Interpolation
     "set_materials_texture_interpolation_closest",
     "process_node_tree_interpolation",
 
-    # Matching
-    "detect_material_mode",
-    "is_mozi_material",
-    "get_atlas_mapping_from_material",
+    # Matching & Importers
+    "ImporterAdapter",
+    "MaterialMatchPreset",
+    "ICE_CUBE_ADAPTER",
+    "JMC2OBJ_ADAPTER",
+    "GENERIC_ADAPTER",
+    "ADAPTERS",
+    "ICE_CUBE_PRESET",
+    "JMC2OBJ_PRESET",
+    "GENERIC_PRESET",
+    "MATCH_PRESETS",
+    "get_importer_adapter",
+    "get_material_match_preset",
+    "material_source_origin",
     "extract_material_texture_keys",
     "extract_face_texture_info",
-    "canonical_texture_key",
-    "split_texture_key",
-    "write_face_source_provenance",
-    "get_face_source_origin",
-    "get_face_source_texture_key",
-    "material_source_origin",
+    "is_ice_cube_material",
     "is_ice_cube_internal_face_material",
+    "ice_cube_texture_candidates",
+    "ice_cube_name_aliases",
+    "ice_cube_legacy_aliases",
     "is_jmc2obj_material",
     "jmc2obj_texture_candidates",
-    "JMC2OBJ_PRESET",
-    "get_material_match_preset",
+    "generic_texture_candidates",
+    "base_texture_candidates",
     "normalized_image_key",
-    "without_blender_suffix",
-    "get_material_animation_info",
-    "get_texture_info_animation_info",
+    "extract_texture_provenance_from_image",
 
     # Builder
     "load_image_texture",
@@ -149,7 +205,7 @@ __all__ = [
     "build_channel_nodes",
     "rebuild_material",
 
-    # Atlas Layout
+    # Atlas Layout & Remapping
     "face_index_from_normal",
     "static_cell",
     "chunk_cell",
@@ -158,6 +214,9 @@ __all__ = [
     "local_uv_from_atlas",
     "local_uv_from_rect",
     "find_texture_id_from_atlas_uv",
+    "remap_uv_to_local",
+    "remap_local_to_target_uv",
+    "remap_uv_coordinate",
 
     # Atlas Generator & Builder
     "AtlasGenerator",

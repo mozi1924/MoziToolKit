@@ -1,4 +1,11 @@
+"""
+UV area and collapse detection utilities for extrusion repair.
+"""
+
+from __future__ import annotations
+
 import bpy
+from ..materials.texture_finder import get_material_pixel_step
 
 
 def calculate_face_uv_area(face, uv_layer) -> float:
@@ -35,14 +42,7 @@ def is_face_uv_collapsed(
 
 def get_active_texture_pixel_step(obj=None) -> float:
     """Retrieve UV step corresponding to 1 pixel based on active object's image texture."""
-    p_step = 1.0 / 64.0
-    try:
-        active_obj = obj or bpy.context.active_object
-        if active_obj and active_obj.active_material and active_obj.active_material.use_nodes:
-            for node in active_obj.active_material.node_tree.nodes:
-                if node.type == "TEX_IMAGE" and node.image and node.image.size[0] > 0:
-                    p_step = 1.0 / float(node.image.size[0])
-                    break
-    except Exception:
-        pass
-    return p_step
+    active_obj = obj or (bpy.context.active_object if bpy and hasattr(bpy, "context") else None)
+    if active_obj and active_obj.active_material:
+        return get_material_pixel_step(active_obj.active_material, default_size=64)
+    return 1.0 / 64.0
