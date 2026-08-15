@@ -31,6 +31,11 @@ try:
     from .block_unmerge import (
         fast_unmerge_block_quads,
     )
+
+    from .subdivide import (
+        subdivide_quad_face,
+        cleanup_mesh_topology,
+    )
 except ImportError:
     pass
 
@@ -52,4 +57,6 @@ __all__ = [
     "get_image_from_face",
     "process_random_extrude",
     "fast_unmerge_block_quads",
+    "subdivide_quad_face",
+    "cleanup_mesh_topology",
 ]

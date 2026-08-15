@@ -121,10 +121,26 @@ class StepReplaceMaterial(PipelineStep):
             yield StepResult.failed(f"Failed to load resource pack: {e}")
             return
 
+        valid_objects = [o for o in target_objects if o and o.type == "MESH" and o.data and o.material_slots]
+        if not valid_objects:
+            yield StepResult.failed("No valid mesh objects with material slots found.")
+            return
+
+        # Preprocess multi-block consolidated faces (e.g. jmc2obj optimiseGeometry)
+        auto_unmerge = pipeline_context.get_param("auto_unmerge_blocks", True)
+        if auto_unmerge:
+            for obj in valid_objects:
+                large_count, new_count = fast_unmerge_block_quads(obj.data)
+                if large_count > 0:
+                    pipeline_context.report(
+                        "INFO",
+                        f"'{obj.name}': unmerged {large_count} multi-block face(s) into {new_count} unit block quad(s)."
+                    )
+
         if material_mode == "ATLAS":
-            yield from self._execute_atlas_mode_iter(pipeline_context, pack, target_objects, pack_textures)
+            yield from self._execute_atlas_mode_iter(pipeline_context, pack, valid_objects, pack_textures)
         else:
-            yield from self._execute_standalone_mode_iter(pipeline_context, pack, target_objects, pack_textures)
+            yield from self._execute_standalone_mode_iter(pipeline_context, pack, valid_objects, pack_textures)
 
     def _execute_atlas_mode_iter(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
@@ -185,17 +201,6 @@ class StepReplaceMaterial(PipelineStep):
         if not valid_objects:
             yield StepResult.failed("No valid mesh objects with material slots found.")
             return
-
-        # Preprocess multi-block consolidated faces (e.g. jmc2obj optimiseGeometry)
-        auto_unmerge = self.get_param(pipeline_context, "auto_unmerge_blocks", True)
-        if auto_unmerge:
-            for obj in valid_objects:
-                large_count, new_count = fast_unmerge_block_quads(obj.data)
-                if large_count > 0:
-                    pipeline_context.report(
-                        "INFO",
-                        f"'{obj.name}': unmerged {large_count} multi-block face(s) into {new_count} unit block quad(s) for Atlas mapping."
-                    )
 
         # Collect required chunks from target objects
         required_chunk_ids = set()
