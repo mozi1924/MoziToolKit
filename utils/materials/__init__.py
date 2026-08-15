@@ -58,6 +58,8 @@ try:
         extract_texture_provenance_from_image,
         base_texture_candidates,
         without_blender_suffix,
+        get_material_animation_info,
+        get_texture_info_animation_info,
     )
     from .builder import (
         load_image_texture,
@@ -138,6 +140,8 @@ __all__ = [
     "get_material_match_preset",
     "normalized_image_key",
     "without_blender_suffix",
+    "get_material_animation_info",
+    "get_texture_info_animation_info",
 
     # Builder
     "load_image_texture",

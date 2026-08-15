@@ -178,7 +178,7 @@ def build_channel_nodes(
         uv_node.inputs["Image Width"].default_value = float(img_width)
         uv_node.inputs["Image Height"].default_value = float(img_height)
         if "Atlas Mode" in uv_node.inputs:
-            uv_node.inputs["Atlas Mode"].default_value = 0.0
+            uv_node.inputs["Atlas Mode"].default_value = 1.0
 
         if tex_coord_node and "UV" in tex_coord_node.outputs:
             links.new(tex_coord_node.outputs["UV"], uv_node.inputs["Vector"])
@@ -550,7 +550,7 @@ def repair_material_nodes(
     for n in nodes:
         if n.bl_idname == "ShaderNodeGroup" and n.node_tree == templates["MC_Animated_UV_Mapping"]:
             if "Atlas Mode" in n.inputs:
-                n.inputs["Atlas Mode"].default_value = 1.0 if is_atlas_mat else 0.0
+                n.inputs["Atlas Mode"].default_value = 1.0
             if "Vector" in n.inputs and not n.inputs["Vector"].is_linked:
                 links.new(tex_coord.outputs["UV"], n.inputs["Vector"])
         elif n.bl_idname == "ShaderNodeTexImage" and n.name.startswith("Tex Static"):

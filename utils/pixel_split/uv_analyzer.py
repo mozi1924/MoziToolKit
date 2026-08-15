@@ -183,16 +183,38 @@ def get_face_effective_texture_info(
         fw = max(1, fw)
         fh = max(1, fh)
         tf = raw_h // fh if fh > 0 else 1
-        return FacePixelInfo(
-            effective_resolution=(fw, fh),
-            raw_image_resolution=(raw_w, raw_h),
-            material_mode=mode,
-            is_animated=True,
-            total_frames=max(1, tf),
-            frame_width=fw,
-            frame_height=fh,
-            uv_mode="LOCAL",
-        )
+        is_anim = tf > 1
+        if is_anim:
+            is_baked = False
+            if uv_layer and face.loops:
+                bounds = get_face_uv_bounds(face, uv_layer)
+                if bounds.height < 0.8 and bounds.height <= (float(fh) / float(raw_h)) * 1.5:
+                    is_baked = True
+            elif "Atlas Mode" in uv_node.inputs and float(uv_node.inputs["Atlas Mode"].default_value) == 1.0:
+                is_baked = True
+
+            eff_res = (raw_w, raw_h) if is_baked else (fw, fh)
+            return FacePixelInfo(
+                effective_resolution=eff_res,
+                raw_image_resolution=(raw_w, raw_h),
+                material_mode=mode,
+                is_animated=True,
+                total_frames=max(1, tf),
+                frame_width=fw,
+                frame_height=fh,
+                uv_mode="STANDALONE_BAKED" if is_baked else "LOCAL",
+            )
+        else:
+            return FacePixelInfo(
+                effective_resolution=(raw_w, raw_h),
+                raw_image_resolution=(raw_w, raw_h),
+                material_mode=mode,
+                is_animated=False,
+                total_frames=1,
+                frame_width=raw_w,
+                frame_height=raw_h,
+                uv_mode="LOCAL",
+            )
 
     # Check for MC .mcmeta Scheduler node group
     sched_node = next(
@@ -204,29 +226,43 @@ def get_face_effective_texture_info(
         if tf > 1:
             fh = max(1, raw_h // tf)
             fw = raw_w
+            is_baked = False
+            if uv_layer and face.loops:
+                bounds = get_face_uv_bounds(face, uv_layer)
+                if bounds.height < 0.8 and bounds.height <= (float(fh) / float(raw_h)) * 1.5:
+                    is_baked = True
+
+            eff_res = (raw_w, raw_h) if is_baked else (fw, fh)
             return FacePixelInfo(
-                effective_resolution=(fw, fh),
+                effective_resolution=eff_res,
                 raw_image_resolution=(raw_w, raw_h),
                 material_mode=mode,
                 is_animated=True,
                 total_frames=tf,
                 frame_width=fw,
                 frame_height=fh,
-                uv_mode="LOCAL",
+                uv_mode="STANDALONE_BAKED" if is_baked else "LOCAL",
             )
 
     # Check vertical animation strip ratio heuristic (e.g. 16x512 -> 32 frames of 16x16)
     if raw_h > raw_w and raw_h % raw_w == 0:
         tf = raw_h // raw_w
+        is_baked = False
+        if uv_layer and face.loops:
+            bounds = get_face_uv_bounds(face, uv_layer)
+            if bounds.height < 0.8 and bounds.height <= (float(raw_w) / float(raw_h)) * 1.5:
+                is_baked = True
+
+        eff_res = (raw_w, raw_h) if is_baked else (raw_w, raw_w)
         return FacePixelInfo(
-            effective_resolution=(raw_w, raw_w),
+            effective_resolution=eff_res,
             raw_image_resolution=(raw_w, raw_h),
             material_mode=mode,
             is_animated=True,
             total_frames=tf,
             frame_width=raw_w,
             frame_height=raw_w,
-            uv_mode="LOCAL",
+            uv_mode="STANDALONE_BAKED" if is_baked else "LOCAL",
         )
 
     # Static texture
