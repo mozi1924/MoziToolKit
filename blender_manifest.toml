@@ -15,7 +15,7 @@ website = "https://mozi1924.com/"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
-tags = ["Modeling", "UV", "Mesh"]
+tags = ["Modeling", "UV", "Mesh", "Materials"]
 
 blender_version_min = "4.2.0"
 # # Optional: Blender version that the extension does not support, earlier versions are supported.
@@ -44,30 +44,21 @@ license = [
 #   "./wheels/jsmin-3.0.1-py3-none-any.whl",
 # ]
 
-# Optional: add-ons can list which resources they will require:
-# * files (for access of any filesystem operations)
-# * network (for internet access)
-# * clipboard (to read and/or write the system clipboard)
-# * camera (to capture photos and videos)
-# * microphone (to capture audio)
-#
-# If using network, remember to also check `bpy.app.online_access`
-# https://docs.blender.org/manual/en/dev/advanced/extensions/addons.html#internet-access
-#
-# For each permission it is important to also specify the reason why it is required.
-# Keep this a single short sentence without a period (.) at the end.
-# For longer explanations use the documentation or detail page.
-#
-# [permissions]
-# network = "Need to sync motion-capture data to server"
-# files = "Import/export FBX from/to disk"
-# clipboard = "Copy and paste bone transforms"
+# Resources required by the extension (files & network permissions)
+[permissions]
+files = "Read Minecraft resource packs, write texture atlas files, and cache extracted textures"
+network = "Download and install external Python dependencies via pip"
 
-# Optional: build settings.
-# https://docs.blender.org/manual/en/dev/advanced/extensions/command_line_arguments.html#command-line-args-extension-build
-# [build]
-# paths_exclude_pattern = [
-#   "__pycache__/",
-#   "/.git/",
-#   "/*.zip",
-# ]
+# Build settings for `blender --command extension build`
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/.git/",
+  "/*.zip",
+  "tests/",
+  "dist/",
+  "*.blend",
+  "*.blend1",
+  ".DS_Store",
+  ".vscode/",
+]

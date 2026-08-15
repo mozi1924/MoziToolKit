@@ -1,12 +1,12 @@
-"""Diagnose Ice Cube material matching against an unpacked resource pack.
+"""Diagnose material matching against an unpacked resource pack.
 
 Run with Blender so image nodes in the source library are available::
 
     /Applications/Blender.app/Contents/MacOS/blender -b \
-      "/Users/jaxlocke/Desktop/Ice Cube Asset Library.blend" \
+      "/path/to/Asset_Library.blend" \
       --python tests/analyze_ice_cube_material_matches.py -- \
-      "/Users/jaxlocke/Downloads/Vanilla Mashup 1.5" \
-      "/tmp/mozi-material-match-report.json"
+      "/path/to/Resource_Pack_Directory_Or_ZIP" \
+      "./material-match-report.json"
 
 The script is read-only: it neither saves the opened .blend nor changes its
 datablocks.  Its exact-match column deliberately uses the add-on's current

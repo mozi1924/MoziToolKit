@@ -20,6 +20,33 @@ def get_cache_dir() -> Path:
     return cache_root
 
 
+def clear_resource_pack_cache() -> tuple[int, int]:
+    """
+    Clear all cached extracted resource packs and temporary atlas outputs in the cache directory.
+    Returns (files_removed_count, bytes_freed).
+    """
+    import shutil
+    cache_root = get_cache_dir()
+    files_count = 0
+    bytes_freed = 0
+    if cache_root.exists():
+        for item in list(cache_root.iterdir()):
+            try:
+                if item.is_dir():
+                    for sub in item.rglob("*"):
+                        if sub.is_file():
+                            bytes_freed += sub.stat().st_size
+                            files_count += 1
+                    shutil.rmtree(item, ignore_errors=True)
+                elif item.is_file():
+                    bytes_freed += item.stat().st_size
+                    files_count += 1
+                    item.unlink(missing_ok=True)
+            except Exception:
+                pass
+    return files_count, bytes_freed
+
+
 def get_file_hash(filepath: str) -> str:
     """Compute MD5 hash of a file for cache key generation."""
     hasher = hashlib.md5()

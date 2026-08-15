@@ -20,10 +20,21 @@ except ImportError:
 
 
 def parse_manifest(project_dir):
-    """Extract extension id and version from blender_manifest.toml or __init__.py."""
+    """Extract extension id, version, and build exclusions from blender_manifest.toml or __init__.py."""
     manifest_path = os.path.join(project_dir, "blender_manifest.toml")
     ext_id = None
     ext_version = None
+    exclude_patterns = [
+        "__pycache__/",
+        "/.git/",
+        "/*.zip",
+        "tests/",
+        "dist/",
+        "*.blend",
+        "*.blend1",
+        ".DS_Store",
+        ".vscode/",
+    ]
 
     if os.path.exists(manifest_path):
         if tomllib:
@@ -32,6 +43,8 @@ def parse_manifest(project_dir):
                     data = tomllib.load(f)
                     ext_id = data.get("id")
                     ext_version = data.get("version")
+                    if "build" in data and "paths_exclude_pattern" in data["build"]:
+                        exclude_patterns = data["build"]["paths_exclude_pattern"]
             except Exception as e:
                 print(f"[Warning] Failed to parse {manifest_path} with tomllib: {e}")
 
@@ -61,7 +74,7 @@ def parse_manifest(project_dir):
 
     ext_id = ext_id or "mozitoolkit"
     ext_version = ext_version or "1.0.0"
-    return ext_id, ext_version
+    return ext_id, ext_version, exclude_patterns
 
 
 def parse_gitignore(gitignore_path):
@@ -128,16 +141,40 @@ def get_files_via_git(project_dir):
         return None
 
 
-def get_files_to_package(project_dir, script_rel_path):
+def matches_exclude_patterns(rel_path, patterns):
+    """Check if a relative path matches any exclude pattern from manifest."""
+    rel_path_str = rel_path.replace("\\", "/")
+    for pat in patterns:
+        pat_clean = pat.strip()
+        if not pat_clean:
+            continue
+        if pat_clean.endswith("/"):
+            folder_name = pat_clean.rstrip("/")
+            if folder_name.startswith("/"):
+                folder_name = folder_name.lstrip("/")
+            if rel_path_str == folder_name or rel_path_str.startswith(folder_name + "/"):
+                return True
+        elif pat_clean.startswith("/*"):
+            ext = pat_clean[2:]
+            if rel_path_str.endswith(ext) or fnmatch.fnmatch(rel_path_str, "*" + ext):
+                return True
+        elif fnmatch.fnmatch(rel_path_str, pat_clean) or fnmatch.fnmatch(os.path.basename(rel_path_str), pat_clean):
+            return True
+        parts = rel_path_str.split("/")
+        for part in parts:
+            if fnmatch.fnmatch(part, pat_clean.rstrip("/")):
+                return True
+    return False
+
+
+def get_files_to_package(project_dir, script_rel_path, exclude_patterns=None):
     """Get list of relative file paths to package in the extension zip."""
+    if exclude_patterns is None:
+        exclude_patterns = []
+
     # Try git command first
     git_files = get_files_via_git(project_dir)
-    
-    # Excluded files/dirs explicitly requested:
-    # 1. .gitignore
-    # 2. the script itself
-    # 3. dist/ directory
-    # 4. .git directory
+
     script_normalized = os.path.normpath(script_rel_path)
 
     if git_files is not None:
@@ -151,6 +188,8 @@ def get_files_to_package(project_dir, script_rel_path):
             if norm.startswith("dist" + os.sep) or norm == "dist":
                 continue
             if norm.startswith(".git" + os.sep) or norm == ".git":
+                continue
+            if matches_exclude_patterns(rel_path, exclude_patterns):
                 continue
             valid_files.append(rel_path)
         return sorted(valid_files)
@@ -170,6 +209,7 @@ def get_files_to_package(project_dir, script_rel_path):
             d for d in dirs
             if d not in [".git", "dist", "__pycache__"]
             and not matches_gitignore(os.path.join(rel_root, d), patterns)
+            and not matches_exclude_patterns(os.path.join(rel_root, d), exclude_patterns)
         ]
 
         for file in files:
@@ -181,6 +221,8 @@ def get_files_to_package(project_dir, script_rel_path):
             if norm_file == script_normalized:
                 continue
             if matches_gitignore(rel_file, patterns):
+                continue
+            if matches_exclude_patterns(rel_file, exclude_patterns):
                 continue
 
             valid_files.append(rel_file)
@@ -196,7 +238,7 @@ def build_package():
     project_dir = os.path.abspath(os.path.dirname(__file__))
     script_rel_path = os.path.relpath(__file__, project_dir)
 
-    ext_id, ext_version = parse_manifest(project_dir)
+    ext_id, ext_version, exclude_patterns = parse_manifest(project_dir)
     output_dir = os.path.abspath(os.path.join(project_dir, args.output_dir))
     os.makedirs(output_dir, exist_ok=True)
 
@@ -204,7 +246,7 @@ def build_package():
     output_zip_path = os.path.join(output_dir, zip_filename)
 
     print(f"📦 Packaging extension '{ext_id}' v{ext_version}...")
-    files_to_pack = get_files_to_package(project_dir, script_rel_path)
+    files_to_pack = get_files_to_package(project_dir, script_rel_path, exclude_patterns)
 
     print(f"📂 Selected {len(files_to_pack)} files to include:")
     with zipfile.ZipFile(output_zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -220,3 +262,4 @@ def build_package():
 
 if __name__ == "__main__":
     build_package()
+

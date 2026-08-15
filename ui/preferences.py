@@ -565,6 +565,14 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         layout.separator()
 
+        # Cache & Storage Management
+        cache_box = layout.box()
+        cache_box.label(text="Resource Pack Cache & Storage (材质包缓存管理):", icon="DISK_DRIVE")
+        cache_row = cache_box.row(align=True)
+        cache_row.operator("mozi.clear_cache", text="Clear Resource Pack Cache", icon="TRASH")
+
+        layout.separator()
+
         # Python Environment Info Box
         env_box = layout.box()
         env_box.label(text="Python Environment Details (Python 环境信息):", icon="INFO")

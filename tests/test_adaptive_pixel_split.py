@@ -7,20 +7,25 @@ and partial UV bounds.
 
 import unittest
 from pathlib import Path
-import bpy
-import bmesh
-from mathutils import Vector
 
-from utils.pixel_split import (
-    SplitConfig,
-    process_adaptive_pixel_split,
-    get_face_effective_texture_info,
-    calculate_face_target_grid,
-)
-from utils.node_groups.animated import ensure_animated_uv_mapping
-from utils.node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
+try:
+    import bpy
+    import bmesh
+    from mathutils import Vector
+    from utils.pixel_split import (
+        SplitConfig,
+        process_adaptive_pixel_split,
+        get_face_effective_texture_info,
+        calculate_face_target_grid,
+    )
+    from utils.node_groups.animated import ensure_animated_uv_mapping
+    from utils.node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
+    HAS_BPY = True
+except ImportError:
+    HAS_BPY = False
 
 
+@unittest.skipUnless(HAS_BPY, "bpy module is required for Adaptive Pixel Split unit tests")
 class TestAdaptivePixelSplit(unittest.TestCase):
 
     def setUp(self):

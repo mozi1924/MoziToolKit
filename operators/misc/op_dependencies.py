@@ -174,3 +174,19 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
 
         refresh_ui_windows(context)
         return {"FINISHED"}
+
+
+class MOZI_OT_clear_cache(bpy.types.Operator):
+    """Clear temporary extracted resource pack files and atlas caches"""
+
+    bl_idname = "mozi.clear_cache"
+    bl_label = "Clear Resource Pack Cache"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    def execute(self, context):
+        from ...utils.zip_resource_pack import clear_resource_pack_cache
+        count, bytes_freed = clear_resource_pack_cache()
+        mb_freed = bytes_freed / (1024 * 1024)
+        self.report({"INFO"}, f"Cache cleared: removed {count} files ({mb_freed:.2f} MB freed).")
+        return {"FINISHED"}
+
