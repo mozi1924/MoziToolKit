@@ -83,6 +83,22 @@ def load_image_texture(
     return img
 
 
+def set_material_displacement_method(mat: bpy.types.Material, method: str = "BOTH") -> None:
+    """Configure material displacement method for Cycles and EEVEE across Blender versions."""
+    if not mat:
+        return
+    if hasattr(mat, "displacement_method"):
+        try:
+            mat.displacement_method = method
+        except Exception:
+            pass
+    elif hasattr(mat, "cycles") and hasattr(mat.cycles, "displacement_method"):
+        try:
+            mat.cycles.displacement_method = method
+        except Exception:
+            pass
+
+
 def build_channel_nodes(
     mat: bpy.types.Material,
     channel_name: str,
@@ -239,6 +255,7 @@ def rebuild_material(
         return False
 
     mat.use_nodes = True
+    set_material_displacement_method(mat, "BOTH")
     nt = mat.node_tree
     nt.nodes.clear()
 
@@ -440,6 +457,7 @@ def repair_material_nodes(
 
     # In-place repair
     mat.use_nodes = True
+    set_material_displacement_method(mat, "BOTH")
     nt = mat.node_tree
     nodes = nt.nodes
     links = nt.links

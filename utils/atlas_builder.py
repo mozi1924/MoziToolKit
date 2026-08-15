@@ -9,7 +9,7 @@ from pathlib import Path
 import bpy
 from .node_groups import ensure_all_templates
 from .node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
-from .material_builder import load_image_texture
+from .material_builder import load_image_texture, set_material_displacement_method
 
 
 def build_atlas_material(
@@ -45,6 +45,7 @@ def build_atlas_material(
         mat = bpy.data.materials.new(name=mat_name)
 
     mat.use_nodes = True
+    set_material_displacement_method(mat, "BOTH")
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
     nodes.clear()
@@ -192,6 +193,7 @@ def build_atlas_chunk_materials(
             mat = bpy.data.materials.new(name=material_name)
 
         mat.use_nodes = True
+        set_material_displacement_method(mat, "BOTH")
         mat.node_tree["mtk:atlas_mapping"] = raw_mapping
         mat["mtk:source_namespace"] = namespace
         mat["mtk:source_texture"] = chunk_texture_name
