@@ -9,6 +9,7 @@ from ...utils.system import (
     ensure_sys_paths,
     get_all_dependency_statuses,
     install_package,
+    uninstall_package,
 )
 
 
@@ -125,6 +126,74 @@ class MOZI_OT_install_all_dependencies(bpy.types.Operator):
             return {"FINISHED"}
         else:
             self.report({"ERROR"}, "Some dependencies failed to install. Check log in preferences.")
+            return {"CANCELLED"}
+
+
+class MOZI_OT_uninstall_dependency(bpy.types.Operator):
+    """Uninstall the selected Python dependency from Blender's Python environment"""
+
+    bl_idname = "mozi.uninstall_dependency"
+    bl_label = "Uninstall Dependency"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    package_name: StringProperty(name="Package Name", default="Pillow")
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        self.report({"INFO"}, f"Uninstalling '{self.package_name}'... Please wait.")
+
+        success, log_output = uninstall_package(self.package_name)
+
+        if prefs:
+            prefs.last_install_log = log_output
+
+        refresh_ui_windows(context)
+
+        if success:
+            self.report({"INFO"}, f"Successfully uninstalled '{self.package_name}'.")
+            return {"FINISHED"}
+        else:
+            self.report({"ERROR"}, f"Failed to uninstall '{self.package_name}'. Check log in preferences.")
+            return {"CANCELLED"}
+
+
+class MOZI_OT_uninstall_all_dependencies(bpy.types.Operator):
+    """Uninstall all installed MoziToolKit Python dependencies from Blender"""
+
+    bl_idname = "mozi.uninstall_all_dependencies"
+    bl_label = "Uninstall All Dependencies"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        all_statuses = get_all_dependency_statuses()
+        installed = [s for s in all_statuses if s["installed"]]
+
+        if not installed:
+            self.report({"INFO"}, "No MoziToolKit dependencies are currently installed.")
+            return {"FINISHED"}
+
+        combined_logs = []
+        overall_success = True
+
+        for item in installed:
+            pkg_name = item["name"]
+            self.report({"INFO"}, f"Uninstalling '{pkg_name}'... Please wait.")
+            success, log_output = uninstall_package(pkg_name)
+            combined_logs.append(log_output)
+            if not success:
+                overall_success = False
+
+        if prefs:
+            prefs.last_install_log = "\n\n" + ("=" * 50) + "\n\n".join(combined_logs)
+
+        refresh_ui_windows(context)
+
+        if overall_success:
+            self.report({"INFO"}, "All MoziToolKit dependencies uninstalled successfully.")
+            return {"FINISHED"}
+        else:
+            self.report({"ERROR"}, "Some dependencies failed to uninstall. Check log in preferences.")
             return {"CANCELLED"}
 
 

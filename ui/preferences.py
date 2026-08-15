@@ -14,6 +14,7 @@ from ..utils.system import (
     DEPENDENCIES,
     ensure_sys_paths,
     get_all_dependency_statuses,
+    get_blender_site_packages,
     get_python_executable,
     has_all_dependencies,
 )
@@ -568,9 +569,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             if item["installed"]:
                 tag_row = action_col.row(align=True)
                 tag_row.label(text="Installed", icon="CHECKMARK")
-                btn = action_col.operator("mozi.install_dependency", text="Update / Reinstall", icon="FILE_REFRESH")
-                btn.package_name = item["name"]
-                btn.upgrade = True
+                btn_update = action_col.operator("mozi.install_dependency", text="Update / Reinstall", icon="FILE_REFRESH")
+                btn_update.package_name = item["name"]
+                btn_update.upgrade = True
+                btn_uninstall = action_col.operator("mozi.uninstall_dependency", text="Uninstall", icon="TRASH")
+                btn_uninstall.package_name = item["name"]
             else:
                 tag_row = action_col.row(align=True)
                 tag_row.alert = True
@@ -585,6 +588,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         act_row = layout.row(align=True)
         act_row.scale_y = 1.2
         act_row.operator("mozi.install_all_dependencies", text="Install All Missing Dependencies", icon="IMPORT")
+        act_row.operator("mozi.uninstall_all_dependencies", text="Uninstall All Dependencies", icon="TRASH")
         act_row.operator("mozi.check_dependencies", text="Refresh Status", icon="FILE_REFRESH")
 
         layout.separator()
@@ -613,11 +617,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         env_col.scale_y = 0.85
         env_col.label(text=f"Python Executable: {get_python_executable()}")
         env_col.label(text=f"Python Version: {sys.version.split()[0]}")
-        try:
-            user_site = site.getusersitepackages()
-            env_col.label(text=f"User Site-Packages: {user_site}")
-        except Exception:
-            pass
+        blender_sites = get_blender_site_packages()
+        if blender_sites:
+            env_col.label(text=f"Blender Site-Packages: {blender_sites[0]}")
+            for extra_site in blender_sites[1:]:
+                env_col.label(text=f"  + {extra_site}")
 
         # Installation Output Log Box
         if self.last_install_log:

@@ -65,61 +65,53 @@ PYPI_MIRRORS = {
 }
 
 
-def ensure_sys_paths() -> List[str]:
+def get_blender_site_packages() -> List[str]:
     """
-    Dynamically discover user site-packages and standard site directories
-    and add them to sys.path if not already present.
-    Eliminates hardcoded paths across macOS, Windows, and Linux.
+    Discover site-packages directories belonging exclusively to Blender's bundled Python environment.
+    Strictly excludes external system or user-specific directories (~/.local, Library/Python, etc.).
     """
-    added_paths = []
-    candidates = []
+    discovered = []
 
-    # 1. Standard site module discovery
-    try:
-        user_site = site.getusersitepackages()
-        if user_site:
-            candidates.append(Path(user_site))
-    except Exception:
-        pass
-
-    if hasattr(site, "USER_SITE") and site.USER_SITE:
-        candidates.append(Path(site.USER_SITE))
-
+    # 1. Standard Blender Python site-packages
     try:
         site_dirs = site.getsitepackages()
         if isinstance(site_dirs, list):
             for sd in site_dirs:
-                candidates.append(Path(sd))
+                p = Path(sd)
+                if p.exists():
+                    discovered.append(str(p.resolve()))
     except Exception:
         pass
 
-    # 2. Dynamic platform-specific user site fallbacks for Blender's Python
+    # 2. Blender sys.prefix / sys.exec_prefix lib fallback
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
-    home = Path.home()
+    prefix = Path(sys.prefix)
+    fallbacks = [
+        prefix / "lib" / f"python{py_ver}" / "site-packages",
+        prefix / "lib" / "site-packages",
+        prefix / "Lib" / "site-packages",  # Windows standard
+    ]
+    for fb in fallbacks:
+        if fb.exists():
+            resolved = str(fb.resolve())
+            if resolved not in discovered:
+                discovered.append(resolved)
 
-    if sys.platform == "darwin":
-        candidates.extend([
-            home / "Library" / "Python" / py_ver / "lib" / "python" / "site-packages",
-            home / ".local" / "lib" / f"python{py_ver}" / "site-packages",
-        ])
-    elif sys.platform == "win32":
-        app_data = os.environ.get("APPDATA")
-        if app_data:
-            candidates.append(Path(app_data) / "Python" / f"Python{sys.version_info.major}{sys.version_info.minor}" / "site-packages")
-    else:  # Linux / Unix
-        candidates.extend([
-            home / ".local" / "lib" / f"python{py_ver}" / "site-packages",
-        ])
+    return discovered
 
-    # Add valid paths to sys.path
-    for p in candidates:
-        try:
-            resolved = str(p.resolve())
-            if p.exists() and resolved not in sys.path:
-                sys.path.append(resolved)
-                added_paths.append(resolved)
-        except Exception:
-            continue
+
+def ensure_sys_paths() -> List[str]:
+    """
+    Ensure Blender's bundled Python site-packages directories are present in sys.path.
+    Never injects external user or OS-level Python directories.
+    """
+    added_paths = []
+    blender_sites = get_blender_site_packages()
+
+    for p in blender_sites:
+        if p not in sys.path:
+            sys.path.append(p)
+            added_paths.append(p)
 
     return added_paths
 
@@ -162,7 +154,7 @@ def get_python_executable() -> str:
 
 
 def is_module_installed(module_name: str) -> bool:
-    """Check if a Python module is installed and can be imported."""
+    """Check if a Python module is installed in Blender's Python environment."""
     ensure_sys_paths()
     try:
         return importlib.util.find_spec(module_name) is not None
@@ -201,7 +193,6 @@ def get_dependency_status(dep: Dependency) -> dict:
             from packaging import version as pkg_version
             is_satisfied = pkg_version.parse(version) >= pkg_version.parse(dep.min_version)
         except Exception:
-            # Fallback simple string / tuple comparison if packaging is not available
             is_satisfied = True
 
     return {
@@ -241,6 +232,7 @@ def install_package(
 ) -> tuple[bool, str]:
     """
     Install or update a Python package into Blender's Python environment via pip.
+    Completely isolated to Blender bundled environment without --user flag.
 
     Args:
         package_name: Name of the pip package to install.
@@ -267,7 +259,7 @@ def install_package(
     python_exe = get_python_executable()
     logs = []
 
-    # Ensure pip is available
+    # Ensure pip is available inside Blender
     try:
         subprocess.run(
             [python_exe, "-m", "ensurepip", "--default-pip"],
@@ -279,8 +271,8 @@ def install_package(
     except Exception as e:
         logs.append(f"[Note] ensurepip check: {e}")
 
-    # Build pip install command
-    cmd = [python_exe, "-m", "pip", "install", package_name]
+    # Build pip install command targeting Blender's bundled environment (no --user)
+    cmd = [python_exe, "-m", "pip", "install", package_name, "--no-user"]
 
     if upgrade:
         cmd.append("--upgrade")
@@ -294,18 +286,9 @@ def install_package(
 
     if index_url:
         cmd.extend(["-i", index_url])
-        # Add trusted-host if not standard https
         parsed = urlparse(index_url)
         if parsed.hostname:
             cmd.extend(["--trusted-host", parsed.hostname])
-
-    # Prefer --user to avoid write permission errors in system/app directories
-    try:
-        user_site = site.getusersitepackages()
-        if user_site and not os.access(sys.prefix, os.W_OK):
-            cmd.append("--user")
-    except Exception:
-        cmd.append("--user")
 
     cmd_str = " ".join(cmd)
     logs.append(f"Executing: {cmd_str}\n" + "-" * 50)
@@ -339,3 +322,61 @@ def install_package(
     except Exception as e:
         logs.append(f"\n[MoziToolKit Error] Exception during installation: {e}")
         return False, "\n".join(logs)
+
+
+def uninstall_package(
+    package_name: str,
+    timeout: int = 120,
+) -> tuple[bool, str]:
+    """
+    Uninstall a Python package from Blender's Python environment via pip.
+
+    Args:
+        package_name: Name of the pip package to uninstall.
+        timeout: Maximum seconds to wait for uninstallation process.
+
+    Returns:
+        (success: bool, output_log: str)
+    """
+    python_exe = get_python_executable()
+    logs = []
+
+    cmd = [python_exe, "-m", "pip", "uninstall", "-y", package_name]
+    cmd_str = " ".join(cmd)
+    logs.append(f"Executing: {cmd_str}\n" + "-" * 50)
+
+    try:
+        process = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        logs.append(process.stdout)
+        success = (process.returncode == 0)
+
+        # Invalidate module cache from sys.modules
+        dep_def = DEPENDENCIES.get(package_name)
+        mod_name = dep_def.module_name if dep_def else package_name
+        for k in list(sys.modules.keys()):
+            if k == mod_name or k.startswith(f"{mod_name}."):
+                sys.modules.pop(k, None)
+
+        importlib.invalidate_caches()
+
+        if success:
+            logs.append("\n[MoziToolKit] Package uninstalled successfully.")
+        else:
+            logs.append(f"\n[MoziToolKit] Package uninstallation failed with return code {process.returncode}.")
+
+        return success, "\n".join(logs)
+
+    except subprocess.TimeoutExpired:
+        logs.append(f"\n[MoziToolKit Error] Uninstallation timed out after {timeout} seconds.")
+        return False, "\n".join(logs)
+    except Exception as e:
+        logs.append(f"\n[MoziToolKit Error] Exception during uninstallation: {e}")
+        return False, "\n".join(logs)
+
