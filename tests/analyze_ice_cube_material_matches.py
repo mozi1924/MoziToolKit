@@ -33,7 +33,7 @@ from utils.materials import extract_material_texture_keys, ZipResourcePack
 
 
 def resource_pack_albedo_index(pack_path: Path) -> dict[str, set[str]]:
-    """Return albedo texture stems by namespace from a pack directory/archive.
+    """Return albedo texture stems and keys by namespace from a pack directory/archive.
 
     ``*_n`` and ``*_s`` files are LabPBR auxiliary channels and intentionally
     cannot count as a replacement by themselves, just like the production
@@ -42,8 +42,11 @@ def resource_pack_albedo_index(pack_path: Path) -> dict[str, set[str]]:
     pack = ZipResourcePack(str(pack_path), use_cache=True)
     result: dict[str, set[str]] = {}
     for (namespace, texture_name), texture_info in pack.texture_index.items():
-        if texture_info["albedo"]:
-            result.setdefault(namespace, set()).add(texture_name)
+        if texture_info.get("albedo"):
+            result.setdefault(namespace, set()).add(texture_name.lower())
+    for (namespace, texture_key), texture_info in pack.texture_path_index.items():
+        if texture_info.get("albedo"):
+            result.setdefault(namespace, set()).add(texture_key.lower())
     return result
 
 
@@ -77,7 +80,7 @@ def main(pack_path: Path, output_path: Path) -> None:
     for mat in sorted(bpy.data.materials, key=lambda item: item.name.casefold()):
         namespace, candidates = extract_material_texture_keys(mat)
         available = index.get(namespace, set())
-        matches = [candidate for candidate in candidates if candidate in available]
+        matches = [candidate for candidate in candidates if candidate.lower() in available]
         rows.append({
             "material": mat.name,
             "namespace": namespace,
