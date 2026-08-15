@@ -11,7 +11,7 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from utils.dependencies import (
+from utils.system import (
     DEPENDENCIES,
     ensure_sys_paths,
     get_all_dependency_statuses,

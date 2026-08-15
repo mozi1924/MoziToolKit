@@ -14,8 +14,8 @@ try:
         get_target_faces,
         poll_edit_mesh,
         set_select_mode,
+        get_image_from_face,
     )
-    from ...utils.uv import get_image_from_face
 except (ImportError, ValueError):
     from utils.mesh import (
         apply_selection,
@@ -23,8 +23,8 @@ except (ImportError, ValueError):
         get_target_faces,
         poll_edit_mesh,
         set_select_mode,
+        get_image_from_face,
     )
-    from utils.uv import get_image_from_face
 
 
 class SelectTransparentFacesStep(PipelineStep):

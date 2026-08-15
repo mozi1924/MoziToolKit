@@ -7,11 +7,9 @@ from pathlib import Path
 import bpy
 from ..step import PipelineStep, StepResult
 try:
-    from ...utils.zip_resource_pack import ZipResourcePack
-    from ...utils.material_builder import repair_material_nodes, inspect_material_nodes
+    from ...utils.materials import ZipResourcePack, repair_material_nodes, inspect_material_nodes
 except (ImportError, ValueError):
-    from utils.zip_resource_pack import ZipResourcePack
-    from utils.material_builder import repair_material_nodes, inspect_material_nodes
+    from utils.materials import ZipResourcePack, repair_material_nodes, inspect_material_nodes
 
 
 class StepRepairMaterial(PipelineStep):

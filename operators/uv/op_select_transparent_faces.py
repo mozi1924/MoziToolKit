@@ -8,9 +8,9 @@ from ...utils.mesh import (
     get_target_faces,
     poll_edit_mesh,
     set_select_mode,
+    get_image_from_face,
 )
-from ...utils.uv import get_image_from_face
-from ...utils.menu_config import register_menu_item
+from ...utils.system import register_menu_item
 
 
 @register_menu_item(views=["mesh", "uv"])

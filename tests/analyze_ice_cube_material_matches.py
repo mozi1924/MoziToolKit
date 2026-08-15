@@ -29,8 +29,7 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from utils.material_matching import extract_material_texture_keys
-from utils.zip_resource_pack import ZipResourcePack
+from utils.materials import extract_material_texture_keys, ZipResourcePack
 
 
 def resource_pack_albedo_index(pack_path: Path) -> dict[str, set[str]]:

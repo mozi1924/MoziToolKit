@@ -1,7 +1,7 @@
 import bpy
 from ...utils.mesh import SELECTION_SCOPE_ITEMS, poll_mesh_object, set_select_mode
 from ...utils.pixel_split import SplitConfig, process_adaptive_pixel_split
-from ...utils.menu_config import register_menu_item
+from ...utils.system import register_menu_item
 
 
 @register_menu_item(views=["mesh", "object", "uv"])

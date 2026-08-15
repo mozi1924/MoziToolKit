@@ -1,5 +1,5 @@
 import bpy
-from ...utils.menu_config import register_menu_item
+from ...utils.system import register_menu_item
 from ...utils.mesh import poll_edit_mesh
 from .op_auto_extrude_repair import UV_MODE_ITEMS
 

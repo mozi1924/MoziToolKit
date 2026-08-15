@@ -7,11 +7,9 @@ from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
 try:
-    from ...utils.mesh import bmesh_context, poll_edit_mesh
-    from ...utils.uv import get_face_uv_center
+    from ...utils.mesh import bmesh_context, poll_edit_mesh, get_face_uv_center
 except (ImportError, ValueError):
-    from utils.mesh import bmesh_context, poll_edit_mesh
-    from utils.uv import get_face_uv_center
+    from utils.mesh import bmesh_context, poll_edit_mesh, get_face_uv_center
 
 
 class ScaleUVStep(PipelineStep):
