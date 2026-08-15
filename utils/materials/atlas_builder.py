@@ -184,18 +184,19 @@ def build_atlas_chunk_materials(
             raise FileNotFoundError(f"Missing atlas chunk image: {albedo_path}")
 
         chunk_texture_name = Path(albedo_name).stem
+        chunk_namespace = chunk.get("namespace", namespace or DEFAULT_NAMESPACE)
 
         # Determine material name & lookup existing material by durable metadata contract
         if material_prefix:
             material_name = f"{material_prefix}:chunk:{chunk_id:03d}"
         elif short_hash:
-            material_name = f"mtk:{namespace}:{chunk_texture_name}:{short_hash}"
+            material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}:{short_hash}"
         else:
-            material_name = f"mtk:{namespace}:{chunk_texture_name}"
+            material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}"
 
         mat = None
         for existing in bpy.data.materials:
-            if existing.get(PROP_SOURCE_NAMESPACE) == namespace and existing.get(PROP_SOURCE_TEXTURE) == chunk_texture_name:
+            if existing.get(PROP_SOURCE_NAMESPACE) == chunk_namespace and existing.get(PROP_SOURCE_TEXTURE) == chunk_texture_name:
                 if pack_hash and existing.get(PROP_PACK_HASH) == pack_hash:
                     mat = existing
                     break
@@ -212,9 +213,9 @@ def build_atlas_chunk_materials(
         mat.use_nodes = True
         set_material_displacement_method(mat, "BOTH")
         mat.node_tree[PROP_ATLAS_MAPPING] = raw_mapping
-        mat[PROP_SOURCE_NAMESPACE] = namespace
+        mat[PROP_SOURCE_NAMESPACE] = chunk_namespace
         mat[PROP_SOURCE_TEXTURE] = chunk_texture_name
-        mat[PROP_MATERIAL_ID] = f"{namespace}:{chunk_texture_name}"
+        mat[PROP_MATERIAL_ID] = f"{chunk_namespace}:{chunk_texture_name}"
         if pack_hash:
             mat[PROP_PACK_HASH] = pack_hash
             mat[PROP_PACK_HASH_SHORT] = short_hash

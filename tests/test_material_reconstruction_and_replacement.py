@@ -25,6 +25,7 @@ if HAS_BPY:
         detect_material_mode,
         is_mozi_material,
         extract_face_texture_info,
+        base_texture_candidates,
     )
     from pipeline.presets import run_preset_pipeline
 
@@ -382,6 +383,43 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:examplemod:copper"))
         origin_values = [item.value.decode("utf-8") for item in self.cube.data.attributes["mtk_source_origin"].data]
         self.assertEqual(set(origin_values), {"generic"})
+
+    def test_image_filepath_namespace_detection(self):
+        """Image filepath like assets/create/textures/block/brass_casing.png must detect namespace 'create'."""
+        mat = bpy.data.materials.new("GenericMat")
+        mat.use_nodes = True
+        img = bpy.data.images.new("brass_casing.png", width=16, height=16)
+        img.filepath = "/workspace/assets/create/textures/block/brass_casing.png"
+        tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        tex_node.image = img
+
+        ns, candidates = base_texture_candidates(mat)
+        self.assertEqual(ns, "create")
+        self.assertIn("brass_casing", candidates)
+
+    def test_resource_pack_get_texture_info_fallback_and_namespace_key(self):
+        """ZipResourcePack.get_texture_info should resolve mod namespace keys and unique fallbacks."""
+        from utils.materials import ZipResourcePack
+
+        mod_tex_dir = self.pack_dir / "assets" / "farmersdelight" / "textures" / "block"
+        mod_tex_dir.mkdir(parents=True)
+        img = bpy.data.images.new("fd_cutting_board", width=16, height=16)
+        img.filepath_raw = str(mod_tex_dir / "cutting_board.png")
+        img.file_format = "PNG"
+        img.save()
+        bpy.data.images.remove(img)
+
+        pack = ZipResourcePack(self.pack_dir, use_cache=False)
+        # Explicit key with namespace colon
+        info1 = pack.get_texture_info("farmersdelight:cutting_board")
+        self.assertIsNotNone(info1)
+        self.assertEqual(info1["namespace"], "farmersdelight")
+        self.assertEqual(info1["texture_name"], "cutting_board")
+
+        # Fallback lookup when default 'minecraft' is passed but texture only exists in farmersdelight
+        info2 = pack.get_texture_info("cutting_board")
+        self.assertIsNotNone(info2)
+        self.assertEqual(info2["namespace"], "farmersdelight")
 
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")

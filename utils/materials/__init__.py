@@ -51,6 +51,8 @@ try:
         material_source_origin,
         is_ice_cube_internal_face_material,
         normalized_image_key,
+        extract_texture_provenance_from_image,
+        base_texture_candidates,
         without_blender_suffix,
     )
     from .builder import (

@@ -327,10 +327,85 @@ class TestAtlasGenerator(unittest.TestCase):
                 self.assertEqual(norm_atlas.getpixel((px + 4, y)), norm_color, f"Normal mismatch at frame {frame_idx}")
                 self.assertEqual(spec_atlas.getpixel((px + 4, y)), spec_color, f"Specular mismatch at frame {frame_idx}")
 
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_namespaces_are_strictly_isolated_in_chunks(self):
+        """Textures of different namespaces must never be placed into the same chunk."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mc_dir = root / "assets" / "minecraft" / "textures" / "block"
+            create_dir = root / "assets" / "create" / "textures" / "block"
+            fd_dir = root / "assets" / "farmersdelight" / "textures" / "block"
+            mc_dir.mkdir(parents=True)
+            create_dir.mkdir(parents=True)
+            fd_dir.mkdir(parents=True)
+
+            Image.new("RGBA", (16, 16), (255, 0, 0, 255)).save(mc_dir / "stone.png")
+            Image.new("RGBA", (16, 16), (255, 100, 0, 255)).save(mc_dir / "dirt.png")
+            Image.new("RGBA", (32, 32), (0, 255, 0, 255)).save(create_dir / "brass_casing.png")
+            Image.new("RGBA", (32, 32), (0, 200, 0, 255)).save(create_dir / "andesite_casing.png")
+            Image.new("RGBA", (16, 16), (0, 0, 255, 255)).save(fd_dir / "cutting_board.png")
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            chunks = mapping["chunks"]
+            self.assertGreaterEqual(len(chunks), 3)
+
+            # Map each chunk to its textures
+            chunk_textures = {}
+            for tex_name, loc in mapping["textures"].items():
+                c_id = loc["chunk_id"]
+                chunk_textures.setdefault(c_id, []).append(loc)
+
+            for chunk in chunks:
+                c_id = chunk["chunk_id"]
+                c_ns = chunk["namespace"]
+                self.assertIn(c_ns, ("minecraft", "create", "farmersdelight"))
+                # Every texture inside this chunk must belong strictly to this namespace
+                for loc in chunk_textures.get(c_id, []):
+                    self.assertEqual(
+                        loc["namespace"], c_ns,
+                        f"Chunk {c_id} (ns: {c_ns}) contains texture from namespace {loc['namespace']}"
+                    )
+
+            # Check individual tile sizes
+            mc_chunks = [c for c in chunks if c["namespace"] == "minecraft"]
+            create_chunks = [c for c in chunks if c["namespace"] == "create"]
+            fd_chunks = [c for c in chunks if c["namespace"] == "farmersdelight"]
+
+            self.assertEqual(mc_chunks[0]["tile_size"], 16)
+            self.assertEqual(create_chunks[0]["tile_size"], 32)
+            self.assertEqual(fd_chunks[0]["tile_size"], 16)
+
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_statistical_mode_determines_tile_size(self):
+        """A pack with 10 16x16 textures and 2 32x32 textures must be recognized as 16px tile_size."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tex_dir = root / "assets" / "minecraft" / "textures" / "block"
+            tex_dir.mkdir(parents=True)
+
+            # 10 textures at 16x16
+            for i in range(10):
+                Image.new("RGBA", (16, 16), (i * 20, 50, 50, 255)).save(tex_dir / f"tex_{i}.png")
+            # 2 textures at 32x32 (optifine or high-res variation)
+            Image.new("RGBA", (32, 32), (255, 0, 0, 255)).save(tex_dir / "large_optifine_1.png")
+            Image.new("RGBA", (32, 32), (0, 255, 0, 255)).save(tex_dir / "large_optifine_2.png")
+
+            outputs = AtlasGenerator(root, max_chunk_size=128).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            mc_chunk = next(c for c in mapping["chunks"] if c["namespace"] == "minecraft")
+            self.assertEqual(mc_chunk["tile_size"], 16, "Statistical mode should detect 16px, not 32px")
+            self.assertEqual(mapping["tile_size"], 16)
+
     def test_vanilla_mashup_pbr_animated_tiling(self):
-        """If Vanilla Mashup 1.5.zip exists, verify single-frame PBR channels are tiled in atlas chunk."""
+        """If Vanilla Mashup 1.5.zip exists, verify resolution is 16px and namespace isolation holds."""
+        default_mashup = Path("/Users/jaxlocke/Downloads/Vanilla Mashup 1.5.zip")
         mashup_env = os.environ.get("MC_MASHUP_ZIP", "")
-        mashup_zip = Path(mashup_env) if mashup_env else None
+        mashup_zip = Path(mashup_env) if mashup_env else (default_mashup if default_mashup.exists() else None)
         if not mashup_zip or not mashup_zip.exists():
             self.skipTest(f"Vanilla Mashup ZIP not configured or found: {mashup_zip}")
 
@@ -346,12 +421,21 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertEqual(loc["kind"], "animation")
             self.assertEqual(loc["frame_count"], 32)
 
+            # Check minecraft chunks have tile_size 16
+            mc_chunks = [c for c in mapping["chunks"] if c["namespace"] == "minecraft" and c["kind"] == "static"]
+            self.assertTrue(mc_chunks)
+            for mc_c in mc_chunks:
+                self.assertEqual(mc_c["tile_size"], 16, "Vanilla Mashup minecraft chunks must be 16px tile_size")
+
+            # Check namespace isolation across all chunks
+            for c in mapping["chunks"]:
+                self.assertIn("namespace", c)
+
             anim_chunk = next(c for c in mapping["chunks"] if c["chunk_id"] == loc["chunk_id"])
             spec_img = Image.open(Path(tmp) / anim_chunk["files"]["specular"])
             norm_img = Image.open(Path(tmp) / anim_chunk["files"]["normal"])
 
             px = loc["pixel_x"]
-            # Sample frame 0 vs frame 1 vs frame 31
             spec_f0 = spec_img.getpixel((px + 4, 4))
             spec_f1 = spec_img.getpixel((px + 4, 20))
             spec_f31 = spec_img.getpixel((px + 4, 500))
