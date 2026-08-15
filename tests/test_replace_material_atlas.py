@@ -125,6 +125,13 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         mat = bpy.data.materials.new(name="sea_lantern")
         self.cube.data.materials.clear()
         self.cube.data.materials.append(mat)
+        # Simulate files saved by older versions, which duplicated this data
+        # on the object instead of relying solely on mesh face attributes.
+        self.cube["mtk_anim_total_frames"] = 99
+        self.cube["mtk_anim_frametime"] = 99
+        self.cube["mtk_anim_interpolate"] = True
+        self.cube["mtk_anim_frame_width"] = 99
+        self.cube["mtk_anim_frame_height"] = 99
 
         params = {
             "zip_path": str(self.jar_path),
@@ -148,17 +155,24 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertTrue(any("Attr Total Frames" in name for name in node_names))
         self.assertTrue(any("Attr Frametime" in name for name in node_names))
 
-        # Check Mesh face attributes
-        self.assertIn("mtk_anim_total_frames", self.cube.data.attributes)
-        self.assertIn("mtk_anim_frametime", self.cube.data.attributes)
-        self.assertIn("mtk_anim_interpolate", self.cube.data.attributes)
-        self.assertIn("mtk_anim_frame_width", self.cube.data.attributes)
-        self.assertIn("mtk_anim_frame_height", self.cube.data.attributes)
+        # Animation metadata is stored per polygon, allowing one mesh to use
+        # textures with different .mcmeta settings on different faces.
+        for name in (
+            "mtk_anim_total_frames", "mtk_anim_frametime",
+            "mtk_anim_interpolate", "mtk_anim_frame_width",
+            "mtk_anim_frame_height",
+        ):
+            attr = self.cube.data.attributes.get(name)
+            self.assertIsNotNone(attr)
+            self.assertEqual(attr.domain, "FACE")
+            self.assertEqual(len(attr.data), len(self.cube.data.polygons))
 
-        # Check Object custom properties
-        self.assertIn("mtk_anim_total_frames", self.cube)
-        self.assertIn("mtk_anim_frametime", self.cube)
-        self.assertIn("mtk_anim_frame_width", self.cube)
+        # The shader reads the mesh attributes, not object custom properties.
+        self.assertNotIn("mtk_anim_total_frames", self.cube)
+        self.assertNotIn("mtk_anim_frametime", self.cube)
+        self.assertNotIn("mtk_anim_interpolate", self.cube)
+        self.assertNotIn("mtk_anim_frame_width", self.cube)
+        self.assertNotIn("mtk_anim_frame_height", self.cube)
 
 
 if __name__ == "__main__":

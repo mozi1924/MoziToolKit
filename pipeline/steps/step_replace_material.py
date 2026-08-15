@@ -194,7 +194,19 @@ class StepReplaceMaterial(PipelineStep):
             anim_heights = [16.0] * len(mesh.polygons)
             resolved_locations = [None] * len(mesh.polygons)
             poly_updated = False
-            primary_anim = None
+
+            # Animation metadata is deliberately mesh FACE-domain data.  The
+            # shader reads these attributes directly, so object properties
+            # would only duplicate (and, for mixed animations, misrepresent)
+            # the data.  Remove properties written by earlier versions while
+            # the object is being converted to Atlas mode.
+            for prop in (
+                "mtk_anim_total_frames", "mtk_anim_frametime",
+                "mtk_anim_interpolate", "mtk_anim_frame_width",
+                "mtk_anim_frame_height",
+            ):
+                if prop in obj:
+                    del obj[prop]
 
             # Cache old atlas mappings per slot material to avoid redundant JSON parsing
             old_mappings = {}
@@ -236,8 +248,6 @@ class StepReplaceMaterial(PipelineStep):
                         anim_interps[poly_idx] = f_interp
                         anim_widths[poly_idx] = f_width
                         anim_heights[poly_idx] = f_height
-                        if primary_anim is None:
-                            primary_anim = (f_count, f_time, f_interp, f_width, f_height)
                     else:
                         anim_frames[poly_idx] = 1.0
                         anim_frametimes[poly_idx] = 1.0
@@ -256,13 +266,6 @@ class StepReplaceMaterial(PipelineStep):
                 anim_interp_attr.data.foreach_set("value", anim_interps)
                 anim_width_attr.data.foreach_set("value", anim_widths)
                 anim_height_attr.data.foreach_set("value", anim_heights)
-
-                if primary_anim is not None:
-                    obj["mtk_anim_total_frames"] = int(primary_anim[0])
-                    obj["mtk_anim_frametime"] = int(primary_anim[1])
-                    obj["mtk_anim_interpolate"] = bool(primary_anim[2])
-                    obj["mtk_anim_frame_width"] = int(primary_anim[3])
-                    obj["mtk_anim_frame_height"] = int(primary_anim[4])
 
                 if uv_layer is not None:
                     for poly_idx, resolved in enumerate(resolved_locations):
