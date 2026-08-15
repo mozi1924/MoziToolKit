@@ -488,11 +488,11 @@ class TestPipelineFramework(unittest.TestCase):
         from utils.node_groups.labpbr import reference_shape_errors
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(len(ng.nodes), 51)
-        self.assertEqual(len(ng.links), 81)
+        self.assertEqual(len(ng.nodes), 53)
+        self.assertEqual(len(ng.links), 84)
         self.assertFalse(any(node.bl_idname == "NodeReroute" for node in ng.nodes))
         self.assertEqual(reference_shape_errors(ng), ())
-        self.assertEqual(ng.get("mozi_template_version"), 7)
+        self.assertEqual(ng.get("mozi_template_version"), 8)
 
 
 def run_all_tests():

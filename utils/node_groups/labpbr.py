@@ -8,16 +8,16 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 7
+LABPBR_TEMPLATE_VERSION = 8
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The original graph has 82 nodes / 112 links because it contains 31 automatic
 # reroutes.  This implementation deliberately contracts those presentation
-# nodes while preserving its 51 functional nodes and 81 effective links.
+# nodes while preserving its 53 functional nodes and 84 effective links.
 LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 82
 LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 112
-LABPBR_REFERENCE_NODE_COUNT = 51
-LABPBR_REFERENCE_LINK_COUNT = 81
+LABPBR_REFERENCE_NODE_COUNT = 53
+LABPBR_REFERENCE_LINK_COUNT = 84
 LABPBR_REFERENCE_FRAMES = frozenset({
     "Optional _n: DirectX normal, AO, height",
     "Optional _s: smoothness, F0, metal, porosity / SSS, emission",
@@ -152,7 +152,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         "Sheen Weight": 0.0, "Sheen Roughness": 0.5, "Sheen Tint": (1, 1, 1, 1),
         "Thin Film Thickness": 0.0, "Thin Film IOR": 1.33,
     })
-    displacement = node(nodes, "ShaderNodeDisplacement", "LabPBR Height Displacement", location=(800, -350), inputs={"Midlevel": 0.0, "Scale": 0.01, "Normal": (0, 0, 0)})
+    displacement = node(nodes, "ShaderNodeDisplacement", "LabPBR Height Displacement", location=(800, -350), inputs={"Midlevel": 0.0, "Scale": 1.0, "Normal": (0, 0, 0)})
 
     normal_frame = node(nodes, "NodeFrame", "Optional _n: DirectX normal, AO, height")
     specular_frame = node(nodes, "NodeFrame", "Optional _s: smoothness, F0, metal, porosity / SSS, emission")
@@ -169,8 +169,10 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     normal_z = _math(nodes, "Reconstructed normal Z", "SQRT", (280, 520))
     encode_x = _math(nodes, "Encode X", "MULTIPLY_ADD", (280, 700), {"Value[1]": 0.5, "Value[2]": 0.5})
     encode_y = _math(nodes, "Encode Y", "MULTIPLY_ADD", (280, 330), {"Value[1]": 0.5, "Value[2]": 0.5})
+    encode_z = _math(nodes, "Encode Z", "MULTIPLY_ADD", (280, 520), {"Value[1]": 0.5, "Value[2]": 0.5})
     reconstructed_normal = node(nodes, "ShaderNodeCombineColor", "Reconstructed DirectX Normal", location=(500, 520))
     normal_map = node(nodes, "ShaderNodeNormalMap", "LabPBR Normal Map", location=(700, 520))
+    height_bump = node(nodes, "ShaderNodeBump", "LabPBR Height Bump", location=(920, 520), inputs={"Distance": 1.0, "Strength": 1.0})
 
     smoothness_inverse = _math(nodes, "1 − Smoothness", "SUBTRACT", (-780, -620), {"Value[0]": 1.0})
     linear_roughness = _math(nodes, "Linear Roughness", "MULTIPLY", (-560, -620))
@@ -204,7 +206,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     artist_emission = _math(nodes, "Artist Emission Multiplier", "MULTIPLY", (-500, -1740))
     final_emission = _math(nodes, "Enable emission after artist multiplier", "MULTIPLY", (120, -1600))
 
-    for child in (decode_normal, albedo_ao, normal_x, normal_y, x_squared, y_squared, xy_squared, normal_z_base, clamp_normal_z, normal_z, encode_x, encode_y, reconstructed_normal, normal_map, height_minus_one, labpbr_depth, effective_displacement):
+    for child in (decode_normal, albedo_ao, normal_x, normal_y, x_squared, y_squared, xy_squared, normal_z_base, clamp_normal_z, normal_z, encode_x, encode_y, encode_z, reconstructed_normal, normal_map, height_bump, height_minus_one, labpbr_depth, effective_displacement):
         child.parent = normal_frame
     for child in (decode_specular, smoothness_inverse, linear_roughness, clamp_f0, sqrt_f0, one_plus_sqrt_f0, one_minus_sqrt_f0, ior_from_f0, metal_preset, sss_offset, subsurface_weight, porosity_scaled, porosity_range, porosity, clamp_emission, emission_data, emission_strength):
         child.parent = specular_frame
@@ -218,8 +220,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, normal_y, "Value", y_squared, "Value[0]"); link(links, normal_y, "Value", y_squared, "Value[1]")
     link(links, x_squared, "Value", xy_squared, "Value[0]"); link(links, y_squared, "Value", xy_squared, "Value[1]")
     link(links, xy_squared, "Value", normal_z_base, "Value[1]"); link(links, normal_z_base, "Value", clamp_normal_z, "Value[0]"); link(links, clamp_normal_z, "Value", normal_z, "Value[0]")
-    link(links, normal_x, "Value", encode_x, "Value[0]"); link(links, normal_y, "Value", encode_y, "Value[0]")
-    link(links, encode_x, "Value", reconstructed_normal, "Red"); link(links, encode_y, "Value", reconstructed_normal, "Green"); link(links, normal_z, "Value", reconstructed_normal, "Blue")
+    link(links, normal_x, "Value", encode_x, "Value[0]"); link(links, normal_y, "Value", encode_y, "Value[0]"); link(links, normal_z, "Value", encode_z, "Value[0]")
+    link(links, encode_x, "Value", reconstructed_normal, "Red"); link(links, encode_y, "Value", reconstructed_normal, "Green"); link(links, encode_z, "Value", reconstructed_normal, "Blue")
     link(links, reconstructed_normal, "Color", normal_map, "Color")
     link(links, group_input, "Normal (_n) Alpha (Height)", height_minus_one, "Value[0]"); link(links, height_minus_one, "Value", labpbr_depth, "Value[0]"); link(links, labpbr_depth, "Value", effective_displacement, "Value[0]"); link(links, group_input, "Displacement Scale", effective_displacement, "Value[1]")
 
@@ -246,6 +248,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     # unused there too; emission is controlled by ``final_emission`` below.
     link(links, emission_strength, "Value", enable_emission, "Value[0]"); link(links, enable_labpbr, "Value", enable_emission, "Value[1]")
     link(links, enable_labpbr, "Value", normal_map, "Strength")
-    link(links, enable_ao, "Result[2]", principled, "Base Color"); link(links, enable_roughness, "Result[0]", principled, "Roughness"); link(links, enable_metallic, "Value", principled, "Metallic"); link(links, enable_ior, "Result[0]", principled, "IOR"); link(links, group_input, "Albedo Alpha", principled, "Alpha"); link(links, normal_map, "Normal", principled, "Normal"); link(links, enable_sss, "Value", principled, "Subsurface Weight"); link(links, group_input, "Albedo Color", principled, "Emission Color"); link(links, final_emission, "Value", principled, "Emission Strength")
+    link(links, enable_ao, "Result[2]", principled, "Base Color"); link(links, enable_roughness, "Result[0]", principled, "Roughness"); link(links, enable_metallic, "Value", principled, "Metallic"); link(links, enable_ior, "Result[0]", principled, "IOR"); link(links, group_input, "Albedo Alpha", principled, "Alpha")
+    link(links, normal_map, "Normal", height_bump, "Normal"); link(links, enable_displacement, "Value", height_bump, "Height"); link(links, height_bump, "Normal", principled, "Normal")
+    link(links, enable_sss, "Value", principled, "Subsurface Weight"); link(links, group_input, "Albedo Color", principled, "Emission Color"); link(links, final_emission, "Value", principled, "Emission Strength")
     link(links, principled, "BSDF", group_output, "BSDF"); link(links, enable_displacement, "Value", displacement, "Height"); link(links, displacement, "Displacement", group_output, "Displacement"); link(links, enable_porosity, "Value", group_output, "Porosity (0-1)")
     return finalize_group(group)
