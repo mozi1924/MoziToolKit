@@ -27,6 +27,10 @@ try:
     from .random_extrude import (
         process_random_extrude,
     )
+
+    from .block_unmerge import (
+        fast_unmerge_block_quads,
+    )
 except ImportError:
     pass
 
@@ -47,4 +51,5 @@ __all__ = [
     "get_face_uv_center",
     "get_image_from_face",
     "process_random_extrude",
+    "fast_unmerge_block_quads",
 ]
