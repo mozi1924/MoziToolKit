@@ -18,6 +18,8 @@ try:
         material_source_origin,
         write_face_source_provenance,
         get_face_source_origin,
+        get_face_source_texture_key,
+        is_ice_cube_internal_face_material,
         ATLAS_FORMAT_VERSION,
         AtlasGenerator,
         build_atlas_chunk_materials,
@@ -41,6 +43,8 @@ except (ImportError, ValueError):
         material_source_origin,
         write_face_source_provenance,
         get_face_source_origin,
+        get_face_source_texture_key,
+        is_ice_cube_internal_face_material,
         ATLAS_FORMAT_VERSION,
         AtlasGenerator,
         build_atlas_chunk_materials,
@@ -243,9 +247,15 @@ class StepReplaceMaterial(PipelineStep):
             anim_widths = [16.0] * len(mesh.polygons)
             anim_heights = [16.0] * len(mesh.polygons)
             resolved_locations = [None] * len(mesh.polygons)
-            source_keys = [""] * len(mesh.polygons)
-            source_origins = [""] * len(mesh.polygons)
+            source_keys = [get_face_source_texture_key(mesh, idx) for idx in range(len(mesh.polygons))]
+            source_origins = [get_face_source_origin(mesh, idx) for idx in range(len(mesh.polygons))]
             unresolved_faces = []
+            skipped_faces = []
+            face_materials = [
+                obj.material_slots[poly.material_index].material
+                if poly.material_index < len(obj.material_slots) else None
+                for poly in mesh.polygons
+            ]
             poly_updated = False
 
             old_mappings = {}
@@ -260,6 +270,9 @@ class StepReplaceMaterial(PipelineStep):
                 orig_slot = obj.material_slots[poly.material_index]
                 if not orig_slot.material:
                     unresolved_faces.append(poly_idx)
+                    continue
+                if is_ice_cube_internal_face_material(orig_slot.material):
+                    skipped_faces.append(poly_idx)
                     continue
 
                 old_mapping = old_mappings.get(orig_slot.material)
@@ -314,6 +327,11 @@ class StepReplaceMaterial(PipelineStep):
                     f"'{obj.name}' was left unchanged: {len(unresolved_faces)} face(s) could not be matched exactly."
                 )
                 continue
+            if skipped_faces:
+                pipeline_context.report(
+                    "INFO",
+                    f"'{obj.name}': retained {len(skipped_faces)} Ice Cube internal face(s)."
+                )
 
             if poly_updated:
                 chunk_attr = face_attribute("atlas_chunk_id")
@@ -383,14 +401,24 @@ class StepReplaceMaterial(PipelineStep):
                                     atlas_height=float(target_chunk["height"]),
                                 )
 
-                used_chunk_ids = sorted({int(res[0]["chunk_id"]) for res in resolved_locations if res})
-                mesh.materials.clear()
-                for chunk_id in used_chunk_ids:
-                    mesh.materials.append(atlas_materials[chunk_id])
-                chunk_slots = {chunk_id: index for index, chunk_id in enumerate(used_chunk_ids)}
                 for poly_idx, resolved in enumerate(resolved_locations):
                     if resolved is not None:
-                        mesh.polygons[poly_idx].material_index = chunk_slots[int(resolved[0]["chunk_id"])]
+                        face_materials[poly_idx] = atlas_materials[int(resolved[0]["chunk_id"])]
+
+                # Keep the original slots for skipped/unmatched faces.  A
+                # mixed Ice Cube object can therefore replace its visible
+                # campfire faces without making internal faces visible.
+                unique_materials = []
+                for material in face_materials:
+                    if material is not None and material not in unique_materials:
+                        unique_materials.append(material)
+                mesh.materials.clear()
+                for material in unique_materials:
+                    mesh.materials.append(material)
+                material_slots = {material: index for index, material in enumerate(unique_materials)}
+                for poly_idx, material in enumerate(face_materials):
+                    if material is not None:
+                        mesh.polygons[poly_idx].material_index = material_slots[material]
                 write_face_source_provenance(mesh, source_keys, source_origins)
 
                 for prop in (
@@ -454,14 +482,17 @@ class StepReplaceMaterial(PipelineStep):
                 if slot.material and slot.material not in old_mappings:
                     old_mappings[slot.material] = get_atlas_mapping_from_material(slot.material)
 
-            has_atlas_source = any(detect_material_mode(slot.material) in ("ATLAS_CHUNK", "ATLAS_UNIFIED")
-                                   for slot in obj.material_slots if slot.material)
-
-            # Resolve every polygon before mutating this mesh.  A partial
-            # replacement used to clear the material slots and silently bind
-            # unmatched faces to an unrelated material.
+            # Resolve per face.  An intentionally invisible Ice Cube face or
+            # an unmatched custom slot must not prevent the other faces from
+            # receiving their replacement material.
             resolved_faces = []
             unresolved_faces = []
+            skipped_faces = []
+            face_materials = [
+                obj.material_slots[poly.material_index].material
+                if poly.material_index < len(obj.material_slots) else None
+                for poly in mesh.polygons
+            ]
             for poly_idx, poly in enumerate(mesh.polygons):
                 if poly.material_index >= len(obj.material_slots):
                     unresolved_faces.append(poly_idx)
@@ -469,6 +500,9 @@ class StepReplaceMaterial(PipelineStep):
                 orig_slot = obj.material_slots[poly.material_index]
                 if not orig_slot.material:
                     unresolved_faces.append(poly_idx)
+                    continue
+                if is_ice_cube_internal_face_material(orig_slot.material):
+                    skipped_faces.append(poly_idx)
                     continue
 
                 old_mapping = old_mappings.get(orig_slot.material)
@@ -495,25 +529,30 @@ class StepReplaceMaterial(PipelineStep):
                     f"'{obj.name}' was left unchanged: {len(unresolved_faces)} face(s) could not be matched exactly."
                 )
                 continue
+            if skipped_faces:
+                pipeline_context.report(
+                    "INFO",
+                    f"'{obj.name}': retained {len(skipped_faces)} Ice Cube internal face(s)."
+                )
 
-            face_materials = [None] * len(mesh.polygons)
-            source_keys = [""] * len(mesh.polygons)
-            source_origins = [""] * len(mesh.polygons)
+            source_keys = [get_face_source_texture_key(mesh, idx) for idx in range(len(mesh.polygons))]
+            source_origins = [get_face_source_origin(mesh, idx) for idx in range(len(mesh.polygons))]
             poly_modified = False
             prepared_faces = []
+            material_build_failed = False
             for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping in resolved_faces:
                 mat, is_new = get_or_create_replacement_material(tex_info)
                 if not mat:
                     # Material construction failure is also atomic for this
                     # mesh: no UVs or slots have been changed yet.
-                    unresolved_faces.append(poly_idx)
+                    material_build_failed = True
                     break
                 prepared_faces.append((
                     poly_idx, tex_info, original_material, orig_mode,
                     old_loc, old_mapping, mat, is_new,
                 ))
 
-            if unresolved_faces:
+            if material_build_failed:
                 pipeline_context.report("ERROR", f"'{obj.name}' material construction failed; no conversion was applied.")
                 continue
 
@@ -575,7 +614,12 @@ class StepReplaceMaterial(PipelineStep):
 
                 write_face_source_provenance(mesh, source_keys, source_origins)
 
-                if has_atlas_source:
+                has_retained_atlas_face = any(
+                    face_materials[poly_idx]
+                    and detect_material_mode(face_materials[poly_idx]) in ("ATLAS_CHUNK", "ATLAS_UNIFIED")
+                    for poly_idx in unresolved_faces + skipped_faces
+                )
+                if not has_retained_atlas_face:
                     for attr_name in (
                         "atlas_chunk_id", "atlas_texture_id",
                         "mtk_anim_total_frames", "mtk_anim_frametime",

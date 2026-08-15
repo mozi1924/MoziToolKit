@@ -47,7 +47,9 @@ try:
         split_texture_key,
         write_face_source_provenance,
         get_face_source_origin,
+        get_face_source_texture_key,
         material_source_origin,
+        is_ice_cube_internal_face_material,
         normalized_image_key,
         without_blender_suffix,
     )
@@ -121,7 +123,9 @@ __all__ = [
     "split_texture_key",
     "write_face_source_provenance",
     "get_face_source_origin",
+    "get_face_source_texture_key",
     "material_source_origin",
+    "is_ice_cube_internal_face_material",
     "normalized_image_key",
     "without_blender_suffix",
 
