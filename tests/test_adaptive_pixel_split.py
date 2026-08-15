@@ -134,6 +134,67 @@ class TestAdaptivePixelSplit(unittest.TestCase):
         # 6 faces * (16 * 16) = 1536 faces (CRUCIAL: NOT 6 * 16 * 512 = 49152 faces)
         self.assertEqual(stats["final_faces"], 1536)
 
+    def test_standalone_baked_animated_material_split_16x16(self):
+        """A Standalone animated material with baked Frame 0 UVs (V in [31/32, 1.0]) splits into 16x16 faces."""
+        bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))
+        cube = bpy.context.active_object
+
+        # Set Frame 0 baked UV on all cube faces: U in [0, 1], V in [31/32, 1.0]
+        bm = bmesh.new()
+        bm.from_mesh(cube.data)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv.verify()
+        v_min = 1.0 - 16.0 / 512.0
+        v_max = 1.0
+        for face in bm.faces:
+            face.loops[0][uv_layer].uv = Vector((0.0, v_min))
+            face.loops[1][uv_layer].uv = Vector((1.0, v_min))
+            face.loops[2][uv_layer].uv = Vector((1.0, v_max))
+            face.loops[3][uv_layer].uv = Vector((0.0, v_max))
+        bm.to_mesh(cube.data)
+        bm.free()
+
+        img = self._create_test_image("water_still_baked_split", 16, 512)
+        mat = bpy.data.materials.new(name="mtk:minecraft:water_still:baked")
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+
+        uv_group = ensure_animated_uv_mapping()
+        uv_node = nodes.new("ShaderNodeGroup")
+        uv_node.node_tree = uv_group
+        uv_node.name = "MC UV Mapping (Albedo)"
+        uv_node.inputs["Frame Width"].default_value = 16.0
+        uv_node.inputs["Frame Height"].default_value = 16.0
+        uv_node.inputs["Image Width"].default_value = 16.0
+        uv_node.inputs["Image Height"].default_value = 512.0
+        uv_node.inputs["Atlas Mode"].default_value = 1.0
+
+        tex_node = nodes.new("ShaderNodeTexImage")
+        tex_node.name = "Tex Current (Albedo)"
+        tex_node.image = img
+
+        cube.data.materials.append(mat)
+
+        # Inspect detected info
+        bm = bmesh.new()
+        bm.from_mesh(cube.data)
+        bm.faces.ensure_lookup_table()
+        face = bm.faces[0]
+        info = get_face_effective_texture_info(face, cube, bpy.context)
+        bm.free()
+
+        self.assertEqual(info.effective_resolution, (16, 512))
+        self.assertEqual(info.uv_mode, "STANDALONE_BAKED")
+        self.assertTrue(info.is_animated)
+
+        # Run split
+        config = SplitConfig(auto_resolution=True, selection_scope="ALL", pixels_per_face=1)
+        stats = process_adaptive_pixel_split(bpy.context, config, target_obj=cube)
+
+        self.assertEqual(stats["initial_faces"], 6)
+        # 6 faces * (16 * 16) = 1536
+        self.assertEqual(stats["final_faces"], 1536)
+
     def test_animated_vertical_strip_ratio_heuristic(self):
         """Even without node groups, an image with 32x256 (height % width == 0) is recognized as 32x32 frames."""
         bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))

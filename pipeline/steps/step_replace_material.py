@@ -27,6 +27,8 @@ try:
         atlas_uv_from_rect,
         local_uv_from_atlas,
         local_uv_from_rect,
+        get_material_animation_info,
+        get_texture_info_animation_info,
     )
     from ...utils.system import has_pillow
     from ...utils.mesh import fast_unmerge_block_quads
@@ -53,6 +55,8 @@ except (ImportError, ValueError):
         atlas_uv_from_rect,
         local_uv_from_atlas,
         local_uv_from_rect,
+        get_material_animation_info,
+        get_texture_info_animation_info,
     )
     from utils.system import has_pillow
     from utils.mesh import fast_unmerge_block_quads
@@ -421,6 +425,11 @@ class StepReplaceMaterial(PipelineStep):
                             old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
                             old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
 
+                        old_anim_info = None
+                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
+                            orig_mat = obj.material_slots[polygon.material_index].material if polygon.material_index < len(obj.material_slots) else None
+                            old_anim_info = get_material_animation_info(orig_mat)
+
                         for loop_index in polygon.loop_indices:
                             uv = uv_layer.data[loop_index].uv
                             u_val, v_val = uv.x, uv.y
@@ -442,6 +451,15 @@ class StepReplaceMaterial(PipelineStep):
                                         atlas_width=float(old_chunk["width"]),
                                         atlas_height=float(old_chunk["height"]),
                                     )
+                            elif old_anim_info:
+                                u_val, v_val = local_uv_from_rect(
+                                    u_val, v_val,
+                                    pixel_x=0.0, pixel_y=0.0,
+                                    rect_width=float(old_anim_info["frame_width"]),
+                                    rect_height=float(old_anim_info["frame_height"]),
+                                    atlas_width=float(old_anim_info["img_width"]),
+                                    atlas_height=float(old_anim_info["img_height"]),
+                                )
 
                             if new_location["kind"] == "animation":
                                 uv.x, uv.y = atlas_uv_from_rect(
@@ -460,34 +478,65 @@ class StepReplaceMaterial(PipelineStep):
                                     atlas_height=float(target_chunk["height"]),
                                 )
 
-                    # 2. Revert standalone fallback faces to local UVs if they were previously in atlas space
+                    # 2. Revert standalone fallback faces to local UVs (or bake into Standalone Frame 0 if animated)
                     for poly_idx, st_res in enumerate(resolved_standalone):
                         if st_res is None:
                             continue
-                        _mat, old_loc, orig_mode, old_mapping = st_res
-                        if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping:
+                        mat, old_loc, orig_mode, old_mapping = st_res
+                        polygon = mesh.polygons[poly_idx]
+                        old_chunk = None
+                        if old_loc and old_mapping:
                             old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
                             old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
-                            if old_chunk:
-                                polygon = mesh.polygons[poly_idx]
-                                for loop_index in polygon.loop_indices:
-                                    uv = uv_layer.data[loop_index].uv
-                                    if old_loc.get("kind") == "animation":
-                                        uv.x, uv.y = local_uv_from_rect(
-                                            uv.x, uv.y,
-                                            pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
-                                            rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
-                                            atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
-                                        )
-                                    else:
-                                        uv.x, uv.y = local_uv_from_atlas(
-                                            uv.x, uv.y,
-                                            tile_column=int(old_loc["tile_column"]),
-                                            tile_row=int(old_loc["tile_row"]),
-                                            tile_size=float(old_chunk["tile_size"]),
-                                            atlas_width=float(old_chunk["width"]),
-                                            atlas_height=float(old_chunk["height"]),
-                                        )
+
+                        old_anim_info = None
+                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
+                            orig_mat = obj.material_slots[polygon.material_index].material if polygon.material_index < len(obj.material_slots) else None
+                            old_anim_info = get_material_animation_info(orig_mat)
+
+                        target_anim_info = get_material_animation_info(mat)
+
+                        for loop_index in polygon.loop_indices:
+                            uv = uv_layer.data[loop_index].uv
+                            u_val, v_val = uv.x, uv.y
+                            if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping and old_chunk:
+                                if old_loc.get("kind") == "animation":
+                                    u_val, v_val = local_uv_from_rect(
+                                        u_val, v_val,
+                                        pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
+                                        rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
+                                        atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
+                                    )
+                                else:
+                                    u_val, v_val = local_uv_from_atlas(
+                                        u_val, v_val,
+                                        tile_column=int(old_loc["tile_column"]),
+                                        tile_row=int(old_loc["tile_row"]),
+                                        tile_size=float(old_chunk["tile_size"]),
+                                        atlas_width=float(old_chunk["width"]),
+                                        atlas_height=float(old_chunk["height"]),
+                                    )
+                            elif old_anim_info:
+                                u_val, v_val = local_uv_from_rect(
+                                    u_val, v_val,
+                                    pixel_x=0.0, pixel_y=0.0,
+                                    rect_width=float(old_anim_info["frame_width"]),
+                                    rect_height=float(old_anim_info["frame_height"]),
+                                    atlas_width=float(old_anim_info["img_width"]),
+                                    atlas_height=float(old_anim_info["img_height"]),
+                                )
+
+                            if target_anim_info:
+                                uv.x, uv.y = atlas_uv_from_rect(
+                                    u_val, v_val,
+                                    pixel_x=0.0, pixel_y=0.0,
+                                    rect_width=float(target_anim_info["frame_width"]),
+                                    rect_height=float(target_anim_info["frame_height"]),
+                                    atlas_width=float(target_anim_info["img_width"]),
+                                    atlas_height=float(target_anim_info["img_height"]),
+                                )
+                            else:
+                                uv.x, uv.y = u_val, v_val
 
                 for poly_idx, resolved in enumerate(resolved_locations):
                     if resolved is not None:
@@ -664,30 +713,64 @@ class StepReplaceMaterial(PipelineStep):
                     replaced_count += 1
                     pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
 
-                # Invert UV from Atlas to Local [0, 1] if polygon was in Atlas space
-                if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping and uv_layer:
-                    old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
-                    old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
-                    if old_chunk:
-                        polygon = mesh.polygons[poly_idx]
-                        for loop_index in polygon.loop_indices:
-                            uv = uv_layer.data[loop_index].uv
+                # Remap UVs: recover local [0, 1] UVs and bake into target Standalone Frame 0 if animated
+                if uv_layer:
+                    old_chunk = None
+                    if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping:
+                        old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
+                        old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
+
+                    old_anim_info = None
+                    if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
+                        old_anim_info = get_material_animation_info(original_material)
+
+                    target_anim_info = get_texture_info_animation_info(tex_info) or get_material_animation_info(mat)
+
+                    polygon = mesh.polygons[poly_idx]
+                    for loop_index in polygon.loop_indices:
+                        uv = uv_layer.data[loop_index].uv
+                        u_local, v_local = uv.x, uv.y
+
+                        # 1. Invert incoming UV to local [0, 1]
+                        if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
                             if old_loc.get("kind") == "animation":
-                                uv.x, uv.y = local_uv_from_rect(
-                                    uv.x, uv.y,
+                                u_local, v_local = local_uv_from_rect(
+                                    u_local, v_local,
                                     pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
                                     rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
                                     atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
                                 )
                             else:
-                                uv.x, uv.y = local_uv_from_atlas(
-                                    uv.x, uv.y,
+                                u_local, v_local = local_uv_from_atlas(
+                                    u_local, v_local,
                                     tile_column=int(old_loc["tile_column"]),
                                     tile_row=int(old_loc["tile_row"]),
                                     tile_size=float(old_chunk["tile_size"]),
                                     atlas_width=float(old_chunk["width"]),
                                     atlas_height=float(old_chunk["height"]),
                                 )
+                        elif old_anim_info:
+                            u_local, v_local = local_uv_from_rect(
+                                u_local, v_local,
+                                pixel_x=0.0, pixel_y=0.0,
+                                rect_width=float(old_anim_info["frame_width"]),
+                                rect_height=float(old_anim_info["frame_height"]),
+                                atlas_width=float(old_anim_info["img_width"]),
+                                atlas_height=float(old_anim_info["img_height"]),
+                            )
+
+                        # 2. Map to target Standalone Frame 0 if animated, else keep local [0, 1]
+                        if target_anim_info:
+                            uv.x, uv.y = atlas_uv_from_rect(
+                                u_local, v_local,
+                                pixel_x=0.0, pixel_y=0.0,
+                                rect_width=float(target_anim_info["frame_width"]),
+                                rect_height=float(target_anim_info["frame_height"]),
+                                atlas_width=float(target_anim_info["img_width"]),
+                                atlas_height=float(target_anim_info["img_height"]),
+                            )
+                        else:
+                            uv.x, uv.y = u_local, v_local
 
             if poly_modified:
                 unique_mats = []

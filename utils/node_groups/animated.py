@@ -7,14 +7,14 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-# Version 7 supports both Standalone and Atlas material modes:
-# - In Standalone mode (Atlas Mode = 0.0), Vector is local quad UV (0..1, 0..1).
+# Version 9 unifies Standalone and Atlas material modes:
+# - In Baked UV Mode (Atlas Mode = 1.0, Default), Vector is already pre-mapped
+#   into the texture's Frame 0 rectangle by mesh UV transformation.
+# - In Unbaked Local Mode (Atlas Mode = 0.0), Vector is local quad UV (0..1, 0..1).
 #   The UV is mapped into Frame 0 (top of strip) using Frame/Image dimensions.
-# - In Atlas mode (Atlas Mode = 1.0), Vector is already pre-mapped into the
-#   atlas chunk's Frame 0 rectangle by mesh UV transformation.
 # In both modes, Current Frame and Next Frame subtract vertical frame steps
 # from the base Frame 0 coordinate.
-UV_TEMPLATE_VERSION = 8
+UV_TEMPLATE_VERSION = 9
 # Version 5 fixes Blender's WRAP input ordering (Value, Max, Min).  The old
 # graph supplied the bounds in reverse, so time zero evaluated as the last
 # frame and the wrap could step through invalid atlas space.
@@ -35,7 +35,7 @@ def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
         ("Frame Height", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
         ("Image Width", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
         ("Image Height", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
-        ("Atlas Mode", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Atlas Mode", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Current UV", "OUTPUT", "NodeSocketVector", None),
         ("Next UV", "OUTPUT", "NodeSocketVector", None),
         ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),

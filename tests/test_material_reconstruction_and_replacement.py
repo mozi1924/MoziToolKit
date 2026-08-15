@@ -421,6 +421,148 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertIsNotNone(info2)
         self.assertEqual(info2["namespace"], "farmersdelight")
 
+    def test_standalone_animated_material_bakes_uv_to_frame_0(self):
+        """Standalone mode must bake animated texture UVs into Frame 0 (top of strip: [1-fh/ih, 1])."""
+        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
+        water_file = tex_dir / "water_still.png"
+        img_water = bpy.data.images.new("temp_water", width=16, height=512)
+        img_water.filepath_raw = str(water_file)
+        img_water.file_format = "PNG"
+        img_water.save()
+        bpy.data.images.remove(img_water)
+
+        mcmeta_file = tex_dir / "water_still.png.mcmeta"
+        mcmeta_file.write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
+
+        self.cube.data.materials[0].name = "water_still"
+
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+
+        assigned_mat = self.cube.material_slots[0].material
+        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:water_still"))
+
+        # Verify MC_Animated_UV_Mapping node has Atlas Mode == 1.0 (Baked Frame 0 mode)
+        uv_node = next((n for n in assigned_mat.node_tree.nodes if n.type == "GROUP" and n.node_tree and "UV_Mapping" in n.node_tree.name), None)
+        self.assertIsNotNone(uv_node)
+        self.assertEqual(float(uv_node.inputs["Atlas Mode"].default_value), 1.0)
+
+        # Verify UV coordinates on the mesh are baked into Frame 0: V in [31/32, 1.0]
+        uv_layer = self.cube.data.uv_layers.active
+        v_coords = [item.uv.y for item in uv_layer.data]
+        min_v = min(v_coords)
+        max_v = max(v_coords)
+        self.assertAlmostEqual(max_v, 1.0, places=4)
+        self.assertAlmostEqual(min_v, 1.0 - 16.0 / 512.0, places=4)
+
+    def test_standalone_animated_to_atlas_to_standalone_roundtrip(self):
+        """Cross-mode roundtrip between Standalone animated and Atlas mode must restore Frame 0 UVs."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed in test environment")
+
+        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
+        water_file = tex_dir / "water_still.png"
+        img_water = bpy.data.images.new("temp_water_rt", width=16, height=512)
+        img_water.filepath_raw = str(water_file)
+        img_water.file_format = "PNG"
+        img_water.save()
+        bpy.data.images.remove(img_water)
+
+        mcmeta_file = tex_dir / "water_still.png.mcmeta"
+        mcmeta_file.write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
+
+        self.cube.data.materials[0].name = "water_still"
+
+        # 1. Standalone Replace
+        params_st = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res1, ctx1 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res1.is_success, ctx1.reports)
+
+        uv_layer = self.cube.data.uv_layers.active
+        st_frame0_uvs = [(item.uv.x, item.uv.y) for item in uv_layer.data]
+        self.assertAlmostEqual(min(v for _u, v in st_frame0_uvs), 1.0 - 16.0 / 512.0, places=4)
+
+        # 2. Atlas Replace
+        params_at = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "ATLAS",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_at, target_objects=[self.cube])
+        self.assertTrue(res2.is_success, ctx2.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:atlas_chunk_"))
+
+        # 3. Standalone Replace back
+        res3, ctx3 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res3.is_success, ctx3.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:water_still"))
+
+        restored_uvs = [(item.uv.x, item.uv.y) for item in uv_layer.data]
+        for (u_res, v_res), (u_orig, v_orig) in zip(restored_uvs, st_frame0_uvs):
+            self.assertAlmostEqual(u_res, u_orig, places=4)
+            self.assertAlmostEqual(v_res, v_orig, places=4)
+
+    def test_standalone_animated_to_static_to_animated_roundtrip(self):
+        """Switching between Standalone animated and static textures properly adjusts UVs."""
+        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
+        water_file = tex_dir / "water_still.png"
+        img_water = bpy.data.images.new("temp_water_cycle", width=16, height=512)
+        img_water.filepath_raw = str(water_file)
+        img_water.file_format = "PNG"
+        img_water.save()
+        bpy.data.images.remove(img_water)
+
+        mcmeta_file = tex_dir / "water_still.png.mcmeta"
+        mcmeta_file.write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
+
+        self.cube.data.materials[0].name = "water_still"
+
+        params_st = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        # 1. water_still (animated) -> Frame 0 UV [31/32, 1.0]
+        res1, ctx1 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res1.is_success, ctx1.reports)
+        uv_layer = self.cube.data.uv_layers.active
+        self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 1.0 - 16.0 / 512.0, places=4)
+        self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
+
+        # 2. Change face provenance to stone (static) -> UV restored to local [0, 1]
+        from utils.materials import write_face_source_provenance
+        write_face_source_provenance(self.cube.data, ["minecraft:stone"] * len(self.cube.data.polygons), ["TEST"] * len(self.cube.data.polygons))
+
+        res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res2.is_success, ctx2.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:stone"))
+        self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 0.0, places=4)
+        self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
+
+        # 3. Change face provenance back to water_still (animated) -> Frame 0 UV [31/32, 1.0]
+        write_face_source_provenance(self.cube.data, ["minecraft:water_still"] * len(self.cube.data.polygons), ["TEST"] * len(self.cube.data.polygons))
+
+        res3, ctx3 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res3.is_success, ctx3.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:water_still"))
+        self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 1.0 - 16.0 / 512.0, places=4)
+        self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
+
+
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestAnimatedUVMapping(unittest.TestCase):
