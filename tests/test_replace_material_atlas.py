@@ -62,7 +62,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertIn("mtk:minecraft:stone", self.cube.material_slots[0].material.name)
 
     def test_atlas_mode(self):
-        from utils.dependencies import has_pillow
+        from utils.system import has_pillow
         if not has_pillow():
             self.skipTest("Pillow not installed in test environment")
 
@@ -117,7 +117,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         ))
 
     def test_atlas_mode_animated_material(self):
-        from utils.dependencies import has_pillow
+        from utils.system import has_pillow
         if not has_pillow():
             self.skipTest("Pillow not installed in test environment")
 

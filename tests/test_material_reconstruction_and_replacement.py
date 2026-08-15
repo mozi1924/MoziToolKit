@@ -15,7 +15,7 @@ try:
 except ImportError:
     HAS_BPY = False
 
-from utils.atlas_layout import (
+from utils.materials import (
     atlas_uv_from_local,
     local_uv_from_atlas,
     atlas_uv_from_rect,
@@ -24,12 +24,10 @@ from utils.atlas_layout import (
 )
 
 if HAS_BPY:
-    from utils.material_matching import (
+    from utils.materials import (
         detect_material_mode,
         is_mozi_material,
         extract_face_texture_info,
-    )
-    from utils.material_builder import (
         inspect_material_nodes,
         repair_material_nodes,
     )
@@ -209,7 +207,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:stone"))
 
         # Step 2: Convert Standalone -> Atlas
-        from utils.dependencies import has_pillow
+        from utils.system import has_pillow
         if not has_pillow():
             self.skipTest("Pillow is not installed in current environment; skipping Atlas step")
 

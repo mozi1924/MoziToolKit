@@ -10,8 +10,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.generate_atlas import AtlasGenerator
-from utils.atlas_layout import atlas_uv_from_local, chunk_cell
+from utils.materials import AtlasGenerator, atlas_uv_from_local, chunk_cell
 
 try:
     from PIL import Image
@@ -28,7 +27,7 @@ class TestAtlasGenerator(unittest.TestCase):
         self.output_dir = Path("./tests/scratch_atlas_output")
 
     def test_atlas_generation(self):
-        from utils.dependencies import has_pillow
+        from utils.system import has_pillow
         if not has_pillow():
             self.skipTest("Pillow not installed in test environment")
         if not self.jar_path or not self.jar_path.exists():

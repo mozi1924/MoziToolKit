@@ -1,5 +1,5 @@
 import bpy
-from ...utils.menu_config import register_menu_item
+from ...utils.system import register_menu_item
 
 
 @register_menu_item(views=["object"], label="修复/重建材质节点")

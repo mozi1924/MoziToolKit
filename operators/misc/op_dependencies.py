@@ -4,7 +4,7 @@ Operators for dependency management and preferences navigation.
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
-from ...utils.dependencies import (
+from ...utils.system import (
     DEPENDENCIES,
     ensure_sys_paths,
     get_all_dependency_statuses,
@@ -184,7 +184,7 @@ class MOZI_OT_clear_cache(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def execute(self, context):
-        from ...utils.zip_resource_pack import clear_resource_pack_cache
+        from ...utils.materials import clear_resource_pack_cache
         count, bytes_freed = clear_resource_pack_cache()
         mb_freed = bytes_freed / (1024 * 1024)
         self.report({"INFO"}, f"Cache cleared: removed {count} files ({mb_freed:.2f} MB freed).")

@@ -1,7 +1,7 @@
 import math
 import bpy
 from ...utils.mesh import bmesh_context, poll_edit_mesh, set_select_mode, is_hard_edge
-from ...utils.menu_config import register_menu_item
+from ...utils.system import register_menu_item
 
 
 @register_menu_item(views=["mesh"])

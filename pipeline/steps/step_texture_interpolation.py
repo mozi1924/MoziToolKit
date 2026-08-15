@@ -7,9 +7,9 @@ from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
 try:
-    from ...utils.material import set_materials_texture_interpolation_closest
+    from ...utils.materials import set_materials_texture_interpolation_closest
 except (ImportError, ValueError):
-    from utils.material import set_materials_texture_interpolation_closest
+    from utils.materials import set_materials_texture_interpolation_closest
 
 
 class TextureInterpolationStep(PipelineStep):

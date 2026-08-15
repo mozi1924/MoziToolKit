@@ -3,41 +3,41 @@ from pathlib import Path
 import bpy
 from ..step import PipelineStep, StepResult
 try:
-    from ...utils.zip_resource_pack import ZipResourcePack, get_cache_dir
-    from ...utils.material_builder import rebuild_material
-    from ...utils.material_matching import (
+    from ...utils.materials import (
+        ZipResourcePack,
+        get_cache_dir,
+        rebuild_material,
         extract_material_texture_keys,
         detect_material_mode,
         get_atlas_mapping_from_material,
         extract_face_texture_info,
-    )
-    from ...utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
-    from ...utils.atlas_builder import build_atlas_chunk_materials
-    from ...utils.atlas_layout import (
+        ATLAS_FORMAT_VERSION,
+        AtlasGenerator,
+        build_atlas_chunk_materials,
         atlas_uv_from_local,
         atlas_uv_from_rect,
         local_uv_from_atlas,
         local_uv_from_rect,
     )
-    from ...utils.dependencies import has_pillow
+    from ...utils.system import has_pillow
 except (ImportError, ValueError):
-    from utils.zip_resource_pack import ZipResourcePack, get_cache_dir
-    from utils.material_builder import rebuild_material
-    from utils.material_matching import (
+    from utils.materials import (
+        ZipResourcePack,
+        get_cache_dir,
+        rebuild_material,
         extract_material_texture_keys,
         detect_material_mode,
         get_atlas_mapping_from_material,
         extract_face_texture_info,
-    )
-    from utils.generate_atlas import ATLAS_FORMAT_VERSION, AtlasGenerator
-    from utils.atlas_builder import build_atlas_chunk_materials
-    from utils.atlas_layout import (
+        ATLAS_FORMAT_VERSION,
+        AtlasGenerator,
+        build_atlas_chunk_materials,
         atlas_uv_from_local,
         atlas_uv_from_rect,
         local_uv_from_atlas,
         local_uv_from_rect,
     )
-    from utils.dependencies import has_pillow
+    from utils.system import has_pillow
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:

@@ -1,7 +1,6 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from ...utils.menu_config import register_menu_item
-from ...utils.dependencies import has_pillow
+from ...utils.system import register_menu_item, has_pillow
 
 
 @register_menu_item(views=["object"], label="替换材质")

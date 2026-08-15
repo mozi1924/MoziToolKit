@@ -3,7 +3,7 @@ import site
 import sys
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
-from ..utils.menu_config import (
+from ..utils.system import (
     ALL_OPERATORS,
     export_config,
     import_config,
@@ -11,8 +11,6 @@ from ..utils.menu_config import (
     normalize_operator_id,
     reset_config,
     save_config,
-)
-from ..utils.dependencies import (
     DEPENDENCIES,
     ensure_sys_paths,
     get_all_dependency_statuses,

@@ -1,6 +1,6 @@
 import bpy
-from ...utils.material import set_materials_texture_interpolation_closest
-from ...utils.menu_config import register_menu_item
+from ...utils.materials import set_materials_texture_interpolation_closest
+from ...utils.system import register_menu_item
 
 
 @register_menu_item(views=["object"])
