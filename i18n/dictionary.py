@@ -50,6 +50,8 @@ translations_dict = {
         ("*", "Dissolve coplanar inner split edges before re-subdividing"): "重新切分前先合并已切分的共面内部边",
         ("*", "Weight Preservation Active"): "骨骼权重自动迁移已启用",
         ("*", "Subdivided vertices auto-inherit bone weights."): "细分生成的新顶点将自动插值继承原骨骼蒙皮权重。",
+        ("*", "Weight & Attribute Preservation Active"): "权重与面属性自动迁移已启用",
+        ("*", "Auto-detects animation single-frames and atlas tiles."): "已支持自动识别动画单帧尺寸与 Atlas 图集块。",
         ("*", "Set Image Interpolation to Closest"): "图像纹理插值设为最近",
         ("*", "Set interpolation of all image texture nodes in selected objects' materials to Closest for pixel art"): "将所选物体的所有材质中的图像纹理插值修改为“最近”，以适配像素材质贴图",
         ("*", "Auto Extrude Repair"): "自动挤出修复",

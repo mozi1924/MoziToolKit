@@ -55,19 +55,32 @@ def bmesh_context(context, target_obj=None, auto_update: bool = True, flush_sele
     """Context manager for BMesh edit operations.
 
     Yields (target_object, bm).
+    Supports both Edit mode (bmesh.from_edit_mesh) and Object mode (bmesh.new / from_mesh / to_mesh).
     Automatically calls select_flush_mode() if flush_selection is True,
-    and update_edit_mesh() if auto_update is True upon exit.
+    and updates mesh upon exit.
     """
     obj = target_obj or context.active_object
     me = obj.data
-    bm = bmesh.from_edit_mesh(me)
+    is_edit_mode = (obj.mode == "EDIT")
+    if is_edit_mode:
+        bm = bmesh.from_edit_mesh(me)
+    else:
+        bm = bmesh.new()
+        bm.from_mesh(me)
+
     try:
         yield obj, bm
     finally:
-        if flush_selection:
-            bm.select_flush_mode()
-        if auto_update:
-            bmesh.update_edit_mesh(me)
+        if is_edit_mode:
+            if flush_selection:
+                bm.select_flush_mode()
+            if auto_update:
+                bmesh.update_edit_mesh(me)
+        else:
+            if auto_update:
+                bm.to_mesh(me)
+                me.update()
+            bm.free()
 
 
 

@@ -501,7 +501,15 @@ def run_all_tests():
     print("=" * 60)
 
     loader = unittest.TestLoader()
-    suite = loader.loadTestsFromTestCase(TestPipelineFramework)
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromTestCase(TestPipelineFramework))
+
+    try:
+        from tests.test_adaptive_pixel_split import TestAdaptivePixelSplit
+        suite.addTests(loader.loadTestsFromTestCase(TestAdaptivePixelSplit))
+    except Exception as e:
+        print(f"[Warning] Could not load TestAdaptivePixelSplit: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
