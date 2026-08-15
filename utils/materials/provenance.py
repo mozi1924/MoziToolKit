@@ -1,0 +1,148 @@
+"""
+Material provenance, mode detection, and face source attribute tracking.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import bpy
+
+from .constants import (
+    ATTR_SOURCE_ORIGIN,
+    ATTR_SOURCE_TEXTURE_KEY,
+    DEFAULT_NAMESPACE,
+)
+
+
+def without_blender_suffix(value: str) -> str:
+    """Remove Blender's duplicate numeric suffix (e.g. '.001') without modifying valid names."""
+    if "." in value and value.rsplit(".", 1)[1].isdigit():
+        return value.rsplit(".", 1)[0]
+    return value
+
+
+def canonical_texture_key(namespace: str, texture_name: str) -> str:
+    """Return the durable ``namespace:texture`` source identifier.
+
+    The key intentionally does not contain a resource-pack hash: a later
+    replacement pack is allowed to provide the same Minecraft resource.
+    """
+    namespace = (namespace or DEFAULT_NAMESPACE).strip().lower()
+    texture_name = (texture_name or "").strip().lower().removesuffix(".png")
+    return f"{namespace}:{texture_name}" if texture_name else ""
+
+
+def split_texture_key(value: str) -> tuple[str, str]:
+    """Parse a canonical key, accepting legacy texture-only values."""
+    value = (value or "").strip().lower().removesuffix(".png")
+    if not value:
+        return DEFAULT_NAMESPACE, ""
+    if ":" in value:
+        namespace, texture_name = value.split(":", 1)
+        return namespace or DEFAULT_NAMESPACE, texture_name
+    return DEFAULT_NAMESPACE, value
+
+
+def write_face_source_provenance(
+    mesh: bpy.types.Mesh,
+    texture_keys: list[str],
+    origins: list[str] | None = None,
+) -> None:
+    """Write source identity only after a whole mesh conversion is validated."""
+    if len(texture_keys) != len(mesh.polygons):
+        raise ValueError("Source provenance must contain one entry per polygon")
+    if origins is not None and len(origins) != len(mesh.polygons):
+        raise ValueError("Source origins must contain one entry per polygon")
+
+    def string_face_attribute(name: str):
+        attr = mesh.attributes.get(name)
+        if attr and (attr.domain != "FACE" or attr.data_type != "STRING"):
+            mesh.attributes.remove(attr)
+            attr = None
+        return attr or mesh.attributes.new(name=name, type="STRING", domain="FACE")
+
+    key_attr = string_face_attribute(ATTR_SOURCE_TEXTURE_KEY)
+    for item, key in zip(key_attr.data, texture_keys):
+        item.value = key.encode("utf-8")
+    if origins is not None:
+        origin_attr = string_face_attribute(ATTR_SOURCE_ORIGIN)
+        for item, origin in zip(origin_attr.data, origins):
+            item.value = origin.encode("utf-8")
+
+
+def get_face_source_origin(mesh: bpy.types.Mesh, poly_idx: int) -> str:
+    """Read an existing FACE origin without treating Mozi output as origin."""
+    attr = mesh.attributes.get(ATTR_SOURCE_ORIGIN)
+    if not attr or attr.domain != "FACE" or attr.data_type != "STRING" or poly_idx >= len(attr.data):
+        return ""
+    value = attr.data[poly_idx].value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return str(value).strip()
+
+
+def get_face_source_texture_key(mesh: bpy.types.Mesh, poly_idx: int) -> str:
+    """Read an existing canonical source key, if this face already has one."""
+    attr = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
+    if not attr or attr.domain != "FACE" or attr.data_type != "STRING" or poly_idx >= len(attr.data):
+        return ""
+    value = attr.data[poly_idx].value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return str(value).strip()
+
+
+def detect_material_mode(mat: bpy.types.Material | None) -> str:
+    """Detect whether a material is Standalone, Atlas Chunk, Unified Atlas, or Generic."""
+    if not mat:
+        return "GENERIC"
+
+    if "mtk:atlas_chunk_id" in mat:
+        return "ATLAS_CHUNK"
+
+    if mat.node_tree and "mtk:atlas_mapping" in mat.node_tree:
+        if mat.name.startswith("mtk:") and "atlas_chunk" in mat.name:
+            return "ATLAS_CHUNK"
+        return "ATLAS_UNIFIED"
+
+    if mat.use_nodes and mat.node_tree:
+        for node in mat.node_tree.nodes:
+            if node.name == "MC Atlas UV Decoder" or (
+                node.type == "GROUP" and node.node_tree and node.node_tree.name == "MC_Atlas_UV_Decoder"
+            ):
+                return "ATLAS_UNIFIED"
+
+    if "mtk:source_texture" in mat or "mtk:source_namespace" in mat or mat.name.startswith("mtk:"):
+        source_tex = str(mat.get("mtk:source_texture", ""))
+        if source_tex.startswith("atlas_chunk_"):
+            return "ATLAS_CHUNK"
+        return "STANDALONE"
+
+    return "GENERIC"
+
+
+def is_mozi_material(mat: bpy.types.Material | None) -> bool:
+    """Check if a material was created by MoziToolKit."""
+    if not mat:
+        return False
+    if mat.name.startswith("mtk:"):
+        return True
+    if any(k.startswith("mtk:") for k in mat.keys()):
+        return True
+    if mat.node_tree and any(k.startswith("mtk:") for k in mat.node_tree.keys()):
+        return True
+    return False
+
+
+def get_atlas_mapping_from_material(mat: bpy.types.Material | None) -> dict | None:
+    """Extract and parse atlas_mapping JSON dictionary stored on a material's node tree."""
+    if not mat or not mat.node_tree or "mtk:atlas_mapping" not in mat.node_tree:
+        return None
+    raw = mat.node_tree["mtk:atlas_mapping"]
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None

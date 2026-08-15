@@ -1,0 +1,430 @@
+"""
+Ice Cube Asset Library format adapter, material aliases, and entity mappings.
+"""
+
+from __future__ import annotations
+
+import re
+import bpy
+from .base import ImporterAdapter, base_texture_candidates
+from ..provenance import without_blender_suffix, is_mozi_material
+
+
+# Ice Cube's entity names and 26.2 naming layout aliases
+ICE_CUBE_ENTITY_ALIASES = {
+    "aggressive_panda": "panda_aggressive",
+    "brown_panda": "panda_brown",
+    "lazy_panda": "panda_lazy",
+    "playful_panda": "panda_playful",
+    "weak_panda": "panda_weak",
+    "worried_panda": "panda_worried",
+    "white_splotched": "rabbit_white_splotched",
+    "caerbannog": "rabbit_caerbannog",
+    "salt": "rabbit_salt",
+    "toast": "rabbit_toast",
+    "elder_guardian": "guardian_elder",
+    "drowned_outer": "drowned_outer_layer",
+    "magma_cube": "magmacube",
+    "polar_bear": "polarbear",
+    "snow_fox": "fox_snow",
+}
+
+ICE_CUBE_MATERIAL_NAME_ALIASES = {
+    # Heads
+    "creeper head": "entity/creeper/creeper",
+    "dragon head": "entity/enderdragon/dragon",
+    "piglin head": "entity/piglin/piglin",
+    "player head": "entity/player/wide/steve",
+    "skeleton head": "entity/skeleton/skeleton",
+    "wither skeleton head": "entity/skeleton/wither_skeleton",
+    "zombie head": "entity/zombie/zombie",
+    "wither charge head": "entity/wither/wither_invulnerable",
+
+    # Horse Body Skins (Ice Cube names them '... Horse Armor')
+    "black horse armor": "entity/horse/horse_black",
+    "brown horse armor": "entity/horse/horse_brown",
+    "chestnut horse armor": "entity/horse/horse_chestnut",
+    "creamy horse armor": "entity/horse/horse_creamy",
+    "dark brown horse armor": "entity/horse/horse_darkbrown",
+    "gray horse armor": "entity/horse/horse_gray",
+    "white horse armor": "entity/horse/horse_white",
+
+    # Cats
+    "tuxedo cat": "entity/cat/cat_black",
+    "british shorthair cat": "cat_british_shorthair",
+    "calico cat": "cat_calico",
+    "jellie cat": "cat_jellie",
+    "persian cat": "cat_persian",
+    "ragdoll cat": "cat_ragdoll",
+    "red cat": "cat_red",
+    "siamese cat": "cat_siamese",
+    "tabby cat": "cat_tabby",
+    "white cat": "cat_white",
+    "black cat": "cat_black",
+
+    # Axolotl & Mooshroom
+    "lucy axolotl": "axolotl_lucy",
+    "brown mooshroom": "mooshroom_brown",
+    "mooshroom": "mooshroom_red",
+    "brown mooshroom mushrooms": "block/brown_mushroom",
+    "red mooshroom mushrooms": "block/red_mushroom",
+    "mooshroom mushrooms": "block/red_mushroom",
+
+    # Farm Animals & Variants
+    "cold chicken": "chicken_cold",
+    "warm chicken": "chicken_warm",
+    "temperate cow": "cow_temperate",
+    "cold cow": "cow_cold",
+    "warm cow": "cow_warm",
+    "temperate frog": "frog_temperate",
+    "cold frog": "frog_cold",
+    "warm frog": "frog_warm",
+    "temperate pig": "pig_temperate",
+    "cold pig": "pig_cold",
+    "warm pig": "pig_warm",
+
+    # Rabbits
+    "black and white rabbit": "rabbit_white_splotched",
+    "the killer bunny": "rabbit_caerbannog",
+    "salt and pepper rabbit": "rabbit_salt",
+    "toast rabbit": "rabbit_toast",
+
+    # Llamas
+    "creamy llama": "entity/llama/llama_creamy",
+    "gray llama": "entity/llama/llama_gray",
+    "white llama": "entity/llama/llama_white",
+    "brown llama": "entity/llama/llama_brown",
+    "llama decoration": "entity/equipment/llama_body/white",
+
+    # Parrots
+    "red parrot": "entity/parrot/parrot_red_blue",
+    "jungle parrot": "entity/parrot/parrot_red_blue",
+    "blue parrot": "entity/parrot/parrot_blue",
+    "cyan parrot": "entity/parrot/parrot_cyan",
+    "green parrot": "entity/parrot/parrot_green",
+    "grey parrot": "entity/parrot/parrot_grey",
+
+    # Fish & Mobs
+    "small tropical fish": "entity/fish/tropical_a",
+    "tropical fish a": "entity/fish/tropical_a",
+    "large tropical fish": "entity/fish/tropical_b",
+    "tropical fish b": "entity/fish/tropical_b",
+    "m_48fb624d-1fe0-62f6-cbd5-9e84d4f37f7d": "entity/fish/pufferfish",
+    "m_7417965d-36ac-0683-5e20-769f38e2593e": "entity/fish/pufferfish",
+    "bogged overlay": "entity/skeleton/bogged_overlay",
+    "stray overlay": "entity/skeleton/stray_overlay",
+    "m_34375663-2091-1652-f671-bfe08576cfa2": "entity/skeleton/stray_overlay",
+    "slime outer": "entity/slime/slime",
+    "chargedcreeper": "entity/creeper/creeper_armor",
+    "drownedouter": "drowned_outer_layer",
+    "iron golem cracked high": "entity/iron_golem/iron_golem_crackiness_high",
+    "iron golem cracked low": "entity/iron_golem/iron_golem_crackiness_low",
+    "iron golem cracked medium": "entity/iron_golem/iron_golem_crackiness_medium",
+    "strider saddle": "entity/equipment/strider_saddle/saddle",
+    "pig saddle": "entity/equipment/pig_saddle/saddle",
+    "chest": "entity/chest/normal",
+    "chest left": "entity/chest/normal_left",
+    "chest right": "entity/chest/normal_right",
+    "ender chest": "entity/chest/ender",
+    "trapped chest": "entity/chest/trapped",
+    "trapped chest left": "entity/chest/trapped_left",
+    "trapped chest right": "entity/chest/trapped_right",
+    "conduit base": "entity/conduit/base",
+    "conduit cage": "entity/conduit/cage",
+    "conduit wind": "entity/conduit/wind",
+    "end crystal beam": "entity/end_crystal/end_crystal_beam",
+    "lead knot": "entity/lead_knot",
+    "shield": "entity/shield_base",
+    "shield pattern": "entity/shield_base_nopattern",
+    "shulker box": "entity/shulker/shulker",
+    "m_9ce7088c-085a-56ae-0fbf-05927c923b4b": "entity/shulker/spark",
+    "trident": "entity/trident",
+    "spyglass": "entity/spyglass",
+    "bell": "entity/bell/bell_body",
+    "oak boat": "entity/boat/oak",
+    "raft": "entity/boat/bamboo",
+    "oak hanging sign": "block/oak_hanging_sign",
+    "oak sign": "block/oak_sign",
+    "red bed": "block/red_bed_head_up",
+
+    # Blocks & 26.2 Mojang Renames (e.g. chain -> iron_chain)
+    "chain_all": "block/iron_chain",
+    "item_chain": "item/iron_chain",
+    "chain": "block/iron_chain",
+    "iron_bars_all": "block/iron_bars",
+    "powered_rail_on": "block/powered_rail_on",
+    "glow_lichen_glow_lichen": "block/glow_lichen",
+    "water_cauldron_full_content": "block/water_still",
+    "lava_cauldron_content": "block/lava_still",
+    "nether_portal_ns_portal": "block/nether_portal",
+    "campfire_lit_log": "block/campfire_log_lit",
+    "soul_campfire_lit_log": "block/soul_campfire_log_lit",
+    "campfire_fire_block/campfire_fire.png": "block/campfire_fire",
+    "campfire_lit_log_block/campfire_log_lit.png": "block/campfire_log_lit",
+    "soul_campfire_fire_block/soul_campfire_fire.png": "block/soul_campfire_fire",
+    "soul_campfire_lit_log_block/soul_campfire_log_lit.png": "block/soul_campfire_log_lit",
+    "sculk_mirrored_all": "block/sculk",
+    "sculk_catalyst_bloom_side": "block/sculk_catalyst_side_bloom",
+    "sculk_catalyst_bloom_top": "block/sculk_catalyst_top_bloom",
+    "item_clock_00": "item/clock_00",
+    "item_compass_00": "item/compass_00",
+    "item_recovery_compass_00": "item/recovery_compass_00",
+}
+
+
+def ice_cube_name_aliases(name: str) -> list[str]:
+    aliases = []
+    if "_conditional_" in name:
+        aliases.append(name.replace("_conditional_", "_"))
+    for suffix in ("_all", "_side", "_end", "_top", "_bottom", "_front", "_back",
+                   "_up", "_down", "_north", "_south", "_east", "_west"):
+        if name.endswith(suffix):
+            stem = name[:-len(suffix)]
+            aliases.append(stem)
+            if suffix == "_all" and stem.endswith("_block"):
+                aliases.append(stem[:-len("_block")])
+            break
+    return aliases
+
+
+def ice_cube_legacy_aliases(name: str) -> list[str]:
+    aliases = []
+    if name.startswith("item_"):
+        aliases.append(name[len("item_"):])
+    if name.endswith("_on_front"):
+        aliases.append(f"{name[:-len('_on_front')]}_front_on")
+    if "_lit_log" in name:
+        aliases.append(name.replace("_lit_log", "_log_lit"))
+    return aliases
+
+
+def _resolve_ice_cube_armor_aliases(name: str) -> list[str]:
+    """Resolve armor piece materials to modern 26.2 equipment/humanoid and legacy models/armor."""
+    name_lower = name.lower()
+    if not any(k in name_lower for k in ("boots", "chestplate", "helmet", "leggings")):
+        return []
+
+    mat_type = None
+    for t in ("diamond", "golden", "gold", "iron", "chainmail", "netherite", "leather"):
+        if t in name_lower:
+            mat_type = t
+            break
+    if not mat_type:
+        return []
+
+    is_gold = (mat_type in ("gold", "golden"))
+    canon_mat = "gold" if is_gold else mat_type
+    legacy_mat = "gold" if is_gold else mat_type
+    is_leggings = ("leggings" in name_lower)
+    is_overlay = ("overlay" in name_lower)
+
+    cands = []
+    if is_leggings:
+        if is_overlay:
+            cands.extend([
+                f"entity/equipment/humanoid_leggings/{canon_mat}_overlay",
+                f"models/armor/{legacy_mat}_layer_2_overlay",
+                f"{canon_mat}_layer_2_overlay",
+            ])
+        else:
+            cands.extend([
+                f"entity/equipment/humanoid_leggings/{canon_mat}",
+                f"models/armor/{legacy_mat}_layer_2",
+                f"{canon_mat}_layer_2",
+            ])
+    else:
+        if is_overlay:
+            cands.extend([
+                f"entity/equipment/humanoid/{canon_mat}_overlay",
+                f"models/armor/{legacy_mat}_layer_1_overlay",
+                f"{canon_mat}_layer_1_overlay",
+            ])
+        else:
+            cands.extend([
+                f"entity/equipment/humanoid/{canon_mat}",
+                f"models/armor/{legacy_mat}_layer_1",
+                f"{canon_mat}_layer_1",
+            ])
+    return cands
+
+
+def _resolve_ice_cube_fire_aliases(name: str) -> list[str]:
+    """Resolve multipart animated fire textures to fire_0 / fire_1 stems."""
+    name_lower = name.lower()
+    if "campfire" in name_lower:
+        return []
+    if "soul_fire" in name_lower:
+        if any(digit in name_lower for digit in ("1", "alt1")):
+            return ["block/soul_fire_1", "soul_fire_1"]
+        return ["block/soul_fire_0", "soul_fire_0"]
+    elif "fire_" in name_lower or name_lower.startswith("fire"):
+        if any(digit in name_lower for digit in ("1", "alt1")):
+            return ["block/fire_1", "fire_1"]
+        return ["block/fire_0", "fire_0"]
+    return []
+
+
+def _resolve_ice_cube_sculk_and_lantern_aliases(name: str) -> list[str]:
+    """Resolve sculk sensor tendrils and lantern textures."""
+    name_lower = name.lower()
+    cands = []
+    if "sculk_sensor" in name_lower:
+        if "calibrated" in name_lower:
+            cands.extend([
+                "block/calibrated_sculk_sensor_amethyst",
+                "block/calibrated_sculk_sensor_top",
+                "block/calibrated_sculk_sensor_input_side",
+                "calibrated_sculk_sensor_amethyst",
+            ])
+        elif "active" in name_lower:
+            cands.extend([
+                "block/sculk_sensor_tendril_active",
+                "sculk_sensor_tendril_active",
+                "block/sculk_sensor_tendril_inactive",
+            ])
+        else:
+            cands.extend([
+                "block/sculk_sensor_tendril_inactive",
+                "sculk_sensor_tendril_inactive",
+                "block/sculk_sensor_tendril_active",
+            ])
+    if "lantern" in name_lower:
+        if "soul" in name_lower:
+            cands.extend(["block/soul_lantern", "soul_lantern"])
+        else:
+            cands.extend(["block/lantern", "lantern"])
+    return cands
+
+
+def _resolve_ice_cube_blocks_and_plants_aliases(name: str) -> list[str]:
+    """Resolve seagrass, kelp, dripstone, pumpkin, and hyphae block names."""
+    name_lower = name.lower()
+    cands = []
+    if "tall_seagrass_bottom" in name_lower:
+        cands.extend(["block/tall_seagrass_bottom", "tall_seagrass_bottom"])
+    elif "tall_seagrass_top" in name_lower:
+        cands.extend(["block/tall_seagrass_top", "tall_seagrass_top"])
+    elif "seagrass" in name_lower:
+        cands.extend(["block/seagrass", "seagrass"])
+    elif "kelp_plant" in name_lower:
+        cands.extend(["block/kelp_plant", "kelp_plant"])
+    elif "kelp" in name_lower:
+        cands.extend(["block/kelp", "kelp"])
+    elif "pointed_dripstone" in name_lower:
+        stem = name_lower.removesuffix("_cross").removesuffix(".001")
+        if "_" in stem and stem.rsplit("_", 1)[1].isdigit():
+            stem = stem.rsplit("_", 1)[0]
+        cands.extend([f"block/{stem}", stem])
+    elif "carved_pumpkin" in name_lower:
+        if "front" in name_lower:
+            cands.extend(["block/carved_pumpkin", "carved_pumpkin"])
+        elif "side" in name_lower:
+            cands.extend(["block/pumpkin_side", "pumpkin_side"])
+        elif "top" in name_lower:
+            cands.extend(["block/pumpkin_top", "pumpkin_top"])
+    elif "creaking_heart" in name_lower:
+        if "active" in name_lower:
+            if "end" in name_lower:
+                cands.extend(["block/creaking_heart_top_awake", "block/creaking_heart_top_active", "creaking_heart_top_awake"])
+            else:
+                cands.extend(["block/creaking_heart_awake", "block/creaking_heart_active", "creaking_heart_awake"])
+        else:
+            if "end" in name_lower:
+                cands.extend(["block/creaking_heart_top_dormant", "block/creaking_heart_top", "creaking_heart_top_dormant"])
+            else:
+                cands.extend(["block/creaking_heart_dormant", "block/creaking_heart", "creaking_heart_dormant"])
+    elif "crimson_hyphae" in name_lower:
+        if "end" in name_lower:
+            cands.extend(["block/crimson_hyphae", "block/crimson_stem_top", "crimson_hyphae", "crimson_stem_top"])
+        else:
+            cands.extend(["block/crimson_hyphae", "block/crimson_stem", "crimson_hyphae", "crimson_stem"])
+    elif "warped_hyphae" in name_lower:
+        if "end" in name_lower:
+            cands.extend(["block/warped_hyphae", "block/warped_stem_top", "warped_hyphae", "warped_stem_top"])
+        else:
+            cands.extend(["block/warped_hyphae", "block/warped_stem", "warped_hyphae", "warped_stem"])
+    elif "frosted_ice_" in name_lower:
+        digits = re.findall(r"\d+", name_lower)
+        if digits:
+            idx = str(int(digits[-1]))
+            cands.extend([f"block/frosted_ice_{idx}", f"frosted_ice_{idx}"])
+    elif "prismarine_slab" in name_lower:
+        cands.extend(["block/prismarine", "prismarine"])
+    elif "respawn_anchor_" in name_lower:
+        digits = re.findall(r"\d+", name_lower)
+        if digits:
+            idx = digits[0]
+            cands.extend([f"block/respawn_anchor_top_{idx}", f"respawn_anchor_top_{idx}"])
+        cands.extend(["block/respawn_anchor_top", "respawn_anchor_top"])
+    return cands
+
+
+def is_ice_cube_material(mat: bpy.types.Material | None) -> bool:
+    """Recognize Ice Cube's persistent library metadata."""
+    return bool(mat) and (
+        "flip_fluid_material_library" in mat
+        or "ice_cube.material_id" in mat
+    )
+
+
+def is_ice_cube_internal_face_material(mat: bpy.types.Material | None) -> bool:
+    """Return whether Ice Cube marks this slot as intentionally invisible or procedural."""
+    if not is_ice_cube_material(mat):
+        return False
+    name = without_blender_suffix(mat.name.strip().lower())
+    return (
+        bool(re.fullmatch(r"internal_face_deletion(?:_[0-9]+)?", name))
+        or name in ("dots stroke", "enchantmentglintnode")
+        or name.startswith("item_template_spawn_egg")
+    )
+
+
+def ice_cube_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
+    """Extract candidate texture keys for materials from Ice Cube Asset Library."""
+    namespace, candidates = base_texture_candidates(mat)
+    if mat.get("mtk:source_namespace"):
+        return namespace, candidates
+
+    source_name = without_blender_suffix(mat.name.strip().lower())
+    raw_name = mat.name.strip().lower()
+
+    extra = []
+    lookup_keys = list(candidates) + [source_name, raw_name]
+    for key in lookup_keys:
+        extra.extend(ice_cube_name_aliases(key))
+        extra.extend(ice_cube_legacy_aliases(key))
+        if key in ICE_CUBE_ENTITY_ALIASES:
+            extra.append(ICE_CUBE_ENTITY_ALIASES[key])
+        if key in ICE_CUBE_MATERIAL_NAME_ALIASES:
+            extra.append(ICE_CUBE_MATERIAL_NAME_ALIASES[key])
+        extra.extend(_resolve_ice_cube_armor_aliases(key))
+        extra.extend(_resolve_ice_cube_fire_aliases(key))
+        extra.extend(_resolve_ice_cube_sculk_and_lantern_aliases(key))
+        extra.extend(_resolve_ice_cube_blocks_and_plants_aliases(key))
+
+    for c in list(extra):
+        extra.extend(ice_cube_name_aliases(c))
+        extra.extend(ice_cube_legacy_aliases(c))
+        if c in ICE_CUBE_ENTITY_ALIASES:
+            extra.append(ICE_CUBE_ENTITY_ALIASES[c])
+        if c in ICE_CUBE_MATERIAL_NAME_ALIASES:
+            extra.append(ICE_CUBE_MATERIAL_NAME_ALIASES[c])
+
+    candidates.extend(extra)
+    return namespace, list(dict.fromkeys(candidates))
+
+
+class IceCubeAdapter(ImporterAdapter):
+    """Ice Cube Asset Library material names, entity aliases, and internal face rules."""
+
+    identifier = "ice_cube"
+    description = "Ice Cube Asset Library material names and entity aliases"
+
+    def detect(self, mat: bpy.types.Material | None) -> bool:
+        return is_ice_cube_material(mat)
+
+    def extract_keys(self, mat: bpy.types.Material) -> tuple[str, list[str]]:
+        return ice_cube_texture_candidates(mat)
+
+    def is_internal_or_skipped(self, mat: bpy.types.Material | None) -> bool:
+        return is_ice_cube_internal_face_material(mat)
