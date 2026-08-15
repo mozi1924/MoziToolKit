@@ -2,14 +2,15 @@ import math
 import mathutils
 import bpy
 from .types import ExtrudeRepairConfig
-from .uv_analyzer import is_face_uv_collapsed, get_active_texture_pixel_step
+from .uv_analyzer import is_face_uv_collapsed, get_face_pixel_step
+from ..mesh.uv import get_face_uv_bounds
 
 
 def _resolve_smart_uv_mode(top_face, v_top_a, v_top_b, v_base_a, v_base_b) -> str:
     """Select the UV direction from the signed distance of the extrusion."""
     extrusion = ((v_top_a.co - v_base_a.co) + (v_top_b.co - v_base_b.co)) * 0.5
     normal = top_face.normal
-    # Along the face normal is a protrusion: use source-face pixels.  Against
+    # Along the face normal is a protrusion: use source-face pixels. Against
     # it is an indentation: use the UV pixels of the adjacent faces.
     if normal.length_squared > 1e-12 and extrusion.dot(normal) < -1e-6:
         return "OUTWARD"
@@ -17,14 +18,12 @@ def _resolve_smart_uv_mode(top_face, v_top_a, v_top_b, v_base_a, v_base_b) -> st
 
 
 def _get_adjacent_face_uv_strip(
-    side_face, base_a, base_b, selected_faces_set, uv_layer
+    top_face, side_face, base_a, base_b, selected_faces_set, uv_layer, step_u: float, step_v: float
 ):
     """Return UVs for the side edge and the direction into its adjacent face.
 
-    After a region extrusion, the bottom edge of each newly-created side face
-    is still shared with the original, unselected neighbouring face.  Its UV
-    loops are therefore the only reliable source of the neighbour's texture
-    pixel (UV seams mean the side face's own loops cannot be used for this).
+    Performs material consistency and UV continuity checks to avoid bleeding
+    into unrelated block tiles on Atlas textures.
     """
     base_edge = next(
         (
@@ -46,6 +45,10 @@ def _get_adjacent_face_uv_strip(
         None,
     )
     if adjacent_face is None:
+        return None
+
+    # Material consistency check: do not sample from different block materials
+    if adjacent_face.material_index != top_face.material_index:
         return None
 
     adjacent_uvs = {loop.vert: loop[uv_layer].uv.copy() for loop in adjacent_face.loops}
@@ -70,7 +73,35 @@ def _get_adjacent_face_uv_strip(
     if uv_inward_dir.dot(adjacent_uv_center - uv_edge_mid) < 0.0:
         uv_inward_dir = -uv_inward_dir
 
-    return uv_a, uv_b, uv_inward_dir
+    offset_u = uv_inward_dir.x * (step_u * 0.1)
+    offset_v = uv_inward_dir.y * (step_v * 0.1)
+    uv_offset = mathutils.Vector((offset_u, offset_v))
+
+    uv_base_a = uv_a.copy()
+    uv_base_b = uv_b.copy()
+    uv_top_a = uv_base_a + uv_offset
+    uv_top_b = uv_base_b + uv_offset
+
+    # Clamp safely inside adjacent face's UV bounds
+    adj_bounds = get_face_uv_bounds(adjacent_face, uv_layer)
+    pad_u = min(step_u * 0.05, adj_bounds.width * 0.1 if adj_bounds.width > 0 else step_u * 0.05)
+    pad_v = min(step_v * 0.05, adj_bounds.height * 0.1 if adj_bounds.height > 0 else step_v * 0.05)
+
+    min_safe_u, max_safe_u = adj_bounds.min_u + pad_u, adj_bounds.max_u - pad_u
+    min_safe_v, max_safe_v = adj_bounds.min_v + pad_v, adj_bounds.max_v - pad_v
+
+    if max_safe_u >= min_safe_u:
+        uv_base_a.x = max(min_safe_u, min(max_safe_u, uv_base_a.x))
+        uv_base_b.x = max(min_safe_u, min(max_safe_u, uv_base_b.x))
+        uv_top_a.x = max(min_safe_u, min(max_safe_u, uv_top_a.x))
+        uv_top_b.x = max(min_safe_u, min(max_safe_u, uv_top_b.x))
+    if max_safe_v >= min_safe_v:
+        uv_base_a.y = max(min_safe_v, min(max_safe_v, uv_base_a.y))
+        uv_base_b.y = max(min_safe_v, min(max_safe_v, uv_base_b.y))
+        uv_top_a.y = max(min_safe_v, min(max_safe_v, uv_top_a.y))
+        uv_top_b.y = max(min_safe_v, min(max_safe_v, uv_top_b.y))
+
+    return uv_base_a, uv_base_b, uv_top_a, uv_top_b
 
 
 def _repair_extruded_edge_creases(edges, crease_layer, crease_val) -> bool:
@@ -85,6 +116,8 @@ def _repair_extruded_edge_creases(edges, crease_layer, crease_val) -> bool:
 
 def repair_extruded_side_faces(
     bm,
+    obj=None,
+    context=None,
     repair_uv: bool = True,
     add_crease: bool = False,
     crease_val: float = 1.0,
@@ -94,7 +127,12 @@ def repair_extruded_side_faces(
 ) -> int:
     """Repair UV overlapping and add Mean Crease to side faces created during face extrusion.
 
+    Fully supports Atlas textures (Unified Atlas, Baked Atlas, animated strips, non-square)
+    with anisotropic 2D pixel stepping, safety UV bounds clamping, and material isolation.
+
     :param bm: BMesh instance in edit mode.
+    :param obj: Target Blender Object (for material resolution).
+    :param context: Blender context.
     :param repair_uv: Whether to project and fix UVs on extruded side faces.
     :param add_crease: Whether to add Mean Crease to side edges.
     :param crease_val: Crease weight value (0.0 to 1.0).
@@ -116,8 +154,6 @@ def repair_extruded_side_faces(
     uv_layer = bm.loops.layers.uv.verify()
     crease_layer = bm.edges.layers.float.get("crease_edge") or bm.edges.layers.float.new("crease_edge")
 
-    p_step = get_active_texture_pixel_step()
-
     selected_faces = [f for f in bm.faces if f.select and f.is_valid]
     if not selected_faces:
         return 0
@@ -126,9 +162,15 @@ def repair_extruded_side_faces(
     repaired_count = 0
 
     for top_face in selected_faces:
+        # Determine anisotropic pixel step (step_u, step_v) and UV bounds for this face
+        step_u, step_v = get_face_pixel_step(
+            top_face, obj=obj, context=context, uv_layer=uv_layer
+        )
+        top_face_bounds = get_face_uv_bounds(top_face, uv_layer)
+
         ref_vert_uv = {l.vert: l[uv_layer].uv.copy() for l in top_face.loops}
         # A selection may wrap around a 3D corner and span several separate
-        # UV islands.  Its aggregate UV centre has no meaningful "inside" or
+        # UV islands. Its aggregate UV centre has no meaningful "inside" or
         # "outside" for an individual boundary edge, so derive that direction
         # from this source face's own UV island instead.
         top_face_uv_center = sum(
@@ -143,6 +185,10 @@ def repair_extruded_side_faces(
             for side_face in unselected_adj_faces:
                 if len(side_face.verts) != 4:
                     continue
+
+                # Ensure side face inherits the top face's material
+                if side_face.material_index != top_face.material_index:
+                    side_face.material_index = top_face.material_index
 
                 v_top_a = e.verts[0] if e.verts[0] in ref_vert_uv else e.verts[1]
                 v_top_b = e.verts[1] if v_top_a == e.verts[0] else e.verts[0]
@@ -173,16 +219,9 @@ def repair_extruded_side_faces(
                     uv_a = ref_vert_uv[v_top_a]
                     uv_b = ref_vert_uv[v_top_b]
 
-                    l_3d = (v_top_b.co - v_top_a.co).length
                     u_edge = uv_b - uv_a
-                    l_uv = u_edge.length
 
-                    # Fixed narrow strip extension length (10% of pixel step p_step) for thin edge strip UVs
-                    h_uv = (p_step * 0.1) if p_step > 0 else min(0.0015, l_uv * 0.1)
-
-                    # Calculate the source face's outward direction.  This
-                    # must be per-face rather than per-selection: selections
-                    # spanning a cube corner usually have separate UV islands.
+                    # Calculate the source face's outward direction.
                     edge_uv_mid = (uv_a + uv_b) * 0.5
                     v_out = edge_uv_mid - top_face_uv_center
                     if u_edge.length > 1e-6:
@@ -200,13 +239,10 @@ def repair_extruded_side_faces(
                         and (not v_base_b.select)
                     )
                     if only_collapsed:
-                        is_collapsed = is_face_uv_collapsed(side_face, uv_layer)
+                        is_collapsed = is_face_uv_collapsed(
+                            side_face, uv_layer, pixel_step=(step_u, step_v)
+                        )
                         if uv_mode == "SMART":
-                            # A newly extruded side starts with collapsed UVs.
-                            # Once found, retain only that side for the rest of
-                            # this extrusion so a direction reversal can update
-                            # it without treating an arbitrary selected face as
-                            # a fresh extrusion.
                             if smart_side_face_indices is None:
                                 if not is_collapsed:
                                     continue
@@ -232,8 +268,8 @@ def repair_extruded_side_faces(
                                 if (uv_top_a_pt and uv_base_a_pt)
                                 else 0.0
                             )
-                            is_unrepaired = (height_uv_dir < 1e-4) or is_face_uv_collapsed(
-                                side_face, uv_layer
+                            is_unrepaired = (height_uv_dir < min(step_u, step_v) * 0.01) or is_face_uv_collapsed(
+                                side_face, uv_layer, pixel_step=(step_u, step_v)
                             )
                             if not is_unrepaired:
                                 continue
@@ -250,41 +286,44 @@ def repair_extruded_side_faces(
 
                     adjacent_uv_strip = (
                         _get_adjacent_face_uv_strip(
+                            top_face,
                             side_face,
                             v_base_a,
                             v_base_b,
                             selected_faces_set,
                             uv_layer,
+                            step_u,
+                            step_v,
                         )
                         if resolved_uv_mode == "OUTWARD"
                         else None
                     )
+
                     if adjacent_uv_strip:
                         # Outward extrusion: colour each side from the face
                         # immediately outside that boundary edge.
-                        uv_base_a_val, uv_base_b_val, uv_dir = adjacent_uv_strip
+                        uv_base_a_val, uv_base_b_val, uv_top_a_val, uv_top_b_val = adjacent_uv_strip
                     else:
                         # Inward extrusion (and open boundaries without a
-                        # neighbour) retains the selected face's existing
-                        # behaviour and pixel-boundary alignment.
+                        # neighbour or with mismatched material) retains source face pixels.
                         uv_base_a_val = uv_a.copy()
                         uv_base_b_val = uv_b.copy()
 
-                        if p_step > 0:
-                            if abs(uv_outward_dir.x) > 0.5:
-                                if uv_outward_dir.x > 0:
-                                    uv_base_a_val.x = math.ceil(uv_a.x / p_step - 1e-5) * p_step
-                                    uv_base_b_val.x = math.ceil(uv_b.x / p_step - 1e-5) * p_step
-                                else:
-                                    uv_base_a_val.x = math.floor(uv_a.x / p_step + 1e-5) * p_step
-                                    uv_base_b_val.x = math.floor(uv_b.x / p_step + 1e-5) * p_step
-                            elif abs(uv_outward_dir.y) > 0.5:
-                                if uv_outward_dir.y > 0:
-                                    uv_base_a_val.y = math.ceil(uv_a.y / p_step - 1e-5) * p_step
-                                    uv_base_b_val.y = math.ceil(uv_b.y / p_step - 1e-5) * p_step
-                                else:
-                                    uv_base_a_val.y = math.floor(uv_a.y / p_step + 1e-5) * p_step
-                                    uv_base_b_val.y = math.floor(uv_b.y / p_step + 1e-5) * p_step
+                        # Anisotropic pixel grid boundary alignment
+                        if abs(uv_outward_dir.x) > 0.5:
+                            if uv_outward_dir.x > 0:
+                                uv_base_a_val.x = math.ceil(uv_a.x / step_u - 1e-5) * step_u
+                                uv_base_b_val.x = math.ceil(uv_b.x / step_u - 1e-5) * step_u
+                            else:
+                                uv_base_a_val.x = math.floor(uv_a.x / step_u + 1e-5) * step_u
+                                uv_base_b_val.x = math.floor(uv_b.x / step_u + 1e-5) * step_u
+                        elif abs(uv_outward_dir.y) > 0.5:
+                            if uv_outward_dir.y > 0:
+                                uv_base_a_val.y = math.ceil(uv_a.y / step_v - 1e-5) * step_v
+                                uv_base_b_val.y = math.ceil(uv_b.y / step_v - 1e-5) * step_v
+                            else:
+                                uv_base_a_val.y = math.floor(uv_a.y / step_v + 1e-5) * step_v
+                                uv_base_b_val.y = math.floor(uv_b.y / step_v + 1e-5) * step_v
 
                         uv_dir = (
                             -uv_outward_dir
@@ -292,8 +331,33 @@ def repair_extruded_side_faces(
                             else uv_outward_dir
                         )
 
-                    uv_top_a_val = uv_base_a_val + uv_dir * h_uv
-                    uv_top_b_val = uv_base_b_val + uv_dir * h_uv
+                        # Anisotropic narrow strip extension length (10% of pixel step)
+                        offset_u = uv_dir.x * (step_u * 0.1)
+                        offset_v = uv_dir.y * (step_v * 0.1)
+                        uv_offset = mathutils.Vector((offset_u, offset_v))
+
+                        uv_top_a_val = uv_base_a_val + uv_offset
+                        uv_top_b_val = uv_base_b_val + uv_offset
+
+                        # Safety clamping: strictly keep UVs inside top_face's own UV bounds
+                        pad_u = min(step_u * 0.05, top_face_bounds.width * 0.1 if top_face_bounds.width > 0 else step_u * 0.05)
+                        pad_v = min(step_v * 0.05, top_face_bounds.height * 0.1 if top_face_bounds.height > 0 else step_v * 0.05)
+
+                        min_safe_u = top_face_bounds.min_u + pad_u
+                        max_safe_u = top_face_bounds.max_u - pad_u
+                        min_safe_v = top_face_bounds.min_v + pad_v
+                        max_safe_v = top_face_bounds.max_v - pad_v
+
+                        if max_safe_u >= min_safe_u:
+                            uv_base_a_val.x = max(min_safe_u, min(max_safe_u, uv_base_a_val.x))
+                            uv_base_b_val.x = max(min_safe_u, min(max_safe_u, uv_base_b_val.x))
+                            uv_top_a_val.x = max(min_safe_u, min(max_safe_u, uv_top_a_val.x))
+                            uv_top_b_val.x = max(min_safe_u, min(max_safe_u, uv_top_b_val.x))
+                        if max_safe_v >= min_safe_v:
+                            uv_base_a_val.y = max(min_safe_v, min(max_safe_v, uv_base_a_val.y))
+                            uv_base_b_val.y = max(min_safe_v, min(max_safe_v, uv_base_b_val.y))
+                            uv_top_a_val.y = max(min_safe_v, min(max_safe_v, uv_top_a_val.y))
+                            uv_top_b_val.y = max(min_safe_v, min(max_safe_v, uv_top_b_val.y))
 
                     expected_uvs = {
                         v_top_a: uv_top_a_val,
@@ -313,8 +377,6 @@ def repair_extruded_side_faces(
                 if add_crease:
                     # Minecraft-style models are pixel blocks, so every edge
                     # of both the new cap and side faces must remain sharp.
-                    # This also covers cap edges shared by selected faces
-                    # when an extrusion wraps around a 3D corner.
                     crease_repaired = _repair_extruded_edge_creases(
                         top_face.edges,
                         crease_layer,

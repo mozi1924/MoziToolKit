@@ -48,6 +48,8 @@ class RandomExtrudeStep(PipelineStep):
             uv_mode=uv_mode,
             add_crease=add_mean_crease,
             crease_val=crease_value,
+            obj=obj,
+            context=ctx.context,
         )
 
         if extruded_count > 0:

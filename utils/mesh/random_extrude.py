@@ -10,8 +10,6 @@ except ImportError:
     bmesh = None
     mathutils = None
 
-from ..extrude_repair import repair_extruded_side_faces
-
 
 def process_random_extrude(
     bm: bmesh.types.BMesh,
@@ -24,6 +22,8 @@ def process_random_extrude(
     uv_mode: str = "SMART",
     add_crease: bool = False,
     crease_val: float = 1.0,
+    obj=None,
+    context=None,
 ) -> Tuple[int, int]:
     """
     Extrude selected faces individually along their face normals with random heights,
@@ -83,8 +83,12 @@ def process_random_extrude(
 
     repaired_count = 0
     if repair_uv or add_crease:
+        from ..extrude_repair import repair_extruded_side_faces
+
         repaired_count = repair_extruded_side_faces(
             bm,
+            obj=obj,
+            context=context,
             repair_uv=repair_uv,
             add_crease=add_crease,
             crease_val=crease_val,

@@ -38,6 +38,8 @@ class AutoExtrudeRepairStep(PipelineStep):
 
         count = repair_extruded_side_faces(
             bm,
+            obj=obj,
+            context=ctx.context,
             repair_uv=repair_uv,
             add_crease=add_mean_crease,
             crease_val=crease_value,
