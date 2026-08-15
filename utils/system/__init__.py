@@ -7,6 +7,7 @@ from .dependencies import (
     DEPENDENCIES,
     PYPI_MIRRORS,
     ensure_sys_paths,
+    get_blender_site_packages,
     get_python_executable,
     is_module_installed,
     get_installed_version,
@@ -15,6 +16,7 @@ from .dependencies import (
     has_all_dependencies,
     has_pillow,
     install_package,
+    uninstall_package,
 )
 
 from .menu_config import (
@@ -39,6 +41,7 @@ __all__ = [
     "DEPENDENCIES",
     "PYPI_MIRRORS",
     "ensure_sys_paths",
+    "get_blender_site_packages",
     "get_python_executable",
     "is_module_installed",
     "get_installed_version",
@@ -47,6 +50,7 @@ __all__ = [
     "has_all_dependencies",
     "has_pillow",
     "install_package",
+    "uninstall_package",
     "register_menu_item",
     "register_operator_menu_item",
     "normalize_operator_id",
