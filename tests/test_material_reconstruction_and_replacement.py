@@ -217,6 +217,106 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             self.assertAlmostEqual(u_res, u_orig, places=4)
             self.assertAlmostEqual(v_res, v_orig, places=4)
 
+    def test_unmatched_face_leaves_the_entire_object_unchanged(self):
+        """Mixed matches must not corrupt the unmatched face's material slot."""
+        missing = bpy.data.materials.new(name="not_in_pack")
+        self.cube.data.materials.append(missing)
+        self.cube.data.polygons[0].material_index = 1
+        original_slots = [slot.material for slot in self.cube.material_slots]
+        original_indices = [poly.material_index for poly in self.cube.data.polygons]
+
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res, _ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success)
+        self.assertEqual([slot.material for slot in self.cube.material_slots], original_slots)
+        self.assertEqual([poly.material_index for poly in self.cube.data.polygons], original_indices)
+        self.assertNotIn("mtk_source_texture_key", self.cube.data.attributes)
+
+    def test_face_source_key_is_authoritative_over_material_name(self):
+        """A durable per-face key survives arbitrary material renaming."""
+        from utils.materials import extract_face_texture_info, write_face_source_provenance
+
+        write_face_source_provenance(
+            self.cube.data,
+            ["minecraft:stone"] * len(self.cube.data.polygons),
+            ["generic"] * len(self.cube.data.polygons),
+        )
+        self.cube.data.materials[0].name = "unrelated_material_name"
+        namespace, candidates, location = extract_face_texture_info(
+            self.cube.data, 0, self.cube.data.materials[0]
+        )
+        self.assertEqual(namespace, "minecraft")
+        self.assertEqual(candidates, ["stone"])
+        self.assertIsNone(location)
+
+    def test_resource_keys_keep_namespace_and_texture_path(self):
+        """Pack hashes are provenance only; resource paths avoid mod collisions."""
+        from utils.materials import ZipResourcePack
+
+        mod_tex_dir = self.pack_dir / "assets" / "examplemod" / "textures" / "block"
+        mod_tex_dir.mkdir(parents=True)
+        img = bpy.data.images.new("mod_copper", width=16, height=16)
+        img.filepath_raw = str(mod_tex_dir / "copper.png")
+        img.file_format = "PNG"
+        img.save()
+        bpy.data.images.remove(img)
+
+        pack = ZipResourcePack(self.pack_dir, use_cache=False)
+        vanilla = pack.get_texture_info("block/stone", "minecraft")
+        modded = pack.get_texture_info("block/copper", "examplemod")
+        self.assertEqual(vanilla["texture_key"], "block/stone")
+        self.assertEqual(modded["texture_key"], "block/copper")
+        self.assertNotEqual(
+            (vanilla["namespace"], vanilla["texture_key"]),
+            (modded["namespace"], modded["texture_key"]),
+        )
+
+    def test_mod_namespace_round_trips_through_atlas(self):
+        """A mod key stays isolated from Minecraft while switching modes."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+
+        mod_tex_dir = self.pack_dir / "assets" / "examplemod" / "textures" / "block"
+        mod_tex_dir.mkdir(parents=True)
+        img = bpy.data.images.new("mod_copper_atlas", width=16, height=16)
+        img.filepath_raw = str(mod_tex_dir / "copper.png")
+        img.file_format = "PNG"
+        img.save()
+        bpy.data.images.remove(img)
+
+        self.cube.data.materials[0].name = "examplemod:copper"
+        atlas_params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "ATLAS",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res_atlas, ctx_atlas = run_preset_pipeline(
+            "replace_material", bpy.context, params=atlas_params, target_objects=[self.cube]
+        )
+        self.assertTrue(res_atlas.is_success, ctx_atlas.reports)
+
+        source_attr = self.cube.data.attributes["mtk_source_texture_key"]
+        values = [item.value.decode("utf-8") for item in source_attr.data]
+        self.assertEqual(set(values), {"examplemod:block/copper"})
+        origin_values = [item.value.decode("utf-8") for item in self.cube.data.attributes["mtk_source_origin"].data]
+        self.assertEqual(set(origin_values), {"generic"})
+
+        standalone_params = dict(atlas_params, material_mode="STANDALONE")
+        res_standalone, ctx_standalone = run_preset_pipeline(
+            "replace_material", bpy.context, params=standalone_params, target_objects=[self.cube]
+        )
+        self.assertTrue(res_standalone.is_success, ctx_standalone.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:examplemod:copper"))
+        origin_values = [item.value.decode("utf-8") for item in self.cube.data.attributes["mtk_source_origin"].data]
+        self.assertEqual(set(origin_values), {"generic"})
+
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestAnimatedUVMapping(unittest.TestCase):

@@ -16,6 +16,9 @@ from .constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_FACE_MATERIAL_ID,
+    ATTR_SOURCE_TEXTURE_KEY,
+    ATTR_SOURCE_ORIGIN,
+    PROVENANCE_SCHEMA_VERSION,
     FACE_ORDER,
     ATLAS_FORMAT_VERSION,
 )
@@ -40,6 +43,11 @@ try:
         get_atlas_mapping_from_material,
         extract_material_texture_keys,
         extract_face_texture_info,
+        canonical_texture_key,
+        split_texture_key,
+        write_face_source_provenance,
+        get_face_source_origin,
+        material_source_origin,
         normalized_image_key,
         without_blender_suffix,
     )
@@ -85,6 +93,9 @@ __all__ = [
     "ATTR_ATLAS_CHUNK_ID",
     "ATTR_ATLAS_TEXTURE_ID",
     "ATTR_FACE_MATERIAL_ID",
+    "ATTR_SOURCE_TEXTURE_KEY",
+    "ATTR_SOURCE_ORIGIN",
+    "PROVENANCE_SCHEMA_VERSION",
     "FACE_ORDER",
     "ATLAS_FORMAT_VERSION",
 
@@ -106,6 +117,11 @@ __all__ = [
     "get_atlas_mapping_from_material",
     "extract_material_texture_keys",
     "extract_face_texture_info",
+    "canonical_texture_key",
+    "split_texture_key",
+    "write_face_source_provenance",
+    "get_face_source_origin",
+    "material_source_origin",
     "normalized_image_key",
     "without_blender_suffix",
 

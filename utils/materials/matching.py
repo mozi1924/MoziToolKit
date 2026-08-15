@@ -15,7 +15,11 @@ from typing import Callable
 
 import bpy
 
-from .constants import DEFAULT_NAMESPACE
+from .constants import (
+    ATTR_SOURCE_ORIGIN,
+    ATTR_SOURCE_TEXTURE_KEY,
+    DEFAULT_NAMESPACE,
+)
 from .atlas_layout import find_texture_id_from_atlas_uv
 
 
@@ -24,6 +28,66 @@ def without_blender_suffix(value: str) -> str:
     if "." in value and value.rsplit(".", 1)[1].isdigit():
         return value.rsplit(".", 1)[0]
     return value
+
+
+def canonical_texture_key(namespace: str, texture_name: str) -> str:
+    """Return the durable ``namespace:texture`` source identifier.
+
+    The key intentionally does not contain a resource-pack hash: a later
+    replacement pack is allowed to provide the same Minecraft resource.
+    """
+    namespace = (namespace or DEFAULT_NAMESPACE).strip().lower()
+    texture_name = (texture_name or "").strip().lower().removesuffix(".png")
+    return f"{namespace}:{texture_name}" if texture_name else ""
+
+
+def split_texture_key(value: str) -> tuple[str, str]:
+    """Parse a canonical key, accepting legacy texture-only values."""
+    value = (value or "").strip().lower().removesuffix(".png")
+    if not value:
+        return DEFAULT_NAMESPACE, ""
+    if ":" in value:
+        namespace, texture_name = value.split(":", 1)
+        return namespace or DEFAULT_NAMESPACE, texture_name
+    return DEFAULT_NAMESPACE, value
+
+
+def write_face_source_provenance(
+    mesh: bpy.types.Mesh,
+    texture_keys: list[str],
+    origins: list[str] | None = None,
+) -> None:
+    """Write source identity only after a whole mesh conversion is validated."""
+    if len(texture_keys) != len(mesh.polygons):
+        raise ValueError("Source provenance must contain one entry per polygon")
+    if origins is not None and len(origins) != len(mesh.polygons):
+        raise ValueError("Source origins must contain one entry per polygon")
+
+    def string_face_attribute(name: str):
+        attr = mesh.attributes.get(name)
+        if attr and (attr.domain != "FACE" or attr.data_type != "STRING"):
+            mesh.attributes.remove(attr)
+            attr = None
+        return attr or mesh.attributes.new(name=name, type="STRING", domain="FACE")
+
+    key_attr = string_face_attribute(ATTR_SOURCE_TEXTURE_KEY)
+    for item, key in zip(key_attr.data, texture_keys):
+        item.value = key.encode("utf-8")
+    if origins is not None:
+        origin_attr = string_face_attribute(ATTR_SOURCE_ORIGIN)
+        for item, origin in zip(origin_attr.data, origins):
+            item.value = origin.encode("utf-8")
+
+
+def get_face_source_origin(mesh: bpy.types.Mesh, poly_idx: int) -> str:
+    """Read an existing FACE origin without treating Mozi output as origin."""
+    attr = mesh.attributes.get(ATTR_SOURCE_ORIGIN)
+    if not attr or attr.domain != "FACE" or attr.data_type != "STRING" or poly_idx >= len(attr.data):
+        return ""
+    value = attr.data[poly_idx].value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return str(value).strip()
 
 
 def normalized_image_key(image: bpy.types.Image) -> str:
@@ -250,6 +314,13 @@ def get_material_match_preset(mat: bpy.types.Material) -> MaterialMatchPreset:
     return next(preset for preset in MATCH_PRESETS if preset.detects(mat))
 
 
+def material_source_origin(mat: bpy.types.Material | None) -> str:
+    """Classify an external material without conflating it with Mozi mode."""
+    if is_mozi_material(mat):
+        return "mozi"
+    return get_material_match_preset(mat).identifier if mat else "generic"
+
+
 def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[str]]:
     """Extract candidates using the preset detected from material metadata."""
     return get_material_match_preset(mat).extract_keys(mat)
@@ -267,6 +338,21 @@ def extract_face_texture_info(
     """
     if not slot_mat:
         return DEFAULT_NAMESPACE, [], None
+
+    # FACE provenance is the authoritative identity across Standalone and
+    # Atlas.  It survives material-slot consolidation and must win over
+    # mutable UV coordinates or material names.  For an Atlas material we
+    # still continue into its mapping: the returned location is required to
+    # invert atlas UVs during a later Standalone conversion.
+    provenance = None
+    source_attr = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
+    if source_attr and source_attr.domain == "FACE" and source_attr.data_type == "STRING" and poly_idx < len(source_attr.data):
+        raw_key = source_attr.data[poly_idx].value
+        if isinstance(raw_key, bytes):
+            raw_key = raw_key.decode("utf-8", errors="replace")
+        namespace, texture_name = split_texture_key(raw_key)
+        if texture_name:
+            provenance = (namespace, [texture_name])
 
     mat_mode = detect_material_mode(slot_mat)
     if mat_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED"):
@@ -309,12 +395,17 @@ def extract_face_texture_info(
             if chunk_id is not None and texture_id is not None:
                 for tex_name, loc in mapping.get("textures", {}).items():
                     if loc and int(loc.get("chunk_id", -1)) == chunk_id and int(loc.get("texture_id", -1)) == texture_id:
-                        return DEFAULT_NAMESPACE, [tex_name], loc
+                        namespace, texture_name = split_texture_key(loc.get("texture_key", tex_name))
+                        return (*provenance, loc) if provenance else (namespace, [texture_name], loc)
 
                 for anim in mapping.get("animations", []):
                     if int(anim.get("chunk_id", -1)) == chunk_id and int(anim.get("texture_id", -1)) == texture_id:
                         loc = mapping.get("textures", {}).get(anim["name"])
-                        return DEFAULT_NAMESPACE, [anim["name"]], loc or anim
+                        namespace, texture_name = split_texture_key((loc or anim).get("texture_key", anim["name"]))
+                        return (*provenance, loc or anim) if provenance else (namespace, [texture_name], loc or anim)
+
+    if provenance:
+        return *provenance, None
 
     # Standalone or Generic fallback
     namespace, candidates = extract_material_texture_keys(slot_mat)

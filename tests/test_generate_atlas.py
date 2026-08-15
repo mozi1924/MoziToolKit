@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.materials import AtlasGenerator, atlas_uv_from_local, chunk_cell
+from utils.materials import ATLAS_FORMAT_VERSION, AtlasGenerator, atlas_uv_from_local, chunk_cell
 
 try:
     from PIL import Image
@@ -43,7 +43,7 @@ class TestAtlasGenerator(unittest.TestCase):
             mapping = json.load(fp)
 
         self.assertGreaterEqual(mapping["tile_size"], 16)
-        self.assertEqual(mapping["format_version"], 8)
+        self.assertEqual(mapping["format_version"], ATLAS_FORMAT_VERSION)
         self.assertLessEqual(max(chunk["width"] for chunk in mapping["chunks"]), 4096)
         self.assertLessEqual(max(chunk["height"] for chunk in mapping["chunks"]), 4096)
         self.assertGreater(len(mapping["textures"]), 0)
@@ -76,7 +76,7 @@ class TestAtlasGenerator(unittest.TestCase):
             with open(outputs["mapping"], "r", encoding="utf-8") as fp:
                 mapping = json.load(fp)
 
-            self.assertEqual(mapping["format_version"], 8)
+            self.assertEqual(mapping["format_version"], ATLAS_FORMAT_VERSION)
             self.assertEqual(mapping["tile_size"], 32)
             self.assertEqual(len(mapping["chunks"]), 1)
             self.assertEqual(mapping["chunks"][0]["width"], 64)
@@ -106,6 +106,27 @@ class TestAtlasGenerator(unittest.TestCase):
 
             self.assertEqual(mapping["tile_size"], 16)
             self.assertEqual(len(mapping["chunks"]), 1)
+
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_atlas_keeps_mod_namespace_in_source_key(self):
+        """Atlas entries must not collide with a mod texture of the same name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vanilla = root / "assets" / "minecraft" / "textures" / "block"
+            modded = root / "assets" / "examplemod" / "textures" / "block"
+            vanilla.mkdir(parents=True)
+            modded.mkdir(parents=True)
+            Image.new("RGBA", (16, 16), (255, 0, 0, 255)).save(vanilla / "copper.png")
+            Image.new("RGBA", (16, 16), (0, 255, 0, 255)).save(modded / "copper.png")
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            self.assertIn("copper", mapping["textures"])
+            self.assertIn("examplemod:copper", mapping["textures"])
+            self.assertEqual(mapping["textures"]["copper"]["texture_key"], "minecraft:block/copper")
+            self.assertEqual(mapping["textures"]["examplemod:copper"]["texture_key"], "examplemod:block/copper")
 
     def test_baked_uv_uses_the_same_chunk_cell_layout_as_the_atlas(self):
         column, row = chunk_cell(texture_id=3, tiles_per_row=2)
