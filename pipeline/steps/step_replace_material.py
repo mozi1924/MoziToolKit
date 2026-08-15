@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 import bpy
-from ..step import PipelineStep, StepResult
+from typing import Iterator, Union
+from ..progress import ProgressUpdate
+from ..step import PipelineStep, StepResult, StepStatus
 try:
     from ...utils.materials import (
         ZipResourcePack,
@@ -58,47 +60,67 @@ def find_existing_replacement(texture_info: dict, pack: ZipResourcePack) -> bpy.
     namespace = texture_info["namespace"]
     texture_name = texture_info["texture_name"]
     for material in bpy.data.materials:
-        if (material.get("mtk:source_namespace") == namespace
-                and material.get("mtk:source_texture") == texture_name
-                and material.get("mtk:pack_hash") == pack.pack_hash):
+        if (
+            material.get("mtk:source_namespace") == namespace
+            and material.get("mtk:source_texture") == texture_name
+            and material.get("mtk:pack_hash") == pack.pack_hash
+        ):
             return material
     return None
 
 
 class StepReplaceMaterial(PipelineStep):
-    """Pipeline step to parse Minecraft Java resource pack and reconstruct LabPBR or Atlas materials."""
+    """
+    Modular PipelineStep for replacing and reconstructing materials from a Minecraft Java Resource Pack.
+    Supports both Standalone and Atlas material generation modes.
+    """
 
     name = "replace_material"
     description = "Replace and reconstruct materials from Minecraft Java Resource Pack"
 
-    def execute(self, pipeline_context) -> StepResult:
+    def execute_iter(self, pipeline_context) -> Iterator[Union[ProgressUpdate, StepResult]]:
         zip_path = pipeline_context.get_param("zip_path")
         pack_textures = pipeline_context.get_param("pack_textures", True)
         use_cache = pipeline_context.get_param("use_cache", True)
         material_mode = pipeline_context.get_param("material_mode", "STANDALONE")
 
         if not zip_path or not Path(zip_path).exists():
-            return StepResult.failed("Resource pack ZIP file not specified or found.")
+            yield StepResult.failed("Resource pack ZIP file not specified or found.")
+            return
 
         target_objects = pipeline_context.target_objects
         if not target_objects:
-            return StepResult.failed("No objects selected for material replacement.")
+            yield StepResult.failed("No objects selected for material replacement.")
+            return
+
+        yield ProgressUpdate(0.05, 1.0, "Loading Minecraft resource pack...")
+
+        if pipeline_context.is_cancelled:
+            yield StepResult.cancelled("Material replacement cancelled by user.")
+            return
 
         try:
             pack = ZipResourcePack(zip_path, use_cache=use_cache)
         except Exception as e:
-            return StepResult.failed(f"Failed to load resource pack: {e}")
+            yield StepResult.failed(f"Failed to load resource pack: {e}")
+            return
 
         if material_mode == "ATLAS":
-            return self._execute_atlas_mode(pipeline_context, pack, target_objects, pack_textures)
+            yield from self._execute_atlas_mode_iter(pipeline_context, pack, target_objects, pack_textures)
         else:
-            return self._execute_standalone_mode(pipeline_context, pack, target_objects, pack_textures)
+            yield from self._execute_standalone_mode_iter(pipeline_context, pack, target_objects, pack_textures)
 
-    def _execute_atlas_mode(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> StepResult:
-        """Execute material replacement in Atlas Mode supporting Standalone->Atlas and Atlas->Atlas UV conversion."""
+    def _execute_atlas_mode_iter(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> Iterator[Union[ProgressUpdate, StepResult]]:
+        """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
         cache_root = get_cache_dir()
         atlas_dir = cache_root / pack.pack_hash
         mapping_path = atlas_dir / "atlas_mapping.json"
+
+        yield ProgressUpdate(0.10, 1.0, "Checking Atlas texture cache...")
+
+        if pipeline_context.is_cancelled:
+            yield StepResult.cancelled("Material replacement cancelled by user.")
+            return
 
         cache_is_current = False
         if mapping_path.exists():
@@ -112,13 +134,18 @@ class StepReplaceMaterial(PipelineStep):
 
         if not cache_is_current:
             if not has_pillow():
-                return StepResult.failed("Atlas Mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it.")
+                yield StepResult.failed("Atlas Mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it.")
+                return
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
+            yield ProgressUpdate(0.15, 1.0, "Generating Atlas textures (Pillow)...")
             try:
                 gen = AtlasGenerator(pack.extract_dir)
                 gen.build(atlas_dir)
             except Exception as e:
-                return StepResult.failed(f"Failed to generate Atlas texture: {e}")
+                yield StepResult.failed(f"Failed to generate Atlas texture: {e}")
+                return
+
+        yield ProgressUpdate(0.35, 1.0, "Reading Atlas mapping and required chunks...")
 
         # Load target mapping JSON
         with open(mapping_path, "r", encoding="utf-8") as fp:
@@ -131,11 +158,14 @@ class StepReplaceMaterial(PipelineStep):
         }
         chunks_by_id = {int(chunk["chunk_id"]): chunk for chunk in mapping_data.get("chunks", [])}
 
-        # Collect required chunks from target objects (handling both Standalone and existing Atlas meshes)
+        valid_objects = [o for o in target_objects if o and o.type == "MESH" and o.data and o.material_slots]
+        if not valid_objects:
+            yield StepResult.failed("No valid mesh objects with material slots found.")
+            return
+
+        # Collect required chunks from target objects
         required_chunk_ids = set()
-        for obj in target_objects:
-            if obj.type != "MESH" or not obj.data or not obj.material_slots:
-                continue
+        for obj in valid_objects:
             mesh = obj.data
             for poly_idx, poly in enumerate(mesh.polygons):
                 if poly.material_index >= len(obj.material_slots):
@@ -151,6 +181,12 @@ class StepReplaceMaterial(PipelineStep):
                         required_chunk_ids.add(int(loc["chunk_id"]))
                         break
 
+        yield ProgressUpdate(0.45, 1.0, f"Building {len(required_chunk_ids)} Atlas chunk material(s)...")
+
+        if pipeline_context.is_cancelled:
+            yield StepResult.cancelled("Material replacement cancelled by user.")
+            return
+
         atlas_materials = build_atlas_chunk_materials(
             atlas_dir,
             pack_hash=pack.pack_hash,
@@ -159,9 +195,15 @@ class StepReplaceMaterial(PipelineStep):
         )
 
         replaced_objects = 0
-        for obj in target_objects:
-            if obj.type != "MESH" or not obj.data or not obj.material_slots:
-                continue
+        total_objs = len(valid_objects)
+
+        for obj_idx, obj in enumerate(valid_objects):
+            if pipeline_context.is_cancelled:
+                yield StepResult.cancelled("Material replacement cancelled by user.")
+                return
+
+            obj_progress = 0.50 + 0.45 * (obj_idx / max(1, total_objs))
+            yield ProgressUpdate(obj_progress, 1.0, f"Remapping Atlas UVs: {obj.name} ({obj_idx + 1}/{total_objs})")
 
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
@@ -195,11 +237,6 @@ class StepReplaceMaterial(PipelineStep):
             resolved_locations = [None] * len(mesh.polygons)
             poly_updated = False
 
-            # Animation metadata is deliberately mesh FACE-domain data.  The
-            # shader reads these attributes directly, so object properties
-            # would only duplicate (and, for mixed animations, misrepresent)
-            # the data.  Remove properties written by earlier versions while
-            # the object is being converted to Atlas mode.
             for prop in (
                 "mtk_anim_total_frames", "mtk_anim_frametime",
                 "mtk_anim_interpolate", "mtk_anim_frame_width",
@@ -208,7 +245,6 @@ class StepReplaceMaterial(PipelineStep):
                 if prop in obj:
                     del obj[prop]
 
-            # Cache old atlas mappings per slot material to avoid redundant JSON parsing
             old_mappings = {}
             for slot in obj.material_slots:
                 if slot.material and slot.material not in old_mappings:
@@ -275,7 +311,6 @@ class StepReplaceMaterial(PipelineStep):
                         polygon = mesh.polygons[poly_idx]
                         target_chunk = chunks_by_id[int(new_location["chunk_id"])]
 
-                        # If source was already Atlas, retrieve old chunk definition for UV normalization
                         old_chunk = None
                         if old_loc and old_mapping:
                             old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
@@ -285,7 +320,6 @@ class StepReplaceMaterial(PipelineStep):
                             uv = uv_layer.data[loop_index].uv
                             u_val, v_val = uv.x, uv.y
 
-                            # Step 1: Invert from old Atlas UV to Local [0, 1] if source was Atlas
                             if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
                                 if old_loc.get("kind") == "animation":
                                     u_val, v_val = local_uv_from_rect(
@@ -304,7 +338,6 @@ class StepReplaceMaterial(PipelineStep):
                                         atlas_height=float(old_chunk["height"]),
                                     )
 
-                            # Step 2: Transform from Local [0, 1] to target Atlas UV
                             if new_location["kind"] == "animation":
                                 uv.x, uv.y = atlas_uv_from_rect(
                                     u_val, v_val,
@@ -335,13 +368,21 @@ class StepReplaceMaterial(PipelineStep):
 
             replaced_objects += 1
 
-        return StepResult.success(f"Successfully processed {replaced_objects} object(s) in Atlas Mode.")
+        yield ProgressUpdate(1.0, 1.0, f"Atlas replacement finished ({replaced_objects} object(s)).")
+        yield StepResult.success(f"Successfully processed {replaced_objects} object(s) in Atlas Mode.")
 
-    def _execute_standalone_mode(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> StepResult:
-        """Execute material replacement in Standalone Mode supporting Atlas->Standalone UV inversion and slot mapping."""
+    def _execute_standalone_mode_iter(self, pipeline_context, pack: ZipResourcePack, target_objects, pack_textures: bool) -> Iterator[Union[ProgressUpdate, StepResult]]:
+        """Iteratively execute material replacement in Standalone Mode with fine-grained progress."""
         replaced_count = 0
         assigned_count = 0
         session_materials = {}
+
+        valid_objects = [o for o in target_objects if o and o.type == 'MESH' and o.data and o.material_slots]
+        if not valid_objects:
+            yield StepResult.failed("No valid mesh objects with material slots found.")
+            return
+
+        total_objs = len(valid_objects)
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
@@ -362,14 +403,17 @@ class StepReplaceMaterial(PipelineStep):
             session_materials[texture_key] = mat
             return mat, True
 
-        for obj in target_objects:
-            if obj.type != 'MESH' or not obj.data or not obj.material_slots:
-                continue
+        for obj_idx, obj in enumerate(valid_objects):
+            if pipeline_context.is_cancelled:
+                yield StepResult.cancelled("Material replacement cancelled by user.")
+                return
+
+            obj_progress = 0.10 + 0.85 * (obj_idx / max(1, total_objs))
+            yield ProgressUpdate(obj_progress, 1.0, f"Reconstructing materials: {obj.name} ({obj_idx + 1}/{total_objs})")
 
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
-            # Cache old atlas mappings
             old_mappings = {}
             for slot in obj.material_slots:
                 if slot.material and slot.material not in old_mappings:
@@ -436,7 +480,6 @@ class StepReplaceMaterial(PipelineStep):
                                     )
 
             if poly_modified:
-                # Reassign material slots and polygon indices
                 unique_mats = []
                 for m in face_materials:
                     if m is not None and m not in unique_mats:
@@ -451,7 +494,6 @@ class StepReplaceMaterial(PipelineStep):
                         if m is not None:
                             mesh.polygons[poly_idx].material_index = mat_indices[m]
 
-                # If the mesh previously had atlas attributes, clean them up
                 if has_atlas_source:
                     for attr_name in (
                         "atlas_chunk_id", "atlas_texture_id",
@@ -471,6 +513,8 @@ class StepReplaceMaterial(PipelineStep):
                             del obj[prop]
 
         if assigned_count == 0:
-            return StepResult.success("No exact material matches found; selected objects were left unchanged.")
+            yield StepResult.success("No exact material matches found; selected objects were left unchanged.")
+            return
 
-        return StepResult.success(f"Successfully processed Standalone replacement ({assigned_count} slot(s) assigned, {replaced_count} new material(s) created).")
+        yield ProgressUpdate(1.0, 1.0, f"Standalone replacement finished ({assigned_count} slots assigned).")
+        yield StepResult.success(f"Successfully processed Standalone replacement ({assigned_count} slot(s) assigned, {replaced_count} new material(s) created).")

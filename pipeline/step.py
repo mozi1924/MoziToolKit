@@ -5,8 +5,9 @@ Defines the abstract interface and result status for modular pipeline steps.
 """
 
 from enum import Enum, auto
-from typing import Any, Dict
+from typing import Any, Dict, Iterator, Union
 from .context import PipelineContext
+from .progress import ProgressUpdate
 
 
 class StepStatus(Enum):
@@ -60,4 +61,21 @@ class PipelineStep:
         return ctx.get_param(key, default)
 
     def execute(self, ctx: PipelineContext) -> StepResult:
-        raise NotImplementedError("PipelineStep subclasses must implement execute()")
+        """Synchronous execution. Subclasses should override execute() or execute_iter()."""
+        if self._is_iter_overridden():
+            last_result: StepResult | None = None
+            for item in self.execute_iter(ctx):
+                if isinstance(item, StepResult):
+                    last_result = item
+            return last_result or StepResult.success()
+        raise NotImplementedError(f"PipelineStep subclass '{self.__class__.__name__}' must implement execute() or execute_iter()")
+
+    def execute_iter(self, ctx: PipelineContext) -> Iterator[Union[ProgressUpdate, StepResult]]:
+        """Iterative execution generator. Subclasses should override execute_iter() or execute()."""
+        yield ProgressUpdate(current=0.0, total=1.0, message=f"Executing {self.name}...")
+        result = self.execute(ctx)
+        yield ProgressUpdate(current=1.0, total=1.0, message=f"Completed {self.name}")
+        yield result
+
+    def _is_iter_overridden(self) -> bool:
+        return type(self).execute_iter is not PipelineStep.execute_iter

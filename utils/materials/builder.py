@@ -465,19 +465,42 @@ def repair_material_nodes(
         output_node.location = (600, 0)
 
     # 2. Ensure LabPBR 1.3 Decoder Node
+    decoder_template = templates["LabPBR 1.3 Decoder"]
     decoder_node = next(
-        (n for n in nodes if n.bl_idname == "ShaderNodeGroup" and n.node_tree and "LabPBR" in n.node_tree.name),
-        None
+        (
+            n for n in nodes
+            if n.bl_idname == "ShaderNodeGroup"
+            and n.node_tree
+            and (
+                n.node_tree == decoder_template
+                or n.node_tree.name == decoder_template.name
+                or n.node_tree.get("mozi_template_version") is not None
+                and "LabPBR" in n.node_tree.name
+            )
+        ),
+        None,
     )
     if not decoder_node:
-        decoder_node = next((n for n in nodes if n.name == "LabPBR 1.3 Decoder"), None)
+        decoder_node = next(
+            (
+                n for n in nodes
+                if n.bl_idname == "ShaderNodeGroup"
+                and n.name == "LabPBR 1.3 Decoder"
+                and n.node_tree is None
+            ),
+            None,
+        )
 
     if not decoder_node:
         decoder_node = nodes.new("ShaderNodeGroup")
         decoder_node.name = "LabPBR 1.3 Decoder"
         decoder_node.location = (300, 0)
 
-    decoder_node.node_tree = templates["LabPBR 1.3 Decoder"]
+    # Only migrate known Mozi decoder instances.  A material may use a custom
+    # node group whose name happens to contain "LabPBR"; replacing that group
+    # silently destroys its deliberately authored socket mapping.
+    if decoder_node.node_tree != decoder_template:
+        decoder_node.node_tree = decoder_template
 
     # Reconnect Decoder -> Output
     if "BSDF" in decoder_node.outputs and "Surface" in output_node.inputs:
@@ -485,7 +508,9 @@ def repair_material_nodes(
             l.from_socket == decoder_node.outputs["BSDF"] and l.to_socket == output_node.inputs["Surface"]
             for l in links
         )
-        if not bsdf_linked:
+        # Material Output accepts a single Surface input.  Never replace an
+        # existing connection from an unrelated/custom shader while repairing.
+        if not bsdf_linked and not output_node.inputs["Surface"].is_linked:
             links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
 
     if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
@@ -493,7 +518,7 @@ def repair_material_nodes(
             l.from_socket == decoder_node.outputs["Displacement"] and l.to_socket == output_node.inputs["Displacement"]
             for l in links
         )
-        if not disp_linked:
+        if not disp_linked and not output_node.inputs["Displacement"].is_linked:
             links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
 
     # 3. Ensure Shared TexCoord Node
@@ -502,18 +527,20 @@ def repair_material_nodes(
         tex_coord = nodes.new("ShaderNodeTexCoord")
         tex_coord.location = (-1200, 0)
 
-    # 4. Repair and Update Template Node Groups across all node group instances
+    # 4. Repair known Mozi template instances only.  Matching a substring in a
+    # user node group's name is not sufficient authorization to replace it.
     for n in nodes:
         if n.bl_idname != "ShaderNodeGroup" or not n.node_tree:
             continue
         tree_name = n.node_tree.name
-        if "Scheduler" in tree_name:
+        is_mozi_template = n.node_tree.get("mozi_template_version") is not None
+        if (is_mozi_template or tree_name == templates["MC_Animation_Scheduler_Default"].name) and "Scheduler" in tree_name:
             n.node_tree = templates["MC_Animation_Scheduler_Default"]
-        elif "UV_Mapping" in tree_name:
+        elif (is_mozi_template or tree_name == templates["MC_Animated_UV_Mapping"].name) and "UV_Mapping" in tree_name:
             n.node_tree = templates["MC_Animated_UV_Mapping"]
-        elif "Frame_Blend" in tree_name:
+        elif (is_mozi_template or tree_name == templates["MC_Animated_Frame_Blend"].name) and "Frame_Blend" in tree_name:
             n.node_tree = templates["MC_Animated_Frame_Blend"]
-        elif "Atlas_UV_Decoder" in tree_name:
+        elif (is_mozi_template or tree_name == templates["MC_Atlas_UV_Decoder"].name) and "Atlas_UV_Decoder" in tree_name:
             n.node_tree = templates["MC_Atlas_UV_Decoder"]
 
     # 5. Reconnect TexCoord to UV Mapping & Static nodes if missing, and ensure Atlas Mode

@@ -182,13 +182,6 @@ translations_dict = {
         ("*", "Clear temporary extracted resource pack files and atlas caches"): "清除临时解压的材质包及 Atlas 缓存文件，释放磁盘空间",
         ("Operator", "Clear Resource Pack Cache"): "清除材质包缓存",
 
-        # Repair Material Operator & Props
-        ("*", "Repair Material Nodes"): "修复材质节点",
-        ("*", "Repair and reconnect LabPBR decoder and animated UV shader nodes for selected objects' materials."): "修复并重新连接选中物体材质的 LabPBR 解码器与动画 UV 着色器节点",
-        ("*", "Force Rebuild Node Tree"): "强制重建节点树",
-        ("*", "Re-instantiate shader node groups from latest template definitions"): "使用最新模板定义完全重新实例化着色器节点组",
-        ("Operator", "Repair Material Nodes"): "修复材质节点",
-
         # Material Mode & Atlas Props
         ("*", "Material Mode"): "材质模式",
         ("*", "Standalone"): "独立模式",
@@ -203,4 +196,3 @@ translations_dict = {
         ("*", "Tab"): "标签页",
     }
 }
-

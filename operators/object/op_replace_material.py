@@ -84,7 +84,8 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
             )
             return {"CANCELLED"}
 
-        from ...pipeline.presets import run_preset_pipeline
+        from ...pipeline import get_preset_pipeline, run_pipeline_modal
+        from ...pipeline.step import StepStatus
 
         params = {
             "zip_path": self.filepath,
@@ -93,15 +94,25 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
             "use_cache": self.use_cache,
         }
 
-        res, ctx = run_preset_pipeline("replace_material", context, params=params)
+        # Clear filepath after capturing so future invocations always open the file selector window
+        self.filepath = ""
+
+        pipeline = get_preset_pipeline("replace_material")
+        if not pipeline:
+            self.report({'ERROR'}, "Preset pipeline 'replace_material' not found.")
+            return {"CANCELLED"}
+
+        res, ctx = run_pipeline_modal(
+            pipeline,
+            context,
+            params=params,
+            title="Replace Material",
+        )
+
         for level, msg in ctx.reports:
             self.report({level}, msg)
 
-        # Clear filepath after execution so future invocations always open the file selector window
-        self.filepath = ""
-
-        if not res.is_success:
+        if not res.is_success and res.status != StepStatus.CANCELLED:
             return {"CANCELLED"}
 
-        self.report({'INFO'}, f"Material replacement finished successfully in {self.material_mode} mode.")
         return {"FINISHED"}

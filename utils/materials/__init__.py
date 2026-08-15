@@ -48,8 +48,6 @@ try:
         set_material_displacement_method,
         build_channel_nodes,
         rebuild_material,
-        inspect_material_nodes,
-        repair_material_nodes,
     )
     from .atlas_builder import (
         build_atlas_material,
@@ -116,8 +114,6 @@ __all__ = [
     "set_material_displacement_method",
     "build_channel_nodes",
     "rebuild_material",
-    "inspect_material_nodes",
-    "repair_material_nodes",
 
     # Atlas Layout
     "face_index_from_normal",

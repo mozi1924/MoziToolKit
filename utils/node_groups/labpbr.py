@@ -122,8 +122,17 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     Blender UI reordering cannot silently redirect a constant or connection.
     """
     group = ensure_group(LABPBR_GROUP_NAME, LABPBR_TEMPLATE_VERSION)
+    # A previous interrupted template migration can leave the version and
+    # ``complete`` flags behind while the interface is empty or incomplete.
+    # Do not hand that group to a material builder: accessing
+    # ``decoder.outputs["BSDF"]`` would then fail, and assigning it to an
+    # existing node instance can also discard its socket links.
     if group.nodes and group.get("mozi_template_complete"):
-        return group
+        if interface_signature(group) == LABPBR_INTERFACE:
+            return group
+        group.nodes.clear()
+        group.interface.clear()
+        group["mozi_template_complete"] = False
     add_sockets(group, (
         ("BSDF", "OUTPUT", "NodeSocketShader", None),
         ("Displacement", "OUTPUT", "NodeSocketVector", (0.0, 0.0, 0.0)),
