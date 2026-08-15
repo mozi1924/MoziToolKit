@@ -29,6 +29,7 @@ try:
         local_uv_from_rect,
     )
     from ...utils.system import has_pillow
+    from ...utils.mesh import fast_unmerge_block_quads
 except (ImportError, ValueError):
     from utils.materials import (
         ZipResourcePack,
@@ -54,6 +55,7 @@ except (ImportError, ValueError):
         local_uv_from_rect,
     )
     from utils.system import has_pillow
+    from utils.mesh import fast_unmerge_block_quads
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -184,6 +186,17 @@ class StepReplaceMaterial(PipelineStep):
             yield StepResult.failed("No valid mesh objects with material slots found.")
             return
 
+        # Preprocess multi-block consolidated faces (e.g. jmc2obj optimiseGeometry)
+        auto_unmerge = self.get_param(pipeline_context, "auto_unmerge_blocks", True)
+        if auto_unmerge:
+            for obj in valid_objects:
+                large_count, new_count = fast_unmerge_block_quads(obj.data)
+                if large_count > 0:
+                    pipeline_context.report(
+                        "INFO",
+                        f"'{obj.name}': unmerged {large_count} multi-block face(s) into {new_count} unit block quad(s) for Atlas mapping."
+                    )
+
         # Collect required chunks from target objects
         required_chunk_ids = set()
         for obj in valid_objects:
@@ -214,6 +227,27 @@ class StepReplaceMaterial(PipelineStep):
             chunk_ids=required_chunk_ids,
         )
 
+        session_materials = {}
+
+        def get_or_create_replacement_material(texture_info):
+            texture_key = (texture_info["namespace"], texture_info["texture_name"])
+            canonical_mat = find_existing_replacement(texture_info, pack)
+            if not canonical_mat:
+                canonical_mat = session_materials.get(texture_key)
+
+            if canonical_mat:
+                return canonical_mat, False
+
+            mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
+            mat = bpy.data.materials.new(name=mat_name)
+            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=pack.pack_hash):
+                bpy.data.materials.remove(mat)
+                return None, False
+
+            name_replaced_material(mat, texture_info, pack)
+            session_materials[texture_key] = mat
+            return mat, True
+
         replaced_objects = 0
         total_objs = len(valid_objects)
 
@@ -235,9 +269,10 @@ class StepReplaceMaterial(PipelineStep):
 
             def face_attribute(name):
                 attribute = mesh.attributes.get(name)
-                if attribute is None:
-                    attribute = mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
-                return attribute
+                if attribute and (attribute.domain != "FACE" or attribute.data_type != "FLOAT" or len(attribute.data) != len(mesh.polygons)):
+                    mesh.attributes.remove(attribute)
+                    attribute = None
+                return attribute or mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
 
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
@@ -247,6 +282,7 @@ class StepReplaceMaterial(PipelineStep):
             anim_widths = [16.0] * len(mesh.polygons)
             anim_heights = [16.0] * len(mesh.polygons)
             resolved_locations = [None] * len(mesh.polygons)
+            resolved_standalone = [None] * len(mesh.polygons)
             source_keys = [get_face_source_texture_key(mesh, idx) for idx in range(len(mesh.polygons))]
             source_origins = [get_face_source_origin(mesh, idx) for idx in range(len(mesh.polygons))]
             unresolved_faces = []
@@ -319,14 +355,31 @@ class StepReplaceMaterial(PipelineStep):
                     )
                     poly_updated = True
                 else:
+                    # Non-atlas texture fallback (e.g. entities or standalone items in resource pack)
+                    fallback_tex_info = None
+                    for cand in candidates:
+                        info = pack.get_texture_info(cand, namespace)
+                        if info and info.get("albedo"):
+                            fallback_tex_info = info
+                            break
+
+                    if fallback_tex_info:
+                        mat, _is_new = get_or_create_replacement_material(fallback_tex_info)
+                        if mat:
+                            resolved_standalone[poly_idx] = (mat, old_loc, orig_mode, old_mapping)
+                            source_keys[poly_idx] = canonical_texture_key(
+                                fallback_tex_info["namespace"],
+                                fallback_tex_info.get("texture_key", fallback_tex_info["texture_name"])
+                            )
+                            source_origins[poly_idx] = (
+                                get_face_source_origin(mesh, poly_idx)
+                                or material_source_origin(orig_slot.material)
+                            )
+                            poly_updated = True
+                            continue
+
                     unresolved_faces.append(poly_idx)
 
-            if unresolved_faces:
-                pipeline_context.report(
-                    "WARNING",
-                    f"'{obj.name}' was left unchanged: {len(unresolved_faces)} face(s) could not be matched exactly."
-                )
-                continue
             if skipped_faces:
                 pipeline_context.report(
                     "INFO",
@@ -350,6 +403,7 @@ class StepReplaceMaterial(PipelineStep):
                 anim_height_attr.data.foreach_set("value", anim_heights)
 
                 if uv_layer is not None:
+                    # 1. Remap atlas faces to atlas UVs
                     for poly_idx, resolved in enumerate(resolved_locations):
                         if resolved is None:
                             continue
@@ -401,9 +455,42 @@ class StepReplaceMaterial(PipelineStep):
                                     atlas_height=float(target_chunk["height"]),
                                 )
 
+                    # 2. Revert standalone fallback faces to local UVs if they were previously in atlas space
+                    for poly_idx, st_res in enumerate(resolved_standalone):
+                        if st_res is None:
+                            continue
+                        _mat, old_loc, orig_mode, old_mapping = st_res
+                        if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping:
+                            old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
+                            old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
+                            if old_chunk:
+                                polygon = mesh.polygons[poly_idx]
+                                for loop_index in polygon.loop_indices:
+                                    uv = uv_layer.data[loop_index].uv
+                                    if old_loc.get("kind") == "animation":
+                                        uv.x, uv.y = local_uv_from_rect(
+                                            uv.x, uv.y,
+                                            pixel_x=float(old_loc["pixel_x"]), pixel_y=float(old_loc["pixel_y"]),
+                                            rect_width=float(old_loc["frame_width"]), rect_height=float(old_loc["frame_height"]),
+                                            atlas_width=float(old_chunk["width"]), atlas_height=float(old_chunk["height"]),
+                                        )
+                                    else:
+                                        uv.x, uv.y = local_uv_from_atlas(
+                                            uv.x, uv.y,
+                                            tile_column=int(old_loc["tile_column"]),
+                                            tile_row=int(old_loc["tile_row"]),
+                                            tile_size=float(old_chunk["tile_size"]),
+                                            atlas_width=float(old_chunk["width"]),
+                                            atlas_height=float(old_chunk["height"]),
+                                        )
+
                 for poly_idx, resolved in enumerate(resolved_locations):
                     if resolved is not None:
                         face_materials[poly_idx] = atlas_materials[int(resolved[0]["chunk_id"])]
+
+                for poly_idx, st_res in enumerate(resolved_standalone):
+                    if st_res is not None:
+                        face_materials[poly_idx] = st_res[0]
 
                 # Keep the original slots for skipped/unmatched faces.  A
                 # mixed Ice Cube object can therefore replace its visible

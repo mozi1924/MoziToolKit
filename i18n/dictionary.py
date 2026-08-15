@@ -194,5 +194,16 @@ translations_dict = {
         ("*", "Package Name"): "依赖包名称",
         ("*", "Upgrade"): "升级",
         ("*", "Tab"): "标签页",
+
+        # Block Grid Unmerge
+        ("*", "Unmerge Block Faces (Anti-Optimization)"): "逐方块切面 (反向网格优化)",
+        ("*", "Subdivide multi-block optimized quad faces into individual 1x1 block faces and normalize UVs."): "将省面优化合并的多方块面反向拆分为 1x1 独立方块面并归一化 UV。",
+        ("Operator", "Unmerge Block Faces (Anti-Optimization)"): "逐方块切面 (反向网格优化)",
+        ("*", "Auto Unmerge Block Faces"): "自动逐方块切面 (反向优化)",
+        ("*", "Subdivide multi-block optimized faces into 1x1 block quads in Atlas Mode to prevent texture cross-bleeding"): "在 Atlas 模式下自动将省面合并的大面切分为 1x1 方块面，防止图集纹理跨界采样花屏",
+        ("*", "Notice: jmc2obj / Optimized Mesh Detected"): "提示: 检测到 jmc2obj / 省面优化网格",
+        ("*", "Atlas Mode will unmerge multi-block faces into 1x1 quads"): "Atlas 图集模式将自动反向拆分合并面为 1x1 方块面",
+        ("*", "to prevent texture cross-bleeding (Anti-optimization)."): "以防止图集纹理越界采样花屏（反向网格优化）。",
+        ("*", "Atlas Optimization Settings"): "Atlas 图集优化设置",
     }
 }
