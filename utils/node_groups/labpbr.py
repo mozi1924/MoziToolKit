@@ -8,16 +8,17 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 9
+LABPBR_TEMPLATE_VERSION = 10
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The original graph has 82 nodes / 112 links because it contains 31 automatic
-# reroutes.  This implementation deliberately contracts those presentation
-# nodes while preserving its 53 functional nodes and 84 effective links.
+# reroutes. This implementation deliberately contracts those presentation
+# nodes and removes the reference graph's unused emission gate, leaving 52
+# functional nodes and 82 effective links.
 LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 82
 LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 112
-LABPBR_REFERENCE_NODE_COUNT = 53
-LABPBR_REFERENCE_LINK_COUNT = 84
+LABPBR_REFERENCE_NODE_COUNT = 52
+LABPBR_REFERENCE_LINK_COUNT = 82
 LABPBR_REFERENCE_FRAMES = frozenset({
     "Optional _n: DirectX normal, AO, height",
     "Optional _s: smoothness, F0, metal, porosity / SSS, emission",
@@ -209,7 +210,6 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     enable_metallic = _math(nodes, "Enable Metallic", "MULTIPLY", (-200, -650))
     enable_ior = node(nodes, "ShaderNodeMix", "Enable F0 / IOR", location=(120, -820), properties={"data_type": "FLOAT", "blend_type": "MIX"}, inputs={"A[0]": 1.5})
     enable_sss = _math(nodes, "Enable SSS", "MULTIPLY", (-200, -1020))
-    enable_emission = _math(nodes, "Enable Emission", "MULTIPLY", (-200, -1600))
     enable_displacement = _math(nodes, "Enable Displacement", "MULTIPLY", (120, 120))
     enable_porosity = _math(nodes, "Enable Porosity", "MULTIPLY", (-200, -1420))
     artist_emission = _math(nodes, "Artist Emission Multiplier", "MULTIPLY", (-500, -1740))
@@ -253,9 +253,6 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, effective_displacement, "Value", enable_displacement, "Value[0]"); link(links, enable_labpbr, "Value", enable_displacement, "Value[1]")
     link(links, porosity, "Value", enable_porosity, "Value[0]"); link(links, enable_labpbr, "Value", enable_porosity, "Value[1]")
     link(links, emission_strength, "Value", artist_emission, "Value[0]"); link(links, group_input, "Emission Strength", artist_emission, "Value[1]"); link(links, artist_emission, "Value", final_emission, "Value[0]"); link(links, enable_labpbr, "Value", final_emission, "Value[1]")
-    # Kept for parity with the shipped graph.  Its output is intentionally
-    # unused there too; emission is controlled by ``final_emission`` below.
-    link(links, emission_strength, "Value", enable_emission, "Value[0]"); link(links, enable_labpbr, "Value", enable_emission, "Value[1]")
     link(links, enable_labpbr, "Value", normal_map, "Strength")
     link(links, enable_ao, "Result[2]", principled, "Base Color"); link(links, enable_roughness, "Result[0]", principled, "Roughness"); link(links, enable_metallic, "Value", principled, "Metallic"); link(links, enable_ior, "Result[0]", principled, "IOR"); link(links, group_input, "Albedo Alpha", principled, "Alpha")
     link(links, normal_map, "Normal", height_bump, "Normal"); link(links, enable_displacement, "Value", height_bump, "Height"); link(links, height_bump, "Normal", principled, "Normal")
