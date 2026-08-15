@@ -60,8 +60,6 @@ try:
         load_image_texture,
         set_material_displacement_method,
         rebuild_material,
-        inspect_material_nodes,
-        repair_material_nodes,
         detect_material_mode,
         is_mozi_material,
         extract_material_texture_keys,

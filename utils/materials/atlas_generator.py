@@ -272,11 +272,15 @@ class AtlasGenerator:
             "-Z": north
         }
 
-    def build(self, output_dir: str | Path) -> dict:
+    def build(self, output_dir: str | Path, progress_callback=None) -> dict:
         """Build deduplicated, size-bounded atlas chunks and their mapping."""
         if not HAS_PIL:
             raise ImportError("Pillow library is required for AtlasGenerator. Please install it using 'pip install pillow'.")
+        if progress_callback:
+            progress_callback(0.05, "Reading textures and models from resource pack...")
         self.load_resources()
+        if progress_callback:
+            progress_callback(0.2, f"Loaded {len(self.static_textures)} static & {len(self.animated_textures)} animated textures")
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 

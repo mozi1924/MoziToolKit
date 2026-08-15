@@ -1,7 +1,4 @@
-"""
-Comprehensive Unit and Integration Tests for Material Identification, Node Reconstruction,
-LabPBR & Animated UV Node Repair, and Cross-Mode Replacement with UV Inversion.
-"""
+"""Tests for material identification and cross-mode replacement with UV inversion."""
 
 import sys
 import unittest
@@ -28,8 +25,6 @@ if HAS_BPY:
         detect_material_mode,
         is_mozi_material,
         extract_face_texture_info,
-        inspect_material_nodes,
-        repair_material_nodes,
     )
     from pipeline.presets import run_preset_pipeline
 
@@ -96,8 +91,8 @@ class TestUVTransformMath(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
-class TestMaterialReconstructionAndRepair(unittest.TestCase):
-    """Test material classification, node tree health inspection, and repair."""
+class TestMaterialModeDetection(unittest.TestCase):
+    """Test material mode classification."""
 
     def setUp(self):
         if not HAS_BPY:
@@ -122,28 +117,6 @@ class TestMaterialReconstructionAndRepair(unittest.TestCase):
         mat_chunk["mtk:atlas_chunk_id"] = 0
         self.assertEqual(detect_material_mode(mat_chunk), "ATLAS_CHUNK")
         self.assertTrue(is_mozi_material(mat_chunk))
-
-    def test_repair_missing_decoder_and_links(self):
-        mat = bpy.data.materials.new("Test_Broken_LabPBR")
-        mat.use_nodes = True
-        nt = mat.node_tree
-        nt.nodes.clear()
-
-        # Only output node exists, no decoder
-        out_node = nt.nodes.new("ShaderNodeOutputMaterial")
-
-        report = inspect_material_nodes(mat)
-        self.assertFalse(report["is_healthy"])
-        self.assertFalse(report["has_decoder_node"])
-
-        # Run repair
-        success = repair_material_nodes(mat)
-        self.assertTrue(success)
-
-        report_after = inspect_material_nodes(mat)
-        self.assertTrue(report_after["is_healthy"])
-        self.assertTrue(report_after["has_decoder_node"])
-        self.assertTrue(report_after["bsdf_linked"])
 
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
@@ -372,37 +345,6 @@ class TestAnimatedUVMapping(unittest.TestCase):
         self.assertAlmostEqual(u1_atlas, (16 + 16) / 64)
         self.assertAlmostEqual(v1_atlas, 1.0 - 16 / 512)
 
-    def test_repair_sets_correct_atlas_mode(self):
-        # 1. Standalone material with animated UV node
-        from utils.node_groups import ensure_all_templates
-        templates = ensure_all_templates()
-
-        mat_standalone = bpy.data.materials.new("mtk:minecraft:sea_lantern:abcdef123456")
-        mat_standalone["mtk:source_namespace"] = "minecraft"
-        mat_standalone["mtk:source_texture"] = "sea_lantern"
-        mat_standalone.use_nodes = True
-        uv_node_std = mat_standalone.node_tree.nodes.new("ShaderNodeGroup")
-        uv_node_std.node_tree = templates["MC_Animated_UV_Mapping"]
-        uv_node_std.name = "MC UV Mapping (Albedo)"
-        uv_node_std.inputs["Atlas Mode"].default_value = 1.0  # Wrong value
-
-        # Repair
-        repair_material_nodes(mat_standalone)
-        self.assertEqual(uv_node_std.inputs["Atlas Mode"].default_value, 0.0)
-
-        # 2. Atlas material with animated UV node
-        mat_atlas = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001:abcdef123456")
-        mat_atlas["mtk:atlas_chunk_id"] = 1
-        mat_atlas.use_nodes = True
-        uv_node_atl = mat_atlas.node_tree.nodes.new("ShaderNodeGroup")
-        uv_node_atl.node_tree = templates["MC_Animated_UV_Mapping"]
-        uv_node_atl.name = "MC UV Mapping (Albedo)"
-        uv_node_atl.inputs["Atlas Mode"].default_value = 0.0  # Wrong value
-
-        # Repair
-        repair_material_nodes(mat_atlas)
-        self.assertEqual(uv_node_atl.inputs["Atlas Mode"].default_value, 1.0)
-
 
 def run_all_tests():
     import os
@@ -414,7 +356,7 @@ def run_all_tests():
     suite = unittest.TestSuite()
     suite.addTests(loader.loadTestsFromTestCase(TestUVTransformMath))
     suite.addTests(loader.loadTestsFromTestCase(TestAnimatedUVMapping))
-    suite.addTests(loader.loadTestsFromTestCase(TestMaterialReconstructionAndRepair))
+    suite.addTests(loader.loadTestsFromTestCase(TestMaterialModeDetection))
     suite.addTests(loader.loadTestsFromTestCase(TestCrossModeMaterialReplacement))
 
     runner = unittest.TextTestRunner(verbosity=2)

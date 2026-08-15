@@ -510,6 +510,78 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertEqual(porosity.min_value, 0.0)
         self.assertEqual(porosity.max_value, 1.0)
 
+    def test_pipeline_progress_protocol_and_iterative_execution(self):
+        from pipeline import Pipeline, PipelineContext, ProgressUpdate, PipelineStep, StepResult
+
+        class CustomStep(PipelineStep):
+            name = "custom_step"
+            def execute_iter(self, ctx):
+                yield ProgressUpdate(0.0, 2.0, "Step Part 1")
+                yield ProgressUpdate(1.0, 2.0, "Step Part 2")
+                yield ProgressUpdate(2.0, 2.0, "Step Done")
+                yield StepResult.success("Custom step finished")
+
+        pipeline = Pipeline("test_pipeline", steps=[CustomStep(), CustomStep()])
+        ctx = PipelineContext(bpy.context)
+
+        updates = []
+        final_result = None
+        for item in pipeline.execute_iter(ctx):
+            if isinstance(item, ProgressUpdate):
+                updates.append(item)
+            elif isinstance(item, StepResult):
+                final_result = item
+
+        self.assertIsNotNone(final_result)
+        self.assertTrue(final_result.is_success)
+        self.assertTrue(len(updates) > 0)
+        self.assertEqual(updates[0].fraction, 0.0)
+        self.assertEqual(updates[-1].fraction, 1.0)
+        # Check ascending progress fractions
+        fractions = [u.fraction for u in updates]
+        self.assertEqual(fractions, sorted(fractions))
+
+    def test_pipeline_cooperative_cancellation(self):
+        from pipeline import Pipeline, PipelineContext, ProgressUpdate, PipelineStep, StepResult, StepStatus
+
+        class LongRunningStep(PipelineStep):
+            name = "long_step"
+            def execute_iter(self, ctx):
+                for i in range(10):
+                    if ctx.is_cancelled:
+                        yield StepResult.cancelled("Cancelled")
+                        return
+                    yield ProgressUpdate(i, 10, f"Tick {i}")
+                yield StepResult.success("Done")
+
+        pipeline = Pipeline("cancel_pipeline", steps=[LongRunningStep()])
+        ctx = PipelineContext(bpy.context)
+
+        results = []
+        for idx, item in enumerate(pipeline.execute_iter(ctx)):
+            if idx == 2:
+                ctx.is_cancelled = True
+            if isinstance(item, StepResult):
+                results.append(item)
+
+        self.assertTrue(len(results) > 0)
+        self.assertEqual(results[-1].status, StepStatus.CANCELLED)
+
+    def test_labpbr_template_recovers_incomplete_interface(self):
+        """A stale complete flag must not expose a decoder without BSDF."""
+        from utils.node_groups import ensure_all_templates
+
+        decoder = ensure_all_templates()["LabPBR 1.3 Decoder"]
+        decoder.interface.clear()
+        decoder["mozi_template_complete"] = True
+
+        recovered = ensure_all_templates()["LabPBR 1.3 Decoder"]
+        output_names = [
+            item.name for item in recovered.interface.items_tree
+            if item.item_type == "SOCKET" and item.in_out == "OUTPUT"
+        ]
+        self.assertIn("BSDF", output_names)
+
 
 def run_all_tests():
     print("=" * 60)
