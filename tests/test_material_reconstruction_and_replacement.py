@@ -237,6 +237,72 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertEqual([poly.material_index for poly in self.cube.data.polygons], original_indices)
         self.assertNotIn("mtk_source_texture_key", self.cube.data.attributes)
 
+    def test_ice_cube_internal_faces_are_retained_per_face(self):
+        """An internal_face_deletion.001 slot must not become oak leaves."""
+        leaves_file = self.pack_dir / "assets/minecraft/textures/block/oak_leaves.png"
+        leaves_img = bpy.data.images.new("oak_leaves", width=16, height=16)
+        leaves_img.filepath_raw = str(leaves_file)
+        leaves_img.file_format = "PNG"
+        leaves_img.save()
+
+        internal = bpy.data.materials.new(name="internal_face_deletion.001")
+        internal["ice_cube.material_id"] = "internal"
+        internal.use_nodes = True
+        tex = internal.node_tree.nodes.new("ShaderNodeTexImage")
+        tex.image = leaves_img
+        self.cube.data.materials.append(internal)
+        self.cube.data.polygons[0].material_index = 1
+
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        face_material = self.cube.material_slots[self.cube.data.polygons[0].material_index].material
+        self.assertIs(face_material, internal)
+        self.assertTrue(any(
+            slot.material and slot.material.name.startswith("mtk:minecraft:stone")
+            for slot in self.cube.material_slots
+        ))
+
+    def test_atlas_retains_ice_cube_internal_faces_per_face(self):
+        """Atlas mode must also preserve invisible Ice Cube faces."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+
+        leaves_file = self.pack_dir / "assets/minecraft/textures/block/oak_leaves.png"
+        leaves_img = bpy.data.images.new("oak_leaves_atlas", width=16, height=16)
+        leaves_img.filepath_raw = str(leaves_file)
+        leaves_img.file_format = "PNG"
+        leaves_img.save()
+
+        internal = bpy.data.materials.new(name="internal_face_deletion.002")
+        internal["flip_fluid_material_library"] = True
+        internal.use_nodes = True
+        tex = internal.node_tree.nodes.new("ShaderNodeTexImage")
+        tex.image = leaves_img
+        self.cube.data.materials.append(internal)
+        self.cube.data.polygons[0].material_index = 1
+
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "ATLAS",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        face_material = self.cube.material_slots[self.cube.data.polygons[0].material_index].material
+        self.assertIs(face_material, internal)
+        self.assertTrue(any(
+            slot.material and slot.material.name.startswith("mtk:minecraft:atlas_chunk_")
+            for slot in self.cube.material_slots
+        ))
+
     def test_face_source_key_is_authoritative_over_material_name(self):
         """A durable per-face key survives arbitrary material renaming."""
         from utils.materials import extract_face_texture_info, write_face_source_provenance

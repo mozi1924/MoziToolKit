@@ -9,6 +9,7 @@ importer created a material.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -82,6 +83,17 @@ def write_face_source_provenance(
 def get_face_source_origin(mesh: bpy.types.Mesh, poly_idx: int) -> str:
     """Read an existing FACE origin without treating Mozi output as origin."""
     attr = mesh.attributes.get(ATTR_SOURCE_ORIGIN)
+    if not attr or attr.domain != "FACE" or attr.data_type != "STRING" or poly_idx >= len(attr.data):
+        return ""
+    value = attr.data[poly_idx].value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return str(value).strip()
+
+
+def get_face_source_texture_key(mesh: bpy.types.Mesh, poly_idx: int) -> str:
+    """Read an existing canonical source key, if this face already has one."""
+    attr = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
     if not attr or attr.domain != "FACE" or attr.data_type != "STRING" or poly_idx >= len(attr.data):
         return ""
     value = attr.data[poly_idx].value
@@ -279,6 +291,20 @@ def ice_cube_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]
     return namespace, list(dict.fromkeys(candidates))
 
 
+def is_ice_cube_internal_face_material(mat: bpy.types.Material | None) -> bool:
+    """Return whether Ice Cube marks this slot as intentionally invisible.
+
+    Ice Cube creates duplicate slots such as ``internal_face_deletion.001``.
+    They can retain an image node from a previously copied material, so image
+    based fallback matching must never turn them into visible leaves or other
+    textures.
+    """
+    if not is_ice_cube_material(mat):
+        return False
+    name = without_blender_suffix(mat.name.strip().lower())
+    return bool(re.fullmatch(r"internal_face_deletion(?:_[0-9]+)?", name))
+
+
 def is_ice_cube_material(mat: bpy.types.Material) -> bool:
     """Recognize Ice Cube's persistent library metadata."""
     return bool(mat) and (
@@ -323,6 +349,8 @@ def material_source_origin(mat: bpy.types.Material | None) -> str:
 
 def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[str]]:
     """Extract candidates using the preset detected from material metadata."""
+    if is_ice_cube_internal_face_material(mat):
+        return DEFAULT_NAMESPACE, []
     return get_material_match_preset(mat).extract_keys(mat)
 
 
