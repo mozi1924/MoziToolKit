@@ -8,7 +8,7 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 8
+LABPBR_TEMPLATE_VERSION = 9
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The original graph has 82 nodes / 112 links because it contains 31 automatic
@@ -127,16 +127,16 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     add_sockets(group, (
         ("BSDF", "OUTPUT", "NodeSocketShader", None),
         ("Displacement", "OUTPUT", "NodeSocketVector", (0.0, 0.0, 0.0)),
-        ("Porosity (0-1)", "OUTPUT", "NodeSocketFloat", 0.0),
-        ("Enable PBR (0-1)", "INPUT", "NodeSocketFloat", 1.0),
+        ("Porosity (0-1)", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Enable PBR (0-1)", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Albedo Color", "INPUT", "NodeSocketColor", (0.8, 0.8, 0.8, 1.0)),
-        ("Albedo Alpha", "INPUT", "NodeSocketFloat", 1.0),
+        ("Albedo Alpha", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Normal (_n) Color", "INPUT", "NodeSocketColor", (0.5, 0.5, 1.0, 1.0)),
-        ("Normal (_n) Alpha (Height)", "INPUT", "NodeSocketFloat", 1.0),
+        ("Normal (_n) Alpha (Height)", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Specular (_s) Color", "INPUT", "NodeSocketColor", (0.292893, 0.04, 0.0, 1.0)),
-        ("Specular (_s) Alpha (Emission)", "INPUT", "NodeSocketFloat", 0.0),
-        ("Displacement Scale", "INPUT", "NodeSocketFloat", 0.05),
-        ("Emission Strength", "INPUT", "NodeSocketFloat", 1.0),
+        ("Specular (_s) Alpha (Emission)", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Displacement Scale", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Emission Strength", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1000.0),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1400, 200))

@@ -275,6 +275,34 @@ class TestAnimatedUVMapping(unittest.TestCase):
         for name in expected_outputs:
             self.assertIn(name, output_names, f"Missing output socket '{name}' in MC_Animated_UV_Mapping")
 
+        # Verify socket limits
+        sockets = {s.name: s for s in group.interface.items_tree if s.item_type == "SOCKET"}
+        self.assertEqual(sockets["Blend Factor"].min_value, 0.0)
+        self.assertEqual(sockets["Blend Factor"].max_value, 1.0)
+        self.assertEqual(sockets["Frame Width"].min_value, 1.0)
+        self.assertEqual(sockets["Atlas Mode"].min_value, 0.0)
+        self.assertEqual(sockets["Atlas Mode"].max_value, 1.0)
+
+    def test_frame_blend_and_atlas_decoder_socket_bounds(self):
+        from utils.node_groups.animated import ensure_animated_frame_blend
+        from utils.node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
+
+        blend_group = ensure_animated_frame_blend()
+        blend_sockets = {s.name: s for s in blend_group.interface.items_tree if s.item_type == "SOCKET"}
+        self.assertEqual(blend_sockets["Current Alpha"].min_value, 0.0)
+        self.assertEqual(blend_sockets["Current Alpha"].max_value, 1.0)
+        self.assertEqual(blend_sockets["Blend Factor"].min_value, 0.0)
+        self.assertEqual(blend_sockets["Blend Factor"].max_value, 1.0)
+
+        atlas_decoder = build_atlas_uv_decoder_node_group()
+        atlas_sockets = {s.name: s for s in atlas_decoder.interface.items_tree if s.item_type == "SOCKET"}
+        self.assertEqual(atlas_sockets["Face Index"].min_value, 0.0)
+        self.assertEqual(atlas_sockets["Face Index"].max_value, 5.0)
+        self.assertEqual(atlas_sockets["Use Face Index"].min_value, 0.0)
+        self.assertEqual(atlas_sockets["Use Face Index"].max_value, 1.0)
+        self.assertEqual(atlas_sockets["Tile Size"].min_value, 1.0)
+        self.assertEqual(atlas_sockets["Atlas Width"].min_value, 1.0)
+
     def test_scheduler_wraps_between_zero_and_total_frames(self):
         """Blender's WRAP inputs are Value, Max, Min (not Value, Min, Max)."""
         from utils.node_groups.animated import ensure_animation_scheduler, SCHEDULER_TEMPLATE_VERSION
