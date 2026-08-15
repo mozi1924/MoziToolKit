@@ -88,6 +88,22 @@ class AtlasGenerator:
         else:
             raise ValueError(f"Unsupported resource format: {self.resource_path}")
 
+    @staticmethod
+    def _texture_name(namespace: str, stem: str) -> str:
+        """Keep legacy vanilla names while making non-vanilla names unique."""
+        stem = stem.strip("/").lower()
+        namespace = namespace.lower()
+        return stem if namespace == "minecraft" else f"{namespace}:{stem}"
+
+    @staticmethod
+    def _source_texture_key(texture_name: str) -> str:
+        """Return the canonical resource key represented by an atlas entry."""
+        if ":" in texture_name:
+            namespace, stem = texture_name.split(":", 1)
+        else:
+            namespace, stem = "minecraft", texture_name
+        return f"{namespace}:block/{stem}"
+
     def _load_from_zip(self, zip_path: Path):
         with zipfile.ZipFile(zip_path, "r") as zf:
             namelist = zf.namelist()
@@ -95,10 +111,12 @@ class AtlasGenerator:
             # 1. Index mcmetas
             mcmetas = {}
             for name in namelist:
-                if name.startswith("assets/minecraft/textures/block/") and name.endswith(".png.mcmeta"):
-                    stem = name.replace("assets/minecraft/textures/block/", "").replace(".png.mcmeta", "")
+                parts = Path(name).parts
+                if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png.mcmeta"):
+                    stem = "/".join(parts[4:])[:-11]
+                    texture_name = self._texture_name(parts[1], stem)
                     try:
-                        mcmetas[stem.lower()] = json.loads(zf.read(name).decode("utf-8"))
+                        mcmetas[texture_name] = json.loads(zf.read(name).decode("utf-8"))
                     except Exception:
                         pass
 
@@ -113,9 +131,10 @@ class AtlasGenerator:
 
             # 3. Load PNG textures
             for name in namelist:
-                if name.startswith("assets/minecraft/textures/block/") and name.endswith(".png"):
-                    stem = name.replace("assets/minecraft/textures/block/", "").replace(".png", "")
-                    clean_stem = stem.lower()
+                parts = Path(name).parts
+                if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png"):
+                    stem = "/".join(parts[4:])[:-4]
+                    clean_stem = self._texture_name(parts[1], stem)
 
                     channel = "albedo"
                     if clean_stem.endswith("_n"):
@@ -146,22 +165,27 @@ class AtlasGenerator:
                         print(f"[AtlasGenerator] Warning: failed to load texture {name}: {e}")
 
     def _load_from_dir(self, dir_path: Path):
-        textures_dir = dir_path / "assets" / "minecraft" / "textures" / "block"
         models_dir = dir_path / "assets" / "minecraft" / "models" / "block"
 
         # 1. Index mcmetas
         mcmetas = {}
-        if textures_dir.exists():
-            for root, _, files in os.walk(textures_dir):
-                for f in files:
-                    if f.endswith(".png.mcmeta"):
-                        stem = f[:-11]
-                        mcmeta_path = Path(root) / f
-                        try:
-                            with open(mcmeta_path, "r", encoding="utf-8") as fp:
-                                mcmetas[stem.lower()] = json.load(fp)
-                        except Exception:
-                            pass
+        assets_dir = dir_path / "assets"
+        if assets_dir.exists():
+            for namespace_dir in assets_dir.iterdir():
+                textures_dir = namespace_dir / "textures" / "block"
+                if not namespace_dir.is_dir() or not textures_dir.exists():
+                    continue
+                for root, _, files in os.walk(textures_dir):
+                    for f in files:
+                        if f.endswith(".png.mcmeta"):
+                            stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11]
+                            texture_name = self._texture_name(namespace_dir.name, stem)
+                            mcmeta_path = Path(root) / f
+                            try:
+                                with open(mcmeta_path, "r", encoding="utf-8") as fp:
+                                    mcmetas[texture_name] = json.load(fp)
+                            except Exception:
+                                pass
 
         # 2. Load models
         if models_dir.exists():
@@ -177,12 +201,17 @@ class AtlasGenerator:
                             pass
 
         # 3. Load PNG textures
-        if textures_dir.exists():
-            for root, _, files in os.walk(textures_dir):
-                for f in files:
-                    if f.endswith(".png"):
-                        stem = f[:-4]
-                        clean_stem = stem.lower()
+        if assets_dir.exists():
+            for namespace_dir in assets_dir.iterdir():
+                textures_dir = namespace_dir / "textures" / "block"
+                if not namespace_dir.is_dir() or not textures_dir.exists():
+                    continue
+                for root, _, files in os.walk(textures_dir):
+                    for f in files:
+                        if not f.endswith(".png"):
+                            continue
+                        stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-4]
+                        clean_stem = self._texture_name(namespace_dir.name, stem)
 
                         channel = "albedo"
                         if clean_stem.endswith("_n"):
@@ -328,6 +357,9 @@ class AtlasGenerator:
             for texture_id, texture_name in enumerate(names):
                 x, y = (texture_id % tiles_per_row) * tile_size, (texture_id // tiles_per_row) * tile_size
                 texture_locations[texture_name] = {
+                    # Keep an explicit source key rather than requiring
+                    # consumers to infer identity from an atlas filename.
+                    "texture_key": self._source_texture_key(texture_name),
                     "chunk_id": chunk_id, "texture_id": texture_id,
                     "tile_column": texture_id % tiles_per_row, "tile_row": texture_id // tiles_per_row,
                     "kind": "static",
@@ -414,13 +446,14 @@ class AtlasGenerator:
                 frametime = max(1, int(metadata.get("frametime", 2)))
                 interpolate = bool(metadata.get("interpolate", False))
                 texture_locations[name] = {
+                    "texture_key": self._source_texture_key(name),
                     "chunk_id": chunk_id, "texture_id": texture_id, "kind": "animation",
                     "pixel_x": x_offset, "pixel_y": 0, "preview_frame": 0,
                     "frame_width": frame_width, "frame_height": frame_height,
                     "frame_count": frame_count, "frametime": frametime, "interpolate": interpolate,
                 }
                 animations.append({
-                    "name": name, "chunk_id": chunk_id, "texture_id": texture_id,
+                    "name": name, "texture_key": self._source_texture_key(name), "chunk_id": chunk_id, "texture_id": texture_id,
                     "pixel_x": x_offset, "frame_count": frame_count,
                     "frame_width": frame_width, "frame_height": frame_height,
                     "frametime": frametime, "interpolate": interpolate,
@@ -460,7 +493,8 @@ class AtlasGenerator:
             }})
 
         mapping_data = {
-            "format_version": ATLAS_FORMAT_VERSION, "max_chunk_size": self.max_chunk_size,
+            "format_version": ATLAS_FORMAT_VERSION, "provenance_schema_version": 1,
+            "max_chunk_size": self.max_chunk_size,
             "tile_size": tile_size, "face_order": list(FACE_ORDER), "chunks": chunks,
             "textures": texture_locations, "materials": materials, "animations": animations,
             "static_texture_count": len(static_names),

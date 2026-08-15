@@ -20,6 +20,12 @@ PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 ATTR_ATLAS_CHUNK_ID = "atlas_chunk_id"
 ATTR_ATLAS_TEXTURE_ID = "atlas_texture_id"
 ATTR_FACE_MATERIAL_ID = "material_id"
+# Canonical source provenance.  These are FACE-domain string attributes so a
+# mesh can retain one source texture identity per polygon even when several
+# polygons share the same Blender material (as happens in atlas mode).
+ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
+ATTR_SOURCE_ORIGIN = "mtk_source_origin"
+PROVENANCE_SCHEMA_VERSION = 1
 
 # Animation Mesh Attribute Names (Atlas Dynamic Animation)
 ATTR_ANIM_TOTAL_FRAMES = "mtk_anim_total_frames"
@@ -49,4 +55,4 @@ DIRECTION_SUFFIX_MAP = {
 FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 # Atlas Format Version
-ATLAS_FORMAT_VERSION = 8
+ATLAS_FORMAT_VERSION = 10

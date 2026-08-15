@@ -169,6 +169,7 @@ class ZipResourcePack:
         self.extract_dir = None
         self.pack_hash = None
         self.texture_index = {}
+        self.texture_path_index = {}
         self._load_pack()
 
     def _load_pack(self):
@@ -205,6 +206,7 @@ class ZipResourcePack:
     def _build_index(self):
         """Index block, item, entity, and misc textures and their matching .mcmeta files."""
         self.texture_index = {}
+        self.texture_path_index = {}
         
         assets_root = self.extract_dir / "assets"
         if not assets_root.exists():
@@ -225,13 +227,16 @@ class ZipResourcePack:
                     
                     full_path = root_path / fname
                     rel_name = fname[:-4]  # Remove .png
+                    texture_key = full_path.relative_to(textures_dir).with_suffix("").as_posix().lower()
 
                     # Determine channel type (_n, _s, or base albedo)
                     if rel_name.endswith("_n"):
                         base_stem = rel_name[:-2]
+                        texture_key = texture_key[:-2]
                         channel = "normal"
                     elif rel_name.endswith("_s"):
                         base_stem = rel_name[:-2]
+                        texture_key = texture_key[:-2]
                         channel = "specular"
                     else:
                         base_stem = rel_name
@@ -243,6 +248,10 @@ class ZipResourcePack:
                         self.texture_index[index_key] = {
                             "namespace": namespace,
                             "texture_name": base_stem,
+                            # Canonical resource location survives same-name
+                            # textures in block/item/entity folders.  Keep
+                            # texture_name as a legacy lookup/display alias.
+                            "texture_key": texture_key,
                             "albedo": None,
                             "albedo_mcmeta": None,
                             "normal": None,
@@ -257,6 +266,7 @@ class ZipResourcePack:
                     entry = self.texture_index[index_key]
                     entry[channel] = full_path
                     entry[f"{channel}_mcmeta"] = mcmeta_data
+                    self.texture_path_index[(namespace, texture_key)] = entry
 
     def get_texture_info(self, base_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict:
         """
@@ -270,4 +280,8 @@ class ZipResourcePack:
         if "." in clean_name and clean_name.rsplit(".", 1)[1].isdigit():
             clean_name = clean_name.rsplit(".", 1)[0]
 
-        return self.texture_index.get((namespace.lower(), clean_name))
+        namespace = namespace.lower()
+        return (
+            self.texture_path_index.get((namespace, clean_name))
+            or self.texture_index.get((namespace, clean_name))
+        )
