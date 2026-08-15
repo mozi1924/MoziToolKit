@@ -188,6 +188,8 @@ def _monitor_smart_extrusions():
         bm = bmesh.from_edit_mesh(obj.data)
         count = repair_extruded_side_faces(
             bm,
+            obj=obj,
+            context=context,
             repair_uv=props.repair_uv,
             add_crease=props.add_mean_crease,
             crease_val=props.crease_value,
@@ -236,6 +238,8 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
             bm = bmesh.from_edit_mesh(obj.data)
             count = repair_extruded_side_faces(
                 bm,
+                obj=obj,
+                context=context,
                 repair_uv=props.repair_uv,
                 add_crease=props.add_mean_crease,
                 crease_val=props.crease_value,
@@ -251,6 +255,8 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
         bm = bmesh.from_edit_mesh(obj.data)
         count = repair_extruded_side_faces(
             bm,
+            obj=obj,
+            context=context,
             repair_uv=props.repair_uv,
             add_crease=props.add_mean_crease,
             crease_val=props.crease_value,

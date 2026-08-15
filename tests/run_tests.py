@@ -597,6 +597,12 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestAdaptivePixelSplit: {e}")
 
+    try:
+        from tests.test_extrude_repair_atlas import TestExtrudeRepairAtlas
+        suite.addTests(loader.loadTestsFromTestCase(TestExtrudeRepairAtlas))
+    except Exception as e:
+        print(f"[Warning] Could not load TestExtrudeRepairAtlas: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
