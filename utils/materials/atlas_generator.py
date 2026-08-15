@@ -54,6 +54,8 @@ class AtlasGenerator:
     Constructs deduplicated, size-bounded atlas chunks:
     - Static textures are packed once each and referenced by every matching face.
     - Each animation owns independent vertical frame-strip chunk(s).
+    - Different namespaces are strictly isolated into separate chunks.
+    - Native resolution is determined per-namespace via statistical mode.
     """
 
     def __init__(
@@ -66,11 +68,17 @@ class AtlasGenerator:
         self.default_tile_size = default_tile_size
         self.max_chunk_size = max_chunk_size
 
-        self.static_textures = {}    # name -> Image
-        self.animated_textures = {}  # name -> {image: Image, mcmeta: dict}
-        self.normal_textures = {}    # name -> Image
-        self.specular_textures = {}  # name -> Image
+        self.static_textures = {}    # clean_stem -> Image
+        self.animated_textures = {}  # clean_stem -> {image: Image, mcmeta: dict}
+        self.normal_textures = {}    # clean_stem -> Image
+        self.specular_textures = {}  # clean_stem -> Image
         self.models = {}             # model_name -> dict JSON
+
+        # Grouped by namespace: namespace -> {stem: data}
+        self.static_by_namespace = {}
+        self.animated_by_namespace = {}
+        self.normal_by_namespace = {}
+        self.specular_by_namespace = {}
 
         self.block_mappings = {}     # block_id -> 6 face texture names
         self.static_materials = []   # list of static material metadata
@@ -113,10 +121,13 @@ class AtlasGenerator:
             for name in namelist:
                 parts = Path(name).parts
                 if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png.mcmeta"):
+                    ns = parts[1].lower()
                     stem = "/".join(parts[4:])[:-11]
-                    texture_name = self._texture_name(parts[1], stem)
+                    texture_name = self._texture_name(ns, stem)
                     try:
-                        mcmetas[texture_name] = json.loads(zf.read(name).decode("utf-8"))
+                        meta_obj = json.loads(zf.read(name).decode("utf-8"))
+                        mcmetas[texture_name] = meta_obj
+                        mcmetas[(ns, stem)] = meta_obj
                     except Exception:
                         pass
 
@@ -133,34 +144,44 @@ class AtlasGenerator:
             for name in namelist:
                 parts = Path(name).parts
                 if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png"):
+                    ns = parts[1].lower()
                     stem = "/".join(parts[4:])[:-4]
-                    clean_stem = self._texture_name(parts[1], stem)
+                    clean_stem = self._texture_name(ns, stem)
 
                     channel = "albedo"
-                    if clean_stem.endswith("_n"):
-                        base_stem = clean_stem[:-2]
+                    if stem.endswith("_n"):
+                        base_stem = stem[:-2]
+                        clean_base_stem = clean_stem[:-2]
                         channel = "normal"
-                    elif clean_stem.endswith("_s"):
-                        base_stem = clean_stem[:-2]
+                    elif stem.endswith("_s"):
+                        base_stem = stem[:-2]
+                        clean_base_stem = clean_stem[:-2]
                         channel = "specular"
                     else:
-                        base_stem = clean_stem
+                        base_stem = stem
+                        clean_base_stem = clean_stem
 
                     try:
                         with zf.open(name) as img_file:
                             img = Image.open(img_file).convert("RGBA")
                             if channel == "normal":
-                                self.normal_textures[base_stem] = img
+                                self.normal_textures[clean_base_stem] = img
+                                self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
                             elif channel == "specular":
-                                self.specular_textures[base_stem] = img
+                                self.specular_textures[clean_base_stem] = img
+                                self.specular_by_namespace.setdefault(ns, {})[base_stem] = img
                             else:
-                                if is_animated_texture(img, mcmetas.get(base_stem)):
-                                    self.animated_textures[base_stem] = {
+                                meta = mcmetas.get((ns, base_stem)) or mcmetas.get(clean_base_stem)
+                                if is_animated_texture(img, meta):
+                                    anim_data = {
                                         "image": img,
-                                        "mcmeta": mcmetas[base_stem]
+                                        "mcmeta": meta or {}
                                     }
+                                    self.animated_textures[clean_base_stem] = anim_data
+                                    self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
                                 else:
-                                    self.static_textures[base_stem] = img
+                                    self.static_textures[clean_base_stem] = img
+                                    self.static_by_namespace.setdefault(ns, {})[base_stem] = img
                     except Exception as e:
                         print(f"[AtlasGenerator] Warning: failed to load texture {name}: {e}")
 
@@ -175,15 +196,18 @@ class AtlasGenerator:
                 textures_dir = namespace_dir / "textures" / "block"
                 if not namespace_dir.is_dir() or not textures_dir.exists():
                     continue
+                ns = namespace_dir.name.lower()
                 for root, _, files in os.walk(textures_dir):
                     for f in files:
                         if f.endswith(".png.mcmeta"):
                             stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11]
-                            texture_name = self._texture_name(namespace_dir.name, stem)
+                            texture_name = self._texture_name(ns, stem)
                             mcmeta_path = Path(root) / f
                             try:
                                 with open(mcmeta_path, "r", encoding="utf-8") as fp:
-                                    mcmetas[texture_name] = json.load(fp)
+                                    meta_obj = json.load(fp)
+                                    mcmetas[texture_name] = meta_obj
+                                    mcmetas[(ns, stem)] = meta_obj
                             except Exception:
                                 pass
 
@@ -206,38 +230,48 @@ class AtlasGenerator:
                 textures_dir = namespace_dir / "textures" / "block"
                 if not namespace_dir.is_dir() or not textures_dir.exists():
                     continue
+                ns = namespace_dir.name.lower()
                 for root, _, files in os.walk(textures_dir):
                     for f in files:
                         if not f.endswith(".png"):
                             continue
                         stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-4]
-                        clean_stem = self._texture_name(namespace_dir.name, stem)
+                        clean_stem = self._texture_name(ns, stem)
 
                         channel = "albedo"
-                        if clean_stem.endswith("_n"):
-                            base_stem = clean_stem[:-2]
+                        if stem.endswith("_n"):
+                            base_stem = stem[:-2]
+                            clean_base_stem = clean_stem[:-2]
                             channel = "normal"
-                        elif clean_stem.endswith("_s"):
-                            base_stem = clean_stem[:-2]
+                        elif stem.endswith("_s"):
+                            base_stem = stem[:-2]
+                            clean_base_stem = clean_stem[:-2]
                             channel = "specular"
                         else:
-                            base_stem = clean_stem
+                            base_stem = stem
+                            clean_base_stem = clean_stem
 
                         img_path = Path(root) / f
                         try:
                             img = Image.open(img_path).convert("RGBA")
                             if channel == "normal":
-                                self.normal_textures[base_stem] = img
+                                self.normal_textures[clean_base_stem] = img
+                                self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
                             elif channel == "specular":
-                                self.specular_textures[base_stem] = img
+                                self.specular_textures[clean_base_stem] = img
+                                self.specular_by_namespace.setdefault(ns, {})[base_stem] = img
                             else:
-                                if is_animated_texture(img, mcmetas.get(base_stem)):
-                                    self.animated_textures[base_stem] = {
+                                meta = mcmetas.get((ns, base_stem)) or mcmetas.get(clean_base_stem)
+                                if is_animated_texture(img, meta):
+                                    anim_data = {
                                         "image": img,
-                                        "mcmeta": mcmetas[base_stem]
+                                        "mcmeta": meta or {}
                                     }
+                                    self.animated_textures[clean_base_stem] = anim_data
+                                    self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
                                 else:
-                                    self.static_textures[base_stem] = img
+                                    self.static_textures[clean_base_stem] = img
+                                    self.static_by_namespace.setdefault(ns, {})[base_stem] = img
                         except Exception as e:
                             print(f"[AtlasGenerator] Warning: failed to load {img_path}: {e}")
 
@@ -302,9 +336,11 @@ class AtlasGenerator:
         }
 
     def build(self, output_dir: str | Path, progress_callback=None) -> dict:
-        """Build deduplicated, size-bounded atlas chunks and their mapping."""
+        """Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace."""
         if not HAS_PIL:
             raise ImportError("Pillow library is required for AtlasGenerator. Please install it using 'pip install pillow'.")
+        from collections import Counter
+
         if progress_callback:
             progress_callback(0.05, "Reading textures and models from resource pack...")
         self.load_resources()
@@ -313,176 +349,245 @@ class AtlasGenerator:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Determine tile size from standard square power-of-two static textures
-        square_widths = [
-            image.width for image in self.static_textures.values()
-            if image.width == image.height and _is_power_of_two(image.width)
-        ]
-        if square_widths:
-            tile_size = max(square_widths)
-        else:
-            tile_size = self.default_tile_size
+        all_namespaces = sorted(set(list(self.static_by_namespace.keys()) + list(self.animated_by_namespace.keys())))
+        if "minecraft" in all_namespaces:
+            all_namespaces.remove("minecraft")
+            all_namespaces.insert(0, "minecraft")
 
-        if tile_size > self.max_chunk_size:
-            raise ValueError(f"Tile size {tile_size}px exceeds chunk limit {self.max_chunk_size}px.")
-        tiles_per_row = self.max_chunk_size // tile_size
-        capacity = tiles_per_row * tiles_per_row
-
-        static_names = sorted(self.static_textures)
-        chunks, texture_locations, outputs = [], {}, {"chunks": []}
-        has_normal, has_specular = bool(self.normal_textures), bool(self.specular_textures)
-
-        def tile_for(texture_name, channel):
-            source = {
-                "albedo": self.static_textures,
-                "normal": self.normal_textures,
-                "specular": self.specular_textures,
-            }[channel].get(texture_name)
-            if source is None:
-                fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
-                return Image.new("RGBA", (tile_size, tile_size), fill)
-            return source.resize((tile_size, tile_size), Image.NEAREST)
-
-        for first in range(0, len(static_names), capacity):
-            names = static_names[first:first + capacity]
-            chunk_id = len(chunks)
-            rows = max(1, (len(names) + tiles_per_row - 1) // tiles_per_row)
-            width, height = tiles_per_row * tile_size, rows * tile_size
-            images = {"albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0))}
-            if has_normal:
-                images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
-            if has_specular:
-                images["specular"] = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-            files = {}
-            for texture_id, texture_name in enumerate(names):
-                x, y = (texture_id % tiles_per_row) * tile_size, (texture_id // tiles_per_row) * tile_size
-                texture_locations[texture_name] = {
-                    # Keep an explicit source key rather than requiring
-                    # consumers to infer identity from an atlas filename.
-                    "texture_key": self._source_texture_key(texture_name),
-                    "chunk_id": chunk_id, "texture_id": texture_id,
-                    "tile_column": texture_id % tiles_per_row, "tile_row": texture_id // tiles_per_row,
-                    "kind": "static",
-                    "frame_width": tile_size, "frame_height": tile_size,
-                    "frame_count": 1, "frametime": 1, "interpolate": False,
-                }
-                for channel, image in images.items():
-                    image.paste(tile_for(texture_name, channel), (x, y))
-            for channel, image in images.items():
-                filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
-                image.save(output_path / filename)
-                files[channel] = filename
-            chunks.append({
-                "chunk_id": chunk_id, "kind": "static", "width": width, "height": height,
-                "tile_size": tile_size, "tiles_per_row": tiles_per_row, "texture_count": len(names), "files": files,
-            })
-            outputs["chunks"].append(output_path / files["albedo"])
-
-        # Animation strips stay byte-for-byte at their original dimensions.
-        animation_columns = []
-        for animation_name in sorted(self.animated_textures):
-            source = self.animated_textures[animation_name]
-            image = source["image"]
-            if image.width > self.max_chunk_size or image.height > self.max_chunk_size:
-                raise ValueError(
-                    f"Animation '{animation_name}' ({image.width}x{image.height}) exceeds "
-                    f"the {self.max_chunk_size}px chunk limit and cannot be stored losslessly."
-                )
-            animation_columns.append((animation_name, image, source["mcmeta"].get("animation", {})))
-
+        chunks = []
+        texture_locations = {}
         animations = []
-        pending_columns, pending_width = [], 0
+        outputs = {"chunks": []}
+        has_normal = bool(self.normal_textures)
+        has_specular = bool(self.specular_textures)
 
-        def save_animation_chunk(columns):
-            chunk_id = len(chunks)
-            chunk_width = sum(image.width for _name, image, _meta in columns)
-            chunk_height = max(image.height for _name, image, _meta in columns)
-            images = {"albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))}
-            if has_normal:
-                images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
-            if has_specular:
-                images["specular"] = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
+        for ns in all_namespaces:
+            static_map = self.static_by_namespace.get(ns, {})
+            if static_map:
+                # Statistical mode for tile_size determination
+                square_widths = [
+                    image.width for image in static_map.values()
+                    if image.width == image.height and _is_power_of_two(image.width)
+                ]
+                if square_widths:
+                    counts = Counter(square_widths)
+                    ns_tile_size = max(counts.keys(), key=lambda w: (counts[w], w))
+                else:
+                    ns_tile_size = self.default_tile_size
 
-            x_offset = 0
-            for texture_id, (name, image, metadata) in enumerate(columns):
-                target_w = image.width
-                target_h = image.height
+                if ns_tile_size > self.max_chunk_size:
+                    raise ValueError(f"Tile size {ns_tile_size}px for namespace '{ns}' exceeds chunk limit {self.max_chunk_size}px.")
 
-                for channel, img_canvas in images.items():
-                    if channel == "albedo":
-                        source_img = image
-                    elif channel == "normal":
-                        source_img = self.normal_textures.get(name)
-                    elif channel == "specular":
-                        source_img = self.specular_textures.get(name)
-                    else:
-                        source_img = None
+                tiles_per_row = self.max_chunk_size // ns_tile_size
+                capacity = tiles_per_row * tiles_per_row
+                static_stems = sorted(static_map.keys())
 
-                    if source_img is not None:
-                        src_w, src_h = source_img.size
-                        # Resize width to match target_w if resolutions differ
-                        if src_w != target_w:
-                            scale_ratio = target_w / src_w
-                            scaled_h = max(1, int(round(src_h * scale_ratio)))
-                            source_img = source_img.resize((target_w, scaled_h), Image.NEAREST)
-                            src_w, src_h = source_img.size
+                def tile_for(stem, channel, tile_sz=ns_tile_size, namespace_val=ns):
+                    source = {
+                        "albedo": static_map,
+                        "normal": self.normal_by_namespace.get(namespace_val, {}),
+                        "specular": self.specular_by_namespace.get(namespace_val, {}),
+                    }[channel].get(stem)
+                    if source is None:
+                        fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
+                        return Image.new("RGBA", (tile_sz, tile_sz), fill)
+                    if source.size == (tile_sz, tile_sz):
+                        return source
+                    return source.resize((tile_sz, tile_sz), Image.NEAREST)
 
-                        if src_h >= target_h:
-                            img_canvas.paste(source_img.crop((0, 0, target_w, target_h)), (x_offset, 0))
-                        else:
-                            # Single frame or shorter strip: repeat/tile vertically to fill target_h
-                            y = 0
-                            while y < target_h:
-                                h_chunk = min(src_h, target_h - y)
-                                if h_chunk < src_h:
-                                    img_canvas.paste(source_img.crop((0, 0, target_w, h_chunk)), (x_offset, y))
+                for first in range(0, len(static_stems), capacity):
+                    names = static_stems[first:first + capacity]
+                    chunk_id = len(chunks)
+                    rows = max(1, (len(names) + tiles_per_row - 1) // tiles_per_row)
+                    width = tiles_per_row * ns_tile_size
+                    height = rows * ns_tile_size
+                    images = {"albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0))}
+                    if has_normal:
+                        images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
+                    if has_specular:
+                        images["specular"] = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                    files = {}
+
+                    for texture_id, stem in enumerate(names):
+                        x = (texture_id % tiles_per_row) * ns_tile_size
+                        y = (texture_id // tiles_per_row) * ns_tile_size
+                        raw_key = self._texture_name(ns, stem)
+                        canonical_key = f"{ns}:block/{stem}"
+                        loc_entry = {
+                            "texture_key": canonical_key,
+                            "namespace": ns,
+                            "chunk_id": chunk_id,
+                            "texture_id": texture_id,
+                            "tile_column": texture_id % tiles_per_row,
+                            "tile_row": texture_id // tiles_per_row,
+                            "kind": "static",
+                            "tile_size": ns_tile_size,
+                            "frame_width": ns_tile_size,
+                            "frame_height": ns_tile_size,
+                            "frame_count": 1,
+                            "frametime": 1,
+                            "interpolate": False,
+                        }
+                        texture_locations[raw_key] = loc_entry
+                        texture_locations[canonical_key] = loc_entry
+                        if ns == "minecraft":
+                            texture_locations[f"minecraft:{stem}"] = loc_entry
+                            texture_locations[f"minecraft:block/{stem}"] = loc_entry
+
+                        for channel, image in images.items():
+                            image.paste(tile_for(stem, channel), (x, y))
+
+                    for channel, image in images.items():
+                        filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
+                        image.save(output_path / filename)
+                        files[channel] = filename
+
+                    chunks.append({
+                        "chunk_id": chunk_id,
+                        "namespace": ns,
+                        "kind": "static",
+                        "width": width,
+                        "height": height,
+                        "tile_size": ns_tile_size,
+                        "tiles_per_row": tiles_per_row,
+                        "texture_count": len(names),
+                        "files": files,
+                    })
+                    outputs["chunks"].append(output_path / files["albedo"])
+
+            # Animated textures for this namespace
+            anim_map = self.animated_by_namespace.get(ns, {})
+            if anim_map:
+                animation_columns = []
+                for stem in sorted(anim_map.keys()):
+                    source = anim_map[stem]
+                    image = source["image"]
+                    if image.width > self.max_chunk_size or image.height > self.max_chunk_size:
+                        raise ValueError(
+                            f"Animation '{ns}:{stem}' ({image.width}x{image.height}) exceeds "
+                            f"the {self.max_chunk_size}px chunk limit and cannot be stored losslessly."
+                        )
+                    animation_columns.append((stem, image, source["mcmeta"].get("animation", {})))
+
+                def save_animation_chunk(columns, namespace_val=ns):
+                    chunk_id = len(chunks)
+                    chunk_width = sum(img.width for _s, img, _m in columns)
+                    chunk_height = max(img.height for _s, img, _m in columns)
+                    images = {"albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))}
+                    if has_normal:
+                        images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
+                    if has_specular:
+                        images["specular"] = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
+
+                    x_offset = 0
+                    for texture_id, (stem, image, metadata) in enumerate(columns):
+                        target_w = image.width
+                        target_h = image.height
+
+                        for channel, img_canvas in images.items():
+                            if channel == "albedo":
+                                source_img = image
+                            elif channel == "normal":
+                                source_img = self.normal_by_namespace.get(namespace_val, {}).get(stem)
+                            elif channel == "specular":
+                                source_img = self.specular_by_namespace.get(namespace_val, {}).get(stem)
+                            else:
+                                source_img = None
+
+                            if source_img is not None:
+                                src_w, src_h = source_img.size
+                                if src_w != target_w:
+                                    scale_ratio = target_w / src_w
+                                    scaled_h = max(1, int(round(src_h * scale_ratio)))
+                                    source_img = source_img.resize((target_w, scaled_h), Image.NEAREST)
+                                    src_w, src_h = source_img.size
+
+                                if src_h >= target_h:
+                                    img_canvas.paste(source_img.crop((0, 0, target_w, target_h)), (x_offset, 0))
                                 else:
-                                    img_canvas.paste(source_img, (x_offset, y))
-                                y += src_h
+                                    y = 0
+                                    while y < target_h:
+                                        h_chunk = min(src_h, target_h - y)
+                                        if h_chunk < src_h:
+                                            img_canvas.paste(source_img.crop((0, 0, target_w, h_chunk)), (x_offset, y))
+                                        else:
+                                            img_canvas.paste(source_img, (x_offset, y))
+                                        y += src_h
 
-                frame_width = max(1, int(metadata.get("width", image.width)))
-                frame_height = max(1, int(metadata.get("height", frame_width)))
-                frame_count = max(1, image.height // frame_height)
-                frametime = max(1, int(metadata.get("frametime", 2)))
-                interpolate = bool(metadata.get("interpolate", False))
-                texture_locations[name] = {
-                    "texture_key": self._source_texture_key(name),
-                    "chunk_id": chunk_id, "texture_id": texture_id, "kind": "animation",
-                    "pixel_x": x_offset, "pixel_y": 0, "preview_frame": 0,
-                    "frame_width": frame_width, "frame_height": frame_height,
-                    "frame_count": frame_count, "frametime": frametime, "interpolate": interpolate,
-                }
-                animations.append({
-                    "name": name, "texture_key": self._source_texture_key(name), "chunk_id": chunk_id, "texture_id": texture_id,
-                    "pixel_x": x_offset, "frame_count": frame_count,
-                    "frame_width": frame_width, "frame_height": frame_height,
-                    "frametime": frametime, "interpolate": interpolate,
-                    "preview_frame": 0, "mcmeta": metadata,
-                })
-                x_offset += image.width
+                        frame_width = max(1, int(metadata.get("width", image.width)))
+                        frame_height = max(1, int(metadata.get("height", frame_width)))
+                        frame_count = max(1, image.height // frame_height)
+                        frametime = max(1, int(metadata.get("frametime", 2)))
+                        interpolate = bool(metadata.get("interpolate", False))
+                        raw_name = self._texture_name(namespace_val, stem)
+                        canonical_key = f"{namespace_val}:block/{stem}"
 
-            files = {}
-            for channel, img_canvas in images.items():
-                filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
-                img_canvas.save(output_path / filename)
-                files[channel] = filename
+                        anim_loc = {
+                            "texture_key": canonical_key,
+                            "namespace": namespace_val,
+                            "chunk_id": chunk_id,
+                            "texture_id": texture_id,
+                            "kind": "animation",
+                            "pixel_x": x_offset,
+                            "pixel_y": 0,
+                            "preview_frame": 0,
+                            "frame_width": frame_width,
+                            "frame_height": frame_height,
+                            "frame_count": frame_count,
+                            "frametime": frametime,
+                            "interpolate": interpolate,
+                        }
+                        texture_locations[raw_name] = anim_loc
+                        texture_locations[canonical_key] = anim_loc
+                        if namespace_val == "minecraft":
+                            texture_locations[f"minecraft:{stem}"] = anim_loc
+                            texture_locations[f"minecraft:block/{stem}"] = anim_loc
 
-            chunks.append({
-                "chunk_id": chunk_id, "kind": "animation", "width": chunk_width,
-                "height": chunk_height, "texture_count": len(columns),
-                "packing": "vertical_columns", "files": files,
-            })
-            outputs["chunks"].append(output_path / files["albedo"])
+                        animations.append({
+                            "name": raw_name,
+                            "texture_key": canonical_key,
+                            "namespace": namespace_val,
+                            "chunk_id": chunk_id,
+                            "texture_id": texture_id,
+                            "pixel_x": x_offset,
+                            "frame_count": frame_count,
+                            "frame_width": frame_width,
+                            "frame_height": frame_height,
+                            "frametime": frametime,
+                            "interpolate": interpolate,
+                            "preview_frame": 0,
+                            "mcmeta": metadata,
+                        })
+                        x_offset += image.width
 
-        for column in animation_columns:
-            column_width = column[1].width
-            if pending_columns and pending_width + column_width > self.max_chunk_size:
-                save_animation_chunk(pending_columns)
+                    files = {}
+                    for channel, img_canvas in images.items():
+                        filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
+                        img_canvas.save(output_path / filename)
+                        files[channel] = filename
+
+                    chunks.append({
+                        "chunk_id": chunk_id,
+                        "namespace": namespace_val,
+                        "kind": "animation",
+                        "width": chunk_width,
+                        "height": chunk_height,
+                        "texture_count": len(columns),
+                        "packing": "vertical_columns",
+                        "files": files,
+                    })
+                    outputs["chunks"].append(output_path / files["albedo"])
+
                 pending_columns, pending_width = [], 0
-            pending_columns.append(column)
-            pending_width += column_width
-        if pending_columns:
-            save_animation_chunk(pending_columns)
+                for column in animation_columns:
+                    column_width = column[1].width
+                    if pending_columns and pending_width + column_width > self.max_chunk_size:
+                        save_animation_chunk(pending_columns)
+                        pending_columns, pending_width = [], 0
+                    pending_columns.append(column)
+                    pending_width += column_width
+                if pending_columns:
+                    save_animation_chunk(pending_columns)
 
         materials = []
         all_material_names = sorted(set(self.models) | set(self.static_textures) | set(self.animated_textures))
@@ -492,12 +597,21 @@ class AtlasGenerator:
                 face: texture_locations.get(texture_name) for face, texture_name in faces.items()
             }})
 
+        # Determine base tile_size for mapping summary (preference to minecraft)
+        mc_chunk = next((c for c in chunks if c.get("namespace") == "minecraft" and "tile_size" in c), None)
+        primary_tile_size = mc_chunk["tile_size"] if mc_chunk else (chunks[0].get("tile_size", self.default_tile_size) if chunks else self.default_tile_size)
+
         mapping_data = {
-            "format_version": ATLAS_FORMAT_VERSION, "provenance_schema_version": 1,
+            "format_version": ATLAS_FORMAT_VERSION,
+            "provenance_schema_version": 1,
             "max_chunk_size": self.max_chunk_size,
-            "tile_size": tile_size, "face_order": list(FACE_ORDER), "chunks": chunks,
-            "textures": texture_locations, "materials": materials, "animations": animations,
-            "static_texture_count": len(static_names),
+            "tile_size": primary_tile_size,
+            "face_order": list(FACE_ORDER),
+            "chunks": chunks,
+            "textures": texture_locations,
+            "materials": materials,
+            "animations": animations,
+            "static_texture_count": len(self.static_textures),
             "static_chunk_count": sum(chunk["kind"] == "static" for chunk in chunks),
             "animation_count": len(animations),
         }
@@ -505,7 +619,7 @@ class AtlasGenerator:
         with open(mapping_path, "w", encoding="utf-8") as fp:
             json.dump(mapping_data, fp, indent=2)
         outputs["mapping"] = mapping_path
-        print(f"[AtlasGenerator] Built {len(chunks)} chunk(s), {len(static_names)} static texture(s), "
+        print(f"[AtlasGenerator] Built {len(chunks)} chunk(s), {len(self.static_textures)} static texture(s), "
               f"and {len(animations)} animation(s).")
         return outputs
 

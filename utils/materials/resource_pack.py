@@ -268,7 +268,7 @@ class ZipResourcePack:
                     entry[f"{channel}_mcmeta"] = mcmeta_data
                     self.texture_path_index[(namespace, texture_key)] = entry
 
-    def get_texture_info(self, base_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict:
+    def get_texture_info(self, base_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict | None:
         """
         Query texture paths and mcmeta metadata for an exact texture base name.
         """
@@ -280,8 +280,36 @@ class ZipResourcePack:
         if "." in clean_name and clean_name.rsplit(".", 1)[1].isdigit():
             clean_name = clean_name.rsplit(".", 1)[0]
 
-        namespace = namespace.lower()
-        return (
+        if ":" in clean_name:
+            ns_part, clean_name = clean_name.split(":", 1)
+            if ns_part:
+                namespace = ns_part
+        elif "/" in clean_name and not clean_name.startswith("//"):
+            parts = clean_name.split("/", 1)
+            if parts[0] not in ("assets", "textures", "block", "item", "entity"):
+                namespace = parts[0]
+                clean_name = parts[1]
+
+        namespace = (namespace or DEFAULT_NAMESPACE).lower()
+        res = (
             self.texture_path_index.get((namespace, clean_name))
             or self.texture_index.get((namespace, clean_name))
         )
+        if res is not None:
+            return res
+
+        # Fallback: If not found under default namespace, check if texture exists in another loaded namespace
+        if namespace == DEFAULT_NAMESPACE:
+            matches = [
+                info for (ns, key), info in self.texture_index.items()
+                if key == clean_name
+            ]
+            if not matches:
+                matches = [
+                    info for (ns, path_key), info in self.texture_path_index.items()
+                    if path_key == clean_name or path_key.endswith("/" + clean_name)
+                ]
+            if len(matches) == 1:
+                return matches[0]
+
+        return None

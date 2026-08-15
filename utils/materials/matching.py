@@ -102,16 +102,46 @@ def get_face_source_texture_key(mesh: bpy.types.Mesh, poly_idx: int) -> str:
     return str(value).strip()
 
 
-def normalized_image_key(image: bpy.types.Image) -> str:
-    """Return an image datablock's basename as a resource-pack texture key."""
-    raw_name = Path(image.filepath).name if image.filepath else image.name
+def extract_texture_provenance_from_image(image: bpy.types.Image) -> tuple[str | None, str]:
+    """Extract namespace (if identifiable) and clean texture name from an image datablock."""
+    if not image:
+        return None, ""
+
+    filepath = (image.filepath or "").replace("\\", "/").strip()
+    raw_name = Path(filepath).name if filepath else image.name
+
+    detected_namespace = None
     if ":" in raw_name:
-        raw_name = raw_name.split(":", 1)[0]
+        parts = raw_name.split(":", 1)
+        detected_namespace = parts[0].strip().lower()
+        raw_name = parts[1]
+
+    if filepath and not detected_namespace:
+        parts = filepath.strip("/").split("/")
+        # Check assets/<namespace>/textures/...
+        for i, p in enumerate(parts):
+            if p.lower() == "assets" and i + 2 < len(parts) and parts[i + 2].lower() == "textures":
+                detected_namespace = parts[i + 1].lower()
+                break
+            elif p.lower() == "textures" and i > 0 and parts[i - 1].lower() not in (
+                "assets", "resourcepacks", "resource_packs", "mcpatcher", "optifine"
+            ):
+                candidate_ns = parts[i - 1].lower()
+                if candidate_ns not in ("minecraft", "assets"):
+                    detected_namespace = candidate_ns
+                break
+
     key = without_blender_suffix(raw_name.lower())
     if key.endswith(".png"):
         key = key[:-4]
     if len(key) > 5 and key[-5] == "_" and key[-4:].isdigit():
         key = key[:-5]
+    return detected_namespace, key
+
+
+def normalized_image_key(image: bpy.types.Image) -> str:
+    """Return an image datablock's basename as a resource-pack texture key."""
+    _ns, key = extract_texture_provenance_from_image(image)
     return key
 
 
@@ -186,14 +216,27 @@ def base_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
             name = parts[2]
         else:
             namespace, name = parts[0], parts[1]
+    elif "/" in name and not name.startswith("//"):
+        parts = name.split("/", 1)
+        if parts[0] in ("assets", "textures", "block", "item", "entity"):
+            name = parts[1]
+        else:
+            namespace, name = parts[0], parts[1]
 
     candidates = []
+    detected_namespaces = []
     if mat.use_nodes and mat.node_tree:
         for node in mat.node_tree.nodes:
             if node.type == "TEX_IMAGE" and node.image:
-                key = normalized_image_key(node.image)
+                img_ns, key = extract_texture_provenance_from_image(node.image)
+                if img_ns:
+                    detected_namespaces.append(img_ns)
                 if key and not key.startswith("atlas_chunk_"):
                     candidates.append(key)
+
+    if namespace == DEFAULT_NAMESPACE and detected_namespaces:
+        namespace = detected_namespaces[0]
+
     if not name.startswith("atlas_chunk_"):
         candidates.append(name)
     return namespace, list(dict.fromkeys(candidates))
