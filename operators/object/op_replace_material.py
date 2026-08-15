@@ -3,7 +3,7 @@ from bpy_extras.io_utils import ImportHelper
 from ...utils.system import register_menu_item, has_pillow
 
 
-@register_menu_item(views=["object"], label="替换材质")
+@register_menu_item(views=["object"])
 class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
     """Replace selected objects' materials using a Minecraft Java Edition resource pack."""
 
@@ -28,8 +28,8 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         name="Material Mode",
         description="Choose how imported materials are structured and generated",
         items=[
-            ('STANDALONE', "独立模式 (Standalone)", "Create individual materials for each texture (Default)"),
-            ('ATLAS', "Atlas 模式 (Atlas)", "Combine all textures into a single texture atlas material"),
+            ('STANDALONE', "Standalone", "Create individual materials for each texture (Default)"),
+            ('ATLAS', "Atlas", "Combine all textures into a single texture atlas material"),
         ],
         default='STANDALONE',
     )
@@ -66,8 +66,8 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
             alert_box.alert = True
             alert_box.label(text="Atlas mode requires 'Pillow' dependency (Missing)!", icon='ERROR')
             alert_box.label(text="Please install it in Addon Preferences > Dependencies.")
-            op = alert_box.operator("mozi.open_preferences", text="Install Dependencies (前往安装依赖)", icon='PREFERENCES')
-            op.tab = "dependencies"
+            op = alert_box.operator("mozi.open_preferences", text="Install Dependencies", icon='PREFERENCES')
+            op.tab = "MISC"
 
         box.prop(self, "pack_textures")
         box.prop(self, "use_cache")
