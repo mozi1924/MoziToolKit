@@ -60,8 +60,8 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         layout = self.layout
 
         box = layout.box()
-        box.label(text="Weight Preservation Active", icon="CHECKMARK")
-        box.label(text="Subdivided vertices auto-inherit bone weights.")
+        box.label(text="Weight & Attribute Preservation Active", icon="CHECKMARK")
+        box.label(text="Auto-detects animation single-frames and atlas tiles.")
 
         layout.prop(self, "selection_scope")
         layout.prop(self, "auto_resolution")

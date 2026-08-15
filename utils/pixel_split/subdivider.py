@@ -67,6 +67,15 @@ def subdivide_quad_face(bm, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid
     mat_idx = face.material_index
     smooth = face.smooth
 
+    # 0. Extract face custom attributes (Int, Float, String layers)
+    face_float_layers = list(bm.faces.layers.float)
+    face_int_layers = list(bm.faces.layers.int)
+    face_string_layers = list(bm.faces.layers.string)
+
+    face_floats = {l: face[l] for l in face_float_layers}
+    face_ints = {l: face[l] for l in face_int_layers}
+    face_strings = {l: face[l] for l in face_string_layers}
+
     # 1. Extract 4 outer edge attributes before face deletion
     e01 = _get_edge_between(bm, v0, v1)
     e12 = _get_edge_between(bm, v1, v2)
@@ -109,6 +118,8 @@ def subdivide_quad_face(bm, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid
     v_floats_2 = [float(v2[l]) for l in vert_float_layers]
     v_floats_3 = [float(v3[l]) for l in vert_float_layers]
 
+    v_ints_0 = [int(v0[l]) for l in vert_int_layers]
+
     # 2D Grid of vertices: shape (rows + 1) x (cols + 1)
     grid_verts = [[None for _ in range(cols + 1)] for _ in range(rows + 1)]
 
@@ -147,11 +158,15 @@ def subdivide_quad_face(bm, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid
                 val_interp = _interpolate_bilinear(v_floats_0[idx], v_floats_1[idx], v_floats_2[idx], v_floats_3[idx], u_factor, v_factor)
                 new_v[fl_layer] = val_interp
 
+            # Transfer vertex int custom layers
+            for idx, int_layer in enumerate(vert_int_layers):
+                new_v[int_layer] = v_ints_0[idx]
+
             grid_verts[r][c] = new_v
 
     new_faces = []
 
-    # 3. Create grid quad faces and assign loop attributes
+    # 3. Create grid quad faces and assign loop & face attributes
     for r in range(rows):
         v_bot = r / rows
         v_top = (r + 1) / rows
@@ -170,6 +185,14 @@ def subdivide_quad_face(bm, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid
                 sub_face = bm.faces.new(cell_verts)
                 sub_face.material_index = mat_idx
                 sub_face.smooth = smooth
+
+                # Transfer face custom attributes (atlas_chunk_id, atlas_texture_id, material_id, etc.)
+                for l, val in face_floats.items():
+                    sub_face[l] = val
+                for l, val in face_ints.items():
+                    sub_face[l] = val
+                for l, val in face_strings.items():
+                    sub_face[l] = val
 
                 # Assign interpolated UVs for all UV layers
                 for uv_l, corners in loop_uv_maps.items():

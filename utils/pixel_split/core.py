@@ -41,7 +41,7 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, 
 
             # Determine texture resolution
             if config.auto_resolution:
-                tex_w, tex_h = get_texture_resolution_for_face(face, obj, context, config.manual_resolution)
+                tex_w, tex_h = get_texture_resolution_for_face(face, obj, context, config.manual_resolution, uv_layer=uv_layer)
             else:
                 tex_w, tex_h = config.manual_resolution
 
@@ -52,6 +52,7 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, 
                 tex_w=tex_w,
                 tex_h=tex_h,
                 pixels_per_face=config.pixels_per_face,
+                max_subdivisions=config.max_subdivisions,
             )
 
             # Perform grid subdivision
