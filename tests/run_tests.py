@@ -105,7 +105,7 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertEqual(tex_node.interpolation, "Closest")
 
     def test_ice_cube_legacy_texture_name_aliases(self):
-        from utils.material_matching import ice_cube_legacy_aliases
+        from utils.materials.matching import ice_cube_legacy_aliases
 
         self.assertEqual(ice_cube_legacy_aliases("item_clock_00"), ["clock_00"])
         self.assertEqual(
@@ -118,7 +118,7 @@ class TestPipelineFramework(unittest.TestCase):
         )
 
     def test_ice_cube_preset_is_metadata_scoped(self):
-        from utils.material_matching import (
+        from utils.materials.matching import (
             extract_material_texture_keys,
             get_material_match_preset,
         )
@@ -137,7 +137,7 @@ class TestPipelineFramework(unittest.TestCase):
         bpy.data.materials.remove(ice_cube)
 
     def test_unpacked_resource_pack_is_indexed(self):
-        from utils.zip_resource_pack import ZipResourcePack
+        from utils.materials import ZipResourcePack
 
         with tempfile.TemporaryDirectory() as temporary_dir:
             texture_dir = Path(temporary_dir) / "assets/minecraft/textures/block"
@@ -228,8 +228,7 @@ class TestPipelineFramework(unittest.TestCase):
             self.assertEqual(mat_res1, mat_res3)
 
     def test_image_datablock_naming_and_deduplication(self):
-        from utils.material_builder import load_image_texture
-        from utils.zip_resource_pack import get_directory_hash
+        from utils.materials import load_image_texture, get_directory_hash
 
         with tempfile.TemporaryDirectory() as dir_a, tempfile.TemporaryDirectory() as dir_b:
             tex_a = Path(dir_a) / "assets/minecraft/textures/block"
@@ -270,7 +269,7 @@ class TestPipelineFramework(unittest.TestCase):
 
     def test_pack_hash_equivalence_zip_jar_and_directory(self):
         import zipfile
-        from utils.zip_resource_pack import get_pack_hash, ZipResourcePack
+        from utils.materials import get_pack_hash, ZipResourcePack
 
         with tempfile.TemporaryDirectory() as base_dir:
             dir_path = Path(base_dir) / "pack_dir"
@@ -316,7 +315,7 @@ class TestPipelineFramework(unittest.TestCase):
             self.assertEqual(pack_jar_obj.pack_hash, hash_dir)
 
     def test_pack_hash_uniqueness_and_os_metadata_filter(self):
-        from utils.zip_resource_pack import get_pack_hash
+        from utils.materials import get_pack_hash
 
         with tempfile.TemporaryDirectory() as base_dir:
             dir_a = Path(base_dir) / "pack_a"
@@ -348,7 +347,7 @@ class TestPipelineFramework(unittest.TestCase):
             self.assertEqual(hash_a, hash_a_dirty)
 
     def test_parse_mcmeta_non_animation_metadata_returns_none(self):
-        from utils.zip_resource_pack import parse_mcmeta, ZipResourcePack
+        from utils.materials import parse_mcmeta, ZipResourcePack
 
         with tempfile.TemporaryDirectory() as base_dir:
             pack_dir = Path(base_dir) / "test_pack"

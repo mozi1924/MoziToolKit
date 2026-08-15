@@ -1,8 +1,8 @@
 from typing import Tuple, Optional
 import bpy
 from .types import TargetGrid, FacePixelInfo
-from ..uv import get_face_uv_bounds, get_image_from_face
-from ..material_matching import detect_material_mode
+from ..mesh.uv import get_face_uv_bounds, get_image_from_face
+from ..materials.matching import detect_material_mode
 
 
 def _find_albedo_image(mat: bpy.types.Material) -> Optional[bpy.types.Image]:

@@ -191,6 +191,8 @@ def get_files_to_package(project_dir, script_rel_path, exclude_patterns=None):
                 continue
             if matches_exclude_patterns(rel_path, exclude_patterns):
                 continue
+            if not os.path.isfile(os.path.join(project_dir, rel_path)):
+                continue
             valid_files.append(rel_path)
         return sorted(valid_files)
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Tuple
-from ..uv import UVBounds
+from ..mesh.uv import UVBounds
 
 
 @dataclass

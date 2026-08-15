@@ -23,7 +23,7 @@ def draw_object_workspace_menu_func(self, context):
     self.layout.menu("MOZI_MT_object_menu", text="MoziToolKit", icon="TOOL_SETTINGS")
 
 
-from ..utils.menu_config import draw_dynamic_menu
+from ..utils.system import draw_dynamic_menu
 
 
 def draw_object_menu_func(self, context):
