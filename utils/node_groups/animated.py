@@ -14,12 +14,12 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 #   atlas chunk's Frame 0 rectangle by mesh UV transformation.
 # In both modes, Current Frame and Next Frame subtract vertical frame steps
 # from the base Frame 0 coordinate.
-UV_TEMPLATE_VERSION = 7
+UV_TEMPLATE_VERSION = 8
 # Version 5 fixes Blender's WRAP input ordering (Value, Max, Min).  The old
 # graph supplied the bounds in reverse, so time zero evaluated as the last
 # frame and the wrap could step through invalid atlas space.
-SCHEDULER_TEMPLATE_VERSION = 5
-FRAME_BLEND_TEMPLATE_VERSION = 3
+SCHEDULER_TEMPLATE_VERSION = 6
+FRAME_BLEND_TEMPLATE_VERSION = 4
 
 
 def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
@@ -28,17 +28,17 @@ def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
         return group
     add_sockets(group, (
         ("Vector", "INPUT", "NodeSocketVector", None),
-        ("Current Frame", "INPUT", "NodeSocketFloat", 0.0),
-        ("Next Frame", "INPUT", "NodeSocketFloat", 1.0),
-        ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0),
-        ("Frame Width", "INPUT", "NodeSocketFloat", 16.0),
-        ("Frame Height", "INPUT", "NodeSocketFloat", 16.0),
-        ("Image Width", "INPUT", "NodeSocketFloat", 16.0),
-        ("Image Height", "INPUT", "NodeSocketFloat", 16.0),
-        ("Atlas Mode", "INPUT", "NodeSocketFloat", 0.0),
+        ("Current Frame", "INPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
+        ("Next Frame", "INPUT", "NodeSocketFloat", 1.0, 0.0, 100000.0),
+        ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Frame Width", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
+        ("Frame Height", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
+        ("Image Width", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
+        ("Image Height", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
+        ("Atlas Mode", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Current UV", "OUTPUT", "NodeSocketVector", None),
         ("Next UV", "OUTPUT", "NodeSocketVector", None),
-        ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0),
+        ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1000, 0))
@@ -105,8 +105,12 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
     if group.nodes and group.get("mozi_template_complete"):
         return group
     add_sockets(group, (
-        ("Total Frames", "INPUT", "NodeSocketInt", 16), ("Frametime", "INPUT", "NodeSocketInt", 1), ("Interpolate", "INPUT", "NodeSocketBool", False),
-        ("Current Frame", "OUTPUT", "NodeSocketFloat", 0.0), ("Next Frame", "OUTPUT", "NodeSocketFloat", 0.0), ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0),
+        ("Total Frames", "INPUT", "NodeSocketInt", 16, 1, 100000),
+        ("Frametime", "INPUT", "NodeSocketInt", 1, 1, 100000),
+        ("Interpolate", "INPUT", "NodeSocketBool", False),
+        ("Current Frame", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
+        ("Next Frame", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
+        ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-700, 0)); group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(700, 0))
@@ -128,7 +132,15 @@ def ensure_animated_frame_blend() -> bpy.types.NodeTree:
     group = ensure_group("MC_Animated_Frame_Blend", FRAME_BLEND_TEMPLATE_VERSION)
     if group.nodes and group.get("mozi_template_complete"):
         return group
-    add_sockets(group, (("Current Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1)), ("Next Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1)), ("Current Alpha", "INPUT", "NodeSocketFloat", 1.0), ("Next Alpha", "INPUT", "NodeSocketFloat", 1.0), ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0), ("Color", "OUTPUT", "NodeSocketColor", None), ("Alpha", "OUTPUT", "NodeSocketFloat", 0.0)))
+    add_sockets(group, (
+        ("Current Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1)),
+        ("Next Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1)),
+        ("Current Alpha", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
+        ("Next Alpha", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
+        ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Color", "OUTPUT", "NodeSocketColor", None),
+        ("Alpha", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+    ))
     nodes, links = group.nodes, group.links; group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-300, 0)); group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(400, 0)); color = node(nodes, "ShaderNodeMixRGB", "Frame Color Mix", location=(0, 100)); inverse = node(nodes, "ShaderNodeMath", "Inverse Blend", location=(-30, -100), properties={"operation": "SUBTRACT"}, inputs={"Value[0]": 1.0}); current_weight = node(nodes, "ShaderNodeMath", "Current Alpha Weight", location=(150, -100), properties={"operation": "MULTIPLY"}); next_weight = node(nodes, "ShaderNodeMath", "Next Alpha Weight", location=(150, -200), properties={"operation": "MULTIPLY"}); alpha = node(nodes, "ShaderNodeMath", "Frame Alpha Mix", location=(300, -150), properties={"operation": "ADD"})
     link(links, group_input, "Blend Factor", color, "Factor"); link(links, group_input, "Current Color", color, "Color1"); link(links, group_input, "Next Color", color, "Color2"); link(links, color, "Color", group_output, "Color"); link(links, group_input, "Blend Factor", inverse, "Value[1]"); link(links, group_input, "Current Alpha", current_weight, "Value[0]"); link(links, inverse, "Value", current_weight, "Value[1]"); link(links, group_input, "Next Alpha", next_weight, "Value[0]"); link(links, group_input, "Blend Factor", next_weight, "Value[1]"); link(links, current_weight, "Value", alpha, "Value[0]"); link(links, next_weight, "Value", alpha, "Value[1]"); link(links, alpha, "Value", group_output, "Alpha")
     return finalize_group(group)

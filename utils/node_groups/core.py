@@ -29,10 +29,24 @@ def finalize_group(group: bpy.types.NodeTree) -> bpy.types.NodeTree:
     return group
 
 
-def add_sockets(group: bpy.types.NodeTree, sockets: Iterable[tuple[str, str, str, object]]) -> None:
-    """Add interface sockets from ``(name, direction, type, default)`` entries."""
-    for name, direction, socket_type, default in sockets:
+def add_sockets(
+    group: bpy.types.NodeTree,
+    sockets: Iterable[tuple[str, str, str, object] | tuple[str, str, str, object, float | int | None, float | int | None]],
+) -> None:
+    """Add interface sockets from ``(name, direction, type, default, [min, max])`` entries."""
+    for entry in sockets:
+        name = entry[0]
+        direction = entry[1]
+        socket_type = entry[2]
+        default = entry[3] if len(entry) > 3 else None
+        min_val = entry[4] if len(entry) > 4 else None
+        max_val = entry[5] if len(entry) > 5 else None
+
         socket = group.interface.new_socket(name=name, in_out=direction, socket_type=socket_type)
+        if min_val is not None and hasattr(socket, "min_value"):
+            socket.min_value = min_val
+        if max_val is not None and hasattr(socket, "max_value"):
+            socket.max_value = max_val
         if default is not None:
             socket.default_value = default
 

@@ -484,7 +484,7 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertIn("FINISHED", res)
 
     def test_labpbr_decoder_template(self):
-        from utils.node_groups import ensure_labpbr_decoder
+        from utils.node_groups import ensure_labpbr_decoder, LABPBR_TEMPLATE_VERSION
         from utils.node_groups.labpbr import reference_shape_errors
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
@@ -492,7 +492,23 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertEqual(len(ng.links), 84)
         self.assertFalse(any(node.bl_idname == "NodeReroute" for node in ng.nodes))
         self.assertEqual(reference_shape_errors(ng), ())
-        self.assertEqual(ng.get("mozi_template_version"), 8)
+        self.assertEqual(ng.get("mozi_template_version"), LABPBR_TEMPLATE_VERSION)
+
+        # Verify socket convergence and Displacement Scale default
+        sockets = {s.name: s for s in ng.interface.items_tree if s.item_type == "SOCKET"}
+        disp_scale = sockets["Displacement Scale"]
+        self.assertEqual(disp_scale.default_value, 0.0)
+        self.assertEqual(disp_scale.min_value, 0.0)
+        self.assertEqual(disp_scale.max_value, 1.0)
+
+        enable_pbr = sockets["Enable PBR (0-1)"]
+        self.assertEqual(enable_pbr.default_value, 1.0)
+        self.assertEqual(enable_pbr.min_value, 0.0)
+        self.assertEqual(enable_pbr.max_value, 1.0)
+
+        porosity = sockets["Porosity (0-1)"]
+        self.assertEqual(porosity.min_value, 0.0)
+        self.assertEqual(porosity.max_value, 1.0)
 
 
 def run_all_tests():

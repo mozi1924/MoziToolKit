@@ -12,7 +12,7 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-ATLAS_UV_DECODER_VERSION = 3
+ATLAS_UV_DECODER_VERSION = 4
 
 
 def build_atlas_uv_decoder_node_group() -> bpy.types.NodeTree:
@@ -27,18 +27,18 @@ def build_atlas_uv_decoder_node_group() -> bpy.types.NodeTree:
 
     add_sockets(tree, (
         ("Vector", "INPUT", "NodeSocketVector", None),
-        ("Material ID", "INPUT", "NodeSocketFloat", 0.0),
+        ("Material ID", "INPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
         # Optional explicit face choice.  Keeping automatic decoding as the
         # default means geometry nodes only need to write Material ID.
-        ("Use Face Index", "INPUT", "NodeSocketFloat", 0.0),
-        ("Face Index", "INPUT", "NodeSocketFloat", 0.0),
-        ("Is Animated", "INPUT", "NodeSocketFloat", 0.0),
-        ("Anim Column ID", "INPUT", "NodeSocketFloat", 0.0),
-        ("Current Frame", "INPUT", "NodeSocketFloat", 0.0),
-        ("Atlas Width", "INPUT", "NodeSocketFloat", 96.0),
-        ("Atlas Height", "INPUT", "NodeSocketFloat", 16.0),
-        ("Tile Size", "INPUT", "NodeSocketFloat", 16.0),
-        ("Static Material Columns", "INPUT", "NodeSocketFloat", 1.0),
+        ("Use Face Index", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Face Index", "INPUT", "NodeSocketFloat", 0.0, 0.0, 5.0),
+        ("Is Animated", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Anim Column ID", "INPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
+        ("Current Frame", "INPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
+        ("Atlas Width", "INPUT", "NodeSocketFloat", 96.0, 1.0, 65536.0),
+        ("Atlas Height", "INPUT", "NodeSocketFloat", 16.0, 1.0, 65536.0),
+        ("Tile Size", "INPUT", "NodeSocketFloat", 16.0, 1.0, 16384.0),
+        ("Static Material Columns", "INPUT", "NodeSocketFloat", 1.0, 1.0, 10000.0),
         ("Atlas UV", "OUTPUT", "NodeSocketVector", None),
     ))
     nodes, links = tree.nodes, tree.links
