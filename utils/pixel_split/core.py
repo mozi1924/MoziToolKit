@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from .types import SplitConfig
 from .uv_analyzer import get_texture_resolution_for_face, calculate_face_target_grid
 from .subdivider import subdivide_quad_face
-from ..mesh import bmesh_context, get_target_faces
+from ..mesh import bmesh_context, get_target_faces, cleanup_mesh_topology
 
 
 def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, target_obj=None) -> Dict[str, int]:
@@ -33,7 +33,6 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, 
         initial_count = len(target_faces)
 
         # Step 2: Subdivide base quad faces according to texture pixel density
-
         new_faces: List[bmesh.types.BMFace] = []
         for face in target_faces:
             if not face.is_valid:
@@ -59,24 +58,9 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, 
             created_sub_faces = subdivide_quad_face(bm, face, uv_layer, grid)
             new_faces.extend(created_sub_faces)
 
-        # Step 4: Weld duplicate boundary vertices to eliminate open seams & dark shading borders
+        # Step 3: Clean up topology (weld boundary duplicate vertices, delete loose edges/verts, recalc normals)
         sub_verts = list(set(v for f in new_faces if f.is_valid for v in f.verts if v.is_valid))
-        if sub_verts:
-            bmesh.ops.remove_doubles(bm, verts=sub_verts, dist=0.0001)
-
-        # Step 5: Clean up orphan loose edges (0 linked faces) and loose vertices
-        loose_edges = [e for e in bm.edges if len(e.link_faces) == 0]
-        if loose_edges:
-            bmesh.ops.delete(bm, geom=loose_edges, context='EDGES')
-
-        loose_verts = [v for v in bm.verts if len(v.link_edges) == 0]
-        if loose_verts:
-            bmesh.ops.delete(bm, geom=loose_verts, context='VERTS')
-
-        # Step 6: Recalculate face normals and update BMesh lookup tables
-        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        bm.faces.ensure_lookup_table()
-        bm.verts.ensure_lookup_table()
+        cleanup_mesh_topology(bm, verts=sub_verts, weld_dist=0.0001, recalc_normals=True)
 
         return {
             "initial_faces": initial_count,
