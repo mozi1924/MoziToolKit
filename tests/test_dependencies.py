@@ -82,7 +82,7 @@ class TestDependencyManager(unittest.TestCase):
                 zf.writestr("pack.mcmeta", '{"pack":{"pack_format":15,"description":"Test"}}')
                 zf.writestr("assets/minecraft/textures/block/stone.png", b"dummy_png_bytes")
 
-            with patch("utils.dependencies.has_pillow", return_value=False), \
+            with patch("utils.system.dependencies.has_pillow", return_value=False), \
                  patch("pipeline.steps.step_replace_material.has_pillow", return_value=False):
                 # Create a test mesh object
                 bpy.ops.wm.read_factory_settings(use_empty=True)

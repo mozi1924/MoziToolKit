@@ -8,11 +8,9 @@ from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
 try:
-    from ...utils.mesh import poll_edit_mesh
-    from ...utils.random_extrude import process_random_extrude
+    from ...utils.mesh import poll_edit_mesh, process_random_extrude
 except (ImportError, ValueError):
-    from utils.mesh import poll_edit_mesh
-    from utils.random_extrude import process_random_extrude
+    from utils.mesh import poll_edit_mesh, process_random_extrude
 
 
 class RandomExtrudeStep(PipelineStep):
