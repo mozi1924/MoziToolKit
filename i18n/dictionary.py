@@ -141,10 +141,27 @@ translations_dict = {
         ("*", "Some dependencies are missing. Click 'Install' below to enable all features."): "部分功能依赖库缺失，点击下方“安装”即可启用全部功能。",
         ("*", "Atlas mode requires 'Pillow' dependency (Missing)!"): "Atlas 模式需要 Pillow 依赖库（当前未安装）！",
         ("*", "Please install it in Addon Preferences > Dependencies."): "请前往：偏好设置 > 插件 > MoziToolKit > 依赖管理 安装此依赖。",
-        ("*", "Install Dependencies (前往安装依赖)"): "前往安装依赖",
-        ("Operator", "Install Dependency"): "安装依赖",
-        ("Operator", "Install All Missing Dependencies"): "一键安装缺失依赖",
-        ("Operator", "Refresh Dependency Status"): "刷新依赖状态",
-        ("Operator", "Open MoziToolKit Preferences"): "打开插件设置",
+        # Cache & Storage
+        ("*", "Resource Pack Cache & Storage (材质包缓存管理):"): "材质包缓存管理:",
+        ("*", "Clear Resource Pack Cache"): "清除材质包缓存",
+        ("*", "Clear temporary extracted resource pack files and atlas caches"): "清除临时解压的材质包及 Atlas 缓存文件，释放磁盘空间",
+        ("Operator", "Clear Resource Pack Cache"): "清除材质包缓存",
+
+        # Repair Material Operator & Props
+        ("*", "Repair Material Nodes"): "修复材质节点",
+        ("*", "Repair and reconnect LabPBR decoder and animated UV shader nodes for selected objects' materials."): "修复并重新连接选中物体材质的 LabPBR 解码器与动画 UV 着色器节点",
+        ("*", "Force Rebuild Node Tree"): "强制重建节点树",
+        ("*", "Re-instantiate shader node groups from latest template definitions"): "使用最新模板定义完全重新实例化着色器节点组",
+        ("Operator", "Repair Material Nodes"): "修复材质节点",
+
+        # Material Mode & Atlas Props
+        ("*", "Material Mode"): "材质模式",
+        ("*", "Choose how imported materials are structured and generated"): "选择导入材质的结构与生成方式",
+        ("*", "File Path"): "文件路径",
+        ("*", "Path to a Minecraft Java Edition resource-pack ZIP/JAR or unpacked directory"): "Minecraft Java 版材质包 ZIP/JAR 文件或已解压目录的路径",
+        ("*", "Package Name"): "依赖包名称",
+        ("*", "Upgrade"): "升级",
+        ("*", "Tab"): "标签页",
     }
 }
+

@@ -2,6 +2,7 @@
 Unit tests for Atlas Generator and Atlas Material Builder.
 """
 
+import os
 import json
 import tempfile
 import unittest
@@ -22,15 +23,16 @@ class TestAtlasGenerator(unittest.TestCase):
     """Test case for Minecraft Texture Atlas Generator."""
 
     def setUp(self):
-        self.jar_path = Path("/Users/jaxlocke/26.2-Fabric.jar")
+        jar_env = os.environ.get("MC_JAR_PATH", "")
+        self.jar_path = Path(jar_env) if jar_env else None
         self.output_dir = Path("./tests/scratch_atlas_output")
 
     def test_atlas_generation(self):
         from utils.dependencies import has_pillow
         if not has_pillow():
             self.skipTest("Pillow not installed in test environment")
-        if not self.jar_path.exists():
-            self.skipTest(f"JAR file not found: {self.jar_path}")
+        if not self.jar_path or not self.jar_path.exists():
+            self.skipTest(f"JAR file not configured or found: {self.jar_path}")
 
         generator = AtlasGenerator(self.jar_path)
         outputs = generator.build(self.output_dir)
@@ -231,8 +233,8 @@ class TestAtlasGenerator(unittest.TestCase):
 
     def test_jar_classification_leaves_and_glass_are_static(self):
         """In 26.2-Fabric.jar, leaves/glass/flowers must be static and only real animations in animation chunk."""
-        if not self.jar_path.exists():
-            self.skipTest(f"JAR file not found: {self.jar_path}")
+        if not self.jar_path or not self.jar_path.exists():
+            self.skipTest(f"JAR file not configured or found: {self.jar_path}")
 
         generator = AtlasGenerator(self.jar_path)
         generator.load_resources()
@@ -307,9 +309,10 @@ class TestAtlasGenerator(unittest.TestCase):
 
     def test_vanilla_mashup_pbr_animated_tiling(self):
         """If Vanilla Mashup 1.5.zip exists, verify single-frame PBR channels are tiled in atlas chunk."""
-        mashup_zip = Path("/Users/jaxlocke/Downloads/Vanilla Mashup 1.5.zip")
-        if not mashup_zip.exists():
-            self.skipTest(f"Vanilla Mashup ZIP not found: {mashup_zip}")
+        mashup_env = os.environ.get("MC_MASHUP_ZIP", "")
+        mashup_zip = Path(mashup_env) if mashup_env else None
+        if not mashup_zip or not mashup_zip.exists():
+            self.skipTest(f"Vanilla Mashup ZIP not configured or found: {mashup_zip}")
 
         with tempfile.TemporaryDirectory() as tmp:
             gen = AtlasGenerator(mashup_zip)

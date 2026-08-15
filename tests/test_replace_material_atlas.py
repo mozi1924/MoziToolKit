@@ -21,9 +21,11 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         if not HAS_BPY:
             self.skipTest("bpy module not available")
 
-        self.jar_path = Path("/Users/jaxlocke/26.2-Fabric.jar")
-        if not self.jar_path.exists():
-            self.skipTest(f"JAR file not found: {self.jar_path}")
+        import os
+        jar_env = os.environ.get("MC_JAR_PATH", "")
+        self.jar_path = Path(jar_env) if jar_env else None
+        if not self.jar_path or not self.jar_path.exists():
+            self.skipTest(f"JAR file not configured or found: {self.jar_path}")
         try:
             import zipfile
             with zipfile.ZipFile(self.jar_path, "r") as zf:

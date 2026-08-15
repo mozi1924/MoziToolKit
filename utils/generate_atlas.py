@@ -501,9 +501,12 @@ class AtlasGenerator:
 
 
 if __name__ == "__main__":
-    import sys
-    jar_file = sys.argv[1] if len(sys.argv) > 1 else "/Users/jaxlocke/26.2-Fabric.jar"
-    out_dir = sys.argv[2] if len(sys.argv) > 2 else "./dist_atlas"
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate Minecraft Texture Atlas from Resource Pack / JAR.")
+    parser.add_argument("resource_path", help="Path to resource pack ZIP/JAR or unpacked directory")
+    parser.add_argument("-o", "--output", default="./dist_atlas", help="Output directory for generated atlas files")
+    args = parser.parse_args()
 
-    gen = AtlasGenerator(jar_file)
-    gen.build(out_dir)
+    gen = AtlasGenerator(args.resource_path)
+    gen.build(args.output)
+

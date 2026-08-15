@@ -22,16 +22,18 @@ from utils.atlas_layout import (
     local_uv_from_rect,
     find_texture_id_from_atlas_uv,
 )
-from utils.material_matching import (
-    detect_material_mode,
-    is_mozi_material,
-    extract_face_texture_info,
-)
-from utils.material_builder import (
-    inspect_material_nodes,
-    repair_material_nodes,
-)
-from pipeline.presets import run_preset_pipeline
+
+if HAS_BPY:
+    from utils.material_matching import (
+        detect_material_mode,
+        is_mozi_material,
+        extract_face_texture_info,
+    )
+    from utils.material_builder import (
+        inspect_material_nodes,
+        repair_material_nodes,
+    )
+    from pipeline.presets import run_preset_pipeline
 
 
 class TestUVTransformMath(unittest.TestCase):
@@ -95,6 +97,7 @@ class TestUVTransformMath(unittest.TestCase):
             self.assertAlmostEqual(v_orig, v_recovered, places=6)
 
 
+@unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestMaterialReconstructionAndRepair(unittest.TestCase):
     """Test material classification, node tree health inspection, and repair."""
 
@@ -145,6 +148,7 @@ class TestMaterialReconstructionAndRepair(unittest.TestCase):
         self.assertTrue(report_after["bsdf_linked"])
 
 
+@unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestCrossModeMaterialReplacement(unittest.TestCase):
     """Integration test for Standalone <-> Atlas cross-mode replacements with UV restoration."""
 
@@ -243,6 +247,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             self.assertAlmostEqual(v_res, v_orig, places=4)
 
 
+@unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestAnimatedUVMapping(unittest.TestCase):
     """Test animated UV node template construction, socket contract, and standalone/atlas math."""
 

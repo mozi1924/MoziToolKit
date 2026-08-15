@@ -252,6 +252,18 @@ def install_package(
     Returns:
         (success: bool, output_log: str)
     """
+    # Check Blender online access preference (Blender 4.2+ standard)
+    try:
+        import bpy
+        if hasattr(bpy.app, "online_access") and not bpy.app.online_access:
+            msg = (
+                "[MoziToolKit Error] Online access is disabled in Blender preferences.\n"
+                "Please enable 'Allow Online Access' in Blender Preferences > System > Network to install dependencies."
+            )
+            return False, msg
+    except Exception:
+        pass
+
     python_exe = get_python_executable()
     logs = []
 
