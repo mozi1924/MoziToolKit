@@ -382,15 +382,39 @@ class StepReplaceMaterial(PipelineStep):
 
         # Collect required chunks
         required_chunk_ids = set()
+        # Old Atlas materials store a large JSON mapping on their node tree.
+        # Do not parse it again for every polygon: a dense imported world can
+        # contain millions of faces and this phase otherwise appears to hang
+        # at 35%.
+        mapping_by_material = {}
+        total_faces = sum(len(obj.data.polygons) for obj in valid_objects)
+        scanned_faces = 0
         for obj in valid_objects:
             mesh = obj.data
             for poly_idx, poly in enumerate(mesh.polygons):
+                scanned_faces += 1
+                # Yield periodically so very large legacy worlds remain
+                # cancellable and Blender's UI does not look frozen while
+                # required chunk IDs are collected.
+                if scanned_faces % 10_000 == 0:
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    progress = 0.35 + 0.08 * (scanned_faces / max(1, total_faces))
+                    yield ProgressUpdate(progress, 1.0, f"Reading Atlas attributes: {scanned_faces:,}/{total_faces:,} faces")
                 if poly.material_index >= len(obj.material_slots):
                     continue
                 slot_mat = obj.material_slots[poly.material_index].material
                 if not slot_mat:
                     continue
-                namespace, candidates, _old_loc = extract_face_texture_info(mesh, poly_idx, slot_mat)
+                if slot_mat not in mapping_by_material:
+                    mapping_by_material[slot_mat] = (
+                        get_atlas_mapping_from_material(slot_mat)
+                        or get_atlas_mapping_from_mesh(mesh)
+                    )
+                namespace, candidates, _old_loc = extract_face_texture_info(
+                    mesh, poly_idx, slot_mat, mapping_by_material[slot_mat]
+                )
                 for cand in candidates:
                     loc = texture_map.get(canonical_texture_key(namespace, cand))
                     if loc is not None:

@@ -124,6 +124,55 @@ def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[st
     return adapter.extract_keys(mat)
 
 
+def _atlas_mapping_index(mapping: dict) -> dict:
+    """Build and retain O(1) lookups for a parsed atlas mapping.
+
+    This function is used in per-face conversion paths.  Scanning every
+    mapping texture for every polygon makes re-atlasing older, uncompressed
+    models effectively quadratic and can freeze Blender for minutes.
+    """
+    cache_key = "_mtk_runtime_atlas_lookup"
+    cached = mapping.get(cache_key)
+    if cached:
+        return cached
+
+    locations = {}
+    for tex_name, location in mapping.get("textures", {}).items():
+        if location is None:
+            continue
+        try:
+            key = (int(location.get("chunk_id", -1)), int(location.get("texture_id", -1)))
+        except (TypeError, ValueError):
+            continue
+        locations[key] = (tex_name, location)
+
+    animations_by_chunk = {}
+    animations_by_location = {}
+    for animation in mapping.get("animations", []):
+        try:
+            chunk_id = int(animation.get("chunk_id", -1))
+        except (TypeError, ValueError):
+            continue
+        animations_by_chunk.setdefault(chunk_id, []).append(animation)
+        try:
+            texture_id = int(animation.get("texture_id", -1))
+        except (TypeError, ValueError):
+            continue
+        animations_by_location[(chunk_id, texture_id)] = animation
+
+    cached = {
+        "chunks": {int(chunk["chunk_id"]): chunk for chunk in mapping.get("chunks", [])},
+        "locations": locations,
+        "animations_by_chunk": animations_by_chunk,
+        "animations_by_location": animations_by_location,
+    }
+    # The mapping is an in-memory JSON dict obtained from a material or mesh.
+    # Keeping this runtime-only cache on it avoids a global lifetime cache and
+    # is never written back to the .blend metadata.
+    mapping[cache_key] = cached
+    return cached
+
+
 def extract_face_texture_info(
     mesh: bpy.types.Mesh,
     poly_idx: int,
@@ -176,8 +225,8 @@ def extract_face_texture_info(
             if chunk_id is None and "mtk:atlas_chunk_id" in slot_mat:
                 chunk_id = int(slot_mat["mtk:atlas_chunk_id"])
 
-            chunks = {int(c["chunk_id"]): c for c in mapping.get("chunks", [])}
-            current_chunk = chunks.get(chunk_id) if chunk_id is not None else None
+            index = _atlas_mapping_index(mapping)
+            current_chunk = index["chunks"].get(chunk_id) if chunk_id is not None else None
 
             # Fallback: calculate from UV if texture_id is missing or attribute was lost
             if texture_id is None and current_chunk is not None:
@@ -189,23 +238,22 @@ def extract_face_texture_info(
                         v_coords = [uv_layer.data[li].uv.y for li in poly.loop_indices]
                         u_center = sum(u_coords) / len(u_coords)
                         v_center = sum(v_coords) / len(v_coords)
-                        anims_in_chunk = [
-                            a for a in mapping.get("animations", []) if int(a.get("chunk_id", -1)) == chunk_id
-                        ]
+                        anims_in_chunk = index["animations_by_chunk"].get(chunk_id, [])
                         texture_id = find_texture_id_from_atlas_uv(u_center, v_center, current_chunk, anims_in_chunk)
 
             # Find matching texture in mapping
             if chunk_id is not None and texture_id is not None:
-                for tex_name, loc in mapping.get("textures", {}).items():
-                    if loc and int(loc.get("chunk_id", -1)) == chunk_id and int(loc.get("texture_id", -1)) == texture_id:
-                        namespace, texture_name = split_texture_key(loc.get("texture_key", tex_name))
-                        return (*provenance, loc) if provenance else (namespace, [texture_name], loc)
+                mapped = index["locations"].get((chunk_id, texture_id))
+                if mapped:
+                    tex_name, loc = mapped
+                    namespace, texture_name = split_texture_key(loc.get("texture_key", tex_name))
+                    return (*provenance, loc) if provenance else (namespace, [texture_name], loc)
 
-                for anim in mapping.get("animations", []):
-                    if int(anim.get("chunk_id", -1)) == chunk_id and int(anim.get("texture_id", -1)) == texture_id:
-                        loc = mapping.get("textures", {}).get(anim["name"])
-                        namespace, texture_name = split_texture_key((loc or anim).get("texture_key", anim["name"]))
-                        return (*provenance, loc or anim) if provenance else (namespace, [texture_name], loc or anim)
+                anim = index["animations_by_location"].get((chunk_id, texture_id))
+                if anim:
+                    loc = mapping.get("textures", {}).get(anim["name"])
+                    namespace, texture_name = split_texture_key((loc or anim).get("texture_key", anim["name"]))
+                    return (*provenance, loc or anim) if provenance else (namespace, [texture_name], loc or anim)
 
     if provenance:
         return *provenance, None
