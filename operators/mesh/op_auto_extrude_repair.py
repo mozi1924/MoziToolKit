@@ -127,33 +127,117 @@ _idle_ticks = 0
 _MAX_IDLE_TICKS = 3
 
 
-def _is_modal_mesh_operation_active(context):
-    """Return whether an extrusion or its modal transform is actively running in the window."""
-    window_manager = getattr(context, "window_manager", None)
+def _is_uv_editing_active(context) -> bool:
+    """Return True if the user is in or interacting with UV editing / Image Editor."""
+    if not context:
+        return False
+
+    # Check current area
+    area = getattr(context, "area", None)
+    if area and area.type == "IMAGE_EDITOR":
+        return True
+
+    # Check space_data
+    space_data = getattr(context, "space_data", None)
+    if space_data and getattr(space_data, "type", None) == "IMAGE_EDITOR":
+        return True
+
+    # Check modal operators for any UV / 2D image operations
     window = getattr(context, "window", None)
-    seen_ops = set()
-    operators = []
-
-    raw_ops = []
     if window:
-        raw_ops.extend(getattr(window, "modal_operators", []))
-    if window_manager:
-        raw_ops.extend(getattr(window_manager, "operators", []))
+        for op in getattr(window, "modal_operators", []):
+            identifier = getattr(op, "bl_idname", "")
+            if not identifier:
+                bl_rna = getattr(op, "bl_rna", None)
+                identifier = getattr(bl_rna, "identifier", "")
+            identifier_upper = identifier.upper()
+            if (
+                identifier_upper.startswith("UV_OT_")
+                or identifier_upper.startswith("IMAGE_OT_")
+                or identifier_upper.startswith("CLIP_OT_")
+                or identifier_upper.startswith("NODE_OT_")
+            ):
+                return True
 
-    for op in raw_ops:
-        ptr = getattr(op, "as_pointer", lambda: id(op))()
-        if ptr not in seen_ops:
-            seen_ops.add(ptr)
-            operators.append(op)
+    return False
 
-    for operator in operators:
-        identifier = getattr(operator, "bl_idname", "")
+
+def _is_extrude_operator_identifier(identifier: str) -> bool:
+    """Return True if the operator identifier corresponds to a mesh face extrusion operation."""
+    if not identifier:
+        return False
+    id_upper = identifier.upper()
+    return (
+        id_upper.startswith("MESH_OT_EXTRUDE")
+        or id_upper.startswith("MESH_OT_DUPLI_EXTRUDE")
+        or id_upper.startswith("MESH_OT_POLYBUILD_EXTRUDE")
+        or "EXTRUDE" in id_upper
+    )
+
+
+def _is_extrude_in_progress(context) -> bool:
+    """
+    Return True only if an extrusion operator or an extrusion-related modal transform
+    is actively running in the 3D Viewport.
+    """
+    if _is_uv_editing_active(context):
+        return False
+
+    window = getattr(context, "window", None)
+    window_manager = getattr(context, "window_manager", None)
+    if not window or not window_manager:
+        return False
+
+    modal_ops = getattr(window, "modal_operators", [])
+    if not modal_ops:
+        return False
+
+    has_modal_extrude = False
+    has_modal_transform = False
+
+    for op in modal_ops:
+        identifier = getattr(op, "bl_idname", "")
         if not identifier:
-            bl_rna = getattr(operator, "bl_rna", None)
+            bl_rna = getattr(op, "bl_rna", None)
             identifier = getattr(bl_rna, "identifier", "")
-        identifier = identifier.upper()
-        if identifier.startswith("MESH_OT_EXTRUDE") or identifier.startswith("TRANSFORM_OT_"):
-            return True
+        if _is_extrude_operator_identifier(identifier):
+            has_modal_extrude = True
+            break
+        if identifier.upper().startswith("TRANSFORM_OT_"):
+            has_modal_transform = True
+
+    if has_modal_extrude:
+        return True
+
+    # If there is an active modal transform, check if it was triggered by an extrusion operator
+    if has_modal_transform:
+        recent_ops = getattr(window_manager, "operators", [])
+        if recent_ops:
+            for op in list(recent_ops)[-3:]:
+                identifier = getattr(op, "bl_idname", "")
+                if not identifier:
+                    bl_rna = getattr(op, "bl_rna", None)
+                    identifier = getattr(bl_rna, "identifier", "")
+                if _is_extrude_operator_identifier(identifier):
+                    return True
+
+    return False
+
+
+def _has_recent_extrude_operator(context) -> bool:
+    """Return True if the most recent executed operator was an extrusion."""
+    window_manager = getattr(context, "window_manager", None)
+    if not window_manager:
+        return False
+    recent_ops = getattr(window_manager, "operators", [])
+    if recent_ops:
+        for op in list(recent_ops)[-2:]:
+            identifier = getattr(op, "bl_idname", "")
+            if not identifier:
+                bl_rna = getattr(op, "bl_rna", None)
+                identifier = getattr(bl_rna, "identifier", "")
+            if _is_extrude_operator_identifier(identifier):
+                return True
     return False
 
 
@@ -168,7 +252,7 @@ def _deferred_extrude_repair_tick():
         return _SMART_EXTRUDE_POLL_INTERVAL
 
     context = bpy.context
-    if not context or context.mode != "EDIT_MESH":
+    if not context or context.mode != "EDIT_MESH" or _is_uv_editing_active(context):
         _pending_repairs.clear()
         _smart_extrude_sessions.clear()
         _idle_ticks = 0
@@ -233,8 +317,8 @@ def _deferred_extrude_repair_tick():
     else:
         _idle_ticks += 1
 
-    # Keep polling while an active modal mesh operation is in progress, up to safety idle limit
-    if _is_modal_mesh_operation_active(context) and _idle_ticks < _MAX_IDLE_TICKS:
+    # Keep polling only while an extrusion is actively in progress in 3D view
+    if _is_extrude_in_progress(context) and _idle_ticks < _MAX_IDLE_TICKS:
         return _SMART_EXTRUDE_POLL_INTERVAL
 
     # Finished and idle: clean up and return None to automatically stop the timer
@@ -249,6 +333,7 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
     """
     Lightweight depsgraph listener: marks dirty objects and schedules deferred main-thread execution.
     Never modifies mesh data directly within depsgraph_update_post to prevent re-evaluation cascades.
+    Guards against non-3D / UV editor updates to avoid interfering with UV transforms.
     """
     if _is_updating:
         return
@@ -257,12 +342,20 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
         if not context or context.mode != "EDIT_MESH":
             return
 
+        # Do not run if active in UV Editor / Image Editor
+        if _is_uv_editing_active(context):
+            return
+
         props = getattr(scene, "mozi_auto_extrude_repair", None)
         if not props or not props.enabled or not (props.repair_uv or props.add_mean_crease):
             return
 
         obj = context.active_object
         if not obj or obj.type != "MESH":
+            return
+
+        # Check if an extrusion is actively in progress or recently executed
+        if not (_is_extrude_in_progress(context) or _has_recent_extrude_operator(context)):
             return
 
         # Check if geometry was updated
