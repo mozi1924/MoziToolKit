@@ -653,6 +653,18 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestCodeReviewFixes: {e}")
 
+    try:
+        from tests.test_atlas_uv_tiling import TestAtlasUVTiling
+        suite.addTests(loader.loadTestsFromTestCase(TestAtlasUVTiling))
+    except Exception as e:
+        print(f"[Warning] Could not load TestAtlasUVTiling: {e}")
+
+    try:
+        from tests.test_atlas_uv_rotation import TestAtlasUVRotation
+        suite.addTests(loader.loadTestsFromTestCase(TestAtlasUVRotation))
+    except Exception as e:
+        print(f"[Warning] Could not load TestAtlasUVRotation: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

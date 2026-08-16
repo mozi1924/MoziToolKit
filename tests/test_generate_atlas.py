@@ -452,6 +452,38 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertEqual(norm_f0, norm_f1)
             self.assertEqual(norm_f0, norm_f31)
 
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_mixed_width_animation_column_alignment(self):
+        """Mixed 16px and 32px animation columns must align so pixel_x % frame_width == 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            textures = root / "assets" / "minecraft" / "textures" / "block"
+            textures.mkdir(parents=True)
+
+            # 1. 16px animation (e.g. fire / water_still)
+            anim16 = Image.new("RGBA", (16, 32), (255, 0, 0, 255))
+            anim16.save(textures / "anim_a.png")
+            (textures / "anim_a.png.mcmeta").write_text('{"animation": {}}', encoding="utf-8")
+
+            # 2. 32px animation (e.g. water_flow)
+            anim32 = Image.new("RGBA", (32, 64), (0, 0, 255, 255))
+            anim32.save(textures / "anim_b.png")
+            (textures / "anim_b.png.mcmeta").write_text('{"animation": {}}', encoding="utf-8")
+
+            outputs = AtlasGenerator(root, max_chunk_size=512).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            loc_a = mapping["textures"]["anim_a"]
+            loc_b = mapping["textures"]["anim_b"]
+
+            # Verify alignment
+            self.assertEqual(loc_a["pixel_x"] % loc_a["frame_width"], 0)
+            self.assertEqual(loc_b["pixel_x"] % loc_b["frame_width"], 0)
+            # 16px starts at 0, 32px starts at 32 (aligned to 32px multiple)
+            self.assertEqual(loc_a["pixel_x"], 0)
+            self.assertEqual(loc_b["pixel_x"], 32)
+
 
 if __name__ == "__main__":
-    unittest.main(argv=[sys.argv[0]])
+    unittest.main(argv=["dummy"])

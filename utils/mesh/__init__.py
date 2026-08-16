@@ -22,6 +22,10 @@ try:
         get_face_uv_bounds,
         get_face_uv_center,
         get_image_from_face,
+        is_orthogonal_angle,
+        detect_face_uv_rotation,
+        straighten_face_uv,
+        process_mesh_uv_rotations,
     )
 
     from .random_extrude import (
@@ -55,6 +59,10 @@ __all__ = [
     "get_face_uv_bounds",
     "get_face_uv_center",
     "get_image_from_face",
+    "is_orthogonal_angle",
+    "detect_face_uv_rotation",
+    "straighten_face_uv",
+    "process_mesh_uv_rotations",
     "process_random_extrude",
     "fast_unmerge_block_quads",
     "subdivide_quad_face",

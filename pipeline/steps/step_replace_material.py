@@ -33,13 +33,13 @@ try:
         build_atlas_chunk_materials,
         remap_uv_coordinate,
         get_material_animation_info,
-        get_texture_info_animation_info,
         ATTR_ATLAS_CHUNK_ID,
         ATTR_ATLAS_TEXTURE_ID,
         ATTR_FACE_MATERIAL_ID,
+        ATTR_UV_ROTATION,
     )
     from ...utils.system import has_pillow
-    from ...utils.mesh import fast_unmerge_block_quads
+    from ...utils.mesh import fast_unmerge_block_quads, straighten_face_uv
 except (ImportError, ValueError):
     from utils.materials import (
         ZipResourcePack,
@@ -65,18 +65,21 @@ except (ImportError, ValueError):
         ATTR_ATLAS_CHUNK_ID,
         ATTR_ATLAS_TEXTURE_ID,
         ATTR_FACE_MATERIAL_ID,
+        ATTR_UV_ROTATION,
     )
     from utils.system import has_pillow
-    from utils.mesh import fast_unmerge_block_quads
+    from utils.mesh import fast_unmerge_block_quads, straighten_face_uv
 
 
 ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_FACE_MATERIAL_ID,
+    ATTR_UV_ROTATION,
     "atlas_chunk_id",
     "atlas_texture_id",
     "material_id",
+    "mtk_uv_rotation",
     "mtk_anim_total_frames",
     "mtk_anim_frametime",
     "mtk_anim_interpolate",
@@ -352,6 +355,11 @@ class StepReplaceMaterial(PipelineStep):
 
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
+            uv_rotations = [0.0] * len(mesh.polygons)
+            existing_rot_attr = mesh.attributes.get(ATTR_UV_ROTATION)
+            if existing_rot_attr and len(existing_rot_attr.data) == len(mesh.polygons):
+                uv_rotations = [float(item.value) for item in existing_rot_attr.data]
+
             anim_frames = [1.0] * len(mesh.polygons)
             anim_frametimes = [1.0] * len(mesh.polygons)
             anim_interps = [0.0] * len(mesh.polygons)
@@ -456,25 +464,20 @@ class StepReplaceMaterial(PipelineStep):
                 )
 
             if poly_updated:
-                for attr_name, data in (
-                    (ATTR_ATLAS_CHUNK_ID, chunk_ids),
-                    (ATTR_ATLAS_TEXTURE_ID, texture_ids),
-                    ("mtk_anim_total_frames", anim_frames),
-                    ("mtk_anim_frametime", anim_frametimes),
-                    ("mtk_anim_interpolate", anim_interps),
-                    ("mtk_anim_frame_width", anim_widths),
-                    ("mtk_anim_frame_height", anim_heights),
-                ):
-                    face_attribute(attr_name).data.foreach_set("value", data)
-
                 if uv_layer is not None:
-                    # 1. Remap atlas faces to atlas UVs
+                    # 1. Straighten any rotated local UVs (e.g. jmc2obj flowing liquid) and remap atlas faces to atlas UVs
                     for poly_idx, resolved in enumerate(resolved_locations):
                         if resolved is None:
                             continue
                         new_location, old_loc, orig_mode, old_mapping = resolved
                         polygon = mesh.polygons[poly_idx]
                         target_chunk = chunks_by_id[int(new_location["chunk_id"])]
+
+                        # If polygon has rotated local UVs before atlas baking, straighten them
+                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc):
+                            rot_angle, was_straightened = straighten_face_uv(polygon, uv_layer)
+                            if was_straightened:
+                                uv_rotations[poly_idx] = float(rot_angle)
 
                         old_chunk = None
                         if old_loc and old_mapping:
@@ -499,6 +502,18 @@ class StepReplaceMaterial(PipelineStep):
                             target_location=new_location,
                             target_chunk=target_chunk,
                         )
+
+                for attr_name, data in (
+                    (ATTR_ATLAS_CHUNK_ID, chunk_ids),
+                    (ATTR_ATLAS_TEXTURE_ID, texture_ids),
+                    (ATTR_UV_ROTATION, uv_rotations),
+                    ("mtk_anim_total_frames", anim_frames),
+                    ("mtk_anim_frametime", anim_frametimes),
+                    ("mtk_anim_interpolate", anim_interps),
+                    ("mtk_anim_frame_width", anim_widths),
+                    ("mtk_anim_frame_height", anim_heights),
+                ):
+                    face_attribute(attr_name).data.foreach_set("value", data)
 
                     # 2. Revert standalone fallback faces to local UVs (or Standalone Frame 0)
                     for poly_idx, st_res in enumerate(resolved_standalone):
