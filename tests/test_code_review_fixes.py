@@ -170,17 +170,17 @@ class TestCodeReviewFixes(unittest.TestCase):
         # Mode must be OBJECT
         self.assertEqual(bpy.context.mode, "OBJECT")
 
-    def test_uninstall_dependency_operators_have_confirm_dialog(self):
-        """Uninstall operators must provide invoke confirmation methods."""
+    def test_misc_operators_registered(self):
+        """Misc operators for preferences navigation and cache cleanup must be valid."""
         from operators.misc.op_dependencies import (
-            MOZI_OT_uninstall_dependency,
-            MOZI_OT_uninstall_all_dependencies,
+            MOZI_OT_open_preferences,
+            MOZI_OT_check_dependencies,
+            MOZI_OT_clear_cache,
         )
 
-        self.assertTrue(hasattr(MOZI_OT_uninstall_dependency, "invoke"))
-        self.assertTrue(hasattr(MOZI_OT_uninstall_dependency, "draw"))
-        self.assertTrue(hasattr(MOZI_OT_uninstall_all_dependencies, "invoke"))
-        self.assertTrue(hasattr(MOZI_OT_uninstall_all_dependencies, "draw"))
+        self.assertTrue(hasattr(MOZI_OT_open_preferences, "bl_idname"))
+        self.assertTrue(hasattr(MOZI_OT_check_dependencies, "bl_idname"))
+        self.assertTrue(hasattr(MOZI_OT_clear_cache, "bl_idname"))
 
 
 if __name__ == "__main__":

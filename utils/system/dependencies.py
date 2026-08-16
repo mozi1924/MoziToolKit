@@ -1,7 +1,7 @@
 """
-Dependency Manager for MoziToolKit.
-Handles dynamic site-packages path discovery, dependency verification,
-pip package installation inside Blender Python environment, and mirror configuration.
+Dependency and Environment Utilities for MoziToolKit.
+Handles dynamic site-packages path discovery, extension wheels detection,
+and runtime dependency status checks for Blender 4.2+ Extensions.
 """
 
 from dataclasses import dataclass
@@ -11,16 +11,14 @@ import importlib.util
 import os
 from pathlib import Path
 import site
-import subprocess
 import sys
 from typing import Dict, List, Optional
-from urllib.parse import urlparse
 
 
 @dataclass
 class Dependency:
     """Definition of an external Python dependency required by MoziToolKit features."""
-    name: str              # pip package name (e.g. "Pillow")
+    name: str              # package name (e.g. "Pillow")
     module_name: str       # import module name (e.g. "PIL")
     display_name: str      # human readable name
     min_version: Optional[str] = None
@@ -40,50 +38,40 @@ DEPENDENCIES: Dict[str, Dependency] = {
     ),
 }
 
-# Preconfigured PyPI Mirrors for fast and reliable downloads
-PYPI_MIRRORS = {
-    "OFFICIAL": {
-        "label": "Official PyPI",
-        "url": "https://pypi.org/simple",
-    },
-    "TSINGHUA": {
-        "label": "Tsinghua Mirror",
-        "url": "https://pypi.tuna.tsinghua.edu.cn/simple",
-    },
-    "ALIYUN": {
-        "label": "Aliyun Mirror",
-        "url": "https://mirrors.aliyun.com/pypi/simple/",
-    },
-    "TENCENT": {
-        "label": "Tencent Mirror",
-        "url": "https://mirrors.cloud.tencent.com/pypi/simple/",
-    },
-    "USTC": {
-        "label": "USTC Mirror",
-        "url": "https://pypi.mirrors.ustc.edu.cn/simple/",
-    },
-}
-
 
 def get_blender_site_packages() -> List[str]:
     """
-    Discover site-packages directories belonging exclusively to Blender's bundled Python environment.
-    Strictly excludes external system or user-specific directories (~/.local, Library/Python, etc.).
+    Discover site-packages directories belonging to Blender's Python environment
+    and extension-isolated packages directories.
     """
     discovered = []
 
-    # 1. Standard Blender Python site-packages
+    # 1. Extension's own directory (wheels / site-packages if unpacked)
+    addon_dir = Path(__file__).parent.parent.parent.resolve()
+    ext_site_packages = [
+        addon_dir / "site-packages",
+        addon_dir / "wheels",
+    ]
+    for esp in ext_site_packages:
+        if esp.exists():
+            resolved = str(esp.resolve())
+            if resolved not in discovered:
+                discovered.append(resolved)
+
+    # 2. Standard Blender Python site-packages
     try:
         site_dirs = site.getsitepackages()
         if isinstance(site_dirs, list):
             for sd in site_dirs:
                 p = Path(sd)
                 if p.exists():
-                    discovered.append(str(p.resolve()))
+                    resolved = str(p.resolve())
+                    if resolved not in discovered:
+                        discovered.append(resolved)
     except Exception:
         pass
 
-    # 2. Blender sys.prefix / sys.exec_prefix lib fallback
+    # 3. Blender sys.prefix / sys.exec_prefix lib fallback
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}"
     prefix = Path(sys.prefix)
     fallbacks = [
@@ -102,8 +90,7 @@ def get_blender_site_packages() -> List[str]:
 
 def ensure_sys_paths() -> List[str]:
     """
-    Ensure Blender's bundled Python site-packages directories are present in sys.path.
-    Never injects external user or OS-level Python directories.
+    Ensure Blender's bundled and extension site-packages directories are present in sys.path.
     """
     added_paths = []
     blender_sites = get_blender_site_packages()
@@ -154,7 +141,7 @@ def get_python_executable() -> str:
 
 
 def is_module_installed(module_name: str) -> bool:
-    """Check if a Python module is installed in Blender's Python environment."""
+    """Check if a Python module is available in the Python environment."""
     ensure_sys_paths()
     try:
         return importlib.util.find_spec(module_name) is not None
@@ -223,164 +210,6 @@ def has_pillow() -> bool:
     return is_module_installed("PIL")
 
 
-def install_package(
-    package_name: str,
-    mirror_key: str = "TSINGHUA",
-    custom_url: Optional[str] = None,
-    upgrade: bool = False,
-    timeout: int = 180,
-) -> tuple[bool, str]:
-    """
-    Install or update a Python package into Blender's Python environment via pip.
-    Completely isolated to Blender bundled environment without --user flag.
-
-    Args:
-        package_name: Name of the pip package to install.
-        mirror_key: Key in PYPI_MIRRORS or "CUSTOM".
-        custom_url: Custom index URL if mirror_key is "CUSTOM".
-        upgrade: Whether to pass --upgrade to pip.
-        timeout: Maximum seconds to wait for installation process.
-
-    Returns:
-        (success: bool, output_log: str)
-    """
-    # Check Blender online access preference (Blender 4.2+ standard)
-    try:
-        import bpy
-        if hasattr(bpy.app, "online_access") and not bpy.app.online_access:
-            msg = (
-                "[MoziToolKit Error] Online access is disabled in Blender preferences.\n"
-                "Please enable 'Allow Online Access' in Blender Preferences > System > Network to install dependencies."
-            )
-            return False, msg
-    except Exception:
-        pass
-
-    python_exe = get_python_executable()
-    logs = []
-
-    # Ensure pip is available inside Blender
-    try:
-        subprocess.run(
-            [python_exe, "-m", "ensurepip", "--default-pip"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-    except Exception as e:
-        logs.append(f"[Note] ensurepip check: {e}")
-
-    # Build pip install command targeting Blender's bundled environment (no --user)
-    cmd = [python_exe, "-m", "pip", "install", package_name, "--no-user"]
-
-    if upgrade:
-        cmd.append("--upgrade")
-
-    # Determine index URL
-    index_url = None
-    if mirror_key == "CUSTOM" and custom_url:
-        index_url = custom_url.strip()
-    elif mirror_key in PYPI_MIRRORS:
-        index_url = PYPI_MIRRORS[mirror_key]["url"]
-
-    if index_url:
-        cmd.extend(["-i", index_url])
-        parsed = urlparse(index_url)
-        if parsed.hostname:
-            cmd.extend(["--trusted-host", parsed.hostname])
-
-    cmd_str = " ".join(cmd)
-    logs.append(f"Executing: {cmd_str}\n" + "-" * 50)
-
-    try:
-        process = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        logs.append(process.stdout)
-        success = (process.returncode == 0)
-
-        # Invalidate import caches and update sys.path
-        importlib.invalidate_caches()
-        ensure_sys_paths()
-
-        if success:
-            logs.append("\n[MoziToolKit] Package installation completed successfully.")
-        else:
-            logs.append(f"\n[MoziToolKit] Package installation failed with return code {process.returncode}.")
-
-        return success, "\n".join(logs)
-
-    except subprocess.TimeoutExpired:
-        logs.append(f"\n[MoziToolKit Error] Installation timed out after {timeout} seconds.")
-        return False, "\n".join(logs)
-    except Exception as e:
-        logs.append(f"\n[MoziToolKit Error] Exception during installation: {e}")
-        return False, "\n".join(logs)
-
-
-def uninstall_package(
-    package_name: str,
-    timeout: int = 120,
-) -> tuple[bool, str]:
-    """
-    Uninstall a Python package from Blender's Python environment via pip.
-
-    Args:
-        package_name: Name of the pip package to uninstall.
-        timeout: Maximum seconds to wait for uninstallation process.
-
-    Returns:
-        (success: bool, output_log: str)
-    """
-    python_exe = get_python_executable()
-    logs = []
-
-    cmd = [python_exe, "-m", "pip", "uninstall", "-y", package_name]
-    cmd_str = " ".join(cmd)
-    logs.append(f"Executing: {cmd_str}\n" + "-" * 50)
-
-    try:
-        process = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        logs.append(process.stdout)
-        success = (process.returncode == 0)
-
-        # Invalidate module cache from sys.modules
-        dep_def = DEPENDENCIES.get(package_name)
-        mod_name = dep_def.module_name if dep_def else package_name
-        for k in list(sys.modules.keys()):
-            if k == mod_name or k.startswith(f"{mod_name}."):
-                sys.modules.pop(k, None)
-
-        importlib.invalidate_caches()
-
-        if success:
-            logs.append("\n[MoziToolKit] Package uninstalled successfully.")
-        else:
-            logs.append(f"\n[MoziToolKit] Package uninstallation failed with return code {process.returncode}.")
-
-        return success, "\n".join(logs)
-
-    except subprocess.TimeoutExpired:
-        logs.append(f"\n[MoziToolKit Error] Uninstallation timed out after {timeout} seconds.")
-        return False, "\n".join(logs)
-    except Exception as e:
-        logs.append(f"\n[MoziToolKit Error] Exception during uninstallation: {e}")
-        return False, "\n".join(logs)
-
-
 def get_prefs(context=None):
     """
     Retrieve MoziToolKit AddonPreferences safely across legacy add-on
@@ -405,8 +234,7 @@ def get_prefs(context=None):
 
     # 2. Check if any addon key matches or ends with MoziToolKit (e.g. bl_ext.*.MoziToolKit)
     for name, addon in addons.items():
-        if name == "MoziToolKit" or name.endswith(".MoziToolKit") or "MoziToolKit" in name:
+        if name == "MoziToolKit" or name.endswith(".MoziToolKit") or "MoziToolKit" in name or name.endswith(".mozitoolkit") or "mozitoolkit" in name:
             return addon.preferences
 
     return None
-

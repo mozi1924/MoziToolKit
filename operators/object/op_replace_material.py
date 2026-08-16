@@ -70,9 +70,9 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         if self.material_mode == 'ATLAS' and not has_pillow():
             alert_box = layout.box()
             alert_box.alert = True
-            alert_box.label(text="Atlas mode requires 'Pillow' dependency (Missing)!", icon='ERROR')
-            alert_box.label(text="Please install it in Addon Preferences > Dependencies.")
-            op = alert_box.operator("mozi.open_preferences", text="Install Dependencies", icon='PREFERENCES')
+            alert_box.label(text="Atlas mode requires 'Pillow' (PIL) module (Missing)!", icon='ERROR')
+            alert_box.label(text="Please ensure Pillow or extension wheels are available.")
+            op = alert_box.operator("mozi.open_preferences", text="Check Environment", icon='PREFERENCES')
             op.tab = "MISC"
 
         # Check for jmc2obj or large UV faces on selected objects
@@ -110,7 +110,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         if self.material_mode == 'ATLAS' and not has_pillow():
             self.report(
                 {'ERROR'},
-                "Atlas mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it."
+                "Atlas mode requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
             )
             return {"CANCELLED"}
 

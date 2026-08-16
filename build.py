@@ -2,13 +2,15 @@
 """
 MoziToolKit Packaging Script
 Packages the Blender extension into an installable .zip file in the dist/ directory.
-Ignores files specified in .gitignore, as well as .gitignore itself and this script.
+Defaults to using the official `blender --command extension build` when Blender is available,
+with a manifest-compliant pure Python packaging fallback.
 """
 
 import argparse
 import fnmatch
 import os
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -17,6 +19,49 @@ try:
     import tomllib
 except ImportError:
     tomllib = None
+
+
+def find_blender_binary():
+    """Attempt to locate the Blender executable on various platforms."""
+    # 1. Environment variable
+    env_bin = os.environ.get("BLENDER_BIN") or os.environ.get("BLENDER_PATH")
+    if env_bin and os.path.isfile(env_bin) and os.access(env_bin, os.X_OK):
+        return env_bin
+
+    # 2. In PATH
+    which_bin = shutil.which("blender")
+    if which_bin:
+        return which_bin
+
+    # 3. macOS standard paths
+    mac_paths = [
+        "/Applications/Blender.app/Contents/MacOS/blender",
+        os.path.expanduser("~/Applications/Blender.app/Contents/MacOS/blender"),
+    ]
+    for p in mac_paths:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+
+    # 4. Linux standard paths
+    linux_paths = [
+        "/usr/bin/blender",
+        "/usr/local/bin/blender",
+        "/snap/bin/blender",
+        os.path.expanduser("~/.local/bin/blender"),
+    ]
+    for p in linux_paths:
+        if os.path.isfile(p) and os.access(p, os.X_OK):
+            return p
+
+    # 5. Windows standard paths
+    for drive in ["C:", "D:", "E:"]:
+        win_pattern = os.path.join(drive, r"\Program Files\Blender Foundation\Blender *\blender.exe")
+        import glob
+        matches = glob.glob(win_pattern)
+        if matches:
+            return sorted(matches)[-1]
+
+    return None
 
 
 def parse_manifest(project_dir):
@@ -34,6 +79,8 @@ def parse_manifest(project_dir):
         "*.blend1",
         ".DS_Store",
         ".vscode/",
+        "build.py",
+        ".gitignore",
     ]
 
     if os.path.exists(manifest_path):
@@ -77,70 +124,6 @@ def parse_manifest(project_dir):
     return ext_id, ext_version, exclude_patterns
 
 
-def parse_gitignore(gitignore_path):
-    """Parse .gitignore and return a list of pattern rules."""
-    patterns = []
-    if not os.path.exists(gitignore_path):
-        return patterns
-
-    with open(gitignore_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            patterns.append(line)
-    return patterns
-
-
-def matches_gitignore(rel_path, patterns):
-    """Check if a relative path matches any gitignore pattern."""
-    rel_path_str = rel_path.replace("\\", "/")
-    is_dir = os.path.isdir(rel_path)
-
-    for pattern in patterns:
-        pat = pattern.strip()
-        # Direct folder ignore pattern e.g. "dist/", "__pycache__/"
-        dir_only = pat.endswith("/")
-        if dir_only:
-            pat = pat[:-1]
-
-        # Handle root matching e.g. "/site"
-        if pat.startswith("/"):
-            pat = pat[1:]
-            match_target = rel_path_str
-        else:
-            match_target = rel_path_str.split("/")[-1]
-
-        if fnmatch.fnmatch(rel_path_str, pat) or fnmatch.fnmatch(match_target, pat):
-            if not dir_only or is_dir:
-                return True
-
-        # Check path components
-        parts = rel_path_str.split("/")
-        for part in parts:
-            if fnmatch.fnmatch(part, pat):
-                return True
-
-    return False
-
-
-def get_files_via_git(project_dir):
-    """Use git ls-files to get all tracked & untracked files respecting .gitignore."""
-    try:
-        res = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-            cwd=project_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=True,
-        )
-        files = [f.strip() for f in res.stdout.splitlines() if f.strip()]
-        return files
-    except Exception:
-        return None
-
-
 def matches_exclude_patterns(rel_path, patterns):
     """Check if a relative path matches any exclude pattern from manifest."""
     rel_path_str = rel_path.replace("\\", "/")
@@ -167,38 +150,10 @@ def matches_exclude_patterns(rel_path, patterns):
     return False
 
 
-def get_files_to_package(project_dir, script_rel_path, exclude_patterns=None):
-    """Get list of relative file paths to package in the extension zip."""
+def get_files_to_package_fallback(project_dir, exclude_patterns=None):
+    """Fallback directory walk strictly adhering to paths_exclude_pattern."""
     if exclude_patterns is None:
         exclude_patterns = []
-
-    # Try git command first
-    git_files = get_files_via_git(project_dir)
-
-    script_normalized = os.path.normpath(script_rel_path)
-
-    if git_files is not None:
-        valid_files = []
-        for rel_path in git_files:
-            norm = os.path.normpath(rel_path)
-            if norm == ".gitignore":
-                continue
-            if norm == script_normalized:
-                continue
-            if norm.startswith("dist" + os.sep) or norm == "dist":
-                continue
-            if norm.startswith(".git" + os.sep) or norm == ".git":
-                continue
-            if matches_exclude_patterns(rel_path, exclude_patterns):
-                continue
-            if not os.path.isfile(os.path.join(project_dir, rel_path)):
-                continue
-            valid_files.append(rel_path)
-        return sorted(valid_files)
-
-    # Fallback to manual directory walk with .gitignore parsing
-    gitignore_path = os.path.join(project_dir, ".gitignore")
-    patterns = parse_gitignore(gitignore_path)
 
     valid_files = []
     for root, dirs, files in os.walk(project_dir):
@@ -206,27 +161,19 @@ def get_files_to_package(project_dir, script_rel_path, exclude_patterns=None):
         if rel_root == ".":
             rel_root = ""
 
-        # Skip .git and dist directories
+        # Filter out directories matching exclusion patterns
         dirs[:] = [
             d for d in dirs
-            if d not in [".git", "dist", "__pycache__"]
-            and not matches_gitignore(os.path.join(rel_root, d), patterns)
-            and not matches_exclude_patterns(os.path.join(rel_root, d), exclude_patterns)
+            if not matches_exclude_patterns(
+                (f"{rel_root}/{d}" if rel_root else d) + "/",
+                exclude_patterns
+            )
         ]
 
         for file in files:
-            rel_file = os.path.join(rel_root, file) if rel_root else file
-            norm_file = os.path.normpath(rel_file)
-
-            if norm_file == ".gitignore":
-                continue
-            if norm_file == script_normalized:
-                continue
-            if matches_gitignore(rel_file, patterns):
-                continue
+            rel_file = f"{rel_root}/{file}" if rel_root else file
             if matches_exclude_patterns(rel_file, exclude_patterns):
                 continue
-
             valid_files.append(rel_file)
 
     return sorted(valid_files)
@@ -235,20 +182,49 @@ def get_files_to_package(project_dir, script_rel_path, exclude_patterns=None):
 def build_package():
     parser = argparse.ArgumentParser(description="Package MoziToolKit extension for Blender.")
     parser.add_argument("-o", "--output-dir", default="dist", help="Output directory for the package (default: dist)")
+    parser.add_argument("--blender", default="", help="Path to Blender binary to use for official extension build")
+    parser.add_argument("--split-platforms", action="store_true", help="Build separate packages per platform (via Blender)")
+    parser.add_argument("--fallback-only", action="store_true", help="Force pure Python packaging instead of Blender CLI")
     args = parser.parse_args()
 
     project_dir = os.path.abspath(os.path.dirname(__file__))
-    script_rel_path = os.path.relpath(__file__, project_dir)
-
-    ext_id, ext_version, exclude_patterns = parse_manifest(project_dir)
     output_dir = os.path.abspath(os.path.join(project_dir, args.output_dir))
     os.makedirs(output_dir, exist_ok=True)
 
+    ext_id, ext_version, exclude_patterns = parse_manifest(project_dir)
+
+    blender_bin = args.blender or find_blender_binary()
+
+    if blender_bin and not args.fallback_only:
+        print(f"🚀 Using official Blender extension builder: {blender_bin}")
+        cmd = [
+            blender_bin,
+            "--command",
+            "extension",
+            "build",
+            "--source-dir",
+            project_dir,
+            "--output-dir",
+            output_dir,
+        ]
+        if args.split_platforms:
+            cmd.append("--split-platforms")
+
+        try:
+            res = subprocess.run(cmd, cwd=project_dir, check=True)
+            if res.returncode == 0:
+                print(f"\n✅ Official build complete in: {output_dir}")
+                return
+        except Exception as e:
+            print(f"[Warning] Official Blender extension build encountered an error: {e}")
+            print("Falling back to Python package generator...")
+
+    # Fallback to pure Python package builder
+    print(f"📦 Packaging extension '{ext_id}' v{ext_version} via Python fallback...")
     zip_filename = f"{ext_id}-{ext_version}.zip"
     output_zip_path = os.path.join(output_dir, zip_filename)
 
-    print(f"📦 Packaging extension '{ext_id}' v{ext_version}...")
-    files_to_pack = get_files_to_package(project_dir, script_rel_path, exclude_patterns)
+    files_to_pack = get_files_to_package_fallback(project_dir, exclude_patterns)
 
     print(f"📂 Selected {len(files_to_pack)} files to include:")
     with zipfile.ZipFile(output_zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -264,4 +240,3 @@ def build_package():
 
 if __name__ == "__main__":
     build_package()
-
