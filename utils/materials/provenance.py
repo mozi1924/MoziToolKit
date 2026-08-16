@@ -12,6 +12,10 @@ from .constants import (
     ATTR_SOURCE_ORIGIN,
     ATTR_SOURCE_TEXTURE_KEY,
     DEFAULT_NAMESPACE,
+    PROP_CREATED_BY,
+    PROP_PROVENANCE_SCHEMA_VERSION,
+    PROP_ATLAS_MAPPING,
+    PROVENANCE_SCHEMA_VERSION,
 )
 
 
@@ -113,7 +117,7 @@ def detect_material_mode(mat: bpy.types.Material | None) -> str:
             ):
                 return "ATLAS_UNIFIED"
 
-    if "mtk:source_texture" in mat or "mtk:source_namespace" in mat or mat.name.startswith("mtk:"):
+    if "mtk:source_texture" in mat or "mtk:source_namespace" in mat:
         source_tex = str(mat.get("mtk:source_texture", ""))
         if source_tex.startswith("atlas_chunk_"):
             return "ATLAS_CHUNK"
@@ -126,11 +130,15 @@ def is_mozi_material(mat: bpy.types.Material | None) -> bool:
     """Check if a material was created by MoziToolKit."""
     if not mat:
         return False
-    if mat.name.startswith("mtk:"):
+    # New materials carry an explicit, versioned ownership contract.  Keep
+    # the older heuristics below only so existing blend files remain usable.
+    if mat.get(PROP_CREATED_BY) == "MoziToolKit":
         return True
-    if any(k.startswith("mtk:") for k in mat.keys()):
+    if any(key in mat for key in (
+        "mtk:source_texture", "mtk:source_namespace", "mtk:atlas_chunk_id", "mtk:material_id",
+    )):
         return True
-    if mat.node_tree and any(k.startswith("mtk:") for k in mat.node_tree.keys()):
+    if mat.node_tree and PROP_ATLAS_MAPPING in mat.node_tree:
         return True
     return False
 
@@ -146,3 +154,22 @@ def get_atlas_mapping_from_material(mat: bpy.types.Material | None) -> dict | No
         return json.loads(raw)
     except Exception:
         return None
+
+
+def get_atlas_mapping_from_mesh(mesh: bpy.types.Mesh | None) -> dict | None:
+    """Read the mesh-side atlas mapping backup used when a node tree is edited."""
+    if not mesh or PROP_ATLAS_MAPPING not in mesh:
+        return None
+    raw = mesh[PROP_ATLAS_MAPPING]
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+def write_provenance_schema(owner) -> None:
+    """Stamp a Blender ID datablock with Mozi's explicit provenance contract."""
+    owner[PROP_CREATED_BY] = "MoziToolKit"
+    owner[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION

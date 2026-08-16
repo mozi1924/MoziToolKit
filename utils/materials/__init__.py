@@ -13,6 +13,8 @@ from .constants import (
     PROP_ATLAS_CHUNK_ID,
     PROP_ATLAS_CHUNK_KIND,
     PROP_ATLAS_MAPPING,
+    PROP_CREATED_BY,
+    PROP_PROVENANCE_SCHEMA_VERSION,
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_FACE_MATERIAL_ID,
@@ -44,6 +46,8 @@ from .provenance import (
     get_face_source_origin,
     get_face_source_texture_key,
     get_atlas_mapping_from_material,
+    get_atlas_mapping_from_mesh,
+    write_provenance_schema,
     write_face_source_provenance,
 )
 
@@ -133,6 +137,8 @@ __all__ = [
     "PROP_ATLAS_CHUNK_ID",
     "PROP_ATLAS_CHUNK_KIND",
     "PROP_ATLAS_MAPPING",
+    "PROP_CREATED_BY",
+    "PROP_PROVENANCE_SCHEMA_VERSION",
     "ATTR_ATLAS_CHUNK_ID",
     "ATTR_ATLAS_TEXTURE_ID",
     "ATTR_FACE_MATERIAL_ID",
@@ -160,6 +166,8 @@ __all__ = [
     "get_face_source_origin",
     "get_face_source_texture_key",
     "get_atlas_mapping_from_material",
+    "get_atlas_mapping_from_mesh",
+    "write_provenance_schema",
     "write_face_source_provenance",
 
     # Animation

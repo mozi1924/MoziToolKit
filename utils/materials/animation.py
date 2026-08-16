@@ -23,7 +23,9 @@ def get_material_animation_info(mat: bpy.types.Material | None) -> dict | None:
 
     # 1. Check for MC_Animated_UV_Mapping node group
     for n in mat.node_tree.nodes:
-        if n.type == "GROUP" and n.node_tree and "UV_Mapping" in n.node_tree.name:
+        if n.type == "GROUP" and n.node_tree and all(
+            socket in n.inputs for socket in ("Frame Width", "Frame Height", "Image Width", "Image Height")
+        ):
             fw = float(n.inputs["Frame Width"].default_value) if "Frame Width" in n.inputs else 16.0
             fh = float(n.inputs["Frame Height"].default_value) if "Frame Height" in n.inputs else 16.0
             iw = float(n.inputs["Image Width"].default_value) if "Image Width" in n.inputs else 16.0
@@ -39,7 +41,7 @@ def get_material_animation_info(mat: bpy.types.Material | None) -> dict | None:
 
     # 2. Check for MC .mcmeta Scheduler node group with images
     sched_node = next(
-        (n for n in mat.node_tree.nodes if n.type == "GROUP" and n.node_tree and "Scheduler" in n.node_tree.name),
+        (n for n in mat.node_tree.nodes if n.type == "GROUP" and "Total Frames" in n.inputs),
         None,
     )
     if sched_node and "Total Frames" in sched_node.inputs:

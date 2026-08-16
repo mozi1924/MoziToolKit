@@ -20,6 +20,9 @@ from .constants import (
     PROP_ATLAS_CHUNK_ID,
     PROP_ATLAS_CHUNK_KIND,
     PROP_ATLAS_MAPPING,
+    PROP_CREATED_BY,
+    PROP_PROVENANCE_SCHEMA_VERSION,
+    PROVENANCE_SCHEMA_VERSION,
     ATTR_FACE_MATERIAL_ID,
     ATTR_ANIM_TOTAL_FRAMES,
     ATTR_ANIM_FRAMETIME,
@@ -72,6 +75,8 @@ def build_atlas_material(
 
     # Store mapping JSON as custom property on node tree
     mat.node_tree[PROP_ATLAS_MAPPING] = raw_json_str
+    mat[PROP_CREATED_BY] = "MoziToolKit"
+    mat[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
 
     # 1. Output & Principled BSDF
     output_node = nodes.new("ShaderNodeOutputMaterial")
@@ -216,6 +221,8 @@ def build_atlas_chunk_materials(
         mat.use_nodes = True
         set_material_displacement_method(mat, "BOTH")
         mat.node_tree[PROP_ATLAS_MAPPING] = raw_mapping
+        mat[PROP_CREATED_BY] = "MoziToolKit"
+        mat[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
         mat[PROP_SOURCE_NAMESPACE] = chunk_namespace
         mat[PROP_SOURCE_TEXTURE] = chunk_texture_name
         mat[PROP_MATERIAL_ID] = f"{chunk_namespace}:{chunk_texture_name}"
