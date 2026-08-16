@@ -30,45 +30,47 @@ def is_orthogonal_angle(angle: float, tolerance: float = 1e-3) -> bool:
 def detect_face_uv_rotation(polygon, uv_layer, tolerance: float = 1e-3) -> float:
     """Calculate the Euler Z rotation angle (in radians) of a face's loop UVs.
 
-    Returns 0.0 for unrotated or standard axis-aligned faces.
-    Returns non-zero angle theta in radians for non-orthogonal rotated faces
-    (e.g., jmc2obj flowing water UVs rotated at 45°, 135°, -45°, -135°).
+    Returns 0.0 for unrotated or standard axis-aligned faces (including right
+    triangles and trapezoids where at least one edge aligns orthogonally).
+    Returns non-zero angle theta in radians only when ALL valid edges of the face
+    are non-orthogonal (e.g., jmc2obj flowing water UVs rotated at 45°, 135°).
     """
     if polygon is None or uv_layer is None or len(polygon.loop_indices) < 3:
         return 0.0
 
     loop_indices = polygon.loop_indices
     uvs = [uv_layer.data[li].uv for li in loop_indices]
+    num_uvs = len(uvs)
 
-    # Find the primary direction edge e01
-    p0 = uvs[0]
-    p1 = uvs[1]
-    edge = Vector((p1.x - p0.x, p1.y - p0.y))
+    valid_edges = []
+    for i in range(num_uvs):
+        p_curr = uvs[i]
+        p_next = uvs[(i + 1) % num_uvs]
+        edge = Vector((p_next.x - p_curr.x, p_next.y - p_curr.y))
+        if edge.length >= 1e-6:
+            theta = math.atan2(edge.y, edge.x)
+            while theta <= -math.pi:
+                theta += 2.0 * math.pi
+            while theta > math.pi:
+                theta -= 2.0 * math.pi
+            valid_edges.append((edge, theta))
 
-    if edge.length < 1e-6:
-        # Fallback if first edge is degenerate
-        for i in range(1, len(uvs)):
-            p_curr = uvs[i]
-            p_next = uvs[(i + 1) % len(uvs)]
-            edge = Vector((p_next.x - p_curr.x, p_next.y - p_curr.y))
-            if edge.length >= 1e-6:
-                break
-        else:
-            return 0.0
-
-    theta = math.atan2(edge.y, edge.x)
-
-    # Normalize theta to (-pi, pi]
-    while theta <= -math.pi:
-        theta += 2.0 * math.pi
-    while theta > math.pi:
-        theta -= 2.0 * math.pi
-
-    if is_orthogonal_angle(theta, tolerance):
-        # Standard axis-aligned face (multiples of 90 degrees)
+    if not valid_edges:
         return 0.0
 
-    return theta
+    # If ANY edge is orthogonal, the face is built in an axis-aligned grid
+    # (e.g. right triangles with a diagonal hypotenuse, axis-aligned stairs)
+    for _edge, theta in valid_edges:
+        if is_orthogonal_angle(theta, tolerance):
+            return 0.0
+
+    # If ALL valid edges are non-orthogonal, the entire face is tilted
+    # (e.g. jmc2obj 45-degree flowing liquid diamonds)
+    primary_theta = valid_edges[0][1]
+    if is_orthogonal_angle(primary_theta, tolerance):
+        return 0.0
+
+    return primary_theta
 
 
 def straighten_face_uv(polygon, uv_layer, angle: Optional[float] = None) -> Tuple[float, bool]:

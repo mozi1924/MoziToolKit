@@ -223,6 +223,44 @@ class TestAtlasUVRotation(unittest.TestCase):
 
         bpy.data.meshes.remove(mesh_obj)
 
+    def test_right_triangle_and_triangulated_quad_not_rotated(self):
+        """Verify right triangles with diagonal hypotenuses are NOT falsely detected as rotated."""
+        bm = bmesh.new()
+        uv_lay = bm.loops.layers.uv.new("UVMap")
+
+        # Triangle 1: Hypotenuse as first edge (0,0) -> (1,1) -> (0,1)
+        t1_v = [bm.verts.new((0, 0, 0)), bm.verts.new((1, 1, 0)), bm.verts.new((0, 1, 0))]
+        f_t1 = bm.faces.new(t1_v)
+        f_t1.loops[0][uv_lay].uv = Vector((0.0, 0.0))
+        f_t1.loops[1][uv_lay].uv = Vector((1.0, 1.0))
+        f_t1.loops[2][uv_lay].uv = Vector((0.0, 1.0))
+
+        # Triangle 2: Standard right triangle (0,0) -> (1,0) -> (1,1)
+        t2_v = [bm.verts.new((2, 0, 0)), bm.verts.new((3, 0, 0)), bm.verts.new((3, 1, 0))]
+        f_t2 = bm.faces.new(t2_v)
+        f_t2.loops[0][uv_lay].uv = Vector((0.0, 0.0))
+        f_t2.loops[1][uv_lay].uv = Vector((1.0, 0.0))
+        f_t2.loops[2][uv_lay].uv = Vector((1.0, 1.0))
+
+        mesh_obj = bpy.data.meshes.new("TriangleTestMesh")
+        bm.to_mesh(mesh_obj)
+        bm.free()
+
+        uv_data = mesh_obj.uv_layers.active
+        # Both triangles have orthogonal edges, so rotation must be 0.0 and neither should be straightened
+        rot1 = detect_face_uv_rotation(mesh_obj.polygons[0], uv_data)
+        rot2 = detect_face_uv_rotation(mesh_obj.polygons[1], uv_data)
+        self.assertAlmostEqual(rot1, 0.0, places=3)
+        self.assertAlmostEqual(rot2, 0.0, places=3)
+
+        angle1, straightened1 = straighten_face_uv(mesh_obj.polygons[0], uv_data)
+        angle2, straightened2 = straighten_face_uv(mesh_obj.polygons[1], uv_data)
+        self.assertFalse(straightened1)
+        self.assertFalse(straightened2)
+
+        bpy.data.meshes.remove(mesh_obj)
+
 
 if __name__ == "__main__":
     unittest.main(argv=["dummy"])
+

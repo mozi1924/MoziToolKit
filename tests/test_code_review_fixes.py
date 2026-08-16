@@ -164,7 +164,50 @@ class TestCodeReviewFixes(unittest.TestCase):
         self.assertTrue(hasattr(MOZI_OT_check_dependencies, "bl_idname"))
         self.assertTrue(hasattr(MOZI_OT_clear_cache, "bl_idname"))
 
+    def test_subdivide_quad_inherits_rotated_uv_orientation(self):
+        """When unmerging a rotated quad face (normalize_uvs=True), sub-faces must inherit the rotation."""
+        if not HAS_BPY:
+            self.skipTest("bpy not available")
+
+        from utils.mesh.subdivide import subdivide_quad_face
+
+        bm = bmesh.new()
+        uv_lay = bm.loops.layers.uv.new("UVMap")
+
+        # Create a 2x1 quad face spanning (0,0) to (2,1)
+        v0 = bm.verts.new((0, 0, 0))
+        v1 = bm.verts.new((2, 0, 0))
+        v2 = bm.verts.new((2, 1, 0))
+        v3 = bm.verts.new((0, 1, 0))
+        face = bm.faces.new([v0, v1, v2, v3])
+
+        # Assign 90-degree rotated UV coordinates spanning 2x1 blocks
+        # Normal 0-deg unrotated: v0=(0,0), v1=(2,0), v2=(2,1), v3=(0,1)
+        # 90-deg rotated: v0=(0,1), v1=(0,0), v2=(2,0), v3=(2,1)
+        face.loops[0][uv_lay].uv = Vector((0.0, 1.0))
+        face.loops[1][uv_lay].uv = Vector((0.0, 0.0))
+        face.loops[2][uv_lay].uv = Vector((2.0, 0.0))
+        face.loops[3][uv_lay].uv = Vector((2.0, 1.0))
+
+        sub_faces = subdivide_quad_face(bm, face, cols=2, rows=1, normalize_uvs=True, uv_layer=uv_lay)
+        self.assertEqual(len(sub_faces), 2)
+
+        # Both sub-faces must preserve the 90-degree rotation orientation in their [0, 1] normalized UVs
+        for sf in sub_faces:
+            uvs = [l[uv_lay].uv for l in sf.loops]
+            self.assertAlmostEqual(uvs[0].x, 0.0)
+            self.assertAlmostEqual(uvs[0].y, 1.0)
+            self.assertAlmostEqual(uvs[1].x, 0.0)
+            self.assertAlmostEqual(uvs[1].y, 0.0)
+            self.assertAlmostEqual(uvs[2].x, 1.0)
+            self.assertAlmostEqual(uvs[2].y, 0.0)
+            self.assertAlmostEqual(uvs[3].x, 1.0)
+            self.assertAlmostEqual(uvs[3].y, 1.0)
+
+        bm.free()
+
 
 if __name__ == "__main__":
     import sys
     unittest.main(argv=[sys.argv[0]])
+

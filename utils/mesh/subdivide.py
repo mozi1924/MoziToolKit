@@ -67,15 +67,21 @@ def subdivide_quad_face(
 
     if cols <= 1 and rows <= 1:
         if normalize_uvs:
-            uv_lay = uv_layer or (bm.loops.layers.uv.active or bm.loops.layers.uv.verify())
-            cell_uvs = (
-                Vector((0.0, 0.0)),
-                Vector((1.0, 0.0)),
-                Vector((1.0, 1.0)),
-                Vector((0.0, 1.0)),
-            )
-            for loop, uv_val in zip(face.loops, cell_uvs):
-                loop[uv_lay].uv = uv_val
+            uv_lays = [uv_layer] if uv_layer else list(bm.loops.layers.uv)
+            if not uv_lays:
+                uv_lays = [bm.loops.layers.uv.verify()]
+            for uv_lay in uv_lays:
+                corners = [l[uv_lay].uv.copy() for l in face.loops]
+                min_u, max_u = min(c.x for c in corners), max(c.x for c in corners)
+                min_v, max_v = min(c.y for c in corners), max(c.y for c in corners)
+                span_u, span_v = max_u - min_u, max_v - min_v
+                if span_u > 1e-6 and span_v > 1e-6:
+                    for loop, c in zip(face.loops, corners):
+                        loop[uv_lay].uv = Vector(((c.x - min_u) / span_u, (c.y - min_v) / span_v))
+                else:
+                    std_uvs = (Vector((0.0, 0.0)), Vector((1.0, 0.0)), Vector((1.0, 1.0)), Vector((0.0, 1.0)))
+                    for loop, uv_val in zip(face.loops, std_uvs):
+                        loop[uv_lay].uv = uv_val
         return [face]
 
     # Active UV loop layers & Color layers
@@ -88,10 +94,27 @@ def subdivide_quad_face(
     v0, v1, v2, v3 = [l.vert for l in loops]
     p0, p1, p2, p3 = v0.co.copy(), v1.co.copy(), v2.co.copy(), v3.co.copy()
 
-    # Extract UVs for all UV layers
+    # Extract UVs and calculate normalized corner orientations for all UV layers
     loop_uv_maps = {}
+    norm_uv_maps = {}
     for uv_l in uv_layers:
-        loop_uv_maps[uv_l] = [l[uv_l].uv.copy() for l in loops]
+        corners = [l[uv_l].uv.copy() for l in loops]
+        loop_uv_maps[uv_l] = corners
+        min_u, max_u = min(c.x for c in corners), max(c.x for c in corners)
+        min_v, max_v = min(c.y for c in corners), max(c.y for c in corners)
+        span_u, span_v = max_u - min_u, max_v - min_v
+        if span_u > 1e-6 and span_v > 1e-6:
+            norm_uv_maps[uv_l] = tuple(
+                Vector(((c.x - min_u) / span_u, (c.y - min_v) / span_v))
+                for c in corners
+            )
+        else:
+            norm_uv_maps[uv_l] = (
+                Vector((0.0, 0.0)),
+                Vector((1.0, 0.0)),
+                Vector((1.0, 1.0)),
+                Vector((0.0, 1.0)),
+            )
 
     # Extract Loop Colors for all Color layers
     loop_col_maps = {}
@@ -234,15 +257,9 @@ def subdivide_quad_face(
 
                 # Assign UV coordinates
                 if normalize_uvs:
-                    for uv_l in uv_layers:
-                        cell_uvs = (
-                            Vector((0.0, 0.0)),
-                            Vector((1.0, 0.0)),
-                            Vector((1.0, 1.0)),
-                            Vector((0.0, 1.0)),
-                        )
-                        for loop, uv_val in zip(sub_face.loops, cell_uvs):
-                            loop[uv_l].uv = uv_val
+                    for uv_l, norm_corners in norm_uv_maps.items():
+                        for loop, uv_val in zip(sub_face.loops, norm_corners):
+                            loop[uv_l].uv = uv_val.copy()
                 else:
                     for uv_l, corners in loop_uv_maps.items():
                         c0, c1, c2, c3 = corners
