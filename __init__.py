@@ -23,17 +23,14 @@ bl_info = {
 }
 
 from . import auto_load
-from . import i18n
 
 auto_load.init()
 
 
 def register():
     auto_load.register()
-    i18n.register()
 
 
 def unregister():
-    i18n.unregister()
     auto_load.unregister()
 

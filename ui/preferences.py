@@ -17,19 +17,8 @@ from ..utils.system import (
     get_blender_site_packages,
     get_python_executable,
     has_all_dependencies,
+    get_prefs,
 )
-
-
-def get_prefs(context=None):
-    if context is None:
-        context = bpy.context
-    addon_name = __package__.rsplit(".", 1)[0]
-    if addon_name in context.preferences.addons:
-        return context.preferences.addons[addon_name].preferences
-    for name, addon in context.preferences.addons.items():
-        if name.endswith("MoziToolKit") or "MoziToolKit" in name:
-            return addon.preferences
-    return None
 
 
 def refresh_ui_and_menus(context=None):

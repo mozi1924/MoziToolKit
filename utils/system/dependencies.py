@@ -380,3 +380,33 @@ def uninstall_package(
         logs.append(f"\n[MoziToolKit Error] Exception during uninstallation: {e}")
         return False, "\n".join(logs)
 
+
+def get_prefs(context=None):
+    """
+    Retrieve MoziToolKit AddonPreferences safely across legacy add-on
+    and Blender 4.2+ extensions packaging environments.
+    """
+    import bpy
+
+    if context is None:
+        context = bpy.context
+
+    if not hasattr(context, "preferences") or not context.preferences:
+        return None
+
+    addons = getattr(context.preferences, "addons", None)
+    if addons is None:
+        return None
+
+    # 1. Try resolving via the top-level root package name
+    root_pkg = __name__.split(".")[0]
+    if root_pkg in addons:
+        return addons[root_pkg].preferences
+
+    # 2. Check if any addon key matches or ends with MoziToolKit (e.g. bl_ext.*.MoziToolKit)
+    for name, addon in addons.items():
+        if name == "MoziToolKit" or name.endswith(".MoziToolKit") or "MoziToolKit" in name:
+            return addon.preferences
+
+    return None
+

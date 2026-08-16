@@ -20,7 +20,10 @@ from utils.system import (
     has_all_dependencies,
     has_pillow,
     is_module_installed,
+    get_prefs,
 )
+from pipeline.modal import MOZI_OT_modal_pipeline_runner, run_pipeline_modal
+from pipeline.pipeline import Pipeline
 
 
 class TestDependencyManager(unittest.TestCase):
@@ -65,6 +68,45 @@ class TestDependencyManager(unittest.TestCase):
         """has_pillow should return bool corresponding to is_module_installed('PIL')."""
         self.assertEqual(has_pillow(), is_module_installed("PIL"))
 
+    def test_get_prefs_safe_access(self):
+        """get_prefs should safely query preferences without raising exceptions."""
+        try:
+            import bpy
+            prefs = get_prefs(bpy.context)
+            # prefs may be None if addon not enabled in vanilla test run, or an AddonPreferences instance
+            self.assertTrue(prefs is None or hasattr(prefs, "bl_idname"))
+        except ImportError:
+            prefs = get_prefs()
+            self.assertIsNone(prefs)
+
+    def test_modal_pipeline_concurrency_mutex(self):
+        """When a modal runner is active, secondary run_pipeline_modal calls must be rejected."""
+        try:
+            import bpy
+        except ImportError:
+            self.skipTest("bpy not available")
+
+        # Ensure active runners is initially empty
+        initial_runners = dict(MOZI_OT_modal_pipeline_runner._active_runners)
+        try:
+            MOZI_OT_modal_pipeline_runner._active_runners.clear()
+            self.assertFalse(MOZI_OT_modal_pipeline_runner.is_running())
+
+            # Simulate an active runner
+            MOZI_OT_modal_pipeline_runner._active_runners["test-runner-lock"] = {
+                "title": "Running Task",
+            }
+            self.assertTrue(MOZI_OT_modal_pipeline_runner.is_running())
+
+            pipeline = Pipeline(name="TestMutexPipeline", steps=[])
+            res, ctx = run_pipeline_modal(pipeline, bpy.context)
+            self.assertFalse(res.is_success)
+            self.assertIn("in progress", res.message)
+
+        finally:
+            MOZI_OT_modal_pipeline_runner._active_runners.clear()
+            MOZI_OT_modal_pipeline_runner._active_runners.update(initial_runners)
+
     def test_atlas_mode_guards_missing_pillow(self):
         """When Pillow is not installed, running replace_material with ATLAS mode must fail gracefully."""
         try:
@@ -85,9 +127,12 @@ class TestDependencyManager(unittest.TestCase):
             with patch("utils.system.dependencies.has_pillow", return_value=False), \
                  patch("pipeline.steps.step_replace_material.has_pillow", return_value=False):
                 # Create a test mesh object
-                bpy.ops.wm.read_factory_settings(use_empty=True)
+                if bpy.context.mode != "OBJECT":
+                    bpy.ops.object.mode_set(mode="OBJECT")
                 bpy.ops.mesh.primitive_cube_add()
                 cube = bpy.context.active_object
+                mat = bpy.data.materials.new(name="stone")
+                cube.data.materials.append(mat)
 
                 params = {
                     "zip_path": str(zip_path),
@@ -98,6 +143,11 @@ class TestDependencyManager(unittest.TestCase):
                 self.assertFalse(res.is_success)
                 self.assertIn("Pillow", res.message)
 
+                # Clean up cube and material
+                bpy.data.objects.remove(cube, do_unlink=True)
+                bpy.data.materials.remove(mat, do_unlink=True)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

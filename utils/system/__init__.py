@@ -17,6 +17,7 @@ from .dependencies import (
     has_pillow,
     install_package,
     uninstall_package,
+    get_prefs,
 )
 
 from .menu_config import (
@@ -51,6 +52,7 @@ __all__ = [
     "has_pillow",
     "install_package",
     "uninstall_package",
+    "get_prefs",
     "register_menu_item",
     "register_operator_menu_item",
     "normalize_operator_id",
@@ -66,3 +68,4 @@ __all__ = [
     "import_config",
     "draw_dynamic_menu",
 ]
+
