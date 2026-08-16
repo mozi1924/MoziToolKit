@@ -312,21 +312,7 @@ def build_atlas_chunk_materials(
             max_height.location = (-1300, -500)
             links.new(attr_height.outputs["Fac"], max_height.inputs[0])
 
-            # Atlas UV Self-Tiling for Animated Branch
             tiling_group = templates.get("MC_Atlas_UV_Tiling")
-            if tiling_group:
-                tiling_node = nodes.new("ShaderNodeGroup")
-                tiling_node.node_tree = tiling_group
-                tiling_node.name = "MC Atlas UV Tiling"
-                tiling_node.location = (-1100, 0)
-                tiling_node.inputs["Atlas Width"].default_value = float(chunk.get("width", 16))
-                tiling_node.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
-                tiling_node.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
-                tiling_node.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
-                links.new(tex_coord.outputs["UV"], tiling_node.inputs["Vector"])
-                uv_source_socket = tiling_node.outputs["Atlas UV"]
-            else:
-                uv_source_socket = tex_coord.outputs["UV"]
 
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
                 fname = chunk_files.get(channel_key)
@@ -361,11 +347,41 @@ def build_atlas_chunk_materials(
                 if "Atlas Mode" in uv_node.inputs:
                     uv_node.inputs["Atlas Mode"].default_value = 1.0
 
-                links.new(uv_source_socket, uv_node.inputs["Vector"])
+                links.new(tex_coord.outputs["UV"], uv_node.inputs["Vector"])
                 links.new(scheduler.outputs["Current Frame"], uv_node.inputs["Current Frame"])
                 links.new(scheduler.outputs["Next Frame"], uv_node.inputs["Next Frame"])
                 links.new(scheduler.outputs["Blend Factor"], uv_node.inputs["Blend Factor"])
 
+                # Atlas UV Self-Tiling for Current UV and Next UV lines
+                if tiling_group:
+                    tiling_curr = nodes.new("ShaderNodeGroup")
+                    tiling_curr.node_tree = tiling_group
+                    tiling_curr.name = f"MC Atlas UV Tiling Current ({channel_name})"
+                    tiling_curr.location = (-580, base_y + 120)
+                    tiling_curr.inputs["Atlas Width"].default_value = float(chunk.get("width", 16))
+                    tiling_curr.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
+                    tiling_curr.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
+                    tiling_curr.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
+                    links.new(max_width.outputs["Value"], tiling_curr.inputs["Tile Width"])
+                    links.new(max_height.outputs["Value"], tiling_curr.inputs["Tile Height"])
+                    links.new(uv_node.outputs["Current UV"], tiling_curr.inputs["Vector"])
+                    curr_uv_socket = tiling_curr.outputs["Atlas UV"]
+
+                    tiling_next = nodes.new("ShaderNodeGroup")
+                    tiling_next.node_tree = tiling_group
+                    tiling_next.name = f"MC Atlas UV Tiling Next ({channel_name})"
+                    tiling_next.location = (-580, base_y - 120)
+                    tiling_next.inputs["Atlas Width"].default_value = float(chunk.get("width", 16))
+                    tiling_next.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
+                    tiling_next.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
+                    tiling_next.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
+                    links.new(max_width.outputs["Value"], tiling_next.inputs["Tile Width"])
+                    links.new(max_height.outputs["Value"], tiling_next.inputs["Tile Height"])
+                    links.new(uv_node.outputs["Next UV"], tiling_next.inputs["Vector"])
+                    next_uv_socket = tiling_next.outputs["Atlas UV"]
+                else:
+                    curr_uv_socket = uv_node.outputs["Current UV"]
+                    next_uv_socket = uv_node.outputs["Next UV"]
 
                 # Tex Current & Next
                 tex_curr = nodes.new("ShaderNodeTexImage")
@@ -373,22 +389,22 @@ def build_atlas_chunk_materials(
                 tex_curr.image = img
                 tex_curr.interpolation = "Closest"
                 tex_curr.extension = "CLIP"
-                tex_curr.location = (-550, base_y + 100)
-                links.new(uv_node.outputs["Current UV"], tex_curr.inputs["Vector"])
+                tex_curr.location = (-320, base_y + 120)
+                links.new(curr_uv_socket, tex_curr.inputs["Vector"])
 
                 tex_next = nodes.new("ShaderNodeTexImage")
                 tex_next.name = f"Tex Next ({channel_name})"
                 tex_next.image = img
                 tex_next.interpolation = "Closest"
                 tex_next.extension = "CLIP"
-                tex_next.location = (-550, base_y - 150)
-                links.new(uv_node.outputs["Next UV"], tex_next.inputs["Vector"])
+                tex_next.location = (-320, base_y - 120)
+                links.new(next_uv_socket, tex_next.inputs["Vector"])
 
                 # Frame Blend
                 blend_node = nodes.new("ShaderNodeGroup")
                 blend_node.node_tree = templates["MC_Animated_Frame_Blend"]
                 blend_node.name = f"Frame Blend ({channel_name})"
-                blend_node.location = (-300, base_y)
+                blend_node.location = (-60, base_y)
 
                 links.new(tex_curr.outputs["Color"], blend_node.inputs["Current Color"])
                 links.new(tex_next.outputs["Color"], blend_node.inputs["Next Color"])
