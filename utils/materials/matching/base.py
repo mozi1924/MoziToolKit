@@ -132,11 +132,6 @@ class ImporterAdapter(ABC):
         """Return True if this material slot should be skipped/retained without replacement."""
         return False
 
-    @property
-    def requires_block_unmerge(self) -> bool:
-        """Whether meshes from this format require block unmerge preprocessing."""
-        return False
-
 
 @dataclass(frozen=True)
 class MaterialMatchPreset:

@@ -17,6 +17,15 @@ try:
         is_hard_edge,
     )
 
+    from .subdivide import (
+        subdivide_quad_face,
+        cleanup_mesh_topology,
+    )
+
+    from .random_extrude import (
+        process_random_extrude,
+    )
+
     from .uv import (
         UVBounds,
         get_face_uv_bounds,
@@ -26,19 +35,7 @@ try:
         detect_face_uv_rotation,
         straighten_face_uv,
         process_mesh_uv_rotations,
-    )
-
-    from .random_extrude import (
-        process_random_extrude,
-    )
-
-    from .block_unmerge import (
-        fast_unmerge_block_quads,
-    )
-
-    from .subdivide import (
-        subdivide_quad_face,
-        cleanup_mesh_topology,
+        normalize_face_uv_for_atlas_tiling,
     )
 except ImportError:
     pass
@@ -63,8 +60,8 @@ __all__ = [
     "detect_face_uv_rotation",
     "straighten_face_uv",
     "process_mesh_uv_rotations",
+    "normalize_face_uv_for_atlas_tiling",
     "process_random_extrude",
-    "fast_unmerge_block_quads",
     "subdivide_quad_face",
     "cleanup_mesh_topology",
 ]

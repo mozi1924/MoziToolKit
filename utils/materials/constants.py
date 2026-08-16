@@ -36,6 +36,11 @@ ATTR_ANIM_FRAME_HEIGHT = "mtk_anim_frame_height"
 
 # Atlas UV Rotation Mesh Attribute (Euler Z rotation in radians)
 ATTR_UV_ROTATION = "mtk_uv_rotation"
+# Per-face affine UV data used by the Atlas tiling shader.  Before a source
+# UV is baked into an atlas cell it is normalized to 0..1; these attributes
+# reconstruct its original local coordinate (including jmc2obj merged faces).
+ATTR_UV_TILING_SCALE = "mtk_uv_tiling_scale"
+ATTR_UV_TILING_LOCATION = "mtk_uv_tiling_location"
 
 # Known Block Texture Suffixes
 TEXTURE_SUFFIXES = (

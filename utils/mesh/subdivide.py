@@ -101,12 +101,14 @@ def subdivide_quad_face(
     mat_idx = face.material_index
     smooth = face.smooth
 
-    # 0. Extract face custom attributes (Int, Float, String layers)
+    # 0. Extract face custom attributes (Int, Float, Vector, String layers)
     face_float_layers = list(bm.faces.layers.float)
+    face_vector_layers = list(bm.faces.layers.float_vector)
     face_int_layers = list(bm.faces.layers.int)
     face_string_layers = list(bm.faces.layers.string)
 
     face_floats = {l: face[l] for l in face_float_layers}
+    face_vectors = {l: Vector(face[l]) for l in face_vector_layers}
     face_ints = {l: face[l] for l in face_int_layers}
     face_strings = {l: face[l] for l in face_string_layers}
 
@@ -222,6 +224,8 @@ def subdivide_quad_face(
 
                 # Transfer face custom attributes (atlas_chunk_id, atlas_texture_id, provenance, etc.)
                 for l, val in face_floats.items():
+                    sub_face[l] = val
+                for l, val in face_vectors.items():
                     sub_face[l] = val
                 for l, val in face_ints.items():
                     sub_face[l] = val

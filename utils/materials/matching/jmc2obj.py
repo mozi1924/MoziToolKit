@@ -189,7 +189,3 @@ class Jmc2objAdapter(ImporterAdapter):
 
     def extract_keys(self, mat: bpy.types.Material) -> tuple[str, list[str]]:
         return jmc2obj_texture_candidates(mat)
-
-    @property
-    def requires_block_unmerge(self) -> bool:
-        return True

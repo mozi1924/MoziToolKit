@@ -1,6 +1,5 @@
 import bpy
 from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
-from ..operators.mesh.op_unmerge_block_faces import MOZI_OT_unmerge_block_faces
 from ..operators.object.op_texture_interpolation import MOZI_OT_set_texture_interpolation_closest
 from ..operators.mesh.op_clear_custom_normals import MOZI_OT_clear_custom_normals
 from ..operators.object.op_replace_material import MOZI_OT_replace_material
@@ -13,7 +12,6 @@ class MOZI_MT_object_menu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator(MOZI_OT_replace_material.bl_idname)
-        layout.operator(MOZI_OT_unmerge_block_faces.bl_idname)
         layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
         layout.operator(MOZI_OT_set_texture_interpolation_closest.bl_idname)
         layout.operator(MOZI_OT_clear_custom_normals.bl_idname)

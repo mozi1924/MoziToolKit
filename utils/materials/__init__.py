@@ -19,6 +19,8 @@ from .constants import (
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
     ATTR_UV_ROTATION,
+    ATTR_UV_TILING_SCALE,
+    ATTR_UV_TILING_LOCATION,
     PROVENANCE_SCHEMA_VERSION,
     FACE_ORDER,
     ATLAS_FORMAT_VERSION,
@@ -219,6 +221,10 @@ __all__ = [
     "remap_uv_to_local",
     "remap_local_to_target_uv",
     "remap_uv_coordinate",
+
+    # Atlas UV tiling attributes
+    "ATTR_UV_TILING_SCALE",
+    "ATTR_UV_TILING_LOCATION",
 
     # Atlas Generator & Builder
     "AtlasGenerator",
