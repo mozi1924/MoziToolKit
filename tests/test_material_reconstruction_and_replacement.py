@@ -119,6 +119,14 @@ class TestMaterialModeDetection(unittest.TestCase):
         self.assertEqual(detect_material_mode(mat_chunk), "ATLAS_CHUNK")
         self.assertTrue(is_mozi_material(mat_chunk))
 
+        # A user naming a material with the historical prefix must not make
+        # it a Mozi material.  New output uses an explicit ownership marker.
+        user_mat = bpy.data.materials.new("mtk:artist_material")
+        self.assertEqual(detect_material_mode(user_mat), "GENERIC")
+        self.assertFalse(is_mozi_material(user_mat))
+        user_mat["mtk:created_by"] = "MoziToolKit"
+        self.assertTrue(is_mozi_material(user_mat))
+
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestCrossModeMaterialReplacement(unittest.TestCase):
@@ -196,6 +204,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertEqual(detect_material_mode(self.cube.material_slots[0].material), "ATLAS_CHUNK")
         self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
         self.assertIn("mtk_atlas_texture_id", self.cube.data.attributes)
+        self.assertIn("mtk:atlas_mapping", self.cube.data)
+        self.assertEqual(self.cube.data["mtk:created_by"], "MoziToolKit")
 
         # Verify UVs moved into Atlas cells
         uv_layer = self.cube.data.uv_layers.active

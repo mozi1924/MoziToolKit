@@ -15,6 +15,8 @@ PROP_MATERIAL_ID = "mtk:material_id"
 PROP_ATLAS_CHUNK_ID = "mtk:atlas_chunk_id"
 PROP_ATLAS_CHUNK_KIND = "mtk:atlas_chunk_kind"
 PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
+PROP_CREATED_BY = "mtk:created_by"
+PROP_PROVENANCE_SCHEMA_VERSION = "mtk:provenance_schema_version"
 
 # Atlas Mesh Attribute Names (Namespaced with mtk_)
 ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"

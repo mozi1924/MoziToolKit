@@ -20,6 +20,8 @@ try:
         extract_material_texture_keys,
         detect_material_mode,
         get_atlas_mapping_from_material,
+        get_atlas_mapping_from_mesh,
+        write_provenance_schema,
         extract_face_texture_info,
         canonical_texture_key,
         split_texture_key,
@@ -56,6 +58,8 @@ except (ImportError, ValueError):
         extract_material_texture_keys,
         detect_material_mode,
         get_atlas_mapping_from_material,
+        get_atlas_mapping_from_mesh,
+        write_provenance_schema,
         extract_face_texture_info,
         canonical_texture_key,
         split_texture_key,
@@ -116,6 +120,7 @@ def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: Zi
     mat["mtk:material_id"] = f"{namespace}:{texture_name}"
     mat["mtk:pack_hash"] = full_hash
     mat["mtk:pack_hash_short"] = full_hash[:12]
+    write_provenance_schema(mat)
 
 
 def find_existing_replacement(texture_info: dict, pack: ZipResourcePack) -> bpy.types.Material | None:
@@ -152,6 +157,11 @@ def apply_mesh_face_materials_and_provenance(
         for poly_idx, mat in enumerate(face_materials):
             if mat is not None:
                 mesh.polygons[poly_idx].material_index = mat_slots[mat]
+            else:
+                # Clearing slots invalidates every prior index.  A face with
+                # no replacement must point at a valid slot rather than a
+                # dangling material index.
+                mesh.polygons[poly_idx].material_index = 0
 
     write_face_source_provenance(mesh, source_keys, source_origins)
 
@@ -223,6 +233,32 @@ class StepReplaceMaterial(PipelineStep):
             yield StepResult.failed("No valid mesh objects with material slots found.")
             return
 
+        # The legacy unified-atlas builder does not record a per-face chunk
+        # and texture location.  Its UVs therefore cannot be inverted safely;
+        # fail loudly instead of reporting a successful no-op or corrupting UVs.
+        for obj in valid_objects:
+            mesh = obj.data
+            chunk_attr = mesh.attributes.get(ATTR_ATLAS_CHUNK_ID)
+            texture_attr = mesh.attributes.get(ATTR_ATLAS_TEXTURE_ID)
+            for poly_idx, poly in enumerate(mesh.polygons):
+                if poly.material_index >= len(obj.material_slots):
+                    continue
+                mat = obj.material_slots[poly.material_index].material
+                if detect_material_mode(mat) != "ATLAS_UNIFIED":
+                    continue
+                has_location = (
+                    chunk_attr and texture_attr
+                    and poly_idx < len(chunk_attr.data) and poly_idx < len(texture_attr.data)
+                    and chunk_attr.data[poly_idx].value >= 0
+                    and texture_attr.data[poly_idx].value >= 0
+                )
+                if not has_location:
+                    yield StepResult.failed(
+                        "Unified Atlas material lacks per-face provenance and cannot be converted safely. "
+                        "Rebuild it as Atlas Chunk material first."
+                    )
+                    return
+
         if material_mode == "ATLAS":
             yield from self._execute_atlas_mode_iter(pipeline_context, pack, valid_objects, pack_textures)
         else:
@@ -246,8 +282,11 @@ class StepReplaceMaterial(PipelineStep):
         if mapping_path.exists():
             try:
                 with open(mapping_path, "r", encoding="utf-8") as fp:
+                    cached_mapping = json.load(fp)
                     cache_is_current = (
-                        json.load(fp).get("format_version") == ATLAS_FORMAT_VERSION
+                        cached_mapping.get("format_version") == ATLAS_FORMAT_VERSION
+                        and bool(cached_mapping.get("chunks"))
+                        and bool(cached_mapping.get("textures"))
                     )
             except (OSError, json.JSONDecodeError):
                 cache_is_current = False
@@ -276,6 +315,12 @@ class StepReplaceMaterial(PipelineStep):
 
         with open(mapping_path, "r", encoding="utf-8") as fp:
             mapping_data = json.load(fp)
+
+        if not mapping_data.get("chunks") or not mapping_data.get("textures"):
+            yield StepResult.failed(
+                "Atlas generation produced no usable texture chunks. Check the resource pack and Pillow installation."
+            )
+            return
 
         texture_map = {}
         for name, location in mapping_data.get("textures", {}).items():
@@ -416,7 +461,10 @@ class StepReplaceMaterial(PipelineStep):
             old_mappings = {}
             for slot in obj.material_slots:
                 if slot.material and slot.material not in old_mappings:
-                    old_mappings[slot.material] = get_atlas_mapping_from_material(slot.material)
+                    old_mappings[slot.material] = (
+                        get_atlas_mapping_from_material(slot.material)
+                        or get_atlas_mapping_from_mesh(mesh)
+                    )
 
             for poly_idx, poly in enumerate(mesh.polygons):
                 if poly.material_index >= len(obj.material_slots):
@@ -497,6 +545,13 @@ class StepReplaceMaterial(PipelineStep):
                     "INFO",
                     f"'{obj.name}': retained {len(skipped_faces)} Ice Cube internal face(s)."
                 )
+
+            if unresolved_faces:
+                pipeline_context.report(
+                    "WARNING",
+                    f"'{obj.name}' was left unchanged: {len(unresolved_faces)} face(s) could not be matched exactly."
+                )
+                continue
 
             if poly_updated:
                 if uv_layer is not None:
@@ -630,6 +685,8 @@ class StepReplaceMaterial(PipelineStep):
                         face_materials[poly_idx] = st_res[0]
 
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
+                mesh["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
+                write_provenance_schema(mesh)
 
                 for prop in (
                     "mtk_anim_total_frames", "mtk_anim_frametime",
@@ -702,7 +759,10 @@ class StepReplaceMaterial(PipelineStep):
             old_mappings = {}
             for slot in obj.material_slots:
                 if slot.material and slot.material not in old_mappings:
-                    old_mappings[slot.material] = get_atlas_mapping_from_material(slot.material)
+                    old_mappings[slot.material] = (
+                        get_atlas_mapping_from_material(slot.material)
+                        or get_atlas_mapping_from_mesh(mesh)
+                    )
 
             resolved_faces = []
             unresolved_faces = []

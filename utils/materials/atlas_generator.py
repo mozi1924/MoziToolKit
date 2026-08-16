@@ -86,6 +86,10 @@ class AtlasGenerator:
 
     def load_resources(self):
         """Load PNG images, mcmeta animation data, and block models from source."""
+        # Pillow 12 can defer decoder registration until its first open.  In
+        # Blender 5.2 that first open may fail after mesh creation; eagerly
+        # initialize plugins before touching a resource pack.
+        Image.init()
         if not self.resource_path.exists():
             raise FileNotFoundError(f"Resource path not found: {self.resource_path}")
 
@@ -342,6 +346,7 @@ class AtlasGenerator:
         """
         if not HAS_PIL:
             raise ImportError("Pillow library is required for AtlasGenerator. Please install it using 'pip install pillow'.")
+        Image.init()
         from collections import Counter
 
         yield (0.05, "Reading textures and models from resource pack...", None)
