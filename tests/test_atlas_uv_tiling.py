@@ -1,13 +1,14 @@
 """Unit tests for MC_Atlas_UV_Tiling node group."""
 
 import unittest
+import math
 import bpy
 import bmesh
 from mathutils import Vector
 
 from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling, ATLAS_UV_TILING_VERSION
 from utils.materials.constants import ATTR_UV_TILING_LOCATION, ATTR_UV_TILING_SCALE
-from utils.mesh import normalize_face_uv_for_atlas_tiling
+from utils.mesh import normalize_face_uv_for_atlas_tiling, restore_atlas_tiling_uv
 
 
 class TestAtlasUVTiling(unittest.TestCase):
@@ -40,10 +41,7 @@ class TestAtlasUVTiling(unittest.TestCase):
             # before FRACT keeps the sample inside the assigned Atlas cell.
             for loop_index, expected in zip(poly.loop_indices, original):
                 uv = mesh.uv_layers.active.data[loop_index].uv
-                restored = (
-                    scale[0] * (uv.x - 0.5) + location[0] + 0.5,
-                    scale[1] * (uv.y - 0.5) + location[1] + 0.5,
-                )
+                restored = restore_atlas_tiling_uv(uv.x, uv.y, scale, location)
                 self.assertAlmostEqual(restored[0], expected[0])
                 self.assertAlmostEqual(restored[1], expected[1])
                 self.assertGreaterEqual(uv.x, 0.0)
@@ -52,6 +50,19 @@ class TestAtlasUVTiling(unittest.TestCase):
                 self.assertLessEqual(uv.y, 1.0)
         finally:
             bpy.data.meshes.remove(mesh)
+
+    def test_standalone_restore_bakes_atlas_tiling_rotation(self):
+        """The standalone fallback must reproduce the Atlas node transform."""
+        # This is jmc2obj's south-west liquid corner: the Atlas mesh stores
+        # (0, 0), while the shader rotates it by 45° around UV center.
+        u, v = restore_atlas_tiling_uv(0.0, 0.0, rotation=math.pi / 4.0)
+        self.assertAlmostEqual(u, 0.5, places=6)
+        self.assertAlmostEqual(v, 0.5 - math.sqrt(0.5), places=6)
+
+        # A merged 3 x 2 face additionally restores its source offset.
+        u, v = restore_atlas_tiling_uv(1.0, 1.0, (3.0, 2.0, 1.0), (-1.0, -0.5, 0.0))
+        self.assertAlmostEqual(u, 1.0, places=6)
+        self.assertAlmostEqual(v, 1.0, places=6)
 
     def test_atlas_uv_tiling_group_creation(self):
         group = ensure_atlas_uv_tiling()

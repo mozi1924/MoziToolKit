@@ -193,7 +193,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         }
         res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_atlas, target_objects=[self.cube])
         self.assertTrue(res2.is_success, f"res2 failed: {res2.message} - reports: {ctx2.reports}")
-        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:atlas_chunk_"))
+        self.assertEqual(detect_material_mode(self.cube.material_slots[0].material), "ATLAS_CHUNK")
         self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
         self.assertIn("mtk_atlas_texture_id", self.cube.data.attributes)
 
@@ -300,7 +300,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         face_material = self.cube.material_slots[self.cube.data.polygons[0].material_index].material
         self.assertIs(face_material, internal)
         self.assertTrue(any(
-            slot.material and slot.material.name.startswith("mtk:minecraft:atlas_chunk_")
+            slot.material and detect_material_mode(slot.material) == "ATLAS_CHUNK"
             for slot in self.cube.material_slots
         ))
 
@@ -503,7 +503,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         }
         res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_at, target_objects=[self.cube])
         self.assertTrue(res2.is_success, ctx2.reports)
-        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:atlas_chunk_"))
+        self.assertEqual(detect_material_mode(self.cube.material_slots[0].material), "ATLAS_CHUNK")
 
         # 3. Standalone Replace back
         res3, ctx3 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])

@@ -33,7 +33,9 @@ try:
         build_atlas_chunk_materials,
         remap_uv_coordinate,
         remap_uv_to_local,
+        remap_local_to_target_uv,
         get_material_animation_info,
+        get_texture_info_animation_info,
         ATTR_ATLAS_CHUNK_ID,
         ATTR_ATLAS_TEXTURE_ID,
         ATTR_FACE_MATERIAL_ID,
@@ -42,7 +44,7 @@ try:
         ATTR_UV_TILING_LOCATION,
     )
     from ...utils.system import has_pillow
-    from ...utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling
+    from ...utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling, restore_atlas_tiling_uv
 except (ImportError, ValueError):
     from utils.materials import (
         ZipResourcePack,
@@ -64,6 +66,7 @@ except (ImportError, ValueError):
         build_atlas_chunk_materials,
         remap_uv_coordinate,
         remap_uv_to_local,
+        remap_local_to_target_uv,
         get_material_animation_info,
         get_texture_info_animation_info,
         ATTR_ATLAS_CHUNK_ID,
@@ -74,7 +77,7 @@ except (ImportError, ValueError):
         ATTR_UV_TILING_LOCATION,
     )
     from utils.system import has_pillow
-    from utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling
+    from utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling, restore_atlas_tiling_uv
 
 
 ANIM_AND_ATLAS_ATTR_NAMES = (
@@ -633,6 +636,24 @@ class StepReplaceMaterial(PipelineStep):
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
+            def face_vector_attribute_value(name, poly_idx, default):
+                attr = mesh.attributes.get(name)
+                if (
+                    attr and attr.domain == "FACE" and attr.data_type == "FLOAT_VECTOR"
+                    and poly_idx < len(attr.data)
+                ):
+                    return tuple(attr.data[poly_idx].vector)
+                return default
+
+            def face_float_attribute_value(name, poly_idx, default=0.0):
+                attr = mesh.attributes.get(name)
+                if (
+                    attr and attr.domain == "FACE" and attr.data_type == "FLOAT"
+                    and poly_idx < len(attr.data)
+                ):
+                    return float(attr.data[poly_idx].value)
+                return default
+
             old_mappings = {}
             for slot in obj.material_slots:
                 if slot.material and slot.material not in old_mappings:
@@ -736,15 +757,39 @@ class StepReplaceMaterial(PipelineStep):
                     target_anim_info = get_texture_info_animation_info(tex_info) or get_material_animation_info(mat)
 
                     polygon = mesh.polygons[poly_idx]
-                    remap_polygon_loop_uvs(
-                        polygon=polygon,
-                        uv_layer=uv_layer,
-                        orig_mode=orig_mode,
-                        old_loc=old_loc,
-                        old_chunk=old_chunk,
-                        old_anim_info=old_anim_info,
-                        target_anim_info=target_anim_info,
-                    )
+                    if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
+                        # Atlas mesh UVs are deliberately normalized to one
+                        # cell. Bake the same scale/location/rotation used by
+                        # MC_Atlas_UV_Tiling before switching to a material
+                        # that no longer contains that shader node.
+                        tiling_scale = face_vector_attribute_value(
+                            ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)
+                        )
+                        tiling_location = face_vector_attribute_value(
+                            ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)
+                        )
+                        tiling_rotation = face_float_attribute_value(ATTR_UV_ROTATION, poly_idx)
+                        for loop_index in polygon.loop_indices:
+                            uv = uv_layer.data[loop_index].uv
+                            local_u, local_v = remap_uv_to_local(
+                                uv.x, uv.y, orig_mode, old_loc, old_chunk, old_anim_info
+                            )
+                            local_u, local_v = restore_atlas_tiling_uv(
+                                local_u, local_v, tiling_scale, tiling_location, tiling_rotation
+                            )
+                            uv.x, uv.y = remap_local_to_target_uv(
+                                local_u, local_v, target_anim_info=target_anim_info
+                            )
+                    else:
+                        remap_polygon_loop_uvs(
+                            polygon=polygon,
+                            uv_layer=uv_layer,
+                            orig_mode=orig_mode,
+                            old_loc=old_loc,
+                            old_chunk=old_chunk,
+                            old_anim_info=old_anim_info,
+                            target_anim_info=target_anim_info,
+                        )
 
             if poly_modified:
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
