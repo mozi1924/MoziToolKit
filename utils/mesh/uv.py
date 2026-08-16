@@ -20,6 +20,7 @@ from .uv_rotation import (
     straighten_face_uv,
     process_mesh_uv_rotations,
     normalize_face_uv_for_atlas_tiling,
+    restore_atlas_tiling_uv,
 )
 
 

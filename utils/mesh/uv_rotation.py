@@ -160,3 +160,28 @@ def normalize_face_uv_for_atlas_tiling(polygon, uv_layer, epsilon: float = 1e-6)
         (safe_span_u, safe_span_v, 1.0),
         (min_u + (safe_span_u - 1.0) * 0.5, min_v + (safe_span_v - 1.0) * 0.5, 0.0),
     )
+
+
+def restore_atlas_tiling_uv(
+    u: float,
+    v: float,
+    scale: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    location: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    rotation: float = 0.0,
+) -> Tuple[float, float]:
+    """Apply the Atlas tiling node's affine mapping to normalized local UV.
+
+    Atlas meshes store UVs normalized to one atlas cell.  The shader restores
+    the original jmc2obj tiled/rotated coordinate before wrapping it.  When
+    converting back to Standalone, the same transform must be baked into the
+    mesh UVs because Standalone materials do not include the atlas tiling node.
+    """
+    sx, sy = float(scale[0]), float(scale[1])
+    lx, ly = float(location[0]), float(location[1])
+    x = sx * (float(u) - 0.5)
+    y = sy * (float(v) - 0.5)
+    if abs(rotation) > 1e-8:
+        cos_t = math.cos(rotation)
+        sin_t = math.sin(rotation)
+        x, y = x * cos_t - y * sin_t, x * sin_t + y * cos_t
+    return x + lx + 0.5, y + ly + 0.5
