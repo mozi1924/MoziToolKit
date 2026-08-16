@@ -34,6 +34,9 @@ try:
         remap_uv_coordinate,
         get_material_animation_info,
         get_texture_info_animation_info,
+        ATTR_ATLAS_CHUNK_ID,
+        ATTR_ATLAS_TEXTURE_ID,
+        ATTR_FACE_MATERIAL_ID,
     )
     from ...utils.system import has_pillow
     from ...utils.mesh import fast_unmerge_block_quads
@@ -59,14 +62,21 @@ except (ImportError, ValueError):
         remap_uv_coordinate,
         get_material_animation_info,
         get_texture_info_animation_info,
+        ATTR_ATLAS_CHUNK_ID,
+        ATTR_ATLAS_TEXTURE_ID,
+        ATTR_FACE_MATERIAL_ID,
     )
     from utils.system import has_pillow
     from utils.mesh import fast_unmerge_block_quads
 
 
 ANIM_AND_ATLAS_ATTR_NAMES = (
+    ATTR_ATLAS_CHUNK_ID,
+    ATTR_ATLAS_TEXTURE_ID,
+    ATTR_FACE_MATERIAL_ID,
     "atlas_chunk_id",
     "atlas_texture_id",
+    "material_id",
     "mtk_anim_total_frames",
     "mtk_anim_frametime",
     "mtk_anim_interpolate",
@@ -447,8 +457,8 @@ class StepReplaceMaterial(PipelineStep):
 
             if poly_updated:
                 for attr_name, data in (
-                    ("atlas_chunk_id", chunk_ids),
-                    ("atlas_texture_id", texture_ids),
+                    (ATTR_ATLAS_CHUNK_ID, chunk_ids),
+                    (ATTR_ATLAS_TEXTURE_ID, texture_ids),
                     ("mtk_anim_total_frames", anim_frames),
                     ("mtk_anim_frametime", anim_frametimes),
                     ("mtk_anim_interpolate", anim_interps),

@@ -16,10 +16,10 @@ PROP_ATLAS_CHUNK_ID = "mtk:atlas_chunk_id"
 PROP_ATLAS_CHUNK_KIND = "mtk:atlas_chunk_kind"
 PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 
-# Atlas Mesh Attribute Names
-ATTR_ATLAS_CHUNK_ID = "atlas_chunk_id"
-ATTR_ATLAS_TEXTURE_ID = "atlas_texture_id"
-ATTR_FACE_MATERIAL_ID = "material_id"
+# Atlas Mesh Attribute Names (Namespaced with mtk_)
+ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
+ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
+ATTR_FACE_MATERIAL_ID = "mtk_material_id"
 # Canonical source provenance.  These are FACE-domain string attributes so a
 # mesh can retain one source texture identity per polygon even when several
 # polygons share the same Blender material (as happens in atlas mode).

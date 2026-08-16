@@ -197,11 +197,25 @@ class ZipResourcePack:
             self.extract_dir.mkdir(parents=True, exist_ok=True)
             print(f"[MoziToolKit] Extracting resource pack to {self.extract_dir}")
             with zipfile.ZipFile(self.zip_path, 'r') as zf:
-                zf.extractall(self.extract_dir)
+                self._safe_extract(zf, self.extract_dir)
             with open(marker_file, 'w', encoding='utf-8') as f:
                 f.write("OK")
 
         self._build_index()
+
+    @staticmethod
+    def _safe_extract(zf: zipfile.ZipFile, target_dir: Path) -> None:
+        """Safely extract all members from a zip archive, preventing zip-slip path traversal."""
+        resolved_target = target_dir.resolve()
+        for member in zf.infolist():
+            member_path = (target_dir / member.filename).resolve()
+            try:
+                member_path.relative_to(resolved_target)
+            except ValueError:
+                raise ValueError(
+                    f"Malicious zip archive entry detected (zip-slip path traversal): '{member.filename}'"
+                )
+        zf.extractall(target_dir)
 
     def _build_index(self):
         """Index block, item, entity, and misc textures and their matching .mcmeta files."""

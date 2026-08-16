@@ -238,9 +238,9 @@ class TestAdaptivePixelSplit(unittest.TestCase):
         bm.from_mesh(cube.data)
         bm.faces.ensure_lookup_table()
         uv_layer = bm.loops.layers.uv.verify()
-        chunk_layer = bm.faces.layers.int.new("atlas_chunk_id")
-        tex_layer = bm.faces.layers.int.new("atlas_texture_id")
-        mat_layer = bm.faces.layers.int.new("material_id")
+        chunk_layer = bm.faces.layers.int.new("mtk_atlas_chunk_id")
+        tex_layer = bm.faces.layers.int.new("mtk_atlas_texture_id")
+        mat_layer = bm.faces.layers.int.new("mtk_material_id")
 
         # Tile (col=1, row=2) on 1024x1024 atlas (each tile is 16px -> 16/1024 = 0.015625)
         u_min = 1 * 16.0 / 1024.0
@@ -270,9 +270,9 @@ class TestAdaptivePixelSplit(unittest.TestCase):
         # Verify attribute preservation across all sub-faces
         bm_check = bmesh.new()
         bm_check.from_mesh(cube.data)
-        chunk_layer = bm_check.faces.layers.int.get("atlas_chunk_id")
-        tex_layer = bm_check.faces.layers.int.get("atlas_texture_id")
-        mat_layer = bm_check.faces.layers.int.get("material_id")
+        chunk_layer = bm_check.faces.layers.int.get("mtk_atlas_chunk_id")
+        tex_layer = bm_check.faces.layers.int.get("mtk_atlas_texture_id")
+        mat_layer = bm_check.faces.layers.int.get("mtk_material_id")
 
         self.assertIsNotNone(chunk_layer)
         self.assertIsNotNone(tex_layer)

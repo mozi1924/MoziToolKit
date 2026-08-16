@@ -194,8 +194,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_atlas, target_objects=[self.cube])
         self.assertTrue(res2.is_success, f"res2 failed: {res2.message} - reports: {ctx2.reports}")
         self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:atlas_chunk_"))
-        self.assertIn("atlas_chunk_id", self.cube.data.attributes)
-        self.assertIn("atlas_texture_id", self.cube.data.attributes)
+        self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
+        self.assertIn("mtk_atlas_texture_id", self.cube.data.attributes)
 
         # Verify UVs moved into Atlas cells
         uv_layer = self.cube.data.uv_layers.active
@@ -209,8 +209,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:stone"))
 
         # Verify attributes cleaned up
-        self.assertNotIn("atlas_chunk_id", self.cube.data.attributes)
-        self.assertNotIn("atlas_texture_id", self.cube.data.attributes)
+        self.assertNotIn("mtk_atlas_chunk_id", self.cube.data.attributes)
+        self.assertNotIn("mtk_atlas_texture_id", self.cube.data.attributes)
 
         # Verify UVs restored back to original [0, 1] UV space!
         restored_uv_coords = [(item.uv.x, item.uv.y) for item in uv_layer.data]

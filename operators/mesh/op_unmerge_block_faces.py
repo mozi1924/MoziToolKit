@@ -24,7 +24,7 @@ class MOZI_OT_unmerge_block_faces(bpy.types.Operator):
         return poll_mesh_object(context)
 
     def execute(self, context):
-        initial_mode = context.mode
+        initial_mode = context.active_object.mode if context.active_object else "OBJECT"
         target_objs = [o for o in context.selected_objects if o.type == 'MESH' and o.data]
         if not target_objs and context.active_object and context.active_object.type == 'MESH':
             target_objs = [context.active_object]
@@ -39,13 +39,17 @@ class MOZI_OT_unmerge_block_faces(bpy.types.Operator):
         total_large = 0
         total_sub = 0
 
-        for obj in target_objs:
-            large, sub = fast_unmerge_block_quads(obj.data, uv_span_threshold=self.uv_span_threshold)
-            total_large += large
-            total_sub += sub
-
-        if initial_mode != "OBJECT":
-            bpy.ops.object.mode_set(mode=initial_mode)
+        try:
+            for obj in target_objs:
+                large, sub = fast_unmerge_block_quads(obj.data, uv_span_threshold=self.uv_span_threshold)
+                total_large += large
+                total_sub += sub
+        finally:
+            if initial_mode != "OBJECT":
+                try:
+                    bpy.ops.object.mode_set(mode=initial_mode)
+                except Exception:
+                    pass
 
         if total_large == 0:
             self.report({'INFO'}, "No multi-block consolidated faces detected.")

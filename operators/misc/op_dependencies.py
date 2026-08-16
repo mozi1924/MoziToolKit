@@ -4,14 +4,24 @@ Operators for dependency management and preferences navigation.
 
 import bpy
 from bpy.props import BoolProperty, StringProperty
-from ...utils.system import (
-    DEPENDENCIES,
-    ensure_sys_paths,
-    get_all_dependency_statuses,
-    install_package,
-    uninstall_package,
-    get_prefs,
-)
+try:
+    from ...utils.system import (
+        DEPENDENCIES,
+        ensure_sys_paths,
+        get_all_dependency_statuses,
+        install_package,
+        uninstall_package,
+        get_prefs,
+    )
+except (ImportError, ValueError):
+    from utils.system import (
+        DEPENDENCIES,
+        ensure_sys_paths,
+        get_all_dependency_statuses,
+        install_package,
+        uninstall_package,
+        get_prefs,
+    )
 
 
 def refresh_ui_windows(context=None):
@@ -127,6 +137,17 @@ class MOZI_OT_uninstall_dependency(bpy.types.Operator):
 
     package_name: StringProperty(name="Package Name", default="Pillow")
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=400)
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column(align=True)
+        col.label(text=f"Uninstall '{self.package_name}' from Blender Python?", icon="QUESTION")
+        col.separator()
+        col.label(text="Warning: This package is in Blender's shared environment.", icon="ERROR")
+        col.label(text="Uninstalling it may affect other add-ons that depend on it.")
+
     def execute(self, context):
         prefs = get_prefs(context)
         self.report({"INFO"}, f"Uninstalling '{self.package_name}'... Please wait.")
@@ -152,6 +173,17 @@ class MOZI_OT_uninstall_all_dependencies(bpy.types.Operator):
     bl_idname = "mozi.uninstall_all_dependencies"
     bl_label = "Uninstall All Dependencies"
     bl_options = {"REGISTER", "INTERNAL"}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=420)
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column(align=True)
+        col.label(text="Uninstall all MoziToolKit dependencies from Blender?", icon="QUESTION")
+        col.separator()
+        col.label(text="Warning: Packages reside in Blender's shared Python environment.", icon="ERROR")
+        col.label(text="Uninstalling may break other add-ons relying on these libraries.")
 
     def execute(self, context):
         prefs = get_prefs(context)
