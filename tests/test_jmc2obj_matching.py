@@ -128,6 +128,72 @@ class TestJmc2objMatching(unittest.TestCase):
         ns, cands = extract_material_texture_keys(mat_redstone)
         self.assertIn("block/redstone_dust_dot", cands)
 
+    def test_jmc2obj_safe_candidate_tokens_for_beds_and_signs(self):
+        # Bed must NOT contain bare color token ('red') to avoid matching llama blanket
+        mat_bed = bpy.data.materials.new(name="minecraft_entity-bed-red")
+        ns, cands = extract_material_texture_keys(mat_bed)
+        self.assertEqual(ns, "minecraft")
+        self.assertIn("entity/bed/red", cands)
+        self.assertIn("block/red_bed", cands)
+        self.assertNotIn("red", cands, "Bare color token 'red' must never be emitted for beds")
+
+        # Signs must NOT contain bare wood token ('oak') to avoid matching boat
+        mat_sign = bpy.data.materials.new(name="minecraft_entity-signs-oak")
+        ns, cands = extract_material_texture_keys(mat_sign)
+        self.assertEqual(ns, "minecraft")
+        self.assertIn("entity/signs/oak", cands)
+        self.assertIn("block/oak_planks", cands)
+        self.assertNotIn("oak", cands, "Bare wood token 'oak' must never be emitted for signs")
+
+        # Hanging signs
+        mat_h_sign = bpy.data.materials.new(name="minecraft_entity-signs-hanging-birch")
+        ns, cands = extract_material_texture_keys(mat_h_sign)
+        self.assertIn("entity/signs/hanging/birch", cands)
+        self.assertIn("block/birch_planks", cands)
+        self.assertNotIn("birch", cands)
+
+    def test_jmc2obj_semantic_alias_expansions(self):
+        # Stairs
+        mat_stairs = bpy.data.materials.new(name="minecraft_block-crimson_stairs")
+        ns, cands = extract_material_texture_keys(mat_stairs)
+        self.assertIn("block/crimson_planks", cands)
+
+        # Walls
+        mat_wall = bpy.data.materials.new(name="minecraft_block-stone_brick_wall")
+        ns, cands = extract_material_texture_keys(mat_wall)
+        self.assertIn("block/stone_bricks", cands)
+
+        # Carpets
+        mat_carpet = bpy.data.materials.new(name="minecraft_block-gray_carpet")
+        ns, cands = extract_material_texture_keys(mat_carpet)
+        self.assertIn("block/gray_wool", cands)
+
+        # 6-sided Wood
+        mat_wood = bpy.data.materials.new(name="minecraft_block-oak_wood")
+        ns, cands = extract_material_texture_keys(mat_wood)
+        self.assertIn("block/oak_log", cands)
+
+        # Waxed variant
+        mat_waxed = bpy.data.materials.new(name="minecraft_block-waxed_oxidized_cut_copper_slab")
+        ns, cands = extract_material_texture_keys(mat_waxed)
+        self.assertIn("block/oxidized_cut_copper", cands)
+
+        # Wall torch
+        mat_torch = bpy.data.materials.new(name="minecraft_block-soul_wall_torch")
+        ns, cands = extract_material_texture_keys(mat_torch)
+        self.assertIn("block/soul_torch", cands)
+
+        # Potted plant
+        mat_potted = bpy.data.materials.new(name="minecraft_block-potted_fern")
+        ns, cands = extract_material_texture_keys(mat_potted)
+        self.assertIn("block/fern", cands)
+
+        # Magma block
+        mat_magma = bpy.data.materials.new(name="minecraft_block-magma_block")
+        ns, cands = extract_material_texture_keys(mat_magma)
+        self.assertIn("block/magma", cands)
+
+
     def test_face_provenance_roundtrip(self):
         # Test mesh face provenance
         mesh = bpy.data.meshes.new("TestMesh")

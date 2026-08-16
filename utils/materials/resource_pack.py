@@ -257,9 +257,9 @@ class ZipResourcePack:
                         channel = "albedo"
 
                     base_stem = base_stem.lower()
-                    index_key = (namespace, base_stem)
-                    if index_key not in self.texture_index:
-                        self.texture_index[index_key] = {
+                    path_index_key = (namespace, texture_key)
+                    if path_index_key not in self.texture_path_index:
+                        self.texture_path_index[path_index_key] = {
                             "namespace": namespace,
                             "texture_name": base_stem,
                             # Canonical resource location survives same-name
@@ -277,10 +277,14 @@ class ZipResourcePack:
                     mcmeta_file = root_path / f"{fname}.mcmeta"
                     mcmeta_data = parse_mcmeta(mcmeta_file)
 
-                    entry = self.texture_index[index_key]
+                    entry = self.texture_path_index[path_index_key]
                     entry[channel] = full_path
                     entry[f"{channel}_mcmeta"] = mcmeta_data
-                    self.texture_path_index[(namespace, texture_key)] = entry
+
+                    # Fallback short stem index (prefer block/ over other categories for single word names)
+                    stem_index_key = (namespace, base_stem)
+                    if stem_index_key not in self.texture_index or texture_key.startswith("block/"):
+                        self.texture_index[stem_index_key] = entry
 
     def get_texture_info(self, base_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict | None:
         """
@@ -300,7 +304,8 @@ class ZipResourcePack:
                 namespace = ns_part
         elif "/" in clean_name and not clean_name.startswith("//"):
             parts = clean_name.split("/", 1)
-            if parts[0] not in ("assets", "textures", "block", "item", "entity"):
+            known_namespaces = {ns for ns, _ in self.texture_path_index.keys()}
+            if parts[0] in known_namespaces:
                 namespace = parts[0]
                 clean_name = parts[1]
 
@@ -311,6 +316,15 @@ class ZipResourcePack:
         )
         if res is not None:
             return res
+
+        # Suffix matching within the same namespace (e.g. 'signs/jungle' -> 'entity/signs/jungle', 'bed/red' -> 'entity/bed/red')
+        if "/" in clean_name:
+            suffix_matches = [
+                info for (ns, path_key), info in self.texture_path_index.items()
+                if ns == namespace and (path_key == clean_name or path_key.endswith("/" + clean_name))
+            ]
+            if suffix_matches:
+                return suffix_matches[0]
 
         # Fallback: If not found under default namespace, check if texture exists in another loaded namespace
         if namespace == DEFAULT_NAMESPACE:
@@ -327,3 +341,4 @@ class ZipResourcePack:
                 return matches[0]
 
         return None
+
