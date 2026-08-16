@@ -31,6 +31,8 @@ PROVENANCE_SCHEMA_VERSION = 1
 
 # Biome & Tint Mesh Attribute Names (Namespaced with mtk_)
 ATTR_TINT_WEIGHT = "mtk_tint_weight"
+ATTR_BASE_TINT_WEIGHT = "mtk_base_tint_weight"
+ATTR_OVERLAY_TINT_WEIGHT = "mtk_overlay_tint_weight"
 ATTR_TINT_COLOR = "mtk_tint_color"
 ATTR_TINT_TYPE = "mtk_tint_type"
 ATTR_HARDCODED_COLOR = "mtk_hardcoded_color"

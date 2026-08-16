@@ -27,6 +27,8 @@ from utils.materials.biome import (
 )
 from utils.materials.constants import (
     ATTR_TINT_WEIGHT,
+    ATTR_BASE_TINT_WEIGHT,
+    ATTR_OVERLAY_TINT_WEIGHT,
     ATTR_TINT_COLOR,
     ATTR_HARDCODED_COLOR,
     ATTR_USE_HARDCODED,
@@ -121,6 +123,15 @@ class TestBiomeResolver(unittest.TestCase):
     def test_overlay_detection(self):
         overlay = self.resolver.get_overlay_texture("grass_block_side")
         self.assertEqual(overlay, "grass_block_side_overlay")
+
+        # Check tint info on grass_block_side: face is tinted (1.0), base is untinted (0.0), overlay is tinted (1.0)
+        info_side = self.resolver.get_tint_info("grass_block_side")
+        self.assertEqual(info_side["tint_type"], TINT_TYPE_GRASS)
+        self.assertEqual(info_side["tint_weight"], 1.0)
+        self.assertEqual(info_side["base_tint_weight"], 0.0)
+        self.assertEqual(info_side["overlay_tint_weight"], 1.0)
+        self.assertTrue(info_side["has_overlay"])
+        self.assertEqual(info_side["overlay_texture"], "grass_block_side_overlay")
 
         no_overlay = self.resolver.get_overlay_texture("stone")
         self.assertIsNone(no_overlay)
@@ -291,3 +302,34 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         self.assertAlmostEqual(actual_col[0], expected_r, places=2)
         self.assertAlmostEqual(actual_col[1], expected_g, places=2)
         self.assertAlmostEqual(actual_col[2], expected_b, places=2)
+
+    def test_overlay_face_pipeline(self):
+        # Change initial material to grass_block_side
+        mat_side = bpy.data.materials.new("grass_block_side")
+        mat_side.use_nodes = True
+        self.obj.data.materials.clear()
+        self.obj.data.materials.append(mat_side)
+
+        params = {
+            "zip_path": str(self.zip_path),
+            "material_mode": "STANDALONE",
+            "biome_preset": "PLAINS",
+            "pack_textures": False,
+            "use_cache": False,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
+        self.assertTrue(res.is_success, msg=res.message)
+
+        mesh = self.obj.data
+        tw_attr = mesh.attributes.get(ATTR_TINT_WEIGHT)
+        base_tw_attr = mesh.attributes.get(ATTR_BASE_TINT_WEIGHT)
+        overlay_tw_attr = mesh.attributes.get(ATTR_OVERLAY_TINT_WEIGHT)
+
+        self.assertIsNotNone(tw_attr)
+        self.assertIsNotNone(base_tw_attr)
+        self.assertIsNotNone(overlay_tw_attr)
+
+        # For grass_block_side: tint_weight=1.0, base_tint_weight=0.0 (dirt not tinted), overlay_tint_weight=1.0 (grass fringe tinted)
+        self.assertAlmostEqual(tw_attr.data[0].value, 1.0, places=2)
+        self.assertAlmostEqual(base_tw_attr.data[0].value, 0.0, places=2)
+        self.assertAlmostEqual(overlay_tw_attr.data[0].value, 1.0, places=2)
