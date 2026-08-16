@@ -7,6 +7,7 @@ try:
         ensure_animation_scheduler,
     )
     from .atlas_uv_tiling import ensure_atlas_uv_tiling
+    from .biome import ensure_biome_tint, ensure_colormap_sampler
     from .labpbr import LABPBR_GROUP_NAME, LABPBR_TEMPLATE_VERSION, ensure_labpbr_decoder
 
     def ensure_all_templates():
@@ -17,6 +18,8 @@ try:
             "MC_Animation_Scheduler_Default": ensure_animation_scheduler(),
             "MC_Animated_Frame_Blend": ensure_animated_frame_blend(),
             "MC_Atlas_UV_Tiling": ensure_atlas_uv_tiling(),
+            "MC_Biome_Tint": ensure_biome_tint(),
+            "MC_Biome_Colormap_Sampler": ensure_colormap_sampler(),
         }
 except ImportError:
     pass
@@ -28,6 +31,8 @@ __all__ = (
     "ensure_animated_uv_mapping",
     "ensure_animation_scheduler",
     "ensure_atlas_uv_tiling",
+    "ensure_biome_tint",
+    "ensure_colormap_sampler",
     "LABPBR_GROUP_NAME",
     "LABPBR_TEMPLATE_VERSION",
     "ensure_labpbr_decoder",

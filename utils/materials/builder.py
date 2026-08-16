@@ -13,6 +13,10 @@ from .constants import (
     PROP_PACK_HASH,
     PROP_PACK_HASH_SHORT,
     PROP_SOURCE_FILE,
+    ATTR_TINT_WEIGHT,
+    ATTR_TINT_COLOR,
+    ATTR_HARDCODED_COLOR,
+    ATTR_USE_HARDCODED,
 )
 
 
@@ -286,10 +290,68 @@ def rebuild_material(
     tex_coord = nt.nodes.new("ShaderNodeTexCoord")
     tex_coord.location = (-1200, 0)
 
+    # Setup Biome Tint Node Group
+    biome_tint_group = templates.get("MC_Biome_Tint")
+    biome_tint_node = None
+    if biome_tint_group:
+        biome_tint_node = nt.nodes.new("ShaderNodeGroup")
+        biome_tint_node.node_tree = biome_tint_group
+        biome_tint_node.name = "MC Biome Tint"
+        biome_tint_node.location = (50, 200)
+
+        attr_tint_weight = nt.nodes.new("ShaderNodeAttribute")
+        attr_tint_weight.name = "Attr Tint Weight"
+        attr_tint_weight.attribute_type = "GEOMETRY"
+        attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
+        attr_tint_weight.location = (-300, 500)
+        nt.links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
+
+        attr_tint_color = nt.nodes.new("ShaderNodeAttribute")
+        attr_tint_color.name = "Attr Tint Color"
+        attr_tint_color.attribute_type = "GEOMETRY"
+        attr_tint_color.attribute_name = ATTR_TINT_COLOR
+        attr_tint_color.location = (-300, 350)
+        nt.links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
+
+        attr_hardcoded_color = nt.nodes.new("ShaderNodeAttribute")
+        attr_hardcoded_color.name = "Attr Hardcoded Color"
+        attr_hardcoded_color.attribute_type = "GEOMETRY"
+        attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
+        attr_hardcoded_color.location = (-300, 200)
+        nt.links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
+
+        attr_use_hardcoded = nt.nodes.new("ShaderNodeAttribute")
+        attr_use_hardcoded.name = "Attr Use Hardcoded"
+        attr_use_hardcoded.attribute_type = "GEOMETRY"
+        attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
+        attr_use_hardcoded.location = (-300, 50)
+        nt.links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
+
+        nt.links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
+        nt.links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
+
+        # Check for overlay texture in texture_info
+        overlay_path = texture_info.get("overlay")
+        if overlay_path and Path(overlay_path).exists():
+            overlay_img = load_image_texture(overlay_path, colorspace='sRGB', pack_textures=pack_textures, pack_hash=pack_hash)
+            if overlay_img:
+                tex_overlay = nt.nodes.new("ShaderNodeTexImage")
+                tex_overlay.name = "Tex Overlay (Albedo)"
+                tex_overlay.image = overlay_img
+                tex_overlay.interpolation = 'Closest'
+                tex_overlay.location = (-550, 450)
+                if tex_coord and "UV" in tex_coord.outputs:
+                    nt.links.new(tex_coord.outputs["UV"], tex_overlay.inputs["Vector"])
+                nt.links.new(tex_overlay.outputs["Color"], biome_tint_node.inputs["Overlay Color"])
+                nt.links.new(tex_overlay.outputs["Alpha"], biome_tint_node.inputs["Overlay Alpha"])
+
     scheduler_node = None
 
     # Build Albedo Channel
     if texture_info.get("albedo"):
+        target_albedo_node = biome_tint_node if biome_tint_node else decoder_node
+        target_col_socket = "Base Color" if biome_tint_node else "Albedo Color"
+        target_alpha_socket = "Base Alpha" if biome_tint_node else "Albedo Alpha"
         build_channel_nodes(
             mat=mat,
             channel_name="Albedo",
@@ -298,10 +360,10 @@ def rebuild_material(
             colorspace='sRGB',
             pack_textures=pack_textures,
             scheduler_node=scheduler_node,
-            decoder_node=decoder_node,
+            decoder_node=target_albedo_node,
             tex_coord_node=tex_coord,
-            decoder_col_socket="Albedo Color",
-            decoder_alpha_socket="Albedo Alpha",
+            decoder_col_socket=target_col_socket,
+            decoder_alpha_socket=target_alpha_socket,
             pack_hash=pack_hash,
             base_x=-800,
             base_y=300
