@@ -240,10 +240,15 @@ class StepReplaceMaterial(PipelineStep):
                 )
                 return
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
-            yield ProgressUpdate(0.15, 1.0, "Generating Atlas textures (Pillow)...")
             try:
                 gen = AtlasGenerator(pack.extract_dir)
-                gen.build(atlas_dir)
+                for frac, msg, _res in gen.build_iter(atlas_dir):
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    # Map Atlas build progress (0.0 - 1.0) into pipeline progress range (0.15 - 0.35)
+                    atlas_pct = 0.15 + 0.20 * frac
+                    yield ProgressUpdate(atlas_pct, 1.0, f"Atlas: {msg}")
             except Exception as e:
                 yield StepResult.failed(f"Failed to generate Atlas texture: {e}")
                 return
