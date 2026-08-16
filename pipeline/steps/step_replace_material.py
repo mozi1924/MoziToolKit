@@ -45,6 +45,8 @@ try:
         ATTR_UV_TILING_SCALE,
         ATTR_UV_TILING_LOCATION,
         ATTR_TINT_WEIGHT,
+        ATTR_BASE_TINT_WEIGHT,
+        ATTR_OVERLAY_TINT_WEIGHT,
         ATTR_TINT_COLOR,
         ATTR_TINT_TYPE,
         ATTR_HARDCODED_COLOR,
@@ -97,6 +99,8 @@ except (ImportError, ValueError):
         ATTR_UV_TILING_SCALE,
         ATTR_UV_TILING_LOCATION,
         ATTR_TINT_WEIGHT,
+        ATTR_BASE_TINT_WEIGHT,
+        ATTR_OVERLAY_TINT_WEIGHT,
         ATTR_TINT_COLOR,
         ATTR_TINT_TYPE,
         ATTR_HARDCODED_COLOR,
@@ -487,6 +491,8 @@ class StepReplaceMaterial(PipelineStep):
 
             # Biome tint attributes
             tint_weights = [0.0] * len(mesh.polygons)
+            base_tint_weights = [1.0] * len(mesh.polygons)
+            overlay_tint_weights = [1.0] * len(mesh.polygons)
             tint_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
             hardcoded_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
             use_hardcodeds = [0.0] * len(mesh.polygons)
@@ -555,6 +561,8 @@ class StepReplaceMaterial(PipelineStep):
 
                     tw = float(new_location.get("default_tint_weight", 0.0) if "default_tint_weight" in new_location else new_location.get("tint_weight", 0.0))
                     tint_weights[poly_idx] = tw
+                    base_tint_weights[poly_idx] = float(new_location.get("default_base_tint_weight", 1.0))
+                    overlay_tint_weights[poly_idx] = float(new_location.get("default_overlay_tint_weight", 1.0))
                     tt = int(new_location.get("tint_type", 0))
                     is_hc = bool(new_location.get("is_hardcoded", False))
                     use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
@@ -604,6 +612,8 @@ class StepReplaceMaterial(PipelineStep):
                             tint_info = BiomeResolver().get_tint_info(fallback_tex_info["texture_name"])
                             tw = float(tint_info.get("tint_weight", 0.0))
                             tint_weights[poly_idx] = tw
+                            base_tint_weights[poly_idx] = float(tint_info.get("base_tint_weight", 1.0))
+                            overlay_tint_weights[poly_idx] = float(tint_info.get("overlay_tint_weight", 1.0))
                             tt = int(tint_info.get("tint_type", 0))
                             is_hc = bool(tint_info.get("is_hardcoded", False))
                             use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
@@ -716,6 +726,8 @@ class StepReplaceMaterial(PipelineStep):
                     (ATTR_ATLAS_TEXTURE_ID, texture_ids),
                     (ATTR_UV_ROTATION, uv_rotations),
                     (ATTR_TINT_WEIGHT, tint_weights),
+                    (ATTR_BASE_TINT_WEIGHT, base_tint_weights),
+                    (ATTR_OVERLAY_TINT_WEIGHT, overlay_tint_weights),
                     (ATTR_USE_HARDCODED, use_hardcodeds),
                     ("mtk_anim_total_frames", anim_frames),
                     ("mtk_anim_frametime", anim_frametimes),
@@ -1016,6 +1028,8 @@ class StepReplaceMaterial(PipelineStep):
             if poly_modified:
                 # Write Biome tint attributes
                 tint_weights = [0.0] * len(mesh.polygons)
+                base_tint_weights = [1.0] * len(mesh.polygons)
+                overlay_tint_weights = [1.0] * len(mesh.polygons)
                 tint_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
                 hardcoded_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
                 use_hardcodeds = [0.0] * len(mesh.polygons)
@@ -1025,6 +1039,8 @@ class StepReplaceMaterial(PipelineStep):
                     tint_info = biome_resolver.get_tint_info(tex_info["texture_name"])
                     tw = float(tint_info.get("tint_weight", 0.0))
                     tint_weights[poly_idx] = tw
+                    base_tint_weights[poly_idx] = float(tint_info.get("base_tint_weight", 1.0))
+                    overlay_tint_weights[poly_idx] = float(tint_info.get("overlay_tint_weight", 1.0))
                     tt = int(tint_info.get("tint_type", 0))
                     is_hc = bool(tint_info.get("is_hardcoded", False))
                     use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
@@ -1044,6 +1060,8 @@ class StepReplaceMaterial(PipelineStep):
 
                 for attr_name, data in (
                     (ATTR_TINT_WEIGHT, tint_weights),
+                    (ATTR_BASE_TINT_WEIGHT, base_tint_weights),
+                    (ATTR_OVERLAY_TINT_WEIGHT, overlay_tint_weights),
                     (ATTR_USE_HARDCODED, use_hardcodeds),
                 ):
                     face_attribute(attr_name).data.foreach_set("value", data)

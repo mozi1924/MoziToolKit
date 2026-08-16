@@ -410,6 +410,8 @@ class BiomeResolver:
                 "tint_type": TINT_TYPE_HARDCODED,
                 "tint_category": "hardcoded",
                 "tint_weight": 1.0,
+                "base_tint_weight": 1.0,
+                "overlay_tint_weight": 1.0,
                 "has_overlay": False,
                 "overlay_texture": None,
                 "is_hardcoded": True,
@@ -423,12 +425,14 @@ class BiomeResolver:
 
         # 3. Check Known Grass category
         if clean in KNOWN_GRASS_STEMS or clean.startswith("grass_") or "grass" in clean or clean.startswith("fern"):
-            # Note: grass_block_side itself has overlay fringe; the base dirt side is not tinted, the overlay is tinted.
-            base_tint_weight = 0.0 if has_overlay else 1.0
+            # Note: grass_block_side has overlay fringe: base dirt is untinted (0.0), overlay is tinted (1.0), face tint is active (1.0)
+            base_weight = 0.0 if has_overlay else 1.0
             return {
                 "tint_type": TINT_TYPE_GRASS,
                 "tint_category": "grass",
-                "tint_weight": base_tint_weight,
+                "tint_weight": 1.0,
+                "base_tint_weight": base_weight,
+                "overlay_tint_weight": 1.0,
                 "has_overlay": has_overlay,
                 "overlay_texture": overlay_stem,
                 "is_hardcoded": False,
@@ -442,6 +446,8 @@ class BiomeResolver:
                 "tint_type": TINT_TYPE_FOLIAGE,
                 "tint_category": "foliage",
                 "tint_weight": 1.0,
+                "base_tint_weight": 1.0,
+                "overlay_tint_weight": 1.0,
                 "has_overlay": has_overlay,
                 "overlay_texture": overlay_stem,
                 "is_hardcoded": False,
@@ -455,6 +461,8 @@ class BiomeResolver:
                 "tint_type": TINT_TYPE_WATER,
                 "tint_category": "water",
                 "tint_weight": 1.0,
+                "base_tint_weight": 1.0,
+                "overlay_tint_weight": 1.0,
                 "has_overlay": has_overlay,
                 "overlay_texture": overlay_stem,
                 "is_hardcoded": False,
@@ -464,10 +472,13 @@ class BiomeResolver:
 
         # 6. Check Model JSON tint cache
         if clean in self.tint_cache:
+            base_weight = 0.0 if has_overlay else 1.0
             return {
                 "tint_type": TINT_TYPE_GRASS,
                 "tint_category": "grass",
                 "tint_weight": 1.0,
+                "base_tint_weight": base_weight,
+                "overlay_tint_weight": 1.0,
                 "has_overlay": has_overlay,
                 "overlay_texture": overlay_stem,
                 "is_hardcoded": False,
@@ -480,8 +491,10 @@ class BiomeResolver:
             "tint_type": TINT_TYPE_NONE,
             "tint_category": "none",
             "tint_weight": 0.0,
-            "has_overlay": has_overlay,
-            "overlay_texture": overlay_stem,
+            "base_tint_weight": 0.0,
+            "overlay_tint_weight": 0.0,
+            "has_overlay": False,
+            "overlay_texture": None,
             "is_hardcoded": False,
             "hardcoded_color": None,
             "hardcoded_hex": None,

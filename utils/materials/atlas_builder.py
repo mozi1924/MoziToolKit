@@ -33,6 +33,8 @@ from .constants import (
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,
     ATTR_TINT_WEIGHT,
+    ATTR_BASE_TINT_WEIGHT,
+    ATTR_OVERLAY_TINT_WEIGHT,
     ATTR_TINT_COLOR,
     ATTR_HARDCODED_COLOR,
     ATTR_USE_HARDCODED,
@@ -137,32 +139,46 @@ def build_atlas_material(
         biome_tint_node.name = "MC Biome Tint"
         biome_tint_node.location = (150, 200)
 
+        attr_base_tint_weight = nodes.new("ShaderNodeAttribute")
+        attr_base_tint_weight.name = "Attr Base Tint Weight"
+        attr_base_tint_weight.attribute_type = "GEOMETRY"
+        attr_base_tint_weight.attribute_name = ATTR_BASE_TINT_WEIGHT
+        attr_base_tint_weight.location = (-300, 650)
+        links.new(attr_base_tint_weight.outputs["Fac"], biome_tint_node.inputs["Base Tint Weight"])
+
+        attr_overlay_tint_weight = nodes.new("ShaderNodeAttribute")
+        attr_overlay_tint_weight.name = "Attr Overlay Tint Weight"
+        attr_overlay_tint_weight.attribute_type = "GEOMETRY"
+        attr_overlay_tint_weight.attribute_name = ATTR_OVERLAY_TINT_WEIGHT
+        attr_overlay_tint_weight.location = (-300, 500)
+        links.new(attr_overlay_tint_weight.outputs["Fac"], biome_tint_node.inputs["Overlay Tint Weight"])
+
         attr_tint_weight = nodes.new("ShaderNodeAttribute")
         attr_tint_weight.name = "Attr Tint Weight"
         attr_tint_weight.attribute_type = "GEOMETRY"
         attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
-        attr_tint_weight.location = (-300, 500)
+        attr_tint_weight.location = (-300, 350)
         links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
 
         attr_tint_color = nodes.new("ShaderNodeAttribute")
         attr_tint_color.name = "Attr Tint Color"
         attr_tint_color.attribute_type = "GEOMETRY"
         attr_tint_color.attribute_name = ATTR_TINT_COLOR
-        attr_tint_color.location = (-300, 350)
+        attr_tint_color.location = (-300, 200)
         links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
 
         attr_hardcoded_color = nodes.new("ShaderNodeAttribute")
         attr_hardcoded_color.name = "Attr Hardcoded Color"
         attr_hardcoded_color.attribute_type = "GEOMETRY"
         attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
-        attr_hardcoded_color.location = (-300, 200)
+        attr_hardcoded_color.location = (-300, 50)
         links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
 
         attr_use_hardcoded = nodes.new("ShaderNodeAttribute")
         attr_use_hardcoded.name = "Attr Use Hardcoded"
         attr_use_hardcoded.attribute_type = "GEOMETRY"
         attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
-        attr_use_hardcoded.location = (-300, 50)
+        attr_use_hardcoded.location = (-300, -100)
         links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
 
         links.new(tex_albedo.outputs["Color"], biome_tint_node.inputs["Base Color"])
@@ -319,32 +335,46 @@ def build_atlas_chunk_materials(
             biome_tint_node.name = "MC Biome Tint"
             biome_tint_node.location = (50, 200)
 
+            attr_base_tint_weight = nodes.new("ShaderNodeAttribute")
+            attr_base_tint_weight.name = "Attr Base Tint Weight"
+            attr_base_tint_weight.attribute_type = "GEOMETRY"
+            attr_base_tint_weight.attribute_name = ATTR_BASE_TINT_WEIGHT
+            attr_base_tint_weight.location = (-300, 650)
+            links.new(attr_base_tint_weight.outputs["Fac"], biome_tint_node.inputs["Base Tint Weight"])
+
+            attr_overlay_tint_weight = nodes.new("ShaderNodeAttribute")
+            attr_overlay_tint_weight.name = "Attr Overlay Tint Weight"
+            attr_overlay_tint_weight.attribute_type = "GEOMETRY"
+            attr_overlay_tint_weight.attribute_name = ATTR_OVERLAY_TINT_WEIGHT
+            attr_overlay_tint_weight.location = (-300, 500)
+            links.new(attr_overlay_tint_weight.outputs["Fac"], biome_tint_node.inputs["Overlay Tint Weight"])
+
             attr_tint_weight = nodes.new("ShaderNodeAttribute")
             attr_tint_weight.name = "Attr Tint Weight"
             attr_tint_weight.attribute_type = "GEOMETRY"
             attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
-            attr_tint_weight.location = (-300, 500)
+            attr_tint_weight.location = (-300, 350)
             links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
 
             attr_tint_color = nodes.new("ShaderNodeAttribute")
             attr_tint_color.name = "Attr Tint Color"
             attr_tint_color.attribute_type = "GEOMETRY"
             attr_tint_color.attribute_name = ATTR_TINT_COLOR
-            attr_tint_color.location = (-300, 350)
+            attr_tint_color.location = (-300, 200)
             links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
 
             attr_hardcoded_color = nodes.new("ShaderNodeAttribute")
             attr_hardcoded_color.name = "Attr Hardcoded Color"
             attr_hardcoded_color.attribute_type = "GEOMETRY"
             attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
-            attr_hardcoded_color.location = (-300, 200)
+            attr_hardcoded_color.location = (-300, 50)
             links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
 
             attr_use_hardcoded = nodes.new("ShaderNodeAttribute")
             attr_use_hardcoded.name = "Attr Use Hardcoded"
             attr_use_hardcoded.attribute_type = "GEOMETRY"
             attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
-            attr_use_hardcoded.location = (-300, 50)
+            attr_use_hardcoded.location = (-300, -100)
             links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
 
             links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
