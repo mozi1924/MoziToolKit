@@ -123,10 +123,12 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
 
 _is_updating = False
 _pending_repairs = set()
+_idle_ticks = 0
+_MAX_IDLE_TICKS = 3
 
 
 def _is_modal_mesh_operation_active(context):
-    """Return whether an extrusion or its modal transform is still running."""
+    """Return whether an extrusion or its modal transform is actively running in the window."""
     window_manager = getattr(context, "window_manager", None)
     window = getattr(context, "window", None)
     seen_ops = set()
@@ -135,9 +137,6 @@ def _is_modal_mesh_operation_active(context):
     raw_ops = []
     if window:
         raw_ops.extend(getattr(window, "modal_operators", []))
-    active_operator = getattr(context, "active_operator", None)
-    if active_operator:
-        raw_ops.append(active_operator)
     if window_manager:
         raw_ops.extend(getattr(window_manager, "operators", []))
 
@@ -163,7 +162,7 @@ def _deferred_extrude_repair_tick():
     Safely executes auto extrude repair in Blender's main event loop (outside depsgraph evaluation).
     Polls while a modal extrusion/transform is active, and returns None to sleep when idle.
     """
-    global _is_updating, _pending_repairs, _smart_extrude_sessions
+    global _is_updating, _pending_repairs, _smart_extrude_sessions, _idle_ticks
 
     if _is_updating:
         return _SMART_EXTRUDE_POLL_INTERVAL
@@ -172,20 +171,24 @@ def _deferred_extrude_repair_tick():
     if not context or context.mode != "EDIT_MESH":
         _pending_repairs.clear()
         _smart_extrude_sessions.clear()
+        _idle_ticks = 0
         return None
 
     props = getattr(context.scene, "mozi_auto_extrude_repair", None)
     if not props or not props.enabled or not (props.repair_uv or props.add_mean_crease):
         _pending_repairs.clear()
         _smart_extrude_sessions.clear()
+        _idle_ticks = 0
         return None
 
     obj = context.active_object
     if not obj or obj.type != "MESH":
         _pending_repairs.clear()
         _smart_extrude_sessions.clear()
+        _idle_ticks = 0
         return None
 
+    repaired_count = 0
     try:
         _is_updating = True
         bm = bmesh.from_edit_mesh(obj.data)
@@ -193,7 +196,7 @@ def _deferred_extrude_repair_tick():
             session = _smart_extrude_sessions.setdefault(
                 obj.as_pointer(), {"side_face_indices": set()}
             )
-            count = repair_extruded_side_faces(
+            repaired_count = repair_extruded_side_faces(
                 bm,
                 obj=obj,
                 context=context,
@@ -205,7 +208,7 @@ def _deferred_extrude_repair_tick():
                 smart_side_face_indices=session["side_face_indices"],
             )
         else:
-            count = repair_extruded_side_faces(
+            repaired_count = repair_extruded_side_faces(
                 bm,
                 obj=obj,
                 context=context,
@@ -215,7 +218,7 @@ def _deferred_extrude_repair_tick():
                 only_collapsed=True,
                 uv_mode=props.uv_mode,
             )
-        if count > 0:
+        if repaired_count > 0:
             bmesh.update_edit_mesh(obj.data)
     except Exception as e:
         import sys
@@ -225,13 +228,19 @@ def _deferred_extrude_repair_tick():
 
     _pending_repairs.discard(obj.as_pointer())
 
-    # If the user is actively dragging the extrusion transform, keep polling
-    if _is_modal_mesh_operation_active(context):
+    if repaired_count > 0:
+        _idle_ticks = 0
+    else:
+        _idle_ticks += 1
+
+    # Keep polling while an active modal mesh operation is in progress, up to safety idle limit
+    if _is_modal_mesh_operation_active(context) and _idle_ticks < _MAX_IDLE_TICKS:
         return _SMART_EXTRUDE_POLL_INTERVAL
 
     # Finished and idle: clean up and return None to automatically stop the timer
     _smart_extrude_sessions.clear()
     _pending_repairs.clear()
+    _idle_ticks = 0
     return None
 
 
@@ -281,12 +290,14 @@ def register():
 
 
 def unregister():
+    global _idle_ticks
     if depsgraph_auto_extrude_repair_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(depsgraph_auto_extrude_repair_handler)
     if bpy.app.timers.is_registered(_deferred_extrude_repair_tick):
         bpy.app.timers.unregister(_deferred_extrude_repair_tick)
     _smart_extrude_sessions.clear()
     _pending_repairs.clear()
+    _idle_ticks = 0
     if hasattr(bpy.types.Scene, "mozi_auto_extrude_repair"):
         del bpy.types.Scene.mozi_auto_extrude_repair
 
