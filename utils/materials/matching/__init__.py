@@ -33,6 +33,8 @@ from .jmc2obj import (
     JMC2OBJ_BIOME_SUFFIXES,
 )
 from ..constants import (
+    ATTR_ATLAS_CHUNK_ID,
+    ATTR_ATLAS_TEXTURE_ID,
     ATTR_SOURCE_ORIGIN,
     ATTR_SOURCE_TEXTURE_KEY,
     DEFAULT_NAMESPACE,
@@ -157,8 +159,8 @@ def extract_face_texture_info(
     if mat_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED"):
         mapping = atlas_mapping or get_atlas_mapping_from_material(slot_mat)
         if mapping:
-            chunk_attr = mesh.attributes.get("atlas_chunk_id")
-            tex_attr = mesh.attributes.get("atlas_texture_id")
+            chunk_attr = mesh.attributes.get(ATTR_ATLAS_CHUNK_ID) or mesh.attributes.get("atlas_chunk_id")
+            tex_attr = mesh.attributes.get(ATTR_ATLAS_TEXTURE_ID) or mesh.attributes.get("atlas_texture_id")
 
             chunk_id = None
             texture_id = None

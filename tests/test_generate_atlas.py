@@ -403,11 +403,14 @@ class TestAtlasGenerator(unittest.TestCase):
 
     def test_vanilla_mashup_pbr_animated_tiling(self):
         """If Vanilla Mashup 1.5.zip exists, verify resolution is 16px and namespace isolation holds."""
-        default_mashup = Path("/Users/jaxlocke/Downloads/Vanilla Mashup 1.5.zip")
         mashup_env = os.environ.get("MC_MASHUP_ZIP", "")
-        mashup_zip = Path(mashup_env) if mashup_env else (default_mashup if default_mashup.exists() else None)
-        if not mashup_zip or not mashup_zip.exists():
-            self.skipTest(f"Vanilla Mashup ZIP not configured or found: {mashup_zip}")
+        default_mashup = Path("/Users/jaxlocke/Downloads/Vanilla Mashup 1.5.zip")
+        mashup_zip = Path(mashup_env) if mashup_env else default_mashup
+        try:
+            if not mashup_zip or not mashup_zip.is_file() or not zipfile.is_zipfile(mashup_zip):
+                self.skipTest(f"Vanilla Mashup ZIP not configured or found: {mashup_zip}")
+        except Exception:
+            self.skipTest("Vanilla Mashup ZIP not accessible in test environment")
 
         with tempfile.TemporaryDirectory() as tmp:
             gen = AtlasGenerator(mashup_zip)

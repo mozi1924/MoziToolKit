@@ -609,6 +609,50 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestDependencyManager: {e}")
 
+    try:
+        from tests.test_material_reconstruction_and_replacement import (
+            TestUVTransformMath,
+            TestMaterialModeDetection,
+            TestCrossModeMaterialReplacement,
+            TestAnimatedUVMapping,
+        )
+        suite.addTests(loader.loadTestsFromTestCase(TestUVTransformMath))
+        suite.addTests(loader.loadTestsFromTestCase(TestMaterialModeDetection))
+        suite.addTests(loader.loadTestsFromTestCase(TestCrossModeMaterialReplacement))
+        suite.addTests(loader.loadTestsFromTestCase(TestAnimatedUVMapping))
+    except Exception as e:
+        print(f"[Warning] Could not load TestMaterialReconstructionAndReplacement: {e}")
+
+    try:
+        from tests.test_replace_material_atlas import TestReplaceMaterialAtlasMode
+        suite.addTests(loader.loadTestsFromTestCase(TestReplaceMaterialAtlasMode))
+    except Exception as e:
+        print(f"[Warning] Could not load TestReplaceMaterialAtlasMode: {e}")
+
+    try:
+        from tests.test_jmc2obj_matching import TestJmc2objMatching
+        suite.addTests(loader.loadTestsFromTestCase(TestJmc2objMatching))
+    except Exception as e:
+        print(f"[Warning] Could not load TestJmc2objMatching: {e}")
+
+    try:
+        from tests.test_fast_block_unmerge import TestFastBlockUnmerge
+        suite.addTests(loader.loadTestsFromTestCase(TestFastBlockUnmerge))
+    except Exception as e:
+        print(f"[Warning] Could not load TestFastBlockUnmerge: {e}")
+
+    try:
+        from tests.test_generate_atlas import TestAtlasGenerator
+        suite.addTests(loader.loadTestsFromTestCase(TestAtlasGenerator))
+    except Exception as e:
+        print(f"[Warning] Could not load TestAtlasGenerator: {e}")
+
+    try:
+        from tests.test_code_review_fixes import TestCodeReviewFixes
+        suite.addTests(loader.loadTestsFromTestCase(TestCodeReviewFixes))
+    except Exception as e:
+        print(f"[Warning] Could not load TestCodeReviewFixes: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
@@ -617,6 +661,14 @@ def run_all_tests():
         sys.exit(0)
     else:
         print("\n❌ SOME TESTS FAILED!")
+        if result.failures:
+            print("\n--- FAILURES ---")
+            for test, err in result.failures:
+                print(f"FAILED: {test}\n{err}\n")
+        if result.errors:
+            print("\n--- ERRORS ---")
+            for test, err in result.errors:
+                print(f"ERROR: {test}\n{err}\n")
         sys.exit(1)
 
 

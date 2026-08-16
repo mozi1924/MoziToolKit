@@ -20,12 +20,26 @@ class MOZI_OT_scale_uv(bpy.types.Operator):
         precision=3,
     )
 
+    selection_scope: bpy.props.EnumProperty(
+        name="Selection Scope",
+        description="Faces to scale UV on",
+        items=[
+            ("AUTO", "Auto (Selected / All)", "Scale selected faces if any, otherwise scale all faces"),
+            ("SELECTED", "Selected Faces", "Only scale currently selected faces"),
+            ("ALL", "All Faces", "Scale all faces regardless of selection"),
+        ],
+        default="AUTO",
+    )
+
     @classmethod
     def poll(cls, context):
         return poll_edit_mesh(context)
 
     def execute(self, context):
-        params = {"scale_factor": self.scale_factor}
+        params = {
+            "scale_factor": self.scale_factor,
+            "selection_scope": self.selection_scope,
+        }
         from ...pipeline.presets import run_preset_pipeline
 
         res, ctx = run_preset_pipeline("scale_uv", context, params)

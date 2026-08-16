@@ -102,9 +102,9 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
 
         # Chunk and local texture IDs are retained for a future procedural
         # decoder, while preview mode uses the rewritten UVs directly.
-        self.assertIn("atlas_chunk_id", self.cube.data.attributes)
-        self.assertIn("atlas_texture_id", self.cube.data.attributes)
-        attr_values = [item.value for item in self.cube.data.attributes["atlas_texture_id"].data]
+        self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
+        self.assertIn("mtk_atlas_texture_id", self.cube.data.attributes)
+        attr_values = [item.value for item in self.cube.data.attributes["mtk_atlas_texture_id"].data]
         self.assertEqual(len(attr_values), len(self.cube.data.polygons))
 
         # Texture/Material Preview does not run the shader decoder.  The

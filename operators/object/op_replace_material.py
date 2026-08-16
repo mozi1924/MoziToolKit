@@ -36,7 +36,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
 
     pack_textures: bpy.props.BoolProperty(
         name="Pack Textures into Blend File",
-        description="Embed imported textures directly into the Blender project file (.blend)",
+        description="Embed imported textures directly into the Blender file. When unchecked and the .blend file is saved, textures will be saved externally to '//textures/block/' in your project directory",
         default=True,
     )
 
@@ -98,6 +98,8 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         notice_box.prop(self, "auto_unmerge_blocks")
 
         box.prop(self, "pack_textures")
+        if not self.pack_textures:
+            box.label(text="Note: Textures will be saved to //textures/block/", icon='INFO')
         box.prop(self, "use_cache")
 
     def execute(self, context):

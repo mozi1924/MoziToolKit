@@ -107,6 +107,11 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                         on_finish(item, ctx)
                     for level, msg in ctx.reports:
                         self.report({level}, msg)
+                    if item.is_success and hasattr(bpy.ops, "ed") and hasattr(bpy.ops.ed, "undo_push"):
+                        try:
+                            bpy.ops.ed.undo_push(message=f"Mozi: {title}")
+                        except Exception:
+                            pass
                     return {"FINISHED"} if item.is_success else {"CANCELLED"}
 
             except StopIteration:
@@ -116,6 +121,11 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                     on_finish(res, ctx)
                 for level, msg in ctx.reports:
                     self.report({level}, msg)
+                if hasattr(bpy.ops, "ed") and hasattr(bpy.ops.ed, "undo_push"):
+                    try:
+                        bpy.ops.ed.undo_push(message=f"Mozi: {title}")
+                    except Exception:
+                        pass
                 return {"FINISHED"}
 
             except Exception as e:
