@@ -34,6 +34,9 @@ ATTR_ANIM_INTERPOLATE = "mtk_anim_interpolate"
 ATTR_ANIM_FRAME_WIDTH = "mtk_anim_frame_width"
 ATTR_ANIM_FRAME_HEIGHT = "mtk_anim_frame_height"
 
+# Atlas UV Rotation Mesh Attribute (Euler Z rotation in radians)
+ATTR_UV_ROTATION = "mtk_uv_rotation"
+
 # Known Block Texture Suffixes
 TEXTURE_SUFFIXES = (
     "_n", "_s",

@@ -14,6 +14,12 @@ except ImportError:
     Vector = None
 
 from ..materials.texture_finder import find_face_image
+from .uv_rotation import (
+    is_orthogonal_angle,
+    detect_face_uv_rotation,
+    straighten_face_uv,
+    process_mesh_uv_rotations,
+)
 
 
 @dataclass

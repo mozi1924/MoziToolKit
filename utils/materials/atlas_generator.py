@@ -477,7 +477,13 @@ class AtlasGenerator:
 
                 def save_animation_chunk(columns, namespace_val=ns):
                     chunk_id = len(chunks)
-                    chunk_width = sum(img.width for _s, img, _m in columns)
+                    # Align each column so its starting X pixel is a multiple of its width
+                    x_calc = 0
+                    for _s, img, _m in columns:
+                        tw = img.width
+                        x_calc = ((x_calc + tw - 1) // tw) * tw
+                        x_calc += tw
+                    chunk_width = max(16, x_calc)
                     chunk_height = max(img.height for _s, img, _m in columns)
                     images = {"albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))}
                     if has_normal:
@@ -489,6 +495,7 @@ class AtlasGenerator:
                     for texture_id, (stem, image, metadata) in enumerate(columns):
                         target_w = image.width
                         target_h = image.height
+                        x_offset = ((x_offset + target_w - 1) // target_w) * target_w
 
                         for channel, img_canvas in images.items():
                             if channel == "albedo":
@@ -564,7 +571,7 @@ class AtlasGenerator:
                             "preview_frame": 0,
                             "mcmeta": metadata,
                         })
-                        x_offset += image.width
+                        x_offset += target_w
 
                     files = {}
                     for channel, img_canvas in images.items():
@@ -587,11 +594,13 @@ class AtlasGenerator:
                 pending_columns, pending_width = [], 0
                 for column in animation_columns:
                     column_width = column[1].width
-                    if pending_columns and pending_width + column_width > self.max_chunk_size:
+                    aligned_next_width = ((pending_width + column_width - 1) // column_width) * column_width + column_width
+                    if pending_columns and aligned_next_width > self.max_chunk_size:
                         save_animation_chunk(pending_columns)
                         pending_columns, pending_width = [], 0
+                        aligned_next_width = column_width
                     pending_columns.append(column)
-                    pending_width += column_width
+                    pending_width = aligned_next_width
                 if pending_columns:
                     save_animation_chunk(pending_columns)
 
