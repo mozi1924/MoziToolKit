@@ -659,6 +659,22 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestAtlasUVRotation: {e}")
 
+    try:
+        from tests.test_biome_materials import (
+            TestBiomeColors,
+            TestBiomeResolver,
+            TestBiomeNodeGroups,
+            TestBiomeMaterialBuilding,
+            TestBiomePipelineIntegration,
+        )
+        suite.addTests(loader.loadTestsFromTestCase(TestBiomeColors))
+        suite.addTests(loader.loadTestsFromTestCase(TestBiomeResolver))
+        suite.addTests(loader.loadTestsFromTestCase(TestBiomeNodeGroups))
+        suite.addTests(loader.loadTestsFromTestCase(TestBiomeMaterialBuilding))
+        suite.addTests(loader.loadTestsFromTestCase(TestBiomePipelineIntegration))
+    except Exception as e:
+        print(f"[Warning] Could not load TestBiomeMaterials: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

@@ -32,6 +32,10 @@ from .constants import (
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,
+    ATTR_TINT_WEIGHT,
+    ATTR_TINT_COLOR,
+    ATTR_HARDCODED_COLOR,
+    ATTR_USE_HARDCODED,
 )
 
 
@@ -122,8 +126,65 @@ def build_atlas_material(
     tex_albedo.location = (-100, 200)
 
     links.new(decoder_node.outputs["Atlas UV"], tex_albedo.inputs["Vector"])
-    links.new(tex_albedo.outputs["Color"], bsdf_node.inputs["Base Color"])
-    links.new(tex_albedo.outputs["Alpha"], bsdf_node.inputs["Alpha"])
+
+    # 4b. Biome Tint & Overlay Integration
+    overlay_file = atlas_path / "atlas_overlay.png"
+    templates = ensure_all_templates()
+    biome_tint_group = templates.get("MC_Biome_Tint")
+    if biome_tint_group:
+        biome_tint_node = nodes.new("ShaderNodeGroup")
+        biome_tint_node.node_tree = biome_tint_group
+        biome_tint_node.name = "MC Biome Tint"
+        biome_tint_node.location = (150, 200)
+
+        attr_tint_weight = nodes.new("ShaderNodeAttribute")
+        attr_tint_weight.name = "Attr Tint Weight"
+        attr_tint_weight.attribute_type = "GEOMETRY"
+        attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
+        attr_tint_weight.location = (-300, 500)
+        links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
+
+        attr_tint_color = nodes.new("ShaderNodeAttribute")
+        attr_tint_color.name = "Attr Tint Color"
+        attr_tint_color.attribute_type = "GEOMETRY"
+        attr_tint_color.attribute_name = ATTR_TINT_COLOR
+        attr_tint_color.location = (-300, 350)
+        links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
+
+        attr_hardcoded_color = nodes.new("ShaderNodeAttribute")
+        attr_hardcoded_color.name = "Attr Hardcoded Color"
+        attr_hardcoded_color.attribute_type = "GEOMETRY"
+        attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
+        attr_hardcoded_color.location = (-300, 200)
+        links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
+
+        attr_use_hardcoded = nodes.new("ShaderNodeAttribute")
+        attr_use_hardcoded.name = "Attr Use Hardcoded"
+        attr_use_hardcoded.attribute_type = "GEOMETRY"
+        attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
+        attr_use_hardcoded.location = (-300, 50)
+        links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
+
+        links.new(tex_albedo.outputs["Color"], biome_tint_node.inputs["Base Color"])
+        links.new(tex_albedo.outputs["Alpha"], biome_tint_node.inputs["Base Alpha"])
+        links.new(biome_tint_node.outputs["Color"], bsdf_node.inputs["Base Color"])
+        links.new(biome_tint_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
+
+        if overlay_file.exists():
+            overlay_img = load_image_texture(overlay_file, colorspace="sRGB", pack_textures=pack_textures)
+            if overlay_img:
+                tex_overlay = nodes.new("ShaderNodeTexImage")
+                tex_overlay.name = "Atlas Overlay"
+                tex_overlay.image = overlay_img
+                tex_overlay.interpolation = "Closest"
+                tex_overlay.extension = "CLIP"
+                tex_overlay.location = (-100, 450)
+                links.new(decoder_node.outputs["Atlas UV"], tex_overlay.inputs["Vector"])
+                links.new(tex_overlay.outputs["Color"], biome_tint_node.inputs["Overlay Color"])
+                links.new(tex_overlay.outputs["Alpha"], biome_tint_node.inputs["Overlay Alpha"])
+    else:
+        links.new(tex_albedo.outputs["Color"], bsdf_node.inputs["Base Color"])
+        links.new(tex_albedo.outputs["Alpha"], bsdf_node.inputs["Alpha"])
 
     # 5. Normal Map (if exists)
     if normal_file.exists():
@@ -248,6 +309,46 @@ def build_atlas_chunk_materials(
         links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
         if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
             links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
+
+        # Setup Biome Tint Node Group
+        biome_tint_group = templates.get("MC_Biome_Tint")
+        biome_tint_node = None
+        if biome_tint_group:
+            biome_tint_node = nodes.new("ShaderNodeGroup")
+            biome_tint_node.node_tree = biome_tint_group
+            biome_tint_node.name = "MC Biome Tint"
+            biome_tint_node.location = (50, 200)
+
+            attr_tint_weight = nodes.new("ShaderNodeAttribute")
+            attr_tint_weight.name = "Attr Tint Weight"
+            attr_tint_weight.attribute_type = "GEOMETRY"
+            attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
+            attr_tint_weight.location = (-300, 500)
+            links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
+
+            attr_tint_color = nodes.new("ShaderNodeAttribute")
+            attr_tint_color.name = "Attr Tint Color"
+            attr_tint_color.attribute_type = "GEOMETRY"
+            attr_tint_color.attribute_name = ATTR_TINT_COLOR
+            attr_tint_color.location = (-300, 350)
+            links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
+
+            attr_hardcoded_color = nodes.new("ShaderNodeAttribute")
+            attr_hardcoded_color.name = "Attr Hardcoded Color"
+            attr_hardcoded_color.attribute_type = "GEOMETRY"
+            attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
+            attr_hardcoded_color.location = (-300, 200)
+            links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
+
+            attr_use_hardcoded = nodes.new("ShaderNodeAttribute")
+            attr_use_hardcoded.name = "Attr Use Hardcoded"
+            attr_use_hardcoded.attribute_type = "GEOMETRY"
+            attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
+            attr_use_hardcoded.location = (-300, 50)
+            links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
+
+            links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
+            links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
 
         # 2. Shared TexCoord Node
         tex_coord = nodes.new("ShaderNodeTexCoord")
@@ -451,8 +552,12 @@ def build_atlas_chunk_materials(
                 links.new(tex_next.outputs["Alpha"], blend_node.inputs["Next Alpha"])
                 links.new(uv_node.outputs["Blend Factor"], blend_node.inputs["Blend Factor"])
 
-                links.new(blend_node.outputs["Color"], decoder_node.inputs[col_socket])
-                links.new(blend_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+                if channel_key == "albedo" and biome_tint_node:
+                    links.new(blend_node.outputs["Color"], biome_tint_node.inputs["Base Color"])
+                    links.new(blend_node.outputs["Alpha"], biome_tint_node.inputs["Base Alpha"])
+                else:
+                    links.new(blend_node.outputs["Color"], decoder_node.inputs[col_socket])
+                    links.new(blend_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
 
         else:
             # Static Branch with Atlas UV Self-Tiling support
@@ -497,6 +602,23 @@ def build_atlas_chunk_materials(
             else:
                 uv_source_socket = tex_coord.outputs["UV"]
 
+            # Check if overlay texture exists for static chunk
+            overlay_fname = chunk_files.get("overlay")
+            if overlay_fname and biome_tint_node:
+                overlay_fpath = atlas_path / overlay_fname
+                if overlay_fpath.exists():
+                    overlay_img = load_image_texture(overlay_fpath, colorspace="sRGB", pack_textures=pack_textures, pack_hash=pack_hash)
+                    if overlay_img:
+                        tex_overlay = nodes.new("ShaderNodeTexImage")
+                        tex_overlay.name = f"Atlas Chunk {chunk_id:03d} Static (Overlay)"
+                        tex_overlay.image = overlay_img
+                        tex_overlay.interpolation = "Closest"
+                        tex_overlay.extension = "CLIP"
+                        tex_overlay.location = (-500, 500)
+                        links.new(uv_source_socket, tex_overlay.inputs["Vector"])
+                        links.new(tex_overlay.outputs["Color"], biome_tint_node.inputs["Overlay Color"])
+                        links.new(tex_overlay.outputs["Alpha"], biome_tint_node.inputs["Overlay Alpha"])
+
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
                 fname = chunk_files.get(channel_key)
                 if not fname:
@@ -517,8 +639,12 @@ def build_atlas_chunk_materials(
                 tex_node.location = (-500, base_y)
 
                 links.new(uv_source_socket, tex_node.inputs["Vector"])
-                links.new(tex_node.outputs["Color"], decoder_node.inputs[col_socket])
-                links.new(tex_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+                if channel_key == "albedo" and biome_tint_node:
+                    links.new(tex_node.outputs["Color"], biome_tint_node.inputs["Base Color"])
+                    links.new(tex_node.outputs["Alpha"], biome_tint_node.inputs["Base Alpha"])
+                else:
+                    links.new(tex_node.outputs["Color"], decoder_node.inputs[col_socket])
+                    links.new(tex_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
 
         materials[chunk_id] = mat
 

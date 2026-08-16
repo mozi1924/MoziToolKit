@@ -29,6 +29,20 @@ ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
 ATTR_SOURCE_ORIGIN = "mtk_source_origin"
 PROVENANCE_SCHEMA_VERSION = 1
 
+# Biome & Tint Mesh Attribute Names (Namespaced with mtk_)
+ATTR_TINT_WEIGHT = "mtk_tint_weight"
+ATTR_TINT_COLOR = "mtk_tint_color"
+ATTR_TINT_TYPE = "mtk_tint_type"
+ATTR_HARDCODED_COLOR = "mtk_hardcoded_color"
+ATTR_USE_HARDCODED = "mtk_use_hardcoded"
+ATTR_BIOME_TEMPERATURE = "mtk_biome_temperature"
+ATTR_BIOME_HUMIDITY = "mtk_biome_humidity"
+
+# Biome & Overlay Custom Property Keys (Namespaced with mtk:)
+PROP_HAS_OVERLAY = "mtk:has_overlay"
+PROP_OVERLAY_TEXTURE = "mtk:overlay_texture"
+PROP_TINT_CATEGORY = "mtk:tint_category"
+
 # Animation Mesh Attribute Names (Atlas Dynamic Animation)
 ATTR_ANIM_TOTAL_FRAMES = "mtk_anim_total_frames"
 ATTR_ANIM_FRAMETIME = "mtk_anim_frametime"

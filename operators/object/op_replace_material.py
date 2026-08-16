@@ -34,6 +34,28 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         default='STANDALONE',
     )
 
+    biome_preset: bpy.props.EnumProperty(
+        name="Biome Palette",
+        description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
+        items=[
+            ('PLAINS', "Plains", "Default vanilla plains vibrant colors"),
+            ('FOREST', "Forest", "Vibrant forest green foliage and grass"),
+            ('BIRCH_FOREST', "Birch Forest", "Bright spring green foliage and grass"),
+            ('TAIGA', "Taiga", "Cooler spruce forest tones"),
+            ('JUNGLE', "Jungle", "Lush vibrant tropical greens"),
+            ('SAVANNA', "Savanna", "Warm dry yellowish greens"),
+            ('BADLANDS', "Badlands (Mesa)", "Dry olive/brown foliage and grass"),
+            ('SWAMP', "Swamp", "Murky dark swamp greens and water"),
+            ('DARK_FOREST', "Dark Forest", "Deep dark canopy greens"),
+            ('MANGROVE_SWAMP', "Mangrove Swamp", "Warm olive mangrove colors"),
+            ('CHERRY_GROVE', "Cherry Grove", "Pastel spring greens"),
+            ('SNOWY_PLAINS', "Snowy Plains", "Muted frost green tones"),
+            ('DESERT', "Desert", "Dry desert and savanna vegetation tint"),
+            ('WARM_OCEAN', "Warm Ocean", "Bright turquoise water"),
+        ],
+        default='PLAINS',
+    )
+
     pack_textures: bpy.props.BoolProperty(
         name="Pack Textures into Blend File",
         description="Embed imported textures directly into the Blender file. When unchecked and the .blend file is saved, textures will be saved externally to '//textures/block/' in your project directory",
@@ -60,6 +82,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         box = layout.box()
         box.label(text="Material Options", icon='TEXTURE')
         box.prop(self, "material_mode", text="Mode")
+        box.prop(self, "biome_preset", text="Biome")
 
         if self.material_mode == 'ATLAS' and not has_pillow():
             alert_box = layout.box()
@@ -94,6 +117,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
             "material_mode": self.material_mode,
             "pack_textures": self.pack_textures,
             "use_cache": self.use_cache,
+            "biome_preset": self.biome_preset,
         }
 
         # Clear filepath after capturing so future invocations always open the file selector window

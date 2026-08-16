@@ -10,6 +10,7 @@ import zipfile
 from pathlib import Path
 
 from .constants import FACE_ORDER, ATLAS_FORMAT_VERSION
+from .biome import BiomeResolver
 from ..system.dependencies import ensure_sys_paths, has_pillow
 
 ensure_sys_paths()
@@ -83,6 +84,7 @@ class AtlasGenerator:
         self.block_mappings = {}     # block_id -> 6 face texture names
         self.static_materials = []   # list of static material metadata
         self.animated_materials = [] # list of animated material metadata
+        self.biome_resolver = BiomeResolver()
 
     def load_resources(self):
         """Load PNG images, mcmeta animation data, and block models from source."""
@@ -99,6 +101,8 @@ class AtlasGenerator:
             self._load_from_zip(self.resource_path)
         else:
             raise ValueError(f"Unsupported resource format: {self.resource_path}")
+
+        self.biome_resolver.set_models(self.models)
 
     @staticmethod
     def _texture_name(namespace: str, stem: str) -> str:
@@ -411,7 +415,10 @@ class AtlasGenerator:
                     rows = max(1, (len(names) + tiles_per_row - 1) // tiles_per_row)
                     width = tiles_per_row * ns_tile_size
                     height = rows * ns_tile_size
-                    images = {"albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0))}
+                    images = {
+                        "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
+                        "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
+                    }
                     if has_normal:
                         images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
                     if has_specular:
@@ -423,6 +430,7 @@ class AtlasGenerator:
                         y = (texture_id // tiles_per_row) * ns_tile_size
                         raw_key = self._texture_name(ns, stem)
                         canonical_key = f"{ns}:block/{stem}"
+                        tint_info = self.biome_resolver.get_tint_info(stem)
                         loc_entry = {
                             "texture_key": canonical_key,
                             "namespace": ns,
@@ -437,6 +445,14 @@ class AtlasGenerator:
                             "frame_count": 1,
                             "frametime": 1,
                             "interpolate": False,
+                            "has_overlay": tint_info["has_overlay"],
+                            "overlay_texture": tint_info["overlay_texture"],
+                            "tint_category": tint_info["tint_category"],
+                            "tint_type": tint_info["tint_type"],
+                            "default_tint_weight": tint_info["tint_weight"],
+                            "is_hardcoded": tint_info["is_hardcoded"],
+                            "hardcoded_color": tint_info["hardcoded_color"],
+                            "hardcoded_hex": tint_info["hardcoded_hex"],
                         }
                         texture_locations[raw_key] = loc_entry
                         texture_locations[canonical_key] = loc_entry
@@ -444,8 +460,16 @@ class AtlasGenerator:
                             texture_locations[f"minecraft:{stem}"] = loc_entry
                             texture_locations[f"minecraft:block/{stem}"] = loc_entry
 
-                        for channel, image in images.items():
-                            image.paste(tile_for(stem, channel), (x, y))
+                        images["albedo"].paste(tile_for(stem, "albedo"), (x, y))
+                        if has_normal:
+                            images["normal"].paste(tile_for(stem, "normal"), (x, y))
+                        if has_specular:
+                            images["specular"].paste(tile_for(stem, "specular"), (x, y))
+
+                        overlay_stem = tint_info.get("overlay_texture")
+                        if overlay_stem:
+                            overlay_tile = tile_for(overlay_stem, "albedo")
+                            images["overlay"].paste(overlay_tile, (x, y))
 
                     for channel, image in images.items():
                         filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
@@ -490,7 +514,10 @@ class AtlasGenerator:
                         x_calc += tw
                     chunk_width = max(16, x_calc)
                     chunk_height = max(img.height for _s, img, _m in columns)
-                    images = {"albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))}
+                    images = {
+                        "albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
+                        "overlay": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
+                    }
                     if has_normal:
                         images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
                     if has_specular:
@@ -539,6 +566,7 @@ class AtlasGenerator:
                         interpolate = bool(metadata.get("interpolate", False))
                         raw_name = self._texture_name(namespace_val, stem)
                         canonical_key = f"{namespace_val}:block/{stem}"
+                        tint_info = self.biome_resolver.get_tint_info(stem)
 
                         anim_loc = {
                             "texture_key": canonical_key,
@@ -554,6 +582,14 @@ class AtlasGenerator:
                             "frame_count": frame_count,
                             "frametime": frametime,
                             "interpolate": interpolate,
+                            "has_overlay": tint_info["has_overlay"],
+                            "overlay_texture": tint_info["overlay_texture"],
+                            "tint_category": tint_info["tint_category"],
+                            "tint_type": tint_info["tint_type"],
+                            "default_tint_weight": tint_info["tint_weight"],
+                            "is_hardcoded": tint_info["is_hardcoded"],
+                            "hardcoded_color": tint_info["hardcoded_color"],
+                            "hardcoded_hex": tint_info["hardcoded_hex"],
                         }
                         texture_locations[raw_name] = anim_loc
                         texture_locations[canonical_key] = anim_loc
