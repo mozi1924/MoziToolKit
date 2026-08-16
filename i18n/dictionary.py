@@ -209,5 +209,83 @@ translations_dict = {
         ("*", "to prevent texture cross-bleeding (Anti-optimization)."): "以防止图集纹理越界采样花屏（反向网格优化）。",
         ("*", "Mesh Optimization Settings"): "网格优化设置",
         ("*", "Atlas Optimization Settings"): "Atlas 图集优化设置",
+        ("*", "UV Span Threshold"): "UV 跨度阈值",
+        ("*", "Minimum UV span to detect multi-block consolidated faces"): "用于检测省面合并大面的最小 UV 跨度阈值",
+
+        # Scale UV Faces Options
+        ("*", "Auto (Selected / All)"): "自动 (已选面 / 全部面)",
+        ("*", "Selected Faces"): "仅已选面",
+        ("*", "Faces to scale UV on"): "进行 UV 缩放的面范围",
+        ("*", "Only scale currently selected faces"): "仅对当前选中的面进行 UV 缩放",
+        ("*", "Scale all faces regardless of selection"): "忽略选区，缩放网格中的全部面",
+        ("*", "Scale selected faces if any, otherwise scale all faces"): "优先缩放当前选中的面；若无选区则缩放全部面",
+
+        # Replace Material & Textures
+        ("*", "Mode"): "模式",
+        ("*", "Embed imported textures directly into the Blender file. When unchecked and the .blend file is saved, textures will be saved externally to '//textures/block/' in your project directory"): "将解压的贴图直接嵌入到 Blender 工程文件 (.blend) 中。未勾选且保存工程时，贴图将外部保存至工程目录 '//textures/block/'",
+        ("*", "Note: Textures will be saved to //textures/block/"): "提示: 贴图将外部保存至 //textures/block/",
+
+        # Random & Auto Extrude Extra Options
+        ("*", "UV & Crease Options"): "UV 与折痕选项",
+        ("*", "Automatically add Mean Crease to extruded face edges"): "自动为挤出面边添加 Mean Crease 边折痕",
+        ("*", "Edge Mean Crease weight value (0.0 - 1.0)"): "边 Mean Crease 折痕权重值 (0.0 - 1.0)",
+        ("*", "Minimum extrusion distance along face normal"): "沿面法向的最小挤出距离",
+        ("*", "Maximum extrusion distance along face normal"): "沿面法向的最大挤出距离",
+        ("*", "Random seed for extrude height generator"): "挤出高度生成器的随机种子",
+        ("*", "Function used to generate random heights"): "用于生成随机挤出高度的算法模式",
+        ("*", "Frequency scale for 3D Perlin/Cell noise"): "3D 柏林/细胞噪波的频率缩放",
+
+        # Presets Names & Descriptions
+        ("*", "Adaptive Pixel Split Preset"): "自适应像素切分预设",
+        ("*", "Auto Extrude Repair Preset"): "自动挤出修复预设",
+        ("*", "Clear Custom Normals Preset"): "删除自定义法向预设",
+        ("*", "Random Extrude Preset"): "随机挤出预设",
+        ("*", "Replace Material Preset"): "替换材质预设",
+        ("*", "Scale UV Preset"): "缩放 UV 预设",
+        ("*", "Select Hard Edges Preset"): "选择常用硬边预设",
+        ("*", "Select Transparent Faces Preset"): "选择透明面预设",
+        ("*", "Texture Interpolation Preset"): "纹理插值设为最近预设",
+        ("*", "Pipeline for adaptive pixel splitting faces according to texture resolution"): "根据贴图分辨率自适应细分网格面的处理管线",
+        ("*", "Pipeline for clearing custom split normals and custom_normal attributes"): "清理自定义拆分法向及 custom_normal 属性的处理管线",
+        ("*", "Pipeline for extruding selected faces individually with random heights and UV repair"): "沿法向随机高度独立挤出已选面并修复侧面 UV 的处理管线",
+        ("*", "Pipeline for repairing side face UVs and Mean Crease from extrusion"): "修复挤出侧面 UV 叠面并添加折痕的处理管线",
+        ("*", "Pipeline for replacing materials from Minecraft Java Resource Pack"): "使用 Minecraft Java 材质包批量替换材质的处理管线",
+        ("*", "Pipeline for scaling individual UV faces in place"): "原地独立缩放单个 UV 面的处理管线",
+        ("*", "Pipeline for selecting boundary and sharp threshold edges"): "选择网格边界边与锐边阈值硬边的处理管线",
+        ("*", "Pipeline for selecting faces mapped to transparent texture pixels"): "选择映射到透明贴图像素的面的处理管线",
+        ("*", "Pipeline for setting image texture node interpolation to Closest"): "将图像纹理节点插值设为“最近”的处理管线",
+
+        # Dependencies Warning & Confirm Dialogs
+        ("*", "Required for Minecraft Texture Atlas generation & image processing"): "Minecraft 材质图集生成与图像处理所需依赖",
+        ("*", "Console and pip output log from last installation"): "上次安装的控制台与 pip 输出日志",
+        ("*", "Uninstall all MoziToolKit dependencies from Blender?"): "确认从 Blender 中卸载所有 MoziToolKit 依赖？",
+        ("*", "Warning: This package is in Blender's shared environment."): "警告: 该 Python 包位于 Blender 共享环境中。",
+        ("*", "Uninstalling it may affect other add-ons that depend on it."): "卸载可能会影响其他依赖该库的 Blender 插件。",
+        ("*", "Warning: Packages reside in Blender's shared Python environment."): "警告: 依赖库位于 Blender 共享 Python 环境中。",
+        ("*", "Uninstalling may break other add-ons relying on these libraries."): "卸载可能会破坏其他依赖这些库的 Blender 插件。",
+
+        # Menu Config & Properties
+        ("*", "Export Menu Preset JSON"): "导出右键菜单预设 JSON",
+        ("*", "Import Menu Preset JSON"): "导入右键菜单预设 JSON",
+        ("*", "Reset to Default Presets"): "恢复为默认预设",
+        ("*", "Custom label shown in right-click menu"): "在右键菜单中显示的自定义名称",
+        ("*", "Custom URL"): "自定义链接",
+        ("*", "Category"): "分类",
+        ("*", "Label"): "标签/显示名称",
+        ("*", "Operator ID"): "算子 ID",
+        ("*", "Enabled"): "已启用",
+        ("*", "View Tab"): "视图标签页",
+        ("*", "Select preferences category"): "选择偏好设置分类",
+        ("*", "Select preferences section to configure"): "选择要配置的偏好设置板块",
+        ("*", "Up"): "上移",
+        ("*", "Down"): "下移",
+
+        # Pipeline Modal & Operators
+        ("*", "Mozi Pipeline Runner"): "Mozi 管线执行器",
+        ("*", "Runner ID"): "执行器 ID",
+
+        # CLI & Package Descriptions
+        ("*", "Generate Minecraft Texture Atlas from Resource Pack / JAR."): "从 Minecraft 材质包或 JAR 生成纹理图集 (Texture Atlas)。",
+        ("*", "Package MoziToolKit extension for Blender."): "打包 MoziToolKit 插件扩展文件供 Blender 使用。",
     }
 }
