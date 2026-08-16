@@ -1,25 +1,17 @@
 """
-Operators for dependency management and preferences navigation.
+Operators for environment status checks, cache cleanup, and preferences navigation.
 """
 
 import bpy
-from bpy.props import BoolProperty, StringProperty
+from bpy.props import StringProperty
 try:
     from ...utils.system import (
-        DEPENDENCIES,
         ensure_sys_paths,
-        get_all_dependency_statuses,
-        install_package,
-        uninstall_package,
         get_prefs,
     )
 except (ImportError, ValueError):
     from utils.system import (
-        DEPENDENCIES,
         ensure_sys_paths,
-        get_all_dependency_statuses,
-        install_package,
-        uninstall_package,
         get_prefs,
     )
 
@@ -36,188 +28,6 @@ def refresh_ui_windows(context=None):
         pass
 
 
-class MOZI_OT_install_dependency(bpy.types.Operator):
-    """Install or update the selected Python dependency via pip into Blender"""
-
-    bl_idname = "mozi.install_dependency"
-    bl_label = "Install Dependency"
-    bl_options = {"REGISTER", "INTERNAL"}
-
-    package_name: StringProperty(name="Package Name", default="Pillow")
-    upgrade: BoolProperty(name="Upgrade", default=False)
-
-    def execute(self, context):
-        prefs = get_prefs(context)
-        mirror_key = "TSINGHUA"
-        custom_url = ""
-
-        if prefs:
-            mirror_key = getattr(prefs, "pypi_mirror", "TSINGHUA")
-            custom_url = getattr(prefs, "custom_pypi_mirror", "")
-
-        self.report({"INFO"}, f"Installing '{self.package_name}' via pip... Please wait.")
-
-        success, log_output = install_package(
-            self.package_name,
-            mirror_key=mirror_key,
-            custom_url=custom_url,
-            upgrade=self.upgrade,
-        )
-
-        if prefs:
-            prefs.last_install_log = log_output
-
-        refresh_ui_windows(context)
-
-        if success:
-            self.report({"INFO"}, f"Successfully installed '{self.package_name}'!")
-            return {"FINISHED"}
-        else:
-            self.report({"ERROR"}, f"Failed to install '{self.package_name}'. Check log in preferences.")
-            return {"CANCELLED"}
-
-
-class MOZI_OT_install_all_dependencies(bpy.types.Operator):
-    """Install all missing required dependencies for MoziToolKit"""
-
-    bl_idname = "mozi.install_all_dependencies"
-    bl_label = "Install All Missing Dependencies"
-    bl_options = {"REGISTER", "INTERNAL"}
-
-    def execute(self, context):
-        prefs = get_prefs(context)
-        mirror_key = "TSINGHUA"
-        custom_url = ""
-
-        if prefs:
-            mirror_key = getattr(prefs, "pypi_mirror", "TSINGHUA")
-            custom_url = getattr(prefs, "custom_pypi_mirror", "")
-
-        all_statuses = get_all_dependency_statuses()
-        missing = [s for s in all_statuses if not s["is_satisfied"]]
-
-        if not missing:
-            self.report({"INFO"}, "All dependencies are already installed and satisfied.")
-            return {"FINISHED"}
-
-        combined_logs = []
-        overall_success = True
-
-        for item in missing:
-            pkg_name = item["name"]
-            self.report({"INFO"}, f"Installing '{pkg_name}'... Please wait.")
-            success, log_output = install_package(
-                pkg_name,
-                mirror_key=mirror_key,
-                custom_url=custom_url,
-            )
-            combined_logs.append(log_output)
-            if not success:
-                overall_success = False
-
-        if prefs:
-            prefs.last_install_log = "\n\n" + ("=" * 50) + "\n\n".join(combined_logs)
-
-        refresh_ui_windows(context)
-
-        if overall_success:
-            self.report({"INFO"}, "All dependencies installed successfully!")
-            return {"FINISHED"}
-        else:
-            self.report({"ERROR"}, "Some dependencies failed to install. Check log in preferences.")
-            return {"CANCELLED"}
-
-
-class MOZI_OT_uninstall_dependency(bpy.types.Operator):
-    """Uninstall the selected Python dependency from Blender's Python environment"""
-
-    bl_idname = "mozi.uninstall_dependency"
-    bl_label = "Uninstall Dependency"
-    bl_options = {"REGISTER", "INTERNAL"}
-
-    package_name: StringProperty(name="Package Name", default="Pillow")
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=400)
-
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column(align=True)
-        col.label(text=f"Uninstall '{self.package_name}' from Blender Python?", icon="QUESTION")
-        col.separator()
-        col.label(text="Warning: This package is in Blender's shared environment.", icon="ERROR")
-        col.label(text="Uninstalling it may affect other add-ons that depend on it.")
-
-    def execute(self, context):
-        prefs = get_prefs(context)
-        self.report({"INFO"}, f"Uninstalling '{self.package_name}'... Please wait.")
-
-        success, log_output = uninstall_package(self.package_name)
-
-        if prefs:
-            prefs.last_install_log = log_output
-
-        refresh_ui_windows(context)
-
-        if success:
-            self.report({"INFO"}, f"Successfully uninstalled '{self.package_name}'.")
-            return {"FINISHED"}
-        else:
-            self.report({"ERROR"}, f"Failed to uninstall '{self.package_name}'. Check log in preferences.")
-            return {"CANCELLED"}
-
-
-class MOZI_OT_uninstall_all_dependencies(bpy.types.Operator):
-    """Uninstall all installed MoziToolKit Python dependencies from Blender"""
-
-    bl_idname = "mozi.uninstall_all_dependencies"
-    bl_label = "Uninstall All Dependencies"
-    bl_options = {"REGISTER", "INTERNAL"}
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=420)
-
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column(align=True)
-        col.label(text="Uninstall all MoziToolKit dependencies from Blender?", icon="QUESTION")
-        col.separator()
-        col.label(text="Warning: Packages reside in Blender's shared Python environment.", icon="ERROR")
-        col.label(text="Uninstalling may break other add-ons relying on these libraries.")
-
-    def execute(self, context):
-        prefs = get_prefs(context)
-        all_statuses = get_all_dependency_statuses()
-        installed = [s for s in all_statuses if s["installed"]]
-
-        if not installed:
-            self.report({"INFO"}, "No MoziToolKit dependencies are currently installed.")
-            return {"FINISHED"}
-
-        combined_logs = []
-        overall_success = True
-
-        for item in installed:
-            pkg_name = item["name"]
-            self.report({"INFO"}, f"Uninstalling '{pkg_name}'... Please wait.")
-            success, log_output = uninstall_package(pkg_name)
-            combined_logs.append(log_output)
-            if not success:
-                overall_success = False
-
-        if prefs:
-            prefs.last_install_log = "\n\n" + ("=" * 50) + "\n\n".join(combined_logs)
-
-        refresh_ui_windows(context)
-
-        if overall_success:
-            self.report({"INFO"}, "All MoziToolKit dependencies uninstalled successfully.")
-            return {"FINISHED"}
-        else:
-            self.report({"ERROR"}, "Some dependencies failed to uninstall. Check log in preferences.")
-            return {"CANCELLED"}
-
-
 class MOZI_OT_check_dependencies(bpy.types.Operator):
     """Refresh Python dependency detection status"""
 
@@ -228,7 +38,7 @@ class MOZI_OT_check_dependencies(bpy.types.Operator):
     def execute(self, context):
         ensure_sys_paths()
         refresh_ui_windows(context)
-        self.report({"INFO"}, "Dependency status refreshed.")
+        self.report({"INFO"}, "Environment and dependency status refreshed.")
         return {"FINISHED"}
 
 
@@ -260,7 +70,7 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
 
         prefs = get_prefs(context)
         if prefs:
-            if self.tab in {"dependencies", "MISC", "misc"}:
+            if self.tab in {"dependencies", "MISC", "misc", "environment"}:
                 if hasattr(prefs, "category_tab"):
                     prefs.category_tab = "MISC"
             elif self.tab in {"mesh", "object", "uv"}:
@@ -286,4 +96,3 @@ class MOZI_OT_clear_cache(bpy.types.Operator):
         mb_freed = bytes_freed / (1024 * 1024)
         self.report({"INFO"}, f"Cache cleared: removed {count} files ({mb_freed:.2f} MB freed).")
         return {"FINISHED"}
-

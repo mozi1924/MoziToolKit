@@ -15,7 +15,7 @@ website = "https://mozi1924.com/"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
-tags = ["Modeling", "UV", "Mesh", "Materials"]
+tags = ["Modeling", "UV", "Mesh", "Material"]
 
 blender_version_min = "4.2.0"
 # # Optional: Blender version that the extension does not support, earlier versions are supported.
@@ -40,14 +40,14 @@ license = [
 # Optional: bundle 3rd party Python modules.
 # https://docs.blender.org/manual/en/dev/advanced/extensions/python_wheels.html
 # wheels = [
-#   "./wheels/hexdump-3.3-py3-none-any.whl",
-#   "./wheels/jsmin-3.0.1-py3-none-any.whl",
+#   "./wheels/pillow-12.1.0-cp313-cp313-macosx_11_0_arm64.whl",
+#   "./wheels/pillow-12.1.0-cp313-cp313-manylinux_2_28_x86_64.whl",
+#   "./wheels/pillow-12.1.0-cp313-cp313-win_amd64.whl",
 # ]
 
-# Resources required by the extension (files & network permissions)
+# Resources required by the extension (files permissions)
 [permissions]
-files = "Read Minecraft resource packs, write texture atlas files, and cache extracted textures"
-network = "Download and install external Python dependencies via pip"
+files = "Read Minecraft packs and write texture atlas files"
 
 # Build settings for `blender --command extension build`
 [build]
@@ -61,4 +61,7 @@ paths_exclude_pattern = [
   "*.blend1",
   ".DS_Store",
   ".vscode/",
+  "build.py",
+  ".gitignore",
 ]
+

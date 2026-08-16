@@ -5,7 +5,6 @@ System environment, dependency management, and UI context menu registry subpacka
 from .dependencies import (
     Dependency,
     DEPENDENCIES,
-    PYPI_MIRRORS,
     ensure_sys_paths,
     get_blender_site_packages,
     get_python_executable,
@@ -15,8 +14,6 @@ from .dependencies import (
     get_all_dependency_statuses,
     has_all_dependencies,
     has_pillow,
-    install_package,
-    uninstall_package,
     get_prefs,
 )
 
@@ -40,7 +37,6 @@ from .menu_config import (
 __all__ = [
     "Dependency",
     "DEPENDENCIES",
-    "PYPI_MIRRORS",
     "ensure_sys_paths",
     "get_blender_site_packages",
     "get_python_executable",
@@ -50,8 +46,6 @@ __all__ = [
     "get_all_dependency_statuses",
     "has_all_dependencies",
     "has_pillow",
-    "install_package",
-    "uninstall_package",
     "get_prefs",
     "register_menu_item",
     "register_operator_menu_item",
@@ -68,4 +62,3 @@ __all__ = [
     "import_config",
     "draw_dynamic_menu",
 ]
-

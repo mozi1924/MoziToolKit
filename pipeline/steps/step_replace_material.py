@@ -246,7 +246,7 @@ class StepReplaceMaterial(PipelineStep):
         if not cache_is_current:
             if not has_pillow():
                 yield StepResult.failed(
-                    "Atlas Mode requires 'Pillow' dependency. Please open Preferences > Add-ons > MoziToolKit > Dependencies to install it."
+                    "Atlas Mode requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
                 )
                 return
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")

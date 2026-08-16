@@ -327,10 +327,10 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         name="Category",
         description="Select preferences category",
         items=[
-            ("MISC", "Misc Settings", "Dependencies and general addon settings"),
-            ("CONTEXT_MENU", "Context Menu Settings", "Right-click context menu configuration"),
+            ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
+            ("MISC", "Environment & Cache", "Extension environment status, dependencies, and cache settings"),
         ],
-        default="MISC",
+        default="CONTEXT_MENU",
     )
 
     context_menu_tab: EnumProperty(
@@ -342,42 +342,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             ("uv", "UV Editor", "UV Editor Context Menu"),
         ],
         default="mesh",
-    )
-
-    active_tab: EnumProperty(
-        name="View Tab",
-        description="Select preferences section to configure",
-        items=[
-            ("mesh", "Mesh Edit Mode", "Mesh Edit Mode Context Menu"),
-            ("object", "Object Mode", "Object Mode Context Menu"),
-            ("uv", "UV Editor", "UV Editor Context Menu"),
-            ("dependencies", "Dependencies", "Manage Python dependencies required by MoziToolKit"),
-        ],
-        default="mesh",
-    )
-
-    pypi_mirror: EnumProperty(
-        name="PyPI Mirror",
-        description="Select PyPI mirror source for fast and reliable dependency downloads",
-        items=[
-            ("TSINGHUA", "Tsinghua Mirror", "https://pypi.tuna.tsinghua.edu.cn/simple"),
-            ("ALIYUN", "Aliyun Mirror", "https://mirrors.aliyun.com/pypi/simple/"),
-            ("TENCENT", "Tencent Mirror", "https://mirrors.cloud.tencent.com/pypi/simple/"),
-            ("USTC", "USTC Mirror", "https://pypi.mirrors.ustc.edu.cn/simple/"),
-            ("OFFICIAL", "Official PyPI", "https://pypi.org/simple"),
-            ("CUSTOM", "Custom Mirror", "Use custom index URL"),
-        ],
-        default="TSINGHUA",
-    )
-    custom_pypi_mirror: StringProperty(
-        name="Custom Mirror URL",
-        description="Custom Python Package Index URL",
-        default="",
-    )
-    last_install_log: StringProperty(
-        name="Last Install Log",
-        description="Console and pip output log from last installation",
-        default="",
     )
 
     added_mesh: CollectionProperty(type=MOZI_PG_context_menu_item)
@@ -517,17 +481,18 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         status_box = layout.box()
         banner_row = status_box.row(align=True)
         if all_ok:
-            banner_row.label(text="All required Python dependencies are installed and ready to use.", icon="CHECKMARK")
+            banner_row.label(text="All required modules and dependencies are available.", icon="CHECKMARK")
         else:
             banner_row.alert = True
-            banner_row.label(text="Some dependencies are missing. Click 'Install' below to enable all features.", icon="ERROR")
+            banner_row.label(text="Optional dependency 'Pillow' is not installed (required for Atlas Material Mode).", icon="INFO")
 
         layout.separator()
 
         # Dependencies List Box
         list_box = layout.box()
-        header_row = list_box.row()
-        header_row.label(text="Required Python Packages:", icon="PACKAGE")
+        header_row = list_box.row(align=True)
+        header_row.label(text="Extension Dependencies:", icon="PACKAGE")
+        header_row.operator("mozi.check_dependencies", text="Refresh Status", icon="FILE_REFRESH")
 
         col = list_box.column(align=False)
         for item in statuses:
@@ -541,7 +506,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             if item["installed"]:
                 title_row.label(text=f"(v{item['version'] or 'unknown'})", icon="NONE")
             else:
-                title_row.label(text="(Not Installed)", icon="NONE")
+                title_row.label(text="(Not Installed / Missing)", icon="NONE")
 
             desc_row = info_col.row(align=True)
             desc_row.scale_y = 0.85
@@ -552,42 +517,15 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
                 req_row.scale_y = 0.85
                 req_row.label(text=f"Used by: {item['required_by']}")
 
-            # Right Action Column
+            # Right Status Tag
             action_col = row.column(align=True)
             action_col.alignment = "RIGHT"
             if item["installed"]:
                 tag_row = action_col.row(align=True)
-                tag_row.label(text="Installed", icon="CHECKMARK")
-                btn_update = action_col.operator("mozi.install_dependency", text="Update / Reinstall", icon="FILE_REFRESH")
-                btn_update.package_name = item["name"]
-                btn_update.upgrade = True
-                btn_uninstall = action_col.operator("mozi.uninstall_dependency", text="Uninstall", icon="TRASH")
-                btn_uninstall.package_name = item["name"]
+                tag_row.label(text="Ready", icon="CHECKMARK")
             else:
                 tag_row = action_col.row(align=True)
-                tag_row.alert = True
-                tag_row.label(text="Missing", icon="CANCEL")
-                btn = action_col.operator("mozi.install_dependency", text="Install Package", icon="IMPORT")
-                btn.package_name = item["name"]
-                btn.upgrade = False
-
-        layout.separator()
-
-        # Global Actions Row
-        act_row = layout.row(align=True)
-        act_row.scale_y = 1.2
-        act_row.operator("mozi.install_all_dependencies", text="Install All Missing Dependencies", icon="IMPORT")
-        act_row.operator("mozi.uninstall_all_dependencies", text="Uninstall All Dependencies", icon="TRASH")
-        act_row.operator("mozi.check_dependencies", text="Refresh Status", icon="FILE_REFRESH")
-
-        layout.separator()
-
-        # Download & Mirror Settings Box
-        mirror_box = layout.box()
-        mirror_box.label(text="Download & Mirror Configuration:", icon="INTERNET")
-        mirror_box.prop(self, "pypi_mirror", text="PyPI Mirror")
-        if self.pypi_mirror == "CUSTOM":
-            mirror_box.prop(self, "custom_pypi_mirror", text="Custom URL")
+                tag_row.label(text="Unavailable", icon="CANCEL")
 
         layout.separator()
 
@@ -601,24 +539,14 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         # Python Environment Info Box
         env_box = layout.box()
-        env_box.label(text="Python Environment Details:", icon="INFO")
+        env_box.label(text="Python & Extension Environment:", icon="INFO")
         env_col = env_box.column(align=True)
         env_col.scale_y = 0.85
-        env_col.label(text=f"Python Executable: {get_python_executable()}")
         env_col.label(text=f"Python Version: {sys.version.split()[0]}")
+        env_col.label(text=f"Python Executable: {get_python_executable()}")
         blender_sites = get_blender_site_packages()
         if blender_sites:
-            env_col.label(text=f"Blender Site-Packages: {blender_sites[0]}")
+            env_col.label(text=f"Package Search Path: {blender_sites[0]}")
             for extra_site in blender_sites[1:]:
                 env_col.label(text=f"  + {extra_site}")
 
-        # Installation Output Log Box
-        if self.last_install_log:
-            layout.separator()
-            log_box = layout.box()
-            log_box.label(text="Last Installation Output Log:", icon="TEXT")
-            log_col = log_box.column(align=True)
-            log_col.scale_y = 0.8
-            lines = self.last_install_log.strip().splitlines()
-            for line in lines[-15:]:
-                log_col.label(text=line)
