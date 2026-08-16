@@ -157,6 +157,29 @@ def parse_mcmeta(mcmeta_path: Path) -> dict:
         return None
 
 
+def derive_texture_name(texture_key: str, base_stem: str = "") -> str:
+    """Derive the human-readable texture/material name from a texture key.
+
+    Preserves nested subfolders as hyphenated names for entity textures
+    and other categories (e.g., "entity/bed/white" -> "bed-white",
+    "entity/chest/normal" -> "chest-normal", "entity/signs/hanging/birch" -> "signs-hanging-birch"),
+    while maintaining clean single names for standard block/item textures (e.g., "block/stone" -> "stone").
+    """
+    key = (texture_key or "").strip("/").lower()
+    if not key:
+        return (base_stem or "").lower()
+
+    if "/" in key:
+        category, rest = key.split("/", 1)
+        if category in ("block", "item", "items", "painting", "colormap"):
+            return rest.replace("/", "-")
+        elif category == "entity":
+            return rest.replace("/", "-")
+        else:
+            return rest.replace("/", "-")
+    return key
+
+
 class ZipResourcePack:
     """
     Manages extraction, caching, and indexing of a Minecraft Java Edition
@@ -257,11 +280,12 @@ class ZipResourcePack:
                         channel = "albedo"
 
                     base_stem = base_stem.lower()
+                    texture_name = derive_texture_name(texture_key, base_stem)
                     path_index_key = (namespace, texture_key)
                     if path_index_key not in self.texture_path_index:
                         self.texture_path_index[path_index_key] = {
                             "namespace": namespace,
-                            "texture_name": base_stem,
+                            "texture_name": texture_name,
                             # Canonical resource location survives same-name
                             # textures in block/item/entity folders.  Keep
                             # texture_name as a legacy lookup/display alias.
@@ -280,6 +304,11 @@ class ZipResourcePack:
                     entry = self.texture_path_index[path_index_key]
                     entry[channel] = full_path
                     entry[f"{channel}_mcmeta"] = mcmeta_data
+
+                    # Primary index by derived texture_name (e.g. "bed-white", "chest-normal", "stone")
+                    self.texture_index[(namespace, texture_name)] = entry
+                    if "-" in texture_name:
+                        self.texture_index[(namespace, texture_name.replace("-", "/"))] = entry
 
                     # Fallback short stem index (prefer block/ over other categories for single word names)
                     stem_index_key = (namespace, base_stem)
@@ -317,6 +346,24 @@ class ZipResourcePack:
         if res is not None:
             return res
 
+        # Try alternate hyphen / slash representations (e.g. 'bed-white' <-> 'bed/white', 'entity/bed-white' <-> 'entity/bed/white')
+        if "-" in clean_name:
+            slash_candidate = clean_name.replace("-", "/")
+            res = (
+                self.texture_path_index.get((namespace, slash_candidate))
+                or self.texture_index.get((namespace, slash_candidate))
+            )
+            if res is not None:
+                return res
+        if "/" in clean_name:
+            hyphen_candidate = clean_name.replace("/", "-")
+            res = (
+                self.texture_path_index.get((namespace, hyphen_candidate))
+                or self.texture_index.get((namespace, hyphen_candidate))
+            )
+            if res is not None:
+                return res
+
         # Suffix matching within the same namespace (e.g. 'signs/jungle' -> 'entity/signs/jungle', 'bed/red' -> 'entity/bed/red')
         if "/" in clean_name:
             suffix_matches = [
@@ -326,19 +373,31 @@ class ZipResourcePack:
             if suffix_matches:
                 return suffix_matches[0]
 
+        # Suffix matching with hyphenated candidate
+        if "-" in clean_name:
+            slash_cand = clean_name.replace("-", "/")
+            suffix_matches = [
+                info for (ns, path_key), info in self.texture_path_index.items()
+                if ns == namespace and (path_key == slash_cand or path_key.endswith("/" + slash_cand))
+            ]
+            if suffix_matches:
+                return suffix_matches[0]
+
         # Fallback: If not found under default namespace, check if texture exists in another loaded namespace
         if namespace == DEFAULT_NAMESPACE:
             matches = [
                 info for (ns, key), info in self.texture_index.items()
-                if key == clean_name
+                if key == clean_name or (isinstance(key, str) and "-" in clean_name and key == clean_name.replace("-", "/"))
             ]
             if not matches:
                 matches = [
                     info for (ns, path_key), info in self.texture_path_index.items()
                     if path_key == clean_name or path_key.endswith("/" + clean_name)
+                    or ("-" in clean_name and (path_key == clean_name.replace("-", "/") or path_key.endswith("/" + clean_name.replace("-", "/"))))
                 ]
             if len(matches) == 1:
                 return matches[0]
 
         return None
+
 
