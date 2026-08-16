@@ -162,6 +162,25 @@ def normalize_face_uv_for_atlas_tiling(polygon, uv_layer, epsilon: float = 1e-6)
     )
 
 
+def face_uv_requires_atlas_tiling(polygon, uv_layer, epsilon: float = 1e-4) -> bool:
+    """Return whether local UVs need shader-side wrapping to fit an Atlas cell.
+
+    A UV region smaller than one tile is common for pixel-split block faces
+    and partial models such as campfires.  It must remain directly baked into
+    the Atlas cell.  Only coordinates that escape the canonical 0..1 tile
+    need the scale/location attributes and the tiling node's ``FRACT`` step.
+    """
+    if polygon is None or uv_layer is None or not polygon.loop_indices:
+        return False
+    uvs = [uv_layer.data[index].uv for index in polygon.loop_indices]
+    return (
+        min(uv.x for uv in uvs) < -epsilon
+        or max(uv.x for uv in uvs) > 1.0 + epsilon
+        or min(uv.y for uv in uvs) < -epsilon
+        or max(uv.y for uv in uvs) > 1.0 + epsilon
+    )
+
+
 def restore_atlas_tiling_uv(
     u: float,
     v: float,

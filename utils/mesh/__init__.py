@@ -36,6 +36,7 @@ try:
         straighten_face_uv,
         process_mesh_uv_rotations,
         normalize_face_uv_for_atlas_tiling,
+        face_uv_requires_atlas_tiling,
         restore_atlas_tiling_uv,
     )
 except ImportError:
@@ -62,6 +63,7 @@ __all__ = [
     "straighten_face_uv",
     "process_mesh_uv_rotations",
     "normalize_face_uv_for_atlas_tiling",
+    "face_uv_requires_atlas_tiling",
     "restore_atlas_tiling_uv",
     "process_random_extrude",
     "subdivide_quad_face",

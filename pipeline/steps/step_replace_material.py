@@ -44,7 +44,10 @@ try:
         ATTR_UV_TILING_LOCATION,
     )
     from ...utils.system import has_pillow
-    from ...utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling, restore_atlas_tiling_uv
+    from ...utils.mesh import (
+        straighten_face_uv, normalize_face_uv_for_atlas_tiling,
+        face_uv_requires_atlas_tiling, restore_atlas_tiling_uv,
+    )
 except (ImportError, ValueError):
     from utils.materials import (
         ZipResourcePack,
@@ -77,7 +80,10 @@ except (ImportError, ValueError):
         ATTR_UV_TILING_LOCATION,
     )
     from utils.system import has_pillow
-    from utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling, restore_atlas_tiling_uv
+    from utils.mesh import (
+        straighten_face_uv, normalize_face_uv_for_atlas_tiling,
+        face_uv_requires_atlas_tiling, restore_atlas_tiling_uv,
+    )
 
 
 ANIM_AND_ATLAS_ATTR_NAMES = (
@@ -362,6 +368,24 @@ class StepReplaceMaterial(PipelineStep):
                     attribute = None
                 return attribute or mesh.attributes.new(name=name, type="FLOAT_VECTOR", domain="FACE")
 
+            def existing_face_vector_attribute(name, poly_idx, default):
+                attribute = mesh.attributes.get(name)
+                if (
+                    attribute and attribute.domain == "FACE" and attribute.data_type == "FLOAT_VECTOR"
+                    and poly_idx < len(attribute.data)
+                ):
+                    return tuple(attribute.data[poly_idx].vector)
+                return default
+
+            def existing_face_float_attribute(name, poly_idx, default=0.0):
+                attribute = mesh.attributes.get(name)
+                if (
+                    attribute and attribute.domain == "FACE" and attribute.data_type == "FLOAT"
+                    and poly_idx < len(attribute.data)
+                ):
+                    return float(attribute.data[poly_idx].value)
+                return default
+
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
             uv_rotations = [0.0] * len(mesh.polygons)
@@ -506,17 +530,38 @@ class StepReplaceMaterial(PipelineStep):
                                 uv.x, uv.y, orig_mode, old_loc, old_chunk, old_anim_info
                             )
 
+                        # A prior Atlas pass keeps tiled UV data in face
+                        # attributes. Bake it back to source-local space
+                        # before building a fresh Atlas, otherwise a second
+                        # conversion would silently discard the tiling.
+                        if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
+                            old_tiling_scale = existing_face_vector_attribute(
+                                ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)
+                            )
+                            old_tiling_location = existing_face_vector_attribute(
+                                ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)
+                            )
+                            old_tiling_rotation = existing_face_float_attribute(ATTR_UV_ROTATION, poly_idx)
+                            for loop_index in polygon.loop_indices:
+                                uv = uv_layer.data[loop_index].uv
+                                uv.x, uv.y = restore_atlas_tiling_uv(
+                                    uv.x, uv.y, old_tiling_scale, old_tiling_location, old_tiling_rotation
+                                )
+
                         # Preserve non-orthogonal liquid UVs through the
                         # existing rotation attribute, then store any merged
                         # face span as shader tiling data instead of splitting.
-                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc):
-                            rot_angle, was_straightened = straighten_face_uv(polygon, uv_layer)
-                            if was_straightened:
-                                uv_rotations[poly_idx] = float(rot_angle)
+                        rot_angle, was_straightened = straighten_face_uv(polygon, uv_layer)
+                        uv_rotations[poly_idx] = float(rot_angle) if was_straightened else 0.0
 
-                        scale, location = normalize_face_uv_for_atlas_tiling(polygon, uv_layer)
-                        uv_tiling_scales[poly_idx] = scale
-                        uv_tiling_locations[poly_idx] = location
+                        # Preserve UV islands wholly inside one tile (for
+                        # example adaptive pixel splits and campfire parts).
+                        # Only genuine repeats, or a straightened liquid UV,
+                        # require the shader-side tiling transform.
+                        if was_straightened or face_uv_requires_atlas_tiling(polygon, uv_layer):
+                            scale, location = normalize_face_uv_for_atlas_tiling(polygon, uv_layer)
+                            uv_tiling_scales[poly_idx] = scale
+                            uv_tiling_locations[poly_idx] = location
 
                         remap_polygon_loop_uvs(
                             polygon=polygon,
