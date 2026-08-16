@@ -44,6 +44,11 @@ try:
         ATTR_UV_ROTATION,
         ATTR_UV_TILING_SCALE,
         ATTR_UV_TILING_LOCATION,
+        ATTR_UV_TILING_TRANSFORM,
+        ATTR_BIOME_TINT_DATA,
+        ATTR_BIOME_TINT_COLOR,
+        ATTR_ANIM_TIMING,
+        ATTR_ANIM_FRAME_SIZE,
         ATTR_TINT_WEIGHT,
         ATTR_BASE_TINT_WEIGHT,
         ATTR_OVERLAY_TINT_WEIGHT,
@@ -98,6 +103,11 @@ except (ImportError, ValueError):
         ATTR_UV_ROTATION,
         ATTR_UV_TILING_SCALE,
         ATTR_UV_TILING_LOCATION,
+        ATTR_UV_TILING_TRANSFORM,
+        ATTR_BIOME_TINT_DATA,
+        ATTR_BIOME_TINT_COLOR,
+        ATTR_ANIM_TIMING,
+        ATTR_ANIM_FRAME_SIZE,
         ATTR_TINT_WEIGHT,
         ATTR_BASE_TINT_WEIGHT,
         ATTR_OVERLAY_TINT_WEIGHT,
@@ -129,6 +139,9 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,
+    ATTR_UV_TILING_TRANSFORM,
+    ATTR_ANIM_TIMING,
+    ATTR_ANIM_FRAME_SIZE,
     "atlas_chunk_id",
     "atlas_texture_id",
     "material_id",
@@ -474,6 +487,20 @@ class StepReplaceMaterial(PipelineStep):
                     return float(attribute.data[poly_idx].value)
                 return default
 
+            def existing_face_tiling(poly_idx):
+                """Read the compact transform, with legacy files as a fallback."""
+                packed = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
+                if (
+                    packed and packed.domain == "FACE" and packed.data_type == "FLOAT_COLOR"
+                    and poly_idx < len(packed.data)
+                ):
+                    r, g, b, a = packed.data[poly_idx].color
+                    return (r, g, 1.0), (b, a, 0.0)
+                return (
+                    existing_face_vector_attribute(ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)),
+                    existing_face_vector_attribute(ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)),
+                )
+
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
             uv_rotations = [0.0] * len(mesh.polygons)
@@ -685,12 +712,7 @@ class StepReplaceMaterial(PipelineStep):
                         # before building a fresh Atlas, otherwise a second
                         # conversion would silently discard the tiling.
                         if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-                            old_tiling_scale = existing_face_vector_attribute(
-                                ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)
-                            )
-                            old_tiling_location = existing_face_vector_attribute(
-                                ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)
-                            )
+                            old_tiling_scale, old_tiling_location = existing_face_tiling(poly_idx)
                             old_tiling_rotation = existing_face_float_attribute(ATTR_UV_ROTATION, poly_idx)
                             for loop_index in polygon.loop_indices:
                                 uv = uv_layer.data[loop_index].uv
@@ -725,29 +747,30 @@ class StepReplaceMaterial(PipelineStep):
                     (ATTR_ATLAS_CHUNK_ID, chunk_ids),
                     (ATTR_ATLAS_TEXTURE_ID, texture_ids),
                     (ATTR_UV_ROTATION, uv_rotations),
-                    (ATTR_TINT_WEIGHT, tint_weights),
-                    (ATTR_BASE_TINT_WEIGHT, base_tint_weights),
-                    (ATTR_OVERLAY_TINT_WEIGHT, overlay_tint_weights),
-                    (ATTR_USE_HARDCODED, use_hardcodeds),
-                    ("mtk_anim_total_frames", anim_frames),
-                    ("mtk_anim_frametime", anim_frametimes),
-                    ("mtk_anim_interpolate", anim_interps),
-                    ("mtk_anim_frame_width", anim_widths),
-                    ("mtk_anim_frame_height", anim_heights),
                 ):
                     face_attribute(attr_name).data.foreach_set("value", data)
 
                 for attr_name, data in (
-                    (ATTR_UV_TILING_SCALE, uv_tiling_scales),
-                    (ATTR_UV_TILING_LOCATION, uv_tiling_locations),
-                ):
-                    vector_face_attribute(attr_name).data.foreach_set("vector", [component for value in data for component in value])
-
-                for attr_name, data in (
-                    (ATTR_TINT_COLOR, tint_colors),
-                    (ATTR_HARDCODED_COLOR, hardcoded_colors),
+                    (ATTR_BIOME_TINT_DATA, zip(base_tint_weights, overlay_tint_weights, tint_weights, use_hardcodeds)),
+                    (ATTR_BIOME_TINT_COLOR, tint_colors),
+                    (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),
+                    (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0, 1.0) for width, height in zip(anim_widths, anim_heights))),
+                    (ATTR_UV_TILING_TRANSFORM, ((scale[0], scale[1], location[0], location[1]) for scale, location in zip(uv_tiling_scales, uv_tiling_locations))),
                 ):
                     color_face_attribute(attr_name).data.foreach_set("color", [component for value in data for component in value])
+
+                # Drop obsolete split streams so a re-run repairs already
+                # converted meshes as well as new meshes.
+                for attr_name in (
+                    ATTR_TINT_WEIGHT, ATTR_BASE_TINT_WEIGHT, ATTR_OVERLAY_TINT_WEIGHT,
+                    ATTR_TINT_COLOR, ATTR_HARDCODED_COLOR, ATTR_USE_HARDCODED,
+                    ATTR_UV_TILING_SCALE, ATTR_UV_TILING_LOCATION,
+                    "mtk_anim_total_frames", "mtk_anim_frametime", "mtk_anim_interpolate",
+                    "mtk_anim_frame_width", "mtk_anim_frame_height",
+                ):
+                    attr = mesh.attributes.get(attr_name)
+                    if attr:
+                        mesh.attributes.remove(attr)
 
                 # 2. Revert standalone fallback faces to local UVs (or Standalone Frame 0)
                 for poly_idx, st_res in enumerate(resolved_standalone):
@@ -880,6 +903,19 @@ class StepReplaceMaterial(PipelineStep):
                     return float(attr.data[poly_idx].value)
                 return default
 
+            def face_tiling_attribute_value(poly_idx):
+                packed = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
+                if (
+                    packed and packed.domain == "FACE" and packed.data_type == "FLOAT_COLOR"
+                    and poly_idx < len(packed.data)
+                ):
+                    r, g, b, a = packed.data[poly_idx].color
+                    return (r, g, 1.0), (b, a, 0.0)
+                return (
+                    face_vector_attribute_value(ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)),
+                    face_vector_attribute_value(ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)),
+                )
+
             old_mappings = {}
             for slot in obj.material_slots:
                 if slot.material and slot.material not in old_mappings:
@@ -996,12 +1032,7 @@ class StepReplaceMaterial(PipelineStep):
                         # cell. Bake the same scale/location/rotation used by
                         # MC_Atlas_UV_Tiling before switching to a material
                         # that no longer contains that shader node.
-                        tiling_scale = face_vector_attribute_value(
-                            ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)
-                        )
-                        tiling_location = face_vector_attribute_value(
-                            ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)
-                        )
+                        tiling_scale, tiling_location = face_tiling_attribute_value(poly_idx)
                         tiling_rotation = face_float_attribute_value(ATTR_UV_ROTATION, poly_idx)
                         for loop_index in polygon.loop_indices:
                             uv = uv_layer.data[loop_index].uv
@@ -1059,18 +1090,18 @@ class StepReplaceMaterial(PipelineStep):
                         tint_colors[poly_idx] = (1.0, 1.0, 1.0, 1.0)
 
                 for attr_name, data in (
-                    (ATTR_TINT_WEIGHT, tint_weights),
-                    (ATTR_BASE_TINT_WEIGHT, base_tint_weights),
-                    (ATTR_OVERLAY_TINT_WEIGHT, overlay_tint_weights),
-                    (ATTR_USE_HARDCODED, use_hardcodeds),
-                ):
-                    face_attribute(attr_name).data.foreach_set("value", data)
-
-                for attr_name, data in (
-                    (ATTR_TINT_COLOR, tint_colors),
-                    (ATTR_HARDCODED_COLOR, hardcoded_colors),
+                    (ATTR_BIOME_TINT_DATA, zip(base_tint_weights, overlay_tint_weights, tint_weights, use_hardcodeds)),
+                    (ATTR_BIOME_TINT_COLOR, tint_colors),
                 ):
                     color_face_attribute(attr_name).data.foreach_set("color", [component for value in data for component in value])
+
+                for attr_name in (
+                    ATTR_TINT_WEIGHT, ATTR_BASE_TINT_WEIGHT, ATTR_OVERLAY_TINT_WEIGHT,
+                    ATTR_TINT_COLOR, ATTR_HARDCODED_COLOR, ATTR_USE_HARDCODED,
+                ):
+                    attr = mesh.attributes.get(attr_name)
+                    if attr:
+                        mesh.attributes.remove(attr)
 
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
 

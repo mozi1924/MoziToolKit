@@ -13,12 +13,8 @@ from .constants import (
     PROP_PACK_HASH,
     PROP_PACK_HASH_SHORT,
     PROP_SOURCE_FILE,
-    ATTR_TINT_WEIGHT,
-    ATTR_BASE_TINT_WEIGHT,
-    ATTR_OVERLAY_TINT_WEIGHT,
-    ATTR_TINT_COLOR,
-    ATTR_HARDCODED_COLOR,
-    ATTR_USE_HARDCODED,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
 )
 
 
@@ -301,47 +297,27 @@ def rebuild_material(
         biome_tint_node.name = "MC Biome Tint"
         biome_tint_node.location = (50, 200)
 
-        attr_base_tint_weight = nt.nodes.new("ShaderNodeAttribute")
-        attr_base_tint_weight.name = "Attr Base Tint Weight"
-        attr_base_tint_weight.attribute_type = "GEOMETRY"
-        attr_base_tint_weight.attribute_name = ATTR_BASE_TINT_WEIGHT
-        attr_base_tint_weight.location = (-300, 650)
-        nt.links.new(attr_base_tint_weight.outputs["Fac"], biome_tint_node.inputs["Base Tint Weight"])
-
-        attr_overlay_tint_weight = nt.nodes.new("ShaderNodeAttribute")
-        attr_overlay_tint_weight.name = "Attr Overlay Tint Weight"
-        attr_overlay_tint_weight.attribute_type = "GEOMETRY"
-        attr_overlay_tint_weight.attribute_name = ATTR_OVERLAY_TINT_WEIGHT
-        attr_overlay_tint_weight.location = (-300, 500)
-        nt.links.new(attr_overlay_tint_weight.outputs["Fac"], biome_tint_node.inputs["Overlay Tint Weight"])
-
-        attr_tint_weight = nt.nodes.new("ShaderNodeAttribute")
-        attr_tint_weight.name = "Attr Tint Weight"
-        attr_tint_weight.attribute_type = "GEOMETRY"
-        attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
-        attr_tint_weight.location = (-300, 350)
-        nt.links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
+        attr_tint_data = nt.nodes.new("ShaderNodeAttribute")
+        attr_tint_data.name = "Attr Biome Tint Data"
+        attr_tint_data.attribute_type = "GEOMETRY"
+        attr_tint_data.attribute_name = ATTR_BIOME_TINT_DATA
+        attr_tint_data.location = (-300, 350)
+        split_tint_data = nt.nodes.new("ShaderNodeSeparateColor")
+        split_tint_data.name = "Split Biome Tint Data"
+        split_tint_data.location = (-100, 350)
+        nt.links.new(attr_tint_data.outputs["Color"], split_tint_data.inputs["Color"])
+        nt.links.new(split_tint_data.outputs["Red"], biome_tint_node.inputs["Base Tint Weight"])
+        nt.links.new(split_tint_data.outputs["Green"], biome_tint_node.inputs["Overlay Tint Weight"])
+        nt.links.new(split_tint_data.outputs["Blue"], biome_tint_node.inputs["Tint Weight"])
+        nt.links.new(attr_tint_data.outputs["Alpha"], biome_tint_node.inputs["Use Hardcoded"])
 
         attr_tint_color = nt.nodes.new("ShaderNodeAttribute")
-        attr_tint_color.name = "Attr Tint Color"
+        attr_tint_color.name = "Attr Biome Tint Color"
         attr_tint_color.attribute_type = "GEOMETRY"
-        attr_tint_color.attribute_name = ATTR_TINT_COLOR
-        attr_tint_color.location = (-300, 200)
+        attr_tint_color.attribute_name = ATTR_BIOME_TINT_COLOR
+        attr_tint_color.location = (-300, 100)
         nt.links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
-
-        attr_hardcoded_color = nt.nodes.new("ShaderNodeAttribute")
-        attr_hardcoded_color.name = "Attr Hardcoded Color"
-        attr_hardcoded_color.attribute_type = "GEOMETRY"
-        attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
-        attr_hardcoded_color.location = (-300, 50)
-        nt.links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
-
-        attr_use_hardcoded = nt.nodes.new("ShaderNodeAttribute")
-        attr_use_hardcoded.name = "Attr Use Hardcoded"
-        attr_use_hardcoded.attribute_type = "GEOMETRY"
-        attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
-        attr_use_hardcoded.location = (-300, -100)
-        nt.links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
+        nt.links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
 
         nt.links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
         nt.links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])

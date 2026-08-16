@@ -26,12 +26,8 @@ from utils.materials.biome import (
     TINT_TYPE_HARDCODED,
 )
 from utils.materials.constants import (
-    ATTR_TINT_WEIGHT,
-    ATTR_BASE_TINT_WEIGHT,
-    ATTR_OVERLAY_TINT_WEIGHT,
-    ATTR_TINT_COLOR,
-    ATTR_HARDCODED_COLOR,
-    ATTR_USE_HARDCODED,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
 )
 from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_sampler
 from utils.materials.builder import rebuild_material
@@ -260,13 +256,13 @@ class TestBiomePipelineIntegration(unittest.TestCase):
 
         # Check mesh attributes
         mesh = self.obj.data
-        tint_weight_attr = mesh.attributes.get(ATTR_TINT_WEIGHT)
-        tint_color_attr = mesh.attributes.get(ATTR_TINT_COLOR)
-        self.assertIsNotNone(tint_weight_attr)
+        tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
+        tint_color_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+        self.assertIsNotNone(tint_data_attr)
         self.assertIsNotNone(tint_color_attr)
 
         # Grass block should have tint_weight == 1.0
-        self.assertAlmostEqual(tint_weight_attr.data[0].value, 1.0, places=2)
+        self.assertAlmostEqual(tint_data_attr.data[0].color[2], 1.0, places=2)
 
         # Swamp grass color check (linear)
         swamp_colors = get_biome_colors("SWAMP")
@@ -289,11 +285,11 @@ class TestBiomePipelineIntegration(unittest.TestCase):
 
         # Check mesh attributes
         mesh = self.obj.data
-        tint_weight_attr = mesh.attributes.get(ATTR_TINT_WEIGHT)
-        tint_color_attr = mesh.attributes.get(ATTR_TINT_COLOR)
-        self.assertIsNotNone(tint_weight_attr)
+        tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
+        tint_color_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+        self.assertIsNotNone(tint_data_attr)
         self.assertIsNotNone(tint_color_attr)
-        self.assertAlmostEqual(tint_weight_attr.data[0].value, 1.0, places=2)
+        self.assertAlmostEqual(tint_data_attr.data[0].color[2], 1.0, places=2)
 
         # Jungle grass color check
         jungle_colors = get_biome_colors("JUNGLE")
@@ -321,15 +317,11 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         self.assertTrue(res.is_success, msg=res.message)
 
         mesh = self.obj.data
-        tw_attr = mesh.attributes.get(ATTR_TINT_WEIGHT)
-        base_tw_attr = mesh.attributes.get(ATTR_BASE_TINT_WEIGHT)
-        overlay_tw_attr = mesh.attributes.get(ATTR_OVERLAY_TINT_WEIGHT)
-
-        self.assertIsNotNone(tw_attr)
-        self.assertIsNotNone(base_tw_attr)
-        self.assertIsNotNone(overlay_tw_attr)
+        tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
+        self.assertIsNotNone(tint_data_attr)
 
         # For grass_block_side: tint_weight=1.0, base_tint_weight=0.0 (dirt not tinted), overlay_tint_weight=1.0 (grass fringe tinted)
-        self.assertAlmostEqual(tw_attr.data[0].value, 1.0, places=2)
-        self.assertAlmostEqual(base_tw_attr.data[0].value, 0.0, places=2)
-        self.assertAlmostEqual(overlay_tw_attr.data[0].value, 1.0, places=2)
+        tint_data = tint_data_attr.data[0].color
+        self.assertAlmostEqual(tint_data[2], 1.0, places=2)
+        self.assertAlmostEqual(tint_data[0], 0.0, places=2)
+        self.assertAlmostEqual(tint_data[1], 1.0, places=2)
