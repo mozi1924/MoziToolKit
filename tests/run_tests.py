@@ -603,6 +603,12 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestExtrudeRepairAtlas: {e}")
 
+    try:
+        from tests.test_dependencies import TestDependencyManager
+        suite.addTests(loader.loadTestsFromTestCase(TestDependencyManager))
+    except Exception as e:
+        print(f"[Warning] Could not load TestDependencyManager: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

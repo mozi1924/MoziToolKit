@@ -27,6 +27,11 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
 
     _active_runners: Dict[str, Any] = {}
 
+    @classmethod
+    def is_running(cls) -> bool:
+        """Check whether a modal pipeline runner is currently executing."""
+        return bool(cls._active_runners)
+
     def invoke(self, context, event):
         runner_id = self.runner_id
         runner_data = self._active_runners.get(runner_id)
@@ -92,7 +97,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
 
                 elif isinstance(item, StepResult):
                     # ``Pipeline.execute_iter`` yields its final result before
-                    # returning.  Exhaust it before dropping the last runner
+                    # returning. Exhaust it before dropping the last runner
                     # reference, otherwise Python closes the suspended
                     # generator at ``yield last_result`` and a debugger shows
                     # a misleading GeneratorExit.
@@ -141,7 +146,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
 
         if runner_data:
             timer = runner_data.get("timer")
-            if timer and context.window_manager:
+            if timer and hasattr(context, "window_manager") and context.window_manager:
                 try:
                     context.window_manager.event_timer_remove(timer)
                 except Exception:
@@ -182,6 +187,15 @@ def run_pipeline_modal(
         target_objects=target_objects,
     )
 
+    # Prevent concurrent pipeline executions from corrupting the scene
+    if MOZI_OT_modal_pipeline_runner.is_running():
+        msg = "Another pipeline operation is currently in progress. Please wait for it to finish or press ESC to cancel."
+        ctx.report("WARNING", msg)
+        err_res = StepResult.failed(msg)
+        if on_finish:
+            on_finish(err_res, ctx)
+        return err_res, ctx
+
     # In background mode, headless, or context without active window, run synchronously
     is_headless = getattr(bpy.app, "background", False) or not getattr(context, "window", None)
     if is_headless:
@@ -205,8 +219,11 @@ def run_pipeline_modal(
         bpy.ops.mozi.modal_pipeline_runner("INVOKE_DEFAULT", runner_id=runner_id)
         return StepResult.success("Modal pipeline started."), ctx
     except Exception as e:
+        # Clean up runner registration on invocation failure
+        MOZI_OT_modal_pipeline_runner._active_runners.pop(runner_id, None)
         # Fallback to sync if modal invocation fails
         result = pipeline.execute(ctx)
         if on_finish:
             on_finish(result, ctx)
         return result, ctx
+

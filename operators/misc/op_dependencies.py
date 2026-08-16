@@ -10,19 +10,8 @@ from ...utils.system import (
     get_all_dependency_statuses,
     install_package,
     uninstall_package,
+    get_prefs,
 )
-
-
-def get_prefs(context=None):
-    if context is None:
-        context = bpy.context
-    addon_name = __package__.split(".")[0]
-    if addon_name in context.preferences.addons:
-        return context.preferences.addons[addon_name].preferences
-    for name, addon in context.preferences.addons.items():
-        if name.endswith("MoziToolKit") or "MoziToolKit" in name:
-            return addon.preferences
-    return None
 
 
 def refresh_ui_windows(context=None):
