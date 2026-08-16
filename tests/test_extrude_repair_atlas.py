@@ -314,6 +314,72 @@ class TestExtrudeRepairAtlas(unittest.TestCase):
         result = _deferred_extrude_repair_tick()
         self.assertIsNone(result, "_deferred_extrude_repair_tick should return None to sleep when idle.")
 
+    def test_uv_editing_isolation_guards(self):
+        """Verify UV editing detection functions prevent auto repair during UV manipulation."""
+        from operators.mesh.op_auto_extrude_repair import (
+            _is_uv_editing_active,
+            _is_extrude_operator_identifier,
+            _is_extrude_in_progress,
+            _has_recent_extrude_operator,
+        )
+
+        class DummyArea:
+            def __init__(self, type_str):
+                self.type = type_str
+
+        class DummySpace:
+            def __init__(self, type_str):
+                self.type = type_str
+
+        class DummyOp:
+            def __init__(self, idname):
+                self.bl_idname = idname
+
+        class DummyWindow:
+            def __init__(self, modal_ops=None):
+                self.modal_operators = modal_ops or []
+
+        class DummyContext:
+            def __init__(self, area_type=None, space_type=None, modal_ops=None, recent_ops=None):
+                self.area = DummyArea(area_type) if area_type else None
+                self.space_data = DummySpace(space_type) if space_type else None
+                self.window = DummyWindow(modal_ops)
+                self.window_manager = type("DummyWM", (), {"operators": recent_ops or []})()
+
+        # Test 1: IMAGE_EDITOR area detection
+        ctx_uv_area = DummyContext(area_type="IMAGE_EDITOR")
+        self.assertTrue(_is_uv_editing_active(ctx_uv_area))
+        self.assertFalse(_is_extrude_in_progress(ctx_uv_area))
+
+        # Test 2: VIEW_3D area with normal transform (G in UV or 3D view without extrude)
+        ctx_transform_only = DummyContext(
+            area_type="VIEW_3D",
+            modal_ops=[DummyOp("TRANSFORM_OT_translate")],
+            recent_ops=[DummyOp("VIEW3D_OT_select"), DummyOp("TRANSFORM_OT_translate")],
+        )
+        self.assertFalse(_is_uv_editing_active(ctx_transform_only))
+        # Non-extrude transform should NOT be considered an active extrusion
+        self.assertFalse(_is_extrude_in_progress(ctx_transform_only))
+        self.assertFalse(_has_recent_extrude_operator(ctx_transform_only))
+
+        # Test 3: VIEW_3D area with extrude-initiated modal transform
+        ctx_extrude_transform = DummyContext(
+            area_type="VIEW_3D",
+            modal_ops=[DummyOp("TRANSFORM_OT_translate")],
+            recent_ops=[DummyOp("MESH_OT_extrude_region_move"), DummyOp("TRANSFORM_OT_translate")],
+        )
+        self.assertTrue(_is_extrude_in_progress(ctx_extrude_transform))
+        self.assertTrue(_has_recent_extrude_operator(ctx_extrude_transform))
+
+        # Test 4: Extrude operator identifier checks
+        self.assertTrue(_is_extrude_operator_identifier("MESH_OT_extrude_region"))
+        self.assertTrue(_is_extrude_operator_identifier("MESH_OT_extrude_faces_move"))
+        self.assertTrue(_is_extrude_operator_identifier("MESH_OT_extrude_manifold"))
+        self.assertTrue(_is_extrude_operator_identifier("MOZI_OT_random_extrude"))
+        self.assertFalse(_is_extrude_operator_identifier("TRANSFORM_OT_translate"))
+        self.assertFalse(_is_extrude_operator_identifier("UV_OT_unwrap"))
+
+
     def test_atlas_generator_build_iter_yields_progress(self):
         """AtlasGenerator.build_iter must yield progressive steps with fractions and messages."""
         import tempfile
