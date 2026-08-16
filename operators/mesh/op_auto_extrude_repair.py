@@ -1,11 +1,17 @@
 import bmesh
 import bpy
 
-from ...utils.system import register_menu_item
-from ...utils.mesh import poll_edit_mesh
-from ...utils.extrude_repair import repair_extruded_side_faces
+try:
+    from ...utils.system import register_menu_item
+    from ...utils.mesh import poll_edit_mesh
+    from ...utils.extrude_repair import repair_extruded_side_faces
+except (ImportError, ValueError):
+    from utils.system import register_menu_item
+    from utils.mesh import poll_edit_mesh
+    from utils.extrude_repair import repair_extruded_side_faces
 
 _smart_extrude_sessions = {}
+
 _SMART_EXTRUDE_POLL_INTERVAL = 0.03
 
 
@@ -116,6 +122,7 @@ class MOZI_OT_auto_extrude_repair(bpy.types.Operator):
 
 
 _is_updating = False
+_pending_repairs = set()
 
 
 def _is_modal_mesh_operation_active(context):
@@ -124,15 +131,15 @@ def _is_modal_mesh_operation_active(context):
     window = getattr(context, "window", None)
     seen_ops = set()
     operators = []
-    
+
     raw_ops = []
     if window:
-        raw_ops.extend(window.modal_operators)
+        raw_ops.extend(getattr(window, "modal_operators", []))
     active_operator = getattr(context, "active_operator", None)
     if active_operator:
         raw_ops.append(active_operator)
     if window_manager:
-        raw_ops.extend(window_manager.operators)
+        raw_ops.extend(getattr(window_manager, "operators", []))
 
     for op in raw_ops:
         ptr = getattr(op, "as_pointer", lambda: id(op))()
@@ -151,91 +158,41 @@ def _is_modal_mesh_operation_active(context):
     return False
 
 
-def _monitor_smart_extrusions():
-    """Continuously update smart UVs until the modal extrusion ends."""
-    global _is_updating
+def _deferred_extrude_repair_tick():
+    """
+    Safely executes auto extrude repair in Blender's main event loop (outside depsgraph evaluation).
+    Polls while a modal extrusion/transform is active, and returns None to sleep when idle.
+    """
+    global _is_updating, _pending_repairs, _smart_extrude_sessions
 
-    if not _smart_extrude_sessions:
+    if _is_updating:
         return _SMART_EXTRUDE_POLL_INTERVAL
 
     context = bpy.context
-    if (
-        not context
-        or context.mode != "EDIT_MESH"
-        or not _is_modal_mesh_operation_active(context)
-    ):
+    if not context or context.mode != "EDIT_MESH":
+        _pending_repairs.clear()
         _smart_extrude_sessions.clear()
-        return _SMART_EXTRUDE_POLL_INTERVAL
+        return None
 
     props = getattr(context.scene, "mozi_auto_extrude_repair", None)
-    obj = context.active_object
-    if (
-        not props
-        or not props.enabled
-        or props.uv_mode != "SMART"
-        or not obj
-        or obj.type != "MESH"
-    ):
+    if not props or not props.enabled or not (props.repair_uv or props.add_mean_crease):
+        _pending_repairs.clear()
         _smart_extrude_sessions.clear()
-        return _SMART_EXTRUDE_POLL_INTERVAL
+        return None
 
-    session = _smart_extrude_sessions.get(obj.as_pointer())
-    if not session or _is_updating:
-        return _SMART_EXTRUDE_POLL_INTERVAL
+    obj = context.active_object
+    if not obj or obj.type != "MESH":
+        _pending_repairs.clear()
+        _smart_extrude_sessions.clear()
+        return None
 
     try:
         _is_updating = True
         bm = bmesh.from_edit_mesh(obj.data)
-        count = repair_extruded_side_faces(
-            bm,
-            obj=obj,
-            context=context,
-            repair_uv=props.repair_uv,
-            add_crease=props.add_mean_crease,
-            crease_val=props.crease_value,
-            only_collapsed=True,
-            uv_mode="SMART",
-            smart_side_face_indices=session["side_face_indices"],
-        )
-        if count > 0:
-            bmesh.update_edit_mesh(obj.data)
-    except Exception as e:
-        import sys
-        print(f"[MoziToolKit Exception] Error in timer _monitor_smart_extrusions: {e}", file=sys.stderr)
-    finally:
-        _is_updating = False
-
-    return _SMART_EXTRUDE_POLL_INTERVAL
-
-
-@bpy.app.handlers.persistent
-def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
-    global _is_updating
-    if _is_updating:
-        return
-    try:
-        context = bpy.context
-        if not context or context.mode != "EDIT_MESH":
-            return
-
-        props = getattr(scene, "mozi_auto_extrude_repair", None)
-        if not props or not props.enabled:
-            return
-
-        if not (props.repair_uv or props.add_mean_crease):
-            return
-
-        obj = context.active_object
-        if not obj or obj.type != "MESH":
-            return
-
         if props.uv_mode == "SMART":
-            object_key = obj.as_pointer()
             session = _smart_extrude_sessions.setdefault(
-                object_key, {"side_face_indices": set()}
+                obj.as_pointer(), {"side_face_indices": set()}
             )
-            _is_updating = True
-            bm = bmesh.from_edit_mesh(obj.data)
             count = repair_extruded_side_faces(
                 bm,
                 obj=obj,
@@ -247,32 +204,72 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
                 uv_mode="SMART",
                 smart_side_face_indices=session["side_face_indices"],
             )
-            if count > 0:
-                bmesh.update_edit_mesh(obj.data)
-            return
-
-        _is_updating = True
-        bm = bmesh.from_edit_mesh(obj.data)
-        count = repair_extruded_side_faces(
-            bm,
-            obj=obj,
-            context=context,
-            repair_uv=props.repair_uv,
-            add_crease=props.add_mean_crease,
-            crease_val=props.crease_value,
-            only_collapsed=True,
-            uv_mode=props.uv_mode,
-        )
-
+        else:
+            count = repair_extruded_side_faces(
+                bm,
+                obj=obj,
+                context=context,
+                repair_uv=props.repair_uv,
+                add_crease=props.add_mean_crease,
+                crease_val=props.crease_value,
+                only_collapsed=True,
+                uv_mode=props.uv_mode,
+            )
         if count > 0:
             bmesh.update_edit_mesh(obj.data)
     except Exception as e:
         import sys
-        print(f"[MoziToolKit Exception] Error in depsgraph_auto_extrude_repair_handler: {e}", file=sys.stderr)
+        print(f"[MoziToolKit Exception] Error in auto extrude repair tick: {e}", file=sys.stderr)
     finally:
         _is_updating = False
 
+    _pending_repairs.discard(obj.as_pointer())
 
+    # If the user is actively dragging the extrusion transform, keep polling
+    if _is_modal_mesh_operation_active(context):
+        return _SMART_EXTRUDE_POLL_INTERVAL
+
+    # Finished and idle: clean up and return None to automatically stop the timer
+    _smart_extrude_sessions.clear()
+    _pending_repairs.clear()
+    return None
+
+
+@bpy.app.handlers.persistent
+def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
+    """
+    Lightweight depsgraph listener: marks dirty objects and schedules deferred main-thread execution.
+    Never modifies mesh data directly within depsgraph_update_post to prevent re-evaluation cascades.
+    """
+    if _is_updating:
+        return
+    try:
+        context = bpy.context
+        if not context or context.mode != "EDIT_MESH":
+            return
+
+        props = getattr(scene, "mozi_auto_extrude_repair", None)
+        if not props or not props.enabled or not (props.repair_uv or props.add_mean_crease):
+            return
+
+        obj = context.active_object
+        if not obj or obj.type != "MESH":
+            return
+
+        # Check if geometry was updated
+        geo_updated = False
+        for update in depsgraph.updates:
+            if update.is_updated_geometry:
+                geo_updated = True
+                break
+
+        if geo_updated or not depsgraph.updates:
+            _pending_repairs.add(obj.as_pointer())
+            if not bpy.app.timers.is_registered(_deferred_extrude_repair_tick):
+                bpy.app.timers.register(_deferred_extrude_repair_tick, first_interval=0.001, persistent=True)
+    except Exception as e:
+        import sys
+        print(f"[MoziToolKit Exception] Error in depsgraph_auto_extrude_repair_handler: {e}", file=sys.stderr)
 
 
 def register():
@@ -281,15 +278,15 @@ def register():
     )
     if depsgraph_auto_extrude_repair_handler not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(depsgraph_auto_extrude_repair_handler)
-    if not bpy.app.timers.is_registered(_monitor_smart_extrusions):
-        bpy.app.timers.register(_monitor_smart_extrusions, persistent=True)
 
 
 def unregister():
     if depsgraph_auto_extrude_repair_handler in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(depsgraph_auto_extrude_repair_handler)
-    if bpy.app.timers.is_registered(_monitor_smart_extrusions):
-        bpy.app.timers.unregister(_monitor_smart_extrusions)
+    if bpy.app.timers.is_registered(_deferred_extrude_repair_tick):
+        bpy.app.timers.unregister(_deferred_extrude_repair_tick)
     _smart_extrude_sessions.clear()
+    _pending_repairs.clear()
     if hasattr(bpy.types.Scene, "mozi_auto_extrude_repair"):
         del bpy.types.Scene.mozi_auto_extrude_repair
+

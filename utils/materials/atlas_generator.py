@@ -335,17 +335,19 @@ class AtlasGenerator:
             "-Z": north
         }
 
-    def build(self, output_dir: str | Path, progress_callback=None) -> dict:
-        """Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace."""
+    def build_iter(self, output_dir: str | Path):
+        """
+        Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace.
+        Yields (fraction: float, message: str, outputs: Optional[dict]).
+        """
         if not HAS_PIL:
             raise ImportError("Pillow library is required for AtlasGenerator. Please install it using 'pip install pillow'.")
         from collections import Counter
 
-        if progress_callback:
-            progress_callback(0.05, "Reading textures and models from resource pack...")
+        yield (0.05, "Reading textures and models from resource pack...", None)
         self.load_resources()
-        if progress_callback:
-            progress_callback(0.2, f"Loaded {len(self.static_textures)} static & {len(self.animated_textures)} animated textures")
+        yield (0.15, f"Loaded {len(self.static_textures)} static & {len(self.animated_textures)} animated textures", None)
+
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -361,9 +363,12 @@ class AtlasGenerator:
         has_normal = bool(self.normal_textures)
         has_specular = bool(self.specular_textures)
 
-        for ns in all_namespaces:
+        total_ns = max(1, len(all_namespaces))
+        for ns_idx, ns in enumerate(all_namespaces):
+            ns_progress_base = 0.20 + 0.60 * (ns_idx / total_ns)
             static_map = self.static_by_namespace.get(ns, {})
             if static_map:
+                yield (ns_progress_base, f"Packing static atlas chunks for namespace '{ns}'...", None)
                 # Statistical mode for tile_size determination
                 square_widths = [
                     image.width for image in static_map.values()
@@ -458,6 +463,7 @@ class AtlasGenerator:
             # Animated textures for this namespace
             anim_map = self.animated_by_namespace.get(ns, {})
             if anim_map:
+                yield (ns_progress_base + 0.05, f"Packing animated strip chunks for namespace '{ns}'...", None)
                 animation_columns = []
                 for stem in sorted(anim_map.keys()):
                     source = anim_map[stem]
@@ -589,6 +595,7 @@ class AtlasGenerator:
                 if pending_columns:
                     save_animation_chunk(pending_columns)
 
+        yield (0.85, "Mapping materials and block faces...", None)
         materials = []
         all_material_names = sorted(set(self.models) | set(self.static_textures) | set(self.animated_textures))
         for material_id, name in enumerate(all_material_names):
@@ -619,9 +626,19 @@ class AtlasGenerator:
         with open(mapping_path, "w", encoding="utf-8") as fp:
             json.dump(mapping_data, fp, indent=2)
         outputs["mapping"] = mapping_path
-        print(f"[AtlasGenerator] Built {len(chunks)} chunk(s), {len(self.static_textures)} static texture(s), "
-              f"and {len(animations)} animation(s).")
-        return outputs
+
+        yield (1.0, f"Atlas built: {len(chunks)} chunks, {len(animations)} animations", outputs)
+
+    def build(self, output_dir: str | Path, progress_callback=None) -> dict:
+        """Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace."""
+        final_outputs = None
+        for frac, msg, res in self.build_iter(output_dir):
+            if progress_callback:
+                progress_callback(frac, msg)
+            if res is not None:
+                final_outputs = res
+        return final_outputs or {}
+
 
 
 if __name__ == "__main__":

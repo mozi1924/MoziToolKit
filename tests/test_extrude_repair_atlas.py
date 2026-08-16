@@ -299,3 +299,47 @@ class TestExtrudeRepairAtlas(unittest.TestCase):
 
         bmesh.update_edit_mesh(cube.data)
         bpy.ops.object.mode_set(mode="OBJECT")
+
+    def test_auto_extrude_repair_deferred_tick_sleeps_when_idle(self):
+        """_deferred_extrude_repair_tick must return None when idle so the timer automatically deregisters."""
+        from operators.mesh.op_auto_extrude_repair import _deferred_extrude_repair_tick, _pending_repairs, _smart_extrude_sessions
+
+        _pending_repairs.clear()
+        _smart_extrude_sessions.clear()
+
+        # In OBJECT mode or when not extruding, tick must return None
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+        result = _deferred_extrude_repair_tick()
+        self.assertIsNone(result, "_deferred_extrude_repair_tick should return None to sleep when idle.")
+
+    def test_atlas_generator_build_iter_yields_progress(self):
+        """AtlasGenerator.build_iter must yield progressive steps with fractions and messages."""
+        import tempfile
+        import zipfile
+        from utils.materials import AtlasGenerator
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            pack_dir = Path(tmp_dir) / "test_pack"
+            textures_dir = pack_dir / "assets" / "minecraft" / "textures" / "block"
+            textures_dir.mkdir(parents=True)
+
+            try:
+                from PIL import Image
+                img = Image.new("RGBA", (16, 16), (200, 100, 50, 255))
+                img.save(textures_dir / "stone.png")
+            except ImportError:
+                self.skipTest("Pillow not installed")
+
+            out_dir = Path(tmp_dir) / "output_atlas"
+            gen = AtlasGenerator(pack_dir)
+            yielded_steps = list(gen.build_iter(out_dir))
+
+            self.assertGreater(len(yielded_steps), 0)
+            fractions = [step[0] for step in yielded_steps]
+            # Fractions should monotonically increase towards 1.0
+            self.assertEqual(fractions[-1], 1.0)
+            self.assertTrue(all(isinstance(step[1], str) for step in yielded_steps))
+            self.assertIsNotNone(yielded_steps[-1][2], "Final step should yield the output dict.")
+
