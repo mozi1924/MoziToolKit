@@ -64,6 +64,82 @@ JMC2OBJ_BIOME_SUFFIXES = (
     "-meadow", "-mangrove", "-cherry_grove", "-cold_ocean", "-warm_ocean",
 )
 
+MINECRAFT_COLORS = (
+    "white", "orange", "magenta", "light_blue", "yellow", "lime",
+    "pink", "gray", "light_gray", "cyan", "purple", "blue",
+    "brown", "green", "red", "black",
+)
+
+WOOD_TYPES = (
+    "oak", "spruce", "birch", "jungle", "acacia", "dark_oak",
+    "mangrove", "cherry", "pale_oak", "bamboo", "crimson", "warped",
+)
+
+EXPLICIT_MATERIAL_ALIASES = {
+    # Special block names
+    "magma_block": ["block/magma", "magma"],
+    "smooth_quartz": ["block/quartz_block_top", "block/quartz_block_side", "block/quartz_block_bottom"],
+    "smooth_sandstone": ["block/sandstone_top", "block/sandstone_bottom"],
+    "smooth_red_sandstone": ["block/red_sandstone_top", "block/red_sandstone_bottom"],
+    "smooth_basalt": ["block/smooth_basalt", "block/basalt_side"],
+    "moss_carpet": ["block/moss_block", "block/moss_carpet"],
+    "hay_block": ["block/hay_block_side", "block/hay_block_top"],
+    "dried_kelp_block": ["block/dried_kelp_top", "block/dried_kelp_side", "block/dried_kelp_bottom"],
+    "glowstone": ["block/glowstone"],
+    "sea_lantern": ["block/sea_lantern"],
+    "shroomlight": ["block/shroomlight"],
+    "infested_deepslate": ["block/deepslate"],
+    "infested_cobblestone": ["block/cobblestone"],
+    "infested_stone": ["block/stone"],
+    "infested_stone_bricks": ["block/stone_bricks"],
+    "infested_cracked_stone_bricks": ["block/cracked_stone_bricks"],
+    "infested_mossy_stone_bricks": ["block/mossy_stone_bricks"],
+    "infested_chiseled_stone_bricks": ["block/chiseled_stone_bricks"],
+    "grass": ["block/short_grass", "block/grass"],
+    "sculk_sensor": ["block/sculk_sensor_side", "block/sculk_sensor_top"],
+    "calibrated_sculk_sensor": ["block/calibrated_sculk_sensor_side", "block/calibrated_sculk_sensor_top"],
+    "chiseled_bookshelf": ["block/chiseled_bookshelf_empty", "block/chiseled_bookshelf_side"],
+    "decorated_pot": ["entity/decorated_pot/decorated_pot_base", "entity/decorated_pot/base"],
+    "bell": ["entity/bell/bell_body", "entity/bell/bell"],
+    "conduit": ["entity/conduit/base", "entity/conduit/cage"],
+    "end_portal": ["entity/end_portal"],
+    "lightning_rod": ["block/lightning_rod"],
+    "tripwire": ["block/tripwire"],
+    "tripwire_hook": ["block/tripwire_hook"],
+    "cake": ["block/cake_top", "block/cake_side", "block/cake_inner", "block/cake_bottom"],
+    "suspicious_gravel": ["block/gravel", "block/suspicious_gravel_0"],
+    "suspicious_sand": ["block/sand", "block/suspicious_sand_0"],
+    "torchflower_crop": ["block/torchflower_crop_stage0", "block/torchflower_crop_stage1"],
+    "pitcher_crop": ["block/pitcher_crop_side", "block/pitcher_crop_top"],
+    "respawn_anchor": ["block/respawn_anchor_top", "block/respawn_anchor_side0"],
+    "lodestone": ["block/lodestone_top", "block/lodestone_side"],
+    "target": ["block/target_top", "block/target_side"],
+    "crying_obsidian": ["block/crying_obsidian"],
+    "ancient_debris": ["block/ancient_debris_side", "block/ancient_debris_top"],
+    # Entities / Heads
+    "skeleton_skull": ["entity/skeleton/skeleton"],
+    "skeleton_wall_skull": ["entity/skeleton/skeleton"],
+    "wither_skeleton_skull": ["entity/skeleton/wither_skeleton"],
+    "wither_skeleton_wall_skull": ["entity/skeleton/wither_skeleton"],
+    "zombie_head": ["entity/zombie/zombie"],
+    "zombie_wall_head": ["entity/zombie/zombie"],
+    "creeper_head": ["entity/creeper/creeper"],
+    "creeper_wall_head": ["entity/creeper/creeper"],
+    "piglin_head": ["entity/piglin/piglin"],
+    "piglin_wall_head": ["entity/piglin/piglin"],
+    "dragon_head": ["entity/enderdragon/dragon"],
+    "dragon_wall_head": ["entity/enderdragon/dragon"],
+    "player_head": ["entity/player/wide/steve"],
+    "player_wall_head": ["entity/player/wide/steve"],
+    # Chests
+    "chest": ["entity/chest/normal", "entity/chest/chest"],
+    "normal_chest": ["entity/chest/normal", "entity/chest/chest"],
+    "trapped_chest": ["entity/chest/trapped"],
+    "ender_chest": ["entity/chest/ender"],
+    "banner_standing": ["entity/banner/banner_base", "entity/banner/base"],
+    "banner_wall": ["entity/banner/banner_base", "entity/banner/base"],
+}
+
 
 def is_jmc2obj_material(mat: bpy.types.Material | None) -> bool:
     """Detect materials exported by jmc2obj via naming conventions, image paths, or metadata."""
@@ -95,6 +171,186 @@ def is_jmc2obj_material(mat: bpy.types.Material | None) -> bool:
     return False
 
 
+def _expand_semantic_candidates(stem: str) -> list[str]:
+    """Generate structured candidate texture keys for a normalized jmc2obj resource stem."""
+    cands: list[str] = []
+
+    # 1. Direct explicit aliases
+    if stem in EXPLICIT_MATERIAL_ALIASES:
+        cands.extend(EXPLICIT_MATERIAL_ALIASES[stem])
+    clean_stem = stem.replace("block/", "").replace("entity/", "").replace("item/", "")
+    if clean_stem in EXPLICIT_MATERIAL_ALIASES:
+        cands.extend(EXPLICIT_MATERIAL_ALIASES[clean_stem])
+
+    # 2. Beds (all 16 colors)
+    if "bed" in stem:
+        for color in MINECRAFT_COLORS:
+            if color in stem:
+                cands.extend([
+                    f"entity/bed/{color}",
+                    f"block/{color}_bed",
+                    f"block/{color}_bed_top",
+                    f"block/{color}_bed_head_up",
+                    f"block/{color}_bed_head",
+                    f"bed/{color}",
+                ])
+                break
+
+    # 3. Signs and Hanging Signs (all wood types)
+    if "sign" in stem:
+        is_hanging = "hanging" in stem
+        for wood in WOOD_TYPES:
+            if wood in stem:
+                if is_hanging:
+                    cands.extend([
+                        f"entity/signs/hanging/{wood}",
+                        f"entity/signs/{wood}",
+                        f"block/{wood}_hanging_sign",
+                        f"block/{wood}_sign",
+                        f"block/{wood}_planks",
+                        f"block/{wood}_log",
+                    ])
+                else:
+                    cands.extend([
+                        f"entity/signs/{wood}",
+                        f"block/{wood}_sign",
+                        f"block/{wood}_planks",
+                        f"block/{wood}_log",
+                    ])
+                break
+
+    # 4. Shulker Boxes (all 16 colors + undyed)
+    if "shulker" in stem:
+        found_color = None
+        for color in MINECRAFT_COLORS:
+            if color in stem:
+                found_color = color
+                break
+        if found_color:
+            cands.extend([
+                f"entity/shulker/shulker_{found_color}",
+                f"block/{found_color}_shulker_box",
+                f"entity/shulker/{found_color}",
+            ])
+        else:
+            cands.extend([
+                "entity/shulker/shulker",
+                "block/shulker_box",
+            ])
+
+    # 5. Slabs, Stairs, Walls, Fences, Gates, Pressure Plates, Buttons
+    for suffix in ("_slab", "_stairs", "_wall", "_fence_gate", "_fence", "_pressure_plate", "_button"):
+        if clean_stem.endswith(suffix):
+            base_b = clean_stem[:-len(suffix)]
+            # e.g. dark_prismarine_slab -> dark_prismarine
+            cands.extend([
+                f"block/{base_b}",
+                f"block/{base_b}_planks" if not base_b.endswith("_planks") else f"block/{base_b}",
+                f"block/{base_b}s" if not base_b.endswith("s") else f"block/{base_b}",
+                f"block/{base_b}_bricks" if not base_b.endswith("_bricks") else f"block/{base_b}",
+                f"block/{base_b}_block" if not base_b.endswith("_block") else f"block/{base_b}",
+                f"block/{base_b}_top",
+                f"block/{base_b}_side",
+            ])
+            break
+
+    # 6. Carpets
+    if clean_stem.endswith("_carpet"):
+        color = clean_stem[:-7]
+        if color in MINECRAFT_COLORS:
+            cands.extend([
+                f"block/{color}_wool",
+                f"block/{color}_carpet",
+            ])
+        elif color == "moss":
+            cands.extend(["block/moss_block", "block/moss_carpet"])
+
+    # 7. Wood / Stripped Wood / Hyphae (6-sided logs)
+    if clean_stem.endswith("_wood"):
+        wood_name = clean_stem[:-5]
+        if wood_name.startswith("stripped_"):
+            real_wood = wood_name[9:]
+            cands.extend([
+                f"block/stripped_{real_wood}_log",
+                f"block/stripped_{real_wood}_log_top",
+                f"block/stripped_{real_wood}_stem",
+            ])
+        else:
+            cands.extend([
+                f"block/{wood_name}_log",
+                f"block/{wood_name}_log_top",
+                f"block/{wood_name}_stem",
+            ])
+    elif clean_stem.endswith("_hyphae"):
+        hyphae_name = clean_stem[:-7]
+        if hyphae_name.startswith("stripped_"):
+            real_h = hyphae_name[9:]
+            cands.extend([
+                f"block/stripped_{real_h}_stem",
+                f"block/stripped_{real_h}_stem_top",
+            ])
+        else:
+            cands.extend([
+                f"block/{hyphae_name}_stem",
+                f"block/{hyphae_name}_stem_top",
+            ])
+
+    # 8. Waxed variants
+    if clean_stem.startswith("waxed_"):
+        unwaxed = clean_stem[6:]
+        cands.extend([
+            f"block/{unwaxed}",
+            unwaxed,
+        ])
+        # Recursively expand unwaxed base (e.g. waxed_oxidized_cut_copper_slab -> oxidized_cut_copper)
+        cands.extend(_expand_semantic_candidates(unwaxed))
+
+    # 9. Wall mounted variants
+    if "_wall_" in clean_stem:
+        non_wall = clean_stem.replace("_wall_", "_")
+        cands.extend([f"block/{non_wall}", non_wall])
+    elif clean_stem.startswith("wall_"):
+        non_wall = clean_stem[5:]
+        cands.extend([f"block/{non_wall}", non_wall])
+
+    # 10. Potted variants
+    if clean_stem.startswith("potted_"):
+        plant = clean_stem[7:]
+        cands.extend([
+            f"block/{plant}",
+            f"block/{plant}_plant",
+            f"block/{plant}_side",
+            plant,
+        ])
+
+    # 11. Cauldrons
+    if "cauldron" in clean_stem:
+        cands.extend([
+            "block/cauldron_side",
+            "block/cauldron_top",
+            "block/cauldron_inner",
+            "block/cauldron_bottom",
+        ])
+
+    # 12. Candle Cakes
+    if "candle_cake" in clean_stem:
+        cands.extend([
+            "block/cake_top",
+            "block/cake_side",
+        ])
+
+    # 13. General multi-face block additions
+    cands.extend([
+        f"block/{clean_stem}_side",
+        f"block/{clean_stem}_top",
+        f"block/{clean_stem}_front",
+        f"block/{clean_stem}_bottom",
+        f"block/{clean_stem}_base",
+    ])
+
+    return cands
+
+
 def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
     """Extract candidate texture keys for materials exported by jmc2obj."""
     namespace, base_cands = base_texture_candidates(mat)
@@ -123,7 +379,6 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
                             candidates.append(tex_path)
                             if "/" in tex_path:
                                 candidates.append(tex_path.split("/", 1)[1])
-                                candidates.append(tex_path.rsplit("/", 1)[1])
                 img_key = normalized_image_key(node.image)
                 if img_key and img_key not in raw_names:
                     raw_names.append(img_key)
@@ -151,8 +406,8 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
             elif "line" in path_part:
                 candidates.extend(["block/redstone_dust_line0", "block/redstone_dust_line", "redstone_dust_line0"])
 
-        # Convert jmc2obj '-' to '/' for folder hierarchy
-        if "-" in path_part:
+        BIOME_TINTED_KEYWORDS = ("grass", "leaves", "vine", "foliage", "water", "fern", "lily_pad", "sugar_cane")
+        if any(k in path_part for k in BIOME_TINTED_KEYWORDS):
             for b_suffix in JMC2OBJ_BIOME_SUFFIXES:
                 if path_part.endswith(b_suffix):
                     stripped_path = path_part[:-len(b_suffix)]
@@ -162,15 +417,25 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
                     if "/" in converted_stripped:
                         candidates.append(converted_stripped.split("/", 1)[1] + b_suffix)
                         candidates.append(converted_stripped.split("/", 1)[1])
+                    path_part = stripped_path
                     break
 
-            converted = path_part.replace("-", "/")
-            candidates.append(converted)
-            if "/" in converted:
-                candidates.append(converted.split("/", 1)[1])
-                candidates.append(converted.rsplit("/", 1)[1])
+        # Convert jmc2obj '-' to '/' for folder hierarchy
+        converted = path_part.replace("-", "/")
+        candidates.append(converted)
+        if "/" in converted:
+            cat, rest_sub = converted.split("/", 1)
+            candidates.append(rest_sub)
+            if cat != "block":
+                candidates.append(f"block/{rest_sub}")
+            if cat != "entity":
+                candidates.append(f"entity/{rest_sub}")
         else:
-            candidates.append(path_part)
+            candidates.append(f"block/{converted}")
+            candidates.append(f"entity/{converted}")
+
+        # Expand semantic Minecraft aliases (beds, signs, slabs, stairs, carpets, etc.)
+        candidates.extend(_expand_semantic_candidates(converted))
 
     # Add base candidates from nodes/name
     candidates.extend(base_cands)
