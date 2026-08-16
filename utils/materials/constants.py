@@ -30,6 +30,11 @@ ATTR_SOURCE_ORIGIN = "mtk_source_origin"
 PROVENANCE_SCHEMA_VERSION = 1
 
 # Biome & Tint Mesh Attribute Names (Namespaced with mtk_)
+# GPU-facing data is intentionally packed.  EEVEE has a small per-material
+# vertex-attribute budget, so one scalar attribute per tint setting quickly
+# exceeds it on atlas materials.
+ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"       # RGBA: base, overlay, tint, hardcoded
+ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"    # RGBA: resolved tint colour
 ATTR_TINT_WEIGHT = "mtk_tint_weight"
 ATTR_BASE_TINT_WEIGHT = "mtk_base_tint_weight"
 ATTR_OVERLAY_TINT_WEIGHT = "mtk_overlay_tint_weight"
@@ -46,6 +51,8 @@ PROP_OVERLAY_TEXTURE = "mtk:overlay_texture"
 PROP_TINT_CATEGORY = "mtk:tint_category"
 
 # Animation Mesh Attribute Names (Atlas Dynamic Animation)
+ATTR_ANIM_TIMING = "mtk_anim_timing"               # RGBA: frames, frametime, interpolate, frame width
+ATTR_ANIM_FRAME_SIZE = "mtk_anim_frame_size"       # RG: frame width, frame height
 ATTR_ANIM_TOTAL_FRAMES = "mtk_anim_total_frames"
 ATTR_ANIM_FRAMETIME = "mtk_anim_frametime"
 ATTR_ANIM_INTERPOLATE = "mtk_anim_interpolate"
@@ -57,6 +64,7 @@ ATTR_UV_ROTATION = "mtk_uv_rotation"
 # Per-face affine UV data used by the Atlas tiling shader.  Before a source
 # UV is baked into an atlas cell it is normalized to 0..1; these attributes
 # reconstruct its original local coordinate (including jmc2obj merged faces).
+ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"  # RGBA: scale XY, location XY
 ATTR_UV_TILING_SCALE = "mtk_uv_tiling_scale"
 ATTR_UV_TILING_LOCATION = "mtk_uv_tiling_location"
 

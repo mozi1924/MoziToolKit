@@ -7,7 +7,7 @@ import bmesh
 from mathutils import Vector
 
 from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling, ATLAS_UV_TILING_VERSION
-from utils.materials.constants import ATTR_UV_TILING_LOCATION, ATTR_UV_TILING_SCALE
+from utils.materials.constants import ATTR_UV_TILING_TRANSFORM
 from utils.mesh import (
     normalize_face_uv_for_atlas_tiling,
     face_uv_requires_atlas_tiling,
@@ -178,13 +178,12 @@ class TestAtlasUVTiling(unittest.TestCase):
             self.assertIn("MC Atlas UV Tiling", nodes_static)
             tiling_static = nodes_static["MC Atlas UV Tiling"]
             tex_static = nodes_static["Atlas Chunk 000 Static (Albedo)"]
-            self.assertEqual(nodes_static["Attr UV Tiling Scale"].attribute_name, ATTR_UV_TILING_SCALE)
-            self.assertEqual(nodes_static["Attr UV Tiling Location"].attribute_name, ATTR_UV_TILING_LOCATION)
+            self.assertEqual(nodes_static["Attr UV Tiling Transform"].attribute_name, ATTR_UV_TILING_TRANSFORM)
 
             # TexCoord -> MC Atlas UV Tiling -> Texture Node
             self.assertEqual(tiling_static.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
-            self.assertEqual(tiling_static.inputs["Scale"].links[0].from_node, nodes_static["Attr UV Tiling Scale"])
-            self.assertEqual(tiling_static.inputs["Location"].links[0].from_node, nodes_static["Attr UV Tiling Location"])
+            self.assertEqual(tiling_static.inputs["Scale"].links[0].from_node, nodes_static["Combine UV Tiling Scale"])
+            self.assertEqual(tiling_static.inputs["Location"].links[0].from_node, nodes_static["Combine UV Tiling Location"])
             self.assertEqual(tex_static.inputs["Vector"].links[0].from_node, tiling_static)
 
             # 2. Verify Animated Material (Chunk 1)
@@ -206,8 +205,8 @@ class TestAtlasUVTiling(unittest.TestCase):
             self.assertEqual(tiling_curr.inputs["Vector"].links[0].from_socket.name, "Current UV")
             self.assertEqual(tiling_next.inputs["Vector"].links[0].from_node, uv_mapper)
             self.assertEqual(tiling_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
-            self.assertEqual(tiling_curr.inputs["Scale"].links[0].from_node, nodes_anim["Attr UV Tiling Scale"])
-            self.assertEqual(tiling_curr.inputs["Location"].links[0].from_node, nodes_anim["Attr UV Tiling Location"])
+            self.assertEqual(tiling_curr.inputs["Scale"].links[0].from_node, nodes_anim["Combine UV Tiling Scale"])
+            self.assertEqual(tiling_curr.inputs["Location"].links[0].from_node, nodes_anim["Combine UV Tiling Location"])
 
             self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, tiling_curr)
             self.assertEqual(tex_curr.inputs["Vector"].links[0].from_socket.name, "Atlas UV")

@@ -24,20 +24,12 @@ from .constants import (
     PROP_PROVENANCE_SCHEMA_VERSION,
     PROVENANCE_SCHEMA_VERSION,
     ATTR_FACE_MATERIAL_ID,
-    ATTR_ANIM_TOTAL_FRAMES,
-    ATTR_ANIM_FRAMETIME,
-    ATTR_ANIM_INTERPOLATE,
-    ATTR_ANIM_FRAME_WIDTH,
-    ATTR_ANIM_FRAME_HEIGHT,
+    ATTR_ANIM_TIMING,
+    ATTR_ANIM_FRAME_SIZE,
     ATTR_UV_ROTATION,
-    ATTR_UV_TILING_SCALE,
-    ATTR_UV_TILING_LOCATION,
-    ATTR_TINT_WEIGHT,
-    ATTR_BASE_TINT_WEIGHT,
-    ATTR_OVERLAY_TINT_WEIGHT,
-    ATTR_TINT_COLOR,
-    ATTR_HARDCODED_COLOR,
-    ATTR_USE_HARDCODED,
+    ATTR_UV_TILING_TRANSFORM,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
 )
 
 
@@ -139,47 +131,7 @@ def build_atlas_material(
         biome_tint_node.name = "MC Biome Tint"
         biome_tint_node.location = (150, 200)
 
-        attr_base_tint_weight = nodes.new("ShaderNodeAttribute")
-        attr_base_tint_weight.name = "Attr Base Tint Weight"
-        attr_base_tint_weight.attribute_type = "GEOMETRY"
-        attr_base_tint_weight.attribute_name = ATTR_BASE_TINT_WEIGHT
-        attr_base_tint_weight.location = (-300, 650)
-        links.new(attr_base_tint_weight.outputs["Fac"], biome_tint_node.inputs["Base Tint Weight"])
-
-        attr_overlay_tint_weight = nodes.new("ShaderNodeAttribute")
-        attr_overlay_tint_weight.name = "Attr Overlay Tint Weight"
-        attr_overlay_tint_weight.attribute_type = "GEOMETRY"
-        attr_overlay_tint_weight.attribute_name = ATTR_OVERLAY_TINT_WEIGHT
-        attr_overlay_tint_weight.location = (-300, 500)
-        links.new(attr_overlay_tint_weight.outputs["Fac"], biome_tint_node.inputs["Overlay Tint Weight"])
-
-        attr_tint_weight = nodes.new("ShaderNodeAttribute")
-        attr_tint_weight.name = "Attr Tint Weight"
-        attr_tint_weight.attribute_type = "GEOMETRY"
-        attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
-        attr_tint_weight.location = (-300, 350)
-        links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
-
-        attr_tint_color = nodes.new("ShaderNodeAttribute")
-        attr_tint_color.name = "Attr Tint Color"
-        attr_tint_color.attribute_type = "GEOMETRY"
-        attr_tint_color.attribute_name = ATTR_TINT_COLOR
-        attr_tint_color.location = (-300, 200)
-        links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
-
-        attr_hardcoded_color = nodes.new("ShaderNodeAttribute")
-        attr_hardcoded_color.name = "Attr Hardcoded Color"
-        attr_hardcoded_color.attribute_type = "GEOMETRY"
-        attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
-        attr_hardcoded_color.location = (-300, 50)
-        links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
-
-        attr_use_hardcoded = nodes.new("ShaderNodeAttribute")
-        attr_use_hardcoded.name = "Attr Use Hardcoded"
-        attr_use_hardcoded.attribute_type = "GEOMETRY"
-        attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
-        attr_use_hardcoded.location = (-300, -100)
-        links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
+        add_packed_biome_attribute_nodes(nodes, links, biome_tint_node)
 
         links.new(tex_albedo.outputs["Color"], biome_tint_node.inputs["Base Color"])
         links.new(tex_albedo.outputs["Alpha"], biome_tint_node.inputs["Base Alpha"])
@@ -234,6 +186,34 @@ def build_atlas_material(
             links.new(tex_specular.outputs["Color"], bsdf_node.inputs["Specular IOR Level"])
 
     return mat
+
+
+def add_packed_biome_attribute_nodes(nodes, links, biome_tint_node, location=(-300, 200)):
+    """Connect two RGBA face attributes to the biome group (six legacy streams)."""
+    data = nodes.new("ShaderNodeAttribute")
+    data.name = "Attr Biome Tint Data"
+    data.attribute_type = "GEOMETRY"
+    data.attribute_name = ATTR_BIOME_TINT_DATA
+    data.location = (location[0], location[1] + 160)
+    split = nodes.new("ShaderNodeSeparateColor")
+    split.name = "Split Biome Tint Data"
+    split.location = (location[0] + 180, location[1] + 160)
+    links.new(data.outputs["Color"], split.inputs["Color"])
+    links.new(split.outputs["Red"], biome_tint_node.inputs["Base Tint Weight"])
+    links.new(split.outputs["Green"], biome_tint_node.inputs["Overlay Tint Weight"])
+    links.new(split.outputs["Blue"], biome_tint_node.inputs["Tint Weight"])
+    links.new(data.outputs["Alpha"], biome_tint_node.inputs["Use Hardcoded"])
+
+    color = nodes.new("ShaderNodeAttribute")
+    color.name = "Attr Biome Tint Color"
+    color.attribute_type = "GEOMETRY"
+    color.attribute_name = ATTR_BIOME_TINT_COLOR
+    color.location = (location[0], location[1])
+    # The writer resolves the active colour up front, therefore feeding it to
+    # both sockets preserves the node group's legacy interface without a
+    # second colour attribute.
+    links.new(color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
+    links.new(color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
 
 
 def build_atlas_chunk_materials(
@@ -335,47 +315,7 @@ def build_atlas_chunk_materials(
             biome_tint_node.name = "MC Biome Tint"
             biome_tint_node.location = (50, 200)
 
-            attr_base_tint_weight = nodes.new("ShaderNodeAttribute")
-            attr_base_tint_weight.name = "Attr Base Tint Weight"
-            attr_base_tint_weight.attribute_type = "GEOMETRY"
-            attr_base_tint_weight.attribute_name = ATTR_BASE_TINT_WEIGHT
-            attr_base_tint_weight.location = (-300, 650)
-            links.new(attr_base_tint_weight.outputs["Fac"], biome_tint_node.inputs["Base Tint Weight"])
-
-            attr_overlay_tint_weight = nodes.new("ShaderNodeAttribute")
-            attr_overlay_tint_weight.name = "Attr Overlay Tint Weight"
-            attr_overlay_tint_weight.attribute_type = "GEOMETRY"
-            attr_overlay_tint_weight.attribute_name = ATTR_OVERLAY_TINT_WEIGHT
-            attr_overlay_tint_weight.location = (-300, 500)
-            links.new(attr_overlay_tint_weight.outputs["Fac"], biome_tint_node.inputs["Overlay Tint Weight"])
-
-            attr_tint_weight = nodes.new("ShaderNodeAttribute")
-            attr_tint_weight.name = "Attr Tint Weight"
-            attr_tint_weight.attribute_type = "GEOMETRY"
-            attr_tint_weight.attribute_name = ATTR_TINT_WEIGHT
-            attr_tint_weight.location = (-300, 350)
-            links.new(attr_tint_weight.outputs["Fac"], biome_tint_node.inputs["Tint Weight"])
-
-            attr_tint_color = nodes.new("ShaderNodeAttribute")
-            attr_tint_color.name = "Attr Tint Color"
-            attr_tint_color.attribute_type = "GEOMETRY"
-            attr_tint_color.attribute_name = ATTR_TINT_COLOR
-            attr_tint_color.location = (-300, 200)
-            links.new(attr_tint_color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
-
-            attr_hardcoded_color = nodes.new("ShaderNodeAttribute")
-            attr_hardcoded_color.name = "Attr Hardcoded Color"
-            attr_hardcoded_color.attribute_type = "GEOMETRY"
-            attr_hardcoded_color.attribute_name = ATTR_HARDCODED_COLOR
-            attr_hardcoded_color.location = (-300, 50)
-            links.new(attr_hardcoded_color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
-
-            attr_use_hardcoded = nodes.new("ShaderNodeAttribute")
-            attr_use_hardcoded.name = "Attr Use Hardcoded"
-            attr_use_hardcoded.attribute_type = "GEOMETRY"
-            attr_use_hardcoded.attribute_name = ATTR_USE_HARDCODED
-            attr_use_hardcoded.location = (-300, -100)
-            links.new(attr_use_hardcoded.outputs["Fac"], biome_tint_node.inputs["Use Hardcoded"])
+            add_packed_biome_attribute_nodes(nodes, links, biome_tint_node)
 
             links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
             links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
@@ -394,64 +334,55 @@ def build_atlas_chunk_materials(
         is_animated = (chunk.get("kind") == "animation")
 
         if is_animated:
-            # Create geometry attribute readers for dynamic per-face/object animation properties
-            attr_frames = nodes.new("ShaderNodeAttribute")
-            attr_frames.name = "Attr Total Frames"
-            attr_frames.attribute_type = "GEOMETRY"
-            attr_frames.attribute_name = ATTR_ANIM_TOTAL_FRAMES
-            attr_frames.location = (-1500, 300)
+            # Two RGBA streams replace five scalar attributes.  This is
+            # essential for EEVEE's per-material attribute budget.
+            attr_timing = nodes.new("ShaderNodeAttribute")
+            attr_timing.name = "Attr Animation Timing"
+            attr_timing.attribute_type = "GEOMETRY"
+            attr_timing.attribute_name = ATTR_ANIM_TIMING
+            attr_timing.location = (-1500, 300)
+            split_timing = nodes.new("ShaderNodeSeparateColor")
+            split_timing.name = "Split Animation Timing"
+            split_timing.location = (-1330, 300)
+            links.new(attr_timing.outputs["Color"], split_timing.inputs["Color"])
 
             max_frames = nodes.new("ShaderNodeMath")
             max_frames.name = "Max Total Frames"
             max_frames.operation = "MAXIMUM"
             max_frames.inputs[1].default_value = 1.0
             max_frames.location = (-1300, 300)
-            links.new(attr_frames.outputs["Fac"], max_frames.inputs[0])
-
-            attr_time = nodes.new("ShaderNodeAttribute")
-            attr_time.name = "Attr Frametime"
-            attr_time.attribute_type = "GEOMETRY"
-            attr_time.attribute_name = ATTR_ANIM_FRAMETIME
-            attr_time.location = (-1500, 100)
+            links.new(split_timing.outputs["Red"], max_frames.inputs[0])
 
             max_time = nodes.new("ShaderNodeMath")
             max_time.name = "Max Frametime"
             max_time.operation = "MAXIMUM"
             max_time.inputs[1].default_value = 1.0
             max_time.location = (-1300, 100)
-            links.new(attr_time.outputs["Fac"], max_time.inputs[0])
+            links.new(split_timing.outputs["Green"], max_time.inputs[0])
 
-            attr_interp = nodes.new("ShaderNodeAttribute")
-            attr_interp.name = "Attr Interpolate"
-            attr_interp.attribute_type = "GEOMETRY"
-            attr_interp.attribute_name = ATTR_ANIM_INTERPOLATE
-            attr_interp.location = (-1500, -100)
-
-            attr_width = nodes.new("ShaderNodeAttribute")
-            attr_width.name = "Attr Frame Width"
-            attr_width.attribute_type = "GEOMETRY"
-            attr_width.attribute_name = ATTR_ANIM_FRAME_WIDTH
-            attr_width.location = (-1500, -300)
+            attr_size = nodes.new("ShaderNodeAttribute")
+            attr_size.name = "Attr Animation Frame Size"
+            attr_size.attribute_type = "GEOMETRY"
+            attr_size.attribute_name = ATTR_ANIM_FRAME_SIZE
+            attr_size.location = (-1500, -300)
+            split_size = nodes.new("ShaderNodeSeparateColor")
+            split_size.name = "Split Animation Frame Size"
+            split_size.location = (-1330, -300)
+            links.new(attr_size.outputs["Color"], split_size.inputs["Color"])
 
             max_width = nodes.new("ShaderNodeMath")
             max_width.name = "Max Frame Width"
             max_width.operation = "MAXIMUM"
             max_width.inputs[1].default_value = float(chunk.get("tile_size", 16))
             max_width.location = (-1300, -300)
-            links.new(attr_width.outputs["Fac"], max_width.inputs[0])
-
-            attr_height = nodes.new("ShaderNodeAttribute")
-            attr_height.name = "Attr Frame Height"
-            attr_height.attribute_type = "GEOMETRY"
-            attr_height.attribute_name = ATTR_ANIM_FRAME_HEIGHT
-            attr_height.location = (-1500, -500)
+            links.new(split_size.outputs["Red"], max_width.inputs[0])
 
             max_height = nodes.new("ShaderNodeMath")
             max_height.name = "Max Frame Height"
             max_height.operation = "MAXIMUM"
             max_height.inputs[1].default_value = float(chunk.get("tile_size", 16))
             max_height.location = (-1300, -500)
-            links.new(attr_height.outputs["Fac"], max_height.inputs[0])
+            links.new(split_size.outputs["Green"], max_height.inputs[0])
 
             attr_rot = nodes.new("ShaderNodeAttribute")
             attr_rot.name = "Attr UV Rotation"
@@ -464,17 +395,25 @@ def build_atlas_chunk_materials(
             comb_rot.location = (-1300, -700)
             links.new(attr_rot.outputs["Fac"], comb_rot.inputs["Z"])
 
-            attr_tiling_scale = nodes.new("ShaderNodeAttribute")
-            attr_tiling_scale.name = "Attr UV Tiling Scale"
-            attr_tiling_scale.attribute_type = "GEOMETRY"
-            attr_tiling_scale.attribute_name = ATTR_UV_TILING_SCALE
-            attr_tiling_scale.location = (-1500, -850)
-
-            attr_tiling_location = nodes.new("ShaderNodeAttribute")
-            attr_tiling_location.name = "Attr UV Tiling Location"
-            attr_tiling_location.attribute_type = "GEOMETRY"
-            attr_tiling_location.attribute_name = ATTR_UV_TILING_LOCATION
-            attr_tiling_location.location = (-1500, -1000)
+            attr_tiling_transform = nodes.new("ShaderNodeAttribute")
+            attr_tiling_transform.name = "Attr UV Tiling Transform"
+            attr_tiling_transform.attribute_type = "GEOMETRY"
+            attr_tiling_transform.attribute_name = ATTR_UV_TILING_TRANSFORM
+            attr_tiling_transform.location = (-1500, -850)
+            separate_tiling = nodes.new("ShaderNodeSeparateColor")
+            separate_tiling.name = "Split UV Tiling Transform"
+            separate_tiling.location = (-1330, -850)
+            links.new(attr_tiling_transform.outputs["Color"], separate_tiling.inputs["Color"])
+            combine_scale = nodes.new("ShaderNodeCombineXYZ")
+            combine_scale.name = "Combine UV Tiling Scale"
+            combine_scale.location = (-1160, -850)
+            links.new(separate_tiling.outputs["Red"], combine_scale.inputs["X"])
+            links.new(separate_tiling.outputs["Green"], combine_scale.inputs["Y"])
+            combine_location = nodes.new("ShaderNodeCombineXYZ")
+            combine_location.name = "Combine UV Tiling Location"
+            combine_location.location = (-1160, -1000)
+            links.new(separate_tiling.outputs["Blue"], combine_location.inputs["X"])
+            links.new(attr_tiling_transform.outputs["Alpha"], combine_location.inputs["Y"])
 
             tiling_group = templates.get("MC_Atlas_UV_Tiling")
 
@@ -497,7 +436,7 @@ def build_atlas_chunk_materials(
                 scheduler.location = (-1050, base_y - 250)
                 links.new(max_frames.outputs["Value"], scheduler.inputs["Total Frames"])
                 links.new(max_time.outputs["Value"], scheduler.inputs["Frametime"])
-                links.new(attr_interp.outputs["Fac"], scheduler.inputs["Interpolate"])
+                links.new(split_timing.outputs["Blue"], scheduler.inputs["Interpolate"])
 
                 # UV Mapper
                 uv_node = nodes.new("ShaderNodeGroup")
@@ -529,8 +468,8 @@ def build_atlas_chunk_materials(
                     links.new(max_width.outputs["Value"], tiling_curr.inputs["Tile Width"])
                     links.new(max_height.outputs["Value"], tiling_curr.inputs["Tile Height"])
                     links.new(uv_node.outputs["Current UV"], tiling_curr.inputs["Vector"])
-                    links.new(attr_tiling_scale.outputs["Vector"], tiling_curr.inputs["Scale"])
-                    links.new(attr_tiling_location.outputs["Vector"], tiling_curr.inputs["Location"])
+                    links.new(combine_scale.outputs["Vector"], tiling_curr.inputs["Scale"])
+                    links.new(combine_location.outputs["Vector"], tiling_curr.inputs["Location"])
                     links.new(comb_rot.outputs["Vector"], tiling_curr.inputs["Rotation"])
                     curr_uv_socket = tiling_curr.outputs["Atlas UV"]
 
@@ -545,8 +484,8 @@ def build_atlas_chunk_materials(
                     links.new(max_width.outputs["Value"], tiling_next.inputs["Tile Width"])
                     links.new(max_height.outputs["Value"], tiling_next.inputs["Tile Height"])
                     links.new(uv_node.outputs["Next UV"], tiling_next.inputs["Vector"])
-                    links.new(attr_tiling_scale.outputs["Vector"], tiling_next.inputs["Scale"])
-                    links.new(attr_tiling_location.outputs["Vector"], tiling_next.inputs["Location"])
+                    links.new(combine_scale.outputs["Vector"], tiling_next.inputs["Scale"])
+                    links.new(combine_location.outputs["Vector"], tiling_next.inputs["Location"])
                     links.new(comb_rot.outputs["Vector"], tiling_next.inputs["Rotation"])
                     next_uv_socket = tiling_next.outputs["Atlas UV"]
                 else:
@@ -604,17 +543,25 @@ def build_atlas_chunk_materials(
                 comb_rot.location = (-1020, -200)
                 links.new(attr_rot.outputs["Fac"], comb_rot.inputs["Z"])
 
-                attr_tiling_scale = nodes.new("ShaderNodeAttribute")
-                attr_tiling_scale.name = "Attr UV Tiling Scale"
-                attr_tiling_scale.attribute_type = "GEOMETRY"
-                attr_tiling_scale.attribute_name = ATTR_UV_TILING_SCALE
-                attr_tiling_scale.location = (-1200, -350)
-
-                attr_tiling_location = nodes.new("ShaderNodeAttribute")
-                attr_tiling_location.name = "Attr UV Tiling Location"
-                attr_tiling_location.attribute_type = "GEOMETRY"
-                attr_tiling_location.attribute_name = ATTR_UV_TILING_LOCATION
-                attr_tiling_location.location = (-1200, -500)
+                attr_tiling_transform = nodes.new("ShaderNodeAttribute")
+                attr_tiling_transform.name = "Attr UV Tiling Transform"
+                attr_tiling_transform.attribute_type = "GEOMETRY"
+                attr_tiling_transform.attribute_name = ATTR_UV_TILING_TRANSFORM
+                attr_tiling_transform.location = (-1200, -350)
+                separate_tiling = nodes.new("ShaderNodeSeparateColor")
+                separate_tiling.name = "Split UV Tiling Transform"
+                separate_tiling.location = (-1020, -350)
+                links.new(attr_tiling_transform.outputs["Color"], separate_tiling.inputs["Color"])
+                combine_scale = nodes.new("ShaderNodeCombineXYZ")
+                combine_scale.name = "Combine UV Tiling Scale"
+                combine_scale.location = (-850, -350)
+                links.new(separate_tiling.outputs["Red"], combine_scale.inputs["X"])
+                links.new(separate_tiling.outputs["Green"], combine_scale.inputs["Y"])
+                combine_location = nodes.new("ShaderNodeCombineXYZ")
+                combine_location.name = "Combine UV Tiling Location"
+                combine_location.location = (-850, -500)
+                links.new(separate_tiling.outputs["Blue"], combine_location.inputs["X"])
+                links.new(attr_tiling_transform.outputs["Alpha"], combine_location.inputs["Y"])
 
                 tiling_node = nodes.new("ShaderNodeGroup")
                 tiling_node.node_tree = tiling_group
@@ -625,8 +572,8 @@ def build_atlas_chunk_materials(
                 tiling_node.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
                 tiling_node.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
                 links.new(tex_coord.outputs["UV"], tiling_node.inputs["Vector"])
-                links.new(attr_tiling_scale.outputs["Vector"], tiling_node.inputs["Scale"])
-                links.new(attr_tiling_location.outputs["Vector"], tiling_node.inputs["Location"])
+                links.new(combine_scale.outputs["Vector"], tiling_node.inputs["Scale"])
+                links.new(combine_location.outputs["Vector"], tiling_node.inputs["Location"])
                 links.new(comb_rot.outputs["Vector"], tiling_node.inputs["Rotation"])
                 uv_source_socket = tiling_node.outputs["Atlas UV"]
             else:
