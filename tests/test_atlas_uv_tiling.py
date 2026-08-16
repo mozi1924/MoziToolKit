@@ -8,7 +8,11 @@ from mathutils import Vector
 
 from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling, ATLAS_UV_TILING_VERSION
 from utils.materials.constants import ATTR_UV_TILING_LOCATION, ATTR_UV_TILING_SCALE
-from utils.mesh import normalize_face_uv_for_atlas_tiling, restore_atlas_tiling_uv
+from utils.mesh import (
+    normalize_face_uv_for_atlas_tiling,
+    face_uv_requires_atlas_tiling,
+    restore_atlas_tiling_uv,
+)
 
 
 class TestAtlasUVTiling(unittest.TestCase):
@@ -63,6 +67,29 @@ class TestAtlasUVTiling(unittest.TestCase):
         u, v = restore_atlas_tiling_uv(1.0, 1.0, (3.0, 2.0, 1.0), (-1.0, -0.5, 0.0))
         self.assertAlmostEqual(u, 1.0, places=6)
         self.assertAlmostEqual(v, 1.0, places=6)
+
+    def test_partial_uv_island_does_not_enable_tiling(self):
+        """Pixel-split and partial-model faces are already Atlas-safe."""
+        mesh = bpy.data.meshes.new("PartialUVFace")
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.new("UVMap")
+        verts = [bm.verts.new((x, y, 0.0)) for x, y in ((0, 0), (1, 0), (1, 1), (0, 1))]
+        face = bm.faces.new(verts)
+        partial = ((0.25, 0.125), (0.3125, 0.125), (0.3125, 0.1875), (0.25, 0.1875))
+        for loop, coord in zip(face.loops, partial):
+            loop[uv_layer].uv = Vector(coord)
+        bm.to_mesh(mesh)
+        bm.free()
+        try:
+            poly = mesh.polygons[0]
+            active_uv = mesh.uv_layers.active
+            self.assertFalse(face_uv_requires_atlas_tiling(poly, active_uv))
+            self.assertEqual(
+                [(round(active_uv.data[i].uv.x, 6), round(active_uv.data[i].uv.y, 6)) for i in poly.loop_indices],
+                list(partial),
+            )
+        finally:
+            bpy.data.meshes.remove(mesh)
 
     def test_atlas_uv_tiling_group_creation(self):
         group = ensure_atlas_uv_tiling()
