@@ -636,12 +636,6 @@ def run_all_tests():
         print(f"[Warning] Could not load TestJmc2objMatching: {e}")
 
     try:
-        from tests.test_fast_block_unmerge import TestFastBlockUnmerge
-        suite.addTests(loader.loadTestsFromTestCase(TestFastBlockUnmerge))
-    except Exception as e:
-        print(f"[Warning] Could not load TestFastBlockUnmerge: {e}")
-
-    try:
         from tests.test_generate_atlas import TestAtlasGenerator
         suite.addTests(loader.loadTestsFromTestCase(TestAtlasGenerator))
     except Exception as e:

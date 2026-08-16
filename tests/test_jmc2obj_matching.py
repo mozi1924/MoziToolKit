@@ -191,11 +191,9 @@ class TestJmc2objMatching(unittest.TestCase):
 
         mat_jmc = bpy.data.materials.new(name="minecraft_block-dirt")
         self.assertEqual(get_importer_adapter(mat_jmc).identifier, JMC2OBJ_ADAPTER.identifier)
-        self.assertTrue(get_importer_adapter(mat_jmc).requires_block_unmerge)
 
         mat_generic = bpy.data.materials.new(name="SomeCustomCube")
         self.assertEqual(get_importer_adapter(mat_generic).identifier, GENERIC_ADAPTER.identifier)
-        self.assertFalse(get_importer_adapter(mat_generic).requires_block_unmerge)
 
     def test_remap_uv_coordinate_pure_function(self):
         from utils.materials import remap_uv_coordinate

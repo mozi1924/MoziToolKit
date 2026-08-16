@@ -32,14 +32,17 @@ try:
         AtlasGenerator,
         build_atlas_chunk_materials,
         remap_uv_coordinate,
+        remap_uv_to_local,
         get_material_animation_info,
         ATTR_ATLAS_CHUNK_ID,
         ATTR_ATLAS_TEXTURE_ID,
         ATTR_FACE_MATERIAL_ID,
         ATTR_UV_ROTATION,
+        ATTR_UV_TILING_SCALE,
+        ATTR_UV_TILING_LOCATION,
     )
     from ...utils.system import has_pillow
-    from ...utils.mesh import fast_unmerge_block_quads, straighten_face_uv
+    from ...utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling
 except (ImportError, ValueError):
     from utils.materials import (
         ZipResourcePack,
@@ -60,15 +63,18 @@ except (ImportError, ValueError):
         AtlasGenerator,
         build_atlas_chunk_materials,
         remap_uv_coordinate,
+        remap_uv_to_local,
         get_material_animation_info,
         get_texture_info_animation_info,
         ATTR_ATLAS_CHUNK_ID,
         ATTR_ATLAS_TEXTURE_ID,
         ATTR_FACE_MATERIAL_ID,
         ATTR_UV_ROTATION,
+        ATTR_UV_TILING_SCALE,
+        ATTR_UV_TILING_LOCATION,
     )
     from utils.system import has_pillow
-    from utils.mesh import fast_unmerge_block_quads, straighten_face_uv
+    from utils.mesh import straighten_face_uv, normalize_face_uv_for_atlas_tiling
 
 
 ANIM_AND_ATLAS_ATTR_NAMES = (
@@ -76,6 +82,8 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_FACE_MATERIAL_ID,
     ATTR_UV_ROTATION,
+    ATTR_UV_TILING_SCALE,
+    ATTR_UV_TILING_LOCATION,
     "atlas_chunk_id",
     "atlas_texture_id",
     "material_id",
@@ -205,17 +213,6 @@ class StepReplaceMaterial(PipelineStep):
         if not valid_objects:
             yield StepResult.failed("No valid mesh objects with material slots found.")
             return
-
-        # Preprocess multi-block consolidated faces (e.g. jmc2obj optimiseGeometry)
-        auto_unmerge = pipeline_context.get_param("auto_unmerge_blocks", True)
-        if auto_unmerge:
-            for obj in valid_objects:
-                large_count, new_count = fast_unmerge_block_quads(obj.data)
-                if large_count > 0:
-                    pipeline_context.report(
-                        "INFO",
-                        f"'{obj.name}': unmerged {large_count} multi-block face(s) into {new_count} unit block quad(s)."
-                    )
 
         if material_mode == "ATLAS":
             yield from self._execute_atlas_mode_iter(pipeline_context, pack, valid_objects, pack_textures)
@@ -353,9 +350,20 @@ class StepReplaceMaterial(PipelineStep):
                     attribute = None
                 return attribute or mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
 
+            def vector_face_attribute(name):
+                attribute = mesh.attributes.get(name)
+                if attribute and (
+                    attribute.domain != "FACE" or attribute.data_type != "FLOAT_VECTOR" or len(attribute.data) != len(mesh.polygons)
+                ):
+                    mesh.attributes.remove(attribute)
+                    attribute = None
+                return attribute or mesh.attributes.new(name=name, type="FLOAT_VECTOR", domain="FACE")
+
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
             uv_rotations = [0.0] * len(mesh.polygons)
+            uv_tiling_scales = [(1.0, 1.0, 1.0)] * len(mesh.polygons)
+            uv_tiling_locations = [(0.0, 0.0, 0.0)] * len(mesh.polygons)
             existing_rot_attr = mesh.attributes.get(ATTR_UV_ROTATION)
             if existing_rot_attr and len(existing_rot_attr.data) == len(mesh.polygons):
                 uv_rotations = [float(item.value) for item in existing_rot_attr.data]
@@ -473,12 +481,6 @@ class StepReplaceMaterial(PipelineStep):
                         polygon = mesh.polygons[poly_idx]
                         target_chunk = chunks_by_id[int(new_location["chunk_id"])]
 
-                        # If polygon has rotated local UVs before atlas baking, straighten them
-                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc):
-                            rot_angle, was_straightened = straighten_face_uv(polygon, uv_layer)
-                            if was_straightened:
-                                uv_rotations[poly_idx] = float(rot_angle)
-
                         old_chunk = None
                         if old_loc and old_mapping:
                             old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
@@ -492,13 +494,31 @@ class StepReplaceMaterial(PipelineStep):
                             )
                             old_anim_info = get_material_animation_info(orig_mat)
 
+                        # Work in source-local UV space first. This makes both
+                        # re-atlased meshes and direct jmc2obj imports follow
+                        # exactly the same atlas-safe path.
+                        for loop_index in polygon.loop_indices:
+                            uv = uv_layer.data[loop_index].uv
+                            uv.x, uv.y = remap_uv_to_local(
+                                uv.x, uv.y, orig_mode, old_loc, old_chunk, old_anim_info
+                            )
+
+                        # Preserve non-orthogonal liquid UVs through the
+                        # existing rotation attribute, then store any merged
+                        # face span as shader tiling data instead of splitting.
+                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc):
+                            rot_angle, was_straightened = straighten_face_uv(polygon, uv_layer)
+                            if was_straightened:
+                                uv_rotations[poly_idx] = float(rot_angle)
+
+                        scale, location = normalize_face_uv_for_atlas_tiling(polygon, uv_layer)
+                        uv_tiling_scales[poly_idx] = scale
+                        uv_tiling_locations[poly_idx] = location
+
                         remap_polygon_loop_uvs(
                             polygon=polygon,
                             uv_layer=uv_layer,
-                            orig_mode=orig_mode,
-                            old_loc=old_loc,
-                            old_chunk=old_chunk,
-                            old_anim_info=old_anim_info,
+                            orig_mode="STANDALONE",
                             target_location=new_location,
                             target_chunk=target_chunk,
                         )
@@ -515,37 +535,43 @@ class StepReplaceMaterial(PipelineStep):
                 ):
                     face_attribute(attr_name).data.foreach_set("value", data)
 
-                    # 2. Revert standalone fallback faces to local UVs (or Standalone Frame 0)
-                    for poly_idx, st_res in enumerate(resolved_standalone):
-                        if st_res is None:
-                            continue
-                        mat, old_loc, orig_mode, old_mapping = st_res
-                        polygon = mesh.polygons[poly_idx]
+                for attr_name, data in (
+                    (ATTR_UV_TILING_SCALE, uv_tiling_scales),
+                    (ATTR_UV_TILING_LOCATION, uv_tiling_locations),
+                ):
+                    vector_face_attribute(attr_name).data.foreach_set("vector", [component for value in data for component in value])
 
-                        old_chunk = None
-                        if old_loc and old_mapping:
-                            old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
-                            old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
+                # 2. Revert standalone fallback faces to local UVs (or Standalone Frame 0)
+                for poly_idx, st_res in enumerate(resolved_standalone):
+                    if st_res is None:
+                        continue
+                    mat, old_loc, orig_mode, old_mapping = st_res
+                    polygon = mesh.polygons[poly_idx]
 
-                        old_anim_info = None
-                        if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                            orig_mat = (
-                                obj.material_slots[polygon.material_index].material
-                                if polygon.material_index < len(obj.material_slots) else None
-                            )
-                            old_anim_info = get_material_animation_info(orig_mat)
+                    old_chunk = None
+                    if old_loc and old_mapping:
+                        old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
+                        old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
 
-                        target_anim_info = get_material_animation_info(mat)
-
-                        remap_polygon_loop_uvs(
-                            polygon=polygon,
-                            uv_layer=uv_layer,
-                            orig_mode=orig_mode,
-                            old_loc=old_loc,
-                            old_chunk=old_chunk,
-                            old_anim_info=old_anim_info,
-                            target_anim_info=target_anim_info,
+                    old_anim_info = None
+                    if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
+                        orig_mat = (
+                            obj.material_slots[polygon.material_index].material
+                            if polygon.material_index < len(obj.material_slots) else None
                         )
+                        old_anim_info = get_material_animation_info(orig_mat)
+
+                    target_anim_info = get_material_animation_info(mat)
+
+                    remap_polygon_loop_uvs(
+                        polygon=polygon,
+                        uv_layer=uv_layer,
+                        orig_mode=orig_mode,
+                        old_loc=old_loc,
+                        old_chunk=old_chunk,
+                        old_anim_info=old_anim_info,
+                        target_anim_info=target_anim_info,
+                    )
 
                 for poly_idx, resolved in enumerate(resolved_locations):
                     if resolved is not None:

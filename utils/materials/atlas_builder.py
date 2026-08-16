@@ -27,6 +27,8 @@ from .constants import (
     ATTR_ANIM_FRAME_WIDTH,
     ATTR_ANIM_FRAME_HEIGHT,
     ATTR_UV_ROTATION,
+    ATTR_UV_TILING_SCALE,
+    ATTR_UV_TILING_LOCATION,
 )
 
 
@@ -324,6 +326,18 @@ def build_atlas_chunk_materials(
             comb_rot.location = (-1300, -700)
             links.new(attr_rot.outputs["Fac"], comb_rot.inputs["Z"])
 
+            attr_tiling_scale = nodes.new("ShaderNodeAttribute")
+            attr_tiling_scale.name = "Attr UV Tiling Scale"
+            attr_tiling_scale.attribute_type = "GEOMETRY"
+            attr_tiling_scale.attribute_name = ATTR_UV_TILING_SCALE
+            attr_tiling_scale.location = (-1500, -850)
+
+            attr_tiling_location = nodes.new("ShaderNodeAttribute")
+            attr_tiling_location.name = "Attr UV Tiling Location"
+            attr_tiling_location.attribute_type = "GEOMETRY"
+            attr_tiling_location.attribute_name = ATTR_UV_TILING_LOCATION
+            attr_tiling_location.location = (-1500, -1000)
+
             tiling_group = templates.get("MC_Atlas_UV_Tiling")
 
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
@@ -377,6 +391,8 @@ def build_atlas_chunk_materials(
                     links.new(max_width.outputs["Value"], tiling_curr.inputs["Tile Width"])
                     links.new(max_height.outputs["Value"], tiling_curr.inputs["Tile Height"])
                     links.new(uv_node.outputs["Current UV"], tiling_curr.inputs["Vector"])
+                    links.new(attr_tiling_scale.outputs["Vector"], tiling_curr.inputs["Scale"])
+                    links.new(attr_tiling_location.outputs["Vector"], tiling_curr.inputs["Location"])
                     links.new(comb_rot.outputs["Vector"], tiling_curr.inputs["Rotation"])
                     curr_uv_socket = tiling_curr.outputs["Atlas UV"]
 
@@ -391,6 +407,8 @@ def build_atlas_chunk_materials(
                     links.new(max_width.outputs["Value"], tiling_next.inputs["Tile Width"])
                     links.new(max_height.outputs["Value"], tiling_next.inputs["Tile Height"])
                     links.new(uv_node.outputs["Next UV"], tiling_next.inputs["Vector"])
+                    links.new(attr_tiling_scale.outputs["Vector"], tiling_next.inputs["Scale"])
+                    links.new(attr_tiling_location.outputs["Vector"], tiling_next.inputs["Location"])
                     links.new(comb_rot.outputs["Vector"], tiling_next.inputs["Rotation"])
                     next_uv_socket = tiling_next.outputs["Atlas UV"]
                 else:
@@ -444,6 +462,18 @@ def build_atlas_chunk_materials(
                 comb_rot.location = (-1020, -200)
                 links.new(attr_rot.outputs["Fac"], comb_rot.inputs["Z"])
 
+                attr_tiling_scale = nodes.new("ShaderNodeAttribute")
+                attr_tiling_scale.name = "Attr UV Tiling Scale"
+                attr_tiling_scale.attribute_type = "GEOMETRY"
+                attr_tiling_scale.attribute_name = ATTR_UV_TILING_SCALE
+                attr_tiling_scale.location = (-1200, -350)
+
+                attr_tiling_location = nodes.new("ShaderNodeAttribute")
+                attr_tiling_location.name = "Attr UV Tiling Location"
+                attr_tiling_location.attribute_type = "GEOMETRY"
+                attr_tiling_location.attribute_name = ATTR_UV_TILING_LOCATION
+                attr_tiling_location.location = (-1200, -500)
+
                 tiling_node = nodes.new("ShaderNodeGroup")
                 tiling_node.node_tree = tiling_group
                 tiling_node.name = "MC Atlas UV Tiling"
@@ -453,6 +483,8 @@ def build_atlas_chunk_materials(
                 tiling_node.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
                 tiling_node.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
                 links.new(tex_coord.outputs["UV"], tiling_node.inputs["Vector"])
+                links.new(attr_tiling_scale.outputs["Vector"], tiling_node.inputs["Scale"])
+                links.new(attr_tiling_location.outputs["Vector"], tiling_node.inputs["Location"])
                 links.new(comb_rot.outputs["Vector"], tiling_node.inputs["Rotation"])
                 uv_source_socket = tiling_node.outputs["Atlas UV"]
             else:
@@ -484,4 +516,3 @@ def build_atlas_chunk_materials(
         materials[chunk_id] = mat
 
     return materials
-

@@ -10,7 +10,7 @@
   - 支持直接读取 Minecraft Java 资源包（`.zip` 或解压目录），自动匹配并构建 PBR 材质节点。
   - 支持 **Atlas 材质图集模式** 与 **Standalone 独立材质模式**。
   - 自动解包、图集烘焙、多级缓存加速与动画材质节点生成。
-  - 针对 `jmc2obj` 与优化网格内置反优化（Anti-optimization）面重构。
+  - 针对 `jmc2obj` 优化网格保留原始 UV 平铺，并通过 Atlas 着色器安全渲染。
 - ✂️ **自适应像素网格切分 (Adaptive Pixel Split)**：
   - 根据 UV 纹理像素密度自适应细分面，无缝适配像素画风与方块建模。
 - 🧊 **UV 原地独立缩放 (Scale UV Individual)**：

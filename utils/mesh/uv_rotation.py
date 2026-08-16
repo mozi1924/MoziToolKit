@@ -129,3 +129,34 @@ def process_mesh_uv_rotations(mesh, uv_layer=None) -> List[float]:
         rotations.append(rot)
 
     return rotations
+
+
+def normalize_face_uv_for_atlas_tiling(polygon, uv_layer, epsilon: float = 1e-6) -> Tuple[Tuple[float, float, float], Tuple[float, float, float]]:
+    """Normalize one face's local UV rectangle and return its Mapping inputs.
+
+    Atlas UVs must stay in one cell.  Optimised jmc2obj quads can span many
+    local texture repeats, so their original affine coordinate is retained as
+    per-face Mapping scale/location data for ``MC_Atlas_UV_Tiling``.
+    """
+    if polygon is None or uv_layer is None or not polygon.loop_indices:
+        return (1.0, 1.0, 1.0), (0.0, 0.0, 0.0)
+
+    uvs = [uv_layer.data[index].uv for index in polygon.loop_indices]
+    min_u, max_u = min(uv.x for uv in uvs), max(uv.x for uv in uvs)
+    min_v, max_v = min(uv.y for uv in uvs), max(uv.y for uv in uvs)
+    span_u, span_v = max_u - min_u, max_v - min_v
+
+    # A collapsed UV axis cannot be normalized. Keep it stable rather than
+    # creating infinities; the texture lookup remains constant on that axis.
+    safe_span_u = span_u if span_u > epsilon else 1.0
+    safe_span_v = span_v if span_v > epsilon else 1.0
+    for uv in uvs:
+        uv.x = (uv.x - min_u) / safe_span_u if span_u > epsilon else 0.0
+        uv.y = (uv.y - min_v) / safe_span_v if span_v > epsilon else 0.0
+
+    # MC_Atlas_UV_Tiling subtracts/adds 0.5 around the Mapping node, hence
+    # this location produces ``min + span * normalized_uv`` exactly.
+    return (
+        (safe_span_u, safe_span_v, 1.0),
+        (min_u + (safe_span_u - 1.0) * 0.5, min_v + (safe_span_v - 1.0) * 0.5, 0.0),
+    )

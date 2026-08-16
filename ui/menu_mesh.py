@@ -1,7 +1,6 @@
 import bpy
 from ..operators.mesh.op_select_edges import MOZI_OT_select_hard_edges
 from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
-from ..operators.mesh.op_unmerge_block_faces import MOZI_OT_unmerge_block_faces
 from ..operators.mesh.op_random_extrude import MOZI_OT_random_extrude
 from ..operators.uv.op_select_transparent_faces import MOZI_OT_select_transparent_faces
 from ..operators.mesh.op_clear_custom_normals import MOZI_OT_clear_custom_normals
@@ -14,7 +13,6 @@ class MOZI_MT_mesh_menu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator(MOZI_OT_random_extrude.bl_idname)
-        layout.operator(MOZI_OT_unmerge_block_faces.bl_idname)
         layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
         layout.operator(MOZI_OT_select_hard_edges.bl_idname)
         layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
@@ -37,7 +35,6 @@ class MOZI_MT_mesh_face_menu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator(MOZI_OT_random_extrude.bl_idname)
-        layout.operator(MOZI_OT_unmerge_block_faces.bl_idname)
         layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
         layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
 

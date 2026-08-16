@@ -75,24 +75,6 @@ class TestCodeReviewFixes(unittest.TestCase):
                 ZipResourcePack(malicious_zip, use_cache=False)
             self.assertIn("zip-slip", str(ctx.exception).lower())
 
-    def test_unmerge_block_faces_edit_mode_safe(self):
-        """Unmerge block faces operator must not crash when executed in EDIT mode."""
-        if not HAS_BPY:
-            self.skipTest("bpy not available")
-
-        bpy.ops.mesh.primitive_cube_add()
-        cube = bpy.context.active_object
-        bpy.ops.object.mode_set(mode="EDIT")
-        self.assertEqual(bpy.context.mode, "EDIT_MESH")
-
-        # Execute unmerge block faces operator while in EDIT mode
-        res = bpy.ops.mozi.unmerge_block_faces()
-        self.assertEqual(res, {'FINISHED'})
-        # Must safely remain in EDIT mode after completion
-        self.assertEqual(bpy.context.mode, "EDIT_MESH")
-
-        bpy.ops.object.mode_set(mode="OBJECT")
-
     def test_scale_uv_respects_face_selection(self):
         """ScaleUVStep must scale only selected faces when faces are explicitly selected."""
         if not HAS_BPY:
