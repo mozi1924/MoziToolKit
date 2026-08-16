@@ -90,6 +90,25 @@ class TestUVTransformMath(unittest.TestCase):
             self.assertAlmostEqual(u_orig, u_recovered, places=6)
             self.assertAlmostEqual(v_orig, v_recovered, places=6)
 
+    def test_derive_texture_name(self):
+        from utils.materials import derive_texture_name
+        self.assertEqual(derive_texture_name("block/stone"), "stone")
+        self.assertEqual(derive_texture_name("block/oak_planks"), "oak_planks")
+        self.assertEqual(derive_texture_name("block/white_wool"), "white_wool")
+        self.assertEqual(derive_texture_name("entity/bed/white"), "bed-white")
+        self.assertEqual(derive_texture_name("entity/bed/yellow"), "bed-yellow")
+        self.assertEqual(derive_texture_name("entity/chest/normal"), "chest-normal")
+        self.assertEqual(derive_texture_name("entity/chest/normal_left"), "chest-normal_left")
+        self.assertEqual(derive_texture_name("entity/chest/trapped"), "chest-trapped")
+        self.assertEqual(derive_texture_name("entity/chest/ender"), "chest-ender")
+        self.assertEqual(derive_texture_name("entity/signs/oak"), "signs-oak")
+        self.assertEqual(derive_texture_name("entity/signs/hanging/birch"), "signs-hanging-birch")
+        self.assertEqual(derive_texture_name("entity/boat/oak"), "boat-oak")
+        self.assertEqual(derive_texture_name("entity/banner/base"), "banner-base")
+        self.assertEqual(derive_texture_name("entity/conduit/base"), "conduit-base")
+        self.assertEqual(derive_texture_name("item/diamond_sword"), "diamond_sword")
+        self.assertEqual(derive_texture_name("custom_mod/sub/copper"), "sub-copper")
+
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
 class TestMaterialModeDetection(unittest.TestCase):
@@ -572,6 +591,108 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 1.0 - 16.0 / 512.0, places=4)
         self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
 
+    def test_entity_material_naming_and_replacement(self):
+        """Entity textures (bed, chest, signs) must preserve entity name prefix (bed-white, chest-normal)."""
+        from utils.materials import ZipResourcePack, get_face_source_texture_key
+
+        # Create dummy texture files for entity bed, chest, signs
+        entity_dir = self.pack_dir / "assets/minecraft/textures/entity"
+        for sub, fname in [
+            ("bed", "white.png"),
+            ("bed", "yellow.png"),
+            ("chest", "normal.png"),
+            ("chest", "ender.png"),
+            ("signs", "oak.png"),
+        ]:
+            target_dir = entity_dir / sub
+            target_dir.mkdir(parents=True, exist_ok=True)
+            img = bpy.data.images.new(f"temp_{sub}_{fname}", width=16, height=16)
+            img.filepath_raw = str(target_dir / fname)
+            img.file_format = "PNG"
+            img.save()
+            bpy.data.images.remove(img)
+
+        # Verify ZipResourcePack derives correct texture_name and indexes
+        pack = ZipResourcePack(self.pack_dir, use_cache=False)
+        info_white_bed = pack.get_texture_info("entity/bed/white")
+        self.assertIsNotNone(info_white_bed)
+        self.assertEqual(info_white_bed["texture_name"], "bed-white")
+        self.assertEqual(info_white_bed["texture_key"], "entity/bed/white")
+
+        info_yellow_bed = pack.get_texture_info("entity/bed/yellow")
+        self.assertIsNotNone(info_yellow_bed)
+        self.assertEqual(info_yellow_bed["texture_name"], "bed-yellow")
+
+        info_chest = pack.get_texture_info("entity/chest/normal")
+        self.assertIsNotNone(info_chest)
+        self.assertEqual(info_chest["texture_name"], "chest-normal")
+
+        # Verify querying by hyphenated name works
+        self.assertIsNotNone(pack.get_texture_info("bed-white"))
+        self.assertIsNotNone(pack.get_texture_info("chest-normal"))
+        self.assertIsNotNone(pack.get_texture_info("bed-yellow"))
+
+        # Create 3 test objects with jmc2obj entity material names
+        # Object 1: Bed White
+        bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+        cube_bed = bpy.context.active_object
+        mat_bed = bpy.data.materials.new("minecraft_entity-bed-white")
+        cube_bed.data.materials.append(mat_bed)
+
+        # Object 2: Chest Normal
+        bpy.ops.mesh.primitive_cube_add(location=(2, 0, 0))
+        cube_chest = bpy.context.active_object
+        mat_chest = bpy.data.materials.new("minecraft_entity-chest-normal")
+        cube_chest.data.materials.append(mat_chest)
+
+        # Object 3: Bed Yellow
+        bpy.ops.mesh.primitive_cube_add(location=(4, 0, 0))
+        cube_yellow = bpy.context.active_object
+        mat_yellow = bpy.data.materials.new("minecraft_entity-bed-yellow")
+        cube_yellow.data.materials.append(mat_yellow)
+
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": True,
+            "use_cache": False,
+        }
+        res, ctx = run_preset_pipeline(
+            "replace_material", bpy.context, params=params,
+            target_objects=[cube_bed, cube_chest, cube_yellow]
+        )
+        self.assertTrue(res.is_success, ctx.reports)
+
+        # 1. Verify Bed White material name and properties
+        assigned_bed = cube_bed.material_slots[0].material
+        self.assertTrue(assigned_bed.name.startswith("mtk:minecraft:bed-white:"), f"Got {assigned_bed.name}")
+        self.assertEqual(assigned_bed["mtk:source_texture"], "bed-white")
+        self.assertEqual(assigned_bed["mtk:material_id"], "minecraft:bed-white")
+        self.assertEqual(get_face_source_texture_key(cube_bed.data, 0), "minecraft:entity/bed/white")
+
+        # 2. Verify Chest Normal material name and properties
+        assigned_chest = cube_chest.material_slots[0].material
+        self.assertTrue(assigned_chest.name.startswith("mtk:minecraft:chest-normal:"), f"Got {assigned_chest.name}")
+        self.assertEqual(assigned_chest["mtk:source_texture"], "chest-normal")
+        self.assertEqual(assigned_chest["mtk:material_id"], "minecraft:chest-normal")
+        self.assertEqual(get_face_source_texture_key(cube_chest.data, 0), "minecraft:entity/chest/normal")
+
+        # 3. Verify Bed Yellow material name and properties
+        assigned_yellow = cube_yellow.material_slots[0].material
+        self.assertTrue(assigned_yellow.name.startswith("mtk:minecraft:bed-yellow:"), f"Got {assigned_yellow.name}")
+        self.assertEqual(assigned_yellow["mtk:source_texture"], "bed-yellow")
+        self.assertEqual(assigned_yellow["mtk:material_id"], "minecraft:bed-yellow")
+        self.assertEqual(get_face_source_texture_key(cube_yellow.data, 0), "minecraft:entity/bed/yellow")
+
+        # Roundtrip / Second pass: verify replacing already replaced materials preserves the identity
+        res2, ctx2 = run_preset_pipeline(
+            "replace_material", bpy.context, params=params,
+            target_objects=[cube_bed, cube_chest, cube_yellow]
+        )
+        self.assertTrue(res2.is_success, ctx2.reports)
+        self.assertTrue(cube_bed.material_slots[0].material.name.startswith("mtk:minecraft:bed-white:"))
+        self.assertTrue(cube_chest.material_slots[0].material.name.startswith("mtk:minecraft:chest-normal:"))
+        self.assertTrue(cube_yellow.material_slots[0].material.name.startswith("mtk:minecraft:bed-yellow:"))
 
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")

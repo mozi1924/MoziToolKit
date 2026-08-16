@@ -65,6 +65,7 @@ from .resource_pack import (
     get_pack_hash,
     get_directory_hash,
     parse_mcmeta,
+    derive_texture_name,
 )
 
 from .provenance import (
@@ -186,6 +187,7 @@ __all__ = [
     "get_pack_hash",
     "get_directory_hash",
     "parse_mcmeta",
+    "derive_texture_name",
 
     # Provenance
     "without_blender_suffix",
