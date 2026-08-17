@@ -108,6 +108,7 @@ def get_texture_info_animation_info(tex_info: dict | None, img: bpy.types.Image 
         if iw <= 0 or ih <= 0:
             try:
                 from PIL import Image
+                Image.MAX_IMAGE_PIXELS = 128 * 1024 * 1024
                 with Image.open(albedo_path) as pil_img:
                     iw, ih = pil_img.size
             except Exception:

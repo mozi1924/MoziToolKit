@@ -160,8 +160,19 @@ def get_config_path() -> Path:
     return config_dir / "context_menus.json"
 
 
+def is_valid_operator_id(op_id: str) -> bool:
+    """Validate that an operator ID is registered or belongs to MoziToolKit namespace."""
+    if not op_id or not isinstance(op_id, str):
+        return False
+    if op_id in _REGISTERED_MENU_ITEMS:
+        return True
+    if op_id.startswith("mozi.") or op_id.startswith("mozi_"):
+        return True
+    return False
+
+
 def _normalize_views_data(views_data: dict) -> dict:
-    """Helper to convert legacy operator IDs in views data to canonical IDs."""
+    """Helper to convert legacy operator IDs in views data to canonical IDs and filter invalid ones."""
     if not isinstance(views_data, dict):
         return views_data
     normalized = {}
@@ -172,8 +183,14 @@ def _normalize_views_data(views_data: dict) -> dict:
                 if isinstance(item, dict):
                     norm_item = dict(item)
                     if "operator" in norm_item:
-                        norm_item["operator"] = normalize_operator_id(norm_item["operator"])
-                    norm_items.append(norm_item)
+                        canonical_op = normalize_operator_id(norm_item["operator"])
+                        if is_valid_operator_id(canonical_op):
+                            norm_item["operator"] = canonical_op
+                            norm_items.append(norm_item)
+                        else:
+                            print(f"[MoziToolKit] Ignoring untrusted/unregistered menu operator: {norm_item.get('operator')}")
+                    else:
+                        norm_items.append(norm_item)
             normalized[view] = norm_items
         else:
             normalized[view] = items

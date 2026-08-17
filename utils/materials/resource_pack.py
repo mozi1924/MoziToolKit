@@ -18,6 +18,12 @@ except ImportError:
 from .constants import DEFAULT_NAMESPACE
 
 
+# Resource pack zip extraction security limits
+MAX_ZIP_TOTAL_UNCOMPRESSED = 2 * 1024 * 1024 * 1024  # 2 GB maximum uncompressed size
+MAX_ZIP_MEMBER_COUNT = 50_000                       # Maximum 50,000 files
+MAX_ZIP_COMPRESSION_RATIO = 100.0                   # Max compression ratio for files > 1MB
+
+
 def get_cache_dir() -> Path:
     """
     Get the cache root directory in Blender's configured temporary directory.
@@ -252,9 +258,31 @@ class ZipResourcePack:
 
     @staticmethod
     def _safe_extract(zf: zipfile.ZipFile, target_dir: Path) -> None:
-        """Safely extract all members from a zip archive, preventing zip-slip path traversal."""
+        """Safely extract all members from a zip archive, preventing zip-slip path traversal and zip bombs."""
         resolved_target = target_dir.resolve()
+        total_uncompressed_bytes = 0
+        member_count = 0
+
         for member in zf.infolist():
+            member_count += 1
+            if member_count > MAX_ZIP_MEMBER_COUNT:
+                raise ValueError(
+                    f"Malicious zip archive detected (too many entries): contains more than {MAX_ZIP_MEMBER_COUNT} files."
+                )
+
+            total_uncompressed_bytes += member.file_size
+            if total_uncompressed_bytes > MAX_ZIP_TOTAL_UNCOMPRESSED:
+                raise ValueError(
+                    f"Malicious zip archive detected (zip bomb): uncompressed size exceeds {MAX_ZIP_TOTAL_UNCOMPRESSED // (1024 * 1024)} MB."
+                )
+
+            if member.file_size > 1024 * 1024 and member.compress_size > 0:
+                ratio = member.file_size / member.compress_size
+                if ratio > MAX_ZIP_COMPRESSION_RATIO:
+                    raise ValueError(
+                        f"Malicious zip archive entry detected (excessive compression ratio {ratio:.1f}x > {MAX_ZIP_COMPRESSION_RATIO}x): '{member.filename}'"
+                    )
+
             member_path = (target_dir / member.filename).resolve()
             try:
                 member_path.relative_to(resolved_target)

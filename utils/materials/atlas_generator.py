@@ -3,11 +3,14 @@ Atlas Generator for Minecraft Resource Packs / JARs.
 Generates size-bounded texture atlas images (Albedo, Normal, Specular) and mapping JSON.
 """
 
+from __future__ import annotations
+
 import sys
 import os
 import json
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from .constants import FACE_ORDER, ATLAS_FORMAT_VERSION
 from .biome import BiomeResolver
@@ -16,9 +19,22 @@ from ..system.dependencies import has_pillow
 try:
     from PIL import Image
     HAS_PIL = True
+    Image.MAX_IMAGE_PIXELS = 128 * 1024 * 1024  # 128 MP max image pixels threshold
 except ImportError:
     Image = None
     HAS_PIL = False
+
+MAX_IMAGE_DIMENSION = 16384  # Max allowed width/height in pixels for a single texture
+
+
+def _safe_open_image(source):
+    """Open an image safely, enforcing dimension limits before buffer conversion."""
+    img = Image.open(source)
+    if img.width > MAX_IMAGE_DIMENSION or img.height > MAX_IMAGE_DIMENSION:
+        raise ValueError(
+            f"Image dimensions ({img.width}x{img.height}) exceed safety limit ({MAX_IMAGE_DIMENSION}px)"
+        )
+    return img.convert("RGBA")
 
 
 def _is_power_of_two(n: int) -> bool:
@@ -169,7 +185,7 @@ class AtlasGenerator:
 
                     try:
                         with zf.open(name) as img_file:
-                            img = Image.open(img_file).convert("RGBA")
+                            img = _safe_open_image(img_file)
                             if channel == "normal":
                                 self.normal_textures[clean_base_stem] = img
                                 self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
@@ -259,7 +275,7 @@ class AtlasGenerator:
 
                         img_path = Path(root) / f
                         try:
-                            img = Image.open(img_path).convert("RGBA")
+                            img = _safe_open_image(img_path)
                             if channel == "normal":
                                 self.normal_textures[clean_base_stem] = img
                                 self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
