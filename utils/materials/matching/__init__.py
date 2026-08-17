@@ -32,6 +32,12 @@ from .jmc2obj import (
     JMC2OBJ_BANNER_SHORT_ALIASES,
     JMC2OBJ_BIOME_SUFFIXES,
 )
+from .mineways import (
+    MinewaysAdapter,
+    is_mineways_material,
+    mineways_texture_candidates,
+    MINEWAYS_BLOCK_NAME_ALIASES,
+)
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
@@ -56,11 +62,13 @@ from ..atlas_layout import find_texture_id_from_atlas_uv
 # Instantiated format adapters (order defines priority)
 ICE_CUBE_ADAPTER = IceCubeAdapter()
 JMC2OBJ_ADAPTER = Jmc2objAdapter()
+MINEWAYS_ADAPTER = MinewaysAdapter()
 GENERIC_ADAPTER = GenericAdapter()
 
 ADAPTERS: tuple[ImporterAdapter, ...] = (
     ICE_CUBE_ADAPTER,
     JMC2OBJ_ADAPTER,
+    MINEWAYS_ADAPTER,
     GENERIC_ADAPTER,
 )
 
@@ -77,6 +85,12 @@ JMC2OBJ_PRESET = MaterialMatchPreset(
     detects=JMC2OBJ_ADAPTER.detect,
     extract_keys=JMC2OBJ_ADAPTER.extract_keys,
 )
+MINEWAYS_PRESET = MaterialMatchPreset(
+    identifier=MINEWAYS_ADAPTER.identifier,
+    description=MINEWAYS_ADAPTER.description,
+    detects=MINEWAYS_ADAPTER.detect,
+    extract_keys=MINEWAYS_ADAPTER.extract_keys,
+)
 GENERIC_PRESET = MaterialMatchPreset(
     identifier=GENERIC_ADAPTER.identifier,
     description=GENERIC_ADAPTER.description,
@@ -86,6 +100,7 @@ GENERIC_PRESET = MaterialMatchPreset(
 MATCH_PRESETS: tuple[MaterialMatchPreset, ...] = (
     ICE_CUBE_PRESET,
     JMC2OBJ_PRESET,
+    MINEWAYS_PRESET,
     GENERIC_PRESET,
 )
 

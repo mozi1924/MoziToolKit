@@ -9,8 +9,15 @@ from .base import ImporterAdapter, base_texture_candidates
 
 
 def generic_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
-    """Literal image and material-name matching."""
-    return base_texture_candidates(mat)
+    """Literal image and material-name matching with standard Minecraft category fallbacks."""
+    namespace, base_cands = base_texture_candidates(mat)
+    candidates = list(base_cands)
+    for cand in base_cands:
+        if "/" not in cand and not cand.startswith("atlas_chunk_"):
+            candidates.append(f"block/{cand}")
+            candidates.append(f"entity/{cand}")
+            candidates.append(f"item/{cand}")
+    return namespace, list(dict.fromkeys(candidates))
 
 
 class GenericAdapter(ImporterAdapter):
