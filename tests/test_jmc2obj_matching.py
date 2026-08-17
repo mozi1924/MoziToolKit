@@ -286,6 +286,29 @@ class TestJmc2objMatching(unittest.TestCase):
         self.assertAlmostEqual(u_out, 0.5, places=5)
         self.assertAlmostEqual(v_out, 1.0 - (0.5 * 16.0 / 512.0), places=5)
 
+    def test_missing_texture_and_node_label_detection(self):
+        # Material has generic name "Material.001", image file is missing, but node label/name has jmc2obj identifier
+        mat = bpy.data.materials.new(name="Material.001")
+        mat.use_nodes = True
+        tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        tex_node.image = None
+        tex_node.label = "minecraft_block-oak_planks.png"
+
+        self.assertTrue(is_jmc2obj_material(mat))
+        ns, cands = extract_material_texture_keys(mat)
+        self.assertEqual(ns, "minecraft")
+        self.assertIn("block/oak_planks", cands)
+
+        # Node has informative jmc2obj custom name/label
+        mat2 = bpy.data.materials.new(name="Material.002")
+        mat2.use_nodes = True
+        tex_node2 = mat2.node_tree.nodes.new("ShaderNodeTexImage")
+        tex_node2.image = None
+        tex_node2.name = "minecraft_block-dirt"
+        self.assertTrue(is_jmc2obj_material(mat2))
+        ns2, cands2 = extract_material_texture_keys(mat2)
+        self.assertIn("block/dirt", cands2)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

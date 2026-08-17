@@ -95,13 +95,25 @@ def base_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
     candidates = []
     detected_namespaces = []
     if mat.use_nodes and mat.node_tree:
+        # Check node tree name if it carries informative name (e.g. from an importer)
+        tree_name = without_blender_suffix(mat.node_tree.name.strip().lower()).removesuffix(".png")
+        if tree_name and not tree_name.startswith(("shader nodetree", "nodetree", "material")):
+            candidates.append(tree_name)
+
         for node in mat.node_tree.nodes:
-            if node.type == "TEX_IMAGE" and node.image:
-                img_ns, key = extract_texture_provenance_from_image(node.image)
-                if img_ns and img_ns not in ("assets", "library", "ice_cube_asset_library"):
-                    detected_namespaces.append(img_ns)
-                if key and not key.startswith("atlas_chunk_"):
-                    candidates.append(key)
+            if node.type == "TEX_IMAGE":
+                if node.image:
+                    img_ns, key = extract_texture_provenance_from_image(node.image)
+                    if img_ns and img_ns not in ("assets", "library", "ice_cube_asset_library"):
+                        detected_namespaces.append(img_ns)
+                    if key and not key.startswith("atlas_chunk_"):
+                        candidates.append(key)
+                # Fallback: if node.image is None or missing, extract from node label or custom node name
+                for attr_val in (node.label, node.name):
+                    if attr_val:
+                        clean_attr = without_blender_suffix(attr_val.strip().lower()).removesuffix(".png")
+                        if clean_attr and not clean_attr.startswith(("image texture", "tex_image", "atlas_chunk_")):
+                            candidates.append(clean_attr)
 
     if namespace == DEFAULT_NAMESPACE and detected_namespaces:
         namespace = detected_namespaces[0]

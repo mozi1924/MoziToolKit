@@ -159,14 +159,28 @@ def is_jmc2obj_material(mat: bpy.types.Material | None) -> bool:
         return True
 
     if mat.use_nodes and mat.node_tree:
+        # Check node tree name
+        tree_name = without_blender_suffix(mat.node_tree.name.strip().lower())
+        if re.match(r"^(?:minecraft|jmc2obj)_(?:block|entity|item|banner|painting)-", tree_name):
+            return True
+
         for node in mat.node_tree.nodes:
-            if node.type == "TEX_IMAGE" and node.image:
-                fp = (node.image.filepath or node.image.name or "").replace("\\", "/").lower()
-                if "/tex/minecraft/" in fp or "tex/minecraft/" in fp or "tex/jmc2obj/" in fp:
-                    return True
-                img_name = without_blender_suffix(node.image.name.lower())
-                if re.match(r"^(?:minecraft|jmc2obj)_(?:block|entity|item)-", img_name):
-                    return True
+            if node.type == "TEX_IMAGE":
+                if node.image:
+                    fp = (node.image.filepath or node.image.name or "").replace("\\", "/").lower()
+                    if "/tex/minecraft/" in fp or "tex/minecraft/" in fp or "tex/jmc2obj/" in fp:
+                        return True
+                    img_name = without_blender_suffix(node.image.name.lower())
+                    if re.match(r"^(?:minecraft|jmc2obj)_(?:block|entity|item)-", img_name):
+                        return True
+                # Fallback: Check node label or custom node name for jmc2obj patterns (e.g. when image is missing/None)
+                for attr_val in (node.label, node.name):
+                    if attr_val:
+                        clean_attr = without_blender_suffix(attr_val.strip().lower()).removesuffix(".png")
+                        if re.match(r"^(?:minecraft|jmc2obj)_(?:block|entity|item)-", clean_attr):
+                            return True
+                        if "/tex/minecraft/" in clean_attr or clean_attr.startswith("tex/minecraft/"):
+                            return True
 
     return False
 
@@ -361,30 +375,51 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
     source_name = without_blender_suffix(mat.name.strip().lower())
     raw_names = [source_name]
 
-    # Collect raw names from image nodes as well
+    # Collect raw names from image nodes and labels as well
     if mat.use_nodes and mat.node_tree:
+        tree_name = without_blender_suffix(mat.node_tree.name.strip().lower()).removesuffix(".png")
+        if tree_name and not tree_name.startswith(("shader nodetree", "nodetree", "material")):
+            raw_names.append(tree_name)
+
         for node in mat.node_tree.nodes:
-            if node.type == "TEX_IMAGE" and node.image:
-                fp = (node.image.filepath or "").replace("\\", "/").strip()
-                if fp:
-                    norm_fp = fp.lower()
-                    if "/tex/" in norm_fp or norm_fp.startswith("tex/"):
-                        idx = norm_fp.find("tex/")
-                        rel_path = fp[idx + 4:]
-                        if rel_path.lower().endswith(".png"):
-                            rel_path = rel_path[:-4]
-                        if "/" in rel_path:
-                            ns, tex_path = rel_path.split("/", 1)
-                            namespace = ns.lower()
-                            candidates.append(tex_path)
-                            if "/" in tex_path:
-                                candidates.append(tex_path.split("/", 1)[1])
-                img_key = normalized_image_key(node.image)
-                if img_key and img_key not in raw_names:
-                    raw_names.append(img_key)
+            if node.type == "TEX_IMAGE":
+                if node.image:
+                    fp = (node.image.filepath or "").replace("\\", "/").strip()
+                    if fp:
+                        norm_fp = fp.lower()
+                        if "/tex/" in norm_fp or norm_fp.startswith("tex/"):
+                            idx = norm_fp.find("tex/")
+                            rel_path = fp[idx + 4:]
+                            if rel_path.lower().endswith(".png"):
+                                rel_path = rel_path[:-4]
+                            if "/" in rel_path:
+                                ns, tex_path = rel_path.split("/", 1)
+                                namespace = ns.lower()
+                                candidates.append(tex_path)
+                                if "/" in tex_path:
+                                    candidates.append(tex_path.split("/", 1)[1])
+                    img_key = normalized_image_key(node.image)
+                    if img_key and img_key not in raw_names:
+                        raw_names.append(img_key)
+                # Fallback: check node label and custom node name
+                for attr_val in (node.label, node.name):
+                    if attr_val:
+                        clean_attr = without_blender_suffix(attr_val.strip().lower()).removesuffix(".png")
+                        if clean_attr and not clean_attr.startswith(("image texture", "tex_image", "atlas_chunk_")):
+                            if clean_attr not in raw_names:
+                                raw_names.append(clean_attr)
 
     for item in raw_names:
         stem = without_blender_suffix(item)
+        if stem.endswith(".png"):
+            stem = stem[:-4]
+
+        # Strip leading tex/ or /tex/
+        if stem.startswith("tex/"):
+            stem = stem[4:]
+        elif "/tex/" in stem:
+            stem = stem.split("/tex/")[-1]
+
         cur_ns = namespace
         path_part = stem
         if "_" in stem:
