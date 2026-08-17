@@ -1,6 +1,6 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from ...utils.system import register_menu_item, has_pillow
+from ...utils.system import register_menu_item, has_pillow, draw_pillow_warning
 
 
 @register_menu_item(views=["object"])
@@ -84,13 +84,8 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         box.prop(self, "material_mode", text="Mode")
         box.prop(self, "biome_preset", text="Biome")
 
-        if self.material_mode == 'ATLAS' and not has_pillow():
-            alert_box = layout.box()
-            alert_box.alert = True
-            alert_box.label(text="Atlas mode requires 'Pillow' (PIL) module (Missing)!", icon='ERROR')
-            alert_box.label(text="Please ensure Pillow or extension wheels are available.")
-            op = alert_box.operator("mozi.open_preferences", text="Check Environment", icon='PREFERENCES')
-            op.tab = "MISC"
+        if not has_pillow():
+            draw_pillow_warning(layout, title="Material replacement requires 'Pillow' (PIL) module (Missing)!")
 
         box.prop(self, "pack_textures")
         if not self.pack_textures:
@@ -102,10 +97,10 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
 
-        if self.material_mode == 'ATLAS' and not has_pillow():
+        if not has_pillow():
             self.report(
                 {'ERROR'},
-                "Atlas mode requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
+                "Material replacement requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
             )
             return {"CANCELLED"}
 

@@ -210,6 +210,22 @@ def has_pillow() -> bool:
     return is_module_installed("PIL")
 
 
+def draw_pillow_warning(
+    layout,
+    title: str = "Material replacement requires 'Pillow' (PIL) module (Missing)!",
+    subtitle: str = "Please ensure Pillow or extension wheels are available.",
+    tab: str = "MISC"
+):
+    """Draw a standardized alert box warning the user that Pillow is missing with a button to check environment."""
+    alert_box = layout.box()
+    alert_box.alert = True
+    alert_box.label(text=title, icon='ERROR')
+    if subtitle:
+        alert_box.label(text=subtitle)
+    op = alert_box.operator("mozi.open_preferences", text="Check Environment", icon='PREFERENCES')
+    op.tab = tab
+
+
 def get_prefs(context=None):
     """
     Retrieve MoziToolKit AddonPreferences safely across legacy add-on

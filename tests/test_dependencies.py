@@ -147,6 +147,44 @@ class TestDependencyManager(unittest.TestCase):
                 bpy.data.objects.remove(cube, do_unlink=True)
                 bpy.data.materials.remove(mat, do_unlink=True)
 
+    def test_standalone_mode_guards_missing_pillow(self):
+        """When Pillow is not installed, running replace_material with STANDALONE mode must fail gracefully."""
+        try:
+            import bpy
+        except ImportError:
+            self.skipTest("bpy not available in pure python environment")
+
+        import tempfile
+        import zipfile
+        from pipeline.presets import run_preset_pipeline
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            zip_path = Path(tmp_dir) / "dummy_pack.zip"
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                zf.writestr("pack.mcmeta", '{"pack":{"pack_format":15,"description":"Test"}}')
+                zf.writestr("assets/minecraft/textures/block/stone.png", b"dummy_png_bytes")
+
+            with patch("utils.system.dependencies.has_pillow", return_value=False), \
+                 patch("pipeline.steps.step_replace_material.has_pillow", return_value=False):
+                if bpy.context.mode != "OBJECT":
+                    bpy.ops.object.mode_set(mode="OBJECT")
+                bpy.ops.mesh.primitive_cube_add()
+                cube = bpy.context.active_object
+                mat = bpy.data.materials.new(name="stone")
+                cube.data.materials.append(mat)
+
+                params = {
+                    "zip_path": str(zip_path),
+                    "material_mode": "STANDALONE",
+                    "use_cache": False,
+                }
+                res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[cube])
+                self.assertFalse(res.is_success)
+                self.assertIn("Pillow", res.message)
+
+                bpy.data.objects.remove(cube, do_unlink=True)
+                bpy.data.materials.remove(mat, do_unlink=True)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

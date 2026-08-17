@@ -148,8 +148,10 @@ translations_dict = {
         ("*", "Optional dependency 'Pillow' is not installed (required for Atlas Material Mode)."): "可选依赖 'Pillow' 未安装（Atlas 材质图集模式需要此依赖）。",
         ("*", "Check Environment"): "查看运行环境",
         ("*", "Atlas mode requires 'Pillow' (PIL) module (Missing)!"): "Atlas 模式需要 Pillow (PIL) 模块（当前缺失）！",
+        ("*", "Material replacement requires 'Pillow' (PIL) module (Missing)!"): "材质替换需要 Pillow (PIL) 模块（当前缺失）！",
         ("*", "Please ensure Pillow or extension wheels are available."): "请确保已安装 Pillow 或已包含扩展 wheels。",
         ("*", "Atlas mode requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."): "Atlas 模式需要 Pillow (PIL) 模块。请确保已安装 Pillow 或已包含扩展 wheels。",
+        ("*", "Material replacement requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."): "材质替换需要 Pillow (PIL) 模块。请确保已安装 Pillow 或已包含扩展 wheels。",
 
         # Cache & Storage
         ("*", "Resource Pack Cache & Storage:"): "材质包缓存管理:",

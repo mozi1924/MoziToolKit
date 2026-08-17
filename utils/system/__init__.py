@@ -14,6 +14,7 @@ from .dependencies import (
     get_all_dependency_statuses,
     has_all_dependencies,
     has_pillow,
+    draw_pillow_warning,
     get_prefs,
 )
 
@@ -46,6 +47,7 @@ __all__ = [
     "get_all_dependency_statuses",
     "has_all_dependencies",
     "has_pillow",
+    "draw_pillow_warning",
     "get_prefs",
     "register_menu_item",
     "register_operator_menu_item",
