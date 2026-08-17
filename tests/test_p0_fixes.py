@@ -16,9 +16,6 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from utils.system.dependencies import ensure_wheels_in_sys_path
-ensure_wheels_in_sys_path()
-
 import bpy
 from utils.materials.biome import (
     BiomeResolver,
@@ -36,6 +33,7 @@ from utils.materials.resource_pack import (
     texture_category_priority,
 )
 from utils.materials.matching import (
+    _RUNTIME_ATLAS_LOOKUP_CACHE,
     _atlas_mapping_index,
     extract_face_texture_info,
 )
@@ -173,6 +171,12 @@ class TestP0Fixes(unittest.TestCase):
         # Verify mapping dict was not corrupted with tuple keys
         for k in mapping.keys():
             self.assertIsInstance(k, str)
+
+        # A cache entry for a different mapping must never be reused merely
+        # because its integer id is used as the dictionary key.
+        other_mapping = {"chunks": [], "textures": {}, "animations": []}
+        _RUNTIME_ATLAS_LOOKUP_CACHE[id(other_mapping)] = (mapping, index)
+        self.assertEqual(_atlas_mapping_index(other_mapping)["locations"], {})
 
     def test_texture_finder_clean_fallback(self):
         """Verify find_face_image returns None when face material has no image instead of grabbing random images."""

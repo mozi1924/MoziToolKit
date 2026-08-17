@@ -12,9 +12,7 @@ import os
 from pathlib import Path
 import site
 import sys
-import tempfile
 from typing import Dict, List, Optional
-import zipfile
 
 
 @dataclass
@@ -90,48 +88,15 @@ def get_blender_site_packages() -> List[str]:
     return discovered
 
 
-def ensure_wheels_in_sys_path() -> List[str]:
-    """Ensure platform-compatible bundled wheels are extracted and accessible in sys.path."""
-    added = []
-    addon_dir = Path(__file__).parent.parent.parent.resolve()
-    wheels_dir = addon_dir / "wheels"
-    if not wheels_dir.exists():
-        return added
-
-    target_whl = None
-    py_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
-    for whl in sorted(wheels_dir.glob("*.whl")):
-        if py_tag in whl.name:
-            if "macosx" in whl.name and sys.platform == "darwin":
-                target_whl = whl
-                break
-            elif "win" in whl.name and sys.platform == "win32":
-                target_whl = whl
-                break
-            elif "linux" in whl.name and sys.platform.startswith("linux"):
-                target_whl = whl
-                break
-
-    if target_whl is not None:
-        cache_dir = Path(tempfile.gettempdir()) / "MoziToolKit_cache" / "unpacked_wheels" / target_whl.stem
-        marker = cache_dir / ".extracted"
-        if not marker.exists():
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(target_whl, "r") as zf:
-                zf.extractall(cache_dir)
-            with open(marker, "w", encoding="utf-8") as f:
-                f.write("OK")
-        str_cache = str(cache_dir)
-        if str_cache not in sys.path:
-            sys.path.insert(0, str_cache)
-            added.append(str_cache)
-
-    return added
-
-
 def ensure_sys_paths() -> List[str]:
-    """Compatibility no-op retained for callers from pre-extension builds."""
-    return ensure_wheels_in_sys_path()
+    """Compatibility no-op retained for callers from pre-extension builds.
+
+    Blender Extensions installs wheels declared in ``blender_manifest.toml`` and
+    owns their import paths. The add-on must not extract or prepend wheels at
+    runtime, because that can race between Blender processes and shadow the
+    extension-managed package.
+    """
+    return []
 
 
 def get_python_executable() -> str:
@@ -176,12 +141,6 @@ def is_module_installed(module_name: str) -> bool:
             return True
     except Exception:
         pass
-    if module_name in ("PIL", "Pillow"):
-        ensure_wheels_in_sys_path()
-        try:
-            return importlib.util.find_spec(module_name) is not None
-        except Exception:
-            return False
     return False
 
 

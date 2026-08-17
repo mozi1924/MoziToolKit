@@ -139,7 +139,9 @@ def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[st
     return adapter.extract_keys(mat)
 
 
-_RUNTIME_ATLAS_LOOKUP_CACHE: dict[int, dict] = {}
+# Each entry retains its mapping. That prevents Python from reusing an id for
+# a different mapping while its cached index is still live.
+_RUNTIME_ATLAS_LOOKUP_CACHE: dict[int, tuple[dict, dict]] = {}
 
 
 def _atlas_mapping_index(mapping: dict) -> dict:
@@ -153,9 +155,9 @@ def _atlas_mapping_index(mapping: dict) -> dict:
         return {"chunks": {}, "locations": {}, "animations_by_chunk": {}, "animations_by_location": {}}
 
     map_id = id(mapping)
-    cached = _RUNTIME_ATLAS_LOOKUP_CACHE.get(map_id)
-    if cached is not None:
-        return cached
+    cache_entry = _RUNTIME_ATLAS_LOOKUP_CACHE.get(map_id)
+    if cache_entry is not None and cache_entry[0] is mapping:
+        return cache_entry[1]
 
     if len(_RUNTIME_ATLAS_LOOKUP_CACHE) > 200:
         _RUNTIME_ATLAS_LOOKUP_CACHE.clear()
@@ -190,7 +192,7 @@ def _atlas_mapping_index(mapping: dict) -> dict:
         "animations_by_chunk": animations_by_chunk,
         "animations_by_location": animations_by_location,
     }
-    _RUNTIME_ATLAS_LOOKUP_CACHE[map_id] = cached
+    _RUNTIME_ATLAS_LOOKUP_CACHE[map_id] = (mapping, cached)
     return cached
 
 

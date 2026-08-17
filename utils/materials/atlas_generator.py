@@ -21,29 +21,6 @@ except ImportError:
     HAS_PIL = False
 
 
-def _ensure_pil() -> bool:
-    global Image, HAS_PIL
-    if not HAS_PIL or Image is None:
-        try:
-            from ..system.dependencies import ensure_wheels_in_sys_path
-            ensure_wheels_in_sys_path()
-        except (ImportError, ValueError):
-            try:
-                from utils.system.dependencies import ensure_wheels_in_sys_path
-                ensure_wheels_in_sys_path()
-            except Exception:
-                pass
-        except Exception:
-            pass
-        try:
-            from PIL import Image as _Img
-            Image = _Img
-            HAS_PIL = True
-        except ImportError:
-            HAS_PIL = False
-    return HAS_PIL
-
-
 def _is_power_of_two(n: int) -> bool:
     return n > 0 and (n & (n - 1)) == 0
 
@@ -369,7 +346,7 @@ class AtlasGenerator:
         Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace.
         Yields (fraction: float, message: str, outputs: Optional[dict]).
         """
-        if not _ensure_pil():
+        if not HAS_PIL:
             raise ImportError("Pillow library is required for AtlasGenerator. Please install it using 'pip install pillow'.")
         Image.init()
         from collections import Counter
