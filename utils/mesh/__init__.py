@@ -38,6 +38,8 @@ try:
         normalize_face_uv_for_atlas_tiling,
         face_uv_requires_atlas_tiling,
         restore_atlas_tiling_uv,
+        repair_face_fluid_uv,
+        process_mesh_fluid_uv_repairs,
     )
 except ImportError:
     pass
@@ -65,6 +67,8 @@ __all__ = [
     "normalize_face_uv_for_atlas_tiling",
     "face_uv_requires_atlas_tiling",
     "restore_atlas_tiling_uv",
+    "repair_face_fluid_uv",
+    "process_mesh_fluid_uv_repairs",
     "process_random_extrude",
     "subdivide_quad_face",
     "cleanup_mesh_topology",
