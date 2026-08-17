@@ -636,6 +636,12 @@ def run_all_tests():
         print(f"[Warning] Could not load TestJmc2objMatching: {e}")
 
     try:
+        from tests.test_mineways_matching import TestMinewaysMatching
+        suite.addTests(loader.loadTestsFromTestCase(TestMinewaysMatching))
+    except Exception as e:
+        print(f"[Warning] Could not load TestMinewaysMatching: {e}")
+
+    try:
         from tests.test_generate_atlas import TestAtlasGenerator
         suite.addTests(loader.loadTestsFromTestCase(TestAtlasGenerator))
     except Exception as e:
