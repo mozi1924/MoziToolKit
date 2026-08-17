@@ -6,12 +6,10 @@ import bpy
 from bpy.props import StringProperty
 try:
     from ...utils.system import (
-        ensure_sys_paths,
         get_prefs,
     )
 except (ImportError, ValueError):
     from utils.system import (
-        ensure_sys_paths,
         get_prefs,
     )
 
@@ -36,7 +34,6 @@ class MOZI_OT_check_dependencies(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def execute(self, context):
-        ensure_sys_paths()
         refresh_ui_windows(context)
         self.report({"INFO"}, "Environment and dependency status refreshed.")
         return {"FINISHED"}

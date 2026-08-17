@@ -90,21 +90,13 @@ def get_blender_site_packages() -> List[str]:
 
 def ensure_sys_paths() -> List[str]:
     """
-    Ensure Blender's bundled and extension site-packages directories are present in sys.path.
+    Compatibility no-op retained for callers from pre-extension builds.
+
+    Blender Extensions owns wheel installation and its import paths.  Adding the
+    extension's ``wheels/`` directory to ``sys.path`` violates Blender's
+    extension policy and does not make a wheel importable in any case.
     """
-    added_paths = []
-    blender_sites = get_blender_site_packages()
-
-    for p in blender_sites:
-        if p not in sys.path:
-            sys.path.append(p)
-            added_paths.append(p)
-
-    return added_paths
-
-
-# Run dynamic path resolution on module load
-ensure_sys_paths()
+    return []
 
 
 def get_python_executable() -> str:
@@ -142,7 +134,6 @@ def get_python_executable() -> str:
 
 def is_module_installed(module_name: str) -> bool:
     """Check if a Python module is available in the Python environment."""
-    ensure_sys_paths()
     try:
         return importlib.util.find_spec(module_name) is not None
     except Exception:
@@ -151,8 +142,6 @@ def is_module_installed(module_name: str) -> bool:
 
 def get_installed_version(module_name: str, package_name: Optional[str] = None) -> Optional[str]:
     """Retrieve installed version of a package or module."""
-    ensure_sys_paths()
-
     # Try importlib.metadata first
     pkg_name = package_name or module_name
     try:
