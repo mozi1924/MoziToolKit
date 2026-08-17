@@ -76,16 +76,6 @@ def find_face_image(face, obj, context=None) -> Optional[bpy.types.Image]:
         if context.space_data.image:
             return context.space_data.image
 
-    # 3. Fallback to first valid image in bpy.data.images
-    if bpy and hasattr(bpy, "data"):
-        for img in bpy.data.images:
-            if img.source != "VIEWER" and img.size[0] > 0 and img.size[1] > 0:
-                print(
-                    f"[MoziToolKit] Face material has no image texture. Falling back to bpy.data.images: {img.name}",
-                    file=sys.stderr,
-                )
-                return img
-
     return None
 
 

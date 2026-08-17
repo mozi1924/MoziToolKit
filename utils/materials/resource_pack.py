@@ -180,6 +180,30 @@ def derive_texture_name(texture_key: str, base_stem: str = "") -> str:
     return key
 
 
+def texture_category_priority(texture_key: str) -> int:
+    """Return category priority for deterministic tie-breaking (lower = higher priority).
+
+    1. block/
+    2. item/ or items/
+    3. entity/
+    4. painting/
+    5. particle/
+    6. everything else
+    """
+    k = (texture_key or "").lower()
+    if k.startswith("block/"):
+        return 1
+    if k.startswith("item/") or k.startswith("items/"):
+        return 2
+    if k.startswith("entity/"):
+        return 3
+    if k.startswith("painting/"):
+        return 4
+    if k.startswith("particle/") or k.startswith("particles/"):
+        return 5
+    return 6
+
+
 class ZipResourcePack:
     """
     Manages extraction, caching, and indexing of a Minecraft Java Edition
@@ -258,7 +282,7 @@ class ZipResourcePack:
             namespace = namespace_dir.name.lower()
             for root, _, files in os.walk(textures_dir):
                 root_path = Path(root)
-                for fname in files:
+                for fname in sorted(files):
                     if not fname.lower().endswith(".png"):
                         continue
                     
@@ -310,10 +334,16 @@ class ZipResourcePack:
                     if "-" in texture_name:
                         self.texture_index[(namespace, texture_name.replace("-", "/"))] = entry
 
-                    # Fallback short stem index (prefer block/ over other categories for single word names)
+                    # Fallback short stem index with deterministic category priority
                     stem_index_key = (namespace, base_stem)
-                    if stem_index_key not in self.texture_index or texture_key.startswith("block/"):
+                    existing_entry = self.texture_index.get(stem_index_key)
+                    if existing_entry is None:
                         self.texture_index[stem_index_key] = entry
+                    else:
+                        new_pri = texture_category_priority(texture_key)
+                        old_pri = texture_category_priority(existing_entry.get("texture_key", ""))
+                        if new_pri < old_pri:
+                            self.texture_index[stem_index_key] = entry
 
     def get_texture_info(self, base_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict | None:
         """
@@ -371,6 +401,7 @@ class ZipResourcePack:
                 if ns == namespace and (path_key == clean_name or path_key.endswith("/" + clean_name))
             ]
             if suffix_matches:
+                suffix_matches.sort(key=lambda inf: texture_category_priority(inf.get("texture_key", "")))
                 return suffix_matches[0]
 
         # Suffix matching with hyphenated candidate
@@ -381,6 +412,7 @@ class ZipResourcePack:
                 if ns == namespace and (path_key == slash_cand or path_key.endswith("/" + slash_cand))
             ]
             if suffix_matches:
+                suffix_matches.sort(key=lambda inf: texture_category_priority(inf.get("texture_key", "")))
                 return suffix_matches[0]
 
         # Fallback: If not found under default namespace, check if texture exists in another loaded namespace
@@ -395,7 +427,8 @@ class ZipResourcePack:
                     if path_key == clean_name or path_key.endswith("/" + clean_name)
                     or ("-" in clean_name and (path_key == clean_name.replace("-", "/") or path_key.endswith("/" + clean_name.replace("-", "/"))))
                 ]
-            if len(matches) == 1:
+            if matches:
+                matches.sort(key=lambda inf: texture_category_priority(inf.get("texture_key", "")))
                 return matches[0]
 
         return None

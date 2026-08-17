@@ -139,17 +139,26 @@ def extract_material_texture_keys(mat: bpy.types.Material) -> tuple[str, list[st
     return adapter.extract_keys(mat)
 
 
+_RUNTIME_ATLAS_LOOKUP_CACHE: dict[int, dict] = {}
+
+
 def _atlas_mapping_index(mapping: dict) -> dict:
     """Build and retain O(1) lookups for a parsed atlas mapping.
 
-    This function is used in per-face conversion paths.  Scanning every
+    This function is used in per-face conversion paths. Scanning every
     mapping texture for every polygon makes re-atlasing older, uncompressed
     models effectively quadratic and can freeze Blender for minutes.
     """
-    cache_key = "_mtk_runtime_atlas_lookup"
-    cached = mapping.get(cache_key)
-    if cached:
+    if not isinstance(mapping, dict):
+        return {"chunks": {}, "locations": {}, "animations_by_chunk": {}, "animations_by_location": {}}
+
+    map_id = id(mapping)
+    cached = _RUNTIME_ATLAS_LOOKUP_CACHE.get(map_id)
+    if cached is not None:
         return cached
+
+    if len(_RUNTIME_ATLAS_LOOKUP_CACHE) > 200:
+        _RUNTIME_ATLAS_LOOKUP_CACHE.clear()
 
     locations = {}
     for tex_name, location in mapping.get("textures", {}).items():
@@ -176,15 +185,12 @@ def _atlas_mapping_index(mapping: dict) -> dict:
         animations_by_location[(chunk_id, texture_id)] = animation
 
     cached = {
-        "chunks": {int(chunk["chunk_id"]): chunk for chunk in mapping.get("chunks", [])},
+        "chunks": {int(chunk["chunk_id"]): chunk for chunk in mapping.get("chunks", []) if "chunk_id" in chunk},
         "locations": locations,
         "animations_by_chunk": animations_by_chunk,
         "animations_by_location": animations_by_location,
     }
-    # The mapping is an in-memory JSON dict obtained from a material or mesh.
-    # Keeping this runtime-only cache on it avoids a global lifetime cache and
-    # is never written back to the .blend metadata.
-    mapping[cache_key] = cached
+    _RUNTIME_ATLAS_LOOKUP_CACHE[map_id] = cached
     return cached
 
 
@@ -200,6 +206,9 @@ def extract_face_texture_info(
     """
     if not slot_mat:
         return DEFAULT_NAMESPACE, [], None
+
+    # Base candidates from detected importer adapter for semantic fallback
+    adapter_ns, adapter_candidates = extract_material_texture_keys(slot_mat)
 
     # FACE provenance is the authoritative identity across Standalone and
     # Atlas. It survives material-slot consolidation and must win over
@@ -274,5 +283,4 @@ def extract_face_texture_info(
         return *provenance, None
 
     # Standalone or Generic fallback
-    namespace, candidates = extract_material_texture_keys(slot_mat)
-    return namespace, candidates, None
+    return adapter_ns, adapter_candidates, None

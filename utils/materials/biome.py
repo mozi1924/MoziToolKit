@@ -16,12 +16,7 @@ from typing import Optional, Dict, Any, Tuple
 def hex_to_rgb(hex_str: str) -> tuple[float, float, float]:
     """Convert hex color string (e.g. '#91BD59' or '91BD59') to sRGB float tuple (0..1)."""
     clean = hex_str.strip().lstrip("#")
-    if len(clean) == 6:
-        r = int(clean[0:2], 16) / 255.0
-        g = int(clean[2:4], 16) / 255.0
-        b = int(clean[4:6], 16) / 255.0
-        return (r, g, b)
-    elif len(clean) == 8:
+    if len(clean) in (6, 8):
         r = int(clean[0:2], 16) / 255.0
         g = int(clean[2:4], 16) / 255.0
         b = int(clean[4:6], 16) / 255.0
@@ -44,6 +39,13 @@ def hex_to_linear_rgb(hex_str: str) -> tuple[float, float, float]:
 
 def hex_to_rgba(hex_str: str, alpha: float = 1.0) -> tuple[float, float, float, float]:
     """Convert hex color string to sRGB RGBA tuple."""
+    clean = hex_str.strip().lstrip("#")
+    if len(clean) == 8:
+        r = int(clean[0:2], 16) / 255.0
+        g = int(clean[2:4], 16) / 255.0
+        b = int(clean[4:6], 16) / 255.0
+        a = int(clean[6:8], 16) / 255.0
+        return (r, g, b, a)
     r, g, b = hex_to_rgb(hex_str)
     return (r, g, b, alpha)
 
@@ -423,8 +425,22 @@ class BiomeResolver:
         overlay_stem = self.get_overlay_texture(clean)
         has_overlay = overlay_stem is not None
 
-        # 3. Check Known Grass category
-        if clean in KNOWN_GRASS_STEMS or clean.startswith("grass_") or "grass" in clean or clean.startswith("fern"):
+        # 3. Check Known Grass category (exclude underwater plants like seagrass/kelp which are never tinted)
+        is_grass = False
+        if clean in KNOWN_GRASS_STEMS:
+            is_grass = True
+        elif not ("seagrass" in clean or "kelp" in clean):
+            if (
+                clean.startswith("grass_")
+                or clean.endswith("_grass")
+                or clean == "grass"
+                or clean.startswith("tall_grass")
+                or clean.startswith("fern")
+                or clean.startswith("large_fern")
+            ):
+                is_grass = True
+
+        if is_grass:
             # Note: grass_block_side has overlay fringe: base dirt is untinted (0.0), overlay is tinted (1.0), face tint is active (1.0)
             base_weight = 0.0 if has_overlay else 1.0
             return {
