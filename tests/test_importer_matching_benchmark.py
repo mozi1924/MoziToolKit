@@ -7,9 +7,6 @@ import unittest
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from utils.system.dependencies import ensure_wheels_in_sys_path
-ensure_wheels_in_sys_path()
-
 import bpy
 from utils.materials.resource_pack import ZipResourcePack
 from utils.materials.matching import extract_material_texture_keys, get_importer_adapter

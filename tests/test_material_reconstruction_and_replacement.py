@@ -7,9 +7,6 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from utils.system.dependencies import ensure_wheels_in_sys_path
-ensure_wheels_in_sys_path()
-
 try:
     import bpy
     HAS_BPY = True
