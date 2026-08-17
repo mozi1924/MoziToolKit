@@ -11,9 +11,7 @@ from pathlib import Path
 
 from .constants import FACE_ORDER, ATLAS_FORMAT_VERSION
 from .biome import BiomeResolver
-from ..system.dependencies import ensure_sys_paths, has_pillow
-
-ensure_sys_paths()
+from ..system.dependencies import has_pillow
 
 try:
     from PIL import Image

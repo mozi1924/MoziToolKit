@@ -12,7 +12,6 @@ from ..utils.system import (
     reset_config,
     save_config,
     DEPENDENCIES,
-    ensure_sys_paths,
     get_all_dependency_statuses,
     get_blender_site_packages,
     get_python_executable,
@@ -549,4 +548,3 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             env_col.label(text=f"Package Search Path: {blender_sites[0]}")
             for extra_site in blender_sites[1:]:
                 env_col.label(text=f"  + {extra_site}")
-
