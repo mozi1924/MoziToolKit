@@ -19,6 +19,9 @@ if str(PARENT_DIR) not in sys.path:
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+from utils.system.dependencies import ensure_wheels_in_sys_path
+ensure_wheels_in_sys_path()
+
 import bpy
 import bmesh
 
@@ -664,6 +667,18 @@ def run_all_tests():
         suite.addTests(loader.loadTestsFromTestCase(TestAtlasUVRotation))
     except Exception as e:
         print(f"[Warning] Could not load TestAtlasUVRotation: {e}")
+
+    try:
+        from tests.test_p0_fixes import TestP0Fixes
+        suite.addTests(loader.loadTestsFromTestCase(TestP0Fixes))
+    except Exception as e:
+        print(f"[Warning] Could not load TestP0Fixes: {e}")
+
+    try:
+        from tests.test_importer_matching_benchmark import TestImporterModelMatching
+        suite.addTests(loader.loadTestsFromTestCase(TestImporterModelMatching))
+    except Exception as e:
+        print(f"[Warning] Could not load TestImporterModelMatching: {e}")
 
     try:
         from tests.test_biome_materials import (

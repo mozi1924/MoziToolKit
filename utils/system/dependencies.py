@@ -12,7 +12,9 @@ import os
 from pathlib import Path
 import site
 import sys
+import tempfile
 from typing import Dict, List, Optional
+import zipfile
 
 
 @dataclass
@@ -88,15 +90,48 @@ def get_blender_site_packages() -> List[str]:
     return discovered
 
 
-def ensure_sys_paths() -> List[str]:
-    """
-    Compatibility no-op retained for callers from pre-extension builds.
+def ensure_wheels_in_sys_path() -> List[str]:
+    """Ensure platform-compatible bundled wheels are extracted and accessible in sys.path."""
+    added = []
+    addon_dir = Path(__file__).parent.parent.parent.resolve()
+    wheels_dir = addon_dir / "wheels"
+    if not wheels_dir.exists():
+        return added
 
-    Blender Extensions owns wheel installation and its import paths.  Adding the
-    extension's ``wheels/`` directory to ``sys.path`` violates Blender's
-    extension policy and does not make a wheel importable in any case.
-    """
-    return []
+    target_whl = None
+    py_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    for whl in sorted(wheels_dir.glob("*.whl")):
+        if py_tag in whl.name:
+            if "macosx" in whl.name and sys.platform == "darwin":
+                target_whl = whl
+                break
+            elif "win" in whl.name and sys.platform == "win32":
+                target_whl = whl
+                break
+            elif "linux" in whl.name and sys.platform.startswith("linux"):
+                target_whl = whl
+                break
+
+    if target_whl is not None:
+        cache_dir = Path(tempfile.gettempdir()) / "MoziToolKit_cache" / "unpacked_wheels" / target_whl.stem
+        marker = cache_dir / ".extracted"
+        if not marker.exists():
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(target_whl, "r") as zf:
+                zf.extractall(cache_dir)
+            with open(marker, "w", encoding="utf-8") as f:
+                f.write("OK")
+        str_cache = str(cache_dir)
+        if str_cache not in sys.path:
+            sys.path.insert(0, str_cache)
+            added.append(str_cache)
+
+    return added
+
+
+def ensure_sys_paths() -> List[str]:
+    """Compatibility no-op retained for callers from pre-extension builds."""
+    return ensure_wheels_in_sys_path()
 
 
 def get_python_executable() -> str:
@@ -134,10 +169,20 @@ def get_python_executable() -> str:
 
 def is_module_installed(module_name: str) -> bool:
     """Check if a Python module is available in the Python environment."""
+    if module_name in sys.modules:
+        return True
     try:
-        return importlib.util.find_spec(module_name) is not None
+        if importlib.util.find_spec(module_name) is not None:
+            return True
     except Exception:
-        return False
+        pass
+    if module_name in ("PIL", "Pillow"):
+        ensure_wheels_in_sys_path()
+        try:
+            return importlib.util.find_spec(module_name) is not None
+        except Exception:
+            return False
+    return False
 
 
 def get_installed_version(module_name: str, package_name: Optional[str] = None) -> Optional[str]:

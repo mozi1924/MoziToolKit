@@ -394,7 +394,10 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
                                 rel_path = rel_path[:-4]
                             if "/" in rel_path:
                                 ns, tex_path = rel_path.split("/", 1)
-                                namespace = ns.lower()
+                                detected_ns = ns.lower()
+                                if detected_ns and detected_ns not in ("tex", ""):
+                                    if namespace == DEFAULT_NAMESPACE or namespace == "jmc2obj":
+                                        namespace = detected_ns
                                 candidates.append(tex_path)
                                 if "/" in tex_path:
                                     candidates.append(tex_path.split("/", 1)[1])
@@ -424,9 +427,14 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
         path_part = stem
         if "_" in stem:
             prefix, rest = stem.split("_", 1)
-            if prefix in ("minecraft", "jmc2obj") or not prefix.startswith("mtk"):
-                cur_ns = prefix if prefix != "jmc2obj" else DEFAULT_NAMESPACE
+            if prefix in ("minecraft", "jmc2obj"):
+                cur_ns = DEFAULT_NAMESPACE
                 path_part = rest
+            elif any(rest.startswith(f"{cat}-") for cat in ("block", "entity", "item", "banner", "painting", "particle", "gui", "environment", "colormap", "models")):
+                cur_ns = prefix
+                path_part = rest
+                if namespace == DEFAULT_NAMESPACE and cur_ns != DEFAULT_NAMESPACE:
+                    namespace = cur_ns
 
         # Banner aliases
         if path_part.startswith("banner-"):
@@ -458,6 +466,8 @@ def jmc2obj_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]
         # Convert jmc2obj '-' to '/' for folder hierarchy
         converted = path_part.replace("-", "/")
         candidates.append(converted)
+        if cur_ns != DEFAULT_NAMESPACE:
+            candidates.append(f"{cur_ns}:{converted}")
         if "/" in converted:
             cat, rest_sub = converted.split("/", 1)
             candidates.append(rest_sub)
