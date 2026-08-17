@@ -106,30 +106,48 @@ def is_mineways_material(mat: bpy.types.Material | None) -> bool:
     if name.endswith("_y") or name.startswith("mw_") or name.startswith("mwo_"):
         return True
 
-    # 3. Check attached texture image nodes
+    # 3. Check attached texture image nodes and node tree metadata
     if mat.use_nodes and mat.node_tree:
+        tree_name = without_blender_suffix(mat.node_tree.name.strip().lower()).removesuffix(".png")
+        if tree_name == "mc_material" or tree_name.endswith("_y") or tree_name.startswith(("mw_", "mwo_")):
+            return True
+        if any(tree_name == pat or tree_name.startswith(pat) for pat in MINEWAYS_ATLAS_TEXTURE_PATTERNS):
+            return True
+
         for node in mat.node_tree.nodes:
-            if node.type == "TEX_IMAGE" and node.image:
-                fp = (node.image.filepath or node.image.name or "").replace("\\", "/").lower()
-                clean_img_name = without_blender_suffix(node.image.name.lower()).removesuffix(".png")
-                # Mineways terrain atlas textures
-                if any(clean_img_name == pat or clean_img_name.startswith(pat) for pat in MINEWAYS_ATLAS_TEXTURE_PATTERNS):
-                    return True
-                # Mineways synthesized tiles (ending in _y or _y.png)
-                if clean_img_name.endswith("_y"):
-                    return True
-                # Mineways internal prefix in image name/path
-                if "mw_" in clean_img_name or "mwo_" in clean_img_name:
-                    return True
-                # Mineways default tile export folder: tex/<tile>.png (excluding jmc2obj tex/minecraft/ and tex/jmc2obj/)
-                if "/tex/" in fp or fp.startswith("tex/") or "tex/" in fp:
-                    if (
-                        "/tex/minecraft/" not in fp
-                        and "tex/minecraft/" not in fp
-                        and "/tex/jmc2obj/" not in fp
-                        and "tex/jmc2obj/" not in fp
-                    ):
+            if node.type == "TEX_IMAGE":
+                if node.image:
+                    fp = (node.image.filepath or node.image.name or "").replace("\\", "/").lower()
+                    clean_img_name = without_blender_suffix(node.image.name.lower()).removesuffix(".png")
+                    # Mineways terrain atlas textures
+                    if any(clean_img_name == pat or clean_img_name.startswith(pat) for pat in MINEWAYS_ATLAS_TEXTURE_PATTERNS):
                         return True
+                    # Mineways synthesized tiles (ending in _y or _y.png)
+                    if clean_img_name.endswith("_y"):
+                        return True
+                    # Mineways internal prefix in image name/path
+                    if "mw_" in clean_img_name or "mwo_" in clean_img_name:
+                        return True
+                    # Mineways default tile export folder: tex/<tile>.png (excluding jmc2obj tex/minecraft/ and tex/jmc2obj/)
+                    if "/tex/" in fp or fp.startswith("tex/") or "tex/" in fp:
+                        if (
+                            "/tex/minecraft/" not in fp
+                            and "tex/minecraft/" not in fp
+                            and "/tex/jmc2obj/" not in fp
+                            and "tex/jmc2obj/" not in fp
+                        ):
+                            return True
+                # Fallback: check node label or custom node name for Mineways signatures
+                for attr_val in (node.label, node.name):
+                    if attr_val:
+                        clean_attr = without_blender_suffix(attr_val.strip().lower()).removesuffix(".png")
+                        if clean_attr.endswith("_y") or clean_attr.startswith(("mw_", "mwo_")):
+                            return True
+                        if "/tex/" in clean_attr or clean_attr.startswith("tex/"):
+                            if "tex/minecraft/" not in clean_attr and "tex/jmc2obj/" not in clean_attr:
+                                return True
+                        if any(clean_attr == pat or clean_attr.startswith(pat) for pat in MINEWAYS_ATLAS_TEXTURE_PATTERNS):
+                            return True
 
     return False
 
@@ -144,26 +162,44 @@ def mineways_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]
     source_name = without_blender_suffix(mat.name.strip().lower())
     raw_names = [source_name]
 
-    # Collect raw image names and filepaths from texture nodes
+    # Collect raw image names, filepaths, and node labels from texture nodes
     if mat.use_nodes and mat.node_tree:
+        tree_name = without_blender_suffix(mat.node_tree.name.strip().lower()).removesuffix(".png")
+        if tree_name and not tree_name.startswith(("shader nodetree", "nodetree", "material")):
+            raw_names.append(tree_name)
+
         for node in mat.node_tree.nodes:
-            if node.type == "TEX_IMAGE" and node.image:
-                fp = (node.image.filepath or "").replace("\\", "/").strip()
-                if fp:
-                    norm_fp = fp.lower()
-                    if norm_fp.endswith(".png"):
-                        norm_fp = norm_fp[:-4]
-                    img_stem = norm_fp.split("/")[-1]
-                    if img_stem and img_stem not in raw_names:
-                        raw_names.append(img_stem)
-                img_key = normalized_image_key(node.image)
-                if img_key and img_key not in raw_names:
-                    raw_names.append(img_key)
+            if node.type == "TEX_IMAGE":
+                if node.image:
+                    fp = (node.image.filepath or "").replace("\\", "/").strip()
+                    if fp:
+                        norm_fp = fp.lower()
+                        if norm_fp.endswith(".png"):
+                            norm_fp = norm_fp[:-4]
+                        img_stem = norm_fp.split("/")[-1]
+                        if img_stem and img_stem not in raw_names:
+                            raw_names.append(img_stem)
+                    img_key = normalized_image_key(node.image)
+                    if img_key and img_key not in raw_names:
+                        raw_names.append(img_key)
+                # Fallback: check node label or custom node name
+                for attr_val in (node.label, node.name):
+                    if attr_val:
+                        clean_attr = without_blender_suffix(attr_val.strip().lower()).removesuffix(".png")
+                        if clean_attr and not clean_attr.startswith(("image texture", "tex_image", "atlas_chunk_")):
+                            if clean_attr not in raw_names:
+                                raw_names.append(clean_attr)
 
     for item in raw_names:
         stem = without_blender_suffix(item)
         if stem.endswith(".png"):
             stem = stem[:-4]
+
+        # Strip leading tex/ or /tex/ path prefixes
+        if stem.startswith("tex/"):
+            stem = stem[4:]
+        elif "/tex/" in stem:
+            stem = stem.split("/tex/")[-1]
 
         # Ignore generic Atlas atlas names
         if stem in MINEWAYS_ATLAS_TEXTURE_PATTERNS or stem == "mc_material":

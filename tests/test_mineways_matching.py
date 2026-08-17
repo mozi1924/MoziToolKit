@@ -157,6 +157,29 @@ class TestMinewaysMatching(unittest.TestCase):
         self.assertEqual(get_face_source_origin(mesh, 0), "mineways")
         self.assertEqual(get_face_source_texture_key(mesh, 0), "minecraft:block/oak_planks")
 
+    def test_missing_texture_and_node_label_detection(self):
+        # Material has generic name "Material.001", image file is missing, but node label/name has tex/stone.png
+        mat = bpy.data.materials.new(name="Material.001")
+        mat.use_nodes = True
+        tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        tex_node.image = None
+        tex_node.label = "tex/stone.png"
+
+        self.assertTrue(is_mineways_material(mat))
+        ns, cands = extract_material_texture_keys(mat)
+        self.assertEqual(ns, "minecraft")
+        self.assertIn("block/stone", cands)
+
+        # Node has informative Mineways custom name/label grass_block_top_y
+        mat2 = bpy.data.materials.new(name="Material.002")
+        mat2.use_nodes = True
+        tex_node2 = mat2.node_tree.nodes.new("ShaderNodeTexImage")
+        tex_node2.image = None
+        tex_node2.name = "grass_block_top_y"
+        self.assertTrue(is_mineways_material(mat2))
+        ns2, cands2 = extract_material_texture_keys(mat2)
+        self.assertIn("block/grass_block_top", cands2)
+
 
 if __name__ == "__main__":
     unittest.main()
