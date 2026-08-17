@@ -1,14 +1,9 @@
 import bmesh
 import bpy
 
-try:
-    from ...utils.system import register_menu_item
-    from ...utils.mesh import poll_edit_mesh
-    from ...utils.extrude_repair import repair_extruded_side_faces
-except (ImportError, ValueError):
-    from utils.system import register_menu_item
-    from utils.mesh import poll_edit_mesh
-    from utils.extrude_repair import repair_extruded_side_faces
+from ...utils.system import register_menu_item
+from ...utils.mesh import poll_edit_mesh
+from ...utils.extrude_repair import repair_extruded_side_faces
 
 _smart_extrude_sessions = {}
 

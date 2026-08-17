@@ -112,40 +112,29 @@ def get_default_presets() -> dict:
     return presets
 
 
-class _AllOperatorsDict(dict):
-    """Fallback dict wrapper that dynamically delegates to get_all_operators()."""
+from collections.abc import Mapping
+
+
+class _AllOperatorsDict(Mapping):
+    """Read-only mapping proxy dynamically delegating to get_all_operators()."""
     def __getitem__(self, key):
         return _REGISTERED_MENU_ITEMS[key]
-    def get(self, key, default=None):
-        return _REGISTERED_MENU_ITEMS.get(key, default)
-    def items(self):
-        return get_all_operators().items()
-    def keys(self):
-        return get_all_operators().keys()
-    def values(self):
-        return get_all_operators().values()
-    def __contains__(self, key):
-        return key in _REGISTERED_MENU_ITEMS
+    def __iter__(self):
+        return iter(get_all_operators())
     def __len__(self):
         return len(get_all_operators())
 
 ALL_OPERATORS = _AllOperatorsDict()
 
 
-class _DefaultPresetsDict(dict):
-    """Fallback dict wrapper that dynamically delegates to get_default_presets()."""
+class _DefaultPresetsDict(Mapping):
+    """Read-only mapping proxy dynamically delegating to get_default_presets()."""
     def __getitem__(self, key):
         return get_default_presets()[key]
-    def get(self, key, default=None):
-        return get_default_presets().get(key, default)
-    def items(self):
-        return get_default_presets().items()
-    def keys(self):
-        return get_default_presets().keys()
-    def values(self):
-        return get_default_presets().values()
-    def __contains__(self, key):
-        return key in get_default_presets()
+    def __iter__(self):
+        return iter(get_default_presets())
+    def __len__(self):
+        return len(get_default_presets())
 
 DEFAULT_PRESETS = _DefaultPresetsDict()
 

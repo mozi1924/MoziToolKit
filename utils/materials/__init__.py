@@ -43,6 +43,8 @@ from .constants import (
     PROVENANCE_SCHEMA_VERSION,
     FACE_ORDER,
     ATLAS_FORMAT_VERSION,
+    ANIM_AND_ATLAS_ATTR_NAMES,
+    LEGACY_SPLIT_ATTR_NAMES,
 )
 
 from .biome import (
@@ -61,6 +63,7 @@ from .biome import (
     TINT_TYPE_HARDCODED,
     BiomeResolver,
     get_biome_colors,
+    classify_tint_category,
 )
 
 from .resource_pack import (
@@ -99,6 +102,13 @@ from .texture_finder import (
 )
 
 try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
+
+if HAS_BPY:
     from .interpolation import (
         set_materials_texture_interpolation_closest,
         process_node_tree_interpolation,
@@ -134,6 +144,7 @@ try:
         base_texture_candidates,
         normalized_image_key,
         extract_texture_provenance_from_image,
+        ICE_CUBE_STATIC_ASSET_UUID_ALIASES,
     )
     from .builder import (
         load_image_texture,
@@ -145,9 +156,7 @@ try:
         build_atlas_material,
         build_atlas_chunk_materials,
     )
-except ImportError:
-    # Running outside Blender CLI
-    pass
+
 
 from .atlas_layout import (
     face_index_from_normal,

@@ -11,15 +11,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# Add project root and parent directory to sys.path
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_DIR.parent
-if str(PARENT_DIR) not in sys.path:
-    sys.path.insert(0, str(PARENT_DIR))
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-# Discover and extract bundled extension wheels for headless testing
+# Discover and extract bundled extension wheels for headless testing FIRST
 try:
     import PIL
     from PIL import _imaging
@@ -51,6 +47,25 @@ except ImportError:
                     zf.extractall(unpack_dir)
             if str(unpack_dir) not in sys.path:
                 sys.path.insert(0, str(unpack_dir))
+
+import importlib.util
+if "MoziToolKit" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "MoziToolKit",
+        str(PROJECT_DIR / "__init__.py"),
+        submodule_search_locations=[str(PROJECT_DIR)]
+    )
+    pkg = importlib.util.module_from_spec(spec)
+    sys.modules["MoziToolKit"] = pkg
+    spec.loader.exec_module(pkg)
+
+import MoziToolKit
+
+# Alias all MoziToolKit submodules to root in sys.modules for test compatibility
+for mod_name, mod in list(sys.modules.items()):
+    if mod_name.startswith("MoziToolKit."):
+        short_name = mod_name[len("MoziToolKit."):]
+        sys.modules[short_name] = mod
 
 import bpy
 import bmesh

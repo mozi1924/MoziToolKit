@@ -11,8 +11,6 @@ __all__ = (
     "unregister",
 )
 
-blender_version = bpy.app.version
-
 modules = None
 ordered_classes = None
 

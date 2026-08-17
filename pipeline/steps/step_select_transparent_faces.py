@@ -7,24 +7,15 @@ import numpy as np
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
-try:
-    from ...utils.mesh import (
-        apply_selection,
-        bmesh_context,
-        get_target_faces,
-        poll_edit_mesh,
-        set_select_mode,
-        get_image_from_face,
-    )
-except (ImportError, ValueError):
-    from utils.mesh import (
-        apply_selection,
-        bmesh_context,
-        get_target_faces,
-        poll_edit_mesh,
-        set_select_mode,
-        get_image_from_face,
-    )
+from ...utils.mesh import (
+    apply_selection,
+    bmesh_context,
+    get_target_faces,
+    poll_edit_mesh,
+    set_select_mode,
+    get_image_from_face,
+)
+
 
 
 class SelectTransparentFacesStep(PipelineStep):

@@ -230,6 +230,19 @@ def build_atlas_chunk_materials(
         raw_mapping = fp.read()
         mapping = json.loads(raw_mapping)
 
+    # Prepare compact mapping string (strips redundant thousands of 6-face block definitions)
+    compact_mapping = {
+        "format_version": mapping.get("format_version", 10),
+        "provenance_schema_version": mapping.get("provenance_schema_version", 1),
+        "max_chunk_size": mapping.get("max_chunk_size"),
+        "tile_size": mapping.get("tile_size"),
+        "face_order": mapping.get("face_order", []),
+        "chunks": mapping.get("chunks", []),
+        "textures": mapping.get("textures", {}),
+        "animations": mapping.get("animations", []),
+    }
+    compact_mapping_str = json.dumps(compact_mapping, separators=(",", ":"))
+
     templates = ensure_all_templates()
     short_hash = pack_hash[:12] if pack_hash else ""
 
@@ -277,7 +290,8 @@ def build_atlas_chunk_materials(
 
         mat.use_nodes = True
         set_material_displacement_method(mat, "BOTH")
-        mat.node_tree[PROP_ATLAS_MAPPING] = raw_mapping
+        mat.node_tree[PROP_ATLAS_MAPPING] = compact_mapping_str
+
         mat[PROP_CREATED_BY] = "MoziToolKit"
         mat[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
         mat[PROP_SOURCE_NAMESPACE] = chunk_namespace

@@ -1,7 +1,7 @@
 """
 Minecraft Biome Definitions, Tint Classification, and Block Model JSON Resolver.
 Provides standard vanilla biome color palettes, hardcoded block colors,
-and automatic overlay / tint detection from block models.
+and automatic overlay detection from block models.
 """
 
 from __future__ import annotations
@@ -52,8 +52,13 @@ def hex_to_rgba(hex_str: str, alpha: float = 1.0) -> tuple[float, float, float, 
 
 def hex_to_linear_rgba(hex_str: str, alpha: float = 1.0) -> tuple[float, float, float, float]:
     """Convert hex color string to Linear RGBA tuple for Blender shaders."""
+    clean = hex_str.strip().lstrip("#")
+    if len(clean) == 8:
+        sr, sg, sb, a = hex_to_rgba(hex_str)
+        return (srgb_to_linear(sr), srgb_to_linear(sg), srgb_to_linear(sb), a)
     lr, lg, lb = hex_to_linear_rgb(hex_str)
     return (lr, lg, lb, alpha)
+
 
 
 # --- Standard Biome Palettes ---
@@ -259,7 +264,10 @@ TINT_TYPE_FOLIAGE = 2
 TINT_TYPE_WATER = 3
 TINT_TYPE_HARDCODED = 4
 
-# Known tint classification keywords / stems
+# Vanilla texture stems with a biome colour provider.  Keep this as an exact
+# allow-list: a model face's ``tintindex`` only selects a colour slot; it does
+# not mean Minecraft supplies a biome colour for that block.  For example,
+# stonecutter_saw has tintindex 0 but must remain its authored grey.
 KNOWN_GRASS_STEMS = frozenset({
     "grass_block_top",
     "grass_block_side_overlay",
@@ -293,6 +301,24 @@ KNOWN_WATER_STEMS = frozenset({
     "water_overlay",
 })
 
+def classify_tint_category(clean_stem: str) -> str:
+    """
+    Classify a clean texture stem into a tint category: 'grass', 'foliage', 'water', or 'none'.
+    Only known vanilla biome-colour textures are tinted. Names and model
+    tintindex values are not reliable evidence that an arbitrary texture
+    receives a biome colour in Minecraft.
+    """
+    if not clean_stem:
+        return "none"
+    if clean_stem in KNOWN_GRASS_STEMS:
+        return "grass"
+    if clean_stem in KNOWN_FOLIAGE_STEMS:
+        return "foliage"
+    if clean_stem in KNOWN_WATER_STEMS:
+        return "water"
+
+    return "none"
+
 
 class BiomeResolver:
     """
@@ -303,7 +329,6 @@ class BiomeResolver:
     def __init__(self, models: dict[str, dict] | None = None, pack_root: str | Path | None = None):
         self.models = dict(models) if models else {}
         self.overlay_pairs: dict[str, str] = dict(KNOWN_OVERLAY_PAIRS)
-        self.tint_cache: dict[str, dict[str, Any]] = {}
         if pack_root:
             self.load_from_pack_root(pack_root)
         elif self.models:
@@ -328,7 +353,6 @@ class BiomeResolver:
         """Set or update loaded block models and re-analyze."""
         self.models = models
         self.overlay_pairs = dict(KNOWN_OVERLAY_PAIRS)
-        self.tint_cache.clear()
         self._analyze_models()
 
     def _analyze_models(self):
@@ -347,36 +371,6 @@ class BiomeResolver:
                     clean_overlay = overlay_tex.replace("minecraft:block/", "").replace("block/", "").lower()
                     if clean_side and clean_overlay and clean_side != clean_overlay:
                         self.overlay_pairs[clean_side] = clean_overlay
-
-            # Analyze elements for tintindex
-            elements = model_data.get("elements", [])
-            if isinstance(elements, list):
-                for elem in elements:
-                    if not isinstance(elem, dict):
-                        continue
-                    faces = elem.get("faces", {})
-                    if isinstance(faces, dict):
-                        for face_data in faces.values():
-                            if isinstance(face_data, dict) and "tintindex" in face_data:
-                                tex_ref = face_data.get("texture", "")
-                                if isinstance(tex_ref, str):
-                                    resolved_tex = self._resolve_tex_ref(tex_ref, textures)
-                                    if resolved_tex:
-                                        clean_tex = resolved_tex.replace("minecraft:block/", "").replace("block/", "").lower()
-                                        if clean_tex not in self.tint_cache:
-                                            self.tint_cache[clean_tex] = {
-                                                "has_tint": True,
-                                                "tintindex": face_data.get("tintindex", 0),
-                                            }
-
-    def _resolve_tex_ref(self, ref: str, textures: dict) -> str:
-        """Resolve a texture reference like '#top' or direct texture string."""
-        if not ref:
-            return ""
-        if ref.startswith("#"):
-            key = ref[1:]
-            return str(textures.get(key, ""))
-        return ref
 
     def get_overlay_texture(self, texture_stem: str) -> Optional[str]:
         """Return the paired overlay texture stem for a given base texture stem, or None."""
@@ -425,23 +419,9 @@ class BiomeResolver:
         overlay_stem = self.get_overlay_texture(clean)
         has_overlay = overlay_stem is not None
 
-        # 3. Check Known Grass category (exclude underwater plants like seagrass/kelp which are never tinted)
-        is_grass = False
-        if clean in KNOWN_GRASS_STEMS:
-            is_grass = True
-        elif not ("seagrass" in clean or "kelp" in clean):
-            if (
-                clean.startswith("grass_")
-                or clean.endswith("_grass")
-                or clean == "grass"
-                or clean.startswith("tall_grass")
-                or clean.startswith("fern")
-                or clean.startswith("large_fern")
-            ):
-                is_grass = True
-
-        if is_grass:
-            # Note: grass_block_side has overlay fringe: base dirt is untinted (0.0), overlay is tinted (1.0), face tint is active (1.0)
+        # 3. Centralized category classification
+        category = classify_tint_category(clean)
+        if category == "grass":
             base_weight = 0.0 if has_overlay else 1.0
             return {
                 "tint_type": TINT_TYPE_GRASS,
@@ -455,9 +435,7 @@ class BiomeResolver:
                 "hardcoded_color": None,
                 "hardcoded_hex": None,
             }
-
-        # 4. Check Known Foliage category
-        if clean in KNOWN_FOLIAGE_STEMS or "leaves" in clean or "vine" in clean:
+        elif category == "foliage":
             return {
                 "tint_type": TINT_TYPE_FOLIAGE,
                 "tint_category": "foliage",
@@ -470,9 +448,7 @@ class BiomeResolver:
                 "hardcoded_color": None,
                 "hardcoded_hex": None,
             }
-
-        # 5. Check Known Water category
-        if clean in KNOWN_WATER_STEMS or "water" in clean:
+        elif category == "water":
             return {
                 "tint_type": TINT_TYPE_WATER,
                 "tint_category": "water",
@@ -486,23 +462,7 @@ class BiomeResolver:
                 "hardcoded_hex": None,
             }
 
-        # 6. Check Model JSON tint cache
-        if clean in self.tint_cache:
-            base_weight = 0.0 if has_overlay else 1.0
-            return {
-                "tint_type": TINT_TYPE_GRASS,
-                "tint_category": "grass",
-                "tint_weight": 1.0,
-                "base_tint_weight": base_weight,
-                "overlay_tint_weight": 1.0,
-                "has_overlay": has_overlay,
-                "overlay_texture": overlay_stem,
-                "is_hardcoded": False,
-                "hardcoded_color": None,
-                "hardcoded_hex": None,
-            }
-
-        # 7. Non-tinted default
+        # 4. Non-tinted default
         return {
             "tint_type": TINT_TYPE_NONE,
             "tint_category": "none",
@@ -515,6 +475,7 @@ class BiomeResolver:
             "hardcoded_color": None,
             "hardcoded_hex": None,
         }
+
 
 
 def get_biome_colors(preset_name: str = "PLAINS") -> dict[str, Any]:

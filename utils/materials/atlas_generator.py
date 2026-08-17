@@ -406,8 +406,8 @@ class AtlasGenerator:
                 if ns_tile_size > self.max_chunk_size:
                     raise ValueError(f"Tile size {ns_tile_size}px for namespace '{ns}' exceeds chunk limit {self.max_chunk_size}px.")
 
-                tiles_per_row = self.max_chunk_size // ns_tile_size
-                capacity = tiles_per_row * tiles_per_row
+                tiles_per_row = max(1, self.max_chunk_size // ns_tile_size)
+                capacity = max(1, tiles_per_row * tiles_per_row)
                 static_stems = sorted(static_map.keys())
 
                 def tile_for(stem, channel, tile_sz=ns_tile_size, namespace_val=ns):
@@ -426,9 +426,10 @@ class AtlasGenerator:
                 for first in range(0, len(static_stems), capacity):
                     names = static_stems[first:first + capacity]
                     chunk_id = len(chunks)
-                    rows = max(1, (len(names) + tiles_per_row - 1) // tiles_per_row)
-                    width = tiles_per_row * ns_tile_size
-                    height = rows * ns_tile_size
+                    rows = min(tiles_per_row, max(1, (len(names) + tiles_per_row - 1) // tiles_per_row))
+                    width = min(self.max_chunk_size, tiles_per_row * ns_tile_size)
+                    height = min(self.max_chunk_size, rows * ns_tile_size)
+
                     images = {
                         "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
                         "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),

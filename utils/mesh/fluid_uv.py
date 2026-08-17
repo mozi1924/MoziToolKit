@@ -83,11 +83,11 @@ def repair_face_fluid_uv(face, uv_layer, force: bool = False, min_slope_threshol
         return False
 
     # Choose candidate with the most distinct top slope relative to base flatness
-    def score_eval(e):
+    def _axis_candidate_score(e):
         # Higher top_diff and lower base_diff is better
         return e["top_diff"] - e["base_diff"]
 
-    best_eval = max(candidates, key=score_eval)
+    best_eval = max(candidates, key=_axis_candidate_score)
 
     top_h_diff = best_eval["top_diff"]
     if top_h_diff < min_slope_threshold and not force:
