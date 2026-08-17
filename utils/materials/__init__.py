@@ -161,6 +161,11 @@ from .atlas_layout import (
 
 from .atlas_generator import AtlasGenerator
 
+from .standalone_aligner import (
+    align_standalone_textures,
+    is_channel_animated,
+)
+
 __all__ = [
     # Constants
     "DEFAULT_NAMESPACE",
@@ -309,4 +314,7 @@ __all__ = [
     "TINT_TYPE_HARDCODED",
     "BiomeResolver",
     "get_biome_colors",
+    # Standalone Alignment
+    "align_standalone_textures",
+    "is_channel_animated",
 ]

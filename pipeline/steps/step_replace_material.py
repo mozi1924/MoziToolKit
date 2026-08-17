@@ -278,6 +278,12 @@ class StepReplaceMaterial(PipelineStep):
             yield StepResult.failed("No valid mesh objects with material slots found.")
             return
 
+        if not has_pillow():
+            yield StepResult.failed(
+                "Material replacement requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
+            )
+            return
+
         # The legacy unified-atlas builder does not record a per-face chunk
         # and texture location.  Its UVs therefore cannot be inverted safely;
         # fail loudly instead of reporting a successful no-op or corrupting UVs.

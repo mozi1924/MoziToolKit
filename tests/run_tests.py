@@ -675,6 +675,12 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestBiomeMaterials: {e}")
 
+    try:
+        from tests.test_standalone_animated_pbr import TestStandaloneAnimatedPBR
+        suite.addTests(loader.loadTestsFromTestCase(TestStandaloneAnimatedPBR))
+    except Exception as e:
+        print(f"[Warning] Could not load TestStandaloneAnimatedPBR: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
