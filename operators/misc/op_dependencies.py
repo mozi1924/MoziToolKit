@@ -4,14 +4,7 @@ Operators for environment status checks, cache cleanup, and preferences navigati
 
 import bpy
 from bpy.props import StringProperty
-try:
-    from ...utils.system import (
-        get_prefs,
-    )
-except (ImportError, ValueError):
-    from utils.system import (
-        get_prefs,
-    )
+from ...utils.system import get_prefs
 
 
 def refresh_ui_windows(context=None):

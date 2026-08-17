@@ -104,6 +104,21 @@ class TestP0Fixes(unittest.TestCase):
                 f"Expected '{stem}' to have TINT_TYPE_FOLIAGE (2), got {info['tint_type']} ({info['tint_category']})"
             )
 
+    def test_model_tintindex_does_not_imply_biome_tint(self):
+        """Vanilla stonecutter_saw has tintindex 0 but no biome colour provider."""
+        resolver = BiomeResolver(models={
+            "stonecutter": {
+                "textures": {"saw": "minecraft:block/stonecutter_saw"},
+                "elements": [{
+                    "faces": {"north": {"texture": "#saw", "tintindex": 0}}
+                }],
+            }
+        })
+
+        info = resolver.get_tint_info("stonecutter_saw")
+        self.assertEqual(info["tint_type"], TINT_TYPE_NONE)
+        self.assertEqual(info["tint_weight"], 0.0)
+
     def test_hex_to_rgb_and_rgba(self):
         """Verify hex_to_rgb and hex_to_rgba 6-digit and 8-digit handling."""
         # 6-digit

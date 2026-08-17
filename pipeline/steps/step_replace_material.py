@@ -12,127 +12,31 @@ import bpy
 
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
-try:
-    from ...utils.materials import (
-        ZipResourcePack,
-        get_cache_dir,
-        rebuild_material,
-        extract_material_texture_keys,
-        detect_material_mode,
-        get_atlas_mapping_from_material,
-        get_atlas_mapping_from_mesh,
-        write_provenance_schema,
-        extract_face_texture_info,
-        canonical_texture_key,
-        split_texture_key,
-        material_source_origin,
-        write_face_source_provenance,
-        get_face_source_origin,
-        get_face_source_texture_key,
-        is_ice_cube_internal_face_material,
-        ATLAS_FORMAT_VERSION,
-        AtlasGenerator,
-        build_atlas_chunk_materials,
-        remap_uv_coordinate,
-        remap_uv_to_local,
-        remap_local_to_target_uv,
-        get_material_animation_info,
-        get_texture_info_animation_info,
-        ATTR_ATLAS_CHUNK_ID,
-        ATTR_ATLAS_TEXTURE_ID,
-        ATTR_FACE_MATERIAL_ID,
-        ATTR_UV_ROTATION,
-        ATTR_UV_TILING_SCALE,
-        ATTR_UV_TILING_LOCATION,
-        ATTR_UV_TILING_TRANSFORM,
-        ATTR_BIOME_TINT_DATA,
-        ATTR_BIOME_TINT_COLOR,
-        ATTR_ANIM_TIMING,
-        ATTR_ANIM_FRAME_SIZE,
-        ATTR_TINT_WEIGHT,
-        ATTR_BASE_TINT_WEIGHT,
-        ATTR_OVERLAY_TINT_WEIGHT,
-        ATTR_TINT_COLOR,
-        ATTR_TINT_TYPE,
-        ATTR_HARDCODED_COLOR,
-        ATTR_USE_HARDCODED,
-        ATTR_BIOME_TEMPERATURE,
-        ATTR_BIOME_HUMIDITY,
-        BiomeResolver,
-        get_biome_colors,
-        TINT_TYPE_NONE,
-        TINT_TYPE_GRASS,
-        TINT_TYPE_FOLIAGE,
-        TINT_TYPE_WATER,
-        TINT_TYPE_HARDCODED,
-    )
-    from ...utils.system import has_pillow
-    from ...utils.mesh import (
-        straighten_face_uv, normalize_face_uv_for_atlas_tiling,
-        face_uv_requires_atlas_tiling, restore_atlas_tiling_uv,
-    )
-except (ImportError, ValueError):
-    from utils.materials import (
-        ZipResourcePack,
-        get_cache_dir,
-        rebuild_material,
-        extract_material_texture_keys,
-        detect_material_mode,
-        get_atlas_mapping_from_material,
-        get_atlas_mapping_from_mesh,
-        write_provenance_schema,
-        extract_face_texture_info,
-        canonical_texture_key,
-        split_texture_key,
-        material_source_origin,
-        write_face_source_provenance,
-        get_face_source_origin,
-        get_face_source_texture_key,
-        is_ice_cube_internal_face_material,
-        ATLAS_FORMAT_VERSION,
-        AtlasGenerator,
-        build_atlas_chunk_materials,
-        remap_uv_coordinate,
-        remap_uv_to_local,
-        remap_local_to_target_uv,
-        get_material_animation_info,
-        get_texture_info_animation_info,
-        ATTR_ATLAS_CHUNK_ID,
-        ATTR_ATLAS_TEXTURE_ID,
-        ATTR_FACE_MATERIAL_ID,
-        ATTR_UV_ROTATION,
-        ATTR_UV_TILING_SCALE,
-        ATTR_UV_TILING_LOCATION,
-        ATTR_UV_TILING_TRANSFORM,
-        ATTR_BIOME_TINT_DATA,
-        ATTR_BIOME_TINT_COLOR,
-        ATTR_ANIM_TIMING,
-        ATTR_ANIM_FRAME_SIZE,
-        ATTR_TINT_WEIGHT,
-        ATTR_BASE_TINT_WEIGHT,
-        ATTR_OVERLAY_TINT_WEIGHT,
-        ATTR_TINT_COLOR,
-        ATTR_TINT_TYPE,
-        ATTR_HARDCODED_COLOR,
-        ATTR_USE_HARDCODED,
-        ATTR_BIOME_TEMPERATURE,
-        ATTR_BIOME_HUMIDITY,
-        BiomeResolver,
-        get_biome_colors,
-        TINT_TYPE_NONE,
-        TINT_TYPE_GRASS,
-        TINT_TYPE_FOLIAGE,
-        TINT_TYPE_WATER,
-        TINT_TYPE_HARDCODED,
-    )
-    from utils.system import has_pillow
-    from utils.mesh import (
-        straighten_face_uv, normalize_face_uv_for_atlas_tiling,
-        face_uv_requires_atlas_tiling, restore_atlas_tiling_uv,
-    )
-
-
-ANIM_AND_ATLAS_ATTR_NAMES = (
+from ...utils.materials import (
+    ZipResourcePack,
+    get_cache_dir,
+    rebuild_material,
+    extract_material_texture_keys,
+    detect_material_mode,
+    get_atlas_mapping_from_material,
+    get_atlas_mapping_from_mesh,
+    write_provenance_schema,
+    extract_face_texture_info,
+    canonical_texture_key,
+    split_texture_key,
+    material_source_origin,
+    write_face_source_provenance,
+    get_face_source_origin,
+    get_face_source_texture_key,
+    is_ice_cube_internal_face_material,
+    ATLAS_FORMAT_VERSION,
+    AtlasGenerator,
+    build_atlas_chunk_materials,
+    remap_uv_coordinate,
+    remap_uv_to_local,
+    remap_local_to_target_uv,
+    get_material_animation_info,
+    get_texture_info_animation_info,
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_FACE_MATERIAL_ID,
@@ -140,18 +44,137 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,
     ATTR_UV_TILING_TRANSFORM,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
-    "atlas_chunk_id",
-    "atlas_texture_id",
-    "material_id",
-    "mtk_uv_rotation",
-    "mtk_anim_total_frames",
-    "mtk_anim_frametime",
-    "mtk_anim_interpolate",
-    "mtk_anim_frame_width",
-    "mtk_anim_frame_height",
+    ANIM_AND_ATLAS_ATTR_NAMES,
+    LEGACY_SPLIT_ATTR_NAMES,
+    BiomeResolver,
+    get_biome_colors,
+    TINT_TYPE_NONE,
+    TINT_TYPE_GRASS,
+    TINT_TYPE_FOLIAGE,
+    TINT_TYPE_WATER,
+    TINT_TYPE_HARDCODED,
 )
+from ...utils.system import has_pillow
+from ...utils.mesh import (
+    straighten_face_uv, normalize_face_uv_for_atlas_tiling,
+    face_uv_requires_atlas_tiling, restore_atlas_tiling_uv,
+)
+
+
+def _ensure_face_attribute(mesh: bpy.types.Mesh, name: str, data_type: str = "FLOAT") -> bpy.types.Attribute:
+    attr = mesh.attributes.get(name)
+    if attr and (attr.domain != "FACE" or attr.data_type != data_type or len(attr.data) != len(mesh.polygons)):
+        mesh.attributes.remove(attr)
+        attr = None
+    return attr or mesh.attributes.new(name=name, type=data_type, domain="FACE")
+
+
+def _read_face_vector_attribute(mesh: bpy.types.Mesh, name: str, poly_idx: int, default: tuple = (0.0, 0.0, 0.0)) -> tuple:
+    attr = mesh.attributes.get(name)
+    if attr and attr.domain == "FACE" and attr.data_type == "FLOAT_VECTOR" and poly_idx < len(attr.data):
+        return tuple(attr.data[poly_idx].vector)
+    return default
+
+
+def _read_face_float_attribute(mesh: bpy.types.Mesh, name: str, poly_idx: int, default: float = 0.0) -> float:
+    attr = mesh.attributes.get(name)
+    if attr and attr.domain == "FACE" and attr.data_type == "FLOAT" and poly_idx < len(attr.data):
+        return float(attr.data[poly_idx].value)
+    return default
+
+
+def _read_face_tiling(mesh: bpy.types.Mesh, poly_idx: int) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    packed = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
+    if packed and packed.domain == "FACE" and packed.data_type == "FLOAT_COLOR" and poly_idx < len(packed.data):
+        r, g, b, a = packed.data[poly_idx].color
+        return (r, g, 1.0), (b, a, 0.0)
+    return (
+        _read_face_vector_attribute(mesh, ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)),
+        _read_face_vector_attribute(mesh, ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)),
+    )
+
+
+def _build_old_mappings(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> dict:
+    old_mappings = {}
+    for slot in obj.material_slots:
+        if slot.material and slot.material not in old_mappings:
+            old_mappings[slot.material] = (
+                get_atlas_mapping_from_material(slot.material)
+                or get_atlas_mapping_from_mesh(mesh)
+            )
+    return old_mappings
+
+
+def _compute_biome_tint_attributes(
+    num_polygons: int,
+    poly_tint_map: dict[int, dict],
+    biome_preset: str,
+) -> tuple[list, list]:
+    tint_weights = [0.0] * num_polygons
+    base_tint_weights = [1.0] * num_polygons
+    overlay_tint_weights = [1.0] * num_polygons
+    tint_colors = [(1.0, 1.0, 1.0, 1.0)] * num_polygons
+    hardcoded_colors = [(1.0, 1.0, 1.0, 1.0)] * num_polygons
+    use_hardcodeds = [0.0] * num_polygons
+    biome_colors = get_biome_colors(biome_preset)
+
+    for poly_idx, tint_info in poly_tint_map.items():
+        if not tint_info:
+            continue
+        tw = float(tint_info.get("default_tint_weight", tint_info.get("tint_weight", 0.0)))
+        tint_weights[poly_idx] = tw
+        base_tint_weights[poly_idx] = float(tint_info.get("default_base_tint_weight", tint_info.get("base_tint_weight", 1.0)))
+        overlay_tint_weights[poly_idx] = float(tint_info.get("default_overlay_tint_weight", tint_info.get("overlay_tint_weight", 1.0)))
+        tt = int(tint_info.get("tint_type", 0))
+        is_hc = bool(tint_info.get("is_hardcoded", False))
+        use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
+        hc_c = tint_info.get("hardcoded_color")
+        if hc_c:
+            hardcoded_colors[poly_idx] = tuple(hc_c)
+        if tt == TINT_TYPE_GRASS:
+            tint_colors[poly_idx] = biome_colors["grass_linear"]
+        elif tt == TINT_TYPE_FOLIAGE:
+            tint_colors[poly_idx] = biome_colors["foliage_linear"]
+        elif tt == TINT_TYPE_WATER:
+            tint_colors[poly_idx] = biome_colors["water_linear"]
+        elif tt == TINT_TYPE_HARDCODED:
+            tint_colors[poly_idx] = hardcoded_colors[poly_idx]
+        else:
+            tint_colors[poly_idx] = (1.0, 1.0, 1.0, 1.0)
+
+    packed_tint_data = list(zip(base_tint_weights, overlay_tint_weights, tint_weights, use_hardcodeds))
+    return packed_tint_data, tint_colors
+
+
+def _apply_biome_tint_attributes(mesh: bpy.types.Mesh, packed_tint_data: list, tint_colors: list) -> None:
+    _ensure_face_attribute(mesh, ATTR_BIOME_TINT_DATA, "FLOAT_COLOR").data.foreach_set(
+        "color", [c for val in packed_tint_data for c in val]
+    )
+    _ensure_face_attribute(mesh, ATTR_BIOME_TINT_COLOR, "FLOAT_COLOR").data.foreach_set(
+        "color", [c for val in tint_colors for c in val]
+    )
+
+
+def _cleanup_legacy_mesh_attributes(mesh: bpy.types.Mesh) -> None:
+    for attr_name in LEGACY_SPLIT_ATTR_NAMES:
+        attr = mesh.attributes.get(attr_name)
+        if attr:
+            mesh.attributes.remove(attr)
+
+
+def _cleanup_object_anim_properties(obj: bpy.types.Object) -> None:
+    for prop in (
+        "mtk_anim_total_frames", "mtk_anim_frametime",
+        "mtk_anim_interpolate", "mtk_anim_frame_width",
+        "mtk_anim_frame_height",
+    ):
+        if prop in obj:
+            del obj[prop]
+
 
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
@@ -472,65 +495,6 @@ class StepReplaceMaterial(PipelineStep):
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
-            def face_attribute(name):
-                attribute = mesh.attributes.get(name)
-                if attribute and (
-                    attribute.domain != "FACE" or attribute.data_type != "FLOAT" or len(attribute.data) != len(mesh.polygons)
-                ):
-                    mesh.attributes.remove(attribute)
-                    attribute = None
-                return attribute or mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
-
-            def vector_face_attribute(name):
-                attribute = mesh.attributes.get(name)
-                if attribute and (
-                    attribute.domain != "FACE" or attribute.data_type != "FLOAT_VECTOR" or len(attribute.data) != len(mesh.polygons)
-                ):
-                    mesh.attributes.remove(attribute)
-                    attribute = None
-                return attribute or mesh.attributes.new(name=name, type="FLOAT_VECTOR", domain="FACE")
-
-            def color_face_attribute(name):
-                attribute = mesh.attributes.get(name)
-                if attribute and (
-                    attribute.domain != "FACE" or attribute.data_type != "FLOAT_COLOR" or len(attribute.data) != len(mesh.polygons)
-                ):
-                    mesh.attributes.remove(attribute)
-                    attribute = None
-                return attribute or mesh.attributes.new(name=name, type="FLOAT_COLOR", domain="FACE")
-
-            def existing_face_vector_attribute(name, poly_idx, default):
-                attribute = mesh.attributes.get(name)
-                if (
-                    attribute and attribute.domain == "FACE" and attribute.data_type == "FLOAT_VECTOR"
-                    and poly_idx < len(attribute.data)
-                ):
-                    return tuple(attribute.data[poly_idx].vector)
-                return default
-
-            def existing_face_float_attribute(name, poly_idx, default=0.0):
-                attribute = mesh.attributes.get(name)
-                if (
-                    attribute and attribute.domain == "FACE" and attribute.data_type == "FLOAT"
-                    and poly_idx < len(attribute.data)
-                ):
-                    return float(attribute.data[poly_idx].value)
-                return default
-
-            def existing_face_tiling(poly_idx):
-                """Read the compact transform, with legacy files as a fallback."""
-                packed = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
-                if (
-                    packed and packed.domain == "FACE" and packed.data_type == "FLOAT_COLOR"
-                    and poly_idx < len(packed.data)
-                ):
-                    r, g, b, a = packed.data[poly_idx].color
-                    return (r, g, 1.0), (b, a, 0.0)
-                return (
-                    existing_face_vector_attribute(ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)),
-                    existing_face_vector_attribute(ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)),
-                )
-
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
             uv_rotations = [0.0] * len(mesh.polygons)
@@ -546,14 +510,7 @@ class StepReplaceMaterial(PipelineStep):
             anim_widths = [16.0] * len(mesh.polygons)
             anim_heights = [16.0] * len(mesh.polygons)
 
-            # Biome tint attributes
-            tint_weights = [0.0] * len(mesh.polygons)
-            base_tint_weights = [1.0] * len(mesh.polygons)
-            overlay_tint_weights = [1.0] * len(mesh.polygons)
-            tint_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
-            hardcoded_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
-            use_hardcodeds = [0.0] * len(mesh.polygons)
-            biome_colors = get_biome_colors(biome_preset)
+            poly_tint_map = {}
 
             resolved_locations = [None] * len(mesh.polygons)
             resolved_standalone = [None] * len(mesh.polygons)
@@ -568,13 +525,7 @@ class StepReplaceMaterial(PipelineStep):
             ]
             poly_updated = False
 
-            old_mappings = {}
-            for slot in obj.material_slots:
-                if slot.material and slot.material not in old_mappings:
-                    old_mappings[slot.material] = (
-                        get_atlas_mapping_from_material(slot.material)
-                        or get_atlas_mapping_from_mesh(mesh)
-                    )
+            old_mappings = _build_old_mappings(obj, mesh)
 
             for poly_idx, poly in enumerate(mesh.polygons):
                 if poly.material_index >= len(obj.material_slots):
@@ -616,26 +567,7 @@ class StepReplaceMaterial(PipelineStep):
                         anim_widths[poly_idx] = float(new_location.get("frame_width", 16))
                         anim_heights[poly_idx] = float(new_location.get("frame_height", 16))
 
-                    tw = float(new_location.get("default_tint_weight", 0.0) if "default_tint_weight" in new_location else new_location.get("tint_weight", 0.0))
-                    tint_weights[poly_idx] = tw
-                    base_tint_weights[poly_idx] = float(new_location.get("default_base_tint_weight", 1.0))
-                    overlay_tint_weights[poly_idx] = float(new_location.get("default_overlay_tint_weight", 1.0))
-                    tt = int(new_location.get("tint_type", 0))
-                    is_hc = bool(new_location.get("is_hardcoded", False))
-                    use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
-                    hc_c = new_location.get("hardcoded_color")
-                    if hc_c:
-                        hardcoded_colors[poly_idx] = tuple(hc_c)
-                    if tt == TINT_TYPE_GRASS:
-                        tint_colors[poly_idx] = biome_colors["grass_linear"]
-                    elif tt == TINT_TYPE_FOLIAGE:
-                        tint_colors[poly_idx] = biome_colors["foliage_linear"]
-                    elif tt == TINT_TYPE_WATER:
-                        tint_colors[poly_idx] = biome_colors["water_linear"]
-                    elif tt == TINT_TYPE_HARDCODED:
-                        tint_colors[poly_idx] = hardcoded_colors[poly_idx]
-                    else:
-                        tint_colors[poly_idx] = (1.0, 1.0, 1.0, 1.0)
+                    poly_tint_map[poly_idx] = new_location
 
                     resolved_locations[poly_idx] = (new_location, old_loc, orig_mode, old_mapping)
                     target_namespace, target_texture = split_texture_key(
@@ -666,27 +598,7 @@ class StepReplaceMaterial(PipelineStep):
                             source_origins[poly_idx] = (
                                 get_face_source_origin(mesh, poly_idx) or material_source_origin(orig_slot.material)
                             )
-                            tint_info = BiomeResolver().get_tint_info(fallback_tex_info["texture_name"])
-                            tw = float(tint_info.get("tint_weight", 0.0))
-                            tint_weights[poly_idx] = tw
-                            base_tint_weights[poly_idx] = float(tint_info.get("base_tint_weight", 1.0))
-                            overlay_tint_weights[poly_idx] = float(tint_info.get("overlay_tint_weight", 1.0))
-                            tt = int(tint_info.get("tint_type", 0))
-                            is_hc = bool(tint_info.get("is_hardcoded", False))
-                            use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
-                            hc_c = tint_info.get("hardcoded_color")
-                            if hc_c:
-                                hardcoded_colors[poly_idx] = tuple(hc_c)
-                            if tt == TINT_TYPE_GRASS:
-                                tint_colors[poly_idx] = biome_colors["grass_linear"]
-                            elif tt == TINT_TYPE_FOLIAGE:
-                                tint_colors[poly_idx] = biome_colors["foliage_linear"]
-                            elif tt == TINT_TYPE_WATER:
-                                tint_colors[poly_idx] = biome_colors["water_linear"]
-                            elif tt == TINT_TYPE_HARDCODED:
-                                tint_colors[poly_idx] = hardcoded_colors[poly_idx]
-                            else:
-                                tint_colors[poly_idx] = (1.0, 1.0, 1.0, 1.0)
+                            poly_tint_map[poly_idx] = BiomeResolver().get_tint_info(fallback_tex_info["texture_name"])
                             poly_updated = True
                             continue
 
@@ -742,8 +654,8 @@ class StepReplaceMaterial(PipelineStep):
                         # before building a fresh Atlas, otherwise a second
                         # conversion would silently discard the tiling.
                         if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-                            old_tiling_scale, old_tiling_location = existing_face_tiling(poly_idx)
-                            old_tiling_rotation = existing_face_float_attribute(ATTR_UV_ROTATION, poly_idx)
+                            old_tiling_scale, old_tiling_location = _read_face_tiling(mesh, poly_idx)
+                            old_tiling_rotation = _read_face_float_attribute(mesh, ATTR_UV_ROTATION, poly_idx)
                             for loop_index in polygon.loop_indices:
                                 uv = uv_layer.data[loop_index].uv
                                 uv.x, uv.y = restore_atlas_tiling_uv(
@@ -778,29 +690,25 @@ class StepReplaceMaterial(PipelineStep):
                     (ATTR_ATLAS_TEXTURE_ID, texture_ids),
                     (ATTR_UV_ROTATION, uv_rotations),
                 ):
-                    face_attribute(attr_name).data.foreach_set("value", data)
+                    _ensure_face_attribute(mesh, attr_name, "FLOAT").data.foreach_set("value", data)
+
+                packed_tint_data, tint_colors = _compute_biome_tint_attributes(
+                    len(mesh.polygons), poly_tint_map, biome_preset
+                )
+                _apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
 
                 for attr_name, data in (
-                    (ATTR_BIOME_TINT_DATA, zip(base_tint_weights, overlay_tint_weights, tint_weights, use_hardcodeds)),
-                    (ATTR_BIOME_TINT_COLOR, tint_colors),
                     (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),
                     (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0, 1.0) for width, height in zip(anim_widths, anim_heights))),
                     (ATTR_UV_TILING_TRANSFORM, ((scale[0], scale[1], location[0], location[1]) for scale, location in zip(uv_tiling_scales, uv_tiling_locations))),
                 ):
-                    color_face_attribute(attr_name).data.foreach_set("color", [component for value in data for component in value])
+                    _ensure_face_attribute(mesh, attr_name, "FLOAT_COLOR").data.foreach_set(
+                        "color", [component for value in data for component in value]
+                    )
 
                 # Drop obsolete split streams so a re-run repairs already
                 # converted meshes as well as new meshes.
-                for attr_name in (
-                    ATTR_TINT_WEIGHT, ATTR_BASE_TINT_WEIGHT, ATTR_OVERLAY_TINT_WEIGHT,
-                    ATTR_TINT_COLOR, ATTR_HARDCODED_COLOR, ATTR_USE_HARDCODED,
-                    ATTR_UV_TILING_SCALE, ATTR_UV_TILING_LOCATION,
-                    "mtk_anim_total_frames", "mtk_anim_frametime", "mtk_anim_interpolate",
-                    "mtk_anim_frame_width", "mtk_anim_frame_height",
-                ):
-                    attr = mesh.attributes.get(attr_name)
-                    if attr:
-                        mesh.attributes.remove(attr)
+                _cleanup_legacy_mesh_attributes(mesh)
 
                 # 2. Revert standalone fallback faces to local UVs (or Standalone Frame 0)
                 for poly_idx, st_res in enumerate(resolved_standalone):
@@ -845,14 +753,8 @@ class StepReplaceMaterial(PipelineStep):
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
                 mesh["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
                 write_provenance_schema(mesh)
+                _cleanup_object_anim_properties(obj)
 
-                for prop in (
-                    "mtk_anim_total_frames", "mtk_anim_frametime",
-                    "mtk_anim_interpolate", "mtk_anim_frame_width",
-                    "mtk_anim_frame_height",
-                ):
-                    if prop in obj:
-                        del obj[prop]
 
             replaced_objects += 1
 
@@ -871,7 +773,7 @@ class StepReplaceMaterial(PipelineStep):
         total_objs = len(valid_objects)
 
         def get_or_create_replacement_material(texture_info):
-            texture_key = (texture_info["namespace"], texture_info["texture_name"])
+            texture_key = (pack.pack_hash, texture_info["namespace"], texture_info["texture_name"])
             canonical_mat = find_existing_replacement(texture_info, pack) or session_materials.get(texture_key)
             if canonical_mat:
                 return canonical_mat, False
@@ -897,62 +799,7 @@ class StepReplaceMaterial(PipelineStep):
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
-            def face_attribute(name):
-                attribute = mesh.attributes.get(name)
-                if attribute and (
-                    attribute.domain != "FACE" or attribute.data_type != "FLOAT" or len(attribute.data) != len(mesh.polygons)
-                ):
-                    mesh.attributes.remove(attribute)
-                    attribute = None
-                return attribute or mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
-
-            def color_face_attribute(name):
-                attribute = mesh.attributes.get(name)
-                if attribute and (
-                    attribute.domain != "FACE" or attribute.data_type != "FLOAT_COLOR" or len(attribute.data) != len(mesh.polygons)
-                ):
-                    mesh.attributes.remove(attribute)
-                    attribute = None
-                return attribute or mesh.attributes.new(name=name, type="FLOAT_COLOR", domain="FACE")
-
-            def face_vector_attribute_value(name, poly_idx, default):
-                attr = mesh.attributes.get(name)
-                if (
-                    attr and attr.domain == "FACE" and attr.data_type == "FLOAT_VECTOR"
-                    and poly_idx < len(attr.data)
-                ):
-                    return tuple(attr.data[poly_idx].vector)
-                return default
-
-            def face_float_attribute_value(name, poly_idx, default=0.0):
-                attr = mesh.attributes.get(name)
-                if (
-                    attr and attr.domain == "FACE" and attr.data_type == "FLOAT"
-                    and poly_idx < len(attr.data)
-                ):
-                    return float(attr.data[poly_idx].value)
-                return default
-
-            def face_tiling_attribute_value(poly_idx):
-                packed = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
-                if (
-                    packed and packed.domain == "FACE" and packed.data_type == "FLOAT_COLOR"
-                    and poly_idx < len(packed.data)
-                ):
-                    r, g, b, a = packed.data[poly_idx].color
-                    return (r, g, 1.0), (b, a, 0.0)
-                return (
-                    face_vector_attribute_value(ATTR_UV_TILING_SCALE, poly_idx, (1.0, 1.0, 1.0)),
-                    face_vector_attribute_value(ATTR_UV_TILING_LOCATION, poly_idx, (0.0, 0.0, 0.0)),
-                )
-
-            old_mappings = {}
-            for slot in obj.material_slots:
-                if slot.material and slot.material not in old_mappings:
-                    old_mappings[slot.material] = (
-                        get_atlas_mapping_from_material(slot.material)
-                        or get_atlas_mapping_from_mesh(mesh)
-                    )
+            old_mappings = _build_old_mappings(obj, mesh)
 
             resolved_faces = []
             unresolved_faces = []
@@ -1062,8 +909,8 @@ class StepReplaceMaterial(PipelineStep):
                         # cell. Bake the same scale/location/rotation used by
                         # MC_Atlas_UV_Tiling before switching to a material
                         # that no longer contains that shader node.
-                        tiling_scale, tiling_location = face_tiling_attribute_value(poly_idx)
-                        tiling_rotation = face_float_attribute_value(ATTR_UV_ROTATION, poly_idx)
+                        tiling_scale, tiling_location = _read_face_tiling(mesh, poly_idx)
+                        tiling_rotation = _read_face_float_attribute(mesh, ATTR_UV_ROTATION, poly_idx)
                         for loop_index in polygon.loop_indices:
                             uv = uv_layer.data[loop_index].uv
                             local_u, local_v = remap_uv_to_local(
@@ -1087,52 +934,15 @@ class StepReplaceMaterial(PipelineStep):
                         )
 
             if poly_modified:
-                # Write Biome tint attributes
-                tint_weights = [0.0] * len(mesh.polygons)
-                base_tint_weights = [1.0] * len(mesh.polygons)
-                overlay_tint_weights = [1.0] * len(mesh.polygons)
-                tint_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
-                hardcoded_colors = [(1.0, 1.0, 1.0, 1.0)] * len(mesh.polygons)
-                use_hardcodeds = [0.0] * len(mesh.polygons)
-                biome_colors = get_biome_colors(biome_preset)
-
-                for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping, mat, is_new in prepared_faces:
-                    tint_info = biome_resolver.get_tint_info(tex_info["texture_name"])
-                    tw = float(tint_info.get("tint_weight", 0.0))
-                    tint_weights[poly_idx] = tw
-                    base_tint_weights[poly_idx] = float(tint_info.get("base_tint_weight", 1.0))
-                    overlay_tint_weights[poly_idx] = float(tint_info.get("overlay_tint_weight", 1.0))
-                    tt = int(tint_info.get("tint_type", 0))
-                    is_hc = bool(tint_info.get("is_hardcoded", False))
-                    use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
-                    hc_c = tint_info.get("hardcoded_color")
-                    if hc_c:
-                        hardcoded_colors[poly_idx] = tuple(hc_c)
-                    if tt == TINT_TYPE_GRASS:
-                        tint_colors[poly_idx] = biome_colors["grass_linear"]
-                    elif tt == TINT_TYPE_FOLIAGE:
-                        tint_colors[poly_idx] = biome_colors["foliage_linear"]
-                    elif tt == TINT_TYPE_WATER:
-                        tint_colors[poly_idx] = biome_colors["water_linear"]
-                    elif tt == TINT_TYPE_HARDCODED:
-                        tint_colors[poly_idx] = hardcoded_colors[poly_idx]
-                    else:
-                        tint_colors[poly_idx] = (1.0, 1.0, 1.0, 1.0)
-
-                for attr_name, data in (
-                    (ATTR_BIOME_TINT_DATA, zip(base_tint_weights, overlay_tint_weights, tint_weights, use_hardcodeds)),
-                    (ATTR_BIOME_TINT_COLOR, tint_colors),
-                ):
-                    color_face_attribute(attr_name).data.foreach_set("color", [component for value in data for component in value])
-
-                for attr_name in (
-                    ATTR_TINT_WEIGHT, ATTR_BASE_TINT_WEIGHT, ATTR_OVERLAY_TINT_WEIGHT,
-                    ATTR_TINT_COLOR, ATTR_HARDCODED_COLOR, ATTR_USE_HARDCODED,
-                ):
-                    attr = mesh.attributes.get(attr_name)
-                    if attr:
-                        mesh.attributes.remove(attr)
-
+                poly_tint_map = {
+                    poly_idx: biome_resolver.get_tint_info(tex_info["texture_name"])
+                    for poly_idx, tex_info, _, _, _, _, _, _ in prepared_faces
+                }
+                packed_tint_data, tint_colors = _compute_biome_tint_attributes(
+                    len(mesh.polygons), poly_tint_map, biome_preset
+                )
+                _apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
+                _cleanup_legacy_mesh_attributes(mesh)
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
 
                 has_retained_atlas_face = any(
@@ -1145,13 +955,7 @@ class StepReplaceMaterial(PipelineStep):
                         attr = mesh.attributes.get(attr_name)
                         if attr:
                             mesh.attributes.remove(attr)
-                    for prop in (
-                        "mtk_anim_total_frames", "mtk_anim_frametime",
-                        "mtk_anim_interpolate", "mtk_anim_frame_width",
-                        "mtk_anim_frame_height",
-                    ):
-                        if prop in obj:
-                            del obj[prop]
+                    _cleanup_object_anim_properties(obj)
 
         if assigned_count == 0:
             yield StepResult.success("No exact material matches found; selected objects were left unchanged.")
@@ -1159,3 +963,4 @@ class StepReplaceMaterial(PipelineStep):
 
         yield ProgressUpdate(1.0, 1.0, f"Standalone replacement finished ({assigned_count} slots assigned).")
         yield StepResult.success(f"Successfully processed Standalone replacement ({assigned_count} slot(s) assigned, {replaced_count} new material(s) created).")
+

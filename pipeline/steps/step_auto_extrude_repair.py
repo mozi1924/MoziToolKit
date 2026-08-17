@@ -7,12 +7,8 @@ import bpy
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
-try:
-    from ...utils.mesh import poll_edit_mesh
-    from ...utils.extrude_repair import repair_extruded_side_faces
-except (ImportError, ValueError):
-    from utils.mesh import poll_edit_mesh
-    from utils.extrude_repair import repair_extruded_side_faces
+from ...utils.mesh import poll_edit_mesh
+from ...utils.extrude_repair import repair_extruded_side_faces
 
 
 class AutoExtrudeRepairStep(PipelineStep):

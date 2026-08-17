@@ -4,7 +4,6 @@ Robust Albedo / Base Color texture image locator for materials and faces.
 
 from __future__ import annotations
 
-import sys
 from typing import Optional
 import bpy
 

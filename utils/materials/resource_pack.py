@@ -82,15 +82,32 @@ def _is_ignored_path(rel_path: str) -> bool:
     return False
 
 
+# In-memory cache for pack hashes keyed by (resolved_path, mtime_ns, size)
+_PACK_HASH_CACHE: dict[tuple[str, int, int], str] = {}
+
+
 def get_pack_hash(pack_path: Path | str) -> str:
     """
     Compute a deterministic provenance content hash for a resource pack.
     Produces identical hashes for identical content whether provided as a
     ZIP archive, a JAR archive, or an unpacked directory.
+    Uses filesystem mtime and size caching to avoid redundant re-hashing.
     """
     path = Path(pack_path)
     if not path.exists():
         raise FileNotFoundError(f"Resource pack path not found: {path}")
+
+    try:
+        stat_info = path.stat()
+        cache_key = (
+            str(path.resolve()),
+            stat_info.st_mtime_ns,
+            stat_info.st_size if not path.is_dir() else 0,
+        )
+        if cache_key in _PACK_HASH_CACHE:
+            return _PACK_HASH_CACHE[cache_key]
+    except Exception:
+        cache_key = None
 
     hasher = hashlib.md5()
 
@@ -110,7 +127,7 @@ def get_pack_hash(pack_path: Path | str) -> str:
             with open(fp, "rb") as source:
                 for chunk in iter(lambda: source.read(65536), b""):
                     hasher.update(chunk)
-        return hasher.hexdigest()
+        result = hasher.hexdigest()
 
     elif zipfile.is_zipfile(path):
         file_map = {}
@@ -129,9 +146,14 @@ def get_pack_hash(pack_path: Path | str) -> str:
                 with zf.open(info, "r") as source:
                     for chunk in iter(lambda: source.read(65536), b""):
                         hasher.update(chunk)
-        return hasher.hexdigest()
+        result = hasher.hexdigest()
     else:
         raise ValueError(f"Resource pack must be a ZIP/JAR archive or directory: {path}")
+
+    if cache_key is not None:
+        _PACK_HASH_CACHE[cache_key] = result
+    return result
+
 
 
 def get_directory_hash(directory: Path) -> str:

@@ -6,12 +6,8 @@ import bpy
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
-try:
-    from ...utils.mesh import set_select_mode
-    from ...utils.pixel_split import SplitConfig, process_adaptive_pixel_split
-except (ImportError, ValueError):
-    from utils.mesh import set_select_mode
-    from utils.pixel_split import SplitConfig, process_adaptive_pixel_split
+from ...utils.mesh import set_select_mode
+from ...utils.pixel_split import SplitConfig, process_adaptive_pixel_split
 
 
 class AdaptivePixelSplitStep(PipelineStep):

@@ -90,3 +90,43 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 # Atlas Format Version
 ATLAS_FORMAT_VERSION = 10
+
+# All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
+ANIM_AND_ATLAS_ATTR_NAMES = (
+    ATTR_ATLAS_CHUNK_ID,
+    ATTR_ATLAS_TEXTURE_ID,
+    ATTR_FACE_MATERIAL_ID,
+    ATTR_UV_ROTATION,
+    ATTR_UV_TILING_SCALE,
+    ATTR_UV_TILING_LOCATION,
+    ATTR_UV_TILING_TRANSFORM,
+    ATTR_ANIM_TIMING,
+    ATTR_ANIM_FRAME_SIZE,
+    "atlas_chunk_id",
+    "atlas_texture_id",
+    "material_id",
+    "mtk_uv_rotation",
+    "mtk_anim_total_frames",
+    "mtk_anim_frametime",
+    "mtk_anim_interpolate",
+    "mtk_anim_frame_width",
+    "mtk_anim_frame_height",
+)
+
+# Obsolete / split stream attribute names cleaned up when compact attributes are written
+LEGACY_SPLIT_ATTR_NAMES = (
+    ATTR_TINT_WEIGHT,
+    ATTR_BASE_TINT_WEIGHT,
+    ATTR_OVERLAY_TINT_WEIGHT,
+    ATTR_TINT_COLOR,
+    ATTR_HARDCODED_COLOR,
+    ATTR_USE_HARDCODED,
+    ATTR_UV_TILING_SCALE,
+    ATTR_UV_TILING_LOCATION,
+    "mtk_anim_total_frames",
+    "mtk_anim_frametime",
+    "mtk_anim_interpolate",
+    "mtk_anim_frame_width",
+    "mtk_anim_frame_height",
+)
+

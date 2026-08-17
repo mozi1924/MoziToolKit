@@ -11,11 +11,31 @@ import zipfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_ROOT.parent
-if str(PARENT_DIR) not in sys.path:
-    sys.path.insert(0, str(PARENT_DIR))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+import importlib.util
+if "MoziToolKit" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "MoziToolKit",
+        str(PROJECT_ROOT / "__init__.py"),
+        submodule_search_locations=[str(PROJECT_ROOT)]
+    )
+    pkg = importlib.util.module_from_spec(spec)
+    sys.modules["MoziToolKit"] = pkg
+    spec.loader.exec_module(pkg)
+
+import MoziToolKit
+import MoziToolKit.pipeline as pipeline
+import MoziToolKit.utils as utils
+import MoziToolKit.operators as operators
+sys.modules.setdefault("pipeline", pipeline)
+sys.modules.setdefault("utils", utils)
+sys.modules.setdefault("operators", operators)
+sys.modules.setdefault("pipeline.presets", MoziToolKit.pipeline.presets)
+sys.modules.setdefault("pipeline.steps", MoziToolKit.pipeline.steps)
+sys.modules.setdefault("pipeline.context", MoziToolKit.pipeline.context)
+sys.modules.setdefault("pipeline.step", MoziToolKit.pipeline.step)
 
 try:
     import bpy

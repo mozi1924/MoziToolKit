@@ -24,6 +24,7 @@ from .ice_cube import (
     ice_cube_legacy_aliases,
     ICE_CUBE_ENTITY_ALIASES,
     ICE_CUBE_MATERIAL_NAME_ALIASES,
+    ICE_CUBE_STATIC_ASSET_UUID_ALIASES,
 )
 from .jmc2obj import (
     Jmc2objAdapter,
@@ -105,6 +106,9 @@ MATCH_PRESETS: tuple[MaterialMatchPreset, ...] = (
 )
 
 
+_PRESETS_BY_ID: dict[str, MaterialMatchPreset] = {p.identifier: p for p in MATCH_PRESETS}
+
+
 def get_importer_adapter(mat: bpy.types.Material | None) -> ImporterAdapter:
     """Find the first matching importer adapter for a given material."""
     if not mat:
@@ -118,10 +122,8 @@ def get_importer_adapter(mat: bpy.types.Material | None) -> ImporterAdapter:
 def get_material_match_preset(mat: bpy.types.Material) -> MaterialMatchPreset:
     """Legacy compatibility bridge function."""
     adapter = get_importer_adapter(mat)
-    for preset in MATCH_PRESETS:
-        if preset.identifier == adapter.identifier:
-            return preset
-    return GENERIC_PRESET
+    return _PRESETS_BY_ID.get(adapter.identifier, GENERIC_PRESET)
+
 
 
 def material_source_origin(mat: bpy.types.Material | None) -> str:
