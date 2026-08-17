@@ -15,9 +15,12 @@ from ..system.dependencies import has_pillow
 try:
     from PIL import Image
     HAS_PIL = True
+    Image.MAX_IMAGE_PIXELS = 128 * 1024 * 1024  # 128 MP max image pixels threshold
 except ImportError:
     Image = None
     HAS_PIL = False
+
+MAX_IMAGE_DIMENSION = 16384  # Max allowed width/height in pixels
 
 
 def _get_channel_image_size(img_path: Path | str | None) -> tuple[int, int] | None:
@@ -153,6 +156,8 @@ def align_standalone_textures(
 
         try:
             with Image.open(p) as src_img:
+                if src_img.width > MAX_IMAGE_DIMENSION or src_img.height > MAX_IMAGE_DIMENSION:
+                    raise ValueError(f"Image dimensions ({src_img.width}x{src_img.height}) exceed limit ({MAX_IMAGE_DIMENSION}px)")
                 src_img = src_img.convert("RGBA")
                 fill_color = (128, 128, 255, 255) if ch == "normal" else (0, 0, 0, 0)
                 aligned_img = Image.new("RGBA", (src_w, aligned_h), fill_color)

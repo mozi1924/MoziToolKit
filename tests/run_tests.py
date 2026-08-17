@@ -19,6 +19,39 @@ if str(PARENT_DIR) not in sys.path:
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+# Discover and extract bundled extension wheels for headless testing
+try:
+    import PIL
+    from PIL import _imaging
+except ImportError:
+    wheels_dir = PROJECT_DIR / "wheels"
+    if wheels_dir.exists():
+        target_whl = None
+        for whl in wheels_dir.glob("*.whl"):
+            if sys.platform == "darwin" and "macosx" in whl.name:
+                machine = os.uname().machine if hasattr(os, "uname") else "arm64"
+                if "arm64" in whl.name and ("arm" in machine or "aarch64" in machine):
+                    target_whl = whl
+                    break
+                elif "x86_64" in whl.name and "x86" in machine:
+                    target_whl = whl
+                    break
+            elif sys.platform == "win32" and "win" in whl.name:
+                target_whl = whl
+                break
+            elif sys.platform.startswith("linux") and "linux" in whl.name:
+                target_whl = whl
+                break
+        if target_whl:
+            unpack_dir = Path(tempfile.gettempdir()) / "mozitoolkit_test_wheels"
+            unpack_dir.mkdir(parents=True, exist_ok=True)
+            if not (unpack_dir / "PIL").exists():
+                import zipfile
+                with zipfile.ZipFile(target_whl, "r") as zf:
+                    zf.extractall(unpack_dir)
+            if str(unpack_dir) not in sys.path:
+                sys.path.insert(0, str(unpack_dir))
+
 import bpy
 import bmesh
 

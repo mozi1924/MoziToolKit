@@ -104,7 +104,11 @@ def iter_my_register_deps(cls, my_classes, my_classes_by_idname):
 
 
 def iter_my_deps_from_annotations(cls, my_classes):
-    for value in typing.get_type_hints(cls, {}, {}).values():
+    try:
+        type_hints = typing.get_type_hints(cls, {}, {}).values()
+    except Exception:
+        type_hints = ()
+    for value in type_hints:
         dependency = get_dependency_from_annotation(value)
         if dependency is not None:
             if dependency in my_classes:
@@ -112,13 +116,11 @@ def iter_my_deps_from_annotations(cls, my_classes):
 
 
 def get_dependency_from_annotation(value):
-    if blender_version >= (2, 93):
-        if isinstance(value, bpy.props._PropertyDeferred):
-            return value.keywords.get("type")
-    else:
-        if isinstance(value, tuple) and len(value) == 2:
-            if value[0] in (bpy.props.PointerProperty, bpy.props.CollectionProperty):
-                return value[1]["type"]
+    if isinstance(value, bpy.props._PropertyDeferred):
+        return value.keywords.get("type")
+    if isinstance(value, tuple) and len(value) == 2:
+        if value[0] in (bpy.props.PointerProperty, bpy.props.CollectionProperty):
+            return value[1].get("type") if isinstance(value[1], dict) else None
     return None
 
 
@@ -190,6 +192,12 @@ def toposort(deps_dict):
                 sorted_values.add(value)
             else:
                 unsorted.append(value)
+        if not sorted_list_sub:
+            # Unresolved or circular dependencies detected! Break deadlock to prevent hanging Blender.
+            print(f"[MoziToolKit] Warning: Circular or unresolved dependency in toposort: {list(deps_dict.keys())}")
+            unsorted.sort(key=lambda cls: getattr(cls, "__name__", ""))
+            sorted_list.extend(unsorted)
+            break
         deps_dict = {value: deps_dict[value] - sorted_values for value in unsorted}
         sorted_list_sub.sort(key=lambda cls: getattr(cls, "bl_order", 0))
         sorted_list.extend(sorted_list_sub)

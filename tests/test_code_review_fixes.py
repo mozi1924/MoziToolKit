@@ -206,6 +206,83 @@ class TestCodeReviewFixes(unittest.TestCase):
 
         bm.free()
 
+    def test_zip_bomb_member_count_limit(self):
+        """ZipResourcePack._safe_extract must reject archives exceeding MAX_ZIP_MEMBER_COUNT."""
+        from utils.materials.resource_pack import ZipResourcePack, MAX_ZIP_MEMBER_COUNT
+        import unittest.mock as mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_zip = Path(tmp_dir) / "too_many_members.zip"
+            with zipfile.ZipFile(test_zip, "w") as zf:
+                zf.writestr("pack.mcmeta", '{"pack":{"pack_format":15,"description":"Test"}}')
+                zf.writestr("assets/minecraft/textures/block/stone.png", b"dummy")
+
+            # Mock infolist to simulate exceeding file count
+            with zipfile.ZipFile(test_zip, "r") as zf:
+                fake_infos = [zipfile.ZipInfo(f"file_{i}.txt") for i in range(MAX_ZIP_MEMBER_COUNT + 10)]
+                for fi in fake_infos:
+                    fi.file_size = 10
+                with mock.patch.object(zf, "infolist", return_value=fake_infos):
+                    with self.assertRaises(ValueError) as ctx:
+                        ZipResourcePack._safe_extract(zf, Path(tmp_dir) / "extracted")
+                    self.assertIn("too many entries", str(ctx.exception).lower())
+
+    def test_zip_bomb_uncompressed_size_limit(self):
+        """ZipResourcePack._safe_extract must reject archives exceeding MAX_ZIP_TOTAL_UNCOMPRESSED."""
+        from utils.materials.resource_pack import ZipResourcePack, MAX_ZIP_TOTAL_UNCOMPRESSED
+        import unittest.mock as mock
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            test_zip = Path(tmp_dir) / "bomb.zip"
+            with zipfile.ZipFile(test_zip, "w") as zf:
+                zf.writestr("pack.mcmeta", '{"pack":{"pack_format":15,"description":"Test"}}')
+
+            with zipfile.ZipFile(test_zip, "r") as zf:
+                fake_info = zipfile.ZipInfo("huge_file.dat")
+                fake_info.file_size = MAX_ZIP_TOTAL_UNCOMPRESSED + 1024 * 1024
+                with mock.patch.object(zf, "infolist", return_value=[fake_info]):
+                    with self.assertRaises(ValueError) as ctx:
+                        ZipResourcePack._safe_extract(zf, Path(tmp_dir) / "extracted")
+                    self.assertIn("zip bomb", str(ctx.exception).lower())
+
+    def test_auto_load_toposort_deadlock_prevention(self):
+        """auto_load.toposort must break circular dependency deadlock instead of infinite looping."""
+        from auto_load import toposort
+
+        class ClassA:
+            pass
+
+        class ClassB:
+            pass
+
+        # Mutual circular dependency
+        deps_dict = {
+            ClassA: {ClassB},
+            ClassB: {ClassA},
+        }
+
+        # Must terminate promptly and return classes
+        result = toposort(deps_dict)
+        self.assertEqual(len(result), 2)
+        self.assertIn(ClassA, result)
+        self.assertIn(ClassB, result)
+
+    def test_menu_config_untrusted_operator_filter(self):
+        """menu_config._normalize_views_data must filter out arbitrary/unregistered operators."""
+        from utils.system.menu_config import _normalize_views_data
+
+        untrusted_views = {
+            "mesh": [
+                {"operator": "wm.quit_blender", "label": "Quit Blender", "enabled": True},
+                {"operator": "mozi.select_hard_edges", "label": "Select Hard Edges", "enabled": True},
+            ]
+        }
+        normalized = _normalize_views_data(untrusted_views)
+        mesh_items = normalized.get("mesh", [])
+        operators = [item.get("operator") for item in mesh_items]
+        self.assertNotIn("wm.quit_blender", operators)
+        self.assertIn("mozi.select_hard_edges", operators)
+
 
 if __name__ == "__main__":
     import sys
