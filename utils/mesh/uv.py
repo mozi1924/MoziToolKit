@@ -23,6 +23,10 @@ from .uv_rotation import (
     face_uv_requires_atlas_tiling,
     restore_atlas_tiling_uv,
 )
+from .fluid_uv import (
+    repair_face_fluid_uv,
+    process_mesh_fluid_uv_repairs,
+)
 
 
 @dataclass

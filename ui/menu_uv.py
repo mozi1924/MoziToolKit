@@ -1,6 +1,7 @@
 import bpy
 from ..operators.uv.op_scale_uv import MOZI_OT_scale_uv
 from ..operators.uv.op_select_transparent_faces import MOZI_OT_select_transparent_faces
+from ..operators.uv.op_repair_fluid_uv import MOZI_OT_repair_fluid_uv
 from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
 
 
@@ -13,6 +14,7 @@ class MOZI_MT_uv_menu(bpy.types.Menu):
         layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
         layout.operator(MOZI_OT_scale_uv.bl_idname)
         layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
+        layout.operator(MOZI_OT_repair_fluid_uv.bl_idname)
 
 
 def draw_uv_workspace_menu_func(self, context):
