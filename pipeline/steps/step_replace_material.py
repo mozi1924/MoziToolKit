@@ -450,6 +450,12 @@ class StepReplaceMaterial(PipelineStep):
                         required_chunk_ids.add(int(loc["chunk_id"]))
                         break
 
+        # If no polygon faces were scanned (e.g. Point Cloud object or procedural Geometry Nodes world),
+        # ensure static chunk 0 (or all static chunks) are generated.
+        if not required_chunk_ids:
+            static_chunks = [int(c["chunk_id"]) for c in mapping_data.get("chunks", []) if c.get("kind") == "static"]
+            required_chunk_ids = set(static_chunks) if static_chunks else {0}
+
         yield ProgressUpdate(0.45, 1.0, f"Building {len(required_chunk_ids)} Atlas chunk material(s)...")
 
         if pipeline_context.is_cancelled:
@@ -493,6 +499,60 @@ class StepReplaceMaterial(PipelineStep):
             yield ProgressUpdate(obj_progress, 1.0, f"Remapping Atlas UVs: {obj.name} ({obj_idx + 1}/{total_objs})")
 
             mesh = obj.data
+
+            # If mesh has no polygons (e.g. Point Cloud object or Geometry Nodes world tree)
+            if len(mesh.polygons) == 0:
+                primary_mat = atlas_materials.get(0) or (list(atlas_materials.values())[0] if atlas_materials else None)
+                if primary_mat:
+                    if not obj.data.materials:
+                        obj.data.materials.append(primary_mat)
+                    else:
+                        obj.data.materials[0] = primary_mat
+
+                    # Update Geometry Nodes modifier if present
+                    for mod in obj.modifiers:
+                        if mod.type == 'NODES' and mod.node_group:
+                            for n in mod.node_group.nodes:
+                                if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
+                                    n.inputs["Material"].default_value = primary_mat
+                            chunk_0 = chunks_by_id.get(0, {})
+                            atlas_w = float(chunk_0.get("width", primary_mat.get("mtk_atlas_width", 1024.0)))
+                            atlas_h = float(chunk_0.get("height", primary_mat.get("mtk_atlas_height", 1024.0)))
+                            tile_sz = float(chunk_0.get("tile_size", primary_mat.get("mtk_tile_size", 16.0)))
+                            tiles_row = float(chunk_0.get("tiles_per_row", primary_mat.get("mtk_tiles_per_row", 64)))
+                            for item in mod.node_group.interface.items_tree:
+                                if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
+                                    if item.name == "Atlas Width":
+                                        mod[item.identifier] = atlas_w
+                                    elif item.name == "Atlas Height":
+                                        mod[item.identifier] = atlas_h
+                                    elif item.name == "Tile Size":
+                                        mod[item.identifier] = tile_sz
+                                    elif item.name == "Tiles Per Row":
+                                        mod[item.identifier] = tiles_row
+
+                    # Ensure ATTR_UV_TILING_TRANSFORM and ATTR_UV_ROTATION exist on point cloud mesh
+                    if len(mesh.vertices) > 0:
+                        tiling_attr = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
+                        if not tiling_attr or tiling_attr.data_type != 'FLOAT_COLOR' or len(tiling_attr.data) != len(mesh.vertices):
+                            if tiling_attr:
+                                mesh.attributes.remove(tiling_attr)
+                            tiling_attr = mesh.attributes.new(name=ATTR_UV_TILING_TRANSFORM, type='FLOAT_COLOR', domain='POINT')
+                        flat_colors = [c for _ in range(len(mesh.vertices)) for c in (1.0, 1.0, 0.0, 0.0)]
+                        tiling_attr.data.foreach_set('color', flat_colors)
+
+                        rot_attr = mesh.attributes.get(ATTR_UV_ROTATION)
+                        if not rot_attr or rot_attr.data_type != 'FLOAT' or len(rot_attr.data) != len(mesh.vertices):
+                            if rot_attr:
+                                mesh.attributes.remove(rot_attr)
+                            rot_attr = mesh.attributes.new(name=ATTR_UV_ROTATION, type='FLOAT', domain='POINT')
+                        rot_attr.data.foreach_set('value', [0.0] * len(mesh.vertices))
+
+                    mesh["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
+                    write_provenance_schema(mesh)
+                    replaced_objects += 1
+                continue
+
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
             chunk_ids = [-1.0] * len(mesh.polygons)

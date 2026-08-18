@@ -20,6 +20,10 @@ from .constants import (
     PROP_ATLAS_CHUNK_ID,
     PROP_ATLAS_CHUNK_KIND,
     PROP_ATLAS_MAPPING,
+    PROP_ATLAS_WIDTH,
+    PROP_ATLAS_HEIGHT,
+    PROP_TILE_SIZE,
+    PROP_TILES_PER_ROW,
     PROP_CREATED_BY,
     PROP_PROVENANCE_SCHEMA_VERSION,
     PROVENANCE_SCHEMA_VERSION,
@@ -71,8 +75,13 @@ def build_atlas_material(
     links = mat.node_tree.links
     nodes.clear()
 
-    # Store mapping JSON as custom property on node tree
+    # Store mapping JSON and dimensions as custom property on node tree and material
     mat.node_tree[PROP_ATLAS_MAPPING] = raw_json_str
+    mat[PROP_ATLAS_MAPPING] = raw_json_str
+    mat[PROP_ATLAS_WIDTH] = atlas_w
+    mat[PROP_ATLAS_HEIGHT] = atlas_h
+    mat[PROP_TILE_SIZE] = tile_size
+    mat[PROP_TILES_PER_ROW] = max(1, int(atlas_w // tile_size))
     mat[PROP_CREATED_BY] = "MoziToolKit"
     mat[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
 
@@ -230,7 +239,7 @@ def build_atlas_chunk_materials(
         raw_mapping = fp.read()
         mapping = json.loads(raw_mapping)
 
-    # Prepare compact mapping string (strips redundant thousands of 6-face block definitions)
+    # Prepare compact mapping string
     compact_mapping = {
         "format_version": mapping.get("format_version", 10),
         "provenance_schema_version": mapping.get("provenance_schema_version", 1),
@@ -239,6 +248,7 @@ def build_atlas_chunk_materials(
         "face_order": mapping.get("face_order", []),
         "chunks": mapping.get("chunks", []),
         "textures": mapping.get("textures", {}),
+        "materials": mapping.get("materials", []),
         "animations": mapping.get("animations", []),
     }
     compact_mapping_str = json.dumps(compact_mapping, separators=(",", ":"))
@@ -291,6 +301,11 @@ def build_atlas_chunk_materials(
         mat.use_nodes = True
         set_material_displacement_method(mat, "BOTH")
         mat.node_tree[PROP_ATLAS_MAPPING] = compact_mapping_str
+        mat[PROP_ATLAS_MAPPING] = compact_mapping_str
+        mat[PROP_ATLAS_WIDTH] = float(chunk.get("width", 16))
+        mat[PROP_ATLAS_HEIGHT] = float(chunk.get("height", 16))
+        mat[PROP_TILE_SIZE] = float(chunk.get("tile_size", 16))
+        mat[PROP_TILES_PER_ROW] = int(chunk.get("tiles_per_row", 1))
 
         mat[PROP_CREATED_BY] = "MoziToolKit"
         mat[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
@@ -418,14 +433,48 @@ def build_atlas_chunk_materials(
             separate_tiling.name = "Split UV Tiling Transform"
             separate_tiling.location = (-1330, -850)
             links.new(attr_tiling_transform.outputs["Color"], separate_tiling.inputs["Color"])
+
+            # Scale fallback: if Red / Green == 0 (e.g. missing attribute), default Scale to 1.0
+            cmp_scale_x = nodes.new("ShaderNodeMath")
+            cmp_scale_x.name = "Is Scale X Non-Zero"
+            cmp_scale_x.operation = 'GREATER_THAN'
+            cmp_scale_x.inputs[1].default_value = 0.0001
+            cmp_scale_x.location = (-1160, -750)
+            links.new(separate_tiling.outputs["Red"], cmp_scale_x.inputs[0])
+
+            mix_scale_x = nodes.new("ShaderNodeMix")
+            mix_scale_x.name = "Safe Scale X"
+            mix_scale_x.data_type = 'FLOAT'
+            mix_scale_x.inputs[2].default_value = 1.0
+            mix_scale_x.location = (-1000, -750)
+            links.new(cmp_scale_x.outputs["Value"], mix_scale_x.inputs[0])
+            links.new(separate_tiling.outputs["Red"], mix_scale_x.inputs[3])
+
+            cmp_scale_y = nodes.new("ShaderNodeMath")
+            cmp_scale_y.name = "Is Scale Y Non-Zero"
+            cmp_scale_y.operation = 'GREATER_THAN'
+            cmp_scale_y.inputs[1].default_value = 0.0001
+            cmp_scale_y.location = (-1160, -870)
+            links.new(separate_tiling.outputs["Green"], cmp_scale_y.inputs[0])
+
+            mix_scale_y = nodes.new("ShaderNodeMix")
+            mix_scale_y.name = "Safe Scale Y"
+            mix_scale_y.data_type = 'FLOAT'
+            mix_scale_y.inputs[2].default_value = 1.0
+            mix_scale_y.location = (-1000, -870)
+            links.new(cmp_scale_y.outputs["Value"], mix_scale_y.inputs[0])
+            links.new(separate_tiling.outputs["Green"], mix_scale_y.inputs[3])
+
             combine_scale = nodes.new("ShaderNodeCombineXYZ")
             combine_scale.name = "Combine UV Tiling Scale"
-            combine_scale.location = (-1160, -850)
-            links.new(separate_tiling.outputs["Red"], combine_scale.inputs["X"])
-            links.new(separate_tiling.outputs["Green"], combine_scale.inputs["Y"])
+            combine_scale.location = (-840, -850)
+            combine_scale.inputs["Z"].default_value = 1.0
+            links.new(mix_scale_x.outputs[0], combine_scale.inputs["X"])
+            links.new(mix_scale_y.outputs[0], combine_scale.inputs["Y"])
+
             combine_location = nodes.new("ShaderNodeCombineXYZ")
             combine_location.name = "Combine UV Tiling Location"
-            combine_location.location = (-1160, -1000)
+            combine_location.location = (-840, -1000)
             links.new(separate_tiling.outputs["Blue"], combine_location.inputs["X"])
             links.new(attr_tiling_transform.outputs["Alpha"], combine_location.inputs["Y"])
 
@@ -566,14 +615,48 @@ def build_atlas_chunk_materials(
                 separate_tiling.name = "Split UV Tiling Transform"
                 separate_tiling.location = (-1020, -350)
                 links.new(attr_tiling_transform.outputs["Color"], separate_tiling.inputs["Color"])
+
+                # Scale fallback: if Red / Green == 0 (e.g. missing attribute), default Scale to 1.0
+                cmp_scale_x = nodes.new("ShaderNodeMath")
+                cmp_scale_x.name = "Is Scale X Non-Zero"
+                cmp_scale_x.operation = 'GREATER_THAN'
+                cmp_scale_x.inputs[1].default_value = 0.0001
+                cmp_scale_x.location = (-850, -250)
+                links.new(separate_tiling.outputs["Red"], cmp_scale_x.inputs[0])
+
+                mix_scale_x = nodes.new("ShaderNodeMix")
+                mix_scale_x.name = "Safe Scale X"
+                mix_scale_x.data_type = 'FLOAT'
+                mix_scale_x.inputs[2].default_value = 1.0
+                mix_scale_x.location = (-690, -250)
+                links.new(cmp_scale_x.outputs["Value"], mix_scale_x.inputs[0])
+                links.new(separate_tiling.outputs["Red"], mix_scale_x.inputs[3])
+
+                cmp_scale_y = nodes.new("ShaderNodeMath")
+                cmp_scale_y.name = "Is Scale Y Non-Zero"
+                cmp_scale_y.operation = 'GREATER_THAN'
+                cmp_scale_y.inputs[1].default_value = 0.0001
+                cmp_scale_y.location = (-850, -370)
+                links.new(separate_tiling.outputs["Green"], cmp_scale_y.inputs[0])
+
+                mix_scale_y = nodes.new("ShaderNodeMix")
+                mix_scale_y.name = "Safe Scale Y"
+                mix_scale_y.data_type = 'FLOAT'
+                mix_scale_y.inputs[2].default_value = 1.0
+                mix_scale_y.location = (-690, -370)
+                links.new(cmp_scale_y.outputs["Value"], mix_scale_y.inputs[0])
+                links.new(separate_tiling.outputs["Green"], mix_scale_y.inputs[3])
+
                 combine_scale = nodes.new("ShaderNodeCombineXYZ")
                 combine_scale.name = "Combine UV Tiling Scale"
-                combine_scale.location = (-850, -350)
-                links.new(separate_tiling.outputs["Red"], combine_scale.inputs["X"])
-                links.new(separate_tiling.outputs["Green"], combine_scale.inputs["Y"])
+                combine_scale.location = (-530, -350)
+                combine_scale.inputs["Z"].default_value = 1.0
+                links.new(mix_scale_x.outputs[0], combine_scale.inputs["X"])
+                links.new(mix_scale_y.outputs[0], combine_scale.inputs["Y"])
+
                 combine_location = nodes.new("ShaderNodeCombineXYZ")
                 combine_location.name = "Combine UV Tiling Location"
-                combine_location.location = (-850, -500)
+                combine_location.location = (-530, -500)
                 links.new(separate_tiling.outputs["Blue"], combine_location.inputs["X"])
                 links.new(attr_tiling_transform.outputs["Alpha"], combine_location.inputs["Y"])
 

@@ -89,6 +89,11 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertEqual(assigned_mat.get("mtk:source_namespace"), "minecraft")
         self.assertTrue(str(assigned_mat.get("mtk:source_texture")).startswith("atlas_chunk_"))
         self.assertIsNotNone(assigned_mat.get("mtk:pack_hash"))
+        self.assertIn("mtk_atlas_width", assigned_mat)
+        self.assertIn("mtk_atlas_height", assigned_mat)
+        self.assertIn("mtk_tile_size", assigned_mat)
+        self.assertIn("mtk_tiles_per_row", assigned_mat)
+        self.assertIn("mtk:atlas_mapping", assigned_mat)
 
         # Check image datablock naming with pack hash
         albedo_images = [img for img in bpy.data.images if img.name.startswith("atlas_chunk_")]

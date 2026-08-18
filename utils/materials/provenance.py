@@ -6,7 +6,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import bpy
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
 
 from .constants import (
     ATTR_SOURCE_ORIGIN,
@@ -144,16 +149,66 @@ def is_mozi_material(mat: bpy.types.Material | None) -> bool:
 
 
 def get_atlas_mapping_from_material(mat: bpy.types.Material | None) -> dict | None:
-    """Extract and parse atlas_mapping JSON dictionary stored on a material's node tree."""
-    if not mat or not mat.node_tree or "mtk:atlas_mapping" not in mat.node_tree:
+    """Extract and parse atlas_mapping JSON dictionary stored on a material or its node tree."""
+    if not mat:
         return None
-    raw = mat.node_tree["mtk:atlas_mapping"]
+    raw = None
+    if "mtk:atlas_mapping" in mat:
+        raw = mat["mtk:atlas_mapping"]
+    elif "mtk_atlas_mapping" in mat:
+        raw = mat["mtk_atlas_mapping"]
+    elif mat.node_tree and "mtk:atlas_mapping" in mat.node_tree:
+        raw = mat.node_tree["mtk:atlas_mapping"]
+    elif mat.node_tree and "mtk_atlas_mapping" in mat.node_tree:
+        raw = mat.node_tree["mtk_atlas_mapping"]
+
+    if raw is None:
+        return None
     if isinstance(raw, dict):
         return raw
     try:
         return json.loads(raw)
     except Exception:
         return None
+
+
+def get_material_atlas_dimensions(mat: bpy.types.Material | None) -> dict:
+    """Extract atlas dimensions (width, height, tile_size, tiles_per_row) from material custom properties or mapping."""
+    res = {
+        "width": 1024.0,
+        "height": 1024.0,
+        "tile_size": 16.0,
+        "tiles_per_row": 64,
+    }
+    if not mat:
+        return res
+
+    if "mtk_atlas_width" in mat:
+        res["width"] = float(mat["mtk_atlas_width"])
+    if "mtk_atlas_height" in mat:
+        res["height"] = float(mat["mtk_atlas_height"])
+    if "mtk_tile_size" in mat:
+        res["tile_size"] = float(mat["mtk_tile_size"])
+    if "mtk_tiles_per_row" in mat:
+        res["tiles_per_row"] = int(mat["mtk_tiles_per_row"])
+
+    mapping = get_atlas_mapping_from_material(mat)
+    if mapping:
+        if "tile_size" in mapping and "mtk_tile_size" not in mat:
+            res["tile_size"] = float(mapping["tile_size"])
+        chunks = mapping.get("chunks", [])
+        if chunks:
+            chunk = chunks[0]
+            if "width" in chunk and "mtk_atlas_width" not in mat:
+                res["width"] = float(chunk["width"])
+            if "height" in chunk and "mtk_atlas_height" not in mat:
+                res["height"] = float(chunk["height"])
+            if "tile_size" in chunk and "mtk_tile_size" not in mat:
+                res["tile_size"] = float(chunk["tile_size"])
+            if "tiles_per_row" in chunk and "mtk_tiles_per_row" not in mat:
+                res["tiles_per_row"] = int(chunk["tiles_per_row"])
+
+    return res
 
 
 def get_atlas_mapping_from_mesh(mesh: bpy.types.Mesh | None) -> dict | None:
@@ -173,3 +228,4 @@ def write_provenance_schema(owner) -> None:
     """Stamp a Blender ID datablock with Mozi's explicit provenance contract."""
     owner[PROP_CREATED_BY] = "MoziToolKit"
     owner[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
+
