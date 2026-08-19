@@ -225,6 +225,130 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         camera = bpy.data.objects.new("Camera", None)
         self.assertFalse(is_yefira_object(camera))
 
+    def test_animated_texture_column_address_and_timing_attributes(self):
+        """Verify animation textures (command_block, sea_lantern) resolve to px // fw and write anim attributes."""
+        from utils.materials.yefira import write_yefira_point_atlas_attributes, setup_yefira_point_cloud_attributes
+
+        mock_mapping = {
+            "format_version": 11,
+            "chunks": [
+                {
+                    "chunk_id": 0,
+                    "kind": "static",
+                    "width": 4096,
+                    "height": 80,
+                    "tile_size": 16,
+                    "tiles_per_row": 256,
+                },
+                {
+                    "chunk_id": 1,
+                    "kind": "animation",
+                    "width": 896,
+                    "height": 1024,
+                    "tile_size": 16,
+                    "tiles_per_row": 56,
+                },
+            ],
+            "textures": {
+                "minecraft:block/command_block_front": {
+                    "texture_key": "minecraft:block/command_block_front",
+                    "chunk_id": 1,
+                    "texture_id": 30,
+                    "kind": "animation",
+                    "pixel_x": 320,
+                    "pixel_y": 0,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 4,
+                    "frametime": 2,
+                    "interpolate": True,
+                },
+                "minecraft:block/command_block_side": {
+                    "texture_key": "minecraft:block/command_block_side",
+                    "chunk_id": 1,
+                    "texture_id": 31,
+                    "kind": "animation",
+                    "pixel_x": 336,
+                    "pixel_y": 0,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 4,
+                    "frametime": 2,
+                    "interpolate": True,
+                },
+                "minecraft:block/command_block_back": {
+                    "texture_key": "minecraft:block/command_block_back",
+                    "chunk_id": 1,
+                    "texture_id": 32,
+                    "kind": "animation",
+                    "pixel_x": 352,
+                    "pixel_y": 0,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 4,
+                    "frametime": 2,
+                    "interpolate": True,
+                },
+                "minecraft:block/sea_lantern": {
+                    "texture_key": "minecraft:block/sea_lantern",
+                    "chunk_id": 1,
+                    "texture_id": 38,
+                    "kind": "animation",
+                    "pixel_x": 624,
+                    "pixel_y": 0,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 5,
+                    "frametime": 5,
+                    "interpolate": False,
+                },
+            },
+        }
+
+        self.mesh.attributes["block_state"].data[0].value = b"minecraft:command_block"
+        self.mesh.attributes["block_state"].data[1].value = b"minecraft:sea_lantern"
+
+        setup_yefira_point_cloud_attributes(
+            mesh=self.mesh,
+            mapping_data=mock_mapping,
+        )
+
+        # 1. Verify global anim atlas metadata attributes
+        self.assertIn("mtk_anim_atlas_width", self.mesh.attributes)
+        self.assertIn("mtk_anim_atlas_height", self.mesh.attributes)
+        self.assertIn("mtk_anim_frame_width", self.mesh.attributes)
+        self.assertIn("mtk_anim_frame_height", self.mesh.attributes)
+        self.assertEqual(self.mesh.attributes["mtk_anim_atlas_width"].data[0].value, 896.0)
+        self.assertEqual(self.mesh.attributes["mtk_anim_atlas_height"].data[0].value, 1024.0)
+
+        # 2. Verify command_block (point 0):
+        # East (+X) is side: pixel_x=336 -> col = 336 // 16 = 21
+        # Top (+Y) is front: pixel_x=320 -> col = 320 // 16 = 20
+        # Bottom (-Y) is back: pixel_x=352 -> col = 352 // 16 = 22
+        east_tile = tuple(self.mesh.attributes["mtk_tile_east"].data[0].vector)
+        top_tile = tuple(self.mesh.attributes["mtk_tile_top"].data[0].vector)
+        bottom_tile = tuple(self.mesh.attributes["mtk_tile_bottom"].data[0].vector)
+        self.assertEqual(east_tile, (21.0, 0.0, 0.0))
+        self.assertEqual(top_tile, (20.0, 0.0, 0.0))
+        self.assertEqual(bottom_tile, (22.0, 0.0, 0.0))
+        self.assertEqual(self.mesh.attributes["mtk_chunk_east"].data[0].value, 1)
+
+        # Verify anim timing & frame size on command_block
+        anim_timing = tuple(self.mesh.attributes["mtk_anim_timing_east"].data[0].color)
+        self.assertEqual(anim_timing, (4.0, 2.0, 1.0, 0.0))
+        anim_frame_size = tuple(self.mesh.attributes["mtk_anim_frame_size_east"].data[0].color)
+        self.assertEqual(anim_frame_size, (16.0, 16.0, 0.0, 0.0))
+
+        # 3. Verify sea_lantern (point 1):
+        # pixel_x=624 -> col = 624 // 16 = 39
+        sea_east_tile = tuple(self.mesh.attributes["mtk_tile_east"].data[1].vector)
+        self.assertEqual(sea_east_tile, (39.0, 0.0, 0.0))
+        self.assertEqual(self.mesh.attributes["mtk_chunk_east"].data[1].value, 1)
+
+        sea_anim_timing = tuple(self.mesh.attributes["mtk_anim_timing_east"].data[1].color)
+        self.assertEqual(sea_anim_timing, (5.0, 5.0, 0.0, 0.0))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
