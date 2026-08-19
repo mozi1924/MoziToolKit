@@ -17,6 +17,48 @@ from .constants import (
 )
 
 
+BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
+    "water": ["water_still", "water_flow"],
+    "lava": ["lava_still", "lava_flow"],
+    "magma_block": ["magma"],
+    "fire": ["fire_0", "fire_1"],
+    "soul_fire": ["soul_fire_0", "soul_fire_1"],
+    "campfire": ["campfire_fire", "campfire_log"],
+    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log"],
+    "portal": ["nether_portal"],
+    "nether_portal": ["nether_portal"],
+    "kelp": ["kelp", "kelp_plant"],
+    "kelp_plant": ["kelp_plant", "kelp"],
+    "sea_pickle": ["sea_pickle"],
+    "sea_lantern": ["sea_lantern"],
+    "prismarine": ["prismarine"],
+    "prismarine_bricks": ["prismarine_bricks"],
+    "dark_prismarine": ["dark_prismarine"],
+    "lantern": ["lantern"],
+    "soul_lantern": ["soul_lantern"],
+    "sculk_sensor": ["sculk_sensor_top", "sculk_sensor_side", "sculk_sensor_bottom"],
+    "sculk_catalyst": ["sculk_catalyst_top", "sculk_catalyst_side", "sculk_catalyst_bottom"],
+    "sculk_shrieker": ["sculk_shrieker_top", "sculk_shrieker_side", "sculk_shrieker_bottom"],
+    "respawn_anchor": ["respawn_anchor_top_off", "respawn_anchor_side0", "respawn_anchor_bottom"],
+    "smoker": ["smoker_front", "smoker_side", "smoker_top", "smoker_bottom"],
+    "furnace": ["furnace_front", "furnace_side", "furnace_top", "furnace_bottom"],
+    "blast_furnace": ["blast_furnace_front", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+    "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
+    "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
+    "chain_command_block": ["chain_command_block_front", "chain_command_block_back", "chain_command_block_side", "chain_command_block_conditional"],
+    "dispenser": ["dispenser_front", "dispenser_front_vertical", "dispenser_side", "dispenser_top", "furnace_top"],
+    "dropper": ["dropper_front", "dropper_front_vertical", "dropper_side", "dropper_top", "furnace_top"],
+    "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
+    "piston": ["piston_top", "piston_bottom", "piston_side"],
+    "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
+    "barrel": ["barrel_top", "barrel_bottom", "barrel_side"],
+    "beehive": ["beehive_front", "beehive_front_honey", "beehive_side", "beehive_top", "beehive_bottom"],
+    "bee_nest": ["bee_nest_front", "bee_nest_front_honey", "bee_nest_side", "bee_nest_top", "bee_nest_bottom"],
+    "carved_pumpkin": ["carved_pumpkin", "pumpkin_side", "pumpkin_top"],
+    "jack_o_lantern": ["jack_o_lantern", "pumpkin_side", "pumpkin_top"],
+}
+
+
 def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
     """Identify whether a Blender object is a Yefira procedural point-cloud world.
 
@@ -61,6 +103,8 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     - ``mtk_chunk_{face}`` (INT)
     - ``mtk_texture_{face}`` (INT)
     - ``mtk_tint_data_{face}`` (FLOAT_COLOR: base_weight, overlay_weight, tint_weight, is_hardcoded)
+    - ``mtk_anim_timing_{face}`` (FLOAT_COLOR: frame_count, frametime, interpolate, 0)
+    - ``mtk_anim_frame_size_{face}`` (FLOAT_COLOR: frame_width, frame_height, 0, 0)
     """
     state_attr = mesh.attributes.get("block_state")
     if not state_attr or state_attr.domain != 'POINT':
@@ -90,6 +134,30 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         that bridge here. A differentiated model face table remains the
         authoritative source whenever present.
         """
+        target_stems = BLOCK_TO_TEXTURE_ALIASES.get(block_name)
+        if target_stems:
+            found_loc = next((texture_location(s) for s in target_stems if texture_location(s)), None)
+            if found_loc:
+                top_loc = next((texture_location(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None)
+                bottom_loc = next((texture_location(s) for s in target_stems if s.endswith("_bottom")), None)
+                front_loc = next((texture_location(s) for s in target_stems if s.endswith(("_front", "_front_on", "_front_honey")) or s in ("carved_pumpkin", "jack_o_lantern")), None)
+                back_loc = next((texture_location(s) for s in target_stems if s.endswith("_back")), None)
+                side_loc = next((texture_location(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
+
+                if "command_block" in block_name:
+                    # Vertical-base model (Top is front arrow, Bottom is back input square, 4 sides are side)
+                    return {"+X": side_loc, "-X": side_loc, "+Y": front_loc or found_loc, "-Y": back_loc or side_loc, "+Z": side_loc, "-Z": side_loc}
+                elif "piston" in block_name:
+                    # Vertical-base model (Top is piston head, Bottom is back base, 4 sides are side)
+                    return {"+X": side_loc, "-X": side_loc, "+Y": top_loc or found_loc, "-Y": bottom_loc or side_loc, "+Z": side_loc, "-Z": side_loc}
+                else:
+                    # Horizontal-base model (North is front, South is back, Top is top, Bottom is bottom, East/West are side)
+                    actual_top = top_loc or found_loc
+                    actual_bottom = bottom_loc or found_loc
+                    actual_back = back_loc or side_loc
+                    actual_front = front_loc or found_loc
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": actual_back, "-Z": actual_front}
+
         base = texture_location(block_name)
         side = texture_location(f"{block_name}_side") or base
         top = texture_location(f"{block_name}_top") or texture_location(f"{block_name}_end") or side
@@ -123,7 +191,18 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
         ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
     )
-    values = {name: {"tile": [], "chunk": [], "texture": [], "tint_data": [], "is_opaque": []} for name, _ in face_specs}
+    values = {
+        name: {
+            "tile": [],
+            "chunk": [],
+            "texture": [],
+            "tint_data": [],
+            "is_opaque": [],
+            "anim_timing": [],
+            "anim_frame_size": [],
+        }
+        for name, _ in face_specs
+    }
     material_ids = []
     is_opaque_list = []
 
@@ -134,6 +213,17 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
         faces = entry.get("faces", {}) if entry else {}
         fallback_location = next((texture_location(name) for name in names if texture_location(name)), {})
+        if not fallback_location:
+            for name in names:
+                if name in BLOCK_TO_TEXTURE_ALIASES:
+                    for stem in BLOCK_TO_TEXTURE_ALIASES[name]:
+                        loc = texture_location(stem)
+                        if loc:
+                            fallback_location = loc
+                            break
+                    if fallback_location:
+                        break
+
         primary_name = names[0]
         explicit_locations = [faces.get(mapping_face) for _, mapping_face in face_specs]
         has_differentiated_faces = len({loc.get("texture_key") for loc in explicit_locations if isinstance(loc, dict)}) > 1
@@ -149,10 +239,17 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
 
         for attr_face, mapping_face in face_specs:
             location = derived_faces.get(mapping_face) or faces.get(mapping_face) or fallback_location
-            values[attr_face]["tile"].append((
-                float(location.get("tile_column", 0)),
-                float(location.get("tile_row", 0)), 0.0,
-            ))
+
+            if location.get("kind") == "animation":
+                px = int(location.get("pixel_x", 0))
+                fw = max(1, int(location.get("frame_width", 16)))
+                tile_col = float(px // fw)
+                tile_row = 0.0
+            else:
+                tile_col = float(location.get("tile_column", 0))
+                tile_row = float(location.get("tile_row", 0))
+
+            values[attr_face]["tile"].append((tile_col, tile_row, 0.0))
             values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
             values[attr_face]["texture"].append(int(location.get("texture_id", 0)))
             values[attr_face]["tint_data"].append((
@@ -162,6 +259,15 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 1.0 if location.get("is_hardcoded", False) else 0.0,
             ))
             values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
+
+            frame_count = float(location.get("frame_count", 1))
+            frametime = float(location.get("frametime", 1))
+            interpolate = 1.0 if location.get("interpolate", False) else 0.0
+            values[attr_face]["anim_timing"].append((frame_count, frametime, interpolate, 0.0))
+
+            fw = float(location.get("frame_width", location.get("tile_size", 16)))
+            fh = float(location.get("frame_height", location.get("tile_size", 16)))
+            values[attr_face]["anim_frame_size"].append((fw, fh, 0.0, 0.0))
 
     def point_attr(name: str, data_type: str):
         attr = mesh.attributes.get(name)
@@ -181,6 +287,10 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         point_attr(f"mtk_is_opaque_{face}", 'INT').data.foreach_set('value', values[face]["is_opaque"])
         tint_attr = point_attr(f"mtk_tint_data_{face}", 'FLOAT_COLOR')
         tint_attr.data.foreach_set('color', [component for value in values[face]["tint_data"] for component in value])
+        anim_timing_attr = point_attr(f"mtk_anim_timing_{face}", 'FLOAT_COLOR')
+        anim_timing_attr.data.foreach_set('color', [component for value in values[face]["anim_timing"] for component in value])
+        anim_frame_size_attr = point_attr(f"mtk_anim_frame_size_{face}", 'FLOAT_COLOR')
+        anim_frame_size_attr.data.foreach_set('color', [component for value in values[face]["anim_frame_size"] for component in value])
 
 
 def setup_yefira_point_cloud_attributes(
@@ -188,6 +298,7 @@ def setup_yefira_point_cloud_attributes(
     mapping_data: dict,
     primary_mat: Optional[bpy.types.Material] = None,
     chunk_0: Optional[dict] = None,
+    chunk_1: Optional[dict] = None,
 ) -> None:
     """Initialize tiling, rotation, atlas dimensions, and 6-direction attributes on a point-cloud mesh."""
     if len(mesh.vertices) == 0:
@@ -213,13 +324,21 @@ def setup_yefira_point_cloud_attributes(
     rot_attr.data.foreach_set('value', [0.0] * num_verts)
 
     # 3. Write atlas metadata attributes to point domain
-    chunk_0 = chunk_0 or {}
+    chunks = mapping_data.get("chunks", []) if isinstance(mapping_data, dict) else []
+    chunks_by_id = {c.get("chunk_id", i): c for i, c in enumerate(chunks)} if isinstance(chunks, list) else {}
+    chunk_0 = chunk_0 or chunks_by_id.get(0, {})
+    chunk_1 = chunk_1 or chunks_by_id.get(1, {})
+
     mat_props = primary_mat or {}
     atlas_metadata = {
         "mtk_atlas_width": float(chunk_0.get("width", mat_props.get("mtk_atlas_width", 1024.0))),
         "mtk_atlas_height": float(chunk_0.get("height", mat_props.get("mtk_atlas_height", 1024.0))),
         "mtk_tile_size": float(chunk_0.get("tile_size", mat_props.get("mtk_tile_size", 16.0))),
         "mtk_tiles_per_row": float(chunk_0.get("tiles_per_row", mat_props.get("mtk_tiles_per_row", 64))),
+        "mtk_anim_atlas_width": float(chunk_1.get("width", 896.0)),
+        "mtk_anim_atlas_height": float(chunk_1.get("height", 1024.0)),
+        "mtk_anim_frame_width": float(chunk_1.get("tile_size", 16.0)),
+        "mtk_anim_frame_height": float(chunk_1.get("tile_size", 16.0)),
     }
     for attr_name, attr_value in atlas_metadata.items():
         attr = mesh.attributes.get(attr_name)
@@ -290,16 +409,18 @@ def apply_yefira_atlas_materials(
                 if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
                     n.inputs["Material"].default_value = primary_mat
 
-    # Signal Yefira addon operators / nodes setup
-    notify_yefira_update(obj)
-
     # Configure mesh point-cloud attributes
     chunk_0 = (chunks_by_id or {}).get(0, {})
+    chunk_1 = (chunks_by_id or {}).get(1, {})
     setup_yefira_point_cloud_attributes(
         mesh=obj.data,
         mapping_data=mapping_data,
         primary_mat=primary_mat,
         chunk_0=chunk_0,
+        chunk_1=chunk_1,
     )
+
+    # Signal Yefira addon operators / nodes setup
+    notify_yefira_update(obj)
 
     return True
