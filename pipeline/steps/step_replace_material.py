@@ -176,6 +176,68 @@ def _cleanup_object_anim_properties(obj: bpy.types.Object) -> None:
             del obj[prop]
 
 
+def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> None:
+    """Fill Yefira's face atlas attributes directly from Mozi's mapping."""
+    state_attr = mesh.attributes.get("block_state")
+    if not state_attr or state_attr.domain != 'POINT':
+        return
+
+    by_name = {
+        str(entry.get("name", "")).removeprefix("minecraft:").removeprefix("block/"): entry
+        for entry in mapping.get("materials", [])
+        if entry.get("name")
+    }
+    face_specs = (
+        ("east", "+X"), ("west", "-X"), ("top", "+Y"),
+        ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
+    )
+    values = {name: {"tile": [], "chunk": [], "texture": []} for name, _ in face_specs}
+    material_ids = []
+
+    for item in state_attr.data:
+        state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
+        block_name = state.split("[", 1)[0].removeprefix("minecraft:").removeprefix("block/")
+        entry = by_name.get(block_name)
+        material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
+        faces = entry.get("faces", {}) if entry else {}
+        for attr_face, mapping_face in face_specs:
+            location = faces.get(mapping_face) or {}
+            values[attr_face]["tile"].append((
+                float(location.get("tile_column", 0)),
+                float(location.get("tile_row", 0)), 0.0,
+            ))
+            values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
+            values[attr_face]["texture"].append(int(location.get("texture_id", 0)))
+
+    def point_attr(name: str, data_type: str):
+        attr = mesh.attributes.get(name)
+        if attr and (attr.domain != 'POINT' or attr.data_type != data_type or len(attr.data) != len(state_attr.data)):
+            mesh.attributes.remove(attr)
+            attr = None
+        return attr or mesh.attributes.new(name=name, type=data_type, domain='POINT')
+
+    point_attr("mtk_material_id", 'INT').data.foreach_set('value', material_ids)
+    for face, _ in face_specs:
+        tile_attr = point_attr(f"mtk_tile_{face}", 'FLOAT_VECTOR')
+        tile_attr.data.foreach_set('vector', [component for tile in values[face]["tile"] for component in tile])
+        point_attr(f"mtk_chunk_{face}", 'INT').data.foreach_set('value', values[face]["chunk"])
+        point_attr(f"mtk_texture_{face}", 'INT').data.foreach_set('value', values[face]["texture"])
+
+
+def _is_yefira_world(obj: bpy.types.Object) -> bool:
+    """Identify the explicit Yefira point-cloud material variant.
+
+    A polygon-free mesh is not sufficient: other procedural objects can have
+    no base polygons and must retain the normal MoziToolKit material contract.
+    """
+    if not obj or obj.type != 'MESH' or obj.name != "Yefira_World":
+        return False
+    state_attr = obj.data.attributes.get("block_state")
+    if not state_attr or state_attr.domain != 'POINT':
+        return False
+    return any(mod.type == 'NODES' and mod.name == 'Yefira_WorldModifier' for mod in obj.modifiers)
+
+
 
 def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: ZipResourcePack) -> None:
     """Assign a compact visible identity and durable provenance metadata."""
@@ -456,6 +518,8 @@ class StepReplaceMaterial(PipelineStep):
             static_chunks = [int(c["chunk_id"]) for c in mapping_data.get("chunks", []) if c.get("kind") == "static"]
             required_chunk_ids = set(static_chunks) if static_chunks else {0}
 
+        yefira_objects = [obj for obj in valid_objects if _is_yefira_world(obj)]
+
         yield ProgressUpdate(0.45, 1.0, f"Building {len(required_chunk_ids)} Atlas chunk material(s)...")
 
         if pipeline_context.is_cancelled:
@@ -468,6 +532,18 @@ class StepReplaceMaterial(PipelineStep):
             pack_textures=pack_textures,
             chunk_ids=required_chunk_ids,
         )
+        # A Yefira world is a distinct material variant.  It must never reuse
+        # the normal UV-layer materials above because it supplies UVMap from
+        # evaluated Geometry Nodes instead.
+        yefira_atlas_materials = {}
+        if yefira_objects:
+            yefira_atlas_materials = build_atlas_chunk_materials(
+                atlas_dir,
+                pack_hash=pack.pack_hash,
+                pack_textures=pack_textures,
+                chunk_ids={int(chunk["chunk_id"]) for chunk in mapping_data.get("chunks", [])},
+                uv_attribute="UVMap",
+            )
 
         session_materials = {}
 
@@ -500,36 +576,30 @@ class StepReplaceMaterial(PipelineStep):
 
             mesh = obj.data
 
-            # If mesh has no polygons (e.g. Point Cloud object or Geometry Nodes world tree)
-            if len(mesh.polygons) == 0:
-                primary_mat = atlas_materials.get(0) or (list(atlas_materials.values())[0] if atlas_materials else None)
+            # Yefira is the only supported point-cloud variant.  Treating any
+            # polygon-free object this way would corrupt ordinary procedural
+            # meshes, which still use the standard UV material contract.
+            if _is_yefira_world(obj):
+                primary_mat = yefira_atlas_materials.get(0) or (list(yefira_atlas_materials.values())[0] if yefira_atlas_materials else None)
                 if primary_mat:
-                    if not obj.data.materials:
-                        obj.data.materials.append(primary_mat)
-                    else:
-                        obj.data.materials[0] = primary_mat
+                    # Chunk IDs are the Geometry Nodes material indices.  Give
+                    # the point-cloud a dense, deterministic slot table rather
+                    # than discarding every atlas chunk except the first one.
+                    obj.data.materials.clear()
+                    max_chunk_id = max(yefira_atlas_materials)
+                    for chunk_id in range(max_chunk_id + 1):
+                        chunk_material = yefira_atlas_materials.get(chunk_id)
+                        if chunk_material is None:
+                            raise RuntimeError(f"Atlas mapping is missing material chunk {chunk_id}")
+                        obj.data.materials.append(chunk_material)
 
-                    # Update Geometry Nodes modifier if present
+                    # Yefira v5 consumes geometry attributes, not exposed
+                    # modifier inputs.  Keep the atlas material binding only.
                     for mod in obj.modifiers:
                         if mod.type == 'NODES' and mod.node_group:
                             for n in mod.node_group.nodes:
                                 if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
                                     n.inputs["Material"].default_value = primary_mat
-                            chunk_0 = chunks_by_id.get(0, {})
-                            atlas_w = float(chunk_0.get("width", primary_mat.get("mtk_atlas_width", 1024.0)))
-                            atlas_h = float(chunk_0.get("height", primary_mat.get("mtk_atlas_height", 1024.0)))
-                            tile_sz = float(chunk_0.get("tile_size", primary_mat.get("mtk_tile_size", 16.0)))
-                            tiles_row = float(chunk_0.get("tiles_per_row", primary_mat.get("mtk_tiles_per_row", 64)))
-                            for item in mod.node_group.interface.items_tree:
-                                if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
-                                    if item.name == "Atlas Width":
-                                        mod[item.identifier] = atlas_w
-                                    elif item.name == "Atlas Height":
-                                        mod[item.identifier] = atlas_h
-                                    elif item.name == "Tile Size":
-                                        mod[item.identifier] = tile_sz
-                                    elif item.name == "Tiles Per Row":
-                                        mod[item.identifier] = tiles_row
 
                     # Ensure ATTR_UV_TILING_TRANSFORM and ATTR_UV_ROTATION exist on point cloud mesh
                     if len(mesh.vertices) > 0:
@@ -548,6 +618,46 @@ class StepReplaceMaterial(PipelineStep):
                             rot_attr = mesh.attributes.new(name=ATTR_UV_ROTATION, type='FLOAT', domain='POINT')
                         rot_attr.data.foreach_set('value', [0.0] * len(mesh.vertices))
 
+                        # v5 Yefira GN reads atlas metadata as named geometry
+                        # attributes.  They are intentionally not modifier
+                        # inputs, so a user cannot desynchronise the atlas.
+                        chunk_0 = chunks_by_id.get(0, {})
+                        atlas_metadata = {
+                            "mtk_atlas_width": float(chunk_0.get("width", primary_mat.get("mtk_atlas_width", 1024.0))),
+                            "mtk_atlas_height": float(chunk_0.get("height", primary_mat.get("mtk_atlas_height", 1024.0))),
+                            "mtk_tile_size": float(chunk_0.get("tile_size", primary_mat.get("mtk_tile_size", 16.0))),
+                            "mtk_tiles_per_row": float(chunk_0.get("tiles_per_row", primary_mat.get("mtk_tiles_per_row", 64))),
+                        }
+                        for attr_name, attr_value in atlas_metadata.items():
+                            attr = mesh.attributes.get(attr_name)
+                            if not attr or attr.data_type != 'FLOAT' or attr.domain != 'POINT' or len(attr.data) != len(mesh.vertices):
+                                if attr:
+                                    mesh.attributes.remove(attr)
+                                attr = mesh.attributes.new(name=attr_name, type='FLOAT', domain='POINT')
+                            attr.data.foreach_set('value', [attr_value] * len(mesh.vertices))
+
+                        _write_yefira_point_atlas_attributes(mesh, mapping_data)
+
+                    # Atlas mapping/provenance belongs to the atlas materials.
+                    # Writing it to a generated point-cloud data-block is both
+                    # redundant and invalid for several Blender RNA wrappers.
+                    replaced_objects += 1
+                continue
+
+            # Generic polygon-free objects retain the pre-Yefira behavior:
+            # one normal atlas material and normal mesh-side provenance.
+            if len(mesh.polygons) == 0:
+                primary_mat = atlas_materials.get(0) or (list(atlas_materials.values())[0] if atlas_materials else None)
+                if primary_mat:
+                    if not obj.data.materials:
+                        obj.data.materials.append(primary_mat)
+                    else:
+                        obj.data.materials[0] = primary_mat
+                    for mod in obj.modifiers:
+                        if mod.type == 'NODES' and mod.node_group:
+                            for n in mod.node_group.nodes:
+                                if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
+                                    n.inputs["Material"].default_value = primary_mat
                     mesh["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
                     write_provenance_schema(mesh)
                     replaced_objects += 1
@@ -811,6 +921,8 @@ class StepReplaceMaterial(PipelineStep):
                         face_materials[poly_idx] = st_res[0]
 
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
+                # Normal meshes retain the mesh-side backup used by existing
+                # MoziToolKit reconstruction and replacement workflows.
                 mesh["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
                 write_provenance_schema(mesh)
                 _cleanup_object_anim_properties(obj)
@@ -1023,4 +1135,3 @@ class StepReplaceMaterial(PipelineStep):
 
         yield ProgressUpdate(1.0, 1.0, f"Standalone replacement finished ({assigned_count} slots assigned).")
         yield StepResult.success(f"Successfully processed Standalone replacement ({assigned_count} slot(s) assigned, {replaced_count} new material(s) created).")
-
