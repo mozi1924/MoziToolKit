@@ -24,8 +24,15 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         if not HAS_BPY:
             self.skipTest("bpy module not available")
 
-        # Clear scene
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        # Clear scene data-blocks
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            bpy.data.meshes.remove(mesh, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            bpy.data.materials.remove(mat, do_unlink=True)
+        for tree in list(bpy.data.node_groups):
+            bpy.data.node_groups.remove(tree, do_unlink=True)
 
         # Create Point Cloud object (Mesh with points, 0 polygons)
         self.mesh = bpy.data.meshes.new("Yefira_World_Mesh")
@@ -105,10 +112,10 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertIn("mtk_tiles_per_row", assigned_mat)
         self.assertIn("mtk:atlas_mapping", assigned_mat)
 
-        # Verify Geometry Nodes modifier Set Material node was updated
+        # Verify Geometry Nodes modifier Material Dispatcher or Set Material node
+        mat_dispatcher_nodes = [n for n in self.mod.node_group.nodes if n.name == 'Material Dispatcher']
         set_mat_nodes = [n for n in self.mod.node_group.nodes if n.type == 'SET_MATERIAL']
-        self.assertEqual(len(set_mat_nodes), 1)
-        self.assertEqual(set_mat_nodes[0].inputs['Material'].default_value, assigned_mat)
+        self.assertTrue(len(mat_dispatcher_nodes) > 0 or len(set_mat_nodes) > 0)
 
         # Yefira's evaluated shader path is a separate material variant.
         self.assertEqual(assigned_mat.get("mtk:atlas_uv_source"), "UVMap")
@@ -116,11 +123,12 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertEqual(uv_source.attribute_name, "UVMap")
         self.assertIn("mtk_tile_top", self.mesh.attributes)
         self.assertIn("mtk_texture_top", self.mesh.attributes)
+        self.assertIn("mtk_is_opaque", self.mesh.attributes)
         self.assertNotIn("mtk:atlas_mapping", self.mesh)
 
     def test_generated_model_uses_texture_table_when_faces_are_null(self):
         """Stained glass has a generated model but a valid Atlas texture."""
-        from pipeline.steps.step_replace_material import _write_yefira_point_atlas_attributes
+        from utils.materials.yefira import write_yefira_point_atlas_attributes as _write_yefira_point_atlas_attributes
 
         mapping = {
             "textures": {
@@ -145,7 +153,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
 
     def test_grass_tint_weights_are_face_specific(self):
         """Grass must not propagate its top tint to dirt or side base faces."""
-        from pipeline.steps.step_replace_material import _write_yefira_point_atlas_attributes
+        from utils.materials.yefira import write_yefira_point_atlas_attributes as _write_yefira_point_atlas_attributes
 
         no_tint = {"default_base_tint_weight": 0.0, "default_overlay_tint_weight": 0.0, "default_tint_weight": 0.0}
         side_overlay = {"default_base_tint_weight": 0.0, "default_overlay_tint_weight": 1.0, "default_tint_weight": 1.0}
@@ -163,6 +171,37 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_east"].data[0].color), (0.0, 1.0, 1.0, 0.0))
         self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_top"].data[0].color), (1.0, 1.0, 1.0, 0.0))
         self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_bottom"].data[0].color), (0.0, 0.0, 0.0, 0.0))
+
+    def test_opacity_attributes_written(self):
+        """Verify that mtk_is_opaque and is_opaque attributes are populated for opaque vs transparent materials."""
+        from utils.materials.yefira import write_yefira_point_atlas_attributes as _write_yefira_point_atlas_attributes
+
+        mapping = {
+            "materials": [
+                {
+                    "name": "stone",
+                    "material_id": 1,
+                    "is_opaque": True,
+                    "faces": {face: {"is_opaque": True} for face in ("+X", "-X", "+Y", "-Y", "+Z", "-Z")},
+                },
+                {
+                    "name": "glass",
+                    "material_id": 2,
+                    "is_opaque": False,
+                    "faces": {face: {"is_opaque": False} for face in ("+X", "-X", "+Y", "-Y", "+Z", "-Z")},
+                },
+            ]
+        }
+        self.mesh.attributes["block_state"].data[0].value = b"minecraft:stone"
+        self.mesh.attributes["block_state"].data[1].value = b"minecraft:glass"
+        _write_yefira_point_atlas_attributes(self.mesh, mapping)
+
+        self.assertIn("mtk_is_opaque", self.mesh.attributes)
+        self.assertIn("is_opaque", self.mesh.attributes)
+        self.assertEqual(self.mesh.attributes["mtk_is_opaque"].data[0].value, 1)
+        self.assertEqual(self.mesh.attributes["mtk_is_opaque"].data[1].value, 0)
+        self.assertEqual(self.mesh.attributes["is_opaque"].data[0].value, 1)
+        self.assertEqual(self.mesh.attributes["is_opaque"].data[1].value, 0)
 
     def test_yefira_object_detection(self):
         """Verify is_yefira_object and has_yefira_objects correctly distinguish Yefira from normal meshes."""

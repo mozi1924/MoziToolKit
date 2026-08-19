@@ -26,6 +26,8 @@ PROP_PROVENANCE_SCHEMA_VERSION = "mtk:provenance_schema_version"
 ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
 ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
 ATTR_FACE_MATERIAL_ID = "mtk_material_id"
+ATTR_IS_OPAQUE = "mtk_is_opaque"
+ATTR_ALPHA_MODE = "mtk_alpha_mode"
 # Canonical source provenance.  These are FACE-domain string attributes so a
 # mesh can retain one source texture identity per polygon even when several
 # polygons share the same Blender material (as happens in atlas mode).
@@ -100,6 +102,7 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_FACE_MATERIAL_ID,
+    ATTR_IS_OPAQUE,
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,

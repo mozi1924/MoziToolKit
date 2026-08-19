@@ -123,8 +123,9 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
         ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
     )
-    values = {name: {"tile": [], "chunk": [], "texture": [], "tint_data": []} for name, _ in face_specs}
+    values = {name: {"tile": [], "chunk": [], "texture": [], "tint_data": [], "is_opaque": []} for name, _ in face_specs}
     material_ids = []
+    is_opaque_list = []
 
     for item in state_attr.data:
         state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
@@ -137,6 +138,14 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         explicit_locations = [faces.get(mapping_face) for _, mapping_face in face_specs]
         has_differentiated_faces = len({loc.get("texture_key") for loc in explicit_locations if isinstance(loc, dict)}) > 1
         derived_faces = texture_only_faces(primary_name) if not has_differentiated_faces else {}
+
+        # Determine block-level opacity
+        block_opaque = 1
+        if entry is not None and "is_opaque" in entry:
+            block_opaque = 1 if entry.get("is_opaque", True) else 0
+        elif fallback_location:
+            block_opaque = 1 if fallback_location.get("is_opaque", True) else 0
+        is_opaque_list.append(block_opaque)
 
         for attr_face, mapping_face in face_specs:
             location = derived_faces.get(mapping_face) or faces.get(mapping_face) or fallback_location
@@ -152,6 +161,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 float(location.get("default_tint_weight", 0.0)),
                 1.0 if location.get("is_hardcoded", False) else 0.0,
             ))
+            values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
 
     def point_attr(name: str, data_type: str):
         attr = mesh.attributes.get(name)
@@ -161,11 +171,14 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         return attr or mesh.attributes.new(name=name, type=data_type, domain='POINT')
 
     point_attr("mtk_material_id", 'INT').data.foreach_set('value', material_ids)
+    point_attr("mtk_is_opaque", 'INT').data.foreach_set('value', is_opaque_list)
+    point_attr("is_opaque", 'INT').data.foreach_set('value', is_opaque_list)
     for face, _ in face_specs:
         tile_attr = point_attr(f"mtk_tile_{face}", 'FLOAT_VECTOR')
         tile_attr.data.foreach_set('vector', [component for tile in values[face]["tile"] for component in tile])
         point_attr(f"mtk_chunk_{face}", 'INT').data.foreach_set('value', values[face]["chunk"])
         point_attr(f"mtk_texture_{face}", 'INT').data.foreach_set('value', values[face]["texture"])
+        point_attr(f"mtk_is_opaque_{face}", 'INT').data.foreach_set('value', values[face]["is_opaque"])
         tint_attr = point_attr(f"mtk_tint_data_{face}", 'FLOAT_COLOR')
         tint_attr.data.foreach_set('color', [component for value in values[face]["tint_data"] for component in value])
 

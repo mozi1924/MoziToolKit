@@ -63,6 +63,65 @@ def is_animated_texture(image, mcmeta: dict | None) -> bool:
     return (frame_count > 1) or (isinstance(frames, list) and len(frames) > 1)
 
 
+def analyze_texture_transparency(image: Any) -> dict[str, Any]:
+    """
+    Analyze the alpha channel of an image to classify its transparency.
+    Returns:
+        {
+            "is_opaque": bool,        # True if alpha is 255 for all pixels
+            "alpha_mode": str,        # "OPAQUE" | "CUTOUT" | "TRANSLUCENT"
+            "min_alpha": int,         # 0..255
+            "max_alpha": int,         # 0..255
+        }
+    """
+    if image is None:
+        return {
+            "is_opaque": True,
+            "alpha_mode": "OPAQUE",
+            "min_alpha": 255,
+            "max_alpha": 255,
+        }
+    try:
+        alpha_channel = image.getchannel("A") if "A" in image.getbands() else None
+        if alpha_channel is None:
+            return {
+                "is_opaque": True,
+                "alpha_mode": "OPAQUE",
+                "min_alpha": 255,
+                "max_alpha": 255,
+            }
+        min_a, max_a = alpha_channel.getextrema()
+        if min_a == 255:
+            return {
+                "is_opaque": True,
+                "alpha_mode": "OPAQUE",
+                "min_alpha": int(min_a),
+                "max_alpha": int(max_a),
+            }
+        # Check for intermediate alpha (translucent) vs binary alpha (cutout)
+        colors = alpha_channel.getcolors(maxcolors=256)
+        if colors:
+            alpha_vals = {val for count, val in colors}
+            has_intermediate = any(0 < val < 255 for val in alpha_vals)
+            alpha_mode = "TRANSLUCENT" if has_intermediate else "CUTOUT"
+        else:
+            alpha_mode = "TRANSLUCENT" if (min_a > 0 or max_a < 255) else "CUTOUT"
+
+        return {
+            "is_opaque": False,
+            "alpha_mode": alpha_mode,
+            "min_alpha": int(min_a),
+            "max_alpha": int(max_a),
+        }
+    except Exception:
+        return {
+            "is_opaque": True,
+            "alpha_mode": "OPAQUE",
+            "min_alpha": 255,
+            "max_alpha": 255,
+        }
+
+
 class AtlasGenerator:
     """
     Parses Minecraft block models and textures from a JAR archive, ZIP file, or directory.
@@ -446,6 +505,7 @@ class AtlasGenerator:
                         raw_key = self._texture_name(ns, stem)
                         canonical_key = f"{ns}:block/{stem}"
                         tint_info = self.biome_resolver.get_tint_info(stem)
+                        transparency = analyze_texture_transparency(static_map.get(stem))
                         loc_entry = {
                             "texture_key": canonical_key,
                             "namespace": ns,
@@ -454,6 +514,9 @@ class AtlasGenerator:
                             "tile_column": texture_id % tiles_per_row,
                             "tile_row": texture_id // tiles_per_row,
                             "kind": "static",
+                            "is_opaque": transparency["is_opaque"],
+                            "alpha_mode": transparency["alpha_mode"],
+                            "min_alpha": transparency["min_alpha"],
                             "tile_size": ns_tile_size,
                             "frame_width": ns_tile_size,
                             "frame_height": ns_tile_size,
@@ -584,6 +647,7 @@ class AtlasGenerator:
                         raw_name = self._texture_name(namespace_val, stem)
                         canonical_key = f"{namespace_val}:block/{stem}"
                         tint_info = self.biome_resolver.get_tint_info(stem)
+                        transparency = analyze_texture_transparency(image)
 
                         anim_loc = {
                             "texture_key": canonical_key,
@@ -591,6 +655,9 @@ class AtlasGenerator:
                             "chunk_id": chunk_id,
                             "texture_id": texture_id,
                             "kind": "animation",
+                            "is_opaque": transparency["is_opaque"],
+                            "alpha_mode": transparency["alpha_mode"],
+                            "min_alpha": transparency["min_alpha"],
                             "pixel_x": x_offset,
                             "pixel_y": 0,
                             "preview_frame": 0,
@@ -669,9 +736,18 @@ class AtlasGenerator:
         all_material_names = sorted(set(self.models) | set(self.static_textures) | set(self.animated_textures))
         for material_id, name in enumerate(all_material_names):
             faces = self.get_6_faces_for_model(name) if name in self.models else {face: name for face in FACE_ORDER}
-            materials.append({"material_id": material_id, "name": name, "faces": {
+            face_entries = {
                 face: texture_locations.get(texture_name) for face, texture_name in faces.items()
-            }})
+            }
+            mat_is_opaque = all(
+                entry.get("is_opaque", True) for entry in face_entries.values() if isinstance(entry, dict)
+            ) if face_entries else True
+            materials.append({
+                "material_id": material_id,
+                "name": name,
+                "is_opaque": mat_is_opaque,
+                "faces": face_entries,
+            })
 
         # Determine base tile_size for mapping summary (preference to minecraft)
         mc_chunk = next((c for c in chunks if c.get("namespace") == "minecraft" and "tile_size" in c), None)
