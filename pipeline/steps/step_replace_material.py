@@ -200,7 +200,7 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
         ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
     )
-    values = {name: {"tile": [], "chunk": [], "texture": []} for name, _ in face_specs}
+    values = {name: {"tile": [], "chunk": [], "texture": [], "tint_data": []} for name, _ in face_specs}
     material_ids = []
 
     for item in state_attr.data:
@@ -222,6 +222,12 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
             ))
             values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
             values[attr_face]["texture"].append(int(location.get("texture_id", 0)))
+            values[attr_face]["tint_data"].append((
+                float(location.get("default_base_tint_weight", 0.0)),
+                float(location.get("default_overlay_tint_weight", 0.0)),
+                float(location.get("default_tint_weight", 0.0)),
+                1.0 if location.get("is_hardcoded", False) else 0.0,
+            ))
 
     def point_attr(name: str, data_type: str):
         attr = mesh.attributes.get(name)
@@ -236,6 +242,8 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
         tile_attr.data.foreach_set('vector', [component for tile in values[face]["tile"] for component in tile])
         point_attr(f"mtk_chunk_{face}", 'INT').data.foreach_set('value', values[face]["chunk"])
         point_attr(f"mtk_texture_{face}", 'INT').data.foreach_set('value', values[face]["texture"])
+        tint_attr = point_attr(f"mtk_tint_data_{face}", 'FLOAT_COLOR')
+        tint_attr.data.foreach_set('color', [component for value in values[face]["tint_data"] for component in value])
 
 
 def _is_yefira_world(obj: bpy.types.Object) -> bool:

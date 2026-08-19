@@ -93,7 +93,7 @@ DIRECTION_SUFFIX_MAP = {
 FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 # Atlas Format Version
-ATLAS_FORMAT_VERSION = 10
+ATLAS_FORMAT_VERSION = 11
 
 # All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
 ANIM_AND_ATLAS_ATTR_NAMES = (
@@ -133,4 +133,3 @@ LEGACY_SPLIT_ATTR_NAMES = (
     "mtk_anim_frame_width",
     "mtk_anim_frame_height",
 )
-
