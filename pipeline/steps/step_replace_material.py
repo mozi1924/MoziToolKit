@@ -659,12 +659,18 @@ class StepReplaceMaterial(PipelineStep):
                         chunk_material.use_fake_user = True
                         obj.data.materials.append(chunk_material)
 
-                    # Update Yefira's geometry nodes material dispatcher if available
+                    # Notify Yefira to refresh point cloud attributes and rebuild geometry nodes
                     try:
-                        import sys
-                        if "yefira_blender.nodes.world_tree" in sys.modules:
-                            from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
-                            setup_world_geometry_nodes(obj)
+                        if hasattr(bpy.ops, "yefira") and hasattr(bpy.ops.yefira, "rebuild_world"):
+                            bpy.ops.yefira.rebuild_world()
+                        else:
+                            import sys
+                            if "yefira_blender.operators.main_operators" in sys.modules:
+                                from yefira_blender.operators.main_operators import trigger_point_cloud_update
+                                trigger_point_cloud_update(bpy.context)
+                            elif "yefira_blender.nodes.world_tree" in sys.modules:
+                                from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
+                                setup_world_geometry_nodes(obj)
                     except Exception:
                         pass
 
