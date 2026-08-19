@@ -419,8 +419,13 @@ class BiomeResolver:
         overlay_stem = self.get_overlay_texture(clean)
         has_overlay = overlay_stem is not None
 
-        # 3. Centralized category classification
+        # 3. Centralized category classification.  The base layer of a
+        # paired overlay (``grass_block_side``) is deliberately untinted, but
+        # its overlay is grass-tinted.  Classifying only the base silently
+        # discarded that relationship and made the atlas metadata unusable.
         category = classify_tint_category(clean)
+        if category == "none" and overlay_stem:
+            category = classify_tint_category(overlay_stem)
         if category == "grass":
             base_weight = 0.0 if has_overlay else 1.0
             return {

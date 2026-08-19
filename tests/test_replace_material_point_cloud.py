@@ -143,6 +143,27 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertEqual(tuple(self.mesh.attributes["mtk_tile_east"].data[0].vector), (125.0, 0.0, 0.0))
         self.assertEqual(self.mesh.attributes["mtk_texture_east"].data[0].value, 125)
 
+    def test_grass_tint_weights_are_face_specific(self):
+        """Grass must not propagate its top tint to dirt or side base faces."""
+        from pipeline.steps.step_replace_material import _write_yefira_point_atlas_attributes
+
+        no_tint = {"default_base_tint_weight": 0.0, "default_overlay_tint_weight": 0.0, "default_tint_weight": 0.0}
+        side_overlay = {"default_base_tint_weight": 0.0, "default_overlay_tint_weight": 1.0, "default_tint_weight": 1.0}
+        grass_top = {"default_base_tint_weight": 1.0, "default_overlay_tint_weight": 1.0, "default_tint_weight": 1.0}
+        mapping = {"materials": [{
+            "name": "grass_block",
+            "faces": {
+                "+X": side_overlay, "-X": side_overlay, "+Y": grass_top,
+                "-Y": no_tint, "+Z": side_overlay, "-Z": side_overlay,
+            },
+        }]}
+        self.mesh.attributes["block_state"].data[0].value = b"minecraft:grass_block"
+        _write_yefira_point_atlas_attributes(self.mesh, mapping)
+
+        self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_east"].data[0].color), (0.0, 1.0, 1.0, 0.0))
+        self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_top"].data[0].color), (1.0, 1.0, 1.0, 0.0))
+        self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_bottom"].data[0].color), (0.0, 0.0, 0.0, 0.0))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
