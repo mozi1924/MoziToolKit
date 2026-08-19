@@ -37,10 +37,33 @@ from .constants import (
 )
 
 
+def _new_atlas_uv_source(nodes, *, attribute_name: str | None, location: tuple[float, float]):
+    """Create the UV source for one Atlas material variant.
+
+    Normal meshes use Blender's active UV map.  Yefira is the exceptional
+    procedural variant: its Geometry Nodes graph supplies an evaluated
+    ``UVMap`` attribute instead.  Keeping that choice here prevents a Yefira
+    fix from silently changing every normal Mozi atlas material.
+    """
+    if attribute_name:
+        node = nodes.new("ShaderNodeAttribute")
+        node.name = f"Atlas UV Attribute ({attribute_name})"
+        node.attribute_type = "GEOMETRY"
+        node.attribute_name = attribute_name
+        node.location = location
+        return node.outputs["Vector"]
+
+    node = nodes.new("ShaderNodeTexCoord")
+    node.name = "Atlas Texture Coordinate"
+    node.location = location
+    return node.outputs["UV"]
+
+
 def build_atlas_material(
     atlas_dir: str | Path,
     mat_name: str = "MC_Atlas_Material",
-    pack_textures: bool = True
+    pack_textures: bool = True,
+    uv_attribute: str | None = None,
 ) -> bpy.types.Material:
     """
     Construct or update a Blender Material that uses the generated Atlas textures and mapping.
@@ -93,9 +116,9 @@ def build_atlas_material(
     bsdf_node.location = (400, 0)
     links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
 
-    # 2. Texture Coordinate & Attribute Node
-    tex_coord = nodes.new("ShaderNodeTexCoord")
-    tex_coord.location = (-900, 200)
+    # 2. Default to the ordinary mesh UV layer.  An explicit caller opts a
+    # procedural variant into a named geometry attribute.
+    uv_socket = _new_atlas_uv_source(nodes, attribute_name=uv_attribute, location=(-900, 200))
 
     attr_node = nodes.new("ShaderNodeAttribute")
     attr_node.name = "Face Material ID Attribute"
@@ -116,7 +139,7 @@ def build_atlas_material(
     decoder_node.inputs["Static Material Columns"].default_value = static_material_columns
 
     # Connect UV Vector & Material ID Attribute
-    links.new(tex_coord.outputs["UV"], decoder_node.inputs["Vector"])
+    links.new(uv_socket, decoder_node.inputs["Vector"])
     links.new(attr_node.outputs["Fac"], decoder_node.inputs["Material ID"])
 
     # 4. Albedo Image Texture Node
@@ -232,8 +255,13 @@ def build_atlas_chunk_materials(
     namespace: str = DEFAULT_NAMESPACE,
     pack_textures: bool = True,
     chunk_ids: set[int] | None = None,
+    uv_attribute: str | None = None,
 ) -> dict[int, bpy.types.Material]:
-    """Build UV-driven Blender materials per atlas chunk aligned with LabPBR PBR & animation decoder."""
+    """Build Atlas chunk materials for the normal or an explicit DCC variant.
+
+    ``uv_attribute=None`` is the normal mesh contract.  ``"UVMap"`` is used
+    only by Yefira's evaluated Geometry Nodes output.
+    """
     atlas_path = Path(atlas_dir)
     with open(atlas_path / "atlas_mapping.json", "r", encoding="utf-8") as fp:
         raw_mapping = fp.read()
@@ -275,16 +303,21 @@ def build_atlas_chunk_materials(
         chunk_namespace = chunk.get("namespace", namespace or DEFAULT_NAMESPACE)
 
         # Determine material name & lookup existing material by durable metadata contract
+        variant_suffix = f":attr:{uv_attribute}" if uv_attribute else ""
         if material_prefix:
-            material_name = f"{material_prefix}:chunk:{chunk_id:03d}"
+            material_name = f"{material_prefix}:chunk:{chunk_id:03d}{variant_suffix}"
         elif short_hash:
-            material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}:{short_hash}"
+            material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}:{short_hash}{variant_suffix}"
         else:
-            material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}"
+            material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}{variant_suffix}"
 
         mat = None
         for existing in bpy.data.materials:
-            if existing.get(PROP_SOURCE_NAMESPACE) == chunk_namespace and existing.get(PROP_SOURCE_TEXTURE) == chunk_texture_name:
+            if (
+                existing.get(PROP_SOURCE_NAMESPACE) == chunk_namespace
+                and existing.get(PROP_SOURCE_TEXTURE) == chunk_texture_name
+                and existing.get("mtk:atlas_uv_source", "") == (uv_attribute or "")
+            ):
                 if pack_hash and existing.get(PROP_PACK_HASH) == pack_hash:
                     mat = existing
                     break
@@ -317,6 +350,7 @@ def build_atlas_chunk_materials(
             mat[PROP_PACK_HASH_SHORT] = short_hash
         mat[PROP_ATLAS_CHUNK_ID] = chunk_id
         mat[PROP_ATLAS_CHUNK_KIND] = chunk["kind"]
+        mat["mtk:atlas_uv_source"] = uv_attribute or ""
 
         nodes, links = mat.node_tree.nodes, mat.node_tree.links
         nodes.clear()
@@ -349,9 +383,9 @@ def build_atlas_chunk_materials(
             links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
             links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
 
-        # 2. Shared TexCoord Node
-        tex_coord = nodes.new("ShaderNodeTexCoord")
-        tex_coord.location = (-1200, 0)
+        # 2. Ordinary meshes read their UV layer.  The Yefira call site opts
+        # into its generated UVMap attribute explicitly.
+        uv_socket = _new_atlas_uv_source(nodes, attribute_name=uv_attribute, location=(-1200, 0))
 
         # Build channels: Albedo, Normal, Specular
         channels_info = [
@@ -513,7 +547,7 @@ def build_atlas_chunk_materials(
                 if "Atlas Mode" in uv_node.inputs:
                     uv_node.inputs["Atlas Mode"].default_value = 1.0
 
-                links.new(tex_coord.outputs["UV"], uv_node.inputs["Vector"])
+                links.new(uv_socket, uv_node.inputs["Vector"])
                 links.new(scheduler.outputs["Current Frame"], uv_node.inputs["Current Frame"])
                 links.new(scheduler.outputs["Next Frame"], uv_node.inputs["Next Frame"])
                 links.new(scheduler.outputs["Blend Factor"], uv_node.inputs["Blend Factor"])
@@ -668,13 +702,13 @@ def build_atlas_chunk_materials(
                 tiling_node.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
                 tiling_node.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
                 tiling_node.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
-                links.new(tex_coord.outputs["UV"], tiling_node.inputs["Vector"])
+                links.new(uv_socket, tiling_node.inputs["Vector"])
                 links.new(combine_scale.outputs["Vector"], tiling_node.inputs["Scale"])
                 links.new(combine_location.outputs["Vector"], tiling_node.inputs["Location"])
                 links.new(comb_rot.outputs["Vector"], tiling_node.inputs["Rotation"])
                 uv_source_socket = tiling_node.outputs["Atlas UV"]
             else:
-                uv_source_socket = tex_coord.outputs["UV"]
+                uv_source_socket = uv_socket
 
             # Check if overlay texture exists for static chunk
             overlay_fname = chunk_files.get("overlay")

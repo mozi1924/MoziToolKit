@@ -34,6 +34,11 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
 
         self.mesh.from_pydata([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], [], [])
         self.mesh.update()
+        # This is the explicit Yefira variant marker.  Polygon-free meshes
+        # without it remain ordinary procedural objects.
+        states = self.mesh.attributes.new("block_state", 'STRING', 'POINT')
+        for item in states.data:
+            item.value = b"minecraft:stone"
 
         # Add dummy material slot
         dummy_mat = bpy.data.materials.new(name="Yefira_Atlas_Master")
@@ -105,8 +110,13 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertEqual(len(set_mat_nodes), 1)
         self.assertEqual(set_mat_nodes[0].inputs['Material'].default_value, assigned_mat)
 
-        # Verify mesh received atlas mapping property
-        self.assertIn("mtk:atlas_mapping", self.mesh)
+        # Yefira's evaluated shader path is a separate material variant.
+        self.assertEqual(assigned_mat.get("mtk:atlas_uv_source"), "UVMap")
+        uv_source = next(n for n in assigned_mat.node_tree.nodes if n.name == "Atlas UV Attribute (UVMap)")
+        self.assertEqual(uv_source.attribute_name, "UVMap")
+        self.assertIn("mtk_tile_top", self.mesh.attributes)
+        self.assertIn("mtk_texture_top", self.mesh.attributes)
+        self.assertNotIn("mtk:atlas_mapping", self.mesh)
 
 
 if __name__ == "__main__":

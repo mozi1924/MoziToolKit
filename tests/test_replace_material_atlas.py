@@ -84,6 +84,11 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         # Verify LabPBR 1.3 Decoder node group is present in the node tree
         node_names = [n.name for n in assigned_mat.node_tree.nodes]
         self.assertIn("LabPBR 1.3 Decoder", node_names)
+        # Ordinary meshes must keep their UV-layer source; only Yefira opts
+        # into the generated UVMap attribute material variant.
+        self.assertEqual(assigned_mat.get("mtk:atlas_uv_source"), "")
+        self.assertTrue(any(n.bl_idname == "ShaderNodeTexCoord" for n in assigned_mat.node_tree.nodes))
+        self.assertFalse(any(n.name == "Atlas UV Attribute (UVMap)" for n in assigned_mat.node_tree.nodes))
 
         # Check metadata on material
         self.assertEqual(assigned_mat.get("mtk:source_namespace"), "minecraft")
