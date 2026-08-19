@@ -747,6 +747,18 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestStandaloneAnimatedPBR: {e}")
 
+    try:
+        from tests.test_atlas_material_metadata import TestAtlasMaterialMetadata
+        suite.addTests(loader.loadTestsFromTestCase(TestAtlasMaterialMetadata))
+    except Exception as e:
+        print(f"[Warning] Could not load TestAtlasMaterialMetadata: {e}")
+
+    try:
+        from tests.test_replace_material_point_cloud import TestReplaceMaterialPointCloud
+        suite.addTests(loader.loadTestsFromTestCase(TestReplaceMaterialPointCloud))
+    except Exception as e:
+        print(f"[Warning] Could not load TestReplaceMaterialPointCloud: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

@@ -1,17 +1,7 @@
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from ...utils.system import register_menu_item, has_pillow, draw_pillow_warning
-
-
-def _has_yefira_object(objects) -> bool:
-    for obj in objects:
-        if not obj:
-            continue
-        if obj.name == "Yefira_World" or "Yefira_WorldModifier" in obj.modifiers:
-            return True
-        if hasattr(obj, "data") and hasattr(obj.data, "attributes") and "mc_pos" in obj.data.attributes:
-            return True
-    return False
+from ...utils.materials import has_yefira_objects
 
 
 @register_menu_item(views=["object"])
@@ -90,7 +80,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
 
     def draw(self, context):
         layout = self.layout
-        is_yefira = _has_yefira_object(context.selected_objects)
+        is_yefira = has_yefira_objects(context.selected_objects)
         if is_yefira:
             self.material_mode = 'ATLAS'
             ybox = layout.box()
@@ -127,7 +117,7 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         from ...pipeline import get_preset_pipeline, run_pipeline_modal
         from ...pipeline.step import StepStatus
 
-        is_yefira = _has_yefira_object(context.selected_objects)
+        is_yefira = has_yefira_objects(context.selected_objects)
         effective_mode = 'ATLAS' if is_yefira else self.material_mode
 
         params = {

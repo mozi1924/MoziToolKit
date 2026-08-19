@@ -161,6 +161,14 @@ if HAS_BPY:
         build_atlas_material,
         build_atlas_chunk_materials,
     )
+    from .yefira import (
+        is_yefira_object,
+        has_yefira_objects,
+        write_yefira_point_atlas_attributes,
+        setup_yefira_point_cloud_attributes,
+        notify_yefira_update,
+        apply_yefira_atlas_materials,
+    )
 
 
 from .atlas_layout import (
@@ -339,4 +347,12 @@ __all__ = [
     # Standalone Alignment
     "align_standalone_textures",
     "is_channel_animated",
+
+    # Yefira Integration
+    "is_yefira_object",
+    "has_yefira_objects",
+    "write_yefira_point_atlas_attributes",
+    "setup_yefira_point_cloud_attributes",
+    "notify_yefira_update",
+    "apply_yefira_atlas_materials",
 ]
