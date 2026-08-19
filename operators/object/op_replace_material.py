@@ -3,6 +3,17 @@ from bpy_extras.io_utils import ImportHelper
 from ...utils.system import register_menu_item, has_pillow, draw_pillow_warning
 
 
+def _has_yefira_object(objects) -> bool:
+    for obj in objects:
+        if not obj:
+            continue
+        if obj.name == "Yefira_World" or "Yefira_WorldModifier" in obj.modifiers:
+            return True
+        if hasattr(obj, "data") and hasattr(obj.data, "attributes") and "mc_pos" in obj.data.attributes:
+            return True
+    return False
+
+
 @register_menu_item(views=["object"])
 class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
     """Replace selected objects' materials using a Minecraft Java Edition resource pack."""
@@ -79,9 +90,18 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
 
     def draw(self, context):
         layout = self.layout
+        is_yefira = _has_yefira_object(context.selected_objects)
+        if is_yefira:
+            self.material_mode = 'ATLAS'
+            ybox = layout.box()
+            ybox.label(text="Yefira World selected: Mode locked to Atlas", icon='LOCKED')
+
         box = layout.box()
         box.label(text="Material Options", icon='TEXTURE')
-        box.prop(self, "material_mode", text="Mode")
+        row = box.row()
+        row.prop(self, "material_mode", text="Mode")
+        if is_yefira:
+            row.enabled = False
         box.prop(self, "biome_preset", text="Biome")
 
         if not has_pillow():
@@ -107,9 +127,12 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         from ...pipeline import get_preset_pipeline, run_pipeline_modal
         from ...pipeline.step import StepStatus
 
+        is_yefira = _has_yefira_object(context.selected_objects)
+        effective_mode = 'ATLAS' if is_yefira else self.material_mode
+
         params = {
             "zip_path": self.filepath,
-            "material_mode": self.material_mode,
+            "material_mode": effective_mode,
             "pack_textures": self.pack_textures,
             "use_cache": self.use_cache,
             "biome_preset": self.biome_preset,
