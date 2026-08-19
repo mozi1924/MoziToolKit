@@ -196,6 +196,41 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
             if isinstance(location, dict):
                 return location
         return {}
+
+    def texture_only_faces(block_name: str) -> dict:
+        """Derive standard cube faces from a texture-only atlas mapping.
+
+        SPBR maps usually retain individual textures but not Minecraft model
+        JSON.  Normal meshes still work because their source polygons carry
+        the exact texture key; Yefira has only a logical block state, so make
+        that bridge here.  A differentiated model face table remains the
+        authoritative source whenever present.
+        """
+        base = texture_location(block_name)
+        side = texture_location(f"{block_name}_side") or base
+        top = texture_location(f"{block_name}_top") or texture_location(f"{block_name}_end") or side
+        bottom = texture_location(f"{block_name}_bottom") or texture_location(f"{block_name}_end") or top
+        if block_name == "grass_block":
+            bottom = texture_location("dirt") or bottom
+        named_variants = any(texture_location(f"{block_name}{suffix}") for suffix in ("_side", "_top", "_bottom", "_end"))
+        if not named_variants or not side or not top or not bottom:
+            return {}
+        return {"+X": side, "-X": side, "+Y": top, "-Y": bottom, "+Z": side, "-Z": side}
+
+    def mapping_names(state: str) -> tuple[str, ...]:
+        """Resolve stateful generated models before generic texture fallback."""
+        block_name, _, raw_props = state.partition("[")
+        block_name = block_name.removeprefix("minecraft:").removeprefix("block/")
+        names = []
+        if block_name.endswith("_door"):
+            props = {
+                key.strip(): value.strip().rstrip("]")
+                for pair in raw_props.rstrip("]").split(",") if "=" in pair
+                for key, value in [pair.split("=", 1)]
+            }
+            names.append(f"{block_name}_{'top' if props.get('half') == 'upper' else 'bottom'}")
+        names.append(block_name)
+        return tuple(names)
     face_specs = (
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
         ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
@@ -205,17 +240,25 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
 
     for item in state_attr.data:
         state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
-        block_name = state.split("[", 1)[0].removeprefix("minecraft:").removeprefix("block/")
-        entry = by_name.get(block_name)
+        names = mapping_names(state)
+        entry = next((by_name[name] for name in names if name in by_name), None)
         material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
         faces = entry.get("faces", {}) if entry else {}
-        fallback_location = texture_location(block_name)
+        fallback_location = next((texture_location(name) for name in names if texture_location(name)), {})
+        # In a texture-only pack atlas_generator emits a uniform material row
+        # for e.g. oak_log.  Replace that row only when the texture table
+        # proves that side/top/end components exist; do not override actual
+        # multi-face model data.
+        primary_name = names[0]
+        explicit_locations = [faces.get(mapping_face) for _, mapping_face in face_specs]
+        has_differentiated_faces = len({loc.get("texture_key") for loc in explicit_locations if isinstance(loc, dict)}) > 1
+        derived_faces = texture_only_faces(primary_name) if not has_differentiated_faces else {}
         for attr_face, mapping_face in face_specs:
             # Vanilla generated models such as stained glass are represented
             # by a material entry with null faces, while their atlas location
             # is correctly present in ``textures``.  A missing face is not a
             # valid request for texture zero.
-            location = faces.get(mapping_face) or fallback_location
+            location = derived_faces.get(mapping_face) or faces.get(mapping_face) or fallback_location
             values[attr_face]["tile"].append((
                 float(location.get("tile_column", 0)),
                 float(location.get("tile_row", 0)), 0.0,
