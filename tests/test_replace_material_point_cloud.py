@@ -164,6 +164,28 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_top"].data[0].color), (1.0, 1.0, 1.0, 0.0))
         self.assertEqual(tuple(self.mesh.attributes["mtk_tint_data_bottom"].data[0].color), (0.0, 0.0, 0.0, 0.0))
 
+    def test_yefira_object_detection(self):
+        """Verify is_yefira_object and has_yefira_objects correctly distinguish Yefira from normal meshes."""
+        from utils.materials.yefira import is_yefira_object, has_yefira_objects
+
+        # 1. Yefira object is recognized
+        self.assertTrue(is_yefira_object(self.obj))
+        self.assertTrue(has_yefira_objects([self.obj]))
+
+        # 2. Standard polygon mesh is not recognized as Yefira
+        cube_mesh = bpy.data.meshes.new("Standard_Cube")
+        cube_obj = bpy.data.objects.new("Standard_Cube", cube_mesh)
+        self.assertFalse(is_yefira_object(cube_obj))
+        self.assertFalse(has_yefira_objects([cube_obj]))
+
+        # 3. Mixed list returns True
+        self.assertTrue(has_yefira_objects([cube_obj, self.obj]))
+
+        # 4. None / non-mesh objects return False
+        self.assertFalse(is_yefira_object(None))
+        camera = bpy.data.objects.new("Camera", None)
+        self.assertFalse(is_yefira_object(camera))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

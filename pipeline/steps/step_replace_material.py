@@ -57,6 +57,12 @@ from ...utils.materials import (
     TINT_TYPE_FOLIAGE,
     TINT_TYPE_WATER,
     TINT_TYPE_HARDCODED,
+    is_yefira_object,
+    has_yefira_objects,
+    write_yefira_point_atlas_attributes,
+    setup_yefira_point_cloud_attributes,
+    notify_yefira_update,
+    apply_yefira_atlas_materials,
 )
 from ...utils.system import has_pillow
 from ...utils.mesh import (
@@ -176,131 +182,32 @@ def _cleanup_object_anim_properties(obj: bpy.types.Object) -> None:
             del obj[prop]
 
 
-def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> None:
-    """Fill Yefira's face atlas attributes directly from Mozi's mapping."""
-    state_attr = mesh.attributes.get("block_state")
-    if not state_attr or state_attr.domain != 'POINT':
-        return
-
-    by_name = {
-        str(entry.get("name", "")).removeprefix("minecraft:").removeprefix("block/"): entry
-        for entry in mapping.get("materials", [])
-        if entry.get("name")
-    }
-    texture_locations = mapping.get("textures", {})
-
-    def texture_location(block_name: str) -> dict:
-        """Find a flat texture entry when a block model has no face table."""
-        for key in (block_name, f"minecraft:{block_name}", f"minecraft:block/{block_name}"):
-            location = texture_locations.get(key)
-            if isinstance(location, dict):
-                return location
-        return {}
-
-    def texture_only_faces(block_name: str) -> dict:
-        """Derive standard cube faces from a texture-only atlas mapping.
-
-        SPBR maps usually retain individual textures but not Minecraft model
-        JSON.  Normal meshes still work because their source polygons carry
-        the exact texture key; Yefira has only a logical block state, so make
-        that bridge here.  A differentiated model face table remains the
-        authoritative source whenever present.
-        """
-        base = texture_location(block_name)
-        side = texture_location(f"{block_name}_side") or base
-        top = texture_location(f"{block_name}_top") or texture_location(f"{block_name}_end") or side
-        bottom = texture_location(f"{block_name}_bottom") or texture_location(f"{block_name}_end") or top
-        if block_name == "grass_block":
-            bottom = texture_location("dirt") or bottom
-        named_variants = any(texture_location(f"{block_name}{suffix}") for suffix in ("_side", "_top", "_bottom", "_end"))
-        if not named_variants or not side or not top or not bottom:
-            return {}
-        return {"+X": side, "-X": side, "+Y": top, "-Y": bottom, "+Z": side, "-Z": side}
-
-    def mapping_names(state: str) -> tuple[str, ...]:
-        """Resolve stateful generated models before generic texture fallback."""
-        block_name, _, raw_props = state.partition("[")
-        block_name = block_name.removeprefix("minecraft:").removeprefix("block/")
-        names = []
-        if block_name.endswith("_door"):
-            props = {
-                key.strip(): value.strip().rstrip("]")
-                for pair in raw_props.rstrip("]").split(",") if "=" in pair
-                for key, value in [pair.split("=", 1)]
-            }
-            names.append(f"{block_name}_{'top' if props.get('half') == 'upper' else 'bottom'}")
-        names.append(block_name)
-        return tuple(names)
-    face_specs = (
-        ("east", "+X"), ("west", "-X"), ("top", "+Y"),
-        ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
-    )
-    values = {name: {"tile": [], "chunk": [], "texture": [], "tint_data": []} for name, _ in face_specs}
-    material_ids = []
-
-    for item in state_attr.data:
-        state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
-        names = mapping_names(state)
-        entry = next((by_name[name] for name in names if name in by_name), None)
-        material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
-        faces = entry.get("faces", {}) if entry else {}
-        fallback_location = next((texture_location(name) for name in names if texture_location(name)), {})
-        # In a texture-only pack atlas_generator emits a uniform material row
-        # for e.g. oak_log.  Replace that row only when the texture table
-        # proves that side/top/end components exist; do not override actual
-        # multi-face model data.
-        primary_name = names[0]
-        explicit_locations = [faces.get(mapping_face) for _, mapping_face in face_specs]
-        has_differentiated_faces = len({loc.get("texture_key") for loc in explicit_locations if isinstance(loc, dict)}) > 1
-        derived_faces = texture_only_faces(primary_name) if not has_differentiated_faces else {}
-        for attr_face, mapping_face in face_specs:
-            # Vanilla generated models such as stained glass are represented
-            # by a material entry with null faces, while their atlas location
-            # is correctly present in ``textures``.  A missing face is not a
-            # valid request for texture zero.
-            location = derived_faces.get(mapping_face) or faces.get(mapping_face) or fallback_location
-            values[attr_face]["tile"].append((
-                float(location.get("tile_column", 0)),
-                float(location.get("tile_row", 0)), 0.0,
-            ))
-            values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
-            values[attr_face]["texture"].append(int(location.get("texture_id", 0)))
-            values[attr_face]["tint_data"].append((
-                float(location.get("default_base_tint_weight", 0.0)),
-                float(location.get("default_overlay_tint_weight", 0.0)),
-                float(location.get("default_tint_weight", 0.0)),
-                1.0 if location.get("is_hardcoded", False) else 0.0,
-            ))
-
-    def point_attr(name: str, data_type: str):
-        attr = mesh.attributes.get(name)
-        if attr and (attr.domain != 'POINT' or attr.data_type != data_type or len(attr.data) != len(state_attr.data)):
-            mesh.attributes.remove(attr)
-            attr = None
-        return attr or mesh.attributes.new(name=name, type=data_type, domain='POINT')
-
-    point_attr("mtk_material_id", 'INT').data.foreach_set('value', material_ids)
-    for face, _ in face_specs:
-        tile_attr = point_attr(f"mtk_tile_{face}", 'FLOAT_VECTOR')
-        tile_attr.data.foreach_set('vector', [component for tile in values[face]["tile"] for component in tile])
-        point_attr(f"mtk_chunk_{face}", 'INT').data.foreach_set('value', values[face]["chunk"])
-        point_attr(f"mtk_texture_{face}", 'INT').data.foreach_set('value', values[face]["texture"])
-        tint_attr = point_attr(f"mtk_tint_data_{face}", 'FLOAT_COLOR')
-        tint_attr.data.foreach_set('color', [component for value in values[face]["tint_data"] for component in value])
+# Backward compatibility aliases for cross-module or test callers
+_is_yefira_world = is_yefira_object
+_write_yefira_point_atlas_attributes = write_yefira_point_atlas_attributes
 
 
-def _is_yefira_world(obj: bpy.types.Object) -> bool:
-    """Identify the explicit Yefira point-cloud material variant.
-
-    A polygon-free mesh is not sufficient: other procedural objects can have
-    no base polygons and must retain the normal MoziToolKit material contract.
-    """
-    if not obj or obj.type != 'MESH' or obj.name != "Yefira_World":
+def _apply_generic_procedural_atlas_material(
+    obj: bpy.types.Object,
+    atlas_materials: dict[int, bpy.types.Material],
+    mapping_data: dict,
+) -> bool:
+    """Apply default Atlas material and provenance to a generic polygon-free procedural object."""
+    primary_mat = atlas_materials.get(0) or (list(atlas_materials.values())[0] if atlas_materials else None)
+    if not primary_mat:
         return False
-    state_attr = obj.data.attributes.get("block_state")
-    if not state_attr or state_attr.domain != 'POINT':
-        return False
-    return any(mod.type == 'NODES' and mod.name == 'Yefira_WorldModifier' for mod in obj.modifiers)
+    if not obj.data.materials:
+        obj.data.materials.append(primary_mat)
+    else:
+        obj.data.materials[0] = primary_mat
+    for mod in obj.modifiers:
+        if mod.type == 'NODES' and mod.node_group:
+            for n in mod.node_group.nodes:
+                if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
+                    n.inputs["Material"].default_value = primary_mat
+    obj.data["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
+    write_provenance_schema(obj.data)
+    return True
 
 
 
@@ -536,16 +443,17 @@ class StepReplaceMaterial(PipelineStep):
 
         chunks_by_id = {int(chunk["chunk_id"]): chunk for chunk in mapping_data.get("chunks", [])}
 
-        # Collect required chunks
+        # Partition target objects by variant
+        yefira_objects = [obj for obj in valid_objects if is_yefira_object(obj)]
+        standard_mesh_objects = [obj for obj in valid_objects if not is_yefira_object(obj) and len(obj.data.polygons) > 0]
+        generic_procedural_objects = [obj for obj in valid_objects if not is_yefira_object(obj) and len(obj.data.polygons) == 0]
+
+        # Collect required chunks from standard polygon mesh objects
         required_chunk_ids = set()
-        # Old Atlas materials store a large JSON mapping on their node tree.
-        # Do not parse it again for every polygon: a dense imported world can
-        # contain millions of faces and this phase otherwise appears to hang
-        # at 35%.
         mapping_by_material = {}
-        total_faces = sum(len(obj.data.polygons) for obj in valid_objects)
+        total_faces = sum(len(obj.data.polygons) for obj in standard_mesh_objects)
         scanned_faces = 0
-        for obj in valid_objects:
+        for obj in standard_mesh_objects:
             mesh = obj.data
             for poly_idx, poly in enumerate(mesh.polygons):
                 scanned_faces += 1
@@ -577,29 +485,30 @@ class StepReplaceMaterial(PipelineStep):
                         required_chunk_ids.add(int(loc["chunk_id"]))
                         break
 
-        # If no polygon faces were scanned (e.g. Point Cloud object or procedural Geometry Nodes world),
+        # If generic procedural objects exist or no polygon faces were scanned,
         # ensure static chunk 0 (or all static chunks) are generated.
-        if not required_chunk_ids:
+        if generic_procedural_objects or (not yefira_objects and not required_chunk_ids):
             static_chunks = [int(c["chunk_id"]) for c in mapping_data.get("chunks", []) if c.get("kind") == "static"]
-            required_chunk_ids = set(static_chunks) if static_chunks else {0}
+            required_chunk_ids.update(static_chunks if static_chunks else [0])
 
-        yefira_objects = [obj for obj in valid_objects if _is_yefira_world(obj)]
-
-        yield ProgressUpdate(0.45, 1.0, f"Building {len(required_chunk_ids)} Atlas chunk material(s)...")
+        yield ProgressUpdate(0.45, 1.0, f"Building Atlas chunk material(s)...")
 
         if pipeline_context.is_cancelled:
             yield StepResult.cancelled("Material replacement cancelled by user.")
             return
 
-        atlas_materials = build_atlas_chunk_materials(
-            atlas_dir,
-            pack_hash=pack.pack_hash,
-            pack_textures=pack_textures,
-            chunk_ids=required_chunk_ids,
-        )
-        # A Yefira world is a distinct material variant.  It must never reuse
-        # the normal UV-layer materials above because it supplies UVMap from
-        # evaluated Geometry Nodes instead.
+        # 1. Standard mesh atlas materials (using standard mesh UV coordinate socket)
+        atlas_materials = {}
+        if required_chunk_ids or standard_mesh_objects or generic_procedural_objects:
+            effective_chunks = required_chunk_ids if required_chunk_ids else {0}
+            atlas_materials = build_atlas_chunk_materials(
+                atlas_dir,
+                pack_hash=pack.pack_hash,
+                pack_textures=pack_textures,
+                chunk_ids=effective_chunks,
+            )
+
+        # 2. Yefira procedural atlas materials (using evaluated 'UVMap' geometry attribute)
         yefira_atlas_materials = {}
         if yefira_objects:
             yefira_atlas_materials = build_atlas_chunk_materials(
@@ -641,98 +550,15 @@ class StepReplaceMaterial(PipelineStep):
 
             mesh = obj.data
 
-            # Yefira is the only supported point-cloud variant.  Treating any
-            # polygon-free object this way would corrupt ordinary procedural
-            # meshes, which still use the standard UV material contract.
-            if _is_yefira_world(obj):
-                primary_mat = yefira_atlas_materials.get(0) or (list(yefira_atlas_materials.values())[0] if yefira_atlas_materials else None)
-                if primary_mat:
-                    # Chunk IDs are the Geometry Nodes material indices.  Give
-                    # the point-cloud a dense, deterministic slot table rather
-                    # than discarding every atlas chunk except the first one.
-                    obj.data.materials.clear()
-                    max_chunk_id = max(yefira_atlas_materials)
-                    for chunk_id in range(max_chunk_id + 1):
-                        chunk_material = yefira_atlas_materials.get(chunk_id)
-                        if chunk_material is None:
-                            raise RuntimeError(f"Atlas mapping is missing material chunk {chunk_id}")
-                        chunk_material.use_fake_user = True
-                        obj.data.materials.append(chunk_material)
-
-                    # Notify Yefira to refresh point cloud attributes and rebuild geometry nodes
-                    try:
-                        if hasattr(bpy.ops, "yefira") and hasattr(bpy.ops.yefira, "rebuild_world"):
-                            bpy.ops.yefira.rebuild_world()
-                        else:
-                            import sys
-                            if "yefira_blender.operators.main_operators" in sys.modules:
-                                from yefira_blender.operators.main_operators import trigger_point_cloud_update
-                                trigger_point_cloud_update(bpy.context)
-                            elif "yefira_blender.nodes.world_tree" in sys.modules:
-                                from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
-                                setup_world_geometry_nodes(obj)
-                    except Exception:
-                        pass
-
-                    # Ensure ATTR_UV_TILING_TRANSFORM and ATTR_UV_ROTATION exist on point cloud mesh
-                    if len(mesh.vertices) > 0:
-                        tiling_attr = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
-                        if not tiling_attr or tiling_attr.data_type != 'FLOAT_COLOR' or len(tiling_attr.data) != len(mesh.vertices):
-                            if tiling_attr:
-                                mesh.attributes.remove(tiling_attr)
-                            tiling_attr = mesh.attributes.new(name=ATTR_UV_TILING_TRANSFORM, type='FLOAT_COLOR', domain='POINT')
-                        flat_colors = [c for _ in range(len(mesh.vertices)) for c in (1.0, 1.0, 0.0, 0.0)]
-                        tiling_attr.data.foreach_set('color', flat_colors)
-
-                        rot_attr = mesh.attributes.get(ATTR_UV_ROTATION)
-                        if not rot_attr or rot_attr.data_type != 'FLOAT' or len(rot_attr.data) != len(mesh.vertices):
-                            if rot_attr:
-                                mesh.attributes.remove(rot_attr)
-                            rot_attr = mesh.attributes.new(name=ATTR_UV_ROTATION, type='FLOAT', domain='POINT')
-                        rot_attr.data.foreach_set('value', [0.0] * len(mesh.vertices))
-
-                        # v5 Yefira GN reads atlas metadata as named geometry
-                        # attributes.  They are intentionally not modifier
-                        # inputs, so a user cannot desynchronise the atlas.
-                        chunk_0 = chunks_by_id.get(0, {})
-                        atlas_metadata = {
-                            "mtk_atlas_width": float(chunk_0.get("width", primary_mat.get("mtk_atlas_width", 1024.0))),
-                            "mtk_atlas_height": float(chunk_0.get("height", primary_mat.get("mtk_atlas_height", 1024.0))),
-                            "mtk_tile_size": float(chunk_0.get("tile_size", primary_mat.get("mtk_tile_size", 16.0))),
-                            "mtk_tiles_per_row": float(chunk_0.get("tiles_per_row", primary_mat.get("mtk_tiles_per_row", 64))),
-                        }
-                        for attr_name, attr_value in atlas_metadata.items():
-                            attr = mesh.attributes.get(attr_name)
-                            if not attr or attr.data_type != 'FLOAT' or attr.domain != 'POINT' or len(attr.data) != len(mesh.vertices):
-                                if attr:
-                                    mesh.attributes.remove(attr)
-                                attr = mesh.attributes.new(name=attr_name, type='FLOAT', domain='POINT')
-                            attr.data.foreach_set('value', [attr_value] * len(mesh.vertices))
-
-                        _write_yefira_point_atlas_attributes(mesh, mapping_data)
-
-                    # Atlas mapping/provenance belongs to the atlas materials.
-                    # Writing it to a generated point-cloud data-block is both
-                    # redundant and invalid for several Blender RNA wrappers.
+            # 1. Yefira procedural point-cloud world
+            if is_yefira_object(obj):
+                if apply_yefira_atlas_materials(obj, yefira_atlas_materials, mapping_data, chunks_by_id):
                     replaced_objects += 1
                 continue
 
-            # Generic polygon-free objects retain the pre-Yefira behavior:
-            # one normal atlas material and normal mesh-side provenance.
+            # 2. Generic polygon-free procedural objects
             if len(mesh.polygons) == 0:
-                primary_mat = atlas_materials.get(0) or (list(atlas_materials.values())[0] if atlas_materials else None)
-                if primary_mat:
-                    if not obj.data.materials:
-                        obj.data.materials.append(primary_mat)
-                    else:
-                        obj.data.materials[0] = primary_mat
-                    for mod in obj.modifiers:
-                        if mod.type == 'NODES' and mod.node_group:
-                            for n in mod.node_group.nodes:
-                                if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
-                                    n.inputs["Material"].default_value = primary_mat
-                    mesh["mtk:atlas_mapping"] = json.dumps(mapping_data, separators=(",", ":"))
-                    write_provenance_schema(mesh)
+                if _apply_generic_procedural_atlas_material(obj, atlas_materials, mapping_data):
                     replaced_objects += 1
                 continue
 
@@ -1037,6 +863,13 @@ class StepReplaceMaterial(PipelineStep):
             if pipeline_context.is_cancelled:
                 yield StepResult.cancelled("Material replacement cancelled by user.")
                 return
+
+            if is_yefira_object(obj):
+                pipeline_context.report(
+                    "WARNING",
+                    f"'{obj.name}' is a Yefira procedural world and cannot be processed in Standalone mode (requires Atlas mode)."
+                )
+                continue
 
             obj_progress = 0.10 + 0.85 * (obj_idx / max(1, total_objs))
             yield ProgressUpdate(obj_progress, 1.0, f"Reconstructing materials: {obj.name} ({obj_idx + 1}/{total_objs})")
