@@ -187,6 +187,15 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
         for entry in mapping.get("materials", [])
         if entry.get("name")
     }
+    texture_locations = mapping.get("textures", {})
+
+    def texture_location(block_name: str) -> dict:
+        """Find a flat texture entry when a block model has no face table."""
+        for key in (block_name, f"minecraft:{block_name}", f"minecraft:block/{block_name}"):
+            location = texture_locations.get(key)
+            if isinstance(location, dict):
+                return location
+        return {}
     face_specs = (
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
         ("bottom", "-Y"), ("south", "+Z"), ("north", "-Z"),
@@ -200,8 +209,13 @@ def _write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) ->
         entry = by_name.get(block_name)
         material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
         faces = entry.get("faces", {}) if entry else {}
+        fallback_location = texture_location(block_name)
         for attr_face, mapping_face in face_specs:
-            location = faces.get(mapping_face) or {}
+            # Vanilla generated models such as stained glass are represented
+            # by a material entry with null faces, while their atlas location
+            # is correctly present in ``textures``.  A missing face is not a
+            # valid request for texture zero.
+            location = faces.get(mapping_face) or fallback_location
             values[attr_face]["tile"].append((
                 float(location.get("tile_column", 0)),
                 float(location.get("tile_row", 0)), 0.0,

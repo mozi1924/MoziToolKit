@@ -118,6 +118,31 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertIn("mtk_texture_top", self.mesh.attributes)
         self.assertNotIn("mtk:atlas_mapping", self.mesh)
 
+    def test_generated_model_uses_texture_table_when_faces_are_null(self):
+        """Stained glass has a generated model but a valid Atlas texture."""
+        from pipeline.steps.step_replace_material import _write_yefira_point_atlas_attributes
+
+        mapping = {
+            "textures": {
+                "minecraft:block/blue_stained_glass": {
+                    "chunk_id": 0,
+                    "texture_id": 125,
+                    "tile_column": 125,
+                    "tile_row": 0,
+                },
+            },
+            "materials": [{
+                "name": "blue_stained_glass",
+                "material_id": 99,
+                "faces": {face: None for face in ("+X", "-X", "+Y", "-Y", "+Z", "-Z")},
+            }],
+        }
+        self.mesh.attributes["block_state"].data[0].value = b"minecraft:blue_stained_glass"
+        _write_yefira_point_atlas_attributes(self.mesh, mapping)
+
+        self.assertEqual(tuple(self.mesh.attributes["mtk_tile_east"].data[0].vector), (125.0, 0.0, 0.0))
+        self.assertEqual(self.mesh.attributes["mtk_texture_east"].data[0].value, 125)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
