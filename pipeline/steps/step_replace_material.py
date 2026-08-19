@@ -656,15 +656,17 @@ class StepReplaceMaterial(PipelineStep):
                         chunk_material = yefira_atlas_materials.get(chunk_id)
                         if chunk_material is None:
                             raise RuntimeError(f"Atlas mapping is missing material chunk {chunk_id}")
+                        chunk_material.use_fake_user = True
                         obj.data.materials.append(chunk_material)
 
-                    # Yefira v5 consumes geometry attributes, not exposed
-                    # modifier inputs.  Keep the atlas material binding only.
-                    for mod in obj.modifiers:
-                        if mod.type == 'NODES' and mod.node_group:
-                            for n in mod.node_group.nodes:
-                                if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
-                                    n.inputs["Material"].default_value = primary_mat
+                    # Update Yefira's geometry nodes material dispatcher if available
+                    try:
+                        import sys
+                        if "yefira_blender.nodes.world_tree" in sys.modules:
+                            from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
+                            setup_world_geometry_nodes(obj)
+                    except Exception:
+                        pass
 
                     # Ensure ATTR_UV_TILING_TRANSFORM and ATTR_UV_ROTATION exist on point cloud mesh
                     if len(mesh.vertices) > 0:

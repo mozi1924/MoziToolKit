@@ -332,6 +332,7 @@ def build_atlas_chunk_materials(
             mat = bpy.data.materials.new(name=material_name)
 
         mat.use_nodes = True
+        mat.use_fake_user = True
         set_material_displacement_method(mat, "BOTH")
         mat.node_tree[PROP_ATLAS_MAPPING] = compact_mapping_str
         mat[PROP_ATLAS_MAPPING] = compact_mapping_str
