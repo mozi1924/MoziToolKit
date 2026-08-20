@@ -60,6 +60,21 @@ def hex_to_linear_rgba(hex_str: str, alpha: float = 1.0) -> tuple[float, float, 
     return (lr, lg, lb, alpha)
 
 
+def linear_to_srgb(c: float) -> float:
+    """Convert Linear RGB component (0..1) to sRGB component."""
+    if c <= 0.0031308:
+        return c * 12.92
+    return 1.055 * (c ** (1.0 / 2.4)) - 0.055
+
+
+def linear_rgba_to_hex(rgba: tuple[float, ...]) -> str:
+    """Convert Linear RGBA or Linear RGB tuple to hex color string."""
+    r = max(0.0, min(1.0, linear_to_srgb(rgba[0])))
+    g = max(0.0, min(1.0, linear_to_srgb(rgba[1])))
+    b = max(0.0, min(1.0, linear_to_srgb(rgba[2])))
+    return f"#{int(round(r * 255)):02X}{int(round(g * 255)):02X}{int(round(b * 255)):02X}"
+
+
 
 # --- Standard Biome Palettes ---
 # Colors represent vanilla Minecraft defaults (hex sRGB).

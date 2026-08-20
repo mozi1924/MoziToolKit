@@ -348,6 +348,105 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         sea_anim_timing = tuple(self.mesh.attributes["mtk_anim_timing_east"].data[1].color)
         self.assertEqual(sea_anim_timing, (5.0, 5.0, 0.0, 0.0))
 
+    def test_block_state_and_face_addressing_enhancements(self):
+        """Verify lit, snowy, honey_level, charges, axis, mushrooms, glazed terracotta, and emissive block rules."""
+        from utils.materials.yefira import write_yefira_point_atlas_attributes
+
+        mock_mapping = {
+            "textures": {
+                "minecraft:block/furnace_front": {"chunk_id": 0, "texture_id": 1, "tile_column": 1, "tile_row": 0},
+                "minecraft:block/furnace_front_on": {"chunk_id": 0, "texture_id": 2, "tile_column": 2, "tile_row": 0},
+                "minecraft:block/furnace_side": {"chunk_id": 0, "texture_id": 3, "tile_column": 3, "tile_row": 0},
+                "minecraft:block/furnace_top": {"chunk_id": 0, "texture_id": 4, "tile_column": 4, "tile_row": 0},
+                "minecraft:block/redstone_lamp": {"chunk_id": 0, "texture_id": 5, "tile_column": 5, "tile_row": 0},
+                "minecraft:block/redstone_lamp_on": {"chunk_id": 0, "texture_id": 6, "tile_column": 6, "tile_row": 0},
+                "minecraft:block/glowstone": {"chunk_id": 0, "texture_id": 7, "tile_column": 7, "tile_row": 0},
+                "minecraft:block/grass_block_top": {"chunk_id": 0, "texture_id": 8, "tile_column": 8, "tile_row": 0, "default_tint_weight": 1.0},
+                "minecraft:block/grass_block_side": {"chunk_id": 0, "texture_id": 9, "tile_column": 9, "tile_row": 0},
+                "minecraft:block/grass_block_snow": {"chunk_id": 0, "texture_id": 10, "tile_column": 10, "tile_row": 0},
+                "minecraft:block/dirt": {"chunk_id": 0, "texture_id": 11, "tile_column": 11, "tile_row": 0},
+                "minecraft:block/beehive_front": {"chunk_id": 0, "texture_id": 12, "tile_column": 12, "tile_row": 0},
+                "minecraft:block/beehive_front_honey": {"chunk_id": 0, "texture_id": 13, "tile_column": 13, "tile_row": 0},
+                "minecraft:block/beehive_side": {"chunk_id": 0, "texture_id": 14, "tile_column": 14, "tile_row": 0},
+                "minecraft:block/beehive_top": {"chunk_id": 0, "texture_id": 15, "tile_column": 15, "tile_row": 0},
+                "minecraft:block/respawn_anchor_top_off": {"chunk_id": 0, "texture_id": 16, "tile_column": 16, "tile_row": 0},
+                "minecraft:block/respawn_anchor_top": {"chunk_id": 0, "texture_id": 17, "tile_column": 17, "tile_row": 0},
+                "minecraft:block/respawn_anchor_side0": {"chunk_id": 0, "texture_id": 18, "tile_column": 18, "tile_row": 0},
+                "minecraft:block/respawn_anchor_side4": {"chunk_id": 0, "texture_id": 19, "tile_column": 19, "tile_row": 0},
+                "minecraft:block/respawn_anchor_bottom": {"chunk_id": 0, "texture_id": 20, "tile_column": 20, "tile_row": 0},
+                "minecraft:block/oak_log": {"chunk_id": 0, "texture_id": 21, "tile_column": 21, "tile_row": 0},
+                "minecraft:block/oak_log_top": {"chunk_id": 0, "texture_id": 22, "tile_column": 22, "tile_row": 0},
+                "minecraft:block/red_mushroom_block": {"chunk_id": 0, "texture_id": 23, "tile_column": 23, "tile_row": 0},
+                "minecraft:block/mushroom_block_inside": {"chunk_id": 0, "texture_id": 24, "tile_column": 24, "tile_row": 0},
+                "minecraft:block/white_glazed_terracotta": {"chunk_id": 0, "texture_id": 25, "tile_column": 25, "tile_row": 0},
+                "minecraft:block/spruce_leaves": {"chunk_id": 0, "texture_id": 26, "tile_column": 26, "tile_row": 0},
+                "minecraft:block/wheat_stage7": {"chunk_id": 0, "texture_id": 27, "tile_column": 27, "tile_row": 0},
+            }
+        }
+
+        test_states = [
+            b"minecraft:furnace[facing=north,lit=true]",      # 0: Lit furnace
+            b"minecraft:furnace[facing=north,lit=false]",     # 1: Unlit furnace
+            b"minecraft:grass_block[snowy=true]",             # 2: Snowy grass
+            b"minecraft:beehive[facing=north,honey_level=5]", # 3: Full beehive
+            b"minecraft:respawn_anchor[charges=4]",           # 4: Charged respawn anchor
+            b"minecraft:oak_log[axis=x]",                     # 5: X-axis log
+            b"minecraft:red_mushroom_block[up=true,down=false,north=false,south=true,east=true,west=true]", # 6: Mushroom
+            b"minecraft:white_glazed_terracotta",             # 7: Glazed terracotta
+            b"minecraft:spruce_leaves",                       # 8: Spruce leaves (hardcoded tint)
+            b"minecraft:glowstone",                           # 9: Glowstone (emissive)
+            b"minecraft:wheat[age=7]",                        # 10: Wheat age 7
+        ]
+
+        test_mesh = bpy.data.meshes.new("Test_States_Mesh")
+        test_mesh.from_pydata([(float(i), 0.0, 0.0) for i in range(len(test_states))], [], [])
+        test_mesh.update()
+        states_attr = test_mesh.attributes.new("block_state", 'STRING', 'POINT')
+        for i, s in enumerate(test_states):
+            states_attr.data[i].value = s
+
+        write_yefira_point_atlas_attributes(test_mesh, mock_mapping)
+
+        # 0. Lit furnace: North (-Z) is front_on (tile_col=2), emissive = 1
+        self.assertEqual(test_mesh.attributes["mtk_tile_north"].data[0].vector[0], 2.0)
+        self.assertEqual(test_mesh.attributes["mtk_emissive"].data[0].value, 1)
+
+        # 1. Unlit furnace: North (-Z) is front (tile_col=1), emissive = 0
+        self.assertEqual(test_mesh.attributes["mtk_tile_north"].data[1].vector[0], 1.0)
+        self.assertEqual(test_mesh.attributes["mtk_emissive"].data[1].value, 0)
+
+        # 2. Snowy grass: East/West/South/North are grass_block_snow (tile_col=10), top tint is zero weight
+        self.assertEqual(test_mesh.attributes["mtk_tile_east"].data[2].vector[0], 10.0)
+        self.assertEqual(tuple(test_mesh.attributes["mtk_tint_data_top"].data[2].color), (0.0, 0.0, 0.0, 0.0))
+
+        # 3. Beehive honey_level=5: North (-Z) is front_honey (tile_col=13)
+        self.assertEqual(test_mesh.attributes["mtk_tile_north"].data[3].vector[0], 13.0)
+
+        # 4. Respawn anchor charges=4: Top is top (tile_col=17), East side is side4 (tile_col=19), emissive = 1
+        self.assertEqual(test_mesh.attributes["mtk_tile_top"].data[4].vector[0], 17.0)
+        self.assertEqual(test_mesh.attributes["mtk_tile_east"].data[4].vector[0], 19.0)
+        self.assertEqual(test_mesh.attributes["mtk_emissive"].data[4].value, 1)
+
+        # 5. Oak log axis=x: East (+X) and West (-X) are top (tile_col=22), Top (+Y) is side (tile_col=21)
+        self.assertEqual(test_mesh.attributes["mtk_tile_east"].data[5].vector[0], 22.0)
+        self.assertEqual(test_mesh.attributes["mtk_tile_west"].data[5].vector[0], 22.0)
+        self.assertEqual(test_mesh.attributes["mtk_tile_top"].data[5].vector[0], 21.0)
+
+        # 6. Red mushroom block: Top (+Y) is skin (tile_col=23), Bottom (-Y) & North (-Z) are inside (tile_col=24)
+        self.assertEqual(test_mesh.attributes["mtk_tile_top"].data[6].vector[0], 23.0)
+        self.assertEqual(test_mesh.attributes["mtk_tile_bottom"].data[6].vector[0], 24.0)
+        self.assertEqual(test_mesh.attributes["mtk_tile_north"].data[6].vector[0], 24.0)
+
+        # 7. Glazed terracotta: All faces are white_glazed_terracotta (tile_col=25)
+        self.assertEqual(test_mesh.attributes["mtk_tile_top"].data[7].vector[0], 25.0)
+        self.assertEqual(test_mesh.attributes["mtk_tile_east"].data[7].vector[0], 25.0)
+
+        # 8. Spruce leaves: Hardcoded tint flag set
+        self.assertEqual(test_mesh.attributes["mtk_tint_data_top"].data[8].color[3], 1.0)
+
+        # 9. Glowstone: Emissive
+        self.assertEqual(test_mesh.attributes["mtk_emissive"].data[9].value, 1)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

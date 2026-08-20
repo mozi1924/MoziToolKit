@@ -20,11 +20,11 @@ from .constants import (
 BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "water": ["water_still", "water_flow"],
     "lava": ["lava_still", "lava_flow"],
-    "magma_block": ["magma"],
+    "magma_block": ["magma", "magma_block"],
     "fire": ["fire_0", "fire_1"],
     "soul_fire": ["soul_fire_0", "soul_fire_1"],
-    "campfire": ["campfire_fire", "campfire_log"],
-    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log"],
+    "campfire": ["campfire_fire", "campfire_log", "campfire_log_lit"],
+    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log", "soul_campfire_log_lit"],
     "portal": ["nether_portal"],
     "nether_portal": ["nether_portal"],
     "kelp": ["kelp", "kelp_plant"],
@@ -39,10 +39,17 @@ BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "sculk_sensor": ["sculk_sensor_top", "sculk_sensor_side", "sculk_sensor_bottom"],
     "sculk_catalyst": ["sculk_catalyst_top", "sculk_catalyst_side", "sculk_catalyst_bottom"],
     "sculk_shrieker": ["sculk_shrieker_top", "sculk_shrieker_side", "sculk_shrieker_bottom"],
-    "respawn_anchor": ["respawn_anchor_top_off", "respawn_anchor_side0", "respawn_anchor_bottom"],
-    "smoker": ["smoker_front", "smoker_side", "smoker_top", "smoker_bottom"],
-    "furnace": ["furnace_front", "furnace_side", "furnace_top", "furnace_bottom"],
-    "blast_furnace": ["blast_furnace_front", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+    "respawn_anchor": [
+        "respawn_anchor_top_off", "respawn_anchor_top",
+        "respawn_anchor_side0", "respawn_anchor_side1", "respawn_anchor_side2",
+        "respawn_anchor_side3", "respawn_anchor_side4", "respawn_anchor_bottom"
+    ],
+    "smoker": ["smoker_front", "smoker_front_on", "smoker_side", "smoker_top", "smoker_bottom"],
+    "furnace": ["furnace_front", "furnace_front_on", "furnace_side", "furnace_top", "furnace_bottom"],
+    "blast_furnace": ["blast_furnace_front", "blast_furnace_front_on", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
+    "redstone_lamp": ["redstone_lamp", "redstone_lamp_on"],
+    "redstone_torch": ["redstone_torch", "redstone_torch_off"],
+    "redstone_wall_torch": ["redstone_torch", "redstone_torch_off"],
     "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
     "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
     "chain_command_block": ["chain_command_block_front", "chain_command_block_back", "chain_command_block_side", "chain_command_block_conditional"],
@@ -51,12 +58,89 @@ BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
     "piston": ["piston_top", "piston_bottom", "piston_side"],
     "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
-    "barrel": ["barrel_top", "barrel_bottom", "barrel_side"],
+    "barrel": ["barrel_top", "barrel_bottom", "barrel_side", "barrel_top_open"],
     "beehive": ["beehive_front", "beehive_front_honey", "beehive_side", "beehive_top", "beehive_bottom"],
     "bee_nest": ["bee_nest_front", "bee_nest_front_honey", "bee_nest_side", "bee_nest_top", "bee_nest_bottom"],
     "carved_pumpkin": ["carved_pumpkin", "pumpkin_side", "pumpkin_top"],
     "jack_o_lantern": ["jack_o_lantern", "pumpkin_side", "pumpkin_top"],
+    "red_mushroom_block": ["red_mushroom_block", "mushroom_block_inside"],
+    "brown_mushroom_block": ["brown_mushroom_block", "mushroom_block_inside"],
+    "mushroom_stem": ["mushroom_stem", "mushroom_block_inside"],
+    "grass_block": ["grass_block_top", "grass_block_side", "grass_block_snow", "grass_block_side_overlay", "dirt"],
+    "podzol": ["podzol_top", "podzol_side", "grass_block_snow", "dirt"],
+    "mycelium": ["mycelium_top", "mycelium_side", "grass_block_snow", "dirt"],
+    "white_glazed_terracotta": ["white_glazed_terracotta"],
+    "orange_glazed_terracotta": ["orange_glazed_terracotta"],
+    "magenta_glazed_terracotta": ["magenta_glazed_terracotta"],
+    "light_blue_glazed_terracotta": ["light_blue_glazed_terracotta"],
+    "yellow_glazed_terracotta": ["yellow_glazed_terracotta"],
+    "lime_glazed_terracotta": ["lime_glazed_terracotta"],
+    "pink_glazed_terracotta": ["pink_glazed_terracotta"],
+    "gray_glazed_terracotta": ["gray_glazed_terracotta"],
+    "light_gray_glazed_terracotta": ["light_gray_glazed_terracotta"],
+    "cyan_glazed_terracotta": ["cyan_glazed_terracotta"],
+    "purple_glazed_terracotta": ["purple_glazed_terracotta"],
+    "blue_glazed_terracotta": ["blue_glazed_terracotta"],
+    "brown_glazed_terracotta": ["brown_glazed_terracotta"],
+    "green_glazed_terracotta": ["green_glazed_terracotta"],
+    "red_glazed_terracotta": ["red_glazed_terracotta"],
+    "black_glazed_terracotta": ["black_glazed_terracotta"],
 }
+
+EMISSIVE_BLOCK_NAMES = frozenset({
+    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
+    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
+    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
+    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
+})
+
+HARDCODED_TINT_BLOCKS = {
+    "spruce_leaves": (1.0, 1.0, 1.0, 1.0),
+    "birch_leaves": (1.0, 1.0, 1.0, 1.0),
+    "lily_pad": (1.0, 1.0, 1.0, 1.0),
+    "redstone_wire": (1.0, 1.0, 1.0, 1.0),
+}
+
+
+def parse_block_state_str(state: str) -> tuple[str, dict[str, str]]:
+    """Parse a serialized block state string into clean block name and properties dict."""
+    state_clean = state.strip()
+    bracket_idx = state_clean.find("[")
+    if bracket_idx == -1:
+        block_name = state_clean
+        props = {}
+    else:
+        block_name = state_clean[:bracket_idx]
+        props_str = state_clean[bracket_idx + 1:].rstrip("]")
+        props = {}
+        if props_str:
+            for pair in props_str.split(","):
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    props[k.strip()] = v.strip()
+    block_name = block_name.removeprefix("minecraft:").removeprefix("block/")
+    return block_name, props
+
+
+def is_block_emissive(block_name: str, props: dict[str, str]) -> int:
+    """Return 1 if block/state is emissive (light emitting), else 0."""
+    if block_name in EMISSIVE_BLOCK_NAMES or block_name.endswith("_froglight"):
+        return 1
+    is_lit = props.get("lit") == "true"
+    if is_lit and (
+        block_name in ("furnace", "blast_furnace", "smoker", "redstone_lamp",
+                       "campfire", "soul_campfire", "redstone_ore", "deepslate_redstone_ore")
+    ):
+        return 1
+    if block_name in ("redstone_torch", "redstone_wall_torch"):
+        return 1 if props.get("lit", "true") == "true" else 0
+    if block_name == "respawn_anchor":
+        charges = int(props.get("charges", "0")) if "charges" in props else 0
+        return 1 if charges > 0 else 0
+    if block_name == "redstone_wire":
+        power = int(props.get("power", "0")) if "power" in props else 0
+        return 1 if power > 0 else 0
+    return 0
 
 
 def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
@@ -99,9 +183,13 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
 
     Writes the following POINT domain attributes:
     - ``mtk_material_id`` (INT)
+    - ``mtk_is_opaque`` (INT)
+    - ``is_opaque`` (INT)
+    - ``mtk_emissive`` (INT)
     - ``mtk_tile_{face}`` (FLOAT_VECTOR for east, west, top, bottom, south, north)
     - ``mtk_chunk_{face}`` (INT)
     - ``mtk_texture_{face}`` (INT)
+    - ``mtk_is_opaque_{face}`` (INT)
     - ``mtk_tint_data_{face}`` (FLOAT_COLOR: base_weight, overlay_weight, tint_weight, is_hardcoded)
     - ``mtk_anim_timing_{face}`` (FLOAT_COLOR: frame_count, frametime, interpolate, 0)
     - ``mtk_anim_frame_size_{face}`` (FLOAT_COLOR: frame_width, frame_height, 0, 0)
@@ -125,37 +213,116 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 return location
         return {}
 
-    def texture_only_faces(block_name: str) -> dict:
-        """Derive standard cube faces from a texture-only atlas mapping.
-
-        SPBR maps usually retain individual textures but not Minecraft model
-        JSON. Normal meshes still work because their source polygons carry
-        the exact texture key; Yefira has only a logical block state, so make
-        that bridge here. A differentiated model face table remains the
-        authoritative source whenever present.
-        """
+    def texture_only_faces(block_name: str, props: dict[str, str]) -> dict:
+        """Derive standard cube faces from a texture-only atlas mapping and block state."""
         target_stems = BLOCK_TO_TEXTURE_ALIASES.get(block_name)
+        is_lit = props.get("lit") == "true"
+        snowy = props.get("snowy") == "true"
+        axis = props.get("axis", "y")
+        honey_level = props.get("honey_level", "0")
+        charges = int(props.get("charges", "0")) if "charges" in props else 0
+
+        # 1. Redstone Lamp
+        if block_name == "redstone_lamp":
+            lamp_tex = (texture_location("redstone_lamp_on") if is_lit else None) or texture_location("redstone_lamp")
+            if lamp_tex:
+                return {"+X": lamp_tex, "-X": lamp_tex, "+Y": lamp_tex, "-Y": lamp_tex, "+Z": lamp_tex, "-Z": lamp_tex}
+
+        # 2. Snowy grass/podzol/mycelium
+        if block_name in ("grass_block", "podzol", "mycelium"):
+            snow_side = texture_location("grass_block_snow") if snowy else None
+            top_tex = texture_location(f"{block_name}_top") or texture_location(block_name)
+            dirt_tex = texture_location("dirt") or top_tex
+            side_tex = snow_side or texture_location(f"{block_name}_side") or top_tex
+            if top_tex or side_tex:
+                return {"+X": side_tex, "-X": side_tex, "+Y": top_tex, "-Y": dirt_tex, "+Z": side_tex, "-Z": side_tex}
+
+        # 3. Respawn anchor
+        if block_name == "respawn_anchor":
+            top_loc = texture_location("respawn_anchor_top_off") if charges == 0 else (texture_location("respawn_anchor_top") or texture_location("respawn_anchor_top_off"))
+            side_loc = texture_location(f"respawn_anchor_side{charges}") or texture_location("respawn_anchor_side0") or texture_location("respawn_anchor_top_off")
+            bottom_loc = texture_location("respawn_anchor_bottom") or side_loc
+            return {"+X": side_loc, "-X": side_loc, "+Y": top_loc, "-Y": bottom_loc, "+Z": side_loc, "-Z": side_loc}
+
+        # 4. Mushroom blocks (red_mushroom_block, brown_mushroom_block, mushroom_stem)
+        if block_name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
+            skin = texture_location(block_name)
+            inside = texture_location("mushroom_block_inside") or skin
+            top_tex = inside if props.get("up") == "false" else skin
+            bottom_tex = inside if props.get("down") == "false" else skin
+            north_tex = inside if props.get("north") == "false" else skin
+            south_tex = inside if props.get("south") == "false" else skin
+            east_tex = inside if props.get("east") == "false" else skin
+            west_tex = inside if props.get("west") == "false" else skin
+            return {"+X": east_tex, "-X": west_tex, "+Y": top_tex, "-Y": bottom_tex, "+Z": south_tex, "-Z": north_tex}
+
+        # 5. Glazed Terracotta
+        if block_name.endswith("_glazed_terracotta"):
+            loc = texture_location(block_name)
+            if loc:
+                return {"+X": loc, "-X": loc, "+Y": loc, "-Y": loc, "+Z": loc, "-Z": loc}
+
+        # 6. Axis-oriented blocks (logs, basalt, polished_basalt, hay_block, bone_block, wood/bark)
+        is_axis_block = "axis" in props or block_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
+        if is_axis_block:
+            end_loc = (
+                texture_location(f"{block_name}_top")
+                or texture_location(f"{block_name}_end")
+                or (texture_location(f"{block_name[:-4]}log_top") if block_name.endswith("_wood") else None)
+                or (texture_location(f"{block_name[:-7]}stem_top") if block_name.endswith("_hyphae") else None)
+                or texture_location(block_name)
+            )
+            side_loc = (
+                texture_location(f"{block_name}_side")
+                or (texture_location(f"{block_name[:-4]}log") if block_name.endswith("_wood") and not texture_location(block_name) else None)
+                or (texture_location(f"{block_name[:-7]}stem") if block_name.endswith("_hyphae") and not texture_location(block_name) else None)
+                or texture_location(block_name)
+                or end_loc
+            )
+            if end_loc or side_loc:
+                end_loc = end_loc or side_loc
+                side_loc = side_loc or end_loc
+                if axis == "x":
+                    return {"+X": end_loc, "-X": end_loc, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
+                elif axis == "z":
+                    return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": end_loc, "-Z": end_loc}
+                else:
+                    return {"+X": side_loc, "-X": side_loc, "+Y": end_loc, "-Y": end_loc, "+Z": side_loc, "-Z": side_loc}
+
+        # 7. Directional / Horizontal blocks with aliases
         if target_stems:
             found_loc = next((texture_location(s) for s in target_stems if texture_location(s)), None)
             if found_loc:
-                top_loc = next((texture_location(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None)
-                bottom_loc = next((texture_location(s) for s in target_stems if s.endswith("_bottom")), None)
-                front_loc = next((texture_location(s) for s in target_stems if s.endswith(("_front", "_front_on", "_front_honey")) or s in ("carved_pumpkin", "jack_o_lantern")), None)
+                if is_lit and block_name in ("furnace", "blast_furnace", "smoker"):
+                    front_loc = texture_location(f"{block_name}_front_on") or texture_location(f"{block_name}_front") or found_loc
+                elif honey_level == "5" and block_name in ("beehive", "bee_nest"):
+                    front_loc = texture_location(f"{block_name}_front_honey") or texture_location(f"{block_name}_front") or found_loc
+                elif block_name in ("carved_pumpkin", "jack_o_lantern"):
+                    front_loc = texture_location(block_name) or found_loc
+                else:
+                    front_loc = next((texture_location(s) for s in target_stems if s.endswith(("_front", "_front_on", "_front_honey"))), found_loc)
+
+                top_loc = next((texture_location(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None) or texture_location(f"{block_name}_top")
+                bottom_loc = next((texture_location(s) for s in target_stems if s.endswith("_bottom")), None) or texture_location(f"{block_name}_bottom")
                 back_loc = next((texture_location(s) for s in target_stems if s.endswith("_back")), None)
                 side_loc = next((texture_location(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
 
+                actual_top = top_loc or found_loc
+                actual_bottom = bottom_loc or (top_loc if block_name in ("furnace", "blast_furnace", "smoker", "dispenser", "dropper", "carved_pumpkin", "jack_o_lantern") else found_loc)
+                actual_back = back_loc or side_loc
+                actual_front = front_loc or found_loc
+
                 if "command_block" in block_name:
-                    # Vertical-base model (Top is front arrow, Bottom is back input square, 4 sides are side)
-                    return {"+X": side_loc, "-X": side_loc, "+Y": front_loc or found_loc, "-Y": back_loc or side_loc, "+Z": side_loc, "-Z": side_loc}
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_front, "-Y": actual_back, "+Z": side_loc, "-Z": side_loc}
                 elif "piston" in block_name:
-                    # Vertical-base model (Top is piston head, Bottom is back base, 4 sides are side)
-                    return {"+X": side_loc, "-X": side_loc, "+Y": top_loc or found_loc, "-Y": bottom_loc or side_loc, "+Z": side_loc, "-Z": side_loc}
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
+                elif block_name == "observer":
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": side_loc, "+Z": actual_back, "-Z": actual_front}
+                elif block_name == "barrel":
+                    is_open = props.get("open") == "true"
+                    b_top = (texture_location("barrel_top_open") if is_open else None) or actual_top
+                    return {"+X": side_loc, "-X": side_loc, "+Y": b_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
                 else:
-                    # Horizontal-base model (North is front, South is back, Top is top, Bottom is bottom, East/West are side)
-                    actual_top = top_loc or found_loc
-                    actual_bottom = bottom_loc or found_loc
-                    actual_back = back_loc or side_loc
-                    actual_front = front_loc or found_loc
                     return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": actual_back, "-Z": actual_front}
 
         base = texture_location(block_name)
@@ -174,18 +341,68 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
 
     def mapping_names(state: str) -> tuple[str, ...]:
         """Resolve stateful generated models before generic texture fallback."""
-        block_name, _, raw_props = state.partition("[")
-        block_name = block_name.removeprefix("minecraft:").removeprefix("block/")
+        block_name, props = parse_block_state_str(state)
         names = []
         if block_name.endswith("_door"):
-            props = {
-                key.strip(): value.strip().rstrip("]")
-                for pair in raw_props.rstrip("]").split(",") if "=" in pair
-                for key, value in [pair.split("=", 1)]
-            }
             names.append(f"{block_name}_{'top' if props.get('half') == 'upper' else 'bottom'}")
+
+        is_lit = props.get("lit") == "true"
+        if is_lit:
+            if block_name in ("furnace", "blast_furnace", "smoker"):
+                names.append(f"{block_name}[lit=true]")
+                names.append(f"{block_name}_front_on")
+            elif block_name == "redstone_lamp":
+                names.append("redstone_lamp[lit=true]")
+                names.append("redstone_lamp_on")
+            elif block_name in ("redstone_torch", "redstone_wall_torch"):
+                names.append(f"{block_name}[lit=true]")
+                names.append("redstone_torch")
+            elif block_name == "campfire":
+                names.append("campfire_fire")
+            elif block_name == "soul_campfire":
+                names.append("soul_campfire_fire")
+        else:
+            if block_name in ("furnace", "blast_furnace", "smoker"):
+                names.append(f"{block_name}[lit=false]")
+            elif block_name in ("redstone_torch", "redstone_wall_torch"):
+                names.append(f"{block_name}[lit=false]")
+                names.append("redstone_torch_off")
+            elif block_name == "redstone_lamp":
+                names.append("redstone_lamp[lit=false]")
+                names.append("redstone_lamp")
+            elif block_name in ("campfire", "soul_campfire"):
+                names.append(f"{block_name}_log")
+
+        if block_name in ("beehive", "bee_nest") and props.get("honey_level") == "5":
+            names.append(f"{block_name}[honey_level=5]")
+            names.append(f"{block_name}_front_honey")
+
+        if block_name == "respawn_anchor" and "charges" in props:
+            charges = props.get("charges", "0")
+            names.append(f"respawn_anchor[charges={charges}]")
+            if charges == "0":
+                names.append("respawn_anchor_top_off")
+            else:
+                names.append("respawn_anchor_top")
+                names.append(f"respawn_anchor_side{charges}")
+
+        if "age" in props:
+            age_val = props["age"]
+            if block_name == "wheat":
+                names.append(f"wheat_stage{age_val}")
+            elif block_name in ("carrots", "potatoes", "beetroots", "sweet_berry_bush"):
+                names.append(f"{block_name}_stage{age_val}")
+            elif block_name == "nether_wart":
+                names.append(f"nether_wart_stage{age_val}")
+            elif block_name == "cocoa":
+                names.append(f"cocoa_stage{age_val}")
+
+        if props.get("snowy") == "true" and block_name in ("grass_block", "podzol", "mycelium"):
+            names.append(f"{block_name}[snowy=true]")
+            names.append("grass_block_snow")
+
         names.append(block_name)
-        return tuple(names)
+        return tuple(dict.fromkeys(names))
 
     face_specs = (
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
@@ -205,9 +422,13 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     }
     material_ids = []
     is_opaque_list = []
+    emissive_list = []
+
+    state_cache: dict[str, dict[str, Any]] = {}
 
     for item in state_attr.data:
         state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
+        block_name, props = parse_block_state_str(state)
         names = mapping_names(state)
         entry = next((by_name[name] for name in names if name in by_name), None)
         material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
@@ -227,7 +448,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         primary_name = names[0]
         explicit_locations = [faces.get(mapping_face) for _, mapping_face in face_specs]
         has_differentiated_faces = len({loc.get("texture_key") for loc in explicit_locations if isinstance(loc, dict)}) > 1
-        derived_faces = texture_only_faces(primary_name) if not has_differentiated_faces else {}
+        derived_faces = texture_only_faces(block_name, props)
 
         # Determine block-level opacity
         block_opaque = 1
@@ -236,6 +457,12 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         elif fallback_location:
             block_opaque = 1 if fallback_location.get("is_opaque", True) else 0
         is_opaque_list.append(block_opaque)
+
+        # Determine block-level emissive
+        emissive_list.append(is_block_emissive(block_name, props))
+
+        is_snowy_top = props.get("snowy") == "true" and block_name in ("grass_block", "podzol", "mycelium")
+        is_hardcoded_block = block_name in HARDCODED_TINT_BLOCKS
 
         for attr_face, mapping_face in face_specs:
             location = derived_faces.get(mapping_face) or faces.get(mapping_face) or fallback_location
@@ -252,12 +479,18 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             values[attr_face]["tile"].append((tile_col, tile_row, 0.0))
             values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
             values[attr_face]["texture"].append(int(location.get("texture_id", 0)))
-            values[attr_face]["tint_data"].append((
-                float(location.get("default_base_tint_weight", 0.0)),
-                float(location.get("default_overlay_tint_weight", 0.0)),
-                float(location.get("default_tint_weight", 0.0)),
-                1.0 if location.get("is_hardcoded", False) else 0.0,
-            ))
+
+            if is_snowy_top and attr_face == "top":
+                values[attr_face]["tint_data"].append((0.0, 0.0, 0.0, 0.0))
+            elif is_hardcoded_block:
+                values[attr_face]["tint_data"].append((1.0, 1.0, 1.0, 1.0))
+            else:
+                values[attr_face]["tint_data"].append((
+                    float(location.get("default_base_tint_weight", 0.0)),
+                    float(location.get("default_overlay_tint_weight", 0.0)),
+                    float(location.get("default_tint_weight", 0.0)),
+                    1.0 if location.get("is_hardcoded", False) else 0.0,
+                ))
             values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
 
             frame_count = float(location.get("frame_count", 1))
@@ -279,6 +512,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     point_attr("mtk_material_id", 'INT').data.foreach_set('value', material_ids)
     point_attr("mtk_is_opaque", 'INT').data.foreach_set('value', is_opaque_list)
     point_attr("is_opaque", 'INT').data.foreach_set('value', is_opaque_list)
+    point_attr("mtk_emissive", 'INT').data.foreach_set('value', emissive_list)
     for face, _ in face_specs:
         tile_attr = point_attr(f"mtk_tile_{face}", 'FLOAT_VECTOR')
         tile_attr.data.foreach_set('vector', [component for tile in values[face]["tile"] for component in tile])
