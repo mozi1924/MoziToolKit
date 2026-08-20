@@ -202,8 +202,8 @@ class AtlasGenerator:
             for name in namelist:
                 parts = Path(name).parts
                 if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png.mcmeta"):
-                    ns = parts[1].lower()
-                    stem = "/".join(parts[4:])[:-11]
+                    ns = parts[1].lower().strip()
+                    stem = "/".join(parts[4:])[:-11].strip()
                     texture_name = self._texture_name(ns, stem)
                     try:
                         meta_obj = json.loads(zf.read(name).decode("utf-8"))
@@ -215,7 +215,7 @@ class AtlasGenerator:
             # 2. Load models
             for name in namelist:
                 if name.startswith("assets/minecraft/models/block/") and name.endswith(".json"):
-                    stem = name.replace("assets/minecraft/models/block/", "").replace(".json", "")
+                    stem = name.replace("assets/minecraft/models/block/", "").replace(".json", "").strip()
                     try:
                         self.models[stem.lower()] = json.loads(zf.read(name).decode("utf-8"))
                     except Exception:
@@ -225,18 +225,18 @@ class AtlasGenerator:
             for name in namelist:
                 parts = Path(name).parts
                 if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png"):
-                    ns = parts[1].lower()
-                    stem = "/".join(parts[4:])[:-4]
+                    ns = parts[1].lower().strip()
+                    stem = "/".join(parts[4:])[:-4].strip()
                     clean_stem = self._texture_name(ns, stem)
 
                     channel = "albedo"
                     if stem.endswith("_n"):
-                        base_stem = stem[:-2]
-                        clean_base_stem = clean_stem[:-2]
+                        base_stem = stem[:-2].strip()
+                        clean_base_stem = self._texture_name(ns, base_stem)
                         channel = "normal"
                     elif stem.endswith("_s"):
-                        base_stem = stem[:-2]
-                        clean_base_stem = clean_stem[:-2]
+                        base_stem = stem[:-2].strip()
+                        clean_base_stem = self._texture_name(ns, base_stem)
                         channel = "specular"
                     else:
                         base_stem = stem
@@ -277,11 +277,11 @@ class AtlasGenerator:
                 textures_dir = namespace_dir / "textures" / "block"
                 if not namespace_dir.is_dir() or not textures_dir.exists():
                     continue
-                ns = namespace_dir.name.lower()
+                ns = namespace_dir.name.lower().strip()
                 for root, _, files in os.walk(textures_dir):
                     for f in files:
                         if f.endswith(".png.mcmeta"):
-                            stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11]
+                            stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11].strip()
                             texture_name = self._texture_name(ns, stem)
                             mcmeta_path = Path(root) / f
                             try:
@@ -297,7 +297,7 @@ class AtlasGenerator:
             for root, _, files in os.walk(models_dir):
                 for f in files:
                     if f.endswith(".json"):
-                        stem = f[:-5]
+                        stem = f[:-5].strip()
                         model_path = Path(root) / f
                         try:
                             with open(model_path, "r", encoding="utf-8") as fp:
@@ -311,22 +311,22 @@ class AtlasGenerator:
                 textures_dir = namespace_dir / "textures" / "block"
                 if not namespace_dir.is_dir() or not textures_dir.exists():
                     continue
-                ns = namespace_dir.name.lower()
+                ns = namespace_dir.name.lower().strip()
                 for root, _, files in os.walk(textures_dir):
                     for f in files:
                         if not f.endswith(".png"):
                             continue
-                        stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-4]
+                        stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-4].strip()
                         clean_stem = self._texture_name(ns, stem)
 
                         channel = "albedo"
                         if stem.endswith("_n"):
-                            base_stem = stem[:-2]
-                            clean_base_stem = clean_stem[:-2]
+                            base_stem = stem[:-2].strip()
+                            clean_base_stem = self._texture_name(ns, base_stem)
                             channel = "normal"
                         elif stem.endswith("_s"):
-                            base_stem = stem[:-2]
-                            clean_base_stem = clean_stem[:-2]
+                            base_stem = stem[:-2].strip()
+                            clean_base_stem = self._texture_name(ns, base_stem)
                             channel = "specular"
                         else:
                             base_stem = stem

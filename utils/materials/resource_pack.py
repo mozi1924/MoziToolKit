@@ -337,17 +337,17 @@ class ZipResourcePack:
                         continue
                     
                     full_path = root_path / fname
-                    rel_name = fname[:-4]  # Remove .png
-                    texture_key = full_path.relative_to(textures_dir).with_suffix("").as_posix().lower()
+                    rel_name = fname[:-4].strip()  # Remove .png
+                    texture_key = full_path.relative_to(textures_dir).with_suffix("").as_posix().lower().strip()
 
                     # Determine channel type (_n, _s, or base albedo)
                     if rel_name.endswith("_n"):
-                        base_stem = rel_name[:-2]
-                        texture_key = texture_key[:-2]
+                        base_stem = rel_name[:-2].strip()
+                        texture_key = texture_key[:-2].strip()
                         channel = "normal"
                     elif rel_name.endswith("_s"):
-                        base_stem = rel_name[:-2]
-                        texture_key = texture_key[:-2]
+                        base_stem = rel_name[:-2].strip()
+                        texture_key = texture_key[:-2].strip()
                         channel = "specular"
                     else:
                         base_stem = rel_name
