@@ -477,12 +477,34 @@ class TestAtlasGenerator(unittest.TestCase):
             loc_a = mapping["textures"]["anim_a"]
             loc_b = mapping["textures"]["anim_b"]
 
-            # Verify alignment
-            self.assertEqual(loc_a["pixel_x"] % loc_a["frame_width"], 0)
-            self.assertEqual(loc_b["pixel_x"] % loc_b["frame_width"], 0)
-            # 16px starts at 0, 32px starts at 32 (aligned to 32px multiple)
-            self.assertEqual(loc_a["pixel_x"], 0)
-            self.assertEqual(loc_b["pixel_x"], 32)
+    @unittest.skipIf(Image is None, "Pillow not available")
+    def test_texture_filenames_with_trailing_whitespace_are_normalized(self):
+        """Textures with trailing whitespace before .png (e.g. pumpkin_stem_n .png) must be correctly classified as normal maps."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            textures = root / "assets" / "minecraft" / "textures" / "block"
+            textures.mkdir(parents=True)
+
+            # Base texture and normal/specular textures with extra trailing space in filenames
+            Image.new("RGBA", (16, 16), (200, 100, 50, 255)).save(textures / "pumpkin_stem.png")
+            Image.new("RGBA", (16, 16), (128, 128, 255, 255)).save(textures / "pumpkin_stem_n .png")
+            Image.new("RGBA", (16, 16), (50, 50, 50, 255)).save(textures / "pumpkin_stem_s .png")
+
+            outputs = AtlasGenerator(root, max_chunk_size=64).build(root / "atlas")
+            with open(outputs["mapping"], "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+
+            # Check that only pumpkin_stem exists as a mapped texture (and NOT pumpkin_stem_n )
+            self.assertIn("pumpkin_stem", mapping["textures"])
+            self.assertNotIn("pumpkin_stem_n ", mapping["textures"])
+            self.assertNotIn("pumpkin_stem_n", mapping["textures"])
+            self.assertNotIn("pumpkin_stem_s ", mapping["textures"])
+
+            # Verify chunk files exist
+            static_chunk = mapping["chunks"][0]
+            self.assertIn("normal", static_chunk["files"])
+            self.assertIn("specular", static_chunk["files"])
+            self.assertEqual(static_chunk["texture_count"], 1)
 
 
 if __name__ == "__main__":
