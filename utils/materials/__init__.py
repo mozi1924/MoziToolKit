@@ -59,6 +59,8 @@ from .biome import (
     hex_to_linear_rgb,
     hex_to_rgba,
     hex_to_linear_rgba,
+    linear_to_srgb,
+    linear_rgba_to_hex,
     BIOME_PALETTES,
     HARDCODED_BLOCK_TINTS,
     KNOWN_OVERLAY_PAIRS,
@@ -158,6 +160,7 @@ if HAS_BPY:
         set_material_displacement_method,
         build_channel_nodes,
         rebuild_material,
+        inspect_material_nodes,
     )
     from .atlas_builder import (
         build_atlas_material,
