@@ -666,8 +666,70 @@ def setup_yefira_point_cloud_attributes(
     write_yefira_point_atlas_attributes(mesh, mapping_data)
 
 
+def _update_yefira_geometry_node_materials(
+    obj: bpy.types.Object,
+    atlas_materials: dict[int, bpy.types.Material],
+) -> None:
+    """Traverse all Geometry Nodes modifier trees and nested sub-groups on a Yefira object,
+    updating Set Material nodes to bind the new atlas chunk materials."""
+    primary_mat = atlas_materials.get(0) or next(iter(atlas_materials.values()), None)
+    if not primary_mat:
+        return
+
+    import re
+    visited_groups = set()
+
+    def update_node_group(group: Optional[bpy.types.NodeTree]) -> None:
+        if not group or group in visited_groups or not hasattr(group, "nodes"):
+            return
+        visited_groups.add(group)
+
+        for n in group.nodes:
+            if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
+                m = re.search(r"Chunk (\d+)", n.name)
+                if m:
+                    cid = int(m.group(1))
+                    n.inputs["Material"].default_value = atlas_materials.get(cid, primary_mat)
+                else:
+                    n.inputs["Material"].default_value = primary_mat
+            elif n.type == 'GROUP' and getattr(n, "node_tree", None):
+                update_node_group(n.node_tree)
+
+    for mod in obj.modifiers:
+        if mod.type == 'NODES' and mod.node_group:
+            update_node_group(mod.node_group)
+
+    # Explicitly update Yefira_Material_Dispatcher if in blend file data
+    disp_group = bpy.data.node_groups.get("Yefira_Material_Dispatcher")
+    if disp_group:
+        update_node_group(disp_group)
+        sorted_chunk_ids = sorted(atlas_materials.keys())
+        signature_key = ",".join(
+            f"{cid}:{atlas_materials[cid].name if atlas_materials.get(cid) else 'None'}"
+            for cid in sorted_chunk_ids
+        )
+        disp_group["yefira_dispatcher_signature"] = signature_key
+
+
 def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
     """Notify the Yefira addon to refresh point cloud attributes and rebuild geometry nodes."""
+    if obj:
+        try:
+            if "yefira_blender.nodes.world_tree" in sys.modules:
+                from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
+                setup_world_geometry_nodes(obj)
+            elif "yefira_blender.nodes.geo_nodes" in sys.modules:
+                from yefira_blender.nodes.geo_nodes import setup_world_geometry_nodes
+                setup_world_geometry_nodes(obj)
+            else:
+                try:
+                    import yefira_blender.nodes.world_tree as ywt
+                    ywt.setup_world_geometry_nodes(obj)
+                except ImportError:
+                    pass
+        except Exception:
+            pass
+
     try:
         if hasattr(bpy.ops, "yefira") and hasattr(bpy.ops.yefira, "rebuild_world"):
             bpy.ops.yefira.rebuild_world()
@@ -679,9 +741,6 @@ def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
         if "yefira_blender.operators.main_operators" in sys.modules:
             from yefira_blender.operators.main_operators import trigger_point_cloud_update
             trigger_point_cloud_update(bpy.context)
-        elif "yefira_blender.nodes.world_tree" in sys.modules and obj:
-            from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
-            setup_world_geometry_nodes(obj)
     except Exception:
         pass
 
@@ -695,8 +754,8 @@ def apply_yefira_atlas_materials(
     """Apply Atlas materials and point cloud attributes to a Yefira procedural world object.
 
     Configures dense material slot indices (0..max_chunk_id), enables fake user,
-    populates all directional and dimension point attributes, and signals Yefira
-    to rebuild its Geometry Nodes setup.
+    updates all Set Material nodes across Geometry Node trees and Material Dispatcher,
+    populates directional and dimension point attributes, and signals Yefira to refresh.
     """
     if not yefira_atlas_materials:
         return False
@@ -716,12 +775,8 @@ def apply_yefira_atlas_materials(
         chunk_material.use_fake_user = True
         obj.data.materials.append(chunk_material)
 
-    # Update modifier Set Material node if standard GeometryNodeSetMaterial is present
-    for mod in obj.modifiers:
-        if mod.type == 'NODES' and mod.node_group:
-            for n in mod.node_group.nodes:
-                if n.type == 'SET_MATERIAL' and "Material" in n.inputs:
-                    n.inputs["Material"].default_value = primary_mat
+    # Update modifier Set Material node and nested Material Dispatcher sub-groups
+    _update_yefira_geometry_node_materials(obj, yefira_atlas_materials)
 
     # Configure mesh point-cloud attributes
     chunk_0 = (chunks_by_id or {}).get(0, {})
