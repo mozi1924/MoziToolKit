@@ -99,6 +99,15 @@ from .provenance import (
     write_face_source_provenance,
 )
 
+from .mineways_atlas import (
+    MINEWAYS_TILES_TABLE,
+    is_mineways_atlas_image,
+    find_mineways_atlas_image,
+    is_mineways_atlas_material,
+    decode_mineways_face_uv,
+    remap_mineways_atlas_uv_to_local,
+)
+
 from .animation import (
     get_material_animation_info,
     get_texture_info_animation_info,

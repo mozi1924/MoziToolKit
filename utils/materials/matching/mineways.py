@@ -78,12 +78,10 @@ MINEWAYS_BLOCK_NAME_ALIASES: dict[str, list[str]] = {
     "cherry_wood": ["block/cherry_log", "block/cherry_log_top", "block/cherry_wood"],
 }
 
-# Signatures for Mineways textures
-MINEWAYS_ATLAS_TEXTURE_PATTERNS = (
-    "terrainrgba",
-    "terrainrgb",
-    "terrainext",
-    "terrain",
+from ..mineways_atlas import (
+    is_mineways_atlas_material,
+    is_mineways_atlas_image,
+    MINEWAYS_ATLAS_NAME_PATTERNS as MINEWAYS_ATLAS_TEXTURE_PATTERNS,
 )
 
 
@@ -94,6 +92,8 @@ def is_mineways_material(mat: bpy.types.Material | None) -> bool:
     if is_mozi_material(mat) or is_ice_cube_material(mat) or is_jmc2obj_material(mat):
         return False
     if mat.get("mtk:source_importer") == "mineways":
+        return True
+    if is_mineways_atlas_material(mat):
         return True
 
     name = without_blender_suffix(mat.name.strip().lower())
@@ -117,11 +117,10 @@ def is_mineways_material(mat: bpy.types.Material | None) -> bool:
         for node in mat.node_tree.nodes:
             if node.type == "TEX_IMAGE":
                 if node.image:
+                    if is_mineways_atlas_image(node.image):
+                        return True
                     fp = (node.image.filepath or node.image.name or "").replace("\\", "/").lower()
                     clean_img_name = without_blender_suffix(node.image.name.lower()).removesuffix(".png")
-                    # Mineways terrain atlas textures
-                    if any(clean_img_name == pat or clean_img_name.startswith(pat) for pat in MINEWAYS_ATLAS_TEXTURE_PATTERNS):
-                        return True
                     # Mineways synthesized tiles (ending in _y or _y.png)
                     if clean_img_name.endswith("_y"):
                         return True
@@ -145,7 +144,7 @@ def is_mineways_material(mat: bpy.types.Material | None) -> bool:
                             return True
                         if "/tex/" in clean_attr or clean_attr.startswith("tex/"):
                             if "tex/minecraft/" not in clean_attr and "tex/jmc2obj/" not in clean_attr:
-                                return True
+                                 return True
                         if any(clean_attr == pat or clean_attr.startswith(pat) for pat in MINEWAYS_ATLAS_TEXTURE_PATTERNS):
                             return True
 
