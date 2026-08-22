@@ -447,7 +447,82 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         # 9. Glowstone: Emissive
         self.assertEqual(test_mesh.attributes["mtk_emissive"].data[9].value, 1)
 
+    def test_sequential_material_replacement_point_cloud(self):
+        """Verify that replacing materials 1st, 2nd, and 3rd time updates the point cloud,
+        assigned material slots, and Geometry Nodes Set Material nodes correctly without getting stuck."""
+        from utils.system.dependencies import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed in test environment")
+
+        import tempfile
+        import zipfile
+        from PIL import Image
+        from pipeline.presets import run_preset_pipeline
+
+        # Build Yefira_Material_Dispatcher sub-group to emulate full Yefira DCC setup
+        disp_tree = bpy.data.node_groups.new(name="Yefira_Material_Dispatcher", type='GeometryNodeTree')
+        disp_tree.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+        disp_tree.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+        gn_in = disp_tree.nodes.new("NodeGroupInput")
+        gn_out = disp_tree.nodes.new("NodeGroupOutput")
+        set_mat0 = disp_tree.nodes.new("GeometryNodeSetMaterial")
+        set_mat0.name = "Set Material (Chunk 0)"
+        set_mat0.inputs["Material"].default_value = self.obj.data.materials[0]
+        disp_tree.links.new(gn_in.outputs["Geometry"], set_mat0.inputs["Geometry"])
+        disp_tree.links.new(set_mat0.outputs["Geometry"], gn_out.inputs["Geometry"])
+
+        # Add Material Dispatcher node to world tree
+        disp_node = self.mod.node_group.nodes.new("GeometryNodeGroup")
+        disp_node.node_tree = disp_tree
+        disp_node.name = "Material Dispatcher"
+
+        # Create 3 distinct resource packs with different texture colors
+        tmp_dir = tempfile.TemporaryDirectory()
+        pack_paths = []
+        colors = [(255, 0, 0, 255), (0, 255, 0, 255), (0, 0, 255, 255)]
+        for i, color in enumerate(colors):
+            zip_file = Path(tmp_dir.name) / f"pack_{i + 1}.zip"
+            with zipfile.ZipFile(zip_file, "w") as zf:
+                img_path = Path(tmp_dir.name) / f"stone_{i + 1}.png"
+                Image.new("RGBA", (16, 16), color).save(img_path)
+                zf.write(img_path, arcname="assets/minecraft/textures/block/stone.png")
+            pack_paths.append(zip_file)
+
+        assigned_materials = []
+        for pack_idx, pack_path in enumerate(pack_paths):
+            params = {
+                "zip_path": str(pack_path),
+                "material_mode": "ATLAS",
+                "pack_textures": True,
+                "use_cache": False,
+            }
+            res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
+            self.assertTrue(res.is_success, f"Replacement {pack_idx + 1} failed: {res.message}")
+
+            cur_mat = self.obj.material_slots[0].material
+            self.assertIsNotNone(cur_mat, f"Slot 0 is None on replacement {pack_idx + 1}")
+            self.assertTrue(cur_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+            assigned_materials.append(cur_mat)
+
+            # Check that current material is distinct from previous replacements
+            if pack_idx > 0:
+                self.assertNotEqual(
+                    cur_mat.name,
+                    assigned_materials[pack_idx - 1].name,
+                    f"Replacement {pack_idx + 1} did not create/assign a new material (same as replacement {pack_idx})"
+                )
+
+            # Check Material Dispatcher node group has the current material
+            disp_set_mat = [n for n in disp_tree.nodes if n.type == 'SET_MATERIAL']
+            self.assertTrue(len(disp_set_mat) > 0)
+            self.assertEqual(
+                disp_set_mat[0].inputs["Material"].default_value,
+                cur_mat,
+                f"Material Dispatcher on replacement {pack_idx + 1} was stuck on {disp_set_mat[0].inputs['Material'].default_value} instead of {cur_mat}"
+            )
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 
