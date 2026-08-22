@@ -283,6 +283,37 @@ def extract_face_texture_info(
                     namespace, texture_name = split_texture_key((loc or anim).get("texture_key", anim["name"]))
                     return (*provenance, loc or anim) if provenance else (namespace, [texture_name], loc or anim)
 
+    if mat_mode == "MINEWAYS_ATLAS":
+        from ..mineways_atlas import decode_mineways_face_uv, find_mineways_atlas_image
+        uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
+        if uv_layer and poly_idx < len(mesh.polygons):
+            poly = mesh.polygons[poly_idx]
+            img = find_mineways_atlas_image(slot_mat)
+            tex_name, alt_name, _ = decode_mineways_face_uv(poly, uv_layer, image=img)
+            if tex_name:
+                mw_cands = []
+                from .jmc2obj import _expand_semantic_candidates
+                for name in (tex_name, alt_name):
+                    if name:
+                        clean_n = without_blender_suffix(name.strip().lower())
+                        if clean_n in MINEWAYS_BLOCK_NAME_ALIASES:
+                            mw_cands.extend(MINEWAYS_BLOCK_NAME_ALIASES[clean_n])
+                        mw_cands.append(f"block/{clean_n}")
+                        mw_cands.append(f"entity/{clean_n}")
+                        mw_cands.append(f"item/{clean_n}")
+                        mw_cands.append(clean_n)
+                        mw_cands.extend(_expand_semantic_candidates(clean_n))
+                mw_cands.extend(adapter_candidates)
+                img_w = int(img.size[0]) if (img and img.size[0] > 0) else 1024
+                img_h = int(img.size[1]) if (img and img.size[1] > 0) else 1024
+                mw_loc = {
+                    "kind": "mineways_atlas",
+                    "width": img_w,
+                    "height": img_h,
+                    "texture_name": tex_name,
+                }
+                return (*provenance, mw_loc) if provenance else (adapter_ns, list(dict.fromkeys(c for c in mw_cands if c)), mw_loc)
+
     if provenance:
         return *provenance, None
 

@@ -103,10 +103,11 @@ def base_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
         for node in mat.node_tree.nodes:
             if node.type == "TEX_IMAGE":
                 if node.image:
+                    from ..mineways_atlas import is_mineways_atlas_image
                     img_ns, key = extract_texture_provenance_from_image(node.image)
                     if img_ns and img_ns not in ("assets", "library", "ice_cube_asset_library"):
                         detected_namespaces.append(img_ns)
-                    if key and not key.startswith("atlas_chunk_"):
+                    if key and not key.startswith("atlas_chunk_") and not is_mineways_atlas_image(node.image):
                         candidates.append(key)
                 # Fallback: if node.image is None or missing, extract from node label or custom node name
                 for attr_val in (node.label, node.name):

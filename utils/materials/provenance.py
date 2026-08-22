@@ -128,6 +128,10 @@ def detect_material_mode(mat: bpy.types.Material | None) -> str:
             return "ATLAS_CHUNK"
         return "STANDALONE"
 
+    from .mineways_atlas import is_mineways_atlas_material
+    if is_mineways_atlas_material(mat):
+        return "MINEWAYS_ATLAS"
+
     return "GENERIC"
 
 

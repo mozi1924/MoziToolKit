@@ -190,6 +190,11 @@ def remap_uv_to_local(
                 atlas_width=float(old_chunk["width"]),
                 atlas_height=float(old_chunk["height"]),
             )
+    elif orig_mode == "MINEWAYS_ATLAS" and old_loc:
+        from .mineways_atlas import remap_mineways_atlas_uv_to_local
+        img_w = int(old_loc.get("width", 1024))
+        img_h = int(old_loc.get("height", 1024))
+        return remap_mineways_atlas_uv_to_local(u, v, image_width=img_w, image_height=img_h)
     elif old_anim_info:
         return local_uv_from_rect(
             u, v,

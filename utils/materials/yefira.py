@@ -417,6 +417,8 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             "is_opaque": [],
             "anim_timing": [],
             "anim_frame_size": [],
+            "uv_rot": [],
+            "uv_bounds": [],
         }
         for name, _ in face_specs
     }
@@ -425,9 +427,80 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     emissive_list = []
 
     state_cache: dict[str, dict[str, Any]] = {}
+    import json
 
     for item in state_attr.data:
         state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
+        json_obj = None
+        if state and state.startswith("{") and state.endswith("}"):
+            try:
+                json_obj = json.loads(state)
+            except Exception:
+                json_obj = None
+
+        if json_obj and isinstance(json_obj, dict):
+            raw_state = json_obj.get("state", state)
+            block_name, props = parse_block_state_str(raw_state)
+            names = mapping_names(raw_state)
+            entry = next((by_name[name] for name in names if name in by_name), None)
+            mat_id = int(entry.get("material_id", 0)) if entry else 0
+            material_ids.append(mat_id)
+
+            block_opaque = int(json_obj.get("opaque", 1))
+            is_opaque_list.append(block_opaque)
+            emissive_list.append(int(json_obj.get("emissive", is_block_emissive(block_name, props))))
+
+            json_faces = json_obj.get("faces", {}) if isinstance(json_obj.get("faces"), dict) else {}
+            for attr_face, mapping_face in face_specs:
+                f_data = json_faces.get(attr_face, {})
+                tex_name = f_data.get("tex", "")
+                uv_r = float(f_data.get("rot", 0.0))
+                uv_b = tuple(f_data.get("uv", [0.0, 0.0, 1.0, 1.0]))
+                tint_idx = int(f_data.get("tint", -1))
+
+                short_n = tex_name.split(":", 1)[-1]
+                if short_n.startswith("block/"):
+                    short_n = short_n[6:]
+                location = texture_location(tex_name) or texture_location(short_n) or texture_location(f"minecraft:{short_n}") or texture_location(f"minecraft:block/{short_n}") or {}
+
+                if location.get("kind") == "animation":
+                    px = int(location.get("pixel_x", 0))
+                    fw = max(1, int(location.get("frame_width", 16)))
+                    tile_col = float(px // fw)
+                    tile_row = 0.0
+                else:
+                    tile_col = float(location.get("tile_column", 0))
+                    tile_row = float(location.get("tile_row", 0))
+
+                values[attr_face]["tile"].append((tile_col, tile_row, 0.0))
+                values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
+                values[attr_face]["texture"].append(int(location.get("texture_id", mat_id)))
+                values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
+
+                if tint_idx >= 0 or location.get("default_tint_weight", 0.0) > 0:
+                    values[attr_face]["tint_data"].append((
+                        float(location.get("default_base_tint_weight", 1.0)),
+                        float(location.get("default_overlay_tint_weight", 0.0)),
+                        float(location.get("default_tint_weight", 1.0)),
+                        1.0 if location.get("is_hardcoded", False) else 0.0,
+                    ))
+                else:
+                    values[attr_face]["tint_data"].append((0.0, 0.0, 0.0, 0.0))
+
+                frame_count = float(location.get("frame_count", 1))
+                frametime = float(location.get("frametime", 1))
+                interpolate = 1.0 if location.get("interpolate", False) else 0.0
+                values[attr_face]["anim_timing"].append((frame_count, frametime, interpolate, 0.0))
+
+                fw = float(location.get("frame_width", location.get("tile_size", 16)))
+                fh = float(location.get("frame_height", location.get("tile_size", 16)))
+                values[attr_face]["anim_frame_size"].append((fw, fh, 0.0, 0.0))
+
+                values[attr_face]["uv_rot"].append(uv_r)
+                values[attr_face]["uv_bounds"].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
+            continue
+
+        # Legacy block state string fallback path
         block_name, props = parse_block_state_str(state)
         names = mapping_names(state)
         entry = next((by_name[name] for name in names if name in by_name), None)
@@ -502,6 +575,9 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             fh = float(location.get("frame_height", location.get("tile_size", 16)))
             values[attr_face]["anim_frame_size"].append((fw, fh, 0.0, 0.0))
 
+            values[attr_face]["uv_rot"].append(0.0)
+            values[attr_face]["uv_bounds"].append((0.0, 0.0, 1.0, 1.0))
+
     def point_attr(name: str, data_type: str):
         attr = mesh.attributes.get(name)
         if attr and (attr.domain != 'POINT' or attr.data_type != data_type or len(attr.data) != len(state_attr.data)):
@@ -525,6 +601,10 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         anim_timing_attr.data.foreach_set('color', [component for value in values[face]["anim_timing"] for component in value])
         anim_frame_size_attr = point_attr(f"mtk_anim_frame_size_{face}", 'FLOAT_COLOR')
         anim_frame_size_attr.data.foreach_set('color', [component for value in values[face]["anim_frame_size"] for component in value])
+        rot_attr = point_attr(f"mtk_uv_rot_{face}", 'FLOAT')
+        rot_attr.data.foreach_set('value', values[face]["uv_rot"])
+        bounds_attr = point_attr(f"mtk_uv_bounds_{face}", 'FLOAT_COLOR')
+        bounds_attr.data.foreach_set('color', [component for value in values[face]["uv_bounds"] for component in value])
 
 
 def setup_yefira_point_cloud_attributes(

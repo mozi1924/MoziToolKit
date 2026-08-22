@@ -596,7 +596,15 @@ class StepReplaceMaterial(PipelineStep):
 
             old_mappings = _build_old_mappings(obj, mesh)
 
+            total_polys = max(1, len(mesh.polygons))
             for poly_idx, poly in enumerate(mesh.polygons):
+                if poly_idx > 0 and poly_idx % 2000 == 0:
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    sub_prog = obj_progress + 0.20 * (poly_idx / total_polys)
+                    yield ProgressUpdate(sub_prog, 1.0, f"Scanning Atlas faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
+
                 if poly.material_index >= len(obj.material_slots):
                     unresolved_faces.append(poly_idx)
                     continue
@@ -690,6 +698,13 @@ class StepReplaceMaterial(PipelineStep):
                 if uv_layer is not None:
                     # 1. Straighten any rotated local UVs (e.g. jmc2obj flowing liquid) and remap atlas faces to atlas UVs
                     for poly_idx, resolved in enumerate(resolved_locations):
+                        if poly_idx > 0 and poly_idx % 2000 == 0:
+                            if pipeline_context.is_cancelled:
+                                yield StepResult.cancelled("Material replacement cancelled by user.")
+                                return
+                            sub_prog = obj_progress + 0.20 + 0.20 * (poly_idx / total_polys)
+                            yield ProgressUpdate(sub_prog, 1.0, f"Remapping Atlas UVs: {obj.name} ({poly_idx:,}/{total_polys:,})")
+
                         if resolved is None:
                             continue
                         new_location, old_loc, orig_mode, old_mapping = resolved
@@ -888,7 +903,15 @@ class StepReplaceMaterial(PipelineStep):
                 for poly in mesh.polygons
             ]
 
+            total_polys = max(1, len(mesh.polygons))
             for poly_idx, poly in enumerate(mesh.polygons):
+                if poly_idx > 0 and poly_idx % 2000 == 0:
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    sub_prog = obj_progress + 0.35 * (poly_idx / total_polys)
+                    yield ProgressUpdate(sub_prog, 1.0, f"Scanning faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
+
                 if poly.material_index >= len(obj.material_slots):
                     unresolved_faces.append(poly_idx)
                     continue
@@ -955,7 +978,15 @@ class StepReplaceMaterial(PipelineStep):
                 pipeline_context.report("ERROR", f"'{obj.name}' material construction failed; no conversion was applied.")
                 continue
 
-            for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping, mat, is_new in prepared_faces:
+            total_prep = max(1, len(prepared_faces))
+            for prep_idx, (poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping, mat, is_new) in enumerate(prepared_faces):
+                if prep_idx > 0 and prep_idx % 2000 == 0:
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    sub_prog = obj_progress + 0.35 + 0.45 * (prep_idx / total_prep)
+                    yield ProgressUpdate(sub_prog, 1.0, f"Reconstructing materials: {obj.name} ({prep_idx:,}/{total_prep:,})")
+
                 face_materials[poly_idx] = mat
                 source_keys[poly_idx] = canonical_texture_key(
                     tex_info["namespace"], tex_info.get("texture_key", tex_info["texture_name"])
