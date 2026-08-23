@@ -204,6 +204,63 @@ class TestBiomeMaterialBuilding(unittest.TestCase):
         )
         self.assertTrue(col_linked)
 
+    def test_standalone_material_untinted_omits_biome_tint_node(self):
+        """Untinted textures (stone, iron_sword, etc.) must not create MC Biome Tint node group."""
+        tex_path = self.temp_dir / "stone.png"
+        img = Image.new("RGBA", (16, 16), (128, 128, 128, 255))
+        img.save(tex_path)
+
+        mat = bpy.data.materials.new("TestStoneMat")
+        texture_info = {
+            "namespace": "minecraft",
+            "texture_name": "stone",
+            "albedo": tex_path,
+        }
+        success = rebuild_material(mat, texture_info)
+        self.assertTrue(success)
+
+        nodes = mat.node_tree.nodes
+        biome_tint_node = nodes.get("MC Biome Tint")
+        self.assertIsNone(biome_tint_node)
+
+        decoder_node = nodes.get("LabPBR 1.3 Decoder")
+        self.assertIsNotNone(decoder_node)
+
+        # Verify Albedo connects directly to Decoder Albedo Color
+        tex_albedo = nodes.get("Tex Static (Albedo)")
+        self.assertIsNotNone(tex_albedo)
+        direct_linked = any(
+            link.from_node == tex_albedo and link.to_node == decoder_node
+            and link.to_socket.name == "Albedo Color"
+            for link in mat.node_tree.links
+        )
+        self.assertTrue(direct_linked)
+
+    def test_standalone_material_overlay_nodes(self):
+        """Textures with overlay (grass_block_side) must create MC Biome Tint and Overlay Image node."""
+        base_path = self.temp_dir / "grass_block_side.png"
+        overlay_path = self.temp_dir / "grass_block_side_overlay.png"
+        Image.new("RGBA", (16, 16), (128, 64, 32, 255)).save(base_path)
+        Image.new("RGBA", (16, 16), (200, 200, 200, 255)).save(overlay_path)
+
+        mat = bpy.data.materials.new("TestGrassSideMat")
+        texture_info = {
+            "namespace": "minecraft",
+            "texture_name": "grass_block_side",
+            "albedo": base_path,
+            "overlay": overlay_path,
+        }
+        success = rebuild_material(mat, texture_info)
+        self.assertTrue(success)
+
+        nodes = mat.node_tree.nodes
+        biome_tint_node = nodes.get("MC Biome Tint")
+        self.assertIsNotNone(biome_tint_node)
+
+        tex_overlay = nodes.get("Tex Static (Overlay)")
+        self.assertIsNotNone(tex_overlay)
+        self.assertIsNotNone(tex_overlay.image)
+
 
 class TestBiomePipelineIntegration(unittest.TestCase):
     """Test full pipeline execution with Biome Presets in Standalone and Atlas modes."""

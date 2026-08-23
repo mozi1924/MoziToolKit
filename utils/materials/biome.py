@@ -350,11 +350,14 @@ class BiomeResolver:
             self._analyze_models()
 
     def load_from_pack_root(self, pack_root: str | Path):
-        """Scan and load block models from an extracted resource pack root directory."""
+        """Scan and load models from an extracted resource pack root directory."""
         pack_path = Path(pack_root)
         if not pack_path.exists():
             return
-        for model_file in pack_path.glob("assets/*/models/block/*.json"):
+        assets_dir = pack_path / "assets"
+        if not assets_dir.exists():
+            return
+        for model_file in assets_dir.glob("*/models/**/*.json"):
             try:
                 with open(model_file, "r", encoding="utf-8") as fp:
                     data = json.load(fp)
