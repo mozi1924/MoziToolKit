@@ -159,6 +159,42 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
             val = mesh.attributes[f"mtk_uv_rot_{face}"].data[0].value
             self.assertEqual(val, 0.0, f"Face {face} for oak_log[axis=y] had non-zero rotation: {val}")
 
+    def test_default_template_mesh_normals_and_face_ids(self):
+        """Verify procedural default templates (torch, lantern, slab, fence, carpet) have outward normals."""
+        from utils.live_sync.template_catalog import (
+            _create_torch_mesh, _create_lantern_mesh, _create_slab_mesh,
+            _create_fence_mesh, _create_carpet_mesh, _create_stairs_mesh
+        )
+        for creator in (_create_torch_mesh, _create_lantern_mesh, _create_slab_mesh, _create_fence_mesh, _create_carpet_mesh):
+            mesh = creator("test_template")
+            self.assertEqual(len(mesh.polygons), 6)
+            fid_attr = mesh.attributes.get("yefira_local_face_id")
+            self.assertIsNotNone(fid_attr)
+            
+            # Check outward normals
+            normals = [p.normal for p in mesh.polygons]
+            fids = [fid_attr.data[p.index].value for p in mesh.polygons]
+            
+            # Face 0: Bottom (-Z) -> normal.z < -0.5, fid == 1
+            self.assertLess(normals[0].z, -0.5)
+            self.assertEqual(fids[0], 1)
+            # Face 1: Top (+Z) -> normal.z > 0.5, fid == 0
+            self.assertGreater(normals[1].z, 0.5)
+            self.assertEqual(fids[1], 0)
+            # Face 2: South (-Y) -> normal.y < -0.5, fid == 3
+            self.assertLess(normals[2].y, -0.5)
+            self.assertEqual(fids[2], 3)
+            # Face 3: East (+X) -> normal.x > 0.5, fid == 4
+            self.assertGreater(normals[3].x, 0.5)
+            self.assertEqual(fids[3], 4)
+            # Face 4: North (+Y) -> normal.y > 0.5, fid == 2
+            self.assertGreater(normals[4].y, 0.5)
+            self.assertEqual(fids[4], 2)
+            # Face 5: West (-X) -> normal.x < -0.5, fid == 5
+            self.assertLess(normals[5].x, -0.5)
+            self.assertEqual(fids[5], 5)
+
 
 if __name__ == "__main__":
     unittest.main()
+
