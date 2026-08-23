@@ -12,8 +12,13 @@ from typing import Optional, Any, Union
 
 
 class JarResourceLoader:
-    def __init__(self, pack_path: Optional[Union[str, Path]] = None):
+    def __init__(
+        self,
+        pack_path: Optional[Union[str, Path]] = None,
+        fallback_loader: Optional[JarResourceLoader] = None
+    ):
         self.pack_path: Optional[Path] = Path(pack_path) if pack_path else None
+        self.fallback_loader: Optional[JarResourceLoader] = fallback_loader
         self._zip_file: Optional[zipfile.ZipFile] = None
         self._blockstate_cache: dict[str, dict[str, Any]] = {}
         self._model_cache: dict[str, dict[str, Any]] = {}
@@ -63,6 +68,9 @@ class JarResourceLoader:
 
         rel_path = f"assets/{namespace}/blockstates/{name}.json"
         data = self._read_json(rel_path)
+        if data is None and self.fallback_loader is not None:
+            data = self.fallback_loader.load_blockstate(block_id)
+
         if data is not None:
             self._blockstate_cache[cache_key] = data
         return data
@@ -87,9 +95,38 @@ class JarResourceLoader:
             rel_path = f"assets/{namespace}/{path}.json"
 
         data = self._read_json(rel_path)
+        if data is None and self.fallback_loader is not None:
+            data = self.fallback_loader.load_model(model_id)
+
         if data is not None:
             self._model_cache[cache_key] = data
         return data
+
+    def list_all_blockstates(self) -> list[str]:
+        """List all available blockstate identifiers in the resource pack and fallback."""
+        states = set()
+        for path in self._file_index:
+            parts = Path(path).parts
+            if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "blockstates" and path.endswith(".json"):
+                ns = parts[1]
+                stem = "/".join(parts[3:])[:-5]
+                states.add(f"{ns}:{stem}")
+        if self.fallback_loader:
+            states.update(self.fallback_loader.list_all_blockstates())
+        return sorted(states)
+
+    def list_all_models(self) -> list[str]:
+        """List all available model identifiers in the resource pack and fallback."""
+        models = set()
+        for path in self._file_index:
+            parts = Path(path).parts
+            if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "models" and path.endswith(".json"):
+                ns = parts[1]
+                subpath = "/".join(parts[3:])[:-5]
+                models.add(f"{ns}:{subpath}")
+        if self.fallback_loader:
+            models.update(self.fallback_loader.list_all_models())
+        return sorted(models)
 
     def _read_json(self, rel_path: str) -> Optional[dict[str, Any]]:
         if self._zip_file:
@@ -117,3 +154,5 @@ class JarResourceLoader:
             except Exception:
                 pass
             self._zip_file = None
+        if self.fallback_loader:
+            self.fallback_loader.close()

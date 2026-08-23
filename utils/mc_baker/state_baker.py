@@ -193,3 +193,34 @@ class StateBaker:
 
         self._bake_cache[state_str_clean] = baked_model
         return baked_model
+
+    def bake_all_pack_states(self) -> dict[str, BakedModel]:
+        """
+        Scan and bake all blockstates in the resource pack / JAR.
+        Returns mapping from state_str to BakedModel.
+        """
+        if not self.resource_loader:
+            return {}
+        all_block_ids = self.resource_loader.list_all_blockstates()
+        baked_dict: dict[str, BakedModel] = {}
+        for block_id in all_block_ids:
+            state_json = self.resource_loader.load_blockstate(block_id)
+            if not state_json:
+                continue
+            if "variants" in state_json:
+                for variant_key in state_json["variants"].keys():
+                    if variant_key == "":
+                        full_state = block_id
+                    else:
+                        full_state = f"{block_id}[{variant_key}]"
+                    try:
+                        baked_dict[full_state] = self.bake_block_state(full_state)
+                    except Exception:
+                        pass
+            else:
+                try:
+                    baked_dict[block_id] = self.bake_block_state(block_id)
+                except Exception:
+                    pass
+        return baked_dict
+

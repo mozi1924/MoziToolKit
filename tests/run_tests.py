@@ -696,6 +696,12 @@ def run_all_tests():
         print(f"[Warning] Could not load TestAtlasGenerator: {e}")
 
     try:
+        from tests.test_pack_model_atlas_integration import TestPackModelAtlasIntegration
+        suite.addTests(loader.loadTestsFromTestCase(TestPackModelAtlasIntegration))
+    except Exception as e:
+        print(f"[Warning] Could not load TestPackModelAtlasIntegration: {e}")
+
+    try:
         from tests.test_code_review_fixes import TestCodeReviewFixes
         suite.addTests(loader.loadTestsFromTestCase(TestCodeReviewFixes))
     except Exception as e:

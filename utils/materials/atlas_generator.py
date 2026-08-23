@@ -15,6 +15,9 @@ from typing import Any
 from .constants import FACE_ORDER, ATLAS_FORMAT_VERSION
 from .biome import BiomeResolver
 from ..system.dependencies import has_pillow
+from ..mc_baker import StateBaker, JarResourceLoader
+
+DEFAULT_CLIENT_JAR = "/Users/jaxlocke/26.2-Fabric.jar"
 
 try:
     from PIL import Image
@@ -158,6 +161,17 @@ class AtlasGenerator:
         self.static_materials = []   # list of static material metadata
         self.animated_materials = [] # list of animated material metadata
         self.biome_resolver = BiomeResolver()
+
+        self.baker: Optional[StateBaker] = None
+        try:
+            fallback_loader = JarResourceLoader(DEFAULT_CLIENT_JAR) if Path(DEFAULT_CLIENT_JAR).exists() else None
+            primary_loader = JarResourceLoader(self.resource_path, fallback_loader=fallback_loader)
+            self.baker = StateBaker(jar_path=None)
+            self.baker.resource_loader = primary_loader
+            self.baker.model_parser.model_loader_fn = primary_loader.load_model
+            self.baker.state_resolver.blockstate_loader_fn = primary_loader.load_blockstate
+        except Exception:
+            self.baker = None
 
     def load_resources(self):
         """Load PNG images, mcmeta animation data, and block models from source."""
@@ -731,22 +745,94 @@ class AtlasGenerator:
                 if pending_columns:
                     save_animation_chunk(pending_columns)
 
-        yield (0.85, "Mapping materials and block faces...", None)
+        yield (0.85, "Baking block models and custom UV definitions...", None)
+        baked_states = {}
+        if hasattr(self, "baker") and self.baker:
+            try:
+                baked_states = self.baker.bake_all_pack_states()
+            except Exception as e:
+                print(f"[AtlasGenerator] Warning: StateBaker bake_all_pack_states: {e}")
+
+        dir_to_face_order = {"east": "+X", "west": "-X", "up": "+Y", "down": "-Y", "south": "+Z", "north": "-Z"}
+        block_states_data = {}
+        for state_key, baked_model in baked_states.items():
+            faces_data = {}
+            for dir_name, face_key in dir_to_face_order.items():
+                baked_face = baked_model.get_face(dir_name)
+                if not baked_face:
+                    continue
+                tex_full = baked_face.texture
+                tex_stem = tex_full.split("/")[-1]
+                loc = texture_locations.get(tex_full) or texture_locations.get(tex_stem) or texture_locations.get(f"minecraft:{tex_stem}") or texture_locations.get(f"minecraft:block/{tex_stem}")
+                if isinstance(loc, dict):
+                    entry = dict(loc)
+                    entry["uv_rotation"] = float(baked_face.uv_rot)
+                    entry["u_min"] = float(baked_face.uv_bounds[0])
+                    entry["v_min"] = float(baked_face.uv_bounds[1])
+                    entry["u_max"] = float(baked_face.uv_bounds[2])
+                    entry["v_max"] = float(baked_face.uv_bounds[3])
+                    entry["tint_index"] = int(baked_face.tint_index)
+                    faces_data[face_key] = entry
+            if faces_data:
+                block_states_data[state_key] = {
+                    "is_cube": baked_model.is_cube,
+                    "is_opaque": baked_model.is_opaque,
+                    "is_emissive": baked_model.is_emissive,
+                    "faces": faces_data,
+                }
+
         materials = []
         all_material_names = sorted(set(self.models) | set(self.static_textures) | set(self.animated_textures))
         for material_id, name in enumerate(all_material_names):
-            faces = self.get_6_faces_for_model(name) if name in self.models else {face: name for face in FACE_ORDER}
-            face_entries = {
-                face: texture_locations.get(texture_name) for face, texture_name in faces.items()
-            }
+            baked_model = None
+            if hasattr(self, "baker") and self.baker:
+                try:
+                    baked_model = self.baker.bake_block_state(name)
+                except Exception:
+                    pass
+
+            faces_data = {}
+            if baked_model:
+                for dir_name, face_key in dir_to_face_order.items():
+                    baked_face = baked_model.get_face(dir_name)
+                    if baked_face:
+                        tex_full = baked_face.texture
+                        tex_stem = tex_full.split("/")[-1]
+                        loc = texture_locations.get(tex_full) or texture_locations.get(tex_stem) or texture_locations.get(f"minecraft:{tex_stem}") or texture_locations.get(f"minecraft:block/{tex_stem}")
+                        if isinstance(loc, dict):
+                            entry = dict(loc)
+                            entry["uv_rotation"] = float(baked_face.uv_rot)
+                            entry["u_min"] = float(baked_face.uv_bounds[0])
+                            entry["v_min"] = float(baked_face.uv_bounds[1])
+                            entry["u_max"] = float(baked_face.uv_bounds[2])
+                            entry["v_max"] = float(baked_face.uv_bounds[3])
+                            entry["tint_index"] = int(baked_face.tint_index)
+                            faces_data[face_key] = entry
+
+            if not faces_data:
+                faces = self.get_6_faces_for_model(name) if name in self.models else {face: name for face in FACE_ORDER}
+                for face, texture_name in faces.items():
+                    loc = texture_locations.get(texture_name)
+                    if isinstance(loc, dict):
+                        entry = dict(loc)
+                        entry.setdefault("uv_rotation", 0.0)
+                        entry.setdefault("u_min", 0.0)
+                        entry.setdefault("v_min", 0.0)
+                        entry.setdefault("u_max", 1.0)
+                        entry.setdefault("v_max", 1.0)
+                        faces_data[face] = entry
+                    else:
+                        faces_data[face] = None
+
             mat_is_opaque = all(
-                entry.get("is_opaque", True) for entry in face_entries.values() if isinstance(entry, dict)
-            ) if face_entries else True
+                entry.get("is_opaque", True) for entry in faces_data.values() if isinstance(entry, dict)
+            ) if faces_data else True
+
             materials.append({
                 "material_id": material_id,
                 "name": name,
                 "is_opaque": mat_is_opaque,
-                "faces": face_entries,
+                "faces": faces_data,
             })
 
         # Determine base tile_size for mapping summary (preference to minecraft)
@@ -762,10 +848,12 @@ class AtlasGenerator:
             "chunks": chunks,
             "textures": texture_locations,
             "materials": materials,
+            "block_states": block_states_data,
             "animations": animations,
             "static_texture_count": len(self.static_textures),
             "static_chunk_count": sum(chunk["kind"] == "static" for chunk in chunks),
             "animation_count": len(animations),
+            "baked_states_count": len(block_states_data),
         }
         mapping_path = output_path / "atlas_mapping.json"
         with open(mapping_path, "w", encoding="utf-8") as fp:

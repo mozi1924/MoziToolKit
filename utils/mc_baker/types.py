@@ -67,3 +67,12 @@ class BakedModel:
     is_opaque: bool = True
     is_emissive: bool = False
     emissive_level: float = 0.0
+
+    def get_face(self, direction: str) -> Optional[BakedFace]:
+        """Get BakedFace by direction name (east/west/up/down/south/north or +X/-X/+Y/-Y/+Z/-Z)."""
+        alias_map = {"+x": "east", "-x": "west", "+y": "up", "-y": "down", "+z": "south", "-z": "north"}
+        dir_clean = alias_map.get(direction.lower(), direction.lower())
+        idx = DIR_TO_INDEX.get(dir_clean)
+        if idx is not None and idx < len(self.faces):
+            return self.faces[idx]
+        return None

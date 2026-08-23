@@ -466,9 +466,15 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                     if fallback_location:
                         break
 
-        baked = _GLOBAL_STATE_BAKER.bake_block_state(raw_state)
-        is_opaque_list.append(int(baked.is_opaque) if entry is None or "is_opaque" not in entry else (1 if entry.get("is_opaque", True) else 0))
-        emissive_list.append(1 if is_block_emissive(block_name, props) or baked.is_emissive else 0)
+        block_state_entry = mapping.get("block_states", {}).get(raw_state)
+        baked = None
+        if block_state_entry:
+            is_opaque_list.append(1 if block_state_entry.get("is_opaque", True) else 0)
+            emissive_list.append(1 if block_state_entry.get("is_emissive", False) or is_block_emissive(block_name, props) else 0)
+        else:
+            baked = _GLOBAL_STATE_BAKER.bake_block_state(raw_state)
+            is_opaque_list.append(int(baked.is_opaque) if entry is None or "is_opaque" not in entry else (1 if entry.get("is_opaque", True) else 0))
+            emissive_list.append(1 if is_block_emissive(block_name, props) or baked.is_emissive else 0)
 
         derived_faces = texture_only_faces(block_name, props)
 
@@ -476,11 +482,24 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         is_hardcoded_block = block_name in HARDCODED_TINT_BLOCKS
 
         for face_idx, (attr_face, mapping_face) in enumerate(face_specs):
-            baked_face = baked.faces[face_idx]
-            tex_name = baked_face.texture
-            uv_r = float(baked_face.uv_rot)
-            uv_b = tuple(baked_face.uv_bounds)
-            tint_idx = int(baked_face.tint_index)
+            baked_face = baked.faces[face_idx] if baked else None
+            state_face_entry = block_state_entry.get("faces", {}).get(mapping_face) if block_state_entry else None
+
+            if state_face_entry:
+                tex_name = state_face_entry.get("texture_key", "")
+                uv_r = float(state_face_entry.get("uv_rotation", 0.0))
+                uv_b = tuple(state_face_entry.get("uv_bounds", [0.0, 0.0, 1.0, 1.0]))
+                tint_idx = int(state_face_entry.get("tint_index", -1))
+            elif baked_face:
+                tex_name = baked_face.texture
+                uv_r = float(baked_face.uv_rot)
+                uv_b = tuple(baked_face.uv_bounds)
+                tint_idx = int(baked_face.tint_index)
+            else:
+                tex_name = ""
+                uv_r = 0.0
+                uv_b = (0.0, 0.0, 1.0, 1.0)
+                tint_idx = -1
 
             f_mapping = faces_dict.get(mapping_face, {}) if isinstance(faces_dict, dict) else {}
             tex_stem = f_mapping.get("texture", "") if isinstance(f_mapping, dict) else ""
