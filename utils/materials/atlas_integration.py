@@ -1049,9 +1049,9 @@ def find_all_atlas_chunk_materials(
                         break
                     except (ValueError, TypeError):
                         pass
-            if slot_cid is None and "atlas_chunk_" in slot_mat.name:
+            if slot_cid is None and ("_chunk_" in slot_mat.name or "atlas_chunk_" in slot_mat.name):
                 import re
-                m = re.search(r"atlas_chunk_(\d+)", slot_mat.name)
+                m = re.search(r"(?:atlas_)?(?:[a-z_]+_)?chunk_(\d+)", slot_mat.name)
                 if m:
                     slot_cid = int(m.group(1))
 
@@ -1090,9 +1090,9 @@ def find_all_atlas_chunk_materials(
                 except (ValueError, TypeError):
                     pass
 
-        if cid is None and "atlas_chunk_" in mat.name:
+        if cid is None and ("_chunk_" in mat.name or "atlas_chunk_" in mat.name):
             import re
-            m = re.search(r"atlas_chunk_(\d+)", mat.name)
+            m = re.search(r"(?:atlas_)?(?:[a-z_]+_)?chunk_(\d+)", mat.name)
             if m:
                 cid = int(m.group(1))
 

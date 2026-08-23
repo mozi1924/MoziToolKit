@@ -14,6 +14,7 @@ PROP_SOURCE_FILE = "mtk:source_file"
 PROP_MATERIAL_ID = "mtk:material_id"
 PROP_ATLAS_CHUNK_ID = "mtk:atlas_chunk_id"
 PROP_ATLAS_CHUNK_KIND = "mtk:atlas_chunk_kind"
+PROP_ATLAS_CHUNK_CATEGORY = "mtk:atlas_chunk_category"
 PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 PROP_ATLAS_WIDTH = "mtk_atlas_width"
 PROP_ATLAS_HEIGHT = "mtk_atlas_height"
@@ -21,6 +22,96 @@ PROP_TILE_SIZE = "mtk_tile_size"
 PROP_TILES_PER_ROW = "mtk_tiles_per_row"
 PROP_CREATED_BY = "mtk:created_by"
 PROP_PROVENANCE_SCHEMA_VERSION = "mtk:provenance_schema_version"
+
+# Atlas Categories & Priority Order (Minecraft-aligned)
+ATLAS_CATEGORY_BLOCKS = "blocks"
+ATLAS_CATEGORY_ITEMS = "items"
+ATLAS_CATEGORY_PARTICLES = "particles"
+ATLAS_CATEGORY_PAINTINGS = "paintings"
+ATLAS_CATEGORY_ARMOR_TRIMS = "armor_trims"
+ATLAS_CATEGORY_CHEST = "chest"
+ATLAS_CATEGORY_SHULKER_BOXES = "shulker_boxes"
+ATLAS_CATEGORY_SHIELD_PATTERNS = "shield_patterns"
+ATLAS_CATEGORY_BANNER_PATTERNS = "banner_patterns"
+ATLAS_CATEGORY_DECORATED_POT = "decorated_pot"
+ATLAS_CATEGORY_CELESTIALS = "celestials"
+ATLAS_CATEGORY_GUI = "gui"
+ATLAS_CATEGORY_MAP_DECORATIONS = "map_decorations"
+ATLAS_CATEGORY_ENTITIES = "entities"
+ATLAS_CATEGORY_MISC = "misc"
+
+ATLAS_CATEGORY_PRIORITY = (
+    ATLAS_CATEGORY_BLOCKS,
+    ATLAS_CATEGORY_ITEMS,
+    ATLAS_CATEGORY_PARTICLES,
+    ATLAS_CATEGORY_PAINTINGS,
+    ATLAS_CATEGORY_ARMOR_TRIMS,
+    ATLAS_CATEGORY_CHEST,
+    ATLAS_CATEGORY_SHULKER_BOXES,
+    ATLAS_CATEGORY_SHIELD_PATTERNS,
+    ATLAS_CATEGORY_BANNER_PATTERNS,
+    ATLAS_CATEGORY_DECORATED_POT,
+    ATLAS_CATEGORY_CELESTIALS,
+    ATLAS_CATEGORY_GUI,
+    ATLAS_CATEGORY_MAP_DECORATIONS,
+    ATLAS_CATEGORY_ENTITIES,
+    ATLAS_CATEGORY_MISC,
+)
+
+
+def classify_texture_category(path_or_key: str) -> str:
+    """Classify a relative texture path or resource key into its canonical Atlas category.
+
+    Follows Minecraft's native atlas categorization hierarchy.
+    """
+    k = (path_or_key or "").replace("\\", "/").strip("/").lower()
+    if ":" in k:
+        k = k.split(":", 1)[1].strip("/")
+    if "textures/" in k:
+        k = k.split("textures/", 1)[1].strip("/")
+
+    # Remove channel suffixes like _n, _s, and extension
+    if k.endswith((".png", ".png.mcmeta")):
+        k = k.removesuffix(".png.mcmeta").removesuffix(".png")
+    if k.endswith(("_n", "_s")):
+        k = k[:-2]
+
+    # Specific multi-part entity / feature subcategories first
+    if k.startswith(("entity/chest/", "chest/")):
+        return ATLAS_CATEGORY_CHEST
+    if k.startswith(("entity/shulker/", "shulker/", "shulker_boxes/")):
+        return ATLAS_CATEGORY_SHULKER_BOXES
+    if k.startswith(("entity/decorated_pot/", "decorated_pot/")):
+        return ATLAS_CATEGORY_DECORATED_POT
+    if k.startswith(("entity/shield/", "entity/shield_patterns/", "shield_patterns/")):
+        return ATLAS_CATEGORY_SHIELD_PATTERNS
+    if k.startswith(("entity/banner/", "entity/banner_patterns/", "banner_patterns/")):
+        return ATLAS_CATEGORY_BANNER_PATTERNS
+    if k.startswith(("trims/", "armor_trims/", "entity/trims/")):
+        return ATLAS_CATEGORY_ARMOR_TRIMS
+    if k.startswith(("environment/", "celestials/")):
+        return ATLAS_CATEGORY_CELESTIALS
+    if k.startswith(("map/", "map_decorations/")):
+        return ATLAS_CATEGORY_MAP_DECORATIONS
+    if k.startswith("gui/"):
+        return ATLAS_CATEGORY_GUI
+    if k.startswith(("particle/", "particles/")):
+        return ATLAS_CATEGORY_PARTICLES
+    if k.startswith(("painting/", "paintings/")):
+        return ATLAS_CATEGORY_PAINTINGS
+
+    # Primary block and item directories
+    if k.startswith(("block/", "blocks/")):
+        return ATLAS_CATEGORY_BLOCKS
+    if k.startswith(("item/", "items/")):
+        return ATLAS_CATEGORY_ITEMS
+
+    # Other entities and armor
+    if k.startswith(("entity/", "entities/", "models/armor/")):
+        return ATLAS_CATEGORY_ENTITIES
+
+    return ATLAS_CATEGORY_MISC
+
 
 # Atlas Mesh Attribute Names (Namespaced with mtk_)
 ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"

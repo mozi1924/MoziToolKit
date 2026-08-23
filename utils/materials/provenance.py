@@ -111,7 +111,7 @@ def detect_material_mode(mat: bpy.types.Material | None) -> str:
         return "ATLAS_CHUNK"
 
     if mat.node_tree and "mtk:atlas_mapping" in mat.node_tree:
-        if mat.name.startswith("mtk:") and "atlas_chunk" in mat.name:
+        if mat.name.startswith("mtk:") and ("_chunk_" in mat.name or "atlas_chunk" in mat.name):
             return "ATLAS_CHUNK"
         return "ATLAS_UNIFIED"
 
@@ -124,7 +124,7 @@ def detect_material_mode(mat: bpy.types.Material | None) -> str:
 
     if "mtk:source_texture" in mat or "mtk:source_namespace" in mat:
         source_tex = str(mat.get("mtk:source_texture", ""))
-        if source_tex.startswith("atlas_chunk_"):
+        if "_chunk_" in source_tex or source_tex.startswith("atlas_chunk_"):
             return "ATLAS_CHUNK"
         return "STANDALONE"
 
