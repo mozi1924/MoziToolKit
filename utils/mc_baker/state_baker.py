@@ -92,10 +92,35 @@ class StateBaker:
 
         # 4. Dispenser, Dropper
         if short_name in ("dispenser", "dropper"):
-            top = f"minecraft:block/{short_name}_top"
-            side = f"minecraft:block/{short_name}_side"
-            front = f"minecraft:block/{short_name}_front"
-            return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": front}
+            is_vertical = props.get("facing") in ("up", "down")
+            if is_vertical:
+                front = f"minecraft:block/{short_name}_front_vertical"
+                top = "minecraft:block/furnace_top"
+                return {"east": top, "west": top, "up": front, "down": top, "south": top, "north": top}
+            else:
+                top = "minecraft:block/furnace_top"
+                bottom = "minecraft:block/furnace_top"
+                side = "minecraft:block/furnace_side"
+                front = f"minecraft:block/{short_name}_front"
+                return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": front}
+
+        # 4.5 Crafter
+        if short_name == "crafter":
+            is_crafting = props.get("crafting") == "true"
+            is_triggered = props.get("triggered") == "true"
+            is_powered = props.get("powered") == "true"
+            top = "minecraft:block/crafter_top_triggered" if is_triggered else ("minecraft:block/crafter_top_crafting" if is_crafting else "minecraft:block/crafter_top")
+            front = "minecraft:block/crafter_front_powered" if is_powered else "minecraft:block/crafter_front"
+            bottom = "minecraft:block/crafter_bottom"
+            side = "minecraft:block/crafter_side"
+            east = "minecraft:block/crafter_east"
+            west = "minecraft:block/crafter_west"
+            return {"east": east, "west": west, "up": top, "down": bottom, "south": side, "north": front}
+
+        # 4.6 Glazed Terracotta
+        if "glazed_terracotta" in short_name:
+            pattern = f"minecraft:block/{short_name}"
+            return {d: pattern for d in MC_DIRECTIONS}
 
         # 5. Observer
         if short_name == "observer":
@@ -103,7 +128,7 @@ class StateBaker:
             side = "minecraft:block/observer_side"
             back = "minecraft:block/observer_back"
             front = "minecraft:block/observer_front"
-            return {"east": side, "west": side, "up": top, "down": side, "south": back, "north": front}
+            return {"east": side, "west": side, "up": top, "down": top, "south": back, "north": front}
 
         # 6. Piston, Sticky Piston
         if short_name in ("piston", "sticky_piston"):
@@ -187,6 +212,11 @@ class StateBaker:
             rotations["down"] = 180.0
             rotations["east"] = 90.0
             rotations["west"] = 270.0
+        elif "glazed_terracotta" in short_name:
+            rotations["north"] = 90.0
+            rotations["south"] = 270.0
+            rotations["east"] = 180.0
+            rotations["west"] = 0.0
         elif short_name == "observer":
             rotations["up"] = 180.0
         elif props.get("axis") in ("x", "z") or short_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block")):
@@ -346,6 +376,7 @@ class StateBaker:
             state_json = self.resource_loader.load_blockstate(block_id)
             if not state_json:
                 continue
+            short_name = block_id.split(":", 1)[-1]
             if "variants" in state_json:
                 for variant_key in state_json["variants"].keys():
                     if variant_key == "":
@@ -353,7 +384,40 @@ class StateBaker:
                     else:
                         full_state = f"{block_id}[{variant_key}]"
                     try:
-                        baked_dict[full_state] = self.bake_block_state(full_state)
+                        baked = self.bake_block_state(full_state)
+                        baked_dict[full_state] = baked
+
+                        # Expand common unconstrained Minecraft properties so exact state string queries hit
+                        if short_name in ("dispenser", "dropper"):
+                            baked_dict[f"{block_id}[{variant_key},triggered=false]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},triggered=true]"] = baked
+                            baked_dict[f"{block_id}[triggered=false,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[triggered=true,{variant_key}]"] = baked
+                        elif "command_block" in short_name:
+                            baked_dict[f"{block_id}[conditional=false,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[conditional=true,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},conditional=false]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},conditional=true]"] = baked
+                        elif short_name in ("piston", "sticky_piston"):
+                            baked_dict[f"{block_id}[extended=false,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[extended=true,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},extended=false]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},extended=true]"] = baked
+                        elif short_name == "observer":
+                            baked_dict[f"{block_id}[{variant_key},powered=false]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},powered=true]"] = baked
+                            baked_dict[f"{block_id}[powered=false,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[powered=true,{variant_key}]"] = baked
+                        elif short_name == "barrel":
+                            baked_dict[f"{block_id}[{variant_key},open=false]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},open=true]"] = baked
+                            baked_dict[f"{block_id}[open=false,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[open=true,{variant_key}]"] = baked
+                        elif short_name == "crafter":
+                            baked_dict[f"{block_id}[{variant_key},powered=false]"] = baked
+                            baked_dict[f"{block_id}[{variant_key},powered=true]"] = baked
+                            baked_dict[f"{block_id}[powered=false,{variant_key}]"] = baked
+                            baked_dict[f"{block_id}[powered=true,{variant_key}]"] = baked
                     except Exception:
                         pass
             else:
