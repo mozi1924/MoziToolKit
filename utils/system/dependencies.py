@@ -36,6 +36,14 @@ DEPENDENCIES: Dict[str, Dependency] = {
         description="Required for Minecraft Texture Atlas generation & image processing",
         required_by="Atlas Material Mode (Replace Material -> Atlas Mode)",
     ),
+    "websockets": Dependency(
+        name="websockets",
+        module_name="websockets",
+        display_name="websockets",
+        min_version="13.0",
+        description="Required for Minecraft Live Sync with Fabric Mod (Yefira)",
+        required_by="Live Sync Panel & Operators",
+    ),
 }
 
 
@@ -203,6 +211,11 @@ def has_pillow() -> bool:
     return is_module_installed("PIL")
 
 
+def has_websockets() -> bool:
+    """Convenience helper to check if websockets module is available."""
+    return is_module_installed("websockets")
+
+
 def draw_pillow_warning(
     layout,
     title: str = "Material replacement requires 'Pillow' (PIL) module (Missing)!",
@@ -210,6 +223,22 @@ def draw_pillow_warning(
     tab: str = "MISC"
 ):
     """Draw a standardized alert box warning the user that Pillow is missing with a button to check environment."""
+    alert_box = layout.box()
+    alert_box.alert = True
+    alert_box.label(text=title, icon='ERROR')
+    if subtitle:
+        alert_box.label(text=subtitle)
+    op = alert_box.operator("mozi.open_preferences", text="Check Environment", icon='PREFERENCES')
+    op.tab = tab
+
+
+def draw_websockets_warning(
+    layout,
+    title: str = "Live Sync requires 'websockets' module (Missing)!",
+    subtitle: str = "Please ensure websockets or extension wheels are available.",
+    tab: str = "SYNC"
+):
+    """Draw a standardized alert box warning the user that websockets is missing with a button to check environment."""
     alert_box = layout.box()
     alert_box.alert = True
     alert_box.label(text=title, icon='ERROR')

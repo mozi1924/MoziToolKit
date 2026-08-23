@@ -16,37 +16,42 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 # Discover and extract bundled extension wheels for headless testing FIRST
-try:
-    import PIL
-    from PIL import _imaging
-except ImportError:
-    wheels_dir = PROJECT_DIR / "wheels"
-    if wheels_dir.exists():
-        target_whl = None
-        for whl in wheels_dir.glob("*.whl"):
-            if sys.platform == "darwin" and "macosx" in whl.name:
-                machine = os.uname().machine if hasattr(os, "uname") else "arm64"
-                if "arm64" in whl.name and ("arm" in machine or "aarch64" in machine):
-                    target_whl = whl
-                    break
-                elif "x86_64" in whl.name and "x86" in machine:
-                    target_whl = whl
-                    break
-            elif sys.platform == "win32" and "win" in whl.name:
-                target_whl = whl
-                break
-            elif sys.platform.startswith("linux") and "linux" in whl.name:
-                target_whl = whl
-                break
-        if target_whl:
-            unpack_dir = Path(tempfile.gettempdir()) / "mozitoolkit_test_wheels"
-            unpack_dir.mkdir(parents=True, exist_ok=True)
-            if not (unpack_dir / "PIL").exists():
-                import zipfile
-                with zipfile.ZipFile(target_whl, "r") as zf:
+wheels_dir = PROJECT_DIR / "wheels"
+if wheels_dir.exists():
+    unpack_dir = Path(tempfile.gettempdir()) / "mozitoolkit_test_wheels"
+    unpack_dir.mkdir(parents=True, exist_ok=True)
+    if str(unpack_dir) not in sys.path:
+        sys.path.insert(0, str(unpack_dir))
+
+    import zipfile
+    machine = os.uname().machine if hasattr(os, "uname") else "arm64"
+    is_arm = "arm" in machine or "aarch64" in machine
+
+    for prefix, check_folder in [("pillow", "PIL"), ("websockets", "websockets")]:
+        if not (unpack_dir / check_folder).exists():
+            matched_whl = None
+            for whl in sorted(wheels_dir.glob(f"{prefix}*.whl")):
+                if sys.platform == "darwin":
+                    if "macosx" in whl.name:
+                        if is_arm and "arm64" in whl.name:
+                            matched_whl = whl
+                            break
+                        elif not is_arm and "x86_64" in whl.name:
+                            matched_whl = whl
+                            break
+                    elif "py3-none-any" in whl.name:
+                        matched_whl = whl
+                elif sys.platform == "win32":
+                    if "win" in whl.name or "py3-none-any" in whl.name:
+                        matched_whl = whl
+                        break
+                elif sys.platform.startswith("linux"):
+                    if "manylinux" in whl.name or "py3-none-any" in whl.name:
+                        matched_whl = whl
+                        break
+            if matched_whl and matched_whl.exists():
+                with zipfile.ZipFile(matched_whl, "r") as zf:
                     zf.extractall(unpack_dir)
-            if str(unpack_dir) not in sys.path:
-                sys.path.insert(0, str(unpack_dir))
 
 import importlib.util
 if "MoziToolKit" not in sys.modules:
@@ -782,6 +787,12 @@ def run_all_tests():
         suite.addTests(loader.loadTestsFromTestCase(TestMoziYefiraIntegration))
     except Exception as e:
         print(f"[Warning] Could not load TestMoziYefiraIntegration: {e}")
+
+    try:
+        from tests.test_yefira_multiface_states import TestYefiraMultifaceStates
+        suite.addTests(loader.loadTestsFromTestCase(TestYefiraMultifaceStates))
+    except Exception as e:
+        print(f"[Warning] Could not load TestYefiraMultifaceStates: {e}")
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

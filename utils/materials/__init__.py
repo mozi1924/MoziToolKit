@@ -182,6 +182,11 @@ if HAS_BPY:
         setup_yefira_point_cloud_attributes,
         notify_yefira_update,
         apply_yefira_atlas_materials,
+        extract_atlas_parameters,
+        find_bound_atlas_material,
+        find_all_atlas_chunk_materials,
+        get_or_create_atlas_material,
+        setup_material_slots_for_object,
     )
 
 
@@ -371,4 +376,9 @@ __all__ = [
     "setup_yefira_point_cloud_attributes",
     "notify_yefira_update",
     "apply_yefira_atlas_materials",
+    "extract_atlas_parameters",
+    "find_bound_atlas_material",
+    "find_all_atlas_chunk_materials",
+    "get_or_create_atlas_material",
+    "setup_material_slots_for_object",
 ]

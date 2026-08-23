@@ -778,25 +778,18 @@ def _update_yefira_geometry_node_materials(
 
 
 def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
-    """Notify the Yefira addon to refresh point cloud attributes and rebuild geometry nodes."""
+    """Notify Geometry Nodes world engine to refresh point cloud attributes and rebuild nodes."""
     if obj:
         try:
-            if "yefira_blender.nodes.world_tree" in sys.modules:
-                from yefira_blender.nodes.world_tree import setup_world_geometry_nodes
-                setup_world_geometry_nodes(obj)
-            elif "yefira_blender.nodes.geo_nodes" in sys.modules:
-                from yefira_blender.nodes.geo_nodes import setup_world_geometry_nodes
-                setup_world_geometry_nodes(obj)
-            else:
-                try:
-                    import yefira_blender.nodes.world_tree as ywt
-                    ywt.setup_world_geometry_nodes(obj)
-                except ImportError:
-                    pass
+            from ..geometry_nodes.world_tree import setup_world_geometry_nodes
+            setup_world_geometry_nodes(obj)
         except Exception:
             pass
 
     try:
+        if hasattr(bpy.ops, "mozi") and hasattr(bpy.ops.mozi, "sync_rebuild_world"):
+            bpy.ops.mozi.sync_rebuild_world()
+            return
         if hasattr(bpy.ops, "yefira") and hasattr(bpy.ops.yefira, "rebuild_world"):
             bpy.ops.yefira.rebuild_world()
             return
@@ -804,11 +797,22 @@ def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
         pass
 
     try:
-        if "yefira_blender.operators.main_operators" in sys.modules:
-            from yefira_blender.operators.main_operators import trigger_point_cloud_update
-            trigger_point_cloud_update(bpy.context)
+        from ..live_sync.point_cloud import update_world_point_cloud
+        from ..live_sync.storage import voxel_storage
+        update_world_point_cloud(bpy.context, voxel_storage)
     except Exception:
         pass
+
+
+from .atlas_integration import (
+    extract_atlas_parameters,
+    find_active_atlas_material,
+    find_all_atlas_chunk_materials,
+    find_bound_atlas_material,
+    get_or_create_atlas_material,
+    parse_atlas_mapping,
+    setup_material_slots_for_object,
+)
 
 
 def apply_yefira_atlas_materials(

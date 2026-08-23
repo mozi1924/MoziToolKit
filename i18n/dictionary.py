@@ -257,5 +257,30 @@ translations_dict = {
         # CLI & Package Descriptions
         ("*", "Generate Minecraft Texture Atlas from Resource Pack / JAR."): "从 Minecraft 材质包或 JAR 生成纹理图集 (Texture Atlas)。",
         ("*", "Package MoziToolKit extension for Blender."): "打包 MoziToolKit 插件扩展文件供 Blender 使用。",
+
+        # Live Sync
+        ("*", "Live Sync"): "实时同步 (Live Sync)",
+        ("*", "Connect"): "连接",
+        ("*", "Disconnect"): "断开连接",
+        ("*", "Refresh"): "刷新连接",
+        ("*", "Rebuild World"): "重建世界",
+        ("*", "Clear History"): "清空历史",
+        ("*", "Filter Air"): "过滤空气块",
+        ("*", "Selection Bounds"): "选区范围",
+        ("*", "Geometry Nodes World"): "几何节点世界",
+        ("*", "Active Points"): "活跃点数",
+        ("*", "Block State"): "方块状态",
+        ("*", "Time"): "时间",
+        ("*", "Position"): "坐标位置",
+        ("*", "WebSocket URL"): "WebSocket 地址",
+        ("*", "Address of the Minecraft Fabric Live Sync WebSocket server"): "Minecraft Fabric 实时同步 WebSocket 服务器地址",
+        ("*", "Whether Live Sync client is currently connected"): "实时同步客户端当前是否已连接",
+        ("*", "Live Sync connection status message"): "实时同步连接状态提示信息",
+        ("*", "Skip air blocks when building point cloud to reduce point count"): "构建点云时跳过空气方块以节省点数开销",
+        ("*", "Connect to Minecraft Live Sync WebSocket Server"): "连接到 Minecraft 实时同步 WebSocket 服务端",
+        ("*", "Disconnect from Minecraft Live Sync server"): "从 Minecraft 实时同步服务端断开连接",
+        ("*", "Reconnect and request fresh full snapshot"): "重新连接并请求完整的世界快照数据",
+        ("*", "Force rebuild Yefira_World point cloud, materials, and Geometry Nodes"): "强制重新构建 Yefira_World 点云、材质与几何节点系统",
+        ("*", "Clear all entries from the live delta change history log"): "清空实时增量变更历史记录日志",
     }
 }
