@@ -24,7 +24,10 @@ logger = logging.getLogger("MoziToolKit.LiveSync")
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
 _rebuild_timer_registered: bool = False
-REBUILD_DEBOUNCE_SECONDS: float = 0.075
+REBUILD_DEBOUNCE_SECONDS: float = 0.05
+
+_cached_atlas_params: Optional[dict] = None
+_cached_mat_id: Optional[int] = None
 
 
 def get_active_sync_props(context: Optional[bpy.types.Context] = None):
@@ -38,13 +41,32 @@ def get_active_sync_props(context: Optional[bpy.types.Context] = None):
     return None
 
 
-def trigger_point_cloud_update(context: bpy.types.Context) -> None:
+def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
+    """Retrieve or compute cached atlas parameters to avoid repeatedly parsing JSON on every delta."""
+    global _cached_atlas_params, _cached_mat_id
+    mat_id = id(mat) if mat else 0
+    if _cached_atlas_params is not None and _cached_mat_id == mat_id:
+        return _cached_atlas_params
+    _cached_atlas_params = extract_atlas_parameters(mat)
+    _cached_mat_id = mat_id
+    return _cached_atlas_params
+
+
+def clear_sync_caches() -> None:
+    """Invalidate atlas parameter cache on material or world reset."""
+    global _cached_atlas_params, _cached_mat_id
+    _cached_atlas_params = None
+    _cached_mat_id = None
+
+
+def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
     """Update Yefira_World point cloud and configure Geometry Nodes engine."""
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
 
     existing_world = bpy.data.objects.get("Yefira_World")
-    atlas_params = extract_atlas_parameters(find_bound_atlas_material(existing_world))
+    mat = find_bound_atlas_material(existing_world) if existing_world else None
+    atlas_params = get_cached_atlas_params(mat)
     atlas_mapping_dict = atlas_params.get("material_id_map", {})
     block_face_lut = atlas_params.get("block_face_lut", {})
 
@@ -73,7 +95,9 @@ def trigger_point_cloud_update(context: bpy.types.Context) -> None:
     )
 
     if res.world_obj:
-        setup_world_geometry_nodes(res.world_obj)
+        mod = res.world_obj.modifiers.get("Yefira_WorldModifier")
+        if force_gn_setup or not mod or not mod.node_group:
+            setup_world_geometry_nodes(res.world_obj)
 
     if props:
         props.point_count = res.point_count
@@ -82,7 +106,7 @@ def trigger_point_cloud_update(context: bpy.types.Context) -> None:
         props.fluids_count = res.fluids_count
 
 
-def schedule_point_cloud_update() -> None:
+def schedule_point_cloud_update(force_gn_setup: bool = False) -> None:
     """Coalesce live updates into a single main-thread point-cloud rebuild."""
     global _rebuild_timer_registered
     if _rebuild_timer_registered:
@@ -94,7 +118,11 @@ def schedule_point_cloud_update() -> None:
         global _rebuild_timer_registered
         try:
             if voxel_storage.size_x and voxel_storage.size_y and voxel_storage.size_z:
-                trigger_point_cloud_update(bpy.context)
+                trigger_point_cloud_update(bpy.context, force_gn_setup=force_gn_setup)
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type in ('VIEW_3D', 'PROPERTIES'):
+                            area.tag_redraw()
         except Exception as e:
             logger.error(f"Deferred point-cloud update error: {e}")
         finally:
@@ -128,9 +156,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             def wrapper():
                 try:
                     func()
-                    for window in bpy.context.window_manager.windows:
-                        for area in window.screen.areas:
-                            area.tag_redraw()
                 except Exception as e:
                     logger.error(f"Main thread update error: {e}")
                 return None
@@ -140,6 +165,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             def update():
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type == 'PROPERTIES':
+                            area.tag_redraw()
             run_in_main_thread(update)
 
         def on_selection_info(min_x, min_y, min_z, size_x, size_y, size_z):
@@ -157,6 +186,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             def update():
                 global _last_seq_id
                 _last_seq_id = 0
+                clear_sync_caches()
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
                 props.max_x = min_x + size_x - 1
@@ -170,7 +200,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
                 # 1. Update VoxelStorage
                 voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
-                schedule_point_cloud_update()
+                schedule_point_cloud_update(force_gn_setup=True)
 
                 # Update Palette UI list
                 props.palette_list.clear()
@@ -185,6 +215,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 item.timestamp = time.strftime("%H:%M:%S")
                 item.pos_str = f"Bounds: {size_x}x{size_y}x{size_z}"
                 item.block_state = f"Snapshot ({total_blocks} blks)"
+                while len(props.delta_history) > 50:
+                    props.delta_history.remove(0)
             run_in_main_thread(update)
 
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
@@ -202,12 +234,19 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.update_counter += 1
                 props.last_update_info = f"Delta: {len(changes)} blocks (seq {seq_id})"
 
-                # Append to history list
-                for x, y, z, state_str in changes:
+                # Efficient history list logging
+                num_changes = len(changes)
+                if num_changes <= 5:
+                    for x, y, z, state_str in changes:
+                        item = props.delta_history.add()
+                        item.timestamp = time.strftime("%H:%M:%S")
+                        item.pos_str = f"({x}, {y}, {z})"
+                        item.block_state = state_str
+                else:
                     item = props.delta_history.add()
                     item.timestamp = time.strftime("%H:%M:%S")
-                    item.pos_str = f"({x}, {y}, {z})"
-                    item.block_state = state_str
+                    item.pos_str = f"Batch ({num_changes})"
+                    item.block_state = f"{changes[0][3]} ... (+{num_changes-1})"
 
                 # Keep max 50 items in delta history
                 while len(props.delta_history) > 50:

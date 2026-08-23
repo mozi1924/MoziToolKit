@@ -29,12 +29,14 @@ class VoxelStorage:
         self.size_z: int = 0
         self.block_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> state_str
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
+        self._dirty_sections: Set[Tuple[int, int, int]] = set()
         self.generation: int = 0
 
     def clear(self) -> None:
         """Clear all stored voxel and section data."""
         self.block_map.clear()
         self.section_crc_map.clear()
+        self._dirty_sections.clear()
         self.min_x = self.min_y = self.min_z = 0
         self.size_x = self.size_y = self.size_z = 0
         self.generation += 1
@@ -70,6 +72,7 @@ class VoxelStorage:
         self.size_x, self.size_y, self.size_z = size_x, size_y, size_z
         self.block_map.clear()
         self.section_crc_map.clear()
+        self._dirty_sections.clear()
         self.generation += 1
 
         total_blocks = size_x * size_y * size_z
@@ -144,6 +147,7 @@ class VoxelStorage:
             abs_z = start_z + z
             self.block_map[(abs_x, abs_y, abs_z)] = state_str
 
+        self._dirty_sections.discard((sec_x, sec_y, sec_z))
         self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
         return True
 
@@ -160,13 +164,9 @@ class VoxelStorage:
             logger.warning("Discarded delta containing coordinates outside active selection")
             return False
 
-        affected_sections: Set[Tuple[int, int, int]] = set()
         for abs_x, abs_y, abs_z, state_str in changes:
             self.block_map[(abs_x, abs_y, abs_z)] = state_str
-            affected_sections.add((abs_x >> 4, abs_y >> 4, abs_z >> 4))
-
-        for sec_x, sec_y, sec_z in affected_sections:
-            self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
+            self._dirty_sections.add((abs_x >> 4, abs_y >> 4, abs_z >> 4))
 
         return True
 
@@ -197,6 +197,7 @@ class VoxelStorage:
     def recalculate_all_section_crcs(self) -> None:
         """Recompute CRC32 across all sections in current bounds."""
         self.section_crc_map.clear()
+        self._dirty_sections.clear()
         if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
             return
 
@@ -218,6 +219,9 @@ class VoxelStorage:
         mismatched = []
         for sec_x, sec_y, sec_z, server_crc32 in server_sections:
             key = (sec_x, sec_y, sec_z)
+            if key in self._dirty_sections or key not in self.section_crc_map:
+                self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
+                self._dirty_sections.discard(key)
             local_crc = self.section_crc_map.get(key, None)
             if local_crc != server_crc32:
                 mismatched.append(key)
