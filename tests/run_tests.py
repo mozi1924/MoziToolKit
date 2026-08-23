@@ -759,6 +759,24 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestReplaceMaterialPointCloud: {e}")
 
+    try:
+        from tests.test_mc_model_baker import TestMCModelBaker
+        suite.addTests(loader.loadTestsFromTestCase(TestMCModelBaker))
+    except Exception as e:
+        print(f"[Warning] Could not load TestMCModelBaker: {e}")
+
+    try:
+        from tests.test_jar_model_baker import TestJarModelBaker
+        suite.addTests(loader.loadTestsFromTestCase(TestJarModelBaker))
+    except Exception as e:
+        print(f"[Warning] Could not load TestJarModelBaker: {e}")
+
+    try:
+        from tests.test_mozi_yefira_integration import TestMoziYefiraIntegration
+        suite.addTests(loader.loadTestsFromTestCase(TestMoziYefiraIntegration))
+    except Exception as e:
+        print(f"[Warning] Could not load TestMoziYefiraIntegration: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

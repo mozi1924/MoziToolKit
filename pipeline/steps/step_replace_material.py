@@ -307,7 +307,7 @@ class StepReplaceMaterial(PipelineStep):
         zip_path = pipeline_context.get_param("zip_path")
         pack_textures = pipeline_context.get_param("pack_textures", True)
         use_cache = pipeline_context.get_param("use_cache", True)
-        material_mode = pipeline_context.get_param("material_mode", "STANDALONE")
+        material_mode = pipeline_context.get_param("material_mode", "ATLAS")
 
         if not zip_path or not Path(zip_path).exists():
             yield StepResult.failed("Resource pack ZIP file not specified or found.")
@@ -518,6 +518,15 @@ class StepReplaceMaterial(PipelineStep):
                 chunk_ids={int(chunk["chunk_id"]) for chunk in mapping_data.get("chunks", [])},
                 uv_attribute="UVMap",
             )
+
+        # 3. Update MC_Block_Templates collection models from resource pack
+        try:
+            from ...utils.mc_baker import update_mc_block_templates_from_pack
+            pack_src = pack.extract_dir if (pack.extract_dir and Path(pack.extract_dir).exists()) else pack.zip_path
+            if pack_src:
+                update_mc_block_templates_from_pack(pack_src, context=pipeline_context.context)
+        except Exception as e:
+            print(f"[MoziToolKit] Warning: Could not update MC_Block_Templates: {e}")
 
         session_materials = {}
 
@@ -857,6 +866,15 @@ class StepReplaceMaterial(PipelineStep):
         biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
 
         total_objs = len(valid_objects)
+
+        # Update MC_Block_Templates collection models from resource pack
+        try:
+            from ...utils.mc_baker import update_mc_block_templates_from_pack
+            pack_src = pack.extract_dir if (pack.extract_dir and Path(pack.extract_dir).exists()) else pack.zip_path
+            if pack_src:
+                update_mc_block_templates_from_pack(pack_src, context=pipeline_context.context)
+        except Exception as e:
+            print(f"[MoziToolKit] Warning: Could not update MC_Block_Templates: {e}")
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (pack.pack_hash, texture_info["namespace"], texture_info["texture_name"])
