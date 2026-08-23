@@ -147,7 +147,17 @@ class BlockStateResolver:
                         results.append(self._parse_variant_entry(apply[0]))
                     else:
                         results.append(self._parse_variant_entry(apply))
-            return results
+            if results:
+                return results
+
+            # If no multipart condition matched (e.g. empty or default properties), fallback to first valid part
+            for part in raw_state["multipart"]:
+                apply = part.get("apply")
+                if apply:
+                    if isinstance(apply, list):
+                        return [self._parse_variant_entry(apply[0])]
+                    else:
+                        return [self._parse_variant_entry(apply)]
 
         short_name = block_id.split(":", 1)[-1]
         return [VariantMatch(model_id=f"minecraft:block/{short_name}")]
