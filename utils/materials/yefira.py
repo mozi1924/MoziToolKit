@@ -38,89 +38,12 @@ def refresh_baker_sources() -> None:
         pass
 
 
-BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
-    "water": ["water_still", "water_flow"],
-    "lava": ["lava_still", "lava_flow"],
-    "magma_block": ["magma", "magma_block"],
-    "fire": ["fire_0", "fire_1"],
-    "soul_fire": ["soul_fire_0", "soul_fire_1"],
-    "campfire": ["campfire_fire", "campfire_log", "campfire_log_lit"],
-    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log", "soul_campfire_log_lit"],
-    "portal": ["nether_portal"],
-    "nether_portal": ["nether_portal"],
-    "kelp": ["kelp", "kelp_plant"],
-    "kelp_plant": ["kelp_plant", "kelp"],
-    "sea_pickle": ["sea_pickle"],
-    "sea_lantern": ["sea_lantern"],
-    "prismarine": ["prismarine"],
-    "prismarine_bricks": ["prismarine_bricks"],
-    "dark_prismarine": ["dark_prismarine"],
-    "lantern": ["lantern"],
-    "soul_lantern": ["soul_lantern"],
-    "sculk_sensor": ["sculk_sensor_top", "sculk_sensor_side", "sculk_sensor_bottom"],
-    "sculk_catalyst": ["sculk_catalyst_top", "sculk_catalyst_side", "sculk_catalyst_bottom"],
-    "sculk_shrieker": ["sculk_shrieker_top", "sculk_shrieker_side", "sculk_shrieker_bottom"],
-    "respawn_anchor": [
-        "respawn_anchor_top_off", "respawn_anchor_top",
-        "respawn_anchor_side0", "respawn_anchor_side1", "respawn_anchor_side2",
-        "respawn_anchor_side3", "respawn_anchor_side4", "respawn_anchor_bottom"
-    ],
-    "smoker": ["smoker_front", "smoker_front_on", "smoker_side", "smoker_top", "smoker_bottom"],
-    "furnace": ["furnace_front", "furnace_front_on", "furnace_side", "furnace_top", "furnace_bottom"],
-    "blast_furnace": ["blast_furnace_front", "blast_furnace_front_on", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
-    "redstone_lamp": ["redstone_lamp", "redstone_lamp_on"],
-    "redstone_torch": ["redstone_torch", "redstone_torch_off"],
-    "redstone_wall_torch": ["redstone_torch", "redstone_torch_off"],
-    "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
-    "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
-    "dispenser": ["dispenser_front", "dispenser_front_vertical", "furnace_side", "furnace_top"],
-    "dropper": ["dropper_front", "dropper_front_vertical", "furnace_side", "furnace_top"],
-    "crafter": ["crafter_front", "crafter_front_powered", "crafter_top", "crafter_top_crafting", "crafter_top_triggered", "crafter_bottom", "crafter_side", "crafter_east", "crafter_west"],
-    "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
-    "piston": ["piston_top", "piston_bottom", "piston_side"],
-    "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
-    "barrel": ["barrel_top", "barrel_bottom", "barrel_side", "barrel_top_open"],
-    "beehive": ["beehive_front", "beehive_front_honey", "beehive_side", "beehive_top", "beehive_bottom"],
-    "bee_nest": ["bee_nest_front", "bee_nest_front_honey", "bee_nest_side", "bee_nest_top", "bee_nest_bottom"],
-    "carved_pumpkin": ["carved_pumpkin", "pumpkin_side", "pumpkin_top"],
-    "jack_o_lantern": ["jack_o_lantern", "pumpkin_side", "pumpkin_top"],
-    "red_mushroom_block": ["red_mushroom_block", "mushroom_block_inside"],
-    "brown_mushroom_block": ["brown_mushroom_block", "mushroom_block_inside"],
-    "mushroom_stem": ["mushroom_stem", "mushroom_block_inside"],
-    "grass_block": ["grass_block_top", "grass_block_side", "grass_block_snow", "grass_block_side_overlay", "dirt"],
-    "podzol": ["podzol_top", "podzol_side", "grass_block_snow", "dirt"],
-    "mycelium": ["mycelium_top", "mycelium_side", "grass_block_snow", "dirt"],
-    "white_glazed_terracotta": ["white_glazed_terracotta"],
-    "orange_glazed_terracotta": ["orange_glazed_terracotta"],
-    "magenta_glazed_terracotta": ["magenta_glazed_terracotta"],
-    "light_blue_glazed_terracotta": ["light_blue_glazed_terracotta"],
-    "yellow_glazed_terracotta": ["yellow_glazed_terracotta"],
-    "lime_glazed_terracotta": ["lime_glazed_terracotta"],
-    "pink_glazed_terracotta": ["pink_glazed_terracotta"],
-    "gray_glazed_terracotta": ["gray_glazed_terracotta"],
-    "light_gray_glazed_terracotta": ["light_gray_glazed_terracotta"],
-    "cyan_glazed_terracotta": ["cyan_glazed_terracotta"],
-    "purple_glazed_terracotta": ["purple_glazed_terracotta"],
-    "blue_glazed_terracotta": ["blue_glazed_terracotta"],
-    "brown_glazed_terracotta": ["brown_glazed_terracotta"],
-    "green_glazed_terracotta": ["green_glazed_terracotta"],
-    "red_glazed_terracotta": ["red_glazed_terracotta"],
-    "black_glazed_terracotta": ["black_glazed_terracotta"],
-}
+from .constants import BLOCK_TO_TEXTURE_ALIASES
+from .biome import HARDCODED_BLOCK_TINTS
+from ..live_sync.classifier import EMISSIVE_BLOCKS
 
-EMISSIVE_BLOCK_NAMES = frozenset({
-    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
-    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
-    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
-    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
-})
-
-HARDCODED_TINT_BLOCKS = {
-    "spruce_leaves": (1.0, 1.0, 1.0, 1.0),
-    "birch_leaves": (1.0, 1.0, 1.0, 1.0),
-    "lily_pad": (1.0, 1.0, 1.0, 1.0),
-    "redstone_wire": (1.0, 1.0, 1.0, 1.0),
-}
+EMISSIVE_BLOCK_NAMES = EMISSIVE_BLOCKS
+HARDCODED_TINT_BLOCKS = HARDCODED_BLOCK_TINTS
 
 
 def parse_block_state_str(state: str) -> tuple[str, dict[str, str]]:
@@ -145,7 +68,7 @@ def parse_block_state_str(state: str) -> tuple[str, dict[str, str]]:
 
 def is_block_emissive(block_name: str, props: dict[str, str]) -> int:
     """Return 1 if block/state is emissive (light emitting), else 0."""
-    if block_name in EMISSIVE_BLOCK_NAMES or block_name.endswith("_froglight"):
+    if block_name in EMISSIVE_BLOCKS or block_name.endswith("_froglight"):
         return 1
     is_lit = props.get("lit") == "true"
     if is_lit and (
@@ -722,83 +645,8 @@ def rebuild_or_update_yefira_material_dispatcher(
     atlas_materials: dict[int, bpy.types.Material],
 ) -> Optional[bpy.types.GeometryNodeTree]:
     """Ensure Yefira_Material_Dispatcher node group contains the complete multi-chunk Set Material chain."""
-    try:
-        if "yefira_blender.nodes.groups.material_dispatcher" in sys.modules:
-            from yefira_blender.nodes.groups.material_dispatcher import get_or_create_material_dispatcher_group
-            return get_or_create_material_dispatcher_group(atlas_materials)
-        elif "yefira_blender.nodes.groups" in sys.modules:
-            from yefira_blender.nodes.groups import get_or_create_material_dispatcher_group
-            return get_or_create_material_dispatcher_group(atlas_materials)
-    except Exception:
-        pass
-
-    tree = bpy.data.node_groups.get("Yefira_Material_Dispatcher")
-    if not tree:
-        tree = bpy.data.node_groups.new("Yefira_Material_Dispatcher", "GeometryNodeTree")
-
-    sorted_chunk_ids = sorted(atlas_materials.keys()) if atlas_materials else [0]
-    signature_key = ",".join(
-        f"{cid}:{atlas_materials[cid].name if atlas_materials.get(cid) else 'None'}"
-        for cid in sorted_chunk_ids
-    )
-
-    tree.nodes.clear()
-
-    if hasattr(tree, "interface"):
-        in_sock = next((s for s in tree.interface.items_tree if getattr(s, "item_type", "") == "SOCKET" and getattr(s, "in_out", "") == "INPUT" and s.name == "Geometry"), None)
-        if not in_sock:
-            tree.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-        out_sock = next((s for s in tree.interface.items_tree if getattr(s, "item_type", "") == "SOCKET" and getattr(s, "in_out", "") == "OUTPUT" and s.name == "Geometry"), None)
-        if not out_sock:
-            tree.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-
-    nodes, links = tree.nodes, tree.links
-    gin = nodes.new("NodeGroupInput")
-    gin.location = (-300, 0)
-    gout = nodes.new("NodeGroupOutput")
-    last_geo = gin.outputs["Geometry"]
-    x_pos = 0
-
-    if 0 in atlas_materials and atlas_materials[0]:
-        set_mat0 = nodes.new("GeometryNodeSetMaterial")
-        set_mat0.name = "Set Material (Chunk 0)"
-        set_mat0.inputs["Material"].default_value = atlas_materials[0]
-        set_mat0.location = (x_pos, 0)
-        links.new(last_geo, set_mat0.inputs["Geometry"])
-        last_geo = set_mat0.outputs["Geometry"]
-        x_pos += 200
-
-    other_chunk_ids = [cid for cid in sorted_chunk_ids if cid > 0 and atlas_materials.get(cid)]
-    if other_chunk_ids:
-        read_chunk_id = nodes.new("GeometryNodeInputNamedAttribute")
-        read_chunk_id.data_type = "INT"
-        read_chunk_id.inputs["Name"].default_value = "mtk_atlas_chunk_id"
-        read_chunk_id.location = (0, -220)
-
-        for cid in other_chunk_ids:
-            mat_obj = atlas_materials[cid]
-            cmp_chunk = nodes.new("FunctionNodeCompare")
-            cmp_chunk.data_type = "INT"
-            cmp_chunk.operation = "EQUAL"
-            cmp_chunk.inputs["B"].default_value = cid
-            cmp_chunk.location = (x_pos, -220)
-            links.new(read_chunk_id.outputs["Attribute"], cmp_chunk.inputs["A"])
-
-            set_mat = nodes.new("GeometryNodeSetMaterial")
-            set_mat.name = f"Set Material (Chunk {cid})"
-            set_mat.inputs["Material"].default_value = mat_obj
-            set_mat.location = (x_pos, 0)
-            links.new(last_geo, set_mat.inputs["Geometry"])
-            links.new(cmp_chunk.outputs["Result"], set_mat.inputs["Selection"])
-
-            last_geo = set_mat.outputs["Geometry"]
-            x_pos += 200
-
-    gout.location = (x_pos + 100, 0)
-    links.new(last_geo, gout.inputs["Geometry"])
-    tree["yefira_dispatcher_signature"] = signature_key
-    tree["yefira_role"] = "material_dispatcher"
-    return tree
+    from ..geometry_nodes.groups.material_dispatcher import get_or_create_material_dispatcher_group
+    return get_or_create_material_dispatcher_group(atlas_materials)
 
 
 def _update_yefira_geometry_node_materials(
@@ -852,9 +700,6 @@ def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
     try:
         if hasattr(bpy.ops, "mozi") and hasattr(bpy.ops.mozi, "sync_rebuild_world"):
             bpy.ops.mozi.sync_rebuild_world()
-            return
-        if hasattr(bpy.ops, "yefira") and hasattr(bpy.ops.yefira, "rebuild_world"):
-            bpy.ops.yefira.rebuild_world()
             return
     except Exception:
         pass

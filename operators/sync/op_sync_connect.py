@@ -34,10 +34,8 @@ def get_active_sync_props(context: Optional[bpy.types.Context] = None):
     """Retrieve mozi_sync scene properties safely."""
     if context is None:
         context = bpy.context
-    if hasattr(context.scene, "mozi_sync"):
+    if hasattr(context, "scene") and hasattr(context.scene, "mozi_sync"):
         return context.scene.mozi_sync
-    if hasattr(context.scene, "yefira"):
-        return context.scene.yefira
     return None
 
 

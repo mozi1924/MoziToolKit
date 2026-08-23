@@ -266,6 +266,24 @@ HARDCODED_BLOCK_TINTS: dict[str, str] = {
     "attached_pumpkin_stem": "#E0C71C",
 }
 
+
+def get_hardcoded_block_tint_rgba(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
+    """Return sRGB RGBA tuple for a hardcoded block name."""
+    clean = name.removeprefix("minecraft:").removeprefix("block/")
+    hex_str = HARDCODED_BLOCK_TINTS.get(clean)
+    if hex_str:
+        return hex_to_rgba(hex_str)
+    return default
+
+
+def get_hardcoded_block_tint_linear(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
+    """Return Linear RGBA tuple for a hardcoded block name."""
+    clean = name.removeprefix("minecraft:").removeprefix("block/")
+    hex_str = HARDCODED_BLOCK_TINTS.get(clean)
+    if hex_str:
+        return hex_to_linear_rgba(hex_str)
+    return default
+
 # Known paired overlay textures (base -> overlay)
 KNOWN_OVERLAY_PAIRS: dict[str, str] = {
     "grass_block_side": "grass_block_side_overlay",

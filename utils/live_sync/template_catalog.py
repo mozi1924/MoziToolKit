@@ -22,15 +22,6 @@ logger = logging.getLogger("MoziToolKit.LiveSync")
 TEMPLATE_COLLECTION_NAME = "MC_Block_Templates"
 
 
-def _template_needs_attribute_migration(mesh: bpy.types.Mesh) -> bool:
-    return (
-        LOCAL_UV not in mesh.attributes
-        or LOCAL_FACE_ID not in mesh.attributes
-        or CUBE_FACE_NORMAL not in mesh.attributes
-        or any(name in mesh.attributes for name in LEGACY_TEMPLATE_ATTRIBUTE_NAMES)
-    )
-
-
 def get_or_create_template_collection(context: Optional[bpy.types.Context] = None) -> bpy.types.Collection:
     """Find or create the 'MC_Block_Templates' collection in the active scene."""
     if context is None:

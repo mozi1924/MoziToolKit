@@ -43,7 +43,7 @@ class MOZI_PT_live_sync(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        props = getattr(context.scene, "mozi_sync", None) or getattr(context.scene, "yefira", None)
+        props = getattr(context.scene, "mozi_sync", None)
         if not props:
             layout.label(text="Properties unavailable", icon='ERROR')
             return

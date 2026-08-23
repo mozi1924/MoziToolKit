@@ -184,11 +184,6 @@ def _cleanup_object_anim_properties(obj: bpy.types.Object) -> None:
             del obj[prop]
 
 
-# Backward compatibility aliases for cross-module or test callers
-_is_yefira_world = is_yefira_object
-_write_yefira_point_atlas_attributes = write_yefira_point_atlas_attributes
-
-
 def _apply_generic_procedural_atlas_material(
     obj: bpy.types.Object,
     atlas_materials: dict[int, bpy.types.Material],
