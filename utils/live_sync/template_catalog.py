@@ -236,11 +236,15 @@ def _create_slab_mesh(name: str) -> bpy.types.Mesh:
         (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
         (-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0),
     ]
-    faces = [
-        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
-        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    BOX_FACES = [
+        (0, 3, 2, 1),  # Bottom (-Z)
+        (4, 5, 6, 7),  # Top (+Z)
+        (0, 1, 5, 4),  # South (-Y)
+        (1, 2, 6, 5),  # East (+X)
+        (2, 3, 7, 6),  # North (+Y)
+        (3, 0, 4, 7),  # West (-X)
     ]
-    mesh.from_pydata(verts, [], faces)
+    mesh.from_pydata(verts, [], BOX_FACES)
     _attach_template_attributes(mesh)
     return mesh
 
@@ -252,11 +256,15 @@ def _create_torch_mesh(name: str) -> bpy.types.Mesh:
         (-w, -w, -0.5), (w, -w, -0.5), (w, w, -0.5), (-w, w, -0.5),
         (-w, -w, -0.5 + h), (w, -w, -0.5 + h), (w, w, -0.5 + h), (-w, w, -0.5 + h),
     ]
-    faces = [
-        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
-        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    BOX_FACES = [
+        (0, 3, 2, 1),  # Bottom (-Z)
+        (4, 5, 6, 7),  # Top (+Z)
+        (0, 1, 5, 4),  # South (-Y)
+        (1, 2, 6, 5),  # East (+X)
+        (2, 3, 7, 6),  # North (+Y)
+        (3, 0, 4, 7),  # West (-X)
     ]
-    mesh.from_pydata(verts, [], faces)
+    mesh.from_pydata(verts, [], BOX_FACES)
     _attach_template_attributes(mesh)
     return mesh
 
@@ -268,11 +276,15 @@ def _create_lantern_mesh(name: str) -> bpy.types.Mesh:
         (-w, -w, -0.5), (w, -w, -0.5), (w, w, -0.5), (-w, w, -0.5),
         (-w, -w, 0.0), (w, -w, 0.0), (w, w, 0.0), (-w, w, 0.0),
     ]
-    faces = [
-        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
-        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    BOX_FACES = [
+        (0, 3, 2, 1),  # Bottom (-Z)
+        (4, 5, 6, 7),  # Top (+Z)
+        (0, 1, 5, 4),  # South (-Y)
+        (1, 2, 6, 5),  # East (+X)
+        (2, 3, 7, 6),  # North (+Y)
+        (3, 0, 4, 7),  # West (-X)
     ]
-    mesh.from_pydata(verts, [], faces)
+    mesh.from_pydata(verts, [], BOX_FACES)
     _attach_template_attributes(mesh)
     return mesh
 
@@ -284,11 +296,15 @@ def _create_fence_mesh(name: str) -> bpy.types.Mesh:
         (-w, -w, -0.5), (w, -w, -0.5), (w, w, -0.5), (-w, w, -0.5),
         (-w, -w, 0.5), (w, -w, 0.5), (w, w, 0.5), (-w, w, 0.5),
     ]
-    faces = [
-        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
-        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    BOX_FACES = [
+        (0, 3, 2, 1),  # Bottom (-Z)
+        (4, 5, 6, 7),  # Top (+Z)
+        (0, 1, 5, 4),  # South (-Y)
+        (1, 2, 6, 5),  # East (+X)
+        (2, 3, 7, 6),  # North (+Y)
+        (3, 0, 4, 7),  # West (-X)
     ]
-    mesh.from_pydata(verts, [], faces)
+    mesh.from_pydata(verts, [], BOX_FACES)
     _attach_template_attributes(mesh)
     return mesh
 
@@ -299,10 +315,14 @@ def _create_carpet_mesh(name: str) -> bpy.types.Mesh:
         (-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5),
         (-0.5, -0.5, -0.4375), (0.5, -0.5, -0.4375), (0.5, 0.5, -0.4375), (-0.5, 0.5, -0.4375),
     ]
-    faces = [
-        (0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1),
-        (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0),
+    BOX_FACES = [
+        (0, 3, 2, 1),  # Bottom (-Z)
+        (4, 5, 6, 7),  # Top (+Z)
+        (0, 1, 5, 4),  # South (-Y)
+        (1, 2, 6, 5),  # East (+X)
+        (2, 3, 7, 6),  # North (+Y)
+        (3, 0, 4, 7),  # West (-X)
     ]
-    mesh.from_pydata(verts, [], faces)
+    mesh.from_pydata(verts, [], BOX_FACES)
     _attach_template_attributes(mesh)
     return mesh
