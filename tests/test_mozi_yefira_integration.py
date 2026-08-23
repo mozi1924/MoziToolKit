@@ -163,6 +163,47 @@ class TestMoziYefiraIntegration(unittest.TestCase):
         mat_disp_group = get_or_create_material_dispatcher_group({})
         self.assertIsNotNone(mat_disp_group)
 
+    def test_biome_tint_attributes_in_point_cloud(self):
+        """Verify biome tint colors and data weights are correctly set on point clouds."""
+        storage = VoxelStorage()
+        storage.min_x, storage.min_y, storage.min_z = 0, 0, 0
+        storage.size_x, storage.size_y, storage.size_z = 4, 1, 1
+        storage.block_map = {
+            (0, 0, 0): "minecraft:grass_block",
+            (1, 0, 0): "minecraft:spruce_leaves",
+            (2, 0, 0): "minecraft:oak_leaves",
+            (3, 0, 0): "minecraft:stone",
+        }
+
+        res = update_world_point_cloud(context=bpy.context, storage=storage)
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
+
+        # Check point tint color and data
+        tint_color_attr = mesh.attributes.get("mtk_biome_tint_color")
+        tint_data_attr = mesh.attributes.get("mtk_biome_tint_data")
+        self.assertIsNotNone(tint_color_attr)
+        self.assertIsNotNone(tint_data_attr)
+
+        # grass_block has grass tint color and tint_weight=1.0
+        grass_tint = tuple(tint_color_attr.data[0].color)
+        grass_data = tuple(tint_data_attr.data[0].color)
+        self.assertAlmostEqual(grass_tint[0], 0.35, places=2)
+        self.assertAlmostEqual(grass_tint[1], 0.72, places=2)
+        self.assertAlmostEqual(grass_data[0], 1.0, places=2)  # tint active
+
+        # spruce_leaves has hardcoded spruce tint and is_hardcoded flag
+        spruce_tint = tuple(tint_color_attr.data[1].color)
+        spruce_data = tuple(tint_data_attr.data[1].color)
+        self.assertAlmostEqual(spruce_tint[0], 0.38039, places=2)
+        self.assertAlmostEqual(spruce_data[0], 1.0, places=2)
+
+        # stone has no tint (white + data weight 0.0)
+        stone_tint = tuple(tint_color_attr.data[3].color)
+        stone_data = tuple(tint_data_attr.data[3].color)
+        self.assertAlmostEqual(stone_tint[0], 1.0, places=2)
+        self.assertAlmostEqual(stone_data[0], 0.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main(argv=["dummy"])

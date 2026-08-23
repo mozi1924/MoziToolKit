@@ -50,9 +50,13 @@ def _atlas_short_name(name: str) -> str:
 
 
 from .constants import BLOCK_TO_TEXTURE_ALIASES
-from .biome import HARDCODED_BLOCK_TINTS
 
-HARDCODED_TINT_BLOCKS = HARDCODED_BLOCK_TINTS
+HARDCODED_TINT_BLOCKS = {
+    "spruce_leaves": (1.0, 1.0, 1.0, 1.0),
+    "birch_leaves": (1.0, 1.0, 1.0, 1.0),
+    "lily_pad": (1.0, 1.0, 1.0, 1.0),
+    "redstone_wire": (1.0, 1.0, 1.0, 1.0),
+}
 
 
 def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, list[dict]], dict[str, int]]:
