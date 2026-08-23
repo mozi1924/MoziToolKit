@@ -103,11 +103,27 @@ CROSS_PLANTS = frozenset({
     "potatoes", "beetroots", "sweet_berry_bush", "nether_wart", "crimson_roots", "warped_roots",
 })
 
-from ..materials.biome import (
-    HARDCODED_BLOCK_TINTS,
-    get_hardcoded_block_tint_rgba,
-    classify_tint_category,
-)
+# Biome Tint categories for Minecraft block states
+BIOME_TINT_GRASS = frozenset({
+    "minecraft:grass_block", "minecraft:short_grass", "minecraft:tall_grass",
+    "minecraft:fern", "minecraft:large_fern", "minecraft:sugar_cane",
+    "grass_block", "short_grass", "tall_grass", "fern", "large_fern", "sugar_cane",
+})
+BIOME_TINT_FOLIAGE = frozenset({
+    "minecraft:oak_leaves", "minecraft:jungle_leaves", "minecraft:acacia_leaves",
+    "minecraft:dark_oak_leaves", "minecraft:mangrove_leaves", "minecraft:vine",
+    "oak_leaves", "jungle_leaves", "acacia_leaves", "dark_oak_leaves", "mangrove_leaves", "vine",
+})
+BIOME_TINT_WATER = frozenset({
+    "minecraft:water", "minecraft:flowing_water", "minecraft:water_cauldron",
+    "water", "flowing_water", "water_cauldron",
+})
+
+HARDCODED_TINTS = {
+    "spruce_leaves": (0.38039, 0.60000, 0.38039, 1.0),
+    "birch_leaves": (0.50196, 0.65490, 0.33333, 1.0),
+    "lily_pad": (0.12549, 0.50196, 0.18824, 1.0),
+}
 
 # Yaw rotation map (radians) for standard Minecraft facing
 YAW_MAP = {
@@ -296,8 +312,8 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
 
     # 1. Determine Biome Tint & Hardcoded Tints
     snowy = props.get("snowy") == "true"
-    if name in HARDCODED_BLOCK_TINTS:
-        tint_color = get_hardcoded_block_tint_rgba(name)
+    if name in HARDCODED_TINTS:
+        tint_color = HARDCODED_TINTS[name]
         tint_data = (1.0, 1.0, 1.0, 1.0)
     elif name == "redstone_wire":
         power = int(props.get("power", "0")) if "power" in props else 0
@@ -309,20 +325,18 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     elif snowy and name in ("grass_block", "podzol", "mycelium"):
         tint_color = (1.0, 1.0, 1.0, 1.0)
         tint_data = (0.0, 0.0, 0.0, 0.0)
+    elif block_id in BIOME_TINT_GRASS:
+        tint_color = (0.35, 0.72, 0.22, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 0.0)
+    elif block_id in BIOME_TINT_FOLIAGE:
+        tint_color = (0.28, 0.65, 0.18, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 0.0)
+    elif block_id in BIOME_TINT_WATER or "water" in block_id:
+        tint_color = (0.24, 0.45, 0.85, 0.8)
+        tint_data = (1.0, 1.0, 1.0, 0.0)
     else:
-        tint_cat = classify_tint_category(name)
-        if tint_cat == "grass":
-            tint_color = (0.35, 0.72, 0.22, 1.0)
-            tint_data = (1.0, 1.0, 1.0, 0.0)
-        elif tint_cat == "foliage":
-            tint_color = (0.28, 0.65, 0.18, 1.0)
-            tint_data = (1.0, 1.0, 1.0, 0.0)
-        elif tint_cat == "water" or "water" in block_id:
-            tint_color = (0.24, 0.45, 0.85, 0.8)
-            tint_data = (1.0, 1.0, 1.0, 0.0)
-        else:
-            tint_color = (1.0, 1.0, 1.0, 1.0)
-            tint_data = (0.0, 0.0, 0.0, 0.0)
+        tint_color = (1.0, 1.0, 1.0, 1.0)
+        tint_data = (0.0, 0.0, 0.0, 0.0)
 
     # 2. Check Waterlogged
     is_waterlogged = props.get("waterlogged", "false") == "true"
