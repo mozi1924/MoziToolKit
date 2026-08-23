@@ -82,25 +82,28 @@ class TestMCModelBaker(unittest.TestCase):
 
     def test_command_block_facings(self):
         """Test Command Block 6 facings and conditional texture changes."""
-        # Unrotated Facing UP
+        # Facing UP (x=270)
         baked_up = self.baker.bake_block_state("minecraft:command_block[conditional=false,facing=up]")
-        # Index 2: Up (+Y) -> command_block_front
+        # Index 2: Up (+Y) -> command_block_front with 180 deg UV rotation
         self.assertEqual(baked_up.faces[2].texture, "minecraft:block/command_block_front")
-        # Index 3: Down (-Y) -> command_block_back
+        self.assertEqual(baked_up.faces[2].uv_rot, 180.0)
+        # Index 3: Down (-Y) -> command_block_back with 0 deg UV rotation
         self.assertEqual(baked_up.faces[3].texture, "minecraft:block/command_block_back")
+        self.assertEqual(baked_up.faces[3].uv_rot, 0.0)
         # Sides -> command_block_side
         self.assertEqual(baked_up.faces[0].texture, "minecraft:block/command_block_side")
         self.assertEqual(baked_up.faces[1].texture, "minecraft:block/command_block_side")
         self.assertEqual(baked_up.faces[4].texture, "minecraft:block/command_block_side")
         self.assertEqual(baked_up.faces[5].texture, "minecraft:block/command_block_side")
 
-        # Facing NORTH (x=90)
+        # Facing NORTH (x=0, y=0)
         baked_north = self.baker.bake_block_state("minecraft:command_block[conditional=false,facing=north]")
-        # When pitched 90 deg:
-        # Original Up (front) rotates to North (-Z, index 5)
+        # North (-Z, index 5) is front
         self.assertEqual(baked_north.faces[5].texture, "minecraft:block/command_block_front")
-        # Original Down (back) rotates to South (+Z, index 4)
+        self.assertEqual(baked_north.faces[5].uv_rot, 0.0)
+        # South (+Z, index 4) is back
         self.assertEqual(baked_north.faces[4].texture, "minecraft:block/command_block_back")
+        self.assertEqual(baked_north.faces[4].uv_rot, 0.0)
 
         # Conditional = true facing NORTH
         baked_cond = self.baker.bake_block_state("minecraft:command_block[conditional=true,facing=north]")
@@ -108,36 +111,62 @@ class TestMCModelBaker(unittest.TestCase):
         self.assertEqual(baked_cond.faces[0].texture, "minecraft:block/command_block_conditional")
 
     def test_observer_facings(self):
-        """Test Observer facings and powered states."""
-        # Observer facing UP (x=0, y=0)
-        baked_up = self.baker.bake_block_state("minecraft:observer[facing=up,powered=false]")
-        # In unrotated observer:
-        # North face has observer_front
-        self.assertEqual(baked_up.faces[5].texture, "minecraft:block/observer_front")
-        # South face has observer_back
-        self.assertEqual(baked_up.faces[4].texture, "minecraft:block/observer_back")
-        # Up/Down have observer_top
-        self.assertEqual(baked_up.faces[2].texture, "minecraft:block/observer_top")
-        self.assertEqual(baked_up.faces[3].texture, "minecraft:block/observer_top")
+        """Test Observer facings and UV rotations in vertical and horizontal orientations."""
+        # Observer facing NORTH (x=0, y=0)
+        baked_north = self.baker.bake_block_state("minecraft:observer[facing=north,powered=false]")
+        self.assertEqual(baked_north.faces[5].texture, "minecraft:block/observer_front")
+        self.assertEqual(baked_north.faces[4].texture, "minecraft:block/observer_back")
+        self.assertEqual(baked_north.faces[2].texture, "minecraft:block/observer_top")
+        self.assertEqual(baked_north.faces[2].uv_rot, 180.0)
+        self.assertEqual(baked_north.faces[3].texture, "minecraft:block/observer_top")
+        self.assertEqual(baked_north.faces[3].uv_rot, 0.0)
 
-        # Observer facing NORTH, powered=true (x=90)
-        baked_on = self.baker.bake_block_state("minecraft:observer[facing=north,powered=true]")
-        # Original South (observer_back_on) rotated 90 deg around X goes to Up (+Y, index 2)
-        self.assertEqual(baked_on.faces[2].texture, "minecraft:block/observer_back_on")
-        # Original North (observer_front) rotated 90 deg around X goes to Down (-Y, index 3)
-        self.assertEqual(baked_on.faces[3].texture, "minecraft:block/observer_front")
-        # Original Up (observer_top) rotated 90 deg around X goes to North (-Z, index 5)
-        self.assertEqual(baked_on.faces[5].texture, "minecraft:block/observer_top")
+        # Observer facing UP (x=270)
+        baked_up = self.baker.bake_block_state("minecraft:observer[facing=up,powered=false]")
+        # Front eyes rotate to UP with 180 deg UV rotation
+        self.assertEqual(baked_up.faces[2].texture, "minecraft:block/observer_front")
+        self.assertEqual(baked_up.faces[2].uv_rot, 180.0)
+        # Back red dot rotates to DOWN with 0 deg UV rotation
+        self.assertEqual(baked_up.faces[3].texture, "minecraft:block/observer_back")
+        self.assertEqual(baked_up.faces[3].uv_rot, 0.0)
+        # Side orientations
+        self.assertEqual(baked_up.faces[0].uv_rot, 270.0)  # East
+        self.assertEqual(baked_up.faces[1].uv_rot, 90.0)   # West
+        self.assertEqual(baked_up.faces[4].uv_rot, 180.0)  # South
+        self.assertEqual(baked_up.faces[5].uv_rot, 180.0)  # North
+
+        # Observer facing DOWN (x=90)
+        baked_down = self.baker.bake_block_state("minecraft:observer[facing=down,powered=false]")
+        # Front eyes rotate to DOWN with 180 deg UV rotation
+        self.assertEqual(baked_down.faces[3].texture, "minecraft:block/observer_front")
+        self.assertEqual(baked_down.faces[3].uv_rot, 180.0)
+        # Back red dot rotates to UP with 0 deg UV rotation
+        self.assertEqual(baked_down.faces[2].texture, "minecraft:block/observer_back")
+        self.assertEqual(baked_down.faces[2].uv_rot, 0.0)
+        self.assertEqual(baked_down.faces[4].uv_rot, 0.0)   # South
+        self.assertEqual(baked_down.faces[5].uv_rot, 0.0)   # North
 
     def test_piston_facings(self):
-        """Test Piston model baking."""
+        """Test Piston model baking in vertical and horizontal orientations."""
+        # Facing UP (x=270)
         baked_up = self.baker.bake_block_state("minecraft:piston[extended=false,facing=up]")
-        # Top (+Y) has piston_top
+        # Top (+Y) has piston_top with 180 deg UV rotation
         self.assertEqual(baked_up.faces[2].texture, "minecraft:block/piston_top")
-        # Bottom (-Y) has piston_bottom
+        self.assertEqual(baked_up.faces[2].uv_rot, 180.0)
+        # Bottom (-Y) has piston_bottom with 0 deg UV rotation
         self.assertEqual(baked_up.faces[3].texture, "minecraft:block/piston_bottom")
+        self.assertEqual(baked_up.faces[3].uv_rot, 0.0)
         # Sides have piston_side
         self.assertEqual(baked_up.faces[0].texture, "minecraft:block/piston_side")
+
+        # Facing DOWN (x=90)
+        baked_down = self.baker.bake_block_state("minecraft:piston[extended=false,facing=down]")
+        # Bottom (-Y) has piston_top with 180 deg UV rotation
+        self.assertEqual(baked_down.faces[3].texture, "minecraft:block/piston_top")
+        self.assertEqual(baked_down.faces[3].uv_rot, 180.0)
+        # Top (+Y) has piston_bottom with 0 deg UV rotation
+        self.assertEqual(baked_down.faces[2].texture, "minecraft:block/piston_bottom")
+        self.assertEqual(baked_down.faces[2].uv_rot, 0.0)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ from .types import (
 from .math_utils import (
     rotate_point, rotate_direction, calculate_uv_rotation,
     rotate_element_point, default_face_uv, get_face_raw_vertices,
-    get_face_loop_uvs, apply_uvlock_to_uvs
+    get_face_loop_uvs, bake_face_exact
 )
 from .model_parser import ModelParser
 from .blockstate_resolver import BlockStateResolver, parse_block_state_string
@@ -111,48 +111,21 @@ class StateBaker:
                     face_rot = float(face_data.get("rotation", 0.0))
                     tint_index = int(face_data.get("tintindex", -1))
 
-                    # UV bounds: if omitted in JSON, compute defaultFaceUV
-                    if "uv" in face_data:
-                        raw_uv = face_data["uv"]
-                        uv_bounds_16 = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3]))
-                        if uv_bounds_16[1] > uv_bounds_16[3]:
-                            face_rot = (face_rot + 180.0) % 360.0
-                    else:
-                        uv_bounds_16 = default_face_uv(orig_dir, from_pos, to_pos)
+                    raw_uv = face_data.get("uv")
+                    uv_bounds_16 = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3])) if raw_uv else None
 
-                    uv_bounds = (
-                        uv_bounds_16[0] / 16.0,
-                        uv_bounds_16[1] / 16.0,
-                        uv_bounds_16[2] / 16.0,
-                        uv_bounds_16[3] / 16.0,
-                    )
-
-                    # 1. New face direction after variant rotation
-                    new_dir = rotate_direction(orig_dir, match.rot_x, match.rot_y)
-
-                    # 2. UV rotation angle
-                    uv_rot = calculate_uv_rotation(
-                        orig_direction=orig_dir,
-                        new_direction=new_dir,
-                        face_rotation=face_rot,
+                    # Exact Minecraft 26.2 FaceBakery baking
+                    new_dir, uv_rot, transformed_verts, loop_uvs, uv_bounds = bake_face_exact(
+                        orig_dir=orig_dir,
+                        from_pos=from_pos,
+                        to_pos=to_pos,
+                        uv_bounds=uv_bounds_16,
+                        face_rotation_deg=face_rot,
                         rot_x=match.rot_x,
                         rot_y=match.rot_y,
+                        elem_rotation=elem_rot,
                         uvlock=match.uvlock,
                     )
-
-                    # 3. Transform 3D quad vertices
-                    raw_verts = get_face_raw_vertices(orig_dir, from_pos, to_pos)
-                    # Apply local element rotation first, then model variant rotation
-                    transformed_verts = []
-                    for v in raw_verts:
-                        v_local = rotate_element_point(v, elem_rot)
-                        v_world = rotate_point(v_local, match.rot_x, match.rot_y)
-                        transformed_verts.append(v_world)
-
-                    # 4. Calculate loop UVs
-                    loop_uvs = get_face_loop_uvs(uv_bounds_16, face_rot)
-                    if match.uvlock:
-                        loop_uvs = apply_uvlock_to_uvs(loop_uvs, orig_dir, match.rot_x, match.rot_y)
 
                     baked_face = BakedFace(
                         direction=new_dir,
