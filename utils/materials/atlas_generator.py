@@ -589,6 +589,50 @@ class AtlasGenerator:
             "-Z": north
         }
 
+    def _find_static_image(self, key_or_stem: str, namespace: str = "minecraft", category: str = None) -> Optional[Any]:
+        """Lookup a static texture image across ns/category dicts and fallback indexes."""
+        if not key_or_stem:
+            return None
+        clean = key_or_stem.strip().lower()
+        stem = clean.split("/")[-1].removesuffix(".png")
+        candidates = [
+            clean,
+            stem,
+            f"block/{stem}",
+            f"item/{stem}",
+            f"entity/{stem}",
+        ]
+        if category:
+            candidates.insert(0, f"{category}/{stem}")
+
+        # 1. Search in category map if provided
+        if category and namespace in self.static_by_ns_cat:
+            cat_map = self.static_by_ns_cat[namespace].get(category, {})
+            for c in candidates:
+                if c in cat_map:
+                    return cat_map[c]
+
+        # 2. Search in all categories of this namespace
+        if namespace in self.static_by_ns_cat:
+            for cat_k, cat_map in self.static_by_ns_cat[namespace].items():
+                for c in candidates:
+                    if c in cat_map:
+                        return cat_map[c]
+
+        # 3. Search in static_by_namespace
+        if namespace in self.static_by_namespace:
+            ns_map = self.static_by_namespace[namespace]
+            for c in (stem, clean):
+                if c in ns_map:
+                    return ns_map[c]
+
+        # 4. Search in global static_textures
+        clean_name = self._texture_name(namespace, stem)
+        if clean_name in self.static_textures:
+            return self.static_textures[clean_name]
+
+        return None
+
     def build_iter(self, output_dir: str | Path):
         """
         Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace.
@@ -648,8 +692,11 @@ class AtlasGenerator:
                             chunk_id = len(chunks)
                             images = {
                                 "albedo": Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0)),
-                                "overlay": Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0)),
                             }
+                            overlay_img_canvas = None
+                            chunk_has_overlay = False
+                            chunk_has_tint = False
+
                             if has_normal:
                                 images["normal"] = Image.new("RGBA", (chunk_w, chunk_h), (128, 128, 255, 255))
                             if has_specular:
@@ -678,15 +725,21 @@ class AtlasGenerator:
                                 stem = rel_p.split("/")[-1]
                                 canonical_key = f"{ns}:{rel_p}"
                                 tint_info = self.biome_resolver.get_tint_info(stem)
+                                if tint_info.get("tint_type", 0) != 0 or tint_info.get("is_hardcoded") or tint_info.get("has_overlay"):
+                                    chunk_has_tint = True
                                 transparency = analyze_texture_transparency(source_albedo)
 
                                 overlay_stem = tint_info.get("overlay_texture")
                                 if overlay_stem:
-                                    overlay_src = static_map.get(overlay_stem)
+                                    overlay_src = self._find_static_image(overlay_stem, namespace=ns, category=cat)
                                     if overlay_src is not None:
                                         if overlay_src.size != (rect.width, rect.height):
                                             overlay_src = overlay_src.resize((rect.width, rect.height), Image.NEAREST)
-                                        images["overlay"].paste(overlay_src, (rect.x, rect.y))
+                                        if overlay_src.getbbox():
+                                            if overlay_img_canvas is None:
+                                                overlay_img_canvas = Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0))
+                                            overlay_img_canvas.paste(overlay_src, (rect.x, rect.y))
+                                            chunk_has_overlay = True
 
                                 loc_entry = {
                                     "texture_key": canonical_key,
@@ -741,6 +794,9 @@ class AtlasGenerator:
                                     if rel_p.startswith("item/"):
                                         texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
+                            if chunk_has_overlay and overlay_img_canvas is not None:
+                                images["overlay"] = overlay_img_canvas
+
                             for channel, image in images.items():
                                 filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
                                 image.save(output_path / filename)
@@ -756,6 +812,8 @@ class AtlasGenerator:
                                 "tile_size": max((rect.width for rect in placed_rects), default=16),
                                 "texture_count": len(placed_rects),
                                 "packing": "rect_bin_pack",
+                                "has_tint": chunk_has_tint,
+                                "has_overlay": chunk_has_overlay,
                                 "files": files,
                             })
                             outputs["chunks"].append(output_path / files["albedo"])
@@ -779,11 +837,17 @@ class AtlasGenerator:
                         static_rel_paths = sorted(static_map.keys())
 
                         def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
-                            source = {
-                                "albedo": static_map,
-                                "normal": self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
-                                "specular": self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
-                            }[channel].get(rel_p)
+                            if channel == "albedo":
+                                source = self._find_static_image(rel_p, namespace=namespace_val, category=category_val)
+                            elif channel == "normal":
+                                norm_map = self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {})
+                                source = norm_map.get(rel_p) or norm_map.get(f"{category_val}/{rel_p}") or norm_map.get(f"block/{rel_p}") or norm_map.get(rel_p.split("/")[-1])
+                            elif channel == "specular":
+                                spec_map = self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {})
+                                source = spec_map.get(rel_p) or spec_map.get(f"{category_val}/{rel_p}") or spec_map.get(f"block/{rel_p}") or spec_map.get(rel_p.split("/")[-1])
+                            else:
+                                source = None
+
                             if source is None:
                                 fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
                                 return Image.new("RGBA", (tile_sz, tile_sz), fill)
@@ -800,8 +864,11 @@ class AtlasGenerator:
 
                             images = {
                                 "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
-                                "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
                             }
+                            overlay_img_canvas = None
+                            chunk_has_overlay = False
+                            chunk_has_tint = False
+
                             if has_normal:
                                 images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
                             if has_specular:
@@ -814,6 +881,8 @@ class AtlasGenerator:
                                 stem = rel_p.split("/")[-1]
                                 canonical_key = f"{ns}:{rel_p}"
                                 tint_info = self.biome_resolver.get_tint_info(stem)
+                                if tint_info.get("tint_type", 0) != 0 or tint_info.get("is_hardcoded") or tint_info.get("has_overlay"):
+                                    chunk_has_tint = True
                                 transparency = analyze_texture_transparency(static_map.get(rel_p))
                                 loc_entry = {
                                     "texture_key": canonical_key,
@@ -872,7 +941,14 @@ class AtlasGenerator:
                                 overlay_stem = tint_info.get("overlay_texture")
                                 if overlay_stem:
                                     overlay_tile = tile_for(overlay_stem, "albedo")
-                                    images["overlay"].paste(overlay_tile, (x, y))
+                                    if overlay_tile.getbbox():
+                                        if overlay_img_canvas is None:
+                                            overlay_img_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                                        overlay_img_canvas.paste(overlay_tile, (x, y))
+                                        chunk_has_overlay = True
+
+                            if chunk_has_overlay and overlay_img_canvas is not None:
+                                images["overlay"] = overlay_img_canvas
 
                             for channel, image in images.items():
                                 filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
@@ -890,6 +966,8 @@ class AtlasGenerator:
                                 "tiles_per_row": tiles_per_row,
                                 "texture_count": len(names),
                                 "packing": "grid",
+                                "has_tint": chunk_has_tint,
+                                "has_overlay": chunk_has_overlay,
                                 "files": files,
                             })
                             outputs["chunks"].append(output_path / files["albedo"])
@@ -920,8 +998,11 @@ class AtlasGenerator:
                         chunk_height = max(img.height for _s, img, _m in columns)
                         images = {
                             "albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
-                            "overlay": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
                         }
+                        overlay_img_canvas = None
+                        chunk_has_overlay = False
+                        chunk_has_tint = False
+
                         if has_normal:
                             images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
                         if has_specular:
@@ -971,6 +1052,8 @@ class AtlasGenerator:
                             stem = rel_p.split("/")[-1]
                             canonical_key = f"{namespace_val}:{rel_p}"
                             tint_info = self.biome_resolver.get_tint_info(stem)
+                            if tint_info.get("tint_type", 0) != 0 or tint_info.get("is_hardcoded") or tint_info.get("has_overlay"):
+                                chunk_has_tint = True
                             transparency = analyze_texture_transparency(image)
 
                             anim_loc = {
@@ -1037,6 +1120,9 @@ class AtlasGenerator:
                             })
                             x_offset += target_w
 
+                        if chunk_has_overlay and overlay_img_canvas is not None:
+                            images["overlay"] = overlay_img_canvas
+
                         files = {}
                         for channel, img_canvas in images.items():
                             filename = f"{category_val}_chunk_{chunk_id:03d}_{channel}.png"
@@ -1052,6 +1138,8 @@ class AtlasGenerator:
                             "height": chunk_height,
                             "texture_count": len(columns),
                             "packing": "vertical_columns",
+                            "has_tint": chunk_has_tint,
+                            "has_overlay": chunk_has_overlay,
                             "files": files,
                         })
                         outputs["chunks"].append(output_path / files["albedo"])

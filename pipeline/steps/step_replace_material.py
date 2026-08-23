@@ -540,6 +540,11 @@ class StepReplaceMaterial(PipelineStep):
             print(f"[MoziToolKit] Warning: Could not update MC_Block_Templates: {e}")
 
         session_materials = {}
+        biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
+        if pack_stack:
+            for p in pack_stack.packs:
+                if p.extract_dir and p.extract_dir != pack.extract_dir:
+                    biome_resolver.load_from_pack_root(p.extract_dir)
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
@@ -681,7 +686,16 @@ class StepReplaceMaterial(PipelineStep):
                     for cand in candidates:
                         info = pack_stack.get_texture_info(cand, namespace) if pack_stack else pack.get_texture_info(cand, namespace)
                         if info and info.get("albedo"):
-                            fallback_tex_info = info
+                            fallback_tex_info = dict(info)
+                            overlay_stem = biome_resolver.get_overlay_texture(fallback_tex_info["texture_name"])
+                            if overlay_stem:
+                                overlay_info = pack_stack.get_texture_info(overlay_stem, namespace) if pack_stack else pack.get_texture_info(overlay_stem, namespace)
+                                if overlay_info and overlay_info.get("albedo"):
+                                    fallback_tex_info["overlay"] = overlay_info["albedo"]
+                                    if overlay_info.get("albedo_mcmeta"):
+                                        fallback_tex_info["overlay_mcmeta"] = overlay_info["albedo_mcmeta"]
+                            tint_info = biome_resolver.get_tint_info(fallback_tex_info["texture_name"])
+                            fallback_tex_info["tint_info"] = tint_info
                             break
 
                     if fallback_tex_info:
@@ -695,7 +709,7 @@ class StepReplaceMaterial(PipelineStep):
                             source_origins[poly_idx] = (
                                 get_face_source_origin(mesh, poly_idx) or material_source_origin(orig_slot.material)
                             )
-                            poly_tint_map[poly_idx] = BiomeResolver().get_tint_info(fallback_tex_info["texture_name"])
+                            poly_tint_map[poly_idx] = fallback_tex_info.get("tint_info") or biome_resolver.get_tint_info(fallback_tex_info["texture_name"])
                             poly_updated = True
                             continue
 
@@ -877,6 +891,10 @@ class StepReplaceMaterial(PipelineStep):
         assigned_count = 0
         session_materials = {}
         biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
+        if pack_stack:
+            for p in pack_stack.packs:
+                if p.extract_dir and p.extract_dir != pack.extract_dir:
+                    biome_resolver.load_from_pack_root(p.extract_dir)
 
         total_objs = len(valid_objects)
 
@@ -970,6 +988,10 @@ class StepReplaceMaterial(PipelineStep):
                             overlay_info = pack_stack.get_texture_info(overlay_stem, namespace) if pack_stack else pack.get_texture_info(overlay_stem, namespace)
                             if overlay_info and overlay_info.get("albedo"):
                                 tex_info["overlay"] = overlay_info["albedo"]
+                                if overlay_info.get("albedo_mcmeta"):
+                                    tex_info["overlay_mcmeta"] = overlay_info["albedo_mcmeta"]
+                        tint_info = biome_resolver.get_tint_info(tex_info["texture_name"])
+                        tex_info["tint_info"] = tint_info
                         break
 
                 if not tex_info:

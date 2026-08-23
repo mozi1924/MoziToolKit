@@ -306,8 +306,20 @@ def rebuild_material(
     tex_coord = nt.nodes.new("ShaderNodeTexCoord")
     tex_coord.location = (-1350, 0)
 
-    # Setup Biome Tint Node Group
-    biome_tint_group = templates.get("MC_Biome_Tint")
+    # Setup Biome Tint Node Group (only if texture uses biome tint, hardcoded tint, or overlay)
+    tint_info = texture_info.get("tint_info")
+    if tint_info is None:
+        from .biome import BiomeResolver
+        texture_name = texture_info.get("texture_name", "")
+        tint_info = BiomeResolver().get_tint_info(texture_name)
+
+    has_overlay_path = bool(texture_info.get("overlay") and Path(texture_info["overlay"]).exists())
+    has_overlay = has_overlay_path or bool(tint_info.get("has_overlay"))
+    tint_type = int(tint_info.get("tint_type", 0))
+    is_hardcoded = bool(tint_info.get("is_hardcoded", False))
+    needs_biome_tint = (tint_type != 0) or is_hardcoded or has_overlay
+
+    biome_tint_group = templates.get("MC_Biome_Tint") if needs_biome_tint else None
     biome_tint_node = None
     if biome_tint_group:
         biome_tint_node = nt.nodes.new("ShaderNodeGroup")

@@ -372,8 +372,9 @@ def build_atlas_chunk_materials(
         if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
             links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
 
-        # Setup Biome Tint Node Group
-        biome_tint_group = templates.get("MC_Biome_Tint")
+        # Setup Biome Tint Node Group (only if chunk contains tinted/overlay textures)
+        needs_biome_tint = chunk.get("has_tint", False) or chunk.get("has_overlay", False) or bool(chunk_files.get("overlay"))
+        biome_tint_group = templates.get("MC_Biome_Tint") if needs_biome_tint else None
         biome_tint_node = None
         if biome_tint_group:
             biome_tint_node = nodes.new("ShaderNodeGroup")
