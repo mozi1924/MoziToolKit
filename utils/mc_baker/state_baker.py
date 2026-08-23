@@ -52,6 +52,10 @@ class StateBaker:
         self.state_resolver.blockstate_loader_fn = self.resource_loader.load_blockstate
         self.clear_cache()
 
+    def is_available(self) -> bool:
+        """Check if resource loader is active and valid."""
+        return self.resource_loader is not None and bool(self.resource_loader._file_index)
+
     def clear_cache(self):
         self._bake_cache.clear()
         self.model_parser._model_cache.clear()

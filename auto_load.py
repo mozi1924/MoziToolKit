@@ -102,6 +102,12 @@ def iter_my_register_deps(cls, my_classes, my_classes_by_idname):
 
 
 def iter_my_deps_from_annotations(cls, my_classes):
+    raw_annotations = getattr(cls, "__annotations__", {})
+    for value in raw_annotations.values():
+        dependency = get_dependency_from_annotation(value)
+        if dependency is not None:
+            if dependency in my_classes:
+                yield dependency
     try:
         type_hints = typing.get_type_hints(cls, {}, {}).values()
     except Exception:
@@ -114,12 +120,23 @@ def iter_my_deps_from_annotations(cls, my_classes):
 
 
 def get_dependency_from_annotation(value):
-    if isinstance(value, bpy.props._PropertyDeferred):
+    if hasattr(value, "keywords") and isinstance(value.keywords, dict):
+        return value.keywords.get("type")
+    if hasattr(bpy.props, "_PropertyDeferred") and isinstance(value, bpy.props._PropertyDeferred):
         return value.keywords.get("type")
     if isinstance(value, tuple) and len(value) == 2:
         if value[0] in (bpy.props.PointerProperty, bpy.props.CollectionProperty):
             return value[1].get("type") if isinstance(value[1], dict) else None
+    if isinstance(value, str):
+        import re
+        m = re.search(r"type\s*=\s*([A-Za-z0-9_]+)", value)
+        if m:
+            type_name = m.group(1)
+            for cls in get_classes_in_modules(modules or []):
+                if getattr(cls, "__name__", "") == type_name:
+                    return cls
     return None
+
 
 
 def iter_my_deps_from_parent_id(cls, my_classes_by_idname):
