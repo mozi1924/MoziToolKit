@@ -15,6 +15,13 @@ from .constants import (
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_TRANSFORM,
 )
+from pathlib import Path
+from ..mc_baker import StateBaker
+
+DEFAULT_CLIENT_JAR = "/Users/jaxlocke/26.2-Fabric.jar"
+_GLOBAL_STATE_BAKER = StateBaker(
+    jar_path=DEFAULT_CLIENT_JAR if Path(DEFAULT_CLIENT_JAR).exists() else None
+)
 
 
 BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
@@ -431,81 +438,22 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
 
     for item in state_attr.data:
         state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
-        json_obj = None
+        raw_state = state
         if state and state.startswith("{") and state.endswith("}"):
             try:
                 json_obj = json.loads(state)
+                if isinstance(json_obj, dict):
+                    raw_state = json_obj.get("state", state)
             except Exception:
-                json_obj = None
+                pass
 
-        if json_obj and isinstance(json_obj, dict):
-            raw_state = json_obj.get("state", state)
-            block_name, props = parse_block_state_str(raw_state)
-            names = mapping_names(raw_state)
-            entry = next((by_name[name] for name in names if name in by_name), None)
-            mat_id = int(entry.get("material_id", 0)) if entry else 0
-            material_ids.append(mat_id)
-
-            block_opaque = int(json_obj.get("opaque", 1))
-            is_opaque_list.append(block_opaque)
-            emissive_list.append(int(json_obj.get("emissive", is_block_emissive(block_name, props))))
-
-            json_faces = json_obj.get("faces", {}) if isinstance(json_obj.get("faces"), dict) else {}
-            for attr_face, mapping_face in face_specs:
-                f_data = json_faces.get(attr_face, {})
-                tex_name = f_data.get("tex", "")
-                uv_r = float(f_data.get("rot", 0.0))
-                uv_b = tuple(f_data.get("uv", [0.0, 0.0, 1.0, 1.0]))
-                tint_idx = int(f_data.get("tint", -1))
-
-                short_n = tex_name.split(":", 1)[-1]
-                if short_n.startswith("block/"):
-                    short_n = short_n[6:]
-                location = texture_location(tex_name) or texture_location(short_n) or texture_location(f"minecraft:{short_n}") or texture_location(f"minecraft:block/{short_n}") or {}
-
-                if location.get("kind") == "animation":
-                    px = int(location.get("pixel_x", 0))
-                    fw = max(1, int(location.get("frame_width", 16)))
-                    tile_col = float(px // fw)
-                    tile_row = 0.0
-                else:
-                    tile_col = float(location.get("tile_column", 0))
-                    tile_row = float(location.get("tile_row", 0))
-
-                values[attr_face]["tile"].append((tile_col, tile_row, 0.0))
-                values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
-                values[attr_face]["texture"].append(int(location.get("texture_id", mat_id)))
-                values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
-
-                if tint_idx >= 0 or location.get("default_tint_weight", 0.0) > 0:
-                    values[attr_face]["tint_data"].append((
-                        float(location.get("default_base_tint_weight", 1.0)),
-                        float(location.get("default_overlay_tint_weight", 0.0)),
-                        float(location.get("default_tint_weight", 1.0)),
-                        1.0 if location.get("is_hardcoded", False) else 0.0,
-                    ))
-                else:
-                    values[attr_face]["tint_data"].append((0.0, 0.0, 0.0, 0.0))
-
-                frame_count = float(location.get("frame_count", 1))
-                frametime = float(location.get("frametime", 1))
-                interpolate = 1.0 if location.get("interpolate", False) else 0.0
-                values[attr_face]["anim_timing"].append((frame_count, frametime, interpolate, 0.0))
-
-                fw = float(location.get("frame_width", location.get("tile_size", 16)))
-                fh = float(location.get("frame_height", location.get("tile_size", 16)))
-                values[attr_face]["anim_frame_size"].append((fw, fh, 0.0, 0.0))
-
-                values[attr_face]["uv_rot"].append(uv_r)
-                values[attr_face]["uv_bounds"].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
-            continue
-
-        # Legacy block state string fallback path
-        block_name, props = parse_block_state_str(state)
-        names = mapping_names(state)
+        block_name, props = parse_block_state_str(raw_state)
+        names = mapping_names(raw_state)
         entry = next((by_name[name] for name in names if name in by_name), None)
-        material_ids.append(int(entry.get("material_id", 0)) if entry else 0)
-        faces = entry.get("faces", {}) if entry else {}
+        mat_id = int(entry.get("material_id", 0)) if entry else 0
+        material_ids.append(mat_id)
+        faces_dict = entry.get("faces", {}) if entry else {}
+
         fallback_location = next((texture_location(name) for name in names if texture_location(name)), {})
         if not fallback_location:
             for name in names:
@@ -518,27 +466,40 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                     if fallback_location:
                         break
 
-        primary_name = names[0]
-        explicit_locations = [faces.get(mapping_face) for _, mapping_face in face_specs]
-        has_differentiated_faces = len({loc.get("texture_key") for loc in explicit_locations if isinstance(loc, dict)}) > 1
+        baked = _GLOBAL_STATE_BAKER.bake_block_state(raw_state)
+        is_opaque_list.append(int(baked.is_opaque) if entry is None or "is_opaque" not in entry else (1 if entry.get("is_opaque", True) else 0))
+        emissive_list.append(1 if is_block_emissive(block_name, props) or baked.is_emissive else 0)
+
         derived_faces = texture_only_faces(block_name, props)
-
-        # Determine block-level opacity
-        block_opaque = 1
-        if entry is not None and "is_opaque" in entry:
-            block_opaque = 1 if entry.get("is_opaque", True) else 0
-        elif fallback_location:
-            block_opaque = 1 if fallback_location.get("is_opaque", True) else 0
-        is_opaque_list.append(block_opaque)
-
-        # Determine block-level emissive
-        emissive_list.append(is_block_emissive(block_name, props))
 
         is_snowy_top = props.get("snowy") == "true" and block_name in ("grass_block", "podzol", "mycelium")
         is_hardcoded_block = block_name in HARDCODED_TINT_BLOCKS
 
-        for attr_face, mapping_face in face_specs:
-            location = derived_faces.get(mapping_face) or faces.get(mapping_face) or fallback_location
+        for face_idx, (attr_face, mapping_face) in enumerate(face_specs):
+            baked_face = baked.faces[face_idx]
+            tex_name = baked_face.texture
+            uv_r = float(baked_face.uv_rot)
+            uv_b = tuple(baked_face.uv_bounds)
+            tint_idx = int(baked_face.tint_index)
+
+            f_mapping = faces_dict.get(mapping_face, {}) if isinstance(faces_dict, dict) else {}
+            tex_stem = f_mapping.get("texture", "") if isinstance(f_mapping, dict) else ""
+
+            short_n = tex_name.split(":", 1)[-1]
+            if short_n.startswith("block/"):
+                short_n = short_n[6:]
+
+            location = (
+                texture_location(tex_stem)
+                or (f_mapping if isinstance(f_mapping, dict) and ("tile_column" in f_mapping or "kind" in f_mapping or "chunk_id" in f_mapping) else None)
+                or derived_faces.get(mapping_face)
+                or texture_location(tex_name)
+                or texture_location(short_n)
+                or texture_location(f"minecraft:{short_n}")
+                or texture_location(f"minecraft:block/{short_n}")
+                or fallback_location
+                or {}
+            )
 
             if location.get("kind") == "animation":
                 px = int(location.get("pixel_x", 0))
@@ -551,20 +512,29 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
 
             values[attr_face]["tile"].append((tile_col, tile_row, 0.0))
             values[attr_face]["chunk"].append(int(location.get("chunk_id", 0)))
-            values[attr_face]["texture"].append(int(location.get("texture_id", 0)))
+            values[attr_face]["texture"].append(int(location.get("texture_id", mat_id)))
+            values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
 
             if is_snowy_top and attr_face == "top":
                 values[attr_face]["tint_data"].append((0.0, 0.0, 0.0, 0.0))
             elif is_hardcoded_block:
                 values[attr_face]["tint_data"].append((1.0, 1.0, 1.0, 1.0))
-            else:
+            elif isinstance(f_mapping, dict) and ("default_tint_weight" in f_mapping or "default_overlay_tint_weight" in f_mapping or "default_base_tint_weight" in f_mapping):
                 values[attr_face]["tint_data"].append((
-                    float(location.get("default_base_tint_weight", 0.0)),
+                    float(f_mapping.get("default_base_tint_weight", 0.0)),
+                    float(f_mapping.get("default_overlay_tint_weight", 0.0)),
+                    float(f_mapping.get("default_tint_weight", 0.0)),
+                    1.0 if f_mapping.get("is_hardcoded", False) else 0.0,
+                ))
+            elif location.get("default_tint_weight", 0.0) > 0 or location.get("default_overlay_tint_weight", 0.0) > 0 or tint_idx >= 0:
+                values[attr_face]["tint_data"].append((
+                    float(location.get("default_base_tint_weight", 1.0 if tint_idx >= 0 else 0.0)),
                     float(location.get("default_overlay_tint_weight", 0.0)),
-                    float(location.get("default_tint_weight", 0.0)),
+                    float(location.get("default_tint_weight", 1.0 if tint_idx >= 0 else 0.0)),
                     1.0 if location.get("is_hardcoded", False) else 0.0,
                 ))
-            values[attr_face]["is_opaque"].append(1 if location.get("is_opaque", True) else 0)
+            else:
+                values[attr_face]["tint_data"].append((0.0, 0.0, 0.0, 0.0))
 
             frame_count = float(location.get("frame_count", 1))
             frametime = float(location.get("frametime", 1))
@@ -575,8 +545,8 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             fh = float(location.get("frame_height", location.get("tile_size", 16)))
             values[attr_face]["anim_frame_size"].append((fw, fh, 0.0, 0.0))
 
-            values[attr_face]["uv_rot"].append(0.0)
-            values[attr_face]["uv_bounds"].append((0.0, 0.0, 1.0, 1.0))
+            values[attr_face]["uv_rot"].append(uv_r)
+            values[attr_face]["uv_bounds"].append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
 
     def point_attr(name: str, data_type: str):
         attr = mesh.attributes.get(name)
@@ -666,18 +636,103 @@ def setup_yefira_point_cloud_attributes(
     write_yefira_point_atlas_attributes(mesh, mapping_data)
 
 
+def rebuild_or_update_yefira_material_dispatcher(
+    atlas_materials: dict[int, bpy.types.Material],
+) -> Optional[bpy.types.GeometryNodeTree]:
+    """Ensure Yefira_Material_Dispatcher node group contains the complete multi-chunk Set Material chain."""
+    try:
+        if "yefira_blender.nodes.groups.material_dispatcher" in sys.modules:
+            from yefira_blender.nodes.groups.material_dispatcher import get_or_create_material_dispatcher_group
+            return get_or_create_material_dispatcher_group(atlas_materials)
+        elif "yefira_blender.nodes.groups" in sys.modules:
+            from yefira_blender.nodes.groups import get_or_create_material_dispatcher_group
+            return get_or_create_material_dispatcher_group(atlas_materials)
+    except Exception:
+        pass
+
+    tree = bpy.data.node_groups.get("Yefira_Material_Dispatcher")
+    if not tree:
+        tree = bpy.data.node_groups.new("Yefira_Material_Dispatcher", "GeometryNodeTree")
+
+    sorted_chunk_ids = sorted(atlas_materials.keys()) if atlas_materials else [0]
+    signature_key = ",".join(
+        f"{cid}:{atlas_materials[cid].name if atlas_materials.get(cid) else 'None'}"
+        for cid in sorted_chunk_ids
+    )
+
+    tree.nodes.clear()
+
+    if hasattr(tree, "interface"):
+        in_sock = next((s for s in tree.interface.items_tree if getattr(s, "item_type", "") == "SOCKET" and getattr(s, "in_out", "") == "INPUT" and s.name == "Geometry"), None)
+        if not in_sock:
+            tree.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+        out_sock = next((s for s in tree.interface.items_tree if getattr(s, "item_type", "") == "SOCKET" and getattr(s, "in_out", "") == "OUTPUT" and s.name == "Geometry"), None)
+        if not out_sock:
+            tree.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+
+    nodes, links = tree.nodes, tree.links
+    gin = nodes.new("NodeGroupInput")
+    gin.location = (-300, 0)
+    gout = nodes.new("NodeGroupOutput")
+    last_geo = gin.outputs["Geometry"]
+    x_pos = 0
+
+    if 0 in atlas_materials and atlas_materials[0]:
+        set_mat0 = nodes.new("GeometryNodeSetMaterial")
+        set_mat0.name = "Set Material (Chunk 0)"
+        set_mat0.inputs["Material"].default_value = atlas_materials[0]
+        set_mat0.location = (x_pos, 0)
+        links.new(last_geo, set_mat0.inputs["Geometry"])
+        last_geo = set_mat0.outputs["Geometry"]
+        x_pos += 200
+
+    other_chunk_ids = [cid for cid in sorted_chunk_ids if cid > 0 and atlas_materials.get(cid)]
+    if other_chunk_ids:
+        read_chunk_id = nodes.new("GeometryNodeInputNamedAttribute")
+        read_chunk_id.data_type = "INT"
+        read_chunk_id.inputs["Name"].default_value = "mtk_atlas_chunk_id"
+        read_chunk_id.location = (0, -220)
+
+        for cid in other_chunk_ids:
+            mat_obj = atlas_materials[cid]
+            cmp_chunk = nodes.new("FunctionNodeCompare")
+            cmp_chunk.data_type = "INT"
+            cmp_chunk.operation = "EQUAL"
+            cmp_chunk.inputs["B"].default_value = cid
+            cmp_chunk.location = (x_pos, -220)
+            links.new(read_chunk_id.outputs["Attribute"], cmp_chunk.inputs["A"])
+
+            set_mat = nodes.new("GeometryNodeSetMaterial")
+            set_mat.name = f"Set Material (Chunk {cid})"
+            set_mat.inputs["Material"].default_value = mat_obj
+            set_mat.location = (x_pos, 0)
+            links.new(last_geo, set_mat.inputs["Geometry"])
+            links.new(cmp_chunk.outputs["Result"], set_mat.inputs["Selection"])
+
+            last_geo = set_mat.outputs["Geometry"]
+            x_pos += 200
+
+    gout.location = (x_pos + 100, 0)
+    links.new(last_geo, gout.inputs["Geometry"])
+    tree["yefira_dispatcher_signature"] = signature_key
+    tree["yefira_role"] = "material_dispatcher"
+    return tree
+
+
 def _update_yefira_geometry_node_materials(
     obj: bpy.types.Object,
     atlas_materials: dict[int, bpy.types.Material],
 ) -> None:
     """Traverse all Geometry Nodes modifier trees and nested sub-groups on a Yefira object,
-    updating Set Material nodes to bind the new atlas chunk materials."""
+    updating Set Material nodes and rebuilding the multi-chunk Material Dispatcher."""
     primary_mat = atlas_materials.get(0) or next(iter(atlas_materials.values()), None)
     if not primary_mat:
         return
 
     import re
-    visited_groups = set()
+
+    disp_tree = rebuild_or_update_yefira_material_dispatcher(atlas_materials)
+    visited_groups = {disp_tree} if disp_tree else set()
 
     def update_node_group(group: Optional[bpy.types.NodeTree]) -> None:
         if not group or group in visited_groups or not hasattr(group, "nodes"):
@@ -693,22 +748,14 @@ def _update_yefira_geometry_node_materials(
                 else:
                     n.inputs["Material"].default_value = primary_mat
             elif n.type == 'GROUP' and getattr(n, "node_tree", None):
-                update_node_group(n.node_tree)
+                if n.name == "Material Dispatcher" and disp_tree:
+                    n.node_tree = disp_tree
+                else:
+                    update_node_group(n.node_tree)
 
     for mod in obj.modifiers:
         if mod.type == 'NODES' and mod.node_group:
             update_node_group(mod.node_group)
-
-    # Explicitly update Yefira_Material_Dispatcher if in blend file data
-    disp_group = bpy.data.node_groups.get("Yefira_Material_Dispatcher")
-    if disp_group:
-        update_node_group(disp_group)
-        sorted_chunk_ids = sorted(atlas_materials.keys())
-        signature_key = ",".join(
-            f"{cid}:{atlas_materials[cid].name if atlas_materials.get(cid) else 'None'}"
-            for cid in sorted_chunk_ids
-        )
-        disp_group["yefira_dispatcher_signature"] = signature_key
 
 
 def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:

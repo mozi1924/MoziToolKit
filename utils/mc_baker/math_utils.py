@@ -70,13 +70,13 @@ def rotate_z(v: Vec3, angle_deg: float) -> Vec3:
 
 
 def rotate_point(p: Vec3, rot_x: float, rot_y: float, origin: Vec3 = (0.5, 0.5, 0.5)) -> Vec3:
-    """Apply BlockModelRotation (Y then X rotation around origin)."""
+    """Apply BlockModelRotation (X then Y rotation around origin)."""
     px = p[0] - origin[0]
     py = p[1] - origin[1]
     pz = p[2] - origin[2]
 
-    v = rotate_y((px, py, pz), rot_y)
-    v = rotate_x(v, rot_x)
+    v = rotate_x((px, py, pz), rot_x)
+    v = rotate_y(v, rot_y)
 
     return (v[0] + origin[0], v[1] + origin[1], v[2] + origin[2])
 
@@ -121,8 +121,8 @@ def rotate_direction(direction: str, rot_x: float, rot_y: float) -> str:
     if direction not in DIR_VECTORS:
         return direction
     norm = DIR_VECTORS[direction]
-    v = rotate_y(norm, rot_y)
-    v = rotate_x(v, rot_x)
+    v = rotate_x(norm, rot_x)
+    v = rotate_y(v, rot_y)
     rounded = round_vec3(v)
     return VECTOR_TO_DIR.get(rounded, direction)
 
@@ -261,9 +261,23 @@ def calculate_uv_rotation(
                 return (base_rot - rot_x) % 360.0
 
         if rot_x == 90.0:
-            if orig_direction == "north" and new_direction == "up":
+            if rot_y in (90.0, 270.0) and orig_direction in ("north", "south", "up", "down") and new_direction in ("up", "down"):
+                return (base_rot + 90.0) % 360.0
+            elif orig_direction == "north" and new_direction == "up":
                 return (base_rot + 180.0) % 360.0
             elif orig_direction == "south" and new_direction == "down":
+                return (base_rot + 0.0) % 360.0
+            elif orig_direction == "up" and new_direction == "south":
+                return (base_rot + 0.0) % 360.0
+            elif orig_direction == "down" and new_direction == "north":
+                return (base_rot + 180.0) % 360.0
+        elif rot_x == 180.0 or (rot_x == 90.0 and rot_y == 180.0):
+            if orig_direction in ("north", "south", "east", "west") and new_direction in ("north", "south", "east", "west"):
+                return (base_rot + 180.0) % 360.0
+        elif rot_x == 270.0:
+            if orig_direction == "up" and new_direction == "north":
+                return (base_rot + 180.0) % 360.0
+            elif orig_direction == "down" and new_direction == "south":
                 return (base_rot + 0.0) % 360.0
 
         return base_rot

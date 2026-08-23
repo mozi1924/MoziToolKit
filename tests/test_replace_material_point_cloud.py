@@ -521,6 +521,57 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
                 f"Material Dispatcher on replacement {pack_idx + 1} was stuck on {disp_set_mat[0].inputs['Material'].default_value} instead of {cur_mat}"
             )
 
+    def test_multichunk_material_dispatcher_chain(self):
+        """Verify that apply_yefira_atlas_materials generates complete Set Material chains for multi-chunk atlases."""
+        from utils.materials.yefira import apply_yefira_atlas_materials
+
+        m0 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_000:abc:attr:UVMap")
+        m0.use_fake_user = True
+        m1 = bpy.data.materials.new("mtk:minecraft:atlas_chunk_001:abc:attr:UVMap")
+        m1.use_fake_user = True
+        m2 = bpy.data.materials.new("mtk:mymod:atlas_chunk_002:abc:attr:UVMap")
+        m2.use_fake_user = True
+
+        yefira_atlas_mats = {0: m0, 1: m1, 2: m2}
+        mapping = {
+            "chunks": [
+                {"chunk_id": 0, "kind": "static"},
+                {"chunk_id": 1, "kind": "animation"},
+                {"chunk_id": 2, "kind": "mod"},
+            ]
+        }
+
+        # Initial object with single-chunk dispatcher
+        obj = bpy.data.objects.new("MultiChunkTestObj", bpy.data.meshes.new("MultiChunkTestMesh"))
+        bpy.context.scene.collection.objects.link(obj)
+        mod = obj.modifiers.new("Yefira_WorldModifier", "NODES")
+        mod_tree = bpy.data.node_groups.new("Yefira_WorldTree", "GeometryNodeTree")
+        mod.node_group = mod_tree
+
+        disp_tree = bpy.data.node_groups.new("Yefira_Material_Dispatcher", "GeometryNodeTree")
+        s0 = disp_tree.nodes.new("GeometryNodeSetMaterial")
+        s0.name = "Set Material (Chunk 0)"
+        disp_tree["yefira_dispatcher_signature"] = "0:initial"
+
+        disp_node = mod_tree.nodes.new("GeometryNodeGroup")
+        disp_node.name = "Material Dispatcher"
+        disp_node.node_tree = disp_tree
+
+        success = apply_yefira_atlas_materials(obj, yefira_atlas_mats, mapping)
+        self.assertTrue(success)
+
+        # Check that Yefira_Material_Dispatcher now has 3 Set Material nodes
+        disp_set_mats = [n for n in disp_tree.nodes if n.type == 'SET_MATERIAL']
+        self.assertEqual(len(disp_set_mats), 3, f"Expected 3 Set Material nodes, got {len(disp_set_mats)}")
+
+        mat_by_chunk = {}
+        for n in disp_set_mats:
+            mat_by_chunk[n.name] = n.inputs["Material"].default_value
+
+        self.assertEqual(mat_by_chunk.get("Set Material (Chunk 0)"), m0)
+        self.assertEqual(mat_by_chunk.get("Set Material (Chunk 1)"), m1)
+        self.assertEqual(mat_by_chunk.get("Set Material (Chunk 2)"), m2)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

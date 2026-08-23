@@ -76,8 +76,10 @@ class StateBaker:
         fallback_texture = f"minecraft:block/{short_name}"
 
         is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab"))
-        is_emissive = any(w in short_name for w in ("glowstone", "sea_lantern", "shroomlight", "magma", "lava", "fire", "lantern", "torch"))
+        is_emissive = any(w in short_name for w in ("glowstone", "sea_lantern", "shroomlight", "magma", "lava", "fire", "lantern", "torch", "crying_obsidian", "beacon", "end_rod"))
         if props.get("lit") == "true":
+            is_emissive = True
+        if short_name == "respawn_anchor" and int(props.get("charges", "0")) > 0:
             is_emissive = True
 
         for match in variant_matches:
@@ -113,6 +115,8 @@ class StateBaker:
                     if "uv" in face_data:
                         raw_uv = face_data["uv"]
                         uv_bounds_16 = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3]))
+                        if uv_bounds_16[1] > uv_bounds_16[3]:
+                            face_rot = (face_rot + 180.0) % 360.0
                     else:
                         uv_bounds_16 = default_face_uv(orig_dir, from_pos, to_pos)
 
@@ -175,6 +179,15 @@ class StateBaker:
                 ))
 
         # Fill 6-face summary
+        if baked_elements:
+            for elem in baked_elements:
+                for f in elem.faces.values():
+                    if f and f.texture:
+                        fallback_texture = f.texture
+                        break
+                if fallback_texture != f"minecraft:block/{short_name}":
+                    break
+
         final_six_faces: list[BakedFace] = []
         for i in range(6):
             if six_faces[i] is not None:
