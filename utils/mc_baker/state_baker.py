@@ -61,6 +61,117 @@ class StateBaker:
         self.model_parser._model_cache.clear()
         self.state_resolver._state_cache.clear()
 
+    @staticmethod
+    def _resolve_base_face_textures(short_name: str, props: dict[str, str], fallback: str) -> dict[str, str]:
+        """Resolve unrotated base 6-face texture stems in local model space."""
+        is_lit = props.get("lit") == "true"
+
+        # 1. Furnace, Blast Furnace, Smoker
+        if short_name in ("furnace", "blast_furnace", "smoker"):
+            top = f"minecraft:block/{short_name}_top"
+            bottom = f"minecraft:block/{short_name}_top"
+            side = f"minecraft:block/{short_name}_side"
+            front = f"minecraft:block/{short_name}_front_on" if is_lit else f"minecraft:block/{short_name}_front"
+            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": front}
+
+        # 2. Beehive, Bee Nest
+        if short_name in ("beehive", "bee_nest"):
+            is_honey = props.get("honey_level") == "5"
+            top = f"minecraft:block/{short_name}_top"
+            bottom = f"minecraft:block/{short_name}_bottom"
+            side = f"minecraft:block/{short_name}_side"
+            front = f"minecraft:block/{short_name}_front_honey" if is_honey else f"minecraft:block/{short_name}_front"
+            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": front}
+
+        # 3. Carved Pumpkin, Jack o'Lantern
+        if short_name in ("carved_pumpkin", "jack_o_lantern"):
+            top = "minecraft:block/pumpkin_top"
+            side = "minecraft:block/pumpkin_side"
+            front = f"minecraft:block/{short_name}"
+            return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": front}
+
+        # 4. Dispenser, Dropper
+        if short_name in ("dispenser", "dropper"):
+            top = f"minecraft:block/{short_name}_top"
+            side = f"minecraft:block/{short_name}_side"
+            front = f"minecraft:block/{short_name}_front"
+            return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": front}
+
+        # 5. Observer
+        if short_name == "observer":
+            top = "minecraft:block/observer_top"
+            side = "minecraft:block/observer_side"
+            back = "minecraft:block/observer_back"
+            front = "minecraft:block/observer_front"
+            return {"east": side, "west": side, "up": top, "down": side, "south": back, "north": front}
+
+        # 6. Piston, Sticky Piston
+        if short_name in ("piston", "sticky_piston"):
+            top = "minecraft:block/piston_top_sticky" if short_name == "sticky_piston" else "minecraft:block/piston_top"
+            bottom = "minecraft:block/piston_bottom"
+            side = "minecraft:block/piston_side"
+            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
+
+        # 7. Barrel
+        if short_name == "barrel":
+            is_open = props.get("open") == "true"
+            top = "minecraft:block/barrel_top_open" if is_open else "minecraft:block/barrel_top"
+            bottom = "minecraft:block/barrel_bottom"
+            side = "minecraft:block/barrel_side"
+            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
+
+        # 8. Respawn Anchor
+        if short_name == "respawn_anchor":
+            charges = props.get("charges", "0")
+            has_charges = str(charges) not in ("0", "")
+            top = "minecraft:block/respawn_anchor_top" if has_charges else "minecraft:block/respawn_anchor_top_off"
+            bottom = "minecraft:block/respawn_anchor_bottom"
+            side = f"minecraft:block/respawn_anchor_side{charges}" if has_charges else "minecraft:block/respawn_anchor_side0"
+            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
+
+        # 9. Command Blocks
+        if "command_block" in short_name:
+            front = f"minecraft:block/{short_name}_front"
+            back = f"minecraft:block/{short_name}_back"
+            side = f"minecraft:block/{short_name}_side"
+            return {"east": side, "west": side, "up": side, "down": side, "south": back, "north": front}
+
+        # 10. Grass Block, Podzol, Mycelium
+        if short_name in ("grass_block", "podzol", "mycelium"):
+            snowy = props.get("snowy") == "true"
+            top = f"minecraft:block/{short_name}_top"
+            bottom = "minecraft:block/dirt"
+            side = "minecraft:block/grass_block_snow" if snowy else f"minecraft:block/{short_name}_side"
+            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
+
+        # 11. Mushroom Blocks
+        if short_name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
+            skin = f"minecraft:block/{short_name}"
+            inside = "minecraft:block/mushroom_block_inside"
+            return {
+                "east": inside if props.get("east") == "false" else skin,
+                "west": inside if props.get("west") == "false" else skin,
+                "up": inside if props.get("up") == "false" else skin,
+                "down": inside if props.get("down") == "false" else skin,
+                "south": inside if props.get("south") == "false" else skin,
+                "north": inside if props.get("north") == "false" else skin,
+            }
+
+        # 12. Axis Blocks (Logs, Wood, Hyphae, Basalt, Hay, Bone)
+        is_axis = "axis" in props or short_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
+        if is_axis:
+            top_stem = f"{short_name}_top" if not short_name.endswith(("_wood", "_hyphae")) else (f"{short_name[:-4]}log_top" if short_name.endswith("_wood") else f"{short_name[:-7]}stem_top")
+            top = f"minecraft:block/{top_stem}"
+            side = f"minecraft:block/{short_name}" if short_name.endswith(("_wood", "_hyphae")) else f"minecraft:block/{short_name}"
+            return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": side}
+
+        # 13. Redstone Lamp
+        if short_name == "redstone_lamp":
+            lamp = "minecraft:block/redstone_lamp_on" if is_lit else "minecraft:block/redstone_lamp"
+            return {d: lamp for d in MC_DIRECTIONS}
+
+        return {d: fallback for d in MC_DIRECTIONS}
+
     def bake_block_state(self, state_str: str) -> BakedModel:
         """
         Bake a BlockState string into a fully resolved BakedModel containing all elements,
@@ -91,13 +202,14 @@ class StateBaker:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                # Default 1x1x1 cube fallback
+                # Default 1x1x1 cube fallback with state-aware multi-face textures
+                base_face_textures = self._resolve_base_face_textures(short_name, props, fallback_texture)
                 raw_elements = [
                     {
                         "from": [0, 0, 0],
                         "to": [16, 16, 16],
                         "faces": {
-                            d: {"texture": resolved_model.get("textures", {}).get(d, fallback_texture)}
+                            d: {"texture": resolved_model.get("textures", {}).get(d, base_face_textures.get(d, fallback_texture))}
                             for d in MC_DIRECTIONS
                         }
                     }

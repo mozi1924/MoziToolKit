@@ -225,6 +225,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         target_stems = BLOCK_TO_TEXTURE_ALIASES.get(block_name)
         is_lit = props.get("lit") == "true"
         snowy = props.get("snowy") == "true"
+        facing = props.get("facing", "north")
         axis = props.get("axis", "y")
         honey_level = props.get("honey_level", "0")
         charges = int(props.get("charges", "0")) if "charges" in props else 0
@@ -319,17 +320,39 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 actual_back = back_loc or side_loc
                 actual_front = front_loc or found_loc
 
-                if "command_block" in block_name:
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_front, "-Y": actual_back, "+Z": side_loc, "-Z": side_loc}
-                elif "piston" in block_name:
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
-                elif block_name == "observer":
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": side_loc, "+Z": actual_back, "-Z": actual_front}
+                # Vertical-base blocks (unrotated model points UP)
+                if "piston" in block_name:
+                    p_top = actual_top
+                    p_bottom = actual_bottom
+                    if facing == "up": return {"+X": side_loc, "-X": side_loc, "+Y": p_top, "-Y": p_bottom, "+Z": side_loc, "-Z": side_loc}
+                    elif facing == "down": return {"+X": side_loc, "-X": side_loc, "+Y": p_bottom, "-Y": p_top, "+Z": side_loc, "-Z": side_loc}
+                    elif facing == "north": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": p_bottom, "-Z": p_top}
+                    elif facing == "south": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": p_top, "-Z": p_bottom}
+                    elif facing == "east": return {"+X": p_top, "-X": p_bottom, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
+                    elif facing == "west": return {"+X": p_bottom, "-X": p_top, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
+
                 elif block_name == "barrel":
                     is_open = props.get("open") == "true"
                     b_top = (texture_location("barrel_top_open") if is_open else None) or actual_top
-                    return {"+X": side_loc, "-X": side_loc, "+Y": b_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
-                else:
+                    if facing == "up": return {"+X": side_loc, "-X": side_loc, "+Y": b_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
+                    elif facing == "down": return {"+X": side_loc, "-X": side_loc, "+Y": actual_bottom, "-Y": b_top, "+Z": side_loc, "-Z": side_loc}
+                    elif facing == "north": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": actual_bottom, "-Z": b_top}
+                    elif facing == "south": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": b_top, "-Z": actual_bottom}
+                    elif facing == "east": return {"+X": b_top, "-X": actual_bottom, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
+                    elif facing == "west": return {"+X": actual_bottom, "-X": b_top, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
+
+                # Horizontal-base blocks (furnace, observer, dispenser, dropper, beehive, pumpkin, etc.)
+                if facing == "east":
+                    return {"+X": actual_front, "-X": actual_back, "+Y": actual_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
+                elif facing == "south":
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": actual_front, "-Z": actual_back}
+                elif facing == "west":
+                    return {"+X": actual_back, "-X": actual_front, "+Y": actual_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
+                elif facing == "up":
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_front, "-Y": actual_back, "+Z": actual_top, "-Z": side_loc}
+                elif facing == "down":
+                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_back, "-Y": actual_front, "+Z": side_loc, "-Z": actual_top}
+                else: # north
                     return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": actual_back, "-Z": actual_front}
 
         base = texture_location(block_name)
@@ -486,9 +509,14 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             state_face_entry = block_state_entry.get("faces", {}).get(mapping_face) if block_state_entry else None
 
             if state_face_entry:
-                tex_name = state_face_entry.get("texture_key", "")
+                tex_name = state_face_entry.get("texture_key", state_face_entry.get("texture", ""))
                 uv_r = float(state_face_entry.get("uv_rotation", 0.0))
-                uv_b = tuple(state_face_entry.get("uv_bounds", [0.0, 0.0, 1.0, 1.0]))
+                uv_b = tuple(state_face_entry.get("uv_bounds", [
+                    state_face_entry.get("u_min", 0.0),
+                    state_face_entry.get("v_min", 0.0),
+                    state_face_entry.get("u_max", 1.0),
+                    state_face_entry.get("v_max", 1.0),
+                ]))
                 tint_idx = int(state_face_entry.get("tint_index", -1))
             elif baked_face:
                 tex_name = baked_face.texture
@@ -509,13 +537,14 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 short_n = short_n[6:]
 
             location = (
-                texture_location(tex_stem)
-                or (f_mapping if isinstance(f_mapping, dict) and ("tile_column" in f_mapping or "kind" in f_mapping or "chunk_id" in f_mapping) else None)
-                or derived_faces.get(mapping_face)
+                (state_face_entry if isinstance(state_face_entry, dict) and ("tile_column" in state_face_entry or "pixel_x" in state_face_entry or "chunk_id" in state_face_entry) else None)
                 or texture_location(tex_name)
                 or texture_location(short_n)
                 or texture_location(f"minecraft:{short_n}")
                 or texture_location(f"minecraft:block/{short_n}")
+                or texture_location(tex_stem)
+                or (f_mapping if isinstance(f_mapping, dict) and ("tile_column" in f_mapping or "kind" in f_mapping or "chunk_id" in f_mapping) else None)
+                or derived_faces.get(mapping_face)
                 or fallback_location
                 or {}
             )
