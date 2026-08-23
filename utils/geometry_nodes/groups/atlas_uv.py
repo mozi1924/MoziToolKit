@@ -6,7 +6,7 @@ import bpy
 from ..core import ensure_gn_group, ensure_socket, finalize_group
 
 GROUP_NAME_ATLAS_UV_CALCULATOR = "Yefira_Atlas_UV_Calculator"
-ATLAS_UV_CALCULATOR_VERSION = 3
+ATLAS_UV_CALCULATOR_VERSION = 4
 
 
 def get_or_create_atlas_uv_calculator_group() -> bpy.types.GeometryNodeTree:
@@ -21,6 +21,7 @@ def get_or_create_atlas_uv_calculator_group() -> bpy.types.GeometryNodeTree:
     ensure_socket(tree, "Target Tile", "INPUT", "NodeSocketVector")
     ensure_socket(tree, "Local UV", "INPUT", "NodeSocketVector")
     ensure_socket(tree, "Chunk ID", "INPUT", "NodeSocketInt", default_value=0)
+    ensure_socket(tree, "Anim Frame Count", "INPUT", "NodeSocketFloat", default_value=1.0)
     ensure_socket(tree, "Tiles Per Row", "INPUT", "NodeSocketFloat", default_value=256.0)
     ensure_socket(tree, "Tile Size", "INPUT", "NodeSocketFloat", default_value=16.0)
     ensure_socket(tree, "Atlas Height", "INPUT", "NodeSocketFloat", default_value=80.0)
@@ -146,13 +147,13 @@ def get_or_create_atlas_uv_calculator_group() -> bpy.types.GeometryNodeTree:
     links.new(atlas_u_anim.outputs["Value"], comb_anim.inputs["X"])
     links.new(atlas_v_anim.outputs["Value"], comb_anim.inputs["Y"])
 
-    # --- 3. CHUNK SWITCH ---
+    # --- 3. ANIMATION SWITCH ---
     cmp_is_anim = nodes.new("FunctionNodeCompare")
-    cmp_is_anim.data_type = "INT"
+    cmp_is_anim.data_type = "FLOAT"
     cmp_is_anim.operation = "GREATER_THAN"
-    cmp_is_anim.inputs["B"].default_value = 0
+    cmp_is_anim.inputs["B"].default_value = 1.0
     cmp_is_anim.location = (450, 300)
-    links.new(gin.outputs["Chunk ID"], cmp_is_anim.inputs["A"])
+    links.new(gin.outputs["Anim Frame Count"], cmp_is_anim.inputs["A"])
 
     sw_chunk = nodes.new("GeometryNodeSwitch")
     sw_chunk.input_type = "VECTOR"

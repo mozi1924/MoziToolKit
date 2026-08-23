@@ -11,7 +11,7 @@ import bpy
 
 from ...utils.geometry_nodes.world_tree import setup_world_geometry_nodes
 from ...utils.live_sync.client import SyncClientThread
-from ...utils.live_sync.point_cloud import update_world_point_cloud
+from ...utils.live_sync.point_cloud import refresh_baker_sources, update_world_point_cloud
 from ...utils.live_sync.storage import voxel_storage
 from ...utils.materials.yefira import (
     extract_atlas_parameters,
@@ -61,6 +61,7 @@ def clear_sync_caches() -> None:
 
 def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
     """Update Yefira_World point cloud and configure Geometry Nodes engine."""
+    refresh_baker_sources()
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
 
@@ -88,10 +89,10 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
         atlas_height=atlas_params["height"],
         tile_size=atlas_params["tile_size"],
         tiles_per_row=atlas_params["tiles_per_row"],
-        anim_atlas_width=atlas_params.get("chunk_1_width", 896.0),
-        anim_atlas_height=atlas_params.get("chunk_1_height", 1024.0),
-        anim_frame_width=atlas_params.get("chunk_1_tile_size", 16.0),
-        anim_frame_height=atlas_params.get("chunk_1_tile_size", 16.0),
+        anim_atlas_width=atlas_params.get("anim_atlas_width", atlas_params.get("chunk_1_width", 896.0)),
+        anim_atlas_height=atlas_params.get("anim_atlas_height", atlas_params.get("chunk_1_height", 1024.0)),
+        anim_frame_width=atlas_params.get("anim_frame_width", atlas_params.get("chunk_1_tile_size", 16.0)),
+        anim_frame_height=atlas_params.get("anim_frame_height", atlas_params.get("chunk_1_tile_size", 16.0)),
     )
 
     if res.world_obj:

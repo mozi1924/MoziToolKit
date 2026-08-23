@@ -18,10 +18,24 @@ from .constants import (
 from pathlib import Path
 from ..mc_baker import StateBaker
 
-DEFAULT_CLIENT_JAR = "/Users/jaxlocke/26.2-Fabric.jar"
-_GLOBAL_STATE_BAKER = StateBaker(
-    jar_path=DEFAULT_CLIENT_JAR if Path(DEFAULT_CLIENT_JAR).exists() else None
-)
+_GLOBAL_STATE_BAKER = StateBaker()
+_last_configured_loader = None
+
+
+def refresh_baker_sources() -> None:
+    """Synchronize StateBaker resource loaders with the configured Resource Pack Stack."""
+    global _last_configured_loader
+    try:
+        from .pack_stack import get_configured_pack_stack
+        composite_loader = get_configured_pack_stack().get_composite_loader()
+        if composite_loader and composite_loader is not _last_configured_loader:
+            _last_configured_loader = composite_loader
+            _GLOBAL_STATE_BAKER.resource_loader = composite_loader
+            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model
+            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
+            _GLOBAL_STATE_BAKER.clear_cache()
+    except Exception:
+        pass
 
 
 BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
@@ -204,6 +218,8 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     state_attr = mesh.attributes.get("block_state")
     if not state_attr or state_attr.domain != 'POINT':
         return
+
+    refresh_baker_sources()
 
     by_name = {
         str(entry.get("name", "")).removeprefix("minecraft:").removeprefix("block/"): entry

@@ -800,6 +800,18 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestPackStackAndFallback: {e}")
 
+    try:
+        from tests.test_multi_category_atlas import TestMultiCategoryAtlas
+        suite.addTests(loader.loadTestsFromTestCase(TestMultiCategoryAtlas))
+    except Exception as e:
+        print(f"[Warning] Could not load TestMultiCategoryAtlas: {e}")
+
+    try:
+        from tests.test_live_sync_multi_chunk_atlas import TestLiveSyncMultiChunkAtlas
+        suite.addTests(loader.loadTestsFromTestCase(TestLiveSyncMultiChunkAtlas))
+    except Exception as e:
+        print(f"[Warning] Could not load TestLiveSyncMultiChunkAtlas: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

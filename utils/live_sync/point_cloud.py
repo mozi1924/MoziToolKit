@@ -126,6 +126,8 @@ class PrecomputedStateAttr:
         block_face_tint_lut: dict[str, Any],
         block_face_anim_timing_lut: dict[str, Any],
         block_face_anim_frame_size_lut: dict[str, Any],
+        block_face_uv_rot_lut: Optional[dict[str, Any]] = None,
+        block_face_uv_bounds_lut: Optional[dict[str, Any]] = None,
         tile_size: float = 16.0,
     ):
         import json
@@ -203,7 +205,7 @@ class PrecomputedStateAttr:
                 fw = max(1, int(loc.get("frame_width", 16)))
                 col = float(px // fw)
                 row = 0.0
-                cid = int(loc.get("chunk_id", 1))
+                cid = int(loc.get("chunk_id", 0))
                 tid = int(loc.get("texture_id", 0))
             elif loc:
                 col = float(loc.get("tile_column", 0))
@@ -276,6 +278,16 @@ class PrecomputedStateAttr:
                     anim_frame_sizes.append((fw, fh, 0.0, 0.0))
             else:
                 anim_frame_sizes.append((fw, fh, 0.0, 0.0))
+
+            if uv_r == 0.0 and block_face_uv_rot_lut:
+                rot_lut = block_face_uv_rot_lut.get(parsed.name) or block_face_uv_rot_lut.get(parsed.full_state)
+                if rot_lut and len(rot_lut) > face_idx:
+                    uv_r = float(rot_lut[face_idx])
+
+            if uv_b == (0.0, 0.0, 1.0, 1.0) and block_face_uv_bounds_lut:
+                b_lut = block_face_uv_bounds_lut.get(parsed.name) or block_face_uv_bounds_lut.get(parsed.full_state)
+                if b_lut and len(b_lut) > face_idx:
+                    uv_b = tuple(float(v) for v in b_lut[face_idx])
 
             uv_rots.append(uv_r)
             uv_bounds_list.append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
@@ -353,6 +365,8 @@ def update_world_point_cloud(
     bftint_lut = block_face_tint_lut or {}
     bfat_lut = block_face_anim_timing_lut or {}
     bfas_lut = block_face_anim_frame_size_lut or {}
+    bfuvr_lut = block_face_uv_rot_lut or {}
+    bfuvb_lut = block_face_uv_bounds_lut or {}
 
     # 1. Fetch / precompute palette metadata
     unique_states = list(set(block_map.values()))
@@ -374,6 +388,8 @@ def update_world_point_cloud(
                 block_face_tint_lut=bftint_lut,
                 block_face_anim_timing_lut=bfat_lut,
                 block_face_anim_frame_size_lut=bfas_lut,
+                block_face_uv_rot_lut=bfuvr_lut,
+                block_face_uv_bounds_lut=bfuvb_lut,
                 tile_size=tile_size,
             )
             _STATE_ATTR_CACHE[s] = entry
