@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 from .storage import VoxelStorage, block_key
-from .classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, atlas_lookup_keys, _atlas_lookup_keys
+from .classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, atlas_lookup_keys
 from .template_catalog import get_or_create_template_collection, get_template_index_map
 from .constants import (
     BLOCK_CENTER, BLOCK_KEY, BLOCK_STATE, BLOCK_TYPE, CONTRACT_VERSION,
@@ -163,7 +163,7 @@ class PrecomputedStateAttr:
         self.is_opaque = int(parsed.is_opaque)
         self.is_emissive = int(parsed.is_emissive)
 
-        atlas_keys = _atlas_lookup_keys(parsed)
+        atlas_keys = atlas_lookup_keys(parsed)
         mat_id = next((atlas_mapping_dict[key] for key in atlas_keys if key in atlas_mapping_dict), None) if atlas_mapping_dict else None
         if mat_id is None:
             mat_id = 0
@@ -524,7 +524,7 @@ def _resolve_face_values(lut, parsed: ParsedBlock, default, is_coord: bool = Fal
         return [default] * 6
 
     # 1. Direct lookup in LUT via atlas_lookup_keys
-    atlas_keys = _atlas_lookup_keys(parsed)
+    atlas_keys = atlas_lookup_keys(parsed)
     raw = next((lut[key] for key in atlas_keys if key in lut), None)
     if raw is not None:
         if isinstance(raw, (list, tuple)) and len(raw) >= 6:
@@ -570,46 +570,6 @@ def _write_numpy_attribute(mesh: bpy.types.Mesh, name: str, data_type: str, doma
 
     field = 'value' if data_type in ('FLOAT', 'INT') else ('vector' if data_type == 'FLOAT_VECTOR' else 'color')
     attr.data.foreach_set(field, np_arr.ravel())
-
-
-def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):
-    attr = mesh.attributes.get(name)
-    if not attr or attr.data_type != 'FLOAT' or attr.domain != 'POINT' or len(attr.data) != len(values):
-        if attr:
-            mesh.attributes.remove(attr)
-        attr = mesh.attributes.new(name=name, type='FLOAT', domain='POINT')
-    attr.data.foreach_set('value', values)
-
-
-def _write_int_attribute(mesh: bpy.types.Mesh, name: str, values: list[int]):
-    attr = mesh.attributes.get(name)
-    if not attr or attr.data_type != 'INT' or attr.domain != 'POINT' or len(attr.data) != len(values):
-        if attr:
-            mesh.attributes.remove(attr)
-        attr = mesh.attributes.new(name=name, type='INT', domain='POINT')
-    attr.data.foreach_set('value', values)
-
-
-def _write_float_vector_attribute(mesh: bpy.types.Mesh, name: str, vectors: list[tuple[float, float, float]]):
-    attr = mesh.attributes.get(name)
-    if not attr or attr.data_type != 'FLOAT_VECTOR' or attr.domain != 'POINT' or len(attr.data) != len(vectors):
-        if attr:
-            mesh.attributes.remove(attr)
-        attr = mesh.attributes.new(name=name, type='FLOAT_VECTOR', domain='POINT')
-    
-    flat = [c for v in vectors for c in v]
-    attr.data.foreach_set('vector', flat)
-
-
-def _write_float_color_attribute(mesh: bpy.types.Mesh, name: str, colors: list[tuple[float, float, float, float]]):
-    attr = mesh.attributes.get(name)
-    if not attr or attr.data_type != 'FLOAT_COLOR' or attr.domain != 'POINT' or len(attr.data) != len(colors):
-        if attr:
-            mesh.attributes.remove(attr)
-        attr = mesh.attributes.new(name=name, type='FLOAT_COLOR', domain='POINT')
-    
-    flat = [c for col in colors for c in col]
-    attr.data.foreach_set('color', flat)
 
 
 def _write_string_attribute(mesh: bpy.types.Mesh, name: str, strings: list[str | bytes]):

@@ -78,23 +78,11 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
     delta_active_index: IntProperty(name="Active Delta Index", default=0)
 
 
-# Backward compatibility aliases for Yefira DCC
-YefiraPaletteItem = MoziSyncPaletteItem
-YefiraDeltaItem = MoziSyncDeltaItem
-YefiraSceneProperties = MoziSyncSceneProperties
-
-
 def register():
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
-    bpy.types.Scene.yefira = PointerProperty(type=MoziSyncSceneProperties)
 
 
 def unregister():
-    if hasattr(bpy.types.Scene, "yefira"):
-        try:
-            del bpy.types.Scene.yefira
-        except Exception:
-            pass
     if hasattr(bpy.types.Scene, "mozi_sync"):
         try:
             del bpy.types.Scene.mozi_sync

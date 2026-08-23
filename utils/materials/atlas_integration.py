@@ -49,82 +49,10 @@ def _atlas_short_name(name: str) -> str:
     return name.removeprefix("block/")
 
 
-BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
-    "water": ["water_still", "water_flow"],
-    "lava": ["lava_still", "lava_flow"],
-    "magma_block": ["magma", "magma_block"],
-    "fire": ["fire_0", "fire_1"],
-    "soul_fire": ["soul_fire_0", "soul_fire_1"],
-    "campfire": ["campfire_fire", "campfire_log", "campfire_log_lit"],
-    "soul_campfire": ["soul_campfire_fire", "soul_campfire_log", "soul_campfire_log_lit"],
-    "portal": ["nether_portal"],
-    "nether_portal": ["nether_portal"],
-    "kelp": ["kelp", "kelp_plant"],
-    "kelp_plant": ["kelp_plant", "kelp"],
-    "sea_pickle": ["sea_pickle"],
-    "sea_lantern": ["sea_lantern"],
-    "prismarine": ["prismarine"],
-    "prismarine_bricks": ["prismarine_bricks"],
-    "dark_prismarine": ["dark_prismarine"],
-    "lantern": ["lantern"],
-    "soul_lantern": ["soul_lantern"],
-    "sculk_sensor": ["sculk_sensor_top", "sculk_sensor_side", "sculk_sensor_bottom"],
-    "sculk_catalyst": ["sculk_catalyst_top", "sculk_catalyst_side", "sculk_catalyst_bottom"],
-    "sculk_shrieker": ["sculk_shrieker_top", "sculk_shrieker_side", "sculk_shrieker_bottom"],
-    "respawn_anchor": [
-        "respawn_anchor_top_off", "respawn_anchor_top",
-        "respawn_anchor_side0", "respawn_anchor_side1", "respawn_anchor_side2",
-        "respawn_anchor_side3", "respawn_anchor_side4", "respawn_anchor_bottom"
-    ],
-    "smoker": ["smoker_front", "smoker_front_on", "smoker_side", "smoker_top", "smoker_bottom"],
-    "furnace": ["furnace_front", "furnace_front_on", "furnace_side", "furnace_top", "furnace_bottom"],
-    "blast_furnace": ["blast_furnace_front", "blast_furnace_front_on", "blast_furnace_side", "blast_furnace_top", "blast_furnace_bottom"],
-    "redstone_lamp": ["redstone_lamp", "redstone_lamp_on"],
-    "redstone_torch": ["redstone_torch", "redstone_torch_off"],
-    "redstone_wall_torch": ["redstone_torch", "redstone_torch_off"],
-    "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
-    "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
-    "chain_command_block": ["chain_command_block_front", "chain_command_block_back", "chain_command_block_side", "chain_command_block_conditional"],
-    "dispenser": ["dispenser_front", "dispenser_front_vertical", "dispenser_side", "dispenser_top", "furnace_top"],
-    "dropper": ["dropper_front", "dropper_front_vertical", "dropper_side", "dropper_top", "furnace_top"],
-    "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
-    "piston": ["piston_top", "piston_bottom", "piston_side"],
-    "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
-    "barrel": ["barrel_top", "barrel_bottom", "barrel_side", "barrel_top_open"],
-    "beehive": ["beehive_front", "beehive_front_honey", "beehive_side", "beehive_top", "beehive_bottom"],
-    "bee_nest": ["bee_nest_front", "bee_nest_front_honey", "bee_nest_side", "bee_nest_top", "bee_nest_bottom"],
-    "carved_pumpkin": ["carved_pumpkin", "pumpkin_side", "pumpkin_top"],
-    "jack_o_lantern": ["jack_o_lantern", "pumpkin_side", "pumpkin_top"],
-    "red_mushroom_block": ["red_mushroom_block", "mushroom_block_inside"],
-    "brown_mushroom_block": ["brown_mushroom_block", "mushroom_block_inside"],
-    "mushroom_stem": ["mushroom_stem", "mushroom_block_inside"],
-    "grass_block": ["grass_block_top", "grass_block_side", "grass_block_snow", "grass_block_side_overlay", "dirt"],
-    "podzol": ["podzol_top", "podzol_side", "grass_block_snow", "dirt"],
-    "mycelium": ["mycelium_top", "mycelium_side", "grass_block_snow", "dirt"],
-    "white_glazed_terracotta": ["white_glazed_terracotta"],
-    "orange_glazed_terracotta": ["orange_glazed_terracotta"],
-    "magenta_glazed_terracotta": ["magenta_glazed_terracotta"],
-    "light_blue_glazed_terracotta": ["light_blue_glazed_terracotta"],
-    "yellow_glazed_terracotta": ["yellow_glazed_terracotta"],
-    "lime_glazed_terracotta": ["lime_glazed_terracotta"],
-    "pink_glazed_terracotta": ["pink_glazed_terracotta"],
-    "gray_glazed_terracotta": ["gray_glazed_terracotta"],
-    "light_gray_glazed_terracotta": ["light_gray_glazed_terracotta"],
-    "cyan_glazed_terracotta": ["cyan_glazed_terracotta"],
-    "purple_glazed_terracotta": ["purple_glazed_terracotta"],
-    "blue_glazed_terracotta": ["blue_glazed_terracotta"],
-    "brown_glazed_terracotta": ["brown_glazed_terracotta"],
-    "green_glazed_terracotta": ["green_glazed_terracotta"],
-    "red_glazed_terracotta": ["red_glazed_terracotta"],
-    "black_glazed_terracotta": ["black_glazed_terracotta"],
-}
+from .constants import BLOCK_TO_TEXTURE_ALIASES
+from .biome import HARDCODED_BLOCK_TINTS
 
-HARDCODED_TINT_BLOCKS = {
-    "spruce_leaves": (1.0, 1.0, 1.0, 1.0),
-    "birch_leaves": (1.0, 1.0, 1.0, 1.0),
-    "lily_pad": (1.0, 1.0, 1.0, 1.0),
-    "redstone_wire": (1.0, 1.0, 1.0, 1.0),
-}
+HARDCODED_TINT_BLOCKS = HARDCODED_BLOCK_TINTS
 
 
 def _build_block_face_location_lut(mapping: Optional[dict]) -> tuple[dict[str, list[dict]], dict[str, int]]:
