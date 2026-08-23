@@ -36,6 +36,7 @@ from .constants import (
     ATLAS_CATEGORY_ENTITIES,
     ATLAS_CATEGORY_MISC,
     ATLAS_CATEGORY_PRIORITY,
+    RECT_PACKED_CATEGORIES,
     classify_texture_category,
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
@@ -105,6 +106,12 @@ from .resource_pack import (
 from .pack_stack import (
     ResourcePackStack,
     get_configured_pack_stack,
+)
+
+from .rect_packer import (
+    PackedRect,
+    MaxRectsBinPack,
+    pack_category_textures,
 )
 
 from .provenance import (
@@ -265,6 +272,7 @@ __all__ = [
     "ATLAS_CATEGORY_ENTITIES",
     "ATLAS_CATEGORY_MISC",
     "ATLAS_CATEGORY_PRIORITY",
+    "RECT_PACKED_CATEGORIES",
     "classify_texture_category",
     "ATTR_ATLAS_CHUNK_ID",
     "ATTR_ATLAS_TEXTURE_ID",
@@ -277,6 +285,11 @@ __all__ = [
     "PROVENANCE_SCHEMA_VERSION",
     "FACE_ORDER",
     "ATLAS_FORMAT_VERSION",
+
+    # 2D Bin Packing
+    "PackedRect",
+    "MaxRectsBinPack",
+    "pack_category_textures",
 
     # Resource Pack
     "ZipResourcePack",

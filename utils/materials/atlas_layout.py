@@ -171,24 +171,27 @@ def remap_uv_to_local(
 ) -> tuple[float, float]:
     """Invert an incoming UV coordinate from Atlas or Standalone Animation space back to local [0, 1]."""
     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-        if old_loc.get("kind") == "animation":
+        packing = old_loc.get("packing") or old_chunk.get("packing", "grid")
+        if old_loc.get("kind") == "animation" or packing in ("rect_bin_pack", "rect") or "pixel_x" in old_loc:
+            rect_w = float(old_loc.get("rect_width") or old_loc.get("frame_width") or old_loc.get("tile_size", 16))
+            rect_h = float(old_loc.get("rect_height") or old_loc.get("frame_height") or old_loc.get("tile_size", 16))
             return local_uv_from_rect(
                 u, v,
-                pixel_x=float(old_loc["pixel_x"]),
-                pixel_y=float(old_loc["pixel_y"]),
-                rect_width=float(old_loc["frame_width"]),
-                rect_height=float(old_loc["frame_height"]),
-                atlas_width=float(old_chunk["width"]),
-                atlas_height=float(old_chunk["height"]),
+                pixel_x=float(old_loc.get("pixel_x", 0)),
+                pixel_y=float(old_loc.get("pixel_y", 0)),
+                rect_width=rect_w,
+                rect_height=rect_h,
+                atlas_width=float(old_chunk.get("width", 16)),
+                atlas_height=float(old_chunk.get("height", 16)),
             )
         else:
             return local_uv_from_atlas(
                 u, v,
-                tile_column=int(old_loc["tile_column"]),
-                tile_row=int(old_loc["tile_row"]),
-                tile_size=float(old_chunk["tile_size"]),
-                atlas_width=float(old_chunk["width"]),
-                atlas_height=float(old_chunk["height"]),
+                tile_column=int(old_loc.get("tile_column", 0)),
+                tile_row=int(old_loc.get("tile_row", 0)),
+                tile_size=float(old_chunk.get("tile_size", 16)),
+                atlas_width=float(old_chunk.get("width", 16)),
+                atlas_height=float(old_chunk.get("height", 16)),
             )
     elif orig_mode == "MINEWAYS_ATLAS" and old_loc:
         from .mineways_atlas import remap_mineways_atlas_uv_to_local
@@ -217,24 +220,27 @@ def remap_local_to_target_uv(
 ) -> tuple[float, float]:
     """Project a local [0, 1] UV coordinate to target Atlas Chunk or Standalone Animation Frame 0 space."""
     if target_location and target_chunk:
-        if target_location.get("kind") == "animation":
+        packing = target_location.get("packing") or target_chunk.get("packing", "grid")
+        if target_location.get("kind") == "animation" or packing in ("rect_bin_pack", "rect") or "pixel_x" in target_location:
+            rect_w = float(target_location.get("rect_width") or target_location.get("frame_width") or target_location.get("tile_size", 16))
+            rect_h = float(target_location.get("rect_height") or target_location.get("frame_height") or target_location.get("tile_size", 16))
             return atlas_uv_from_rect(
                 u_local, v_local,
-                pixel_x=float(target_location["pixel_x"]),
-                pixel_y=float(target_location["pixel_y"]),
-                rect_width=float(target_location["frame_width"]),
-                rect_height=float(target_location["frame_height"]),
-                atlas_width=float(target_chunk["width"]),
-                atlas_height=float(target_chunk["height"]),
+                pixel_x=float(target_location.get("pixel_x", 0)),
+                pixel_y=float(target_location.get("pixel_y", 0)),
+                rect_width=rect_w,
+                rect_height=rect_h,
+                atlas_width=float(target_chunk.get("width", 16)),
+                atlas_height=float(target_chunk.get("height", 16)),
             )
         else:
             return atlas_uv_from_local(
                 u_local, v_local,
-                tile_column=int(target_location["tile_column"]),
-                tile_row=int(target_location["tile_row"]),
-                tile_size=float(target_chunk["tile_size"]),
-                atlas_width=float(target_chunk["width"]),
-                atlas_height=float(target_chunk["height"]),
+                tile_column=int(target_location.get("tile_column", 0)),
+                tile_row=int(target_location.get("tile_row", 0)),
+                tile_size=float(target_chunk.get("tile_size", 16)),
+                atlas_width=float(target_chunk.get("width", 16)),
+                atlas_height=float(target_chunk.get("height", 16)),
             )
     elif target_anim_info:
         return atlas_uv_from_rect(

@@ -58,6 +58,22 @@ ATLAS_CATEGORY_PRIORITY = (
     ATLAS_CATEGORY_MISC,
 )
 
+# Categories that naturally contain varying rectangular aspect ratios or non-square sizes
+RECT_PACKED_CATEGORIES = frozenset({
+    ATLAS_CATEGORY_ENTITIES,
+    ATLAS_CATEGORY_PAINTINGS,
+    ATLAS_CATEGORY_CHEST,
+    ATLAS_CATEGORY_SHULKER_BOXES,
+    ATLAS_CATEGORY_SHIELD_PATTERNS,
+    ATLAS_CATEGORY_BANNER_PATTERNS,
+    ATLAS_CATEGORY_DECORATED_POT,
+    ATLAS_CATEGORY_ARMOR_TRIMS,
+    ATLAS_CATEGORY_CELESTIALS,
+    ATLAS_CATEGORY_GUI,
+    ATLAS_CATEGORY_MAP_DECORATIONS,
+    ATLAS_CATEGORY_MISC,
+})
+
 
 def classify_texture_category(path_or_key: str) -> str:
     """Classify a relative texture path or resource key into its canonical Atlas category.

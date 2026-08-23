@@ -16,8 +16,10 @@ from .constants import (
     FACE_ORDER,
     ATLAS_FORMAT_VERSION,
     ATLAS_CATEGORY_PRIORITY,
+    RECT_PACKED_CATEGORIES,
     classify_texture_category,
 )
+from .rect_packer import pack_category_textures
 from .biome import BiomeResolver
 from .pack_stack import ResourcePackStack, get_configured_pack_stack
 from ..system.dependencies import has_pillow
@@ -636,138 +638,261 @@ class AtlasGenerator:
                 static_map = self.static_by_ns_cat.get(ns, {}).get(cat, {})
                 if static_map:
                     yield (ns_progress_base, f"Packing static atlas chunks for namespace '{ns}' [{cat}]...", None)
-                    square_widths = [
-                        image.width for image in static_map.values()
-                        if image.width == image.height and _is_power_of_two(image.width)
-                    ]
-                    if square_widths:
-                        counts = Counter(square_widths)
-                        cat_tile_size = max(counts.keys(), key=lambda w: (counts[w], w))
-                    else:
-                        cat_tile_size = self.default_tile_size
+                    is_rect_packed = (cat in RECT_PACKED_CATEGORIES)
 
-                    if cat_tile_size > self.max_chunk_size:
-                        raise ValueError(f"Tile size {cat_tile_size}px for category '{cat}' ({ns}) exceeds chunk limit {self.max_chunk_size}px.")
+                    if is_rect_packed:
+                        rect_items = [(rel_p, static_map[rel_p].width, static_map[rel_p].height) for rel_p in sorted(static_map.keys())]
+                        packed_chunks = pack_category_textures(rect_items, max_chunk_size=self.max_chunk_size)
 
-                    tiles_per_row = max(1, self.max_chunk_size // cat_tile_size)
-                    capacity = max(1, tiles_per_row * tiles_per_row)
-                    static_rel_paths = sorted(static_map.keys())
+                        for chunk_w, chunk_h, placed_rects in packed_chunks:
+                            chunk_id = len(chunks)
+                            images = {
+                                "albedo": Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0)),
+                                "overlay": Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0)),
+                            }
+                            if has_normal:
+                                images["normal"] = Image.new("RGBA", (chunk_w, chunk_h), (128, 128, 255, 255))
+                            if has_specular:
+                                images["specular"] = Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0))
+                            files = {}
 
-                    def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
-                        source = {
-                            "albedo": static_map,
-                            "normal": self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
-                            "specular": self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
-                        }[channel].get(rel_p)
-                        if source is None:
-                            fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
-                            return Image.new("RGBA", (tile_sz, tile_sz), fill)
-                        if source.size == (tile_sz, tile_sz):
-                            return source
-                        return source.resize((tile_sz, tile_sz), Image.NEAREST)
+                            for texture_id, rect in enumerate(placed_rects):
+                                rel_p = rect.key
+                                source_albedo = static_map[rel_p]
+                                images["albedo"].paste(source_albedo, (rect.x, rect.y))
 
-                    for first in range(0, len(static_rel_paths), capacity):
-                        names = static_rel_paths[first:first + capacity]
-                        chunk_id = len(chunks)
-                        rows = min(tiles_per_row, max(1, (len(names) + tiles_per_row - 1) // tiles_per_row))
-                        width = min(self.max_chunk_size, tiles_per_row * cat_tile_size)
-                        height = min(self.max_chunk_size, rows * cat_tile_size)
+                                if has_normal:
+                                    norm_src = self.normal_by_ns_cat.get(ns, {}).get(cat, {}).get(rel_p)
+                                    if norm_src is not None:
+                                        if norm_src.size != (rect.width, rect.height):
+                                            norm_src = norm_src.resize((rect.width, rect.height), Image.NEAREST)
+                                        images["normal"].paste(norm_src, (rect.x, rect.y))
 
-                        images = {
-                            "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
-                            "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
-                        }
-                        if has_normal:
-                            images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
-                        if has_specular:
-                            images["specular"] = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-                        files = {}
+                                if has_specular:
+                                    spec_src = self.specular_by_ns_cat.get(ns, {}).get(cat, {}).get(rel_p)
+                                    if spec_src is not None:
+                                        if spec_src.size != (rect.width, rect.height):
+                                            spec_src = spec_src.resize((rect.width, rect.height), Image.NEAREST)
+                                        images["specular"].paste(spec_src, (rect.x, rect.y))
 
-                        for texture_id, rel_p in enumerate(names):
-                            x = (texture_id % tiles_per_row) * cat_tile_size
-                            y = (texture_id // tiles_per_row) * cat_tile_size
-                            stem = rel_p.split("/")[-1]
-                            canonical_key = f"{ns}:{rel_p}"
-                            tint_info = self.biome_resolver.get_tint_info(stem)
-                            transparency = analyze_texture_transparency(static_map.get(rel_p))
-                            loc_entry = {
-                                "texture_key": canonical_key,
+                                stem = rel_p.split("/")[-1]
+                                canonical_key = f"{ns}:{rel_p}"
+                                tint_info = self.biome_resolver.get_tint_info(stem)
+                                transparency = analyze_texture_transparency(source_albedo)
+
+                                overlay_stem = tint_info.get("overlay_texture")
+                                if overlay_stem:
+                                    overlay_src = static_map.get(overlay_stem)
+                                    if overlay_src is not None:
+                                        if overlay_src.size != (rect.width, rect.height):
+                                            overlay_src = overlay_src.resize((rect.width, rect.height), Image.NEAREST)
+                                        images["overlay"].paste(overlay_src, (rect.x, rect.y))
+
+                                loc_entry = {
+                                    "texture_key": canonical_key,
+                                    "category": cat,
+                                    "namespace": ns,
+                                    "chunk_id": chunk_id,
+                                    "texture_id": texture_id,
+                                    "packing": "rect",
+                                    "pixel_x": rect.x,
+                                    "pixel_y": rect.y,
+                                    "rect_width": rect.width,
+                                    "rect_height": rect.height,
+                                    "frame_width": rect.width,
+                                    "frame_height": rect.height,
+                                    "tile_size": max(rect.width, rect.height),
+                                    "kind": "static",
+                                    "is_opaque": transparency["is_opaque"],
+                                    "alpha_mode": transparency["alpha_mode"],
+                                    "min_alpha": transparency["min_alpha"],
+                                    "tile_column": 0,
+                                    "tile_row": 0,
+                                    "frame_count": 1,
+                                    "frametime": 1,
+                                    "interpolate": False,
+                                    "has_overlay": tint_info["has_overlay"],
+                                    "overlay_texture": tint_info["overlay_texture"],
+                                    "tint_category": tint_info["tint_category"],
+                                    "tint_type": tint_info["tint_type"],
+                                    "default_tint_weight": tint_info["tint_weight"],
+                                    "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
+                                    "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
+                                    "is_hardcoded": tint_info["is_hardcoded"],
+                                    "hardcoded_color": tint_info["hardcoded_color"],
+                                    "hardcoded_hex": tint_info["hardcoded_hex"],
+                                }
+                                texture_locations[canonical_key] = loc_entry
+                                texture_locations[rel_p] = loc_entry
+                                raw_key = self._texture_name(ns, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
+                                texture_locations[raw_key] = loc_entry
+                                if ns == "minecraft":
+                                    texture_locations[f"minecraft:{rel_p}"] = loc_entry
+                                    texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
+                                    texture_locations.setdefault(stem, loc_entry)
+                                    if rel_p.startswith("item/"):
+                                        texture_locations[f"item_{stem}"] = loc_entry
+                                        texture_locations[f"minecraft:item_{stem}"] = loc_entry
+                                    elif rel_p.startswith("block/"):
+                                        texture_locations[stem] = loc_entry
+                                        texture_locations[f"minecraft:{stem}"] = loc_entry
+                                else:
+                                    texture_locations[f"{ns}:{stem}"] = loc_entry
+                                    if rel_p.startswith("item/"):
+                                        texture_locations[f"{ns}:item_{stem}"] = loc_entry
+
+                            for channel, image in images.items():
+                                filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
+                                image.save(output_path / filename)
+                                files[channel] = filename
+
+                            chunks.append({
+                                "chunk_id": chunk_id,
                                 "category": cat,
                                 "namespace": ns,
-                                "chunk_id": chunk_id,
-                                "texture_id": texture_id,
-                                "tile_column": texture_id % tiles_per_row,
-                                "tile_row": texture_id // tiles_per_row,
                                 "kind": "static",
-                                "is_opaque": transparency["is_opaque"],
-                                "alpha_mode": transparency["alpha_mode"],
-                                "min_alpha": transparency["min_alpha"],
-                                "tile_size": cat_tile_size,
-                                "frame_width": cat_tile_size,
-                                "frame_height": cat_tile_size,
-                                "frame_count": 1,
-                                "frametime": 1,
-                                "interpolate": False,
-                                "has_overlay": tint_info["has_overlay"],
-                                "overlay_texture": tint_info["overlay_texture"],
-                                "tint_category": tint_info["tint_category"],
-                                "tint_type": tint_info["tint_type"],
-                                "default_tint_weight": tint_info["tint_weight"],
-                                "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
-                                "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
-                                "is_hardcoded": tint_info["is_hardcoded"],
-                                "hardcoded_color": tint_info["hardcoded_color"],
-                                "hardcoded_hex": tint_info["hardcoded_hex"],
+                                "width": chunk_w,
+                                "height": chunk_h,
+                                "tile_size": max((rect.width for rect in placed_rects), default=16),
+                                "texture_count": len(placed_rects),
+                                "packing": "rect_bin_pack",
+                                "files": files,
+                            })
+                            outputs["chunks"].append(output_path / files["albedo"])
+                    else:
+                        # Uniform grid packing for uniform square identical tiles (e.g. standard blocks / items)
+                        square_widths = [
+                            image.width for image in static_map.values()
+                            if image.width == image.height and _is_power_of_two(image.width)
+                        ]
+                        if square_widths:
+                            counts = Counter(square_widths)
+                            cat_tile_size = max(counts.keys(), key=lambda w: (counts[w], w))
+                        else:
+                            cat_tile_size = self.default_tile_size
+
+                        if cat_tile_size > self.max_chunk_size:
+                            raise ValueError(f"Tile size {cat_tile_size}px for category '{cat}' ({ns}) exceeds chunk limit {self.max_chunk_size}px.")
+
+                        tiles_per_row = max(1, self.max_chunk_size // cat_tile_size)
+                        capacity = max(1, tiles_per_row * tiles_per_row)
+                        static_rel_paths = sorted(static_map.keys())
+
+                        def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
+                            source = {
+                                "albedo": static_map,
+                                "normal": self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
+                                "specular": self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
+                            }[channel].get(rel_p)
+                            if source is None:
+                                fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
+                                return Image.new("RGBA", (tile_sz, tile_sz), fill)
+                            if source.size == (tile_sz, tile_sz):
+                                return source
+                            return source.resize((tile_sz, tile_sz), Image.NEAREST)
+
+                        for first in range(0, len(static_rel_paths), capacity):
+                            names = static_rel_paths[first:first + capacity]
+                            chunk_id = len(chunks)
+                            rows = min(tiles_per_row, max(1, (len(names) + tiles_per_row - 1) // tiles_per_row))
+                            width = min(self.max_chunk_size, tiles_per_row * cat_tile_size)
+                            height = min(self.max_chunk_size, rows * cat_tile_size)
+
+                            images = {
+                                "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
+                                "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
                             }
-                            texture_locations[canonical_key] = loc_entry
-                            texture_locations[rel_p] = loc_entry
-                            raw_key = self._texture_name(ns, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
-                            texture_locations[raw_key] = loc_entry
-                            if ns == "minecraft":
-                                texture_locations[f"minecraft:{rel_p}"] = loc_entry
-                                texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
-                                texture_locations.setdefault(stem, loc_entry)
-                                if rel_p.startswith("item/"):
-                                    texture_locations[f"item_{stem}"] = loc_entry
-                                    texture_locations[f"minecraft:item_{stem}"] = loc_entry
-                                elif rel_p.startswith("block/"):
-                                    texture_locations[stem] = loc_entry
-                                    texture_locations[f"minecraft:{stem}"] = loc_entry
-                            else:
-                                texture_locations[f"{ns}:{stem}"] = loc_entry
-                                if rel_p.startswith("item/"):
-                                    texture_locations[f"{ns}:item_{stem}"] = loc_entry
-
-                            images["albedo"].paste(tile_for(rel_p, "albedo"), (x, y))
                             if has_normal:
-                                images["normal"].paste(tile_for(rel_p, "normal"), (x, y))
+                                images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
                             if has_specular:
-                                images["specular"].paste(tile_for(rel_p, "specular"), (x, y))
+                                images["specular"] = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                            files = {}
 
-                            overlay_stem = tint_info.get("overlay_texture")
-                            if overlay_stem:
-                                overlay_tile = tile_for(overlay_stem, "albedo")
-                                images["overlay"].paste(overlay_tile, (x, y))
+                            for texture_id, rel_p in enumerate(names):
+                                x = (texture_id % tiles_per_row) * cat_tile_size
+                                y = (texture_id // tiles_per_row) * cat_tile_size
+                                stem = rel_p.split("/")[-1]
+                                canonical_key = f"{ns}:{rel_p}"
+                                tint_info = self.biome_resolver.get_tint_info(stem)
+                                transparency = analyze_texture_transparency(static_map.get(rel_p))
+                                loc_entry = {
+                                    "texture_key": canonical_key,
+                                    "category": cat,
+                                    "namespace": ns,
+                                    "chunk_id": chunk_id,
+                                    "texture_id": texture_id,
+                                    "tile_column": texture_id % tiles_per_row,
+                                    "tile_row": texture_id // tiles_per_row,
+                                    "kind": "static",
+                                    "is_opaque": transparency["is_opaque"],
+                                    "alpha_mode": transparency["alpha_mode"],
+                                    "min_alpha": transparency["min_alpha"],
+                                    "tile_size": cat_tile_size,
+                                    "frame_width": cat_tile_size,
+                                    "frame_height": cat_tile_size,
+                                    "frame_count": 1,
+                                    "frametime": 1,
+                                    "interpolate": False,
+                                    "has_overlay": tint_info["has_overlay"],
+                                    "overlay_texture": tint_info["overlay_texture"],
+                                    "tint_category": tint_info["tint_category"],
+                                    "tint_type": tint_info["tint_type"],
+                                    "default_tint_weight": tint_info["tint_weight"],
+                                    "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
+                                    "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
+                                    "is_hardcoded": tint_info["is_hardcoded"],
+                                    "hardcoded_color": tint_info["hardcoded_color"],
+                                    "hardcoded_hex": tint_info["hardcoded_hex"],
+                                }
+                                texture_locations[canonical_key] = loc_entry
+                                texture_locations[rel_p] = loc_entry
+                                raw_key = self._texture_name(ns, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
+                                texture_locations[raw_key] = loc_entry
+                                if ns == "minecraft":
+                                    texture_locations[f"minecraft:{rel_p}"] = loc_entry
+                                    texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
+                                    texture_locations.setdefault(stem, loc_entry)
+                                    if rel_p.startswith("item/"):
+                                        texture_locations[f"item_{stem}"] = loc_entry
+                                        texture_locations[f"minecraft:item_{stem}"] = loc_entry
+                                    elif rel_p.startswith("block/"):
+                                        texture_locations[stem] = loc_entry
+                                        texture_locations[f"minecraft:{stem}"] = loc_entry
+                                else:
+                                    texture_locations[f"{ns}:{stem}"] = loc_entry
+                                    if rel_p.startswith("item/"):
+                                        texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
-                        for channel, image in images.items():
-                            filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
-                            image.save(output_path / filename)
-                            files[channel] = filename
+                                images["albedo"].paste(tile_for(rel_p, "albedo"), (x, y))
+                                if has_normal:
+                                    images["normal"].paste(tile_for(rel_p, "normal"), (x, y))
+                                if has_specular:
+                                    images["specular"].paste(tile_for(rel_p, "specular"), (x, y))
 
-                        chunks.append({
-                            "chunk_id": chunk_id,
-                            "category": cat,
-                            "namespace": ns,
-                            "kind": "static",
-                            "width": width,
-                            "height": height,
-                            "tile_size": cat_tile_size,
-                            "tiles_per_row": tiles_per_row,
-                            "texture_count": len(names),
-                            "packing": "grid",
-                            "files": files,
-                        })
-                        outputs["chunks"].append(output_path / files["albedo"])
+                                overlay_stem = tint_info.get("overlay_texture")
+                                if overlay_stem:
+                                    overlay_tile = tile_for(overlay_stem, "albedo")
+                                    images["overlay"].paste(overlay_tile, (x, y))
+
+                            for channel, image in images.items():
+                                filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
+                                image.save(output_path / filename)
+                                files[channel] = filename
+
+                            chunks.append({
+                                "chunk_id": chunk_id,
+                                "category": cat,
+                                "namespace": ns,
+                                "kind": "static",
+                                "width": width,
+                                "height": height,
+                                "tile_size": cat_tile_size,
+                                "tiles_per_row": tiles_per_row,
+                                "texture_count": len(names),
+                                "packing": "grid",
+                                "files": files,
+                            })
+                            outputs["chunks"].append(output_path / files["albedo"])
 
                 # Animated textures for (ns, cat)
                 anim_map = self.animated_by_ns_cat.get(ns, {}).get(cat, {})
