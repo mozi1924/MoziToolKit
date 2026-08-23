@@ -72,9 +72,20 @@ class BlockStateResolver:
         block_id, props = parse_block_state_string(state_str)
         raw_state = self.load_raw_blockstate(block_id)
         if not raw_state:
-            # Fallback to direct model name
+            # Fallback to direct model name with directional/facing rotation heuristic
             short_name = block_id.split(":", 1)[-1]
-            return [VariantMatch(model_id=f"minecraft:block/{short_name}")]
+            facing = props.get("facing")
+            rot_y = 0.0
+            rot_x = 0.0
+            if "glazed_terracotta" in short_name:
+                rot_y = {"south": 0.0, "west": 90.0, "north": 180.0, "east": 270.0}.get(facing, 0.0)
+            elif facing:
+                rot_y = {"north": 0.0, "east": 90.0, "south": 180.0, "west": 270.0}.get(facing, 0.0)
+                if facing == "up":
+                    rot_x = 270.0
+                elif facing == "down":
+                    rot_x = 90.0
+            return [VariantMatch(model_id=f"minecraft:block/{short_name}", rot_x=rot_x, rot_y=rot_y)]
 
         # 1. Variants format
         if "variants" in raw_state:

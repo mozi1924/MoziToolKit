@@ -63,6 +63,8 @@ from ...utils.materials import (
     setup_yefira_point_cloud_attributes,
     notify_yefira_update,
     apply_yefira_atlas_materials,
+    ResourcePackStack,
+    get_configured_pack_stack,
 )
 from ...utils.system import has_pillow
 from ...utils.mesh import (
@@ -368,14 +370,23 @@ class StepReplaceMaterial(PipelineStep):
                     return
 
         biome_preset = pipeline_context.get_param("biome_preset", "PLAINS")
+        pack_stack = get_configured_pack_stack(pack)
 
         if material_mode == "ATLAS":
-            yield from self._execute_atlas_mode_iter(pipeline_context, pack, valid_objects, pack_textures, biome_preset=biome_preset)
+            yield from self._execute_atlas_mode_iter(
+                pipeline_context, pack, valid_objects, pack_textures,
+                biome_preset=biome_preset, pack_stack=pack_stack
+            )
         else:
-            yield from self._execute_standalone_mode_iter(pipeline_context, pack, valid_objects, pack_textures, biome_preset=biome_preset)
+            yield from self._execute_standalone_mode_iter(
+                pipeline_context, pack, valid_objects, pack_textures,
+                biome_preset=biome_preset, pack_stack=pack_stack
+            )
 
     def _execute_atlas_mode_iter(
-        self, pipeline_context, pack: ZipResourcePack, valid_objects: list, pack_textures: bool, biome_preset: str = "PLAINS"
+        self, pipeline_context, pack: ZipResourcePack, valid_objects: list,
+        pack_textures: bool, biome_preset: str = "PLAINS",
+        pack_stack: Optional[ResourcePackStack] = None
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
         cache_root = get_cache_dir()
@@ -409,7 +420,7 @@ class StepReplaceMaterial(PipelineStep):
                 return
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
             try:
-                gen = AtlasGenerator(pack.extract_dir)
+                gen = AtlasGenerator(pack.extract_dir, fallback_stack=pack_stack)
                 for frac, msg, _res in gen.build_iter(atlas_dir):
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")
@@ -668,7 +679,7 @@ class StepReplaceMaterial(PipelineStep):
                     # Non-atlas texture fallback
                     fallback_tex_info = None
                     for cand in candidates:
-                        info = pack.get_texture_info(cand, namespace)
+                        info = pack_stack.get_texture_info(cand, namespace) if pack_stack else pack.get_texture_info(cand, namespace)
                         if info and info.get("albedo"):
                             fallback_tex_info = info
                             break
@@ -857,7 +868,9 @@ class StepReplaceMaterial(PipelineStep):
         yield StepResult.success(f"Successfully processed {replaced_objects} object(s) in Atlas Mode.")
 
     def _execute_standalone_mode_iter(
-        self, pipeline_context, pack: ZipResourcePack, valid_objects: list, pack_textures: bool, biome_preset: str = "PLAINS"
+        self, pipeline_context, pack: ZipResourcePack, valid_objects: list,
+        pack_textures: bool, biome_preset: str = "PLAINS",
+        pack_stack: Optional[ResourcePackStack] = None
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Standalone Mode with fine-grained progress."""
         replaced_count = 0
@@ -949,12 +962,12 @@ class StepReplaceMaterial(PipelineStep):
 
                 tex_info = None
                 for cand in candidates:
-                    info = pack.get_texture_info(cand, namespace)
+                    info = pack_stack.get_texture_info(cand, namespace) if pack_stack else pack.get_texture_info(cand, namespace)
                     if info and info.get("albedo"):
                         tex_info = dict(info)
                         overlay_stem = biome_resolver.get_overlay_texture(tex_info["texture_name"])
                         if overlay_stem:
-                            overlay_info = pack.get_texture_info(overlay_stem, namespace)
+                            overlay_info = pack_stack.get_texture_info(overlay_stem, namespace) if pack_stack else pack.get_texture_info(overlay_stem, namespace)
                             if overlay_info and overlay_info.get("albedo"):
                                 tex_info["overlay"] = overlay_info["albedo"]
                         break

@@ -8,6 +8,9 @@ from ..utils.system import (
     export_config,
     import_config,
     load_config,
+    load_pack_stack_config,
+    save_pack_stack_config,
+    get_enabled_pack_entries,
     normalize_operator_id,
     reset_config,
     save_config,
@@ -40,6 +43,104 @@ def on_item_label_changed(self, context):
         refresh_ui_and_menus(context)
     except Exception:
         pass
+
+
+def on_pack_entry_changed(self, context):
+    """Callback when a resource pack entry's attributes change."""
+    try:
+        prefs = get_prefs(context)
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
+    except Exception:
+        pass
+
+
+def on_pack_path_changed(self, context):
+    """Auto-detect pack name and type when path is changed."""
+    try:
+        from pathlib import Path
+        p = Path(self.path.strip())
+        if p.exists() and (not self.name or self.name.startswith("Resource Pack")):
+            self.name = p.stem.replace("_", " ").replace("-", " ").title()
+            if p.suffix.lower() == ".jar":
+                low = p.name.lower()
+                if "fabric" in low or "forge" in low or "mod" in low:
+                    self.pack_type = "MOD_JAR"
+                else:
+                    self.pack_type = "VANILLA"
+            elif p.suffix.lower() == ".zip" or p.is_dir():
+                self.pack_type = "RESOURCE_PACK"
+        prefs = get_prefs(context)
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
+    except Exception:
+        pass
+
+
+class MOZI_PG_resource_pack_entry(bpy.types.PropertyGroup):
+    name: StringProperty(
+        name="Name",
+        description="Display name for this pack/JAR",
+        default="New Resource Pack",
+        update=on_pack_entry_changed,
+    )
+    path: StringProperty(
+        name="Path",
+        description="File path to .zip/.jar archive or extracted directory",
+        subtype="FILE_PATH",
+        default="",
+        update=on_pack_path_changed,
+    )
+    enabled: BoolProperty(
+        name="Enabled",
+        description="Enable this pack in the fallback resolution stack",
+        default=True,
+        update=on_pack_entry_changed,
+    )
+    pack_type: EnumProperty(
+        name="Pack Type",
+        description="Classification of this asset source",
+        items=[
+            ("RESOURCE_PACK", "Resource Pack", "Standard ZIP or folder resource pack"),
+            ("VANILLA", "Vanilla JAR", "Minecraft vanilla client or server JAR archive"),
+            ("MOD_JAR", "Mod JAR", "Mod JAR archive (Fabric/Forge/NeoForge) containing assets"),
+        ],
+        default="RESOURCE_PACK",
+        update=on_pack_entry_changed,
+    )
+
+
+class MOZI_UL_resource_packs_list(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        if self.layout_type in {"DEFAULT", "COMPACT"}:
+            row = layout.row(align=True)
+            row.prop(item, "enabled", text="", emboss=False)
+
+            if item.pack_type == "VANILLA":
+                icon_type = "WORLD_DATA"
+            elif item.pack_type == "MOD_JAR":
+                icon_type = "MODIFIER"
+            else:
+                icon_type = "PACKAGE"
+
+            from pathlib import Path
+            is_valid = bool(item.path and Path(item.path).exists())
+            name_text = item.name or (Path(item.path).stem if item.path else "Unnamed Pack")
+
+            if not is_valid and item.path:
+                row.label(text=f"{name_text} (Missing File)", icon="ERROR")
+            elif not item.path:
+                row.label(text=f"{name_text} (No Path)", icon="QUESTION")
+            else:
+                row.label(text=name_text, icon=icon_type)
+
+            p_badge = row.row(align=True)
+            p_badge.alignment = "RIGHT"
+            p_badge.enabled = False
+            p_badge.label(text=f"Priority #{index + 1}")
+        elif self.layout_type == "GRID":
+            layout.alignment = "CENTER"
+            layout.label(text=item.name, icon="PACKAGE")
 
 
 class MOZI_PG_context_menu_item(bpy.types.PropertyGroup):
@@ -133,21 +234,119 @@ def sync_prefs_from_json(prefs):
 
         sort_unadded_items(unadded_coll)
 
+    # Sync resource packs stack
+    packs_data = load_pack_stack_config()
+    prefs.resource_packs.clear()
+    for p_item in packs_data:
+        if isinstance(p_item, dict):
+            p_elem = prefs.resource_packs.add()
+            p_elem.name = p_item.get("name", "Resource Pack")
+            p_elem.path = p_item.get("path", "")
+            p_elem.enabled = p_item.get("enabled", True)
+            p_elem.pack_type = p_item.get("pack_type", "RESOURCE_PACK")
+
 
 def save_prefs_to_json(prefs):
     """Save preferences PropertyGroups state to JSON configuration."""
+    if prefs is None:
+        return
+
     views_data = {}
     for view in ["mesh", "object", "uv"]:
-        added_coll = getattr(prefs, f"added_{view}")
-        items_list = []
-        for elem in added_coll:
-            items_list.append({
-                "operator": normalize_operator_id(elem.operator_id),
-                "label": elem.label,
-                "enabled": elem.enabled,
-            })
-        views_data[view] = items_list
+        added_coll = getattr(prefs, f"added_{view}", None)
+        if added_coll is not None:
+            items_list = []
+            for elem in added_coll:
+                items_list.append({
+                    "operator": normalize_operator_id(elem.operator_id),
+                    "label": elem.label,
+                    "enabled": elem.enabled,
+                })
+            views_data[view] = items_list
     save_config(views_data)
+
+    # Save resource packs stack
+    if hasattr(prefs, "resource_packs"):
+        packs_list = []
+        for p_elem in prefs.resource_packs:
+            packs_list.append({
+                "name": p_elem.name,
+                "path": p_elem.path,
+                "enabled": p_elem.enabled,
+                "pack_type": p_elem.pack_type,
+            })
+        save_pack_stack_config(packs_list)
+
+
+class MOZI_OT_pack_add(bpy.types.Operator):
+    """Add a new resource pack or Minecraft/Mod JAR entry to the fallback stack"""
+
+    bl_idname = "mozi.pack_add"
+    bl_label = "Add Pack or JAR"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        if prefs is None:
+            return {"CANCELLED"}
+        elem = prefs.resource_packs.add()
+        elem.name = f"Resource Pack #{len(prefs.resource_packs)}"
+        elem.enabled = True
+        elem.pack_type = "RESOURCE_PACK"
+        prefs.resource_packs_index = len(prefs.resource_packs) - 1
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
+        return {"FINISHED"}
+
+
+class MOZI_OT_pack_remove(bpy.types.Operator):
+    """Remove selected pack from the fallback stack"""
+
+    bl_idname = "mozi.pack_remove"
+    bl_label = "Remove Pack or JAR"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        if prefs is None:
+            return {"CANCELLED"}
+        idx = prefs.resource_packs_index
+        if 0 <= idx < len(prefs.resource_packs):
+            prefs.resource_packs.remove(idx)
+            prefs.resource_packs_index = max(0, min(idx, len(prefs.resource_packs) - 1))
+            save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
+        return {"FINISHED"}
+
+
+class MOZI_OT_pack_move(bpy.types.Operator):
+    """Move selected pack up or down to adjust resolution priority"""
+
+    bl_idname = "mozi.pack_move"
+    bl_label = "Move Pack Priority"
+    bl_options = {"REGISTER", "UNDO"}
+
+    direction: EnumProperty(
+        items=[("UP", "Up", "Increase Priority"), ("DOWN", "Down", "Decrease Priority")],
+        default="UP",
+    )
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        if prefs is None:
+            return {"CANCELLED"}
+        idx = prefs.resource_packs_index
+        if self.direction == "UP" and idx > 0:
+            prefs.resource_packs.move(idx, idx - 1)
+            prefs.resource_packs_index = idx - 1
+            save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
+        elif self.direction == "DOWN" and idx < len(prefs.resource_packs) - 1:
+            prefs.resource_packs.move(idx, idx + 1)
+            prefs.resource_packs_index = idx + 1
+            save_prefs_to_json(prefs)
+            refresh_ui_and_menus(context)
+        return {"FINISHED"}
 
 
 class MOZI_OT_menu_add_item(bpy.types.Operator):
@@ -319,18 +518,33 @@ class MOZI_OT_menu_import_config(bpy.types.Operator, ImportHelper):
 
 
 
+def _detect_addon_idname():
+    pkg = __package__ or ""
+    if pkg.startswith("bl_ext."):
+        parts = pkg.split(".")
+        if len(parts) >= 3:
+            return ".".join(parts[:3])
+    elif "MoziToolKit" in pkg:
+        return "MoziToolKit"
+    return "MoziToolKit"
+
+
 class MOZI_AddonPreferences(bpy.types.AddonPreferences):
-    bl_idname = __package__.rsplit(".", 1)[0]
+    bl_idname = _detect_addon_idname()
 
     category_tab: EnumProperty(
         name="Category",
         description="Select preferences category",
         items=[
+            ("RESOURCE_PACKS", "Resource Packs & Base JARs", "Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking"),
             ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
             ("MISC", "Environment & Cache", "Extension environment status, dependencies, and cache settings"),
         ],
-        default="CONTEXT_MENU",
+        default="RESOURCE_PACKS",
     )
+
+    resource_packs: CollectionProperty(type=MOZI_PG_resource_pack_entry)
+    resource_packs_index: IntProperty(default=0)
 
     context_menu_tab: EnumProperty(
         name="Context Menu View",
@@ -361,7 +575,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
     is_initialized: BoolProperty(default=False)
 
     def draw(self, context):
-        if not self.is_initialized or (not len(self.added_mesh) and not len(self.unadded_mesh)):
+        if not self.is_initialized or (not len(self.added_mesh) and not len(self.unadded_mesh) and not len(self.resource_packs)):
             sync_prefs_from_json(self)
             self.is_initialized = True
 
@@ -373,10 +587,81 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         layout.separator()
 
-        if self.category_tab == "MISC":
-            self.draw_misc(layout, context)
+        if self.category_tab == "RESOURCE_PACKS":
+            self.draw_resource_packs(layout, context)
         elif self.category_tab == "CONTEXT_MENU":
             self.draw_context_menus(layout, context)
+        elif self.category_tab == "MISC":
+            self.draw_misc(layout, context)
+
+    def draw_resource_packs(self, layout, context):
+        # Information Banner
+        info_box = layout.box()
+        banner_row = info_box.row(align=True)
+        banner_row.label(text="Resource Pack & Base JAR Stack (Prioritized Resolution):", icon="PACKAGE")
+        info_col = info_box.column(align=True)
+        info_col.scale_y = 0.85
+        info_col.label(text="Packs are checked from top to bottom. Higher entries override lower entries.")
+        info_col.label(text="Add custom/PBR packs at top, Mod JARs in middle, and Vanilla Minecraft JAR at bottom as base fallback.")
+
+        layout.separator()
+
+        # Split Layout: UIList + Up/Down/Add/Remove Tools
+        list_row = layout.row(align=False)
+
+        # Left List Box
+        list_box = list_row.box()
+        list_box.template_list(
+            "MOZI_UL_resource_packs_list",
+            "",
+            self,
+            "resource_packs",
+            self,
+            "resource_packs_index",
+            rows=6,
+        )
+
+        # Right Action Buttons Column
+        btn_col = list_row.column(align=True)
+        btn_col.operator("mozi.pack_add", text="", icon="ADD")
+        btn_col.operator("mozi.pack_remove", text="", icon="REMOVE")
+        btn_col.separator(factor=2)
+        op_up = btn_col.operator("mozi.pack_move", text="", icon="TRIA_UP")
+        op_up.direction = "UP"
+        op_down = btn_col.operator("mozi.pack_move", text="", icon="TRIA_DOWN")
+        op_down.direction = "DOWN"
+
+        # Selected Pack Detail & Properties Box
+        idx = self.resource_packs_index
+        if 0 <= idx < len(self.resource_packs):
+            item = self.resource_packs[idx]
+            detail_box = layout.box()
+            d_header = detail_box.row(align=True)
+            d_header.label(text=f"Pack Details: {item.name}", icon="PREFERENCES")
+            d_header.prop(item, "enabled", text="Enabled")
+
+            d_col = detail_box.column(align=False)
+            row1 = d_col.row(align=True)
+            row1.prop(item, "name", text="Name")
+            row1.prop(item, "pack_type", text="Type")
+
+            row2 = d_col.row(align=True)
+            row2.prop(item, "path", text="Path")
+
+            # Path Status and Namespaces Inspection
+            from pathlib import Path
+            p_val = item.path.strip()
+            if not p_val:
+                st_row = d_col.row(align=True)
+                st_row.alert = True
+                st_row.label(text="Path is empty. Please select a .zip, .jar, or assets folder.", icon="INFO")
+            elif not Path(p_val).exists():
+                st_row = d_col.row(align=True)
+                st_row.alert = True
+                st_row.label(text=f"File not found: '{p_val}'", icon="ERROR")
+            else:
+                st_row = d_col.row(align=True)
+                st_row.label(text=f"File Valid: {Path(p_val).name}", icon="CHECKMARK")
 
     def draw_context_menus(self, layout, context):
         # Secondary Context Menu Sub-Tabs
