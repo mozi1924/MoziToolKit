@@ -60,6 +60,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, f"Standalone mode failed: {res.message}")
         self.assertIn("mtk:minecraft:stone", self.cube.material_slots[0].material.name)
+        self.assertNotIn("MC_Block_Templates", bpy.data.collections)
 
     def test_atlas_mode(self):
         from utils.system import has_pillow
@@ -77,6 +78,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
 
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, f"Atlas mode failed: {res.message}")
+        self.assertNotIn("MC_Block_Templates", bpy.data.collections)
 
         assigned_mat = self.cube.material_slots[0].material
         self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
@@ -108,7 +110,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         # Check custom property on node tree
         self.assertIn("mtk:atlas_mapping", assigned_mat.node_tree)
         mapping_str = assigned_mat.node_tree["mtk:atlas_mapping"]
-        self.assertIn("static_texture_count", mapping_str)
+        self.assertIn("texture_count", mapping_str)
 
         # Chunk and local texture IDs are retained for a future procedural
         # decoder, while preview mode uses the rewritten UVs directly.
@@ -132,9 +134,21 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
             self.skipTest("Pillow not installed in test environment")
 
         from pipeline.presets import run_preset_pipeline
+        from utils.materials.resource_pack import ZipResourcePack
 
-        # Replace material slot with valid animated block texture 'sea_lantern'
-        mat = bpy.data.materials.new(name="sea_lantern")
+        pack = ZipResourcePack(str(self.jar_path))
+        anim_tex = None
+        for stem in ("sea_lantern", "prismarine", "fire_0", "water_still", "lava_still", "magma_block", "campfire_fire", "portal"):
+            info = pack.get_texture_info(stem)
+            if info and info.get("mcmeta"):
+                anim_tex = stem
+                break
+
+        if not anim_tex:
+            self.skipTest("No animated texture with mcmeta found in test JAR")
+
+        # Replace material slot with valid animated block texture
+        mat = bpy.data.materials.new(name=anim_tex)
         self.cube.data.materials.clear()
         self.cube.data.materials.append(mat)
         # Simulate files saved by older versions, which duplicated this data
@@ -154,6 +168,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
 
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, f"Atlas mode animated material failed: {res.message}")
+        self.assertNotIn("MC_Block_Templates", bpy.data.collections)
 
         assigned_mat = self.cube.material_slots[0].material
         self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
