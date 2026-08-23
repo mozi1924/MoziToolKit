@@ -144,7 +144,7 @@ class AtlasGenerator:
         self.resource_path = Path(resource_path)
         self.default_tile_size = default_tile_size
         self.max_chunk_size = max_chunk_size
-        self.fallback_stack = fallback_stack or get_configured_pack_stack(self.resource_path)
+        self.fallback_stack = fallback_stack
 
         self.static_textures = {}    # clean_stem -> Image
         self.animated_textures = {}  # clean_stem -> {image: Image, mcmeta: dict}
@@ -203,23 +203,35 @@ class AtlasGenerator:
         self.biome_resolver.set_models(self.models)
 
     def _load_fallback_from_pack(self, pack: ZipResourcePack):
-        """Populate missing textures and models from a lower-priority fallback pack."""
+        """Populate missing block textures and models from a lower-priority fallback pack."""
+        # 1. Load models from all namespaces under assets/*/models/block
         if pack.extract_dir:
-            models_dir = pack.extract_dir / "assets" / "minecraft" / "models" / "block"
-            if models_dir.exists():
-                for root, _, files in os.walk(models_dir):
-                    for f in files:
-                        if f.endswith(".json"):
-                            stem = f[:-5].strip().lower()
-                            if stem not in self.models:
-                                try:
-                                    with open(Path(root) / f, "r", encoding="utf-8") as fp:
-                                        self.models[stem] = json.load(fp)
-                                except Exception:
-                                    pass
+            assets_dir = pack.extract_dir / "assets"
+            if assets_dir.exists():
+                for ns_dir in assets_dir.iterdir():
+                    if not ns_dir.is_dir():
+                        continue
+                    ns = ns_dir.name.lower().strip()
+                    models_dir = ns_dir / "models" / "block"
+                    if models_dir.exists():
+                        for root, _, files in os.walk(models_dir):
+                            for f in files:
+                                if f.endswith(".json"):
+                                    rel_model = (Path(root) / f).relative_to(models_dir).with_suffix("").as_posix().lower()
+                                    model_key = rel_model if ns == "minecraft" else f"{ns}:{rel_model}"
+                                    if model_key not in self.models:
+                                        try:
+                                            with open(Path(root) / f, "r", encoding="utf-8") as fp:
+                                                self.models[model_key] = json.load(fp)
+                                        except Exception:
+                                            pass
 
+        # 2. Load block textures ONLY (ignore item, entity, gui, particle, etc.)
         for (ns, path_key), info in pack.texture_path_index.items():
-            stem = info.get("texture_name", path_key.split("/")[-1])
+            if not path_key.startswith("block/"):
+                continue
+
+            stem = path_key.removeprefix("block/").strip()
             clean_name = self._texture_name(ns, stem)
 
             if (ns in self.static_by_namespace and stem in self.static_by_namespace[ns]) or \
