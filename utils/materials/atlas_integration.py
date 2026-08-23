@@ -572,11 +572,14 @@ def find_active_atlas_material() -> Optional[bpy.types.Material]:
     if not HAS_BPY:
         return None
 
-    # 1. First priority: MoziToolKit Atlas chunk materials (e.g. mtk:minecraft:atlas_chunk_000...)
     for mat in bpy.data.materials:
         if not mat:
             continue
-        if "mtk:atlas_chunk_id" in mat or "mtk_atlas_chunk_id" in mat or (mat.name.startswith("mtk:") and "atlas_chunk" in mat.name):
+        if (
+            "mtk:atlas_chunk_id" in mat
+            or "mtk_atlas_chunk_id" in mat
+            or (mat.name.startswith("mtk:") and ("_chunk_" in mat.name or "chunk_" in mat.name or "atlas_chunk" in mat.name))
+        ):
             return mat
 
     # 2. Second priority: Materials with explicit atlas width/mapping properties
@@ -841,6 +844,10 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         "chunk_1_width": 896.0,
         "chunk_1_height": 1024.0,
         "chunk_1_tile_size": 16.0,
+        "anim_atlas_width": 896.0,
+        "anim_atlas_height": 1024.0,
+        "anim_frame_width": 16.0,
+        "anim_frame_height": 16.0,
         "mapping": None,
         "block_face_lut": {},
         "block_face_chunk_lut": {},
@@ -872,18 +879,39 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         chunks = mapping.get("chunks", [])
         chunks_by_id = {c.get("chunk_id", i): c for i, c in enumerate(chunks)}
 
-        if 0 in chunks_by_id:
-            c0 = chunks_by_id[0]
-            res["chunk_0_width"] = float(c0.get("width", res["width"]))
-            res["chunk_0_height"] = float(c0.get("height", res["height"]))
-            res["chunk_0_tile_size"] = float(c0.get("tile_size", res["tile_size"]))
-            res["chunk_0_tiles_per_row"] = float(c0.get("tiles_per_row", res["tiles_per_row"]))
+        # Dynamically find the primary static chunk (prefer category == "blocks", else any static chunk, else chunk 0)
+        static_chunks = [c for c in chunks if c.get("kind") == "static"]
+        block_static = next((c for c in static_chunks if c.get("category") == "blocks"), None)
+        if not block_static and static_chunks:
+            block_static = static_chunks[0]
+        elif not block_static and 0 in chunks_by_id:
+            block_static = chunks_by_id[0]
+
+        if block_static:
+            res["chunk_0_width"] = float(block_static.get("width", res["width"]))
+            res["chunk_0_height"] = float(block_static.get("height", res["height"]))
+            res["chunk_0_tile_size"] = float(block_static.get("tile_size", res["tile_size"]))
+            res["chunk_0_tiles_per_row"] = float(block_static.get("tiles_per_row", res["tiles_per_row"]))
             res["width"] = res["chunk_0_width"]
             res["height"] = res["chunk_0_height"]
             res["tile_size"] = res["chunk_0_tile_size"]
             res["tiles_per_row"] = int(res["chunk_0_tiles_per_row"])
 
-        if 1 in chunks_by_id:
+        # Dynamically find animation chunk (kind == "animation")
+        anim_chunk = next((c for c in chunks if c.get("kind") == "animation"), None)
+        if not anim_chunk and 1 in chunks_by_id and chunks_by_id[1].get("kind") == "animation":
+            anim_chunk = chunks_by_id[1]
+
+        if anim_chunk:
+            res["anim_atlas_width"] = float(anim_chunk.get("width", 896.0))
+            res["anim_atlas_height"] = float(anim_chunk.get("height", 1024.0))
+            res["anim_frame_width"] = float(anim_chunk.get("tile_size", res["tile_size"]))
+            res["anim_frame_height"] = float(anim_chunk.get("tile_size", res["tile_size"]))
+            # Also keep chunk_1 for backward compat
+            res["chunk_1_width"] = res["anim_atlas_width"]
+            res["chunk_1_height"] = res["anim_atlas_height"]
+            res["chunk_1_tile_size"] = res["anim_frame_width"]
+        elif 1 in chunks_by_id:
             c1 = chunks_by_id[1]
             res["chunk_1_width"] = float(c1.get("width", 896.0))
             res["chunk_1_height"] = float(c1.get("height", 1024.0))

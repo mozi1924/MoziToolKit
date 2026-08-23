@@ -224,7 +224,7 @@ class TestMultiCategoryAtlas(unittest.TestCase):
 
         self.assertEqual(textures["minecraft:block/stone"]["tile_size"], 32)
         self.assertEqual(textures["minecraft:item/diamond_sword"]["tile_size"], 32)
-        self.assertEqual(textures["minecraft:particle/flame"]["tile_size"], 16)
+        self.assertEqual(textures["minecraft:particle/flame"]["tile_size"], 8)
 
 
 if __name__ == "__main__":

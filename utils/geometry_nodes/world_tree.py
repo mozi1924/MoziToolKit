@@ -64,7 +64,7 @@ logger = logging.getLogger("MoziToolKit.GeometryNodes")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-WORLD_TREE_SCHEMA_VERSION = 26
+WORLD_TREE_SCHEMA_VERSION = 27
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 
@@ -365,6 +365,31 @@ def _build_tree_nodes_and_links(
         reader.location = (560, -200 - index * 35)
         links.new(reader.outputs["Attribute"], call_uv_bounds_selector.inputs[socket_name])
 
+    # --- SUBGROUP: SELECT FACE ANIM TIMING (COLOR) ---
+    call_timing_selector = nodes.new("GeometryNodeGroup")
+    call_timing_selector.node_tree = group_color_selector
+    call_timing_selector.name = "Select Face Anim Timing"
+    call_timing_selector.location = (760, -850)
+    links.new(read_face_id.outputs["Attribute"], call_timing_selector.inputs["Face ID"])
+
+    for index, (socket_name, face) in enumerate((
+        ("Top (+Z)", "top"),
+        ("Bottom (-Z)", "bottom"),
+        ("East (+X)", "east"),
+        ("West (-X)", "west"),
+        ("North (+Y)", "north"),
+        ("South (-Y)", "south"),
+    )):
+        reader = nodes.new("GeometryNodeInputNamedAttribute")
+        reader.data_type = "FLOAT_COLOR"
+        reader.inputs["Name"].default_value = face_attribute("anim_timing", face)
+        reader.location = (560, -780 - index * 40)
+        links.new(reader.outputs["Attribute"], call_timing_selector.inputs[socket_name])
+
+    sep_timing = nodes.new("FunctionNodeSeparateColor")
+    sep_timing.location = (2560, -600)
+    links.new(call_timing_selector.outputs["Selected"], sep_timing.inputs["Color"])
+
     # Read Realized LocalUV (FLOAT_VECTOR on CORNER domain)
     read_local_uv = nodes.new("GeometryNodeInputNamedAttribute")
     read_local_uv.data_type = "FLOAT_VECTOR"
@@ -501,6 +526,7 @@ def _build_tree_nodes_and_links(
 
     links.new(comb_local_uv_final.outputs["Vector"], call_uv_calc.inputs["Local UV"])
     links.new(call_chunk_selector.outputs["Selected"], call_uv_calc.inputs["Chunk ID"])
+    links.new(sep_timing.outputs["Red"], call_uv_calc.inputs["Anim Frame Count"])
 
     for index, (socket_name, attr_name) in enumerate((
         ("Tiles Per Row", MTK_TILES_PER_ROW),
@@ -611,27 +637,7 @@ def _build_tree_nodes_and_links(
     links.new(store_chunk_id.outputs["Geometry"], store_texture_id.inputs["Geometry"])
     links.new(call_texture_selector.outputs["Selected"], store_texture_id.inputs["Value"])
 
-    # --- SUBGROUP: SELECT FACE ANIM TIMING (COLOR) ---
-    call_timing_selector = nodes.new("GeometryNodeGroup")
-    call_timing_selector.node_tree = group_color_selector
-    call_timing_selector.name = "Select Face Anim Timing"
-    call_timing_selector.location = (760, -850)
-    links.new(read_face_id.outputs["Attribute"], call_timing_selector.inputs["Face ID"])
-
-    for index, (socket_name, face) in enumerate((
-        ("Top (+Z)", "top"),
-        ("Bottom (-Z)", "bottom"),
-        ("East (+X)", "east"),
-        ("West (-X)", "west"),
-        ("North (+Y)", "north"),
-        ("South (-Y)", "south"),
-    )):
-        reader = nodes.new("GeometryNodeInputNamedAttribute")
-        reader.data_type = "FLOAT_COLOR"
-        reader.inputs["Name"].default_value = face_attribute("anim_timing", face)
-        reader.location = (560, -780 - index * 40)
-        links.new(reader.outputs["Attribute"], call_timing_selector.inputs[socket_name])
-
+    # --- SUBGROUP: STORE ANIM TIMING (FACE domain) ---
     store_timing = nodes.new("GeometryNodeStoreNamedAttribute")
     store_timing.data_type = "FLOAT_COLOR"
     store_timing.domain = "FACE"
