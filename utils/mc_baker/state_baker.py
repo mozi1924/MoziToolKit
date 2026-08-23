@@ -195,6 +195,63 @@ class StateBaker:
             lamp = "minecraft:block/redstone_lamp_on" if is_lit else "minecraft:block/redstone_lamp"
             return {d: lamp for d in MC_DIRECTIONS}
 
+        # 14. Smart Derivative Fallbacks (Slabs, Stairs, Walls, Fences, Gates, Buttons, Plates, Waxed, Beds, Carpets, Banners)
+        stem = short_name
+        if stem.startswith("waxed_"):
+            stem = stem.removeprefix("waxed_")
+        if stem.startswith("potted_"):
+            stem = stem.removeprefix("potted_")
+        elif stem.endswith("_carpet"):
+            stem = stem.replace("_carpet", "_wool")
+        elif stem.endswith("_bed"):
+            stem = stem.replace("_bed", "_wool")
+        elif stem.endswith("_banner") or stem.endswith("_wall_banner"):
+            color = stem.replace("_wall_banner", "").replace("_banner", "")
+            stem = f"{color}_wool" if color else "white_wool"
+        elif stem.endswith("_wood"):
+            stem = stem.replace("_wood", "_log")
+        elif stem.endswith("_hyphae"):
+            stem = stem.replace("_hyphae", "_stem")
+        elif "_wall_hanging_sign" in stem:
+            wood = stem.replace("_wall_hanging_sign", "")
+            stem = f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
+        elif "_hanging_sign" in stem:
+            wood = stem.replace("_hanging_sign", "")
+            stem = f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
+        elif "_wall_sign" in stem:
+            stem = stem.replace("_wall_sign", "_planks")
+        elif "_sign" in stem:
+            stem = stem.replace("_sign", "_planks")
+        else:
+            for suffix in ("_slab", "_stairs", "_wall", "_fence_gate", "_fence", "_button", "_pressure_plate"):
+                if stem.endswith(suffix):
+                    base = stem[:-len(suffix)]
+                    if base in ("oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak", "bamboo", "crimson", "warped"):
+                        stem = f"{base}_planks"
+                    elif base == "bamboo_mosaic":
+                        stem = "bamboo_mosaic"
+                    elif base in ("stone_brick", "mossy_stone_brick", "nether_brick", "red_nether_brick", "end_stone_brick", "deepslate_brick", "deepslate_tile", "polished_blackstone_brick", "mud_brick", "tuff_brick"):
+                        stem = f"{base}s"
+                    elif base == "brick":
+                        stem = "bricks"
+                    elif base == "smooth_sandstone":
+                        stem = "sandstone_top"
+                    elif base == "smooth_red_sandstone":
+                        stem = "red_sandstone_top"
+                    elif base == "smooth_quartz":
+                        stem = "quartz_block_bottom"
+                    elif base == "quartz":
+                        stem = "quartz_block_side"
+                    elif base == "purpur":
+                        stem = "purpur_block"
+                    else:
+                        stem = base
+                    break
+
+        if stem != short_name:
+            fallback = f"minecraft:block/{stem}"
+            return {d: fallback for d in MC_DIRECTIONS}
+
         return {d: fallback for d in MC_DIRECTIONS}
 
     def _resolve_base_face_elements(
