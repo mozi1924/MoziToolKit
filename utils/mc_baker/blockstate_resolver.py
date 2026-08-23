@@ -201,9 +201,9 @@ class BlockStateResolver:
             # Score keys in v_props that are not specified in props: prefer standard default states
             for vk, vv in v_props.items():
                 if vk not in props:
-                    if vv in ("false", "0", "none", "straight", "bottom", "lower", "single", "foot", "normal", "side"):
+                    if vv in ("false", "0", "none", "straight", "bottom", "lower", "single", "foot", "normal", "side", "y", "north"):
                         score += 10
-                    elif vv in ("true", "1", "top", "upper", "head", "inner", "outer", "double"):
+                    elif vv in ("true", "1", "top", "upper", "head", "inner", "outer", "double", "x", "z", "south", "east", "west"):
                         score -= 10
 
             if score > best_score:
