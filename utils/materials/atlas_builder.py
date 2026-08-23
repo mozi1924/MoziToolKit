@@ -19,6 +19,7 @@ from .constants import (
     PROP_MATERIAL_ID,
     PROP_ATLAS_CHUNK_ID,
     PROP_ATLAS_CHUNK_KIND,
+    PROP_ATLAS_CHUNK_CATEGORY,
     PROP_ATLAS_MAPPING,
     PROP_ATLAS_WIDTH,
     PROP_ATLAS_HEIGHT,
@@ -298,14 +299,14 @@ def build_atlas_chunk_materials(
         albedo_path = atlas_path / albedo_name
         if not albedo_path.exists():
             raise FileNotFoundError(f"Missing atlas chunk image: {albedo_path}")
-
-        chunk_texture_name = Path(albedo_name).stem
+        chunk_cat = chunk.get("category", "blocks")
+        chunk_texture_name = f"{chunk_cat}_chunk_{chunk_id:03d}"
         chunk_namespace = chunk.get("namespace", namespace or DEFAULT_NAMESPACE)
 
         # Determine material name & lookup existing material by durable metadata contract
         variant_suffix = f":attr:{uv_attribute}" if uv_attribute else ""
         if material_prefix:
-            material_name = f"{material_prefix}:chunk:{chunk_id:03d}{variant_suffix}"
+            material_name = f"{material_prefix}:{chunk_cat}_chunk_{chunk_id:03d}{variant_suffix}"
         elif short_hash:
             material_name = f"mtk:{chunk_namespace}:{chunk_texture_name}:{short_hash}{variant_suffix}"
         else:
@@ -351,6 +352,7 @@ def build_atlas_chunk_materials(
             mat[PROP_PACK_HASH_SHORT] = short_hash
         mat[PROP_ATLAS_CHUNK_ID] = chunk_id
         mat[PROP_ATLAS_CHUNK_KIND] = chunk["kind"]
+        mat[PROP_ATLAS_CHUNK_CATEGORY] = chunk.get("category", "blocks")
         mat["mtk:atlas_uv_source"] = uv_attribute or ""
 
         nodes, links = mat.node_tree.nodes, mat.node_tree.links

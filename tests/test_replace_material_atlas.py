@@ -79,7 +79,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertTrue(res.is_success, f"Atlas mode failed: {res.message}")
 
         assigned_mat = self.cube.material_slots[0].material
-        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
 
         # Verify LabPBR 1.3 Decoder node group is present in the node tree
         node_names = [n.name for n in assigned_mat.node_tree.nodes]
@@ -92,7 +92,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
 
         # Check metadata on material
         self.assertEqual(assigned_mat.get("mtk:source_namespace"), "minecraft")
-        self.assertTrue(str(assigned_mat.get("mtk:source_texture")).startswith("atlas_chunk_"))
+        self.assertTrue(str(assigned_mat.get("mtk:source_texture")).startswith("blocks_chunk_"))
         self.assertIsNotNone(assigned_mat.get("mtk:pack_hash"))
         self.assertIn("mtk_atlas_width", assigned_mat)
         self.assertIn("mtk_atlas_height", assigned_mat)
@@ -101,7 +101,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertIn("mtk:atlas_mapping", assigned_mat)
 
         # Check image datablock naming with pack hash
-        albedo_images = [img for img in bpy.data.images if img.name.startswith("atlas_chunk_")]
+        albedo_images = [img for img in bpy.data.images if img.name.startswith("blocks_chunk_")]
         self.assertGreater(len(albedo_images), 0)
         self.assertIn(":", albedo_images[0].name)
 
@@ -156,7 +156,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.assertTrue(res.is_success, f"Atlas mode animated material failed: {res.message}")
 
         assigned_mat = self.cube.material_slots[0].material
-        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
 
         # Verify animation nodes inside node tree for animated chunk
         node_names = [n.name for n in assigned_mat.node_tree.nodes]

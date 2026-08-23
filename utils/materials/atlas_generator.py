@@ -12,7 +12,12 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from .constants import FACE_ORDER, ATLAS_FORMAT_VERSION
+from .constants import (
+    FACE_ORDER,
+    ATLAS_FORMAT_VERSION,
+    ATLAS_CATEGORY_PRIORITY,
+    classify_texture_category,
+)
 from .biome import BiomeResolver
 from .pack_stack import ResourcePackStack, get_configured_pack_stack
 from ..system.dependencies import has_pillow
@@ -158,6 +163,12 @@ class AtlasGenerator:
         self.normal_by_namespace = {}
         self.specular_by_namespace = {}
 
+        # Multi-category partitioned mappings: namespace -> category -> {rel_path: data}
+        self.static_by_ns_cat = {}
+        self.animated_by_ns_cat = {}
+        self.normal_by_ns_cat = {}
+        self.specular_by_ns_cat = {}
+
         self.block_mappings = {}     # block_id -> 6 face texture names
         self.static_materials = []   # list of static material metadata
         self.animated_materials = [] # list of animated material metadata
@@ -175,7 +186,7 @@ class AtlasGenerator:
             self.baker = None
 
     def load_resources(self):
-        """Load PNG images, mcmeta animation data, and block models from source and fallback stack."""
+        """Load PNG images, mcmeta animation data, and models from source and fallback stack across all categories."""
         # Pillow 12 can defer decoder registration until its first open.  In
         # Blender 5.2 that first open may fail after mesh creation; eagerly
         # initialize plugins before touching a resource pack.
@@ -203,8 +214,8 @@ class AtlasGenerator:
         self.biome_resolver.set_models(self.models)
 
     def _load_fallback_from_pack(self, pack: ZipResourcePack):
-        """Populate missing block textures and models from a lower-priority fallback pack."""
-        # 1. Load models from all namespaces under assets/*/models/block
+        """Populate missing textures and models across all categories from a lower-priority fallback pack."""
+        # 1. Load models from all namespaces under assets/*/models/{block,item}
         if pack.extract_dir:
             assets_dir = pack.extract_dir / "assets"
             if assets_dir.exists():
@@ -212,30 +223,37 @@ class AtlasGenerator:
                     if not ns_dir.is_dir():
                         continue
                     ns = ns_dir.name.lower().strip()
-                    models_dir = ns_dir / "models" / "block"
-                    if models_dir.exists():
-                        for root, _, files in os.walk(models_dir):
-                            for f in files:
-                                if f.endswith(".json"):
-                                    rel_model = (Path(root) / f).relative_to(models_dir).with_suffix("").as_posix().lower()
-                                    model_key = rel_model if ns == "minecraft" else f"{ns}:{rel_model}"
-                                    if model_key not in self.models:
-                                        try:
-                                            with open(Path(root) / f, "r", encoding="utf-8") as fp:
-                                                self.models[model_key] = json.load(fp)
-                                        except Exception:
-                                            pass
+                    for model_type in ("block", "item"):
+                        models_dir = ns_dir / "models" / model_type
+                        if models_dir.exists():
+                            for root, _, files in os.walk(models_dir):
+                                for f in files:
+                                    if f.endswith(".json"):
+                                        rel_model = (Path(root) / f).relative_to(models_dir).with_suffix("").as_posix().lower()
+                                        if ns == "minecraft":
+                                            model_key = rel_model if model_type == "block" else f"item/{rel_model}"
+                                        else:
+                                            model_key = f"{ns}:{model_type}/{rel_model}"
+                                        if model_key not in self.models:
+                                            try:
+                                                with open(Path(root) / f, "r", encoding="utf-8") as fp:
+                                                    self.models[model_key] = json.load(fp)
+                                            except Exception:
+                                                pass
 
-        # 2. Load block textures ONLY (ignore item, entity, gui, particle, etc.)
+        # 2. Load textures across all categories from fallback pack
         for (ns, path_key), info in pack.texture_path_index.items():
-            if not path_key.startswith("block/"):
-                continue
+            base_rel = path_key.strip("/")
+            category = classify_texture_category(base_rel)
+            if base_rel.startswith("block/"):
+                clean_name = self._texture_name(ns, base_rel.removeprefix("block/"))
+                base_stem = base_rel.removeprefix("block/")
+            else:
+                clean_name = self._texture_name(ns, base_rel)
+                base_stem = base_rel
 
-            stem = path_key.removeprefix("block/").strip()
-            clean_name = self._texture_name(ns, stem)
-
-            if (ns in self.static_by_namespace and stem in self.static_by_namespace[ns]) or \
-               (ns in self.animated_by_namespace and stem in self.animated_by_namespace[ns]):
+            if (ns in self.static_by_ns_cat and category in self.static_by_ns_cat[ns] and base_rel in self.static_by_ns_cat[ns][category]) or \
+               (ns in self.animated_by_ns_cat and category in self.animated_by_ns_cat[ns] and base_rel in self.animated_by_ns_cat[ns][category]):
                 continue
 
             albedo_file = info.get("albedo")
@@ -248,22 +266,26 @@ class AtlasGenerator:
                 if is_animated_texture(img, mcmeta):
                     anim_data = {"image": img, "mcmeta": mcmeta or {}}
                     self.animated_textures[clean_name] = anim_data
-                    self.animated_by_namespace.setdefault(ns, {})[stem] = anim_data
+                    self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
+                    self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
                 else:
                     self.static_textures[clean_name] = img
-                    self.static_by_namespace.setdefault(ns, {})[stem] = img
+                    self.static_by_namespace.setdefault(ns, {})[base_stem] = img
+                    self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
 
                 normal_file = info.get("normal")
                 if normal_file and Path(normal_file).exists():
                     n_img = _safe_open_image(normal_file)
                     self.normal_textures[clean_name] = n_img
-                    self.normal_by_namespace.setdefault(ns, {})[stem] = n_img
+                    self.normal_by_namespace.setdefault(ns, {})[base_stem] = n_img
+                    self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = n_img
 
                 specular_file = info.get("specular")
                 if specular_file and Path(specular_file).exists():
                     s_img = _safe_open_image(specular_file)
                     self.specular_textures[clean_name] = s_img
-                    self.specular_by_namespace.setdefault(ns, {})[stem] = s_img
+                    self.specular_by_namespace.setdefault(ns, {})[base_stem] = s_img
+                    self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = s_img
             except Exception:
                 pass
 
@@ -281,168 +303,227 @@ class AtlasGenerator:
             namespace, stem = texture_name.split(":", 1)
         else:
             namespace, stem = "minecraft", texture_name
+        if "/" in stem:
+            return f"{namespace}:{stem}"
         return f"{namespace}:block/{stem}"
 
     def _load_from_zip(self, zip_path: Path):
         with zipfile.ZipFile(zip_path, "r") as zf:
             namelist = zf.namelist()
 
-            # 1. Index mcmetas
+            # 1. Index mcmetas across all textures
             mcmetas = {}
             for name in namelist:
                 parts = Path(name).parts
-                if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png.mcmeta"):
+                if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "textures" and name.endswith(".png.mcmeta"):
                     ns = parts[1].lower().strip()
-                    stem = "/".join(parts[4:])[:-11].strip()
+                    rel_path = "/".join(parts[3:])[:-11].strip()
+                    stem = rel_path.split("/")[-1]
                     texture_name = self._texture_name(ns, stem)
                     try:
                         meta_obj = json.loads(zf.read(name).decode("utf-8"))
                         mcmetas[texture_name] = meta_obj
                         mcmetas[(ns, stem)] = meta_obj
+                        mcmetas[(ns, rel_path)] = meta_obj
+                        mcmetas[f"{ns}:{rel_path}"] = meta_obj
                     except Exception:
                         pass
 
-            # 2. Load models
-            for name in namelist:
-                if name.startswith("assets/minecraft/models/block/") and name.endswith(".json"):
-                    stem = name.replace("assets/minecraft/models/block/", "").replace(".json", "").strip()
-                    try:
-                        self.models[stem.lower()] = json.loads(zf.read(name).decode("utf-8"))
-                    except Exception:
-                        pass
-
-            # 3. Load PNG textures
+            # 2. Load models (block and item)
             for name in namelist:
                 parts = Path(name).parts
-                if len(parts) >= 5 and parts[:1] == ("assets",) and parts[2:4] == ("textures", "block") and name.endswith(".png"):
+                if len(parts) >= 5 and parts[0] == "assets" and parts[2] == "models" and parts[3] in ("block", "item") and name.endswith(".json"):
                     ns = parts[1].lower().strip()
-                    stem = "/".join(parts[4:])[:-4].strip()
-                    clean_stem = self._texture_name(ns, stem)
+                    model_type = parts[3]
+                    stem = "/".join(parts[4:])[:-5].strip().lower()
+                    if ns == "minecraft":
+                        model_key = stem if model_type == "block" else f"item/{stem}"
+                    else:
+                        model_key = f"{ns}:{model_type}/{stem}"
+                    try:
+                        model_data = json.loads(zf.read(name).decode("utf-8"))
+                        self.models[model_key] = model_data
+                    except Exception:
+                        pass
+
+            # 3. Load PNG textures across all categories
+            for name in namelist:
+                parts = Path(name).parts
+                if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "textures" and name.endswith(".png"):
+                    ns = parts[1].lower().strip()
+                    rel_path = "/".join(parts[3:])[:-4].strip()
 
                     channel = "albedo"
-                    if stem.endswith("_n"):
-                        base_stem = stem[:-2].strip()
-                        clean_base_stem = self._texture_name(ns, base_stem)
+                    if rel_path.endswith("_n"):
+                        base_rel = rel_path[:-2].strip()
                         channel = "normal"
-                    elif stem.endswith("_s"):
-                        base_stem = stem[:-2].strip()
-                        clean_base_stem = self._texture_name(ns, base_stem)
+                    elif rel_path.endswith("_s"):
+                        base_rel = rel_path[:-2].strip()
                         channel = "specular"
                     else:
-                        base_stem = stem
-                        clean_base_stem = clean_stem
+                        base_rel = rel_path
+                        channel = "albedo"
+
+                    category = classify_texture_category(base_rel)
+                    if base_rel.startswith("block/"):
+                        clean_stem = self._texture_name(ns, base_rel.removeprefix("block/"))
+                        base_stem = base_rel.removeprefix("block/")
+                    else:
+                        clean_stem = self._texture_name(ns, base_rel)
+                        base_stem = base_rel
 
                     try:
                         with zf.open(name) as img_file:
                             img = _safe_open_image(img_file)
                             if channel == "normal":
-                                self.normal_textures[clean_base_stem] = img
+                                self.normal_textures[clean_stem] = img
                                 self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
+                                self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                             elif channel == "specular":
-                                self.specular_textures[clean_base_stem] = img
+                                self.specular_textures[clean_stem] = img
                                 self.specular_by_namespace.setdefault(ns, {})[base_stem] = img
+                                self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                             else:
-                                meta = mcmetas.get((ns, base_stem)) or mcmetas.get(clean_base_stem)
+                                meta = (
+                                    mcmetas.get((ns, base_rel))
+                                    or mcmetas.get(f"{ns}:{base_rel}")
+                                    or mcmetas.get((ns, base_stem))
+                                    or mcmetas.get(clean_stem)
+                                )
                                 if is_animated_texture(img, meta):
                                     anim_data = {
                                         "image": img,
                                         "mcmeta": meta or {}
                                     }
-                                    self.animated_textures[clean_base_stem] = anim_data
+                                    self.animated_textures[clean_stem] = anim_data
                                     self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
+                                    self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
                                 else:
-                                    self.static_textures[clean_base_stem] = img
+                                    self.static_textures[clean_stem] = img
                                     self.static_by_namespace.setdefault(ns, {})[base_stem] = img
+                                    self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                     except Exception as e:
                         print(f"[AtlasGenerator] Warning: failed to load texture {name}: {e}")
 
     def _load_from_dir(self, dir_path: Path):
-        models_dir = dir_path / "assets" / "minecraft" / "models" / "block"
-
-        # 1. Index mcmetas
+        # 1. Index mcmetas across all texture folders
         mcmetas = {}
         assets_dir = dir_path / "assets"
         if assets_dir.exists():
             for namespace_dir in assets_dir.iterdir():
-                textures_dir = namespace_dir / "textures" / "block"
-                if not namespace_dir.is_dir() or not textures_dir.exists():
+                if not namespace_dir.is_dir():
                     continue
                 ns = namespace_dir.name.lower().strip()
+                textures_dir = namespace_dir / "textures"
+                if not textures_dir.exists():
+                    continue
                 for root, _, files in os.walk(textures_dir):
                     for f in files:
                         if f.endswith(".png.mcmeta"):
-                            stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11].strip()
-                            texture_name = self._texture_name(ns, stem)
+                            rel_path = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11].strip()
+                            stem = rel_path.split("/")[-1]
                             mcmeta_path = Path(root) / f
                             try:
                                 with open(mcmeta_path, "r", encoding="utf-8") as fp:
                                     meta_obj = json.load(fp)
-                                    mcmetas[texture_name] = meta_obj
+                                    mcmetas[(ns, rel_path)] = meta_obj
                                     mcmetas[(ns, stem)] = meta_obj
+                                    mcmetas[self._texture_name(ns, stem)] = meta_obj
+                                    mcmetas[f"{ns}:{rel_path}"] = meta_obj
                             except Exception:
                                 pass
 
-        # 2. Load models
-        if models_dir.exists():
-            for root, _, files in os.walk(models_dir):
-                for f in files:
-                    if f.endswith(".json"):
-                        stem = f[:-5].strip()
-                        model_path = Path(root) / f
-                        try:
-                            with open(model_path, "r", encoding="utf-8") as fp:
-                                self.models[stem.lower()] = json.load(fp)
-                        except Exception:
-                            pass
-
-        # 3. Load PNG textures
+        # 2. Load models (block and item)
         if assets_dir.exists():
             for namespace_dir in assets_dir.iterdir():
-                textures_dir = namespace_dir / "textures" / "block"
-                if not namespace_dir.is_dir() or not textures_dir.exists():
+                if not namespace_dir.is_dir():
                     continue
                 ns = namespace_dir.name.lower().strip()
+                models_dir = namespace_dir / "models"
+                if not models_dir.exists():
+                    continue
+                for model_type in ("block", "item"):
+                    sub_models = models_dir / model_type
+                    if sub_models.exists():
+                        for root, _, files in os.walk(sub_models):
+                            for f in files:
+                                if f.endswith(".json"):
+                                    stem = (Path(root) / f).relative_to(sub_models).with_suffix("").as_posix().lower().strip()
+                                    if ns == "minecraft":
+                                        model_key = stem if model_type == "block" else f"item/{stem}"
+                                    else:
+                                        model_key = f"{ns}:{model_type}/{stem}"
+                                    try:
+                                        with open(Path(root) / f, "r", encoding="utf-8") as fp:
+                                            model_data = json.load(fp)
+                                            self.models[model_key] = model_data
+                                    except Exception:
+                                        pass
+
+        # 3. Load PNG textures across all categories
+        if assets_dir.exists():
+            for namespace_dir in assets_dir.iterdir():
+                if not namespace_dir.is_dir():
+                    continue
+                ns = namespace_dir.name.lower().strip()
+                textures_dir = namespace_dir / "textures"
+                if not textures_dir.exists():
+                    continue
                 for root, _, files in os.walk(textures_dir):
                     for f in files:
                         if not f.endswith(".png"):
                             continue
-                        stem = (Path(root) / f).relative_to(textures_dir).as_posix()[:-4].strip()
-                        clean_stem = self._texture_name(ns, stem)
+                        rel_path = (Path(root) / f).relative_to(textures_dir).with_suffix("").as_posix().strip()
 
                         channel = "albedo"
-                        if stem.endswith("_n"):
-                            base_stem = stem[:-2].strip()
-                            clean_base_stem = self._texture_name(ns, base_stem)
+                        if rel_path.endswith("_n"):
+                            base_rel = rel_path[:-2].strip()
                             channel = "normal"
-                        elif stem.endswith("_s"):
-                            base_stem = stem[:-2].strip()
-                            clean_base_stem = self._texture_name(ns, base_stem)
+                        elif rel_path.endswith("_s"):
+                            base_rel = rel_path[:-2].strip()
                             channel = "specular"
                         else:
-                            base_stem = stem
-                            clean_base_stem = clean_stem
+                            base_rel = rel_path
+                            channel = "albedo"
+
+                        category = classify_texture_category(base_rel)
+                        if base_rel.startswith("block/"):
+                            clean_stem = self._texture_name(ns, base_rel.removeprefix("block/"))
+                            base_stem = base_rel.removeprefix("block/")
+                        else:
+                            clean_stem = self._texture_name(ns, base_rel)
+                            base_stem = base_rel
 
                         img_path = Path(root) / f
                         try:
                             img = _safe_open_image(img_path)
                             if channel == "normal":
-                                self.normal_textures[clean_base_stem] = img
+                                self.normal_textures[clean_stem] = img
                                 self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
+                                self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                             elif channel == "specular":
-                                self.specular_textures[clean_base_stem] = img
+                                self.specular_textures[clean_stem] = img
                                 self.specular_by_namespace.setdefault(ns, {})[base_stem] = img
+                                self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                             else:
-                                meta = mcmetas.get((ns, base_stem)) or mcmetas.get(clean_base_stem)
+                                meta = (
+                                    mcmetas.get((ns, base_rel))
+                                    or mcmetas.get(f"{ns}:{base_rel}")
+                                    or mcmetas.get((ns, base_stem))
+                                    or mcmetas.get(clean_stem)
+                                )
                                 if is_animated_texture(img, meta):
                                     anim_data = {
                                         "image": img,
                                         "mcmeta": meta or {}
                                     }
-                                    self.animated_textures[clean_base_stem] = anim_data
+                                    self.animated_textures[clean_stem] = anim_data
                                     self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
+                                    self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
                                 else:
-                                    self.static_textures[clean_base_stem] = img
+                                    self.static_textures[clean_stem] = img
                                     self.static_by_namespace.setdefault(ns, {})[base_stem] = img
+                                    self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                         except Exception as e:
                             print(f"[AtlasGenerator] Warning: failed to load {img_path}: {e}")
 
@@ -523,7 +604,7 @@ class AtlasGenerator:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        all_namespaces = sorted(set(list(self.static_by_namespace.keys()) + list(self.animated_by_namespace.keys())))
+        all_namespaces = sorted(set(list(self.static_by_ns_cat.keys()) + list(self.animated_by_ns_cat.keys()) + list(self.static_by_namespace.keys()) + list(self.animated_by_namespace.keys())))
         if "minecraft" in all_namespaces:
             all_namespaces.remove("minecraft")
             all_namespaces.insert(0, "minecraft")
@@ -532,294 +613,336 @@ class AtlasGenerator:
         texture_locations = {}
         animations = []
         outputs = {"chunks": []}
-        has_normal = bool(self.normal_textures)
-        has_specular = bool(self.specular_textures)
+        has_normal = bool(self.normal_textures) or any(bool(m) for ns_dict in self.normal_by_ns_cat.values() for m in ns_dict.values())
+        has_specular = bool(self.specular_textures) or any(bool(m) for ns_dict in self.specular_by_ns_cat.values() for m in ns_dict.values())
 
         total_ns = max(1, len(all_namespaces))
         for ns_idx, ns in enumerate(all_namespaces):
             ns_progress_base = 0.20 + 0.60 * (ns_idx / total_ns)
-            static_map = self.static_by_namespace.get(ns, {})
-            if static_map:
-                yield (ns_progress_base, f"Packing static atlas chunks for namespace '{ns}'...", None)
-                # Statistical mode for tile_size determination
-                square_widths = [
-                    image.width for image in static_map.values()
-                    if image.width == image.height and _is_power_of_two(image.width)
-                ]
-                if square_widths:
-                    counts = Counter(square_widths)
-                    ns_tile_size = max(counts.keys(), key=lambda w: (counts[w], w))
-                else:
-                    ns_tile_size = self.default_tile_size
 
-                if ns_tile_size > self.max_chunk_size:
-                    raise ValueError(f"Tile size {ns_tile_size}px for namespace '{ns}' exceeds chunk limit {self.max_chunk_size}px.")
+            # Discover all active categories for this namespace in priority order
+            active_categories = []
+            for cat in ATLAS_CATEGORY_PRIORITY:
+                if (ns in self.static_by_ns_cat and cat in self.static_by_ns_cat[ns] and self.static_by_ns_cat[ns][cat]) or \
+                   (ns in self.animated_by_ns_cat and cat in self.animated_by_ns_cat[ns] and self.animated_by_ns_cat[ns][cat]):
+                    active_categories.append(cat)
 
-                tiles_per_row = max(1, self.max_chunk_size // ns_tile_size)
-                capacity = max(1, tiles_per_row * tiles_per_row)
-                static_stems = sorted(static_map.keys())
+            extra_cats = sorted(set(
+                list(self.static_by_ns_cat.get(ns, {}).keys()) + list(self.animated_by_ns_cat.get(ns, {}).keys())
+            ) - set(ATLAS_CATEGORY_PRIORITY))
+            active_categories.extend(extra_cats)
 
-                def tile_for(stem, channel, tile_sz=ns_tile_size, namespace_val=ns):
-                    source = {
-                        "albedo": static_map,
-                        "normal": self.normal_by_namespace.get(namespace_val, {}),
-                        "specular": self.specular_by_namespace.get(namespace_val, {}),
-                    }[channel].get(stem)
-                    if source is None:
-                        fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
-                        return Image.new("RGBA", (tile_sz, tile_sz), fill)
-                    if source.size == (tile_sz, tile_sz):
-                        return source
-                    return source.resize((tile_sz, tile_sz), Image.NEAREST)
+            for cat in active_categories:
+                static_map = self.static_by_ns_cat.get(ns, {}).get(cat, {})
+                if static_map:
+                    yield (ns_progress_base, f"Packing static atlas chunks for namespace '{ns}' [{cat}]...", None)
+                    square_widths = [
+                        image.width for image in static_map.values()
+                        if image.width == image.height and _is_power_of_two(image.width)
+                    ]
+                    if square_widths:
+                        counts = Counter(square_widths)
+                        cat_tile_size = max(counts.keys(), key=lambda w: (counts[w], w))
+                    else:
+                        cat_tile_size = self.default_tile_size
 
-                for first in range(0, len(static_stems), capacity):
-                    names = static_stems[first:first + capacity]
-                    chunk_id = len(chunks)
-                    rows = min(tiles_per_row, max(1, (len(names) + tiles_per_row - 1) // tiles_per_row))
-                    width = min(self.max_chunk_size, tiles_per_row * ns_tile_size)
-                    height = min(self.max_chunk_size, rows * ns_tile_size)
+                    if cat_tile_size > self.max_chunk_size:
+                        raise ValueError(f"Tile size {cat_tile_size}px for category '{cat}' ({ns}) exceeds chunk limit {self.max_chunk_size}px.")
 
-                    images = {
-                        "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
-                        "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
-                    }
-                    if has_normal:
-                        images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
-                    if has_specular:
-                        images["specular"] = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-                    files = {}
+                    tiles_per_row = max(1, self.max_chunk_size // cat_tile_size)
+                    capacity = max(1, tiles_per_row * tiles_per_row)
+                    static_rel_paths = sorted(static_map.keys())
 
-                    for texture_id, stem in enumerate(names):
-                        x = (texture_id % tiles_per_row) * ns_tile_size
-                        y = (texture_id // tiles_per_row) * ns_tile_size
-                        raw_key = self._texture_name(ns, stem)
-                        canonical_key = f"{ns}:block/{stem}"
-                        tint_info = self.biome_resolver.get_tint_info(stem)
-                        transparency = analyze_texture_transparency(static_map.get(stem))
-                        loc_entry = {
-                            "texture_key": canonical_key,
-                            "namespace": ns,
-                            "chunk_id": chunk_id,
-                            "texture_id": texture_id,
-                            "tile_column": texture_id % tiles_per_row,
-                            "tile_row": texture_id // tiles_per_row,
-                            "kind": "static",
-                            "is_opaque": transparency["is_opaque"],
-                            "alpha_mode": transparency["alpha_mode"],
-                            "min_alpha": transparency["min_alpha"],
-                            "tile_size": ns_tile_size,
-                            "frame_width": ns_tile_size,
-                            "frame_height": ns_tile_size,
-                            "frame_count": 1,
-                            "frametime": 1,
-                            "interpolate": False,
-                            "has_overlay": tint_info["has_overlay"],
-                            "overlay_texture": tint_info["overlay_texture"],
-                            "tint_category": tint_info["tint_category"],
-                            "tint_type": tint_info["tint_type"],
-                            "default_tint_weight": tint_info["tint_weight"],
-                            "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
-                            "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
-                            "is_hardcoded": tint_info["is_hardcoded"],
-                            "hardcoded_color": tint_info["hardcoded_color"],
-                            "hardcoded_hex": tint_info["hardcoded_hex"],
+                    def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
+                        source = {
+                            "albedo": static_map,
+                            "normal": self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
+                            "specular": self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {}),
+                        }[channel].get(rel_p)
+                        if source is None:
+                            fill = (128, 128, 255, 255) if channel == "normal" else (0, 0, 0, 0)
+                            return Image.new("RGBA", (tile_sz, tile_sz), fill)
+                        if source.size == (tile_sz, tile_sz):
+                            return source
+                        return source.resize((tile_sz, tile_sz), Image.NEAREST)
+
+                    for first in range(0, len(static_rel_paths), capacity):
+                        names = static_rel_paths[first:first + capacity]
+                        chunk_id = len(chunks)
+                        rows = min(tiles_per_row, max(1, (len(names) + tiles_per_row - 1) // tiles_per_row))
+                        width = min(self.max_chunk_size, tiles_per_row * cat_tile_size)
+                        height = min(self.max_chunk_size, rows * cat_tile_size)
+
+                        images = {
+                            "albedo": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
+                            "overlay": Image.new("RGBA", (width, height), (0, 0, 0, 0)),
                         }
-                        texture_locations[raw_key] = loc_entry
-                        texture_locations[canonical_key] = loc_entry
-                        if ns == "minecraft":
-                            texture_locations[f"minecraft:{stem}"] = loc_entry
-                            texture_locations[f"minecraft:block/{stem}"] = loc_entry
-
-                        images["albedo"].paste(tile_for(stem, "albedo"), (x, y))
                         if has_normal:
-                            images["normal"].paste(tile_for(stem, "normal"), (x, y))
+                            images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
                         if has_specular:
-                            images["specular"].paste(tile_for(stem, "specular"), (x, y))
+                            images["specular"] = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                        files = {}
 
-                        overlay_stem = tint_info.get("overlay_texture")
-                        if overlay_stem:
-                            overlay_tile = tile_for(overlay_stem, "albedo")
-                            images["overlay"].paste(overlay_tile, (x, y))
-
-                    for channel, image in images.items():
-                        filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
-                        image.save(output_path / filename)
-                        files[channel] = filename
-
-                    chunks.append({
-                        "chunk_id": chunk_id,
-                        "namespace": ns,
-                        "kind": "static",
-                        "width": width,
-                        "height": height,
-                        "tile_size": ns_tile_size,
-                        "tiles_per_row": tiles_per_row,
-                        "texture_count": len(names),
-                        "files": files,
-                    })
-                    outputs["chunks"].append(output_path / files["albedo"])
-
-            # Animated textures for this namespace
-            anim_map = self.animated_by_namespace.get(ns, {})
-            if anim_map:
-                yield (ns_progress_base + 0.05, f"Packing animated strip chunks for namespace '{ns}'...", None)
-                animation_columns = []
-                for stem in sorted(anim_map.keys()):
-                    source = anim_map[stem]
-                    image = source["image"]
-                    if image.width > self.max_chunk_size or image.height > self.max_chunk_size:
-                        raise ValueError(
-                            f"Animation '{ns}:{stem}' ({image.width}x{image.height}) exceeds "
-                            f"the {self.max_chunk_size}px chunk limit and cannot be stored losslessly."
-                        )
-                    animation_columns.append((stem, image, source["mcmeta"].get("animation", {})))
-
-                def save_animation_chunk(columns, namespace_val=ns):
-                    chunk_id = len(chunks)
-                    # Align each column so its starting X pixel is a multiple of its width
-                    x_calc = 0
-                    for _s, img, _m in columns:
-                        tw = img.width
-                        x_calc = ((x_calc + tw - 1) // tw) * tw
-                        x_calc += tw
-                    chunk_width = max(16, x_calc)
-                    chunk_height = max(img.height for _s, img, _m in columns)
-                    images = {
-                        "albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
-                        "overlay": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
-                    }
-                    if has_normal:
-                        images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
-                    if has_specular:
-                        images["specular"] = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
-
-                    x_offset = 0
-                    for texture_id, (stem, image, metadata) in enumerate(columns):
-                        target_w = image.width
-                        target_h = image.height
-                        x_offset = ((x_offset + target_w - 1) // target_w) * target_w
-
-                        for channel, img_canvas in images.items():
-                            if channel == "albedo":
-                                source_img = image
-                            elif channel == "normal":
-                                source_img = self.normal_by_namespace.get(namespace_val, {}).get(stem)
-                            elif channel == "specular":
-                                source_img = self.specular_by_namespace.get(namespace_val, {}).get(stem)
+                        for texture_id, rel_p in enumerate(names):
+                            x = (texture_id % tiles_per_row) * cat_tile_size
+                            y = (texture_id // tiles_per_row) * cat_tile_size
+                            stem = rel_p.split("/")[-1]
+                            canonical_key = f"{ns}:{rel_p}"
+                            tint_info = self.biome_resolver.get_tint_info(stem)
+                            transparency = analyze_texture_transparency(static_map.get(rel_p))
+                            loc_entry = {
+                                "texture_key": canonical_key,
+                                "category": cat,
+                                "namespace": ns,
+                                "chunk_id": chunk_id,
+                                "texture_id": texture_id,
+                                "tile_column": texture_id % tiles_per_row,
+                                "tile_row": texture_id // tiles_per_row,
+                                "kind": "static",
+                                "is_opaque": transparency["is_opaque"],
+                                "alpha_mode": transparency["alpha_mode"],
+                                "min_alpha": transparency["min_alpha"],
+                                "tile_size": cat_tile_size,
+                                "frame_width": cat_tile_size,
+                                "frame_height": cat_tile_size,
+                                "frame_count": 1,
+                                "frametime": 1,
+                                "interpolate": False,
+                                "has_overlay": tint_info["has_overlay"],
+                                "overlay_texture": tint_info["overlay_texture"],
+                                "tint_category": tint_info["tint_category"],
+                                "tint_type": tint_info["tint_type"],
+                                "default_tint_weight": tint_info["tint_weight"],
+                                "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
+                                "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
+                                "is_hardcoded": tint_info["is_hardcoded"],
+                                "hardcoded_color": tint_info["hardcoded_color"],
+                                "hardcoded_hex": tint_info["hardcoded_hex"],
+                            }
+                            texture_locations[canonical_key] = loc_entry
+                            texture_locations[rel_p] = loc_entry
+                            raw_key = self._texture_name(ns, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
+                            texture_locations[raw_key] = loc_entry
+                            if ns == "minecraft":
+                                texture_locations[f"minecraft:{rel_p}"] = loc_entry
+                                texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
+                                texture_locations.setdefault(stem, loc_entry)
+                                if rel_p.startswith("item/"):
+                                    texture_locations[f"item_{stem}"] = loc_entry
+                                    texture_locations[f"minecraft:item_{stem}"] = loc_entry
+                                elif rel_p.startswith("block/"):
+                                    texture_locations[stem] = loc_entry
+                                    texture_locations[f"minecraft:{stem}"] = loc_entry
                             else:
-                                source_img = None
+                                texture_locations[f"{ns}:{stem}"] = loc_entry
+                                if rel_p.startswith("item/"):
+                                    texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
-                            if source_img is not None:
-                                src_w, src_h = source_img.size
-                                if src_w != target_w:
-                                    scale_ratio = target_w / src_w
-                                    scaled_h = max(1, int(round(src_h * scale_ratio)))
-                                    source_img = source_img.resize((target_w, scaled_h), Image.NEAREST)
-                                    src_w, src_h = source_img.size
+                            images["albedo"].paste(tile_for(rel_p, "albedo"), (x, y))
+                            if has_normal:
+                                images["normal"].paste(tile_for(rel_p, "normal"), (x, y))
+                            if has_specular:
+                                images["specular"].paste(tile_for(rel_p, "specular"), (x, y))
 
-                                if src_h >= target_h:
-                                    img_canvas.paste(source_img.crop((0, 0, target_w, target_h)), (x_offset, 0))
-                                else:
-                                    y = 0
-                                    while y < target_h:
-                                        h_chunk = min(src_h, target_h - y)
-                                        if h_chunk < src_h:
-                                            img_canvas.paste(source_img.crop((0, 0, target_w, h_chunk)), (x_offset, y))
-                                        else:
-                                            img_canvas.paste(source_img, (x_offset, y))
-                                        y += src_h
+                            overlay_stem = tint_info.get("overlay_texture")
+                            if overlay_stem:
+                                overlay_tile = tile_for(overlay_stem, "albedo")
+                                images["overlay"].paste(overlay_tile, (x, y))
 
-                        frame_width = max(1, int(metadata.get("width", image.width)))
-                        frame_height = max(1, int(metadata.get("height", frame_width)))
-                        frame_count = max(1, image.height // frame_height)
-                        frametime = max(1, int(metadata.get("frametime", 2)))
-                        interpolate = bool(metadata.get("interpolate", False))
-                        raw_name = self._texture_name(namespace_val, stem)
-                        canonical_key = f"{namespace_val}:block/{stem}"
-                        tint_info = self.biome_resolver.get_tint_info(stem)
-                        transparency = analyze_texture_transparency(image)
+                        for channel, image in images.items():
+                            filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
+                            image.save(output_path / filename)
+                            files[channel] = filename
 
-                        anim_loc = {
-                            "texture_key": canonical_key,
-                            "namespace": namespace_val,
+                        chunks.append({
                             "chunk_id": chunk_id,
-                            "texture_id": texture_id,
-                            "kind": "animation",
-                            "is_opaque": transparency["is_opaque"],
-                            "alpha_mode": transparency["alpha_mode"],
-                            "min_alpha": transparency["min_alpha"],
-                            "pixel_x": x_offset,
-                            "pixel_y": 0,
-                            "preview_frame": 0,
-                            "frame_width": frame_width,
-                            "frame_height": frame_height,
-                            "frame_count": frame_count,
-                            "frametime": frametime,
-                            "interpolate": interpolate,
-                            "has_overlay": tint_info["has_overlay"],
-                            "overlay_texture": tint_info["overlay_texture"],
-                            "tint_category": tint_info["tint_category"],
-                            "tint_type": tint_info["tint_type"],
-                            "default_tint_weight": tint_info["tint_weight"],
-                            "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
-                            "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
-                            "is_hardcoded": tint_info["is_hardcoded"],
-                            "hardcoded_color": tint_info["hardcoded_color"],
-                            "hardcoded_hex": tint_info["hardcoded_hex"],
-                        }
-                        texture_locations[raw_name] = anim_loc
-                        texture_locations[canonical_key] = anim_loc
-                        if namespace_val == "minecraft":
-                            texture_locations[f"minecraft:{stem}"] = anim_loc
-                            texture_locations[f"minecraft:block/{stem}"] = anim_loc
-
-                        animations.append({
-                            "name": raw_name,
-                            "texture_key": canonical_key,
-                            "namespace": namespace_val,
-                            "chunk_id": chunk_id,
-                            "texture_id": texture_id,
-                            "pixel_x": x_offset,
-                            "frame_count": frame_count,
-                            "frame_width": frame_width,
-                            "frame_height": frame_height,
-                            "frametime": frametime,
-                            "interpolate": interpolate,
-                            "preview_frame": 0,
-                            "mcmeta": metadata,
+                            "category": cat,
+                            "namespace": ns,
+                            "kind": "static",
+                            "width": width,
+                            "height": height,
+                            "tile_size": cat_tile_size,
+                            "tiles_per_row": tiles_per_row,
+                            "texture_count": len(names),
+                            "packing": "grid",
+                            "files": files,
                         })
-                        x_offset += target_w
+                        outputs["chunks"].append(output_path / files["albedo"])
 
-                    files = {}
-                    for channel, img_canvas in images.items():
-                        filename = f"atlas_chunk_{chunk_id:03d}_{channel}.png"
-                        img_canvas.save(output_path / filename)
-                        files[channel] = filename
+                # Animated textures for (ns, cat)
+                anim_map = self.animated_by_ns_cat.get(ns, {}).get(cat, {})
+                if anim_map:
+                    yield (ns_progress_base + 0.05, f"Packing animated strip chunks for namespace '{ns}' [{cat}]...", None)
+                    animation_columns = []
+                    for rel_p in sorted(anim_map.keys()):
+                        source = anim_map[rel_p]
+                        image = source["image"]
+                        if image.width > self.max_chunk_size or image.height > self.max_chunk_size:
+                            raise ValueError(
+                                f"Animation '{ns}:{rel_p}' ({image.width}x{image.height}) exceeds "
+                                f"the {self.max_chunk_size}px chunk limit and cannot be stored losslessly."
+                            )
+                        animation_columns.append((rel_p, image, source["mcmeta"].get("animation", {})))
 
-                    chunks.append({
-                        "chunk_id": chunk_id,
-                        "namespace": namespace_val,
-                        "kind": "animation",
-                        "width": chunk_width,
-                        "height": chunk_height,
-                        "texture_count": len(columns),
-                        "packing": "vertical_columns",
-                        "files": files,
-                    })
-                    outputs["chunks"].append(output_path / files["albedo"])
+                    def save_animation_chunk(columns, namespace_val=ns, category_val=cat):
+                        chunk_id = len(chunks)
+                        x_calc = 0
+                        for _s, img, _m in columns:
+                            tw = img.width
+                            x_calc = ((x_calc + tw - 1) // tw) * tw
+                            x_calc += tw
+                        chunk_width = max(16, x_calc)
+                        chunk_height = max(img.height for _s, img, _m in columns)
+                        images = {
+                            "albedo": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
+                            "overlay": Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0)),
+                        }
+                        if has_normal:
+                            images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))
+                        if has_specular:
+                            images["specular"] = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
 
-                pending_columns, pending_width = [], 0
-                for column in animation_columns:
-                    column_width = column[1].width
-                    aligned_next_width = ((pending_width + column_width - 1) // column_width) * column_width + column_width
-                    if pending_columns and aligned_next_width > self.max_chunk_size:
+                        x_offset = 0
+                        for texture_id, (rel_p, image, metadata) in enumerate(columns):
+                            target_w = image.width
+                            target_h = image.height
+                            x_offset = ((x_offset + target_w - 1) // target_w) * target_w
+
+                            for channel, img_canvas in images.items():
+                                if channel == "albedo":
+                                    source_img = image
+                                elif channel == "normal":
+                                    source_img = self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {}).get(rel_p)
+                                elif channel == "specular":
+                                    source_img = self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {}).get(rel_p)
+                                else:
+                                    source_img = None
+
+                                if source_img is not None:
+                                    src_w, src_h = source_img.size
+                                    if src_w != target_w:
+                                        scale_ratio = target_w / src_w
+                                        scaled_h = max(1, int(round(src_h * scale_ratio)))
+                                        source_img = source_img.resize((target_w, scaled_h), Image.NEAREST)
+                                        src_w, src_h = source_img.size
+
+                                    if src_h >= target_h:
+                                        img_canvas.paste(source_img.crop((0, 0, target_w, target_h)), (x_offset, 0))
+                                    else:
+                                        y = 0
+                                        while y < target_h:
+                                            h_chunk = min(src_h, target_h - y)
+                                            if h_chunk < src_h:
+                                                img_canvas.paste(source_img.crop((0, 0, target_w, h_chunk)), (x_offset, y))
+                                            else:
+                                                img_canvas.paste(source_img, (x_offset, y))
+                                            y += src_h
+
+                            frame_width = max(1, int(metadata.get("width", image.width)))
+                            frame_height = max(1, int(metadata.get("height", frame_width)))
+                            frame_count = max(1, image.height // frame_height)
+                            frametime = max(1, int(metadata.get("frametime", 2)))
+                            interpolate = bool(metadata.get("interpolate", False))
+                            stem = rel_p.split("/")[-1]
+                            canonical_key = f"{namespace_val}:{rel_p}"
+                            tint_info = self.biome_resolver.get_tint_info(stem)
+                            transparency = analyze_texture_transparency(image)
+
+                            anim_loc = {
+                                "texture_key": canonical_key,
+                                "category": category_val,
+                                "namespace": namespace_val,
+                                "chunk_id": chunk_id,
+                                "texture_id": texture_id,
+                                "kind": "animation",
+                                "is_opaque": transparency["is_opaque"],
+                                "alpha_mode": transparency["alpha_mode"],
+                                "min_alpha": transparency["min_alpha"],
+                                "pixel_x": x_offset,
+                                "pixel_y": 0,
+                                "preview_frame": 0,
+                                "frame_width": frame_width,
+                                "frame_height": frame_height,
+                                "frame_count": frame_count,
+                                "frametime": frametime,
+                                "interpolate": interpolate,
+                                "has_overlay": tint_info["has_overlay"],
+                                "overlay_texture": tint_info["overlay_texture"],
+                                "tint_category": tint_info["tint_category"],
+                                "tint_type": tint_info["tint_type"],
+                                "default_tint_weight": tint_info["tint_weight"],
+                                "default_base_tint_weight": tint_info.get("base_tint_weight", 1.0),
+                                "default_overlay_tint_weight": tint_info.get("overlay_tint_weight", 1.0),
+                                "is_hardcoded": tint_info["is_hardcoded"],
+                                "hardcoded_color": tint_info["hardcoded_color"],
+                                "hardcoded_hex": tint_info["hardcoded_hex"],
+                            }
+                            texture_locations[canonical_key] = anim_loc
+                            texture_locations[rel_p] = anim_loc
+                            raw_name = self._texture_name(namespace_val, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
+                            texture_locations[raw_name] = anim_loc
+                            if namespace_val == "minecraft":
+                                texture_locations[f"minecraft:{rel_p}"] = anim_loc
+                                texture_locations.setdefault(f"minecraft:{stem}", anim_loc)
+                                texture_locations.setdefault(stem, anim_loc)
+                                if rel_p.startswith("item/"):
+                                    texture_locations[f"item_{stem}"] = anim_loc
+                                    texture_locations[f"minecraft:item_{stem}"] = anim_loc
+                                elif rel_p.startswith("block/"):
+                                    texture_locations[stem] = anim_loc
+                                    texture_locations[f"minecraft:{stem}"] = anim_loc
+                            else:
+                                texture_locations[f"{namespace_val}:{stem}"] = anim_loc
+
+                            animations.append({
+                                "name": raw_name,
+                                "texture_key": canonical_key,
+                                "category": category_val,
+                                "namespace": namespace_val,
+                                "chunk_id": chunk_id,
+                                "texture_id": texture_id,
+                                "pixel_x": x_offset,
+                                "frame_count": frame_count,
+                                "frame_width": frame_width,
+                                "frame_height": frame_height,
+                                "frametime": frametime,
+                                "interpolate": interpolate,
+                                "preview_frame": 0,
+                                "mcmeta": metadata,
+                            })
+                            x_offset += target_w
+
+                        files = {}
+                        for channel, img_canvas in images.items():
+                            filename = f"{category_val}_chunk_{chunk_id:03d}_{channel}.png"
+                            img_canvas.save(output_path / filename)
+                            files[channel] = filename
+
+                        chunks.append({
+                            "chunk_id": chunk_id,
+                            "category": category_val,
+                            "namespace": namespace_val,
+                            "kind": "animation",
+                            "width": chunk_width,
+                            "height": chunk_height,
+                            "texture_count": len(columns),
+                            "packing": "vertical_columns",
+                            "files": files,
+                        })
+                        outputs["chunks"].append(output_path / files["albedo"])
+
+                    pending_columns, pending_width = [], 0
+                    for column in animation_columns:
+                        column_width = column[1].width
+                        aligned_next_width = ((pending_width + column_width - 1) // column_width) * column_width + column_width
+                        if pending_columns and aligned_next_width > self.max_chunk_size:
+                            save_animation_chunk(pending_columns)
+                            pending_columns, pending_width = [], 0
+                            aligned_next_width = column_width
+                        pending_columns.append(column)
+                        pending_width = aligned_next_width
+                    if pending_columns:
                         save_animation_chunk(pending_columns)
-                        pending_columns, pending_width = [], 0
-                        aligned_next_width = column_width
-                    pending_columns.append(column)
-                    pending_width = aligned_next_width
-                if pending_columns:
-                    save_animation_chunk(pending_columns)
 
         yield (0.85, "Baking block models and custom UV definitions...", None)
         baked_states = {}

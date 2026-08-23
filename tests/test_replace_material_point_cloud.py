@@ -103,7 +103,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         # Verify object's material slot was updated to atlas chunk material
         assigned_mat = self.obj.material_slots[0].material
         self.assertIsNotNone(assigned_mat)
-        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+        self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
 
         # Verify custom properties on material
         self.assertIn("mtk_atlas_width", assigned_mat)
@@ -501,7 +501,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
 
             cur_mat = self.obj.material_slots[0].material
             self.assertIsNotNone(cur_mat, f"Slot 0 is None on replacement {pack_idx + 1}")
-            self.assertTrue(cur_mat.name.startswith("mtk:minecraft:atlas_chunk_"))
+            self.assertTrue(cur_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
             assigned_materials.append(cur_mat)
 
             # Check that current material is distinct from previous replacements
