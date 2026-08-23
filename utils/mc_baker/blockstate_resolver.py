@@ -14,6 +14,7 @@ class VariantMatch(NamedTuple):
     rot_y: float = 0.0
     uvlock: bool = False
     weight: int = 1
+    variant_props: Optional[dict[str, str]] = None
 
 
 def parse_block_state_string(state_str: str) -> tuple[str, dict[str, str]]:
@@ -81,6 +82,14 @@ class BlockStateResolver:
 
             if "glazed_terracotta" in short_name:
                 rot_y = {"south": 0.0, "west": 90.0, "north": 180.0, "east": 270.0}.get(facing, 0.0)
+            elif short_name in ("dispenser", "dropper"):
+                if facing == "up":
+                    return [VariantMatch(model_id=f"minecraft:block/{short_name}_vertical", rot_x=0.0, rot_y=0.0, variant_props={"facing": "up"})]
+                elif facing == "down":
+                    return [VariantMatch(model_id=f"minecraft:block/{short_name}_vertical", rot_x=180.0, rot_y=0.0, variant_props={"facing": "down"})]
+                else:
+                    rot_y = {"north": 0.0, "east": 90.0, "south": 180.0, "west": 270.0}.get(facing, 0.0)
+                    return [VariantMatch(model_id=f"minecraft:block/{short_name}", rot_x=0.0, rot_y=rot_y, variant_props={"facing": facing or "north"})]
             elif short_name == "barrel":
                 # Vertical-base blocks (unrotated model points UP at +Y)
                 if facing == "down":
@@ -189,21 +198,22 @@ class BlockStateResolver:
 
             if score > best_score:
                 best_score = score
-                best_match = self._parse_variant_entry(v_entry)
+                best_match = self._parse_variant_entry(v_entry, variant_props=v_props)
 
         return best_match
 
-    def _parse_variant_entry(self, entry: Any) -> VariantMatch:
+    def _parse_variant_entry(self, entry: Any, variant_props: Optional[dict[str, str]] = None) -> VariantMatch:
         if isinstance(entry, list):
             entry = entry[0]
         if isinstance(entry, str):
-            return VariantMatch(model_id=entry)
+            return VariantMatch(model_id=entry, variant_props=variant_props)
         return VariantMatch(
             model_id=entry.get("model", ""),
             rot_x=float(entry.get("x", 0.0)),
             rot_y=float(entry.get("y", 0.0)),
             uvlock=bool(entry.get("uvlock", False)),
             weight=int(entry.get("weight", 1)),
+            variant_props=variant_props,
         )
 
     def _evaluate_multipart_when(self, when: dict[str, Any], props: dict[str, str]) -> bool:

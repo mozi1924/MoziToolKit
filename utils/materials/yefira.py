@@ -59,9 +59,9 @@ BLOCK_TO_TEXTURE_ALIASES: dict[str, list[str]] = {
     "redstone_wall_torch": ["redstone_torch", "redstone_torch_off"],
     "command_block": ["command_block_front", "command_block_back", "command_block_side", "command_block_conditional"],
     "repeating_command_block": ["repeating_command_block_front", "repeating_command_block_back", "repeating_command_block_side", "repeating_command_block_conditional"],
-    "chain_command_block": ["chain_command_block_front", "chain_command_block_back", "chain_command_block_side", "chain_command_block_conditional"],
-    "dispenser": ["dispenser_front", "dispenser_front_vertical", "dispenser_side", "dispenser_top", "furnace_top"],
-    "dropper": ["dropper_front", "dropper_front_vertical", "dropper_side", "dropper_top", "furnace_top"],
+    "dispenser": ["dispenser_front", "dispenser_front_vertical", "furnace_side", "furnace_top"],
+    "dropper": ["dropper_front", "dropper_front_vertical", "furnace_side", "furnace_top"],
+    "crafter": ["crafter_front", "crafter_front_powered", "crafter_top", "crafter_top_crafting", "crafter_top_triggered", "crafter_bottom", "crafter_side", "crafter_east", "crafter_west"],
     "observer": ["observer_front", "observer_back", "observer_top", "observer_side"],
     "piston": ["piston_top", "piston_bottom", "piston_side"],
     "sticky_piston": ["piston_top_sticky", "piston_bottom", "piston_side"],
@@ -490,12 +490,30 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                         break
 
         block_state_entry = mapping.get("block_states", {}).get(raw_state)
-        baked = None
+        if not block_state_entry and mapping.get("block_states"):
+            short_state = raw_state.removeprefix("minecraft:")
+            block_state_entry = mapping["block_states"].get(short_state)
+            if not block_state_entry:
+                try:
+                    resolved_matches = _GLOBAL_STATE_BAKER.state_resolver.resolve_state(raw_state)
+                    if resolved_matches:
+                        for match in resolved_matches:
+                            if match.variant_props:
+                                var_str = ",".join(f"{k}={v}" for k, v in sorted(match.variant_props.items()))
+                                for cand in (f"{block_name}[{var_str}]", f"minecraft:{block_name}[{var_str}]"):
+                                    if cand in mapping["block_states"]:
+                                        block_state_entry = mapping["block_states"][cand]
+                                        break
+                            if block_state_entry:
+                                break
+                except Exception:
+                    pass
+
+        baked = _GLOBAL_STATE_BAKER.bake_block_state(raw_state)
         if block_state_entry:
             is_opaque_list.append(1 if block_state_entry.get("is_opaque", True) else 0)
             emissive_list.append(1 if block_state_entry.get("is_emissive", False) or is_block_emissive(block_name, props) else 0)
         else:
-            baked = _GLOBAL_STATE_BAKER.bake_block_state(raw_state)
             is_opaque_list.append(int(baked.is_opaque) if entry is None or "is_opaque" not in entry else (1 if entry.get("is_opaque", True) else 0))
             emissive_list.append(1 if is_block_emissive(block_name, props) or baked.is_emissive else 0)
 
