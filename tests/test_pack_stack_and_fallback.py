@@ -108,11 +108,20 @@ class TestPackStackAndFallback(unittest.TestCase):
         self.assertEqual(cog_info["namespace"], "create")
 
     def test_atlas_generator_with_fallback_stack(self):
-        """Test that AtlasGenerator seamlessly fills missing textures from fallback packs in stack."""
+        """Test that AtlasGenerator seamlessly fills missing textures from fallback packs in stack and ignores items."""
         base_path = self._create_temp_pack("BaseVanilla", {
             ("minecraft", "dirt"): (16, 16, (100, 70, 30, 255)),
             ("minecraft", "oak_planks"): (16, 16, (180, 140, 90, 255)),
         })
+        # Add item and entity textures to base pack to verify they are NEVER loaded into block atlas
+        item_dir = base_path / "assets" / "minecraft" / "textures" / "item"
+        item_dir.mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (16, 16), (0, 255, 255, 255)).save(item_dir / "diamond_sword.png")
+
+        entity_dir = base_path / "assets" / "minecraft" / "textures" / "entity"
+        entity_dir.mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (64, 64), (0, 200, 0, 255)).save(entity_dir / "creeper.png")
+
         custom_path = self._create_temp_pack("PartialPack", {
             ("minecraft", "dirt"): (32, 32, (120, 80, 40, 255)),
             # oak_planks missing in partial pack!
@@ -125,6 +134,10 @@ class TestPackStackAndFallback(unittest.TestCase):
         # Both dirt and oak_planks should be loaded into static textures
         self.assertIn("dirt", gen.static_textures)
         self.assertIn("oak_planks", gen.static_textures)
+
+        # Item and entity textures must NEVER be in block atlas
+        self.assertNotIn("diamond_sword", gen.static_textures)
+        self.assertNotIn("creeper", gen.static_textures)
 
         # Dirt should come from PartialPack (32x32)
         self.assertEqual(gen.static_textures["dirt"].size, (32, 32))
