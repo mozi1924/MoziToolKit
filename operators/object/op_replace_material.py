@@ -29,10 +29,10 @@ class MOZI_OT_replace_material(bpy.types.Operator, ImportHelper):
         name="Material Mode",
         description="Choose how imported materials are structured and generated",
         items=[
-            ('STANDALONE', "Standalone", "Create individual materials for each texture (Default)"),
-            ('ATLAS', "Atlas", "Combine all textures into a single texture atlas material"),
+            ('ATLAS', "Atlas", "Combine all textures into a single texture atlas material (Default)"),
+            ('STANDALONE', "Standalone", "Create individual materials for each texture"),
         ],
-        default='STANDALONE',
+        default='ATLAS',
     )
 
     biome_preset: bpy.props.EnumProperty(
