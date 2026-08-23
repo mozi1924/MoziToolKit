@@ -84,6 +84,11 @@ from .resource_pack import (
     derive_texture_name,
 )
 
+from .pack_stack import (
+    ResourcePackStack,
+    get_configured_pack_stack,
+)
+
 from .provenance import (
     without_blender_suffix,
     canonical_texture_key,
@@ -239,6 +244,8 @@ __all__ = [
 
     # Resource Pack
     "ZipResourcePack",
+    "ResourcePackStack",
+    "get_configured_pack_stack",
     "get_cache_dir",
     "clear_resource_pack_cache",
     "get_pack_hash",

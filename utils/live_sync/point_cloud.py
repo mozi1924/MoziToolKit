@@ -24,12 +24,22 @@ from .constants import (
     face_attribute,
 )
 from ..mc_baker import StateBaker
+from ..materials.pack_stack import get_configured_pack_stack
 
-DEFAULT_CLIENT_JAR = "/Users/jaxlocke/26.2-Fabric.jar"
+_GLOBAL_STATE_BAKER = StateBaker()
 
-_GLOBAL_STATE_BAKER = StateBaker(
-    jar_path=DEFAULT_CLIENT_JAR if Path(DEFAULT_CLIENT_JAR).exists() else None
-)
+
+def refresh_baker_sources() -> None:
+    """Synchronize StateBaker resource loaders with the configured Resource Pack Stack."""
+    try:
+        composite_loader = get_configured_pack_stack().get_composite_loader()
+        if composite_loader:
+            _GLOBAL_STATE_BAKER.resource_loader = composite_loader
+            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model
+            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
+            _GLOBAL_STATE_BAKER.clear_cache()
+    except Exception as e:
+        logger.debug(f"Could not refresh baker sources from pack stack: {e}")
 
 
 def set_baker_resource_source(source_path: str | Path) -> None:
@@ -431,143 +441,11 @@ def _resolve_face_values(lut, parsed: ParsedBlock, default, is_coord: bool = Fal
             if not is_coord or isinstance(raw[0], (list, tuple)):
                 return [type(default)(v) if isinstance(default, int) else tuple(v) for v in raw[:6]]
 
-    # 2. Dynamic state-aware multi-face fallback from single-entry items in lut
-    name = parsed.name
-    props = parsed.props
-    is_lit = props.get("lit") == "true"
-
-    def get_val(k: str):
-        val = lut.get(k)
-        if val is None:
-            return None
-        if isinstance(val, (list, tuple)) and len(val) == 6:
-            return val
-        return type(default)(val) if isinstance(default, int) else tuple(val)
-
-    # Furnace, Blast Furnace, Smoker
-    if name in ("furnace", "blast_furnace", "smoker"):
-        top = get_val(f"{name}_top") or get_val(f"{name}_bottom") or get_val("furnace_top")
-        bottom = get_val(f"{name}_bottom") or top
-        side = get_val(f"{name}_side") or get_val("furnace_side")
-        front = (get_val(f"{name}_front_on") if is_lit else None) or get_val(f"{name}_front") or side
-        top = top or side or front or default
-        bottom = bottom or top
-        side = side or top
-        front = front or side
-        return [side, side, top, bottom, side, front]
-
-    # Beehive, Bee Nest
-    if name in ("beehive", "bee_nest"):
-        is_honey = props.get("honey_level") == "5"
-        top = get_val(f"{name}_top")
-        bottom = get_val(f"{name}_bottom") or top
-        side = get_val(f"{name}_side")
-        front = (get_val(f"{name}_front_honey") if is_honey else None) or get_val(f"{name}_front") or side
-        top = top or side or front or default
-        bottom = bottom or top
-        side = side or top
-        front = front or side
-        return [side, side, top, bottom, side, front]
-
-    # Respawn Anchor
-    if name == "respawn_anchor":
-        charges = props.get("charges", "0")
-        has_charges = str(charges) not in ("0", "")
-        top = (get_val("respawn_anchor_top") if has_charges else None) or get_val("respawn_anchor_top_off")
-        bottom = get_val("respawn_anchor_bottom") or top
-        side = get_val(f"respawn_anchor_side{charges}") or get_val("respawn_anchor_side0") or top
-        top = top or default
-        bottom = bottom or top
-        side = side or top
-        return [side, side, top, bottom, side, side]
-
-    # Carved Pumpkin, Jack o'Lantern
-    if name in ("carved_pumpkin", "jack_o_lantern"):
-        top = get_val("pumpkin_top")
-        side = get_val("pumpkin_side")
-        front = get_val(name) or side
-        top = top or side or front or default
-        side = side or top
-        front = front or side
-        return [side, side, top, top, side, front]
-
-    # Dispenser, Dropper
-    if name in ("dispenser", "dropper"):
-        top = get_val(f"{name}_top") or get_val("furnace_top")
-        side = get_val(f"{name}_side") or get_val("furnace_side")
-        front = get_val(f"{name}_front") or side
-        top = top or side or front or default
-        side = side or top
-        front = front or side
-        return [side, side, top, top, side, front]
-
-    # Observer
-    if name == "observer":
-        top = get_val("observer_top")
-        side = get_val("observer_side")
-        back = get_val("observer_back") or side
-        front = get_val("observer_front") or side
-        top = top or side or front or default
-        side = side or top
-        back = back or side
-        front = front or side
-        return [side, side, top, side, back, front]
-
-    # Barrel
-    if name == "barrel":
-        is_open = props.get("open") == "true"
-        top = (get_val("barrel_top_open") if is_open else None) or get_val("barrel_top")
-        bottom = get_val("barrel_bottom") or top
-        side = get_val("barrel_side") or top
-        top = top or default
-        bottom = bottom or top
-        side = side or top
-        return [side, side, top, bottom, side, side]
-
-    # Grass Block, Podzol, Mycelium
-    if name in ("grass_block", "podzol", "mycelium"):
-        snowy = props.get("snowy") == "true"
-        top = get_val(f"{name}_top")
-        bottom = get_val("dirt") or top
-        side = (get_val("grass_block_snow") if snowy else None) or get_val(f"{name}_side") or top
-        top = top or default
-        bottom = bottom or top
-        side = side or top
-        return [side, side, top, bottom, side, side]
-
-    # Red Mushroom Block, Brown Mushroom Block, Mushroom Stem
-    if name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
-        skin = get_val(name) or default
-        inside = get_val("mushroom_block_inside") or skin
-        top = inside if props.get("up") == "false" else skin
-        bottom = inside if props.get("down") == "false" else skin
-        east = inside if props.get("east") == "false" else skin
-        west = inside if props.get("west") == "false" else skin
-        south = inside if props.get("south") == "false" else skin
-        north = inside if props.get("north") == "false" else skin
-        return [east, west, top, bottom, south, north]
-
-    # Axis Blocks (Local Base: Top/Bottom=Top/End texture, Sides=Side/Bark texture)
-    is_axis_block = "axis" in props or name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
-    if is_axis_block:
-        top_tex = get_val(f"{name}_top") or get_val(f"{name}_end") or get_val(name)
-        side_tex = get_val(f"{name}_side") or get_val(name) or top_tex
-        top_tex = top_tex or side_tex or default
-        side_tex = side_tex or top_tex
-        return [side_tex, side_tex, top_tex, top_tex, side_tex, side_tex]
-
-    # Redstone Lamp
-    if name == "redstone_lamp":
-        lamp = (get_val("redstone_lamp_on") if is_lit else None) or get_val("redstone_lamp") or default
-        return [lamp] * 6
-
-    # Fallback to single entry
-    val = get_val(name) or default
+    # 2. Fallback to single entry by block name
+    val = lut.get(parsed.name, default)
+    if isinstance(val, (list, tuple)) and len(val) == 6:
+        return list(val)
     return [type(default)(val) if isinstance(default, int) else tuple(val)] * 6
-
-
-def _lookup_face_values(lut, parsed: ParsedBlock, default) -> list:
-    return _resolve_face_values(lut, parsed, default)
 
 
 def _write_float_attribute(mesh: bpy.types.Mesh, name: str, values: list[float]):

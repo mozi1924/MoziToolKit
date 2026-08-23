@@ -794,6 +794,12 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestYefiraMultifaceStates: {e}")
 
+    try:
+        from tests.test_pack_stack_and_fallback import TestPackStackAndFallback
+        suite.addTests(loader.loadTestsFromTestCase(TestPackStackAndFallback))
+    except Exception as e:
+        print(f"[Warning] Could not load TestPackStackAndFallback: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

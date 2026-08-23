@@ -204,18 +204,62 @@ def load_config() -> dict:
     return defaults
 
 
+def load_full_config() -> dict:
+    """Load full configuration root JSON object."""
+    filepath = get_config_path()
+    if filepath.exists():
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception as e:
+            print(f"[MoziToolKit] Error reading full config file {filepath}: {e}")
+    return {"version": 1, "views": get_default_presets(), "resource_packs": []}
+
+
 def save_config(views_data: dict) -> bool:
-    """Save configuration to user JSON file."""
+    """Save configuration views data to user JSON file while preserving resource_packs."""
     filepath = get_config_path()
     try:
+        full_data = load_full_config()
         normalized = _normalize_views_data(views_data)
-        data = {"version": 1, "views": normalized}
+        full_data["version"] = 1
+        full_data["views"] = normalized
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+            json.dump(full_data, f, indent=4, ensure_ascii=False)
         return True
     except Exception as e:
         print(f"[MoziToolKit] Error saving config file {filepath}: {e}")
         return False
+
+
+def load_pack_stack_config() -> list[dict]:
+    """Load configured resource pack / base JAR stack list from user JSON config."""
+    full_data = load_full_config()
+    packs = full_data.get("resource_packs", [])
+    return list(packs) if isinstance(packs, list) else []
+
+
+def save_pack_stack_config(pack_entries: list[dict]) -> bool:
+    """Save resource pack stack entries to user JSON config while preserving views."""
+    filepath = get_config_path()
+    try:
+        full_data = load_full_config()
+        full_data["version"] = 1
+        full_data["resource_packs"] = list(pack_entries)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(full_data, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"[MoziToolKit] Error saving pack stack config {filepath}: {e}")
+        return False
+
+
+def get_enabled_pack_entries() -> list[dict]:
+    """Return all active/enabled resource pack and JAR entries."""
+    entries = load_pack_stack_config()
+    return [e for e in entries if isinstance(e, dict) and e.get("enabled", True) and e.get("path")]
 
 
 def reset_config() -> dict:
@@ -229,7 +273,8 @@ def export_config(filepath: str, views_data: dict) -> bool:
     """Export configuration to specified filepath."""
     try:
         normalized = _normalize_views_data(views_data)
-        data = {"version": 1, "views": normalized}
+        packs = load_pack_stack_config()
+        data = {"version": 1, "views": normalized, "resource_packs": packs}
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
         return True
@@ -243,11 +288,14 @@ def import_config(filepath: str) -> dict:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-            views = data.get("views", data) if isinstance(data, dict) else None
-            if isinstance(views, dict):
-                normalized = _normalize_views_data(views)
-                save_config(normalized)
-                return normalized
+            if isinstance(data, dict):
+                views = data.get("views", data)
+                if isinstance(views, dict):
+                    normalized = _normalize_views_data(views)
+                    save_config(normalized)
+                if "resource_packs" in data and isinstance(data["resource_packs"], list):
+                    save_pack_stack_config(data["resource_packs"])
+                return views
     except Exception as e:
         print(f"[MoziToolKit] Error importing config from {filepath}: {e}")
     return None

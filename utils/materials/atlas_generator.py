@@ -14,10 +14,9 @@ from typing import Any
 
 from .constants import FACE_ORDER, ATLAS_FORMAT_VERSION
 from .biome import BiomeResolver
+from .pack_stack import ResourcePackStack, get_configured_pack_stack
 from ..system.dependencies import has_pillow
 from ..mc_baker import StateBaker, JarResourceLoader
-
-DEFAULT_CLIENT_JAR = "/Users/jaxlocke/26.2-Fabric.jar"
 
 try:
     from PIL import Image
@@ -140,10 +139,12 @@ class AtlasGenerator:
         resource_path: str | Path,
         default_tile_size: int = 16,
         max_chunk_size: int = 4096,
+        fallback_stack: Optional[ResourcePackStack] = None,
     ):
         self.resource_path = Path(resource_path)
         self.default_tile_size = default_tile_size
         self.max_chunk_size = max_chunk_size
+        self.fallback_stack = fallback_stack or get_configured_pack_stack(self.resource_path)
 
         self.static_textures = {}    # clean_stem -> Image
         self.animated_textures = {}  # clean_stem -> {image: Image, mcmeta: dict}
@@ -164,8 +165,8 @@ class AtlasGenerator:
 
         self.baker: Optional[StateBaker] = None
         try:
-            fallback_loader = JarResourceLoader(DEFAULT_CLIENT_JAR) if Path(DEFAULT_CLIENT_JAR).exists() else None
-            primary_loader = JarResourceLoader(self.resource_path, fallback_loader=fallback_loader)
+            composite_loader = self.fallback_stack.get_composite_loader() if self.fallback_stack else None
+            primary_loader = JarResourceLoader(self.resource_path, fallback_loader=composite_loader)
             self.baker = StateBaker(jar_path=None)
             self.baker.resource_loader = primary_loader
             self.baker.model_parser.model_loader_fn = primary_loader.load_model
@@ -174,7 +175,7 @@ class AtlasGenerator:
             self.baker = None
 
     def load_resources(self):
-        """Load PNG images, mcmeta animation data, and block models from source."""
+        """Load PNG images, mcmeta animation data, and block models from source and fallback stack."""
         # Pillow 12 can defer decoder registration until its first open.  In
         # Blender 5.2 that first open may fail after mesh creation; eagerly
         # initialize plugins before touching a resource pack.
@@ -189,7 +190,70 @@ class AtlasGenerator:
         else:
             raise ValueError(f"Unsupported resource format: {self.resource_path}")
 
+        # Populate missing fallback textures and models from enabled packs/JARs in the stack
+        if self.fallback_stack and self.fallback_stack.packs:
+            for fallback_pack in self.fallback_stack.packs:
+                try:
+                    if fallback_pack.zip_path.resolve() == self.resource_path.resolve():
+                        continue
+                except Exception:
+                    pass
+                self._load_fallback_from_pack(fallback_pack)
+
         self.biome_resolver.set_models(self.models)
+
+    def _load_fallback_from_pack(self, pack: ZipResourcePack):
+        """Populate missing textures and models from a lower-priority fallback pack."""
+        if pack.extract_dir:
+            models_dir = pack.extract_dir / "assets" / "minecraft" / "models" / "block"
+            if models_dir.exists():
+                for root, _, files in os.walk(models_dir):
+                    for f in files:
+                        if f.endswith(".json"):
+                            stem = f[:-5].strip().lower()
+                            if stem not in self.models:
+                                try:
+                                    with open(Path(root) / f, "r", encoding="utf-8") as fp:
+                                        self.models[stem] = json.load(fp)
+                                except Exception:
+                                    pass
+
+        for (ns, path_key), info in pack.texture_path_index.items():
+            stem = info.get("texture_name", path_key.split("/")[-1])
+            clean_name = self._texture_name(ns, stem)
+
+            if (ns in self.static_by_namespace and stem in self.static_by_namespace[ns]) or \
+               (ns in self.animated_by_namespace and stem in self.animated_by_namespace[ns]):
+                continue
+
+            albedo_file = info.get("albedo")
+            if not albedo_file or not Path(albedo_file).exists():
+                continue
+
+            try:
+                img = _safe_open_image(albedo_file)
+                mcmeta = info.get("albedo_mcmeta")
+                if is_animated_texture(img, mcmeta):
+                    anim_data = {"image": img, "mcmeta": mcmeta or {}}
+                    self.animated_textures[clean_name] = anim_data
+                    self.animated_by_namespace.setdefault(ns, {})[stem] = anim_data
+                else:
+                    self.static_textures[clean_name] = img
+                    self.static_by_namespace.setdefault(ns, {})[stem] = img
+
+                normal_file = info.get("normal")
+                if normal_file and Path(normal_file).exists():
+                    n_img = _safe_open_image(normal_file)
+                    self.normal_textures[clean_name] = n_img
+                    self.normal_by_namespace.setdefault(ns, {})[stem] = n_img
+
+                specular_file = info.get("specular")
+                if specular_file and Path(specular_file).exists():
+                    s_img = _safe_open_image(specular_file)
+                    self.specular_textures[clean_name] = s_img
+                    self.specular_by_namespace.setdefault(ns, {})[stem] = s_img
+            except Exception:
+                pass
 
     @staticmethod
     def _texture_name(namespace: str, stem: str) -> str:
