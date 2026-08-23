@@ -279,16 +279,6 @@ class PrecomputedStateAttr:
             else:
                 anim_frame_sizes.append((fw, fh, 0.0, 0.0))
 
-            if uv_r == 0.0 and block_face_uv_rot_lut:
-                rot_lut = block_face_uv_rot_lut.get(parsed.name) or block_face_uv_rot_lut.get(parsed.full_state)
-                if rot_lut and len(rot_lut) > face_idx:
-                    uv_r = float(rot_lut[face_idx])
-
-            if uv_b == (0.0, 0.0, 1.0, 1.0) and block_face_uv_bounds_lut:
-                b_lut = block_face_uv_bounds_lut.get(parsed.name) or block_face_uv_bounds_lut.get(parsed.full_state)
-                if b_lut and len(b_lut) > face_idx:
-                    uv_b = tuple(float(v) for v in b_lut[face_idx])
-
             uv_rots.append(uv_r)
             uv_bounds_list.append((float(uv_b[0]), float(uv_b[1]), float(uv_b[2]), float(uv_b[3])))
 

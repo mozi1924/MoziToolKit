@@ -125,6 +125,40 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
         sync_refresh_baker()
         yefira_refresh_baker()
 
+    def test_point_cloud_directional_uv_rotations_not_overwritten(self):
+        """Verify oak_log[axis=y] maintains 0.0 UV rotation and is not corrupted by atlas static LUT."""
+        from utils.live_sync import VoxelStorage, update_world_point_cloud
+        from utils.materials.atlas_integration import build_block_face_uv_rot_lut
+
+        storage = VoxelStorage()
+        storage.min_x = storage.min_y = storage.min_z = 0
+        storage.size_x = storage.size_y = storage.size_z = 1
+        storage.block_map[(0, 0, 0)] = "minecraft:oak_log[axis=y]"
+
+        mock_mapping = {
+            "materials": [
+                {
+                    "name": "minecraft:oak_log",
+                    "faces": {
+                        "+X": {"uv_rotation": 90.0},
+                        "-X": {"uv_rotation": 90.0},
+                        "+Y": {"uv_rotation": 0.0},
+                        "-Y": {"uv_rotation": 0.0},
+                        "+Z": {"uv_rotation": 90.0},
+                        "-Z": {"uv_rotation": 90.0},
+                    },
+                }
+            ]
+        }
+        rot_lut = build_block_face_uv_rot_lut(mock_mapping)
+
+        res = update_world_point_cloud(bpy.context, storage, block_face_uv_rot_lut=rot_lut)
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
+        for face in ("east", "west", "top", "bottom", "south", "north"):
+            val = mesh.attributes[f"mtk_uv_rot_{face}"].data[0].value
+            self.assertEqual(val, 0.0, f"Face {face} for oak_log[axis=y] had non-zero rotation: {val}")
+
 
 if __name__ == "__main__":
     unittest.main()
