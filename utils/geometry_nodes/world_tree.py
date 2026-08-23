@@ -64,7 +64,7 @@ logger = logging.getLogger("MoziToolKit.GeometryNodes")
 
 WORLD_TREE_NAME = "Yefira_WorldTree"
 WORLD_MODIFIER_NAME = "Yefira_WorldModifier"
-WORLD_TREE_SCHEMA_VERSION = 25
+WORLD_TREE_SCHEMA_VERSION = 26
 WORLD_TREE_SCHEMA_PROPERTY = "yefira:world_tree_schema"
 
 

@@ -110,7 +110,7 @@ class StateBaker:
             top = "minecraft:block/piston_top_sticky" if short_name == "sticky_piston" else "minecraft:block/piston_top"
             bottom = "minecraft:block/piston_bottom"
             side = "minecraft:block/piston_side"
-            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
+            return {"east": side, "west": side, "up": side, "down": side, "south": bottom, "north": top}
 
         # 7. Barrel
         if short_name == "barrel":
@@ -172,6 +172,37 @@ class StateBaker:
 
         return {d: fallback for d in MC_DIRECTIONS}
 
+    def _resolve_base_face_elements(
+        self,
+        short_name: str,
+        props: dict[str, str],
+        fallback_texture: str,
+        resolved_textures: dict[str, str]
+    ) -> list[dict]:
+        """Construct fallback 1x1x1 cuboid elements with canonical face rotations matching official model templates."""
+        base_face_textures = self._resolve_base_face_textures(short_name, props, fallback_texture)
+
+        rotations = {d: 0.0 for d in MC_DIRECTIONS}
+        if "command_block" in short_name or short_name in ("piston", "sticky_piston"):
+            rotations["down"] = 180.0
+            rotations["east"] = 90.0
+            rotations["west"] = 270.0
+        elif short_name == "observer":
+            rotations["up"] = 180.0
+        elif props.get("axis") in ("x", "z") or short_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block")):
+            if props.get("axis") in ("x", "z"):
+                rotations["up"] = 180.0
+
+        faces_dict = {}
+        for d in MC_DIRECTIONS:
+            tex = resolved_textures.get(d) or base_face_textures.get(d, fallback_texture)
+            face_entry = {"texture": tex}
+            if rotations.get(d, 0.0) != 0.0:
+                face_entry["rotation"] = rotations[d]
+            faces_dict[d] = face_entry
+
+        return [{"from": [0, 0, 0], "to": [16, 16, 16], "faces": faces_dict}]
+
     def bake_block_state(self, state_str: str) -> BakedModel:
         """
         Bake a BlockState string into a fully resolved BakedModel containing all elements,
@@ -202,18 +233,10 @@ class StateBaker:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                # Default 1x1x1 cube fallback with state-aware multi-face textures
-                base_face_textures = self._resolve_base_face_textures(short_name, props, fallback_texture)
-                raw_elements = [
-                    {
-                        "from": [0, 0, 0],
-                        "to": [16, 16, 16],
-                        "faces": {
-                            d: {"texture": resolved_model.get("textures", {}).get(d, base_face_textures.get(d, fallback_texture))}
-                            for d in MC_DIRECTIONS
-                        }
-                    }
-                ]
+                # Default 1x1x1 cube fallback with canonical rotation and state-aware multi-face textures
+                raw_elements = self._resolve_base_face_elements(
+                    short_name, props, fallback_texture, resolved_model.get("textures", {})
+                )
 
             for elem in raw_elements:
                 from_pos = tuple(elem.get("from", [0, 0, 0]))

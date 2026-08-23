@@ -81,7 +81,7 @@ class BlockStateResolver:
 
             if "glazed_terracotta" in short_name:
                 rot_y = {"south": 0.0, "west": 90.0, "north": 180.0, "east": 270.0}.get(facing, 0.0)
-            elif short_name in ("piston", "sticky_piston", "piston_head", "barrel"):
+            elif short_name == "barrel":
                 # Vertical-base blocks (unrotated model points UP at +Y)
                 if facing == "down":
                     rot_x = 180.0

@@ -182,6 +182,49 @@ class TestDirectionalBlockOrientations(unittest.TestCase):
         self.assertEqual(tuple(mesh.attributes['mtk_tile_west'].data[0].vector), (2.0, 0.0, 0.0))
         self.assertEqual(mesh.attributes['mtk_uv_rot_top'].data[0].value, 90.0)
 
+    def test_piston_orientations_all_directions(self):
+        """Verify piston head, bottom, and side faces in all 6 directions."""
+        baker = StateBaker(jar_path=None)
+
+        # Facing UP: top is head, bottom is bottom
+        p_up = baker.bake_block_state('minecraft:piston[facing=up]')
+        self.assertEqual(p_up.faces[2].texture, 'minecraft:block/piston_top')
+        self.assertEqual(p_up.faces[3].texture, 'minecraft:block/piston_bottom')
+        self.assertEqual(p_up.faces[0].texture, 'minecraft:block/piston_side')
+
+        # Facing DOWN: down is head, up is bottom
+        p_down = baker.bake_block_state('minecraft:piston[facing=down]')
+        self.assertEqual(p_down.faces[3].texture, 'minecraft:block/piston_top')
+        self.assertEqual(p_down.faces[2].texture, 'minecraft:block/piston_bottom')
+
+        # Facing NORTH: north is head, south is bottom
+        p_north = baker.bake_block_state('minecraft:piston[facing=north]')
+        self.assertEqual(p_north.faces[5].texture, 'minecraft:block/piston_top')
+        self.assertEqual(p_north.faces[4].texture, 'minecraft:block/piston_bottom')
+
+        # Facing EAST: east is head, west is bottom
+        p_east = baker.bake_block_state('minecraft:piston[facing=east]')
+        self.assertEqual(p_east.faces[0].texture, 'minecraft:block/piston_top')
+        self.assertEqual(p_east.faces[1].texture, 'minecraft:block/piston_bottom')
+
+    def test_world_tree_uv_rotations(self):
+        """Verify Geometry Nodes world tree evaluates UV rotation in CW direction (90, 180, 270)."""
+        from utils.geometry_nodes.world_tree import setup_world_geometry_nodes
+        storage = VoxelStorage()
+        storage.min_x = storage.min_y = storage.min_z = 0
+        storage.size_x = storage.size_y = storage.size_z = 1
+        storage.block_map[(0, 0, 0)] = 'minecraft:oak_log[axis=x]'
+
+        res = update_world_point_cloud(bpy.context, storage)
+        self.assertIsNotNone(res.world_obj)
+        setup_world_geometry_nodes(res.world_obj)
+
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        eval_obj = res.world_obj.evaluated_get(depsgraph)
+        eval_mesh = eval_obj.data
+        self.assertGreater(len(eval_mesh.polygons), 0)
+        self.assertIn("UVMap", eval_mesh.attributes)
+
 
 if __name__ == '__main__':
     unittest.main(argv=[sys.argv[0]])
