@@ -124,6 +124,8 @@ def update_world_point_cloud(
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return PointCloudBuildResult(None, 0, 0, 0, 0)
 
+    refresh_baker_sources()
+
     min_x, min_y, min_z = storage.min_x, storage.min_y, storage.min_z
     size_x, size_y, size_z = storage.size_x, storage.size_y, storage.size_z
     block_map = storage.block_map
@@ -264,7 +266,12 @@ def update_world_point_cloud(
             if atlas_mapping_textures:
                 if tex_name:
                     short_tex = tex_name.split(":", 1)[-1].removeprefix("block/")
-                    loc = atlas_mapping_textures.get(tex_name) or atlas_mapping_textures.get(short_tex)
+                    loc = (
+                        atlas_mapping_textures.get(tex_name)
+                        or atlas_mapping_textures.get(f"minecraft:{short_tex}")
+                        or atlas_mapping_textures.get(f"minecraft:block/{short_tex}")
+                        or atlas_mapping_textures.get(short_tex)
+                    )
                 if loc is None and parsed.name in atlas_mapping_textures:
                     loc = atlas_mapping_textures.get(parsed.name)
 
@@ -441,7 +448,28 @@ def _resolve_face_values(lut, parsed: ParsedBlock, default, is_coord: bool = Fal
             if not is_coord or isinstance(raw[0], (list, tuple)):
                 return [type(default)(v) if isinstance(default, int) else tuple(v) for v in raw[:6]]
 
-    # 2. Fallback to single entry by block name
+    # 2. Lookup via StateBaker resolved 6-face textures
+    try:
+        baked = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state)
+        face_vals = []
+        found_any = False
+        for face in baked.faces:
+            tex = face.texture
+            short_tex = tex.split(":", 1)[-1].removeprefix("block/")
+            val = lut.get(tex) or lut.get(short_tex) or lut.get(f"minecraft:{short_tex}") or lut.get(f"minecraft:block/{short_tex}")
+            if val is not None:
+                found_any = True
+                if isinstance(val, (list, tuple)) and len(val) == 6:
+                    val = val[0]
+                face_vals.append(type(default)(val) if isinstance(default, int) else tuple(val))
+            else:
+                face_vals.append(default)
+        if found_any:
+            return face_vals
+    except Exception:
+        pass
+
+    # 3. Fallback to single entry by block name
     val = lut.get(parsed.name, default)
     if isinstance(val, (list, tuple)) and len(val) == 6:
         return list(val)

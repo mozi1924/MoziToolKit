@@ -10,6 +10,7 @@ from ..utils.system import (
     load_config,
     load_pack_stack_config,
     save_pack_stack_config,
+    save_full_config,
     get_enabled_pack_entries,
     normalize_operator_id,
     reset_config,
@@ -35,24 +36,39 @@ def refresh_ui_and_menus(context=None):
         pass
 
 
-def on_item_label_changed(self, context):
-    """Callback when an item's custom label is edited."""
+def _safe_get_prefs(self_or_context=None):
+    if isinstance(self_or_context, bpy.types.Context):
+        prefs = get_prefs(self_or_context)
+        if prefs:
+            return prefs
+    if hasattr(self_or_context, "id_data") and hasattr(self_or_context.id_data, "resource_packs"):
+        return self_or_context.id_data
+    prefs = get_prefs(bpy.context)
+    if prefs:
+        return prefs
     try:
-        prefs = get_prefs(context)
-        save_prefs_to_json(prefs)
-        refresh_ui_and_menus(context)
+        for addon in bpy.context.preferences.addons.values():
+            if hasattr(addon, "preferences") and hasattr(addon.preferences, "resource_packs"):
+                return addon.preferences
     except Exception:
         pass
+    return None
+
+
+def on_item_label_changed(self, context):
+    """Callback when an item's custom label is edited."""
+    prefs = _safe_get_prefs(self)
+    if prefs:
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
 
 
 def on_pack_entry_changed(self, context):
     """Callback when a resource pack entry's attributes change."""
-    try:
-        prefs = get_prefs(context)
+    prefs = _safe_get_prefs(self)
+    if prefs:
         save_prefs_to_json(prefs)
         refresh_ui_and_menus(context)
-    except Exception:
-        pass
 
 
 def on_pack_path_changed(self, context):
@@ -60,7 +76,7 @@ def on_pack_path_changed(self, context):
     try:
         from pathlib import Path
         p = Path(self.path.strip())
-        if p.exists() and (not self.name or self.name.startswith("Resource Pack")):
+        if p.exists() and (not self.name or self.name.startswith("Resource Pack") or self.name == "New Resource Pack"):
             self.name = p.stem.replace("_", " ").replace("-", " ").title()
             if p.suffix.lower() == ".jar":
                 low = p.name.lower()
@@ -70,11 +86,12 @@ def on_pack_path_changed(self, context):
                     self.pack_type = "VANILLA"
             elif p.suffix.lower() == ".zip" or p.is_dir():
                 self.pack_type = "RESOURCE_PACK"
-        prefs = get_prefs(context)
-        save_prefs_to_json(prefs)
-        refresh_ui_and_menus(context)
     except Exception:
         pass
+    prefs = _safe_get_prefs(self)
+    if prefs:
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
 
 
 class MOZI_PG_resource_pack_entry(bpy.types.PropertyGroup):
@@ -263,11 +280,10 @@ def save_prefs_to_json(prefs):
                     "enabled": elem.enabled,
                 })
             views_data[view] = items_list
-    save_config(views_data)
 
     # Save resource packs stack
+    packs_list = []
     if hasattr(prefs, "resource_packs"):
-        packs_list = []
         for p_elem in prefs.resource_packs:
             packs_list.append({
                 "name": p_elem.name,
@@ -275,7 +291,7 @@ def save_prefs_to_json(prefs):
                 "enabled": p_elem.enabled,
                 "pack_type": p_elem.pack_type,
             })
-        save_pack_stack_config(packs_list)
+    save_full_config(views_data=views_data, pack_entries=packs_list)
 
 
 class MOZI_OT_pack_add(bpy.types.Operator):
@@ -575,7 +591,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
     is_initialized: BoolProperty(default=False)
 
     def draw(self, context):
-        if not self.is_initialized or (not len(self.added_mesh) and not len(self.unadded_mesh) and not len(self.resource_packs)):
+        if not self.is_initialized:
             sync_prefs_from_json(self)
             self.is_initialized = True
 

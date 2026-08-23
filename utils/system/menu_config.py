@@ -2,9 +2,13 @@
 MoziToolKit Context Menu Configuration & Registry Manager.
 """
 
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
+from typing import Any, Optional, Union
+
 try:
     import bpy
 except ImportError:
@@ -218,20 +222,27 @@ def load_full_config() -> dict:
     return {"version": 1, "views": get_default_presets(), "resource_packs": []}
 
 
-def save_config(views_data: dict) -> bool:
-    """Save configuration views data to user JSON file while preserving resource_packs."""
+def save_full_config(views_data: Optional[dict] = None, pack_entries: Optional[list[dict]] = None) -> bool:
+    """Atomically update and save configuration views and resource pack stack to user JSON file."""
     filepath = get_config_path()
     try:
         full_data = load_full_config()
-        normalized = _normalize_views_data(views_data)
         full_data["version"] = 1
-        full_data["views"] = normalized
+        if views_data is not None:
+            full_data["views"] = _normalize_views_data(views_data)
+        if pack_entries is not None:
+            full_data["resource_packs"] = list(pack_entries)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(full_data, f, indent=4, ensure_ascii=False)
         return True
     except Exception as e:
-        print(f"[MoziToolKit] Error saving config file {filepath}: {e}")
+        print(f"[MoziToolKit] Error saving full config file {filepath}: {e}")
         return False
+
+
+def save_config(views_data: dict) -> bool:
+    """Save configuration views data to user JSON file while preserving resource_packs."""
+    return save_full_config(views_data=views_data)
 
 
 def load_pack_stack_config() -> list[dict]:
@@ -243,17 +254,7 @@ def load_pack_stack_config() -> list[dict]:
 
 def save_pack_stack_config(pack_entries: list[dict]) -> bool:
     """Save resource pack stack entries to user JSON config while preserving views."""
-    filepath = get_config_path()
-    try:
-        full_data = load_full_config()
-        full_data["version"] = 1
-        full_data["resource_packs"] = list(pack_entries)
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(full_data, f, indent=4, ensure_ascii=False)
-        return True
-    except Exception as e:
-        print(f"[MoziToolKit] Error saving pack stack config {filepath}: {e}")
-        return False
+    return save_full_config(pack_entries=pack_entries)
 
 
 def get_enabled_pack_entries() -> list[dict]:

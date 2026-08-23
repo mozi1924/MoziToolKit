@@ -75,10 +75,33 @@ class BlockStateResolver:
             # Fallback to direct model name with directional/facing rotation heuristic
             short_name = block_id.split(":", 1)[-1]
             facing = props.get("facing")
+            axis = props.get("axis")
             rot_y = 0.0
             rot_x = 0.0
+
             if "glazed_terracotta" in short_name:
                 rot_y = {"south": 0.0, "west": 90.0, "north": 180.0, "east": 270.0}.get(facing, 0.0)
+            elif short_name in ("piston", "sticky_piston", "piston_head", "barrel"):
+                # Vertical-base blocks (unrotated model points UP at +Y)
+                if facing == "down":
+                    rot_x = 180.0
+                elif facing == "north":
+                    rot_x = 90.0
+                elif facing == "south":
+                    rot_x = 90.0
+                    rot_y = 180.0
+                elif facing == "east":
+                    rot_x = 90.0
+                    rot_y = 90.0
+                elif facing == "west":
+                    rot_x = 90.0
+                    rot_y = 270.0
+            elif axis:
+                if axis == "x":
+                    rot_x = 90.0
+                    rot_y = 90.0
+                elif axis == "z":
+                    rot_x = 90.0
             elif facing:
                 rot_y = {"north": 0.0, "east": 90.0, "south": 180.0, "west": 270.0}.get(facing, 0.0)
                 if facing == "up":
@@ -126,15 +149,49 @@ class BlockStateResolver:
         if exact_key in variants:
             return self._parse_variant_entry(variants[exact_key])
 
-        # Try permutations or subset matching
+        # Match variants by scoring compatibility against props
+        best_match = None
+        best_score = -999999
+
         for v_key, v_entry in variants.items():
             if not v_key:
+                if not props and best_score < 0:
+                    best_score = 0
+                    best_match = self._parse_variant_entry(v_entry)
                 continue
             v_props = dict(pair.split("=", 1) for pair in v_key.split(",") if "=" in pair)
-            if all(props.get(k) == v for k, v in v_props.items()):
-                return self._parse_variant_entry(v_entry)
 
-        return None
+            # Compatibility: every property in props must match v_props if present in v_props
+            compatible = True
+            matched_keys = 0
+            for k, v in props.items():
+                if k in v_props:
+                    if v_props[k] != v:
+                        compatible = False
+                        break
+                    matched_keys += 1
+
+            if not compatible:
+                continue
+
+            score = matched_keys * 100
+            # Full exact match of all keys in variant
+            if len(v_props) == len(props):
+                score += 1000
+
+            # Score keys in v_props that are not specified in props: prefer standard default states
+            for vk, vv in v_props.items():
+                if vk not in props:
+                    if vv in ("false", "0", "none", "straight", "bottom", "lower", "single", "foot", "normal", "side"):
+                        score += 10
+                    elif vv in ("true", "1", "top", "upper", "head", "inner", "outer", "double"):
+                        score -= 10
+
+            if score > best_score:
+                best_score = score
+                best_match = self._parse_variant_entry(v_entry)
+
+        return best_match
 
     def _parse_variant_entry(self, entry: Any) -> VariantMatch:
         if isinstance(entry, list):

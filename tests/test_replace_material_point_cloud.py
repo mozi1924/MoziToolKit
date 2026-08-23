@@ -305,7 +305,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
             },
         }
 
-        self.mesh.attributes["block_state"].data[0].value = b"minecraft:command_block"
+        self.mesh.attributes["block_state"].data[0].value = b"minecraft:command_block[facing=up]"
         self.mesh.attributes["block_state"].data[1].value = b"minecraft:sea_lantern"
 
         setup_yefira_point_cloud_attributes(
