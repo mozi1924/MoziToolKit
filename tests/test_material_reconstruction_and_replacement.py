@@ -152,33 +152,51 @@ class TestMaterialModeDetection(unittest.TestCase):
 class TestCrossModeMaterialReplacement(unittest.TestCase):
     """Integration test for Standalone <-> Atlas cross-mode replacements with UV restoration."""
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         import tempfile
+        if not HAS_BPY:
+            return
+
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.pack_dir = Path(cls.temp_dir.name)
+        tex_dir = cls.pack_dir / "assets/minecraft/textures/block"
+        tex_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create base test textures
+        for name, w, h in [
+            ("stone", 16, 16),
+            ("dirt", 16, 16),
+            ("oak_leaves", 16, 16),
+            ("water_still", 16, 512),
+        ]:
+            img = bpy.data.images.new(f"temp_init_{name}", width=w, height=h)
+            img.filepath_raw = str(tex_dir / f"{name}.png")
+            img.file_format = "PNG"
+            img.save()
+            bpy.data.images.remove(img)
+
+        # Animation mcmeta for water_still
+        (tex_dir / "water_still.png.mcmeta").write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, "temp_dir"):
+            cls.temp_dir.cleanup()
+
+    def setUp(self):
         if not HAS_BPY:
             self.skipTest("bpy not available")
 
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.pack_dir = Path(self.temp_dir.name)
-        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
-        tex_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create test texture: stone.png
-        stone_file = tex_dir / "stone.png"
-        img_stone = bpy.data.images.new("temp_stone", width=16, height=16)
-        img_stone.filepath_raw = str(stone_file)
-        img_stone.file_format = "PNG"
-        img_stone.save()
-        bpy.data.images.remove(img_stone)
-
-        # Create test texture: dirt.png
-        dirt_file = tex_dir / "dirt.png"
-        img_dirt = bpy.data.images.new("temp_dirt", width=16, height=16)
-        img_dirt.filepath_raw = str(dirt_file)
-        img_dirt.file_format = "PNG"
-        img_dirt.save()
-        bpy.data.images.remove(img_dirt)
-
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        # Clear scene objects and materials
+        if bpy.context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            bpy.data.meshes.remove(mesh, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            bpy.data.materials.remove(mat, do_unlink=True)
 
         # Create a cube object
         bpy.ops.mesh.primitive_cube_add(size=2.0)
@@ -191,17 +209,30 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         uv_layer = self.cube.data.uv_layers.active
         self.original_uv_coords = [(item.uv.x, item.uv.y) for item in uv_layer.data]
 
-    def tearDown(self):
-        if hasattr(self, "temp_dir"):
-            self.temp_dir.cleanup()
+    def test_texture_finder_clean_fallback(self):
+        """Verify find_face_image returns None when face material has no image instead of grabbing random images."""
+        from utils.materials.texture_finder import find_face_image
+
+        dummy_img = bpy.data.images.new(name="UnrelatedEnvironmentHDR", width=128, height=128)
+        bpy.ops.mesh.primitive_plane_add()
+        obj = bpy.context.active_object
+        mat = bpy.data.materials.new(name="NoTextureMaterial")
+        obj.data.materials.append(mat)
+
+        poly = obj.data.polygons[0]
+        img = find_face_image(poly, obj)
+        self.assertIsNone(img, "find_face_image should return None for material without image nodes")
+
+        bpy.data.objects.remove(obj)
+        bpy.data.materials.remove(mat)
+        bpy.data.images.remove(dummy_img)
 
     def test_standalone_to_atlas_to_standalone_cycle(self):
-        # Step 1: Initial Standalone Replace
         params_standalone = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res1, ctx1 = run_preset_pipeline("replace_material", bpy.context, params=params_standalone, target_objects=[self.cube])
         self.assertTrue(res1.is_success, f"res1 failed: {res1.message} - reports: {ctx1.reports}")
@@ -216,8 +247,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         params_atlas = {
             "zip_path": str(self.pack_dir),
             "material_mode": "ATLAS",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_atlas, target_objects=[self.cube])
         self.assertTrue(res2.is_success, f"res2 failed: {res2.message} - reports: {ctx2.reports}")
@@ -259,8 +290,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res, _ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success)
@@ -273,8 +304,6 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         leaves_file = self.pack_dir / "assets/minecraft/textures/block/oak_leaves.png"
         leaves_img = bpy.data.images.new("oak_leaves", width=16, height=16)
         leaves_img.filepath_raw = str(leaves_file)
-        leaves_img.file_format = "PNG"
-        leaves_img.save()
 
         internal = bpy.data.materials.new(name="internal_face_deletion.001")
         internal["ice_cube.material_id"] = "internal"
@@ -287,8 +316,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, ctx.reports)
@@ -308,8 +337,6 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         leaves_file = self.pack_dir / "assets/minecraft/textures/block/oak_leaves.png"
         leaves_img = bpy.data.images.new("oak_leaves_atlas", width=16, height=16)
         leaves_img.filepath_raw = str(leaves_file)
-        leaves_img.file_format = "PNG"
-        leaves_img.save()
 
         internal = bpy.data.materials.new(name="internal_face_deletion.002")
         internal["flip_fluid_material_library"] = True
@@ -322,8 +349,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "ATLAS",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, ctx.reports)
@@ -356,7 +383,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         from utils.materials import ZipResourcePack
 
         mod_tex_dir = self.pack_dir / "assets" / "examplemod" / "textures" / "block"
-        mod_tex_dir.mkdir(parents=True)
+        mod_tex_dir.mkdir(parents=True, exist_ok=True)
         img = bpy.data.images.new("mod_copper", width=16, height=16)
         img.filepath_raw = str(mod_tex_dir / "copper.png")
         img.file_format = "PNG"
@@ -380,7 +407,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             self.skipTest("Pillow is not installed in current environment")
 
         mod_tex_dir = self.pack_dir / "assets" / "examplemod" / "textures" / "block"
-        mod_tex_dir.mkdir(parents=True)
+        mod_tex_dir.mkdir(parents=True, exist_ok=True)
         img = bpy.data.images.new("mod_copper_atlas", width=16, height=16)
         img.filepath_raw = str(mod_tex_dir / "copper.png")
         img.file_format = "PNG"
@@ -391,7 +418,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         atlas_params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "ATLAS",
-            "pack_textures": True,
+            "pack_textures": False,
             "use_cache": False,
         }
         res_atlas, ctx_atlas = run_preset_pipeline(
@@ -405,7 +432,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         origin_values = [item.value.decode("utf-8") for item in self.cube.data.attributes["mtk_source_origin"].data]
         self.assertEqual(set(origin_values), {"generic"})
 
-        standalone_params = dict(atlas_params, material_mode="STANDALONE")
+        standalone_params = dict(atlas_params, material_mode="STANDALONE", use_cache=True)
         res_standalone, ctx_standalone = run_preset_pipeline(
             "replace_material", bpy.context, params=standalone_params, target_objects=[self.cube]
         )
@@ -432,7 +459,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         from utils.materials import ZipResourcePack
 
         mod_tex_dir = self.pack_dir / "assets" / "farmersdelight" / "textures" / "block"
-        mod_tex_dir.mkdir(parents=True)
+        mod_tex_dir.mkdir(parents=True, exist_ok=True)
         img = bpy.data.images.new("fd_cutting_board", width=16, height=16)
         img.filepath_raw = str(mod_tex_dir / "cutting_board.png")
         img.file_format = "PNG"
@@ -453,24 +480,13 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
 
     def test_standalone_animated_material_bakes_uv_to_frame_0(self):
         """Standalone mode must bake animated texture UVs into Frame 0 (top of strip: [1-fh/ih, 1])."""
-        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
-        water_file = tex_dir / "water_still.png"
-        img_water = bpy.data.images.new("temp_water", width=16, height=512)
-        img_water.filepath_raw = str(water_file)
-        img_water.file_format = "PNG"
-        img_water.save()
-        bpy.data.images.remove(img_water)
-
-        mcmeta_file = tex_dir / "water_still.png.mcmeta"
-        mcmeta_file.write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
-
         self.cube.data.materials[0].name = "water_still"
 
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, ctx.reports)
@@ -478,12 +494,10 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         assigned_mat = self.cube.material_slots[0].material
         self.assertTrue(assigned_mat.name.startswith("mtk:minecraft:water_still"))
 
-        # Verify MC_Animated_UV_Mapping node has Atlas Mode == 1.0 (Baked Frame 0 mode)
         uv_node = next((n for n in assigned_mat.node_tree.nodes if n.type == "GROUP" and n.node_tree and "UV_Mapping" in n.node_tree.name), None)
         self.assertIsNotNone(uv_node)
         self.assertEqual(float(uv_node.inputs["Atlas Mode"].default_value), 1.0)
 
-        # Verify UV coordinates on the mesh are baked into Frame 0: V in [31/32, 1.0]
         uv_layer = self.cube.data.uv_layers.active
         v_coords = [item.uv.y for item in uv_layer.data]
         min_v = min(v_coords)
@@ -497,25 +511,13 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         if not has_pillow():
             self.skipTest("Pillow not installed in test environment")
 
-        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
-        water_file = tex_dir / "water_still.png"
-        img_water = bpy.data.images.new("temp_water_rt", width=16, height=512)
-        img_water.filepath_raw = str(water_file)
-        img_water.file_format = "PNG"
-        img_water.save()
-        bpy.data.images.remove(img_water)
-
-        mcmeta_file = tex_dir / "water_still.png.mcmeta"
-        mcmeta_file.write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
-
         self.cube.data.materials[0].name = "water_still"
 
-        # 1. Standalone Replace
         params_st = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res1, ctx1 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
         self.assertTrue(res1.is_success, ctx1.reports)
@@ -528,8 +530,8 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         params_at = {
             "zip_path": str(self.pack_dir),
             "material_mode": "ATLAS",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_at, target_objects=[self.cube])
         self.assertTrue(res2.is_success, ctx2.reports)
@@ -547,26 +549,39 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
 
     def test_standalone_animated_to_static_to_animated_roundtrip(self):
         """Switching between Standalone animated and static textures properly adjusts UVs."""
-        tex_dir = self.pack_dir / "assets/minecraft/textures/block"
-        water_file = tex_dir / "water_still.png"
-        img_water = bpy.data.images.new("temp_water_cycle", width=16, height=512)
-        img_water.filepath_raw = str(water_file)
-        img_water.file_format = "PNG"
-        img_water.save()
-        bpy.data.images.remove(img_water)
-
-        mcmeta_file = tex_dir / "water_still.png.mcmeta"
-        mcmeta_file.write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
-
         self.cube.data.materials[0].name = "water_still"
 
         params_st = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
-            "use_cache": False,
+            "pack_textures": False,
+            "use_cache": True,
         }
         # 1. water_still (animated) -> Frame 0 UV [31/32, 1.0]
+        res1, ctx1 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res1.is_success, ctx1.reports)
+        uv_layer = self.cube.data.uv_layers.active
+        self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 1.0 - 16.0 / 512.0, places=4)
+        self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
+
+        # 2. Change face provenance to stone (static) -> UV restored to local [0, 1]
+        from utils.materials import write_face_source_provenance
+        write_face_source_provenance(self.cube.data, ["minecraft:stone"] * len(self.cube.data.polygons), ["TEST"] * len(self.cube.data.polygons))
+
+        res2, ctx2 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res2.is_success, ctx2.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:stone"))
+        self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 0.0, places=4)
+        self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
+
+        # 3. Change face provenance back to water_still (animated) -> Frame 0 UV [31/32, 1.0]
+        write_face_source_provenance(self.cube.data, ["minecraft:water_still"] * len(self.cube.data.polygons), ["TEST"] * len(self.cube.data.polygons))
+
+        res3, ctx3 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
+        self.assertTrue(res3.is_success, ctx3.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:water_still"))
+        self.assertAlmostEqual(min(item.uv.y for item in uv_layer.data), 1.0 - 16.0 / 512.0, places=4)
+        self.assertAlmostEqual(max(item.uv.y for item in uv_layer.data), 1.0, places=4)
         res1, ctx1 = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[self.cube])
         self.assertTrue(res1.is_success, ctx1.reports)
         uv_layer = self.cube.data.uv_layers.active
@@ -655,7 +670,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
-            "pack_textures": True,
+            "pack_textures": False,
             "use_cache": False,
         }
         res, ctx = run_preset_pipeline(
