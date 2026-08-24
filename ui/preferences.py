@@ -280,8 +280,6 @@ def sync_prefs_from_json(prefs):
         prefs.biome_preset = mat_settings.get("biome_preset", "PLAINS")
     if hasattr(prefs, "pack_textures"):
         prefs.pack_textures = bool(mat_settings.get("pack_textures", True))
-    if hasattr(prefs, "use_cache"):
-        prefs.use_cache = bool(mat_settings.get("use_cache", True))
 
 
 def save_prefs_to_json(prefs):
@@ -318,7 +316,6 @@ def save_prefs_to_json(prefs):
         "material_mode": getattr(prefs, "material_mode", "ATLAS"),
         "biome_preset": getattr(prefs, "biome_preset", "PLAINS"),
         "pack_textures": getattr(prefs, "pack_textures", True),
-        "use_cache": getattr(prefs, "use_cache", True),
     }
 
     save_full_config(views_data=views_data, pack_entries=packs_list, material_settings=mat_settings)
@@ -633,13 +630,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         update=on_material_setting_changed,
     )
 
-    use_cache: BoolProperty(
-        name="Use Resource Pack Cache",
-        description="Cache extracted pack in Blender temp directory for faster reuse across projects",
-        default=True,
-        update=on_material_setting_changed,
-    )
-
     context_menu_tab: EnumProperty(
         name="Context Menu View",
         description="Select view context to configure right-click menu",
@@ -770,7 +760,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         row_opts = m_col.row(align=True)
         row_opts.prop(self, "pack_textures")
-        row_opts.prop(self, "use_cache")
 
         row_precompile = mat_box.row(align=True)
         row_precompile.operator("mozi.precompile_cache", text="Precompile / Rebuild Stack Atlas Cache", icon="FILE_REFRESH")

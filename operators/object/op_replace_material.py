@@ -35,7 +35,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         material_mode = getattr(prefs, "material_mode", "ATLAS") if prefs else "ATLAS"
         biome_preset = getattr(prefs, "biome_preset", "PLAINS") if prefs else "PLAINS"
         pack_textures = getattr(prefs, "pack_textures", True) if prefs else True
-        use_cache = getattr(prefs, "use_cache", True) if prefs else True
 
         is_yefira = has_yefira_objects(context.selected_objects)
         effective_mode = 'ATLAS' if is_yefira else material_mode
@@ -45,7 +44,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             "zip_path": str(pack_stack.packs[0].zip_path if pack_stack.packs[0].zip_path else pack_stack.packs[0].extract_dir),
             "material_mode": effective_mode,
             "pack_textures": pack_textures,
-            "use_cache": use_cache,
             "biome_preset": biome_preset,
         }
 

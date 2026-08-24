@@ -227,7 +227,6 @@ def load_full_config() -> dict:
             "material_mode": "ATLAS",
             "biome_preset": "PLAINS",
             "pack_textures": True,
-            "use_cache": True,
         }
     }
 
@@ -281,7 +280,6 @@ def load_material_settings_config() -> dict:
         "material_mode": "ATLAS",
         "biome_preset": "PLAINS",
         "pack_textures": True,
-        "use_cache": True,
     }
     if isinstance(settings, dict):
         default_settings.update(settings)

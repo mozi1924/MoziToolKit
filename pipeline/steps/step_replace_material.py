@@ -306,13 +306,12 @@ class StepReplaceMaterial(PipelineStep):
         pack_stack = pipeline_context.get_param("pack_stack")
         zip_path = pipeline_context.get_param("zip_path")
         pack_textures = pipeline_context.get_param("pack_textures", True)
-        use_cache = pipeline_context.get_param("use_cache", True)
         material_mode = pipeline_context.get_param("material_mode", "ATLAS")
 
         if not pack_stack:
             if zip_path and Path(zip_path).exists():
                 try:
-                    pack = ZipResourcePack(zip_path, use_cache=use_cache)
+                    pack = ZipResourcePack(zip_path)
                     pack_stack = get_configured_pack_stack(pack)
                 except Exception as e:
                     yield StepResult.failed(f"Failed to load resource pack: {e}")
@@ -383,7 +382,6 @@ class StepReplaceMaterial(PipelineStep):
             yield from self._execute_atlas_mode_iter(
                 pipeline_context, pack, valid_objects, pack_textures,
                 biome_preset=biome_preset, pack_stack=pack_stack,
-                use_cache=use_cache,
             )
         else:
             yield from self._execute_standalone_mode_iter(
@@ -395,7 +393,6 @@ class StepReplaceMaterial(PipelineStep):
         self, pipeline_context, pack: ZipResourcePack, valid_objects: list,
         pack_textures: bool, biome_preset: str = "PLAINS",
         pack_stack: Optional[ResourcePackStack] = None,
-        use_cache: bool = True,
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
         effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
@@ -415,12 +412,10 @@ class StepReplaceMaterial(PipelineStep):
             ATLAS_CATEGORY_DECORATED_POT,
         }
         cache_root = get_cache_dir()
-        # Do not share a full-scene atlas cache with the slim Yefira cache:
-        # otherwise a prior full run would silently restore unused UI chunks.
         atlas_dir = cache_root / effective_pack_hash / ("yefira_world" if yefira_only else "full_scene")
         mapping_path = atlas_dir / "atlas_mapping.json"
 
-        from ...utils.mc_baker import get_shared_state_baker, clear_shared_baker_cache
+        from ...utils.mc_baker import get_shared_state_baker
         from ...utils.live_sync.point_cloud import clear_state_cache
 
         baker = get_shared_state_baker()
@@ -444,14 +439,7 @@ class StepReplaceMaterial(PipelineStep):
             return
 
         def atlas_cache_is_complete(mapping: dict) -> bool:
-            """Only reuse an atlas when its mapping and every referenced image exist.
-
-            ``atlas_mapping.json`` is written after the image chunks, but a
-            cancelled process, cache cleaner, or interrupted filesystem write
-            can still leave a valid JSON file next to missing/corrupt images.
-            Treating that as a cache hit produces Blender's opaque "failed to
-            load" warning and previously required restarting Blender.
-            """
+            """Only reuse an atlas when its mapping and every referenced image exist."""
             if (
                 mapping.get("format_version") != ATLAS_FORMAT_VERSION
                 or not mapping.get("chunks")
@@ -473,7 +461,7 @@ class StepReplaceMaterial(PipelineStep):
             return True
 
         cache_is_current = False
-        if use_cache and mapping_path.exists():
+        if mapping_path.exists():
             try:
                 with open(mapping_path, "r", encoding="utf-8") as fp:
                     cached_mapping = json.load(fp)
