@@ -155,11 +155,16 @@ class AtlasGenerator:
         default_tile_size: int = 16,
         max_chunk_size: int = 4096,
         fallback_stack: Optional[ResourcePackStack] = None,
+        included_categories: Optional[set[str]] = None,
     ):
         self.resource_path = Path(resource_path)
         self.default_tile_size = default_tile_size
         self.max_chunk_size = max_chunk_size
         self.fallback_stack = fallback_stack
+        # ``None`` preserves the full resource-pack behavior used for normal
+        # mesh replacement.  Yefira world replacement supplies a focused set
+        # so UI/particle atlases are never decoded or brought into Blender.
+        self.included_categories = frozenset(included_categories) if included_categories else None
 
         self.static_textures = {}    # clean_stem -> Image
         self.animated_textures = {}  # clean_stem -> {image: Image, mcmeta: dict}
@@ -194,6 +199,9 @@ class AtlasGenerator:
             self.baker.state_resolver.blockstate_loader_fn = primary_loader.load_blockstate
         except Exception:
             self.baker = None
+
+    def _includes_category(self, category: str) -> bool:
+        return self.included_categories is None or category in self.included_categories
 
     def load_resources(self):
         """Load PNG images, mcmeta animation data, and models from source and fallback stack across all categories."""
@@ -258,6 +266,8 @@ class AtlasGenerator:
         for (ns, path_key), info in pack.texture_path_index.items():
             base_rel = path_key.strip("/")
             category = classify_texture_category(base_rel)
+            if not self._includes_category(category):
+                continue
             if base_rel.startswith("block/"):
                 clean_name = self._texture_name(ns, base_rel.removeprefix("block/"))
                 base_stem = base_rel.removeprefix("block/")
@@ -378,6 +388,8 @@ class AtlasGenerator:
                         channel = "albedo"
 
                     category = classify_texture_category(base_rel)
+                    if not self._includes_category(category):
+                        continue
                     if base_rel.startswith("block/"):
                         clean_stem = self._texture_name(ns, base_rel.removeprefix("block/"))
                         base_stem = base_rel.removeprefix("block/")
@@ -500,6 +512,8 @@ class AtlasGenerator:
                             channel = "albedo"
 
                         category = classify_texture_category(base_rel)
+                        if not self._includes_category(category):
+                            continue
                         if base_rel.startswith("block/"):
                             clean_stem = self._texture_name(ns, base_rel.removeprefix("block/"))
                             base_stem = base_rel.removeprefix("block/")
@@ -700,6 +714,8 @@ class AtlasGenerator:
             active_categories.extend(extra_cats)
 
             for cat in active_categories:
+                if not self._includes_category(cat):
+                    continue
                 static_map = self.static_by_ns_cat.get(ns, {}).get(cat, {})
                 if static_map:
                     yield (ns_progress_base, f"Packing static atlas chunks for namespace '{ns}' [{cat}]...", None)
