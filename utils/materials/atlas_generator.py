@@ -37,13 +37,21 @@ MAX_IMAGE_DIMENSION = 16384  # Max allowed width/height in pixels for a single t
 
 
 def _safe_open_image(source):
-    """Open an image safely, enforcing dimension limits before buffer conversion."""
-    img = Image.open(source)
-    if img.width > MAX_IMAGE_DIMENSION or img.height > MAX_IMAGE_DIMENSION:
-        raise ValueError(
-            f"Image dimensions ({img.width}x{img.height}) exceed safety limit ({MAX_IMAGE_DIMENSION}px)"
-        )
-    return img.convert("RGBA")
+    """Read an image into memory and promptly release its source file handle.
+
+    Resource packs commonly contain thousands of PNGs.  Keeping Pillow's
+    source images open until garbage collection can exhaust file descriptors
+    (especially when reading directly from a ZIP), which then surfaces as
+    intermittent ``failed to load`` warnings on later replacements.
+    """
+    with Image.open(source) as img:
+        if img.width > MAX_IMAGE_DIMENSION or img.height > MAX_IMAGE_DIMENSION:
+            raise ValueError(
+                f"Image dimensions ({img.width}x{img.height}) exceed safety limit ({MAX_IMAGE_DIMENSION}px)"
+            )
+        converted = img.convert("RGBA")
+        converted.load()
+        return converted
 
 
 def _is_power_of_two(n: int) -> bool:

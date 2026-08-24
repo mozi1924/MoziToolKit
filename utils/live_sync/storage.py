@@ -164,11 +164,16 @@ class VoxelStorage:
             logger.warning("Discarded delta containing coordinates outside active selection")
             return False
 
+        changed = False
         for abs_x, abs_y, abs_z, state_str in changes:
-            self.block_map[(abs_x, abs_y, abs_z)] = state_str
+            key = (abs_x, abs_y, abs_z)
+            if self.block_map.get(key) == state_str:
+                continue
+            self.block_map[key] = state_str
             self._dirty_sections.add((abs_x >> 4, abs_y >> 4, abs_z >> 4))
+            changed = True
 
-        return True
+        return changed
 
     def calculate_and_store_section_crc(self, sec_x: int, sec_y: int, sec_z: int) -> int:
         """Compute CRC32 for a single 16x16x16 chunk section."""

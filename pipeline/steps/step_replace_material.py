@@ -407,16 +407,41 @@ class StepReplaceMaterial(PipelineStep):
             yield StepResult.cancelled("Material replacement cancelled by user.")
             return
 
+        def atlas_cache_is_complete(mapping: dict) -> bool:
+            """Only reuse an atlas when its mapping and every referenced image exist.
+
+            ``atlas_mapping.json`` is written after the image chunks, but a
+            cancelled process, cache cleaner, or interrupted filesystem write
+            can still leave a valid JSON file next to missing/corrupt images.
+            Treating that as a cache hit produces Blender's opaque "failed to
+            load" warning and previously required restarting Blender.
+            """
+            if (
+                mapping.get("format_version") != ATLAS_FORMAT_VERSION
+                or not mapping.get("chunks")
+                or not mapping.get("textures")
+            ):
+                return False
+            for chunk in mapping["chunks"]:
+                files = chunk.get("files") if isinstance(chunk, dict) else None
+                albedo = files.get("albedo") if isinstance(files, dict) else None
+                if not isinstance(albedo, str) or not (atlas_dir / albedo).is_file():
+                    return False
+                # Optional PBR channels must be complete whenever the mapping
+                # advertises them; otherwise the material builder may retain a
+                # stale Blender image from a prior replacement.
+                for channel in ("normal", "specular", "overlay"):
+                    filename = files.get(channel)
+                    if filename and not (atlas_dir / filename).is_file():
+                        return False
+            return True
+
         cache_is_current = False
         if use_cache and mapping_path.exists():
             try:
                 with open(mapping_path, "r", encoding="utf-8") as fp:
                     cached_mapping = json.load(fp)
-                    cache_is_current = (
-                        cached_mapping.get("format_version") == ATLAS_FORMAT_VERSION
-                        and bool(cached_mapping.get("chunks"))
-                        and bool(cached_mapping.get("textures"))
-                    )
+                    cache_is_current = atlas_cache_is_complete(cached_mapping)
             except (OSError, json.JSONDecodeError):
                 cache_is_current = False
 
