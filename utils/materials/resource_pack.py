@@ -451,11 +451,18 @@ class ZipResourcePack:
                     texture_key = full_path.relative_to(textures_dir).with_suffix("").as_posix().lower().strip()
 
                     # Determine channel type (_n, _s, or base albedo)
-                    if rel_name.endswith("_n"):
+                    # Resource locations are case-sensitive, but a few PBR packs
+                    # use an upper-case channel suffix (``_N`` / ``_S``).  The
+                    # suffix is metadata, rather than part of the texture name,
+                    # so classify it case-insensitively.  Without this, an _N-only
+                    # overlay pack creates a separate albedo entry and can mask
+                    # the real albedo provided by a lower stack layer.
+                    rel_name_lower = rel_name.lower()
+                    if rel_name_lower.endswith("_n"):
                         base_stem = rel_name[:-2].strip()
                         texture_key = texture_key[:-2].strip()
                         channel = "normal"
-                    elif rel_name.endswith("_s"):
+                    elif rel_name_lower.endswith("_s"):
                         base_stem = rel_name[:-2].strip()
                         texture_key = texture_key[:-2].strip()
                         channel = "specular"
@@ -592,5 +599,4 @@ class ZipResourcePack:
                 return matches[0]
 
         return None
-
 
