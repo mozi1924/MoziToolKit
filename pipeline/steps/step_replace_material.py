@@ -24,9 +24,8 @@ from ...utils.materials import (
     canonical_texture_key,
     split_texture_key,
     material_source_origin,
+    extract_material_texture_keys,
     write_face_source_provenance,
-    get_face_source_origin,
-    get_face_source_texture_key,
     is_ice_cube_internal_face_material,
     ATLAS_FORMAT_VERSION,
     AtlasGenerator,
@@ -46,6 +45,8 @@ from ...utils.materials import (
     ATTR_BIOME_TINT_COLOR,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
+    ATTR_SOURCE_TEXTURE_KEY,
+    ATTR_SOURCE_ORIGIN,
     ANIM_AND_ATLAS_ATTR_NAMES,
     LEGACY_SPLIT_ATTR_NAMES,
     BiomeResolver,
@@ -108,15 +109,118 @@ def _read_face_tiling(mesh: bpy.types.Mesh, poly_idx: int) -> tuple[tuple[float,
     )
 
 
-def _build_old_mappings(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> dict:
-    old_mappings = {}
-    for slot in obj.material_slots:
-        if slot.material and slot.material not in old_mappings:
-            old_mappings[slot.material] = (
-                get_atlas_mapping_from_material(slot.material)
-                or get_atlas_mapping_from_mesh(mesh)
-            )
-    return old_mappings
+def _read_face_string_attribute(mesh: bpy.types.Mesh, name: str) -> list[str]:
+    """Read a FACE string attribute once instead of crossing Blender's RNA API per face."""
+    attr = mesh.attributes.get(name)
+    if not attr or attr.domain != "FACE" or attr.data_type != "STRING":
+        return [""] * len(mesh.polygons)
+
+    values = []
+    for item in attr.data:
+        value = item.value
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", errors="replace")
+        values.append(str(value).strip())
+    return values if len(values) == len(mesh.polygons) else [""] * len(mesh.polygons)
+
+
+def _build_material_face_cache(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> tuple[list, dict]:
+    """Precompute all material-level data used by the hot per-face loops.
+
+    A large Minecraft mesh commonly has hundreds of thousands of faces but
+    only tens or hundreds of source materials.  Adapter detection walks node
+    trees and atlas mappings, so doing it for each polygon was the dominant
+    Python/RNA cost on large imports.
+    """
+    mesh_mapping = get_atlas_mapping_from_mesh(mesh)
+    chunk_attr = mesh.attributes.get(ATTR_ATLAS_CHUNK_ID) or mesh.attributes.get("atlas_chunk_id")
+    texture_attr = mesh.attributes.get(ATTR_ATLAS_TEXTURE_ID) or mesh.attributes.get("atlas_texture_id")
+    slot_materials = [slot.material for slot in obj.material_slots]
+    cache = {}
+    for material in slot_materials:
+        if material is None or material in cache:
+            continue
+        mapping = get_atlas_mapping_from_material(material) or mesh_mapping
+        locations = {}
+        if mapping:
+            for texture_name, location in mapping.get("textures", {}).items():
+                if location is None:
+                    continue
+                try:
+                    locations[(int(location.get("chunk_id", -1)), int(location.get("texture_id", -1)))] = location
+                except (TypeError, ValueError):
+                    continue
+        cache[material] = {
+            "mapping": mapping,
+            "mode": detect_material_mode(material),
+            "is_internal": is_ice_cube_internal_face_material(material),
+            "origin": material_source_origin(material),
+            "locations": locations,
+            "chunk_attr": chunk_attr,
+            "texture_attr": texture_attr,
+            # This intentionally happens once per material.  It covers the
+            # normal Standalone/Generic import path; atlas and Mineways atlas
+            # faces still use their per-face decoder below.
+            "candidates": extract_material_texture_keys(material),
+            "chunks": {
+                int(chunk["chunk_id"]): chunk
+                for chunk in (mapping or {}).get("chunks", [])
+                if "chunk_id" in chunk
+            },
+            "animation": None,
+            "animation_loaded": False,
+        }
+    return slot_materials, cache
+
+
+def _get_polygon_material_indices(mesh: bpy.types.Mesh) -> list[int]:
+    """Fetch all polygon slot indices through Blender's bulk RNA API."""
+    indices = [0] * len(mesh.polygons)
+    mesh.polygons.foreach_get("material_index", indices)
+    return indices
+
+
+def _cached_face_texture_info(
+    mesh: bpy.types.Mesh,
+    poly_idx: int,
+    material: bpy.types.Material,
+    state: dict,
+    source_key: str,
+) -> tuple[str, list[str], dict | None]:
+    """Fast path for face matching, retaining the full decoder as fallback."""
+    mode = state["mode"]
+    provenance = None
+    if source_key:
+        namespace, texture_name = split_texture_key(source_key)
+        if texture_name:
+            provenance = (namespace, [texture_name])
+
+    if mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS"):
+        if provenance:
+            return *provenance, None
+        namespace, candidates = state["candidates"]
+        return namespace, candidates, None
+
+    # Atlas faces can have distinct texture IDs under one material.  Resolve
+    # the common attribute-backed case from a prebuilt dict, avoiding node
+    # inspection and mapping scans for every face.
+    if mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED"):
+        chunk_attr = state["chunk_attr"]
+        texture_attr = state["texture_attr"]
+        try:
+            chunk_id = int(chunk_attr.data[poly_idx].value) if chunk_attr else int(material.get("mtk:atlas_chunk_id", -1))
+            texture_id = int(texture_attr.data[poly_idx].value) if texture_attr else -1
+        except (IndexError, TypeError, ValueError):
+            chunk_id, texture_id = -1, -1
+        location = state["locations"].get((chunk_id, texture_id))
+        if location:
+            if provenance:
+                return *provenance, location
+            namespace, texture_name = split_texture_key(location.get("texture_key", ""))
+            if texture_name:
+                return namespace, [texture_name], location
+
+    return extract_face_texture_info(mesh, poly_idx, material, state["mapping"])
 
 
 def _compute_biome_tint_attributes(
@@ -246,23 +350,23 @@ def apply_mesh_face_materials_and_provenance(
 ) -> None:
     """Consolidate material slots and write back durable face-level provenance."""
     unique_materials: list[bpy.types.Material] = []
+    mat_slots: dict[bpy.types.Material, int] = {}
     for mat in face_materials:
-        if mat is not None and mat not in unique_materials:
+        if mat is not None and mat not in mat_slots:
+            mat_slots[mat] = len(unique_materials)
             unique_materials.append(mat)
 
     if unique_materials:
         mesh.materials.clear()
         for mat in unique_materials:
             mesh.materials.append(mat)
-        mat_slots = {m: idx for idx, m in enumerate(unique_materials)}
-        for poly_idx, mat in enumerate(face_materials):
-            if mat is not None:
-                mesh.polygons[poly_idx].material_index = mat_slots[mat]
-            else:
-                # Clearing slots invalidates every prior index.  A face with
-                # no replacement must point at a valid slot rather than a
-                # dangling material index.
-                mesh.polygons[poly_idx].material_index = 0
+        # A Python assignment to MeshPolygon.material_index crosses Blender's
+        # RNA boundary once per polygon.  foreach_set keeps the exact same
+        # semantics but makes a 700k-face write a single bulk operation.
+        mesh.polygons.foreach_set(
+            "material_index",
+            [mat_slots.get(mat, 0) for mat in face_materials],
+        )
 
     write_face_source_provenance(mesh, source_keys, source_origins)
 
@@ -522,12 +626,14 @@ class StepReplaceMaterial(PipelineStep):
 
         # Collect required chunks from standard polygon mesh objects
         required_chunk_ids = set()
-        mapping_by_material = {}
         total_faces = sum(len(obj.data.polygons) for obj in standard_mesh_objects)
         scanned_faces = 0
         for obj in standard_mesh_objects:
             mesh = obj.data
-            for poly_idx, poly in enumerate(mesh.polygons):
+            slot_materials, material_cache = _build_material_face_cache(obj, mesh)
+            source_keys = _read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+            material_indices = _get_polygon_material_indices(mesh)
+            for poly_idx, material_index in enumerate(material_indices):
                 scanned_faces += 1
                 # Yield periodically so very large legacy worlds remain
                 # cancellable and Blender's UI does not look frozen while
@@ -538,18 +644,16 @@ class StepReplaceMaterial(PipelineStep):
                         return
                     progress = 0.35 + 0.08 * (scanned_faces / max(1, total_faces))
                     yield ProgressUpdate(progress, 1.0, f"Reading Atlas attributes: {scanned_faces:,}/{total_faces:,} faces")
-                if poly.material_index >= len(obj.material_slots):
+                if material_index >= len(slot_materials):
                     continue
-                slot_mat = obj.material_slots[poly.material_index].material
+                slot_mat = slot_materials[material_index]
                 if not slot_mat:
                     continue
-                if slot_mat not in mapping_by_material:
-                    mapping_by_material[slot_mat] = (
-                        get_atlas_mapping_from_material(slot_mat)
-                        or get_atlas_mapping_from_mesh(mesh)
-                    )
-                namespace, candidates, _old_loc = extract_face_texture_info(
-                    mesh, poly_idx, slot_mat, mapping_by_material[slot_mat]
+                state = material_cache[slot_mat]
+                if state["is_internal"]:
+                    continue
+                namespace, candidates, _old_loc = _cached_face_texture_info(
+                    mesh, poly_idx, slot_mat, state, source_keys[poly_idx]
                 )
                 for cand in candidates:
                     loc = texture_map.get(canonical_texture_key(namespace, cand))
@@ -610,8 +714,12 @@ class StepReplaceMaterial(PipelineStep):
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
-            canonical_mat = find_existing_replacement(texture_info, pack) or session_materials.get(texture_key)
+            # The session cache is the common case on dense meshes.  Looking
+            # through every Blender material before consulting it made a
+            # 700k-face object repeatedly scan bpy.data.materials.
+            canonical_mat = session_materials.get(texture_key) or find_existing_replacement(texture_info, pack)
             if canonical_mat:
+                session_materials[texture_key] = canonical_mat
                 return canonical_mat, False
 
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
@@ -651,6 +759,9 @@ class StepReplaceMaterial(PipelineStep):
 
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
+            slot_materials, material_cache = _build_material_face_cache(obj, mesh)
+            material_indices = _get_polygon_material_indices(mesh)
+
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
             uv_rotations = [0.0] * len(mesh.polygons)
@@ -670,21 +781,19 @@ class StepReplaceMaterial(PipelineStep):
 
             resolved_locations = [None] * len(mesh.polygons)
             resolved_standalone = [None] * len(mesh.polygons)
-            source_keys = [get_face_source_texture_key(mesh, idx) for idx in range(len(mesh.polygons))]
-            source_origins = [get_face_source_origin(mesh, idx) for idx in range(len(mesh.polygons))]
+            source_keys = _read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+            source_origins = _read_face_string_attribute(mesh, ATTR_SOURCE_ORIGIN)
             unresolved_faces = []
             skipped_faces = []
             face_materials = [
-                obj.material_slots[poly.material_index].material
-                if poly.material_index < len(obj.material_slots) else None
-                for poly in mesh.polygons
+                slot_materials[material_index]
+                if material_index < len(slot_materials) else None
+                for material_index in material_indices
             ]
             poly_updated = False
 
-            old_mappings = _build_old_mappings(obj, mesh)
-
             total_polys = max(1, len(mesh.polygons))
-            for poly_idx, poly in enumerate(mesh.polygons):
+            for poly_idx, material_index in enumerate(material_indices):
                 if poly_idx > 0 and poly_idx % 2000 == 0:
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")
@@ -692,21 +801,22 @@ class StepReplaceMaterial(PipelineStep):
                     sub_prog = obj_progress + 0.20 * (poly_idx / total_polys)
                     yield ProgressUpdate(sub_prog, 1.0, f"Scanning Atlas faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
 
-                if poly.material_index >= len(obj.material_slots):
+                if material_index >= len(slot_materials):
                     unresolved_faces.append(poly_idx)
                     continue
-                orig_slot = obj.material_slots[poly.material_index]
-                if not orig_slot.material:
+                orig_mat = slot_materials[material_index]
+                if not orig_mat:
                     unresolved_faces.append(poly_idx)
                     continue
-                if is_ice_cube_internal_face_material(orig_slot.material):
+                state = material_cache[orig_mat]
+                if state["is_internal"]:
                     skipped_faces.append(poly_idx)
                     continue
 
-                old_mapping = old_mappings.get(orig_slot.material)
-                orig_mode = detect_material_mode(orig_slot.material)
-                namespace, candidates, old_loc = extract_face_texture_info(
-                    mesh, poly_idx, orig_slot.material, old_mapping
+                old_mapping = state["mapping"]
+                orig_mode = state["mode"]
+                namespace, candidates, old_loc = _cached_face_texture_info(
+                    mesh, poly_idx, orig_mat, state, source_keys[poly_idx]
                 )
 
                 new_location = None
@@ -739,7 +849,7 @@ class StepReplaceMaterial(PipelineStep):
                     )
                     source_keys[poly_idx] = canonical_texture_key(target_namespace, target_texture)
                     source_origins[poly_idx] = (
-                        get_face_source_origin(mesh, poly_idx) or material_source_origin(orig_slot.material)
+                        source_origins[poly_idx] or state["origin"]
                     )
                     poly_updated = True
                 else:
@@ -769,7 +879,7 @@ class StepReplaceMaterial(PipelineStep):
                                 fallback_tex_info.get("texture_key", fallback_tex_info["texture_name"]),
                             )
                             source_origins[poly_idx] = (
-                                get_face_source_origin(mesh, poly_idx) or material_source_origin(orig_slot.material)
+                                source_origins[poly_idx] or state["origin"]
                             )
                             poly_tint_map[poly_idx] = fallback_tex_info.get("tint_info") or biome_resolver.get_tint_info(fallback_tex_info["texture_name"])
                             poly_updated = True
@@ -809,16 +919,17 @@ class StepReplaceMaterial(PipelineStep):
 
                         old_chunk = None
                         if old_loc and old_mapping:
-                            old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
-                            old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
+                            original_mat = face_materials[poly_idx]
+                            old_chunk = material_cache.get(original_mat, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
 
                         old_anim_info = None
                         if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                            orig_mat = (
-                                obj.material_slots[polygon.material_index].material
-                                if polygon.material_index < len(obj.material_slots) else None
-                            )
-                            old_anim_info = get_material_animation_info(orig_mat)
+                            orig_mat = face_materials[poly_idx]
+                            state = material_cache.get(orig_mat)
+                            if state and not state["animation_loaded"]:
+                                state["animation"] = get_material_animation_info(orig_mat)
+                                state["animation_loaded"] = True
+                            old_anim_info = state["animation"] if state else get_material_animation_info(orig_mat)
 
                         # Work in source-local UV space first. This makes both
                         # re-atlased meshes and direct jmc2obj imports follow
@@ -899,16 +1010,17 @@ class StepReplaceMaterial(PipelineStep):
 
                     old_chunk = None
                     if old_loc and old_mapping:
-                        old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
-                        old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
+                        original_mat = face_materials[poly_idx]
+                        old_chunk = material_cache.get(original_mat, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
 
                     old_anim_info = None
                     if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                        orig_mat = (
-                            obj.material_slots[polygon.material_index].material
-                            if polygon.material_index < len(obj.material_slots) else None
-                        )
-                        old_anim_info = get_material_animation_info(orig_mat)
+                        orig_mat = face_materials[poly_idx]
+                        state = material_cache.get(orig_mat)
+                        if state and not state["animation_loaded"]:
+                            state["animation"] = get_material_animation_info(orig_mat)
+                            state["animation_loaded"] = True
+                        old_anim_info = state["animation"] if state else get_material_animation_info(orig_mat)
 
                     target_anim_info = get_material_animation_info(mat)
 
@@ -952,6 +1064,7 @@ class StepReplaceMaterial(PipelineStep):
         replaced_count = 0
         assigned_count = 0
         session_materials = {}
+        texture_info_cache = {}
         biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
         if pack_stack:
             for p in pack_stack.packs:
@@ -962,8 +1075,9 @@ class StepReplaceMaterial(PipelineStep):
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (pack.pack_hash, texture_info["namespace"], texture_info["texture_name"])
-            canonical_mat = find_existing_replacement(texture_info, pack) or session_materials.get(texture_key)
+            canonical_mat = session_materials.get(texture_key) or find_existing_replacement(texture_info, pack)
             if canonical_mat:
+                session_materials[texture_key] = canonical_mat
                 return canonical_mat, False
 
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
@@ -975,6 +1089,30 @@ class StepReplaceMaterial(PipelineStep):
             name_replaced_material(mat, texture_info, pack)
             session_materials[texture_key] = mat
             return mat, True
+
+        def resolve_texture_info(namespace, candidates):
+            """Resolve pack data once per unique candidate set, not per face."""
+            cache_key = (namespace, tuple(candidates))
+            if cache_key in texture_info_cache:
+                return texture_info_cache[cache_key]
+
+            tex_info = None
+            for cand in candidates:
+                info = pack_stack.get_texture_info(cand, namespace) if pack_stack else pack.get_texture_info(cand, namespace)
+                if not info or not info.get("albedo"):
+                    continue
+                tex_info = dict(info)
+                overlay_stem = biome_resolver.get_overlay_texture(tex_info["texture_name"])
+                if overlay_stem:
+                    overlay_info = pack_stack.get_texture_info(overlay_stem, namespace) if pack_stack else pack.get_texture_info(overlay_stem, namespace)
+                    if overlay_info and overlay_info.get("albedo"):
+                        tex_info["overlay"] = overlay_info["albedo"]
+                        if overlay_info.get("albedo_mcmeta"):
+                            tex_info["overlay_mcmeta"] = overlay_info["albedo_mcmeta"]
+                tex_info["tint_info"] = biome_resolver.get_tint_info(tex_info["texture_name"])
+                break
+            texture_info_cache[cache_key] = tex_info
+            return tex_info
 
         for obj_idx, obj in enumerate(valid_objects):
             if pipeline_context.is_cancelled:
@@ -994,19 +1132,22 @@ class StepReplaceMaterial(PipelineStep):
             mesh = obj.data
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
 
-            old_mappings = _build_old_mappings(obj, mesh)
+            slot_materials, material_cache = _build_material_face_cache(obj, mesh)
+            material_indices = _get_polygon_material_indices(mesh)
+            existing_source_keys = _read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+            existing_source_origins = _read_face_string_attribute(mesh, ATTR_SOURCE_ORIGIN)
 
             resolved_faces = []
             unresolved_faces = []
             skipped_faces = []
             face_materials = [
-                obj.material_slots[poly.material_index].material
-                if poly.material_index < len(obj.material_slots) else None
-                for poly in mesh.polygons
+                slot_materials[material_index]
+                if material_index < len(slot_materials) else None
+                for material_index in material_indices
             ]
 
             total_polys = max(1, len(mesh.polygons))
-            for poly_idx, poly in enumerate(mesh.polygons):
+            for poly_idx, material_index in enumerate(material_indices):
                 if poly_idx > 0 and poly_idx % 2000 == 0:
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")
@@ -1014,43 +1155,30 @@ class StepReplaceMaterial(PipelineStep):
                     sub_prog = obj_progress + 0.35 * (poly_idx / total_polys)
                     yield ProgressUpdate(sub_prog, 1.0, f"Scanning faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
 
-                if poly.material_index >= len(obj.material_slots):
+                if material_index >= len(slot_materials):
                     unresolved_faces.append(poly_idx)
                     continue
-                orig_slot = obj.material_slots[poly.material_index]
-                if not orig_slot.material:
+                orig_mat = slot_materials[material_index]
+                if not orig_mat:
                     unresolved_faces.append(poly_idx)
                     continue
-                if is_ice_cube_internal_face_material(orig_slot.material):
+                state = material_cache[orig_mat]
+                if state["is_internal"]:
                     skipped_faces.append(poly_idx)
                     continue
 
-                old_mapping = old_mappings.get(orig_slot.material)
-                orig_mode = detect_material_mode(orig_slot.material)
-                namespace, candidates, old_loc = extract_face_texture_info(
-                    mesh, poly_idx, orig_slot.material, old_mapping
+                old_mapping = state["mapping"]
+                orig_mode = state["mode"]
+                namespace, candidates, old_loc = _cached_face_texture_info(
+                    mesh, poly_idx, orig_mat, state, existing_source_keys[poly_idx]
                 )
 
-                tex_info = None
-                for cand in candidates:
-                    info = pack_stack.get_texture_info(cand, namespace) if pack_stack else pack.get_texture_info(cand, namespace)
-                    if info and info.get("albedo"):
-                        tex_info = dict(info)
-                        overlay_stem = biome_resolver.get_overlay_texture(tex_info["texture_name"])
-                        if overlay_stem:
-                            overlay_info = pack_stack.get_texture_info(overlay_stem, namespace) if pack_stack else pack.get_texture_info(overlay_stem, namespace)
-                            if overlay_info and overlay_info.get("albedo"):
-                                tex_info["overlay"] = overlay_info["albedo"]
-                                if overlay_info.get("albedo_mcmeta"):
-                                    tex_info["overlay_mcmeta"] = overlay_info["albedo_mcmeta"]
-                        tint_info = biome_resolver.get_tint_info(tex_info["texture_name"])
-                        tex_info["tint_info"] = tint_info
-                        break
+                tex_info = resolve_texture_info(namespace, candidates)
 
                 if not tex_info:
                     unresolved_faces.append(poly_idx)
                     continue
-                resolved_faces.append((poly_idx, tex_info, orig_slot.material, orig_mode, old_loc, old_mapping))
+                resolved_faces.append((poly_idx, tex_info, orig_mat, orig_mode, old_loc, old_mapping))
 
             if unresolved_faces:
                 pipeline_context.report(
@@ -1064,28 +1192,40 @@ class StepReplaceMaterial(PipelineStep):
                     f"'{obj.name}': retained {len(skipped_faces)} Ice Cube internal face(s)."
                 )
 
-            source_keys = [get_face_source_texture_key(mesh, idx) for idx in range(len(mesh.polygons))]
-            source_origins = [get_face_source_origin(mesh, idx) for idx in range(len(mesh.polygons))]
+            source_keys = existing_source_keys
+            source_origins = existing_source_origins
             poly_modified = False
-            prepared_faces = []
+            replacement_by_texture = {}
+            texture_infos_by_key = {}
+            target_animation_by_texture = {}
             material_build_failed = False
 
             for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping in resolved_faces:
+                texture_key = (tex_info["namespace"], tex_info["texture_name"])
+                if texture_key in replacement_by_texture:
+                    continue
                 mat, is_new = get_or_create_replacement_material(tex_info)
                 if not mat:
                     material_build_failed = True
                     break
-                prepared_faces.append((
-                    poly_idx, tex_info, original_material, orig_mode,
-                    old_loc, old_mapping, mat, is_new,
-                ))
+                replacement_by_texture[texture_key] = (mat, is_new)
+                texture_infos_by_key[texture_key] = tex_info
+                target_animation_by_texture[texture_key] = (
+                    get_texture_info_animation_info(tex_info) or get_material_animation_info(mat)
+                )
 
             if material_build_failed:
                 pipeline_context.report("ERROR", f"'{obj.name}' material construction failed; no conversion was applied.")
                 continue
 
-            total_prep = max(1, len(prepared_faces))
-            for prep_idx, (poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping, mat, is_new) in enumerate(prepared_faces):
+            for texture_key, (mat, is_new) in replacement_by_texture.items():
+                if is_new:
+                    replaced_count += 1
+                    tex_info = texture_infos_by_key[texture_key]
+                    pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
+
+            total_prep = max(1, len(resolved_faces))
+            for prep_idx, (poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping) in enumerate(resolved_faces):
                 if prep_idx > 0 and prep_idx % 2000 == 0:
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")
@@ -1093,30 +1233,44 @@ class StepReplaceMaterial(PipelineStep):
                     sub_prog = obj_progress + 0.35 + 0.45 * (prep_idx / total_prep)
                     yield ProgressUpdate(sub_prog, 1.0, f"Reconstructing materials: {obj.name} ({prep_idx:,}/{total_prep:,})")
 
+                mat, _is_new = replacement_by_texture[(tex_info["namespace"], tex_info["texture_name"])]
+
                 face_materials[poly_idx] = mat
                 source_keys[poly_idx] = canonical_texture_key(
                     tex_info["namespace"], tex_info.get("texture_key", tex_info["texture_name"])
                 )
                 source_origins[poly_idx] = (
-                    get_face_source_origin(mesh, poly_idx) or material_source_origin(original_material)
+                    source_origins[poly_idx] or material_cache.get(original_material, {}).get("origin", material_source_origin(original_material))
                 )
                 poly_modified = True
                 assigned_count += 1
-                if is_new:
-                    replaced_count += 1
-                    pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
 
                 if uv_layer:
                     old_chunk = None
                     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping:
-                        old_chunks_map = {int(c["chunk_id"]): c for c in old_mapping.get("chunks", [])}
-                        old_chunk = old_chunks_map.get(int(old_loc["chunk_id"]))
+                        old_chunk = material_cache.get(original_material, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
 
                     old_anim_info = None
                     if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                        old_anim_info = get_material_animation_info(original_material)
+                        state = material_cache.get(original_material)
+                        if state and not state["animation_loaded"]:
+                            state["animation"] = get_material_animation_info(original_material)
+                            state["animation_loaded"] = True
+                        old_anim_info = state["animation"] if state else get_material_animation_info(original_material)
 
-                    target_anim_info = get_texture_info_animation_info(tex_info) or get_material_animation_info(mat)
+                    texture_key = (tex_info["namespace"], tex_info["texture_name"])
+                    target_anim_info = target_animation_by_texture[texture_key]
+
+                    # Non-animated Standalone/Generic UVs are already local
+                    # [0,1] coordinates.  Switching their material does not
+                    # require touching any loop UVs, which is the usual case
+                    # for a dense exported Minecraft world.
+                    if (
+                        orig_mode in ("GENERIC", "STANDALONE")
+                        and old_anim_info is None
+                        and target_anim_info is None
+                    ):
+                        continue
 
                     polygon = mesh.polygons[poly_idx]
                     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:

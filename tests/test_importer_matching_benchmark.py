@@ -36,7 +36,26 @@ class TestImporterModelMatching(unittest.TestCase):
             zf.writestr('assets/minecraft/textures/block/short_grass.png', png_16)
             zf.writestr('assets/minecraft/textures/block/poppy.png', png_16)
             zf.writestr('assets/minecraft/textures/block/red_wool.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/redstone_dust_line0.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/redstone_dust_line1.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/redstone_dust_dot.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/redstone_dust_overlay.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/torch.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/redstone_torch_off.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/iron_chain.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/smooth_stone_slab_side.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/acacia_shelf.png', png_16)
+            zf.writestr('assets/minecraft/textures/block/oak_shelf.png', png_16)
             zf.writestr('assets/minecraft/textures/entity/chest/normal.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/chest/normal_left.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/chest/normal_right.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/chest/ender.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/chest/trapped.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/chest/copper.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/chest/copper_exposed.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/bed/red.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/bed/white.png', png_16)
+            zf.writestr('assets/minecraft/textures/entity/decorated_pot/decorated_pot_base.png', png_16)
 
         cls.pack = ZipResourcePack(cls.tmp_jar)
 
@@ -48,7 +67,7 @@ class TestImporterModelMatching(unittest.TestCase):
             ('jmc2obj prefix jmc2obj', 'jmc2obj_block-stone', None),
             ('jmc2obj chest', 'minecraft_entity-chest-normal', 'tex/minecraft/entity/chest/normal.png'),
             ('jmc2obj plain grass', 'grass_block_top', 'tex/minecraft/block/grass_block_top.png'),
-            # Mineways
+            # Mineways standard
             ('mineways grass top tile', 'grass_block_top_y', 'tex/grass_block_top_y.png'),
             ('mineways grass side tile', 'grass_block_side_y', 'tex/grass_block_side_y.png'),
             ('mineways stone bricks', 'Stone_Bricks', 'tex/Stone_Bricks.png'),
@@ -57,6 +76,35 @@ class TestImporterModelMatching(unittest.TestCase):
             ('mineways water', 'Stationary_Water', 'tex/Stationary_Water.png'),
             ('mineways red carpet', 'Red_Carpet', 'tex/Red_Carpet.png'),
             ('mineways poppy', 'Poppy', 'tex/Poppy.png'),
+            # Mineways chest parts
+            ('mineways chest front', 'MWO_chest_front', 'tex/MWO_chest_front.png'),
+            ('mineways chest latch', 'MWO_chest_latch', 'tex/MWO_chest_latch.png'),
+            ('mineways double chest left', 'MWO_double_chest_front_left', 'tex/MWO_double_chest_front_left.png'),
+            ('mineways double chest right', 'MWO_double_chest_front_right', 'tex/MWO_double_chest_front_right.png'),
+            ('mineways ender chest latch', 'MWO_ender_chest_latch', 'tex/MWO_ender_chest_latch.png'),
+            ('mineways ender chest top', 'MWO_ender_chest_top', 'tex/MWO_ender_chest_top.png'),
+            ('mineways ender chest front', 'MWO_ender_chest_front', 'tex/MWO_ender_chest_front.png'),
+            ('mineways trapped chest top', 'MWO_trapped_chest_top', 'tex/MWO_trapped_chest_top.png'),
+            ('mineways copper chest front', 'MWO_copper_chest_front', 'tex/MWO_copper_chest_front.png'),
+            ('mineways exposed copper chest', 'MWO_exposed_copper_chest_top', 'tex/MWO_exposed_copper_chest_top.png'),
+            # Mineways redstone dust variations
+            ('mineways redstone dust line0 off', 'MWO_redstone_dust_line0_off', 'tex/MWO_redstone_dust_line0_off.png'),
+            ('mineways redstone dust line1 off', 'MWO_redstone_dust_line1_off', 'tex/MWO_redstone_dust_line1_off.png'),
+            ('mineways redstone dust dot off', 'MWO_redstone_dust_dot_off', 'tex/MWO_redstone_dust_dot_off.png'),
+            ('mineways redstone dust angled', 'MWO_redstone_dust_angled', 'tex/MWO_redstone_dust_angled.png'),
+            ('mineways redstone dust three way', 'MWO_redstone_dust_three_way', 'tex/MWO_redstone_dust_three_way.png'),
+            ('mineways redstone dust four way off', 'MWO_redstone_dust_four_way_off', 'tex/MWO_redstone_dust_four_way_off.png'),
+            # Mineways shelves, beds, torches, chains, slabs, pots
+            ('mineways acacia shelf front', 'MWO_acacia_shelf_front', 'tex/MWO_acacia_shelf_front.png'),
+            ('mineways oak shelf shelf back', 'MWO_oak_shelf_shelf_back', 'tex/MWO_oak_shelf_shelf_back.png'),
+            ('mineways bed feet top', 'MW_bed_feet_top', 'tex/MW_bed_feet_top.png'),
+            ('mineways bed head end', 'MW_bed_head_end', 'tex/MW_bed_head_end.png'),
+            ('mineways white bed feet side', 'white_bed_feet_side', 'tex/white_bed_feet_side.png'),
+            ('mineways torch top', 'MWO_flattened_torch_top', 'tex/MWO_flattened_torch_top.png'),
+            ('mineways redstone torch top off', 'MWO_flattened_redstone_torch_top_off', 'tex/MWO_flattened_redstone_torch_top_off.png'),
+            ('mineways chain', 'chain', 'tex/chain.png'),
+            ('mineways stone slab side', 'stone_slab_side', 'tex/stone_slab_side.png'),
+            ('mineways decorated pot base', 'MW_decorated_pot_base1', 'tex/MW_decorated_pot_base1.png'),
         ]
 
         for label, mat_name, img_path in test_materials:

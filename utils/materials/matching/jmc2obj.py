@@ -196,7 +196,7 @@ def _expand_semantic_candidates(stem: str) -> list[str]:
     if clean_stem in EXPLICIT_MATERIAL_ALIASES:
         cands.extend(EXPLICIT_MATERIAL_ALIASES[clean_stem])
 
-    # 2. Beds (all 16 colors)
+    # 2. Beds (all 16 colors + red default)
     if "bed" in stem:
         for color in MINECRAFT_COLORS:
             if color in stem:
@@ -206,9 +206,116 @@ def _expand_semantic_candidates(stem: str) -> list[str]:
                     f"block/{color}_bed_top",
                     f"block/{color}_bed_head_up",
                     f"block/{color}_bed_head",
+                    f"block/{color}_bed_foot_up",
+                    f"block/{color}_bed_foot",
+                    f"block/{color}_bed_head_north",
+                    f"block/{color}_bed_foot_south",
+                    f"block/{color}_bed_head_east",
+                    f"block/{color}_bed_foot_east",
                     f"bed/{color}",
                 ])
                 break
+        else:
+            cands.extend([
+                "entity/bed/red",
+                "block/red_bed",
+                "block/red_bed_top",
+                "block/red_bed_head_up",
+                "block/red_bed_head",
+                "block/red_bed_foot_up",
+                "block/red_bed_foot",
+                "block/red_bed_head_north",
+                "block/red_bed_foot_south",
+                "block/red_bed_head_east",
+                "block/red_bed_foot_east",
+            ])
+
+    # 2b. Chests (all chest types and decomposed tile parts)
+    if "chest" in clean_stem:
+        # Determine specific chest variant
+        if "ender" in clean_stem:
+            cands.extend([
+                "entity/chest/ender",
+                "entity/chest/ender_chest",
+                "block/ender_chest",
+            ])
+        elif "trapped" in clean_stem:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/trapped_left", "entity/chest/trapped"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/trapped_right", "entity/chest/trapped"])
+            else:
+                cands.extend(["entity/chest/trapped", "block/trapped_chest"])
+        elif "exposed_copper" in clean_stem:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/copper_exposed_left", "entity/chest/copper_exposed"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/copper_exposed_right", "entity/chest/copper_exposed"])
+            else:
+                cands.extend(["entity/chest/copper_exposed", "entity/chest/copper_weathered", "block/exposed_copper_chest"])
+        elif "weathered_copper" in clean_stem:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/copper_weathered_left", "entity/chest/copper_weathered"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/copper_weathered_right", "entity/chest/copper_weathered"])
+            else:
+                cands.extend(["entity/chest/copper_weathered", "block/weathered_copper_chest"])
+        elif "oxidized_copper" in clean_stem:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/copper_oxidized_left", "entity/chest/copper_oxidized"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/copper_oxidized_right", "entity/chest/copper_oxidized"])
+            else:
+                cands.extend(["entity/chest/copper_oxidized", "block/oxidized_copper_chest"])
+        elif "copper" in clean_stem:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/copper_left", "entity/chest/copper"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/copper_right", "entity/chest/copper"])
+            else:
+                cands.extend(["entity/chest/copper", "block/copper_chest"])
+        elif "christmas" in clean_stem:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/christmas_left", "entity/chest/christmas"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/christmas_right", "entity/chest/christmas"])
+            else:
+                cands.extend(["entity/chest/christmas", "entity/chest/christmas_chest"])
+        else:
+            if "left" in clean_stem:
+                cands.extend(["entity/chest/normal_left", "entity/chest/normal"])
+            elif "right" in clean_stem:
+                cands.extend(["entity/chest/normal_right", "entity/chest/normal"])
+            else:
+                cands.extend(["entity/chest/normal", "entity/chest/chest", "block/chest_front", "block/chest_top", "block/chest_side"])
+
+    # 2c. Redstone Wires and Dust Variants
+    if "redstone_dust" in clean_stem or "redstone_wire" in clean_stem:
+        cands.extend([
+            "block/redstone_dust_line0",
+            "block/redstone_dust_line1",
+            "block/redstone_dust_dot",
+            "block/redstone_dust_overlay",
+        ])
+
+    # 2d. Shelves (All wood variants)
+    if "shelf" in clean_stem:
+        for wood in WOOD_TYPES:
+            if wood in clean_stem:
+                cands.extend([
+                    f"block/{wood}_shelf",
+                    f"block/{wood}_planks",
+                ])
+                break
+
+    # 2e. Chains (Legacy and Modern JAR)
+    if clean_stem == "chain":
+        cands.extend([
+            "block/chain",
+            "block/iron_chain",
+            "item/chain",
+            "item/iron_chain",
+        ])
 
     # 3. Signs and Hanging Signs (all wood types)
     if "sign" in stem:
