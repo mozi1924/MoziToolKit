@@ -16,6 +16,10 @@ if str(PROJECT_DIR) not in sys.path:
 
 import bpy
 from utils.mc_baker import StateBaker, build_blender_mesh_from_baked_model
+from utils.live_sync.template_catalog import (
+    ensure_baked_block_template,
+    get_or_create_template_collection,
+)
 
 JAR_PATH = "/Users/jaxlocke/26.2-Fabric.jar"
 
@@ -88,6 +92,19 @@ class TestJarModelBaker(unittest.TestCase):
 
         baked_observer = self.baker.bake_block_state("minecraft:observer[facing=north,powered=false]")
         self.assertIsNotNone(baked_observer)
+
+    def test_extracted_state_template_uses_actual_stair_mesh_and_uvs(self):
+        """Live Sync template generation must retain the JAR model, not use its placeholder stair."""
+        state = "minecraft:oak_stairs[facing=east,half=bottom,shape=straight]"
+        baked = self.baker.bake_block_state(state)
+        template = ensure_baked_block_template(get_or_create_template_collection(), state, baked)
+
+        self.assertIsNotNone(template)
+        self.assertEqual(template.get("yefira:model_source"), "minecraft_json")
+        self.assertEqual(len(template.data.polygons), sum(len(e.faces) for e in baked.elements))
+        self.assertIn("UVMap", template.data.uv_layers)
+        self.assertIn("yefira_local_face_id", template.data.attributes)
+        self.assertIn("yefira_local_uv", template.data.attributes)
 
 
 if __name__ == "__main__":
