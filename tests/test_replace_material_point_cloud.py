@@ -506,7 +506,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
                 zf.write(img_path, arcname="assets/minecraft/textures/block/stone.png")
             pack_paths.append(zip_file)
 
-        assigned_materials = []
+        assigned_material_names = []
         for pack_idx, pack_path in enumerate(pack_paths):
             params = {
                 "zip_path": str(pack_path),
@@ -520,13 +520,13 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
             cur_mat = self.obj.material_slots[0].material
             self.assertIsNotNone(cur_mat, f"Slot 0 is None on replacement {pack_idx + 1}")
             self.assertTrue(cur_mat.name.startswith("mtk:minecraft:blocks_chunk_"))
-            assigned_materials.append(cur_mat)
+            assigned_material_names.append(cur_mat.name)
 
             # Check that current material is distinct from previous replacements
             if pack_idx > 0:
                 self.assertNotEqual(
                     cur_mat.name,
-                    assigned_materials[pack_idx - 1].name,
+                    assigned_material_names[pack_idx - 1],
                     f"Replacement {pack_idx + 1} did not create/assign a new material (same as replacement {pack_idx})"
                 )
 

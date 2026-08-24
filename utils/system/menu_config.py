@@ -219,11 +219,25 @@ def load_full_config() -> dict:
                     return data
         except Exception as e:
             print(f"[MoziToolKit] Error reading full config file {filepath}: {e}")
-    return {"version": 1, "views": get_default_presets(), "resource_packs": []}
+    return {
+        "version": 1,
+        "views": get_default_presets(),
+        "resource_packs": [],
+        "material_settings": {
+            "material_mode": "ATLAS",
+            "biome_preset": "PLAINS",
+            "pack_textures": True,
+            "use_cache": True,
+        }
+    }
 
 
-def save_full_config(views_data: Optional[dict] = None, pack_entries: Optional[list[dict]] = None) -> bool:
-    """Atomically update and save configuration views and resource pack stack to user JSON file."""
+def save_full_config(
+    views_data: Optional[dict] = None,
+    pack_entries: Optional[list[dict]] = None,
+    material_settings: Optional[dict] = None,
+) -> bool:
+    """Atomically update and save configuration views, resource pack stack, and material settings to user JSON file."""
     filepath = get_config_path()
     try:
         full_data = load_full_config()
@@ -232,6 +246,8 @@ def save_full_config(views_data: Optional[dict] = None, pack_entries: Optional[l
             full_data["views"] = _normalize_views_data(views_data)
         if pack_entries is not None:
             full_data["resource_packs"] = list(pack_entries)
+        if material_settings is not None:
+            full_data["material_settings"] = dict(material_settings)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(full_data, f, indent=4, ensure_ascii=False)
         return True
@@ -241,7 +257,7 @@ def save_full_config(views_data: Optional[dict] = None, pack_entries: Optional[l
 
 
 def save_config(views_data: dict) -> bool:
-    """Save configuration views data to user JSON file while preserving resource_packs."""
+    """Save configuration views data to user JSON file while preserving resource_packs and material_settings."""
     return save_full_config(views_data=views_data)
 
 
@@ -253,8 +269,28 @@ def load_pack_stack_config() -> list[dict]:
 
 
 def save_pack_stack_config(pack_entries: list[dict]) -> bool:
-    """Save resource pack stack entries to user JSON config while preserving views."""
+    """Save resource pack stack entries to user JSON config while preserving views and material_settings."""
     return save_full_config(pack_entries=pack_entries)
+
+
+def load_material_settings_config() -> dict:
+    """Load configured material replacement settings from user JSON config."""
+    full_data = load_full_config()
+    settings = full_data.get("material_settings", {})
+    default_settings = {
+        "material_mode": "ATLAS",
+        "biome_preset": "PLAINS",
+        "pack_textures": True,
+        "use_cache": True,
+    }
+    if isinstance(settings, dict):
+        default_settings.update(settings)
+    return default_settings
+
+
+def save_material_settings_config(material_settings: dict) -> bool:
+    """Save material replacement settings to user JSON config."""
+    return save_full_config(material_settings=material_settings)
 
 
 def get_enabled_pack_entries() -> list[dict]:

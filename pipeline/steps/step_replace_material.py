@@ -303,30 +303,41 @@ class StepReplaceMaterial(PipelineStep):
     description = "Replace and reconstruct materials from Minecraft Java Resource Pack"
 
     def execute_iter(self, pipeline_context) -> Iterator[Union[ProgressUpdate, StepResult]]:
+        pack_stack = pipeline_context.get_param("pack_stack")
         zip_path = pipeline_context.get_param("zip_path")
         pack_textures = pipeline_context.get_param("pack_textures", True)
         use_cache = pipeline_context.get_param("use_cache", True)
         material_mode = pipeline_context.get_param("material_mode", "ATLAS")
 
-        if not zip_path or not Path(zip_path).exists():
-            yield StepResult.failed("Resource pack ZIP file not specified or found.")
+        if not pack_stack:
+            if zip_path and Path(zip_path).exists():
+                try:
+                    pack = ZipResourcePack(zip_path, use_cache=use_cache)
+                    pack_stack = get_configured_pack_stack(pack)
+                except Exception as e:
+                    yield StepResult.failed(f"Failed to load resource pack: {e}")
+                    return
+            else:
+                pack_stack = get_configured_pack_stack()
+
+        if not pack_stack or not pack_stack.packs:
+            yield StepResult.failed(
+                "No active resource packs or Minecraft JARs configured. "
+                "Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit."
+            )
             return
+
+        pack = pack_stack.packs[0]
 
         target_objects = pipeline_context.target_objects
         if not target_objects:
             yield StepResult.failed("No objects selected for material replacement.")
             return
 
-        yield ProgressUpdate(0.05, 1.0, "Loading Minecraft resource pack...")
+        yield ProgressUpdate(0.05, 1.0, "Loading Minecraft resource pack stack...")
 
         if pipeline_context.is_cancelled:
             yield StepResult.cancelled("Material replacement cancelled by user.")
-            return
-
-        try:
-            pack = ZipResourcePack(zip_path, use_cache=use_cache)
-        except Exception as e:
-            yield StepResult.failed(f"Failed to load resource pack: {e}")
             return
 
         valid_objects = [o for o in target_objects if o and o.type == "MESH" and o.data and o.material_slots]
@@ -367,7 +378,6 @@ class StepReplaceMaterial(PipelineStep):
                     return
 
         biome_preset = pipeline_context.get_param("biome_preset", "PLAINS")
-        pack_stack = get_configured_pack_stack(pack)
 
         if material_mode == "ATLAS":
             yield from self._execute_atlas_mode_iter(

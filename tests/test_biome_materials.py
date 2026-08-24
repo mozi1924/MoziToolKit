@@ -33,7 +33,7 @@ from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_sampler
 from utils.materials.builder import rebuild_material
 from utils.materials.atlas_generator import AtlasGenerator
 from utils.materials.atlas_builder import build_atlas_chunk_materials
-from pipeline import run_preset_pipeline
+from pipeline.presets import run_preset_pipeline
 
 
 class TestBiomeColors(unittest.TestCase):
