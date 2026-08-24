@@ -4,9 +4,15 @@ and UV Coordinate Remapping.
 """
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+PROJECT_DIR = Path(__file__).parent.parent.resolve()
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 from PIL import Image
 
 import bpy
@@ -167,4 +173,4 @@ class TestEntityAtlasPacking(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

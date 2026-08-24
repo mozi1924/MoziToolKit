@@ -22,6 +22,88 @@ from .model_parser import ModelParser
 from .blockstate_resolver import BlockStateResolver, parse_block_state_string
 from .resource_loader import JarResourceLoader
 
+# Known Emissive blocks in Minecraft
+EMISSIVE_BLOCKS = frozenset({
+    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
+    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
+    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
+    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
+    "ochre_froglight", "pearlescent_froglight", "verdant_froglight",
+    "minecraft:glowstone", "minecraft:sea_lantern", "minecraft:shroomlight",
+    "minecraft:magma_block", "minecraft:magma", "minecraft:crying_obsidian",
+    "minecraft:jack_o_lantern", "minecraft:beacon", "minecraft:end_rod",
+    "minecraft:lantern", "minecraft:soul_lantern", "minecraft:torch",
+    "minecraft:soul_torch", "minecraft:wall_torch", "minecraft:soul_wall_torch",
+    "minecraft:lava", "minecraft:flowing_lava", "minecraft:fire",
+    "minecraft:soul_fire", "minecraft:conduit", "minecraft:sculk_catalyst",
+    "minecraft:ochre_froglight", "minecraft:pearlescent_froglight", "minecraft:verdant_froglight",
+})
+
+
+def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -> bool:
+    """Return True if block/state is emissive (light emitting), else False."""
+    p = props or {}
+    short_name = block_name.split(":", 1)[-1].removeprefix("block/")
+    if short_name in EMISSIVE_BLOCKS or block_name in EMISSIVE_BLOCKS or short_name.endswith("_froglight"):
+        return True
+    is_lit = p.get("lit") == "true"
+    if is_lit and (
+        short_name in ("furnace", "blast_furnace", "smoker", "redstone_lamp",
+                       "campfire", "soul_campfire", "redstone_ore", "deepslate_redstone_ore")
+    ):
+        return True
+    if short_name in ("redstone_torch", "redstone_wall_torch"):
+        return p.get("lit", "true") == "true"
+    if short_name == "respawn_anchor":
+        charges = int(p.get("charges", "0")) if "charges" in p else 0
+        return charges > 0
+    if short_name == "redstone_wire":
+        power = int(p.get("power", "0")) if "power" in p else 0
+        return power > 0
+    return False
+
+
+_GLOBAL_STATE_BAKER: Optional[StateBaker] = None
+_last_pack_fingerprint: Optional[tuple[str, ...]] = None
+_last_configured_loader = None
+
+
+def get_shared_state_baker() -> StateBaker:
+    """Return the shared global StateBaker singleton instance."""
+    global _GLOBAL_STATE_BAKER
+    if _GLOBAL_STATE_BAKER is None:
+        _GLOBAL_STATE_BAKER = StateBaker()
+    return _GLOBAL_STATE_BAKER
+
+
+def refresh_shared_baker_sources() -> StateBaker:
+    """Synchronize shared StateBaker with the active Resource Pack Stack."""
+    global _last_pack_fingerprint, _last_configured_loader
+    baker = get_shared_state_baker()
+    try:
+        from ..materials.pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
+        current_fingerprint = get_pack_stack_fingerprint()
+        if current_fingerprint != _last_pack_fingerprint:
+            _last_pack_fingerprint = current_fingerprint
+            composite_loader = get_configured_pack_stack().get_composite_loader()
+            _last_configured_loader = composite_loader
+            baker.resource_loader = composite_loader
+            baker.model_parser.model_loader_fn = composite_loader.load_model if composite_loader else None
+            baker.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate if composite_loader else None
+            baker.clear_cache()
+    except Exception:
+        pass
+    return baker
+
+
+def clear_shared_baker_cache() -> None:
+    """Clear shared StateBaker cache and reset cached resource pack fingerprints."""
+    global _GLOBAL_STATE_BAKER, _last_pack_fingerprint, _last_configured_loader
+    if _GLOBAL_STATE_BAKER is not None:
+        _GLOBAL_STATE_BAKER.clear_cache()
+    _last_pack_fingerprint = None
+    _last_configured_loader = None
+
 
 class StateBaker:
     def __init__(
@@ -309,11 +391,7 @@ class StateBaker:
         fallback_texture = f"minecraft:block/{short_name}"
 
         is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab"))
-        is_emissive = any(w in short_name for w in ("glowstone", "sea_lantern", "shroomlight", "magma", "lava", "fire", "lantern", "torch", "crying_obsidian", "beacon", "end_rod"))
-        if props.get("lit") == "true":
-            is_emissive = True
-        if short_name == "respawn_anchor" and int(props.get("charges", "0")) > 0:
-            is_emissive = True
+        is_emissive = is_block_emissive(short_name, props)
 
         for match in variant_matches:
             resolved_model = self.model_parser.resolve_model(match.model_id)

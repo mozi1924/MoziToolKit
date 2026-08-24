@@ -8,6 +8,9 @@ import unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+PARENT_DIR = PROJECT_ROOT.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -302,7 +305,10 @@ class TestExtrudeRepairAtlas(unittest.TestCase):
 
     def test_auto_extrude_repair_deferred_tick_sleeps_when_idle(self):
         """_deferred_extrude_repair_tick must return None when idle so the timer automatically deregisters."""
-        from operators.mesh.op_auto_extrude_repair import _deferred_extrude_repair_tick, _pending_repairs, _smart_extrude_sessions
+        try:
+            from MoziToolKit.operators.mesh.op_auto_extrude_repair import _deferred_extrude_repair_tick, _pending_repairs, _smart_extrude_sessions
+        except ImportError:
+            from operators.mesh.op_auto_extrude_repair import _deferred_extrude_repair_tick, _pending_repairs, _smart_extrude_sessions
 
         _pending_repairs.clear()
         _smart_extrude_sessions.clear()
@@ -316,12 +322,20 @@ class TestExtrudeRepairAtlas(unittest.TestCase):
 
     def test_uv_editing_isolation_guards(self):
         """Verify UV editing detection functions prevent auto repair during UV manipulation."""
-        from operators.mesh.op_auto_extrude_repair import (
-            _is_uv_editing_active,
-            _is_extrude_operator_identifier,
-            _is_extrude_in_progress,
-            _has_recent_extrude_operator,
-        )
+        try:
+            from MoziToolKit.operators.mesh.op_auto_extrude_repair import (
+                _is_uv_editing_active,
+                _is_extrude_operator_identifier,
+                _is_extrude_in_progress,
+                _has_recent_extrude_operator,
+            )
+        except ImportError:
+            from operators.mesh.op_auto_extrude_repair import (
+                _is_uv_editing_active,
+                _is_extrude_operator_identifier,
+                _is_extrude_in_progress,
+                _has_recent_extrude_operator,
+            )
 
         class DummyArea:
             def __init__(self, type_str):
@@ -408,4 +422,8 @@ class TestExtrudeRepairAtlas(unittest.TestCase):
             self.assertEqual(fractions[-1], 1.0)
             self.assertTrue(all(isinstance(step[1], str) for step in yielded_steps))
             self.assertIsNotNone(yielded_steps[-1][2], "Final step should yield the output dict.")
+
+
+if __name__ == "__main__":
+    unittest.main(argv=[sys.argv[0]])
 

@@ -17,9 +17,14 @@ try:
     import bpy
     import bmesh
     from mathutils import Vector
-    from utils.mesh.fluid_uv import repair_face_fluid_uv, process_mesh_fluid_uv_repairs
-    from pipeline.presets import get_preset_pipeline
-    from pipeline.context import PipelineContext
+    try:
+        from MoziToolKit.utils.mesh.fluid_uv import repair_face_fluid_uv, process_mesh_fluid_uv_repairs
+        from MoziToolKit.pipeline.presets import get_preset_pipeline
+        from MoziToolKit.pipeline.context import PipelineContext
+    except ImportError:
+        from utils.mesh.fluid_uv import repair_face_fluid_uv, process_mesh_fluid_uv_repairs
+        from pipeline.presets import get_preset_pipeline
+        from pipeline.context import PipelineContext
 except ImportError:
     bpy = None
     bmesh = None
@@ -103,4 +108,4 @@ class TestRepairFluidUV(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])
