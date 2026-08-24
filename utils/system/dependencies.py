@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import site
 import sys
+from functools import lru_cache
+import time
 from typing import Dict, List, Optional
 
 
@@ -47,6 +49,7 @@ DEPENDENCIES: Dict[str, Dependency] = {
 }
 
 
+@lru_cache(maxsize=1)
 def get_blender_site_packages() -> List[str]:
     """
     Discover site-packages directories belonging to Blender's Python environment
@@ -68,14 +71,11 @@ def get_blender_site_packages() -> List[str]:
 
     # 2. Standard Blender Python site-packages
     try:
-        site_dirs = site.getsitepackages()
-        if isinstance(site_dirs, list):
-            for sd in site_dirs:
-                p = Path(sd)
-                if p.exists():
-                    resolved = str(p.resolve())
-                    if resolved not in discovered:
-                        discovered.append(resolved)
+        sp = site.getsitepackages()
+        if isinstance(sp, list):
+            for p in sp:
+                if p not in discovered and Path(p).exists():
+                    discovered.append(p)
     except Exception:
         pass
 
@@ -97,16 +97,11 @@ def get_blender_site_packages() -> List[str]:
 
 
 def ensure_sys_paths() -> List[str]:
-    """Compatibility no-op retained for callers from pre-extension builds.
-
-    Blender Extensions installs wheels declared in ``blender_manifest.toml`` and
-    owns their import paths. The add-on must not extract or prepend wheels at
-    runtime, because that can race between Blender processes and shadow the
-    extension-managed package.
-    """
+    """Compatibility no-op retained for callers from pre-extension builds."""
     return []
 
 
+@lru_cache(maxsize=1)
 def get_python_executable() -> str:
     """
     Find the active Python binary executable used by the current Blender process.
@@ -140,21 +135,26 @@ def get_python_executable() -> str:
     return exe
 
 
+_installed_modules_cache = {}
+
+
 def is_module_installed(module_name: str) -> bool:
-    """Check if a Python module is available in the Python environment."""
+    """Check if a Python module is available in the Python environment (cached)."""
     if module_name in sys.modules:
         return True
+    if module_name in _installed_modules_cache:
+        return _installed_modules_cache[module_name]
     try:
-        if importlib.util.find_spec(module_name) is not None:
-            return True
+        found = importlib.util.find_spec(module_name) is not None
     except Exception:
-        pass
-    return False
+        found = False
+    _installed_modules_cache[module_name] = found
+    return found
 
 
+@lru_cache(maxsize=32)
 def get_installed_version(module_name: str, package_name: Optional[str] = None) -> Optional[str]:
-    """Retrieve installed version of a package or module."""
-    # Try importlib.metadata first
+    """Retrieve installed version of a package or module (cached)."""
     pkg_name = package_name or module_name
     try:
         return importlib.metadata.version(pkg_name)
@@ -196,9 +196,24 @@ def get_dependency_status(dep: Dependency) -> dict:
     }
 
 
-def get_all_dependency_statuses() -> List[dict]:
-    """Get installation statuses for all registered dependencies."""
-    return [get_dependency_status(dep) for dep in DEPENDENCIES.values()]
+_cached_dep_statuses = None
+_cached_dep_statuses_time = 0.0
+
+
+def get_all_dependency_statuses(force_refresh: bool = False) -> List[dict]:
+    """Get installation statuses for all registered dependencies (cached for 5 seconds to avoid UI redraw lag)."""
+    global _cached_dep_statuses, _cached_dep_statuses_time
+    now = time.time()
+    if not force_refresh and _cached_dep_statuses is not None and (now - _cached_dep_statuses_time) < 5.0:
+        return _cached_dep_statuses
+
+    if force_refresh:
+        _installed_modules_cache.clear()
+        get_installed_version.cache_clear()
+
+    _cached_dep_statuses = [get_dependency_status(dep) for dep in DEPENDENCIES.values()]
+    _cached_dep_statuses_time = now
+    return _cached_dep_statuses
 
 
 def has_all_dependencies() -> bool:

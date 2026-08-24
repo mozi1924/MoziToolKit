@@ -838,12 +838,16 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         btn_col.operator("mozi.pack_add", text="", icon="ADD")
         btn_col.operator("mozi.pack_remove", text="", icon="REMOVE")
         btn_col.separator(factor=2)
-        op_up = btn_col.operator("mozi.pack_move", text="", icon="TRIA_UP")
+
+        up_col = btn_col.column(align=True)
+        up_col.enabled = can_move_up
+        op_up = up_col.operator("mozi.pack_move", text="", icon="TRIA_UP")
         op_up.direction = "UP"
-        op_up.enabled = can_move_up
-        op_down = btn_col.operator("mozi.pack_move", text="", icon="TRIA_DOWN")
+
+        down_col = btn_col.column(align=True)
+        down_col.enabled = can_move_down
+        op_down = down_col.operator("mozi.pack_move", text="", icon="TRIA_DOWN")
         op_down.direction = "DOWN"
-        op_down.enabled = can_move_down
 
         # Selected Pack Detail & Properties Box
         idx = self.resource_packs_index
