@@ -363,22 +363,25 @@ class StepReplaceMaterial(PipelineStep):
         if material_mode == "ATLAS":
             yield from self._execute_atlas_mode_iter(
                 pipeline_context, pack, valid_objects, pack_textures,
-                biome_preset=biome_preset, pack_stack=pack_stack
+                biome_preset=biome_preset, pack_stack=pack_stack,
+                use_cache=use_cache,
             )
         else:
             yield from self._execute_standalone_mode_iter(
                 pipeline_context, pack, valid_objects, pack_textures,
-                biome_preset=biome_preset, pack_stack=pack_stack
+                biome_preset=biome_preset, pack_stack=pack_stack,
             )
 
     def _execute_atlas_mode_iter(
         self, pipeline_context, pack: ZipResourcePack, valid_objects: list,
         pack_textures: bool, biome_preset: str = "PLAINS",
-        pack_stack: Optional[ResourcePackStack] = None
+        pack_stack: Optional[ResourcePackStack] = None,
+        use_cache: bool = True,
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
+        effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
         cache_root = get_cache_dir()
-        atlas_dir = cache_root / pack.pack_hash
+        atlas_dir = cache_root / effective_pack_hash
         mapping_path = atlas_dir / "atlas_mapping.json"
 
         yield ProgressUpdate(0.10, 1.0, "Checking Atlas texture cache...")
@@ -388,7 +391,7 @@ class StepReplaceMaterial(PipelineStep):
             return
 
         cache_is_current = False
-        if mapping_path.exists():
+        if use_cache and mapping_path.exists():
             try:
                 with open(mapping_path, "r", encoding="utf-8") as fp:
                     cached_mapping = json.load(fp)
@@ -406,7 +409,7 @@ class StepReplaceMaterial(PipelineStep):
                     "Atlas Mode requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
                 )
                 return
-            pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {pack.pack_hash[:12]}...")
+            pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {effective_pack_hash[:12]}...")
             try:
                 gen = AtlasGenerator(pack.extract_dir, fallback_stack=pack_stack)
                 for frac, msg, _res in gen.build_iter(atlas_dir):
@@ -502,7 +505,7 @@ class StepReplaceMaterial(PipelineStep):
             effective_chunks = required_chunk_ids if required_chunk_ids else {0}
             atlas_materials = build_atlas_chunk_materials(
                 atlas_dir,
-                pack_hash=pack.pack_hash,
+                pack_hash=effective_pack_hash,
                 pack_textures=pack_textures,
                 chunk_ids=effective_chunks,
             )
@@ -512,7 +515,7 @@ class StepReplaceMaterial(PipelineStep):
         if yefira_objects:
             yefira_atlas_materials = build_atlas_chunk_materials(
                 atlas_dir,
-                pack_hash=pack.pack_hash,
+                pack_hash=effective_pack_hash,
                 pack_textures=pack_textures,
                 chunk_ids={int(chunk["chunk_id"]) for chunk in mapping_data.get("chunks", [])},
                 uv_attribute="UVMap",
@@ -543,7 +546,7 @@ class StepReplaceMaterial(PipelineStep):
 
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
             mat = bpy.data.materials.new(name=mat_name)
-            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=pack.pack_hash):
+            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash):
                 bpy.data.materials.remove(mat)
                 return None, False
 

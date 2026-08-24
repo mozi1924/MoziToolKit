@@ -207,7 +207,10 @@ class AtlasGenerator:
         if self.fallback_stack and self.fallback_stack.packs:
             for fallback_pack in self.fallback_stack.packs:
                 try:
-                    if fallback_pack.zip_path.resolve() == self.resource_path.resolve():
+                    if (
+                        (fallback_pack.zip_path and fallback_pack.zip_path.resolve() == self.resource_path.resolve())
+                        or (fallback_pack.extract_dir and fallback_pack.extract_dir.resolve() == self.resource_path.resolve())
+                    ):
                         continue
                 except Exception:
                     pass
@@ -594,16 +597,26 @@ class AtlasGenerator:
         if not key_or_stem:
             return None
         clean = key_or_stem.strip().lower()
-        stem = clean.split("/")[-1].removesuffix(".png")
+        if ":" in clean:
+            ns_part, clean = clean.split(":", 1)
+            if not namespace or namespace == "minecraft":
+                namespace = ns_part
+        clean = clean.removesuffix(".png").strip("/")
+        stem = clean.split("/")[-1]
+
         candidates = [
             clean,
             stem,
             f"block/{stem}",
             f"item/{stem}",
             f"entity/{stem}",
+            f"particle/{stem}",
         ]
         if category:
-            candidates.insert(0, f"{category}/{stem}")
+            cat_clean = category.strip("/").lower()
+            candidates.insert(0, f"{cat_clean}/{stem}")
+            if cat_clean.endswith("s") and len(cat_clean) > 1:
+                candidates.insert(1, f"{cat_clean[:-1]}/{stem}")
 
         # 1. Search in category map if provided
         if category and namespace in self.static_by_ns_cat:

@@ -803,6 +803,12 @@ def run_all_tests():
         print(f"[Warning] Could not load TestPackStackAndFallback: {e}")
 
     try:
+        from tests.test_overlay_and_fallback_stack import TestOverlayAndFallbackStack
+        suite.addTests(loader.loadTestsFromTestCase(TestOverlayAndFallbackStack))
+    except Exception as e:
+        print(f"[Warning] Could not load TestOverlayAndFallbackStack: {e}")
+
+    try:
         from tests.test_multi_category_atlas import TestMultiCategoryAtlas
         suite.addTests(loader.loadTestsFromTestCase(TestMultiCategoryAtlas))
     except Exception as e:
