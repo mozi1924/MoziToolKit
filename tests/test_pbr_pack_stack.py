@@ -124,6 +124,45 @@ class TestPBRPackStack(unittest.TestCase):
             # Test stack baking status
             self.assertTrue(stack.is_stack_baked())
 
+    def test_normal_only_overlay_keeps_lower_albedo_in_atlas(self):
+        """An _N-only top layer must overlay, never replace, the base texture."""
+        if not Image:
+            self.skipTest("Pillow not available")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            overlay_dir = tmp / "glow_overlay"
+            pbr_dir = tmp / "pbr_base"
+            vanilla_dir = tmp / "vanilla"
+
+            def texture_dir(pack):
+                result = pack / "assets" / "minecraft" / "textures" / "block"
+                result.mkdir(parents=True)
+                return result
+
+            # Use an upper-case suffix to cover real-world PBR packs that name
+            # their channel companions _N/_S instead of lower-case.
+            Image.new("RGBA", (16, 16), (12, 34, 56, 255)).save(texture_dir(overlay_dir) / "diamond_ore_N.png")
+            Image.new("RGBA", (16, 16), (80, 90, 100, 255)).save(texture_dir(pbr_dir) / "diamond_ore.png")
+            Image.new("RGBA", (16, 16), (1, 2, 3, 255)).save(texture_dir(vanilla_dir) / "diamond_ore.png")
+
+            stack = ResourcePackStack([overlay_dir, pbr_dir, vanilla_dir])
+            info = stack.get_texture_info("diamond_ore")
+            self.assertIsNotNone(info)
+            self.assertTrue(str(info["albedo"]).endswith("pbr_base/assets/minecraft/textures/block/diamond_ore.png"))
+            self.assertTrue(str(info["normal"]).endswith("diamond_ore_N.png"))
+
+            atlas_dir = tmp / "atlas"
+            AtlasGenerator(fallback_stack=stack).build(atlas_dir)
+            mapping = json.loads((atlas_dir / "atlas_mapping.json").read_text(encoding="utf-8"))
+            location = mapping["textures"]["diamond_ore"]
+            chunk = next(item for item in mapping["chunks"] if item["chunk_id"] == location["chunk_id"])
+            x = location.get("pixel_x", location["tile_column"] * location["tile_size"])
+            y = location.get("pixel_y", location["tile_row"] * location["tile_size"])
+
+            self.assertEqual(Image.open(atlas_dir / chunk["files"]["albedo"]).getpixel((x, y)), (80, 90, 100, 255))
+            self.assertEqual(Image.open(atlas_dir / chunk["files"]["normal"]).getpixel((x, y)), (12, 34, 56, 255))
+
     def test_real_user_packs_if_present(self):
         """Test with actual user packs on system if they exist."""
         real_packs = [

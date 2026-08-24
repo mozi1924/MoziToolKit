@@ -112,6 +112,14 @@ class ResourcePackStack:
         """
         Collect all unique texture entries across all active packs in this stack,
         synthesizing composite per-channel PBR data (Albedo, Normal, Specular) for each.
+
+        A PBR-only overlay is deliberately *not* a texture replacement.  Each
+        channel is resolved from the first layer that physically supplies that
+        channel, so an ``ore_n``/``ore_s`` file in the top pack is composited
+        over an albedo found in a lower PBR pack or the vanilla JAR.  Atlas
+        generation consumes this composite directly: it never turns a missing
+        albedo into a transparent tile merely because a higher layer has a PBR
+        companion map.
         Returns mapping from (namespace, texture_key) -> composite_texture_info_dict.
         """
         all_keys: set[tuple[str, str]] = set()
@@ -294,5 +302,4 @@ def get_pack_stack_fingerprint(primary_source: Optional[Union[str, Path, ZipReso
                 sources.append(res_path)
 
     return tuple(sources)
-
 

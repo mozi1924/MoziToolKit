@@ -206,7 +206,10 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 # the former block-only grid.  In particular, animations are independent
 # horizontal columns of vertical frame strips.  Reusing a v11 cache can bind
 # those faces to a stale static-grid chunk, so force a fresh mapping build.
-ATLAS_FORMAT_VERSION = 12
+# 13: channel-only overlay packs are classified case-insensitively (_N/_S as
+# well as _n/_s), so pre-13 atlases must be regenerated instead of reusing
+# tiles compiled with an overlay map mistaken for albedo.
+ATLAS_FORMAT_VERSION = 13
 
 # All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
 ANIM_AND_ATLAS_ATTR_NAMES = (
