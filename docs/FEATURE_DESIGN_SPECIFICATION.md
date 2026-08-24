@@ -9,8 +9,15 @@
 1. [架构总览与防回归设计哲学](#1-架构总览与防回归设计哲学)
 2. [模块一：Minecraft 材质解析、匹配与替换管线](#2-模块一minecraft-材质解析匹配与替换管线)
    - 2.1 资源包分层栈与解包缓存 (Resource Pack Stack & Cache)
+     - 2.1.1 三层物理优先级栈体系 (Three-Tier Priority Stack)
+     - 2.1.2 通道级细粒度独立级联回退 (Per-Channel Cascading Fallback)
+     - 2.1.3 伴生贴图识别与防误判契约 (Companion Suffix Indexing Contract)
+     - 2.1.4 物理输入形态与双重缓存架构 (Extraction & Bake Cache)
    - 2.2 多导入器自适应匹配引擎 (Importer Adapters)
    - 2.3 双材质构建体系 (Atlas Mode vs Standalone Mode)
+     - 2.3.1 图集预编译与视口替换生命周期解耦 (Decoupled Precompilation)
+     - 2.3.2 图集零透明占位与融合装箱契约 (Zero-Placeholder Packing Contract)
+     - 2.3.3 独立模式 (Standalone Mode)
    - 2.4 图集数学模型与着色器防溢色 (Atlas UV Tiling & Anti-Bleed Math)
    - 2.5 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
    - 2.6 逐帧动态动画材质驱动 (Animated Textures & MCMETA Driver)
@@ -115,15 +122,77 @@ graph TD
 ## 2. 模块一：Minecraft 材质解析、匹配与替换管线
 
 ### 2.1 资源包分层栈与解包缓存 (Resource Pack Stack & Cache)
-- **设计方向**：
-  - 采用 **优先级栈（Pack Stack）** 机制：`User Resource Packs (Top)` > `Base Vanilla JAR (Bottom)`。用户可以叠加多个材质包，高层材质包中的纹理覆盖底层，底层提供全量缺失纹理回退（Fallback）。
-  - 支持三种输入形态：
-    1. `.zip` 压缩包（标准 Minecraft 材质包）。
-    2. `.jar` 归档（Minecraft 客户端核心文件）。
-    3. 本地解压目录。
-  - **解包与缓存策略**：
-    - 解压至系统临时目录下的专用哈希缓存目录，通过 `pack.mcmeta` 的文件哈希或修改时间校验有效性，避免每次重复解包。
-    - 提供一键内嵌（Pack Textures into `.blend`）和工程目录解构（`//textures/block/`）两种物理资产管理模式。
+
+#### 2.1.1 三层物理优先级栈体系 (Three-Tier Priority Stack)
+MoziToolKit 遵循 Minecraft 原生资源包堆叠思想并进行了工程化升维，采用 **三层分级栈（Three-Tier Hierarchy）** 架构管理资产来源，自顶向下（Top to Bottom）严格排序：
+1. **顶层：用户材质包（`RESOURCE_PACK` - Top Layer，优先级最高）**：
+   - 包含各类定制资源包、局部修改包（如矿石发光、3D 武器模型包、局部风格化材质包）或全量高精度材质包（如 Faithful 32x、Patrix 128x）。
+   - 用户可以在偏好设置中自由叠加多个材质包并上下调整相对优先级。
+2. **中层：Mod 归档与拓展包（`MOD_JAR` - Middle Layer）**：
+   - 包含各类模组（如 Create、Botania、Twilight Forest 等）的 `.jar` 归档。提供自定义命名空间（如 `create:`）的独立方块、物品贴图与模型定义。
+3. **底层：原版客户端核心（`VANILLA` - Bottom Layer，基底回退锚点）**：
+   - Minecraft 官方客户端原版 JAR 包（如 `1.21.jar` / `26.2-Fabric.jar`）。
+   - 作为整个渲染系统的 **绝对基底锚点（Fallback Anchor）**，提供全量标准方块/物品的基础漫反射贴图（Albedo）、默认 Model JSON 继承树与 Blockstate 变体定义。
+
+```mermaid
+graph TD
+    subgraph PackStack [资源包优先级栈 (Top to Bottom)]
+        RP1[Layer 0: 顶层发光矿石覆盖包 - 仅含 _n / _s]
+        RP2[Layer 1: 中层全量 PBR 材质包 - 含高清 Albedo & 部分 _n / _s]
+        MOD[Layer 2: 模组拓展 JAR - 提供 create: 等自定义命名空间]
+        VANILLA[Layer 3: 底层原版客户端 JAR - 全量 Base Albedo & Models]
+    end
+
+    subgraph PerChannelResolver [通道级细粒度独立解析引擎 (Per-Channel Resolver)]
+        direction TB
+        AlbRes[Albedo 通道独立自顶向下穿透]
+        NormRes[Normal _n 通道独立自顶向下穿透]
+        SpecRes[Specular _s 通道独立自顶向下穿透]
+        MetaRes[MCMETA 动画元数据通道独立穿透]
+    end
+
+    subgraph CompositeResult [预编译合成材质条目 (Composite Map)]
+        CompDiamond[diamond_ore: 顶层发光 _s + 中层高清 Albedo & _n]
+        CompStone[stone: 中层高清 Albedo + 中层 _n + 中层 _s]
+        CompBedrock[bedrock: 底层原版 Albedo + 默认平坦法线/无发光高光]
+    end
+
+    RP1 --> PerChannelResolver
+    RP2 --> PerChannelResolver
+    MOD --> PerChannelResolver
+    VANILLA --> PerChannelResolver
+
+    PerChannelResolver --> CompositeResult
+```
+
+#### 2.1.2 通道级细粒度独立级联回退 (Per-Channel Cascading Fallback)
+与传统将整套方块视为单一单元进行粗暴覆盖的方案不同，MoziToolKit 在 [`pack_stack.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/materials/pack_stack.py) 中实现了 **通道级细粒度独立穿透机制（Granular Per-Channel Composition）**：
+- **四大独立解析通道**：
+  1. **`albedo`**：基础漫反射色彩贴图（如 `stone.png`、`diamond_ore.png`）。
+  2. **`normal`**：法线贴图（匹配 `_n.png` 或大写 `_N.png` 后缀）。
+  3. **`specular`**：LabPBR 1.3 镜面/粗糙度/金属性/发光贴图（匹配 `_s.png` 或大写 `_S.png` 后缀）。
+  4. **`mcmeta`**：逐帧动态动画与插值配置（`.png.mcmeta`）。
+- **级联命中算法（First-Hit Resolution）**：
+  对于任意纹理标识 `(namespace, texture_key)`，解析器自顶向下遍历材质栈，各通道分别取自 **物理提供该通道文件的最顶层资源包**：
+  - 若最顶层发光包只提供了 `diamond_ore_s.png`，解析器直接捕获其 `specular` 通道；
+  - 接着继续向下层穿透，若第二层 PBR 材质包提供了 `diamond_ore.png` 与 `diamond_ore_n.png`，则分别捕获其 `albedo` 与 `normal`；
+  - 若某个方块（如 `bedrock`）在上层所有资源包中均无定制贴图，则 `albedo` 穿透命中底层的原版 JAR，而 `normal` 与 `specular` 标记为 `None`，并在着色器中安全回退为默认平坦法线 `(128, 128, 255)` 与标准粗糙度，**绝对不会在对应位置创建空白材质或黑色空洞**。
+
+#### 2.1.3 伴生贴图识别与防误判契约 (Companion Suffix Indexing Contract)
+在 [`resource_pack.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/materials/resource_pack.py) 的 `ZipResourcePack._build_index()` 中：
+- 文件名后缀分类器严格区分材质角色：无论文件名为小写（`_n` / `_s`）还是部分第三方材质包的大写命名（`_N` / `_S`），均被剔除后缀后归纳为对应基底方块的伴生通道（`normal` / `specular`）。
+- **防掩盖保障（Non-Masking Invariant）**：伴生贴图**严禁作为独立的 Albedo 实体建立索引**。若一个发光材质包中仅有 `assets/minecraft/textures/block/diamond_ore_N.png`，系统绝不会将其识别为一个名为 `diamond_ore_n` 的缺失漫反射方块，而是将其正确绑定至 `minecraft:block/diamond_ore` 的法线通道，确保漫反射通道能够顺利穿透到下层资源。
+
+#### 2.1.4 物理输入形态与双重缓存架构 (Extraction & Bake Cache)
+- **输入形态支持**：
+  1. `.zip` 压缩包（标准 Minecraft 材质包）。
+  2. `.jar` 归档（Minecraft 客户端核心文件 / Forge / Fabric / NeoForge 模组）。
+  3. 本地解压目录（方便材质包创作者实时调试开发）。
+- **解包与缓存生命周期**：
+  - **临时解压缓存（OS Temp）**：ZIP/JAR 归档解压至系统临时目录（`bpy.app.tempdir/MoziToolKit/extracted/<pack_hash>/`），内置 Zip-Slip 路径穿越防御与 Zip-Bomb 压缩比安全检测，由 `pack.mcmeta` 或文件内容哈希校验，避免重复解压。
+  - **持久化烘焙缓存（Persistent Cache）**：材质栈预编译产出的图集贴图与 `atlas_mapping.json` 存储于持久化数据目录（`DATAFILES/MoziToolKit/cache/baked_stack/<stack_hash>/`）。当材质栈结构或顺序未变动时，场景替换可直接复用该缓存。
+
+---
 
 ### 2.2 多导入器自适应匹配引擎 (Importer Adapters)
 不同地图导出工具具有完全不同的材质命名与网格组织规范。匹配引擎通过策略模式实现多适配器智能探测：
@@ -135,28 +204,48 @@ graph TD
 | **`Ice-Cube`** | Ice-Cube 资产库材质命名规范，常带命名空间及别名 | 识别其资产库专属前缀（如 `library/`、`ice_cube_asset_library/`），做别名映射后精准定位材质。 |
 | **`Generic`** | 通用 OBJ/FBX 导入模型，材质名通常包含 Blender 副本后缀（`.001`）与路径前缀 | 自动剥离 `.001`~`.999` 复制后缀、剥离 `assets/textures/block/` 路径前缀，进行模糊匹配与降级回退。 |
 
+---
+
 ### 2.3 双材质构建体系 (Atlas Mode vs Standalone Mode)
 
 ```mermaid
 graph LR
     Input[待替换材质网格] --> ModeCheck{材质构建模式}
-    ModeCheck -- ATLAS 图集模式 --> AtlasBuild[Pillow 2D 矩形装箱]
-    AtlasBuild --> AtlasShader[构建单一 Atlas PBR 材质]
+    ModeCheck -- ATLAS 图集模式 --> PrecompCheck{预编译缓存命中?}
+    PrecompCheck -- 未命中/栈变动 --> AtlasBuild[Pillow 2D 矩形装箱/网格烘焙]
+    AtlasBuild --> CacheSave[保存至 baked_stack/ 缓存]
+    PrecompCheck -- 命中缓存 --> CacheLoad[直接读取缓存元数据]
+    CacheSave --> AtlasShader[构建单一 Atlas PBR 材质]
+    CacheLoad --> AtlasShader
     AtlasShader --> RemapUV[重写网格 UV 至图集瓦片]
     
     ModeCheck -- STANDALONE 独立模式 --> MatGen[为各方块生成独立 BSDF 材质]
     MatGen --> AlignUV[局部 UV 自动对齐重构]
 ```
 
-- **图集模式 (Atlas Mode)**：
-  - **设计目标**：极致降低 Draw Call 与显存开销。将场景中数百种方块贴图动态打包为一张或极少量紧凑图集（Texture Atlas）。
-  - **技术实现**：
-    1. 基于二维矩形装箱算法（`RectPacker`）计算贴图在图集中的布局 `(x, y, w, h)`。
-    2. 针对包含法线贴图（Normal Map）和高光/粗糙度贴图（LabPBR）的资源包，同步生成伴生图集。
-    3. 全自动在网格 Loop UV 上重写 UV 坐标，将其映射至图集对应子区域。
-- **独立模式 (Standalone Mode)**：
-  - **设计目标**：保留最纯粹的节点树可编辑性。每个方块拥有独立的 Principled BSDF 节点树，方便艺术家进行单独微调、添加特殊置换或连接复杂着色器。
-  - **技术实现**：配合 `standalone_aligner.py` 对带有多帧动画或非标准 UV 的面进行局部 UV 自动对齐重构。
+#### 2.3.1 图集预编译与视口替换生命周期解耦 (Decoupled Precompilation)
+MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部收拢在 **预编译烘焙阶段（Precompilation Bake）**：
+- **预编译执行时机**：通过 `mozi.precompile_cache` 算子触发，或在用户首次对场景执行材质替换且当前材质栈尚未烘焙时自动执行。
+- **预编译产物**：为整个材质栈生成唯一的 `stack_hash`，并在磁盘上构建由 `atlas_mapping.json`、`*_albedo.png` 以及按需生成的伴生 `*_normal.png` / `*_specular.png` 构成的完整图集切片库。
+- **视口替换（Instant Binding）**：当用户在 3D 视口中点击“替换材质”时，算子直接读取已持久化的 `atlas_mapping.json`，在毫秒级内完成网格 Loop UV 重映射与 Material Slot 赋予，**杜绝在视口操作时发生重复的磁盘扫描或图像重重组**。
+
+#### 2.3.2 图集零透明占位与融合装箱契约 (Zero-Placeholder Packing Contract)
+图集生成器（[`AtlasGenerator`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/materials/atlas_generator.py)）在装箱布局阶段直接以多层栈合成后的全量字典（`composite_map`）作为唯一数据源：
+1. **局部材质包覆盖机制（如矿物修改包）**：
+   - 假设用户仅添加了一个修改了 5 种矿石贴图的局部材质包，其余方块全部由底层原版 JAR 提供。
+   - `AtlasGenerator` 在加载资源时，直接获取到“5 个来自顶层的定制矿石贴图 + 数百个来自底层原版 JAR 的常规方块贴图”。
+   - **装箱排布**：装箱器将这修改后的 5 个矿石贴图与原版其他方块贴图紧密无缝地拼合在同一张 Atlas 图集内。**绝不会为未覆盖的方块生成任何透明占位、空图或黑色空洞**。
+2. **全量材质包覆盖机制（如 Faithful 32x）**：
+   - 若用户添加了一个覆盖全量 Minecraft 方块的材质包，所有方块的漫反射贴图均在顶层被直接命中，烘焙出的图集整张完全呈现该材质包的高清纹理。
+3. **PBR 伴生图集按需分配机制（On-Demand Companion Sheets）**：
+   - 图集以 `Chunk` 为单位进行空间划分。只有当某一个 Chunk 内所包含的方块中至少有一个方块具有 `_n` 或 `_s` 伴生贴图时，系统才会为该 Chunk 分配并保存对应的 `normal` / `specular` 伴生大图；
+   - 对于纯原版方块构成的无 PBR Chunk，**严禁生成无意义的全尺寸法线/高光空白大图**，从而大幅节省显存占用与磁盘缓存空间。
+
+#### 2.3.3 独立模式 (Standalone Mode)
+- **设计目标**：保留最纯粹的节点树可编辑性。每个方块拥有独立的 Principled BSDF 节点树，方便艺术家进行单独微调、添加特殊置换或连接复杂着色器。
+- **技术实现**：配合 `standalone_aligner.py` 对带有多帧动画或非标准 UV 的面进行局部 UV 自动对齐重构。
+
+---
 
 ### 2.4 图集数学模型与着色器防溢色 (Atlas UV Tiling & Anti-Bleed Math)
 - **设计难点**：在图集模式下，原本 `[0, N]` 的平铺纹理（如 3x3 的草方块顶面）如果直接采样图集，会导致 UV 越界采样到邻近的其他方块贴图（跨瓦片溢色）。
@@ -171,6 +260,8 @@ graph LR
   $$V_{final} = V_{min} + v_{clamped} \times V_{size}$$
   着色器节点组中严格执行此数学变换，彻底根除跨瓦片拉伸与溢色。
 
+---
+
 ### 2.5 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
 - **设计方向**：
   - 内置 14+ 种官方生物群系预设（平原、森林、桦木林、针叶林、丛林、热带草原、恶地、沼泽、黑森林、红树林沼泽、樱花树林、雪原、沙漠、温带海洋等）。
@@ -178,6 +269,8 @@ graph LR
   - **硬编码方块颜色**：对不受生物群系色图影响的特殊方块（如云杉树叶 `#619961`、桦木树叶 `#80A755`、睡莲 `#208030`、水体 `#3F76E4`、红石线 `#9E0101`）配置精确的 sRGB/Linear RGB 映射。
   - **Block Model JSON Tintindex 精准感知**：
     自动读取方块模型 JSON 中的 `tintindex`。例如对于草方块（Grass Block），侧面基底贴图为 `tintindex: -1`（不染色），侧面覆盖层与顶面为 `tintindex: 0`（染色）。着色器仅对带有染色标记的层进行乘法染色，防止泥土底色被错误染绿。
+
+---
 
 ### 2.6 逐帧动态动画材质驱动 (Animated Textures & MCMETA Driver)
 - **设计方向**：
@@ -188,11 +281,17 @@ graph LR
     $$\text{FrameIndex} = \text{floor}\left(\frac{\text{SceneFrame}}{\text{FrameTime}}\right) \pmod{\text{TotalFrames}}$$
     计算 UV 的 V 轴偏移，实现无需 bake 视频贴图的轻量化原生时间轴动画。
 
+---
+
 ### 2.7 材质管线防回归不变量契约
 > [!IMPORTANT]
 > 1. **严禁破坏 `jmc2obj` 平铺 UV**：不要在导入或替换材质时对超出 `[0, 1]` 范围的 UV 做全局取模裁剪，必须保留平铺并在着色器内部由图集节点解包。
 > 2. **草方块/树叶染色层必须遵循 `tintindex`**：绝对不能对整张材质无差别染色，否则草方块的泥土部分会呈现绿色变异。
 > 3. **Pillow 依赖隔离**：材质图集生成必须通过 `utils.system.dependencies` 的受控接口调用 Pillow，禁止在未捕获 ImportError 的情况下全局顶层 `import PIL`。
+> 4. **通道级独立回退不变量 (Per-Channel Fallback Invariant)**：Albedo、Normal (`_n`)、Specular (`_s`) 必须按通道独立自顶向下解析，缺失的通道各自独立回退，严禁因某个通道缺失而废弃其他有效通道。
+> 5. **伴生贴图非遮蔽不变量 (PBR Companion Non-Masking Invariant)**：带 `_n`/`_N`、`_s`/`_S` 后缀的文件必须严格绑定至对应基底方块的伴生层，严禁作为独立的漫反射实体建立条目，防止遮蔽下层真实的 Albedo 贴图。
+> 6. **图集零透明占位不变量 (Zero-Placeholder Atlas Invariant)**：图集装箱必须基于合成后的 Composite Map 紧凑排布，严禁为局部材质包未修改的方块分配透明占位图块。
+> 7. **预编译与替换解耦不变量 (Decoupled Precompilation & Instant Binding)**：所有昂贵的多包解析与图像装箱操作必须在预编译阶段完成并持久化，材质替换算子执行期间严禁进行重复的磁盘扫描与图像合成。
 
 ---
 
