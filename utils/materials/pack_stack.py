@@ -28,6 +28,14 @@ class ResourcePackStack:
             for src in pack_sources:
                 self.add_source(src)
 
+    @property
+    def stack_hash(self) -> str:
+        """Return combined hash representing all packs and their order in this stack."""
+        import hashlib
+        combined = ":".join(p.pack_hash for p in self.packs if p and p.pack_hash)
+        return hashlib.md5(combined.encode("utf-8")).hexdigest() if combined else "empty_stack"
+
+
     def add_source(self, source: Union[str, Path, ZipResourcePack]) -> Optional[ZipResourcePack]:
         """Add a resource pack or JAR archive/directory to the bottom of this stack."""
         try:
