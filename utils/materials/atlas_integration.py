@@ -408,91 +408,38 @@ def resolve_block_state_face_locations(
     if not locations_by_name:
         return [{}] * 6
 
-    # 1. Furnace, Blast Furnace, Smoker
-    if name in ("furnace", "blast_furnace", "smoker"):
-        is_lit = props.get("lit") == "true"
-        key = f"{name}_front_on" if is_lit else name
+    # 1. Lookup via canonical atlas lookup keys
+    from ..live_sync.classifier import atlas_lookup_keys
+    for key in atlas_lookup_keys(name, props):
         if key in locations_by_name:
             return locations_by_name[key]
 
-    # 2. Beehive and Bee Nest
-    if name in ("beehive", "bee_nest"):
-        is_honey = props.get("honey_level") == "5"
-        key = f"{name}_front_honey" if is_honey else name
-        if key in locations_by_name:
-            return locations_by_name[key]
+    # 2. Lookup via StateBaker resolved 6-face textures
+    try:
+        from ..mc_baker import get_shared_state_baker
+        state_query = f"minecraft:{name}"
+        if props:
+            p_str = ",".join(f"{k}={v}" for k, v in sorted(props.items()))
+            state_query = f"{state_query}[{p_str}]"
+        baked = get_shared_state_baker().bake_block_state(state_query)
+        if baked and baked.faces:
+            res = []
+            found_any = False
+            for f in baked.faces:
+                tex = f.texture
+                short_tex = tex.split(":", 1)[-1].removeprefix("block/")
+                loc_entry = locations_by_name.get(tex) or locations_by_name.get(short_tex) or locations_by_name.get(f"minecraft:{short_tex}")
+                if loc_entry:
+                    found_any = True
+                    res.append(loc_entry[0] if isinstance(loc_entry, (list, tuple)) else loc_entry)
+                else:
+                    res.append({})
+            if found_any:
+                return res
+    except Exception:
+        pass
 
-    # 3. Respawn Anchor
-    if name == "respawn_anchor":
-        charges = props.get("charges", "0")
-        if charges not in ("0", 0, ""):
-            key = f"respawn_anchor_side{charges}"
-        else:
-            key = "respawn_anchor_top_off"
-        if key in locations_by_name:
-            return locations_by_name[key]
-
-    # 4. Grass Block, Podzol, Mycelium
-    if name in ("grass_block", "podzol", "mycelium"):
-        snowy = props.get("snowy") == "true"
-        if snowy:
-            if f"{name}[snowy=true]" in locations_by_name:
-                return locations_by_name[f"{name}[snowy=true]"]
-            if "grass_block_snow" in locations_by_name:
-                return locations_by_name["grass_block_snow"]
-        if name in locations_by_name:
-            return locations_by_name[name]
-
-    # 5. Redstone Lamp
-    if name == "redstone_lamp":
-        is_lit = props.get("lit") == "true"
-        key = "redstone_lamp_on" if is_lit else "redstone_lamp"
-        if key in locations_by_name:
-            return locations_by_name[key]
-
-    # 6. Barrel
-    if name == "barrel":
-        is_open = props.get("open") == "true"
-        if is_open and "barrel_top_open" in locations_by_name:
-            return locations_by_name["barrel_top_open"]
-        if "barrel" in locations_by_name:
-            return locations_by_name["barrel"]
-
-    # 7. Command Blocks
-    if "command_block" in name:
-        is_cond = props.get("conditional") == "true"
-        key = f"{name}[conditional=true]" if is_cond else f"{name}[conditional=false]"
-        if key in locations_by_name:
-            return locations_by_name[key]
-
-    # 8. Dispenser and Dropper
-    if name in ("dispenser", "dropper"):
-        facing = props.get("facing", "north")
-        if facing in ("up", "down") and f"{name}_front_vertical" in locations_by_name:
-            return locations_by_name[f"{name}_front_vertical"]
-
-    # 9. Observer
-    if name == "observer":
-        is_powered = props.get("powered") == "true"
-        key = "observer_on" if is_powered else "observer"
-        if key in locations_by_name:
-            return locations_by_name[key]
-
-    # 10. Red Mushroom Block, Brown Mushroom Block, Mushroom Stem
-    if name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
-        skin_entry = locations_by_name.get(name)
-        skin = skin_entry[0] if skin_entry else {}
-        inside_entry = locations_by_name.get("mushroom_block_inside")
-        inside = inside_entry[0] if inside_entry else skin
-        up = inside if props.get("up") == "false" else skin
-        down = inside if props.get("down") == "false" else skin
-        east = inside if props.get("east") == "false" else skin
-        west = inside if props.get("west") == "false" else skin
-        south = inside if props.get("south") == "false" else skin
-        north = inside if props.get("north") == "false" else skin
-        return [east, west, up, down, south, north]
-
-    # Fallback to direct name in locations_by_name
+    # 3. Fallback to direct name in locations_by_name
     if name in locations_by_name:
         return locations_by_name[name]
 

@@ -326,3 +326,33 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
         bpy.ops.mozi.sync_disconnect()
         bpy.ops.mozi.sync_connect()
         return {'FINISHED'}
+
+
+def cleanup_sync_state() -> None:
+    """Clean up all live sync module globals, background threads, timers, and storage."""
+    global _client_thread, _last_seq_id, _rebuild_timer_registered, _cached_atlas_params, _cached_mat_id
+    if _client_thread:
+        try:
+            _client_thread.stop()
+        except Exception:
+            pass
+        _client_thread = None
+
+    _last_seq_id = 0
+    _rebuild_timer_registered = False
+    _cached_atlas_params = None
+    _cached_mat_id = None
+
+    voxel_storage.clear()
+    clear_state_cache()
+
+    try:
+        from ...utils.live_sync.classifier import clear_parse_cache
+        clear_parse_cache()
+    except Exception:
+        pass
+
+
+def unregister():
+    """Unregister cleanup hook called when addon is disabled/uninstalled."""
+    cleanup_sync_state()

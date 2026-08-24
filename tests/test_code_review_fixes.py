@@ -143,8 +143,12 @@ class TestCodeReviewFixes(unittest.TestCase):
         if not HAS_BPY:
             self.skipTest("bpy not available")
 
-        from pipeline.steps.step_adaptive_pixel_split import AdaptivePixelSplitStep
-        from pipeline.context import PipelineContext
+        try:
+            from MoziToolKit.pipeline.steps.step_adaptive_pixel_split import AdaptivePixelSplitStep
+            from MoziToolKit.pipeline.context import PipelineContext
+        except ImportError:
+            from pipeline.steps.step_adaptive_pixel_split import AdaptivePixelSplitStep
+            from pipeline.context import PipelineContext
 
         bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
         cube1 = bpy.context.active_object
@@ -174,11 +178,18 @@ class TestCodeReviewFixes(unittest.TestCase):
 
     def test_misc_operators_registered(self):
         """Misc operators for preferences navigation and cache cleanup must be valid."""
-        from operators.misc.op_dependencies import (
-            MOZI_OT_open_preferences,
-            MOZI_OT_check_dependencies,
-            MOZI_OT_clear_cache,
-        )
+        try:
+            from MoziToolKit.operators.misc.op_dependencies import (
+                MOZI_OT_open_preferences,
+                MOZI_OT_check_dependencies,
+                MOZI_OT_clear_cache,
+            )
+        except ImportError:
+            from operators.misc.op_dependencies import (
+                MOZI_OT_open_preferences,
+                MOZI_OT_check_dependencies,
+                MOZI_OT_clear_cache,
+            )
 
         self.assertTrue(hasattr(MOZI_OT_open_preferences, "bl_idname"))
         self.assertTrue(hasattr(MOZI_OT_check_dependencies, "bl_idname"))

@@ -152,6 +152,30 @@ INSTANCE_TRANSFER_SPECS: Final = (
 )
 
 
+CONTRACT_ATTRIBUTE_KEY: Final = "yefira:attribute_contract"
+
+
+def get_attribute_contract_version(mesh) -> Optional[int]:
+    """Retrieve the attribute contract version integer from a mesh custom property, or None."""
+    if mesh is None:
+        return None
+    val = mesh.get(CONTRACT_ATTRIBUTE_KEY)
+    if val is not None:
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def is_contract_compatible(mesh, min_version: int = CONTRACT_VERSION) -> bool:
+    """Return True if mesh contract version is compatible with expected contract version."""
+    ver = get_attribute_contract_version(mesh)
+    if ver is None:
+        return True
+    return ver >= min_version
+
+
 def clear_point_attributes(mesh) -> None:
     """Delete source-point fields from a previous schema revision."""
     for name in POINT_ATTRIBUTE_NAMES | LEGACY_POINT_ATTRIBUTE_NAMES:

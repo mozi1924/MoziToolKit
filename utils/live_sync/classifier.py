@@ -125,24 +125,7 @@ HARDCODED_TINTS = {
     "lily_pad": (0.12549, 0.50196, 0.18824, 1.0),
 }
 
-# Yaw rotation map (radians) for standard Minecraft facing
-YAW_MAP = {
-    "north": 0.0,
-    "east": math.radians(-90),
-    "south": math.radians(180),
-    "west": math.radians(90),
-    "up": 0.0,
-    "down": math.radians(180),
-}
-
-
-# Emissive blocks
-EMISSIVE_BLOCKS = frozenset({
-    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
-    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
-    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
-    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
-})
+from ..mc_baker.state_baker import EMISSIVE_BLOCKS, is_block_emissive
 
 
 class ParsedBlock:
@@ -188,8 +171,21 @@ class ParsedBlock:
         self.emissive_level = emissive_level
 
 
-# In-memory parsing cache to avoid re-parsing identical state strings
+# In-memory parsing cache to avoid re-parsing identical state strings (bounded to avoid unbounded memory growth)
+MAX_STATE_PARSE_CACHE_SIZE = 4096
 _STATE_PARSE_CACHE: dict[str, ParsedBlock] = {}
+
+
+def clear_parse_cache() -> None:
+    """Clear the in-memory block state parsing cache."""
+    _STATE_PARSE_CACHE.clear()
+
+
+def _cache_parsed_block(key: str, parsed: ParsedBlock) -> ParsedBlock:
+    if len(_STATE_PARSE_CACHE) >= MAX_STATE_PARSE_CACHE_SIZE:
+        _STATE_PARSE_CACHE.clear()
+    _STATE_PARSE_CACHE[key] = parsed
+    return parsed
 
 
 def atlas_lookup_keys(parsed_or_name: Union[ParsedBlock, str], props: Optional[Dict[str, str]] = None) -> tuple[str, ...]:
@@ -307,8 +303,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
 
     if block_id in AIR_BLOCKS:
         parsed = _make_air(state_str_clean)
-        _STATE_PARSE_CACHE[state_str] = parsed
-        return parsed
+        return _cache_parsed_block(state_str, parsed)
 
     # 1. Determine Biome Tint & Hardcoded Tints
     snowy = props.get("snowy") == "true"
@@ -342,35 +337,14 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     is_waterlogged = props.get("waterlogged", "false") == "true"
 
     # 3. Determine Emissive Status and Level
-    is_emissive = 0
-    emissive_level = 0.0
-    if name in EMISSIVE_BLOCKS or name.endswith("_froglight") or block_id in EMISSIVE_BLOCKS:
-        is_emissive = 1
-        emissive_level = 1.0
-    elif "lit" in props:
-        if props.get("lit") == "true":
-            if name in ("furnace", "blast_furnace", "smoker", "redstone_lamp",
-                        "campfire", "soul_campfire", "redstone_ore", "deepslate_redstone_ore",
-                        "redstone_torch", "redstone_wall_torch"):
-                is_emissive = 1
-                emissive_level = 1.0
-        else:
-            if name in ("redstone_torch", "redstone_wall_torch"):
-                is_emissive = 0
-                emissive_level = 0.0
-    elif name in ("redstone_torch", "redstone_wall_torch"):
-        is_emissive = 1
-        emissive_level = 1.0
-    elif name == "respawn_anchor":
+    is_emissive = 1 if is_block_emissive(name, props) or is_block_emissive(block_id, props) else 0
+    emissive_level = 1.0 if is_emissive else 0.0
+    if name == "respawn_anchor":
         charges = int(props.get("charges", "0")) if "charges" in props else 0
-        if charges > 0:
-            is_emissive = 1
-            emissive_level = charges / 4.0
+        emissive_level = charges / 4.0 if charges > 0 else 0.0
     elif name == "redstone_wire":
         power = int(props.get("power", "0")) if "power" in props else 0
-        if power > 0:
-            is_emissive = 1
-            emissive_level = power / 15.0
+        emissive_level = power / 15.0 if power > 0 else 0.0
 
     # 4. Determine Block Type, Rotation & Template Name
     rot_x, rot_y, rot_z = 0.0, 0.0, 0.0
@@ -488,8 +462,7 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         is_emissive=is_emissive,
         emissive_level=emissive_level,
     )
-    _STATE_PARSE_CACHE[state_str] = parsed
-    return parsed
+    return _cache_parsed_block(state_str, parsed)
 
 
 def _make_air(state_str: str) -> ParsedBlock:
@@ -521,15 +494,16 @@ def classify_block_type_and_orientation(
     template_idx = 0
     if parsed.template_name:
         try:
-            from .template_catalog import get_or_create_template_collection, get_template_index_map
-            if template_catalog is not None and hasattr(template_catalog, "objects"):
-                col = template_catalog
-            elif template_catalog is not None and hasattr(template_catalog, "get_index"):
-                return parsed.block_type, parsed.rot_euler, template_catalog.get_index(parsed.template_name)
+            if template_catalog is not None:
+                if hasattr(template_catalog, "get_index"):
+                    return parsed.block_type, parsed.rot_euler, template_catalog.get_index(parsed.template_name)
+                col = template_catalog if hasattr(template_catalog, "objects") else None
             else:
                 import bpy
+                from .template_catalog import get_or_create_template_collection
                 col = get_or_create_template_collection() if (hasattr(bpy, "data") and hasattr(bpy.data, "collections")) else None
             if col:
+                from .template_catalog import get_template_index_map
                 idx_map = get_template_index_map(col)
                 template_idx = idx_map.get(parsed.template_name, 0)
         except Exception:

@@ -67,7 +67,6 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
     props_count: IntProperty(name="Props Count", default=0)
     fluids_count: IntProperty(name="Fluids Count", default=0)
     sync_verified: BoolProperty(name="Sync Verified", default=False)
-    mismatch_count: IntProperty(name="Mismatch Count", default=0)
     validation_info: StringProperty(name="Validation Status", default="Pending validation...")
     last_update_info: StringProperty(name="Last Update", default="No updates received yet.")
 

@@ -19,39 +19,31 @@ from .constants import (
     ATTR_UV_TILING_TRANSFORM,
 )
 from pathlib import Path
-from ..mc_baker import StateBaker
+from ..mc_baker import (
+    StateBaker,
+    get_shared_state_baker,
+    refresh_shared_baker_sources,
+    clear_shared_baker_cache,
+    EMISSIVE_BLOCKS,
+    is_block_emissive as _mc_is_block_emissive,
+)
 from ..live_sync.constants import (
     BLOCK_STATE,
     MC_POSITION,
     DEFAULT_WORLD_OBJECT_NAME,
     WORLD_MODIFIER_NAME,
+    is_contract_compatible,
+    get_attribute_contract_version,
 )
-
-_GLOBAL_STATE_BAKER = StateBaker()
-_last_pack_fingerprint: Optional[tuple[str, ...]] = None
-_last_configured_loader = None
+from ..live_sync.classifier import atlas_lookup_keys
 
 
 def refresh_baker_sources() -> None:
     """Synchronize StateBaker resource loaders with the configured Resource Pack Stack."""
-    global _last_pack_fingerprint, _last_configured_loader
-    try:
-        from .pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
-        current_fingerprint = get_pack_stack_fingerprint()
-        if current_fingerprint != _last_pack_fingerprint:
-            _last_pack_fingerprint = current_fingerprint
-            composite_loader = get_configured_pack_stack().get_composite_loader()
-            _last_configured_loader = composite_loader
-            _GLOBAL_STATE_BAKER.resource_loader = composite_loader
-            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model if composite_loader else None
-            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate if composite_loader else None
-            _GLOBAL_STATE_BAKER.clear_cache()
-    except Exception:
-        pass
+    refresh_shared_baker_sources()
 
 
 from .constants import BLOCK_TO_TEXTURE_ALIASES
-from ..live_sync.classifier import EMISSIVE_BLOCKS
 
 EMISSIVE_BLOCK_NAMES = EMISSIVE_BLOCKS
 HARDCODED_TINT_BLOCKS = {
@@ -82,25 +74,9 @@ def parse_block_state_str(state: str) -> tuple[str, dict[str, str]]:
     return block_name, props
 
 
-def is_block_emissive(block_name: str, props: dict[str, str]) -> int:
+def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -> int:
     """Return 1 if block/state is emissive (light emitting), else 0."""
-    if block_name in EMISSIVE_BLOCKS or block_name.endswith("_froglight"):
-        return 1
-    is_lit = props.get("lit") == "true"
-    if is_lit and (
-        block_name in ("furnace", "blast_furnace", "smoker", "redstone_lamp",
-                       "campfire", "soul_campfire", "redstone_ore", "deepslate_redstone_ore")
-    ):
-        return 1
-    if block_name in ("redstone_torch", "redstone_wall_torch"):
-        return 1 if props.get("lit", "true") == "true" else 0
-    if block_name == "respawn_anchor":
-        charges = int(props.get("charges", "0")) if "charges" in props else 0
-        return 1 if charges > 0 else 0
-    if block_name == "redstone_wire":
-        power = int(props.get("power", "0")) if "power" in props else 0
-        return 1 if power > 0 else 0
-    return 0
+    return 1 if _mc_is_block_emissive(block_name, props) else 0
 
 
 def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
@@ -177,218 +153,26 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         return {}
 
     def texture_only_faces(block_name: str, props: dict[str, str]) -> dict:
-        """Derive standard cube faces from a texture-only atlas mapping and block state."""
-        target_stems = BLOCK_TO_TEXTURE_ALIASES.get(block_name)
-        is_lit = props.get("lit") == "true"
-        snowy = props.get("snowy") == "true"
-        facing = props.get("facing", "north")
-        axis = props.get("axis", "y")
-        honey_level = props.get("honey_level", "0")
-        charges = int(props.get("charges", "0")) if "charges" in props else 0
-
-        # 1. Redstone Lamp
-        if block_name == "redstone_lamp":
-            lamp_tex = (texture_location("redstone_lamp_on") if is_lit else None) or texture_location("redstone_lamp")
-            if lamp_tex:
-                return {"+X": lamp_tex, "-X": lamp_tex, "+Y": lamp_tex, "-Y": lamp_tex, "+Z": lamp_tex, "-Z": lamp_tex}
-
-        # 2. Snowy grass/podzol/mycelium
-        if block_name in ("grass_block", "podzol", "mycelium"):
-            snow_side = texture_location("grass_block_snow") if snowy else None
-            top_tex = texture_location(f"{block_name}_top") or texture_location(block_name)
-            dirt_tex = texture_location("dirt") or top_tex
-            side_tex = snow_side or texture_location(f"{block_name}_side") or top_tex
-            if top_tex or side_tex:
-                return {"+X": side_tex, "-X": side_tex, "+Y": top_tex, "-Y": dirt_tex, "+Z": side_tex, "-Z": side_tex}
-
-        # 3. Respawn anchor
-        if block_name == "respawn_anchor":
-            top_loc = texture_location("respawn_anchor_top_off") if charges == 0 else (texture_location("respawn_anchor_top") or texture_location("respawn_anchor_top_off"))
-            side_loc = texture_location(f"respawn_anchor_side{charges}") or texture_location("respawn_anchor_side0") or texture_location("respawn_anchor_top_off")
-            bottom_loc = texture_location("respawn_anchor_bottom") or side_loc
-            return {"+X": side_loc, "-X": side_loc, "+Y": top_loc, "-Y": bottom_loc, "+Z": side_loc, "-Z": side_loc}
-
-        # 4. Mushroom blocks (red_mushroom_block, brown_mushroom_block, mushroom_stem)
-        if block_name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
-            skin = texture_location(block_name)
-            inside = texture_location("mushroom_block_inside") or skin
-            top_tex = inside if props.get("up") == "false" else skin
-            bottom_tex = inside if props.get("down") == "false" else skin
-            north_tex = inside if props.get("north") == "false" else skin
-            south_tex = inside if props.get("south") == "false" else skin
-            east_tex = inside if props.get("east") == "false" else skin
-            west_tex = inside if props.get("west") == "false" else skin
-            return {"+X": east_tex, "-X": west_tex, "+Y": top_tex, "-Y": bottom_tex, "+Z": south_tex, "-Z": north_tex}
-
-        # 5. Glazed Terracotta
-        if block_name.endswith("_glazed_terracotta"):
-            loc = texture_location(block_name)
+        """Derive standard cube faces from StateBaker baked face textures and atlas locations."""
+        state_query = f"minecraft:{block_name}"
+        if props:
+            p_str = ",".join(f"{k}={v}" for k, v in sorted(props.items()))
+            state_query = f"{state_query}[{p_str}]"
+        baked_faces = get_shared_state_baker().bake_block_state(state_query).faces
+        result = {}
+        dir_to_key = {"east": "+X", "west": "-X", "up": "+Y", "down": "-Y", "south": "+Z", "north": "-Z"}
+        for f in baked_faces:
+            loc = texture_location(f.texture)
+            if not loc:
+                short = f.texture.split(":", 1)[-1].removeprefix("block/")
+                loc = texture_location(short)
             if loc:
-                return {"+X": loc, "-X": loc, "+Y": loc, "-Y": loc, "+Z": loc, "-Z": loc}
-
-        # 6. Axis-oriented blocks (logs, basalt, polished_basalt, hay_block, bone_block, wood/bark)
-        is_axis_block = "axis" in props or block_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
-        if is_axis_block:
-            end_loc = (
-                texture_location(f"{block_name}_top")
-                or texture_location(f"{block_name}_end")
-                or (texture_location(f"{block_name[:-4]}log_top") if block_name.endswith("_wood") else None)
-                or (texture_location(f"{block_name[:-7]}stem_top") if block_name.endswith("_hyphae") else None)
-                or texture_location(block_name)
-            )
-            side_loc = (
-                texture_location(f"{block_name}_side")
-                or (texture_location(f"{block_name[:-4]}log") if block_name.endswith("_wood") and not texture_location(block_name) else None)
-                or (texture_location(f"{block_name[:-7]}stem") if block_name.endswith("_hyphae") and not texture_location(block_name) else None)
-                or texture_location(block_name)
-                or end_loc
-            )
-            if end_loc or side_loc:
-                end_loc = end_loc or side_loc
-                side_loc = side_loc or end_loc
-                if axis == "x":
-                    return {"+X": end_loc, "-X": end_loc, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
-                elif axis == "z":
-                    return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": end_loc, "-Z": end_loc}
-                else:
-                    return {"+X": side_loc, "-X": side_loc, "+Y": end_loc, "-Y": end_loc, "+Z": side_loc, "-Z": side_loc}
-
-        # 7. Directional / Horizontal blocks with aliases
-        if target_stems:
-            found_loc = next((texture_location(s) for s in target_stems if texture_location(s)), None)
-            if found_loc:
-                if is_lit and block_name in ("furnace", "blast_furnace", "smoker"):
-                    front_loc = texture_location(f"{block_name}_front_on") or texture_location(f"{block_name}_front") or found_loc
-                elif honey_level == "5" and block_name in ("beehive", "bee_nest"):
-                    front_loc = texture_location(f"{block_name}_front_honey") or texture_location(f"{block_name}_front") or found_loc
-                elif block_name in ("carved_pumpkin", "jack_o_lantern"):
-                    front_loc = texture_location(block_name) or found_loc
-                else:
-                    front_loc = next((texture_location(s) for s in target_stems if s.endswith(("_front", "_front_on", "_front_honey"))), found_loc)
-
-                top_loc = next((texture_location(s) for s in target_stems if s.endswith(("_top", "_top_off"))), None) or texture_location(f"{block_name}_top")
-                bottom_loc = next((texture_location(s) for s in target_stems if s.endswith("_bottom")), None) or texture_location(f"{block_name}_bottom")
-                back_loc = next((texture_location(s) for s in target_stems if s.endswith("_back")), None)
-                side_loc = next((texture_location(s) for s in target_stems if s.endswith(("_side", "_side0"))), found_loc)
-
-                actual_top = top_loc or found_loc
-                actual_bottom = bottom_loc or (top_loc if block_name in ("furnace", "blast_furnace", "smoker", "dispenser", "dropper", "carved_pumpkin", "jack_o_lantern") else found_loc)
-                actual_back = back_loc or side_loc
-                actual_front = front_loc or found_loc
-
-                # Vertical-base blocks (unrotated model points UP)
-                if "piston" in block_name:
-                    p_top = actual_top
-                    p_bottom = actual_bottom
-                    if facing == "up": return {"+X": side_loc, "-X": side_loc, "+Y": p_top, "-Y": p_bottom, "+Z": side_loc, "-Z": side_loc}
-                    elif facing == "down": return {"+X": side_loc, "-X": side_loc, "+Y": p_bottom, "-Y": p_top, "+Z": side_loc, "-Z": side_loc}
-                    elif facing == "north": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": p_bottom, "-Z": p_top}
-                    elif facing == "south": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": p_top, "-Z": p_bottom}
-                    elif facing == "east": return {"+X": p_top, "-X": p_bottom, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
-                    elif facing == "west": return {"+X": p_bottom, "-X": p_top, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
-
-                elif block_name == "barrel":
-                    is_open = props.get("open") == "true"
-                    b_top = (texture_location("barrel_top_open") if is_open else None) or actual_top
-                    if facing == "up": return {"+X": side_loc, "-X": side_loc, "+Y": b_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
-                    elif facing == "down": return {"+X": side_loc, "-X": side_loc, "+Y": actual_bottom, "-Y": b_top, "+Z": side_loc, "-Z": side_loc}
-                    elif facing == "north": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": actual_bottom, "-Z": b_top}
-                    elif facing == "south": return {"+X": side_loc, "-X": side_loc, "+Y": side_loc, "-Y": side_loc, "+Z": b_top, "-Z": actual_bottom}
-                    elif facing == "east": return {"+X": b_top, "-X": actual_bottom, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
-                    elif facing == "west": return {"+X": actual_bottom, "-X": b_top, "+Y": side_loc, "-Y": side_loc, "+Z": side_loc, "-Z": side_loc}
-
-                # Horizontal-base blocks (furnace, observer, dispenser, dropper, beehive, pumpkin, etc.)
-                if facing == "east":
-                    return {"+X": actual_front, "-X": actual_back, "+Y": actual_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
-                elif facing == "south":
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": actual_front, "-Z": actual_back}
-                elif facing == "west":
-                    return {"+X": actual_back, "-X": actual_front, "+Y": actual_top, "-Y": actual_bottom, "+Z": side_loc, "-Z": side_loc}
-                elif facing == "up":
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_front, "-Y": actual_back, "+Z": actual_top, "-Z": side_loc}
-                elif facing == "down":
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_back, "-Y": actual_front, "+Z": side_loc, "-Z": actual_top}
-                else: # north
-                    return {"+X": side_loc, "-X": side_loc, "+Y": actual_top, "-Y": actual_bottom, "+Z": actual_back, "-Z": actual_front}
-
-        base = texture_location(block_name)
-        side = texture_location(f"{block_name}_side") or base
-        top = texture_location(f"{block_name}_top") or texture_location(f"{block_name}_end") or side
-        bottom = texture_location(f"{block_name}_bottom") or texture_location(f"{block_name}_end") or top
-        if block_name == "grass_block":
-            bottom = texture_location("dirt") or bottom
-        named_variants = any(
-            texture_location(f"{block_name}{suffix}")
-            for suffix in ("_side", "_top", "_bottom", "_end")
-        )
-        if not named_variants or not side or not top or not bottom:
-            return {}
-        return {"+X": side, "-X": side, "+Y": top, "-Y": bottom, "+Z": side, "-Z": side}
+                result[dir_to_key.get(f.direction, f.direction)] = loc
+        return result
 
     def mapping_names(state: str) -> tuple[str, ...]:
         """Resolve stateful generated models before generic texture fallback."""
-        block_name, props = parse_block_state_str(state)
-        names = []
-        if block_name.endswith("_door"):
-            names.append(f"{block_name}_{'top' if props.get('half') == 'upper' else 'bottom'}")
-
-        is_lit = props.get("lit") == "true"
-        if is_lit:
-            if block_name in ("furnace", "blast_furnace", "smoker"):
-                names.append(f"{block_name}[lit=true]")
-                names.append(f"{block_name}_front_on")
-            elif block_name == "redstone_lamp":
-                names.append("redstone_lamp[lit=true]")
-                names.append("redstone_lamp_on")
-            elif block_name in ("redstone_torch", "redstone_wall_torch"):
-                names.append(f"{block_name}[lit=true]")
-                names.append("redstone_torch")
-            elif block_name == "campfire":
-                names.append("campfire_fire")
-            elif block_name == "soul_campfire":
-                names.append("soul_campfire_fire")
-        else:
-            if block_name in ("furnace", "blast_furnace", "smoker"):
-                names.append(f"{block_name}[lit=false]")
-            elif block_name in ("redstone_torch", "redstone_wall_torch"):
-                names.append(f"{block_name}[lit=false]")
-                names.append("redstone_torch_off")
-            elif block_name == "redstone_lamp":
-                names.append("redstone_lamp[lit=false]")
-                names.append("redstone_lamp")
-            elif block_name in ("campfire", "soul_campfire"):
-                names.append(f"{block_name}_log")
-
-        if block_name in ("beehive", "bee_nest") and props.get("honey_level") == "5":
-            names.append(f"{block_name}[honey_level=5]")
-            names.append(f"{block_name}_front_honey")
-
-        if block_name == "respawn_anchor" and "charges" in props:
-            charges = props.get("charges", "0")
-            names.append(f"respawn_anchor[charges={charges}]")
-            if charges == "0":
-                names.append("respawn_anchor_top_off")
-            else:
-                names.append("respawn_anchor_top")
-                names.append(f"respawn_anchor_side{charges}")
-
-        if "age" in props:
-            age_val = props["age"]
-            if block_name == "wheat":
-                names.append(f"wheat_stage{age_val}")
-            elif block_name in ("carrots", "potatoes", "beetroots", "sweet_berry_bush"):
-                names.append(f"{block_name}_stage{age_val}")
-            elif block_name == "nether_wart":
-                names.append(f"nether_wart_stage{age_val}")
-            elif block_name == "cocoa":
-                names.append(f"cocoa_stage{age_val}")
-
-        if props.get("snowy") == "true" and block_name in ("grass_block", "podzol", "mycelium"):
-            names.append(f"{block_name}[snowy=true]")
-            names.append("grass_block_snow")
-
-        names.append(block_name)
-        return tuple(dict.fromkeys(names))
+        return atlas_lookup_keys(state)
 
     face_specs = (
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
@@ -451,7 +235,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             block_state_entry = mapping["block_states"].get(short_state)
             if not block_state_entry:
                 try:
-                    resolved_matches = _GLOBAL_STATE_BAKER.state_resolver.resolve_state(raw_state)
+                    resolved_matches = get_shared_state_baker().state_resolver.resolve_state(raw_state)
                     if resolved_matches:
                         for match in resolved_matches:
                             if match.variant_props:
@@ -465,7 +249,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 except Exception:
                     pass
 
-        baked = _GLOBAL_STATE_BAKER.bake_block_state(raw_state)
+        baked = get_shared_state_baker().bake_block_state(raw_state)
         if block_state_entry:
             is_opaque_list.append(1 if block_state_entry.get("is_opaque", True) else 0)
             emissive_list.append(1 if block_state_entry.get("is_emissive", False) or is_block_emissive(block_name, props) else 0)

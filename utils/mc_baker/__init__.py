@@ -24,7 +24,14 @@ from .math_utils import (
 from .resource_loader import JarResourceLoader
 from .model_parser import ModelParser
 from .blockstate_resolver import BlockStateResolver, parse_block_state_string
-from .state_baker import StateBaker
+from .state_baker import (
+    StateBaker,
+    EMISSIVE_BLOCKS,
+    is_block_emissive,
+    get_shared_state_baker,
+    refresh_shared_baker_sources,
+    clear_shared_baker_cache,
+)
 from .atlas_bridge import AtlasBridge, ResolvedAtlasFace
 from .mesh_generator import (
     mc_pos_to_blender,
@@ -58,6 +65,11 @@ __all__ = [
     "BlockStateResolver",
     "parse_block_state_string",
     "StateBaker",
+    "EMISSIVE_BLOCKS",
+    "is_block_emissive",
+    "get_shared_state_baker",
+    "refresh_shared_baker_sources",
+    "clear_shared_baker_cache",
     "AtlasBridge",
     "ResolvedAtlasFace",
     "mc_pos_to_blender",

@@ -54,23 +54,25 @@ if wheels_dir.exists():
                     zf.extractall(unpack_dir)
 
 import importlib.util
+
+PARENT_DIR = PROJECT_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 if "MoziToolKit" not in sys.modules:
     spec = importlib.util.spec_from_file_location(
         "MoziToolKit",
         str(PROJECT_DIR / "__init__.py"),
         submodule_search_locations=[str(PROJECT_DIR)]
     )
-    pkg = importlib.util.module_from_spec(spec)
-    sys.modules["MoziToolKit"] = pkg
-    spec.loader.exec_module(pkg)
+    if spec and spec.loader:
+        pkg = importlib.util.module_from_spec(spec)
+        sys.modules["MoziToolKit"] = pkg
+        spec.loader.exec_module(pkg)
 
 import MoziToolKit
-
-# Alias all MoziToolKit submodules to root in sys.modules for test compatibility
-for mod_name, mod in list(sys.modules.items()):
-    if mod_name.startswith("MoziToolKit."):
-        short_name = mod_name[len("MoziToolKit."):]
-        sys.modules[short_name] = mod
 
 import bpy
 import bmesh
@@ -811,6 +813,42 @@ def run_all_tests():
         suite.addTests(loader.loadTestsFromTestCase(TestLiveSyncMultiChunkAtlas))
     except Exception as e:
         print(f"[Warning] Could not load TestLiveSyncMultiChunkAtlas: {e}")
+
+    try:
+        from tests.test_directional_block_orientations import TestDirectionalBlockOrientations
+        suite.addTests(loader.loadTestsFromTestCase(TestDirectionalBlockOrientations))
+    except Exception as e:
+        print(f"[Warning] Could not load TestDirectionalBlockOrientations: {e}")
+
+    try:
+        from tests.test_entity_atlas_packing import TestEntityAtlasPacking
+        suite.addTests(loader.loadTestsFromTestCase(TestEntityAtlasPacking))
+    except Exception as e:
+        print(f"[Warning] Could not load TestEntityAtlasPacking: {e}")
+
+    try:
+        from tests.test_mineways_atlas_unpack import TestMinewaysAtlasUnpack
+        suite.addTests(loader.loadTestsFromTestCase(TestMinewaysAtlasUnpack))
+    except Exception as e:
+        print(f"[Warning] Could not load TestMinewaysAtlasUnpack: {e}")
+
+    try:
+        from tests.test_rect_packer import TestRectPacker
+        suite.addTests(loader.loadTestsFromTestCase(TestRectPacker))
+    except Exception as e:
+        print(f"[Warning] Could not load TestRectPacker: {e}")
+
+    try:
+        from tests.test_repair_fluid_uv import TestRepairFluidUV
+        suite.addTests(loader.loadTestsFromTestCase(TestRepairFluidUV))
+    except Exception as e:
+        print(f"[Warning] Could not load TestRepairFluidUV: {e}")
+
+    try:
+        from tests.test_live_sync_protocol_and_storage import TestLiveSyncProtocolAndStorage
+        suite.addTests(loader.loadTestsFromTestCase(TestLiveSyncProtocolAndStorage))
+    except Exception as e:
+        print(f"[Warning] Could not load TestLiveSyncProtocolAndStorage: {e}")
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)

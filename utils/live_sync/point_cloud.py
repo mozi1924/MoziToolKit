@@ -25,52 +25,36 @@ from .constants import (
     MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT, MTK_ANIM_FRAME_WIDTH,
     MTK_ATLAS_HEIGHT, MTK_ATLAS_WIDTH, MTK_BIOME_TINT_COLOR,
     MTK_BIOME_TINT_DATA, MTK_EMISSIVE, MTK_IS_OPAQUE, MTK_MATERIAL_ID,
-    MTK_TILE_SIZE, MTK_TILES_PER_ROW, TEMPLATE_INDEX, clear_point_attributes,
+    MTK_TILE_SIZE, MTK_TILES_PER_ROW, TEMPLATE_INDEX,
     face_attribute,
 )
-from ..mc_baker import StateBaker
+from ..mc_baker import (
+    StateBaker,
+    get_shared_state_baker,
+    refresh_shared_baker_sources,
+    clear_shared_baker_cache,
+)
 
-_GLOBAL_STATE_BAKER = StateBaker()
-_last_pack_fingerprint: Optional[tuple[str, ...]] = None
-_last_configured_loader = None
 _STATE_ATTR_CACHE: dict[str, Any] = {}
 _LAST_ATLAS_FINGERPRINT: Optional[tuple] = None
 
 
 def refresh_baker_sources() -> None:
     """Synchronize StateBaker resource loaders with the configured Resource Pack Stack."""
-    global _last_pack_fingerprint, _last_configured_loader
-    try:
-        from ..materials.pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
-        current_fingerprint = get_pack_stack_fingerprint()
-        if current_fingerprint != _last_pack_fingerprint:
-            _last_pack_fingerprint = current_fingerprint
-            composite_loader = get_configured_pack_stack().get_composite_loader()
-            _last_configured_loader = composite_loader
-            _GLOBAL_STATE_BAKER.resource_loader = composite_loader
-            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model if composite_loader else None
-            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate if composite_loader else None
-            _GLOBAL_STATE_BAKER.clear_cache()
-            _STATE_ATTR_CACHE.clear()
-    except Exception as e:
-        logger.debug(f"Could not refresh baker sources from pack stack: {e}")
+    refresh_shared_baker_sources()
 
 
 def clear_state_cache() -> None:
-    """Clear precomputed blockstate attribute cache."""
+    """Clear precomputed blockstate attribute cache and shared baker cache."""
     global _LAST_ATLAS_FINGERPRINT
     _STATE_ATTR_CACHE.clear()
     _LAST_ATLAS_FINGERPRINT = None
+    clear_shared_baker_cache()
 
 
 def set_baker_resource_source(source_path: str | Path) -> None:
     """Configure or update the resource pack/JAR source for DCC-side blockstate baking."""
-    global _last_pack_fingerprint
-    _GLOBAL_STATE_BAKER.set_resource_source(source_path)
-    try:
-        _last_pack_fingerprint = (str(Path(source_path).resolve()),)
-    except Exception:
-        _last_pack_fingerprint = (str(source_path),)
+    get_shared_state_baker().set_resource_source(source_path)
     _STATE_ATTR_CACHE.clear()
 
 
@@ -185,7 +169,7 @@ class PrecomputedStateAttr:
         self.mat_id = mat_id
 
         json_faces = json_obj.get("faces") if (json_obj and isinstance(json_obj, dict) and isinstance(json_obj.get("faces"), dict)) else None
-        baked_model = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state) if not json_faces else None
+        baked_model = get_shared_state_baker().bake_block_state(parsed.full_state) if not json_faces else None
 
         tiles = []
         chunks = []
@@ -565,7 +549,7 @@ def update_world_point_cloud(
     _write_numpy_attribute(mesh, MTK_BIOME_TINT_DATA, 'FLOAT_COLOR', 'POINT', tint_datas)
 
     block_states = [p_full_states[idx] for idx in state_indices]
-    block_keys = [f"{k[0]},{k[1]},{k[2]}" for k in keys]
+    block_keys = [block_key(k[0], k[1], k[2]) for k in keys]
     _write_string_attribute(mesh, BLOCK_STATE, block_states)
     _write_string_attribute(mesh, BLOCK_KEY, block_keys)
 
@@ -593,7 +577,7 @@ def _resolve_face_values(lut, parsed: ParsedBlock, default, is_coord: bool = Fal
 
     # 2. Lookup via StateBaker resolved 6-face textures
     try:
-        baked = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state)
+        baked = get_shared_state_baker().bake_block_state(parsed.full_state)
         face_vals = []
         found_any = False
         for face in baked.faces:
