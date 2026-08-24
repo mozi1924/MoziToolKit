@@ -91,6 +91,16 @@ def get_texture_info_animation_info(tex_info: dict | None, img: bpy.types.Image 
     if not tex_info or not isinstance(tex_info, dict):
         return None
 
+    anim_meta = tex_info.get("animation_metadata")
+    if anim_meta and isinstance(anim_meta, dict):
+        return {
+            "frame_width": float(anim_meta.get("frame_width", 16)),
+            "frame_height": float(anim_meta.get("frame_height", 16)),
+            "img_width": float(anim_meta.get("image_width", 16)),
+            "img_height": float(anim_meta.get("image_height", 16)),
+            "total_frames": int(anim_meta.get("total_frames", 1)),
+        }
+
     mcmeta = tex_info.get("albedo_mcmeta")
     albedo_path = tex_info.get("albedo")
 

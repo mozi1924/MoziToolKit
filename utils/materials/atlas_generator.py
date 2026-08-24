@@ -9,6 +9,8 @@ import sys
 import os
 import json
 import zipfile
+import shutil
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -451,8 +453,12 @@ class AtlasGenerator:
         self.load_resources()
         yield (0.15, f"Loaded {len(self.static_textures)} static & {len(self.animated_textures)} animated textures", None)
 
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
+        output_path = Path(output_dir).resolve()
+        parent_dir = output_path.parent
+        parent_dir.mkdir(parents=True, exist_ok=True)
+        unique_id = uuid.uuid4().hex[:8]
+        staging_dir = parent_dir / f"{output_path.name}_staging_{os.getpid()}_{unique_id}"
+        staging_dir.mkdir(parents=True, exist_ok=True)
 
         all_namespaces = sorted(set(list(self.static_by_ns_cat.keys()) + list(self.animated_by_ns_cat.keys()) + list(self.static_by_namespace.keys()) + list(self.animated_by_namespace.keys())))
         if "minecraft" in all_namespaces:
@@ -612,7 +618,7 @@ class AtlasGenerator:
 
                             for channel, image in images.items():
                                 filename = f"{cat}_chunk_{cat_chunk_index:03d}_{channel}.png"
-                                image.save(output_path / filename)
+                                image.save(staging_dir / filename)
                                 files[channel] = filename
 
                             chunks.append({
@@ -785,7 +791,7 @@ class AtlasGenerator:
 
                             for channel, image in images.items():
                                 filename = f"{cat}_chunk_{cat_chunk_index:03d}_{channel}.png"
-                                image.save(output_path / filename)
+                                image.save(staging_dir / filename)
                                 files[channel] = filename
 
                             chunks.append({
@@ -984,7 +990,7 @@ class AtlasGenerator:
                         files = {}
                         for channel, img_canvas in images.items():
                             filename = f"{category_val}_chunk_{cat_chunk_index:03d}_{channel}.png"
-                            img_canvas.save(output_path / filename)
+                            img_canvas.save(staging_dir / filename)
                             files[channel] = filename
 
                         chunks.append({
@@ -1126,11 +1132,36 @@ class AtlasGenerator:
             "animation_count": len(animations),
             "baked_states_count": len(block_states_data),
         }
-        mapping_path = output_path / "atlas_mapping.json"
-        mapping_path.parent.mkdir(parents=True, exist_ok=True)
+        mapping_path = staging_dir / "atlas_mapping.json"
         with open(mapping_path, "w", encoding="utf-8") as fp:
             json.dump(mapping_data, fp, indent=2)
-        outputs["mapping"] = mapping_path
+
+        # Validate cache integrity before atomic swap
+        if not mapping_path.exists() or mapping_path.stat().st_size == 0:
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            raise RuntimeError("Failed to generate valid atlas_mapping.json in staging directory.")
+        for chunk in chunks:
+            chunk_files = chunk.get("files", {})
+            albedo_f = chunk_files.get("albedo")
+            if not albedo_f or not (staging_dir / albedo_f).exists():
+                if staging_dir.exists():
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                raise RuntimeError(f"Atlas cache integrity failure: chunk {chunk.get('chunk_id')} missing albedo file '{albedo_f}'")
+            for ch_name in ("normal", "specular", "overlay"):
+                ch_f = chunk_files.get(ch_name)
+                if ch_f and not (staging_dir / ch_f).exists():
+                    if staging_dir.exists():
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                    raise RuntimeError(f"Atlas cache integrity failure: chunk {chunk.get('chunk_id')} missing channel '{ch_name}' file '{ch_f}'")
+
+        # Atomic publication
+        if output_path.exists():
+            shutil.rmtree(output_path, ignore_errors=True)
+        staging_dir.rename(output_path)
+
+        final_mapping_path = output_path / "atlas_mapping.json"
+        outputs["mapping"] = final_mapping_path
 
         yield (1.0, f"Atlas built: {len(chunks)} chunks, {len(animations)} animations", outputs)
 

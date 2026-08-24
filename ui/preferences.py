@@ -1084,10 +1084,10 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
 
 class MOZI_OT_precompile_cache(bpy.types.Operator):
-    """Precompile and rebuild the complete Atlas and metadata for the current Resource Pack Stack."""
+    """Precompile and rebuild the complete Atlas and Standalone caches for the current Resource Pack Stack."""
 
     bl_idname = "mozi.precompile_cache"
-    bl_label = "Precompile Atlas Cache"
+    bl_label = "Precompile Stack Caches"
     bl_options = {"REGISTER"}
 
     def execute(self, context):
@@ -1095,15 +1095,17 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             from ..utils.system import has_pillow
             from ..utils.materials.pack_stack import get_configured_pack_stack
             from ..utils.materials.atlas_generator import AtlasGenerator
+            from ..utils.materials.standalone_generator import StandaloneGenerator
             from ..utils.materials.resource_pack import get_cache_dir, clean_obsolete_stack_caches
         except (ImportError, ValueError):
             from utils.system import has_pillow
             from utils.materials.pack_stack import get_configured_pack_stack
             from utils.materials.atlas_generator import AtlasGenerator
+            from utils.materials.standalone_generator import StandaloneGenerator
             from utils.materials.resource_pack import get_cache_dir, clean_obsolete_stack_caches
 
         if not has_pillow():
-            self.report({'ERROR'}, "Atlas compilation requires 'Pillow' (PIL) module.")
+            self.report({'ERROR'}, "Cache precompilation requires 'Pillow' (PIL) module.")
             return {'CANCELLED'}
 
         stack = get_configured_pack_stack()
@@ -1115,15 +1117,27 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             from ..utils.mc_baker import clear_shared_baker_cache
             clear_shared_baker_cache()
             cache_root = get_cache_dir()
+
+            # 1. Precompile Atlas Cache
             atlas_dir = cache_root / stack.stack_hash / "full_scene"
-            gen = AtlasGenerator(fallback_stack=stack)
-            res = gen.build(atlas_dir)
+            gen_atlas = AtlasGenerator(fallback_stack=stack)
+            res_atlas = gen_atlas.build(atlas_dir)
+
+            # 2. Precompile Standalone Asset Library
+            standalone_dir = cache_root / stack.stack_hash / "standalone"
+            gen_st = StandaloneGenerator(fallback_stack=stack)
+            res_st = gen_st.build(standalone_dir)
+
             clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
-            num_chunks = len(res.get("chunks", []))
-            num_baked = len(res.get("materials", []))
+            num_chunks = len(res_atlas.get("chunks", []))
+            num_baked = len(res_atlas.get("materials", []))
+            num_st = res_st.get("texture_count", 0)
             refresh_ui_and_menus(context)
-            self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks, {num_baked} materials) for pack stack.")
+            self.report(
+                {'INFO'},
+                f"Successfully precompiled caches for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials; Standalone: {num_st} textures)."
+            )
             return {'FINISHED'}
         except Exception as e:
-            self.report({'ERROR'}, f"Failed to precompile Atlas cache: {e}")
+            self.report({'ERROR'}, f"Failed to precompile stack cache: {e}")
             return {'CANCELLED'}

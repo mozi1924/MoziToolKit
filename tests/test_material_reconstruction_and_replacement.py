@@ -378,6 +378,79 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertEqual(candidates, ["stone"])
         self.assertIsNone(location)
 
+    def test_face_provenance_falls_back_when_pack_moves_block_texture_to_item(self):
+        """Old MTK ``block/`` provenance remains replaceable after a pack layout move."""
+        item_dir = self.pack_dir / "assets/minecraft/textures/item"
+        item_dir.mkdir(parents=True, exist_ok=True)
+        image = bpy.data.images.new("temp_item_chain", width=16, height=16)
+        image.filepath_raw = str(item_dir / "chain.png")
+        image.file_format = "PNG"
+        image.save()
+        bpy.data.images.remove(image)
+
+        from utils.materials import write_face_source_provenance
+        write_face_source_provenance(
+            self.cube.data,
+            ["minecraft:block/chain"] * len(self.cube.data.polygons),
+            ["standalone"] * len(self.cube.data.polygons),
+        )
+
+        standalone_params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": False,
+            "use_cache": False,
+        }
+        res_standalone, ctx_standalone = run_preset_pipeline(
+            "replace_material", bpy.context, params=standalone_params, target_objects=[self.cube]
+        )
+        self.assertTrue(res_standalone.is_success, ctx_standalone.reports)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:chain"))
+
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+        atlas_params = dict(standalone_params, material_mode="ATLAS")
+        res_atlas, ctx_atlas = run_preset_pipeline(
+            "replace_material", bpy.context, params=atlas_params, target_objects=[self.cube]
+        )
+        self.assertTrue(res_atlas.is_success, ctx_atlas.reports)
+        self.assertEqual(detect_material_mode(self.cube.material_slots[0].material), "ATLAS_CHUNK")
+
+    def test_face_provenance_prefers_exact_path_over_basename_fallback(self):
+        """A present ``block/foo`` must win over an equally named item texture."""
+        block_dir = self.pack_dir / "assets/minecraft/textures/block"
+        item_dir = self.pack_dir / "assets/minecraft/textures/item"
+        item_dir.mkdir(parents=True, exist_ok=True)
+        for name, directory in (("temp_block_chain", block_dir), ("temp_item_chain_exact", item_dir)):
+            image = bpy.data.images.new(name, width=16, height=16)
+            image.filepath_raw = str(directory / "chain.png")
+            image.file_format = "PNG"
+            image.save()
+            bpy.data.images.remove(image)
+
+        from utils.materials import write_face_source_provenance
+        write_face_source_provenance(
+            self.cube.data,
+            ["minecraft:block/chain"] * len(self.cube.data.polygons),
+            ["standalone"] * len(self.cube.data.polygons),
+        )
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "STANDALONE",
+            "pack_textures": False,
+            "use_cache": False,
+        }
+        result, context = run_preset_pipeline(
+            "replace_material", bpy.context, params=params, target_objects=[self.cube]
+        )
+        self.assertTrue(result.is_success, context.reports)
+        source_keys = self.cube.data.attributes["mtk_source_texture_key"]
+        self.assertEqual(
+            {item.value.decode("utf-8") if isinstance(item.value, bytes) else item.value for item in source_keys.data},
+            {"minecraft:block/chain"},
+        )
+
     def test_resource_keys_keep_namespace_and_texture_path(self):
         """Pack hashes are provenance only; resource paths avoid mod collisions."""
         from utils.materials import ZipResourcePack
