@@ -83,6 +83,7 @@ LEGACY_POINT_ATTRIBUTE_NAMES: Final = frozenset((
 
 LEGACY_TEMPLATE_ATTRIBUTE_NAMES: Final = frozenset((
     "CubeFaceNorm", "LocalFaceID", "LocalUV",
+    "Cube_Face_Normal", "Local_Face_ID", "Local_UV",
 ))
 
 INSTANCE_TRANSFER_SPECS: Final = (

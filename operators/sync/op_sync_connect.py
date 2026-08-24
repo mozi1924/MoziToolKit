@@ -11,7 +11,11 @@ import bpy
 
 from ...utils.geometry_nodes.world_tree import setup_world_geometry_nodes
 from ...utils.live_sync.client import SyncClientThread
-from ...utils.live_sync.point_cloud import refresh_baker_sources, update_world_point_cloud
+from ...utils.live_sync.point_cloud import (
+    clear_state_cache,
+    refresh_baker_sources,
+    update_world_point_cloud,
+)
 from ...utils.live_sync.storage import voxel_storage
 from ...utils.materials.yefira import (
     extract_atlas_parameters,
@@ -51,10 +55,11 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
 
 
 def clear_sync_caches() -> None:
-    """Invalidate atlas parameter cache on material or world reset."""
+    """Invalidate atlas parameter cache and state baker attribute cache on material or world reset."""
     global _cached_atlas_params, _cached_mat_id
     _cached_atlas_params = None
     _cached_mat_id = None
+    clear_state_cache()
 
 
 def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:

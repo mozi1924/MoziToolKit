@@ -127,3 +127,34 @@ def get_configured_pack_stack(primary_source: Optional[Union[str, Path, ZipResou
             sources.append(p_str)
 
     return ResourcePackStack(sources)
+
+
+def get_pack_stack_fingerprint(primary_source: Optional[Union[str, Path, ZipResourcePack]] = None) -> tuple[str, ...]:
+    """
+    Return a hashable tuple representing the current configured pack stack sources.
+    Used for efficient cache invalidation without rebuilding loader hierarchies.
+    """
+    sources: List[str] = []
+    if primary_source:
+        prim_path = Path(primary_source.zip_path if isinstance(primary_source, ZipResourcePack) else primary_source)
+        try:
+            sources.append(str(prim_path.resolve()))
+        except Exception:
+            sources.append(str(prim_path))
+
+    entries = get_enabled_pack_entries()
+    for entry in entries:
+        p_str = entry.get("path", "").strip()
+        if p_str:
+            p = Path(p_str)
+            if p.exists():
+                try:
+                    res_path = str(p.resolve())
+                except Exception:
+                    res_path = str(p)
+                if sources and res_path == sources[0]:
+                    continue
+                sources.append(res_path)
+
+    return tuple(sources)
+

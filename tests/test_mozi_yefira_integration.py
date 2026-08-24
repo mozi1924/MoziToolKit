@@ -60,9 +60,9 @@ class TestMoziYefiraIntegration(unittest.TestCase):
         stairs_obj = col.objects.get("stairs_straight")
         self.assertIsNotNone(stairs_obj)
         self.assertGreater(len(stairs_obj.data.polygons), 6)
-        self.assertIn("Cube_Face_Normal", stairs_obj.data.attributes)
-        self.assertIn("Local_Face_ID", stairs_obj.data.attributes)
-        self.assertIn("Local_UV", stairs_obj.data.attributes)
+        self.assertIn("yefira_cube_face_normal", stairs_obj.data.attributes)
+        self.assertIn("yefira_local_face_id", stairs_obj.data.attributes)
+        self.assertIn("yefira_local_uv", stairs_obj.data.attributes)
 
         fence_obj = col.objects.get("fence")
         self.assertIsNotNone(fence_obj)
@@ -204,6 +204,97 @@ class TestMoziYefiraIntegration(unittest.TestCase):
         self.assertAlmostEqual(stone_tint[0], 1.0, places=2)
         self.assertAlmostEqual(stone_data[0], 0.0, places=2)
 
+    def test_state_attribute_cache_persistence_and_invalidation(self):
+        """Verify PrecomputedStateAttr cache persists across updates and invalidates on atlas change."""
+        from utils.live_sync.point_cloud import (
+            _STATE_ATTR_CACHE,
+            refresh_baker_sources,
+            clear_state_cache,
+        )
+
+        clear_state_cache()
+        self.assertEqual(len(_STATE_ATTR_CACHE), 0)
+
+        storage = VoxelStorage()
+        storage.min_x, storage.min_y, storage.min_z = 0, 0, 0
+        storage.size_x, storage.size_y, storage.size_z = 2, 1, 1
+        storage.block_map = {
+            (0, 0, 0): "minecraft:stone",
+            (1, 0, 0): "minecraft:oak_stairs[facing=east,half=bottom,shape=straight]",
+        }
+
+        mapping_a = {"minecraft:stone": 10, "minecraft:oak_stairs": 20}
+        lut_a = {"minecraft:stone": [(1, 1)] * 6, "minecraft:oak_stairs": [(2, 2)] * 6}
+
+        # First build: cache populated
+        update_world_point_cloud(
+            context=bpy.context,
+            storage=storage,
+            atlas_mapping_dict=mapping_a,
+            block_face_lut=lut_a,
+        )
+        self.assertIn("minecraft:stone", _STATE_ATTR_CACHE)
+        stone_entry_1 = _STATE_ATTR_CACHE["minecraft:stone"]
+
+        # Call refresh_baker_sources (no pack config changed)
+        refresh_baker_sources()
+
+        # Second build with same mapping: cache MUST persist
+        update_world_point_cloud(
+            context=bpy.context,
+            storage=storage,
+            atlas_mapping_dict=mapping_a,
+            block_face_lut=lut_a,
+        )
+        stone_entry_2 = _STATE_ATTR_CACHE.get("minecraft:stone")
+        self.assertIs(stone_entry_1, stone_entry_2, "Cache entry must be preserved across updates without rebuilding")
+
+        # Third build with changed atlas mapping: cache MUST invalidate
+        mapping_b = {"minecraft:stone": 99, "minecraft:oak_stairs": 100}
+        lut_b = {"minecraft:stone": [(9, 9)] * 6, "minecraft:oak_stairs": [(8, 8)] * 6}
+        update_world_point_cloud(
+            context=bpy.context,
+            storage=storage,
+            atlas_mapping_dict=mapping_b,
+            block_face_lut=lut_b,
+        )
+        stone_entry_3 = _STATE_ATTR_CACHE.get("minecraft:stone")
+        self.assertIsNot(stone_entry_1, stone_entry_3, "Cache entry must be recomputed on atlas mapping change")
+        self.assertEqual(stone_entry_3.mat_id, 99)
+
+    def test_is_yefira_object_detection(self):
+        """Verify is_yefira_object recognizes meshes by point-domain schema attributes regardless of object name."""
+        from utils.materials.yefira import is_yefira_object
+        from utils.live_sync.constants import BLOCK_STATE, MC_POSITION
+
+        mesh = bpy.data.meshes.new("CustomProceduralMesh")
+        mesh.from_pydata([(0.0, 0.0, 0.0)], [], [])
+        mesh.update()
+
+        obj = bpy.data.objects.new("RandomCustomName_12345", mesh)
+        bpy.context.scene.collection.objects.link(obj)
+
+        # Initially no yefira attributes
+        self.assertFalse(is_yefira_object(obj))
+
+        # Add yefira_block_state attribute
+        attr = mesh.attributes.new(name=BLOCK_STATE, type="STRING", domain="POINT")
+        attr.data[0].value = b"minecraft:stone"
+        self.assertTrue(is_yefira_object(obj))
+
+        # Remove BLOCK_STATE and add MC_POSITION
+        mesh.attributes.remove(attr)
+        self.assertFalse(is_yefira_object(obj))
+
+        pos_attr = mesh.attributes.new(name=MC_POSITION, type="FLOAT_VECTOR", domain="POINT")
+        pos_attr.data[0].vector = (1.0, 2.0, 3.0)
+        self.assertTrue(is_yefira_object(obj))
+
+        # Cleanup
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     unittest.main(argv=["dummy"])
+

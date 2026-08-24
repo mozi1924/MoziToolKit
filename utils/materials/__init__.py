@@ -106,6 +106,7 @@ from .resource_pack import (
 from .pack_stack import (
     ResourcePackStack,
     get_configured_pack_stack,
+    get_pack_stack_fingerprint,
 )
 
 from .rect_packer import (
@@ -295,6 +296,7 @@ __all__ = [
     "ZipResourcePack",
     "ResourcePackStack",
     "get_configured_pack_stack",
+    "get_pack_stack_fingerprint",
     "get_cache_dir",
     "clear_resource_pack_cache",
     "get_pack_hash",

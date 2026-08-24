@@ -13,8 +13,7 @@ from typing import Optional, Union
 
 from .state_baker import StateBaker
 from .mesh_generator import build_blender_mesh_from_baked_model
-
-TEMPLATE_COLLECTION_NAME = "MC_Block_Templates"
+from ..live_sync.template_catalog import attach_yefira_template_attributes, TEMPLATE_COLLECTION_NAME
 
 # Core template definitions: (Object Name, Canonical BlockState String, is_cross_plant)
 DEFAULT_TEMPLATE_DEFINITIONS: list[tuple[str, str, bool]] = [
@@ -44,66 +43,6 @@ DEFAULT_TEMPLATE_DEFINITIONS: list[tuple[str, str, bool]] = [
     ("grindstone", "minecraft:grindstone[face=floor,facing=north]", False),
     ("campfire", "minecraft:campfire[facing=north,lit=true,signal_fire=false,waterlogged=false]", False),
 ]
-
-
-def attach_yefira_template_attributes(mesh: bpy.types.Mesh, is_cross_plant: bool = False) -> None:
-    """
-    Attach Yefira Geometry Nodes required attributes:
-    - CUBE_FACE_NORMAL (FLOAT_VECTOR, FACE)
-    - LOCAL_FACE_ID (INT, FACE)
-    - LOCAL_UV (FLOAT_VECTOR, CORNER)
-    """
-    # Attach both canonical and legacy attributes for maximum compatibility
-    norm_attr = mesh.attributes.get("Cube_Face_Normal") or mesh.attributes.new(name="Cube_Face_Normal", type="FLOAT_VECTOR", domain="FACE")
-    y_norm_attr = mesh.attributes.get("yefira_cube_face_normal") or mesh.attributes.new(name="yefira_cube_face_normal", type="FLOAT_VECTOR", domain="FACE")
-
-    fid_attr = mesh.attributes.get("Local_Face_ID") or mesh.attributes.new(name="Local_Face_ID", type="INT", domain="FACE")
-    y_fid_attr = mesh.attributes.get("yefira_local_face_id") or mesh.attributes.new(name="yefira_local_face_id", type="INT", domain="FACE")
-
-    luv_attr = mesh.attributes.get("Local_UV") or mesh.attributes.new(name="Local_UV", type="FLOAT_VECTOR", domain="CORNER")
-    y_luv_attr = mesh.attributes.get("yefira_local_uv") or mesh.attributes.new(name="yefira_local_uv", type="FLOAT_VECTOR", domain="CORNER")
-
-    uv_layer = mesh.uv_layers.active
-
-    for poly in mesh.polygons:
-        fn = poly.normal
-        norm_vec = (0.0, 1.0, 0.0) if is_cross_plant else (fn.x, fn.y, fn.z)
-        norm_attr.data[poly.index].vector = norm_vec
-        y_norm_attr.data[poly.index].vector = norm_vec
-
-        # Map normal to 0..5 face ID
-        if is_cross_plant:
-            fid = 2  # North
-        elif fn.z > 0.5:
-            fid = 0  # Top (+Z)
-        elif fn.z < -0.5:
-            fid = 1  # Bottom (-Z)
-        elif fn.y > 0.5:
-            fid = 2  # North (+Y)
-        elif fn.y < -0.5:
-            fid = 3  # South (-Y)
-        elif fn.x > 0.5:
-            fid = 4  # East (+X)
-        elif fn.x < -0.5:
-            fid = 5  # West (-X)
-        else:
-            fid = 3
-        fid_attr.data[poly.index].value = fid
-        y_fid_attr.data[poly.index].value = fid
-
-        # Copy UV from UVMap into Local_UV attribute
-        for loop_idx in poly.loop_indices:
-            if uv_layer:
-                uv = uv_layer.data[loop_idx].uv
-                luv_vec = (uv.x, uv.y, 0.0)
-            else:
-                vi = mesh.loops[loop_idx].vertex_index
-                v_co = mesh.vertices[vi].co
-                luv_vec = (v_co.x + 0.5, v_co.z + 0.5, 0.0)
-            luv_attr.data[loop_idx].vector = luv_vec
-            y_luv_attr.data[loop_idx].vector = luv_vec
-
-    mesh.update()
 
 
 def update_mc_block_templates_from_pack(
