@@ -1304,8 +1304,8 @@ class StepReplaceMaterial(PipelineStep):
 
             if poly_modified:
                 poly_tint_map = {
-                    poly_idx: biome_resolver.get_tint_info(tex_info["texture_name"])
-                    for poly_idx, tex_info, _, _, _, _, _, _ in prepared_faces
+                    poly_idx: tex_info.get("tint_info") or biome_resolver.get_tint_info(tex_info["texture_name"])
+                    for poly_idx, tex_info, _, _, _, _ in resolved_faces
                 }
                 packed_tint_data, tint_colors = _compute_biome_tint_attributes(
                     len(mesh.polygons), poly_tint_map, biome_preset
