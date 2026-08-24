@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Optional, Union
 
@@ -16,6 +18,7 @@ except ImportError:
 
 # Central Registry Dictionary for Registered Menu Items
 _REGISTERED_MENU_ITEMS = {}
+_CONFIG_WRITE_LOCK = threading.RLock()
 
 
 def normalize_operator_id(op_id: str) -> str:
@@ -153,6 +156,48 @@ def get_config_path() -> Path:
     return config_dir / "context_menus.json"
 
 
+def _atomic_write_json(filepath: Path, data: dict) -> None:
+    """Durably replace a JSON file without ever exposing a partial document."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{filepath.stem}.", suffix=".tmp", dir=filepath.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fp:
+            json.dump(data, fp, indent=4, ensure_ascii=False)
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.replace(tmp_name, filepath)
+        # Persist the rename itself where the platform supports directory fsync.
+        try:
+            dir_fd = os.open(filepath.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _load_json_object(filepath: Path) -> Optional[dict]:
+    """Return a valid persisted configuration object, otherwise ``None``."""
+    try:
+        with open(filepath, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        # Every config written by MoziToolKit has these roots.  Rejecting an
+        # interrupted/empty document keeps a later settings save from silently
+        # replacing the user's stack with defaults.
+        if isinstance(data, dict) and isinstance(data.get("views"), dict):
+            return data
+    except (OSError, json.JSONDecodeError):
+        pass
+    return None
+
+
 def is_valid_operator_id(op_id: str) -> bool:
     """Validate that an operator ID is registered or belongs to MoziToolKit namespace."""
     if not op_id or not isinstance(op_id, str):
@@ -211,14 +256,20 @@ def load_config() -> dict:
 def load_full_config() -> dict:
     """Load full configuration root JSON object."""
     filepath = get_config_path()
+    data = _load_json_object(filepath) if filepath.exists() else None
+    if data is not None:
+        return data
+
+    # A one-generation backup makes a malformed or manually interrupted main
+    # write recoverable instead of treating it as an empty configuration.
+    backup_path = filepath.with_suffix(filepath.suffix + ".bak")
+    backup = _load_json_object(backup_path) if backup_path.exists() else None
+    if backup is not None:
+        print(f"[MoziToolKit] Recovered configuration from backup: {backup_path}")
+        return backup
+
     if filepath.exists():
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception as e:
-            print(f"[MoziToolKit] Error reading full config file {filepath}: {e}")
+        print(f"[MoziToolKit] Configuration is invalid; preserving it and using defaults: {filepath}")
     return {
         "version": 1,
         "views": get_default_presets(),
@@ -256,16 +307,20 @@ def save_full_config(
     """Atomically update and save configuration views, resource pack stack, and material settings to user JSON file."""
     filepath = get_config_path()
     try:
-        full_data = load_full_config()
-        full_data["version"] = 1
-        if views_data is not None:
-            full_data["views"] = _normalize_views_data(views_data)
-        if pack_entries is not None:
-            full_data["resource_packs"] = normalize_pack_entries_order(list(pack_entries))
-        if material_settings is not None:
-            full_data["material_settings"] = dict(material_settings)
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(full_data, f, indent=4, ensure_ascii=False)
+        # UI callbacks can arrive close together.  Keep read-modify-write
+        # atomic within this Blender process so a material-settings update
+        # cannot overwrite a just-saved resource-pack stack.
+        with _CONFIG_WRITE_LOCK:
+            full_data = load_full_config()
+            full_data["version"] = 1
+            if views_data is not None:
+                full_data["views"] = _normalize_views_data(views_data)
+            if pack_entries is not None:
+                full_data["resource_packs"] = normalize_pack_entries_order(list(pack_entries))
+            if material_settings is not None:
+                full_data["material_settings"] = dict(material_settings)
+            _atomic_write_json(filepath, full_data)
+            _atomic_write_json(filepath.with_suffix(filepath.suffix + ".bak"), full_data)
         return True
     except Exception as e:
         print(f"[MoziToolKit] Error saving full config file {filepath}: {e}")
