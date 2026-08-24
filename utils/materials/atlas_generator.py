@@ -460,6 +460,7 @@ class AtlasGenerator:
             all_namespaces.insert(0, "minecraft")
 
         chunks = []
+        category_chunk_counts: dict[str, int] = {}
         texture_locations = {}
         animations = []
         outputs = {"chunks": []}
@@ -493,6 +494,8 @@ class AtlasGenerator:
 
                         for chunk_w, chunk_h, placed_rects in packed_chunks:
                             chunk_id = len(chunks)
+                            category_chunk_counts[cat] = category_chunk_counts.get(cat, 0) + 1
+                            cat_chunk_index = category_chunk_counts[cat]
                             images = {
                                 "albedo": Image.new("RGBA", (chunk_w, chunk_h), (0, 0, 0, 0)),
                             }
@@ -608,13 +611,14 @@ class AtlasGenerator:
                                 images["overlay"] = overlay_img_canvas
 
                             for channel, image in images.items():
-                                filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
+                                filename = f"{cat}_chunk_{cat_chunk_index:03d}_{channel}.png"
                                 image.save(output_path / filename)
                                 files[channel] = filename
 
                             chunks.append({
                                 "chunk_id": chunk_id,
                                 "category": cat,
+                                "category_chunk_index": cat_chunk_index,
                                 "namespace": ns,
                                 "kind": "static",
                                 "width": chunk_w,
@@ -681,6 +685,8 @@ class AtlasGenerator:
                         for first in range(0, len(static_rel_paths), capacity):
                             names = static_rel_paths[first:first + capacity]
                             chunk_id = len(chunks)
+                            category_chunk_counts[cat] = category_chunk_counts.get(cat, 0) + 1
+                            cat_chunk_index = category_chunk_counts[cat]
                             rows = min(tiles_per_row, max(1, (len(names) + tiles_per_row - 1) // tiles_per_row))
                             width = min(self.max_chunk_size, tiles_per_row * cat_tile_size)
                             height = min(self.max_chunk_size, rows * cat_tile_size)
@@ -778,13 +784,14 @@ class AtlasGenerator:
                                 images["overlay"] = overlay_img_canvas
 
                             for channel, image in images.items():
-                                filename = f"{cat}_chunk_{chunk_id:03d}_{channel}.png"
+                                filename = f"{cat}_chunk_{cat_chunk_index:03d}_{channel}.png"
                                 image.save(output_path / filename)
                                 files[channel] = filename
 
                             chunks.append({
                                 "chunk_id": chunk_id,
                                 "category": cat,
+                                "category_chunk_index": cat_chunk_index,
                                 "namespace": ns,
                                 "kind": "static",
                                 "width": width,
@@ -818,6 +825,8 @@ class AtlasGenerator:
 
                     def save_animation_chunk(columns, namespace_val=ns, category_val=cat):
                         chunk_id = len(chunks)
+                        category_chunk_counts[category_val] = category_chunk_counts.get(category_val, 0) + 1
+                        cat_chunk_index = category_chunk_counts[category_val]
                         x_calc = 0
                         for _s, img, _m in columns:
                             tw = img.width
@@ -974,13 +983,14 @@ class AtlasGenerator:
 
                         files = {}
                         for channel, img_canvas in images.items():
-                            filename = f"{category_val}_chunk_{chunk_id:03d}_{channel}.png"
+                            filename = f"{category_val}_chunk_{cat_chunk_index:03d}_{channel}.png"
                             img_canvas.save(output_path / filename)
                             files[channel] = filename
 
                         chunks.append({
                             "chunk_id": chunk_id,
                             "category": category_val,
+                            "category_chunk_index": cat_chunk_index,
                             "namespace": namespace_val,
                             "kind": "animation",
                             "width": chunk_width,

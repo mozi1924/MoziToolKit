@@ -188,12 +188,12 @@ class TestMultiCategoryAtlas(unittest.TestCase):
         self.assertIn("blocks", categories)
         self.assertIn("items", categories)
 
-        # Verify material naming contains category prefix
-        self.assertTrue(any("blocks_chunk_000" in name for name in material_names))
+        # Verify material naming contains category prefix and 1-based category chunk index
+        self.assertTrue(any("blocks_chunk_001" in name for name in material_names))
         self.assertTrue(any("items_chunk_001" in name for name in material_names))
 
-        # Verify generated PNG filenames contain category prefix
-        self.assertTrue((atlas_out / "blocks_chunk_000_albedo.png").exists())
+        # Verify generated PNG filenames contain category prefix and category chunk index
+        self.assertTrue((atlas_out / "blocks_chunk_001_albedo.png").exists())
         self.assertTrue((atlas_out / "items_chunk_001_albedo.png").exists())
 
     def test_chunk_capacity_splitting_per_category(self):
@@ -213,9 +213,15 @@ class TestMultiCategoryAtlas(unittest.TestCase):
         item_chunks = [c for c in mapping["chunks"] if c["category"] == "items"]
         # 10 items with capacity 4 -> 3 item chunks (4 + 4 + 2)
         self.assertEqual(len(item_chunks), 3)
+        self.assertEqual([c["category_chunk_index"] for c in item_chunks], [1, 2, 3])
+        self.assertTrue((atlas_out / "items_chunk_001_albedo.png").exists())
+        self.assertTrue((atlas_out / "items_chunk_002_albedo.png").exists())
+        self.assertTrue((atlas_out / "items_chunk_003_albedo.png").exists())
 
         block_chunks = [c for c in mapping["chunks"] if c["category"] == "blocks"]
         self.assertEqual(len(block_chunks), 1)
+        self.assertEqual(block_chunks[0]["category_chunk_index"], 1)
+        self.assertTrue((atlas_out / "blocks_chunk_001_albedo.png").exists())
 
     def test_multi_category_fallback_stack(self):
         """Verify prioritized fallback loading across categories from lower-priority packs."""
