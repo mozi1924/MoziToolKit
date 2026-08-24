@@ -60,6 +60,15 @@ from ...utils.materials import (
     get_configured_pack_stack,
 )
 from ...utils.system import has_pillow
+from ...utils.materials.constants import (
+    ATLAS_CATEGORY_BLOCKS,
+    ATLAS_CATEGORY_ITEMS,
+    ATLAS_CATEGORY_ENTITIES,
+    ATLAS_CATEGORY_CHEST,
+    ATLAS_CATEGORY_SHULKER_BOXES,
+    ATLAS_CATEGORY_BANNER_PATTERNS,
+    ATLAS_CATEGORY_DECORATED_POT,
+)
 from ...utils.mesh import (
     straighten_face_uv, normalize_face_uv_for_atlas_tiling,
     face_uv_requires_atlas_tiling, restore_atlas_tiling_uv,
@@ -380,8 +389,25 @@ class StepReplaceMaterial(PipelineStep):
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         """Iteratively execute material replacement in Atlas Mode with fine-grained progress."""
         effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
+        # A pure Yefira world never renders Minecraft's GUI, particles, map
+        # decorations, paintings, or celestial textures.  Loading those into
+        # Pillow and then Blender is expensive but has no visual benefit.
+        # Keep entity-like categories used by block templates (chests, signs,
+        # banners, shulkers and decorated pots) to preserve world fidelity.
+        yefira_only = all(is_yefira_object(obj) for obj in valid_objects)
+        yefira_categories = {
+            ATLAS_CATEGORY_BLOCKS,
+            ATLAS_CATEGORY_ITEMS,
+            ATLAS_CATEGORY_ENTITIES,
+            ATLAS_CATEGORY_CHEST,
+            ATLAS_CATEGORY_SHULKER_BOXES,
+            ATLAS_CATEGORY_BANNER_PATTERNS,
+            ATLAS_CATEGORY_DECORATED_POT,
+        }
         cache_root = get_cache_dir()
-        atlas_dir = cache_root / effective_pack_hash
+        # Do not share a full-scene atlas cache with the slim Yefira cache:
+        # otherwise a prior full run would silently restore unused UI chunks.
+        atlas_dir = cache_root / effective_pack_hash / ("yefira_world" if yefira_only else "full_scene")
         mapping_path = atlas_dir / "atlas_mapping.json"
 
         from ...utils.mc_baker import get_shared_state_baker, clear_shared_baker_cache
@@ -453,7 +479,11 @@ class StepReplaceMaterial(PipelineStep):
                 return
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {effective_pack_hash[:12]}...")
             try:
-                gen = AtlasGenerator(pack.extract_dir, fallback_stack=pack_stack)
+                gen = AtlasGenerator(
+                    pack.extract_dir,
+                    fallback_stack=pack_stack,
+                    included_categories=yefira_categories if yefira_only else None,
+                )
                 for frac, msg, _res in gen.build_iter(atlas_dir):
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")

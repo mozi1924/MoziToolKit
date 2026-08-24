@@ -139,6 +139,29 @@ class TestMultiCategoryAtlas(unittest.TestCase):
         self.assertEqual(textures["minecraft:item/compass"]["category"], "items")
         self.assertEqual(textures["minecraft:item/compass"]["chunk_id"], item_anim_chunk["chunk_id"])
 
+    def test_included_categories_skips_ui_and_particle_images(self):
+        """A focused world atlas must not decode or emit unrelated UI chunks."""
+        pack_path = self._create_sample_pack("WorldOnlyPack", {
+            "block/stone": (16, 16, (128, 128, 128, 255)),
+            "particle/flame": (8, 8, (255, 100, 0, 255)),
+            "gui/widgets": (256, 256, (0, 0, 0, 255)),
+        })
+        atlas_out = self.work_dir / "world_only_atlas"
+        gen = AtlasGenerator(
+            pack_path,
+            default_tile_size=16,
+            max_chunk_size=512,
+            included_categories={ATLAS_CATEGORY_BLOCKS},
+        )
+        outputs = gen.build(atlas_out)
+
+        with open(outputs["mapping"], "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+        self.assertEqual({chunk["category"] for chunk in mapping["chunks"]}, {ATLAS_CATEGORY_BLOCKS})
+        self.assertIn("stone", mapping["textures"])
+        self.assertNotIn("flame", mapping["textures"])
+        self.assertNotIn("widgets", mapping["textures"])
+
     def test_build_atlas_chunk_materials_sets_category_prop(self):
         """Verify build_atlas_chunk_materials assigns PROP_ATLAS_CHUNK_CATEGORY on material datablocks."""
         pack_path = self._create_sample_pack("PropsPack", {
