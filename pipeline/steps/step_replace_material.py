@@ -384,6 +384,23 @@ class StepReplaceMaterial(PipelineStep):
         atlas_dir = cache_root / effective_pack_hash
         mapping_path = atlas_dir / "atlas_mapping.json"
 
+        from ...utils.mc_baker import get_shared_state_baker, clear_shared_baker_cache
+        from ...utils.live_sync.point_cloud import clear_state_cache
+
+        baker = get_shared_state_baker()
+        if pack_stack:
+            loader = pack_stack.get_composite_loader()
+            if loader:
+                baker.resource_loader = loader
+                baker.model_parser.model_loader_fn = loader.load_model
+                baker.state_resolver.blockstate_loader_fn = loader.load_blockstate
+        elif pack:
+            pack_src = pack.extract_dir if (pack.extract_dir and Path(pack.extract_dir).exists()) else pack.zip_path
+            if pack_src:
+                baker.set_resource_source(pack_src)
+        baker.clear_cache()
+        clear_state_cache()
+
         yield ProgressUpdate(0.10, 1.0, "Checking Atlas texture cache...")
 
         if pipeline_context.is_cancelled:

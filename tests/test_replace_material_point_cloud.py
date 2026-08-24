@@ -7,9 +7,27 @@ import sys
 import unittest
 from pathlib import Path
 
+import importlib.util
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+PARENT_DIR = PROJECT_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
+
+if "MoziToolKit" not in sys.modules:
+    spec = importlib.util.spec_from_file_location(
+        "MoziToolKit",
+        str(PROJECT_DIR / "__init__.py"),
+        submodule_search_locations=[str(PROJECT_DIR)]
+    )
+    if spec and spec.loader:
+        pkg = importlib.util.module_from_spec(spec)
+        sys.modules["MoziToolKit"] = pkg
+        spec.loader.exec_module(pkg)
+
+import MoziToolKit
 
 try:
     import bpy
@@ -74,7 +92,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         import tempfile
         import zipfile
         from PIL import Image
-        from pipeline.presets import run_preset_pipeline
+        from MoziToolKit.pipeline.presets import run_preset_pipeline
 
         jar_env = os.environ.get("MC_JAR_PATH", "")
         jar_path = Path(jar_env) if jar_env else None
@@ -457,7 +475,7 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         import tempfile
         import zipfile
         from PIL import Image
-        from pipeline.presets import run_preset_pipeline
+        from MoziToolKit.pipeline.presets import run_preset_pipeline
 
         # Build Yefira_Material_Dispatcher sub-group to emulate full Yefira DCC setup
         disp_tree = bpy.data.node_groups.new(name="Yefira_Material_Dispatcher", type='GeometryNodeTree')
@@ -572,8 +590,100 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
         self.assertEqual(mat_by_chunk.get("Set Material (Chunk 1)"), m1)
         self.assertEqual(mat_by_chunk.get("Set Material (Chunk 2)"), m2)
 
+    def test_sequential_material_replacement_with_json_and_orientations(self):
+        """Verify that sequential material replacements correctly parse JSON face rotations,
+        instance orientations, and directional block attributes across runs 1, 2, and 3."""
+        from utils.system.dependencies import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed in test environment")
+
+        import json
+        import tempfile
+        import zipfile
+        from PIL import Image
+        from MoziToolKit.pipeline.presets import run_preset_pipeline
+
+        # Setup test mesh with 4 points
+        mesh = bpy.data.meshes.new("Test_JSON_Mesh")
+        obj = bpy.data.objects.new("Test_JSON_Obj", mesh)
+        bpy.context.scene.collection.objects.link(obj)
+
+        mesh.from_pydata([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0), (3.0, 0.0, 0.0)], [], [])
+        mesh.update()
+
+        states_attr = mesh.attributes.new("block_state", 'STRING', 'POINT')
+        states_attr.data[0].value = json.dumps({
+            "state": "minecraft:furnace[facing=north,lit=true]",
+            "faces": {
+                "north": {"tex": "minecraft:block/furnace_front_on", "rot": 0.0},
+                "top": {"tex": "minecraft:block/furnace_top", "rot": 90.0},
+            }
+        }).encode("utf-8")
+        states_attr.data[1].value = json.dumps({
+            "state": "minecraft:oak_stairs[facing=south,half=bottom,shape=straight]",
+            "rot": [0.0, 0.0, 3.14159265],
+            "type": 3,
+        }).encode("utf-8")
+        states_attr.data[2].value = b"minecraft:observer[facing=up]"
+        states_attr.data[3].value = b"minecraft:piston[facing=east]"
+
+        dummy_mat = bpy.data.materials.new(name="Yefira_Atlas_Master")
+        obj.data.materials.append(dummy_mat)
+
+        mod = obj.modifiers.new(name="Yefira_WorldModifier", type='NODES')
+        gn_tree = bpy.data.node_groups.new(name="Yefira_WorldTree_JSON", type='GeometryNodeTree')
+        gn_tree.interface.new_socket(name="Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+        gn_tree.interface.new_socket(name="Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
+        mod.node_group = gn_tree
+
+        # Create 3 distinct resource packs
+        tmp_dir = tempfile.TemporaryDirectory()
+        pack_paths = []
+        textures = [
+            "furnace_front_on", "furnace_front", "furnace_side", "furnace_top",
+            "oak_planks", "observer_front", "observer_back", "observer_top", "observer_side",
+            "piston_top", "piston_bottom", "piston_side",
+        ]
+        for run_idx in range(3):
+            zip_file = Path(tmp_dir.name) / f"orient_pack_{run_idx + 1}.zip"
+            with zipfile.ZipFile(zip_file, "w") as zf:
+                for tex in textures:
+                    img_path = Path(tmp_dir.name) / f"{tex}_{run_idx + 1}.png"
+                    Image.new("RGBA", (16, 16), (run_idx * 50, 100, 150, 255)).save(img_path)
+                    zf.write(img_path, arcname=f"assets/minecraft/textures/block/{tex}.png")
+            pack_paths.append(zip_file)
+
+        # Run 3 sequential replacements
+        for run_idx, pack_path in enumerate(pack_paths):
+            params = {
+                "zip_path": str(pack_path),
+                "material_mode": "ATLAS",
+                "pack_textures": True,
+                "use_cache": False,
+            }
+            res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[obj])
+            self.assertTrue(res.is_success, f"Replacement run {run_idx + 1} failed: {res.message}")
+
+            # Verify Point 0 (Furnace with custom face JSON rotation 90 deg on top):
+            self.assertEqual(mesh.attributes["mtk_uv_rot_top"].data[0].value, 90.0, f"Run {run_idx + 1}: Point 0 top UV rot mismatch")
+            self.assertEqual(mesh.attributes["mtk_uv_rot_north"].data[0].value, 0.0, f"Run {run_idx + 1}: Point 0 north UV rot mismatch")
+            self.assertEqual(mesh.attributes["mtk_emissive"].data[0].value, 1, f"Run {run_idx + 1}: Point 0 emissive mismatch")
+
+            # Verify Point 1 (Oak stairs with JSON instance rotation and type):
+            rot_1 = tuple(mesh.attributes["yefira_instance_rotation"].data[1].vector)
+            self.assertAlmostEqual(rot_1[2], 3.14159265, places=5, msg=f"Run {run_idx + 1}: Point 1 instance rotation mismatch")
+            self.assertEqual(mesh.attributes["yefira_block_type"].data[1].value, 3, f"Run {run_idx + 1}: Point 1 block type mismatch")
+
+            # Verify Point 2 (Observer facing up -> top face UV rotation 180 deg):
+            self.assertEqual(mesh.attributes["mtk_uv_rot_top"].data[2].value, 180.0, f"Run {run_idx + 1}: Point 2 observer top UV rot mismatch")
+
+            # Verify Point 3 (Piston facing east -> east face has piston_top):
+            self.assertIn("mtk_tile_east", mesh.attributes)
+            self.assertIn("yefira_instance_rotation", mesh.attributes)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 
 
