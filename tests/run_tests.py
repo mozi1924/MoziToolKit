@@ -246,28 +246,28 @@ class TestPipelineFramework(unittest.TestCase):
             res1, ctx1 = run_preset_pipeline(
                 "replace_material",
                 bpy.context,
-                params={"zip_path": dir_a, "use_cache": False},
+                params={"zip_path": dir_a, "material_mode": "STANDALONE", "use_cache": False},
                 target_objects=[cube1],
             )
-            self.assertTrue(res1.is_success)
+            self.assertTrue(res1.is_success, msg=getattr(res1, "message", None))
 
             # Replace cube2 with Pack B (different pack hash)
             res2, ctx2 = run_preset_pipeline(
                 "replace_material",
                 bpy.context,
-                params={"zip_path": dir_b, "use_cache": False},
+                params={"zip_path": dir_b, "material_mode": "STANDALONE", "use_cache": False},
                 target_objects=[cube2],
             )
-            self.assertTrue(res2.is_success)
+            self.assertTrue(res2.is_success, msg=getattr(res2, "message", None))
 
             # Replace cube3 with Pack A again (same pack hash as cube1)
             res3, ctx3 = run_preset_pipeline(
                 "replace_material",
                 bpy.context,
-                params={"zip_path": dir_a, "use_cache": False},
+                params={"zip_path": dir_a, "material_mode": "STANDALONE", "use_cache": False},
                 target_objects=[cube3],
             )
-            self.assertTrue(res3.is_success)
+            self.assertTrue(res3.is_success, msg=getattr(res3, "message", None))
 
             mat_res1 = cube1.material_slots[0].material
             mat_res2 = cube2.material_slots[0].material

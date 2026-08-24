@@ -1305,6 +1305,7 @@ class AtlasGenerator:
             "baked_states_count": len(block_states_data),
         }
         mapping_path = output_path / "atlas_mapping.json"
+        mapping_path.parent.mkdir(parents=True, exist_ok=True)
         with open(mapping_path, "w", encoding="utf-8") as fp:
             json.dump(mapping_data, fp, indent=2)
         outputs["mapping"] = mapping_path

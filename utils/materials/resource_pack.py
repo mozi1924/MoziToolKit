@@ -96,11 +96,22 @@ def clean_obsolete_stack_caches(current_stack_hash: Optional[str] = None) -> tup
     return dirs_removed, bytes_freed
 
 
-def get_cache_stats() -> dict:
+_cached_stats = None
+_cached_stats_time = 0.0
+
+
+def get_cache_stats(force_refresh: bool = False) -> dict:
     """
     Get summary statistics about the persistent cache directory.
+    Cached for 3 seconds to avoid disk I/O bottleneck during 60FPS UI redraw ticks.
     Returns dict with keys: 'path', 'files_count', 'total_size_bytes', 'size_formatted'.
     """
+    global _cached_stats, _cached_stats_time
+    import time
+    now = time.time()
+    if not force_refresh and _cached_stats is not None and (now - _cached_stats_time) < 3.0:
+        return _cached_stats
+
     cache_root = get_cache_dir()
     files_count = 0
     total_size = 0
@@ -122,12 +133,14 @@ def get_cache_stats() -> dict:
     else:
         size_str = f"{total_size / (1024 * 1024 * 1024):.2f} GB"
 
-    return {
+    _cached_stats = {
         "path": cache_root,
         "files_count": files_count,
         "total_size_bytes": total_size,
         "size_formatted": size_str,
     }
+    _cached_stats_time = now
+    return _cached_stats
 
 
 def clear_resource_pack_cache() -> tuple[int, int]:

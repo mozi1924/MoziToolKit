@@ -27,6 +27,10 @@ class MOZI_OT_check_dependencies(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def execute(self, context):
+        from ...utils.system import get_all_dependency_statuses
+        from ...utils.materials import get_cache_stats
+        get_all_dependency_statuses(force_refresh=True)
+        get_cache_stats(force_refresh=True)
         refresh_ui_windows(context)
         self.report({"INFO"}, "Environment and dependency status refreshed.")
         return {"FINISHED"}
@@ -81,8 +85,9 @@ class MOZI_OT_clear_cache(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def execute(self, context):
-        from ...utils.materials import clear_resource_pack_cache
+        from ...utils.materials import clear_resource_pack_cache, get_cache_stats
         count, bytes_freed = clear_resource_pack_cache()
+        get_cache_stats(force_refresh=True)
         mb_freed = bytes_freed / (1024 * 1024)
         self.report({"INFO"}, f"Cache cleared: removed {count} files ({mb_freed:.2f} MB freed).")
         return {"FINISHED"}
