@@ -30,12 +30,26 @@ from ..mc_baker import (
 from ..live_sync.constants import (
     BLOCK_STATE,
     MC_POSITION,
+    BLOCK_TYPE,
+    TEMPLATE_INDEX,
+    INSTANCE_ROTATION,
+    DIRECTIONAL_FACE_V_FLIP,
+    MTK_BIOME_TINT_COLOR,
+    MTK_BIOME_TINT_DATA,
+    TEMPLATE_COLLECTION_NAME,
     DEFAULT_WORLD_OBJECT_NAME,
     WORLD_MODIFIER_NAME,
     is_contract_compatible,
     get_attribute_contract_version,
 )
-from ..live_sync.classifier import atlas_lookup_keys
+from ..live_sync.classifier import (
+    parse_and_classify,
+    BlockTypeEnum,
+    ParsedBlock,
+    atlas_lookup_keys,
+)
+from ..live_sync.template_catalog import get_template_index_map
+from ..live_sync.point_cloud import _resolve_template_index
 
 
 def refresh_baker_sources() -> None:
@@ -130,12 +144,23 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     - ``mtk_tint_data_{face}`` (FLOAT_COLOR: base_weight, overlay_weight, tint_weight, is_hardcoded)
     - ``mtk_anim_timing_{face}`` (FLOAT_COLOR: frame_count, frametime, interpolate, 0)
     - ``mtk_anim_frame_size_{face}`` (FLOAT_COLOR: frame_width, frame_height, 0, 0)
+    - ``mtk_uv_rot_{face}`` (FLOAT)
+    - ``mtk_uv_bounds_{face}`` (FLOAT_COLOR: u_min, v_min, u_max, v_max)
+    - ``yefira_instance_rotation`` (FLOAT_VECTOR)
+    - ``yefira_block_type`` (INT)
+    - ``yefira_template_index`` (INT)
+    - ``yefira_directional_face_v_flip`` (INT)
+    - ``mtk_biome_tint_color`` (FLOAT_COLOR)
+    - ``mtk_biome_tint_data`` (FLOAT_COLOR)
     """
     state_attr = mesh.attributes.get(BLOCK_STATE) or mesh.attributes.get("block_state")
     if not state_attr or state_attr.domain != 'POINT':
         return
 
     refresh_baker_sources()
+
+    template_col = bpy.data.collections.get(TEMPLATE_COLLECTION_NAME)
+    template_indices = get_template_index_map(template_col) if template_col else {}
 
     by_name = {
         str(entry.get("name", "")).removeprefix("minecraft:").removeprefix("block/"): entry
@@ -146,10 +171,19 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
 
     def texture_location(block_name: str) -> dict:
         """Find a flat texture entry when a block model has no face table."""
-        for key in (block_name, f"minecraft:{block_name}", f"minecraft:block/{block_name}"):
+        if not block_name:
+            return {}
+        clean_name = str(block_name).split(":", 1)[-1].removeprefix("block/")
+        for key in (block_name, f"minecraft:{block_name}", f"minecraft:block/{block_name}", clean_name, f"minecraft:{clean_name}", f"minecraft:block/{clean_name}"):
             location = texture_locations.get(key)
             if isinstance(location, dict):
                 return location
+        if clean_name in BLOCK_TO_TEXTURE_ALIASES:
+            for stem in BLOCK_TO_TEXTURE_ALIASES[clean_name]:
+                for key in (stem, f"minecraft:{stem}", f"minecraft:block/{stem}"):
+                    location = texture_locations.get(key)
+                    if isinstance(location, dict):
+                        return location
         return {}
 
     def texture_only_faces(block_name: str, props: dict[str, str]) -> dict:
@@ -170,9 +204,9 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 result[dir_to_key.get(f.direction, f.direction)] = loc
         return result
 
-    def mapping_names(state: str) -> tuple[str, ...]:
+    def mapping_names(state_or_parsed: Any) -> tuple[str, ...]:
         """Resolve stateful generated models before generic texture fallback."""
-        return atlas_lookup_keys(state)
+        return atlas_lookup_keys(state_or_parsed)
 
     face_specs = (
         ("east", "+X"), ("west", "-X"), ("top", "+Y"),
@@ -195,23 +229,52 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     material_ids = []
     is_opaque_list = []
     emissive_list = []
+    rotations = []
+    block_types = []
+    template_indices_list = []
+    directional_flips = []
+    tint_colors = []
+    tint_datas = []
 
-    state_cache: dict[str, dict[str, Any]] = {}
     import json
 
     for item in state_attr.data:
         state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
         raw_state = state
+        json_obj = None
         if state and state.startswith("{") and state.endswith("}"):
             try:
                 json_obj = json.loads(state)
                 if isinstance(json_obj, dict):
                     raw_state = json_obj.get("state", state)
             except Exception:
-                pass
+                json_obj = None
 
         block_name, props = parse_block_state_str(raw_state)
-        names = mapping_names(raw_state)
+        parsed: ParsedBlock = parse_and_classify(raw_state)
+        if json_obj and isinstance(json_obj, dict):
+            if "type" in json_obj:
+                parsed.block_type = int(json_obj["type"])
+            if "opaque" in json_obj:
+                parsed.is_opaque = int(json_obj["opaque"])
+            if "emissive" in json_obj:
+                parsed.is_emissive = int(json_obj["emissive"])
+            if "emissive_level" in json_obj:
+                parsed.emissive_level = float(json_obj["emissive_level"])
+            if "rot" in json_obj:
+                r = json_obj["rot"]
+                if isinstance(r, (list, tuple)) and len(r) == 3:
+                    parsed.rot_euler = (float(r[0]), float(r[1]), float(r[2]))
+            elif "rotation" in json_obj:
+                r = json_obj["rotation"]
+                if isinstance(r, (list, tuple)) and len(r) == 3:
+                    parsed.rot_euler = (float(r[0]), float(r[1]), float(r[2]))
+            elif "instance_rotation" in json_obj:
+                r = json_obj["instance_rotation"]
+                if isinstance(r, (list, tuple)) and len(r) == 3:
+                    parsed.rot_euler = (float(r[0]), float(r[1]), float(r[2]))
+
+        names = mapping_names(parsed)
         entry = next((by_name[name] for name in names if name in by_name), None)
         mat_id = int(entry.get("material_id", 0)) if entry else 0
         material_ids.append(mat_id)
@@ -249,24 +312,59 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
                 except Exception:
                     pass
 
-        baked = get_shared_state_baker().bake_block_state(raw_state)
-        if block_state_entry:
-            is_opaque_list.append(1 if block_state_entry.get("is_opaque", True) else 0)
-            emissive_list.append(1 if block_state_entry.get("is_emissive", False) or is_block_emissive(block_name, props) else 0)
-        else:
-            is_opaque_list.append(int(baked.is_opaque) if entry is None or "is_opaque" not in entry else (1 if entry.get("is_opaque", True) else 0))
-            emissive_list.append(1 if is_block_emissive(block_name, props) or baked.is_emissive else 0)
+        json_faces = json_obj.get("faces") if (json_obj and isinstance(json_obj, dict) and isinstance(json_obj.get("faces"), dict)) else None
+        baked = get_shared_state_baker().bake_block_state(raw_state) if not json_faces else None
 
-        derived_faces = texture_only_faces(block_name, props)
+        if json_obj and "opaque" in json_obj:
+            is_opaque_list.append(int(json_obj["opaque"]))
+        elif block_state_entry:
+            is_opaque_list.append(1 if block_state_entry.get("is_opaque", True) else 0)
+        elif baked:
+            is_opaque_list.append(int(baked.is_opaque) if entry is None or "is_opaque" not in entry else (1 if entry.get("is_opaque", True) else 0))
+        else:
+            is_opaque_list.append(parsed.is_opaque)
+
+        if json_obj and "emissive" in json_obj:
+            emissive_list.append(int(json_obj["emissive"]))
+        elif block_state_entry:
+            emissive_list.append(1 if block_state_entry.get("is_emissive", False) or is_block_emissive(block_name, props) else 0)
+        elif baked:
+            emissive_list.append(1 if is_block_emissive(block_name, props) or baked.is_emissive else 0)
+        else:
+            emissive_list.append(parsed.is_emissive)
+
+        tmpl_idx = _resolve_template_index(template_indices, parsed.template_name)
+        rotations.append(parsed.rot_euler)
+        block_types.append(parsed.block_type)
+        template_indices_list.append(tmpl_idx)
+        directional_flips.append(int(parsed.name in ("command_block", "chain_command_block", "repeating_command_block")))
+        tint_colors.append(parsed.tint_color)
+        tint_datas.append(parsed.tint_data)
+
+        derived_faces = texture_only_faces(block_name, props) if not json_faces else {}
 
         is_snowy_top = props.get("snowy") == "true" and block_name in ("grass_block", "podzol", "mycelium")
         is_hardcoded_block = block_name in HARDCODED_TINT_BLOCKS
 
         for face_idx, (attr_face, mapping_face) in enumerate(face_specs):
-            baked_face = baked.faces[face_idx] if baked else None
+            json_face = None
+            if json_faces:
+                json_face = (
+                    json_faces.get(attr_face)
+                    or json_faces.get(mapping_face)
+                    or (json_faces.get("up") if attr_face == "top" else None)
+                    or (json_faces.get("down") if attr_face == "bottom" else None)
+                )
+
+            baked_face = baked.faces[face_idx] if (baked and face_idx < len(baked.faces)) else None
             state_face_entry = block_state_entry.get("faces", {}).get(mapping_face) if block_state_entry else None
 
-            if state_face_entry:
+            if json_face:
+                tex_name = json_face.get("tex", json_face.get("texture", ""))
+                uv_r = float(json_face.get("rot", json_face.get("uv_rotation", 0.0)))
+                uv_b = tuple(json_face.get("uv", json_face.get("uv_bounds", [0.0, 0.0, 1.0, 1.0])))
+                tint_idx = int(json_face.get("tint", json_face.get("tint_index", -1)))
+            elif state_face_entry:
                 tex_name = state_face_entry.get("texture_key", state_face_entry.get("texture", ""))
                 uv_r = float(state_face_entry.get("uv_rotation", 0.0))
                 uv_b = tuple(state_face_entry.get("uv_bounds", [
@@ -294,8 +392,10 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
             if short_n.startswith("block/"):
                 short_n = short_n[6:]
 
+            cur_state_loc = state_face_entry if (not json_face and isinstance(state_face_entry, dict) and ("tile_column" in state_face_entry or "pixel_x" in state_face_entry or "chunk_id" in state_face_entry)) else None
+
             location = (
-                (state_face_entry if isinstance(state_face_entry, dict) and ("tile_column" in state_face_entry or "pixel_x" in state_face_entry or "chunk_id" in state_face_entry) else None)
+                cur_state_loc
                 or texture_location(tex_name)
                 or texture_location(short_n)
                 or texture_location(f"minecraft:{short_n}")
@@ -381,6 +481,13 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
         rot_attr.data.foreach_set('value', values[face]["uv_rot"])
         bounds_attr = point_attr(f"mtk_uv_bounds_{face}", 'FLOAT_COLOR')
         bounds_attr.data.foreach_set('color', [component for value in values[face]["uv_bounds"] for component in value])
+
+    point_attr(INSTANCE_ROTATION, 'FLOAT_VECTOR').data.foreach_set('vector', [component for rot in rotations for component in rot])
+    point_attr(BLOCK_TYPE, 'INT').data.foreach_set('value', block_types)
+    point_attr(TEMPLATE_INDEX, 'INT').data.foreach_set('value', template_indices_list)
+    point_attr(DIRECTIONAL_FACE_V_FLIP, 'INT').data.foreach_set('value', directional_flips)
+    point_attr(MTK_BIOME_TINT_COLOR, 'FLOAT_COLOR').data.foreach_set('color', [component for col in tint_colors for component in col])
+    point_attr(MTK_BIOME_TINT_DATA, 'FLOAT_COLOR').data.foreach_set('color', [component for d in tint_datas for component in d])
 
 
 def setup_yefira_point_cloud_attributes(

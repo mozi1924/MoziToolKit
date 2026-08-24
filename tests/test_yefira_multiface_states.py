@@ -31,6 +31,10 @@ class TestYefiraMultifaceStates(unittest.TestCase):
         for mesh in list(bpy.data.meshes):
             bpy.data.meshes.remove(mesh, do_unlink=True)
 
+        from utils.mc_baker import get_shared_state_baker, clear_shared_baker_cache
+        clear_shared_baker_cache()
+        get_shared_state_baker().resource_loader = None
+
     def test_furnace_lit_multiface_resolution(self):
         """Verify furnace[lit=true] resolves furnace_front_on only on North/-Z face."""
         mesh = bpy.data.meshes.new("TestFurnaceMesh")
@@ -108,8 +112,9 @@ class TestYefiraMultifaceStates(unittest.TestCase):
 
         mapping = {
             "textures": {
+                "minecraft:block/beehive_end": loc(5, 0, 50),
                 "minecraft:block/beehive_top": loc(5, 0, 50),
-                "minecraft:block/beehive_bottom": loc(6, 0, 60),
+                "minecraft:block/beehive_bottom": loc(5, 0, 50),
                 "minecraft:block/beehive_side": loc(7, 0, 70),
                 "minecraft:block/beehive_front": loc(8, 0, 80),
                 "minecraft:block/beehive_front_honey": loc(9, 0, 90),
@@ -129,8 +134,8 @@ class TestYefiraMultifaceStates(unittest.TestCase):
 
         # 1. Beehive with honey_level=5
         self.assertEqual(tuple(mesh.attributes["mtk_tile_north"].data[0].vector), (9.0, 0.0, 0.0))  # front_honey
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[0].vector), (5.0, 0.0, 0.0))    # top
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_bottom"].data[0].vector), (6.0, 0.0, 0.0)) # bottom
+        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[0].vector), (5.0, 0.0, 0.0))    # end / top
+        self.assertEqual(tuple(mesh.attributes["mtk_tile_bottom"].data[0].vector), (5.0, 0.0, 0.0)) # end / bottom
         self.assertEqual(tuple(mesh.attributes["mtk_tile_east"].data[0].vector), (7.0, 0.0, 0.0))   # side
 
         # 2. Respawn anchor with charges=4
