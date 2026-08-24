@@ -1090,12 +1090,12 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             from ..utils.system import has_pillow
             from ..utils.materials.pack_stack import get_configured_pack_stack
             from ..utils.materials.atlas_generator import AtlasGenerator
-            from ..utils.materials.resource_pack import get_cache_dir
+            from ..utils.materials.resource_pack import get_cache_dir, clean_obsolete_stack_caches
         except (ImportError, ValueError):
             from utils.system import has_pillow
             from utils.materials.pack_stack import get_configured_pack_stack
             from utils.materials.atlas_generator import AtlasGenerator
-            from utils.materials.resource_pack import get_cache_dir
+            from utils.materials.resource_pack import get_cache_dir, clean_obsolete_stack_caches
 
         if not has_pillow():
             self.report({'ERROR'}, "Atlas compilation requires 'Pillow' (PIL) module.")
@@ -1114,6 +1114,7 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
                 fallback_stack=stack,
             )
             res = gen.build(atlas_dir)
+            clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
             num_chunks = len(res.get("chunks", []))
             self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks) for pack stack.")
             return {'FINISHED'}

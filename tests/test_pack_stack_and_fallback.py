@@ -341,15 +341,36 @@ class TestPackStackAndFallback(unittest.TestCase):
         self.assertEqual(res, {'FINISHED'})
 
     def test_persistent_cache_directory_and_stats(self):
-        """Test that get_cache_dir is persistent and get_cache_stats returns accurate information."""
-        from utils.materials.resource_pack import get_cache_dir, get_cache_stats
-        import tempfile
+        """Test that get_cache_dir is persistent, temp extraction is in OS temp, and obsolete stack caches are pruned."""
+        from utils.materials.resource_pack import (
+            get_cache_dir,
+            get_temp_extraction_dir,
+            get_cache_stats,
+            clean_obsolete_stack_caches,
+        )
 
         cache_dir = get_cache_dir()
         self.assertTrue(cache_dir.exists())
-        # Cache must NOT be in OS temp folder /var/folders or /tmp unless completely headless fallback
         if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
             self.assertIn("datafiles", str(cache_dir).lower())
+            self.assertIn("baked_stack", str(cache_dir).lower())
+
+        temp_ext_dir = get_temp_extraction_dir()
+        self.assertTrue(temp_ext_dir.exists())
+
+        # Test obsolete stack caches cleanup: only current stack hash remains
+        dummy_old = cache_dir / "old_stack_hash_12345"
+        dummy_old.mkdir(parents=True, exist_ok=True)
+        (dummy_old / "dummy.png").write_bytes(b"123")
+
+        dummy_current = cache_dir / "current_stack_hash_67890"
+        dummy_current.mkdir(parents=True, exist_ok=True)
+        (dummy_current / "atlas_mapping.json").write_text("{}", encoding="utf-8")
+
+        dirs_removed, bytes_freed = clean_obsolete_stack_caches(current_stack_hash="current_stack_hash_67890")
+        self.assertGreaterEqual(dirs_removed, 1)
+        self.assertFalse(dummy_old.exists())
+        self.assertTrue(dummy_current.exists())
 
         stats = get_cache_stats()
         self.assertIn("path", stats)

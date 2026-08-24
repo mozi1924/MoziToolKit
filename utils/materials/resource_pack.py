@@ -8,6 +8,7 @@ import hashlib
 import json
 import tempfile
 from pathlib import Path
+from typing import Optional, Union, Any, Tuple
 try:
     import bpy
     HAS_BPY = True
@@ -24,26 +25,75 @@ MAX_ZIP_MEMBER_COUNT = 50_000                       # Maximum 50,000 files
 MAX_ZIP_COMPRESSION_RATIO = 100.0                   # Max compression ratio for files > 1MB
 
 
+def get_temp_extraction_dir() -> Path:
+    """
+    Get the system temporary extraction directory for unpacking ZIP/JAR resource packs.
+    Used during preprocessing so raw uncompressed assets live in OS temp rather than user data.
+    """
+    temp_root = None
+    if bpy and hasattr(bpy, "app") and hasattr(bpy.app, "tempdir"):
+        try:
+            b_temp = bpy.app.tempdir
+            if b_temp:
+                temp_root = Path(b_temp) / "MoziToolKit" / "extracted"
+        except Exception:
+            temp_root = None
+
+    if not temp_root:
+        temp_root = Path(tempfile.gettempdir()) / "MoziToolKit" / "extracted"
+
+    temp_root.mkdir(parents=True, exist_ok=True)
+    return temp_root
+
+
 def get_cache_dir() -> Path:
     """
-    Get the persistent data and cache root directory for MoziToolKit.
-    Uses Blender's user persistent datafiles directory so extracted packs,
-    precompiled atlases, and JSON indices persist across Blender sessions and reboots.
-    Fallback to ~/.config/blender/MoziToolKit/cache or ~/.cache/MoziToolKit when bpy is unavailable.
+    Get the persistent data directory for MoziToolKit baked stack outputs.
+    Stores only the final compiled Atlas texture sheets and atlas_mapping.json metadata for the active stack.
     """
     cache_dir = None
     if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
         try:
-            cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache"
+            cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache" / "baked_stack"
         except Exception:
             cache_dir = None
 
     if not cache_dir:
-        cache_dir = Path.home() / ".config" / "blender" / "MoziToolKit" / "cache"
+        cache_dir = Path.home() / ".config" / "blender" / "MoziToolKit" / "cache" / "baked_stack"
 
-    cache_root = cache_dir / "resource_packs"
-    cache_root.mkdir(parents=True, exist_ok=True)
-    return cache_root
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def clean_obsolete_stack_caches(current_stack_hash: Optional[str] = None) -> tuple[int, int]:
+    """
+    Remove previous baked stack compilations from persistent data storage,
+    keeping only the current active stack hash to save disk space.
+    Returns (directories_removed_count, bytes_freed).
+    """
+    import shutil
+    cache_root = get_cache_dir()
+    dirs_removed = 0
+    bytes_freed = 0
+    if not cache_root.exists():
+        return 0, 0
+
+    for item in list(cache_root.iterdir()):
+        if item.is_dir():
+            if current_stack_hash and item.name == current_stack_hash:
+                continue
+            for sub in item.rglob("*"):
+                if sub.is_file():
+                    try:
+                        bytes_freed += sub.stat().st_size
+                    except Exception:
+                        pass
+            try:
+                shutil.rmtree(item, ignore_errors=True)
+                dirs_removed += 1
+            except Exception:
+                pass
+    return dirs_removed, bytes_freed
 
 
 def get_cache_stats() -> dict:
@@ -82,28 +132,29 @@ def get_cache_stats() -> dict:
 
 def clear_resource_pack_cache() -> tuple[int, int]:
     """
-    Clear all cached extracted resource packs and temporary atlas outputs in the cache directory.
+    Clear all cached extracted resource packs and temporary atlas outputs in both persistent and temp directories.
     Returns (files_removed_count, bytes_freed).
     """
     import shutil
-    cache_root = get_cache_dir()
     files_count = 0
     bytes_freed = 0
-    if cache_root.exists():
-        for item in list(cache_root.iterdir()):
-            try:
-                if item.is_dir():
-                    for sub in item.rglob("*"):
-                        if sub.is_file():
-                            bytes_freed += sub.stat().st_size
-                            files_count += 1
-                    shutil.rmtree(item, ignore_errors=True)
-                elif item.is_file():
-                    bytes_freed += item.stat().st_size
-                    files_count += 1
-                    item.unlink(missing_ok=True)
-            except Exception:
-                pass
+
+    for root_dir in (get_cache_dir(), get_temp_extraction_dir()):
+        if root_dir.exists():
+            for item in list(root_dir.iterdir()):
+                try:
+                    if item.is_dir():
+                        for sub in item.rglob("*"):
+                            if sub.is_file():
+                                bytes_freed += sub.stat().st_size
+                                files_count += 1
+                        shutil.rmtree(item, ignore_errors=True)
+                    elif item.is_file():
+                        bytes_freed += item.stat().st_size
+                        files_count += 1
+                        item.unlink(missing_ok=True)
+                except Exception:
+                    pass
     return files_count, bytes_freed
 
 
@@ -307,7 +358,7 @@ class ZipResourcePack:
         if not zipfile.is_zipfile(self.zip_path):
             raise ValueError(f"Resource pack must be a ZIP/JAR archive or directory: {self.zip_path}")
 
-        cache_root = get_cache_dir()
+        cache_root = get_temp_extraction_dir()
         self.extract_dir = cache_root / self.pack_hash
 
         marker_file = self.extract_dir / ".extracted"
