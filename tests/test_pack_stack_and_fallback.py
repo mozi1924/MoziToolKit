@@ -183,6 +183,72 @@ class TestPackStackAndFallback(unittest.TestCase):
             bpy.ops.mozi.pack_remove()
             self.assertEqual(len(prefs.resource_packs), 1)
 
+    def test_material_settings_config_persistence(self):
+        """Test saving and loading material replacement settings in config and preferences."""
+        from utils.system import load_material_settings_config, save_material_settings_config
+
+        settings = {
+            "material_mode": "STANDALONE",
+            "biome_preset": "TAIGA",
+            "pack_textures": False,
+            "use_cache": True,
+        }
+        save_material_settings_config(settings)
+        loaded = load_material_settings_config()
+        self.assertEqual(loaded["material_mode"], "STANDALONE")
+        self.assertEqual(loaded["biome_preset"], "TAIGA")
+        self.assertFalse(loaded["pack_textures"])
+        self.assertTrue(loaded["use_cache"])
+
+    def test_replace_material_operator_with_configured_stack(self):
+        """Test that MOZI_OT_replace_material executes immediately with the configured preferences stack."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed")
+
+        # Create a sample pack
+        pack_path = self._create_temp_pack("TestPack", {
+            ("minecraft", "stone"): (16, 16, (128, 128, 128, 255)),
+        })
+
+        # Configure in preferences stack
+        save_pack_stack_config([
+            {"name": "Test Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
+        ])
+
+        # Create test object
+        bpy.ops.mesh.primitive_cube_add()
+        cube = bpy.context.active_object
+        mat = bpy.data.materials.new(name="stone")
+        cube.data.materials.append(mat)
+
+        # Execute operator directly (no file dialog)
+        res = bpy.ops.mozi.replace_material()
+        self.assertEqual(res, {'FINISHED'})
+        self.assertTrue(cube.material_slots[0].material.name.startswith("mtk:minecraft:blocks_chunk_"))
+
+        # Clean up
+        bpy.data.objects.remove(cube, do_unlink=True)
+
+    def test_precompile_cache_operator(self):
+        """Test that MOZI_OT_precompile_cache compiles Atlas cache and mapping."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow not installed")
+
+        pack_path = self._create_temp_pack("PrecompileTest", {
+            ("minecraft", "dirt"): (16, 16, (100, 70, 30, 255)),
+            ("minecraft", "stone"): (16, 16, (128, 128, 128, 255)),
+        })
+
+        save_pack_stack_config([
+            {"name": "Precompile Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
+        ])
+
+        res = bpy.ops.mozi.precompile_cache()
+        self.assertEqual(res, {'FINISHED'})
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -10,6 +10,8 @@ from ..utils.system import (
     load_config,
     load_pack_stack_config,
     save_pack_stack_config,
+    load_material_settings_config,
+    save_material_settings_config,
     save_full_config,
     get_enabled_pack_entries,
     normalize_operator_id,
@@ -53,6 +55,14 @@ def _safe_get_prefs(self_or_context=None):
     except Exception:
         pass
     return None
+
+
+def on_material_setting_changed(self, context):
+    """Callback when global material replacement preferences are edited."""
+    prefs = _safe_get_prefs(self)
+    if prefs:
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
 
 
 def on_item_label_changed(self, context):
@@ -262,6 +272,17 @@ def sync_prefs_from_json(prefs):
             p_elem.enabled = p_item.get("enabled", True)
             p_elem.pack_type = p_item.get("pack_type", "RESOURCE_PACK")
 
+    # Sync material replacement settings
+    mat_settings = load_material_settings_config()
+    if hasattr(prefs, "material_mode"):
+        prefs.material_mode = mat_settings.get("material_mode", "ATLAS")
+    if hasattr(prefs, "biome_preset"):
+        prefs.biome_preset = mat_settings.get("biome_preset", "PLAINS")
+    if hasattr(prefs, "pack_textures"):
+        prefs.pack_textures = bool(mat_settings.get("pack_textures", True))
+    if hasattr(prefs, "use_cache"):
+        prefs.use_cache = bool(mat_settings.get("use_cache", True))
+
 
 def save_prefs_to_json(prefs):
     """Save preferences PropertyGroups state to JSON configuration."""
@@ -291,7 +312,16 @@ def save_prefs_to_json(prefs):
                 "enabled": p_elem.enabled,
                 "pack_type": p_elem.pack_type,
             })
-    save_full_config(views_data=views_data, pack_entries=packs_list)
+
+    # Save material replacement settings
+    mat_settings = {
+        "material_mode": getattr(prefs, "material_mode", "ATLAS"),
+        "biome_preset": getattr(prefs, "biome_preset", "PLAINS"),
+        "pack_textures": getattr(prefs, "pack_textures", True),
+        "use_cache": getattr(prefs, "use_cache", True),
+    }
+
+    save_full_config(views_data=views_data, pack_entries=packs_list, material_settings=mat_settings)
 
 
 class MOZI_OT_pack_add(bpy.types.Operator):
@@ -562,6 +592,54 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
     resource_packs: CollectionProperty(type=MOZI_PG_resource_pack_entry)
     resource_packs_index: IntProperty(default=0)
 
+    material_mode: EnumProperty(
+        name="Material Mode",
+        description="Choose how imported materials are structured and generated",
+        items=[
+            ('ATLAS', "Atlas", "Combine all textures into a single texture atlas material (Default)"),
+            ('STANDALONE', "Standalone", "Create individual materials for each texture"),
+        ],
+        default='ATLAS',
+        update=on_material_setting_changed,
+    )
+
+    biome_preset: EnumProperty(
+        name="Biome Palette",
+        description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
+        items=[
+            ('PLAINS', "Plains", "Default vanilla plains vibrant colors"),
+            ('FOREST', "Forest", "Vibrant forest green foliage and grass"),
+            ('BIRCH_FOREST', "BirCH Forest", "Bright spring green foliage and grass"),
+            ('TAIGA', "Taiga", "Cooler spruce forest tones"),
+            ('JUNGLE', "Jungle", "Lush vibrant tropical greens"),
+            ('SAVANNA', "Savanna", "Warm dry yellowish greens"),
+            ('BADLANDS', "Badlands (Mesa)", "Dry olive/brown foliage and grass"),
+            ('SWAMP', "Swamp", "Murky dark swamp greens and water"),
+            ('DARK_FOREST', "Dark Forest", "Deep dark canopy greens"),
+            ('MANGROVE_SWAMP', "Mangrove Swamp", "Warm olive mangrove colors"),
+            ('CHERRY_GROVE', "Cherry Grove", "Pastel spring greens"),
+            ('SNOWY_PLAINS', "Snowy Plains", "Muted frost green tones"),
+            ('DESERT', "Desert", "Dry desert and savanna vegetation tint"),
+            ('WARM_OCEAN', "Warm Ocean", "Bright turquoise water"),
+        ],
+        default='PLAINS',
+        update=on_material_setting_changed,
+    )
+
+    pack_textures: BoolProperty(
+        name="Pack Textures into Blend File",
+        description="Embed imported textures directly into the Blender file. When unchecked and the .blend file is saved, textures will be saved externally to '//textures/block/' in your project directory",
+        default=True,
+        update=on_material_setting_changed,
+    )
+
+    use_cache: BoolProperty(
+        name="Use Resource Pack Cache",
+        description="Cache extracted pack in Blender temp directory for faster reuse across projects",
+        default=True,
+        update=on_material_setting_changed,
+    )
+
     context_menu_tab: EnumProperty(
         name="Context Menu View",
         description="Select view context to configure right-click menu",
@@ -678,6 +756,62 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             else:
                 st_row = d_col.row(align=True)
                 st_row.label(text=f"File Valid: {Path(p_val).name}", icon="CHECKMARK")
+
+        # Material Replacement & Atlas Options Box
+        layout.separator()
+        mat_box = layout.box()
+        m_head = mat_box.row(align=True)
+        m_head.label(text="Default Material Replacement Settings:", icon="MATERIAL")
+
+        m_col = mat_box.column(align=False)
+        row_mode = m_col.row(align=True)
+        row_mode.prop(self, "material_mode", text="Mode")
+        row_mode.prop(self, "biome_preset", text="Biome")
+
+        row_opts = m_col.row(align=True)
+        row_opts.prop(self, "pack_textures")
+        row_opts.prop(self, "use_cache")
+
+        row_precompile = mat_box.row(align=True)
+        row_precompile.operator("mozi.precompile_cache", text="Precompile / Rebuild Stack Atlas Cache", icon="FILE_REFRESH")
+
+
+class MOZI_OT_precompile_cache(bpy.types.Operator):
+    """Precompile and rebuild the complete Atlas and metadata for the current Resource Pack Stack."""
+
+    bl_idname = "mozi.precompile_cache"
+    bl_label = "Precompile Atlas Cache"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        from ..utils.system import has_pillow
+        if not has_pillow():
+            self.report({'ERROR'}, "Atlas compilation requires 'Pillow' (PIL) module.")
+            return {'CANCELLED'}
+
+        from ..utils.materials.pack_stack import get_configured_pack_stack
+        from ..utils.materials.atlas_generator import AtlasGenerator
+        from ..utils.materials.resource_pack import get_cache_dir
+
+        stack = get_configured_pack_stack()
+        if not stack.packs:
+            self.report({'WARNING'}, "No enabled resource packs or JARs found in stack to compile.")
+            return {'CANCELLED'}
+
+        try:
+            cache_root = get_cache_dir()
+            atlas_dir = cache_root / stack.stack_hash / "full_scene"
+            gen = AtlasGenerator(
+                resource_path=stack.packs[0].extract_dir or stack.packs[0].zip_path,
+                fallback_stack=stack,
+            )
+            res = gen.build(atlas_dir)
+            num_chunks = len(res.get("chunks", []))
+            self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks) for pack stack.")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to precompile Atlas cache: {e}")
+            return {'CANCELLED'}
 
     def draw_context_menus(self, layout, context):
         # Secondary Context Menu Sub-Tabs
