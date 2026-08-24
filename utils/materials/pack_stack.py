@@ -18,6 +18,7 @@ class ResourcePackStack:
     """
     Manages a prioritized hierarchy of resource packs, mod JARs, and vanilla JARs.
     Lookups for textures, models, and blockstates cascade from top to bottom.
+    Supports granular per-channel PBR composition (Albedo, Normal, Specular).
     """
 
     def __init__(self, pack_sources: Optional[List[Union[str, Path, ZipResourcePack]]] = None):
@@ -34,7 +35,6 @@ class ResourcePackStack:
         import hashlib
         combined = ":".join(p.pack_hash for p in self.packs if p and p.pack_hash)
         return hashlib.md5(combined.encode("utf-8")).hexdigest() if combined else "empty_stack"
-
 
     def add_source(self, source: Union[str, Path, ZipResourcePack]) -> Optional[ZipResourcePack]:
         """Add a resource pack or JAR archive/directory to the bottom of this stack."""
@@ -57,19 +57,148 @@ class ResourcePackStack:
 
     def get_texture_info(self, base_name: str, namespace: str = "minecraft") -> Optional[dict]:
         """
-        Query texture information across the prioritized pack stack.
-        Returns the first matching texture info dict, or None if missing from all packs.
+        Query texture information across the prioritized pack stack with granular
+        per-channel PBR composition (Albedo, Normal _n, Specular _s).
+        Cascades from top (pack 0) to bottom (pack N) independently for each channel.
         """
-        if not base_name:
+        if not base_name or not self.packs:
             return None
+
+        composite: dict[str, Any] = {
+            "namespace": namespace,
+            "texture_name": None,
+            "texture_key": None,
+            "albedo": None,
+            "albedo_mcmeta": None,
+            "normal": None,
+            "normal_mcmeta": None,
+            "specular": None,
+            "specular_mcmeta": None,
+        }
 
         # Cascade through packs in priority order
         for pack in self.packs:
             info = pack.get_texture_info(base_name, namespace=namespace)
-            if info and info.get("albedo") and Path(info["albedo"]).exists():
-                return info
+            if not info:
+                continue
+
+            if composite["texture_name"] is None:
+                composite["namespace"] = info.get("namespace", namespace)
+                composite["texture_name"] = info.get("texture_name", base_name)
+                composite["texture_key"] = info.get("texture_key", base_name)
+
+            if composite["albedo"] is None and info.get("albedo") and Path(info["albedo"]).exists():
+                composite["albedo"] = info["albedo"]
+                composite["albedo_mcmeta"] = info.get("albedo_mcmeta")
+
+            if composite["normal"] is None and info.get("normal") and Path(info["normal"]).exists():
+                composite["normal"] = info["normal"]
+                composite["normal_mcmeta"] = info.get("normal_mcmeta")
+
+            if composite["specular"] is None and info.get("specular") and Path(info["specular"]).exists():
+                composite["specular"] = info["specular"]
+                composite["specular_mcmeta"] = info.get("specular_mcmeta")
+
+            # If all three channels are resolved, stop early
+            if composite["albedo"] is not None and composite["normal"] is not None and composite["specular"] is not None:
+                break
+
+        if composite["albedo"] is not None or composite["normal"] is not None or composite["specular"] is not None:
+            return composite
 
         return None
+
+    def get_all_composite_textures(self) -> dict[tuple[str, str], dict]:
+        """
+        Collect all unique texture entries across all active packs in this stack,
+        synthesizing composite per-channel PBR data (Albedo, Normal, Specular) for each.
+        Returns mapping from (namespace, texture_key) -> composite_texture_info_dict.
+        """
+        all_keys: set[tuple[str, str]] = set()
+        for pack in self.packs:
+            for (ns, path_key) in pack.texture_path_index.keys():
+                all_keys.add((ns, path_key))
+
+        composite_map: dict[tuple[str, str], dict] = {}
+        for (ns, path_key) in sorted(all_keys):
+            entry: dict[str, Any] = {
+                "namespace": ns,
+                "texture_name": None,
+                "texture_key": path_key,
+                "albedo": None,
+                "albedo_mcmeta": None,
+                "normal": None,
+                "normal_mcmeta": None,
+                "specular": None,
+                "specular_mcmeta": None,
+            }
+
+            for pack in self.packs:
+                info = pack.texture_path_index.get((ns, path_key))
+                if not info:
+                    continue
+
+                if entry["texture_name"] is None:
+                    entry["texture_name"] = info.get("texture_name")
+
+                if entry["albedo"] is None and info.get("albedo") and Path(info["albedo"]).exists():
+                    entry["albedo"] = info["albedo"]
+                    entry["albedo_mcmeta"] = info.get("albedo_mcmeta")
+
+                if entry["normal"] is None and info.get("normal") and Path(info["normal"]).exists():
+                    entry["normal"] = info["normal"]
+                    entry["normal_mcmeta"] = info.get("normal_mcmeta")
+
+                if entry["specular"] is None and info.get("specular") and Path(info["specular"]).exists():
+                    entry["specular"] = info["specular"]
+                    entry["specular_mcmeta"] = info.get("specular_mcmeta")
+
+                if entry["albedo"] is not None and entry["normal"] is not None and entry["specular"] is not None:
+                    break
+
+            if entry["albedo"] is not None or entry["normal"] is not None or entry["specular"] is not None:
+                composite_map[(ns, path_key)] = entry
+
+        return composite_map
+
+    def get_baked_atlas_dir(self, yefira_only: bool = False) -> Path:
+        """Get the persistent cache directory for this stack."""
+        from .resource_pack import get_cache_dir
+        cache_root = get_cache_dir()
+        return cache_root / self.stack_hash / ("yefira_world" if yefira_only else "full_scene")
+
+    def is_stack_baked(self, yefira_only: bool = False) -> bool:
+        """
+        Check if the persistent atlas and model bake for this stack exists and is complete.
+        """
+        import json
+        from .constants import ATLAS_FORMAT_VERSION
+        atlas_dir = self.get_baked_atlas_dir(yefira_only=yefira_only)
+        mapping_path = atlas_dir / "atlas_mapping.json"
+        if not mapping_path.exists():
+            return False
+
+        try:
+            with open(mapping_path, "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+                if (
+                    mapping.get("format_version") != ATLAS_FORMAT_VERSION
+                    or not mapping.get("chunks")
+                    or not mapping.get("textures")
+                ):
+                    return False
+                for chunk in mapping["chunks"]:
+                    files = chunk.get("files") if isinstance(chunk, dict) else None
+                    albedo = files.get("albedo") if isinstance(files, dict) else None
+                    if not isinstance(albedo, str) or not (atlas_dir / albedo).is_file():
+                        return False
+                    for channel in ("normal", "specular", "overlay"):
+                        filename = files.get(channel)
+                        if filename and not (atlas_dir / filename).is_file():
+                            return False
+                return True
+        except (OSError, json.JSONDecodeError):
+            return False
 
     def get_composite_loader(self) -> Optional[JarResourceLoader]:
         """
@@ -165,4 +294,5 @@ def get_pack_stack_fingerprint(primary_source: Optional[Union[str, Path, ZipReso
                 sources.append(res_path)
 
     return tuple(sources)
+
 

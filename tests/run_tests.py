@@ -856,6 +856,13 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestLiveSyncProtocolAndStorage: {e}")
 
+    try:
+        from tests.test_pbr_pack_stack import TestPBRPackStack, TestDecoupledMaterialReplacement
+        suite.addTests(loader.loadTestsFromTestCase(TestPBRPackStack))
+        suite.addTests(loader.loadTestsFromTestCase(TestDecoupledMaterialReplacement))
+    except Exception as e:
+        print(f"[Warning] Could not load TestPBRPackStack: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 
