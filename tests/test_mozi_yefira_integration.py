@@ -294,7 +294,120 @@ class TestMoziYefiraIntegration(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
+    def test_notify_yefira_update_decoupled_from_sync(self):
+        """Test that notify_yefira_update does not trigger sync_rebuild_world or fail on non-yefira objects."""
+        from MoziToolKit.utils.materials.yefira import notify_yefira_update
+        from MoziToolKit.utils.live_sync.storage import voxel_storage
+
+        # Empty storage
+        voxel_storage.clear()
+
+        # Call with None
+        notify_yefira_update(None)
+
+        # Call with standard mesh object
+        mesh = bpy.data.meshes.new("StandardMesh")
+        mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0)], [], [(0, 1, 2)])
+        mesh.update()
+        obj = bpy.data.objects.new("StandardObj", mesh)
+        bpy.context.scene.collection.objects.link(obj)
+
+        notify_yefira_update(obj)
+
+        # Ensure no Yefira_World was created or rebuilt unexpectedly
+        self.assertEqual(voxel_storage.size_x, 0)
+
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(mesh)
+
+    def test_standard_atlas_dimension_defaults(self):
+        """Test that extract_atlas_parameters defaults match canonical constants (not test-pack 4096x80)."""
+        from MoziToolKit.utils.materials.atlas_integration import extract_atlas_parameters
+        from MoziToolKit.utils.live_sync.constants import (
+            DEFAULT_ATLAS_WIDTH, DEFAULT_ATLAS_HEIGHT, DEFAULT_TILE_SIZE, DEFAULT_TILES_PER_ROW,
+            DEFAULT_ANIM_ATLAS_WIDTH, DEFAULT_ANIM_ATLAS_HEIGHT
+        )
+
+        params = extract_atlas_parameters(None)
+        self.assertEqual(params["width"], DEFAULT_ATLAS_WIDTH)
+        self.assertEqual(params["height"], DEFAULT_ATLAS_HEIGHT)
+        self.assertEqual(params["tile_size"], DEFAULT_TILE_SIZE)
+        self.assertEqual(params["tiles_per_row"], DEFAULT_TILES_PER_ROW)
+        self.assertEqual(params["chunk_0_width"], DEFAULT_ATLAS_WIDTH)
+        self.assertEqual(params["chunk_0_height"], DEFAULT_ATLAS_HEIGHT)
+        self.assertEqual(params["chunk_1_width"], DEFAULT_ANIM_ATLAS_WIDTH)
+        self.assertEqual(params["chunk_1_height"], DEFAULT_ANIM_ATLAS_HEIGHT)
+
+    def test_binary_protocol_packet_parsing(self):
+        """Test binary live sync protocol parsing with PacketType constants and length validation."""
+        import struct
+        from MoziToolKit.utils.live_sync.client import SyncClientThread
+        from MoziToolKit.utils.live_sync.constants import PROTOCOL_MAGIC, PROTOCOL_VERSION, PacketType
+
+        received_events = []
+
+        client = SyncClientThread(
+            url="ws://localhost:8080",
+            on_status_change=lambda s: received_events.append(("status", s)),
+            on_selection_info=lambda *args: received_events.append(("selection", args)),
+            on_full_snapshot=lambda *args: received_events.append(("full", args)),
+            on_delta_update=lambda *args: received_events.append(("delta", args)),
+        )
+
+        # 1. Truncated packet (length < 4) - should be ignored safely
+        client._parse_binary_packet(b"MC")
+        self.assertEqual(len(received_events), 0)
+
+        # 2. Invalid magic - should be ignored safely
+        client._parse_binary_packet(b"XX\x01\x01")
+        self.assertEqual(len(received_events), 0)
+
+        # 3. Valid Selection Info packet (0x01)
+        pkt = bytearray()
+        pkt.extend(PROTOCOL_MAGIC)
+        pkt.append(PROTOCOL_VERSION)
+        pkt.append(PacketType.SELECTION_INFO)
+        pkt.extend(struct.pack("<iiiiii", 10, 20, 30, 5, 6, 7))
+        client._parse_binary_packet(bytes(pkt))
+
+        self.assertEqual(len(received_events), 1)
+        self.assertEqual(received_events[0], ("selection", (10, 20, 30, 5, 6, 7)))
+
+        # 4. Truncated Delta packet - should not crash
+        pkt = bytearray()
+        pkt.extend(PROTOCOL_MAGIC)
+        pkt.append(PROTOCOL_VERSION)
+        pkt.append(PacketType.DELTA_UPDATE)
+        pkt.extend(b"\x00" * 5)  # Truncated
+        client._parse_binary_packet(bytes(pkt))
+        self.assertEqual(len(received_events), 1)
+
+    def test_mc_to_blender_local_coords(self):
+        """Test Minecraft to Blender coordinate transformation helper."""
+        import numpy as np
+        from MoziToolKit.utils.live_sync.point_cloud import mc_to_blender_local_coords
+
+        coords = np.array([
+            [10, 64, 20],
+            [12, 65, 22],
+        ], dtype=np.float32)
+
+        min_x, min_y, min_z = 10, 64, 20
+        size_x, size_y, size_z = 3, 2, 3
+        # half_x = 3/2 - 0.5 = 1.0; half_z = 3/2 - 0.5 = 1.0
+        # for pt 0: x = 0 - 1 = -1.0; y = -(0 - 1) = 1.0; z = 0 + 0.5 = 0.5
+        # for pt 1: x = 2 - 1 = 1.0; y = -(2 - 1) = -1.0; z = 1 + 0.5 = 1.5
+
+        vertices = mc_to_blender_local_coords(coords, min_x, min_y, min_z, size_x, size_y, size_z)
+        self.assertAlmostEqual(vertices[0, 0], -1.0)
+        self.assertAlmostEqual(vertices[0, 1], 1.0)
+        self.assertAlmostEqual(vertices[0, 2], 0.5)
+        self.assertAlmostEqual(vertices[1, 0], 1.0)
+        self.assertAlmostEqual(vertices[1, 1], -1.0)
+        self.assertAlmostEqual(vertices[1, 2], 1.5)
+
 
 if __name__ == "__main__":
     unittest.main(argv=["dummy"])
+
 

@@ -41,6 +41,60 @@ MTK_ANIM_TIMING: Final = "mtk_anim_timing"
 MTK_ANIM_FRAME_SIZE: Final = "mtk_anim_frame_size"
 UV_MAP: Final = "UVMap"
 
+# Standard Atlas Dimension Defaults
+DEFAULT_ATLAS_WIDTH: Final = 1024.0
+DEFAULT_ATLAS_HEIGHT: Final = 1024.0
+DEFAULT_TILE_SIZE: Final = 16.0
+DEFAULT_TILES_PER_ROW: Final = 64
+DEFAULT_ANIM_ATLAS_WIDTH: Final = 896.0
+DEFAULT_ANIM_ATLAS_HEIGHT: Final = 1024.0
+DEFAULT_ANIM_FRAME_WIDTH: Final = 16.0
+DEFAULT_ANIM_FRAME_HEIGHT: Final = 16.0
+
+# Canonical Object, Mesh, Modifier, Node, and Collection Names
+DEFAULT_WORLD_OBJECT_NAME: Final = "Yefira_World"
+DEFAULT_WORLD_MESH_NAME: Final = "Yefira_World_Mesh"
+WORLD_MODIFIER_NAME: Final = "Yefira_WorldModifier"
+WORLD_TREE_NAME: Final = "Yefira_WorldTree"
+TEMPLATE_COLLECTION_NAME: Final = "MC_Block_Templates"
+NODE_NAME_MAT_DISPATCHER: Final = "Material Dispatcher"
+NODE_NAME_CULLING_MERGE: Final = "Hidden Face Culling & Merge"
+
+# Binary Live Sync Wire Protocol Constants
+PROTOCOL_MAGIC: Final = b"MC"
+PROTOCOL_VERSION: Final = 0x01
+
+
+class PacketType:
+    SELECTION_INFO: Final = 0x01
+    FULL_SNAPSHOT: Final = 0x02
+    DELTA_UPDATE: Final = 0x03
+    REPAIR_REQUEST: Final = 0x04
+    SECTION_MANIFEST: Final = 0x05
+    SECTION_SNAPSHOT: Final = 0x06
+
+
+HEADER_FORMAT: Final = "<2sBB"
+HEADER_SIZE: Final = 4
+
+SELECTION_INFO_FORMAT: Final = "<iiiiii"
+SELECTION_INFO_SIZE: Final = 24
+
+DELTA_HEADER_FORMAT: Final = "<IiiiH"
+DELTA_HEADER_SIZE: Final = 18
+
+DELTA_CHANGE_PREFIX_FORMAT: Final = "<HHHH"
+DELTA_CHANGE_PREFIX_SIZE: Final = 8
+
+MANIFEST_HEADER_FORMAT: Final = "<IH"
+MANIFEST_HEADER_SIZE: Final = 6
+
+MANIFEST_ENTRY_FORMAT: Final = "<iiiI"
+MANIFEST_ENTRY_SIZE: Final = 16
+
+SECTION_SNAPSHOT_HEADER_FORMAT: Final = "<iiiiiiiiiH"
+SECTION_SNAPSHOT_HEADER_SIZE: Final = 38
+
 
 def face_attribute(kind: str, face: str) -> str:
     """Return a validated MTK per-face interchange attribute name."""

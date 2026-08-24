@@ -7,9 +7,12 @@ and Geometry Nodes notification for Yefira-based procedural Minecraft worlds.
 
 from __future__ import annotations
 
+import logging
 import sys
 from typing import Iterable, Optional
 import bpy
+
+logger = logging.getLogger("MoziToolKit.Materials")
 
 from .constants import (
     ATTR_UV_ROTATION,
@@ -20,6 +23,8 @@ from ..mc_baker import StateBaker
 from ..live_sync.constants import (
     BLOCK_STATE,
     MC_POSITION,
+    DEFAULT_WORLD_OBJECT_NAME,
+    WORLD_MODIFIER_NAME,
 )
 
 _GLOBAL_STATE_BAKER = StateBaker()
@@ -102,22 +107,12 @@ def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
     """Identify whether a Blender object is a Yefira procedural point-cloud world.
 
     An object is recognized as Yefira if:
-    1. It is a MESH object named 'Yefira_World', or
+    1. Its mesh data contains a point-domain 'yefira_block_state' or 'yefira_mc_position' attribute (or legacy names), or
     2. It has a Geometry Nodes modifier named 'Yefira_WorldModifier' or containing 'yefira', or
-    3. Its mesh data contains a point-domain 'yefira_block_state' or 'yefira_mc_position' attribute (or legacy names).
-
-    Polygonal meshes or other procedural objects lacking these markers remain
-    standard MoziToolKit mesh objects.
+    3. It is a MESH object named 'Yefira_World'.
     """
     if not obj or getattr(obj, "type", None) != 'MESH' or not getattr(obj, "data", None):
         return False
-    if obj.name == "Yefira_World":
-        return True
-    if hasattr(obj, "modifiers") and any(
-        mod.type == 'NODES' and (mod.name == 'Yefira_WorldModifier' or "yefira" in mod.name.lower())
-        for mod in obj.modifiers
-    ):
-        return True
     mesh = obj.data
     if hasattr(mesh, "attributes"):
         state_attr = mesh.attributes.get(BLOCK_STATE) or mesh.attributes.get("block_state")
@@ -129,6 +124,13 @@ def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
             or "mc_position" in mesh.attributes
         ):
             return True
+    if hasattr(obj, "modifiers") and any(
+        mod.type == 'NODES' and (mod.name == WORLD_MODIFIER_NAME or "yefira" in mod.name.lower())
+        for mod in obj.modifiers
+    ):
+        return True
+    if obj.name == DEFAULT_WORLD_OBJECT_NAME:
+        return True
     return False
 
 
@@ -414,16 +416,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     import json
 
     for item in state_attr.data:
-        state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
-        raw_state = state
-        if state and state.startswith("{") and state.endswith("}"):
-            try:
-                json_obj = json.loads(state)
-                if isinstance(json_obj, dict):
-                    raw_state = json_obj.get("state", state)
-            except Exception:
-                pass
-
+        raw_state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
         block_name, props = parse_block_state_str(raw_state)
         names = mapping_names(raw_state)
         entry = next((by_name[name] for name in names if name in by_name), None)
@@ -704,27 +697,13 @@ def _update_yefira_geometry_node_materials(
 
 
 def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
-    """Notify Geometry Nodes world engine to refresh point cloud attributes and rebuild nodes."""
-    if obj:
+    """Notify Geometry Nodes world engine to refresh point cloud modifier and node tree."""
+    if obj and is_yefira_object(obj):
         try:
             from ..geometry_nodes.world_tree import setup_world_geometry_nodes
             setup_world_geometry_nodes(obj)
-        except Exception:
-            pass
-
-    try:
-        if hasattr(bpy.ops, "mozi") and hasattr(bpy.ops.mozi, "sync_rebuild_world"):
-            bpy.ops.mozi.sync_rebuild_world()
-            return
-    except Exception:
-        pass
-
-    try:
-        from ..live_sync.point_cloud import update_world_point_cloud
-        from ..live_sync.storage import voxel_storage
-        update_world_point_cloud(bpy.context, voxel_storage)
-    except Exception:
-        pass
+        except Exception as e:
+            logger.debug(f"Could not refresh Geometry Nodes on {obj.name}: {e}")
 
 
 from .atlas_integration import (

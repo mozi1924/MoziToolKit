@@ -12,6 +12,26 @@ import threading
 import time
 from typing import Callable, List, Optional, Tuple
 
+from .constants import (
+    PROTOCOL_MAGIC,
+    PROTOCOL_VERSION,
+    PacketType,
+    HEADER_FORMAT,
+    HEADER_SIZE,
+    SELECTION_INFO_FORMAT,
+    SELECTION_INFO_SIZE,
+    DELTA_HEADER_FORMAT,
+    DELTA_HEADER_SIZE,
+    DELTA_CHANGE_PREFIX_FORMAT,
+    DELTA_CHANGE_PREFIX_SIZE,
+    MANIFEST_HEADER_FORMAT,
+    MANIFEST_HEADER_SIZE,
+    MANIFEST_ENTRY_FORMAT,
+    MANIFEST_ENTRY_SIZE,
+    SECTION_SNAPSHOT_HEADER_FORMAT,
+    SECTION_SNAPSHOT_HEADER_SIZE,
+)
+
 logger = logging.getLogger("MoziToolKit.LiveSync")
 
 
@@ -109,9 +129,9 @@ class SyncClientThread(threading.Thread):
             return
 
         packet = bytearray()
-        packet.extend(b'MC')
-        packet.append(0x01)  # protocol version
-        packet.append(0x04)  # 0x04 = Repair Request
+        packet.extend(PROTOCOL_MAGIC)
+        packet.append(PROTOCOL_VERSION)
+        packet.append(PacketType.REPAIR_REQUEST)
         packet.extend(struct.pack('<H', len(sections)))
         for sx, sy, sz in sections:
             packet.extend(struct.pack('<iii', sx, sy, sz))
@@ -126,34 +146,44 @@ class SyncClientThread(threading.Thread):
         asyncio.run_coroutine_threadsafe(_send(), self.loop)
 
     def _parse_binary_packet(self, data: bytes) -> None:
-        if len(data) < 4:
+        if len(data) < HEADER_SIZE:
             return
 
-        magic, version, packet_type = struct.unpack('<2sBB', data[:4])
-        if magic != b'MC':
+        magic, version, packet_type = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
+        if magic != PROTOCOL_MAGIC:
             logger.warning(f"Invalid magic header: {magic}")
             return
 
-        offset = 4
-        if packet_type == 0x01:  # Selection Info
-            min_x, min_y, min_z, size_x, size_y, size_z = struct.unpack('<iiiiii', data[offset:offset+24])
+        offset = HEADER_SIZE
+        if packet_type == PacketType.SELECTION_INFO:
+            if len(data) < offset + SELECTION_INFO_SIZE:
+                return
+            min_x, min_y, min_z, size_x, size_y, size_z = struct.unpack(SELECTION_INFO_FORMAT, data[offset:offset + SELECTION_INFO_SIZE])
             self.on_selection_info(min_x, min_y, min_z, size_x, size_y, size_z)
 
-        elif packet_type == 0x02:  # Full Snapshot
-            min_x, min_y, min_z, size_x, size_y, size_z = struct.unpack('<iiiiii', data[offset:offset+24])
-            offset += 24
+        elif packet_type == PacketType.FULL_SNAPSHOT:
+            if len(data) < offset + SELECTION_INFO_SIZE + 2:
+                return
+            min_x, min_y, min_z, size_x, size_y, size_z = struct.unpack(SELECTION_INFO_FORMAT, data[offset:offset + SELECTION_INFO_SIZE])
+            offset += SELECTION_INFO_SIZE
 
-            palette_count = struct.unpack('<H', data[offset:offset+2])[0]
+            palette_count = struct.unpack('<H', data[offset:offset + 2])[0]
             offset += 2
 
             palette = []
             for _ in range(palette_count):
-                str_len = struct.unpack('<H', data[offset:offset+2])[0]
+                if len(data) < offset + 2:
+                    return
+                str_len = struct.unpack('<H', data[offset:offset + 2])[0]
                 offset += 2
-                item_str = data[offset:offset+str_len].decode('utf-8')
+                if len(data) < offset + str_len:
+                    return
+                item_str = data[offset:offset + str_len].decode('utf-8', errors='replace')
                 offset += str_len
                 palette.append(item_str)
 
+            if len(data) < offset + 1:
+                return
             index_bytes_per_block = data[offset]
             offset += 1
 
@@ -166,66 +196,66 @@ class SyncClientThread(threading.Thread):
 
             self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
-        elif packet_type == 0x03:  # Delta Update (with SeqID)
-            seq_id = struct.unpack('<I', data[offset:offset+4])[0]
-            offset += 4
-
-            min_x, min_y, min_z = struct.unpack('<iii', data[offset:offset+12])
-            offset += 12
-
-            change_count = struct.unpack('<H', data[offset:offset+2])[0]
-            offset += 2
+        elif packet_type == PacketType.DELTA_UPDATE:
+            if len(data) < offset + DELTA_HEADER_SIZE:
+                return
+            seq_id, min_x, min_y, min_z, change_count = struct.unpack(DELTA_HEADER_FORMAT, data[offset:offset + DELTA_HEADER_SIZE])
+            offset += DELTA_HEADER_SIZE
 
             changes = []
             for _ in range(change_count):
-                rel_x, rel_y, rel_z = struct.unpack('<HHH', data[offset:offset+6])
-                offset += 6
-                str_len = struct.unpack('<H', data[offset:offset+2])[0]
-                offset += 2
-                state_str = data[offset:offset+str_len].decode('utf-8')
+                if len(data) < offset + DELTA_CHANGE_PREFIX_SIZE:
+                    return
+                rel_x, rel_y, rel_z, str_len = struct.unpack(DELTA_CHANGE_PREFIX_FORMAT, data[offset:offset + DELTA_CHANGE_PREFIX_SIZE])
+                offset += DELTA_CHANGE_PREFIX_SIZE
+                if len(data) < offset + str_len:
+                    return
+                state_str = data[offset:offset + str_len].decode('utf-8', errors='replace')
                 offset += str_len
                 abs_x, abs_y, abs_z = min_x + rel_x, min_y + rel_y, min_z + rel_z
                 changes.append((abs_x, abs_y, abs_z, state_str))
 
             self.on_delta_update(min_x, min_y, min_z, changes, seq_id)
 
-        elif packet_type == 0x05:  # Section Manifest
-            current_seq_id = struct.unpack('<I', data[offset:offset+4])[0]
-            offset += 4
-
-            section_count = struct.unpack('<H', data[offset:offset+2])[0]
-            offset += 2
+        elif packet_type == PacketType.SECTION_MANIFEST:
+            if len(data) < offset + MANIFEST_HEADER_SIZE:
+                return
+            current_seq_id, section_count = struct.unpack(MANIFEST_HEADER_FORMAT, data[offset:offset + MANIFEST_HEADER_SIZE])
+            offset += MANIFEST_HEADER_SIZE
 
             sections = []
             for _ in range(section_count):
-                sec_x, sec_y, sec_z, crc32 = struct.unpack('<iiiI', data[offset:offset+16])
-                offset += 16
+                if len(data) < offset + MANIFEST_ENTRY_SIZE:
+                    return
+                sec_x, sec_y, sec_z, crc32 = struct.unpack(MANIFEST_ENTRY_FORMAT, data[offset:offset + MANIFEST_ENTRY_SIZE])
+                offset += MANIFEST_ENTRY_SIZE
                 sections.append((sec_x, sec_y, sec_z, crc32))
 
             if self.on_section_manifest:
                 self.on_section_manifest(current_seq_id, sections)
 
-        elif packet_type == 0x06:  # Section Snapshot
-            sec_x, sec_y, sec_z = struct.unpack('<iii', data[offset:offset+12])
-            offset += 12
-
-            start_x, start_y, start_z = struct.unpack('<iii', data[offset:offset+12])
-            offset += 12
-
-            size_x, size_y, size_z = struct.unpack('<iii', data[offset:offset+12])
-            offset += 12
-
-            palette_count = struct.unpack('<H', data[offset:offset+2])[0]
-            offset += 2
+        elif packet_type == PacketType.SECTION_SNAPSHOT:
+            if len(data) < offset + SECTION_SNAPSHOT_HEADER_SIZE:
+                return
+            sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette_count = struct.unpack(
+                SECTION_SNAPSHOT_HEADER_FORMAT, data[offset:offset + SECTION_SNAPSHOT_HEADER_SIZE]
+            )
+            offset += SECTION_SNAPSHOT_HEADER_SIZE
 
             palette = []
             for _ in range(palette_count):
-                str_len = struct.unpack('<H', data[offset:offset+2])[0]
+                if len(data) < offset + 2:
+                    return
+                str_len = struct.unpack('<H', data[offset:offset + 2])[0]
                 offset += 2
-                item_str = data[offset:offset+str_len].decode('utf-8')
+                if len(data) < offset + str_len:
+                    return
+                item_str = data[offset:offset + str_len].decode('utf-8', errors='replace')
                 offset += str_len
                 palette.append(item_str)
 
+            if len(data) < offset + 1:
+                return
             index_bytes_per_block = data[offset]
             offset += 1
 

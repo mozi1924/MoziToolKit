@@ -7,6 +7,7 @@ Zero face generation in Python -> 100% crash-free, sub-millisecond updates.
 from __future__ import annotations
 import bpy
 import logging
+import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
@@ -15,6 +16,10 @@ from .classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, atlas_lo
 from .template_catalog import get_or_create_template_collection, get_template_index_map
 from .constants import (
     BLOCK_CENTER, BLOCK_KEY, BLOCK_STATE, BLOCK_TYPE, CONTRACT_VERSION,
+    DEFAULT_ANIM_ATLAS_HEIGHT, DEFAULT_ANIM_ATLAS_WIDTH,
+    DEFAULT_ANIM_FRAME_HEIGHT, DEFAULT_ANIM_FRAME_WIDTH,
+    DEFAULT_ATLAS_HEIGHT, DEFAULT_ATLAS_WIDTH, DEFAULT_TILE_SIZE,
+    DEFAULT_TILES_PER_ROW, DEFAULT_WORLD_MESH_NAME, DEFAULT_WORLD_OBJECT_NAME,
     DIRECTIONAL_FACE_V_FLIP,
     FACES, INSTANCE_ROTATION, MC_POSITION, MTK_ANIM_ATLAS_HEIGHT,
     MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_FRAME_HEIGHT, MTK_ANIM_FRAME_WIDTH,
@@ -138,29 +143,9 @@ class PrecomputedStateAttr:
         block_face_anim_frame_size_lut: dict[str, Any],
         block_face_uv_rot_lut: Optional[dict[str, Any]] = None,
         block_face_uv_bounds_lut: Optional[dict[str, Any]] = None,
-        tile_size: float = 16.0,
+        tile_size: float = DEFAULT_TILE_SIZE,
     ):
-        import json
-        json_obj = None
-        if state_str and state_str.startswith("{") and state_str.endswith("}"):
-            try:
-                json_obj = json.loads(state_str)
-            except Exception:
-                json_obj = None
-
-        if json_obj and isinstance(json_obj, dict):
-            raw_state = json_obj.get("state", state_str)
-            parsed: ParsedBlock = parse_and_classify(raw_state)
-            if "type" in json_obj:
-                parsed.block_type = int(json_obj["type"])
-            if "opaque" in json_obj:
-                parsed.is_opaque = int(json_obj["opaque"])
-            if "emissive" in json_obj:
-                parsed.is_emissive = int(json_obj["emissive"])
-            if "emissive_level" in json_obj:
-                parsed.emissive_level = float(json_obj["emissive_level"])
-        else:
-            parsed: ParsedBlock = parse_and_classify(state_str)
+        parsed: ParsedBlock = parse_and_classify(state_str)
 
         self.full_state = parsed.full_state
         self.name = parsed.name
@@ -302,11 +287,34 @@ class PrecomputedStateAttr:
         self.face_uv_bounds = tuple(uv_bounds_list)
 
 
+def mc_to_blender_local_coords(
+    coords: np.ndarray,
+    min_x: int,
+    min_y: int,
+    min_z: int,
+    size_x: int,
+    size_y: int,
+    size_z: int,
+) -> np.ndarray:
+    """
+    Convert Minecraft world coordinates (East=+X, Up=+Y, South=+Z)
+    to Blender world origin-centered local coordinates (X=X, Y=-Z, Z=Y+0.5).
+    """
+    half_x = size_x / 2.0 - 0.5
+    half_z = size_z / 2.0 - 0.5
+
+    vertices = np.empty((len(coords), 3), dtype=np.float32)
+    vertices[:, 0] = (coords[:, 0] - min_x) - half_x
+    vertices[:, 1] = -((coords[:, 2] - min_z) - half_z)
+    vertices[:, 2] = (coords[:, 1] - min_y) + 0.5
+    return vertices
+
+
 def update_world_point_cloud(
     context: bpy.types.Context,
     storage: VoxelStorage,
     filter_air: bool = True,
-    atlas_mapping_dict: Optional[dict[str, Any]] = None,
+    atlas_mapping_dict: Optional[dict[str, int]] = None,
     block_face_lut: Optional[dict[str, list[tuple[int, int]]]] = None,
     block_face_chunk_lut: Optional[dict[str, list[int]]] = None,
     block_face_texture_lut: Optional[dict[str, list[int]]] = None,
@@ -316,14 +324,14 @@ def update_world_point_cloud(
     block_face_uv_rot_lut: Optional[dict[str, list[float]]] = None,
     block_face_uv_bounds_lut: Optional[dict[str, list[tuple[float, float, float, float]]]] = None,
     atlas_mapping_textures: Optional[dict[str, Any]] = None,
-    atlas_width: float = 1024.0,
-    atlas_height: float = 1024.0,
-    tile_size: float = 16.0,
-    tiles_per_row: int = 64,
-    anim_atlas_width: float = 896.0,
-    anim_atlas_height: float = 1024.0,
-    anim_frame_width: float = 16.0,
-    anim_frame_height: float = 16.0,
+    atlas_width: float = DEFAULT_ATLAS_WIDTH,
+    atlas_height: float = DEFAULT_ATLAS_HEIGHT,
+    tile_size: float = DEFAULT_TILE_SIZE,
+    tiles_per_row: int = DEFAULT_TILES_PER_ROW,
+    anim_atlas_width: float = DEFAULT_ANIM_ATLAS_WIDTH,
+    anim_atlas_height: float = DEFAULT_ANIM_ATLAS_HEIGHT,
+    anim_frame_width: float = DEFAULT_ANIM_FRAME_WIDTH,
+    anim_frame_height: float = DEFAULT_ANIM_FRAME_HEIGHT,
 ) -> PointCloudBuildResult:
     """
     Constructs or updates the Yefira_World mesh object from storage voxels in Blender C++.
@@ -345,8 +353,8 @@ def update_world_point_cloud(
     template_indices = get_template_index_map(template_col)
 
     # Object and Mesh Setup
-    obj_name = "Yefira_World"
-    mesh_name = "Yefira_World_Mesh"
+    obj_name = DEFAULT_WORLD_OBJECT_NAME
+    mesh_name = DEFAULT_WORLD_MESH_NAME
 
     if obj_name in bpy.data.objects:
         obj = bpy.data.objects[obj_name]
@@ -458,13 +466,7 @@ def update_world_point_cloud(
         mesh.clear_geometry()
         return PointCloudBuildResult(obj, 0, 0, 0, 0)
 
-    half_x = size_x / 2.0 - 0.5
-    half_z = size_z / 2.0 - 0.5
-
-    vertices = np.empty((num_pts, 3), dtype=np.float32)
-    vertices[:, 0] = (coords[:, 0] - min_x) - half_x
-    vertices[:, 1] = -((coords[:, 2] - min_z) - half_z)
-    vertices[:, 2] = (coords[:, 1] - min_y) + 0.5
+    vertices = mc_to_blender_local_coords(coords, min_x, min_y, min_z, size_x, size_y, size_z)
 
     mc_positions = coords
     block_centers = vertices
