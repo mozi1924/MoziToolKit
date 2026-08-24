@@ -248,7 +248,26 @@ class TestPackStackAndFallback(unittest.TestCase):
         res = bpy.ops.mozi.precompile_cache()
         self.assertEqual(res, {'FINISHED'})
 
+    def test_persistent_cache_directory_and_stats(self):
+        """Test that get_cache_dir is persistent and get_cache_stats returns accurate information."""
+        from utils.materials.resource_pack import get_cache_dir, get_cache_stats
+        import tempfile
+
+        cache_dir = get_cache_dir()
+        self.assertTrue(cache_dir.exists())
+        # Cache must NOT be in OS temp folder /var/folders or /tmp unless completely headless fallback
+        if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
+            self.assertIn("datafiles", str(cache_dir).lower())
+
+        stats = get_cache_stats()
+        self.assertIn("path", stats)
+        self.assertIn("files_count", stats)
+        self.assertIn("total_size_bytes", stats)
+        self.assertIn("size_formatted", stats)
+        self.assertEqual(stats["path"], cache_dir)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

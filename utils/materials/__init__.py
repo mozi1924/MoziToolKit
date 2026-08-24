@@ -96,6 +96,7 @@ from .biome import (
 from .resource_pack import (
     ZipResourcePack,
     get_cache_dir,
+    get_cache_stats,
     clear_resource_pack_cache,
     get_pack_hash,
     get_directory_hash,
@@ -298,6 +299,7 @@ __all__ = [
     "get_configured_pack_stack",
     "get_pack_stack_fingerprint",
     "get_cache_dir",
+    "get_cache_stats",
     "clear_resource_pack_cache",
     "get_pack_hash",
     "get_directory_hash",

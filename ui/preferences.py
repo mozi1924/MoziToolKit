@@ -964,9 +964,21 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
         layout.separator()
 
         # Cache & Storage Management
+        from ..utils.materials import get_cache_stats
+        stats = get_cache_stats()
+
         cache_box = layout.box()
-        cache_box.label(text="Resource Pack Cache & Storage:", icon="DISK_DRIVE")
+        cache_header = cache_box.row(align=True)
+        cache_header.label(text="Persistent Cache & Storage:", icon="DISK_DRIVE")
+        cache_header.label(text=f"Total: {stats['size_formatted']} ({stats['files_count']} files)", icon="INFO")
+
+        cache_col = cache_box.column(align=True)
+        cache_col.scale_y = 0.85
+        cache_col.label(text=f"Location: {stats['path']}")
+        cache_col.label(text="Extracted packs, compiled multi-layer atlases, and JSON indices persist here across restarts.")
+
         cache_row = cache_box.row(align=True)
+        cache_row.operator("mozi.open_cache_folder", text="Open Cache Folder", icon="FILE_FOLDER")
         cache_row.operator("mozi.clear_cache", text="Clear Resource Pack Cache", icon="TRASH")
 
         layout.separator()

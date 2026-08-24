@@ -86,3 +86,33 @@ class MOZI_OT_clear_cache(bpy.types.Operator):
         mb_freed = bytes_freed / (1024 * 1024)
         self.report({"INFO"}, f"Cache cleared: removed {count} files ({mb_freed:.2f} MB freed).")
         return {"FINISHED"}
+
+
+class MOZI_OT_open_cache_folder(bpy.types.Operator):
+    """Open the persistent cache directory in system file manager."""
+
+    bl_idname = "mozi.open_cache_folder"
+    bl_label = "Open Cache Folder"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    def execute(self, context):
+        from ...utils.materials import get_cache_dir
+        import subprocess
+        import sys
+        import os
+
+        cache_dir = get_cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(cache_dir)])
+            elif sys.platform == "win32":
+                os.startfile(str(cache_dir))
+            else:
+                subprocess.Popen(["xdg-open", str(cache_dir)])
+            self.report({'INFO'}, f"Opened cache folder: {cache_dir}")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to open cache directory: {e}")
+            return {'CANCELLED'}
+

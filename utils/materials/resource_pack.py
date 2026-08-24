@@ -26,15 +26,58 @@ MAX_ZIP_COMPRESSION_RATIO = 100.0                   # Max compression ratio for 
 
 def get_cache_dir() -> Path:
     """
-    Get the cache root directory in Blender's configured temporary directory.
-    Fallback to OS tempdir if bpy.app.tempdir is unavailable or empty.
+    Get the persistent data and cache root directory for MoziToolKit.
+    Uses Blender's user persistent datafiles directory so extracted packs,
+    precompiled atlases, and JSON indices persist across Blender sessions and reboots.
+    Fallback to ~/.config/blender/MoziToolKit/cache or ~/.cache/MoziToolKit when bpy is unavailable.
     """
-    temp_dir = getattr(bpy.app, "tempdir", None) if (bpy and hasattr(bpy, "app")) else None
-    if not temp_dir:
-        temp_dir = tempfile.gettempdir()
-    cache_root = Path(temp_dir) / "MoziToolKit_cache" / "resource_packs"
+    cache_dir = None
+    if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
+        try:
+            cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache"
+        except Exception:
+            cache_dir = None
+
+    if not cache_dir:
+        cache_dir = Path.home() / ".config" / "blender" / "MoziToolKit" / "cache"
+
+    cache_root = cache_dir / "resource_packs"
     cache_root.mkdir(parents=True, exist_ok=True)
     return cache_root
+
+
+def get_cache_stats() -> dict:
+    """
+    Get summary statistics about the persistent cache directory.
+    Returns dict with keys: 'path', 'files_count', 'total_size_bytes', 'size_formatted'.
+    """
+    cache_root = get_cache_dir()
+    files_count = 0
+    total_size = 0
+    if cache_root.exists():
+        for sub in cache_root.rglob("*"):
+            if sub.is_file():
+                files_count += 1
+                try:
+                    total_size += sub.stat().st_size
+                except Exception:
+                    pass
+
+    if total_size < 1024:
+        size_str = f"{total_size} B"
+    elif total_size < 1024 * 1024:
+        size_str = f"{total_size / 1024:.1f} KB"
+    elif total_size < 1024 * 1024 * 1024:
+        size_str = f"{total_size / (1024 * 1024):.1f} MB"
+    else:
+        size_str = f"{total_size / (1024 * 1024 * 1024):.2f} GB"
+
+    return {
+        "path": cache_root,
+        "files_count": files_count,
+        "total_size_bytes": total_size,
+        "size_formatted": size_str,
+    }
 
 
 def clear_resource_pack_cache() -> tuple[int, int]:
