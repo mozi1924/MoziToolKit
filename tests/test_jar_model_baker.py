@@ -41,6 +41,10 @@ class TestJarModelBaker(unittest.TestCase):
         mesh = build_blender_mesh_from_baked_model(baked, "Test_Oak_Stairs")
         self.assertGreater(len(mesh.polygons), 6)  # Non-cubic, more than 6 faces
         self.assertIn("UVMap", mesh.uv_layers)
+        # The JAR's lower cuboid has a top face beneath the step cuboid.
+        # It must be clipped to its visible half rather than retained as an
+        # internal surface, which would look like a doubled face in Blender.
+        self.assertAlmostEqual(sum(poly.area for poly in mesh.polygons), 5.5)
         bpy.data.meshes.remove(mesh)
 
     def test_bake_slabs(self):

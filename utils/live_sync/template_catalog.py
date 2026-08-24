@@ -21,6 +21,7 @@ from .constants import (
 logger = logging.getLogger("MoziToolKit.LiveSync")
 
 TEMPLATE_COLLECTION_NAME = "MC_Block_Templates"
+EXTRACTED_TEMPLATE_MESH_VERSION = 2
 
 
 def get_or_create_template_collection(context: Optional[bpy.types.Context] = None) -> bpy.types.Collection:
@@ -117,7 +118,8 @@ def ensure_baked_block_template(
         return None
 
     digest = hashlib.sha1(block_state.encode("utf-8")).hexdigest()[:16]
-    model_signature = hashlib.sha1(repr(baked_model.elements).encode("utf-8")).hexdigest()
+    signature_source = f"v{EXTRACTED_TEMPLATE_MESH_VERSION}:{baked_model.elements!r}"
+    model_signature = hashlib.sha1(signature_source.encode("utf-8")).hexdigest()
     name = f"mc_model_{digest}"
     obj = bpy.data.objects.get(name)
     if obj is None or obj.get("yefira:model_signature") != model_signature:
