@@ -202,7 +202,11 @@ DIRECTION_SUFFIX_MAP = {
 FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 # Atlas Format Version
-ATLAS_FORMAT_VERSION = 11
+# Version 12: category-partitioned atlas chunks add layout semantics beyond
+# the former block-only grid.  In particular, animations are independent
+# horizontal columns of vertical frame strips.  Reusing a v11 cache can bind
+# those faces to a stale static-grid chunk, so force a fresh mapping build.
+ATLAS_FORMAT_VERSION = 12
 
 # All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
 ANIM_AND_ATLAS_ATTR_NAMES = (
