@@ -764,44 +764,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         row_precompile = mat_box.row(align=True)
         row_precompile.operator("mozi.precompile_cache", text="Precompile / Rebuild Stack Atlas Cache", icon="FILE_REFRESH")
 
-
-class MOZI_OT_precompile_cache(bpy.types.Operator):
-    """Precompile and rebuild the complete Atlas and metadata for the current Resource Pack Stack."""
-
-    bl_idname = "mozi.precompile_cache"
-    bl_label = "Precompile Atlas Cache"
-    bl_options = {"REGISTER"}
-
-    def execute(self, context):
-        from ..utils.system import has_pillow
-        if not has_pillow():
-            self.report({'ERROR'}, "Atlas compilation requires 'Pillow' (PIL) module.")
-            return {'CANCELLED'}
-
-        from ..utils.materials.pack_stack import get_configured_pack_stack
-        from ..utils.materials.atlas_generator import AtlasGenerator
-        from ..utils.materials.resource_pack import get_cache_dir
-
-        stack = get_configured_pack_stack()
-        if not stack.packs:
-            self.report({'WARNING'}, "No enabled resource packs or JARs found in stack to compile.")
-            return {'CANCELLED'}
-
-        try:
-            cache_root = get_cache_dir()
-            atlas_dir = cache_root / stack.stack_hash / "full_scene"
-            gen = AtlasGenerator(
-                resource_path=stack.packs[0].extract_dir or stack.packs[0].zip_path,
-                fallback_stack=stack,
-            )
-            res = gen.build(atlas_dir)
-            num_chunks = len(res.get("chunks", []))
-            self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks) for pack stack.")
-            return {'FINISHED'}
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to precompile Atlas cache: {e}")
-            return {'CANCELLED'}
-
     def draw_context_menus(self, layout, context):
         # Secondary Context Menu Sub-Tabs
         sub_row = layout.row(align=True)
@@ -984,3 +946,41 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             env_col.label(text=f"Package Search Path: {blender_sites[0]}")
             for extra_site in blender_sites[1:]:
                 env_col.label(text=f"  + {extra_site}")
+
+
+class MOZI_OT_precompile_cache(bpy.types.Operator):
+    """Precompile and rebuild the complete Atlas and metadata for the current Resource Pack Stack."""
+
+    bl_idname = "mozi.precompile_cache"
+    bl_label = "Precompile Atlas Cache"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        from ..utils.system import has_pillow
+        if not has_pillow():
+            self.report({'ERROR'}, "Atlas compilation requires 'Pillow' (PIL) module.")
+            return {'CANCELLED'}
+
+        from ..utils.materials.pack_stack import get_configured_pack_stack
+        from ..utils.materials.atlas_generator import AtlasGenerator
+        from ..utils.materials.resource_pack import get_cache_dir
+
+        stack = get_configured_pack_stack()
+        if not stack.packs:
+            self.report({'WARNING'}, "No enabled resource packs or JARs found in stack to compile.")
+            return {'CANCELLED'}
+
+        try:
+            cache_root = get_cache_dir()
+            atlas_dir = cache_root / stack.stack_hash / "full_scene"
+            gen = AtlasGenerator(
+                resource_path=stack.packs[0].extract_dir or stack.packs[0].zip_path,
+                fallback_stack=stack,
+            )
+            res = gen.build(atlas_dir)
+            num_chunks = len(res.get("chunks", []))
+            self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks) for pack stack.")
+            return {'FINISHED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to precompile Atlas cache: {e}")
+            return {'CANCELLED'}
