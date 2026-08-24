@@ -282,8 +282,9 @@ def rebuild_material(
     if not pack_hash:
         pack_hash = mat.get(PROP_PACK_HASH) or texture_info.get("pack_hash")
 
-    # Align standalone animated textures with PBR channels
-    texture_info = align_standalone_textures(texture_info, pack_hash=pack_hash)
+    # Align standalone animated textures with PBR channels if not precompiled
+    if not texture_info.get("is_precompiled"):
+        texture_info = align_standalone_textures(texture_info, pack_hash=pack_hash)
 
     templates = ensure_all_templates()
 

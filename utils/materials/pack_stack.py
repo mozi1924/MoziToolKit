@@ -208,6 +208,54 @@ class ResourcePackStack:
         except (OSError, json.JSONDecodeError):
             return False
 
+    def get_baked_standalone_dir(self) -> Path:
+        """Get the persistent standalone asset library cache directory for this stack."""
+        from .resource_pack import get_cache_dir
+        cache_root = get_cache_dir()
+        return cache_root / self.stack_hash / "standalone"
+
+    def is_standalone_baked(self) -> bool:
+        """
+        Check if the persistent standalone asset library for this stack exists and is complete.
+        """
+        import json
+        from .standalone_generator import STANDALONE_FORMAT_VERSION
+        standalone_dir = self.get_baked_standalone_dir()
+        mapping_path = standalone_dir / "standalone_mapping.json"
+        if not mapping_path.exists():
+            return False
+
+        try:
+            with open(mapping_path, "r", encoding="utf-8") as fp:
+                mapping = json.load(fp)
+                if (
+                    mapping.get("format_version") != STANDALONE_FORMAT_VERSION
+                    or mapping.get("stack_hash") != self.stack_hash
+                    or not mapping.get("textures")
+                ):
+                    return False
+                for rec in mapping["textures"].values():
+                    files = rec.get("files") if isinstance(rec, dict) else None
+                    if not files:
+                        continue
+                    albedo = files.get("albedo")
+                    if albedo and not (standalone_dir / albedo).is_file():
+                        return False
+                    for channel in ("normal", "specular", "overlay"):
+                        filename = files.get(channel)
+                        if filename and not (standalone_dir / filename).is_file():
+                            return False
+                return True
+        except (OSError, json.JSONDecodeError):
+            return False
+
+    def precompile_standalone(self, output_dir: Optional[Union[str, Path]] = None, progress_callback=None) -> dict:
+        """Precompile and build the standalone asset library for this pack stack."""
+        from .standalone_generator import StandaloneGenerator
+        target_dir = Path(output_dir) if output_dir else self.get_baked_standalone_dir()
+        gen = StandaloneGenerator(fallback_stack=self)
+        return gen.build(target_dir, progress_callback=progress_callback)
+
     def get_composite_loader(self) -> Optional[JarResourceLoader]:
         """
         Build a chained JarResourceLoader linked through `fallback_loader` attributes

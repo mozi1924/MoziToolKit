@@ -194,7 +194,20 @@ def _cached_face_texture_info(
     if source_key:
         namespace, texture_name = split_texture_key(source_key)
         if texture_name:
-            provenance = (namespace, [texture_name])
+            # A face key is the authoritative identity, so always try its
+            # complete resource path first.  Resource packs do occasionally
+            # move a texture between ``block/`` and ``item/`` however (for
+            # example vanilla's chain).  In that case old MTK provenance must
+            # remain convertible against the new stack rather than making the
+            # whole object fail its atomic replacement.  The basename is only
+            # a fallback candidate and therefore can never override an exact
+            # path when both are present.
+            candidates = [texture_name]
+            if "/" in texture_name:
+                basename = texture_name.rsplit("/", 1)[-1]
+                if basename and basename != texture_name:
+                    candidates.append(basename)
+            provenance = (namespace, candidates)
 
     if mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS"):
         if provenance:
@@ -1067,6 +1080,44 @@ class StepReplaceMaterial(PipelineStep):
         assigned_count = 0
         session_materials = {}
         texture_info_cache = {}
+
+        effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
+        cache_root = get_cache_dir()
+        standalone_dir = cache_root / effective_pack_hash / "standalone"
+        mapping_path = standalone_dir / "standalone_mapping.json"
+
+        standalone_mapping = None
+        if mapping_path.exists():
+            try:
+                with open(mapping_path, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+                    from ...utils.materials.standalone_generator import STANDALONE_FORMAT_VERSION
+                    if data.get("format_version") == STANDALONE_FORMAT_VERSION and data.get("stack_hash") == effective_pack_hash:
+                        standalone_mapping = data
+            except Exception:
+                standalone_mapping = None
+
+        if not standalone_mapping:
+            if not has_pillow():
+                yield StepResult.failed("Standalone material generation requires 'Pillow' (PIL) module.")
+                return
+            pipeline_context.report("INFO", f"Precompiling Standalone asset library for pack stack ({effective_pack_hash[:8]})...")
+            from ...utils.materials.standalone_generator import StandaloneGenerator
+            try:
+                gen = StandaloneGenerator(fallback_stack=pack_stack or pack)
+                for frac, msg, _res in gen.build_iter(standalone_dir):
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    yield ProgressUpdate(0.10 + 0.20 * frac, 1.0, f"Standalone: {msg}")
+                clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
+                if mapping_path.exists():
+                    with open(mapping_path, "r", encoding="utf-8") as fp:
+                        standalone_mapping = json.load(fp)
+            except Exception as e:
+                yield StepResult.failed(f"Failed to precompile Standalone asset library: {e}")
+                return
+
         biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
         if pack_stack:
             for p in pack_stack.packs:
@@ -1074,9 +1125,11 @@ class StepReplaceMaterial(PipelineStep):
                     biome_resolver.load_from_pack_root(p.extract_dir)
 
         total_objs = len(valid_objects)
+        textures_map = standalone_mapping.get("textures", {}) if standalone_mapping else {}
+        aliases_map = standalone_mapping.get("aliases", {}) if standalone_mapping else {}
 
         def get_or_create_replacement_material(texture_info):
-            texture_key = (pack.pack_hash, texture_info["namespace"], texture_info["texture_name"])
+            texture_key = (effective_pack_hash, texture_info["namespace"], texture_info["texture_name"])
             canonical_mat = session_materials.get(texture_key) or find_existing_replacement(texture_info, pack)
             if canonical_mat:
                 session_materials[texture_key] = canonical_mat
@@ -1084,7 +1137,7 @@ class StepReplaceMaterial(PipelineStep):
 
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
             mat = bpy.data.materials.new(name=mat_name)
-            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=pack.pack_hash):
+            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash):
                 bpy.data.materials.remove(mat)
                 return None, False
 
@@ -1100,6 +1153,39 @@ class StepReplaceMaterial(PipelineStep):
 
             tex_info = None
             for cand in candidates:
+                # 1. First try lookup via precompiled standalone asset mapping
+                cand_key = f"{namespace}:{cand}"
+                rec = (
+                    textures_map.get(cand_key)
+                    or textures_map.get(canonical_texture_key(namespace, cand))
+                    or textures_map.get(f"{namespace}:block/{cand}")
+                    or textures_map.get(f"{namespace}:item/{cand}")
+                    or (textures_map.get(aliases_map.get(cand)) if aliases_map.get(cand) else None)
+                )
+                if rec and isinstance(rec, dict) and rec.get("files"):
+                    files = rec["files"]
+                    albedo_rel = files.get("albedo")
+                    if albedo_rel and (standalone_dir / albedo_rel).exists():
+                        tex_info = {
+                            "namespace": rec.get("namespace", namespace),
+                            "texture_name": rec.get("texture_name", cand),
+                            "texture_key": rec.get("texture_key", cand),
+                            "albedo": standalone_dir / albedo_rel,
+                            "normal": (standalone_dir / files["normal"]) if files.get("normal") and (standalone_dir / files["normal"]).exists() else None,
+                            "specular": (standalone_dir / files["specular"]) if files.get("specular") and (standalone_dir / files["specular"]).exists() else None,
+                            "overlay": (standalone_dir / files["overlay"]) if files.get("overlay") and (standalone_dir / files["overlay"]).exists() else None,
+                            "albedo_mcmeta": rec.get("animation"),
+                            "normal_mcmeta": rec.get("animation"),
+                            "specular_mcmeta": rec.get("animation"),
+                            "overlay_mcmeta": rec.get("animation"),
+                            "tint_info": rec.get("tint_info") or biome_resolver.get_tint_info(rec.get("texture_name", cand)),
+                            "is_precompiled": True,
+                            "animation_metadata": rec.get("animation"),
+                            "pack_hash": effective_pack_hash,
+                        }
+                        break
+
+                # 2. Fallback to direct pack stack query
                 info = pack_stack.get_texture_info(cand, namespace) if pack_stack else pack.get_texture_info(cand, namespace)
                 if not info or not info.get("albedo"):
                     continue
@@ -1112,7 +1198,9 @@ class StepReplaceMaterial(PipelineStep):
                         if overlay_info.get("albedo_mcmeta"):
                             tex_info["overlay_mcmeta"] = overlay_info["albedo_mcmeta"]
                 tex_info["tint_info"] = biome_resolver.get_tint_info(tex_info["texture_name"])
+                tex_info["pack_hash"] = effective_pack_hash
                 break
+
             texture_info_cache[cache_key] = tex_info
             return tex_info
 

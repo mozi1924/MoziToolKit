@@ -240,6 +240,11 @@ from .atlas_layout import (
 
 from .atlas_generator import AtlasGenerator
 
+from .standalone_generator import (
+    StandaloneGenerator,
+    STANDALONE_FORMAT_VERSION,
+)
+
 from .standalone_aligner import (
     align_standalone_textures,
     is_channel_animated,
@@ -427,7 +432,9 @@ __all__ = [
     "TINT_TYPE_HARDCODED",
     "BiomeResolver",
     "get_biome_colors",
-    # Standalone Alignment
+    # Standalone Alignment & Asset Generation
+    "StandaloneGenerator",
+    "STANDALONE_FORMAT_VERSION",
     "align_standalone_textures",
     "is_channel_animated",
 
