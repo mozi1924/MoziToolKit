@@ -463,9 +463,6 @@ class AtlasGenerator:
         texture_locations = {}
         animations = []
         outputs = {"chunks": []}
-        has_normal = bool(self.normal_textures) or any(bool(m) for ns_dict in self.normal_by_ns_cat.values() for m in ns_dict.values())
-        has_specular = bool(self.specular_textures) or any(bool(m) for ns_dict in self.specular_by_ns_cat.values() for m in ns_dict.values())
-
         total_ns = max(1, len(all_namespaces))
         for ns_idx, ns in enumerate(all_namespaces):
             ns_progress_base = 0.20 + 0.60 * (ns_idx / total_ns)
@@ -502,6 +499,13 @@ class AtlasGenerator:
                             overlay_img_canvas = None
                             chunk_has_overlay = False
                             chunk_has_tint = False
+                            category_normals = self.normal_by_ns_cat.get(ns, {}).get(cat, {})
+                            category_speculars = self.specular_by_ns_cat.get(ns, {}).get(cat, {})
+                            # PBR is optional per chunk.  Never create a full-size
+                            # default normal/specular sheet merely because another
+                            # chunk elsewhere in the atlas happens to use PBR.
+                            has_normal = any(rect.key in category_normals for rect in placed_rects)
+                            has_specular = any(rect.key in category_speculars for rect in placed_rects)
 
                             if has_normal:
                                 images["normal"] = Image.new("RGBA", (chunk_w, chunk_h), (128, 128, 255, 255))
@@ -515,14 +519,14 @@ class AtlasGenerator:
                                 images["albedo"].paste(source_albedo, (rect.x, rect.y))
 
                                 if has_normal:
-                                    norm_src = self.normal_by_ns_cat.get(ns, {}).get(cat, {}).get(rel_p)
+                                    norm_src = category_normals.get(rel_p)
                                     if norm_src is not None:
                                         if norm_src.size != (rect.width, rect.height):
                                             norm_src = norm_src.resize((rect.width, rect.height), Image.NEAREST)
                                         images["normal"].paste(norm_src, (rect.x, rect.y))
 
                                 if has_specular:
-                                    spec_src = self.specular_by_ns_cat.get(ns, {}).get(cat, {}).get(rel_p)
+                                    spec_src = category_speculars.get(rel_p)
                                     if spec_src is not None:
                                         if spec_src.size != (rect.width, rect.height):
                                             spec_src = spec_src.resize((rect.width, rect.height), Image.NEAREST)
@@ -687,6 +691,10 @@ class AtlasGenerator:
                             overlay_img_canvas = None
                             chunk_has_overlay = False
                             chunk_has_tint = False
+                            category_normals = self.normal_by_ns_cat.get(ns, {}).get(cat, {})
+                            category_speculars = self.specular_by_ns_cat.get(ns, {}).get(cat, {})
+                            has_normal = any(rel_p in category_normals for rel_p in names)
+                            has_specular = any(rel_p in category_speculars for rel_p in names)
 
                             if has_normal:
                                 images["normal"] = Image.new("RGBA", (width, height), (128, 128, 255, 255))
@@ -823,6 +831,10 @@ class AtlasGenerator:
                         overlay_img_canvas = None
                         chunk_has_overlay = False
                         chunk_has_tint = False
+                        category_normals = self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {})
+                        category_speculars = self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {})
+                        has_normal = any(rel_p in category_normals for rel_p, _image, _metadata in columns)
+                        has_specular = any(rel_p in category_speculars for rel_p, _image, _metadata in columns)
 
                         if has_normal:
                             images["normal"] = Image.new("RGBA", (chunk_width, chunk_height), (128, 128, 255, 255))

@@ -163,6 +163,32 @@ class TestPBRPackStack(unittest.TestCase):
             self.assertEqual(Image.open(atlas_dir / chunk["files"]["albedo"]).getpixel((x, y)), (80, 90, 100, 255))
             self.assertEqual(Image.open(atlas_dir / chunk["files"]["normal"]).getpixel((x, y)), (12, 34, 56, 255))
 
+    def test_non_pbr_chunk_does_not_emit_placeholder_pbr_sheets(self):
+        """PBR in one chunk must not allocate default PBR images for another."""
+        if not Image:
+            self.skipTest("Pillow not available")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            textures = root / "assets" / "minecraft" / "textures" / "block"
+            textures.mkdir(parents=True)
+            Image.new("RGBA", (16, 16), (100, 100, 100, 255)).save(textures / "pbr_block.png")
+            Image.new("RGBA", (16, 16), (128, 128, 255, 255)).save(textures / "pbr_block_n.png")
+            Image.new("RGBA", (16, 16), (200, 100, 50, 255)).save(textures / "plain_block.png")
+
+            # One 16px tile per chunk makes the allocation contract explicit.
+            atlas_dir = root / "atlas"
+            AtlasGenerator(root, max_chunk_size=16).build(atlas_dir)
+            mapping = json.loads((atlas_dir / "atlas_mapping.json").read_text(encoding="utf-8"))
+            pbr_chunk_id = mapping["textures"]["pbr_block"]["chunk_id"]
+            plain_chunk_id = mapping["textures"]["plain_block"]["chunk_id"]
+            pbr_chunk = next(chunk for chunk in mapping["chunks"] if chunk["chunk_id"] == pbr_chunk_id)
+            plain_chunk = next(chunk for chunk in mapping["chunks"] if chunk["chunk_id"] == plain_chunk_id)
+
+            self.assertIn("normal", pbr_chunk["files"])
+            self.assertNotIn("specular", pbr_chunk["files"])
+            self.assertEqual(set(plain_chunk["files"]), {"albedo"})
+
     def test_real_user_packs_if_present(self):
         """Test with actual user packs on system if they exist."""
         real_packs = [
