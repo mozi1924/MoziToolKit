@@ -96,6 +96,8 @@ from .biome import (
 from .resource_pack import (
     ZipResourcePack,
     get_cache_dir,
+    get_temp_extraction_dir,
+    clean_obsolete_stack_caches,
     get_cache_stats,
     clear_resource_pack_cache,
     get_pack_hash,

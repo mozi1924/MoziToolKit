@@ -15,6 +15,7 @@ from ..step import PipelineStep, StepResult
 from ...utils.materials import (
     ZipResourcePack,
     get_cache_dir,
+    clean_obsolete_stack_caches,
     rebuild_material,
     detect_material_mode,
     get_atlas_mapping_from_material,
@@ -593,6 +594,7 @@ class StepReplaceMaterial(PipelineStep):
                     # Map Atlas build progress (0.0 - 1.0) into pipeline progress range (0.15 - 0.35)
                     atlas_pct = 0.15 + 0.20 * frac
                     yield ProgressUpdate(atlas_pct, 1.0, f"Atlas: {msg}")
+                clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
             except Exception as e:
                 yield StepResult.failed(f"Failed to generate Atlas texture: {e}")
                 return
