@@ -3,27 +3,50 @@ import site
 import sys
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
-from ..utils.system import (
-    ALL_OPERATORS,
-    export_config,
-    import_config,
-    load_config,
-    load_pack_stack_config,
-    save_pack_stack_config,
-    load_material_settings_config,
-    save_material_settings_config,
-    save_full_config,
-    get_enabled_pack_entries,
-    normalize_operator_id,
-    reset_config,
-    save_config,
-    DEPENDENCIES,
-    get_all_dependency_statuses,
-    get_blender_site_packages,
-    get_python_executable,
-    has_all_dependencies,
-    get_prefs,
-)
+try:
+    from ..utils.system import (
+        ALL_OPERATORS,
+        export_config,
+        import_config,
+        load_config,
+        load_pack_stack_config,
+        save_pack_stack_config,
+        load_material_settings_config,
+        save_material_settings_config,
+        save_full_config,
+        get_enabled_pack_entries,
+        normalize_operator_id,
+        reset_config,
+        save_config,
+        DEPENDENCIES,
+        get_all_dependency_statuses,
+        get_blender_site_packages,
+        get_python_executable,
+        has_all_dependencies,
+        get_prefs,
+    )
+except (ImportError, ValueError):
+    from utils.system import (
+        ALL_OPERATORS,
+        export_config,
+        import_config,
+        load_config,
+        load_pack_stack_config,
+        save_pack_stack_config,
+        load_material_settings_config,
+        save_material_settings_config,
+        save_full_config,
+        get_enabled_pack_entries,
+        normalize_operator_id,
+        reset_config,
+        save_config,
+        DEPENDENCIES,
+        get_all_dependency_statuses,
+        get_blender_site_packages,
+        get_python_executable,
+        has_all_dependencies,
+        get_prefs,
+    )
 
 
 def refresh_ui_and_menus(context=None):
@@ -73,16 +96,74 @@ def on_item_label_changed(self, context):
         refresh_ui_and_menus(context)
 
 
+def _get_is_reordering() -> bool:
+    return getattr(bpy.types.WindowManager, "_mozi_is_reordering_packs", False)
+
+
+def _set_is_reordering(val: bool) -> None:
+    setattr(bpy.types.WindowManager, "_mozi_is_reordering_packs", val)
+
+
+def reorder_resource_packs_by_tier(prefs):
+    """
+    Sorts prefs.resource_packs CollectionProperty into three strict tiers:
+    1. RESOURCE_PACK (top)
+    2. MOD_JAR (middle)
+    3. VANILLA (bottom)
+    Preserves existing relative order within each tier using stable in-place moves.
+    """
+    if _get_is_reordering():
+        return
+    if prefs is None or not hasattr(prefs, "resource_packs") or len(prefs.resource_packs) <= 1:
+        return
+
+    def tier_key(item):
+        pt = getattr(item, "pack_type", "RESOURCE_PACK")
+        if pt == "RESOURCE_PACK":
+            return 0
+        elif pt == "MOD_JAR":
+            return 1
+        else:  # VANILLA
+            return 2
+
+    _set_is_reordering(True)
+    try:
+        # Stable insertion sort using .move()
+        n = len(prefs.resource_packs)
+        for i in range(1, n):
+            j = i
+            while j > 0 and tier_key(prefs.resource_packs[j]) < tier_key(prefs.resource_packs[j - 1]):
+                prefs.resource_packs.move(j, j - 1)
+                j -= 1
+    finally:
+        _set_is_reordering(False)
+
+
 def on_pack_entry_changed(self, context):
     """Callback when a resource pack entry's attributes change."""
+    if _get_is_reordering():
+        return
     prefs = _safe_get_prefs(self)
     if prefs:
         save_prefs_to_json(prefs)
         refresh_ui_and_menus(context)
 
 
+def on_pack_type_changed(self, context):
+    """Callback when a resource pack entry's pack_type tier changes."""
+    if _get_is_reordering():
+        return
+    prefs = _safe_get_prefs(self)
+    if prefs:
+        reorder_resource_packs_by_tier(prefs)
+        save_prefs_to_json(prefs)
+        refresh_ui_and_menus(context)
+
+
 def on_pack_path_changed(self, context):
     """Auto-detect pack name and type when path is changed."""
+    if _get_is_reordering():
+        return
     try:
         from pathlib import Path
         p = Path(self.path.strip())
@@ -100,6 +181,7 @@ def on_pack_path_changed(self, context):
         pass
     prefs = _safe_get_prefs(self)
     if prefs:
+        reorder_resource_packs_by_tier(prefs)
         save_prefs_to_json(prefs)
         refresh_ui_and_menus(context)
 
@@ -128,12 +210,12 @@ class MOZI_PG_resource_pack_entry(bpy.types.PropertyGroup):
         name="Pack Type",
         description="Classification of this asset source",
         items=[
-            ("RESOURCE_PACK", "Resource Pack", "Standard ZIP or folder resource pack"),
-            ("VANILLA", "Vanilla JAR", "Minecraft vanilla client or server JAR archive"),
+            ("RESOURCE_PACK", "Resource Pack", "Standard ZIP or folder resource pack (Overrides base assets)"),
             ("MOD_JAR", "Mod JAR", "Mod JAR archive (Fabric/Forge/NeoForge) containing assets"),
+            ("VANILLA", "Vanilla JAR", "Minecraft vanilla client or server JAR archive (Base foundation)"),
         ],
         default="RESOURCE_PACK",
-        update=on_pack_entry_changed,
+        update=on_pack_type_changed,
     )
 
 
@@ -145,10 +227,15 @@ class MOZI_UL_resource_packs_list(bpy.types.UIList):
 
             if item.pack_type == "VANILLA":
                 icon_type = "WORLD_DATA"
+                tier_badge = "Vanilla Base"
             elif item.pack_type == "MOD_JAR":
                 icon_type = "MODIFIER"
+                mod_idx = sum(1 for i, elem in enumerate(data.resource_packs) if elem.pack_type == "MOD_JAR" and i <= index)
+                tier_badge = f"Mod #{mod_idx}"
             else:
                 icon_type = "PACKAGE"
+                rp_idx = sum(1 for i, elem in enumerate(data.resource_packs) if elem.pack_type == "RESOURCE_PACK" and i <= index)
+                tier_badge = f"RP #{rp_idx}"
 
             from pathlib import Path
             is_valid = bool(item.path and Path(item.path).exists())
@@ -164,7 +251,7 @@ class MOZI_UL_resource_packs_list(bpy.types.UIList):
             p_badge = row.row(align=True)
             p_badge.alignment = "RIGHT"
             p_badge.enabled = False
-            p_badge.label(text=f"Priority #{index + 1}")
+            p_badge.label(text=tier_badge)
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
             layout.label(text=item.name, icon="PACKAGE")
@@ -229,6 +316,24 @@ def sort_unadded_items(unadded_coll):
         elem.label = item["label"]
 
 
+def populate_resource_packs(prefs, entries):
+    """Safely populate prefs.resource_packs from a list of dicts without reorder race conditions."""
+    _set_is_reordering(True)
+    try:
+        prefs.resource_packs.clear()
+        for p_item in entries:
+            if isinstance(p_item, dict):
+                p_elem = prefs.resource_packs.add()
+                p_elem.name = p_item.get("name", "Resource Pack")
+                p_elem.path = p_item.get("path", "")
+                p_elem.enabled = p_item.get("enabled", True)
+                p_elem.pack_type = p_item.get("pack_type", "RESOURCE_PACK")
+    finally:
+        _set_is_reordering(False)
+
+    reorder_resource_packs_by_tier(prefs)
+
+
 def sync_prefs_from_json(prefs):
     """Populate preferences PropertyGroups from JSON configuration."""
     config_data = load_config()
@@ -263,14 +368,7 @@ def sync_prefs_from_json(prefs):
 
     # Sync resource packs stack
     packs_data = load_pack_stack_config()
-    prefs.resource_packs.clear()
-    for p_item in packs_data:
-        if isinstance(p_item, dict):
-            p_elem = prefs.resource_packs.add()
-            p_elem.name = p_item.get("name", "Resource Pack")
-            p_elem.path = p_item.get("path", "")
-            p_elem.enabled = p_item.get("enabled", True)
-            p_elem.pack_type = p_item.get("pack_type", "RESOURCE_PACK")
+    populate_resource_packs(prefs, packs_data)
 
     # Sync material replacement settings
     mat_settings = load_material_settings_config()
@@ -336,7 +434,12 @@ class MOZI_OT_pack_add(bpy.types.Operator):
         elem.name = f"Resource Pack #{len(prefs.resource_packs)}"
         elem.enabled = True
         elem.pack_type = "RESOURCE_PACK"
-        prefs.resource_packs_index = len(prefs.resource_packs) - 1
+        reorder_resource_packs_by_tier(prefs)
+        # Select the newly added item
+        for i, p in enumerate(prefs.resource_packs):
+            if p.name == elem.name and not p.path:
+                prefs.resource_packs_index = i
+                break
         save_prefs_to_json(prefs)
         refresh_ui_and_menus(context)
         return {"FINISHED"}
@@ -356,6 +459,7 @@ class MOZI_OT_pack_remove(bpy.types.Operator):
         idx = prefs.resource_packs_index
         if 0 <= idx < len(prefs.resource_packs):
             prefs.resource_packs.remove(idx)
+            reorder_resource_packs_by_tier(prefs)
             prefs.resource_packs_index = max(0, min(idx, len(prefs.resource_packs) - 1))
             save_prefs_to_json(prefs)
             refresh_ui_and_menus(context)
@@ -363,7 +467,7 @@ class MOZI_OT_pack_remove(bpy.types.Operator):
 
 
 class MOZI_OT_pack_move(bpy.types.Operator):
-    """Move selected pack up or down to adjust resolution priority"""
+    """Move selected pack up or down to adjust resolution priority within its tier"""
 
     bl_idname = "mozi.pack_move"
     bl_label = "Move Pack Priority"
@@ -379,12 +483,26 @@ class MOZI_OT_pack_move(bpy.types.Operator):
         if prefs is None:
             return {"CANCELLED"}
         idx = prefs.resource_packs_index
+        if not (0 <= idx < len(prefs.resource_packs)):
+            return {"CANCELLED"}
+
+        curr_item = prefs.resource_packs[idx]
+        curr_tier = curr_item.pack_type
+
         if self.direction == "UP" and idx > 0:
+            target_item = prefs.resource_packs[idx - 1]
+            if target_item.pack_type != curr_tier:
+                self.report({'INFO'}, f"Cannot move {curr_tier.replace('_', ' ').title()} above {target_item.pack_type.replace('_', ' ').title()} tier.")
+                return {"CANCELLED"}
             prefs.resource_packs.move(idx, idx - 1)
             prefs.resource_packs_index = idx - 1
             save_prefs_to_json(prefs)
             refresh_ui_and_menus(context)
         elif self.direction == "DOWN" and idx < len(prefs.resource_packs) - 1:
+            target_item = prefs.resource_packs[idx + 1]
+            if target_item.pack_type != curr_tier:
+                self.report({'INFO'}, f"Cannot move {curr_tier.replace('_', ' ').title()} below {target_item.pack_type.replace('_', ' ').title()} tier.")
+                return {"CANCELLED"}
             prefs.resource_packs.move(idx, idx + 1)
             prefs.resource_packs_index = idx + 1
             save_prefs_to_json(prefs)
@@ -706,14 +824,26 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         )
 
         # Right Action Buttons Column
+        idx = self.resource_packs_index
+        can_move_up = False
+        can_move_down = False
+        if 0 <= idx < len(self.resource_packs):
+            curr_tier = self.resource_packs[idx].pack_type
+            if idx > 0 and self.resource_packs[idx - 1].pack_type == curr_tier:
+                can_move_up = True
+            if idx < len(self.resource_packs) - 1 and self.resource_packs[idx + 1].pack_type == curr_tier:
+                can_move_down = True
+
         btn_col = list_row.column(align=True)
         btn_col.operator("mozi.pack_add", text="", icon="ADD")
         btn_col.operator("mozi.pack_remove", text="", icon="REMOVE")
         btn_col.separator(factor=2)
         op_up = btn_col.operator("mozi.pack_move", text="", icon="TRIA_UP")
         op_up.direction = "UP"
+        op_up.enabled = can_move_up
         op_down = btn_col.operator("mozi.pack_move", text="", icon="TRIA_DOWN")
         op_down.direction = "DOWN"
+        op_down.enabled = can_move_down
 
         # Selected Pack Detail & Properties Box
         idx = self.resource_packs_index
@@ -956,14 +1086,20 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
     bl_options = {"REGISTER"}
 
     def execute(self, context):
-        from ..utils.system import has_pillow
+        try:
+            from ..utils.system import has_pillow
+            from ..utils.materials.pack_stack import get_configured_pack_stack
+            from ..utils.materials.atlas_generator import AtlasGenerator
+            from ..utils.materials.resource_pack import get_cache_dir
+        except (ImportError, ValueError):
+            from utils.system import has_pillow
+            from utils.materials.pack_stack import get_configured_pack_stack
+            from utils.materials.atlas_generator import AtlasGenerator
+            from utils.materials.resource_pack import get_cache_dir
+
         if not has_pillow():
             self.report({'ERROR'}, "Atlas compilation requires 'Pillow' (PIL) module.")
             return {'CANCELLED'}
-
-        from ..utils.materials.pack_stack import get_configured_pack_stack
-        from ..utils.materials.atlas_generator import AtlasGenerator
-        from ..utils.materials.resource_pack import get_cache_dir
 
         stack = get_configured_pack_stack()
         if not stack.packs:

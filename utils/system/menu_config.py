@@ -231,6 +231,23 @@ def load_full_config() -> dict:
     }
 
 
+def normalize_pack_entries_order(entries: list[dict]) -> list[dict]:
+    """Sort pack entries into strict tiers: RESOURCE_PACK (0), MOD_JAR (1), VANILLA (2), preserving relative order within tiers."""
+    if not entries:
+        return []
+
+    def tier_key(item):
+        pt = item.get("pack_type", "RESOURCE_PACK") if isinstance(item, dict) else "RESOURCE_PACK"
+        if pt == "RESOURCE_PACK":
+            return 0
+        elif pt == "MOD_JAR":
+            return 1
+        else:
+            return 2
+
+    return sorted(entries, key=tier_key)
+
+
 def save_full_config(
     views_data: Optional[dict] = None,
     pack_entries: Optional[list[dict]] = None,
@@ -244,7 +261,7 @@ def save_full_config(
         if views_data is not None:
             full_data["views"] = _normalize_views_data(views_data)
         if pack_entries is not None:
-            full_data["resource_packs"] = list(pack_entries)
+            full_data["resource_packs"] = normalize_pack_entries_order(list(pack_entries))
         if material_settings is not None:
             full_data["material_settings"] = dict(material_settings)
         with open(filepath, "w", encoding="utf-8") as f:
@@ -264,7 +281,8 @@ def load_pack_stack_config() -> list[dict]:
     """Load configured resource pack / base JAR stack list from user JSON config."""
     full_data = load_full_config()
     packs = full_data.get("resource_packs", [])
-    return list(packs) if isinstance(packs, list) else []
+    raw_list = list(packs) if isinstance(packs, list) else []
+    return normalize_pack_entries_order(raw_list)
 
 
 def save_pack_stack_config(pack_entries: list[dict]) -> bool:
