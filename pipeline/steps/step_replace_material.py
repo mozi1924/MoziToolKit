@@ -321,6 +321,7 @@ def name_replaced_material(mat: bpy.types.Material, texture_info: dict, pack: Zi
     texture_name = texture_info["texture_name"]
     full_hash = pack.pack_hash
     mat.name = f"mtk:{namespace}:{texture_name}:{full_hash[:12]}"
+    mat.use_fake_user = False
     mat["mtk:source_namespace"] = namespace
     mat["mtk:source_texture"] = texture_name
     mat["mtk:material_id"] = f"{namespace}:{texture_name}"

@@ -274,6 +274,7 @@ def rebuild_material(
         return False
 
     mat.use_nodes = True
+    mat.use_fake_user = False
     set_material_displacement_method(mat, "BOTH")
     nt = mat.node_tree
     nt.nodes.clear()
@@ -440,6 +441,23 @@ def rebuild_material(
             shared_uv_node=shared_uv_node,
         )
 
+    mat.use_fake_user = False
+
+    # Ensure Albedo image texture node is active and selected for Solid Viewport mode
+    albedo_node = next(
+        (
+            n for n in nt.nodes
+            if n.bl_idname == "ShaderNodeTexImage"
+            and n.name in ("Tex Static (Albedo)", "Tex Current (Albedo)")
+        ),
+        None,
+    )
+    if albedo_node:
+        for n in nt.nodes:
+            n.select = False
+        nt.nodes.active = albedo_node
+        albedo_node.select = True
+
     return True
 
 
@@ -548,6 +566,7 @@ def repair_material_nodes(
 
     # In-place repair
     mat.use_nodes = True
+    mat.use_fake_user = False
     set_material_displacement_method(mat, "BOTH")
     nt = mat.node_tree
     nodes = nt.nodes
@@ -685,5 +704,22 @@ def repair_material_nodes(
                 links.new(blend_node.outputs["Color"], decoder_node.inputs[col_socket])
             if alpha_socket in decoder_node.inputs and not decoder_node.inputs[alpha_socket].is_linked:
                 links.new(blend_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+
+    mat.use_fake_user = False
+
+    # Ensure Albedo image texture node is active and selected for Solid Viewport mode
+    albedo_node = next(
+        (
+            n for n in nodes
+            if n.bl_idname == "ShaderNodeTexImage"
+            and ("Albedo" in n.name or "albedo" in n.name.lower())
+        ),
+        None,
+    )
+    if albedo_node:
+        for n in nodes:
+            n.select = False
+        nodes.active = albedo_node
+        albedo_node.select = True
 
     return True
