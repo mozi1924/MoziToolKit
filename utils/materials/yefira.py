@@ -663,7 +663,7 @@ def apply_yefira_atlas_materials(
 ) -> bool:
     """Apply Atlas materials and point cloud attributes to a Yefira procedural world object.
 
-    Configures dense material slot indices (0..max_chunk_id), enables fake user,
+    Configures dense material slot indices (0..max_chunk_id),
     updates all Set Material nodes across Geometry Node trees and Material Dispatcher,
     populates directional and dimension point attributes, and signals Yefira to refresh.
     """
@@ -683,7 +683,10 @@ def apply_yefira_atlas_materials(
         chunk_material = yefira_atlas_materials.get(chunk_id)
         if chunk_material is None:
             raise RuntimeError(f"Atlas mapping is missing material chunk {chunk_id}")
-        chunk_material.use_fake_user = True
+        # The mesh slot plus Geometry Nodes Set Material node are real users.
+        # Do not force a fake user: it prevents Blender's normal orphan purge
+        # from reclaiming old Yefira atlas materials and images.
+        chunk_material.use_fake_user = False
         obj.data.materials.append(chunk_material)
 
     # Update modifier Set Material node and nested Material Dispatcher sub-groups

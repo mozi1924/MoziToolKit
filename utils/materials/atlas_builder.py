@@ -333,7 +333,10 @@ def build_atlas_chunk_materials(
             mat = bpy.data.materials.new(name=material_name)
 
         mat.use_nodes = True
-        mat.use_fake_user = True
+        # Yefira's point-cloud material slots and Geometry Nodes dispatcher
+        # both retain this variant.  A fake user would keep obsolete atlas
+        # materials (and their packed images) alive after world replacement.
+        mat.use_fake_user = not bool(uv_attribute)
         set_material_displacement_method(mat, "BOTH")
         mat.node_tree[PROP_ATLAS_MAPPING] = compact_mapping_str
         mat[PROP_ATLAS_MAPPING] = compact_mapping_str

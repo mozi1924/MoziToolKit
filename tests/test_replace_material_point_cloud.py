@@ -577,6 +577,9 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
 
         success = apply_yefira_atlas_materials(obj, yefira_atlas_mats, mapping)
         self.assertTrue(success)
+        self.assertFalse(m0.use_fake_user)
+        self.assertFalse(m1.use_fake_user)
+        self.assertFalse(m2.use_fake_user)
 
         # Check that Yefira_Material_Dispatcher now has 3 Set Material nodes
         disp_set_mats = [n for n in disp_tree.nodes if n.type == 'SET_MATERIAL']
@@ -684,6 +687,5 @@ class TestReplaceMaterialPointCloud(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
-
 
 
