@@ -406,8 +406,51 @@ class TestMoziYefiraIntegration(unittest.TestCase):
         self.assertAlmostEqual(vertices[1, 1], -1.0)
         self.assertAlmostEqual(vertices[1, 2], 1.5)
 
+    def test_precomputed_state_attr_with_wire_json_payload(self):
+        """Test that PrecomputedStateAttr correctly parses Fabric mod JSON wire payload with faces metadata."""
+        import json
+        from MoziToolKit.utils.live_sync.point_cloud import PrecomputedStateAttr
+        from MoziToolKit.utils.live_sync.classifier import BlockTypeEnum
+
+        json_state = json.dumps({
+            "state": "minecraft:piston[extended=false,facing=south]",
+            "type": 0,
+            "opaque": 1,
+            "emissive": 0,
+            "faces": {
+                "east": {"tex": "minecraft:block/piston_side", "rot": 270, "uv": [0.0, 0.0, 1.0, 1.0], "tint": -1},
+                "west": {"tex": "minecraft:block/piston_side", "rot": 90, "uv": [0.0, 0.0, 1.0, 1.0], "tint": -1},
+                "top": {"tex": "minecraft:block/piston_side", "rot": 180, "uv": [0.0, 0.0, 1.0, 1.0], "tint": -1},
+                "bottom": {"tex": "minecraft:block/piston_side", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0], "tint": -1},
+                "south": {"tex": "minecraft:block/piston_top", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0], "tint": -1},
+                "north": {"tex": "minecraft:block/piston_bottom", "rot": 0, "uv": [0.0, 0.0, 1.0, 1.0], "tint": -1},
+            }
+        })
+
+        attr = PrecomputedStateAttr(
+            state_str=json_state,
+            template_indices={},
+            atlas_mapping_dict={},
+            atlas_mapping_textures={},
+            block_face_lut={},
+            block_face_chunk_lut={},
+            block_face_texture_lut={},
+            block_face_tint_lut={},
+            block_face_anim_timing_lut={},
+            block_face_anim_frame_size_lut={},
+        )
+
+        self.assertEqual(attr.name, "piston")
+        self.assertEqual(attr.block_type, BlockTypeEnum.CUBE)
+        self.assertEqual(attr.is_opaque, 1)
+        self.assertEqual(attr.is_emissive, 0)
+        # Verify per-face UV rotations: FACES order is ("east", "west", "top", "bottom", "south", "north")
+        # east=270, west=90, top=180, bottom=0, south=0, north=0
+        self.assertEqual(attr.face_uv_rot, (270.0, 90.0, 180.0, 0.0, 0.0, 0.0))
+
 
 if __name__ == "__main__":
     unittest.main(argv=["dummy"])
+
 
 

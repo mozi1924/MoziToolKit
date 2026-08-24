@@ -145,7 +145,27 @@ class PrecomputedStateAttr:
         block_face_uv_bounds_lut: Optional[dict[str, Any]] = None,
         tile_size: float = DEFAULT_TILE_SIZE,
     ):
-        parsed: ParsedBlock = parse_and_classify(state_str)
+        import json
+        json_obj = None
+        if state_str and state_str.startswith("{") and state_str.endswith("}"):
+            try:
+                json_obj = json.loads(state_str)
+            except Exception:
+                json_obj = None
+
+        if json_obj and isinstance(json_obj, dict):
+            raw_state = json_obj.get("state", state_str)
+            parsed: ParsedBlock = parse_and_classify(raw_state)
+            if "type" in json_obj:
+                parsed.block_type = int(json_obj["type"])
+            if "opaque" in json_obj:
+                parsed.is_opaque = int(json_obj["opaque"])
+            if "emissive" in json_obj:
+                parsed.is_emissive = int(json_obj["emissive"])
+            if "emissive_level" in json_obj:
+                parsed.emissive_level = float(json_obj["emissive_level"])
+        else:
+            parsed: ParsedBlock = parse_and_classify(state_str)
 
         self.full_state = parsed.full_state
         self.name = parsed.name
@@ -164,7 +184,8 @@ class PrecomputedStateAttr:
             mat_id = 0
         self.mat_id = mat_id
 
-        baked_model = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state)
+        json_faces = json_obj.get("faces") if (json_obj and isinstance(json_obj, dict) and isinstance(json_obj.get("faces"), dict)) else None
+        baked_model = _GLOBAL_STATE_BAKER.bake_block_state(parsed.full_state) if not json_faces else None
 
         tiles = []
         chunks = []
@@ -176,11 +197,18 @@ class PrecomputedStateAttr:
         uv_bounds_list = []
 
         for face_idx, face_name in enumerate(FACES):
-            baked_face = baked_model.faces[face_idx]
-            tex_name = baked_face.texture
-            uv_r = float(baked_face.uv_rot)
-            uv_b = tuple(baked_face.uv_bounds)
-            tint_idx = int(baked_face.tint_index)
+            if json_faces and face_name in json_faces:
+                face_info = json_faces[face_name]
+                tex_name = face_info.get("tex")
+                uv_r = float(face_info.get("rot", 0))
+                uv_b = tuple(face_info.get("uv", [0.0, 0.0, 1.0, 1.0]))
+                tint_idx = int(face_info.get("tint", -1))
+            else:
+                baked_face = baked_model.faces[face_idx]
+                tex_name = baked_face.texture
+                uv_r = float(baked_face.uv_rot)
+                uv_b = tuple(baked_face.uv_bounds)
+                tint_idx = int(baked_face.tint_index)
 
             loc = None
             if atlas_mapping_textures:
