@@ -17,7 +17,8 @@
    - 2.3 双材质构建体系 (Atlas Mode vs Standalone Mode)
      - 2.3.1 图集预编译与视口替换生命周期解耦 (Decoupled Precompilation)
      - 2.3.2 图集零透明占位与融合装箱契约 (Zero-Placeholder Packing Contract)
-     - 2.3.3 独立模式 (Standalone Mode)
+     - 2.3.3 独立模式：全栈融合单方块资产库 (Standalone Mode: Stack-Synthesized Asset Library)
+     - 2.3.4 双模式核心特性与选型对照
    - 2.4 图集数学模型与着色器防溢色 (Atlas UV Tiling & Anti-Bleed Math)
    - 2.5 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
    - 2.6 逐帧动态动画材质驱动 (Animated Textures & MCMETA Driver)
@@ -241,9 +242,50 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
    - 图集以 `Chunk` 为单位进行空间划分。只有当某一个 Chunk 内所包含的方块中至少有一个方块具有 `_n` 或 `_s` 伴生贴图时，系统才会为该 Chunk 分配并保存对应的 `normal` / `specular` 伴生大图；
    - 对于纯原版方块构成的无 PBR Chunk，**严禁生成无意义的全尺寸法线/高光空白大图**，从而大幅节省显存占用与磁盘缓存空间。
 
-#### 2.3.3 独立模式 (Standalone Mode)
-- **设计目标**：保留最纯粹的节点树可编辑性。每个方块拥有独立的 Principled BSDF 节点树，方便艺术家进行单独微调、添加特殊置换或连接复杂着色器。
-- **技术实现**：配合 `standalone_aligner.py` 对带有多帧动画或非标准 UV 的面进行局部 UV 自动对齐重构。
+#### 2.3.3 独立模式：全栈融合单方块资产库 (Standalone Mode: Stack-Synthesized Asset Library)
+- **核心设计定位**：
+  - 独立模式并非在视口材质替换时临时去零散材质包中现场提取、动态重构；
+  - 它的本质是**将多层材质栈（`User Resource Packs` + `Mod JARs` + `Vanilla JAR`）预先融合成一套虚拟/物理的“全量单方块独立资产库”**。
+  - 每个方块在 Blender 中分配独立的 Principled BSDF 材质节点树，为艺术家保留最高自由度的着色器编辑能力（例如为单一方块添加 Cycles 真实置换、连接自定义噪波或着色器分支）。
+
+- **多层覆盖与资产库合成机制 (Multi-Layer Direct Override & Synthesis)**：
+  预编译独立资产库时，系统严格执行自顶向下的覆盖契约：
+  1. **基底初始化**：以底层原版客户端 JAR（Bottom Layer）作为全量基底，初始化所有标准方块/物品的基础 Albedo 贴图与模型定义。
+  2. **顶层直接覆盖（Top-Layer Direct Overwrite）**：
+     - 若顶层包（如 Layer 0 局部矿物包）修改了某些方块的漫反射（Albedo），在合成资产库中直接以顶层贴图物理替换该方块的 Albedo 贴图；
+     - 若顶层包（如 Layer 0 发光矿石包）仅提供了 `_s` 发光通道，中层包（Layer 1）提供了 `_n` 法线通道，则两者的 PBR 伴生文件与底层原版的 Albedo 贴图直接汇聚并列在资产库该方块的专属条目中；
+     - 未被顶层包修改的方块（如石头、泥土、木板等），完整保留底层原版贴图。
+  3. **输出标准化资产库结构**：
+     预编译完成后，持久化缓存目录（`DATAFILES/MoziToolKit/cache/baked_stack/<stack_hash>/standalone/textures/`）中将包含一套**已完全融合覆盖、各通道物理就绪且对齐好的标准方块贴图库**。
+
+- **预编译阶段全量就绪 (Precompilation Readiness)**：
+  为了实现与图集模式相同的秒级响应，所有耗时的数据准备工作均在**预编译烘焙阶段（Precompilation Phase）**提前就绪：
+  1. **全量解包与索引构建**：完成所有 ZIP/JAR 材质包的安全解压，并完成通道级覆盖与多命名空间全局索引建立。
+  2. **多帧动画通道对齐与帧同步预烘焙（Animated Channel Alignment Pre-Bake）**：
+     - 在多材质包叠加场景下，可能底层方块漫反射（Albedo）是多帧动态长条图（如 32 帧海晶灯、岩浆），而顶层发光包提供的 `_s` 发光通道是单帧静态图，或两者的帧率/帧序列不一致。
+     - 预编译引擎调用 [`standalone_aligner.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/materials/standalone_aligner.py)，在预编译期将静态或短帧通道按纵向对齐平铺拓展至基准动画的相同尺寸与总帧数，并统一 `.mcmeta` 动画元数据，输出通道高度与帧序列严格同步的伴生条带图。
+  3. **UV 对齐元数据与第一帧几何重构（UV Scaling & Frame Alignment Metadata）**：
+     - 针对多帧动态方块（高宽比 $H > W$），预编译阶段预先计算各方块在单帧展示下的 UV 缩放因子 $S_v = \frac{\text{FrameHeight}}{\text{TotalHeight}}$ 与初始帧偏移，固化为独立材质元数据映射表（`standalone_mapping.json`）。
+  4. **独立材质预编译缓存持久化（Standalone Baked Cache）**：
+     - 融合覆盖后的独立方块贴图与伴生 PBR 贴图统一归档于持久化缓存目录（`DATAFILES/MoziToolKit/cache/baked_stack/<stack_hash>/standalone/`）。
+
+- **视口替换阶段秒级赋予（Instant Viewport Replacement）**：
+  - 当用户在视口中点击“替换材质（独立模式）”时：
+    1. 算子直接从预编译缓存中检索对应方块已完成覆盖融合的独立贴图与元数据；
+    2. 为各个方块创建独立材质（或复用已有材质），配置 Principled BSDF 节点树（挂载融合后的 Albedo、Normal、Specular 贴图）与原生时间轴帧驱动节点组；
+    3. 根据预编译元数据直接对网格面 Loop UV 进行局部对齐与首帧归一化；
+    4. **全过程零磁盘解包、零动态通道平铺、零图像重采样**，实现极致视口性能。
+
+#### 2.3.4 双模式核心特性与选型对照
+
+| 维度 | 图集模式 (Atlas Mode) | 独立模式 (Standalone Mode) |
+| :--- | :--- | :--- |
+| **材质球数量** | 极少（1 ~ 少量 Chunk 材质） | 每个方块独立（1 方块 = 1 材质） |
+| **Draw Call 开销** | 极致优化，适合大规模地形与海量实例 | 较高，视口材质槽位多 |
+| **可编辑性** | 统一图集 Shader，不建议手动微调单一贴图 | 极高，每个方块节点树可随意断开/串联/加置换 |
+| **UV 组织形式** | 全局重映射至图集瓦片坐标 $(U_{min}, V_{min}, U_{size}, V_{size})$ | 局部 UV 保留 `[0, 1]` 空间，多帧方块按帧高缩放 |
+| **动画驱动机制** | 图集 UV Decoder 节点组计算 V 轴偏移 | 独立材质节点树计算 V 轴帧偏移 |
+| **预编译机制** | 预编译输出 Atlas Chunks 与 `atlas_mapping.json` | 预编译输出融合贴图库、对齐伴生图与 `standalone_mapping.json` |
 
 ---
 
@@ -292,6 +334,7 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 > 5. **伴生贴图非遮蔽不变量 (PBR Companion Non-Masking Invariant)**：带 `_n`/`_N`、`_s`/`_S` 后缀的文件必须严格绑定至对应基底方块的伴生层，严禁作为独立的漫反射实体建立条目，防止遮蔽下层真实的 Albedo 贴图。
 > 6. **图集零透明占位不变量 (Zero-Placeholder Atlas Invariant)**：图集装箱必须基于合成后的 Composite Map 紧凑排布，严禁为局部材质包未修改的方块分配透明占位图块。
 > 7. **预编译与替换解耦不变量 (Decoupled Precompilation & Instant Binding)**：所有昂贵的多包解析与图像装箱操作必须在预编译阶段完成并持久化，材质替换算子执行期间严禁进行重复的磁盘扫描与图像合成。
+> 8. **独立模式预编译就绪与帧同步不变量 (Standalone Precompilation & Frame Sync Invariant)**：独立模式的通道对齐（静态通道纵向平铺至动画总帧数）、UV 缩放元数据计算与全栈贴图融合必须在预编译阶段固化至缓存目录，视口替换时严禁现场执行图像动态拓展与对齐重构。
 
 ---
 
