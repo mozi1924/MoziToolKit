@@ -325,6 +325,16 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertNotEqual(old_crc, new_crc)
         self.assertEqual(self.storage.validate_manifest([(0, 0, 0, new_crc)]), [])
 
+    def test_storage_ignores_noop_delta(self):
+        """Repeated server deltas must not schedule an expensive world rebuild."""
+        palette = ["minecraft:air", "minecraft:stone"]
+        self.storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, [1] * 4096)
+
+        self.assertFalse(
+            self.storage.apply_delta_update(0, 0, 0, [(0, 0, 0, "minecraft:stone")])
+        )
+        self.assertNotIn((0, 0, 0), self.storage._dirty_sections)
+
     def test_storage_apply_section_snapshot(self):
         """Verify applying a repaired section snapshot replaces blocks and refreshes CRC."""
         palette = ["minecraft:air", "minecraft:stone"]

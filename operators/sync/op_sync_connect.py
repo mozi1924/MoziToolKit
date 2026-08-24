@@ -36,10 +36,15 @@ logger = logging.getLogger("MoziToolKit.LiveSync")
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
 _rebuild_timer_registered: bool = False
-REBUILD_DEBOUNCE_SECONDS: float = 0.05
+# Rebuilding a large Yefira point cloud writes dozens of Geometry Nodes
+# attributes.  50 ms allowed up to 20 full rebuilds/sec and starved Blender's
+# event loop during block bursts.  Deltas are still accumulated immediately;
+# this only caps expensive Blender-side uploads at a usable rate.
+REBUILD_DEBOUNCE_SECONDS: float = 0.15
+_pending_force_gn_setup: bool = False
 
 _cached_atlas_params: Optional[dict] = None
-_cached_mat_id: Optional[int] = None
+_cached_mat_signature: Optional[tuple] = None
 
 
 def get_active_sync_props(context: Optional[bpy.types.Context] = None):
@@ -50,20 +55,32 @@ def get_active_sync_props(context: Optional[bpy.types.Context] = None):
 
 
 def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
-    """Retrieve or compute cached atlas parameters to avoid repeatedly parsing JSON on every delta."""
-    global _cached_atlas_params, _cached_mat_id
-    current_mat_id = id(mat) if mat else 0
-    if _cached_atlas_params is None or _cached_mat_id != current_mat_id:
-        _cached_mat_id = current_mat_id
+    """Retrieve atlas parameters, invalidating when a material is edited in place."""
+    global _cached_atlas_params, _cached_mat_signature
+    if mat:
+        # Replacement can update custom properties on the same Blender ID.
+        # Object identity alone therefore leaves live sync using stale atlas
+        # tables until Blender restarts.  The JSON is read anyway by the
+        # parser on a miss; using it in the signature makes that update safe.
+        mapping = mat.get("mtk:atlas_mapping", mat.get("mtk_atlas_mapping", ""))
+        current_signature = (
+            mat.as_pointer() if hasattr(mat, "as_pointer") else id(mat),
+            mapping,
+            mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")),
+        )
+    else:
+        current_signature = (0, "", "")
+    if _cached_atlas_params is None or _cached_mat_signature != current_signature:
+        _cached_mat_signature = current_signature
         _cached_atlas_params = extract_atlas_parameters(mat)
     return _cached_atlas_params
 
 
 def clear_sync_caches() -> None:
     """Invalidate atlas parameter cache and state baker attribute cache on material or world reset."""
-    global _cached_atlas_params, _cached_mat_id
+    global _cached_atlas_params, _cached_mat_signature
     _cached_atlas_params = None
-    _cached_mat_id = None
+    _cached_mat_signature = None
     clear_state_cache()
 
 
@@ -115,17 +132,20 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
 
 def schedule_point_cloud_update(force_gn_setup: bool = False) -> None:
     """Coalesce live updates into a single main-thread point-cloud rebuild."""
-    global _rebuild_timer_registered
+    global _rebuild_timer_registered, _pending_force_gn_setup
+    _pending_force_gn_setup = _pending_force_gn_setup or force_gn_setup
     if _rebuild_timer_registered:
         return
 
     _rebuild_timer_registered = True
 
     def flush():
-        global _rebuild_timer_registered
+        global _rebuild_timer_registered, _pending_force_gn_setup
         try:
             if voxel_storage.size_x and voxel_storage.size_y and voxel_storage.size_z:
-                trigger_point_cloud_update(bpy.context, force_gn_setup=force_gn_setup)
+                force_setup = _pending_force_gn_setup
+                _pending_force_gn_setup = False
+                trigger_point_cloud_update(bpy.context, force_gn_setup=force_setup)
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type in ('VIEW_3D', 'PROPERTIES'):
@@ -330,7 +350,7 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
 
 def cleanup_sync_state() -> None:
     """Clean up all live sync module globals, background threads, timers, and storage."""
-    global _client_thread, _last_seq_id, _rebuild_timer_registered, _cached_atlas_params, _cached_mat_id
+    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_force_gn_setup, _cached_atlas_params, _cached_mat_signature
     if _client_thread:
         try:
             _client_thread.stop()
@@ -340,8 +360,9 @@ def cleanup_sync_state() -> None:
 
     _last_seq_id = 0
     _rebuild_timer_registered = False
+    _pending_force_gn_setup = False
     _cached_atlas_params = None
-    _cached_mat_id = None
+    _cached_mat_signature = None
 
     voxel_storage.clear()
     clear_state_cache()

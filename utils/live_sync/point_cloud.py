@@ -37,6 +37,11 @@ from ..mc_baker import (
 
 _STATE_ATTR_CACHE: dict[str, Any] = {}
 _LAST_ATLAS_FINGERPRINT: Optional[tuple] = None
+# Blender does not expose foreach_set for STRING attributes.  Reassigning two
+# string attributes point-by-point dominates a delta update on large worlds,
+# even when a single block changed.  Keep the stable point layout and last
+# states per mesh so subsequent updates only touch changed strings.
+_POINT_STRING_ATTR_CACHE: dict[int, tuple[tuple[tuple[int, int, int], ...], list[str]]] = {}
 
 
 def refresh_baker_sources() -> None:
@@ -48,6 +53,7 @@ def clear_state_cache() -> None:
     """Clear precomputed blockstate attribute cache and shared baker cache."""
     global _LAST_ATLAS_FINGERPRINT
     _STATE_ATTR_CACHE.clear()
+    _POINT_STRING_ATTR_CACHE.clear()
     _LAST_ATLAS_FINGERPRINT = None
     clear_shared_baker_cache()
 
@@ -549,9 +555,7 @@ def update_world_point_cloud(
     _write_numpy_attribute(mesh, MTK_BIOME_TINT_DATA, 'FLOAT_COLOR', 'POINT', tint_datas)
 
     block_states = [p_full_states[idx] for idx in state_indices]
-    block_keys = [block_key(k[0], k[1], k[2]) for k in keys]
-    _write_string_attribute(mesh, BLOCK_STATE, block_states)
-    _write_string_attribute(mesh, BLOCK_KEY, block_keys)
+    _write_point_string_attributes(mesh, keys, block_states)
 
     return PointCloudBuildResult(
         world_obj=obj,
@@ -626,3 +630,39 @@ def _write_string_attribute(mesh: bpy.types.Mesh, name: str, strings: list[str |
     for i, s in enumerate(strings):
         attr_data[i].value = s if isinstance(s, bytes) else s.encode('utf-8')
 
+
+def _write_point_string_attributes(
+    mesh: bpy.types.Mesh,
+    keys: list[tuple[int, int, int]],
+    block_states: list[str],
+) -> None:
+    """Write point strings incrementally when a delta preserves point order."""
+    mesh_id = mesh.as_pointer() if hasattr(mesh, "as_pointer") else id(mesh)
+    key_layout = tuple(keys)
+    cached = _POINT_STRING_ATTR_CACHE.get(mesh_id)
+    state_attr = mesh.attributes.get(BLOCK_STATE)
+    layout_is_stable = (
+        cached is not None
+        and cached[0] == key_layout
+        and state_attr is not None
+        and state_attr.data_type == 'STRING'
+        and state_attr.domain == 'POINT'
+        and len(state_attr.data) == len(block_states)
+    )
+
+    if not layout_is_stable:
+        _write_string_attribute(mesh, BLOCK_STATE, block_states)
+        _write_string_attribute(mesh, BLOCK_KEY, [block_key(*key) for key in keys])
+        # Keep the cache bounded when users create/rebuild several worlds in a
+        # single Blender session.  Blender IDs are stable for a live mesh.
+        if len(_POINT_STRING_ATTR_CACHE) >= 8:
+            _POINT_STRING_ATTR_CACHE.pop(next(iter(_POINT_STRING_ATTR_CACHE)))
+        _POINT_STRING_ATTR_CACHE[mesh_id] = (key_layout, list(block_states))
+        return
+
+    previous_states = cached[1]
+    attr_data = state_attr.data
+    for index, state in enumerate(block_states):
+        if previous_states[index] != state:
+            attr_data[index].value = state.encode('utf-8')
+            previous_states[index] = state
