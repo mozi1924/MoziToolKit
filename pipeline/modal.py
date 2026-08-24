@@ -107,11 +107,8 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                         on_finish(item, ctx)
                     for level, msg in ctx.reports:
                         self.report({level}, msg)
-                    if item.is_success and hasattr(bpy.ops, "ed") and hasattr(bpy.ops.ed, "undo_push"):
-                        try:
-                            bpy.ops.ed.undo_push(message=f"Mozi: {title}")
-                        except Exception:
-                            pass
+                    if item.is_success:
+                        self._push_undo_if_safe(context, ctx, title)
                     return {"FINISHED"} if item.is_success else {"CANCELLED"}
 
             except StopIteration:
@@ -121,11 +118,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                     on_finish(res, ctx)
                 for level, msg in ctx.reports:
                     self.report({level}, msg)
-                if hasattr(bpy.ops, "ed") and hasattr(bpy.ops.ed, "undo_push"):
-                    try:
-                        bpy.ops.ed.undo_push(message=f"Mozi: {title}")
-                    except Exception:
-                        pass
+                self._push_undo_if_safe(context, ctx, title)
                 return {"FINISHED"}
 
             except Exception as e:
@@ -175,6 +168,36 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
         if hasattr(context, "workspace") and context.workspace:
             try:
                 context.workspace.status_text_set(None)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _push_undo_if_safe(context, ctx: PipelineContext, title: str) -> None:
+        """Create an undo checkpoint unless it would snapshot a huge Yefira world.
+
+        Blender serializes all mesh attributes for ``ed.undo_push``.  A Yefira
+        world has many point attributes, so this synchronous snapshot happens
+        *after* the pipeline reports 100% and makes macOS show the spinning
+        wait cursor.  The replacement itself is already complete at that
+        point; skipping this extra checkpoint keeps Blender responsive.
+        """
+        for obj in ctx.target_objects:
+            if not obj or getattr(obj, "type", None) != "MESH":
+                continue
+            is_yefira = (
+                obj.name == "Yefira_World"
+                or any(
+                    mod.type == "NODES" and "yefira" in mod.name.lower()
+                    for mod in getattr(obj, "modifiers", ())
+                )
+            )
+            if is_yefira:
+                ctx.report("INFO", "Skipped automatic Undo checkpoint for Yefira_World to avoid freezing Blender.")
+                return
+
+        if hasattr(bpy.ops, "ed") and hasattr(bpy.ops.ed, "undo_push"):
+            try:
+                bpy.ops.ed.undo_push(message=f"Mozi: {title}")
             except Exception:
                 pass
 
@@ -236,4 +259,3 @@ def run_pipeline_modal(
         if on_finish:
             on_finish(result, ctx)
         return result, ctx
-

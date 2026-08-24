@@ -17,6 +17,8 @@ logger = logging.getLogger("MoziToolKit.Materials")
 from .constants import (
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_TRANSFORM,
+    PROP_CREATED_BY,
+    PROP_PACK_HASH,
 )
 from pathlib import Path
 from ..mc_baker import (
@@ -596,6 +598,42 @@ def _update_yefira_geometry_node_materials(
             update_node_group(mod.node_group)
 
 
+def _release_replaced_yefira_atlas_resources(
+    old_materials: Iterable[Optional[bpy.types.Material]],
+    current_materials: Iterable[Optional[bpy.types.Material]],
+) -> None:
+    """Release unused UVMap atlas data blocks left by a prior Yefira replacement.
+
+    Atlas materials deliberately use fake users while assigned.  Without
+    explicitly releasing superseded UVMap variants, replacing a world with
+    several packs accumulates packed 4K atlas images for the entire Blender
+    session.  That looks like a memory leak and becomes severe after a few
+    test iterations.
+    """
+    current_ids = {
+        mat.as_pointer() if hasattr(mat, "as_pointer") else id(mat)
+        for mat in current_materials if mat
+    }
+    for mat in old_materials:
+        mat_id = mat.as_pointer() if mat and hasattr(mat, "as_pointer") else id(mat)
+        if (
+            not mat
+            or mat_id in current_ids
+            or mat.get(PROP_CREATED_BY) != "MoziToolKit"
+            or mat.get("mtk:atlas_uv_source", "") != "UVMap"
+        ):
+            continue
+        mat.use_fake_user = False
+        if mat.users == 0:
+            bpy.data.materials.remove(mat)
+
+    # Images are shared by materials, so remove only Mozi-managed images with
+    # no remaining users.  This keeps images used by ordinary mesh materials.
+    for image in list(bpy.data.images):
+        if image.users == 0 and image.get(PROP_PACK_HASH):
+            bpy.data.images.remove(image)
+
+
 def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
     """Notify Geometry Nodes world engine to refresh point cloud modifier and node tree."""
     if obj and is_yefira_object(obj):
@@ -638,6 +676,7 @@ def apply_yefira_atlas_materials(
 
     # Chunk IDs are the Geometry Nodes material indices. Give the point-cloud
     # a dense, deterministic slot table matching chunk IDs 0..max_chunk_id.
+    old_materials = list(obj.data.materials)
     obj.data.materials.clear()
     max_chunk_id = max(yefira_atlas_materials.keys())
     for chunk_id in range(max_chunk_id + 1):
@@ -649,6 +688,7 @@ def apply_yefira_atlas_materials(
 
     # Update modifier Set Material node and nested Material Dispatcher sub-groups
     _update_yefira_geometry_node_materials(obj, yefira_atlas_materials)
+    _release_replaced_yefira_atlas_resources(old_materials, yefira_atlas_materials.values())
 
     # Configure mesh point-cloud attributes
     chunk_0 = (chunks_by_id or {}).get(0, {})
@@ -661,7 +701,12 @@ def apply_yefira_atlas_materials(
         chunk_1=chunk_1,
     )
 
-    # Signal Yefira addon operators / nodes setup
-    notify_yefira_update(obj)
+    # The dispatcher above already updates an existing world tree.  Re-running
+    # full world-tree setup here dirties the entire Geometry Nodes graph a
+    # second time and often evaluates only after the progress UI reached 100%.
+    # Setup is only needed for an imported/legacy object without the modifier.
+    world_modifier = obj.modifiers.get(WORLD_MODIFIER_NAME)
+    if not world_modifier or not world_modifier.node_group:
+        notify_yefira_update(obj)
 
     return True
