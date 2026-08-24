@@ -125,6 +125,28 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
         sync_refresh_baker()
         yefira_refresh_baker()
 
+    def test_template_indices_follow_collection_info_instance_order(self):
+        """Template indices must not depend on collection insertion order.
+
+        Geometry Nodes sorts direct Collection Info children by name before
+        Pick Instance consumes Instance Index.  Extracted JSON models are
+        appended to the collection, so using ``collection.objects`` here
+        would make a point choose a different block's mesh.
+        """
+        from utils.live_sync.template_catalog import get_template_index_map
+
+        col = bpy.data.collections.new("Test_Template_Instance_Order")
+        bpy.context.scene.collection.children.link(col)
+        for name in ("z_model", "a_model", "m_model"):
+            mesh = bpy.data.meshes.new(f"{name}_mesh")
+            obj = bpy.data.objects.new(name, mesh)
+            col.objects.link(obj)
+
+        indices = get_template_index_map(col)
+        self.assertEqual(indices["a_model"], 0)
+        self.assertEqual(indices["m_model"], 1)
+        self.assertEqual(indices["z_model"], 2)
+
     def test_point_cloud_directional_uv_rotations_not_overwritten(self):
         """Verify oak_log[axis=y] maintains 0.0 UV rotation and is not corrupted by atlas static LUT."""
         from utils.live_sync import VoxelStorage, update_world_point_cloud
@@ -197,4 +219,3 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

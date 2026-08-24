@@ -400,7 +400,11 @@ def update_world_point_cloud(
                     continue
                 template = ensure_baked_block_template(template_col, state, baked)
                 if template is not None:
-                    state_template_indices[state] = list(template_col.objects).index(template)
+                    # GeometryNodeCollectionInfo orders its direct children by
+                    # name, whereas Collection.objects is insertion ordered.
+                    # Always use the shared resolver so the Point Cloud's
+                    # Instance Index picks this exact extracted state model.
+                    state_template_indices[state] = get_template_index_map(template_col)[template.name]
             except Exception:
                 logger.debug("Could not extract block template for %s", state, exc_info=True)
 
