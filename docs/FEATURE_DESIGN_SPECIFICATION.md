@@ -13,6 +13,8 @@
      - 2.1.2 通道级细粒度独立级联回退 (Per-Channel Cascading Fallback)
      - 2.1.3 伴生贴图识别与防误判契约 (Companion Suffix Indexing Contract)
      - 2.1.4 物理输入形态与双重缓存架构 (Extraction & Bake Cache)
+     - 2.1.5 原版资源路径覆盖语义与缺失资源规则 (Vanilla-Style Resolution Contract)
+     - 2.1.6 缓存身份、完整性与原子发布 (Cache Validity & Atomic Publication)
    - 2.2 多导入器自适应匹配引擎 (Importer Adapters)
    - 2.3 双材质构建体系 (Atlas Mode vs Standalone Mode)
      - 2.3.1 图集预编译与视口替换生命周期解耦 (Decoupled Precompilation)
@@ -23,6 +25,7 @@
    - 2.5 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
    - 2.6 逐帧动态动画材质驱动 (Animated Textures & MCMETA Driver)
    - 2.7 材质管线防回归不变量契约
+     - 2.7.1 材质堆栈验收矩阵 (Required Acceptance Matrix)
 3. [模块二：Minecraft 方块模型烘焙引擎 (MC Baker)](#3-模块二minecraft-方块模型烘焙引擎-mc-baker)
    - 3.1 Blockstate 变体与 Multipart 条件组合解析
    - 3.2 Block Model JSON 继承树、变量替换与几何生成
@@ -135,6 +138,8 @@ MoziToolKit 遵循 Minecraft 原生资源包堆叠思想并进行了工程化升
    - Minecraft 官方客户端原版 JAR 包（如 `1.21.jar` / `26.2-Fabric.jar`）。
    - 作为整个渲染系统的 **绝对基底锚点（Fallback Anchor）**，提供全量标准方块/物品的基础漫反射贴图（Albedo）、默认 Model JSON 继承树与 Blockstate 变体定义。
 
+> **与 Minecraft 原版的关系**：Minecraft 原版本质上只有一条“有序资源提供者列表”，并不认识本项目的三种包类型。`RESOURCE_PACK → MOD_JAR → VANILLA` 是 MoziToolKit 为保证用户包、模组资源和原版基底稳定共存而定义的**排序策略**，不是另一套覆盖语义。无论资源来自哪一种类型，解析时都必须遵循同一条自顶向下的资源路径查找规则；同层内允许用户调整顺序，跨层排序由系统保护，不得由解析器根据包类型改变单个资源的优先级。
+
 ```mermaid
 graph TD
     subgraph PackStack [资源包优先级栈 (Top to Bottom)]
@@ -172,12 +177,17 @@ graph TD
   1. **`albedo`**：基础漫反射色彩贴图（如 `stone.png`、`diamond_ore.png`）。
   2. **`normal`**：法线贴图（匹配 `_n.png` 或大写 `_N.png` 后缀）。
   3. **`specular`**：LabPBR 1.3 镜面/粗糙度/金属性/发光贴图（匹配 `_s.png` 或大写 `_S.png` 后缀）。
-  4. **`mcmeta`**：逐帧动态动画与插值配置（`.png.mcmeta`）。
+  4. **`mcmeta`**：通道文件各自可携带的逐帧动态动画与插值配置（`.png.mcmeta`）。
 - **级联命中算法（First-Hit Resolution）**：
   对于任意纹理标识 `(namespace, texture_key)`，解析器自顶向下遍历材质栈，各通道分别取自 **物理提供该通道文件的最顶层资源包**：
   - 若最顶层发光包只提供了 `diamond_ore_s.png`，解析器直接捕获其 `specular` 通道；
   - 接着继续向下层穿透，若第二层 PBR 材质包提供了 `diamond_ore.png` 与 `diamond_ore_n.png`，则分别捕获其 `albedo` 与 `normal`；
   - 若某个方块（如 `bedrock`）在上层所有资源包中均无定制贴图，则 `albedo` 穿透命中底层的原版 JAR，而 `normal` 与 `specular` 标记为 `None`，并在着色器中安全回退为默认平坦法线 `(128, 128, 255)` 与标准粗糙度，**绝对不会在对应位置创建空白材质或黑色空洞**。
+
+- **动画元数据权威规则（Animation Authority）**：
+  - 当 Albedo 存在时，**Albedo 的 `.png.mcmeta` 是该材质动画帧序列、帧时长与插值的唯一权威来源**；Normal、Specular、Overlay 的图像必须对齐到此时间轴。
+  - 伴生通道的 `.mcmeta` 可以被索引与保留，供对齐/诊断使用，但不得单独驱动与 Albedo 不同的 shader 时间轴。
+  - 若 Albedo 没有动画元数据，则材质按静态处理；仅存在动画 PBR 伴生图、但不存在动画 Albedo 的情况不得创建独立动画调度器。
 
 #### 2.1.3 伴生贴图识别与防误判契约 (Companion Suffix Indexing Contract)
 在 [`resource_pack.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/materials/resource_pack.py) 的 `ZipResourcePack._build_index()` 中：
@@ -192,6 +202,28 @@ graph TD
 - **解包与缓存生命周期**：
   - **临时解压缓存（OS Temp）**：ZIP/JAR 归档解压至系统临时目录（`bpy.app.tempdir/MoziToolKit/extracted/<pack_hash>/`），内置 Zip-Slip 路径穿越防御与 Zip-Bomb 压缩比安全检测，由 `pack.mcmeta` 或文件内容哈希校验，避免重复解压。
   - **持久化烘焙缓存（Persistent Cache）**：材质栈预编译产出的图集贴图与 `atlas_mapping.json` 存储于持久化数据目录（`DATAFILES/MoziToolKit/cache/baked_stack/<stack_hash>/`）。当材质栈结构或顺序未变动时，场景替换可直接复用该缓存。
+
+#### 2.1.5 原版资源路径覆盖语义与缺失资源规则 (Vanilla-Style Resolution Contract)
+**唯一的覆盖单位是完整资源路径，而不是“一个方块的一整套贴图”。** 对同一命名空间中的下列路径，必须分别执行从栈顶到栈底的 First-Hit 查找：
+
+```text
+assets/<namespace>/textures/block/diamond_ore.png    -> Albedo
+assets/<namespace>/textures/block/diamond_ore_n.png  -> Normal
+assets/<namespace>/textures/block/diamond_ore_s.png  -> Specular / LabPBR
+```
+
+这正是 Minecraft 原版资源覆盖的模型：上层只有在**实际提供同一资源路径的文件**时才覆盖下层；缺少该文件等价于“不覆盖”，而不是透明、删除或创建占位资源。PBR 只是将这一原则扩展到额外的伴生资源路径。
+
+- **资源路径与大小写**：命名空间和常规资源路径遵循 Minecraft 的小写规范。仅 PBR 伴生后缀 `_n/_N`、`_s/_S` 按大小写不敏感识别；实现不得把其它大小写差异悄然当作同一资源，除非另有明确的兼容性规则与测试。
+- **Albedo 是可渲染条目的前提**：只要任何层提供了 Albedo，才创建该纹理的 Atlas tile 或 Standalone material；Normal/Specular 可独立来自更高或更低层。
+- **全栈均无 Albedo**：如果某路径仅存在 `_n`、`_s` 或其 `.mcmeta`，但所有层都不存在对应 Albedo，必须完全跳过该条目：不创建图集 tile、不创建独立材质、不创建透明/黑色占位图。
+- **PBR 缺失不是图像缺失**：若已解析 Albedo 而 Normal/Specular 缺失，材质必须正常渲染。默认平坦法线、无发光/标准参数只能作为 shader 输入默认值存在，绝不能作为一张全尺寸 PBR 占位图写入磁盘或载入 Blender。
+
+#### 2.1.6 缓存身份、完整性与原子发布 (Cache Validity & Atomic Publication)
+- **缓存身份（Cache Key）**：缓存身份必须至少包含：按优先级排序的每个输入包的内容哈希、Atlas 格式版本、最大 Chunk 尺寸、启用的图集分类，以及任何会改变图集布局或像素输出的编译参数。仅路径相同不足以复用缓存。
+- **完整性判定**：一个缓存仅当 `atlas_mapping.json` 可解析、格式版本完全匹配、每个 Chunk 的 Albedo 文件存在、且 mapping 引用的所有可选 Normal/Specular/Overlay 文件也存在时，才可被绑定到场景。
+- **原子发布**：编译器必须先在同一文件系统中的临时目录生成所有 PNG 与 mapping；只有整个产物通过完整性验证后，才能以原子替换/重命名发布到正式 `<stack_hash>/...` 目录。构建取消、异常或断电不得破坏上一份完整可用的缓存。
+- **陈旧缓存**：格式版本或任一缓存身份字段变化时，旧缓存必须视为不可用并重建；清理任务只能删除不再被当前栈引用的缓存，绝不能删除正在构建或当前已验证可用的缓存。
 
 ---
 
@@ -243,6 +275,7 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
    - 对于纯原版方块构成的无 PBR Chunk，**严禁生成无意义的全尺寸法线/高光空白大图**，从而大幅节省显存占用与磁盘缓存空间。
 
 #### 2.3.3 独立模式：全栈融合单方块资产库 (Standalone Mode: Stack-Synthesized Asset Library)
+- **本节是目标实现契约**：Standalone Mode 必须最终达到本节定义的预编译资产库语义。若当前实现仍在“替换材质”阶段读取原始包文件、重新采样图片或调用通道对齐逻辑，则该实现属于未完成状态，不得通过本规范的验收。
 - **核心设计定位**：
   - 独立模式并非在视口材质替换时临时去零散材质包中现场提取、动态重构；
   - 它的本质是**将多层材质栈（`User Resource Packs` + `Mod JARs` + `Vanilla JAR`）预先融合成一套虚拟/物理的“全量单方块独立资产库”**。
@@ -335,6 +368,23 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 > 6. **图集零透明占位不变量 (Zero-Placeholder Atlas Invariant)**：图集装箱必须基于合成后的 Composite Map 紧凑排布，严禁为局部材质包未修改的方块分配透明占位图块。
 > 7. **预编译与替换解耦不变量 (Decoupled Precompilation & Instant Binding)**：所有昂贵的多包解析与图像装箱操作必须在预编译阶段完成并持久化，材质替换算子执行期间严禁进行重复的磁盘扫描与图像合成。
 > 8. **独立模式预编译就绪与帧同步不变量 (Standalone Precompilation & Frame Sync Invariant)**：独立模式的通道对齐（静态通道纵向平铺至动画总帧数）、UV 缩放元数据计算与全栈贴图融合必须在预编译阶段固化至缓存目录，视口替换时严禁现场执行图像动态拓展与对齐重构。
+> 9. **Albedo 存在性不变量 (Renderable-Albedo Invariant)**：仅有 `_n`、`_s` 或其元数据、却不存在任何层 Albedo 的资源路径必须被忽略；它们绝不能成为透明 Atlas tile、空白独立材质或可匹配的普通方块条目。
+> 10. **PBR 按 Chunk 按通道分配不变量 (Per-Chunk PBR Allocation Invariant)**：Chunk 中没有真实 Normal 时不得输出 Normal 文件；没有真实 Specular 时不得输出 Specular 文件。另一个 Chunk 的 PBR 使用情况不得迫使本 Chunk 产生默认占位图。
+> 11. **缓存原子发布不变量 (Atomic Cache Publication Invariant)**：不完整图集不得被标记为可用或覆盖上一份完整图集；缓存绑定前必须执行格式、mapping 与文件存在性的完整性校验。
+
+#### 2.7.1 材质堆栈验收矩阵 (Required Acceptance Matrix)
+下列案例必须作为自动化测试长期保留。任何重构资源包索引、堆栈解析、图集生成、缓存或 Standalone 逻辑的变更，均必须全部通过。
+
+| 场景 | 输入栈（从高到低） | 必须得到的结果 |
+| :--- | :--- | :--- |
+| Uppercase PBR 覆盖 | 顶层 `ore_N.png`；中层 `ore.png`；底层 `ore.png` | 使用中层 Albedo 与顶层 Normal；顶层 `_N` 不得成为 Albedo 条目。 |
+| 三通道跨层组合 | 顶层 `ore_s.png`；中层 `ore.png` + `ore_n.png`；底层 `ore.png` | Albedo/Normal 来自中层，Specular 来自顶层。 |
+| 无 Albedo 的孤立伴生图 | 任意层仅有 `ore_n.png`/`ore_s.png`，所有层无 `ore.png` | 不生成 tile、独立材质、透明图或黑色图。 |
+| 无 PBR Chunk | 一个 Chunk 含 PBR，另一个 Chunk 仅含 Albedo | 仅 PBR Chunk 写出实际存在的 Normal/Specular 文件；纯 Albedo Chunk 的 `files` 仅含 `albedo`（及确有需要的 overlay）。 |
+| 有序栈失效 | 交换任意两个包、修改任一包内容或影响布局的编译参数 | 不得复用旧缓存，必须产生并验证新的缓存身份。 |
+| 构建中断 | 图集写入过程中取消/抛错/模拟不完整输出 | 上一份完整缓存仍可读取；不完整新缓存不得绑定。 |
+| 配置主文件损坏 | 主 JSON 截断或无法解析，`.bak` 有效 | 自动从 `.bak` 恢复；资源包顺序与启用状态不丢失。 |
+| Standalone 预编译 | 含动画 Albedo 与静态 PBR 的栈 | 预编译阶段生成对齐资产；替换阶段不读取原始包、不重新采样或平铺图片。 |
 
 ---
 
@@ -637,6 +687,12 @@ classDiagram
 ### 9.2 偏好配置 JSON 序列化与跨环境导入导出
 - **配置持久化**：
   所有菜单顺序、启用状态、材质替换全局偏好（材质模式、生物群系预设、材质包栈路径）均被序列化保存在 Blender 配置目录下的 JSON 文件中。
+- **防丢失写入契约**：
+  - 配置的读-改-写操作必须在进程内串行化，避免相邻 UI 回调互相覆盖未修改字段；例如保存材质模式时必须保留完整的 `resource_packs` 列表。
+  - 必须先写入同目录临时文件、`flush + fsync` 后以原子替换发布主 JSON；同时维护一份最近一次完整配置的 `.bak` 备份。
+  - 主文件损坏、截断或无法解析时，必须优先读取有效 `.bak`，并报告恢复行为；不得把解析失败静默解释为空配置后覆盖用户的材质包栈。
+  - 空 `resource_packs` 只能由用户显式保存或导入产生，不能是默认值回写、异常处理或迁移失败的副作用。
+  - 导入配置必须先完整验证 JSON 结构，再一次性替换有效字段；无效导入不得改变当前配置。
 - **一键导入导出**：
   提供 `mozi.export_config` 和 `mozi.import_config` 算子，支持一键导出为 `.json` 配置文件或从 JSON 导入，极大方便团队资产规范共享。
 
