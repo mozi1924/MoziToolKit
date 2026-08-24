@@ -1,0 +1,542 @@
+# MoziToolKit 功能全景设计与防回归技术规范文档
+> **版本**：v1.0.0 & Future Releases  
+> **适用范围**：MoziToolKit 全量功能体系（**注：实时同步 Live Sync 模块已按约定独立，本文档涵盖除实时同步外的全部核心业务与架构**）  
+> **核心目标**：统一全项目各模块的设计理念、架构契约、算法原理、边界约束与防回归规范，杜绝后续迭代将既定设计特征（Design Features）误判为 Bug 或在重构中破坏底层数学/拓扑不变量。
+
+---
+
+## 目录 (Table of Contents)
+1. [架构总览与防回归设计哲学](#1-架构总览与防回归设计哲学)
+2. [模块一：Minecraft 材质解析、匹配与替换管线](#2-模块一minecraft-材质解析匹配与替换管线)
+   - 2.1 资源包分层栈与解包缓存 (Resource Pack Stack & Cache)
+   - 2.2 多导入器自适应匹配引擎 (Importer Adapters)
+   - 2.3 双材质构建体系 (Atlas Mode vs Standalone Mode)
+   - 2.4 图集数学模型与着色器防溢色 (Atlas UV Tiling & Anti-Bleed Math)
+   - 2.5 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
+   - 2.6 逐帧动态动画材质驱动 (Animated Textures & MCMETA Driver)
+   - 2.7 材质管线防回归不变量契约
+3. [模块二：Minecraft 方块模型烘焙引擎 (MC Baker)](#3-模块二minecraft-方块模型烘焙引擎-mc-baker)
+   - 3.1 Blockstate 变体与 Multipart 条件组合解析
+   - 3.2 Block Model JSON 继承树、变量替换与几何生成
+   - 3.3 剔除面 (Cullface)、UV 旋转与染色索引映射
+   - 3.4 Baker 到 Atlas 图集桥接机制
+   - 3.5 MC Baker 防回归不变量契约
+4. [模块三：Geometry Nodes 程序化世界构建体系](#4-模块三geometry-nodes-程序化世界构建体系)
+   - 4.1 World Tree 架构与专用几何节点组
+   - 4.2 GeoNodes 内部 Atlas UV 变换与解包数学
+   - 4.3 视锥与相邻面剔除 (Culling & Merging)
+   - 4.4 材质分发器与实例属性传递
+   - 4.5 Geometry Nodes 防回归不变量契约
+5. [模块四：自适应像素网格切分系统 (Adaptive Pixel Split)](#5-模块四自适应像素网格切分系统-adaptive-pixel-split)
+   - 5.1 1面 = 1像素的几何分辨率自适应计算
+   - 5.2 动画贴图单帧正方形与 Atlas 瓦片边界推断
+   - 5.3 骨骼权重 (Vertex Groups) 与网格属性双线性插值保真
+   - 5.4 拓扑缝合 (Weld) 与法线平滑重构
+   - 5.5 像素网格切分防回归不变量契约
+6. [模块五：智能挤出与 UV 修复系统 (Auto Extrude Repair & Modeling)](#6-模块五智能挤出与-uv-修复系统-auto-extrude-repair--modeling)
+   - 6.1 侧面 UV 塌陷成因与 UV 几何映射数学
+   - 6.2 三种 UV 修复模式 (Smart / Inward / Outward) 的语义与边界
+   - 6.3 Atlas 图集相邻面防跨界安全 Clamp 机制
+   - 6.4 边缘折痕权重 (Mean Crease) 保护
+   - 6.5 随机挤出 (Random Extrude) 噪声算法与工作流串联
+   - 6.6 挤出修复防回归不变量契约
+7. [模块六：网格与 UV 实用工具集](#7-模块六网格与-uv-实用工具集)
+   - 7.1 清除自定义分割法线 (Clear Custom Normals)
+   - 7.2 锐边与硬边选择 (Select Hard & Sharp Edges)
+   - 7.3 UV 原地独立缩放 (Scale UV Individual - 边缘抗渗色)
+   - 7.4 修复流体 UV (Repair Fluid UV)
+   - 7.5 基于贴图 Alpha 通道智能选面 (Select Transparent Faces)
+   - 7.6 纹理插值模式一键切换 (Texture Interpolation: Closest / Linear)
+   - 7.7 网格/UV 工具防回归不变量契约
+8. [模块七：模块化流水线系统 (Modular Step Pipeline)](#8-模块七模块化流水线系统-modular-step-pipeline)
+   - 8.1 Step ↔ Context ↔ Pipeline 契约模型
+   - 8.2 结构化执行结果 (StepResult) 与多级诊断日志
+   - 8.3 非阻塞 Modal 交互与进度报告系统
+   - 8.4 预设流水线编排 (Presets)
+   - 8.5 流水线架构防回归不变量契约
+9. [模块八：偏好设置、右键上下文菜单、扩展生态与工程规范](#9-模块八偏好设置右键上下文菜单扩展生态与工程规范)
+   - 9.1 右键上下文菜单动态注册与自由重排体系
+   - 9.2 偏好配置 JSON 序列化与跨环境导入导出
+   - 9.3 Blender 4.2+ 扩展规范与 Python Wheels 隔离管理
+   - 9.4 完整多语言国际化 (i18n) 字典体系
+   - 9.5 自动化构建 (Build) 与 CI 测试套件
+10. [附录：核心设计决策与常见误判特征对照表 (FAQ / Anti-Regression Table)](#10-附录核心设计决策与常见误判特征对照表-faq--anti-regression-table)
+
+---
+
+## 1. 架构总览与防回归设计哲学
+
+MoziToolKit 是一套专为 **Minecraft 资产转换、Voxel 风格高保真建模、贴图烘焙与自动化流水线** 设计的 Blender 生产力工具集。
+
+```mermaid
+graph TD
+    subgraph UI_Layer [交互层 UI & Menus]
+        Prefs[Addon Preferences]
+        Menus[Dynamic Context Menus - Object/Edit/UV]
+        ModalProgress[Modal Progress & Timer]
+    end
+
+    subgraph Pipeline_Layer [核心调度层 Modular Pipeline]
+        PipeCore[Pipeline Runner]
+        Ctx[Pipeline Context]
+        Steps[Atomic Steps]
+        Presets[Preset Workflows]
+    end
+
+    subgraph Engine_Layer [功能引擎层 Engine Subsystems]
+        MatEngine[Material & Atlas Engine]
+        BakerEngine[MC Baker & BlockState]
+        GeoEngine[Geometry Nodes World Tree]
+        SplitEngine[Adaptive Pixel Split]
+        ExtrudeEngine[Auto Extrude Repair]
+        MeshUtils[UV & Mesh Operators]
+    end
+
+    subgraph System_Layer [底层基础支撑 System & Deps]
+        WheelManager[Python Wheels / Pillow Manager]
+        I18n[i18n Translation Dictionary]
+        ConfigIO[JSON Config Importer/Exporter]
+        AutoLoad[Blender 4.2+ Auto Loader]
+    end
+
+    UI_Layer --> Pipeline_Layer
+    Pipeline_Layer --> Engine_Layer
+    Engine_Layer --> System_Layer
+```
+
+### 核心防回归原则 (Non-negotiable Invariants)
+1. **数学确定性优于盲目插值**：Minecraft 的像素艺术美学建立在清晰的像素网格、最近邻插值（Nearest Neighbor）和严格的 UV 边界上。任何几何细分或 UV 变换都必须具有像素级别的数学确定性。
+2. **图集安全边界（Atlas Boundary Safety）**：Atlas 图集必须时刻防范跨瓦片溢色（Tile Bleeding）与浮点漂移。着色器和几何脚本中对 UV 的变换必须严格遵循安全边距（Padding / Clamp）。
+3. **外部模型容错性（External Model Tolerance）**：来自各类导出工具（jmc2obj、Mineways、Ice-Cube、Blockbench 等）的模型往往携带损坏的 Split Normals、畸变的 UV、冗余材质名称。工具集必须在清洗脏数据的同时，保留原模型的拓扑与 UV 意图。
+4. **解耦与流水线化（Decoupled Pipeline）**：所有原子操作必须能作为独立的 Blender Operator 运行，也能在无 UI 的 `Pipeline` 环境中被批量编排调用。
+
+---
+
+## 2. 模块一：Minecraft 材质解析、匹配与替换管线
+
+### 2.1 资源包分层栈与解包缓存 (Resource Pack Stack & Cache)
+- **设计方向**：
+  - 采用 **优先级栈（Pack Stack）** 机制：`User Resource Packs (Top)` > `Base Vanilla JAR (Bottom)`。用户可以叠加多个材质包，高层材质包中的纹理覆盖底层，底层提供全量缺失纹理回退（Fallback）。
+  - 支持三种输入形态：
+    1. `.zip` 压缩包（标准 Minecraft 材质包）。
+    2. `.jar` 归档（Minecraft 客户端核心文件）。
+    3. 本地解压目录。
+  - **解包与缓存策略**：
+    - 解压至系统临时目录下的专用哈希缓存目录，通过 `pack.mcmeta` 的文件哈希或修改时间校验有效性，避免每次重复解包。
+    - 提供一键内嵌（Pack Textures into `.blend`）和工程目录解构（`//textures/block/`）两种物理资产管理模式。
+
+### 2.2 多导入器自适应匹配引擎 (Importer Adapters)
+不同地图导出工具具有完全不同的材质命名与网格组织规范。匹配引擎通过策略模式实现多适配器智能探测：
+
+| 适配器类型 | 目标工具与特征 | 关键匹配逻辑与核心设计 |
+| :--- | :--- | :--- |
+| **`jmc2obj`** | 原生保留连续平铺 UV（Tiling UVs），材质名通常带方块 ID 或纹理名 | 识别 `jmc2obj` 特有的纹理命名；**绝不能强制将超过 `[0, 1]` 范围的平铺 UV 暴力归一化**，必须配合图集着色器平铺节点（Tiling Node）进行局部重映射。 |
+| **`Mineways`** | 将多个方块打包至地形大图，材质名带有 `TerrainExt_`、方块数值 ID 或合成材质名称 | 解析 Mineways 材质映射表，提取底层基础方块贴图，去除 `mineways_` 等内部标签。 |
+| **`Ice-Cube`** | Ice-Cube 资产库材质命名规范，常带命名空间及别名 | 识别其资产库专属前缀（如 `library/`、`ice_cube_asset_library/`），做别名映射后精准定位材质。 |
+| **`Generic`** | 通用 OBJ/FBX 导入模型，材质名通常包含 Blender 副本后缀（`.001`）与路径前缀 | 自动剥离 `.001`~`.999` 复制后缀、剥离 `assets/textures/block/` 路径前缀，进行模糊匹配与降级回退。 |
+
+### 2.3 双材质构建体系 (Atlas Mode vs Standalone Mode)
+
+```mermaid
+graph LR
+    Input[待替换材质网格] --> ModeCheck{材质构建模式}
+    ModeCheck -- ATLAS 图集模式 --> AtlasBuild[Pillow 2D 矩形装箱]
+    AtlasBuild --> AtlasShader[构建单一 Atlas PBR 材质]
+    AtlasShader --> RemapUV[重写网格 UV 至图集瓦片]
+    
+    ModeCheck -- STANDALONE 独立模式 --> MatGen[为各方块生成独立 BSDF 材质]
+    MatGen --> AlignUV[局部 UV 自动对齐重构]
+```
+
+- **图集模式 (Atlas Mode)**：
+  - **设计目标**：极致降低 Draw Call 与显存开销。将场景中数百种方块贴图动态打包为一张或极少量紧凑图集（Texture Atlas）。
+  - **技术实现**：
+    1. 基于二维矩形装箱算法（`RectPacker`）计算贴图在图集中的布局 `(x, y, w, h)`。
+    2. 针对包含法线贴图（Normal Map）和高光/粗糙度贴图（LabPBR）的资源包，同步生成伴生图集。
+    3. 全自动在网格 Loop UV 上重写 UV 坐标，将其映射至图集对应子区域。
+- **独立模式 (Standalone Mode)**：
+  - **设计目标**：保留最纯粹的节点树可编辑性。每个方块拥有独立的 Principled BSDF 节点树，方便艺术家进行单独微调、添加特殊置换或连接复杂着色器。
+  - **技术实现**：配合 `standalone_aligner.py` 对带有多帧动画或非标准 UV 的面进行局部 UV 自动对齐重构。
+
+### 2.4 图集数学模型与着色器防溢色 (Atlas UV Tiling & Anti-Bleed Math)
+- **设计难点**：在图集模式下，原本 `[0, N]` 的平铺纹理（如 3x3 的草方块顶面）如果直接采样图集，会导致 UV 越界采样到邻近的其他方块贴图（跨瓦片溢色）。
+- **数学解法（Mozi Atlas UV Mapping Node Group）**：
+  给定图集子区域：起始坐标 $(U_{min}, V_{min})$，尺寸 $(U_{size}, V_{size})$，安全边距 $Padding$。
+  对于任意输入平铺 UV 坐标 $(u, v)$：
+  $$\tilde{u} = \text{fract}(u)$$
+  $$\tilde{v} = \text{fract}(v)$$
+  $$u_{clamped} = \text{clamp}\left(\tilde{u},\, \frac{Padding}{W_{atlas}},\, 1.0 - \frac{Padding}{W_{atlas}}\right)$$
+  $$v_{clamped} = \text{clamp}\left(\tilde{v},\, \frac{Padding}{H_{atlas}},\, 1.0 - \frac{Padding}{H_{atlas}}\right)$$
+  $$U_{final} = U_{min} + u_{clamped} \times U_{size}$$
+  $$V_{final} = V_{min} + v_{clamped} \times V_{size}$$
+  着色器节点组中严格执行此数学变换，彻底根除跨瓦片拉伸与溢色。
+
+### 2.5 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
+- **设计方向**：
+  - 内置 14+ 种官方生物群系预设（平原、森林、桦木林、针叶林、丛林、热带草原、恶地、沼泽、黑森林、红树林沼泽、樱花树林、雪原、沙漠、温带海洋等）。
+  - **双线性插值采样**：基于生物群系的温度（Temperature）与湿度（Humidity），在高分辨率 `grass.png` / `foliage.png` 色图（Colormap）中进行双线性插值采样计算目标颜色。
+  - **硬编码方块颜色**：对不受生物群系色图影响的特殊方块（如云杉树叶 `#619961`、桦木树叶 `#80A755`、睡莲 `#208030`、水体 `#3F76E4`、红石线 `#9E0101`）配置精确的 sRGB/Linear RGB 映射。
+  - **Block Model JSON Tintindex 精准感知**：
+    自动读取方块模型 JSON 中的 `tintindex`。例如对于草方块（Grass Block），侧面基底贴图为 `tintindex: -1`（不染色），侧面覆盖层与顶面为 `tintindex: 0`（染色）。着色器仅对带有染色标记的层进行乘法染色，防止泥土底色被错误染绿。
+
+### 2.6 逐帧动态动画材质驱动 (Animated Textures & MCMETA Driver)
+- **设计方向**：
+  - 自动识别并解析 Minecraft 官方 `.png.mcmeta` 文件（读取 `frametime`、`frames` 序列、`interpolate` 平滑插值设置）。
+  - 自动将纵向长条图（如 16x512）按帧高切分。
+  - **着色器时间轴驱动节点树**：
+    构建由 Blender 场景帧数驱动的节点组：
+    $$\text{FrameIndex} = \text{floor}\left(\frac{\text{SceneFrame}}{\text{FrameTime}}\right) \pmod{\text{TotalFrames}}$$
+    计算 UV 的 V 轴偏移，实现无需 bake 视频贴图的轻量化原生时间轴动画。
+
+### 2.7 材质管线防回归不变量契约
+> [!IMPORTANT]
+> 1. **严禁破坏 `jmc2obj` 平铺 UV**：不要在导入或替换材质时对超出 `[0, 1]` 范围的 UV 做全局取模裁剪，必须保留平铺并在着色器内部由图集节点解包。
+> 2. **草方块/树叶染色层必须遵循 `tintindex`**：绝对不能对整张材质无差别染色，否则草方块的泥土部分会呈现绿色变异。
+> 3. **Pillow 依赖隔离**：材质图集生成必须通过 `utils.system.dependencies` 的受控接口调用 Pillow，禁止在未捕获 ImportError 的情况下全局顶层 `import PIL`。
+
+---
+
+## 3. 模块二：Minecraft 方块模型烘焙引擎 (MC Baker)
+
+`utils/mc_baker/` 实现了 Minecraft 原生模型与 BlockState 的逆向解析与 3D 几何烘焙，将数据驱动的 Minecraft JSON 资产转化为标准 3D 网格。
+
+```mermaid
+graph TD
+    BS[BlockState JSON] -->|解析 variants / multipart| StateResolver[BlockState Resolver]
+    StateResolver --> ModelParser[Model JSON Parser]
+    ModelParser -->|解析 parent 继承链| ModelInherit[Model Hierarchy Resolver]
+    ModelInherit -->|解析 #texture 变量| TexResolver[Texture Variable Resolver]
+    TexResolver --> MeshGen[Mesh Generator]
+    MeshGen -->|计算 element 旋转 & cullface| GeoBake[Geometry & Loop UV Baking]
+    GeoBake --> AtlasBridge[Atlas Bridge 集成图集]
+```
+
+### 3.1 Blockstate 变体与 Multipart 条件组合解析
+- **`blockstate_resolver.py`**：
+  - 支持 **`variants`（变体模式）**：例如楼梯根据 `facing=east,half=bottom,shape=straight` 选择对应的 3D 模型与 Y 轴旋转。
+  - 支持 **`multipart`（复合模式）**：例如栅栏（Fence）和红石线，根据周围方块的连接条件（`when: {north: "true"}`）动态叠加组合多个模型组件（Elements）。
+
+### 3.2 Block Model JSON 继承树、变量替换与几何生成
+- **`model_parser.py`**：
+  - **Parent 继承链展开**：递归解析 `block/cube`、`block/cube_column` 等父级模板，向下继承 `elements` 与 `textures`。
+  - **纹理变量求值**：解析 `#side`、`#all`、`#texture` 等符号引用链，最终解析出实际的贴图命名空间与路径。
+
+### 3.3 剔除面 (Cullface)、UV 旋转与染色索引映射
+- **`mesh_generator.py` & `math_utils.py`**：
+  - **几何坐标系转换**：Minecraft 模型坐标系为 `[0..16, 0..16, 0..16]`，烘焙器将其规范化为 Blender 的米制中心坐标系 `[-0.5..0.5, -0.5..0.5, 0..1]`。
+  - **Element 旋转计算**：支持 Minecraft 模型中围绕 `origin` 沿 X/Y/Z 轴进行的任意 $22.5^\circ$、$45^\circ$ 等角度旋转与 `rescale` 缩放变换。
+  - **Cullface 标记生成**：保留各面的 `cullface` 属性（DOWN, UP, NORTH, SOUTH, WEST, EAST），供后续剔除合并算法使用。
+  - **UV 映射与旋转**：根据模型中的 `uv: [u1, v1, u2, v2]` 与 `rotation: 90/180/270` 精确计算并分配每个面顶点的 UV Loop。
+
+### 3.4 Baker 到 Atlas 图集桥接机制
+- **`atlas_bridge.py`**：
+  - 烘焙出的方块网格自动将其局域 UV 变换为图集纹理坐标，确保生成的方块网格能直接无缝融入全场景的统一 Atlas 材质中。
+
+### 3.5 MC Baker 防回归不变量契约
+> [!IMPORTANT]
+> 1. **坐标系与原点对齐**：Minecraft `[0, 0, 0]` 为方块底面西北角，烘焙至 Blender 时必须保持中心对齐或底面原点对齐规则的一致性。
+> 2. **Parent 递归深度防护**：解析 Model JSON 继承树时必须包含环路检测（Cycle Detection）与深度上限，防止畸形资源包导致无限递归崩溃。
+> 3. **UV 坐标原点差异**：Minecraft 模型 UV 的 `(0, 0)` 位于左上角，而 Blender UV 的 `(0, 0)` 位于左下角，V 轴必须进行 $1.0 - v$ 的精确翻转。
+
+---
+
+## 4. 模块三：Geometry Nodes 程序化世界构建体系
+
+`utils/geometry_nodes/` 针对大规模体素世界、海量方块实例与程序化地形生成构建了高效的几何节点树（World Tree）。
+
+### 4.1 World Tree 架构与专用几何节点组
+- **`world_tree.py`**：统筹构建整个场景的几何节点修改器管线。
+- **`groups/cube_surface.py`**：基于方块占位点生成标准立方体表面，计算法线与面拓扑。
+- **`groups/culling_merge.py`**：执行视锥剔除（Frustum Culling）和相邻面遮挡剔除（Occlusion Culling），自动合并重合顶点，极大降低视口几何面数。
+- **`groups/face_selectors.py`**：基于法线向量点积智能过滤出顶面（Top）、底面（Bottom）以及侧面（Sides）。
+- **`groups/material_dispatcher.py`**：根据方块 ID 属性自动分配材质索引。
+
+### 4.2 GeoNodes 内部 Atlas UV 变换与解包数学
+- **`groups/atlas_uv.py`**：在 Geometry Nodes 内部原生实现图集 UV 映射。
+  利用 Node Group 接收 `atlas_min_u`, `atlas_min_v`, `atlas_size_u`, `atlas_size_v` 属性，直接在几何着色前对顶点属性或 Corner UV 进行平铺与裁剪运算。
+
+### 4.3 Geometry Nodes 防回归不变量契约
+> [!IMPORTANT]
+> 1. **Blender 4.x/5.x 节点 API 兼容性**：Geometry Nodes 在不同 Blender 版本间节点名称常有更迭（如 `Combine XYZ`、`Sample Index` 等），节点组构建必须使用 `utils.geometry_nodes.core` 中经过版本兼容性封装的辅助函数。
+> 2. **属性命名规范**：实例与面属性（如 `block_id`、`face_id`、`tint_color`）必须遵循统一命名常量，禁止在子节点组中硬编码非标准属性名。
+
+---
+
+## 5. 模块四：自适应像素网格切分系统 (Adaptive Pixel Split)
+
+- **对应 Operator**：`mozi.adaptive_pixel_split` (`operators/mesh/op_adaptive_pixel_split.py`)
+- **核心实现模块**：`utils/pixel_split/` (`core.py`, `uv_analyzer.py`, `subdivider.py`, `types.py`)
+
+### 5.1 1面 = 1像素的几何分辨率自适应计算
+- **设计方向**：
+  - 传统 Blender 细分（Subdivide）只能按几何倍数（2/4/8 等）切分，无法感知材质贴图的真实像素网格。
+  - `Adaptive Pixel Split` 自动分析目标面的 UV 边界大小与对应材质的贴图宽高（$W_{tex}, H_{tex}$），计算出该面在 UV 空间中占用的真实像素网格数：
+    $$Grid_X = \max\left(1,\, \text{round}\left(UV_{width} \times \frac{W_{tex}}{PixelsPerFace}\right)\right)$$
+    $$Grid_Y = \max\left(1,\, \text{round}\left(UV_{height} \times \frac{H_{tex}}{PixelsPerFace}\right)\right)$$
+  - 将该面精确细分为 $Grid_X \times Grid_Y$ 的规则四边形网格，实现 **1 个 3D 面 = 1 个贴图像素**（或指定比例）。
+
+### 5.2 动画贴图单帧正方形与 Atlas 瓦片边界推断
+- **关键设计考量（避免过度切分的重大防坑点）**：
+  - 如果材质是一张纵向长条图（如 16x512 的流水贴图），若直接取贴图全高（512），会导致一个面被错误切分为 16x512 个面（过度切分导致卡死）。
+  - **自适应逻辑**：`uv_analyzer.py` 会自动检测纹理的长宽比与帧数元数据。对于纵向动画贴图，以单帧尺寸（通常为正方形 $16 \times 16$）作为有效高度进行细分计算。
+  - 对于图集贴图（Atlas），自动根据 UV 局部跨度换算瓦片实际像素尺寸。
+
+### 5.3 骨骼权重 (Vertex Groups) 与网格属性双线性插值保真
+- **设计方向**：
+  - 角色模型（如 Minecraft 皮肤模型）在切分前已经完成了骨骼绑定（Rigging）和权重绘制。
+  - `subdivider.py` 在四边形切分网格生成新顶点时，对每个新顶点在其父级面的参数坐标 $(s, t) \in [0, 1]^2$ 上执行 **双线性插值（Bilinear Interpolation）**：
+    $$W(s, t) = (1-s)(1-t)W_{00} + s(1-t)W_{10} + stW_{11} + (1-s)tW_{01}$$
+  - 完美保留所有 Vertex Groups 权重与自定义网格属性（Color Attributes / Face Maps），切分后骨骼蒙皮动画丝毫不受破坏。
+
+### 5.4 拓扑缝合 (Weld) 与法线平滑重构
+- 切分完成后，自动对相邻共享边界执行微距顶点缝合（Weld / Merge by Distance, $dist = 10^{-4}$），清理退化边面，并重新计算面法线，确保拓扑流形完整。
+
+### 5.5 像素网格切分防回归不变量契约
+> [!IMPORTANT]
+> 1. **动画贴图有效尺寸推断**：切分算子计算网格密度时，必须优先获取单帧有效尺寸，绝不能直接使用纵向长条图的绝对像素高度。
+> 2. **顶点权重层必须前置 verify**：如果物体拥有 Vertex Groups，在 BMesh 操作前必须调用 `bm.verts.layers.deform.verify()`，否则新生成的顶点将丢失所有蒙皮权重。
+
+---
+
+## 6. 模块五：智能挤出与 UV 修复系统 (Auto Extrude Repair & Modeling)
+
+- **对应 Operator**：`mozi.auto_extrude_repair` (`operators/mesh/op_auto_extrude_repair.py`)、`mozi.random_extrude` (`operators/mesh/op_random_extrude.py`)
+- **核心实现模块**：`utils/extrude_repair/` (`core.py`, `uv_analyzer.py`, `types.py`)、`utils/mesh/random_extrude.py`
+
+### 6.1 侧面 UV 塌陷成因与 UV 几何映射数学
+- **核心痛点**：在 Blender 中挤出（Extrude）面时，新生成的侧面默认继承挤出前的边缘 UV，导致侧面 UV 高度为 0（UV 塌陷拉伸成一条线）。
+- **几何修复原理**：
+  算法识别出挤出的顶面（Top Face）与生成的侧面（Side Faces）。对于每个侧面，根据其底边顶点与顶边顶点的对应关系，在 UV 空间中重构一条具有物理宽度的 UV 采样带。
+
+```mermaid
+graph TD
+    ExtrudeAction[面挤出生成侧面] --> DetectCollapsed{检测侧面 UV 塌陷}
+    DetectCollapsed --> ModeSelection{UV 修复模式}
+    ModeSelection -- INWARD 向内采样 --> SampleTopEdge[采样顶面边缘像素向内微距延伸]
+    ModeSelection -- OUTWARD 向外采样 --> SampleAdjFace[采样相邻底面连续纹理]
+    ModeSelection -- SMART 智能模式 --> CalcNormalDot{计算 挤出向量 · 面法线}
+    CalcNormalDot -- 凸起 Protrusion > 0 --> SampleTopEdge
+    CalcNormalDot -- 凹陷 Indentation < 0 --> SampleAdjFace
+    SampleTopEdge --> ClampAtlas[Atlas 安全边距 Clamp]
+    SampleAdjFace --> ClampAtlas
+    ClampAtlas --> ApplyCrease[为挤出边缘赋予 Mean Crease = 1.0]
+```
+
+### 6.2 三种 UV 修复模式 (Smart / Inward / Outward) 的语义与边界
+1. **`SMART`（智能模式 - 默认推荐）**：
+   - 计算挤出向量与原面法线的点积：$E_{dot} = \vec{V}_{extrude} \cdot \vec{N}_{face}$。
+   - $E_{dot} \ge 0$（向外凸起）：自动采用 `INWARD` 模式，侧面取样自顶面边缘。
+   - $E_{dot} < 0$（向内凹陷）：自动采用 `OUTWARD` 模式，侧面取样自相邻外周面。
+2. **`INWARD`（向内模式 - Minecraft 经典像素挤出）**：
+   - 侧面 UV 取样自顶面边界向内延伸 0.1 个像素步长的颜色。保证挤出后的体素立体块侧面与顶面边缘像素保持完全一致的色调，绝无杂色。
+3. **`OUTWARD`（向外模式 - 连续地表凹陷）**：
+   - 侧面 UV 跨越到相邻面的 UV 孤岛中取样，呈现与背景地表连续的侧面纹理。
+
+### 6.3 Atlas 图集相邻面防跨界安全 Clamp 机制
+- 在 `OUTWARD` 模式下，如果相邻面位于 Atlas 图集的其他区域，无限制外延采样会导致采样到无关方块贴图。
+- **安全机制**：
+  1. **材质一致性校验**：`adjacent_face.material_index == top_face.material_index`，材质不匹配时立即终止外延。
+  2. **UV Bounds 安全边界裁剪**：严格将侧面生成的 UV 坐标限制在相邻面 UV Bounding Box 内部（带安全 Padding），彻底杜绝跨图集溢色。
+
+### 6.4 边缘折痕权重 (Mean Crease) 保护
+- 挤出完成后，算子自动遍历挤出边界边（Boundary Edges），将其 `mean_crease` 属性设置为 `1.0`（或用户指定值）。
+- **设计意图**：当模型添加细分曲面修改器（Subdivision Surface）进行平滑倒角时，被挤出的硬朗像素方块边缘不会塌陷变形。
+
+### 6.5 随机挤出 (Random Extrude) 噪声算法与工作流串联
+- **功能特性**：
+  - 针对选中的面，沿其法线以随机高度批量独立挤出。
+  - 提供三种高度生成算法：
+    - **Uniform**：基于随机种子的均匀分布随机数。
+    - **Perlin Noise**：基于顶点 3D 世界坐标的空间连续噪声（呈现平滑波浪起伏）。
+    - **Cell Noise**：基于离散网格的细胞噪波（呈现阶梯状石砖起伏）。
+  - **管线串联**：随机挤出完成后，无缝自动调用 `Auto Extrude Repair` 算法完成侧面 UV 修复与 Crease 标记，实现一键生成浮雕地貌。
+
+### 6.6 挤出修复防回归不变量契约
+> [!IMPORTANT]
+> 1. **侧面拓扑配对顺序**：侧面四边形的 4 个顶点索引必须严格区分为 `Base A`, `Base B`, `Top B`, `Top A`，UV 赋予顺序必须保持逆时针绕序一致，禁止法线翻转。
+> 2. **Atlas 边界 Clamp 不可去除**：在优化 UV 计算时，绝不能移除对 `adjacent_face` 的 UV bounds padding clamp，否则图集贴图必定在侧面出现花屏。
+
+---
+
+## 7. 模块六：网格与 UV 实用工具集
+
+### 7.1 清除自定义分割法线 (Clear Custom Normals)
+- **对应 Operator**：`mozi.clear_custom_normals` (`operators/mesh/op_clear_custom_normals.py`)
+- **设计背景与核心价值**：
+  - 从 jmc2obj、Mineways、Blockbench 等外部软件导入的 OBJ/FBX 模型，往往带有固化的 `custom_normal` 数据层或损坏的 Split Normals。这会导致在 Blender 中即便开启 Smooth Shading，模型表面依然发黑、产生撕裂硬阴影或法线计算异常。
+  - **处理逻辑**：一键清除当前网格所有自定义分割法线数据（调用 `bpy.ops.mesh.customdata_custom_splitnormals_clear()`），重构标准面法线与顶点平滑法线。
+
+### 7.2 锐边与硬边选择 (Select Hard & Sharp Edges)
+- **对应 Operator**：`mozi.select_edges` (`operators/mesh/op_select_edges.py`)
+- **设计方向**：
+  - 基于相邻面的二面角（Dihedral Angle）阈值（如 $> 30^\circ$）或网格已标记的 `sharp` 属性，快速在 Edit Mode 中批量选中所有硬朗边界边。
+  - 便于后续一键标记缝合边（Mark Seam）或赋予倒角权重（Bevel Weight）。
+
+### 7.3 UV 原地独立缩放 (Scale UV Individual - 边缘抗渗色)
+- **对应 Operator**：`mozi.scale_uv` (`operators/uv/op_scale_uv.py`)
+- **核心数学与设计意图**：
+  - 在低分辨率像素贴图（如 16x16）渲染时，由于 GPU 纹理采样器的双线性滤波（Bilinear Filtering）或 Mipmap 衰减，面边缘的 UV 极易采样到贴图边界外的一个半像素，产生黑色接缝线或漏色。
+  - **原地独立缩放算法**：
+    对于网格中的每个面 $F_i$，独立计算其自身的 UV 几何中心：
+    $$C_{uv} = \frac{1}{N} \sum_{k=1}^N UV_k$$
+    对该面的每个顶点 UV 进行向心微距缩放：
+    $$UV'_k = C_{uv} + (UV_k - C_{uv}) \times ScaleFactor$$
+    （默认 $ScaleFactor = 0.8$ 或微距 $0.999$）。每个面在自己的中心独立收缩，完全不影响相邻面的几何拓扑，彻底解决黑边渗色。
+
+### 7.4 修复流体 UV (Repair Fluid UV)
+- **对应 Operator**：`mozi.repair_fluid_uv` (`operators/uv/op_repair_fluid_uv.py`)
+- **设计方向**：
+  - Minecraft 中流动水体和岩浆具有斜面几何体（如 8 级水流斜坡）。地图导出工具生成的斜面 UV 经常出现上下颠倒、90 度旋转错位或横向拉伸。
+  - **算法原理**：
+    分析面的法线倾角与局部坐标系斜率，自动识别流体流动的主方向向量，重新校正 UV 坐标轴旋转，使其纹理流动方向与重力/下坡方向完全对齐。
+
+### 7.5 基于贴图 Alpha 通道智能选面 (Select Transparent Faces)
+- **对应 Operator**：`mozi.select_transparent_faces` (`operators/uv/op_select_transparent_faces.py`)
+- **设计方向**：
+  - 许多 Minecraft 树叶方块、草丛多边形或镂空模型在几何上是完整面片，但贴图大部分区域为完全透明（Alpha = 0）。
+  - **采样算法**：
+    提供三种采样模式：
+    - `CENTER`：采样面 UV 中心点单个像素的 Alpha。
+    - `CORNERS`：采样面 UV 四个角顶点的 Alpha 值。
+    - `AVERAGE`：在面 UV 包围盒范围内进行多点网格采样取平均 Alpha。
+  - 根据透明度阈值（Alpha Threshold）批量选出全透或半透的面，供艺术家一键删除以优化渲染多边形。
+
+### 7.6 纹理插值模式一键切换 (Texture Interpolation: Closest / Linear)
+- **对应 Operator**：`mozi.texture_interpolation` (`operators/object/op_texture_interpolation.py`)
+- **设计方向**：
+  - 批量递归遍历所有选中物体材质节点树中的 `ShaderNodeTexImage` 图像纹理节点。
+  - 一键将其 `interpolation` 属性统一设置为 `Closest`（呈现原汁原味的清爽锐利像素风）或 `Linear`（用于平滑纹理）。
+
+### 7.7 网格/UV 工具防回归不变量契约
+> [!IMPORTANT]
+> 1. **Scale UV 必须 Per-Face 独立计算中心**：绝不能将所有选中的面统一按全局 UV 中心缩放，否则会导致多面之间的相对排布被打乱。
+> 2. **Clear Custom Normals 的无损性**：清除自定义法线仅清理 Split Normals 属性，绝对不能破坏网格原有的顶点坐标与 UV 贴图层。
+
+---
+
+## 8. 模块七：模块化流水线系统 (Modular Step Pipeline)
+
+- **核心模块**：`pipeline/` (`pipeline.py`, `step.py`, `context.py`, `progress.py`, `modal.py`, `presets/presets.py`)
+
+### 8.1 Step ↔ Context ↔ Pipeline 契约模型
+MoziToolKit 采用高度解耦的流水线架构，所有复杂功能均拆解为原子步骤（Step）：
+
+```mermaid
+classDiagram
+    class Pipeline {
+        +name: str
+        +steps: List[Step]
+        +execute(context, params) StepResult
+        +add_step(step)
+    }
+
+    class Step {
+        <<abstract>>
+        +name: str
+        +description: str
+        +required_params: List[str]
+        +optional_params: Dict[str, Any]
+        +validate(ctx) bool
+        +run(ctx) StepResult
+    }
+
+    class PipelineContext {
+        +blender_context: Context
+        +params: Dict[str, Any]
+        +storage: Dict[str, Any]
+        +reports: List[Tuple[str, str]]
+        +report(level, msg)
+        +get(key, default)
+        +set(key, value)
+    }
+
+    class StepResult {
+        +status: StepStatus
+        +message: str
+        +data: Dict[str, Any]
+        +execution_time: float
+    }
+
+    Pipeline --> Step
+    Pipeline --> PipelineContext
+    Step --> PipelineContext
+    Step --> StepResult
+```
+
+### 8.2 结构化执行结果 (StepResult) 与多级诊断日志
+- **`StepStatus`**：定义了 `SUCCESS`、`WARNING`、`FAILED`、`CANCELLED`、`SKIPPED` 状态枚举。
+- **`PipelineContext.reports`**：收集执行过程中的多级诊断信息（`INFO`, `WARNING`, `ERROR`），在 Operator 结束时统一分发至 Blender 的 `self.report()` 系统。
+
+### 8.3 非阻塞 Modal 交互与进度报告系统
+- **`modal.py` (`run_pipeline_modal`)**：
+  - 在主线程以 Blender Modal Timer 驱动 Pipeline 步进执行。
+  - 在 3D View 顶部或状态栏实时显示当前执行的步骤名、百分比进度条与取消按钮（支持按 `ESC` 安全中断）。
+  - 避免耗时的大型材质烘焙或海量网格切分导致 Blender 界面出现假死（Spinning Wheel）。
+
+### 8.4 预设流水线编排 (Presets)
+- **`pipeline/presets/presets.py`**：
+  将原子 Step 装配为端到端的高级工作流（例如 `replace_material` 流水线、`adaptive_pixel_split` 流水线）。
+
+### 8.5 流水线架构防回归不变量契约
+> [!IMPORTANT]
+> 1. **Step 必须具备幂等性与参数显式契约**：每个 Step 必须通过 `required_params` 显式声明输入参数，不得依赖未声明的全局隐式状态。
+> 2. **异常捕获与 Context 保护**：Step 执行发生未捕获异常时，必须由 Pipeline 捕获并打包为 `StepResult.fail(...)`，不得直接抛出导致 Blender 崩溃或处于中间未提交状态。
+
+---
+
+## 9. 模块八：偏好设置、右键上下文菜单、扩展生态与工程规范
+
+### 9.1 右键上下文菜单动态注册与自由重排体系
+- **实现机制**：`utils/system/menus.py`、`ui/preferences.py`、`ui/menu_*.py`
+- **设计方向**：
+  - 使用 `@register_menu_item(views=["mesh", "object", "uv"])` 装饰器对算子进行元数据注册。
+  - **全自由偏好设置面板**：用户可在插件偏好设置中自由启用/禁用特定菜单项、通过上移/下移调整菜单项在 3D View（Object Mode, Edit Mode）和 UV Editor 右键上下文菜单中的显示顺序，并可自定义菜单条目的 Label 名称。
+
+### 9.2 偏好配置 JSON 序列化与跨环境导入导出
+- **配置持久化**：
+  所有菜单顺序、启用状态、材质替换全局偏好（材质模式、生物群系预设、材质包栈路径）均被序列化保存在 Blender 配置目录下的 JSON 文件中。
+- **一键导入导出**：
+  提供 `mozi.export_config` 和 `mozi.import_config` 算子，支持一键导出为 `.json` 配置文件或从 JSON 导入，极大方便团队资产规范共享。
+
+### 9.3 Blender 4.2+ 扩展规范与 Python Wheels 隔离管理
+- **生态合规**：
+  全面适配 Blender 4.2+ / 5.x 的 **Extensions Platform** 体系。
+- **Python Wheels 隔离机制**：
+  - 图集烘焙依赖轻量图像库 `Pillow`。
+  - 在 `wheels/` 目录下准备了覆盖 Windows x64/arm64、macOS Apple Silicon、Linux x64 的预编译 `.whl` 包，并在 `blender_manifest.toml` 中严格声明。
+  - 插件加载时优先探测自带 Wheel 隔离环境，杜绝污染 Blender 内置 Python 环境或发生依赖冲突。
+
+### 9.4 完整多语言国际化 (i18n) 字典体系
+- **`i18n/dictionary.py`**：
+  采用统一的字典映射表，涵盖所有 Operator 标签、描述 Tooltips、偏好设置选项、错误警告与进度提示。
+- **无缝切换**：深度支持简体中文（`zh_CN` / `zh_HANS`）与英文（`en_US`），随 Blender 语言设置自动实时切换。
+
+### 9.5 自动化构建 (Build) 与 CI 测试套件
+- **构建脚本 (`build.py`)**：
+  - 支持单包一键构建 (`python3 build.py -o dist`)。
+  - 支持分平台轻量化独立构建 (`python3 build.py -o dist --split-platforms`)，自动为特定 OS 打包对应平台的 Wheel 文件。
+- **测试套件 (`tests/run_tests.py`)**：
+  - 在终端中通过 Blender 无头模式执行自动化单元测试：
+    ```bash
+    blender -b --python tests/run_tests.py
+    ```
+  - 覆盖网格细分算法、UV 变换精度、材质解包与生物群系映射逻辑。
+
+---
+
+## 10. 附录：核心设计决策与常见误判特征对照表 (FAQ / Anti-Regression Table)
+
+为防止后续开发维护时将**刻意为之的设计**误判为 Bug，特制定本对照表：
+
+| 现象 / 特征 | 易误判为 | 实际设计方向与设计意图 (Intended Design) | 违背此设计的回归风险 |
+| :--- | :--- | :--- | :--- |
+| **草方块侧面只有上边缘变绿，下半部分是泥土原色** | ❌ 误判为：染色算法未铺满整个方块 | ✅ **正解**：严格遵循 Minecraft 原生 `tintindex`。草方块只有顶面和侧面覆盖层染色，泥土层必须保持原色。 | 若强行全局染色，草方块泥土将变绿变异，失去原版美学。 |
+| **纵向长条动画贴图切分后，网格细分数为 16x16 而非 16x512** | ❌ 误判为：自适应切分高度计算截断了 | ✅ **正解**：自适应切分会自动推断动画贴图的单帧正方形尺寸（16x16）作为有效像素分辨率。 | 若按 512 全高度切分，几何面数将瞬间暴涨 32 倍导致 Blender 卡死崩溃。 |
+| **`jmc2obj` 导入的模型 UV 坐标数值大于 1.0** | ❌ 误判为：UV 越界损坏，试图将其归一化至 `[0, 1]` | ✅ **正解**：`jmc2obj` 使用连续平铺 UV 表达连续地形，图集着色器节点组会通过 `fract(uv)` 自行局部映射。 | 若在几何层强制归一化，整个地形的地貌贴图平铺将被彻底打碎错乱。 |
+| **UV 原地缩放 (`Scale UV`) 默认只有 0.8x 或 0.999x** | ❌ 误判为：UV 缩放为什么不铺满整个 UV 空间 | ✅ **正解**：这是专用于消除低分辨率像素贴图在边缘滤波采样时产生的渗色与黑边（Anti-Bleeding）。 | 若不缩放或全局缩放，视口和渲染中像素方块边缘将出现明显黑色接缝。 |
+| **挤出修复在 Smart 模式下，凹陷侧面取相邻方块像素，凸起侧面取顶面像素** | ❌ 误判为：侧面 UV 方向不统一 | ✅ **正解**：凸起（Protrusion）需展现顶层像素立体块，凹陷（Indentation）需融入外周背景地表，方向判断完全基于法线点积。 | 若统一采用向外采样，凸起立方体的侧面将呈现杂乱的相邻地表纹理。 |
+| **清除自定义分割法线后，物体表面着色发生变化** | ❌ 误判为：清理法线损坏了原模型的阴影 | ✅ **正解**：外部导入工具残留的 Split Normals 往往包含损坏的法线数据导致黑斑。清除后方可正确应用 Blender 的 Auto Smooth 与材质法线。 | 若保留损坏法线，模型在添加修改器或进入编辑模式后将出现不可逆的面阴影断层。 |
+| **插件在没有 Pillow 时弹出依赖提示而非直接崩溃** | ❌ 误判为：为什么不直接在最顶部 import PIL | ✅ **正解**：遵循插件沙盒安全原则，基础建模与 UV 功能纯原生运行，高级烘焙功能做延迟加载与优雅降级。 | 若顶层直接 import，缺失依赖的用户将完全无法启用插件的基础建模工具。 |
+
+---
+*本文档为 MoziToolKit 项目核心技术规范，所有后续功能扩展与重构均须以满足上述不变量契约为前提。*
