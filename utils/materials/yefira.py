@@ -416,7 +416,16 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     import json
 
     for item in state_attr.data:
-        raw_state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
+        state = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
+        raw_state = state
+        if state and state.startswith("{") and state.endswith("}"):
+            try:
+                json_obj = json.loads(state)
+                if isinstance(json_obj, dict):
+                    raw_state = json_obj.get("state", state)
+            except Exception:
+                pass
+
         block_name, props = parse_block_state_str(raw_state)
         names = mapping_names(raw_state)
         entry = next((by_name[name] for name in names if name in by_name), None)
