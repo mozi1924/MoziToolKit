@@ -309,6 +309,21 @@ class TestJmc2objMatching(unittest.TestCase):
         ns2, cands2 = extract_material_texture_keys(mat2)
         self.assertIn("block/dirt", cands2)
 
+    def test_jmc2obj_candidate_extraction_namespace(self):
+        """Verify jmc2obj_texture_candidates preserves custom namespaces and generates candidates."""
+        mat = bpy.data.materials.new(name="minecraft_block-stone")
+        mat.use_nodes = True
+        ns, cands = jmc2obj_texture_candidates(mat)
+        self.assertEqual(ns, "minecraft")
+        self.assertIn("block/stone", cands)
+
+        # Modded prefix material
+        mat2 = bpy.data.materials.new(name="botania_block-pure_daisy")
+        mat2.use_nodes = True
+        ns2, cands2 = jmc2obj_texture_candidates(mat2)
+        self.assertEqual(ns2, "botania")
+        self.assertTrue(any("pure_daisy" in c for c in cands2))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

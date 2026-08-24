@@ -2,19 +2,29 @@
 Unit tests for Minecraft Biome Tinting, Overlay Atlas, and Colormap systems.
 """
 
+import sys
 import unittest
 import tempfile
 import shutil
 import zipfile
 import json
 from pathlib import Path
-from PIL import Image
 
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+PARENT_DIR = PROJECT_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from PIL import Image
 import bpy
 
-from utils.materials.biome import (
+from MoziToolKit.utils.materials.biome import (
     hex_to_linear_rgba,
     linear_rgba_to_hex,
+    hex_to_rgb,
+    hex_to_rgba,
     get_biome_colors,
     BiomeResolver,
     BIOME_PALETTES,
@@ -25,15 +35,15 @@ from utils.materials.biome import (
     TINT_TYPE_WATER,
     TINT_TYPE_HARDCODED,
 )
-from utils.materials.constants import (
+from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
 )
-from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_sampler
-from utils.materials.builder import rebuild_material
-from utils.materials.atlas_generator import AtlasGenerator
-from utils.materials.atlas_builder import build_atlas_chunk_materials
-from pipeline.presets import run_preset_pipeline
+from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, ensure_colormap_sampler
+from MoziToolKit.utils.materials.builder import rebuild_material
+from MoziToolKit.utils.materials.atlas_generator import AtlasGenerator
+from MoziToolKit.utils.materials.atlas_builder import build_atlas_chunk_materials
+from MoziToolKit.pipeline.presets import run_preset_pipeline
 
 
 class TestBiomeColors(unittest.TestCase):
@@ -58,6 +68,19 @@ class TestBiomeColors(unittest.TestCase):
         lin = hex_to_linear_rgba(hex_val)
         hex_out = linear_rgba_to_hex(lin)
         self.assertEqual(hex_val.upper(), hex_out.upper())
+
+    def test_hex_to_rgb_and_rgba(self):
+        """Verify hex_to_rgb and hex_to_rgba 6-digit and 8-digit handling."""
+        rgb = hex_to_rgb("#FF8000")
+        self.assertAlmostEqual(rgb[0], 1.0, places=2)
+        self.assertAlmostEqual(rgb[1], 0.5019, places=2)
+        self.assertAlmostEqual(rgb[2], 0.0, places=2)
+
+        rgba = hex_to_rgba("#FF800080")
+        self.assertAlmostEqual(rgba[0], 1.0, places=2)
+        self.assertAlmostEqual(rgba[1], 0.5019, places=2)
+        self.assertAlmostEqual(rgba[2], 0.0, places=2)
+        self.assertAlmostEqual(rgba[3], 0.5019, places=2)
 
     def test_get_biome_colors(self):
         plains = get_biome_colors("PLAINS")
@@ -131,6 +154,44 @@ class TestBiomeResolver(unittest.TestCase):
 
         no_overlay = self.resolver.get_overlay_texture("stone")
         self.assertIsNone(no_overlay)
+
+    def test_seagrass_tint_classification_is_none(self):
+        """Verify seagrass and aquatic plants are NOT misclassified as grass tint."""
+        resolver = BiomeResolver()
+        underwater_stems = [
+            "seagrass", "tall_seagrass_top", "tall_seagrass_bottom",
+            "tall_seagrass", "seagrass_bottom", "kelp", "kelp_plant",
+        ]
+        for stem in underwater_stems:
+            info = resolver.get_tint_info(stem)
+            self.assertEqual(info["tint_type"], TINT_TYPE_NONE)
+            self.assertEqual(info["tint_category"], "none")
+
+        grass_stems = [
+            "grass_block_top", "grass", "short_grass", "tall_grass_top",
+            "tall_grass_bottom", "tall_grass", "fern", "large_fern_top", "large_fern_bottom",
+        ]
+        for stem in grass_stems:
+            info = resolver.get_tint_info(stem)
+            self.assertEqual(info["tint_type"], TINT_TYPE_GRASS)
+            self.assertEqual(info["tint_category"], "grass")
+
+        foliage_stems = ["oak_leaves", "jungle_leaves", "acacia_leaves", "dark_oak_leaves", "vine"]
+        for stem in foliage_stems:
+            info = resolver.get_tint_info(stem)
+            self.assertEqual(info["tint_type"], TINT_TYPE_FOLIAGE)
+
+    def test_model_tintindex_does_not_imply_biome_tint(self):
+        """Vanilla stonecutter_saw has tintindex 0 but no biome colour provider."""
+        resolver = BiomeResolver(models={
+            "stonecutter": {
+                "textures": {"saw": "minecraft:block/stonecutter_saw"},
+                "elements": [{"faces": {"north": {"texture": "#saw", "tintindex": 0}}}],
+            }
+        })
+        info = resolver.get_tint_info("stonecutter_saw")
+        self.assertEqual(info["tint_type"], TINT_TYPE_NONE)
+        self.assertEqual(info["tint_weight"], 0.0)
 
 
 class TestBiomeNodeGroups(unittest.TestCase):

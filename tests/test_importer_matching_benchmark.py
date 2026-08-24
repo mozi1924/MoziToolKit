@@ -144,7 +144,7 @@ class TestImporterModelMatching(unittest.TestCase):
         res, pctx = run_preset_pipeline(
             'replace_material',
             bpy.context,
-            params={'zip_path': self.tmp_jar, 'material_mode': 'STANDALONE'},
+            params={'zip_path': self.tmp_jar, 'material_mode': 'STANDALONE', 'pack_textures': False, 'use_cache': True},
             target_objects=[cube]
         )
         self.assertTrue(res.is_success, f"Standalone pipeline failed: {res.message} - {pctx.reports}")
@@ -153,7 +153,7 @@ class TestImporterModelMatching(unittest.TestCase):
         res2, pctx2 = run_preset_pipeline(
             'replace_material',
             bpy.context,
-            params={'zip_path': self.tmp_jar, 'material_mode': 'ATLAS'},
+            params={'zip_path': self.tmp_jar, 'material_mode': 'ATLAS', 'pack_textures': False, 'use_cache': True},
             target_objects=[cube]
         )
         self.assertTrue(res2.is_success, f"Atlas pipeline failed: {res2.message} - {pctx2.reports}")
