@@ -6,6 +6,7 @@ Generates procedural non-cube models and entity blocks with fake-user persistenc
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Dict, List, Optional
 import bpy
@@ -95,6 +96,56 @@ def get_template_index_map(col: bpy.types.Collection) -> Dict[str, int]:
             register_alias("lantern", obj_name)
 
     return mapping
+
+
+def ensure_baked_block_template(
+    collection: bpy.types.Collection,
+    block_state: str,
+    baked_model,
+) -> Optional[bpy.types.Object]:
+    """Return a persistent Geometry Nodes template for an extracted block model.
+
+    A blockstate includes its variant and multipart choices, so two states of the
+    same block can legitimately require different geometry.  The digest keeps
+    the Blender object name short, valid and stable while the full state is
+    retained as a custom property for inspection.
+
+    ``baked_model`` is deliberately duck-typed here to avoid making the live
+    sync package depend on the baker at import time.
+    """
+    if not baked_model or not getattr(baked_model, "elements", None):
+        return None
+
+    digest = hashlib.sha1(block_state.encode("utf-8")).hexdigest()[:16]
+    model_signature = hashlib.sha1(repr(baked_model.elements).encode("utf-8")).hexdigest()
+    name = f"mc_model_{digest}"
+    obj = bpy.data.objects.get(name)
+    if obj is None or obj.get("yefira:model_signature") != model_signature:
+        # Import lazily: template_catalog is also loaded in light-weight paths
+        # where the model baker has no configured resource source.
+        from ..mc_baker.mesh_generator import build_blender_mesh_from_baked_model
+
+        mesh = build_blender_mesh_from_baked_model(
+            baked_model,
+            mesh_name=f"{name}_mesh",
+            origin_centered=True,
+        )
+        attach_yefira_template_attributes(mesh)
+        if obj is None:
+            obj = bpy.data.objects.new(name, mesh)
+            obj.use_fake_user = True
+        else:
+            old_mesh = obj.data
+            obj.data = mesh
+            if old_mesh and old_mesh.users == 0:
+                bpy.data.meshes.remove(old_mesh)
+        obj["yefira:block_state"] = block_state
+        obj["yefira:model_source"] = "minecraft_json"
+        obj["yefira:model_signature"] = model_signature
+
+    if obj.name not in collection.objects:
+        collection.objects.link(obj)
+    return obj
 
 
 class TemplateCatalog:

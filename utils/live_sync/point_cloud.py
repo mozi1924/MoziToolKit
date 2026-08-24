@@ -13,7 +13,11 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 from .storage import VoxelStorage, block_key
 from .classifier import parse_and_classify, BlockTypeEnum, ParsedBlock, atlas_lookup_keys
-from .template_catalog import get_or_create_template_collection, get_template_index_map
+from .template_catalog import (
+    ensure_baked_block_template,
+    get_or_create_template_collection,
+    get_template_index_map,
+)
 from .constants import (
     BLOCK_CENTER, BLOCK_KEY, BLOCK_STATE, BLOCK_TYPE, CONTRACT_VERSION,
     DEFAULT_ANIM_ATLAS_HEIGHT, DEFAULT_ANIM_ATLAS_WIDTH,
@@ -134,6 +138,7 @@ class PrecomputedStateAttr:
         block_face_uv_rot_lut: Optional[dict[str, Any]] = None,
         block_face_uv_bounds_lut: Optional[dict[str, Any]] = None,
         tile_size: float = DEFAULT_TILE_SIZE,
+        state_template_indices: Optional[dict[str, int]] = None,
     ):
         import json
         json_obj = None
@@ -160,8 +165,14 @@ class PrecomputedStateAttr:
         self.full_state = parsed.full_state
         self.name = parsed.name
         self.block_type = parsed.block_type
-        self.tmpl_idx = _resolve_template_index(template_indices, parsed.template_name)
-        self.rot_euler = parsed.rot_euler
+        extracted_template_idx = (state_template_indices or {}).get(parsed.full_state)
+        self.tmpl_idx = extracted_template_idx if extracted_template_idx is not None else _resolve_template_index(
+            template_indices, parsed.template_name,
+        )
+        # JSON model variants are already rotated by StateBaker. Applying the
+        # classifier's legacy template rotation again would rotate stairs,
+        # doors and multipart blocks twice.
+        self.rot_euler = (0.0, 0.0, 0.0) if extracted_template_idx is not None else parsed.rot_euler
         self.is_directional_flip = int(parsed.name in ("command_block", "chain_command_block", "repeating_command_block"))
         self.tint_color = parsed.tint_color
         self.tint_data = parsed.tint_data
@@ -368,6 +379,31 @@ def update_world_point_cloud(
     block_map = storage.block_map
 
     template_col = get_or_create_template_collection(context)
+
+    # A collection template must describe the *resolved blockstate*, not just
+    # a broad class such as "stairs" or "lantern".  Populate it from the
+    # active resource stack before collecting palette indices.  This preserves
+    # multipart geometry (fences, walls), model inheritance and state rotation
+    # while retaining the old procedural templates when no source is enabled.
+    unique_states = list(set(block_map.values()))
+    state_template_indices: dict[str, int] = {}
+    baker = get_shared_state_baker()
+    if baker.is_available():
+        for state in unique_states:
+            if not state or state.lstrip().startswith("{"):
+                # Protocol payloads with explicit face data have no canonical
+                # resource-pack state to extract.
+                continue
+            try:
+                baked = baker.bake_block_state(state)
+                if baked.is_cube or not baked.elements:
+                    continue
+                template = ensure_baked_block_template(template_col, state, baked)
+                if template is not None:
+                    state_template_indices[state] = list(template_col.objects).index(template)
+            except Exception:
+                logger.debug("Could not extract block template for %s", state, exc_info=True)
+
     template_indices = get_template_index_map(template_col)
 
     # Object and Mesh Setup
@@ -395,7 +431,10 @@ def update_world_point_cloud(
     bfuvb_lut = block_face_uv_bounds_lut or {}
 
     global _LAST_ATLAS_FINGERPRINT
-    tmpl_tuple = tuple(obj.name for obj in template_col.objects) if template_col else ()
+    tmpl_tuple = tuple(
+        (obj.name, obj.get("yefira:model_signature", ""))
+        for obj in template_col.objects
+    ) if template_col else ()
     current_atlas_fingerprint = (
         id(atlas_mapping_dict),
         len(mapping_dict),
@@ -415,7 +454,6 @@ def update_world_point_cloud(
         _LAST_ATLAS_FINGERPRINT = current_atlas_fingerprint
 
     # 1. Fetch / precompute palette metadata
-    unique_states = list(set(block_map.values()))
     state_to_idx = {s: i for i, s in enumerate(unique_states)}
     num_unique = len(unique_states)
 
@@ -426,6 +464,7 @@ def update_world_point_cloud(
             entry = PrecomputedStateAttr(
                 state_str=s,
                 template_indices=template_indices,
+                state_template_indices=state_template_indices,
                 atlas_mapping_dict=mapping_dict,
                 atlas_mapping_textures=mapping_tex,
                 block_face_lut=bf_lut,
