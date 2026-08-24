@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, Optional
 import bpy
 
+from ..live_sync.classifier import BlockTypeEnum
 from ..live_sync.constants import (
     BLOCK_CENTER,
     BLOCK_TYPE,
@@ -32,12 +33,16 @@ from ..live_sync.constants import (
     MTK_TILES_PER_ROW,
     MTK_UV_ROTATION,
     MTK_UV_TILING_TRANSFORM,
+    NODE_NAME_CULLING_MERGE,
+    NODE_NAME_MAT_DISPATCHER,
+    TEMPLATE_COLLECTION_NAME,
     TEMPLATE_INDEX,
     UV_MAP,
+    WORLD_MODIFIER_NAME,
+    WORLD_TREE_NAME,
     face_attribute,
 )
 from ..live_sync.template_catalog import (
-    TEMPLATE_COLLECTION_NAME,
     get_or_create_template_collection,
 )
 from ..materials.yefira import (
@@ -129,9 +134,9 @@ def _update_tree_bindings(
     for node in tree.nodes:
         if node.bl_idname == "GeometryNodeCollectionInfo" and "Collection" in node.inputs:
             node.inputs["Collection"].default_value = template_col
-        elif node.bl_idname == "GeometryNodeGroup" and node.name == "Material Dispatcher":
+        elif node.bl_idname == "GeometryNodeGroup" and (node.name == NODE_NAME_MAT_DISPATCHER or getattr(node.node_tree, "name", "").startswith("Yefira_Material_Dispatcher")):
             node.node_tree = group_mat_dispatcher
-        elif node.bl_idname == "GeometryNodeGroup" and node.name == "Hidden Face Culling & Merge":
+        elif node.bl_idname == "GeometryNodeGroup" and (node.name == NODE_NAME_CULLING_MERGE or getattr(node.node_tree, "name", "").startswith("Yefira_Culling_Merge")):
             node.node_tree = get_or_create_culling_merge_group()
 
 
@@ -201,11 +206,11 @@ def _build_tree_nodes_and_links(
     attr_rot.inputs["Name"].default_value = INSTANCE_ROTATION
     attr_rot.location = (-800, -400)
 
-    # 4. Compare block_type == 0 (Cubes)
+    # 4. Compare block_type == BlockTypeEnum.CUBE (Cubes)
     cmp_cube = nodes.new("FunctionNodeCompare")
     cmp_cube.data_type = "INT"
     cmp_cube.operation = "EQUAL"
-    cmp_cube.inputs["B"].default_value = 0
+    cmp_cube.inputs["B"].default_value = BlockTypeEnum.CUBE
     cmp_cube.location = (-600, 0)
     links.new(attr_type.outputs["Attribute"], cmp_cube.inputs["A"])
 

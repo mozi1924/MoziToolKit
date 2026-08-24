@@ -756,6 +756,18 @@ def build_block_face_uv_bounds_lut(mapping: Optional[dict]) -> dict[str, list[tu
     return bounds_lut
 
 
+from ..live_sync.constants import (
+    DEFAULT_ATLAS_WIDTH,
+    DEFAULT_ATLAS_HEIGHT,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_TILES_PER_ROW,
+    DEFAULT_ANIM_ATLAS_WIDTH,
+    DEFAULT_ANIM_ATLAS_HEIGHT,
+    DEFAULT_ANIM_FRAME_WIDTH,
+    DEFAULT_ANIM_FRAME_HEIGHT,
+)
+
+
 def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[str, Any]:
     """
     Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, chunk dimensions and LUTs.
@@ -765,21 +777,21 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
 
     res = {
         "material": mat,
-        "width": 1024.0,
-        "height": 1024.0,
-        "tile_size": 16.0,
-        "tiles_per_row": 64,
-        "chunk_0_width": 4096.0,
-        "chunk_0_height": 80.0,
-        "chunk_0_tile_size": 16.0,
-        "chunk_0_tiles_per_row": 256.0,
-        "chunk_1_width": 896.0,
-        "chunk_1_height": 1024.0,
-        "chunk_1_tile_size": 16.0,
-        "anim_atlas_width": 896.0,
-        "anim_atlas_height": 1024.0,
-        "anim_frame_width": 16.0,
-        "anim_frame_height": 16.0,
+        "width": DEFAULT_ATLAS_WIDTH,
+        "height": DEFAULT_ATLAS_HEIGHT,
+        "tile_size": DEFAULT_TILE_SIZE,
+        "tiles_per_row": DEFAULT_TILES_PER_ROW,
+        "chunk_0_width": DEFAULT_ATLAS_WIDTH,
+        "chunk_0_height": DEFAULT_ATLAS_HEIGHT,
+        "chunk_0_tile_size": DEFAULT_TILE_SIZE,
+        "chunk_0_tiles_per_row": float(DEFAULT_TILES_PER_ROW),
+        "chunk_1_width": DEFAULT_ANIM_ATLAS_WIDTH,
+        "chunk_1_height": DEFAULT_ANIM_ATLAS_HEIGHT,
+        "chunk_1_tile_size": DEFAULT_ANIM_FRAME_WIDTH,
+        "anim_atlas_width": DEFAULT_ANIM_ATLAS_WIDTH,
+        "anim_atlas_height": DEFAULT_ANIM_ATLAS_HEIGHT,
+        "anim_frame_width": DEFAULT_ANIM_FRAME_WIDTH,
+        "anim_frame_height": DEFAULT_ANIM_FRAME_HEIGHT,
         "mapping": None,
         "block_face_lut": {},
         "block_face_chunk_lut": {},

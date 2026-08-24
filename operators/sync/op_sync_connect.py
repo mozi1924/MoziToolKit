@@ -11,6 +11,14 @@ import bpy
 
 from ...utils.geometry_nodes.world_tree import setup_world_geometry_nodes
 from ...utils.live_sync.client import SyncClientThread
+from ...utils.live_sync.constants import (
+    DEFAULT_ANIM_ATLAS_HEIGHT,
+    DEFAULT_ANIM_ATLAS_WIDTH,
+    DEFAULT_ANIM_FRAME_HEIGHT,
+    DEFAULT_ANIM_FRAME_WIDTH,
+    DEFAULT_WORLD_OBJECT_NAME,
+    WORLD_MODIFIER_NAME,
+)
 from ...utils.live_sync.point_cloud import (
     clear_state_cache,
     refresh_baker_sources,
@@ -38,19 +46,16 @@ def get_active_sync_props(context: Optional[bpy.types.Context] = None):
     """Retrieve mozi_sync scene properties safely."""
     if context is None:
         context = bpy.context
-    if hasattr(context, "scene") and hasattr(context.scene, "mozi_sync"):
-        return context.scene.mozi_sync
-    return None
+    return getattr(context.scene, "mozi_sync", None) if hasattr(context, "scene") else None
 
 
 def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
     """Retrieve or compute cached atlas parameters to avoid repeatedly parsing JSON on every delta."""
     global _cached_atlas_params, _cached_mat_id
-    mat_id = id(mat) if mat else 0
-    if _cached_atlas_params is not None and _cached_mat_id == mat_id:
-        return _cached_atlas_params
-    _cached_atlas_params = extract_atlas_parameters(mat)
-    _cached_mat_id = mat_id
+    current_mat_id = id(mat) if mat else 0
+    if _cached_atlas_params is None or _cached_mat_id != current_mat_id:
+        _cached_mat_id = current_mat_id
+        _cached_atlas_params = extract_atlas_parameters(mat)
     return _cached_atlas_params
 
 
@@ -63,23 +68,21 @@ def clear_sync_caches() -> None:
 
 
 def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
-    """Update Yefira_World point cloud and configure Geometry Nodes engine."""
+    """Invoked on main thread when storage updates."""
     refresh_baker_sources()
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
 
-    existing_world = bpy.data.objects.get("Yefira_World")
+    existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
     mat = find_bound_atlas_material(existing_world) if existing_world else None
     atlas_params = get_cached_atlas_params(mat)
-    atlas_mapping_dict = atlas_params.get("material_id_map", {})
-    block_face_lut = atlas_params.get("block_face_lut", {})
 
     res = update_world_point_cloud(
         context=context,
         storage=voxel_storage,
         filter_air=filter_air,
-        atlas_mapping_dict=atlas_mapping_dict,
-        block_face_lut=block_face_lut,
+        atlas_mapping_dict=atlas_params.get("material_id_map", {}),
+        block_face_lut=atlas_params.get("block_face_lut", {}),
         block_face_chunk_lut=atlas_params.get("block_face_chunk_lut", {}),
         block_face_texture_lut=atlas_params.get("block_face_texture_lut", {}),
         block_face_tint_lut=atlas_params.get("block_face_tint_lut", {}),
@@ -92,14 +95,14 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
         atlas_height=atlas_params["height"],
         tile_size=atlas_params["tile_size"],
         tiles_per_row=atlas_params["tiles_per_row"],
-        anim_atlas_width=atlas_params.get("anim_atlas_width", atlas_params.get("chunk_1_width", 896.0)),
-        anim_atlas_height=atlas_params.get("anim_atlas_height", atlas_params.get("chunk_1_height", 1024.0)),
-        anim_frame_width=atlas_params.get("anim_frame_width", atlas_params.get("chunk_1_tile_size", 16.0)),
-        anim_frame_height=atlas_params.get("anim_frame_height", atlas_params.get("chunk_1_tile_size", 16.0)),
+        anim_atlas_width=atlas_params.get("anim_atlas_width", atlas_params.get("chunk_1_width", DEFAULT_ANIM_ATLAS_WIDTH)),
+        anim_atlas_height=atlas_params.get("anim_atlas_height", atlas_params.get("chunk_1_height", DEFAULT_ANIM_ATLAS_HEIGHT)),
+        anim_frame_width=atlas_params.get("anim_frame_width", atlas_params.get("chunk_1_tile_size", DEFAULT_ANIM_FRAME_WIDTH)),
+        anim_frame_height=atlas_params.get("anim_frame_height", atlas_params.get("chunk_1_tile_size", DEFAULT_ANIM_FRAME_HEIGHT)),
     )
 
     if res.world_obj:
-        mod = res.world_obj.modifiers.get("Yefira_WorldModifier")
+        mod = res.world_obj.modifiers.get(WORLD_MODIFIER_NAME)
         if force_gn_setup or not mod or not mod.node_group:
             setup_world_geometry_nodes(res.world_obj)
 
