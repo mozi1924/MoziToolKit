@@ -94,6 +94,7 @@ def build_atlas_material(
         mat = bpy.data.materials.new(name=mat_name)
 
     mat.use_nodes = True
+    mat.use_fake_user = False
     set_material_displacement_method(mat, "BOTH")
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
@@ -218,6 +219,12 @@ def build_atlas_material(
         if "Specular IOR Level" in bsdf_node.inputs:
             links.new(tex_specular.outputs["Color"], bsdf_node.inputs["Specular IOR Level"])
 
+    # 7. Ensure Albedo texture node is active and selected for Solid Viewport mode
+    for n in nodes:
+        n.select = False
+    nodes.active = tex_albedo
+    tex_albedo.select = True
+
     return mat
 
 
@@ -339,10 +346,7 @@ def build_atlas_chunk_materials(
             mat = bpy.data.materials.new(name=material_name)
 
         mat.use_nodes = True
-        # Yefira's point-cloud material slots and Geometry Nodes dispatcher
-        # both retain this variant.  A fake user would keep obsolete atlas
-        # materials (and their packed images) alive after world replacement.
-        mat.use_fake_user = not bool(uv_attribute)
+        mat.use_fake_user = False
         set_material_displacement_method(mat, "BOTH")
         mat.node_tree[PROP_ATLAS_MAPPING] = compact_mapping_str
         mat[PROP_ATLAS_MAPPING] = compact_mapping_str
@@ -366,6 +370,7 @@ def build_atlas_chunk_materials(
             mat["mtk:atlas_category_chunk_index"] = int(chunk["category_chunk_index"])
         mat["mtk:atlas_uv_source"] = uv_attribute or ""
 
+        albedo_tex_node = None
         nodes, links = mat.node_tree.nodes, mat.node_tree.links
         nodes.clear()
 
@@ -613,6 +618,9 @@ def build_atlas_chunk_materials(
                 tex_curr.location = (-320, base_y + 120)
                 links.new(curr_uv_socket, tex_curr.inputs["Vector"])
 
+                if channel_key == "albedo":
+                    albedo_tex_node = tex_curr
+
                 tex_next = nodes.new("ShaderNodeTexImage")
                 tex_next.name = f"Tex Next ({channel_name})"
                 tex_next.image = img
@@ -761,6 +769,9 @@ def build_atlas_chunk_materials(
                 tex_node.extension = "CLIP"
                 tex_node.location = (-500, base_y)
 
+                if channel_key == "albedo":
+                    albedo_tex_node = tex_node
+
                 links.new(uv_source_socket, tex_node.inputs["Vector"])
                 if channel_key == "albedo" and biome_tint_node:
                     links.new(tex_node.outputs["Color"], biome_tint_node.inputs["Base Color"])
@@ -768,6 +779,13 @@ def build_atlas_chunk_materials(
                 else:
                     links.new(tex_node.outputs["Color"], decoder_node.inputs[col_socket])
                     links.new(tex_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
+
+        # Ensure Albedo image texture node is active and selected for Solid Viewport mode
+        if albedo_tex_node:
+            for n in nodes:
+                n.select = False
+            nodes.active = albedo_tex_node
+            albedo_tex_node.select = True
 
         materials[chunk_id] = mat
 

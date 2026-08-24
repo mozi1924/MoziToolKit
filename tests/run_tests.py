@@ -863,6 +863,12 @@ def run_all_tests():
     except Exception as e:
         print(f"[Warning] Could not load TestPBRPackStack: {e}")
 
+    try:
+        from tests.test_overlay_solid_mode_and_fake_user import TestOverlaySolidModeAndFakeUser
+        suite.addTests(loader.loadTestsFromTestCase(TestOverlaySolidModeAndFakeUser))
+    except Exception as e:
+        print(f"[Warning] Could not load TestOverlaySolidModeAndFakeUser: {e}")
+
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
 

@@ -845,6 +845,7 @@ def get_or_create_atlas_material() -> Optional[bpy.types.Material]:
     # Build default unified Atlas Master material
     mat = bpy.data.materials.new(name=MASTER_MATERIAL_NAME)
     mat.use_nodes = True
+    mat.use_fake_user = False
     mat["mtk_atlas_width"] = 1024.0
     mat["mtk_atlas_height"] = 1024.0
     mat["mtk_tile_size"] = 16.0
@@ -914,6 +915,11 @@ def get_or_create_atlas_material() -> Optional[bpy.types.Material]:
 
     links.new(mix_node.outputs[2], bsdf.inputs['Base Color'])
     links.new(tex_image.outputs['Alpha'], bsdf.inputs['Alpha'])
+
+    for n in nodes:
+        n.select = False
+    nodes.active = tex_image
+    tex_image.select = True
 
     return mat
 
