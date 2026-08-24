@@ -103,26 +103,29 @@ _cached_stats_time = 0.0
 def get_cache_stats(force_refresh: bool = False) -> dict:
     """
     Get summary statistics about the persistent cache directory.
-    Cached for 3 seconds to avoid disk I/O bottleneck during 60FPS UI redraw ticks.
+    Cached for 60 seconds to avoid disk I/O bottleneck during UI redraw ticks.
     Returns dict with keys: 'path', 'files_count', 'total_size_bytes', 'size_formatted'.
     """
     global _cached_stats, _cached_stats_time
     import time
     now = time.time()
-    if not force_refresh and _cached_stats is not None and (now - _cached_stats_time) < 3.0:
+    if not force_refresh and _cached_stats is not None and (now - _cached_stats_time) < 60.0:
         return _cached_stats
 
     cache_root = get_cache_dir()
     files_count = 0
     total_size = 0
     if cache_root.exists():
-        for sub in cache_root.rglob("*"):
-            if sub.is_file():
-                files_count += 1
-                try:
-                    total_size += sub.stat().st_size
-                except Exception:
-                    pass
+        try:
+            for root, _, files in os.walk(cache_root):
+                files_count += len(files)
+                for f in files:
+                    try:
+                        total_size += os.path.getsize(os.path.join(root, f))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     if total_size < 1024:
         size_str = f"{total_size} B"

@@ -897,6 +897,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         row_precompile = mat_box.row(align=True)
         row_precompile.operator("mozi.precompile_cache", text="Precompile / Rebuild Stack Atlas Cache", icon="FILE_REFRESH")
+        row_precompile.operator("mozi.open_cache_folder", text="Open Cache Folder", icon="FOLDER_REDIRECT")
 
     def draw_context_menus(self, layout, context):
         # Secondary Context Menu Sub-Tabs
@@ -1111,16 +1112,17 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             return {'CANCELLED'}
 
         try:
+            from ..utils.mc_baker import clear_shared_baker_cache
+            clear_shared_baker_cache()
             cache_root = get_cache_dir()
             atlas_dir = cache_root / stack.stack_hash / "full_scene"
-            gen = AtlasGenerator(
-                resource_path=stack.packs[0].extract_dir or stack.packs[0].zip_path,
-                fallback_stack=stack,
-            )
+            gen = AtlasGenerator(fallback_stack=stack)
             res = gen.build(atlas_dir)
             clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
             num_chunks = len(res.get("chunks", []))
-            self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks) for pack stack.")
+            num_baked = len(res.get("materials", []))
+            refresh_ui_and_menus(context)
+            self.report({'INFO'}, f"Successfully precompiled Atlas cache ({num_chunks} chunks, {num_baked} materials) for pack stack.")
             return {'FINISHED'}
         except Exception as e:
             self.report({'ERROR'}, f"Failed to precompile Atlas cache: {e}")

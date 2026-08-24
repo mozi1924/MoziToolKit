@@ -583,7 +583,6 @@ class StepReplaceMaterial(PipelineStep):
             pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {effective_pack_hash[:12]}...")
             try:
                 gen = AtlasGenerator(
-                    pack.extract_dir,
                     fallback_stack=pack_stack,
                     included_categories=yefira_categories if yefira_only else None,
                 )

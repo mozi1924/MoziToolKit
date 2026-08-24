@@ -64,16 +64,16 @@ def is_animated_texture(image, mcmeta: dict | None) -> bool:
     """
     if not mcmeta or not isinstance(mcmeta, dict):
         return False
-    anim = mcmeta.get("animation")
-    if anim is None or not isinstance(anim, dict):
+    anim = mcmeta.get("animation") if isinstance(mcmeta.get("animation"), dict) else mcmeta
+    if not isinstance(anim, dict):
         return False
 
     if image is None:
         return True
 
     w, h = image.size
-    frame_width = max(1, int(anim.get("width", w)))
-    frame_height = max(1, int(anim.get("height", frame_width)))
+    frame_width = max(1, int(anim.get("width") or w))
+    frame_height = max(1, int(anim.get("height") or frame_width))
     frame_count = max(1, h // frame_height) if frame_height > 0 else 1
     frames = anim.get("frames", [])
 
@@ -151,16 +151,28 @@ class AtlasGenerator:
 
     def __init__(
         self,
-        resource_path: str | Path,
+        resource_path: Optional[Union[str, Path, ResourcePackStack]] = None,
         default_tile_size: int = 16,
         max_chunk_size: int = 4096,
         fallback_stack: Optional[ResourcePackStack] = None,
         included_categories: Optional[set[str]] = None,
     ):
-        self.resource_path = Path(resource_path)
+        if isinstance(resource_path, ResourcePackStack):
+            self.pack_stack = resource_path
+            self.resource_path = self.pack_stack.packs[0].zip_path if (self.pack_stack.packs and self.pack_stack.packs[0].zip_path) else (self.pack_stack.packs[0].extract_dir if self.pack_stack.packs else Path("."))
+        elif fallback_stack is not None:
+            self.pack_stack = fallback_stack
+            self.resource_path = Path(resource_path) if resource_path else (self.pack_stack.packs[0].zip_path if (self.pack_stack.packs and self.pack_stack.packs[0].zip_path) else (self.pack_stack.packs[0].extract_dir if self.pack_stack.packs else Path(".")))
+        elif resource_path:
+            self.resource_path = Path(resource_path)
+            self.pack_stack = ResourcePackStack([self.resource_path])
+        else:
+            self.pack_stack = get_configured_pack_stack()
+            self.resource_path = self.pack_stack.packs[0].zip_path if (self.pack_stack.packs and self.pack_stack.packs[0].zip_path) else (self.pack_stack.packs[0].extract_dir if self.pack_stack.packs else Path("."))
+
         self.default_tile_size = default_tile_size
         self.max_chunk_size = max_chunk_size
-        self.fallback_stack = fallback_stack
+        self.fallback_stack = self.pack_stack
         # ``None`` preserves the full resource-pack behavior used for normal
         # mesh replacement.  Yefira world replacement supplies a focused set
         # so UI/particle atlases are never decoded or brought into Blender.
@@ -191,126 +203,17 @@ class AtlasGenerator:
 
         self.baker: Optional[StateBaker] = None
         try:
-            composite_loader = self.fallback_stack.get_composite_loader() if self.fallback_stack else None
-            primary_loader = JarResourceLoader(self.resource_path, fallback_loader=composite_loader)
+            composite_loader = self.pack_stack.get_composite_loader() if self.pack_stack else None
             self.baker = StateBaker(jar_path=None)
-            self.baker.resource_loader = primary_loader
-            self.baker.model_parser.model_loader_fn = primary_loader.load_model
-            self.baker.state_resolver.blockstate_loader_fn = primary_loader.load_blockstate
+            self.baker.resource_loader = composite_loader
+            if composite_loader:
+                self.baker.model_parser.model_loader_fn = composite_loader.load_model
+                self.baker.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
         except Exception:
             self.baker = None
 
     def _includes_category(self, category: str) -> bool:
         return self.included_categories is None or category in self.included_categories
-
-    def load_resources(self):
-        """Load PNG images, mcmeta animation data, and models from source and fallback stack across all categories."""
-        # Pillow 12 can defer decoder registration until its first open.  In
-        # Blender 5.2 that first open may fail after mesh creation; eagerly
-        # initialize plugins before touching a resource pack.
-        Image.init()
-        if not self.resource_path.exists():
-            raise FileNotFoundError(f"Resource path not found: {self.resource_path}")
-
-        if self.resource_path.is_dir():
-            self._load_from_dir(self.resource_path)
-        elif zipfile.is_zipfile(self.resource_path):
-            self._load_from_zip(self.resource_path)
-        else:
-            raise ValueError(f"Unsupported resource format: {self.resource_path}")
-
-        # Populate missing fallback textures and models from enabled packs/JARs in the stack
-        if self.fallback_stack and self.fallback_stack.packs:
-            for fallback_pack in self.fallback_stack.packs:
-                try:
-                    if (
-                        (fallback_pack.zip_path and fallback_pack.zip_path.resolve() == self.resource_path.resolve())
-                        or (fallback_pack.extract_dir and fallback_pack.extract_dir.resolve() == self.resource_path.resolve())
-                    ):
-                        continue
-                except Exception:
-                    pass
-                self._load_fallback_from_pack(fallback_pack)
-
-        self.biome_resolver.set_models(self.models)
-
-    def _load_fallback_from_pack(self, pack: ZipResourcePack):
-        """Populate missing textures and models across all categories from a lower-priority fallback pack."""
-        # 1. Load models from all namespaces under assets/*/models/{block,item}
-        if pack.extract_dir:
-            assets_dir = pack.extract_dir / "assets"
-            if assets_dir.exists():
-                for ns_dir in assets_dir.iterdir():
-                    if not ns_dir.is_dir():
-                        continue
-                    ns = ns_dir.name.lower().strip()
-                    for model_type in ("block", "item"):
-                        models_dir = ns_dir / "models" / model_type
-                        if models_dir.exists():
-                            for root, _, files in os.walk(models_dir):
-                                for f in files:
-                                    if f.endswith(".json"):
-                                        rel_model = (Path(root) / f).relative_to(models_dir).with_suffix("").as_posix().lower()
-                                        if ns == "minecraft":
-                                            model_key = rel_model if model_type == "block" else f"item/{rel_model}"
-                                        else:
-                                            model_key = f"{ns}:{model_type}/{rel_model}"
-                                        if model_key not in self.models:
-                                            try:
-                                                with open(Path(root) / f, "r", encoding="utf-8") as fp:
-                                                    self.models[model_key] = json.load(fp)
-                                            except Exception:
-                                                pass
-
-        # 2. Load textures across all categories from fallback pack
-        for (ns, path_key), info in pack.texture_path_index.items():
-            base_rel = path_key.strip("/")
-            category = classify_texture_category(base_rel)
-            if not self._includes_category(category):
-                continue
-            if base_rel.startswith("block/"):
-                clean_name = self._texture_name(ns, base_rel.removeprefix("block/"))
-                base_stem = base_rel.removeprefix("block/")
-            else:
-                clean_name = self._texture_name(ns, base_rel)
-                base_stem = base_rel
-
-            if (ns in self.static_by_ns_cat and category in self.static_by_ns_cat[ns] and base_rel in self.static_by_ns_cat[ns][category]) or \
-               (ns in self.animated_by_ns_cat and category in self.animated_by_ns_cat[ns] and base_rel in self.animated_by_ns_cat[ns][category]):
-                continue
-
-            albedo_file = info.get("albedo")
-            if not albedo_file or not Path(albedo_file).exists():
-                continue
-
-            try:
-                img = _safe_open_image(albedo_file)
-                mcmeta = info.get("albedo_mcmeta")
-                if is_animated_texture(img, mcmeta):
-                    anim_data = {"image": img, "mcmeta": mcmeta or {}}
-                    self.animated_textures[clean_name] = anim_data
-                    self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
-                    self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
-                else:
-                    self.static_textures[clean_name] = img
-                    self.static_by_namespace.setdefault(ns, {})[base_stem] = img
-                    self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-
-                normal_file = info.get("normal")
-                if normal_file and Path(normal_file).exists():
-                    n_img = _safe_open_image(normal_file)
-                    self.normal_textures[clean_name] = n_img
-                    self.normal_by_namespace.setdefault(ns, {})[base_stem] = n_img
-                    self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = n_img
-
-                specular_file = info.get("specular")
-                if specular_file and Path(specular_file).exists():
-                    s_img = _safe_open_image(specular_file)
-                    self.specular_textures[clean_name] = s_img
-                    self.specular_by_namespace.setdefault(ns, {})[base_stem] = s_img
-                    self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = s_img
-            except Exception:
-                pass
 
     @staticmethod
     def _texture_name(namespace: str, stem: str) -> str:
@@ -330,229 +233,95 @@ class AtlasGenerator:
             return f"{namespace}:{stem}"
         return f"{namespace}:block/{stem}"
 
-    def _load_from_zip(self, zip_path: Path):
-        with zipfile.ZipFile(zip_path, "r") as zf:
-            namelist = zf.namelist()
+    def load_resources(self):
+        """Load composite PNG images, mcmeta animation data, and models across all packs in the stack."""
+        Image.init()
+        if not self.pack_stack or not self.pack_stack.packs:
+            return
 
-            # 1. Index mcmetas across all textures
-            mcmetas = {}
-            for name in namelist:
-                parts = Path(name).parts
-                if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "textures" and name.endswith(".png.mcmeta"):
-                    ns = parts[1].lower().strip()
-                    rel_path = "/".join(parts[3:])[:-11].strip()
-                    stem = rel_path.split("/")[-1]
-                    texture_name = self._texture_name(ns, stem)
-                    try:
-                        meta_obj = json.loads(zf.read(name).decode("utf-8"))
-                        mcmetas[texture_name] = meta_obj
-                        mcmetas[(ns, stem)] = meta_obj
-                        mcmetas[(ns, rel_path)] = meta_obj
-                        mcmetas[f"{ns}:{rel_path}"] = meta_obj
-                    except Exception:
-                        pass
-
-            # 2. Load models (block and item)
-            for name in namelist:
-                parts = Path(name).parts
-                if len(parts) >= 5 and parts[0] == "assets" and parts[2] == "models" and parts[3] in ("block", "item") and name.endswith(".json"):
-                    ns = parts[1].lower().strip()
-                    model_type = parts[3]
-                    stem = "/".join(parts[4:])[:-5].strip().lower()
-                    if ns == "minecraft":
-                        model_key = stem if model_type == "block" else f"item/{stem}"
-                    else:
-                        model_key = f"{ns}:{model_type}/{stem}"
-                    try:
-                        model_data = json.loads(zf.read(name).decode("utf-8"))
-                        self.models[model_key] = model_data
-                    except Exception:
-                        pass
-
-            # 3. Load PNG textures across all categories
-            for name in namelist:
-                parts = Path(name).parts
-                if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "textures" and name.endswith(".png"):
-                    ns = parts[1].lower().strip()
-                    rel_path = "/".join(parts[3:])[:-4].strip()
-
-                    channel = "albedo"
-                    if rel_path.endswith("_n"):
-                        base_rel = rel_path[:-2].strip()
-                        channel = "normal"
-                    elif rel_path.endswith("_s"):
-                        base_rel = rel_path[:-2].strip()
-                        channel = "specular"
-                    else:
-                        base_rel = rel_path
-                        channel = "albedo"
-
-                    category = classify_texture_category(base_rel)
-                    if not self._includes_category(category):
-                        continue
-                    if base_rel.startswith("block/"):
-                        clean_stem = self._texture_name(ns, base_rel.removeprefix("block/"))
-                        base_stem = base_rel.removeprefix("block/")
-                    else:
-                        clean_stem = self._texture_name(ns, base_rel)
-                        base_stem = base_rel
-
-                    try:
-                        with zf.open(name) as img_file:
-                            img = _safe_open_image(img_file)
-                            if channel == "normal":
-                                self.normal_textures[clean_stem] = img
-                                self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
-                                self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-                            elif channel == "specular":
-                                self.specular_textures[clean_stem] = img
-                                self.specular_by_namespace.setdefault(ns, {})[base_stem] = img
-                                self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-                            else:
-                                meta = (
-                                    mcmetas.get((ns, base_rel))
-                                    or mcmetas.get(f"{ns}:{base_rel}")
-                                    or mcmetas.get((ns, base_stem))
-                                    or mcmetas.get(clean_stem)
-                                )
-                                if is_animated_texture(img, meta):
-                                    anim_data = {
-                                        "image": img,
-                                        "mcmeta": meta or {}
-                                    }
-                                    self.animated_textures[clean_stem] = anim_data
-                                    self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
-                                    self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
-                                else:
-                                    self.static_textures[clean_stem] = img
-                                    self.static_by_namespace.setdefault(ns, {})[base_stem] = img
-                                    self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-                    except Exception as e:
-                        print(f"[AtlasGenerator] Warning: failed to load texture {name}: {e}")
-
-    def _load_from_dir(self, dir_path: Path):
-        # 1. Index mcmetas across all texture folders
-        mcmetas = {}
-        assets_dir = dir_path / "assets"
-        if assets_dir.exists():
-            for namespace_dir in assets_dir.iterdir():
-                if not namespace_dir.is_dir():
-                    continue
-                ns = namespace_dir.name.lower().strip()
-                textures_dir = namespace_dir / "textures"
-                if not textures_dir.exists():
-                    continue
-                for root, _, files in os.walk(textures_dir):
-                    for f in files:
-                        if f.endswith(".png.mcmeta"):
-                            rel_path = (Path(root) / f).relative_to(textures_dir).as_posix()[:-11].strip()
-                            stem = rel_path.split("/")[-1]
-                            mcmeta_path = Path(root) / f
-                            try:
-                                with open(mcmeta_path, "r", encoding="utf-8") as fp:
-                                    meta_obj = json.load(fp)
-                                    mcmetas[(ns, rel_path)] = meta_obj
-                                    mcmetas[(ns, stem)] = meta_obj
-                                    mcmetas[self._texture_name(ns, stem)] = meta_obj
-                                    mcmetas[f"{ns}:{rel_path}"] = meta_obj
-                            except Exception:
-                                pass
-
-        # 2. Load models (block and item)
-        if assets_dir.exists():
-            for namespace_dir in assets_dir.iterdir():
-                if not namespace_dir.is_dir():
-                    continue
-                ns = namespace_dir.name.lower().strip()
-                models_dir = namespace_dir / "models"
-                if not models_dir.exists():
-                    continue
-                for model_type in ("block", "item"):
-                    sub_models = models_dir / model_type
-                    if sub_models.exists():
-                        for root, _, files in os.walk(sub_models):
-                            for f in files:
-                                if f.endswith(".json"):
-                                    stem = (Path(root) / f).relative_to(sub_models).with_suffix("").as_posix().lower().strip()
-                                    if ns == "minecraft":
-                                        model_key = stem if model_type == "block" else f"item/{stem}"
-                                    else:
-                                        model_key = f"{ns}:{model_type}/{stem}"
-                                    try:
-                                        with open(Path(root) / f, "r", encoding="utf-8") as fp:
-                                            model_data = json.load(fp)
-                                            self.models[model_key] = model_data
-                                    except Exception:
-                                        pass
-
-        # 3. Load PNG textures across all categories
-        if assets_dir.exists():
-            for namespace_dir in assets_dir.iterdir():
-                if not namespace_dir.is_dir():
-                    continue
-                ns = namespace_dir.name.lower().strip()
-                textures_dir = namespace_dir / "textures"
-                if not textures_dir.exists():
-                    continue
-                for root, _, files in os.walk(textures_dir):
-                    for f in files:
-                        if not f.endswith(".png"):
+        # 1. Load models from all packs in the stack (bottom to top, so top overrides bottom)
+        for pack in reversed(self.pack_stack.packs):
+            if pack.extract_dir:
+                assets_dir = pack.extract_dir / "assets"
+                if assets_dir.exists():
+                    for ns_dir in assets_dir.iterdir():
+                        if not ns_dir.is_dir():
                             continue
-                        rel_path = (Path(root) / f).relative_to(textures_dir).with_suffix("").as_posix().strip()
+                        ns = ns_dir.name.lower().strip()
+                        for model_type in ("block", "item"):
+                            models_dir = ns_dir / "models" / model_type
+                            if models_dir.exists():
+                                for root, _, files in os.walk(models_dir):
+                                    for f in files:
+                                        if f.endswith(".json"):
+                                            rel_model = (Path(root) / f).relative_to(models_dir).with_suffix("").as_posix().lower()
+                                            if ns == "minecraft":
+                                                model_key = rel_model if model_type == "block" else f"item/{rel_model}"
+                                            else:
+                                                model_key = f"{ns}:{model_type}/{rel_model}"
+                                            try:
+                                                with open(Path(root) / f, "r", encoding="utf-8") as fp:
+                                                    self.models[model_key] = json.load(fp)
+                                            except Exception:
+                                                pass
 
-                        channel = "albedo"
-                        if rel_path.endswith("_n"):
-                            base_rel = rel_path[:-2].strip()
-                            channel = "normal"
-                        elif rel_path.endswith("_s"):
-                            base_rel = rel_path[:-2].strip()
-                            channel = "specular"
-                        else:
-                            base_rel = rel_path
-                            channel = "albedo"
+        # 2. Load composite textures across the entire pack stack
+        composite_textures = self.pack_stack.get_all_composite_textures()
+        for (ns, path_key), info in composite_textures.items():
+            base_rel = path_key.strip("/")
+            category = classify_texture_category(base_rel)
+            if not self._includes_category(category):
+                continue
 
-                        category = classify_texture_category(base_rel)
-                        if not self._includes_category(category):
-                            continue
-                        if base_rel.startswith("block/"):
-                            clean_stem = self._texture_name(ns, base_rel.removeprefix("block/"))
-                            base_stem = base_rel.removeprefix("block/")
-                        else:
-                            clean_stem = self._texture_name(ns, base_rel)
-                            base_stem = base_rel
+            if base_rel.startswith("block/"):
+                clean_name = self._texture_name(ns, base_rel.removeprefix("block/"))
+                base_stem = base_rel.removeprefix("block/")
+            else:
+                clean_name = self._texture_name(ns, base_rel)
+                base_stem = base_rel
 
-                        img_path = Path(root) / f
-                        try:
-                            img = _safe_open_image(img_path)
-                            if channel == "normal":
-                                self.normal_textures[clean_stem] = img
-                                self.normal_by_namespace.setdefault(ns, {})[base_stem] = img
-                                self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-                            elif channel == "specular":
-                                self.specular_textures[clean_stem] = img
-                                self.specular_by_namespace.setdefault(ns, {})[base_stem] = img
-                                self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-                            else:
-                                meta = (
-                                    mcmetas.get((ns, base_rel))
-                                    or mcmetas.get(f"{ns}:{base_rel}")
-                                    or mcmetas.get((ns, base_stem))
-                                    or mcmetas.get(clean_stem)
-                                )
-                                if is_animated_texture(img, meta):
-                                    anim_data = {
-                                        "image": img,
-                                        "mcmeta": meta or {}
-                                    }
-                                    self.animated_textures[clean_stem] = anim_data
-                                    self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
-                                    self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
-                                else:
-                                    self.static_textures[clean_stem] = img
-                                    self.static_by_namespace.setdefault(ns, {})[base_stem] = img
-                                    self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
-                        except Exception as e:
-                            print(f"[AtlasGenerator] Warning: failed to load {img_path}: {e}")
+            albedo_file = info.get("albedo")
+            if albedo_file and Path(albedo_file).exists():
+                try:
+                    img = _safe_open_image(albedo_file)
+                    mcmeta = info.get("albedo_mcmeta")
+                    if is_animated_texture(img, mcmeta):
+                        anim_data = {"image": img, "mcmeta": mcmeta or {}}
+                        self.animated_textures[clean_name] = anim_data
+                        self.animated_by_namespace.setdefault(ns, {})[base_stem] = anim_data
+                        self.animated_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = anim_data
+                    else:
+                        self.static_textures[clean_name] = img
+                        self.static_by_namespace.setdefault(ns, {})[base_stem] = img
+                        self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
+                except Exception as e:
+                    print(f"[AtlasGenerator] Warning: failed to load albedo {albedo_file}: {e}")
+
+            normal_file = info.get("normal")
+            if normal_file and Path(normal_file).exists():
+                try:
+                    n_img = _safe_open_image(normal_file)
+                    self.normal_textures[clean_name] = n_img
+                    self.normal_by_namespace.setdefault(ns, {})[base_stem] = n_img
+                    self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = n_img
+                except Exception as e:
+                    print(f"[AtlasGenerator] Warning: failed to load normal {normal_file}: {e}")
+
+            specular_file = info.get("specular")
+            if specular_file and Path(specular_file).exists():
+                try:
+                    s_img = _safe_open_image(specular_file)
+                    self.specular_textures[clean_name] = s_img
+                    self.specular_by_namespace.setdefault(ns, {})[base_stem] = s_img
+                    self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = s_img
+                except Exception as e:
+                    print(f"[AtlasGenerator] Warning: failed to load specular {specular_file}: {e}")
+
+        # 3. Setup biome resolver across all packs
+        for p in self.pack_stack.packs:
+            if p.extract_dir and Path(p.extract_dir).exists():
+                self.biome_resolver.load_from_pack_root(p.extract_dir)
+        self.biome_resolver.set_models(self.models)
 
     def resolve_model_textures(self, model_name: str, depth: int = 0) -> dict:
         """Recursively resolve texture variables from block model JSONs."""
@@ -874,14 +643,27 @@ class AtlasGenerator:
                         static_rel_paths = sorted(static_map.keys())
 
                         def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
+                            clean_k = self._texture_name(namespace_val, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
                             if channel == "albedo":
                                 source = self._find_static_image(rel_p, namespace=namespace_val, category=category_val)
                             elif channel == "normal":
                                 norm_map = self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {})
-                                source = norm_map.get(rel_p) or norm_map.get(f"{category_val}/{rel_p}") or norm_map.get(f"block/{rel_p}") or norm_map.get(rel_p.split("/")[-1])
+                                source = (
+                                    norm_map.get(rel_p)
+                                    or norm_map.get(f"block/{rel_p}")
+                                    or norm_map.get(rel_p.removeprefix("block/"))
+                                    or self.normal_textures.get(clean_k)
+                                    or self.normal_textures.get(rel_p)
+                                )
                             elif channel == "specular":
                                 spec_map = self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {})
-                                source = spec_map.get(rel_p) or spec_map.get(f"{category_val}/{rel_p}") or spec_map.get(f"block/{rel_p}") or spec_map.get(rel_p.split("/")[-1])
+                                source = (
+                                    spec_map.get(rel_p)
+                                    or spec_map.get(f"block/{rel_p}")
+                                    or spec_map.get(rel_p.removeprefix("block/"))
+                                    or self.specular_textures.get(clean_k)
+                                    or self.specular_textures.get(rel_p)
+                                )
                             else:
                                 source = None
 
@@ -978,7 +760,7 @@ class AtlasGenerator:
                                 overlay_stem = tint_info.get("overlay_texture")
                                 if overlay_stem:
                                     overlay_tile = tile_for(overlay_stem, "albedo")
-                                    if overlay_tile.getbbox():
+                                    if overlay_tile and overlay_tile.getbbox():
                                         if overlay_img_canvas is None:
                                             overlay_img_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
                                         overlay_img_canvas.paste(overlay_tile, (x, y))
@@ -1022,7 +804,9 @@ class AtlasGenerator:
                                 f"Animation '{ns}:{rel_p}' ({image.width}x{image.height}) exceeds "
                                 f"the {self.max_chunk_size}px chunk limit and cannot be stored losslessly."
                             )
-                        animation_columns.append((rel_p, image, source["mcmeta"].get("animation", {})))
+                        meta_val = source.get("mcmeta") or {}
+                        anim_dict = meta_val.get("animation") if isinstance(meta_val.get("animation"), dict) else meta_val
+                        animation_columns.append((rel_p, image, anim_dict))
 
                     def save_animation_chunk(columns, namespace_val=ns, category_val=cat):
                         chunk_id = len(chunks)
@@ -1050,14 +834,29 @@ class AtlasGenerator:
                             target_w = image.width
                             target_h = image.height
                             x_offset = ((x_offset + target_w - 1) // target_w) * target_w
+                            clean_k = self._texture_name(namespace_val, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
 
                             for channel, img_canvas in images.items():
                                 if channel == "albedo":
                                     source_img = image
                                 elif channel == "normal":
-                                    source_img = self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {}).get(rel_p)
+                                    norm_map = self.normal_by_ns_cat.get(namespace_val, {}).get(category_val, {})
+                                    source_img = (
+                                        norm_map.get(rel_p)
+                                        or norm_map.get(f"block/{rel_p}")
+                                        or norm_map.get(rel_p.removeprefix("block/"))
+                                        or self.normal_textures.get(clean_k)
+                                        or self.normal_textures.get(rel_p)
+                                    )
                                 elif channel == "specular":
-                                    source_img = self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {}).get(rel_p)
+                                    spec_map = self.specular_by_ns_cat.get(namespace_val, {}).get(category_val, {})
+                                    source_img = (
+                                        spec_map.get(rel_p)
+                                        or spec_map.get(f"block/{rel_p}")
+                                        or spec_map.get(rel_p.removeprefix("block/"))
+                                        or self.specular_textures.get(clean_k)
+                                        or self.specular_textures.get(rel_p)
+                                    )
                                 else:
                                     source_img = None
 
@@ -1081,11 +880,12 @@ class AtlasGenerator:
                                                 img_canvas.paste(source_img, (x_offset, y))
                                             y += src_h
 
-                            frame_width = max(1, int(metadata.get("width", image.width)))
-                            frame_height = max(1, int(metadata.get("height", frame_width)))
+                            anim_meta = metadata.get("animation") if isinstance(metadata.get("animation"), dict) else metadata
+                            frame_width = max(1, int(anim_meta.get("width") or image.width))
+                            frame_height = max(1, int(anim_meta.get("height") or frame_width))
                             frame_count = max(1, image.height // frame_height)
-                            frametime = max(1, int(metadata.get("frametime", 2)))
-                            interpolate = bool(metadata.get("interpolate", False))
+                            frametime = max(1, int(anim_meta.get("frametime") or 2))
+                            interpolate = bool(anim_meta.get("interpolate", False))
                             stem = rel_p.split("/")[-1]
                             canonical_key = f"{namespace_val}:{rel_p}"
                             tint_info = self.biome_resolver.get_tint_info(stem)
