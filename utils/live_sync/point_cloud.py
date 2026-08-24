@@ -24,24 +24,27 @@ from .constants import (
     face_attribute,
 )
 from ..mc_baker import StateBaker
-from ..materials.pack_stack import get_configured_pack_stack
 
 _GLOBAL_STATE_BAKER = StateBaker()
+_last_pack_fingerprint: Optional[tuple[str, ...]] = None
 _last_configured_loader = None
 _STATE_ATTR_CACHE: dict[str, Any] = {}
-_LAST_ATLAS_HASH: Optional[int] = None
+_LAST_ATLAS_FINGERPRINT: Optional[tuple] = None
 
 
 def refresh_baker_sources() -> None:
     """Synchronize StateBaker resource loaders with the configured Resource Pack Stack."""
-    global _last_configured_loader
+    global _last_pack_fingerprint, _last_configured_loader
     try:
-        composite_loader = get_configured_pack_stack().get_composite_loader()
-        if composite_loader and composite_loader is not _last_configured_loader:
+        from ..materials.pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
+        current_fingerprint = get_pack_stack_fingerprint()
+        if current_fingerprint != _last_pack_fingerprint:
+            _last_pack_fingerprint = current_fingerprint
+            composite_loader = get_configured_pack_stack().get_composite_loader()
             _last_configured_loader = composite_loader
             _GLOBAL_STATE_BAKER.resource_loader = composite_loader
-            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model
-            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
+            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model if composite_loader else None
+            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate if composite_loader else None
             _GLOBAL_STATE_BAKER.clear_cache()
             _STATE_ATTR_CACHE.clear()
     except Exception as e:
@@ -50,12 +53,19 @@ def refresh_baker_sources() -> None:
 
 def clear_state_cache() -> None:
     """Clear precomputed blockstate attribute cache."""
+    global _LAST_ATLAS_FINGERPRINT
     _STATE_ATTR_CACHE.clear()
+    _LAST_ATLAS_FINGERPRINT = None
 
 
 def set_baker_resource_source(source_path: str | Path) -> None:
     """Configure or update the resource pack/JAR source for DCC-side blockstate baking."""
+    global _last_pack_fingerprint
     _GLOBAL_STATE_BAKER.set_resource_source(source_path)
+    try:
+        _last_pack_fingerprint = (str(Path(source_path).resolve()),)
+    except Exception:
+        _last_pack_fingerprint = (str(source_path),)
     _STATE_ATTR_CACHE.clear()
 
 
@@ -357,6 +367,26 @@ def update_world_point_cloud(
     bfas_lut = block_face_anim_frame_size_lut or {}
     bfuvr_lut = block_face_uv_rot_lut or {}
     bfuvb_lut = block_face_uv_bounds_lut or {}
+
+    global _LAST_ATLAS_FINGERPRINT
+    tmpl_tuple = tuple(obj.name for obj in template_col.objects) if template_col else ()
+    current_atlas_fingerprint = (
+        id(atlas_mapping_dict),
+        len(mapping_dict),
+        id(block_face_lut),
+        len(bf_lut),
+        id(atlas_mapping_textures),
+        len(mapping_tex),
+        float(tile_size),
+        float(atlas_width),
+        float(atlas_height),
+        float(anim_atlas_width),
+        float(anim_atlas_height),
+        tmpl_tuple,
+    )
+    if _LAST_ATLAS_FINGERPRINT is None or current_atlas_fingerprint != _LAST_ATLAS_FINGERPRINT:
+        _STATE_ATTR_CACHE.clear()
+        _LAST_ATLAS_FINGERPRINT = current_atlas_fingerprint
 
     # 1. Fetch / precompute palette metadata
     unique_states = list(set(block_map.values()))

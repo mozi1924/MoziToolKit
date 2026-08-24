@@ -102,10 +102,16 @@ class TemplateCatalog:
 
     def __init__(self, context: Optional[bpy.types.Context] = None) -> None:
         self._context = context
+        self._cached_names: Optional[tuple[str, ...]] = None
+        self._cached_map: Dict[str, int] = {}
 
     def get_index_map(self) -> Dict[str, int]:
         col = get_or_create_template_collection(self._context or bpy.context)
-        return get_template_index_map(col)
+        names = tuple(obj.name for obj in col.objects)
+        if self._cached_names != names:
+            self._cached_names = names
+            self._cached_map = get_template_index_map(col)
+        return self._cached_map
 
     def get_index(self, template_name: str) -> int:
         idx_map = self.get_index_map()
@@ -115,30 +121,47 @@ class TemplateCatalog:
 template_catalog = TemplateCatalog()
 
 
-def _attach_template_attributes(mesh: bpy.types.Mesh, is_cross_plant: bool = False) -> None:
-    """Attach face-normal, ID and UV fields to a template mesh."""
-    for name in LEGACY_TEMPLATE_ATTRIBUTE_NAMES:
-        attr = mesh.attributes.get(name)
+def attach_yefira_template_attributes(mesh: bpy.types.Mesh, is_cross_plant: bool = False) -> None:
+    """
+    Attach Yefira Geometry Nodes required template attributes:
+    - CUBE_FACE_NORMAL (FLOAT_VECTOR, FACE)
+    - LOCAL_FACE_ID (INT, FACE)
+    - LOCAL_UV (FLOAT_VECTOR, CORNER)
+    Cleans up any legacy template attributes if present.
+    """
+    for legacy_name in LEGACY_TEMPLATE_ATTRIBUTE_NAMES:
+        attr = mesh.attributes.get(legacy_name)
         if attr is not None:
             mesh.attributes.remove(attr)
 
     norm_attr = mesh.attributes.get(CUBE_FACE_NORMAL)
-    if not norm_attr:
+    if not norm_attr or norm_attr.data_type != 'FLOAT_VECTOR' or norm_attr.domain != 'FACE' or len(norm_attr.data) != len(mesh.polygons):
+        if norm_attr:
+            mesh.attributes.remove(norm_attr)
         norm_attr = mesh.attributes.new(name=CUBE_FACE_NORMAL, type="FLOAT_VECTOR", domain="FACE")
 
     fid_attr = mesh.attributes.get(LOCAL_FACE_ID)
-    if not fid_attr:
+    if not fid_attr or fid_attr.data_type != 'INT' or fid_attr.domain != 'FACE' or len(fid_attr.data) != len(mesh.polygons):
+        if fid_attr:
+            mesh.attributes.remove(fid_attr)
         fid_attr = mesh.attributes.new(name=LOCAL_FACE_ID, type="INT", domain="FACE")
 
     luv_attr = mesh.attributes.get(LOCAL_UV)
-    if not luv_attr:
+    if not luv_attr or luv_attr.data_type != 'FLOAT_VECTOR' or luv_attr.domain != 'CORNER' or len(luv_attr.data) != len(mesh.loops):
+        if luv_attr:
+            mesh.attributes.remove(luv_attr)
         luv_attr = mesh.attributes.new(name=LOCAL_UV, type="FLOAT_VECTOR", domain="CORNER")
 
     mesh.update()
 
+    uv_layer = mesh.uv_layers.active
+
     for poly in mesh.polygons:
         fn = poly.normal
-        norm_attr.data[poly.index].vector = (0.0, 1.0, 0.0) if is_cross_plant else (fn.x, fn.y, fn.z)
+        norm_vec = (0.0, 1.0, 0.0) if is_cross_plant else (fn.x, fn.y, fn.z)
+        norm_attr.data[poly.index].vector = norm_vec
+
+        # Map normal to 0..5 face ID
         if is_cross_plant:
             fid = 2  # North
         elif fn.z > 0.5:
@@ -158,25 +181,32 @@ def _attach_template_attributes(mesh: bpy.types.Mesh, is_cross_plant: bool = Fal
         fid_attr.data[poly.index].value = fid
 
         for loop_idx in poly.loop_indices:
-            vi = mesh.loops[loop_idx].vertex_index
-            v_co = mesh.vertices[vi].co
-
-            if fid == 0:  # Top
-                u, v = v_co.x + 0.5, v_co.y + 0.5
-            elif fid == 1:  # Bottom
-                u, v = v_co.x + 0.5, 1.0 - (v_co.y + 0.5)
-            elif fid == 2:  # North
-                u, v = 1.0 - (v_co.x + 0.5), v_co.z + 0.5
-            elif fid == 3:  # South
-                u, v = v_co.x + 0.5, v_co.z + 0.5
-            elif fid == 4:  # East
-                u, v = 1.0 - (v_co.y + 0.5), v_co.z + 0.5
-            elif fid == 5:  # West
-                u, v = v_co.y + 0.5, v_co.z + 0.5
+            if uv_layer and not is_cross_plant:
+                uv = uv_layer.data[loop_idx].uv
+                luv_vec = (uv.x, uv.y, 0.0)
             else:
-                u, v = 0.5, 0.5
+                vi = mesh.loops[loop_idx].vertex_index
+                v_co = mesh.vertices[vi].co
+                if fid == 0:  # Top
+                    u, v = v_co.x + 0.5, v_co.y + 0.5
+                elif fid == 1:  # Bottom
+                    u, v = v_co.x + 0.5, 1.0 - (v_co.y + 0.5)
+                elif fid == 2:  # North
+                    u, v = 1.0 - (v_co.x + 0.5), v_co.z + 0.5
+                elif fid == 3:  # South
+                    u, v = v_co.x + 0.5, v_co.z + 0.5
+                elif fid == 4:  # East
+                    u, v = 1.0 - (v_co.x + 0.5), v_co.z + 0.5
+                elif fid == 5:  # West
+                    u, v = v_co.y + 0.5, v_co.z + 0.5
+                else:
+                    u, v = 0.5, 0.5
+                luv_vec = (max(0.0, min(1.0, u)), max(0.0, min(1.0, v)), 0.0)
+            luv_attr.data[loop_idx].vector = luv_vec
 
-            luv_attr.data[loop_idx].vector = (max(0.0, min(1.0, u)), max(0.0, min(1.0, v)), 0.0)
+    mesh.update()
+
+_attach_template_attributes = attach_yefira_template_attributes
 
 
 def _populate_default_templates(col: bpy.types.Collection) -> None:

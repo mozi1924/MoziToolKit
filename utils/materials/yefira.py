@@ -17,22 +17,29 @@ from .constants import (
 )
 from pathlib import Path
 from ..mc_baker import StateBaker
+from ..live_sync.constants import (
+    BLOCK_STATE,
+    MC_POSITION,
+)
 
 _GLOBAL_STATE_BAKER = StateBaker()
+_last_pack_fingerprint: Optional[tuple[str, ...]] = None
 _last_configured_loader = None
 
 
 def refresh_baker_sources() -> None:
     """Synchronize StateBaker resource loaders with the configured Resource Pack Stack."""
-    global _last_configured_loader
+    global _last_pack_fingerprint, _last_configured_loader
     try:
-        from .pack_stack import get_configured_pack_stack
-        composite_loader = get_configured_pack_stack().get_composite_loader()
-        if composite_loader and composite_loader is not _last_configured_loader:
+        from .pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
+        current_fingerprint = get_pack_stack_fingerprint()
+        if current_fingerprint != _last_pack_fingerprint:
+            _last_pack_fingerprint = current_fingerprint
+            composite_loader = get_configured_pack_stack().get_composite_loader()
             _last_configured_loader = composite_loader
             _GLOBAL_STATE_BAKER.resource_loader = composite_loader
-            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model
-            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
+            _GLOBAL_STATE_BAKER.model_parser.model_loader_fn = composite_loader.load_model if composite_loader else None
+            _GLOBAL_STATE_BAKER.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate if composite_loader else None
             _GLOBAL_STATE_BAKER.clear_cache()
     except Exception:
         pass
@@ -96,8 +103,8 @@ def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
 
     An object is recognized as Yefira if:
     1. It is a MESH object named 'Yefira_World', or
-    2. It has a Geometry Nodes modifier named 'Yefira_WorldModifier', or
-    3. Its mesh data contains a point-domain 'block_state' or 'mc_pos' attribute.
+    2. It has a Geometry Nodes modifier named 'Yefira_WorldModifier' or containing 'yefira', or
+    3. Its mesh data contains a point-domain 'yefira_block_state' or 'yefira_mc_position' attribute (or legacy names).
 
     Polygonal meshes or other procedural objects lacking these markers remain
     standard MoziToolKit mesh objects.
@@ -113,10 +120,14 @@ def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
         return True
     mesh = obj.data
     if hasattr(mesh, "attributes"):
-        state_attr = mesh.attributes.get("block_state")
+        state_attr = mesh.attributes.get(BLOCK_STATE) or mesh.attributes.get("block_state")
         if state_attr and state_attr.domain == 'POINT':
             return True
-        if "mc_pos" in mesh.attributes:
+        if (
+            MC_POSITION in mesh.attributes
+            or "mc_pos" in mesh.attributes
+            or "mc_position" in mesh.attributes
+        ):
             return True
     return False
 
@@ -142,7 +153,7 @@ def write_yefira_point_atlas_attributes(mesh: bpy.types.Mesh, mapping: dict) -> 
     - ``mtk_anim_timing_{face}`` (FLOAT_COLOR: frame_count, frametime, interpolate, 0)
     - ``mtk_anim_frame_size_{face}`` (FLOAT_COLOR: frame_width, frame_height, 0, 0)
     """
-    state_attr = mesh.attributes.get("block_state")
+    state_attr = mesh.attributes.get(BLOCK_STATE) or mesh.attributes.get("block_state")
     if not state_attr or state_attr.domain != 'POINT':
         return
 
