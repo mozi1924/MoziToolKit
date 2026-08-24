@@ -191,14 +191,12 @@ class TestPackStackAndFallback(unittest.TestCase):
             "material_mode": "STANDALONE",
             "biome_preset": "TAIGA",
             "pack_textures": False,
-            "use_cache": True,
         }
         save_material_settings_config(settings)
         loaded = load_material_settings_config()
         self.assertEqual(loaded["material_mode"], "STANDALONE")
         self.assertEqual(loaded["biome_preset"], "TAIGA")
         self.assertFalse(loaded["pack_textures"])
-        self.assertTrue(loaded["use_cache"])
 
     def test_replace_material_operator_with_configured_stack(self):
         """Test that MOZI_OT_replace_material executes immediately with the configured preferences stack."""
