@@ -57,6 +57,7 @@ from .storage import VoxelStorage, block_key, voxel_storage
 from .template_catalog import (
     TEMPLATE_COLLECTION_NAME,
     TemplateCatalog,
+    get_template_objects_in_instance_order,
     get_or_create_template_collection,
     get_template_index_map,
     template_catalog,
@@ -112,6 +113,7 @@ __all__ = (
     "TEMPLATE_COLLECTION_NAME",
     "TemplateCatalog",
     "template_catalog",
+    "get_template_objects_in_instance_order",
     "get_or_create_template_collection",
     "get_template_index_map",
 )

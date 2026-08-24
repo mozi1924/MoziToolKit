@@ -24,6 +24,18 @@ TEMPLATE_COLLECTION_NAME = "MC_Block_Templates"
 EXTRACTED_TEMPLATE_MESH_VERSION = 2
 
 
+def get_template_objects_in_instance_order(col: bpy.types.Collection) -> List[bpy.types.Object]:
+    """Return templates in the order used by Collection Info instances.
+
+    ``bpy.types.Collection.objects`` preserves collection insertion order, but
+    Geometry Nodes' Collection Info node emits direct children in name order.
+    The two orders diverge as soon as extracted ``mc_model_*`` templates are
+    added after the built-in fallback templates.  Template indices written to
+    the point cloud must use the Geometry Nodes order, not insertion order.
+    """
+    return sorted(col.objects, key=lambda obj: obj.name)
+
+
 def get_or_create_template_collection(context: Optional[bpy.types.Context] = None) -> bpy.types.Collection:
     """Find or create the 'MC_Block_Templates' collection in the active scene."""
     if context is None:
@@ -45,12 +57,14 @@ def get_or_create_template_collection(context: Optional[bpy.types.Context] = Non
 def get_template_index_map(col: bpy.types.Collection) -> Dict[str, int]:
     """
     Return mapping of template object name -> integer index in collection.
-    Geometry Nodes 'Collection Info' with 'Pick Instance' uses 0-based indexing matching col.objects.
+    Geometry Nodes 'Collection Info' with 'Pick Instance' uses 0-based indexing
+    matching its name-sorted direct children.
     """
     mapping: Dict[str, int] = {}
-    obj_names = [obj.name for obj in col.objects]
+    objects = get_template_objects_in_instance_order(col)
+    obj_names = [obj.name for obj in objects]
 
-    for idx, obj in enumerate(col.objects):
+    for idx, obj in enumerate(objects):
         mapping[obj.name] = idx
         mapping[obj.name.lower()] = idx
 
