@@ -56,6 +56,18 @@ sequenceDiagram
     end
 ```
 
+### 核心校验与零卡顿准则：
+- **数据层（Data Plane）与视图层（View Plane）解耦校验**：
+  - **网格剔除面（View Plane）**：为优化视口与渲染性能，Direct Mesh 会执行邻域遮挡剔除，内部方块不生成多边形面。
+  - **体素全量数据（Data Plane）**：服务端计算的 CRC32 与客户端内存中的 `VoxelStorage` 均忠实记录 3D 空间内的所有方块状态（包括内部被遮挡的方块）。
+  - **校验原理**：握手校验直接比对 **Data Plane** 的 Section CRC32 与 Bounds，只要数据层 100% 一致且场景中网格物体完好，即可在数学上严格证明当前网格无需任何重新计算。
+- **服务端发包时序保证**：
+  - 服务端在发送数据时，严格保证 **`SELECTION_INFO` → `SECTION_MANIFEST` → `FULL_SNAPSHOT`** 的顺序。
+  - 客户端优先处理 Manifest 清单，在 0 毫秒内完成比对；若一致，后续到达的 Snapshot 自动触发短路跳过。
+- **快照内容幂等性短路保护 (`is_snapshot_identical`)**：
+  - 即使在极端网络抖动或旧版本服务端下先收到 `FULL_SNAPSHOT`，客户端会首先进行快速位级数据比对；
+  - 若方块数据与当前 `VoxelStorage` 完全一致，**瞬间跳过网格重建与着色器缓存清理**，彻底消除“卡一下”的卡顿体感。
+
 ### 核心校验准则：
 - **场景物体优先恢复**：若内存为空但场景中存在 `Yefira_World`，连接时先调用 `restore_sync_state_from_scene()` 从物体自定义属性（`mtk:sync_manifest`）恢复边界与区块哈希。
 - **全量快照跳过标志 (`_skip_next_full_snapshot`)**：一旦通过 Manifest 确认 100% 一致，立即设置跳过标志，避免服务器初次连接推送的 `FULL_SNAPSHOT` 重复执行昂贵的全场景 BMesh 重构。
