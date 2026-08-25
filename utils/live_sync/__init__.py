@@ -49,6 +49,10 @@ from .material_manager import (
     LiveSyncMaterialManager,
     ResolvedFaceTexture,
 )
+from .hot_states import (
+    HOT_PREWARM_STATES,
+    generate_hot_prewarm_states,
+)
 from .mesh_builder import (
     WorldMeshBuildResult,
     CachedStateMeta,
@@ -103,6 +107,8 @@ __all__ = (
     "SyncClientThread",
     "LiveSyncMaterialManager",
     "ResolvedFaceTexture",
+    "HOT_PREWARM_STATES",
+    "generate_hot_prewarm_states",
     "WorldMeshBuildResult",
     "apply_block_delta_to_world",
     "build_world_mesh",
