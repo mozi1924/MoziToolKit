@@ -1,23 +1,29 @@
 import bpy
 import site
 import sys
+from pathlib import Path
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
+
 try:
+    from ..utils.config import (
+        get_config_manager,
+        load_config,
+        load_full_config,
+        save_config,
+        save_full_config,
+        load_pack_stack_config,
+        save_pack_stack_config,
+        load_material_settings_config,
+        save_material_settings_config,
+        get_enabled_pack_entries,
+        reset_config,
+        export_config,
+        import_config,
+        normalize_operator_id,
+    )
     from ..utils.system import (
         ALL_OPERATORS,
-        export_config,
-        import_config,
-        load_config,
-        load_pack_stack_config,
-        save_pack_stack_config,
-        load_material_settings_config,
-        save_material_settings_config,
-        save_full_config,
-        get_enabled_pack_entries,
-        normalize_operator_id,
-        reset_config,
-        save_config,
         DEPENDENCIES,
         get_all_dependency_statuses,
         get_blender_site_packages,
@@ -25,21 +31,26 @@ try:
         has_all_dependencies,
         get_prefs,
     )
+    from ..utils.system.menu_registry import sort_unadded_items
 except (ImportError, ValueError):
+    from utils.config import (
+        get_config_manager,
+        load_config,
+        load_full_config,
+        save_config,
+        save_full_config,
+        load_pack_stack_config,
+        save_pack_stack_config,
+        load_material_settings_config,
+        save_material_settings_config,
+        get_enabled_pack_entries,
+        reset_config,
+        export_config,
+        import_config,
+        normalize_operator_id,
+    )
     from utils.system import (
         ALL_OPERATORS,
-        export_config,
-        import_config,
-        load_config,
-        load_pack_stack_config,
-        save_pack_stack_config,
-        load_material_settings_config,
-        save_material_settings_config,
-        save_full_config,
-        get_enabled_pack_entries,
-        normalize_operator_id,
-        reset_config,
-        save_config,
         DEPENDENCIES,
         get_all_dependency_statuses,
         get_blender_site_packages,
@@ -47,6 +58,7 @@ except (ImportError, ValueError):
         has_all_dependencies,
         get_prefs,
     )
+    from utils.system.menu_registry import sort_unadded_items
 
 
 def refresh_ui_and_menus(context=None):
@@ -62,6 +74,7 @@ def refresh_ui_and_menus(context=None):
 
 
 def _safe_get_prefs(self_or_context=None):
+    """Safely resolve AddonPreferences instance across various caller contexts."""
     if hasattr(self_or_context, "resource_packs"):
         return self_or_context
     if isinstance(self_or_context, bpy.types.Context):
@@ -82,11 +95,21 @@ def _safe_get_prefs(self_or_context=None):
     return None
 
 
+def on_backend_type_changed(self, context):
+    """Callback when storage backend type is switched in preferences UI."""
+    prefs = _safe_get_prefs(self)
+    if prefs and hasattr(prefs, "backend_type"):
+        mgr = get_config_manager()
+        mgr.switch_backend_by_name(prefs.backend_type, migrate_data=True)
+        mgr.sync_to_preferences(prefs)
+        refresh_ui_and_menus(context)
+
+
 def on_material_setting_changed(self, context):
     """Callback when global material replacement preferences are edited."""
     prefs = _safe_get_prefs(self)
     if prefs:
-        save_prefs_to_json(prefs)
+        get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
 
 
@@ -94,7 +117,7 @@ def on_item_label_changed(self, context):
     """Callback when an item's custom label is edited."""
     prefs = _safe_get_prefs(self)
     if prefs:
-        save_prefs_to_json(prefs)
+        get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
 
 
@@ -114,7 +137,7 @@ def reorder_resource_packs_by_tier(prefs):
     3. VANILLA (bottom)
     Preserves existing relative order within each tier using stable in-place moves.
     """
-    if _get_is_reordering():
+    if _get_is_reordering() or getattr(prefs, "_mozi_is_syncing", False):
         return
     if prefs is None or not hasattr(prefs, "resource_packs") or len(prefs.resource_packs) <= 1:
         return
@@ -130,7 +153,6 @@ def reorder_resource_packs_by_tier(prefs):
 
     _set_is_reordering(True)
     try:
-        # Stable insertion sort using .move()
         n = len(prefs.resource_packs)
         for i in range(1, n):
             j = i
@@ -143,31 +165,30 @@ def reorder_resource_packs_by_tier(prefs):
 
 def on_pack_entry_changed(self, context):
     """Callback when a resource pack entry's attributes change."""
-    if _get_is_reordering():
+    if _get_is_reordering() or getattr(self, "_mozi_is_syncing", False):
         return
     prefs = _safe_get_prefs(self)
     if prefs:
-        save_prefs_to_json(prefs)
+        get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
 
 
 def on_pack_type_changed(self, context):
     """Callback when a resource pack entry's pack_type tier changes."""
-    if _get_is_reordering():
+    if _get_is_reordering() or getattr(self, "_mozi_is_syncing", False):
         return
     prefs = _safe_get_prefs(self)
     if prefs:
         reorder_resource_packs_by_tier(prefs)
-        save_prefs_to_json(prefs)
+        get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
 
 
 def on_pack_path_changed(self, context):
     """Auto-detect pack name and type when path is changed."""
-    if _get_is_reordering():
+    if _get_is_reordering() or getattr(self, "_mozi_is_syncing", False):
         return
     try:
-        from pathlib import Path
         p = Path(self.path.strip())
         if p.exists() and (not self.name or self.name.startswith("Resource Pack") or self.name == "New Resource Pack"):
             self.name = p.stem.replace("_", " ").replace("-", " ").title()
@@ -184,7 +205,7 @@ def on_pack_path_changed(self, context):
     prefs = _safe_get_prefs(self)
     if prefs:
         reorder_resource_packs_by_tier(prefs)
-        save_prefs_to_json(prefs)
+        get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
 
 
@@ -239,7 +260,6 @@ class MOZI_UL_resource_packs_list(bpy.types.UIList):
                 rp_idx = sum(1 for i, elem in enumerate(data.resource_packs) if elem.pack_type == "RESOURCE_PACK" and i <= index)
                 tier_badge = f"RP #{rp_idx}"
 
-            from pathlib import Path
             is_valid = bool(item.path and Path(item.path).exists())
             name_text = item.name or (Path(item.path).stem if item.path else "Unnamed Pack")
 
@@ -299,29 +319,13 @@ class MOZI_UL_unadded_items_list(bpy.types.UIList):
             layout.label(text=item.label, icon="ADD")
 
 
-def sort_unadded_items(unadded_coll):
-    """Sort unadded CollectionProperty items by live OPERATOR_ORDER."""
-    op_order = list(ALL_OPERATORS.keys())
-    items = [
-        {"operator_id": elem.operator_id, "label": elem.label}
-        for elem in unadded_coll
-    ]
-    items.sort(
-        key=lambda x: op_order.index(x["operator_id"])
-        if x["operator_id"] in op_order
-        else 999
-    )
-    unadded_coll.clear()
-    for item in items:
-        elem = unadded_coll.add()
-        elem.operator_id = item["operator_id"]
-        elem.label = item["label"]
-
-
 def populate_resource_packs(prefs, entries):
     """Safely populate prefs.resource_packs from a list of dicts without reorder race conditions."""
+    if prefs is None:
+        return
     _set_is_reordering(True)
     try:
+        setattr(prefs, "_mozi_is_syncing", True)
         prefs.resource_packs.clear()
         for p_item in entries:
             if isinstance(p_item, dict):
@@ -331,94 +335,20 @@ def populate_resource_packs(prefs, entries):
                 p_elem.enabled = p_item.get("enabled", True)
                 p_elem.pack_type = p_item.get("pack_type", "RESOURCE_PACK")
     finally:
+        setattr(prefs, "_mozi_is_syncing", False)
         _set_is_reordering(False)
 
     reorder_resource_packs_by_tier(prefs)
 
 
 def sync_prefs_from_json(prefs):
-    """Populate preferences PropertyGroups from JSON configuration."""
-    config_data = load_config()
-    for view in ["mesh", "object", "uv"]:
-        added_coll = getattr(prefs, f"added_{view}")
-        unadded_coll = getattr(prefs, f"unadded_{view}")
-
-        added_coll.clear()
-        unadded_coll.clear()
-
-        added_op_ids = set()
-        view_items = config_data.get(view, [])
-        for item_data in view_items:
-            op_id = normalize_operator_id(item_data.get("operator"))
-            if not op_id:
-                continue
-            added_op_ids.add(op_id)
-            elem = added_coll.add()
-            elem.operator_id = op_id
-            default_label = ALL_OPERATORS.get(op_id, {}).get("default_label", op_id)
-            elem.label = item_data.get("label") or default_label
-            elem.enabled = item_data.get("enabled", True)
-
-        for op_id, op_info in ALL_OPERATORS.items():
-            norm_op_id = normalize_operator_id(op_id)
-            if norm_op_id not in added_op_ids:
-                elem = unadded_coll.add()
-                elem.operator_id = norm_op_id
-                elem.label = op_info.get("label", norm_op_id)
-
-        sort_unadded_items(unadded_coll)
-
-    # Sync resource packs stack
-    packs_data = load_pack_stack_config()
-    populate_resource_packs(prefs, packs_data)
-
-    # Sync material replacement settings
-    mat_settings = load_material_settings_config()
-    if hasattr(prefs, "material_mode"):
-        prefs.material_mode = mat_settings.get("material_mode", "ATLAS")
-    if hasattr(prefs, "biome_preset"):
-        prefs.biome_preset = mat_settings.get("biome_preset", "PLAINS")
-    if hasattr(prefs, "pack_textures"):
-        prefs.pack_textures = bool(mat_settings.get("pack_textures", True))
+    """Populate preferences PropertyGroups from central ConfigManager."""
+    get_config_manager().sync_to_preferences(prefs)
 
 
 def save_prefs_to_json(prefs):
-    """Save preferences PropertyGroups state to JSON configuration."""
-    if prefs is None:
-        return
-
-    views_data = {}
-    for view in ["mesh", "object", "uv"]:
-        added_coll = getattr(prefs, f"added_{view}", None)
-        if added_coll is not None:
-            items_list = []
-            for elem in added_coll:
-                items_list.append({
-                    "operator": normalize_operator_id(elem.operator_id),
-                    "label": elem.label,
-                    "enabled": elem.enabled,
-                })
-            views_data[view] = items_list
-
-    # Save resource packs stack
-    packs_list = []
-    if hasattr(prefs, "resource_packs"):
-        for p_elem in prefs.resource_packs:
-            packs_list.append({
-                "name": p_elem.name,
-                "path": p_elem.path,
-                "enabled": p_elem.enabled,
-                "pack_type": p_elem.pack_type,
-            })
-
-    # Save material replacement settings
-    mat_settings = {
-        "material_mode": getattr(prefs, "material_mode", "ATLAS"),
-        "biome_preset": getattr(prefs, "biome_preset", "PLAINS"),
-        "pack_textures": getattr(prefs, "pack_textures", True),
-    }
-
-    save_full_config(views_data=views_data, pack_entries=packs_list, material_settings=mat_settings)
+    """Save preferences PropertyGroups state to central ConfigManager."""
+    get_config_manager().sync_from_preferences(prefs)
 
 
 class MOZI_OT_pack_add(bpy.types.Operator):
@@ -429,20 +359,24 @@ class MOZI_OT_pack_add(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        prefs = get_prefs(context)
+        prefs = _safe_get_prefs(context)
         if prefs is None:
             return {"CANCELLED"}
+        if not getattr(prefs, "is_initialized", False):
+            get_config_manager().sync_to_preferences(prefs)
+
         elem = prefs.resource_packs.add()
         elem.name = f"Resource Pack #{len(prefs.resource_packs)}"
         elem.enabled = True
         elem.pack_type = "RESOURCE_PACK"
         reorder_resource_packs_by_tier(prefs)
-        # Select the newly added item
+
         for i, p in enumerate(prefs.resource_packs):
             if p.name == elem.name and not p.path:
                 prefs.resource_packs_index = i
                 break
-        save_prefs_to_json(prefs)
+
+        get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
         return {"FINISHED"}
 
@@ -455,7 +389,7 @@ class MOZI_OT_pack_remove(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        prefs = get_prefs(context)
+        prefs = _safe_get_prefs(context)
         if prefs is None:
             return {"CANCELLED"}
         idx = prefs.resource_packs_index
@@ -463,7 +397,7 @@ class MOZI_OT_pack_remove(bpy.types.Operator):
             prefs.resource_packs.remove(idx)
             reorder_resource_packs_by_tier(prefs)
             prefs.resource_packs_index = max(0, min(idx, len(prefs.resource_packs) - 1))
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
         return {"FINISHED"}
 
@@ -481,7 +415,7 @@ class MOZI_OT_pack_move(bpy.types.Operator):
     )
 
     def execute(self, context):
-        prefs = get_prefs(context)
+        prefs = _safe_get_prefs(context)
         if prefs is None:
             return {"CANCELLED"}
         idx = prefs.resource_packs_index
@@ -498,7 +432,7 @@ class MOZI_OT_pack_move(bpy.types.Operator):
                 return {"CANCELLED"}
             prefs.resource_packs.move(idx, idx - 1)
             prefs.resource_packs_index = idx - 1
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
         elif self.direction == "DOWN" and idx < len(prefs.resource_packs) - 1:
             target_item = prefs.resource_packs[idx + 1]
@@ -507,7 +441,7 @@ class MOZI_OT_pack_move(bpy.types.Operator):
                 return {"CANCELLED"}
             prefs.resource_packs.move(idx, idx + 1)
             prefs.resource_packs_index = idx + 1
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
         return {"FINISHED"}
 
@@ -520,7 +454,10 @@ class MOZI_OT_menu_add_item(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        prefs = get_prefs(context)
+        prefs = _safe_get_prefs(context)
+        if prefs is None:
+            return {"CANCELLED"}
+
         view = getattr(prefs, "context_menu_tab", getattr(prefs, "active_tab", "mesh"))
         if view not in {"mesh", "object", "uv"}:
             view = "mesh"
@@ -540,7 +477,7 @@ class MOZI_OT_menu_add_item(bpy.types.Operator):
             setattr(prefs, unadded_idx_prop, min(idx, max(0, len(unadded_coll) - 1)))
             setattr(prefs, f"added_{view}_index", len(added_coll) - 1)
             sort_unadded_items(unadded_coll)
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
 
         return {"FINISHED"}
@@ -554,7 +491,10 @@ class MOZI_OT_menu_remove_item(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        prefs = get_prefs(context)
+        prefs = _safe_get_prefs(context)
+        if prefs is None:
+            return {"CANCELLED"}
+
         view = getattr(prefs, "context_menu_tab", getattr(prefs, "active_tab", "mesh"))
         if view not in {"mesh", "object", "uv"}:
             view = "mesh"
@@ -574,7 +514,7 @@ class MOZI_OT_menu_remove_item(bpy.types.Operator):
             setattr(prefs, added_idx_prop, min(idx, max(0, len(added_coll) - 1)))
             sort_unadded_items(unadded_coll)
             setattr(prefs, f"unadded_{view}_index", 0)
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
 
         return {"FINISHED"}
@@ -590,7 +530,10 @@ class MOZI_OT_menu_move_item(bpy.types.Operator):
     direction: EnumProperty(items=[("UP", "Up", ""), ("DOWN", "Down", "")])
 
     def execute(self, context):
-        prefs = get_prefs(context)
+        prefs = _safe_get_prefs(context)
+        if prefs is None:
+            return {"CANCELLED"}
+
         view = getattr(prefs, "context_menu_tab", getattr(prefs, "active_tab", "mesh"))
         if view not in {"mesh", "object", "uv"}:
             view = "mesh"
@@ -602,35 +545,36 @@ class MOZI_OT_menu_move_item(bpy.types.Operator):
         if self.direction == "UP" and idx > 0:
             added_coll.move(idx, idx - 1)
             setattr(prefs, added_idx_prop, idx - 1)
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
         elif self.direction == "DOWN" and idx < len(added_coll) - 1:
             added_coll.move(idx, idx + 1)
             setattr(prefs, added_idx_prop, idx + 1)
-            save_prefs_to_json(prefs)
+            get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
 
         return {"FINISHED"}
 
 
 class MOZI_OT_menu_reset_config(bpy.types.Operator):
-    """Reset right-click menu configuration to default presets"""
+    """Reset configuration to default presets"""
 
     bl_idname = "mozi.menu_reset_config"
     bl_label = "Reset to Default Presets"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        reset_config()
-        prefs = get_prefs(context)
-        sync_prefs_from_json(prefs)
+        get_config_manager().reset()
+        prefs = _safe_get_prefs(context)
+        if prefs:
+            get_config_manager().sync_to_preferences(prefs)
         refresh_ui_and_menus(context)
-        self.report({"INFO"}, "Menu configuration reset to default presets.")
+        self.report({"INFO"}, "Configuration reset to default presets.")
         return {"FINISHED"}
 
 
 class MOZI_OT_menu_export_config(bpy.types.Operator, ExportHelper):
-    """Export MoziToolKit context menu configuration to a JSON file"""
+    """Export MoziToolKit configuration to a JSON file"""
 
     bl_idname = "mozi.menu_export_config"
     bl_label = "Export Menu Preset JSON"
@@ -639,18 +583,11 @@ class MOZI_OT_menu_export_config(bpy.types.Operator, ExportHelper):
     filter_glob: StringProperty(default="*.json", options={"HIDDEN"})
 
     def execute(self, context):
-        prefs = get_prefs(context)
-        save_prefs_to_json(prefs)
+        prefs = _safe_get_prefs(context)
+        if prefs:
+            get_config_manager().sync_from_preferences(prefs)
 
-        views_data = {}
-        for view in ["mesh", "object", "uv"]:
-            added_coll = getattr(prefs, f"added_{view}")
-            views_data[view] = [
-                {"operator": normalize_operator_id(elem.operator_id), "label": elem.label, "enabled": elem.enabled}
-                for elem in added_coll
-            ]
-
-        if export_config(self.filepath, views_data):
+        if export_config(self.filepath):
             self.report({"INFO"}, f"Configuration exported to {self.filepath}")
             return {"FINISHED"}
         else:
@@ -659,7 +596,7 @@ class MOZI_OT_menu_export_config(bpy.types.Operator, ExportHelper):
 
 
 class MOZI_OT_menu_import_config(bpy.types.Operator, ImportHelper):
-    """Import MoziToolKit context menu configuration from a JSON file"""
+    """Import MoziToolKit configuration from a JSON file"""
 
     bl_idname = "mozi.menu_import_config"
     bl_label = "Import Menu Preset JSON"
@@ -670,15 +607,15 @@ class MOZI_OT_menu_import_config(bpy.types.Operator, ImportHelper):
     def execute(self, context):
         imported = import_config(self.filepath)
         if imported is not None:
-            prefs = get_prefs(context)
-            sync_prefs_from_json(prefs)
+            prefs = _safe_get_prefs(context)
+            if prefs:
+                get_config_manager().sync_to_preferences(prefs)
             refresh_ui_and_menus(context)
             self.report({"INFO"}, f"Configuration imported from {self.filepath}")
             return {"FINISHED"}
         else:
             self.report({"ERROR"}, "Failed to import configuration JSON")
             return {"CANCELLED"}
-
 
 
 def _detect_addon_idname():
@@ -701,9 +638,20 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         items=[
             ("RESOURCE_PACKS", "Resource Packs & Base JARs", "Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking"),
             ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
-            ("MISC", "Environment & Cache", "Extension environment status, dependencies, and cache settings"),
+            ("MISC", "Environment & Storage", "Storage backend, extension environment status, dependencies, and cache settings"),
         ],
         default="RESOURCE_PACKS",
+    )
+
+    backend_type: EnumProperty(
+        name="Storage Backend",
+        description="Choose where addon configuration is stored and persisted",
+        items=[
+            ("JSON", "JSON File Backend", "Persist to independent JSON file with atomic writes, backups, and export/import support (Default)"),
+            ("BLENDER_PREFS", "Blender Preferences Backend", "Persist directly into Blender's user preferences file (userpref.blend)"),
+        ],
+        default="JSON",
+        update=on_backend_type_changed,
     )
 
     resource_packs: CollectionProperty(type=MOZI_PG_resource_pack_entry)
@@ -726,7 +674,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         items=[
             ('PLAINS', "Plains", "Default vanilla plains vibrant colors"),
             ('FOREST', "Forest", "Vibrant forest green foliage and grass"),
-            ('BIRCH_FOREST', "BirCH Forest", "Bright spring green foliage and grass"),
+            ('BIRCH_FOREST', "Birch Forest", "Bright spring green foliage and grass"),
             ('TAIGA', "Taiga", "Cooler spruce forest tones"),
             ('JUNGLE', "Jungle", "Lush vibrant tropical greens"),
             ('SAVANNA', "Savanna", "Warm dry yellowish greens"),
@@ -780,7 +728,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
     def draw(self, context):
         if not self.is_initialized:
-            sync_prefs_from_json(self)
+            mgr = get_config_manager()
+            mgr.sync_to_preferences(self)
+            b_name = mgr.get_backend().backend_name
+            if b_name in {"JSON", "BLENDER_PREFS"}:
+                self.backend_type = b_name
             self.is_initialized = True
 
         layout = self.layout
@@ -868,8 +820,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             row2 = d_col.row(align=True)
             row2.prop(item, "path", text="Path")
 
-            # Path Status and Namespaces Inspection
-            from pathlib import Path
             p_val = item.path.strip()
             if not p_val:
                 st_row = d_col.row(align=True)
@@ -996,6 +946,26 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         )
 
     def draw_misc(self, layout, context):
+        # Configuration Backend Selector Box
+        backend_box = layout.box()
+        b_header = backend_box.row(align=True)
+        b_header.label(text="Configuration Storage Backend:", icon="PREFERENCES")
+        backend_row = backend_box.row(align=True)
+        backend_row.prop(self, "backend_type", expand=True)
+
+        b_desc = backend_box.column(align=True)
+        b_desc.scale_y = 0.85
+        if self.backend_type == "JSON":
+            mgr = get_config_manager()
+            from ..utils.config.backends.json_backend import JsonConfigBackend
+            path_str = mgr.get_backend().get_config_path() if isinstance(mgr.get_backend(), JsonConfigBackend) else "context_menus.json"
+            b_desc.label(text=f"Active File: {path_str}")
+            b_desc.label(text="Changes are atomically written to external JSON file with automatic backup.")
+        else:
+            b_desc.label(text="Saved directly inside Blender's default user preferences (userpref.blend).")
+
+        layout.separator()
+
         statuses = get_all_dependency_statuses()
         all_ok = has_all_dependencies()
 
@@ -1021,7 +991,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             dep_box = col.box()
             row = dep_box.row(align=False)
 
-            # Left Info Column
             info_col = row.column(align=False)
             title_row = info_col.row(align=True)
             title_row.label(text=item["display_name"], icon="SCRIPT")
@@ -1039,7 +1008,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
                 req_row.scale_y = 0.85
                 req_row.label(text=f"Used by: {item['required_by']}")
 
-            # Right Status Tag
             action_col = row.column(align=True)
             action_col.alignment = "RIGHT"
             if item["installed"]:
@@ -1122,10 +1090,6 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             if prefs and hasattr(prefs, "material_mode"):
                 material_mode = prefs.material_mode
             else:
-                try:
-                    from ..utils.system import load_material_settings_config
-                except (ImportError, ValueError):
-                    from utils.system import load_material_settings_config
                 material_mode = load_material_settings_config().get("material_mode", "ATLAS")
 
             # 1. Always Precompile Atlas Cache (needed for Atlas Mode and Live Sync)
