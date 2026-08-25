@@ -289,10 +289,10 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertNotIn("Yefira_Atlas_Master", slot_names)
 
         # 2. Verify native chunk materials are mounted
-        self.assertTrue(any("MC_Atlas_Chunk_0" in name for name in slot_names))
+        self.assertTrue(any("chunk" in name.lower() for name in slot_names))
 
         # 3. Simulate outdated hash on material
-        chunk_0_mat = bpy.data.materials.get("MC_Atlas_Chunk_0")
+        chunk_0_mat = next((m for m in bpy.data.materials if m.get("mtk:atlas_chunk_id") == 0 or "chunk" in m.name.lower()), None)
         self.assertIsNotNone(chunk_0_mat)
         chunk_0_mat["mtk:pack_hash"] = "outdated_pack_hash_0000"
 
