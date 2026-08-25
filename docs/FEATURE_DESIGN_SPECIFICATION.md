@@ -32,12 +32,12 @@
    - 3.3 剔除面 (Cullface)、UV 旋转与染色索引映射
    - 3.4 Baker 到 Atlas 图集桥接机制
    - 3.5 MC Baker 防回归不变量契约
-4. [模块三：Geometry Nodes 程序化世界构建体系](#4-模块三geometry-nodes-程序化世界构建体系)
-   - 4.1 World Tree 架构与专用几何节点组
-   - 4.2 GeoNodes 内部 Atlas UV 变换与解包数学
-   - 4.3 视锥与相邻面剔除 (Culling & Merging)
-   - 4.4 材质分发器与实例属性传递
-   - 4.5 Geometry Nodes 防回归不变量契约
+4. [模块三：原生网格实时同步构建体系 (Direct Mesh Generation)](#4-模块三原生网格实时同步构建体系-direct-mesh-generation)
+   - 4.1 Direct Mesh 架构与 16x16x16 Section 局部网格容器
+   - 4.2 6向邻域遮挡剔除 (Neighbor Culling) 与拓扑焊接 (Weld Topology)
+   - 4.3 毫秒级增量更新 (Incremental Delta Updates & Event Pump)
+   - 4.4 Multi-Chunk 图集材质插槽分配与原生 UVMap 烘焙
+   - 4.5 Direct Mesh 同步防回归不变量契约
 5. [模块四：自适应像素网格切分系统 (Adaptive Pixel Split)](#5-模块四自适应像素网格切分系统-adaptive-pixel-split)
    - 5.1 1面 = 1像素的几何分辨率自适应计算
    - 5.2 动画贴图单帧正方形与 Atlas 瓦片边界推断
@@ -432,25 +432,36 @@ graph TD
 
 ---
 
-## 4. 模块三：Geometry Nodes 程序化世界构建体系
+## 4. 模块三：原生网格实时同步构建体系 (Direct Mesh Generation)
 
-`utils/geometry_nodes/` 针对大规模体素世界、海量方块实例与程序化地形生成构建了高效的几何节点树（World Tree）。
+`utils/live_sync/mesh_builder.py` 替代了传统的点云与几何节点管线，直接生成干净、可编辑、高性能的 Blender 真实原生多边形网格（Direct BMesh）。
 
-### 4.1 World Tree 架构与专用几何节点组
-- **`world_tree.py`**：统筹构建整个场景的几何节点修改器管线。
-- **`groups/cube_surface.py`**：基于方块占位点生成标准立方体表面，计算法线与面拓扑。
-- **`groups/culling_merge.py`**：执行视锥剔除（Frustum Culling）和相邻面遮挡剔除（Occlusion Culling），自动合并重合顶点，极大降低视口几何面数。
-- **`groups/face_selectors.py`**：基于法线向量点积智能过滤出顶面（Top）、底面（Bottom）以及侧面（Sides）。
-- **`groups/material_dispatcher.py`**：根据方块 ID 属性自动分配材质索引。
+### 4.1 Direct Mesh 架构与 16x16x16 Section 局部网格容器
+- **分块容器管理**：在父空物体 `Yefira_World` 下按 $16 \times 16 \times 16$ 体积块划分子网格物体（`Yefira_Section_{sec_x}_{sec_y}_{sec_z}`）。
+- **坐标变换与对齐**：通过 Minecraft 到 Blender 本地坐标系的精确映射：
+  $$x_{blender} = x_{mc} - \text{half\_x},\quad y_{blender} = -(z_{mc} - \text{half\_z}),\quad z_{blender} = y_{mc} - \text{min\_y} + 0.5$$
+- **内存预热与就绪 (Preload Data)**：在快照到达时，通过 `preload_sync_world_data` 预先将 Palette 中的所有方块模型变体与图集 UV 在 RAM 中构建缓存，消除运行时解析开销。
 
-### 4.2 GeoNodes 内部 Atlas UV 变换与解包数学
-- **`groups/atlas_uv.py`**：在 Geometry Nodes 内部原生实现图集 UV 映射。
-  利用 Node Group 接收 `atlas_min_u`, `atlas_min_v`, `atlas_size_u`, `atlas_size_v` 属性，直接在几何着色前对顶点属性或 Corner UV 进行平铺与裁剪运算。
+### 4.2 6向邻域遮挡剔除 (Neighbor Culling) 与拓扑焊接 (Weld Topology)
+- **严格6向不可见表面剔除**：在构建每个方块（Cube / Multipart / Fluid）的面时，检测其相邻方块的不透明度（`is_opaque`），仅生成暴露在空气或透明介质中的有效可见外表面。
+- **拓扑焊接 (Weld Vertices)**：对相邻面共用的顶点进行距离阈值焊接（默认 `1e-4`），生成闭合水密或极简干净拓扑（单立方体仅 8 顶点 6 面，双连接方块仅 12 顶点 10 面）。
 
-### 4.3 Geometry Nodes 防回归不变量契约
+### 4.3 毫秒级增量更新 (Incremental Delta Updates & Event Pump)
+- **子毫秒局部重建 (`apply_block_delta_to_world`)**：当接收到方块放置或破坏时，仅针对受影响的方块坐标及其邻域 6 个方块所在的 16x16x16 Section 网格进行局部 BMesh 增量重构，整体耗时稳定低于 `< 1.0 ms`。
+- **邻居面动态复原 (Un-culling)**：当破坏一个方块时，自动将周围被其遮挡的相邻方块原本隐藏的接触面重新烘焙并缝合进网格。
+- **空 Section 自动清理**：当一个 16x16x16 区块内所有方块均被清空为空气时，自动销毁并从 Blender 场景集合中解绑该 Section 子物体。
+
+### 4.4 Multi-Chunk 图集材质插槽分配与原生 UVMap 烘焙
+- **标准 UVMap 原生写入**：直接在 `bm.loops.layers.uv["UVMap"]` 中写入根据图集多 Chunk 与材质映射计算的归一化 UV 坐标，彻底摆脱材质着色器节点内部进行 UV 矩阵变换的开销与兼容性问题。
+- **多图集 Chunk 材质插槽映射**：根据面对应的贴图所属 Chunk ID，自动设置 `bm_face.material_index = chunk_id`，精确支持多图集（Blocks, Animated, Items, Particles 等）协同渲染。
+- **着色器面属性保留**：向面域写入 `mtk_block_x`, `mtk_block_y`, `mtk_block_z`, `mtk_face_dir`, `mtk_biome_tint_color`, `mtk_biome_tint_data`, `mtk_anim_timing`, `mtk_anim_frame_size` 等原生着色属性。
+
+### 4.5 Direct Mesh 同步防回归不变量契约
 > [!IMPORTANT]
-> 1. **Blender 4.x/5.x 节点 API 兼容性**：Geometry Nodes 在不同 Blender 版本间节点名称常有更迭（如 `Combine XYZ`、`Sample Index` 等），节点组构建必须使用 `utils.geometry_nodes.core` 中经过版本兼容性封装的辅助函数。
-> 2. **属性命名规范**：实例与面属性（如 `block_id`、`face_id`、`tint_color`）必须遵循统一命名常量，禁止在子节点组中硬编码非标准属性名。
+> 1. **原生网格可编辑性保证**：生成的网格必须为真实 Blender Mesh，支持进入 Edit Mode 编辑、UV 展开修改、细分修改器与导出为 FBX/GLTF。
+> 2. **增量更新耗时约束**：对于单次 1~64 块以内的 Delta 更新，必须直接调用 `apply_block_delta_to_world` 执行局部 Section 重建，单次编辑耗时不得超过 1.5ms。
+> 3. **跨 Section 边界缝合一致性**：跨 Section 边界（如 $x=15$ 与 $x=16$）放置方块时，两边 Section 的邻接面剔除状态必须同步刷新。
+
 
 ---
 

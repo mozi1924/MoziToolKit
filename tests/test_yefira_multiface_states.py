@@ -1,6 +1,11 @@
 """
-Unit tests for Yefira multi-face block state resolution in MoziToolKit.
+Unit tests for multi-face block state resolution in MoziToolKit.
+Tests:
+1. StateBaker multi-face texture resolution for lit/unlit furnaces, beehives, respawn anchors, and snowy grass.
+2. Direct Mesh Builder multi-face texture and material assignment.
 """
+
+from __future__ import annotations
 
 import sys
 import unittest
@@ -10,146 +15,96 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    HAS_BPY = False
-
-if HAS_BPY:
-    from utils.materials.yefira import write_yefira_point_atlas_attributes
+import bpy
+from utils.mc_baker import StateBaker, clear_shared_baker_cache, get_shared_state_baker
+from utils.live_sync import VoxelStorage, build_world_mesh
 
 
 class TestYefiraMultifaceStates(unittest.TestCase):
-
     def setUp(self):
-        if not HAS_BPY:
-            self.skipTest("bpy module not available")
-
         for obj in list(bpy.data.objects):
             bpy.data.objects.remove(obj, do_unlink=True)
         for mesh in list(bpy.data.meshes):
             bpy.data.meshes.remove(mesh, do_unlink=True)
 
-        from utils.mc_baker import get_shared_state_baker, clear_shared_baker_cache
         clear_shared_baker_cache()
         get_shared_state_baker().resource_loader = None
 
     def test_furnace_lit_multiface_resolution(self):
         """Verify furnace[lit=true] resolves furnace_front_on only on North/-Z face."""
-        mesh = bpy.data.meshes.new("TestFurnaceMesh")
-        obj = bpy.data.objects.new("TestFurnaceObj", mesh)
-        bpy.context.scene.collection.objects.link(obj)
+        baker = StateBaker(jar_path=None)
 
-        mesh.from_pydata([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0)], [], [])
-        mesh.update()
+        # 1. Lit Furnace Facing North
+        lit_f = baker.bake_block_state("minecraft:furnace[facing=north,lit=true]")
+        # North is face index 5 in MC_DIRECTIONS (east=0, west=1, up=2, down=3, south=4, north=5)
+        self.assertEqual(lit_f.faces[5].texture, "minecraft:block/furnace_front_on")
+        self.assertEqual(lit_f.faces[0].texture, "minecraft:block/furnace_side")
+        self.assertEqual(lit_f.faces[1].texture, "minecraft:block/furnace_side")
+        self.assertEqual(lit_f.faces[2].texture, "minecraft:block/furnace_top")
+        self.assertEqual(lit_f.faces[3].texture, "minecraft:block/furnace_top")
+        self.assertEqual(lit_f.faces[4].texture, "minecraft:block/furnace_side")
 
-        states = mesh.attributes.new("block_state", 'STRING', 'POINT')
-        states.data[0].value = b"minecraft:furnace[facing=north,lit=true]"
-        states.data[1].value = b"minecraft:furnace[facing=north,lit=false]"
-
-        def loc(col, row, tex_id):
-            return {"tile_column": col, "tile_row": row, "chunk_id": 0, "texture_id": tex_id}
-
-        mapping = {
-            "textures": {
-                "minecraft:block/furnace_top": loc(1, 0, 10),
-                "minecraft:block/furnace_side": loc(2, 0, 20),
-                "minecraft:block/furnace_front": loc(3, 0, 30),
-                "minecraft:block/furnace_front_on": loc(4, 0, 40),
-            }
-        }
-
-        write_yefira_point_atlas_attributes(mesh, mapping)
-
-        # Index 0 is lit furnace
-        # Face 0: East (+X) -> furnace_side (2, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_east"].data[0].vector), (2.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_east"].data[0].value, 20)
-
-        # Face 1: West (-X) -> furnace_side (2, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_west"].data[0].vector), (2.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_west"].data[0].value, 20)
-
-        # Face 2: Top (+Y) -> furnace_top (1, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[0].vector), (1.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_top"].data[0].value, 10)
-
-        # Face 3: Bottom (-Y) -> furnace_top (1, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_bottom"].data[0].vector), (1.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_bottom"].data[0].value, 10)
-
-        # Face 4: South (+Z) -> furnace_side (2, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_south"].data[0].vector), (2.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_south"].data[0].value, 20)
-
-        # Face 5: North (-Z) -> furnace_front_on (4, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_north"].data[0].vector), (4.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_north"].data[0].value, 40)
-
-        # Index 1 is unlit furnace
-        # North (-Z) -> furnace_front (3, 0)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_north"].data[1].vector), (3.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes["mtk_texture_north"].data[1].value, 30)
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[1].vector), (1.0, 0.0, 0.0))
+        # 2. Unlit Furnace Facing North
+        unlit_f = baker.bake_block_state("minecraft:furnace[facing=north,lit=false]")
+        self.assertEqual(unlit_f.faces[5].texture, "minecraft:block/furnace_front")
+        self.assertEqual(unlit_f.faces[2].texture, "minecraft:block/furnace_top")
 
     def test_other_multiface_blocks(self):
-        """Verify beehive, respawn_anchor, observer, and grass_block states."""
-        mesh = bpy.data.meshes.new("TestOtherMesh")
-        obj = bpy.data.objects.new("TestOtherObj", mesh)
-        bpy.context.scene.collection.objects.link(obj)
+        """Verify beehive, respawn_anchor, and snowy grass block states."""
+        baker = StateBaker(jar_path=None)
 
-        mesh.from_pydata([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)], [], [])
-        mesh.update()
+        # 1. Beehive with honey_level=5 facing north
+        beehive = baker.bake_block_state("minecraft:beehive[facing=north,honey_level=5]")
+        self.assertEqual(beehive.faces[5].texture, "minecraft:block/beehive_front_honey")
+        self.assertEqual(beehive.faces[2].texture, "minecraft:block/beehive_top")
+        self.assertEqual(beehive.faces[3].texture, "minecraft:block/beehive_bottom")
+        self.assertEqual(beehive.faces[0].texture, "minecraft:block/beehive_side")
 
-        states = mesh.attributes.new("block_state", 'STRING', 'POINT')
-        states.data[0].value = b"minecraft:beehive[facing=north,honey_level=5]"
-        states.data[1].value = b"minecraft:respawn_anchor[charges=4]"
-        states.data[2].value = b"minecraft:grass_block[snowy=true]"
+        # 2. Respawn anchor with charges=4
+        anchor = baker.bake_block_state("minecraft:respawn_anchor[charges=4]")
+        self.assertEqual(anchor.faces[2].texture, "minecraft:block/respawn_anchor_top")
+        self.assertEqual(anchor.faces[3].texture, "minecraft:block/respawn_anchor_bottom")
+        self.assertEqual(anchor.faces[0].texture, "minecraft:block/respawn_anchor_side4")
+
+        # 3. Snowy grass block
+        snowy_grass = baker.bake_block_state("minecraft:grass_block[snowy=true]")
+        self.assertEqual(snowy_grass.faces[2].texture, "minecraft:block/grass_block_top")
+        self.assertEqual(snowy_grass.faces[3].texture, "minecraft:block/dirt")
+        self.assertEqual(snowy_grass.faces[0].texture, "minecraft:block/grass_block_snow")
+
+    def test_direct_mesh_multiface_baking(self):
+        """Verify Direct Mesh generation bakes multi-face blocks into polygons with valid UVs."""
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:furnace[facing=north,lit=true]")
+        storage.set_block(2, 0, 0, "minecraft:grass_block[snowy=true]")
 
         def loc(col, row, tex_id):
             return {"tile_column": col, "tile_row": row, "chunk_id": 0, "texture_id": tex_id}
 
-        mapping = {
-            "textures": {
-                "minecraft:block/beehive_end": loc(5, 0, 50),
-                "minecraft:block/beehive_top": loc(5, 0, 50),
-                "minecraft:block/beehive_bottom": loc(5, 0, 50),
-                "minecraft:block/beehive_side": loc(7, 0, 70),
-                "minecraft:block/beehive_front": loc(8, 0, 80),
-                "minecraft:block/beehive_front_honey": loc(9, 0, 90),
-                "minecraft:block/respawn_anchor_top_off": loc(10, 0, 100),
-                "minecraft:block/respawn_anchor_top": loc(11, 0, 110),
-                "minecraft:block/respawn_anchor_bottom": loc(12, 0, 120),
-                "minecraft:block/respawn_anchor_side0": loc(13, 0, 130),
-                "minecraft:block/respawn_anchor_side4": loc(14, 0, 140),
-                "minecraft:block/grass_block_top": loc(19, 0, 190),
-                "minecraft:block/grass_block_side": loc(20, 0, 200),
-                "minecraft:block/grass_block_snow": loc(21, 0, 210),
-                "minecraft:block/dirt": loc(22, 0, 220),
-            }
+        mapping_textures = {
+            "minecraft:block/furnace_top": loc(1, 0, 10),
+            "minecraft:block/furnace_side": loc(2, 0, 20),
+            "minecraft:block/furnace_front_on": loc(4, 0, 40),
+            "minecraft:block/grass_block_top": loc(19, 0, 190),
+            "minecraft:block/grass_block_snow": loc(21, 0, 210),
+            "minecraft:block/dirt": loc(22, 0, 220),
         }
 
-        write_yefira_point_atlas_attributes(mesh, mapping)
+        atlas_params = {
+            "width": 1024,
+            "height": 512,
+            "tile_size": 16,
+            "tiles_per_row": 64,
+            "mapping": {"textures": mapping_textures},
+        }
 
-        # 1. Beehive with honey_level=5
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_north"].data[0].vector), (9.0, 0.0, 0.0))  # front_honey
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[0].vector), (5.0, 0.0, 0.0))    # end / top
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_bottom"].data[0].vector), (5.0, 0.0, 0.0)) # end / bottom
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_east"].data[0].vector), (7.0, 0.0, 0.0))   # side
+        res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params)
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
 
-        # 2. Respawn anchor with charges=4
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[1].vector), (11.0, 0.0, 0.0))   # top
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_bottom"].data[1].vector), (12.0, 0.0, 0.0))# bottom
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_east"].data[1].vector), (14.0, 0.0, 0.0))  # side4
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_north"].data[1].vector), (14.0, 0.0, 0.0)) # side4
-
-        # 3. Snowy grass block
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_top"].data[2].vector), (19.0, 0.0, 0.0))   # top
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_bottom"].data[2].vector), (22.0, 0.0, 0.0))# dirt
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_east"].data[2].vector), (21.0, 0.0, 0.0))  # snow
-        self.assertEqual(tuple(mesh.attributes["mtk_tile_north"].data[2].vector), (21.0, 0.0, 0.0)) # snow
+        self.assertEqual(len(mesh.polygons), 12)
+        self.assertIn("UVMap", mesh.uv_layers)
 
 
 if __name__ == "__main__":
-    unittest.main(argv=[sys.argv[0]])
+    unittest.main()

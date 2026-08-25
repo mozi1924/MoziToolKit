@@ -10,28 +10,52 @@ import time
 from typing import Optional
 import bpy
 
-from ...utils.live_sync.client import SyncClientThread
-from ...utils.live_sync.constants import (
-    DEFAULT_WORLD_OBJECT_NAME,
-)
-from ...utils.mc_baker import (
-    refresh_shared_baker_sources,
-    clear_shared_baker_cache,
-)
-from ...utils.live_sync.mesh_builder import (
-    sync_world_mesh,
-    build_world_mesh,
-    apply_block_delta_to_world,
-    clear_mesh_builder_caches,
-    preload_sync_world_data,
-    WorldMeshBuildResult,
-)
-from ...utils.live_sync.storage import voxel_storage
-from ...utils.materials.yefira import (
-    extract_atlas_parameters,
-    find_bound_atlas_material,
-)
-from ...utils.system.dependencies import has_websockets
+try:
+    from ...utils.live_sync.client import SyncClientThread
+    from ...utils.live_sync.constants import (
+        DEFAULT_WORLD_OBJECT_NAME,
+    )
+    from ...utils.mc_baker import (
+        refresh_shared_baker_sources,
+        clear_shared_baker_cache,
+    )
+    from ...utils.live_sync.mesh_builder import (
+        sync_world_mesh,
+        build_world_mesh,
+        apply_block_delta_to_world,
+        clear_mesh_builder_caches,
+        preload_sync_world_data,
+        WorldMeshBuildResult,
+    )
+    from ...utils.live_sync.storage import voxel_storage
+    from ...utils.materials.yefira import (
+        extract_atlas_parameters,
+        find_bound_atlas_material,
+    )
+    from ...utils.system.dependencies import has_websockets
+except (ImportError, ValueError):
+    from utils.live_sync.client import SyncClientThread
+    from utils.live_sync.constants import (
+        DEFAULT_WORLD_OBJECT_NAME,
+    )
+    from utils.mc_baker import (
+        refresh_shared_baker_sources,
+        clear_shared_baker_cache,
+    )
+    from utils.live_sync.mesh_builder import (
+        sync_world_mesh,
+        build_world_mesh,
+        apply_block_delta_to_world,
+        clear_mesh_builder_caches,
+        preload_sync_world_data,
+        WorldMeshBuildResult,
+    )
+    from utils.live_sync.storage import voxel_storage
+    from utils.materials.yefira import (
+        extract_atlas_parameters,
+        find_bound_atlas_material,
+    )
+    from utils.system.dependencies import has_websockets
 
 logger = logging.getLogger("MoziToolKit.LiveSync")
 
@@ -189,11 +213,6 @@ def trigger_mesh_sync(context: bpy.types.Context, force_full_rebuild: bool = Fal
         props.fluids_count = res.fluids_count
 
 
-def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
-    """Backward compatibility alias for trigger_mesh_sync."""
-    trigger_mesh_sync(context, force_full_rebuild=force_gn_setup)
-
-
 def schedule_mesh_sync(force_full_rebuild: bool = False) -> None:
     """Coalesce live updates into a fast incremental main-thread mesh sync."""
     global _rebuild_timer_registered, _pending_full_rebuild
@@ -221,11 +240,6 @@ def schedule_mesh_sync(force_full_rebuild: bool = False) -> None:
         return None
 
     bpy.app.timers.register(flush, first_interval=REBUILD_DEBOUNCE_SECONDS)
-
-
-def schedule_point_cloud_update(force_gn_setup: bool = False) -> None:
-    """Backward compatibility alias for schedule_mesh_sync."""
-    schedule_mesh_sync(force_full_rebuild=force_gn_setup)
 
 
 class MOZI_OT_sync_connect(bpy.types.Operator):
@@ -308,7 +322,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
 
                 # 3. Schedule initial world mesh build
-                schedule_point_cloud_update(force_gn_setup=True)
+                schedule_mesh_sync(force_full_rebuild=True)
 
                 # Update Palette UI list
                 props.palette_list.clear()
@@ -346,7 +360,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     size_x, size_y, size_z, palette, grid_indices
                 )
                 if updated:
-                    schedule_point_cloud_update()
+                    schedule_mesh_sync()
                     props.update_counter += 1
                     props.last_update_info = f"Repaired Section ({sec_x}, {sec_y}, {sec_z})"
             run_in_main_thread(update)
