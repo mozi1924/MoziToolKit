@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials import ATLAS_FORMAT_VERSION, AtlasGenerator, atlas_uv_from_local, chunk_cell
 
 try:
@@ -505,6 +509,52 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertIn("normal", static_chunk["files"])
             self.assertIn("specular", static_chunk["files"])
             self.assertEqual(static_chunk["texture_count"], 1)
+
+    def test_texture_category_priority(self):
+        """Verify deterministic category priority ranking."""
+        from utils.materials.pack.resource_pack import texture_category_priority
+
+        self.assertEqual(texture_category_priority("block/stone"), 1)
+        self.assertEqual(texture_category_priority("item/apple"), 2)
+        self.assertEqual(texture_category_priority("items/stick"), 2)
+        self.assertEqual(texture_category_priority("entity/zombie/zombie"), 3)
+        self.assertEqual(texture_category_priority("painting/kebab"), 4)
+        self.assertEqual(texture_category_priority("particle/footprint"), 5)
+        self.assertEqual(texture_category_priority("gui/widgets"), 6)
+
+        self.assertLess(
+            texture_category_priority("block/chest"),
+            texture_category_priority("entity/chest/normal")
+        )
+        self.assertLess(
+            texture_category_priority("block/apple"),
+            texture_category_priority("item/apple")
+        )
+
+    def test_atlas_mapping_index_cache_safety(self):
+        """Verify _atlas_mapping_index does NOT mutate input mapping with non-string/tuple keys."""
+        from utils.materials.matching import (
+            _RUNTIME_ATLAS_LOOKUP_CACHE,
+            _atlas_mapping_index,
+        )
+
+        mapping = {
+            "chunks": [{"chunk_id": 0, "kind": "static"}],
+            "textures": {
+                "minecraft:block/stone": {"chunk_id": 0, "texture_id": 1, "texture_key": "minecraft:block/stone"}
+            },
+            "animations": []
+        }
+        index = _atlas_mapping_index(mapping)
+        self.assertIn((0, 1), index["locations"])
+        self.assertEqual(index["locations"][(0, 1)][0], "minecraft:block/stone")
+
+        for k in mapping.keys():
+            self.assertIsInstance(k, str)
+
+        other_mapping = {"chunks": [], "textures": {}, "animations": []}
+        _RUNTIME_ATLAS_LOOKUP_CACHE[id(other_mapping)] = (mapping, index)
+        self.assertEqual(_atlas_mapping_index(other_mapping)["locations"], {})
 
 
 if __name__ == "__main__":

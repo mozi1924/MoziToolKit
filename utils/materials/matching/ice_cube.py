@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 import bpy
 from .base import ImporterAdapter, base_texture_candidates
-from ..provenance import without_blender_suffix, is_mozi_material
+from ..pipeline.provenance import without_blender_suffix, is_mozi_material
 
 
 # Ice Cube's entity names and 26.2 naming layout aliases

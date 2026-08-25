@@ -272,6 +272,11 @@ translations_dict = {
         ("*", "Select preferences section to configure"): "选择要配置的偏好设置板块",
         ("*", "Up"): "上移",
         ("*", "Down"): "下移",
+        ("*", "Storage Backend"): "配置存储后端",
+        ("*", "JSON File Backend"): "独立 JSON 文件后端",
+        ("*", "Blender Preferences Backend"): "Blender 用户偏好后端",
+        ("*", "Configuration Storage Backend:"): "配置持久化后端：",
+        ("*", "Choose where addon configuration is stored and persisted"): "选择插件配置读取与保存的存储后端",
 
         # Pipeline Modal & Operators
         ("*", "Mozi Pipeline Runner"): "Mozi 管线执行器",

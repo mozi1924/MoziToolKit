@@ -8,7 +8,7 @@ from typing import Tuple, Optional
 import bpy
 
 from ..pixel_split.uv_analyzer import get_face_effective_texture_info
-from ..materials.texture_finder import get_material_pixel_step
+from ..materials.matching import get_material_pixel_step
 
 
 def calculate_face_uv_area(face, uv_layer) -> float:

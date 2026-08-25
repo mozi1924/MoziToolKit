@@ -11,6 +11,10 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials import (
     PROP_ATLAS_WIDTH,
     PROP_ATLAS_HEIGHT,

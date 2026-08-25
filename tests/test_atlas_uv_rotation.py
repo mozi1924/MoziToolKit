@@ -17,6 +17,10 @@ import bpy
 import bmesh
 from mathutils import Vector
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials.constants import ATTR_UV_ROTATION
 from utils.mesh.uv_rotation import (
     detect_face_uv_rotation,
@@ -24,7 +28,7 @@ from utils.mesh.uv_rotation import (
     process_mesh_uv_rotations,
     is_orthogonal_angle,
 )
-from utils.materials.atlas_builder import build_atlas_chunk_materials
+from utils.materials.atlas.builder import build_atlas_chunk_materials
 from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
 
 
@@ -259,6 +263,40 @@ class TestAtlasUVRotation(unittest.TestCase):
         self.assertFalse(straightened2)
 
         bpy.data.meshes.remove(mesh_obj)
+
+    def test_subdivide_quad_inherits_rotated_uv_orientation(self):
+        """When unmerging a rotated quad face (normalize_uvs=True), sub-faces must inherit the rotation."""
+        from utils.mesh.subdivide import subdivide_quad_face
+
+        bm = bmesh.new()
+        uv_lay = bm.loops.layers.uv.new("UVMap")
+
+        v0 = bm.verts.new((0, 0, 0))
+        v1 = bm.verts.new((2, 0, 0))
+        v2 = bm.verts.new((2, 1, 0))
+        v3 = bm.verts.new((0, 1, 0))
+        face = bm.faces.new([v0, v1, v2, v3])
+
+        face.loops[0][uv_lay].uv = Vector((0.0, 1.0))
+        face.loops[1][uv_lay].uv = Vector((0.0, 0.0))
+        face.loops[2][uv_lay].uv = Vector((2.0, 0.0))
+        face.loops[3][uv_lay].uv = Vector((2.0, 1.0))
+
+        sub_faces = subdivide_quad_face(bm, face, cols=2, rows=1, normalize_uvs=True, uv_layer=uv_lay)
+        self.assertEqual(len(sub_faces), 2)
+
+        for sf in sub_faces:
+            uvs = [l[uv_lay].uv for l in sf.loops]
+            self.assertAlmostEqual(uvs[0].x, 0.0)
+            self.assertAlmostEqual(uvs[0].y, 1.0)
+            self.assertAlmostEqual(uvs[1].x, 0.0)
+            self.assertAlmostEqual(uvs[1].y, 0.0)
+            self.assertAlmostEqual(uvs[2].x, 1.0)
+            self.assertAlmostEqual(uvs[2].y, 0.0)
+            self.assertAlmostEqual(uvs[3].x, 1.0)
+            self.assertAlmostEqual(uvs[3].y, 1.0)
+
+        bm.free()
 
 
 if __name__ == "__main__":

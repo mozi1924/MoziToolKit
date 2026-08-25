@@ -13,6 +13,10 @@ if str(PARENT_DIR) not in sys.path:
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 try:
     import bpy
     import bmesh

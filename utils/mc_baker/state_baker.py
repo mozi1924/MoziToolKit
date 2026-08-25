@@ -81,7 +81,7 @@ def refresh_shared_baker_sources() -> StateBaker:
     global _last_pack_fingerprint, _last_configured_loader
     baker = get_shared_state_baker()
     try:
-        from ..materials.pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
+        from ..materials.pack import get_configured_pack_stack, get_pack_stack_fingerprint
         current_fingerprint = get_pack_stack_fingerprint()
         if current_fingerprint != _last_pack_fingerprint:
             _last_pack_fingerprint = current_fingerprint
@@ -365,7 +365,7 @@ class StateBaker:
         faces_dict = {}
         for d in MC_DIRECTIONS:
             tex = resolved_textures.get(d) or base_face_textures.get(d, fallback_texture)
-            face_entry = {"texture": tex}
+            face_entry = {"texture": tex, "cullface": d}
             if rotations.get(d, 0.0) != 0.0:
                 face_entry["rotation"] = rotations[d]
             faces_dict[d] = face_entry
@@ -408,10 +408,13 @@ class StateBaker:
                 to_pos = tuple(elem.get("to", [16, 16, 16]))
                 elem_rot = elem.get("rotation")
                 elem_faces: dict[str, BakedFace] = {}
+                is_full_cuboid = (from_pos == (0, 0, 0) and to_pos == (16, 16, 16) and not elem_rot)
 
                 for orig_dir, face_data in elem.get("faces", {}).items():
                     texture = face_data.get("texture", fallback_texture)
                     cullface = face_data.get("cullface")
+                    if not cullface and is_full_cuboid:
+                        cullface = orig_dir
                     face_rot = float(face_data.get("rotation", 0.0))
                     tint_index = int(face_data.get("tintindex", -1))
 
@@ -479,10 +482,11 @@ class StateBaker:
                 ))
 
         is_cube = (
-            len(baked_elements) == 1
-            and baked_elements[0].from_pos == (0, 0, 0)
-            and baked_elements[0].to_pos == (16, 16, 16)
-            and not baked_elements[0].rotation
+            len(baked_elements) >= 1
+            and all(
+                el.from_pos == (0, 0, 0) and el.to_pos == (16, 16, 16) and not el.rotation
+                for el in baked_elements
+            )
         )
 
         baked_model = BakedModel(

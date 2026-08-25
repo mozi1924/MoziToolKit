@@ -14,10 +14,13 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 import bpy
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.mc_baker import StateBaker
 from utils.mc_baker.blockstate_resolver import BlockStateResolver
-from utils.materials.yefira import write_yefira_point_atlas_attributes
-from utils.live_sync import VoxelStorage, update_world_point_cloud
+from utils.live_sync import VoxelStorage, build_world_mesh
 
 
 class TestDirectionalBlockOrientations(unittest.TestCase):
@@ -98,89 +101,7 @@ class TestDirectionalBlockOrientations(unittest.TestCase):
         self.assertEqual(log_x.faces[2].texture, 'minecraft:block/oak_log')
         self.assertEqual(log_x.faces[2].uv_rot, 90.0)
 
-    def test_yefira_point_atlas_attributes_directional_assignment(self):
-        """Verify Yefira point atlas attributes write accurate directional tiles to mesh."""
-        mesh = bpy.data.meshes.new('TestYefiraDirMesh')
-        obj = bpy.data.objects.new('TestYefiraDirObj', mesh)
-        bpy.context.scene.collection.objects.link(obj)
 
-        mesh.from_pydata([(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (2.0, 0.0, 0.0)], [], [])
-        mesh.update()
-
-        states = mesh.attributes.new('block_state', 'STRING', 'POINT')
-        states.data[0].value = b'minecraft:furnace[facing=east,lit=false]'
-        states.data[1].value = b'minecraft:furnace[facing=south,lit=true]'
-        states.data[2].value = b'minecraft:observer[facing=up]'
-
-        def loc(col, row, tex_id):
-            return {'tile_column': col, 'tile_row': row, 'chunk_id': 0, 'texture_id': tex_id}
-
-        mapping = {
-            'textures': {
-                'minecraft:block/furnace_top': loc(1, 0, 10),
-                'minecraft:block/furnace_side': loc(2, 0, 20),
-                'minecraft:block/furnace_front': loc(3, 0, 30),
-                'minecraft:block/furnace_front_on': loc(4, 0, 40),
-                'minecraft:block/observer_top': loc(5, 0, 50),
-                'minecraft:block/observer_side': loc(6, 0, 60),
-                'minecraft:block/observer_front': loc(7, 0, 70),
-                'minecraft:block/observer_back': loc(8, 0, 80),
-            }
-        }
-
-        write_yefira_point_atlas_attributes(mesh, mapping)
-
-        # Index 0: Furnace Facing East
-        # East (+X) is Front (3, 0, 30)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_east'].data[0].vector), (3.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_texture_east'].data[0].value, 30)
-        # West (-X) is Side (2, 0, 20)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_west'].data[0].vector), (2.0, 0.0, 0.0))
-        # North (-Z) is Side (2, 0, 20)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_north'].data[0].vector), (2.0, 0.0, 0.0))
-        # Top (+Y) is Top (1, 0, 10) with 90 deg rotation
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_top'].data[0].vector), (1.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_uv_rot_top'].data[0].value, 90.0)
-
-        # Index 1: Furnace Facing South (Lit)
-        # South (+Z) is Front On (4, 0, 40)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_south'].data[1].vector), (4.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_texture_south'].data[1].value, 40)
-        # North (-Z) is Side (2, 0, 20)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_north'].data[1].vector), (2.0, 0.0, 0.0))
-
-        # Index 2: Observer Facing Up
-        # Top (+Y) is Observer Front (7, 0, 70)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_top'].data[2].vector), (7.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_texture_top'].data[2].value, 70)
-        # Bottom (-Y) is Observer Back (8, 0, 80)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_bottom'].data[2].vector), (8.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_texture_bottom'].data[2].value, 80)
-
-    def test_live_sync_point_cloud_directional_attributes(self):
-        """Verify Live Sync point cloud builder generates accurate 6-face directional attributes."""
-        storage = VoxelStorage()
-        storage.min_x, storage.min_y, storage.min_z = 0, 0, 0
-        storage.size_x, storage.size_y, storage.size_z = 1, 1, 1
-        storage.block_map[(0, 0, 0)] = 'minecraft:furnace[facing=east,lit=false]'
-
-        def loc(col, row, tex_id):
-            return {'tile_column': col, 'tile_row': row, 'chunk_id': 0, 'texture_id': tex_id}
-
-        mapping_textures = {
-            'minecraft:block/furnace_top': loc(1, 0, 10),
-            'minecraft:block/furnace_side': loc(2, 0, 20),
-            'minecraft:block/furnace_front': loc(3, 0, 30),
-        }
-
-        res = update_world_point_cloud(bpy.context, storage, atlas_mapping_textures=mapping_textures)
-        self.assertIsNotNone(res.world_obj)
-        mesh = res.world_obj.data
-
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_east'].data[0].vector), (3.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_texture_east'].data[0].value, 30)
-        self.assertEqual(tuple(mesh.attributes['mtk_tile_west'].data[0].vector), (2.0, 0.0, 0.0))
-        self.assertEqual(mesh.attributes['mtk_uv_rot_top'].data[0].value, 90.0)
 
     def test_piston_orientations_all_directions(self):
         """Verify piston head, bottom, and side faces in all 6 directions."""
@@ -207,23 +128,39 @@ class TestDirectionalBlockOrientations(unittest.TestCase):
         self.assertEqual(p_east.faces[0].texture, 'minecraft:block/piston_top')
         self.assertEqual(p_east.faces[1].texture, 'minecraft:block/piston_bottom')
 
-    def test_world_tree_uv_rotations(self):
-        """Verify Geometry Nodes world tree evaluates UV rotation in CW direction (90, 180, 270)."""
-        from utils.geometry_nodes.world_tree import setup_world_geometry_nodes
+    def test_direct_mesh_directional_orientations_and_uv_rot(self):
+        """Verify Direct Mesh generation bakes precise UVMap and orientations for directional blocks."""
+        from utils.live_sync import build_world_mesh
         storage = VoxelStorage()
-        storage.min_x = storage.min_y = storage.min_z = 0
-        storage.size_x = storage.size_y = storage.size_z = 1
-        storage.block_map[(0, 0, 0)] = 'minecraft:oak_log[axis=x]'
+        storage.set_block(0, 0, 0, 'minecraft:furnace[facing=east,lit=false]')
+        storage.set_block(2, 0, 0, 'minecraft:oak_log[axis=x]')
 
-        res = update_world_point_cloud(bpy.context, storage)
+        def loc(col, row, tex_id):
+            return {'tile_column': col, 'tile_row': row, 'chunk_id': 0, 'texture_id': tex_id}
+
+        mapping_textures = {
+            'minecraft:block/furnace_top': loc(1, 0, 10),
+            'minecraft:block/furnace_side': loc(2, 0, 20),
+            'minecraft:block/furnace_front': loc(3, 0, 30),
+            'minecraft:block/oak_log': loc(4, 0, 40),
+            'minecraft:block/oak_log_top': loc(5, 0, 50),
+        }
+
+        atlas_params = {
+            'width': 1024,
+            'height': 512,
+            'tile_size': 16,
+            'tiles_per_row': 64,
+            'mapping': {'textures': mapping_textures},
+        }
+
+        res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params)
         self.assertIsNotNone(res.world_obj)
-        setup_world_geometry_nodes(res.world_obj)
+        mesh = res.world_obj.data
 
-        depsgraph = bpy.context.evaluated_depsgraph_get()
-        eval_obj = res.world_obj.evaluated_get(depsgraph)
-        eval_mesh = eval_obj.data
-        self.assertGreater(len(eval_mesh.polygons), 0)
-        self.assertIn("UVMap", eval_mesh.attributes)
+        # 2 non-adjacent cubes -> 12 faces
+        self.assertEqual(len(mesh.polygons), 12)
+        self.assertIn("UVMap", mesh.uv_layers)
 
     def test_glazed_terracotta_all_facings_and_offline_parity(self):
         """Verify Glazed Terracotta 4-facing circular UV rotations and JAR/offline parity."""

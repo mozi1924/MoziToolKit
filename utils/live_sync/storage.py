@@ -60,6 +60,83 @@ class VoxelStorage:
         """Get blockstate string at (x, y, z)."""
         return self.block_map.get((x, y, z))
 
+    def get_dirty_sections(self) -> Set[Tuple[int, int, int]]:
+        """Return the set of dirty section coordinates that need mesh regeneration."""
+        return set(self._dirty_sections)
+
+    def clear_dirty_sections(self) -> None:
+        """Clear the set of dirty sections after mesh synchronization."""
+        self._dirty_sections.clear()
+
+    def mark_all_sections_dirty(self) -> None:
+        """Mark all sections within current bounds as dirty for a full rebuild."""
+        self._dirty_sections.clear()
+        if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
+            return
+        min_sec_x, max_sec_x = self.min_x >> 4, (self.min_x + self.size_x - 1) >> 4
+        min_sec_y, max_sec_y = self.min_y >> 4, (self.min_y + self.size_y - 1) >> 4
+        min_sec_z, max_sec_z = self.min_z >> 4, (self.min_z + self.size_z - 1) >> 4
+        for sx in range(min_sec_x, max_sec_x + 1):
+            for sy in range(min_sec_y, max_sec_y + 1):
+                for sz in range(min_sec_z, max_sec_z + 1):
+                    self._dirty_sections.add((sx, sy, sz))
+
+    def get_all_sections(self) -> Set[Tuple[int, int, int]]:
+        """Return all section coordinates that contain at least one non-air voxel."""
+        sections = set()
+        air_names = {"", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void"}
+        for (x, y, z), state in self.block_map.items():
+            if state and state not in air_names and not state.startswith("minecraft:air"):
+                sections.add((x >> 4, y >> 4, z >> 4))
+        return sections
+
+    def get_section_blocks(self, sec_x: int, sec_y: int, sec_z: int) -> Dict[Tuple[int, int, int], str]:
+        """Return all (abs_x, abs_y, abs_z) -> state_str within the given 16x16x16 section."""
+        start_x = sec_x << 4
+        start_y = sec_y << 4
+        start_z = sec_z << 4
+        result = {}
+        for x in range(start_x, start_x + 16):
+            for y in range(start_y, start_y + 16):
+                for z in range(start_z, start_z + 16):
+                    state = self.block_map.get((x, y, z))
+                    if state is not None:
+                        result[(x, y, z)] = state
+        return result
+
+    def set_block(self, x: int, y: int, z: int, state_str: str) -> None:
+        """Set blockstate string at (x, y, z), expanding storage bounds if needed and marking dirty sections."""
+        self.block_map[(x, y, z)] = state_str
+        if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
+            self.min_x, self.min_y, self.min_z = x, y, z
+            self.size_x, self.size_y, self.size_z = 1, 1, 1
+        else:
+            max_x = max(self.min_x + self.size_x - 1, x)
+            max_y = max(self.min_y + self.size_y - 1, y)
+            max_z = max(self.min_z + self.size_z - 1, z)
+            self.min_x = min(self.min_x, x)
+            self.min_y = min(self.min_y, y)
+            self.min_z = min(self.min_z, z)
+            self.size_x = max_x - self.min_x + 1
+            self.size_y = max_y - self.min_y + 1
+            self.size_z = max_z - self.min_z + 1
+
+        sx, sy, sz = x >> 4, y >> 4, z >> 4
+        self._dirty_sections.add((sx, sy, sz))
+        if (x & 15) == 0:
+            self._dirty_sections.add((sx - 1, sy, sz))
+        elif (x & 15) == 15:
+            self._dirty_sections.add((sx + 1, sy, sz))
+        if (y & 15) == 0:
+            self._dirty_sections.add((sx, sy - 1, sz))
+        elif (y & 15) == 15:
+            self._dirty_sections.add((sx, sy + 1, sz))
+        if (z & 15) == 0:
+            self._dirty_sections.add((sx, sy, sz - 1))
+        elif (z & 15) == 15:
+            self._dirty_sections.add((sx, sy, sz + 1))
+        self.generation += 1
+
     def set_full_snapshot(
         self,
         min_x: int, min_y: int, min_z: int,
@@ -156,7 +233,7 @@ class VoxelStorage:
         min_x: int, min_y: int, min_z: int,
         changes: List[Tuple[int, int, int, str]],
     ) -> bool:
-        """Apply incremental delta changes to voxel storage."""
+        """Apply incremental delta changes to voxel storage, tracking dirty sections and boundary neighbors."""
         if not self.matches_bounds(min_x, min_y, min_z):
             logger.warning("Discarded delta for stale selection bounds (%d, %d, %d)", min_x, min_y, min_z)
             return False
@@ -170,7 +247,23 @@ class VoxelStorage:
             if self.block_map.get(key) == state_str:
                 continue
             self.block_map[key] = state_str
-            self._dirty_sections.add((abs_x >> 4, abs_y >> 4, abs_z >> 4))
+            sx, sy, sz = abs_x >> 4, abs_y >> 4, abs_z >> 4
+            self._dirty_sections.add((sx, sy, sz))
+
+            # Check boundary conditions and mark adjacent section dirty for face culling consistency
+            if (abs_x & 15) == 0:
+                self._dirty_sections.add((sx - 1, sy, sz))
+            elif (abs_x & 15) == 15:
+                self._dirty_sections.add((sx + 1, sy, sz))
+            if (abs_y & 15) == 0:
+                self._dirty_sections.add((sx, sy - 1, sz))
+            elif (abs_y & 15) == 15:
+                self._dirty_sections.add((sx, sy + 1, sz))
+            if (abs_z & 15) == 0:
+                self._dirty_sections.add((sx, sy, sz - 1))
+            elif (abs_z & 15) == 15:
+                self._dirty_sections.add((sx, sy, sz + 1))
+
             changed = True
 
         return changed
@@ -226,7 +319,6 @@ class VoxelStorage:
             key = (sec_x, sec_y, sec_z)
             if key in self._dirty_sections or key not in self.section_crc_map:
                 self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
-                self._dirty_sections.discard(key)
             local_crc = self.section_crc_map.get(key, None)
             if local_crc != server_crc32:
                 mismatched.append(key)
@@ -235,3 +327,4 @@ class VoxelStorage:
 
 # Global singleton instance for live syncing in Blender session
 voxel_storage = VoxelStorage()
+
