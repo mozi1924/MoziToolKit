@@ -1,19 +1,12 @@
 """
 MoziToolKit Live Sync Module.
 Provides real-time Minecraft WebSocket communication, VoxelStorage, Block Classification,
-and Procedural Point Cloud Generation.
+and Direct Mesh Generation.
 """
 
 from .constants import (
-    BLOCK_CENTER,
-    BLOCK_KEY,
-    BLOCK_STATE,
-    BLOCK_TYPE,
     CONTRACT_VERSION,
-    DIRECTIONAL_FACE_V_FLIP,
     FACES,
-    INSTANCE_ROTATION,
-    MC_POSITION,
     MTK_ANIM_ATLAS_HEIGHT,
     MTK_ANIM_ATLAS_WIDTH,
     MTK_ANIM_FRAME_HEIGHT,
@@ -36,9 +29,9 @@ from .constants import (
     MTK_TILES_PER_ROW,
     MTK_UV_ROTATION,
     MTK_UV_TILING_TRANSFORM,
-    TEMPLATE_INDEX,
-    clear_point_attributes,
-    face_attribute,
+    UV_MAP,
+    DEFAULT_WORLD_OBJECT_NAME,
+    DEFAULT_WORLD_MESH_NAME,
 )
 from .classifier import (
     AIR_BLOCKS,
@@ -66,31 +59,11 @@ from .mesh_builder import (
     sync_world_mesh,
     update_blocks_in_mesh,
 )
-from .point_cloud import (
-    PointCloudBuildResult,
-    set_baker_resource_source,
-    update_world_point_cloud,
-)
 from .storage import VoxelStorage, block_key, voxel_storage
-from .template_catalog import (
-    TEMPLATE_COLLECTION_NAME,
-    TemplateCatalog,
-    get_template_objects_in_instance_order,
-    get_or_create_template_collection,
-    get_template_index_map,
-    template_catalog,
-)
 
 __all__ = (
-    "BLOCK_CENTER",
-    "BLOCK_KEY",
-    "BLOCK_STATE",
-    "BLOCK_TYPE",
     "CONTRACT_VERSION",
-    "DIRECTIONAL_FACE_V_FLIP",
     "FACES",
-    "INSTANCE_ROTATION",
-    "MC_POSITION",
     "MTK_ANIM_ATLAS_HEIGHT",
     "MTK_ANIM_ATLAS_WIDTH",
     "MTK_ANIM_FRAME_HEIGHT",
@@ -113,9 +86,9 @@ __all__ = (
     "MTK_TILES_PER_ROW",
     "MTK_UV_ROTATION",
     "MTK_UV_TILING_TRANSFORM",
-    "TEMPLATE_INDEX",
-    "clear_point_attributes",
-    "face_attribute",
+    "UV_MAP",
+    "DEFAULT_WORLD_OBJECT_NAME",
+    "DEFAULT_WORLD_MESH_NAME",
     "AIR_BLOCKS",
     "BlockTypeEnum",
     "CROSS_PLANTS",
@@ -128,7 +101,6 @@ __all__ = (
     "SyncClientThread",
     "LiveSyncMaterialManager",
     "ResolvedFaceTexture",
-    "PointCloudBuildResult",
     "WorldMeshBuildResult",
     "apply_block_delta_to_world",
     "build_world_mesh",
@@ -137,15 +109,7 @@ __all__ = (
     "preload_sync_world_data",
     "sync_world_mesh",
     "update_blocks_in_mesh",
-    "set_baker_resource_source",
-    "update_world_point_cloud",
     "VoxelStorage",
     "block_key",
     "voxel_storage",
-    "TEMPLATE_COLLECTION_NAME",
-    "TemplateCatalog",
-    "template_catalog",
-    "get_template_objects_in_instance_order",
-    "get_or_create_template_collection",
-    "get_template_index_map",
 )

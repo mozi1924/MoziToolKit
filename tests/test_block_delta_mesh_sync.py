@@ -12,8 +12,17 @@ Tests:
 
 from __future__ import annotations
 
+import sys
 import time
 import unittest
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).parent.parent.resolve()
+if str(PROJECT_DIR.parent) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR.parent))
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 import bpy
 import bmesh
 
@@ -263,14 +272,24 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
 
     def test_event_pump_queue_processing(self):
         """Verify that high-frequency _delta_queue streaming drains and syncs immediately."""
-        from operators.sync.op_sync_connect import (
-            _delta_queue,
-            _pump_main_thread_events,
-            start_main_thread_pump,
-            stop_main_thread_pump,
-            get_active_sync_props,
-        )
-        from utils.live_sync.storage import voxel_storage
+        try:
+            from MoziToolKit.operators.sync.op_sync_connect import (
+                _delta_queue,
+                _pump_main_thread_events,
+                start_main_thread_pump,
+                stop_main_thread_pump,
+                get_active_sync_props,
+            )
+            from MoziToolKit.utils.live_sync.storage import voxel_storage
+        except ImportError:
+            from operators.sync.op_sync_connect import (
+                _delta_queue,
+                _pump_main_thread_events,
+                start_main_thread_pump,
+                stop_main_thread_pump,
+                get_active_sync_props,
+            )
+            from utils.live_sync.storage import voxel_storage
 
         # Setup voxel_storage initial state
         voxel_storage.set_full_snapshot(

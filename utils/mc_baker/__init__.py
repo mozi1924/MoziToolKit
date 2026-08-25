@@ -38,11 +38,6 @@ from .mesh_generator import (
     build_blender_mesh_from_baked_model,
     create_block_object,
 )
-from .template_updater import (
-    update_mc_block_templates_from_pack,
-    attach_yefira_template_attributes,
-    TEMPLATE_COLLECTION_NAME,
-)
 
 __all__ = [
     "MC_DIRECTIONS",
@@ -75,7 +70,4 @@ __all__ = [
     "mc_pos_to_blender",
     "build_blender_mesh_from_baked_model",
     "create_block_object",
-    "update_mc_block_templates_from_pack",
-    "attach_yefira_template_attributes",
-    "TEMPLATE_COLLECTION_NAME",
 ]
