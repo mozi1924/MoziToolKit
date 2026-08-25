@@ -242,13 +242,61 @@ def schedule_mesh_sync(force_full_rebuild: bool = False) -> None:
     bpy.app.timers.register(flush, first_interval=REBUILD_DEBOUNCE_SECONDS)
 
 
+_skip_next_full_snapshot: bool = False
+
+
+def persist_sync_state_to_scene(context: Optional[bpy.types.Context] = None) -> None:
+    """Persist bounds, generation, and section CRC manifest onto Yefira_World object and scene properties."""
+    try:
+        world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        if world_obj is not None:
+            manifest_dict = voxel_storage.export_manifest_metadata()
+            import json
+            world_obj["mtk:sync_manifest"] = json.dumps(manifest_dict)
+            world_obj["mtk_block_bounds"] = [
+                voxel_storage.min_x, voxel_storage.min_y, voxel_storage.min_z,
+                voxel_storage.size_x, voxel_storage.size_y, voxel_storage.size_z,
+            ]
+    except Exception as e:
+        logger.warning(f"Failed to persist live sync state to scene object: {e}")
+
+
+def restore_sync_state_from_scene(context: Optional[bpy.types.Context] = None) -> bool:
+    """Attempt to restore live sync voxel metadata from existing Yefira_World scene object."""
+    try:
+        world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        if world_obj is None:
+            return False
+
+        manifest_str = world_obj.get("mtk:sync_manifest", "")
+        if manifest_str and isinstance(manifest_str, str):
+            import json
+            manifest_data = json.loads(manifest_str)
+            if voxel_storage.import_manifest_metadata(manifest_data):
+                props = get_active_sync_props(context)
+                if props:
+                    props.has_selection = True
+                    props.min_x, props.min_y, props.min_z = voxel_storage.min_x, voxel_storage.min_y, voxel_storage.min_z
+                    props.max_x = voxel_storage.min_x + voxel_storage.size_x - 1
+                    props.max_y = voxel_storage.min_y + voxel_storage.size_y - 1
+                    props.max_z = voxel_storage.min_z + voxel_storage.size_z - 1
+                    props.size_x, props.size_y, props.size_z = voxel_storage.size_x, voxel_storage.size_y, voxel_storage.size_z
+                    props.total_blocks = voxel_storage.size_x * voxel_storage.size_y * voxel_storage.size_z
+                    props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
+                logger.info(f"Restored Live Sync metadata from scene object ({voxel_storage.size_x}x{voxel_storage.size_y}x{voxel_storage.size_z})")
+                return True
+    except Exception as e:
+        logger.warning(f"Failed to restore live sync state from scene object: {e}")
+    return False
+
+
 class MOZI_OT_sync_connect(bpy.types.Operator):
     bl_idname = "mozi.sync_connect"
     bl_label = "Connect"
     bl_description = "Connect to Minecraft Live Sync WebSocket Server"
 
     def execute(self, context):
-        global _client_thread, _last_seq_id
+        global _client_thread, _last_seq_id, _skip_next_full_snapshot
         props = get_active_sync_props(context)
         if not props:
             self.report({'ERROR'}, "Scene properties not initialized.")
@@ -261,6 +309,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         if _client_thread and _client_thread.is_alive():
             self.report({'INFO'}, "Already connected or connecting.")
             return {'FINISHED'}
+
+        # 1. Check for existing world object in scene and restore cached manifest if storage is empty
+        _skip_next_full_snapshot = False
+        if voxel_storage.size_x == 0 or not voxel_storage.section_crc_map:
+            restore_sync_state_from_scene(context)
 
         def run_in_main_thread(func):
             def wrapper():
@@ -298,9 +351,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
             def update():
-                global _last_seq_id
+                global _last_seq_id, _skip_next_full_snapshot
                 _last_seq_id = 0
-                clear_sync_caches()
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
                 props.max_x = min_x + size_x - 1
@@ -312,11 +364,26 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.total_blocks = total_blocks
                 props.update_counter += 1
 
+                # Update Palette UI list
+                props.palette_list.clear()
+                for p_item in palette:
+                    item = props.palette_list.add()
+                    item.state_str = p_item
+
+                # If manifest validation already confirmed 100% match with existing scene mesh, skip redundant full rebuild
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                if _skip_next_full_snapshot and existing_world and voxel_storage.matches_bounds(min_x, min_y, min_z):
+                    logger.info("Live Sync: Verified existing scene mesh matches server snapshot, skipping full rebuild.")
+                    props.last_update_info = f"Verified: {total_blocks} blocks (reused existing mesh)"
+                    _skip_next_full_snapshot = False
+                    return
+
+                clear_sync_caches()
+
                 # 1. Update VoxelStorage
                 voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
                 # 2. Pre-warm and pre-load all palette blockstate models and materials in RAM
-                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                 mat = find_bound_atlas_material(existing_world) if existing_world else None
                 atlas_params = get_cached_atlas_params(mat)
                 preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
@@ -324,13 +391,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 # 3. Schedule initial world mesh build
                 schedule_mesh_sync(force_full_rebuild=True)
 
-                # Update Palette UI list
-                props.palette_list.clear()
-                for p_item in palette:
-                    item = props.palette_list.add()
-                    item.state_str = p_item
-
                 props.last_update_info = f"Snapshot: {total_blocks} blocks (gen {voxel_storage.generation})"
+
+                # 4. Persist metadata onto world object
+                persist_sync_state_to_scene(bpy.context)
 
                 # Log delta history
                 item = props.delta_history.add()
@@ -346,11 +410,25 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         def on_section_manifest(server_seq_id, sections):
             def update():
+                global _skip_next_full_snapshot
                 mismatched = voxel_storage.validate_manifest(sections)
                 props.sync_verified = (len(mismatched) == 0)
-                props.validation_info = "Verified (100% in sync)" if props.sync_verified else f"Mismatch in {len(mismatched)} section(s)"
-                if mismatched and _client_thread:
-                    _client_thread.send_repair_request(mismatched)
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                has_existing_mesh = existing_world is not None and (
+                    len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
+                )
+
+                if props.sync_verified and has_existing_mesh:
+                    _skip_next_full_snapshot = True
+                    props.validation_info = "Verified (100% in sync with scene)"
+                    logger.info("Live Sync: Handshake verified 100% match with existing scene objects.")
+                elif props.sync_verified:
+                    props.validation_info = "Verified (100% in sync)"
+                else:
+                    _skip_next_full_snapshot = False
+                    props.validation_info = f"Mismatch in {len(mismatched)} section(s)"
+                    if _client_thread:
+                        _client_thread.send_repair_request(mismatched)
             run_in_main_thread(update)
 
         def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
@@ -363,6 +441,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     schedule_mesh_sync()
                     props.update_counter += 1
                     props.last_update_info = f"Repaired Section ({sec_x}, {sec_y}, {sec_z})"
+                    persist_sync_state_to_scene(bpy.context)
             run_in_main_thread(update)
 
         _client_thread = SyncClientThread(
@@ -405,11 +484,19 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
 class MOZI_OT_sync_refresh(bpy.types.Operator):
     bl_idname = "mozi.sync_refresh"
     bl_label = "Refresh"
-    bl_description = "Reconnect and request fresh full snapshot"
+    bl_description = "Request fresh data snapshot and re-verify sync state with server"
 
     def execute(self, context):
-        bpy.ops.mozi.sync_disconnect()
-        bpy.ops.mozi.sync_connect()
+        global _skip_next_full_snapshot
+        _skip_next_full_snapshot = False
+        props = get_active_sync_props(context)
+        if props and props.is_connected:
+            # Re-fetch fresh full data from server
+            bpy.ops.mozi.sync_disconnect()
+            bpy.ops.mozi.sync_connect()
+            self.report({'INFO'}, "Refreshing live sync data from server...")
+        else:
+            bpy.ops.mozi.sync_connect()
         return {'FINISHED'}
 
 
