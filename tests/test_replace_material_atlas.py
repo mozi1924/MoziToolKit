@@ -33,8 +33,13 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         except Exception:
             self.skipTest(f"JAR file not accessible: {self.jar_path}")
 
-        # Clear existing scene objects and materials
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        # Clear existing scene objects and materials cleanly
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            bpy.data.materials.remove(mat, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            bpy.data.meshes.remove(mesh, do_unlink=True)
 
         # Create a test cube object with materials
         bpy.ops.mesh.primitive_cube_add()
@@ -46,6 +51,15 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
         self.cube.data.materials.append(mat)
         uv_layer = self.cube.data.uv_layers.active
         self.original_uvs = [item.uv.copy() for item in uv_layer.data] if uv_layer else None
+
+    def tearDown(self):
+        if HAS_BPY:
+            for obj in list(bpy.data.objects):
+                bpy.data.objects.remove(obj, do_unlink=True)
+            for mat in list(bpy.data.materials):
+                bpy.data.materials.remove(mat, do_unlink=True)
+            for mesh in list(bpy.data.meshes):
+                bpy.data.meshes.remove(mesh, do_unlink=True)
 
     def test_standalone_mode(self):
         from pipeline.presets import run_preset_pipeline

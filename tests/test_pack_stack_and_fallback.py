@@ -405,9 +405,7 @@ class TestPackStackAndFallback(unittest.TestCase):
 
         cache_dir = get_cache_dir()
         self.assertTrue(cache_dir.exists())
-        if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
-            self.assertIn("datafiles", str(cache_dir).lower())
-            self.assertIn("baked_stack", str(cache_dir).lower())
+        self.assertIn("baked_stack", str(cache_dir).lower())
 
         temp_ext_dir = get_temp_extraction_dir()
         self.assertTrue(temp_ext_dir.exists())

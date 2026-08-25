@@ -60,7 +60,13 @@ class TestOverlayAndFallbackStack(unittest.TestCase):
             shutil.rmtree(cls.temp_dir, ignore_errors=True)
 
     def setUp(self):
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        # Cleanly purge test objects and materials without touching global Blender factory settings
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            bpy.data.materials.remove(mat, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            bpy.data.meshes.remove(mesh, do_unlink=True)
 
     def test_pack_stack_hash_and_invalidation(self):
         """ResourcePackStack must produce deterministic stack_hash that updates when sources change."""
