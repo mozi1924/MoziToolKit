@@ -38,11 +38,13 @@ def _remap_local_to_target_uv(
     target_location: Optional[dict] = None,
     target_chunk: Optional[dict] = None,
 ) -> tuple[float, float]:
-    """Project local UV [0..1] to global Atlas UV [0..1] across HD and standard packs."""
+    """Project local UV [0..1] to global Atlas UV [0..1] at Frame 0 for animated and rect textures across HD and standard packs."""
     if target_location and target_chunk:
         packing = target_location.get("packing") or target_chunk.get("packing", "grid")
-        if target_location.get("kind") == "animation" or packing in ("rect_bin_pack", "rect") or "pixel_x" in target_location:
+        is_anim = (target_location.get("kind") == "animation") or (target_chunk.get("kind") == "animation")
+        if is_anim or packing in ("rect_bin_pack", "rect", "vertical_columns") or "pixel_x" in target_location:
             px = float(target_location.get("pixel_x", 0))
+            # Animation textures place Frame 0 at vertical offset 0 (top of the column strip)
             py = float(target_location.get("pixel_y", 0))
             rw = float(target_location.get("rect_width") or target_location.get("frame_width") or target_chunk.get("tile_size", 16))
             rh = float(target_location.get("rect_height") or target_location.get("frame_height") or target_chunk.get("tile_size", 16))
@@ -120,6 +122,8 @@ class LiveSyncMaterialManager:
         self._chunks_by_id: dict[int, dict] = {}
         self._state_face_cache: dict[str, dict[str, ResolvedFaceTexture]] = {}
         self._last_mat_signature: Optional[tuple] = None
+        self._atlas_dir: Optional[Path] = None
+        self._target_pack_hash: str = ""
         self.refresh()
 
     def refresh(self) -> None:
@@ -144,7 +148,7 @@ class LiveSyncMaterialManager:
             if isinstance(chunk, dict) and "chunk_id" in chunk:
                 self._chunks_by_id[int(chunk["chunk_id"])] = chunk
 
-        # Index all textures in mapping
+        # 1. Index all static/general textures in mapping
         raw_textures = mapping.get("textures", {})
         if isinstance(raw_textures, dict):
             for name, location in raw_textures.items():
@@ -166,10 +170,80 @@ class LiveSyncMaterialManager:
                 self._texture_map.setdefault(f"minecraft:{short_name}", location)
                 self._texture_map.setdefault(f"minecraft:block/{short_name}", location)
 
+        # 2. Priority index: Animations in mapping (overwrites any static fallback for animated textures)
+        animations = mapping.get("animations", [])
+        if isinstance(animations, list):
+            for anim in animations:
+                if not isinstance(anim, dict):
+                    continue
+                cid = int(anim.get("chunk_id", 0))
+                target_chunk = self._chunks_by_id.get(cid, {})
+                anim_loc = {
+                    "chunk_id": cid,
+                    "texture_id": anim.get("texture_id", 0),
+                    "kind": "animation",
+                    "category": anim.get("category", "blocks"),
+                    "namespace": anim.get("namespace", "minecraft"),
+                    "pixel_x": float(anim.get("pixel_x", 0)),
+                    "pixel_y": 0.0,  # Always Frame 0
+                    "frame_width": float(anim.get("frame_width") or target_chunk.get("tile_size", 16)),
+                    "frame_height": float(anim.get("frame_height") or target_chunk.get("tile_size", 16)),
+                    "frame_count": int(anim.get("frame_count", 1)),
+                    "frametime": int(anim.get("frametime", 2)),
+                    "interpolate": bool(anim.get("interpolate", False)),
+                    "default_tint_weight": float(anim.get("default_tint_weight", 0.0)),
+                }
+
+                tex_key = anim.get("texture_key") or anim.get("name", "")
+                ns, tex_name = _split_texture_key(tex_key)
+                canon = _canonical_texture_key(ns, tex_name)
+
+                self._texture_map[canon] = anim_loc
+                self._texture_map[tex_key] = anim_loc
+                if anim.get("name"):
+                    self._texture_map[anim["name"]] = anim_loc
+
+                short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
+                self._texture_map[short_name] = anim_loc
+                self._texture_map[f"minecraft:{short_name}"] = anim_loc
+                self._texture_map[f"minecraft:block/{short_name}"] = anim_loc
+
+        # 3. Canonical animated block name aliases (e.g. water, lava, fire, portal, sea_lantern)
+        animated_aliases = {
+            "water": ["water_still", "minecraft:block/water_still", "water_flow", "minecraft:block/water_flow"],
+            "flowing_water": ["water_flow", "minecraft:block/water_flow", "water_still"],
+            "lava": ["lava_still", "minecraft:block/lava_still", "lava_flow", "minecraft:block/lava_flow"],
+            "flowing_lava": ["lava_flow", "minecraft:block/lava_flow", "lava_still"],
+            "fire": ["fire_0", "minecraft:block/fire_0", "fire_1", "minecraft:block/fire_1"],
+            "soul_fire": ["soul_fire_0", "minecraft:block/soul_fire_0", "soul_fire_1", "minecraft:block/soul_fire_1"],
+            "portal": ["nether_portal", "minecraft:block/nether_portal"],
+            "nether_portal": ["nether_portal", "minecraft:block/nether_portal"],
+            "sea_lantern": ["sea_lantern", "minecraft:block/sea_lantern"],
+            "magma_block": ["magma", "minecraft:block/magma", "magma_block", "minecraft:block/magma_block"],
+            "magma": ["magma", "minecraft:block/magma"],
+            "prismarine": ["prismarine", "minecraft:block/prismarine"],
+            "campfire": ["campfire_fire", "minecraft:block/campfire_fire"],
+            "soul_campfire": ["soul_campfire_fire", "minecraft:block/soul_campfire_fire"],
+            "respawn_anchor": ["respawn_anchor_top", "minecraft:block/respawn_anchor_top"],
+            "kelp": ["kelp", "minecraft:block/kelp", "kelp_plant"],
+            "lantern": ["lantern", "minecraft:block/lantern"],
+            "soul_lantern": ["soul_lantern", "minecraft:block/soul_lantern"],
+            "sculk_sensor": ["sculk_sensor_top", "minecraft:block/sculk_sensor_top"],
+            "sculk_shrieker": ["sculk_shrieker_top", "minecraft:block/sculk_shrieker_top"],
+            "sculk_catalyst": ["sculk_catalyst_top", "minecraft:block/sculk_catalyst_top"],
+        }
+        for base_name, alt_list in animated_aliases.items():
+            for alt in alt_list:
+                if alt in self._texture_map and self._texture_map[alt].get("kind") == "animation":
+                    self._texture_map.setdefault(base_name, self._texture_map[alt])
+                    self._texture_map.setdefault(f"minecraft:{base_name}", self._texture_map[alt])
+                    self._texture_map.setdefault(f"minecraft:block/{base_name}", self._texture_map[alt])
+                    break
+
     def _ensure_chunk_materials_with_hash_validation(self) -> None:
         """
-        Validates materials against the prebaked pack hash and rebuilds them if outdated or missing.
-        Completely eliminates legacy 'Master' material reliance in favor of native chunk materials.
+        Validates materials against the prebaked pack hash and loads only default block chunks.
+        Non-block chunks (UI, items, entities) are lazily loaded on demand when needed.
         """
         from ..materials.atlas.builder import build_atlas_chunk_materials
         from ..materials.pack.pack_stack import get_configured_pack_stack
@@ -203,6 +277,9 @@ class LiveSyncMaterialManager:
                 except Exception as e:
                     logger.warning(f"Failed to auto-generate atlas cache: {e}")
 
+        self._atlas_dir = atlas_dir
+        self._target_pack_hash = target_pack_hash
+
         # Determine mapping data
         mapping = self.atlas_params.get("mapping")
         if not mapping and atlas_dir:
@@ -215,20 +292,31 @@ class LiveSyncMaterialManager:
                 mapping = None
 
         chunks = mapping.get("chunks", []) if isinstance(mapping, dict) else []
-        chunk_ids = [int(c.get("chunk_id", i)) for i, c in enumerate(chunks)] if chunks else [0, 1]
+        for c in chunks:
+            if isinstance(c, dict) and "chunk_id" in c:
+                self._chunks_by_id[int(c["chunk_id"])] = c
+
+        # Filter default chunk IDs: only load pure block chunks (static and animated block strips)
+        # Non-block categories (items, gui, particles, paintings, entities) are loaded on-demand.
+        default_chunk_ids = [
+            int(c.get("chunk_id", i)) for i, c in enumerate(chunks)
+            if c.get("category", "blocks") == "blocks"
+        ] if chunks else [0, 1]
+        if not default_chunk_ids and chunks:
+            default_chunk_ids = [int(chunks[0].get("chunk_id", 0))]
 
         self.chunk_materials.clear()
 
         # Check existing materials in bpy.data.materials matching chunk_id and target_pack_hash
         for mat in bpy.data.materials:
             cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
-            if cid is not None and int(cid) in chunk_ids:
+            if cid is not None and int(cid) in default_chunk_ids:
                 mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
                 if not target_pack_hash or mat_hash == target_pack_hash:
                     self.chunk_materials[int(cid)] = mat
 
-        # Check if any required chunk material is missing
-        missing_chunks = [cid for cid in chunk_ids if cid not in self.chunk_materials]
+        # Check if any required default chunk material is missing
+        missing_chunks = [cid for cid in default_chunk_ids if cid not in self.chunk_materials]
         if missing_chunks and atlas_dir:
             try:
                 rebuilt_mats = build_atlas_chunk_materials(
@@ -236,14 +324,15 @@ class LiveSyncMaterialManager:
                     pack_hash=target_pack_hash,
                     pack_textures=True,
                     uv_attribute=None,  # Use native Blender UVMap
+                    chunk_ids=missing_chunks,
                 )
                 for r_cid, r_mat in rebuilt_mats.items():
                     self.chunk_materials[r_cid] = r_mat
             except Exception as e:
                 logger.warning(f"Failed to build precompiled atlas chunk materials: {e}")
 
-        # Collect or create fallback for all chunks
-        for cid in chunk_ids:
+        # Collect or create fallback for missing default chunks
+        for cid in default_chunk_ids:
             if cid not in self.chunk_materials:
                 # Create standard principled shader fallback material
                 mat_name = f"MC_Atlas_Chunk_{cid}"
@@ -266,6 +355,62 @@ class LiveSyncMaterialManager:
         if self.world_obj:
             self._sync_object_material_slots()
 
+    def ensure_chunk_loaded(self, chunk_id: int) -> int:
+        """Dynamically load and bind a material chunk on demand if not already loaded in the scene."""
+        if chunk_id in self.chunk_materials:
+            return self.chunk_to_slot.get(chunk_id, 0)
+
+        # 1. Try finding existing valid material in bpy.data.materials
+        found_mat = None
+        for mat in bpy.data.materials:
+            cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
+            if cid is not None and int(cid) == chunk_id:
+                mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
+                if not self._target_pack_hash or mat_hash == self._target_pack_hash:
+                    found_mat = mat
+                    break
+
+        if found_mat:
+            self.chunk_materials[chunk_id] = found_mat
+        elif self._atlas_dir:
+            try:
+                from ..materials.atlas.builder import build_atlas_chunk_materials
+                rebuilt_mats = build_atlas_chunk_materials(
+                    atlas_dir=self._atlas_dir,
+                    pack_hash=self._target_pack_hash,
+                    pack_textures=True,
+                    uv_attribute=None,
+                    chunk_ids=[chunk_id],
+                )
+                for r_cid, r_mat in rebuilt_mats.items():
+                    self.chunk_materials[r_cid] = r_mat
+            except Exception as e:
+                logger.warning(f"Failed to on-demand build chunk {chunk_id}: {e}")
+
+        if chunk_id not in self.chunk_materials:
+            mat_name = f"MC_Atlas_Chunk_{chunk_id}"
+            mat = bpy.data.materials.new(name=mat_name)
+            mat.use_nodes = True
+            nodes = mat.node_tree.nodes
+            links = mat.node_tree.links
+            nodes.clear()
+            out_node = nodes.new("ShaderNodeOutputMaterial")
+            out_node.location = (400, 0)
+            bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+            bsdf.location = (0, 0)
+            links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
+            mat[PROP_ATLAS_CHUNK_ID] = chunk_id
+            if self._target_pack_hash:
+                mat[PROP_PACK_HASH] = self._target_pack_hash
+            self.chunk_materials[chunk_id] = mat
+
+        if self.world_obj:
+            self._sync_object_material_slots()
+        else:
+            self._update_chunk_to_slot_map()
+
+        return self.chunk_to_slot.get(chunk_id, 0)
+
     def _sync_object_material_slots(self) -> None:
         """Assign chunk materials directly into object material slots."""
         if not self.world_obj:
@@ -287,26 +432,28 @@ class LiveSyncMaterialManager:
     def _update_chunk_to_slot_map(self) -> None:
         """Map chunk IDs to actual material slot indices on world_obj."""
         self.chunk_to_slot.clear()
-        if not self.world_obj:
-            return
+        if self.world_obj:
+            for slot_idx, slot in enumerate(self.world_obj.material_slots):
+                if not slot.material:
+                    continue
+                mat = slot.material
+                cid = mat.get("mtk:atlas_chunk_id", mat.get("mtk_atlas_chunk_id", None))
+                if cid is not None:
+                    self.chunk_to_slot[int(cid)] = slot_idx
+                else:
+                    self.chunk_to_slot.setdefault(slot_idx, slot_idx)
 
-        for slot_idx, slot in enumerate(self.world_obj.material_slots):
-            if not slot.material:
-                continue
-            mat = slot.material
-            cid = mat.get("mtk:atlas_chunk_id", mat.get("mtk_atlas_chunk_id", None))
-            if cid is not None:
-                self.chunk_to_slot[int(cid)] = slot_idx
-            else:
-                self.chunk_to_slot.setdefault(slot_idx, slot_idx)
+        for cid in self.chunk_materials.keys():
+            self.chunk_to_slot.setdefault(cid, cid)
 
-        # Default fallback
         for cid in range(16):
             self.chunk_to_slot.setdefault(cid, cid)
 
     def get_slot_for_chunk(self, chunk_id: int) -> int:
-        """Return the material slot index for a given Chunk ID."""
-        return self.chunk_to_slot.get(chunk_id, 0)
+        """Return the material slot index for a given Chunk ID, loading it on-demand if necessary."""
+        if chunk_id in self.chunk_to_slot and chunk_id in self.chunk_materials:
+            return self.chunk_to_slot[chunk_id]
+        return self.ensure_chunk_loaded(chunk_id)
 
     def resolve_block_face(
         self,
@@ -347,6 +494,22 @@ class LiveSyncMaterialManager:
                 or self._texture_map.get(name)
                 or self._texture_map.get(name.rsplit("/", 1)[-1])
             )
+
+        # Check if parsed block matches an animated block with animation candidate keys
+        if loc is None or loc.get("kind") != "animation":
+            short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
+            try:
+                from ..materials.constants import BLOCK_TO_TEXTURE_ALIASES
+                if short_name in BLOCK_TO_TEXTURE_ALIASES:
+                    for alt in BLOCK_TO_TEXTURE_ALIASES[short_name]:
+                        for cand in (alt, f"minecraft:{alt}", f"minecraft:block/{alt}"):
+                            if cand in self._texture_map and self._texture_map[cand].get("kind") == "animation":
+                                loc = self._texture_map[cand]
+                                break
+                        if loc and loc.get("kind") == "animation":
+                            break
+            except Exception:
+                pass
 
         if loc is None:
             short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
