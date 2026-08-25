@@ -140,7 +140,12 @@ ATTR_ALPHA_MODE = "mtk_alpha_mode"
 # polygons share the same Blender material (as happens in atlas mode).
 ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
 ATTR_SOURCE_ORIGIN = "mtk_source_origin"
-PROVENANCE_SCHEMA_VERSION = 1
+# A self-contained JSON record for every polygon.  Unlike a material slot or
+# node tree this survives shader edits, so it is the durable reconstruction
+# contract for a converted mesh.
+ATTR_FACE_MATERIAL_METADATA = "mtk_face_material_metadata"
+FALLBACK_TEXTURE_KEY = "mozi:fallback"
+PROVENANCE_SCHEMA_VERSION = 2
 
 # Biome & Tint Mesh Attribute Names (Namespaced with mtk_)
 # GPU-facing data is intentionally packed.  EEVEE has a small per-material
@@ -209,7 +214,10 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 # 14: PBR sheets are emitted only for chunks that contain a real corresponding
 # channel; pre-14 atlases include default PBR placeholder sheets for every
 # chunk whenever any texture in the stack used PBR.
-ATLAS_FORMAT_VERSION = 14
+# 15: reserves chunk 0 / texture 0 for MTK's procedural fallback tile.
+# 16: folds that tile into the first real block atlas instead of producing a
+# fallback-only chunk, preserving the stable address without an empty sheet.
+ATLAS_FORMAT_VERSION = 16
 
 # All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
 ANIM_AND_ATLAS_ATTR_NAMES = (

@@ -288,13 +288,11 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             self.assertAlmostEqual(u_res, u_orig, places=4)
             self.assertAlmostEqual(v_res, v_orig, places=4)
 
-    def test_unmatched_face_leaves_the_entire_object_unchanged(self):
-        """Mixed matches must not corrupt the unmatched face's material slot."""
+    def test_unmatched_face_uses_fallback_without_aborting_object(self):
+        """Mixed matches retain progress and route only the bad face to fallback."""
         missing = bpy.data.materials.new(name="not_in_pack")
         self.cube.data.materials.append(missing)
         self.cube.data.polygons[0].material_index = 1
-        original_slots = [slot.material for slot in self.cube.material_slots]
-        original_indices = [poly.material_index for poly in self.cube.data.polygons]
 
         params = {
             "zip_path": str(self.pack_dir),
@@ -304,9 +302,50 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         }
         res, _ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success)
-        self.assertEqual([slot.material for slot in self.cube.material_slots], original_slots)
-        self.assertEqual([poly.material_index for poly in self.cube.data.polygons], original_indices)
-        self.assertNotIn("mtk_source_texture_key", self.cube.data.attributes)
+        fallback_face = self.cube.material_slots[self.cube.data.polygons[0].material_index].material
+        self.assertTrue(fallback_face.name.startswith("mtk:mozi:fallback"))
+        self.assertTrue(any(
+            slot.material and slot.material.name.startswith("mtk:minecraft:stone")
+            for slot in self.cube.material_slots
+        ))
+        self.assertIn("mtk_face_material_metadata", self.cube.data.attributes)
+
+    def test_atlas_unmatched_face_uses_reserved_zero_zero_fallback(self):
+        """Atlas fallback is always the reserved first chunk / first tile."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+        missing = bpy.data.materials.new(name="not_in_atlas_pack")
+        self.cube.data.materials.append(missing)
+        self.cube.data.polygons[0].material_index = 1
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params={
+            "zip_path": str(self.pack_dir), "material_mode": "ATLAS",
+            "pack_textures": False, "use_cache": False,
+        }, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertEqual(self.cube.data.attributes["mtk_atlas_chunk_id"].data[0].value, 0.0)
+        self.assertEqual(self.cube.data.attributes["mtk_atlas_texture_id"].data[0].value, 0.0)
+        self.assertIn("mtk_face_material_metadata", self.cube.data.attributes)
+
+    def test_face_metadata_survives_lost_material_node_trees(self):
+        """A converted mesh remains replaceable after all MTK shaders are erased."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+        standalone = {
+            "zip_path": str(self.pack_dir), "material_mode": "STANDALONE",
+            "pack_textures": False, "use_cache": True,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=standalone, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertIn("mtk_face_material_metadata", self.cube.data.attributes)
+        for slot in self.cube.material_slots:
+            if slot.material and slot.material.node_tree:
+                slot.material.node_tree.nodes.clear()
+        atlas = dict(standalone, material_mode="ATLAS")
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=atlas, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
 
     def test_ice_cube_internal_faces_are_retained_per_face(self):
         """An internal_face_deletion.001 slot must not become oak leaves."""

@@ -16,6 +16,7 @@ from typing import Any
 
 from ..constants import (
     FACE_ORDER,
+    FALLBACK_TEXTURE_KEY,
     ATLAS_FORMAT_VERSION,
     ATLAS_CATEGORY_PRIORITY,
     RECT_PACKED_CATEGORIES,
@@ -460,6 +461,17 @@ class AtlasGenerator:
         staging_dir = parent_dir / f"{output_path.name}_staging_{os.getpid()}_{unique_id}"
         staging_dir.mkdir(parents=True, exist_ok=True)
 
+        # Reserve the first cell of the first *real* block atlas.  Do not emit
+        # a standalone fallback-only chunk: that leaves the first useful atlas
+        # starting at slot 1 and defeats the stable chunk-0 / texture-0 rule.
+        fallback_rel_path = "__mtk_fallback__"
+        fallback = Image.new("RGBA", (16, 16), (24, 24, 24, 255))
+        for y in range(16):
+            for x in range(16):
+                if ((x // 4) + (y // 4)) % 2 == 0:
+                    fallback.putpixel((x, y), (255, 0, 255, 255))
+        self.static_by_ns_cat.setdefault("minecraft", {}).setdefault("blocks", {})[fallback_rel_path] = fallback
+
         all_namespaces = sorted(set(list(self.static_by_ns_cat.keys()) + list(self.animated_by_ns_cat.keys()) + list(self.static_by_namespace.keys()) + list(self.animated_by_namespace.keys())))
         if "minecraft" in all_namespaces:
             all_namespaces.remove("minecraft")
@@ -594,6 +606,10 @@ class AtlasGenerator:
                                     "hardcoded_color": tint_info["hardcoded_color"],
                                     "hardcoded_hex": tint_info["hardcoded_hex"],
                                 }
+                                if rel_p == fallback_rel_path:
+                                    loc_entry["texture_key"] = FALLBACK_TEXTURE_KEY
+                                    loc_entry["is_fallback"] = True
+                                    texture_locations[FALLBACK_TEXTURE_KEY] = loc_entry
                                 texture_locations[canonical_key] = loc_entry
                                 texture_locations[rel_p] = loc_entry
                                 raw_key = self._texture_name(ns, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
@@ -640,8 +656,9 @@ class AtlasGenerator:
                     else:
                         # Uniform grid packing for uniform square identical tiles (e.g. standard blocks / items)
                         square_widths = [
-                            image.width for image in static_map.values()
-                            if image.width == image.height and _is_power_of_two(image.width)
+                            image.width for rel_p, image in static_map.items()
+                            if rel_p != fallback_rel_path
+                            and image.width == image.height and _is_power_of_two(image.width)
                         ]
                         if square_widths:
                             counts = Counter(square_widths)
@@ -752,6 +769,10 @@ class AtlasGenerator:
                                     "hardcoded_color": tint_info["hardcoded_color"],
                                     "hardcoded_hex": tint_info["hardcoded_hex"],
                                 }
+                                if rel_p == fallback_rel_path:
+                                    loc_entry["texture_key"] = FALLBACK_TEXTURE_KEY
+                                    loc_entry["is_fallback"] = True
+                                    texture_locations[FALLBACK_TEXTURE_KEY] = loc_entry
                                 texture_locations[canonical_key] = loc_entry
                                 texture_locations[rel_p] = loc_entry
                                 raw_key = self._texture_name(ns, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)

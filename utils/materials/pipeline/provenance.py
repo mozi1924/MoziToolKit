@@ -16,6 +16,7 @@ except ImportError:
 from ..constants import (
     ATTR_SOURCE_ORIGIN,
     ATTR_SOURCE_TEXTURE_KEY,
+    ATTR_FACE_MATERIAL_METADATA,
     DEFAULT_NAMESPACE,
     PROP_CREATED_BY,
     PROP_PROVENANCE_SCHEMA_VERSION,
@@ -78,6 +79,34 @@ def write_face_source_provenance(
         origin_attr = string_face_attribute(ATTR_SOURCE_ORIGIN)
         for item, origin in zip(origin_attr.data, origins):
             item.value = origin.encode("utf-8")
+
+
+def write_face_material_metadata(mesh: bpy.types.Mesh, records: list[dict]) -> None:
+    """Persist complete, JSON-safe material identity records on each face."""
+    if len(records) != len(mesh.polygons):
+        raise ValueError("Face material metadata must contain one entry per polygon")
+    attr = mesh.attributes.get(ATTR_FACE_MATERIAL_METADATA)
+    if attr and (attr.domain != "FACE" or attr.data_type != "STRING"):
+        mesh.attributes.remove(attr)
+        attr = None
+    attr = attr or mesh.attributes.new(name=ATTR_FACE_MATERIAL_METADATA, type="STRING", domain="FACE")
+    for item, record in zip(attr.data, records):
+        item.value = json.dumps(record, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def read_face_material_metadata(mesh: bpy.types.Mesh) -> list[dict]:
+    """Read per-face reconstruction records, tolerating old/corrupt blends."""
+    attr = mesh.attributes.get(ATTR_FACE_MATERIAL_METADATA)
+    if not attr or attr.domain != "FACE" or attr.data_type != "STRING":
+        return [{} for _ in mesh.polygons]
+    records = []
+    for item in attr.data:
+        raw = item.value.decode("utf-8", errors="replace") if isinstance(item.value, bytes) else str(item.value)
+        try:
+            records.append(json.loads(raw) if raw else {})
+        except (TypeError, ValueError):
+            records.append({})
+    return records if len(records) == len(mesh.polygons) else [{} for _ in mesh.polygons]
 
 
 def get_face_source_origin(mesh: bpy.types.Mesh, poly_idx: int) -> str:
@@ -232,4 +261,3 @@ def write_provenance_schema(owner) -> None:
     """Stamp a Blender ID datablock with Mozi's explicit provenance contract."""
     owner[PROP_CREATED_BY] = "MoziToolKit"
     owner[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
-

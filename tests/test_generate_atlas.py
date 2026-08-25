@@ -83,16 +83,18 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertEqual(mapping["format_version"], ATLAS_FORMAT_VERSION)
             self.assertEqual(mapping["tile_size"], 32)
             self.assertEqual(len(mapping["chunks"]), 1)
+            self.assertEqual(mapping["textures"]["mozi:fallback"]["chunk_id"], 0)
+            self.assertEqual(mapping["textures"]["mozi:fallback"]["texture_id"], 0)
             self.assertEqual(mapping["chunks"][0]["width"], 64)
-            self.assertEqual(mapping["chunks"][0]["height"], 32)
-            self.assertEqual(mapping["textures"]["large"]["texture_id"], 0)
-            self.assertEqual(mapping["textures"]["small"]["texture_id"], 1)
+            self.assertEqual(mapping["chunks"][0]["height"], 64)
+            self.assertEqual(mapping["textures"]["large"]["texture_id"], 1)
+            self.assertEqual(mapping["textures"]["small"]["texture_id"], 2)
             # The model's six faces reuse the same single ``large`` tile.
             shared = next(entry for entry in mapping["materials"] if entry["name"] == "shared")
             self.assertEqual(len({tuple(face.values()) for face in shared["faces"].values()}), 1)
             atlas = Image.open(outputs["chunks"][0])
-            self.assertEqual(atlas.getpixel((0, 0)), (0, 255, 0, 255))
-            self.assertEqual(atlas.getpixel((32, 0)), (255, 0, 0, 255))
+            self.assertEqual(atlas.getpixel((0, 0)), (255, 0, 255, 255))
+            self.assertEqual(atlas.getpixel((32, 0)), (0, 255, 0, 255))
 
     @unittest.skipIf(Image is None, "Pillow not available")
     def test_non_standard_static_textures_do_not_inflate_tile_size(self):
@@ -168,8 +170,8 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertEqual(preview["frametime"], 2)
             self.assertEqual(preview["frame_count"], 2)
             self.assertEqual(mapping["textures"]["b"]["pixel_x"], 32)
-            self.assertEqual(mapping["textures"]["c"]["chunk_id"], 1)
-            self.assertEqual(Image.open(outputs["chunks"][0]).getpixel((0, 0)), (255, 0, 0, 255))
+            self.assertEqual(mapping["textures"]["c"]["chunk_id"], 2)
+            self.assertEqual(Image.open(outputs["chunks"][1]).getpixel((0, 0)), (255, 0, 0, 255))
 
     @unittest.skipIf(Image is None, "Pillow not available")
     def test_animation_preserves_mcmeta_frame_dimensions(self):
@@ -505,10 +507,10 @@ class TestAtlasGenerator(unittest.TestCase):
             self.assertNotIn("pumpkin_stem_s ", mapping["textures"])
 
             # Verify chunk files exist
-            static_chunk = mapping["chunks"][0]
+            static_chunk = next(c for c in mapping["chunks"] if c["kind"] == "static")
             self.assertIn("normal", static_chunk["files"])
             self.assertIn("specular", static_chunk["files"])
-            self.assertEqual(static_chunk["texture_count"], 1)
+            self.assertEqual(static_chunk["texture_count"], 2)
 
     def test_texture_category_priority(self):
         """Verify deterministic category priority ranking."""
