@@ -13,14 +13,11 @@ from .backends.base import ConfigBackend
 from .backends.json_backend import JsonConfigBackend
 from .backends.blender_backend import BlenderPreferencesConfigBackend
 from .backends.memory_backend import MemoryConfigBackend
-from .models import ConfigData, PackEntry, MaterialSettings, MenuItem, normalize_operator_id
+from .models import ConfigData, PackEntry, MaterialSettings, MenuItem, normalize_operator_id, get_default_menu_views
 
 
 class ConfigManager:
-    """
-    Central Singleton Configuration Manager.
-    Coordinates loading, caching, mutating, saving, and syncing configuration across UI and backends.
-    """
+    """Thread-safe facade and controller managing MoziToolKit configurations."""
 
     _instance: Optional[ConfigManager] = None
     _singleton_lock = threading.RLock()
@@ -29,6 +26,11 @@ class ConfigManager:
         self._lock = threading.RLock()
         self._backend: ConfigBackend = backend or JsonConfigBackend()
         self._cache: Optional[ConfigData] = None
+        self._is_syncing: bool = False
+
+    def is_syncing(self) -> bool:
+        """Check if synchronization between storage and Blender UI preferences is currently active."""
+        return self._is_syncing
 
     @classmethod
     def get_instance(cls) -> ConfigManager:
@@ -145,6 +147,16 @@ class ConfigManager:
                 return self.save()
             return True
 
+    def reset_views(self, save: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+        """Reset only context menu views to default registered operator presets without touching resource packs or material settings."""
+        with self._lock:
+            data = self.get_data()
+            data.views = get_default_menu_views()
+            data.normalize()
+            if save:
+                self.save()
+            return self.get_views()
+
     # -------------------------------------------------------------------------
     # Resource Pack Stack
     # -------------------------------------------------------------------------
@@ -249,12 +261,12 @@ class ConfigManager:
             return
 
         with self._lock:
-            data = self.get_data()
+            self._is_syncing = True
+            try:
+                data = self.get_data()
 
-            # 1. Sync Resource Packs
-            if hasattr(prefs, "resource_packs"):
-                setattr(prefs, "_mozi_is_syncing", True)
-                try:
+                # 1. Sync Resource Packs
+                if hasattr(prefs, "resource_packs"):
                     if hasattr(prefs.resource_packs, "clear"):
                         prefs.resource_packs.clear()
                     if hasattr(prefs.resource_packs, "add"):
@@ -267,70 +279,73 @@ class ConfigManager:
                     elif isinstance(prefs.resource_packs, list):
                         for p_data in data.resource_packs:
                             prefs.resource_packs.append(p_data.to_dict())
-                finally:
-                    setattr(prefs, "_mozi_is_syncing", False)
 
-            # 2. Sync Material Settings
-            if hasattr(prefs, "material_mode"):
-                prefs.material_mode = data.material_settings.material_mode
-            if hasattr(prefs, "biome_preset"):
-                prefs.biome_preset = data.material_settings.biome_preset
-            if hasattr(prefs, "pack_textures"):
-                prefs.pack_textures = data.material_settings.pack_textures
+                # 2. Sync Material Settings
+                if hasattr(prefs, "material_mode"):
+                    prefs.material_mode = data.material_settings.material_mode
+                if hasattr(prefs, "biome_preset"):
+                    prefs.biome_preset = data.material_settings.biome_preset
+                if hasattr(prefs, "pack_textures"):
+                    prefs.pack_textures = data.material_settings.pack_textures
 
-            # 3. Sync Views & Unadded items
-            # Late import menu helpers to avoid circular dependencies
-            try:
-                from ..system.menu_registry import ALL_OPERATORS, sort_unadded_items
-            except Exception:
-                ALL_OPERATORS = {}
-                sort_unadded_items = lambda coll: None
+                # 3. Sync Views & Unadded items
+                # Late import menu helpers to avoid circular dependencies
+                try:
+                    from ..system.menu_registry import ALL_OPERATORS, sort_unadded_items
+                except Exception:
+                    try:
+                        from utils.system.menu_registry import ALL_OPERATORS, sort_unadded_items
+                    except Exception:
+                        ALL_OPERATORS = {}
+                        sort_unadded_items = lambda coll: None
 
-            for view in ["mesh", "object", "uv"]:
-                added_coll = getattr(prefs, f"added_{view}", None)
-                unadded_coll = getattr(prefs, f"unadded_{view}", None)
-                if added_coll is None or unadded_coll is None:
-                    continue
-
-                if hasattr(added_coll, "clear"):
-                    added_coll.clear()
-                if hasattr(unadded_coll, "clear"):
-                    unadded_coll.clear()
-
-                added_op_ids = set()
-                view_items = data.views.get(view, [])
-                for item in view_items:
-                    op_id = item.operator if isinstance(item, MenuItem) else normalize_operator_id(item.get("operator"))
-                    if not op_id:
+                for view in ["mesh", "object", "uv"]:
+                    added_coll = getattr(prefs, f"added_{view}", None)
+                    unadded_coll = getattr(prefs, f"unadded_{view}", None)
+                    if added_coll is None or unadded_coll is None:
                         continue
-                    added_op_ids.add(op_id)
-                    default_label = ALL_OPERATORS.get(op_id, {}).get("default_label", op_id) if ALL_OPERATORS else op_id
-                    item_label = item.label if isinstance(item, MenuItem) else item.get("label")
-                    item_enabled = item.enabled if isinstance(item, MenuItem) else item.get("enabled", True)
-                    
-                    if hasattr(added_coll, "add"):
-                        elem = added_coll.add()
-                        elem.operator_id = op_id
-                        elem.label = item_label or default_label
-                        elem.enabled = item_enabled
-                    elif isinstance(added_coll, list):
-                        added_coll.append({"operator_id": op_id, "label": item_label or default_label, "enabled": item_enabled})
 
-                if ALL_OPERATORS:
-                    for op_id, op_info in ALL_OPERATORS.items():
-                        norm_op_id = normalize_operator_id(op_id)
-                        if norm_op_id not in added_op_ids:
-                            if hasattr(unadded_coll, "add"):
-                                elem = unadded_coll.add()
-                                elem.operator_id = norm_op_id
-                                elem.label = op_info.get("label", norm_op_id)
-                            elif isinstance(unadded_coll, list):
-                                unadded_coll.append({"operator_id": norm_op_id, "label": op_info.get("label", norm_op_id)})
+                    if hasattr(added_coll, "clear"):
+                        added_coll.clear()
+                    if hasattr(unadded_coll, "clear"):
+                        unadded_coll.clear()
 
-                    if hasattr(unadded_coll, "add"):
-                        sort_unadded_items(unadded_coll)
+                    added_op_ids = set()
+                    view_items = data.views.get(view, [])
+                    for item in view_items:
+                        op_id = item.operator if isinstance(item, MenuItem) else normalize_operator_id(item.get("operator"))
+                        if not op_id:
+                            continue
+                        added_op_ids.add(op_id)
+                        default_label = ALL_OPERATORS.get(op_id, {}).get("default_label", op_id) if ALL_OPERATORS else op_id
+                        item_label = item.label if isinstance(item, MenuItem) else item.get("label")
+                        item_enabled = item.enabled if isinstance(item, MenuItem) else item.get("enabled", True)
+                        
+                        if hasattr(added_coll, "add"):
+                            elem = added_coll.add()
+                            elem.operator_id = op_id
+                            elem.label = item_label or default_label
+                            elem.enabled = item_enabled
+                        elif isinstance(added_coll, list):
+                            added_coll.append({"operator_id": op_id, "label": item_label or default_label, "enabled": item_enabled})
 
-            setattr(prefs, "is_initialized", True)
+                    if ALL_OPERATORS:
+                        for op_id, op_info in ALL_OPERATORS.items():
+                            norm_op_id = normalize_operator_id(op_id)
+                            if norm_op_id not in added_op_ids:
+                                if hasattr(unadded_coll, "add"):
+                                    elem = unadded_coll.add()
+                                    elem.operator_id = norm_op_id
+                                    elem.label = op_info.get("label", norm_op_id)
+                                elif isinstance(unadded_coll, list):
+                                    unadded_coll.append({"operator_id": norm_op_id, "label": op_info.get("label", norm_op_id)})
+
+                        if hasattr(unadded_coll, "add"):
+                            sort_unadded_items(unadded_coll)
+
+                setattr(prefs, "is_initialized", True)
+            finally:
+                self._is_syncing = False
 
     def sync_from_preferences(self, prefs: Any, save: bool = True) -> bool:
         """
@@ -344,9 +359,10 @@ class ConfigManager:
             return False
 
         with self._lock:
-            is_init = getattr(prefs, "is_initialized", False)
-            if getattr(prefs, "_mozi_is_syncing", False):
+            if self._is_syncing:
                 return False
+
+            is_init = getattr(prefs, "is_initialized", False)
 
             data = self.get_data()
 

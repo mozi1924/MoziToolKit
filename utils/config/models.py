@@ -134,13 +134,64 @@ class MenuItem:
         )
 
 
+CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
+    "mesh": [
+        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
+        {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
+        {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
+        {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
+        {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
+        {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+    ],
+    "object": [
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
+        {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+    ],
+    "uv": [
+        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.scale_uv", "label": "Scale UV Faces", "enabled": True},
+        {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
+        {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
+    ],
+}
+
+
+def get_default_menu_views() -> Dict[str, List[MenuItem]]:
+    """Build default MenuItem instances from dynamically registered operator presets or static fallback."""
+    presets = {}
+    try:
+        from ..system.menu_registry import get_default_presets
+        presets = get_default_presets()
+    except Exception:
+        try:
+            from utils.system.menu_registry import get_default_presets
+            presets = get_default_presets()
+        except Exception:
+            presets = {}
+
+    views: Dict[str, List[MenuItem]] = {}
+    for view_name in ["mesh", "object", "uv"]:
+        items = presets.get(view_name) if presets else None
+        if not items:
+            items = CANONICAL_DEFAULT_PRESETS.get(view_name, [])
+        views[view_name] = [
+            it if isinstance(it, MenuItem) else MenuItem.from_dict(it)
+            for it in items
+            if isinstance(it, (dict, MenuItem))
+        ]
+    return views
+
+
 @dataclass
 class ConfigData:
     """Full MoziToolKit root configuration data model."""
 
     version: int = 1
     backend_type: str = "JSON"  # JSON | BLENDER_PREFS | MEMORY
-    views: Dict[str, List[MenuItem]] = field(default_factory=lambda: {"mesh": [], "object": [], "uv": []})
+    views: Dict[str, List[MenuItem]] = field(default_factory=get_default_menu_views)
     resource_packs: List[PackEntry] = field(default_factory=list)
     material_settings: MaterialSettings = field(default_factory=MaterialSettings)
 
@@ -192,14 +243,30 @@ class ConfigData:
         version = int(data.get("version", 1))
         backend_type = str(data.get("backend_type", "JSON"))
 
-        # Views
-        raw_views = data.get("views", data) if isinstance(data.get("views"), dict) else data
-        views = {"mesh": [], "object": [], "uv": []}
-        if isinstance(raw_views, dict):
-            for v_name in ["mesh", "object", "uv"]:
-                v_list = raw_views.get(v_name, [])
-                if isinstance(v_list, list):
-                    views[v_name] = [MenuItem.from_dict(it) for it in v_list if isinstance(it, dict)]
+        # Views: Extract if present, otherwise populate from default presets
+        if "views" in data and isinstance(data["views"], dict):
+            raw_views = data["views"]
+            has_any_item = any(isinstance(raw_views.get(v), list) and len(raw_views.get(v)) > 0 for v in ["mesh", "object", "uv"])
+            if has_any_item:
+                views = {"mesh": [], "object": [], "uv": []}
+                for v_name in ["mesh", "object", "uv"]:
+                    v_list = raw_views.get(v_name, [])
+                    if isinstance(v_list, list):
+                        views[v_name] = [MenuItem.from_dict(it) for it in v_list if isinstance(it, dict)]
+            else:
+                views = get_default_menu_views()
+        elif any(k in data for k in ["mesh", "object", "uv"]):
+            has_any_item = any(isinstance(data.get(v), list) and len(data.get(v)) > 0 for v in ["mesh", "object", "uv"])
+            if has_any_item:
+                views = {"mesh": [], "object": [], "uv": []}
+                for v_name in ["mesh", "object", "uv"]:
+                    v_list = data.get(v_name, [])
+                    if isinstance(v_list, list):
+                        views[v_name] = [MenuItem.from_dict(it) for it in v_list if isinstance(it, dict)]
+            else:
+                views = get_default_menu_views()
+        else:
+            views = get_default_menu_views()
 
         # Resource Packs
         raw_packs = data.get("resource_packs", [])
