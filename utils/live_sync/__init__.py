@@ -62,6 +62,7 @@ from .mesh_builder import (
     build_world_mesh,
     clear_mesh_builder_caches,
     get_shared_material_manager,
+    preload_sync_world_data,
     sync_world_mesh,
     update_blocks_in_mesh,
 )
@@ -133,6 +134,7 @@ __all__ = (
     "build_world_mesh",
     "clear_mesh_builder_caches",
     "get_shared_material_manager",
+    "preload_sync_world_data",
     "sync_world_mesh",
     "update_blocks_in_mesh",
     "set_baker_resource_source",

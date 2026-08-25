@@ -304,6 +304,37 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
 
         stop_main_thread_pump()
 
+    def test_preload_sync_world_data(self):
+        """Verify that preload_sync_world_data warms up palette and common blockstates in RAM."""
+        from utils.live_sync.mesh_builder import (
+            preload_sync_world_data,
+            _GLOBAL_STATE_META_CACHE,
+        )
+
+        palette = [
+            "minecraft:stone",
+            "minecraft:oak_log[axis=y]",
+            "minecraft:birch_planks",
+            "minecraft:glass",
+        ]
+
+        # Prior to preload, cache was cleared in setUp
+        self.assertEqual(len(_GLOBAL_STATE_META_CACHE), 0)
+
+        total_warmed = preload_sync_world_data(palette=palette)
+        self.assertGreaterEqual(total_warmed, len(palette))
+
+        # Check all palette entries are present in global cache
+        for s in palette:
+            self.assertIn(s, _GLOBAL_STATE_META_CACHE)
+            meta = _GLOBAL_STATE_META_CACHE[s]
+            self.assertIsNotNone(meta)
+            self.assertFalse(meta.is_air)
+
+        # Check common fallback states (e.g. water, lava, grass) are also pre-warmed
+        self.assertIn("minecraft:water[level=0]", _GLOBAL_STATE_META_CACHE)
+        self.assertIn("minecraft:grass_block[snowy=false]", _GLOBAL_STATE_META_CACHE)
+
 
 if __name__ == "__main__":
     unittest.main()
