@@ -454,6 +454,100 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertAlmostEqual(u_mid, 0.078125, places=5)
         self.assertAlmostEqual(v_mid, 0.84375, places=5)
 
+    def test_incremental_section_mesh_sync(self):
+        """Verify that modifying a block in one 16x16x16 section updates ONLY that section's mesh object."""
+        from utils.live_sync import sync_world_mesh
+
+        storage = VoxelStorage()
+        # Create block in Section (0, 0, 0) and block in Section (1, 0, 0)
+        storage.set_block(2, 2, 2, "minecraft:stone")
+        storage.set_block(20, 2, 2, "minecraft:stone")
+
+        # Initial full sync
+        res = sync_world_mesh(bpy.context, storage, force_full_rebuild=True)
+        self.assertIsNotNone(res.world_obj)
+        root = res.world_obj
+
+        sec0_obj = bpy.data.objects.get("Yefira_Section_0_0_0")
+        sec1_obj = bpy.data.objects.get("Yefira_Section_1_0_0")
+        self.assertIsNotNone(sec0_obj)
+        self.assertIsNotNone(sec1_obj)
+
+        sec0_mesh_ptr = sec0_obj.data.as_pointer()
+        sec1_mesh_ptr = sec1_obj.data.as_pointer()
+        sec1_poly_count_before = len(sec1_obj.data.polygons)
+
+        # Apply a delta change ONLY inside section (0, 0, 0) - far from boundary
+        storage.apply_delta_update(storage.min_x, storage.min_y, storage.min_z, [(3, 2, 2, "minecraft:diamond_block")])
+
+        # Incremental sync
+        res_delta = sync_world_mesh(bpy.context, storage, force_full_rebuild=False)
+        self.assertEqual(res_delta.cubes_count, 3)
+
+        # Section 1 object & mesh must be completely untouched!
+        self.assertEqual(sec1_obj.data.as_pointer(), sec1_mesh_ptr)
+        self.assertEqual(len(sec1_obj.data.polygons), sec1_poly_count_before)
+
+        # Section 0 mesh has been updated to include the new cube (with face culling between x=2 and x=3: 6+6-2=10 faces)
+        self.assertEqual(len(sec0_obj.data.polygons), 10)
+
+    def test_section_emptied_cleanup(self):
+        """Verify that when all blocks in a section are deleted/air, the section child object is cleanly removed."""
+        from utils.live_sync import sync_world_mesh
+
+        storage = VoxelStorage()
+        storage.set_block(5, 5, 5, "minecraft:stone")
+        storage.set_block(25, 5, 5, "minecraft:stone")
+
+        sync_world_mesh(bpy.context, storage, force_full_rebuild=True)
+        self.assertIn("Yefira_Section_0_0_0", bpy.data.objects)
+        self.assertIn("Yefira_Section_1_0_0", bpy.data.objects)
+
+        # Turn the block in Section 1 into air
+        storage.apply_delta_update(storage.min_x, storage.min_y, storage.min_z, [(25, 5, 5, "minecraft:air")])
+        sync_world_mesh(bpy.context, storage, force_full_rebuild=False)
+
+        # Section 1 object should be removed
+        self.assertNotIn("Yefira_Section_1_0_0", bpy.data.objects)
+        self.assertIn("Yefira_Section_0_0_0", bpy.data.objects)
+
+    def test_directional_furnace_exact_uvs(self):
+        """Verify furnace facing East maps furnace_front to East face and rotated top to Up face."""
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:furnace[facing=east,lit=false]")
+
+        mapping = {
+            "textures": {
+                "minecraft:block/furnace_top": {"chunk_id": 0, "tile_column": 1, "tile_row": 0},
+                "minecraft:block/furnace_side": {"chunk_id": 0, "tile_column": 2, "tile_row": 0},
+                "minecraft:block/furnace_front": {"chunk_id": 0, "tile_column": 3, "tile_row": 0},
+            }
+        }
+        atlas_params = {
+            "width": 1024,
+            "height": 512,
+            "tile_size": 16,
+            "tiles_per_row": 64,
+            "mapping": mapping,
+        }
+
+        res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params, weld_vertices=False)
+        mesh = res.world_obj.data
+        self.assertEqual(len(mesh.polygons), 6)
+
+        uv_layer = mesh.uv_layers["UVMap"]
+
+        # Find the East face (facing +X in Blender)
+        east_polys = [p for p in mesh.polygons if p.normal.x > 0.9]
+        self.assertEqual(len(east_polys), 1)
+        east_poly = east_polys[0]
+
+        # All UVs of the East face must fall within tile_column=3 bounds: [3*16/1024, 4*16/1024] -> [0.046875, 0.0625]
+        for loop_idx in east_poly.loop_indices:
+            uv = uv_layer.data[loop_idx].uv
+            self.assertGreaterEqual(uv.x, 3 * 16 / 1024 - 1e-4)
+            self.assertLessEqual(uv.x, 4 * 16 / 1024 + 1e-4)
+
 
 if __name__ == "__main__":
     unittest.main()

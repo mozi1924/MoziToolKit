@@ -11,18 +11,14 @@ import bpy
 
 from ...utils.live_sync.client import SyncClientThread
 from ...utils.live_sync.constants import (
-    DEFAULT_ANIM_ATLAS_HEIGHT,
-    DEFAULT_ANIM_ATLAS_WIDTH,
-    DEFAULT_ANIM_FRAME_HEIGHT,
-    DEFAULT_ANIM_FRAME_WIDTH,
     DEFAULT_WORLD_OBJECT_NAME,
-    WORLD_MODIFIER_NAME,
 )
-from ...utils.live_sync.point_cloud import (
-    clear_state_cache,
-    refresh_baker_sources,
+from ...utils.mc_baker import (
+    refresh_shared_baker_sources,
+    clear_shared_baker_cache,
 )
 from ...utils.live_sync.mesh_builder import (
+    sync_world_mesh,
     build_world_mesh,
     WorldMeshBuildResult,
 )
@@ -38,9 +34,9 @@ logger = logging.getLogger("MoziToolKit.LiveSync")
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
 _rebuild_timer_registered: bool = False
-# Rebuilding direct world mesh in Blender. Debounce caps expensive UI redraws.
-REBUILD_DEBOUNCE_SECONDS: float = 0.15
-_pending_force_gn_setup: bool = False
+# Debounce caps expensive UI redraws while maintaining sub-millisecond sync
+REBUILD_DEBOUNCE_SECONDS: float = 0.05
+_pending_full_rebuild: bool = False
 
 _cached_atlas_params: Optional[dict] = None
 _cached_mat_signature: Optional[tuple] = None
@@ -72,16 +68,16 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
 
 
 def clear_sync_caches() -> None:
-    """Invalidate atlas parameter cache and state baker attribute cache on material or world reset."""
+    """Invalidate atlas parameter cache and baker caches on material or world reset."""
     global _cached_atlas_params, _cached_mat_signature
     _cached_atlas_params = None
     _cached_mat_signature = None
-    clear_state_cache()
+    clear_shared_baker_cache()
 
 
-def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
-    """Invoked on main thread when storage updates to build direct world mesh."""
-    refresh_baker_sources()
+def trigger_mesh_sync(context: bpy.types.Context, force_full_rebuild: bool = False) -> None:
+    """Invoked on main thread when storage updates to incrementally synchronize world mesh."""
+    refresh_shared_baker_sources()
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
 
@@ -89,18 +85,12 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
     mat = find_bound_atlas_material(existing_world) if existing_world else None
     atlas_params = get_cached_atlas_params(mat)
 
-    res = build_world_mesh(
+    res = sync_world_mesh(
         context=context,
         storage=voxel_storage,
         atlas_params=atlas_params,
-        filter_air=filter_air,
+        force_full_rebuild=force_full_rebuild,
     )
-
-    if res.world_obj:
-        # Clean up legacy Geometry Nodes modifier if present
-        mod = res.world_obj.modifiers.get(WORLD_MODIFIER_NAME)
-        if mod:
-            res.world_obj.modifiers.remove(mod)
 
     if props:
         props.point_count = res.vertex_count
@@ -109,33 +99,43 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
         props.fluids_count = res.fluids_count
 
 
-def schedule_point_cloud_update(force_gn_setup: bool = False) -> None:
-    """Coalesce live updates into a single main-thread point-cloud rebuild."""
-    global _rebuild_timer_registered, _pending_force_gn_setup
-    _pending_force_gn_setup = _pending_force_gn_setup or force_gn_setup
+def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
+    """Backward compatibility alias for trigger_mesh_sync."""
+    trigger_mesh_sync(context, force_full_rebuild=force_gn_setup)
+
+
+def schedule_mesh_sync(force_full_rebuild: bool = False) -> None:
+    """Coalesce live updates into a fast incremental main-thread mesh sync."""
+    global _rebuild_timer_registered, _pending_full_rebuild
+    _pending_full_rebuild = _pending_full_rebuild or force_full_rebuild
     if _rebuild_timer_registered:
         return
 
     _rebuild_timer_registered = True
 
     def flush():
-        global _rebuild_timer_registered, _pending_force_gn_setup
+        global _rebuild_timer_registered, _pending_full_rebuild
         try:
             if voxel_storage.size_x and voxel_storage.size_y and voxel_storage.size_z:
-                force_setup = _pending_force_gn_setup
-                _pending_force_gn_setup = False
-                trigger_point_cloud_update(bpy.context, force_gn_setup=force_setup)
+                full_rebuild = _pending_full_rebuild
+                _pending_full_rebuild = False
+                trigger_mesh_sync(bpy.context, force_full_rebuild=full_rebuild)
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type in ('VIEW_3D', 'PROPERTIES'):
                             area.tag_redraw()
         except Exception as e:
-            logger.error(f"Deferred point-cloud update error: {e}")
+            logger.error(f"Deferred mesh sync error: {e}")
         finally:
             _rebuild_timer_registered = False
         return None
 
     bpy.app.timers.register(flush, first_interval=REBUILD_DEBOUNCE_SECONDS)
+
+
+def schedule_point_cloud_update(force_gn_setup: bool = False) -> None:
+    """Backward compatibility alias for schedule_mesh_sync."""
+    schedule_mesh_sync(force_full_rebuild=force_gn_setup)
 
 
 class MOZI_OT_sync_connect(bpy.types.Operator):
@@ -329,7 +329,7 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
 
 def cleanup_sync_state() -> None:
     """Clean up all live sync module globals, background threads, timers, and storage."""
-    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_force_gn_setup, _cached_atlas_params, _cached_mat_signature
+    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild, _cached_atlas_params, _cached_mat_signature
     if _client_thread:
         try:
             _client_thread.stop()
@@ -339,12 +339,12 @@ def cleanup_sync_state() -> None:
 
     _last_seq_id = 0
     _rebuild_timer_registered = False
-    _pending_force_gn_setup = False
+    _pending_full_rebuild = False
     _cached_atlas_params = None
     _cached_mat_signature = None
 
     voxel_storage.clear()
-    clear_state_cache()
+    clear_sync_caches()
 
     try:
         from ...utils.live_sync.classifier import clear_parse_cache

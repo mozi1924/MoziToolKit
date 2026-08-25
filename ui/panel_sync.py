@@ -82,9 +82,9 @@ class MOZI_PT_live_sync(bpy.types.Panel):
             col.label(text=f"Size: {props.size_x} x {props.size_y} x {props.size_z} ({props.total_blocks:,} blocks)")
 
             box_geo = layout.box()
-            box_geo.label(text="Geometry Nodes World", icon='GEOMETRY_NODES')
+            box_geo.label(text="Live World Mesh", icon='MESH_CUBE')
             col_geo = box_geo.column(align=True)
-            col_geo.label(text=f"Active Points: {props.point_count:,}")
+            col_geo.label(text=f"Vertices: {props.point_count:,}")
             col_geo.label(text=f"Cubes: {props.cubes_count:,} | Props: {props.props_count:,} | Fluids: {props.fluids_count:,}")
 
             if props.last_update_info:
