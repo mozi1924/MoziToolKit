@@ -119,6 +119,7 @@ class ModelParser:
             return tex
         if not tex.startswith("minecraft:"):
             tex = f"minecraft:{tex}"
-        if not tex.startswith("minecraft:block/") and not tex.startswith("minecraft:item/"):
-            tex = f"minecraft:block/{tex[10:]}"
+        sub = tex[10:]
+        if "/" not in sub:
+            tex = f"minecraft:block/{sub}"
         return tex

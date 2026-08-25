@@ -385,6 +385,248 @@ class StateBaker:
 
         return [{"from": [0, 0, 0], "to": [16, 16, 16], "faces": faces_dict}]
 
+    @staticmethod
+    def _resolve_chest_elements(short_name: str, props: dict[str, str]) -> list[dict]:
+        """Construct multipart 3D elements for chests (box + lid + front latch)."""
+        facing = props.get("facing", "north")
+        chest_type = props.get("type", "single")
+
+        if short_name == "ender_chest":
+            tex = "minecraft:entity/chest/ender"
+        elif short_name == "trapped_chest":
+            if chest_type == "left":
+                tex = "minecraft:entity/chest/trapped_left"
+            elif chest_type == "right":
+                tex = "minecraft:entity/chest/trapped_right"
+            else:
+                tex = "minecraft:entity/chest/trapped"
+        else:
+            if chest_type == "left":
+                tex = "minecraft:entity/chest/normal_left"
+            elif chest_type == "right":
+                tex = "minecraft:entity/chest/normal_right"
+            else:
+                tex = "minecraft:entity/chest/normal"
+
+        rot_angle = 0.0
+        if facing == "south":
+            rot_angle = 180.0
+        elif facing == "west":
+            rot_angle = 270.0
+        elif facing == "east":
+            rot_angle = 90.0
+
+        elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
+
+        if chest_type == "left":
+            body_from = [1, 0, 1]
+            body_to = [16, 14, 15]
+            latch_from = [15, 7, 0]
+            latch_to = [16, 11, 1]
+        elif chest_type == "right":
+            body_from = [0, 0, 1]
+            body_to = [15, 14, 15]
+            latch_from = [0, 7, 0]
+            latch_to = [1, 11, 1]
+        else:
+            body_from = [1, 0, 1]
+            body_to = [15, 14, 15]
+            latch_from = [7, 7, 0]
+            latch_to = [9, 11, 1]
+
+        body_faces = {
+            "up": {"texture": tex, "uv": [14, 0, 28, 14]},
+            "down": {"texture": tex, "uv": [28, 0, 42, 14]},
+            "north": {"texture": tex, "uv": [14, 14, 28, 28]},
+            "south": {"texture": tex, "uv": [42, 14, 56, 28]},
+            "west": {"texture": tex, "uv": [0, 14, 14, 28]},
+            "east": {"texture": tex, "uv": [28, 14, 42, 28]},
+        }
+
+        latch_faces = {
+            "north": {"texture": tex, "uv": [1, 1, 3, 5]},
+            "up": {"texture": tex, "uv": [1, 0, 3, 1]},
+            "down": {"texture": tex, "uv": [3, 0, 5, 1]},
+            "west": {"texture": tex, "uv": [0, 1, 1, 5]},
+            "east": {"texture": tex, "uv": [3, 1, 4, 5]},
+        }
+
+        elements = [
+            {"from": body_from, "to": body_to, "faces": body_faces},
+            {"from": latch_from, "to": latch_to, "faces": latch_faces},
+        ]
+        if elem_rot:
+            for elem in elements:
+                elem["rotation"] = elem_rot
+
+        return elements
+
+    @staticmethod
+    def _resolve_banner_elements(short_name: str, props: dict[str, str]) -> list[dict]:
+        """Construct multipart 3D elements for standing and wall banners."""
+        is_wall = "_wall_banner" in short_name
+        if is_wall:
+            color = short_name.replace("_wall_banner", "")
+            facing = props.get("facing", "north")
+            rot_angle = 0.0
+            if facing == "south":
+                rot_angle = 180.0
+            elif facing == "west":
+                rot_angle = 270.0
+            elif facing == "east":
+                rot_angle = 90.0
+
+            elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
+
+            wood_tex = "minecraft:block/oak_planks"
+            cloth_tex = f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool"
+
+            crossbar = {
+                "from": [2, 12, 14],
+                "to": [14, 14, 16],
+                "faces": {
+                    "north": {"texture": wood_tex, "uv": [2, 12, 14, 14]},
+                    "south": {"texture": wood_tex, "uv": [2, 12, 14, 14]},
+                    "up": {"texture": wood_tex, "uv": [2, 14, 14, 16]},
+                    "down": {"texture": wood_tex, "uv": [2, 14, 14, 16]},
+                    "west": {"texture": wood_tex, "uv": [14, 12, 16, 14]},
+                    "east": {"texture": wood_tex, "uv": [14, 12, 16, 14]},
+                }
+            }
+            cloth = {
+                "from": [3, -5, 14.5],
+                "to": [13, 13, 15.5],
+                "faces": {
+                    "north": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
+                    "south": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
+                    "west": {"texture": cloth_tex, "uv": [14, 0, 15, 16]},
+                    "east": {"texture": cloth_tex, "uv": [14, 0, 15, 16]},
+                    "down": {"texture": cloth_tex, "uv": [3, 14, 13, 15]},
+                }
+            }
+            elements = [crossbar, cloth]
+            if elem_rot:
+                for elem in elements:
+                    elem["rotation"] = elem_rot
+            return elements
+        else:
+            color = short_name.replace("_banner", "")
+            rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
+            angle = (rot_idx * 22.5) % 360.0
+            elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": angle} if angle != 0.0 else None
+
+            wood_tex = "minecraft:block/oak_planks"
+            cloth_tex = f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool"
+
+            pole = {
+                "from": [7.5, 0, 7.5],
+                "to": [8.5, 16, 8.5],
+                "faces": {
+                    "north": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
+                    "south": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
+                    "east": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
+                    "west": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
+                    "up": {"texture": wood_tex, "uv": [7, 7, 8, 8]},
+                    "down": {"texture": wood_tex, "uv": [7, 7, 8, 8]},
+                }
+            }
+            crossbar = {
+                "from": [2, 19, 7.5],
+                "to": [14, 20.5, 8.5],
+                "faces": {
+                    "north": {"texture": wood_tex, "uv": [2, 14, 14, 15]},
+                    "south": {"texture": wood_tex, "uv": [2, 14, 14, 15]},
+                    "east": {"texture": wood_tex, "uv": [7, 14, 8, 15]},
+                    "west": {"texture": wood_tex, "uv": [7, 14, 8, 15]},
+                    "up": {"texture": wood_tex, "uv": [2, 7, 14, 8]},
+                    "down": {"texture": wood_tex, "uv": [2, 7, 14, 8]},
+                }
+            }
+            cloth = {
+                "from": [3, 1, 7.8],
+                "to": [13, 19.5, 8.2],
+                "faces": {
+                    "north": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
+                    "south": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
+                    "east": {"texture": cloth_tex, "uv": [7, 0, 8, 16]},
+                    "west": {"texture": cloth_tex, "uv": [7, 0, 8, 16]},
+                    "down": {"texture": cloth_tex, "uv": [3, 7, 13, 8]},
+                }
+            }
+            elements = [pole, crossbar, cloth]
+            if elem_rot:
+                for elem in elements:
+                    elem["rotation"] = elem_rot
+            return elements
+
+    @staticmethod
+    def _resolve_bed_elements(short_name: str, props: dict[str, str]) -> list[dict]:
+        """Construct multipart 3D elements for beds (legs + mattress + blanket/pillow)."""
+        color = short_name.replace("_bed", "")
+        part = props.get("part", "foot")
+        facing = props.get("facing", "north")
+
+        rot_angle = 0.0
+        if facing == "south":
+            rot_angle = 180.0
+        elif facing == "west":
+            rot_angle = 270.0
+        elif facing == "east":
+            rot_angle = 90.0
+
+        elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
+
+        wood_tex = "minecraft:block/oak_planks"
+        wool_tex = f"minecraft:block/{color}_wool" if color else "minecraft:block/red_wool"
+        white_wool = "minecraft:block/white_wool"
+
+        elements = []
+        if part == "foot":
+            elements.append({
+                "from": [0, 0, 0], "to": [3, 3, 3],
+                "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
+            })
+            elements.append({
+                "from": [13, 0, 0], "to": [16, 3, 3],
+                "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
+            })
+            elements.append({
+                "from": [0, 3, 0], "to": [16, 9, 16],
+                "faces": {
+                    "up": {"texture": wool_tex},
+                    "down": {"texture": wood_tex},
+                    "north": {"texture": wool_tex},
+                    "south": {"texture": wool_tex},
+                    "east": {"texture": wool_tex},
+                    "west": {"texture": wool_tex},
+                }
+            })
+        else:
+            elements.append({
+                "from": [0, 0, 13], "to": [3, 3, 16],
+                "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
+            })
+            elements.append({
+                "from": [13, 0, 13], "to": [16, 3, 16],
+                "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
+            })
+            elements.append({
+                "from": [0, 3, 0], "to": [16, 9, 16],
+                "faces": {
+                    "up": {"texture": white_wool},
+                    "down": {"texture": wood_tex},
+                    "north": {"texture": wool_tex},
+                    "south": {"texture": white_wool},
+                    "east": {"texture": wool_tex},
+                    "west": {"texture": wool_tex},
+                }
+            })
+
+        if elem_rot:
+            for elem in elements:
+                elem["rotation"] = elem_rot
+        return elements
+
     def bake_block_state(self, state_str: str) -> BakedModel:
         """
         Bake a BlockState string into a fully resolved BakedModel containing all elements,
@@ -403,7 +645,7 @@ class StateBaker:
         short_name = block_id.split(":", 1)[-1]
         fallback_texture = f"minecraft:block/{short_name}"
 
-        is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab"))
+        is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab", "chest", "banner", "bed", "carpet", "pot"))
         is_emissive = is_block_emissive(short_name, props)
 
         for match in variant_matches:
@@ -411,10 +653,16 @@ class StateBaker:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                # Default 1x1x1 cube fallback with canonical rotation and state-aware multi-face textures
-                raw_elements = self._resolve_base_face_elements(
-                    short_name, props, fallback_texture, resolved_model.get("textures", {})
-                )
+                if short_name in ("chest", "trapped_chest", "ender_chest"):
+                    raw_elements = self._resolve_chest_elements(short_name, props)
+                elif short_name.endswith(("_banner", "_wall_banner")):
+                    raw_elements = self._resolve_banner_elements(short_name, props)
+                elif short_name.endswith("_bed"):
+                    raw_elements = self._resolve_bed_elements(short_name, props)
+                else:
+                    raw_elements = self._resolve_base_face_elements(
+                        short_name, props, fallback_texture, resolved_model.get("textures", {})
+                    )
 
             for elem in raw_elements:
                 from_pos = tuple(elem.get("from", [0, 0, 0]))
