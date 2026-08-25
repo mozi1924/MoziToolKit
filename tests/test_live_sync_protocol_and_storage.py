@@ -452,6 +452,45 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(len(bpy.data.materials), initial_mat_count)
         self.assertNotIn("MC_Atlas_Chunk_0.001", bpy.data.materials)
 
+    def test_is_snapshot_identical_matches_exact_storage(self):
+        """Test is_snapshot_identical returns True for identical data and False for any modifications."""
+        self.storage.set_full_snapshot(
+            0, 0, 0,
+            2, 2, 2,
+            ["minecraft:air", "minecraft:stone", "minecraft:dirt"],
+            [1, 1, 2, 2, 0, 0, 1, 2]
+        )
+
+        # Identical parameters
+        self.assertTrue(
+            self.storage.is_snapshot_identical(
+                0, 0, 0,
+                2, 2, 2,
+                ["minecraft:air", "minecraft:stone", "minecraft:dirt"],
+                [1, 1, 2, 2, 0, 0, 1, 2]
+            )
+        )
+
+        # Different bounds
+        self.assertFalse(
+            self.storage.is_snapshot_identical(
+                1, 0, 0,
+                2, 2, 2,
+                ["minecraft:air", "minecraft:stone", "minecraft:dirt"],
+                [1, 1, 2, 2, 0, 0, 1, 2]
+            )
+        )
+
+        # Different block data (dirt changed to stone)
+        self.assertFalse(
+            self.storage.is_snapshot_identical(
+                0, 0, 0,
+                2, 2, 2,
+                ["minecraft:air", "minecraft:stone", "minecraft:dirt"],
+                [1, 1, 1, 2, 0, 0, 1, 2]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

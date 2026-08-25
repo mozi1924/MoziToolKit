@@ -171,6 +171,41 @@ class VoxelStorage:
         self.recalculate_all_section_crcs()
         return self.generation
 
+    def is_snapshot_identical(
+        self,
+        min_x: int, min_y: int, min_z: int,
+        size_x: int, size_y: int, size_z: int,
+        palette: List[str],
+        grid_indices: List[int],
+    ) -> bool:
+        """Check if incoming full snapshot matches current in-memory block_map without mutating state."""
+        if (
+            self.min_x != min_x or self.min_y != min_y or self.min_z != min_z
+            or self.size_x != size_x or self.size_y != size_y or self.size_z != size_z
+        ):
+            return False
+        if not self.block_map:
+            return False
+
+        total_blocks = size_x * size_y * size_z
+        palette_len = len(palette)
+        if len(grid_indices) < total_blocks:
+            return False
+
+        idx = 0
+        for x in range(size_x):
+            for y in range(size_y):
+                for z in range(size_z):
+                    palette_idx = grid_indices[idx]
+                    idx += 1
+                    if palette_idx < 0 or palette_idx >= palette_len:
+                        return False
+                    expected_state = palette[palette_idx]
+                    current_state = self.block_map.get((min_x + x, min_y + y, min_z + z), "")
+                    if current_state != expected_state:
+                        return False
+        return True
+
     def set_section_snapshot(
         self,
         sec_x: int, sec_y: int, sec_z: int,

@@ -370,14 +370,25 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     item = props.palette_list.add()
                     item.state_str = p_item
 
-                # If manifest validation already confirmed 100% match with existing scene mesh, skip redundant full rebuild
+                # If manifest validation or in-memory snapshot comparison confirms identical state with existing scene mesh, skip full rebuild
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-                if _skip_next_full_snapshot and existing_world and voxel_storage.matches_bounds(min_x, min_y, min_z):
-                    logger.info("Live Sync: Verified existing scene mesh matches server snapshot, skipping full rebuild.")
-                    props.last_update_info = f"Verified: {total_blocks} blocks (reused existing mesh)"
+                has_existing_mesh = existing_world is not None and (
+                    len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
+                )
+
+                is_identical = has_existing_mesh and voxel_storage.is_snapshot_identical(
+                    min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices
+                )
+
+                if is_identical or (_skip_next_full_snapshot and has_existing_mesh and voxel_storage.matches_bounds(min_x, min_y, min_z)):
+                    logger.info("Live Sync: Verified existing scene mesh matches server snapshot (identical data), skipping full rebuild.")
+                    props.last_update_info = f"Verified: {total_blocks:,} blocks (reused existing mesh)"
+                    props.sync_verified = True
+                    props.validation_info = "Verified (100% in sync with scene)"
                     _skip_next_full_snapshot = False
                     return
 
+                _skip_next_full_snapshot = False
                 clear_sync_caches()
 
                 # 1. Update VoxelStorage
