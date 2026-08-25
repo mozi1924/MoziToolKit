@@ -66,11 +66,15 @@ class StandaloneReplacementEngine:
         pack_stack: Optional[ResourcePackStack] = None,
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         try:
-            from MoziToolKit.pipeline.progress import ProgressUpdate
-            from MoziToolKit.pipeline.step import StepResult
-        except ImportError:
-            from pipeline.progress import ProgressUpdate
-            from pipeline.step import StepResult
+            from ....pipeline.progress import ProgressUpdate
+            from ....pipeline.step import StepResult
+        except (ImportError, ValueError):
+            try:
+                from MoziToolKit.pipeline.progress import ProgressUpdate
+                from MoziToolKit.pipeline.step import StepResult
+            except (ImportError, ValueError):
+                from pipeline.progress import ProgressUpdate
+                from pipeline.step import StepResult
 
         replaced_count = 0
         assigned_count = 0

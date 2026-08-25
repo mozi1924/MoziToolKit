@@ -96,11 +96,15 @@ class AtlasReplacementEngine:
         pack_stack: Optional[ResourcePackStack] = None,
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
         try:
-            from MoziToolKit.pipeline.progress import ProgressUpdate
-            from MoziToolKit.pipeline.step import StepResult
-        except ImportError:
-            from pipeline.progress import ProgressUpdate
-            from pipeline.step import StepResult
+            from ....pipeline.progress import ProgressUpdate
+            from ....pipeline.step import StepResult
+        except (ImportError, ValueError):
+            try:
+                from MoziToolKit.pipeline.progress import ProgressUpdate
+                from MoziToolKit.pipeline.step import StepResult
+            except (ImportError, ValueError):
+                from pipeline.progress import ProgressUpdate
+                from pipeline.step import StepResult
 
         effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
         cache_root = get_cache_dir()
