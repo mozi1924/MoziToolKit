@@ -173,7 +173,9 @@ def rotate_point(p: Vec3, rot_x: float, rot_y: float, origin: Vec3 = (0.5, 0.5, 
 
 
 def rotate_element_point(p: Vec3, rotation_dict: Optional[dict]) -> Vec3:
-    """Apply local element rotation (axis, origin [0..16], angle, rescale)."""
+    """Apply local element rotation (axis, origin [0..16], angle, rescale).
+    Matches Minecraft BlockElementRotation right-hand rule transformations.
+    """
     if not rotation_dict:
         return p
 
@@ -187,17 +189,20 @@ def rotate_element_point(p: Vec3, rotation_dict: Optional[dict]) -> Vec3:
     py = p[1] - origin[1]
     pz = p[2] - origin[2]
 
+    rad = math.radians(angle)
+    c, s = math.cos(rad), math.sin(rad)
+
     if axis == "x":
-        v = rotate_x((px, py, pz), angle)
+        v = (px, py * c - pz * s, py * s + pz * c)
     elif axis == "y":
-        v = rotate_y((px, py, pz), angle)
+        v = (px * c + pz * s, py, -px * s + pz * c)
     elif axis == "z":
-        v = rotate_z((px, py, pz), angle)
+        v = (px * c - py * s, px * s + py * c, pz)
     else:
         v = (px, py, pz)
 
     if rescale and abs(angle) in (22.5, 45.0, 67.5):
-        scale = 1.0 / math.cos(math.radians(angle))
+        scale = 1.0 / math.cos(rad)
         if axis == "x":
             v = (v[0], v[1] * scale, v[2] * scale)
         elif axis == "y":

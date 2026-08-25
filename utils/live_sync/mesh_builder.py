@@ -338,6 +338,8 @@ def preload_sync_world_data(
     mat_manager = get_shared_material_manager(world_obj=world_obj, atlas_params=atlas_params)
 
     states_to_warm = set(COMMON_PREWARM_STATES)
+    if baker and baker._bake_cache:
+        states_to_warm.update(baker._bake_cache.keys())
     if palette:
         for s in palette:
             if s and s.strip():
@@ -768,7 +770,7 @@ def build_world_mesh(
     # 4. Precompute unique block states
     unique_states = set(block_map.values())
     state_cache: dict[str, CachedStateMeta] = {
-        s: CachedStateMeta(s, mat_manager, baker) for s in unique_states
+        s: get_cached_state_meta(s, mat_manager, baker) for s in unique_states
     }
 
     bm = bmesh.new()
@@ -855,7 +857,7 @@ def sync_world_mesh(
     # 3. Precompute unique block states
     unique_states = set(block_map.values())
     state_cache: dict[str, CachedStateMeta] = {
-        s: CachedStateMeta(s, mat_manager, baker) for s in unique_states
+        s: get_cached_state_meta(s, mat_manager, baker) for s in unique_states
     }
 
     # 4. Determine sections to update

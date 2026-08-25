@@ -286,6 +286,60 @@ class ResourcePackStack:
         gen = AtlasGenerator(fallback_stack=self, included_categories=yefira_categories)
         return gen.build(target_dir, progress_callback=progress_callback)
 
+    def get_baked_models_dir(self) -> Path:
+        """Get the persistent baked models cache directory for this stack."""
+        from .resource_pack import get_cache_dir
+        cache_root = get_cache_dir()
+        return cache_root / self.stack_hash / "models"
+
+    def is_models_baked(self) -> bool:
+        """Check if precompiled baked models manifest exists for this stack."""
+        manifest_path = self.get_baked_models_dir() / "models_manifest.json"
+        return manifest_path.is_file() and manifest_path.stat().st_size > 10
+
+    def precompile_models(
+        self,
+        output_dir: Optional[Union[str, Path]] = None,
+        progress_callback=None,
+    ) -> dict:
+        """Precompile and bake all blockstate models for this pack stack."""
+        from ...mc_baker import StateBaker
+        target_dir = Path(output_dir) if output_dir else self.get_baked_models_dir()
+        target_file = target_dir / "models_manifest.json"
+
+        if progress_callback:
+            progress_callback(0.05, "Initializing model baker across pack stack...")
+
+        composite_loader = self.get_composite_loader()
+        baker = StateBaker(jar_path=None)
+        baker.resource_loader = composite_loader
+        if composite_loader:
+            baker.model_parser.model_loader_fn = composite_loader.load_model
+            baker.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
+
+        if progress_callback:
+            progress_callback(0.2, "Baking blockstate variants...")
+
+        count = baker.save_precompiled_manifest(target_file)
+
+        if progress_callback:
+            progress_callback(1.0, f"Precompiled {count} blockstate models.")
+
+        return {
+            "models_count": count,
+            "manifest_file": target_file,
+        }
+
+    def load_precompiled_models(self, target_dir: Optional[Union[str, Path]] = None) -> dict:
+        """Load all precompiled BakedModel objects for this stack into memory."""
+        from ...mc_baker import StateBaker
+        manifest_path = (Path(target_dir) if target_dir else self.get_baked_models_dir()) / "models_manifest.json"
+        baker = StateBaker(jar_path=None)
+        if manifest_path.is_file():
+            baker.load_precompiled_manifest(manifest_path)
+            return baker._bake_cache
+        return {}
+
     def precompile(
         self,
         material_mode: str = "ATLAS",
@@ -294,15 +348,17 @@ class ResourcePackStack:
     ) -> dict:
         """
         Precompile caches according to material mode:
-        - If material_mode is "STANDALONE": precompiles both Atlas and Standalone caches.
-        - If material_mode is "ATLAS": precompiles Atlas cache only.
+        - If material_mode is "STANDALONE": precompiles Atlas, Standalone, and Models caches.
+        - If material_mode is "ATLAS": precompiles Atlas and Models cache.
         """
         res_atlas = self.precompile_atlas(yefira_only=yefira_only, progress_callback=progress_callback)
+        res_models = self.precompile_models(progress_callback=progress_callback)
         res_st = None
         if material_mode == "STANDALONE":
             res_st = self.precompile_standalone(progress_callback=progress_callback)
         return {
             "atlas": res_atlas,
+            "models": res_models,
             "standalone": res_st,
         }
 

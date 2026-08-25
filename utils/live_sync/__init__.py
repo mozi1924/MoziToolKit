@@ -51,9 +51,11 @@ from .material_manager import (
 )
 from .mesh_builder import (
     WorldMeshBuildResult,
+    CachedStateMeta,
     apply_block_delta_to_world,
     build_world_mesh,
     clear_mesh_builder_caches,
+    get_cached_state_meta,
     get_shared_material_manager,
     preload_sync_world_data,
     sync_world_mesh,

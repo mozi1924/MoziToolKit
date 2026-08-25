@@ -457,8 +457,8 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     elif "torch" in name or name in ("lantern", "soul_lantern"):
         block_type = BlockTypeEnum.TORCH
         template_name = name
-        if "wall" in name or facing in ("north", "south", "east", "west"):
-            rot_x = math.radians(20)
+        if "wall" in name or ("torch" in name and facing in ("north", "south", "east", "west")):
+            rot_x = math.radians(-22.5)
 
     elif name.endswith(("_bed", "_door", "_trapdoor", "_fence", "_fence_gate", "_wall", "_carpet", "_chest", "_bell", "_anvil")) or name in ("chest", "trapped_chest", "ender_chest", "bell", "anvil", "bed", "carpet", "trapdoor"):
         block_type = BlockTypeEnum.PROP_TEMPLATE

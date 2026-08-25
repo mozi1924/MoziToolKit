@@ -748,6 +748,8 @@ class AtlasGenerator:
                                     "texture_id": texture_id,
                                     "tile_column": texture_id % tiles_per_row,
                                     "tile_row": texture_id // tiles_per_row,
+                                    "pixel_x": x,
+                                    "pixel_y": y,
                                     "kind": "static",
                                     "is_opaque": transparency["is_opaque"],
                                     "alpha_mode": transparency["alpha_mode"],
