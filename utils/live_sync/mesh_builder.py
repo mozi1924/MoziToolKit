@@ -157,7 +157,13 @@ class CachedStateMeta:
             self.is_cube = False
             self.is_opaque = False
         elif baked is not None:
-            self.is_cube = (self.parsed.block_type == BlockTypeEnum.CUBE) and baked.is_cube
+            # Cube classification follows the actual baked geometry: a block whose
+            # model occupies the full 1x1x1 cell is treated as a cube even when the
+            # classifier labels it multipart (e.g. stairs/slabs in simplified packs
+            # where they bake as full cubes), so neighbors correctly cull touching
+            # faces. Conversely a CUBE-labeled block with partial geometry (e.g.
+            # farmland, cactus) is not treated as a cube, preserving visible faces.
+            self.is_cube = baked.is_cube
             self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
         else:
             self.is_cube = self.parsed.block_type == BlockTypeEnum.CUBE
