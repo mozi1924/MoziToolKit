@@ -1037,6 +1037,90 @@ class TestAnimatedUVMapping(unittest.TestCase):
         self.assertAlmostEqual(v1_atlas, 1.0 - 16 / 512)
 
 
+class TestProvenanceMaterialRecovery(unittest.TestCase):
+    """Test full recovery of material slots and node trees from mesh face attributes when node trees are cleared."""
+
+    def test_recover_from_cleared_node_trees_atlas(self):
+        from utils.materials.pipeline.provenance import reconstruct_materials_from_mesh_provenance, ATTR_SOURCE_TEXTURE_KEY
+        from utils.materials.constants import ATTR_ATLAS_CHUNK_ID
+
+        # 1. Create mesh with face attributes
+        mesh = bpy.data.meshes.new("TestRecoveryMesh")
+        import bmesh
+        bm = bmesh.new()
+        chunk_layer = bm.faces.layers.int.new(ATTR_ATLAS_CHUNK_ID)
+        key_layer = bm.faces.layers.string.new(ATTR_SOURCE_TEXTURE_KEY)
+        v1 = bm.verts.new((0, 0, 0))
+        v2 = bm.verts.new((1, 0, 0))
+        v3 = bm.verts.new((1, 1, 0))
+        f = bm.faces.new((v1, v2, v3))
+        f[chunk_layer] = 0
+        f[key_layer] = b"minecraft:block/stone"
+        bm.to_mesh(mesh)
+        bm.free()
+
+        obj = bpy.data.objects.new("TestRecoveryObj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        try:
+            # Initially no material slots
+            self.assertEqual(len(obj.material_slots), 0)
+
+            # Reconstruct
+            success = reconstruct_materials_from_mesh_provenance(mesh, obj=obj)
+            self.assertTrue(success)
+            self.assertEqual(len(obj.material_slots), 1)
+            mat = obj.material_slots[0].material
+            self.assertIsNotNone(mat)
+            self.assertEqual(mat.name, "MC_Atlas_Chunk_0")
+            self.assertTrue(mat.use_nodes)
+            self.assertGreaterEqual(len(mat.node_tree.nodes), 2)
+
+            # Now simulate user accidentally deleting all shader nodes in the material
+            mat.node_tree.nodes.clear()
+            self.assertEqual(len(mat.node_tree.nodes), 0)
+
+            # Recover again
+            success2 = reconstruct_materials_from_mesh_provenance(mesh, obj=obj)
+            self.assertTrue(success2)
+            # Verify node tree was restored with Principled BSDF and Output Material
+            self.assertGreaterEqual(len(mat.node_tree.nodes), 2)
+            has_output = any(n.type == "OUTPUT_MATERIAL" for n in mat.node_tree.nodes)
+            self.assertTrue(has_output)
+        finally:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.meshes.remove(mesh, do_unlink=True)
+
+    def test_recover_from_cleared_node_trees_standalone(self):
+        from utils.materials.pipeline.provenance import reconstruct_materials_from_mesh_provenance, ATTR_SOURCE_TEXTURE_KEY
+
+        mesh = bpy.data.meshes.new("TestStandaloneMesh")
+        import bmesh
+        bm = bmesh.new()
+        key_layer = bm.faces.layers.string.new(ATTR_SOURCE_TEXTURE_KEY)
+        v1 = bm.verts.new((0, 0, 0))
+        v2 = bm.verts.new((1, 0, 0))
+        v3 = bm.verts.new((1, 1, 0))
+        f = bm.faces.new((v1, v2, v3))
+        f[key_layer] = b"minecraft:block/diamond_block"
+        bm.to_mesh(mesh)
+        bm.free()
+
+        obj = bpy.data.objects.new("TestStandaloneObj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        try:
+            success = reconstruct_materials_from_mesh_provenance(mesh, obj=obj)
+            self.assertTrue(success)
+            self.assertEqual(len(obj.material_slots), 1)
+            mat = obj.material_slots[0].material
+            self.assertEqual(mat.name, "MC_diamond_block")
+            self.assertEqual(mat.get("mtk:source_texture"), "minecraft:block/diamond_block")
+        finally:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.meshes.remove(mesh, do_unlink=True)
+
+
 def run_all_tests():
     import os
     print("=" * 60)
@@ -1049,6 +1133,7 @@ def run_all_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestAnimatedUVMapping))
     suite.addTests(loader.loadTestsFromTestCase(TestMaterialModeDetection))
     suite.addTests(loader.loadTestsFromTestCase(TestCrossModeMaterialReplacement))
+    suite.addTests(loader.loadTestsFromTestCase(TestProvenanceMaterialRecovery))
 
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
@@ -1063,3 +1148,4 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
+

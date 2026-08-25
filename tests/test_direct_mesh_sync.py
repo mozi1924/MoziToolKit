@@ -89,6 +89,13 @@ class TestDirectMeshSync(unittest.TestCase):
         # Check Color attribute exists
         self.assertIn("Color", mesh.color_attributes)
 
+        # Check source texture key attribute exists on faces
+        self.assertIn("mtk_source_texture_key", mesh.attributes)
+        first_key = mesh.attributes["mtk_source_texture_key"].data[0].value
+        if isinstance(first_key, bytes):
+            first_key = first_key.decode("utf-8")
+        self.assertEqual(first_key, "minecraft:block/stone")
+
     def test_face_culling_between_adjacent_cubes(self):
         """Two adjacent opaque cubes should have their touching faces culled (12 - 2 = 10 faces)."""
         storage = VoxelStorage()

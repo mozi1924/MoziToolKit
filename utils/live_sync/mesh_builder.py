@@ -50,6 +50,7 @@ from .constants import (
     MTK_UV_TILING_TRANSFORM,
     MTK_BIOME_TINT_DATA,
     MTK_BIOME_TINT_COLOR,
+    MTK_SOURCE_TEXTURE_KEY,
     UV_MAP,
 )
 from ..mc_baker import (
@@ -257,6 +258,7 @@ class CachedStateMeta:
                     uv_tiling_transform=base_res.uv_tiling_transform,
                     biome_tint_data=b_tint_data,
                     biome_tint_color=b_tint_col,
+                    source_texture_key=base_res.source_texture_key,
                 )
 
         return base_res
@@ -387,6 +389,7 @@ def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
         "block_y": bm.faces.layers.int.get(MTK_BLOCK_Y) or bm.faces.layers.int.new(MTK_BLOCK_Y),
         "block_z": bm.faces.layers.int.get(MTK_BLOCK_Z) or bm.faces.layers.int.new(MTK_BLOCK_Z),
         "face_dir": bm.faces.layers.int.get(MTK_FACE_DIR) or bm.faces.layers.int.new(MTK_FACE_DIR),
+        "source_key": bm.faces.layers.string.get(MTK_SOURCE_TEXTURE_KEY) or bm.faces.layers.string.new(MTK_SOURCE_TEXTURE_KEY),
     }
 
 
@@ -440,6 +443,7 @@ def _generate_single_block_faces(
     block_y_layer = layers["block_y"]
     block_z_layer = layers["block_z"]
     face_dir_layer = layers["face_dir"]
+    source_key_layer = layers.get("source_key")
 
     def _get_neighbor_meta(pos: tuple[int, int, int]) -> Optional[CachedStateMeta]:
         n_state = block_map.get(pos)
@@ -494,6 +498,8 @@ def _generate_single_block_faces(
             bm_face[block_y_layer] = y
             bm_face[block_z_layer] = z
             bm_face[face_dir_layer] = DIR_TO_INDEX.get(f_name, -1)
+            if source_key_layer and f_res.source_texture_key:
+                bm_face[source_key_layer] = f_res.source_texture_key.encode("utf-8")
 
             for loop_idx, loop in enumerate(bm_face.loops):
                 u_mc, v_mc = canonical_uvs[loop_idx]
@@ -546,6 +552,8 @@ def _generate_single_block_faces(
                 bm_face[block_y_layer] = y
                 bm_face[block_z_layer] = z
                 bm_face[face_dir_layer] = DIR_TO_INDEX.get(f_dir, -1)
+                if source_key_layer and f_res.source_texture_key:
+                    bm_face[source_key_layer] = f_res.source_texture_key.encode("utf-8")
 
                 for loop_idx, loop in enumerate(bm_face.loops):
                     if loop_idx < len(bf.uvs):
@@ -593,6 +601,8 @@ def _generate_single_block_faces(
             bm_face[block_y_layer] = y
             bm_face[block_z_layer] = z
             bm_face[face_dir_layer] = DIR_TO_INDEX.get(f_name, -1)
+            if source_key_layer and f_res.source_texture_key:
+                bm_face[source_key_layer] = f_res.source_texture_key.encode("utf-8")
 
             for loop_idx, loop in enumerate(bm_face.loops):
                 u_mc, v_mc = canonical_uvs[loop_idx]

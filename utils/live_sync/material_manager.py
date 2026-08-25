@@ -109,6 +109,7 @@ class ResolvedFaceTexture(NamedTuple):
     uv_tiling_transform: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_data: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    source_texture_key: str = ""
 
 
 class LiveSyncMaterialManager:
@@ -649,6 +650,17 @@ class LiveSyncMaterialManager:
 
         slot_index = self.get_slot_for_chunk(chunk_id)
 
+        # Determine canonical source texture key
+        source_key = ""
+        if loc:
+            source_key = loc.get("texture_key") or loc.get("name", "")
+        if not source_key and tex_name:
+            ns, name = _split_texture_key(tex_name)
+            source_key = _canonical_texture_key(ns, name)
+        if not source_key:
+            short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
+            source_key = f"minecraft:block/{short_name}"
+
         return ResolvedFaceTexture(
             chunk_id=chunk_id,
             slot_index=slot_index,
@@ -661,4 +673,5 @@ class LiveSyncMaterialManager:
             uv_tiling_transform=uv_tiling_transform,
             biome_tint_data=biome_tint_data,
             biome_tint_color=biome_tint_color,
+            source_texture_key=source_key,
         )
