@@ -22,6 +22,7 @@ from ...utils.materials.pipeline import (
 from ...utils.materials.constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
+    ATTR_SOURCE_TEXTURE_KEY,
 )
 from ...utils.materials.atlas import AtlasReplacementEngine
 from ...utils.materials.standalone import StandaloneReplacementEngine
@@ -74,9 +75,14 @@ class StepReplaceMaterial(PipelineStep):
             yield StepResult.cancelled("Material replacement cancelled by user.")
             return
 
-        valid_objects = [o for o in target_objects if o and o.type == "MESH" and o.data and o.material_slots]
+        valid_objects = [
+            o for o in target_objects
+            if o and o.type == "MESH" and o.data and (
+                o.material_slots or (hasattr(o.data, "attributes") and ATTR_SOURCE_TEXTURE_KEY in o.data.attributes)
+            )
+        ]
         if not valid_objects:
-            yield StepResult.failed("No valid mesh objects with material slots found.")
+            yield StepResult.failed("No valid mesh objects with materials or source provenance found.")
             return
 
         # Unified-atlas builder lacks per-face chunk/texture locations and cannot be inverted safely.

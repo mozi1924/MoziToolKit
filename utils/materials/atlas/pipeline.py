@@ -314,39 +314,40 @@ class AtlasReplacementEngine:
                     sub_prog = obj_progress + 0.20 * (poly_idx / total_polys)
                     yield ProgressUpdate(sub_prog, 1.0, f"Scanning Atlas faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
 
-                if material_index >= len(slot_materials):
-                    namespace, texture_key = split_texture_key(source_keys[poly_idx])
-                    chunk_ids[poly_idx] = 0.0
-                    texture_ids[poly_idx] = 0.0
-                    poly_tint_map[poly_idx] = fallback_location
-                    resolved_locations[poly_idx] = (fallback_location, None, "GENERIC", None)
-                    if not source_keys[poly_idx] and texture_key:
-                        source_keys[poly_idx] = canonical_texture_key(namespace, texture_key)
-                    poly_updated = True
-                    unresolved_faces.append(poly_idx)
-                    continue
-                orig_mat = slot_materials[material_index]
-                if not orig_mat:
-                    namespace, texture_key = split_texture_key(source_keys[poly_idx])
-                    chunk_ids[poly_idx] = 0.0
-                    texture_ids[poly_idx] = 0.0
-                    poly_tint_map[poly_idx] = fallback_location
-                    resolved_locations[poly_idx] = (fallback_location, None, "GENERIC", None)
-                    if not source_keys[poly_idx] and texture_key:
-                        source_keys[poly_idx] = canonical_texture_key(namespace, texture_key)
-                    poly_updated = True
-                    unresolved_faces.append(poly_idx)
-                    continue
-                state = material_cache[orig_mat]
-                if state["is_internal"]:
-                    skipped_faces.append(poly_idx)
-                    continue
+                orig_mat = slot_materials[material_index] if material_index < len(slot_materials) else None
+                source_key = source_keys[poly_idx] if poly_idx < len(source_keys) else ""
 
-                old_mapping = state["mapping"]
-                orig_mode = state["mode"]
-                namespace, candidates, old_loc = cached_face_texture_info(
-                    mesh, poly_idx, orig_mat, state, source_keys[poly_idx]
-                )
+                if not orig_mat:
+                    if source_key:
+                        namespace, texture_key = split_texture_key(source_key)
+                        candidates = [texture_key] if texture_key else []
+                        if "/" in texture_key:
+                            basename = texture_key.rsplit("/", 1)[-1]
+                            if basename and basename != texture_key:
+                                candidates.append(basename)
+                        state = None
+                        old_mapping = None
+                        orig_mode = "GENERIC"
+                        old_loc = None
+                    else:
+                        chunk_ids[poly_idx] = 0.0
+                        texture_ids[poly_idx] = 0.0
+                        poly_tint_map[poly_idx] = fallback_location
+                        resolved_locations[poly_idx] = (fallback_location, None, "GENERIC", None)
+                        poly_updated = True
+                        unresolved_faces.append(poly_idx)
+                        continue
+                else:
+                    state = material_cache[orig_mat]
+                    if state["is_internal"]:
+                        skipped_faces.append(poly_idx)
+                        continue
+
+                    old_mapping = state["mapping"]
+                    orig_mode = state["mode"]
+                    namespace, candidates, old_loc = cached_face_texture_info(
+                        mesh, poly_idx, orig_mat, state, source_key
+                    )
 
                 new_location = None
                 for candidate in candidates:
@@ -447,16 +448,18 @@ class AtlasReplacementEngine:
                         old_chunk = None
                         if old_loc and old_mapping:
                             original_mat = face_materials[poly_idx]
-                            old_chunk = material_cache.get(original_mat, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
+                            if original_mat:
+                                old_chunk = material_cache.get(original_mat, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
 
                         old_anim_info = None
                         if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
                             orig_mat = face_materials[poly_idx]
-                            state = material_cache.get(orig_mat)
-                            if state and not state["animation_loaded"]:
-                                state["animation"] = get_material_animation_info(orig_mat)
-                                state["animation_loaded"] = True
-                            old_anim_info = state["animation"] if state else get_material_animation_info(orig_mat)
+                            if orig_mat:
+                                state = material_cache.get(orig_mat)
+                                if state and not state["animation_loaded"]:
+                                    state["animation"] = get_material_animation_info(orig_mat)
+                                    state["animation_loaded"] = True
+                                old_anim_info = state["animation"] if state else get_material_animation_info(orig_mat)
 
                         remap_face_uv_to_local(polygon, uv_layer, orig_mode, old_loc, old_chunk, old_anim_info)
 
@@ -511,16 +514,18 @@ class AtlasReplacementEngine:
                     old_chunk = None
                     if old_loc and old_mapping:
                         original_mat = face_materials[poly_idx]
-                        old_chunk = material_cache.get(original_mat, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
+                        if original_mat:
+                            old_chunk = material_cache.get(original_mat, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
 
                     old_anim_info = None
                     if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
                         orig_mat = face_materials[poly_idx]
-                        state = material_cache.get(orig_mat)
-                        if state and not state["animation_loaded"]:
-                            state["animation"] = get_material_animation_info(orig_mat)
-                            state["animation_loaded"] = True
-                        old_anim_info = state["animation"] if state else get_material_animation_info(orig_mat)
+                        if orig_mat:
+                            state = material_cache.get(orig_mat)
+                            if state and not state["animation_loaded"]:
+                                state["animation"] = get_material_animation_info(orig_mat)
+                                state["animation_loaded"] = True
+                            old_anim_info = state["animation"] if state else get_material_animation_info(orig_mat)
 
                     target_anim_info = get_material_animation_info(mat)
 

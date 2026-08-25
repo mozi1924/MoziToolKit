@@ -278,15 +278,28 @@ class StandaloneReplacementEngine:
                     sub_prog = obj_progress + 0.35 * (poly_idx / total_polys)
                     yield ProgressUpdate(sub_prog, 1.0, f"Scanning faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
 
-                if material_index >= len(slot_materials):
-                    namespace, texture_key = split_texture_key(existing_source_keys[poly_idx])
-                    unresolved_faces.append((poly_idx, None, None, namespace, [texture_key] if texture_key else [], None, None))
-                    continue
-                orig_mat = slot_materials[material_index]
+                orig_mat = slot_materials[material_index] if material_index < len(slot_materials) else None
+                source_key = existing_source_keys[poly_idx] if poly_idx < len(existing_source_keys) else ""
+
                 if not orig_mat:
-                    namespace, texture_key = split_texture_key(existing_source_keys[poly_idx])
-                    unresolved_faces.append((poly_idx, None, None, namespace, [texture_key] if texture_key else [], None, None))
-                    continue
+                    if source_key:
+                        namespace, texture_key = split_texture_key(source_key)
+                        candidates = [texture_key] if texture_key else []
+                        if "/" in texture_key:
+                            basename = texture_key.rsplit("/", 1)[-1]
+                            if basename and basename != texture_key:
+                                candidates.append(basename)
+                        tex_info = resolve_texture_info(namespace, candidates) if candidates else None
+                        if tex_info:
+                            resolved_faces.append((poly_idx, tex_info, None, "GENERIC", None, None))
+                            continue
+                        else:
+                            unresolved_faces.append((poly_idx, None, None, namespace, candidates, None, None))
+                            continue
+                    else:
+                        unresolved_faces.append((poly_idx, None, None, "minecraft", [], None, None))
+                        continue
+
                 state = material_cache[orig_mat]
                 if state["is_internal"]:
                     skipped_faces.append(poly_idx)
@@ -295,7 +308,7 @@ class StandaloneReplacementEngine:
                 old_mapping = state["mapping"]
                 orig_mode = state["mode"]
                 namespace, candidates, old_loc = cached_face_texture_info(
-                    mesh, poly_idx, orig_mat, state, existing_source_keys[poly_idx]
+                    mesh, poly_idx, orig_mat, state, source_key
                 )
 
                 tex_info = resolve_texture_info(namespace, candidates)
@@ -384,23 +397,26 @@ class StandaloneReplacementEngine:
                     tex_info["namespace"], tex_info.get("texture_key", tex_info["texture_name"])
                 )
                 source_origins[poly_idx] = (
-                    source_origins[poly_idx] or material_cache.get(original_material, {}).get("origin", material_source_origin(original_material))
+                    source_origins[poly_idx]
+                    or (material_cache.get(original_material, {}).get("origin") if original_material else None)
+                    or (material_source_origin(original_material) if original_material else "")
                 )
                 poly_modified = True
                 assigned_count += 1
 
                 if uv_layer:
                     old_chunk = None
-                    if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping:
+                    if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_mapping and original_material:
                         old_chunk = material_cache.get(original_material, {}).get("chunks", {}).get(int(old_loc["chunk_id"]))
 
                     old_anim_info = None
                     if not (orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk):
-                        state = material_cache.get(original_material)
-                        if state and not state["animation_loaded"]:
-                            state["animation"] = get_material_animation_info(original_material)
-                            state["animation_loaded"] = True
-                        old_anim_info = state["animation"] if state else get_material_animation_info(original_material)
+                        if original_material:
+                            state = material_cache.get(original_material)
+                            if state and not state["animation_loaded"]:
+                                state["animation"] = get_material_animation_info(original_material)
+                                state["animation_loaded"] = True
+                            old_anim_info = state["animation"] if state else get_material_animation_info(original_material)
 
                     texture_key = (tex_info["namespace"], tex_info["texture_name"])
                     target_anim_info = target_animation_by_texture[texture_key]
