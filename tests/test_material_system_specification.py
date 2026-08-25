@@ -1,6 +1,6 @@
 """
-Comprehensive test suite verifying the Acceptance Matrix and Invariants from Section 2 of
-FEATURE_DESIGN_SPECIFICATION.md (Minecraft Material Resolution, Matching & Replacement Pipeline).
+Comprehensive test suite verifying the Acceptance Matrix and Invariants from
+docs/materials/material_pipeline.md (Minecraft Material Resolution, Matching & Replacement Pipeline).
 """
 
 from __future__ import annotations
