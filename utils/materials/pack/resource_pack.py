@@ -29,18 +29,25 @@ def get_temp_extraction_dir() -> Path:
     """
     Get the system temporary extraction directory for unpacking ZIP/JAR resource packs.
     Used during preprocessing so raw uncompressed assets live in OS temp rather than user data.
+    Supports MOZI_TEMP_DIR environment override for test sandboxing.
     """
-    temp_root = None
-    if bpy and hasattr(bpy, "app") and hasattr(bpy.app, "tempdir"):
-        try:
-            b_temp = bpy.app.tempdir
-            if b_temp:
-                temp_root = Path(b_temp) / "MoziToolKit" / "extracted"
-        except Exception:
-            temp_root = None
+    env_dir = os.environ.get("MOZI_TEMP_DIR")
+    if env_dir:
+        temp_root = Path(env_dir)
+        if temp_root.name != "extracted":
+            temp_root = temp_root / "extracted"
+    else:
+        temp_root = None
+        if bpy and hasattr(bpy, "app") and hasattr(bpy.app, "tempdir"):
+            try:
+                b_temp = bpy.app.tempdir
+                if b_temp:
+                    temp_root = Path(b_temp) / "MoziToolKit" / "extracted"
+            except Exception:
+                temp_root = None
 
-    if not temp_root:
-        temp_root = Path(tempfile.gettempdir()) / "MoziToolKit" / "extracted"
+        if not temp_root:
+            temp_root = Path(tempfile.gettempdir()) / "MoziToolKit" / "extracted"
 
     temp_root.mkdir(parents=True, exist_ok=True)
     return temp_root
@@ -50,19 +57,28 @@ def get_cache_dir() -> Path:
     """
     Get the persistent data directory for MoziToolKit baked stack outputs.
     Stores only the final compiled Atlas texture sheets and atlas_mapping.json metadata for the active stack.
+    Supports MOZI_CACHE_DIR environment override for test sandboxing.
     """
-    cache_dir = None
-    if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
-        try:
-            cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache" / "baked_stack"
-        except Exception:
-            cache_dir = None
+    env_dir = os.environ.get("MOZI_CACHE_DIR")
+    if env_dir:
+        cache_dir = Path(env_dir)
+        if cache_dir.name != "baked_stack":
+            cache_dir = cache_dir / "baked_stack"
+    else:
+        cache_dir = None
+        if bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
+            try:
+                cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache" / "baked_stack"
+            except Exception:
+                cache_dir = None
 
-    if not cache_dir:
-        cache_dir = Path.home() / ".config" / "blender" / "MoziToolKit" / "cache" / "baked_stack"
+        if not cache_dir:
+            cache_dir = Path.home() / ".config" / "blender" / "MoziToolKit" / "cache" / "baked_stack"
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
 
 
 def clean_obsolete_stack_caches(current_stack_hash: Optional[str] = None) -> tuple[int, int]:

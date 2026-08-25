@@ -31,6 +31,10 @@ for p in [str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+# Activate isolated test sandbox immediately to guarantee 0 contamination of user data/prefs
+from tests.test_env import setup_test_sandbox, get_sandbox_path, cleanup_test_sandbox
+sandbox_path = setup_test_sandbox()
+
 # Extract bundled extension wheels for headless testing if needed
 wheels_dir = PROJECT_DIR / "wheels"
 if wheels_dir.exists():
@@ -110,6 +114,7 @@ FAST_UNIT_MODULES = {
     "test_pbr_pack_stack",
     "test_rect_packer",
     "test_repair_fluid_uv",
+    "test_sandbox_isolation",
     "test_yefira_multiface_states",
 }
 
@@ -221,6 +226,8 @@ def main():
 
     print("=" * 70)
     print(f"MOZITOOLKIT TEST RUNNER: {mode_label}")
+    print(f"SANDBOX ISOLATION: ACTIVE ({get_sandbox_path()})")
+    print(f"USER BLENDER CONFIG & BAKED CACHES: PROTECTED")
     if args.filter:
         print(f"Pattern Filter: '{args.filter}'")
     print(f"Executing {total_test_count} tests across {len(counts)} modules...")

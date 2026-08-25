@@ -147,11 +147,15 @@ DEFAULT_PRESETS = _DefaultPresetsDict()
 
 
 def get_config_path() -> Path:
-    """Return absolute path to user data config JSON file."""
-    try:
-        config_dir = Path(bpy.utils.user_resource("CONFIG")) / "MoziToolKit"
-    except Exception:
-        config_dir = Path.home() / ".config" / "blender" / "MoziToolKit"
+    """Return absolute path to user data config JSON file. Supports MOZI_CONFIG_DIR override for testing."""
+    env_dir = os.environ.get("MOZI_CONFIG_DIR")
+    if env_dir:
+        config_dir = Path(env_dir)
+    else:
+        try:
+            config_dir = Path(bpy.utils.user_resource("CONFIG")) / "MoziToolKit"
+        except Exception:
+            config_dir = Path.home() / ".config" / "blender" / "MoziToolKit"
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir / "context_menus.json"
 

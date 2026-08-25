@@ -118,7 +118,12 @@ class TestMaterialModeDetection(unittest.TestCase):
     def setUp(self):
         if not HAS_BPY:
             self.skipTest("bpy not available")
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            bpy.data.materials.remove(mat, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            bpy.data.meshes.remove(mesh, do_unlink=True)
 
     def test_material_mode_detection(self):
         # Generic
@@ -791,7 +796,12 @@ class TestAnimatedUVMapping(unittest.TestCase):
     def setUp(self):
         if not HAS_BPY:
             self.skipTest("bpy not available")
-        bpy.ops.wm.read_factory_settings(use_empty=True)
+        for obj in list(bpy.data.objects):
+            bpy.data.objects.remove(obj, do_unlink=True)
+        for mat in list(bpy.data.materials):
+            bpy.data.materials.remove(mat, do_unlink=True)
+        for mesh in list(bpy.data.meshes):
+            bpy.data.meshes.remove(mesh, do_unlink=True)
 
     def test_animated_uv_node_group_interface(self):
         from utils.node_groups.animated import ensure_animated_uv_mapping, UV_TEMPLATE_VERSION
