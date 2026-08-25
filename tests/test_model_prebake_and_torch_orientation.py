@@ -330,6 +330,43 @@ class TestModelPrebakeAndTorchOrientation(unittest.TestCase):
             self.assertIn("minecraft:auto_block", models)
             self.assertEqual(models["minecraft:auto_block"].faces[0].texture, "minecraft:block/auto_block_tex")
 
+    def test_l1_hot_prewarm_and_idle_queue(self):
+        """
+        Verify that HOT_PREWARM_STATES covers essential interactive blocks (doors, torches, stairs, etc.)
+        and that preload_sync_world_data pre-warms them into _GLOBAL_STATE_META_CACHE.
+        """
+        from utils.live_sync.hot_states import HOT_PREWARM_STATES
+        from utils.live_sync.mesh_builder import (
+            _GLOBAL_STATE_META_CACHE,
+            preload_sync_world_data,
+            _idle_prewarm_tick,
+        )
+
+        # 1. Verify hot states completeness
+        self.assertGreater(len(HOT_PREWARM_STATES), 500)
+
+        # Check door states
+        door_samples = [
+            "minecraft:oak_door[facing=east,half=lower,hinge=left,open=false,powered=false]",
+            "minecraft:oak_door[facing=north,half=upper,hinge=right,open=true,powered=false]",
+            "minecraft:iron_door[facing=south,half=lower,hinge=left,open=false,powered=false]",
+        ]
+        for ds in door_samples:
+            self.assertIn(ds, HOT_PREWARM_STATES)
+
+        # Check torch & stairs & redstone & container states
+        self.assertIn("minecraft:wall_torch[facing=north]", HOT_PREWARM_STATES)
+        self.assertIn("minecraft:oak_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]", HOT_PREWARM_STATES)
+        self.assertIn("minecraft:chest[facing=north,type=single,waterlogged=false]", HOT_PREWARM_STATES)
+        self.assertIn("minecraft:repeater[delay=1,facing=north,locked=false,powered=false]", HOT_PREWARM_STATES)
+
+        # 2. Run preload_sync_world_data and verify _GLOBAL_STATE_META_CACHE is populated
+        _GLOBAL_STATE_META_CACHE.clear()
+        total_warmed = preload_sync_world_data(palette=["minecraft:diamond_block"])
+        self.assertGreater(total_warmed, 500)
+        self.assertIn("minecraft:diamond_block", _GLOBAL_STATE_META_CACHE)
+        self.assertIn("minecraft:oak_door[facing=east,half=lower,hinge=left,open=false,powered=false]", _GLOBAL_STATE_META_CACHE)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
