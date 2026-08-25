@@ -14,14 +14,14 @@ import bpy
 
 logger = logging.getLogger("MoziToolKit.Materials")
 
-from .constants import (
+from ..constants import (
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_TRANSFORM,
     PROP_CREATED_BY,
     PROP_PACK_HASH,
 )
 from pathlib import Path
-from ..mc_baker import (
+from ...mc_baker import (
     StateBaker,
     get_shared_state_baker,
     refresh_shared_baker_sources,
@@ -29,7 +29,7 @@ from ..mc_baker import (
     EMISSIVE_BLOCKS,
     is_block_emissive as _mc_is_block_emissive,
 )
-from ..live_sync.constants import (
+from ...live_sync.constants import (
     BLOCK_STATE,
     MC_POSITION,
     BLOCK_TYPE,
@@ -44,14 +44,14 @@ from ..live_sync.constants import (
     is_contract_compatible,
     get_attribute_contract_version,
 )
-from ..live_sync.classifier import (
+from ...live_sync.classifier import (
     parse_and_classify,
     BlockTypeEnum,
     ParsedBlock,
     atlas_lookup_keys,
 )
-from ..live_sync.template_catalog import get_template_index_map
-from ..live_sync.point_cloud import _resolve_template_index
+from ...live_sync.template_catalog import get_template_index_map
+from ...live_sync.point_cloud import _resolve_template_index
 
 
 def refresh_baker_sources() -> None:
@@ -59,7 +59,7 @@ def refresh_baker_sources() -> None:
     refresh_shared_baker_sources()
 
 
-from .constants import BLOCK_TO_TEXTURE_ALIASES
+from ..constants import BLOCK_TO_TEXTURE_ALIASES
 
 EMISSIVE_BLOCK_NAMES = EMISSIVE_BLOCKS
 HARDCODED_TINT_BLOCKS = {
@@ -555,7 +555,7 @@ def rebuild_or_update_yefira_material_dispatcher(
     atlas_materials: dict[int, bpy.types.Material],
 ) -> Optional[bpy.types.GeometryNodeTree]:
     """Ensure Yefira_Material_Dispatcher node group contains the complete multi-chunk Set Material chain."""
-    from ..geometry_nodes.groups.material_dispatcher import get_or_create_material_dispatcher_group
+    from ...geometry_nodes.groups.material_dispatcher import get_or_create_material_dispatcher_group
     return get_or_create_material_dispatcher_group(atlas_materials)
 
 
@@ -638,7 +638,7 @@ def notify_yefira_update(obj: Optional[bpy.types.Object] = None) -> None:
     """Notify Geometry Nodes world engine to refresh point cloud modifier and node tree."""
     if obj and is_yefira_object(obj):
         try:
-            from ..geometry_nodes.world_tree import setup_world_geometry_nodes
+            from ...geometry_nodes.world_tree import setup_world_geometry_nodes
             setup_world_geometry_nodes(obj)
         except Exception as e:
             logger.debug(f"Could not refresh Geometry Nodes on {obj.name}: {e}")

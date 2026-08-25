@@ -24,7 +24,7 @@ from utils.mesh.uv_rotation import (
     process_mesh_uv_rotations,
     is_orthogonal_angle,
 )
-from utils.materials.atlas_builder import build_atlas_chunk_materials
+from utils.materials.atlas.builder import build_atlas_chunk_materials
 from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
 
 

@@ -13,7 +13,7 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from .constants import (
+from ..constants import (
     ATTR_SOURCE_ORIGIN,
     ATTR_SOURCE_TEXTURE_KEY,
     DEFAULT_NAMESPACE,
@@ -128,7 +128,7 @@ def detect_material_mode(mat: bpy.types.Material | None) -> str:
             return "ATLAS_CHUNK"
         return "STANDALONE"
 
-    from .mineways_atlas import is_mineways_atlas_material
+    from ..matching.mineways_atlas import is_mineways_atlas_material
     if is_mineways_atlas_material(mat):
         return "MINEWAYS_ATLAS"
 

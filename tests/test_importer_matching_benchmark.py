@@ -8,7 +8,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 import bpy
-from utils.materials.resource_pack import ZipResourcePack
+from utils.materials.pack.resource_pack import ZipResourcePack
 from utils.materials.matching import extract_material_texture_keys, get_importer_adapter
 from pipeline.presets import run_preset_pipeline
 

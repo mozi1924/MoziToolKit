@@ -9,9 +9,9 @@ import bpy
 
 from .types import TargetGrid, FacePixelInfo
 from ..mesh.uv import get_face_uv_bounds
-from ..materials.provenance import detect_material_mode
-from ..materials.texture_finder import find_albedo_image_from_material, find_face_image
-from ..materials.animation import get_material_animation_info
+from ..materials.pipeline import detect_material_mode
+from ..materials.matching import find_albedo_image_from_material, find_face_image
+from ..materials.pack import get_material_animation_info
 
 
 def get_face_effective_texture_info(

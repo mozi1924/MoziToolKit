@@ -49,7 +49,7 @@ def _atlas_short_name(name: str) -> str:
     return name.removeprefix("block/")
 
 
-from .constants import BLOCK_TO_TEXTURE_ALIASES
+from ..constants import BLOCK_TO_TEXTURE_ALIASES
 
 HARDCODED_TINT_BLOCKS = {
     "spruce_leaves": (1.0, 1.0, 1.0, 1.0),
@@ -409,14 +409,14 @@ def resolve_block_state_face_locations(
         return [{}] * 6
 
     # 1. Lookup via canonical atlas lookup keys
-    from ..live_sync.classifier import atlas_lookup_keys
+    from ...live_sync.classifier import atlas_lookup_keys
     for key in atlas_lookup_keys(name, props):
         if key in locations_by_name:
             return locations_by_name[key]
 
     # 2. Lookup via StateBaker resolved 6-face textures
     try:
-        from ..mc_baker import get_shared_state_baker
+        from ...mc_baker import get_shared_state_baker
         state_query = f"minecraft:{name}"
         if props:
             p_str = ",".join(f"{k}={v}" for k, v in sorted(props.items()))
@@ -703,7 +703,7 @@ def build_block_face_uv_bounds_lut(mapping: Optional[dict]) -> dict[str, list[tu
     return bounds_lut
 
 
-from ..live_sync.constants import (
+from ...live_sync.constants import (
     DEFAULT_ATLAS_WIDTH,
     DEFAULT_ATLAS_HEIGHT,
     DEFAULT_TILE_SIZE,

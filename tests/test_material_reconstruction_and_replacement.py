@@ -211,7 +211,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
 
     def test_texture_finder_clean_fallback(self):
         """Verify find_face_image returns None when face material has no image instead of grabbing random images."""
-        from utils.materials.texture_finder import find_face_image
+        from utils.materials.matching.texture_finder import find_face_image
 
         dummy_img = bpy.data.images.new(name="UnrelatedEnvironmentHDR", width=128, height=128)
         bpy.ops.mesh.primitive_plane_add()

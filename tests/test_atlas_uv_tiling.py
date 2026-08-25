@@ -131,7 +131,7 @@ class TestAtlasUVTiling(unittest.TestCase):
         import json
         import tempfile
         from pathlib import Path
-        from utils.materials.atlas_builder import build_atlas_chunk_materials
+        from utils.materials.atlas.builder import build_atlas_chunk_materials
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             atlas_dir = Path(tmp_dir)

@@ -7,7 +7,7 @@ biome tint data encoding, and legacy attribute cleanup.
 from __future__ import annotations
 
 import bpy
-from .constants import (
+from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_UV_ROTATION,
@@ -23,7 +23,7 @@ from .constants import (
     ANIM_AND_ATLAS_ATTR_NAMES,
     LEGACY_SPLIT_ATTR_NAMES,
 )
-from .biome import (
+from ..biome import (
     get_biome_colors,
     TINT_TYPE_GRASS,
     TINT_TYPE_FOLIAGE,

@@ -112,7 +112,7 @@ class TestDependencyManager(unittest.TestCase):
 
     def test_zip_slip_security_prevention(self):
         """ZipResourcePack must reject malicious archives containing path traversal entries."""
-        from utils.materials.resource_pack import ZipResourcePack
+        from utils.materials.pack.resource_pack import ZipResourcePack
         import tempfile
         import zipfile
 
@@ -129,7 +129,7 @@ class TestDependencyManager(unittest.TestCase):
 
     def test_zip_bomb_member_count_limit(self):
         """ZipResourcePack._safe_extract must reject archives exceeding MAX_ZIP_MEMBER_COUNT."""
-        from utils.materials.resource_pack import ZipResourcePack, MAX_ZIP_MEMBER_COUNT
+        from utils.materials.pack.resource_pack import ZipResourcePack, MAX_ZIP_MEMBER_COUNT
         import tempfile
         import zipfile
         import unittest.mock as mock
@@ -151,7 +151,7 @@ class TestDependencyManager(unittest.TestCase):
 
     def test_zip_bomb_uncompressed_size_limit(self):
         """ZipResourcePack._safe_extract must reject archives exceeding MAX_ZIP_TOTAL_UNCOMPRESSED."""
-        from utils.materials.resource_pack import ZipResourcePack, MAX_ZIP_TOTAL_UNCOMPRESSED
+        from utils.materials.pack.resource_pack import ZipResourcePack, MAX_ZIP_TOTAL_UNCOMPRESSED
         import tempfile
         import zipfile
         import unittest.mock as mock

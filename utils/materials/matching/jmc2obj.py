@@ -9,7 +9,7 @@ import bpy
 from .base import ImporterAdapter, base_texture_candidates, normalized_image_key
 from .ice_cube import is_ice_cube_material
 from ..constants import DEFAULT_NAMESPACE
-from ..provenance import without_blender_suffix, is_mozi_material
+from ..pipeline.provenance import without_blender_suffix, is_mozi_material
 
 
 JMC2OBJ_BANNER_SHORT_ALIASES = {

@@ -322,7 +322,7 @@ class TestMoziYefiraIntegration(unittest.TestCase):
 
     def test_standard_atlas_dimension_defaults(self):
         """Test that extract_atlas_parameters defaults match canonical constants (not test-pack 4096x80)."""
-        from MoziToolKit.utils.materials.atlas_integration import extract_atlas_parameters
+        from MoziToolKit.utils.materials.yefira.atlas_integration import extract_atlas_parameters
         from MoziToolKit.utils.live_sync.constants import (
             DEFAULT_ATLAS_WIDTH, DEFAULT_ATLAS_HEIGHT, DEFAULT_TILE_SIZE, DEFAULT_TILES_PER_ROW,
             DEFAULT_ANIM_ATLAS_WIDTH, DEFAULT_ANIM_ATLAS_HEIGHT

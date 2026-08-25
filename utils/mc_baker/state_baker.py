@@ -81,7 +81,7 @@ def refresh_shared_baker_sources() -> StateBaker:
     global _last_pack_fingerprint, _last_configured_loader
     baker = get_shared_state_baker()
     try:
-        from ..materials.pack_stack import get_configured_pack_stack, get_pack_stack_fingerprint
+        from ..materials.pack import get_configured_pack_stack, get_pack_stack_fingerprint
         current_fingerprint = get_pack_stack_fingerprint()
         if current_fingerprint != _last_pack_fingerprint:
             _last_pack_fingerprint = current_fingerprint

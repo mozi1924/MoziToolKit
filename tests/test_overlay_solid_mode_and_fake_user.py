@@ -35,9 +35,9 @@ Image.init()
 
 import bpy
 
-from utils.materials.builder import rebuild_material, repair_material_nodes
-from utils.materials.atlas_builder import build_atlas_chunk_materials, build_atlas_material
-from utils.materials.atlas_integration import get_or_create_atlas_material
+from utils.materials.nodes.builder import rebuild_material, repair_material_nodes
+from utils.materials.atlas.builder import build_atlas_chunk_materials, build_atlas_material
+from utils.materials.yefira.atlas_integration import get_or_create_atlas_material
 
 
 class TestOverlaySolidModeAndFakeUser(unittest.TestCase):

@@ -9,8 +9,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .resource_pack import get_cache_dir
-from ..system.dependencies import has_pillow
+from ..pack.resource_pack import get_cache_dir
+from ...system.dependencies import has_pillow
 
 try:
     from PIL import Image

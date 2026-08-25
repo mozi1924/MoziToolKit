@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 from PIL import Image
 
-from utils.materials.atlas_generator import AtlasGenerator
+from utils.materials.atlas.generator import AtlasGenerator
 from utils.materials.constants import FACE_ORDER
 
 

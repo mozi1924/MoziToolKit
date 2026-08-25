@@ -14,18 +14,18 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .constants import (
+from ..constants import (
     FACE_ORDER,
     ATLAS_FORMAT_VERSION,
     ATLAS_CATEGORY_PRIORITY,
     RECT_PACKED_CATEGORIES,
     classify_texture_category,
 )
-from .rect_packer import pack_category_textures
-from .biome import BiomeResolver
-from .pack_stack import ResourcePackStack, get_configured_pack_stack
-from ..system.dependencies import has_pillow
-from ..mc_baker import StateBaker, JarResourceLoader
+from .packer import pack_category_textures
+from ..biome import BiomeResolver
+from ..pack.pack_stack import ResourcePackStack, get_configured_pack_stack
+from ...system.dependencies import has_pillow
+from ...mc_baker import StateBaker, JarResourceLoader
 
 try:
     from PIL import Image

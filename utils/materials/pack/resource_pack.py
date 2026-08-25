@@ -16,7 +16,7 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from .constants import DEFAULT_NAMESPACE
+from ..constants import DEFAULT_NAMESPACE
 
 
 # Resource pack zip extraction security limits

@@ -10,7 +10,7 @@ from .base import ImporterAdapter, base_texture_candidates, normalized_image_key
 from .ice_cube import is_ice_cube_material
 from .jmc2obj import is_jmc2obj_material, _expand_semantic_candidates
 from ..constants import DEFAULT_NAMESPACE
-from ..provenance import without_blender_suffix, is_mozi_material
+from ..pipeline.provenance import without_blender_suffix, is_mozi_material
 
 
 # Complete Mineways block & tile name alias dictionary built against Mineways source and Minecraft JAR definitions
@@ -292,7 +292,7 @@ MINEWAYS_BLOCK_NAME_ALIASES: dict[str, list[str]] = {
     "cherry_wood": ["block/cherry_log", "block/cherry_log_top", "block/cherry_wood"],
 }
 
-from ..mineways_atlas import (
+from .mineways_atlas import (
     is_mineways_atlas_material,
     is_mineways_atlas_image,
     MINEWAYS_ATLAS_NAME_PATTERNS as MINEWAYS_ATLAS_TEXTURE_PATTERNS,

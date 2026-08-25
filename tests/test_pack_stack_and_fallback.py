@@ -335,7 +335,7 @@ class TestPackStackAndFallback(unittest.TestCase):
     def test_precompile_cache_operator_atlas_mode(self):
         """Test that MOZI_OT_precompile_cache in ATLAS mode compiles Atlas cache only."""
         from utils.system import has_pillow
-        from utils.materials.pack_stack import get_configured_pack_stack
+        from utils.materials.pack.pack_stack import get_configured_pack_stack
         from ui.preferences import populate_resource_packs
         if not has_pillow():
             self.skipTest("Pillow not installed")
@@ -366,7 +366,7 @@ class TestPackStackAndFallback(unittest.TestCase):
     def test_precompile_cache_operator_standalone_mode(self):
         """Test that MOZI_OT_precompile_cache in STANDALONE mode compiles BOTH Atlas and Standalone caches."""
         from utils.system import has_pillow
-        from utils.materials.pack_stack import get_configured_pack_stack
+        from utils.materials.pack.pack_stack import get_configured_pack_stack
         from ui.preferences import populate_resource_packs
         if not has_pillow():
             self.skipTest("Pillow not installed")
@@ -396,7 +396,7 @@ class TestPackStackAndFallback(unittest.TestCase):
 
     def test_persistent_cache_directory_and_stats(self):
         """Test that get_cache_dir is persistent, temp extraction is in OS temp, and obsolete stack caches are pruned."""
-        from utils.materials.resource_pack import (
+        from utils.materials.pack.resource_pack import (
             get_cache_dir,
             get_temp_extraction_dir,
             get_cache_stats,

@@ -11,9 +11,7 @@ from pathlib import Path
 from typing import Iterator, Union, Optional
 import bpy
 
-from ...pipeline.progress import ProgressUpdate
-from ...pipeline.step import StepResult
-from .constants import (
+from ..constants import (
     ATLAS_FORMAT_VERSION,
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
@@ -24,20 +22,20 @@ from .constants import (
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
 )
-from .provenance import (
+from ..pipeline.provenance import (
     canonical_texture_key,
     split_texture_key,
     write_provenance_schema,
 )
-from .matching import material_source_origin
-from .pack_stack import ResourcePackStack
-from .resource_pack import ZipResourcePack, get_cache_dir, clean_obsolete_stack_caches
-from .biome import BiomeResolver
-from .builder import rebuild_material
-from .animation import get_material_animation_info
-from .atlas_builder import build_atlas_chunk_materials
-from .atlas_generator import AtlasGenerator
-from .mesh_attributes import (
+from ..matching import material_source_origin
+from ..pack.pack_stack import ResourcePackStack
+from ..pack.resource_pack import ZipResourcePack, get_cache_dir, clean_obsolete_stack_caches
+from ..biome import BiomeResolver
+from ..nodes.builder import rebuild_material
+from ..pack.animation import get_material_animation_info
+from .builder import build_atlas_chunk_materials
+from .generator import AtlasGenerator
+from ..pipeline.mesh_attributes import (
     ensure_face_attribute,
     read_face_string_attribute,
     read_face_float_attribute,
@@ -47,13 +45,13 @@ from .mesh_attributes import (
     cleanup_legacy_mesh_attributes,
     cleanup_object_anim_properties,
 )
-from .uv_pipeline import (
+from ..pipeline.uv_pipeline import (
     remap_polygon_loop_uvs,
     remap_face_uv_to_local,
     restore_face_atlas_tiling,
     straighten_and_normalize_face_uv,
 )
-from .material_session import (
+from ..pipeline.session import (
     build_material_face_cache,
     cached_face_texture_info,
     get_polygon_material_indices,
@@ -97,6 +95,13 @@ class AtlasReplacementEngine:
         biome_preset: str = "PLAINS",
         pack_stack: Optional[ResourcePackStack] = None,
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
+        try:
+            from MoziToolKit.pipeline.progress import ProgressUpdate
+            from MoziToolKit.pipeline.step import StepResult
+        except ImportError:
+            from pipeline.progress import ProgressUpdate
+            from pipeline.step import StepResult
+
         effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
         cache_root = get_cache_dir()
         atlas_dir = cache_root / effective_pack_hash / "full_scene"

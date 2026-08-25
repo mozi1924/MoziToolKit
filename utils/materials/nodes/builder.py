@@ -7,10 +7,10 @@ import shutil
 from pathlib import Path
 import bpy
 
-from ..node_groups import ensure_all_templates
-from .matching import extract_material_texture_keys, detect_material_mode
-from .standalone_aligner import align_standalone_textures
-from .constants import (
+from ...node_groups import ensure_all_templates
+from ..matching import extract_material_texture_keys
+from ..pipeline.provenance import detect_material_mode
+from ..constants import (
     PROP_PACK_HASH,
     PROP_PACK_HASH_SHORT,
     PROP_SOURCE_FILE,
@@ -284,6 +284,7 @@ def rebuild_material(
 
     # Align standalone animated textures with PBR channels if not precompiled
     if not texture_info.get("is_precompiled"):
+        from ..standalone.aligner import align_standalone_textures
         texture_info = align_standalone_textures(texture_info, pack_hash=pack_hash)
 
     templates = ensure_all_templates()
@@ -311,7 +312,7 @@ def rebuild_material(
     # Setup Biome Tint Node Group (only if texture uses biome tint, hardcoded tint, or overlay)
     tint_info = texture_info.get("tint_info")
     if tint_info is None:
-        from .biome import BiomeResolver
+        from ..biome import BiomeResolver
         texture_name = texture_info.get("texture_name", "")
         tint_info = BiomeResolver().get_tint_info(texture_name)
 

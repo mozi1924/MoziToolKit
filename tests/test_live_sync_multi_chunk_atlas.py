@@ -19,7 +19,7 @@ from utils.geometry_nodes.world_tree import (
     WORLD_TREE_SCHEMA_VERSION,
     setup_world_geometry_nodes,
 )
-from utils.materials.atlas_integration import (
+from utils.materials.yefira.atlas_integration import (
     extract_atlas_parameters,
     find_active_atlas_material,
 )
@@ -150,7 +150,7 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
     def test_point_cloud_directional_uv_rotations_not_overwritten(self):
         """Verify oak_log[axis=y] maintains 0.0 UV rotation and is not corrupted by atlas static LUT."""
         from utils.live_sync import VoxelStorage, update_world_point_cloud
-        from utils.materials.atlas_integration import build_block_face_uv_rot_lut
+        from utils.materials.yefira.atlas_integration import build_block_face_uv_rot_lut
 
         storage = VoxelStorage()
         storage.min_x = storage.min_y = storage.min_z = 0

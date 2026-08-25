@@ -9,12 +9,12 @@ from __future__ import annotations
 from typing import Optional
 import bpy
 
-from .atlas_layout import (
+from ..atlas.layout import (
     remap_uv_coordinate,
     remap_uv_to_local,
     remap_local_to_target_uv,
 )
-from ..mesh import (
+from ...mesh.uv_rotation import (
     straighten_face_uv,
     normalize_face_uv_for_atlas_tiling,
     face_uv_requires_atlas_tiling,

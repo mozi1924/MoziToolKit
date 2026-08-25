@@ -11,30 +11,28 @@ from pathlib import Path
 from typing import Iterator, Union, Optional
 import bpy
 
-from ...pipeline.progress import ProgressUpdate
-from ...pipeline.step import StepResult
-from .constants import (
+from ..constants import (
     ATLAS_FORMAT_VERSION,
     ANIM_AND_ATLAS_ATTR_NAMES,
     ATTR_UV_ROTATION,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
 )
-from .provenance import (
+from ..pipeline.provenance import (
     canonical_texture_key,
     detect_material_mode,
 )
-from .matching import material_source_origin
-from .pack_stack import ResourcePackStack
-from .resource_pack import ZipResourcePack, get_cache_dir, clean_obsolete_stack_caches
-from .biome import BiomeResolver
-from .builder import rebuild_material
-from .animation import get_material_animation_info, get_texture_info_animation_info
-from .atlas_generator import AtlasGenerator
-from .standalone_generator import StandaloneGenerator, STANDALONE_FORMAT_VERSION
-from .atlas_layout import remap_uv_to_local, remap_local_to_target_uv
-from ..mesh import restore_atlas_tiling_uv
-from .mesh_attributes import (
+from ..matching import material_source_origin
+from ..pack.pack_stack import ResourcePackStack
+from ..pack.resource_pack import ZipResourcePack, get_cache_dir, clean_obsolete_stack_caches
+from ..biome import BiomeResolver
+from ..nodes.builder import rebuild_material
+from ..pack.animation import get_material_animation_info, get_texture_info_animation_info
+from ..atlas.generator import AtlasGenerator
+from .generator import StandaloneGenerator, STANDALONE_FORMAT_VERSION
+from ..atlas.layout import remap_uv_to_local, remap_local_to_target_uv
+from ...mesh import restore_atlas_tiling_uv
+from ..pipeline.mesh_attributes import (
     read_face_string_attribute,
     read_face_float_attribute,
     read_face_tiling,
@@ -43,8 +41,8 @@ from .mesh_attributes import (
     cleanup_legacy_mesh_attributes,
     cleanup_object_anim_properties,
 )
-from .uv_pipeline import remap_polygon_loop_uvs
-from .material_session import (
+from ..pipeline.uv_pipeline import remap_polygon_loop_uvs
+from ..pipeline.session import (
     build_material_face_cache,
     cached_face_texture_info,
     get_polygon_material_indices,
@@ -67,6 +65,13 @@ class StandaloneReplacementEngine:
         biome_preset: str = "PLAINS",
         pack_stack: Optional[ResourcePackStack] = None,
     ) -> Iterator[Union[ProgressUpdate, StepResult]]:
+        try:
+            from MoziToolKit.pipeline.progress import ProgressUpdate
+            from MoziToolKit.pipeline.step import StepResult
+        except ImportError:
+            from pipeline.progress import ProgressUpdate
+            from pipeline.step import StepResult
+
         replaced_count = 0
         assigned_count = 0
         session_materials = {}

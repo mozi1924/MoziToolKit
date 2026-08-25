@@ -508,7 +508,7 @@ class TestAtlasGenerator(unittest.TestCase):
 
     def test_texture_category_priority(self):
         """Verify deterministic category priority ranking."""
-        from utils.materials.resource_pack import texture_category_priority
+        from utils.materials.pack.resource_pack import texture_category_priority
 
         self.assertEqual(texture_category_priority("block/stone"), 1)
         self.assertEqual(texture_category_priority("item/apple"), 2)

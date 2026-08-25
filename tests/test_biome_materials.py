@@ -40,9 +40,9 @@ from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_COLOR,
 )
 from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, ensure_colormap_sampler
-from MoziToolKit.utils.materials.builder import rebuild_material
-from MoziToolKit.utils.materials.atlas_generator import AtlasGenerator
-from MoziToolKit.utils.materials.atlas_builder import build_atlas_chunk_materials
+from MoziToolKit.utils.materials.nodes.builder import rebuild_material
+from MoziToolKit.utils.materials.atlas.generator import AtlasGenerator
+from MoziToolKit.utils.materials.atlas.builder import build_atlas_chunk_materials
 from MoziToolKit.pipeline.presets import run_preset_pipeline
 
 

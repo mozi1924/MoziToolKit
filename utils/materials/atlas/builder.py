@@ -7,10 +7,10 @@ import json
 from pathlib import Path
 import bpy
 
-from ..node_groups import ensure_all_templates
-from ..node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
-from .builder import load_image_texture, set_material_displacement_method
-from .constants import (
+from ...node_groups import ensure_all_templates
+from ...node_groups.atlas_uv_decoder import build_atlas_uv_decoder_node_group
+from ..nodes.builder import load_image_texture, set_material_displacement_method
+from ..constants import (
     DEFAULT_NAMESPACE,
     PROP_PACK_HASH,
     PROP_PACK_HASH_SHORT,
