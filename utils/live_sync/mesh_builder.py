@@ -302,6 +302,53 @@ def get_cached_state_meta(
     return meta
 
 
+COMMON_PREWARM_STATES = (
+    "minecraft:air",
+    "minecraft:stone",
+    "minecraft:dirt",
+    "minecraft:grass_block[snowy=false]",
+    "minecraft:glass",
+    "minecraft:oak_planks",
+    "minecraft:cobblestone",
+    "minecraft:water[level=0]",
+    "minecraft:lava[level=0]",
+)
+
+
+def preload_sync_world_data(
+    palette: Optional[list[str]] = None,
+    world_obj: Optional[bpy.types.Object] = None,
+    atlas_params: Optional[dict[str, Any]] = None,
+) -> int:
+    """
+    Pre-load and pre-warm all blockstate models, elements, face textures,
+    atlas UV mappings, and materials into RAM upon initial world synchronization.
+    Eliminates cold-start calculation overhead on subsequent live sync updates.
+    """
+    refresh_shared_baker_sources()
+    baker = get_shared_state_baker()
+    mat_manager = get_shared_material_manager(world_obj=world_obj, atlas_params=atlas_params)
+
+    states_to_warm = set(COMMON_PREWARM_STATES)
+    if palette:
+        for s in palette:
+            if s and s.strip():
+                states_to_warm.add(s.strip())
+
+    warmed_count = 0
+    for state_str in states_to_warm:
+        if state_str not in _GLOBAL_STATE_META_CACHE:
+            try:
+                meta = CachedStateMeta(state_str, mat_manager, baker)
+                _GLOBAL_STATE_META_CACHE[state_str] = meta
+                warmed_count += 1
+            except Exception as e:
+                logger.debug(f"Prewarm skipped for '{state_str}': {e}")
+
+    logger.info(f"Live Sync: Pre-warmed {len(_GLOBAL_STATE_META_CACHE)} blockstates in memory ({warmed_count} newly loaded).")
+    return len(_GLOBAL_STATE_META_CACHE)
+
+
 def clear_mesh_builder_caches() -> None:
     """Clear all global state metadata and material manager caches."""
     global _GLOBAL_MAT_MANAGER, _GLOBAL_MAT_MANAGER_SIG
@@ -355,9 +402,13 @@ def _generate_single_block_faces(
     Returns (is_cube, is_prop, is_fluid).
     """
     meta = state_cache.get(state_str)
-    if not meta and mat_manager is not None and baker is not None and state_str:
-        meta = CachedStateMeta(state_str, mat_manager, baker)
-        state_cache[state_str] = meta
+    if not meta and state_str:
+        if state_str in _GLOBAL_STATE_META_CACHE:
+            meta = _GLOBAL_STATE_META_CACHE[state_str]
+        elif mat_manager is not None and baker is not None:
+            meta = get_cached_state_meta(state_str, mat_manager, baker)
+        if meta:
+            state_cache[state_str] = meta
 
     if not meta or meta.is_air:
         return (0, 0, 0)
@@ -389,9 +440,13 @@ def _generate_single_block_faces(
         if not n_state:
             return None
         nm = state_cache.get(n_state)
-        if not nm and mat_manager is not None and baker is not None:
-            nm = CachedStateMeta(n_state, mat_manager, baker)
-            state_cache[n_state] = nm
+        if not nm:
+            if n_state in _GLOBAL_STATE_META_CACHE:
+                nm = _GLOBAL_STATE_META_CACHE[n_state]
+            elif mat_manager is not None and baker is not None:
+                nm = get_cached_state_meta(n_state, mat_manager, baker)
+            if nm:
+                state_cache[n_state] = nm
         return nm
 
     is_cube_cnt = 0

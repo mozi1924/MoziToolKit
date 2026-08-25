@@ -23,6 +23,7 @@ from ...utils.live_sync.mesh_builder import (
     build_world_mesh,
     apply_block_delta_to_world,
     clear_mesh_builder_caches,
+    preload_sync_world_data,
     WorldMeshBuildResult,
 )
 from ...utils.live_sync.storage import voxel_storage
@@ -299,6 +300,14 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
                 # 1. Update VoxelStorage
                 voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
+
+                # 2. Pre-warm and pre-load all palette blockstate models and materials in RAM
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                mat = find_bound_atlas_material(existing_world) if existing_world else None
+                atlas_params = get_cached_atlas_params(mat)
+                preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
+
+                # 3. Schedule initial world mesh build
                 schedule_point_cloud_update(force_gn_setup=True)
 
                 # Update Palette UI list
