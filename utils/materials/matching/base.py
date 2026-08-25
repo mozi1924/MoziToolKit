@@ -11,7 +11,7 @@ from typing import Callable, List, Optional, Tuple
 import bpy
 
 from ..constants import DEFAULT_NAMESPACE
-from ..provenance import without_blender_suffix
+from ..pipeline.provenance import without_blender_suffix
 
 
 def extract_texture_provenance_from_image(image: bpy.types.Image) -> tuple[str | None, str]:
@@ -103,7 +103,7 @@ def base_texture_candidates(mat: bpy.types.Material) -> tuple[str, list[str]]:
         for node in mat.node_tree.nodes:
             if node.type == "TEX_IMAGE":
                 if node.image:
-                    from ..mineways_atlas import is_mineways_atlas_image
+                    from .mineways_atlas import is_mineways_atlas_image
                     img_ns, key = extract_texture_provenance_from_image(node.image)
                     if img_ns and img_ns not in ("assets", "library", "ice_cube_asset_library"):
                         detected_namespaces.append(img_ns)

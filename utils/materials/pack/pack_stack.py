@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .resource_pack import ZipResourcePack, get_pack_hash
-from ..mc_baker.resource_loader import JarResourceLoader
-from ..system.menu_config import get_enabled_pack_entries
+from ...mc_baker.resource_loader import JarResourceLoader
+from ...system.menu_config import get_enabled_pack_entries
 
 
 class ResourcePackStack:
@@ -180,7 +180,7 @@ class ResourcePackStack:
         Check if the persistent atlas and model bake for this stack exists and is complete.
         """
         import json
-        from .constants import ATLAS_FORMAT_VERSION
+        from ..constants import ATLAS_FORMAT_VERSION
         atlas_dir = self.get_baked_atlas_dir(yefira_only=yefira_only)
         mapping_path = atlas_dir / "atlas_mapping.json"
         if not mapping_path.exists():
@@ -219,7 +219,7 @@ class ResourcePackStack:
         Check if the persistent standalone asset library for this stack exists and is complete.
         """
         import json
-        from .standalone_generator import STANDALONE_FORMAT_VERSION
+        from ..standalone.generator import STANDALONE_FORMAT_VERSION
         standalone_dir = self.get_baked_standalone_dir()
         mapping_path = standalone_dir / "standalone_mapping.json"
         if not mapping_path.exists():
@@ -251,7 +251,7 @@ class ResourcePackStack:
 
     def precompile_standalone(self, output_dir: Optional[Union[str, Path]] = None, progress_callback=None) -> dict:
         """Precompile and build the standalone asset library for this pack stack."""
-        from .standalone_generator import StandaloneGenerator
+        from ..standalone.generator import StandaloneGenerator
         target_dir = Path(output_dir) if output_dir else self.get_baked_standalone_dir()
         gen = StandaloneGenerator(fallback_stack=self)
         return gen.build(target_dir, progress_callback=progress_callback)
@@ -263,8 +263,8 @@ class ResourcePackStack:
         progress_callback=None,
     ) -> dict:
         """Precompile and build the atlas cache for this pack stack."""
-        from .atlas_generator import AtlasGenerator
-        from .constants import (
+        from ..atlas.generator import AtlasGenerator
+        from ..constants import (
             ATLAS_CATEGORY_BLOCKS,
             ATLAS_CATEGORY_ITEMS,
             ATLAS_CATEGORY_ENTITIES,

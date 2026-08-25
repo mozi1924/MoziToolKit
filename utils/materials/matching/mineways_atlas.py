@@ -14,7 +14,7 @@ try:
 except ImportError:
     bpy = None
 
-from .provenance import without_blender_suffix
+from ..pipeline.provenance import without_blender_suffix
 
 # Mineways atlas image patterns
 MINEWAYS_ATLAS_NAME_PATTERNS = (

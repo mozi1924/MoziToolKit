@@ -11,16 +11,20 @@ import bpy
 
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
-from ...utils.materials import (
+from ...utils.materials.pack import (
     ZipResourcePack,
     ResourcePackStack,
     get_configured_pack_stack,
+)
+from ...utils.materials.pipeline import (
     detect_material_mode,
+)
+from ...utils.materials.constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
 )
-from ...utils.materials.pipeline_atlas import AtlasReplacementEngine
-from ...utils.materials.pipeline_standalone import StandaloneReplacementEngine
+from ...utils.materials.atlas import AtlasReplacementEngine
+from ...utils.materials.standalone import StandaloneReplacementEngine
 
 
 class StepReplaceMaterial(PipelineStep):

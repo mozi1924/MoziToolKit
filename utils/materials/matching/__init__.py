@@ -39,6 +39,19 @@ from .mineways import (
     mineways_texture_candidates,
     MINEWAYS_BLOCK_NAME_ALIASES,
 )
+from .mineways_atlas import (
+    MINEWAYS_TILES_TABLE,
+    is_mineways_atlas_image,
+    find_mineways_atlas_image,
+    is_mineways_atlas_material,
+    decode_mineways_face_uv,
+    remap_mineways_atlas_uv_to_local,
+)
+from .texture_finder import (
+    find_albedo_image_from_material,
+    find_face_image,
+    get_material_pixel_step,
+)
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
@@ -46,7 +59,7 @@ from ..constants import (
     ATTR_SOURCE_TEXTURE_KEY,
     DEFAULT_NAMESPACE,
 )
-from ..provenance import (
+from ..pipeline.provenance import (
     without_blender_suffix,
     canonical_texture_key,
     split_texture_key,
@@ -57,7 +70,7 @@ from ..provenance import (
     get_atlas_mapping_from_material,
     write_face_source_provenance,
 )
-from ..atlas_layout import find_texture_id_from_atlas_uv
+from ..atlas.layout import find_texture_id_from_atlas_uv
 
 
 # Instantiated format adapters (order defines priority)
@@ -284,7 +297,6 @@ def extract_face_texture_info(
                     return (*provenance, loc or anim) if provenance else (namespace, [texture_name], loc or anim)
 
     if mat_mode == "MINEWAYS_ATLAS":
-        from ..mineways_atlas import decode_mineways_face_uv, find_mineways_atlas_image
         uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
         if uv_layer and poly_idx < len(mesh.polygons):
             poly = mesh.polygons[poly_idx]
@@ -319,3 +331,51 @@ def extract_face_texture_info(
 
     # Standalone or Generic fallback
     return adapter_ns, adapter_candidates, None
+
+__all__ = [
+    "ImporterAdapter",
+    "MaterialMatchPreset",
+    "ICE_CUBE_ADAPTER",
+    "JMC2OBJ_ADAPTER",
+    "MINEWAYS_ADAPTER",
+    "GENERIC_ADAPTER",
+    "ADAPTERS",
+    "ICE_CUBE_PRESET",
+    "JMC2OBJ_PRESET",
+    "MINEWAYS_PRESET",
+    "GENERIC_PRESET",
+    "MATCH_PRESETS",
+    "get_importer_adapter",
+    "get_material_match_preset",
+    "material_source_origin",
+    "extract_material_texture_keys",
+    "extract_face_texture_info",
+    "is_ice_cube_material",
+    "is_ice_cube_internal_face_material",
+    "ice_cube_texture_candidates",
+    "ice_cube_name_aliases",
+    "ice_cube_legacy_aliases",
+    "ICE_CUBE_ENTITY_ALIASES",
+    "ICE_CUBE_MATERIAL_NAME_ALIASES",
+    "ICE_CUBE_STATIC_ASSET_UUID_ALIASES",
+    "is_jmc2obj_material",
+    "jmc2obj_texture_candidates",
+    "JMC2OBJ_BANNER_SHORT_ALIASES",
+    "JMC2OBJ_BIOME_SUFFIXES",
+    "is_mineways_material",
+    "mineways_texture_candidates",
+    "MINEWAYS_BLOCK_NAME_ALIASES",
+    "MINEWAYS_TILES_TABLE",
+    "is_mineways_atlas_image",
+    "find_mineways_atlas_image",
+    "is_mineways_atlas_material",
+    "decode_mineways_face_uv",
+    "remap_mineways_atlas_uv_to_local",
+    "find_albedo_image_from_material",
+    "find_face_image",
+    "get_material_pixel_step",
+    "generic_texture_candidates",
+    "base_texture_candidates",
+    "normalized_image_key",
+    "extract_texture_provenance_from_image",
+]

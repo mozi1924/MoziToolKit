@@ -13,9 +13,9 @@ from PIL import Image
 
 import bpy
 
-from utils.materials.resource_pack import ZipResourcePack, get_cache_dir
-from utils.materials.pack_stack import ResourcePackStack, get_configured_pack_stack
-from utils.materials.atlas_generator import AtlasGenerator
+from utils.materials.pack.resource_pack import ZipResourcePack, get_cache_dir
+from utils.materials.pack.pack_stack import ResourcePackStack, get_configured_pack_stack
+from utils.materials.atlas.generator import AtlasGenerator
 from utils.materials.biome import BiomeResolver
 from pipeline.presets.presets import run_preset_pipeline
 

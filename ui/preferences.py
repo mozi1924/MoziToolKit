@@ -1095,16 +1095,14 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
     def execute(self, context):
         try:
             from ..utils.system import has_pillow
-            from ..utils.materials.pack_stack import get_configured_pack_stack
-            from ..utils.materials.atlas_generator import AtlasGenerator
-            from ..utils.materials.standalone_generator import StandaloneGenerator
-            from ..utils.materials.resource_pack import get_cache_dir, clean_obsolete_stack_caches
+            from ..utils.materials.pack import get_configured_pack_stack, get_cache_dir, clean_obsolete_stack_caches
+            from ..utils.materials.atlas import AtlasGenerator
+            from ..utils.materials.standalone import StandaloneGenerator
         except (ImportError, ValueError):
             from utils.system import has_pillow
-            from utils.materials.pack_stack import get_configured_pack_stack
-            from utils.materials.atlas_generator import AtlasGenerator
-            from utils.materials.standalone_generator import StandaloneGenerator
-            from utils.materials.resource_pack import get_cache_dir, clean_obsolete_stack_caches
+            from utils.materials.pack import get_configured_pack_stack, get_cache_dir, clean_obsolete_stack_caches
+            from utils.materials.atlas import AtlasGenerator
+            from utils.materials.standalone import StandaloneGenerator
 
         if not has_pillow():
             self.report({'ERROR'}, "Cache precompilation requires 'Pillow' (PIL) module.")

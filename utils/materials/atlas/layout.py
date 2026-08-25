@@ -4,7 +4,7 @@ Shared coordinate rules for baked-UV and shader atlas paths.
 
 from __future__ import annotations
 from typing import Optional, Tuple
-from .constants import FACE_ORDER
+from ..constants import FACE_ORDER
 
 
 def face_index_from_normal(normal) -> int:
@@ -194,7 +194,7 @@ def remap_uv_to_local(
                 atlas_height=float(old_chunk.get("height", 16)),
             )
     elif orig_mode == "MINEWAYS_ATLAS" and old_loc:
-        from .mineways_atlas import remap_mineways_atlas_uv_to_local
+        from ..matching.mineways_atlas import remap_mineways_atlas_uv_to_local
         img_w = int(old_loc.get("width", 1024))
         img_h = int(old_loc.get("height", 1024))
         return remap_mineways_atlas_uv_to_local(u, v, image_width=img_w, image_height=img_h)

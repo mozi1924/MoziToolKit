@@ -14,11 +14,11 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
-from .constants import DEFAULT_NAMESPACE
-from .provenance import canonical_texture_key
-from .biome import BiomeResolver
-from .standalone_aligner import align_standalone_textures, is_channel_animated, _get_channel_image_size
-from ..system.dependencies import has_pillow
+from ..constants import DEFAULT_NAMESPACE
+from ..pipeline.provenance import canonical_texture_key
+from ..biome import BiomeResolver
+from .aligner import align_standalone_textures, is_channel_animated, _get_channel_image_size
+from ...system.dependencies import has_pillow
 
 try:
     from PIL import Image
@@ -45,8 +45,8 @@ class StandaloneGenerator:
         resource_path: Optional[Union[str, Path, Any]] = None,
         fallback_stack: Optional[Any] = None,
     ):
-        from .pack_stack import ResourcePackStack, get_configured_pack_stack
-        from .resource_pack import ZipResourcePack
+        from ..pack.pack_stack import ResourcePackStack, get_configured_pack_stack
+        from ..pack.resource_pack import ZipResourcePack
 
         if isinstance(resource_path, ResourcePackStack):
             self.stack = resource_path

@@ -32,9 +32,9 @@ from utils.materials.constants import (
     PROP_ATLAS_CHUNK_KIND,
     classify_texture_category,
 )
-from utils.materials.atlas_generator import AtlasGenerator
-from utils.materials.atlas_builder import build_atlas_chunk_materials
-from utils.materials.pack_stack import ResourcePackStack
+from utils.materials.atlas.generator import AtlasGenerator
+from utils.materials.atlas.builder import build_atlas_chunk_materials
+from utils.materials.pack.pack_stack import ResourcePackStack
 
 
 class TestMultiCategoryAtlas(unittest.TestCase):

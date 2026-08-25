@@ -134,7 +134,7 @@ class TestReplaceMaterialAtlasMode(unittest.TestCase):
             self.skipTest("Pillow not installed in test environment")
 
         from pipeline.presets import run_preset_pipeline
-        from utils.materials.resource_pack import ZipResourcePack
+        from utils.materials.pack.resource_pack import ZipResourcePack
 
         pack = ZipResourcePack(str(self.jar_path))
         anim_tex = None

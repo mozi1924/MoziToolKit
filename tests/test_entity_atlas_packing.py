@@ -22,9 +22,9 @@ from utils.materials.constants import (
     ATLAS_CATEGORY_PAINTINGS,
     PROP_ATLAS_CHUNK_CATEGORY,
 )
-from utils.materials.atlas_generator import AtlasGenerator
-from utils.materials.atlas_builder import build_atlas_chunk_materials
-from utils.materials.atlas_layout import (
+from utils.materials.atlas.generator import AtlasGenerator
+from utils.materials.atlas.builder import build_atlas_chunk_materials
+from utils.materials.atlas.layout import (
     atlas_uv_from_rect,
     local_uv_from_rect,
     remap_local_to_target_uv,

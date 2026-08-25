@@ -18,13 +18,7 @@ from .provenance import (
     get_atlas_mapping_from_material,
     get_atlas_mapping_from_mesh,
 )
-from .matching import (
-    extract_face_texture_info,
-    extract_material_texture_keys,
-    material_source_origin,
-    is_ice_cube_internal_face_material,
-)
-from .constants import (
+from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
 )
@@ -107,6 +101,11 @@ def build_material_face_cache(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> tu
     only tens or hundreds of source materials. Adapter detection walks node
     trees and atlas mappings, so precomputing it avoids heavy per-polygon RNA calls.
     """
+    from ..matching import (
+        extract_material_texture_keys,
+        material_source_origin,
+        is_ice_cube_internal_face_material,
+    )
     mesh_mapping = get_atlas_mapping_from_mesh(mesh)
     chunk_attr = mesh.attributes.get(ATTR_ATLAS_CHUNK_ID) or mesh.attributes.get("atlas_chunk_id")
     texture_attr = mesh.attributes.get(ATTR_ATLAS_TEXTURE_ID) or mesh.attributes.get("atlas_texture_id")
@@ -187,6 +186,7 @@ def cached_face_texture_info(
             if texture_name:
                 return namespace, [texture_name], location
 
+    from ..matching import extract_face_texture_info
     return extract_face_texture_info(mesh, poly_idx, material, state["mapping"])
 
 
