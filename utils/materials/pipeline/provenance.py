@@ -232,3 +232,137 @@ def write_provenance_schema(owner) -> None:
     """Stamp a Blender ID datablock with Mozi's explicit provenance contract."""
     owner[PROP_CREATED_BY] = "MoziToolKit"
     owner[PROP_PROVENANCE_SCHEMA_VERSION] = PROVENANCE_SCHEMA_VERSION
+
+
+def reconstruct_materials_from_mesh_provenance(
+    mesh: bpy.types.Mesh,
+    obj: bpy.types.Object | None = None,
+    atlas_params: dict | None = None,
+    pack_stack = None,
+) -> bool:
+    """
+    Reconstruct material slots and shader node trees purely from mesh-level face attributes (Provenance).
+    Recovers from accidental material deletion, node tree clearing, or slot desynchronization.
+    """
+    if not mesh or not mesh.polygons:
+        return False
+
+    from ..constants import (
+        ATTR_ATLAS_CHUNK_ID,
+        PROP_ATLAS_CHUNK_ID,
+        PROP_PACK_HASH,
+    )
+    from .mesh_attributes import read_face_string_attribute
+
+    source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+    chunk_attr = mesh.attributes.get(ATTR_ATLAS_CHUNK_ID)
+
+    target_obj = obj
+    if target_obj is None:
+        # Find an object in the scene referencing this mesh
+        for o in bpy.data.objects:
+            if o.data == mesh:
+                target_obj = o
+                break
+
+    # Determine pack hash and atlas mapping if available
+    pack_hash = ""
+    if atlas_params:
+        pack_hash = atlas_params.get("pack_hash", "")
+    if not pack_hash and pack_stack:
+        pack_hash = getattr(pack_stack, "stack_hash", "") or getattr(pack_stack, "cache_key", "")
+
+    # Mode A: Atlas Chunk Mode (chunk_attr exists or mapping available)
+    if chunk_attr and chunk_attr.domain == "FACE" and len(chunk_attr.data) == len(mesh.polygons):
+        unique_chunk_ids = set()
+        for item in chunk_attr.data:
+            unique_chunk_ids.add(int(item.value))
+
+        if not unique_chunk_ids:
+            unique_chunk_ids = {0}
+
+        max_cid = max(unique_chunk_ids, default=0)
+        # Ensure object material slots
+        if target_obj:
+            while len(target_obj.data.materials) <= max_cid:
+                target_obj.data.materials.append(None)
+
+        chunk_mats = {}
+        for cid in unique_chunk_ids:
+            mat_name = f"MC_Atlas_Chunk_{cid}"
+            mat = bpy.data.materials.get(mat_name)
+            if not mat:
+                mat = bpy.data.materials.new(name=mat_name)
+            mat.use_nodes = True
+            mat[PROP_ATLAS_CHUNK_ID] = cid
+            if pack_hash:
+                mat[PROP_PACK_HASH] = pack_hash
+            write_provenance_schema(mat)
+
+            # Rebuild nodes if empty or missing output
+            nodes = mat.node_tree.nodes
+            has_output = any(n.type == "OUTPUT_MATERIAL" for n in nodes)
+            if not has_output or len(nodes) <= 1:
+                nodes.clear()
+                out_node = nodes.new("ShaderNodeOutputMaterial")
+                out_node.location = (400, 0)
+                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+                bsdf.location = (0, 0)
+                mat.node_tree.links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
+
+            chunk_mats[cid] = mat
+            if target_obj and cid < len(target_obj.data.materials):
+                target_obj.data.materials[cid] = mat
+
+        # Re-assign face material indices to match chunk_id
+        for poly_idx, poly in enumerate(mesh.polygons):
+            cid = int(chunk_attr.data[poly_idx].value)
+            poly.material_index = cid
+
+        mesh.update()
+        return True
+
+    # Mode B: Source Texture Key Mode (Standalone / Generic recovery)
+    has_valid_keys = any(bool(k) for k in source_keys)
+    if has_valid_keys:
+        unique_keys = sorted(list({k for k in source_keys if k}))
+        key_to_slot = {k: idx for idx, k in enumerate(unique_keys)}
+
+        if target_obj:
+            while len(target_obj.data.materials) < len(unique_keys):
+                target_obj.data.materials.append(None)
+
+        for k, slot_idx in key_to_slot.items():
+            short_name = k.split(":", 1)[-1].removeprefix("block/")
+            mat_name = f"MC_{short_name}"
+            mat = bpy.data.materials.get(mat_name)
+            if not mat:
+                mat = bpy.data.materials.new(name=mat_name)
+            mat.use_nodes = True
+            mat["mtk:source_texture"] = k
+            if pack_hash:
+                mat[PROP_PACK_HASH] = pack_hash
+            write_provenance_schema(mat)
+
+            nodes = mat.node_tree.nodes
+            has_output = any(n.type == "OUTPUT_MATERIAL" for n in nodes)
+            if not has_output or len(nodes) <= 1:
+                nodes.clear()
+                out_node = nodes.new("ShaderNodeOutputMaterial")
+                out_node.location = (400, 0)
+                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+                bsdf.location = (0, 0)
+                mat.node_tree.links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
+
+            if target_obj and slot_idx < len(target_obj.data.materials):
+                target_obj.data.materials[slot_idx] = mat
+
+        for poly_idx, poly in enumerate(mesh.polygons):
+            k = source_keys[poly_idx]
+            if k in key_to_slot:
+                poly.material_index = key_to_slot[k]
+
+        mesh.update()
+        return True
+
+    return False

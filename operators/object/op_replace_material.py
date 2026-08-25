@@ -67,3 +67,45 @@ class MOZI_OT_replace_material(bpy.types.Operator):
 
         return {"FINISHED"}
 
+
+@register_menu_item(views=["object"])
+class MOZI_OT_restore_materials_from_provenance(bpy.types.Operator):
+    """Restore material slots and shader node trees purely from mesh face metadata (mtk_source_texture_key / chunk attributes)."""
+
+    bl_idname = "mozi.restore_materials_from_provenance"
+    bl_label = "Restore Materials from Attributes"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and bool(context.selected_objects)
+
+    def execute(self, context):
+        from ...utils.materials.pipeline.provenance import reconstruct_materials_from_mesh_provenance
+        from ...utils.materials import get_configured_pack_stack
+
+        pack_stack = None
+        try:
+            pack_stack = get_configured_pack_stack()
+        except Exception:
+            pass
+
+        restored_count = 0
+        for obj in context.selected_objects:
+            if obj.type == "MESH" and obj.data:
+                success = reconstruct_materials_from_mesh_provenance(
+                    mesh=obj.data,
+                    obj=obj,
+                    pack_stack=pack_stack,
+                )
+                if success:
+                    restored_count += 1
+
+        if restored_count > 0:
+            self.report({'INFO'}, f"Successfully restored materials for {restored_count} object(s) from face attributes.")
+            return {"FINISHED"}
+        else:
+            self.report({'WARNING'}, "No face provenance metadata found (mtk_source_texture_key or mtk_atlas_chunk_id).")
+            return {"CANCELLED"}
+
+

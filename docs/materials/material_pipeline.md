@@ -195,6 +195,15 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 | **动画驱动机制** | 图集 UV Decoder 节点组计算 V 轴偏移 | 独立材质节点树计算 V 轴帧偏移 |
 | **预编译机制** | 预编译输出 Atlas Chunks 与 `atlas_mapping.json` | 预编译输出融合贴图库、对齐伴生图与 `standalone_mapping.json` |
 
+### 3.5 面级身份契约与节点树自愈恢复 (Mesh Face Provenance & Auto-Recovery)
+- **核心契约（`mtk_source_texture_key`）**：
+  无论是静态模型导入、材质替换管线还是实时同步 Direct Mesh 生成，系统均向网格写入标准的面域字符串属性 `mtk_source_texture_key`（例如 `"minecraft:block/stone"`）。
+- **节点树删除无损自愈能力**：
+  当用户或脚本将物体的材质槽完全清空、或者在 Shader Editor 中删除了全部节点时，系统能够纯粹依据网格面属性中固化的 `mtk_source_texture_key` 与 `mtk_atlas_chunk_id`，调用 `reconstruct_materials_from_mesh_provenance` 算子：
+  1. 瞬间重新分配所有材质槽并对齐多边形面的 `material_index`；
+  2. 自动重新生成 Principled BSDF / 图集着色器节点树并绑定贴图；
+  3. 实现 100% 离线、零数据损失的原地自愈。
+
 ---
 
 ## 4. 图集数学模型与着色器防溢色 (Atlas UV Tiling & Anti-Bleed Math)
