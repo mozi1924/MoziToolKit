@@ -5,9 +5,19 @@ Unit tests for Live Sync multi-chunk atlas adaptation.
 from __future__ import annotations
 
 import json
+import sys
 import unittest
 from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 import bpy
+
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
 
 from utils.materials.yefira.atlas_integration import (
     extract_atlas_parameters,
@@ -129,4 +139,4 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

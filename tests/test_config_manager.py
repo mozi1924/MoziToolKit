@@ -3,9 +3,18 @@ Comprehensive Unit Tests for MoziToolKit Unified Configuration Manager and Backe
 """
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
 
 from utils.config import (
     ConfigManager,
@@ -183,4 +192,4 @@ class TestConfigManager(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

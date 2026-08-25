@@ -10,6 +10,10 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials import ATLAS_FORMAT_VERSION, AtlasGenerator, atlas_uv_from_local, chunk_cell
 
 try:

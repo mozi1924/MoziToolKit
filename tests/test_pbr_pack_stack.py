@@ -13,6 +13,10 @@ import bpy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# Bootstrap MoziToolKit package so top-level pipeline/operators/ui imports resolve
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials import (
     ResourcePackStack,
     ZipResourcePack,
@@ -291,4 +295,4 @@ class TestDecoupledMaterialReplacement(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

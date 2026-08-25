@@ -17,6 +17,10 @@ import bpy
 import bmesh
 from mathutils import Vector
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials.constants import ATTR_UV_ROTATION
 from utils.mesh.uv_rotation import (
     detect_face_uv_rotation,

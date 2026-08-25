@@ -14,6 +14,10 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 import bpy
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.mc_baker import StateBaker
 from utils.mc_baker.blockstate_resolver import BlockStateResolver
 from utils.live_sync import VoxelStorage, build_world_mesh
