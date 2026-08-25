@@ -685,6 +685,109 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertAlmostEqual(uv_sl_bl[0], 64.0 / 512.0, places=5)
         self.assertAlmostEqual(uv_sl_bl[1], 1.0 - 16.0 / 512.0, places=5)
 
+    def test_mesh_face_attributes_written(self):
+        """Verify that BMesh generation creates and populates all shader face attributes."""
+        mapping = {
+            "chunks": [
+                {"chunk_id": 0, "category": "blocks", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+                {"chunk_id": 1, "category": "blocks", "kind": "animation", "width": 512, "height": 512, "tile_size": 16},
+            ],
+            "textures": {
+                "minecraft:block/stone": {"chunk_id": 0, "category": "blocks", "tile_column": 0, "tile_row": 0},
+                "minecraft:block/grass_block_top": {"chunk_id": 0, "category": "blocks", "tile_column": 1, "tile_row": 0, "default_tint_weight": 1.0},
+                "minecraft:block/grass_block_side": {"chunk_id": 0, "category": "blocks", "tile_column": 2, "tile_row": 0},
+                "minecraft:block/dirt": {"chunk_id": 0, "category": "blocks", "tile_column": 3, "tile_row": 0},
+            },
+            "animations": [
+                {
+                    "name": "minecraft:block/water_still",
+                    "texture_key": "minecraft:block/water_still",
+                    "category": "blocks",
+                    "chunk_id": 1,
+                    "pixel_x": 32,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 32,
+                    "frametime": 2,
+                    "interpolate": True,
+                    "default_tint_weight": 1.0,
+                },
+            ]
+        }
+
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:stone")
+        storage.set_block(1, 0, 0, "minecraft:grass_block")
+        storage.set_block(2, 0, 0, "minecraft:water")
+
+        res = build_world_mesh(bpy.context, storage, atlas_params={"mapping": mapping})
+        mesh = res.world_obj.data
+
+        # 1. Assert all 6 face attributes exist on the mesh
+        expected_attrs = [
+            ("mtk_uv_rotation", "FLOAT"),
+            ("mtk_anim_timing", "FLOAT_COLOR"),
+            ("mtk_anim_frame_size", "FLOAT_COLOR"),
+            ("mtk_uv_tiling_transform", "FLOAT_COLOR"),
+            ("mtk_biome_tint_data", "FLOAT_COLOR"),
+            ("mtk_biome_tint_color", "FLOAT_COLOR"),
+        ]
+        for attr_name, expected_type in expected_attrs:
+            self.assertIn(attr_name, mesh.attributes, f"Mesh must contain face attribute '{attr_name}'")
+            attr = mesh.attributes[attr_name]
+            self.assertEqual(attr.domain, "FACE", f"Attribute '{attr_name}' must be on FACE domain")
+            self.assertEqual(attr.data_type, expected_type, f"Attribute '{attr_name}' must be data_type {expected_type}")
+            self.assertEqual(len(attr.data), len(mesh.polygons), f"Attribute '{attr_name}' must match polygon count")
+
+        # 2. Check timing attribute values
+        timing_attr = mesh.attributes["mtk_anim_timing"]
+        tint_data_attr = mesh.attributes["mtk_biome_tint_data"]
+        tint_color_attr = mesh.attributes["mtk_biome_tint_color"]
+
+        found_animated_water = False
+        found_tinted_grass = False
+        found_untinted_stone = False
+
+        for poly_idx in range(len(mesh.polygons)):
+            timing = list(timing_attr.data[poly_idx].color)
+            tint_data = list(tint_data_attr.data[poly_idx].color)
+            tint_col = list(tint_color_attr.data[poly_idx].color)
+
+            # Water face: Total Frames = 32, Frametime = 2, Interpolate = 1.0
+            if timing[0] == 32.0 and timing[1] == 2.0 and timing[2] == 1.0:
+                found_animated_water = True
+                self.assertEqual(tint_data[2], 1.0, "Water face must have Tint Weight == 1.0")
+
+            # Tinted grass face: Tint Weight == 1.0, green tint
+            if tint_data[2] == 1.0 and abs(tint_col[0] - 0.35) < 0.01:
+                found_tinted_grass = True
+
+            # Untinted stone face: Tint Weight == 0.0, White tint color, Total Frames == 1.0
+            if tint_data[2] == 0.0 and timing[0] == 1.0 and abs(tint_col[0] - 1.0) < 0.01:
+                found_untinted_stone = True
+
+        self.assertTrue(found_animated_water, "Mesh must contain water face with correct animation timing attribute")
+        self.assertTrue(found_tinted_grass, "Mesh must contain grass face with correct biome tint attribute")
+        self.assertTrue(found_untinted_stone, "Mesh must contain stone face with default attributes")
+
+    def test_directional_block_uv_rotation_attribute_is_zero(self):
+        """Verify that directional blocks have mtk_uv_rotation=0.0 to prevent shader double-rotation."""
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:furnace[facing=east,lit=false]")
+        storage.set_block(1, 0, 0, "minecraft:piston[facing=up]")
+        storage.set_block(2, 0, 0, "minecraft:oak_log[axis=x]")
+
+        res = build_world_mesh(bpy.context, storage)
+        mesh = res.world_obj.data
+
+        self.assertIn("mtk_uv_rotation", mesh.attributes)
+        rot_attr = mesh.attributes["mtk_uv_rotation"]
+
+        # All solid/directional block faces must have mtk_uv_rotation == 0.0
+        for poly_idx in range(len(mesh.polygons)):
+            rot_val = rot_attr.data[poly_idx].value
+            self.assertEqual(rot_val, 0.0, f"Polygon {poly_idx} must have mtk_uv_rotation == 0.0 (no double rotation)")
+
 
 if __name__ == "__main__":
     unittest.main()
