@@ -1,6 +1,6 @@
 import bpy
 from ...utils.system import register_menu_item, has_pillow, draw_pillow_warning, get_prefs
-from ...utils.materials import has_yefira_objects, get_configured_pack_stack
+from ...utils.materials import get_configured_pack_stack
 
 
 @register_menu_item(views=["object"])
@@ -36,13 +36,10 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         biome_preset = getattr(prefs, "biome_preset", "PLAINS") if prefs else "PLAINS"
         pack_textures = getattr(prefs, "pack_textures", True) if prefs else True
 
-        is_yefira = has_yefira_objects(context.selected_objects)
-        effective_mode = 'ATLAS' if is_yefira else material_mode
-
         params = {
             "pack_stack": pack_stack,
             "zip_path": str(pack_stack.packs[0].zip_path if pack_stack.packs[0].zip_path else pack_stack.packs[0].extract_dir),
-            "material_mode": effective_mode,
+            "material_mode": material_mode,
             "pack_textures": pack_textures,
             "biome_preset": biome_preset,
         }
