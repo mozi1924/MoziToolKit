@@ -7,6 +7,10 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
+# Bootstrap MoziToolKit package so top-level pipeline/operators/ui imports resolve
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 try:
     import bpy
     HAS_BPY = True

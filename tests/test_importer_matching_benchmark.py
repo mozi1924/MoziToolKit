@@ -7,6 +7,10 @@ import unittest
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
+# Bootstrap MoziToolKit package so top-level pipeline/operators/ui imports resolve
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 import bpy
 from utils.materials.pack.resource_pack import ZipResourcePack
 from utils.materials.matching import extract_material_texture_keys, get_importer_adapter

@@ -12,6 +12,10 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+# Bootstrap MoziToolKit package so top-level pipeline/operators/ui imports resolve
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 import bpy
 import bmesh
 
@@ -19,18 +23,15 @@ import bmesh
 class TestPipelineFramework(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        # The MoziToolKit package is already imported by the bootstrap (or by
+        # run_tests.py). Only register it if it hasn't been registered yet, to
+        # avoid "already registered" errors and inconsistent partial state.
         try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(
-                "MoziToolKit",
-                str(PROJECT_DIR / "__init__.py"),
-                submodule_search_locations=[str(PROJECT_DIR)]
-            )
-            pkg = importlib.util.module_from_spec(spec)
-            sys.modules["MoziToolKit"] = pkg
-            spec.loader.exec_module(pkg)
-            if hasattr(pkg, "register"):
-                pkg.register()
+            if hasattr(bpy.types, "MOZI_OT_adaptive_pixel_split"):
+                return
+            import MoziToolKit
+            if hasattr(MoziToolKit, "register"):
+                MoziToolKit.register()
         except Exception as e:
             print(f"[Test Init] Extension registration note: {e}")
 

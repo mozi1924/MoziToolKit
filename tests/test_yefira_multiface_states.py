@@ -16,6 +16,10 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 import bpy
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.mc_baker import StateBaker, clear_shared_baker_cache, get_shared_state_baker
 from utils.live_sync import VoxelStorage, build_world_mesh
 
@@ -107,4 +111,4 @@ class TestYefiraMultifaceStates(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

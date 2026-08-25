@@ -35,6 +35,10 @@ Image.init()
 
 import bpy
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials.nodes.builder import rebuild_material, repair_material_nodes
 from utils.materials.atlas.builder import build_atlas_chunk_materials, build_atlas_material
 from utils.materials.yefira.atlas_integration import get_or_create_atlas_material

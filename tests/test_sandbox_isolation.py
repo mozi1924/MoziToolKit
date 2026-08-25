@@ -10,8 +10,17 @@ Guarantees that:
 
 import json
 import os
+import sys
 import unittest
 from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
 
 from tests.test_env import is_sandbox_active, get_sandbox_path
 from utils.system import (
@@ -98,4 +107,4 @@ class TestSandboxIsolation(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

@@ -20,6 +20,10 @@ if str(PROJECT_DIR) not in sys.path:
 from PIL import Image
 import bpy
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from MoziToolKit.utils.materials.biome import (
     hex_to_linear_rgba,
     linear_rgba_to_hex,
@@ -443,3 +447,7 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         self.assertAlmostEqual(tint_data[2], 1.0, places=2)
         self.assertAlmostEqual(tint_data[0], 0.0, places=2)
         self.assertAlmostEqual(tint_data[1], 1.0, places=2)
+
+
+if __name__ == "__main__":
+    unittest.main(argv=[sys.argv[0]])

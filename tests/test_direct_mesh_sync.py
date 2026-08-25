@@ -10,22 +10,36 @@ Tests:
 
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 import bpy
 
 from utils.live_sync import (
     VoxelStorage,
     build_world_mesh,
     WorldMeshBuildResult,
+    clear_mesh_builder_caches,
 )
 
 
 class TestDirectMeshSync(unittest.TestCase):
     def setUp(self):
         bpy.ops.wm.read_homefile(use_empty=True)
+        clear_mesh_builder_caches()
 
     def tearDown(self):
         bpy.ops.wm.read_homefile(use_empty=True)
+        clear_mesh_builder_caches()
 
     def test_single_cube_mesh_generation_and_uvs(self):
         """A single cube should produce 6 faces, 24 loops, and valid UVMap."""
@@ -836,4 +850,4 @@ class TestDirectMeshSync(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])
