@@ -198,6 +198,27 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertEqual(len(mesh.polygons), 6)
         self.assertEqual(res.cubes_count, 1)
 
+    def test_vertex_welding_topology(self):
+        """Verify that weld_vertices merges co-located vertices into clean topology (8 vertices for a single cube, 12 for 2 joined cubes)."""
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:stone")
+
+        # 1. Single cube with welding -> 8 vertices
+        res_welded = build_world_mesh(bpy.context, storage, weld_vertices=True)
+        self.assertEqual(len(res_welded.world_obj.data.vertices), 8)
+        self.assertEqual(len(res_welded.world_obj.data.polygons), 6)
+
+        # 2. Single cube without welding -> 24 vertices
+        res_unwelded = build_world_mesh(bpy.context, storage, weld_vertices=False)
+        self.assertEqual(len(res_unwelded.world_obj.data.vertices), 24)
+        self.assertEqual(len(res_unwelded.world_obj.data.polygons), 6)
+
+        # 3. Two joined cubes with welding -> 12 vertices, 10 faces
+        storage.set_block(1, 0, 0, "minecraft:stone")
+        res_two = build_world_mesh(bpy.context, storage, weld_vertices=True)
+        self.assertEqual(len(res_two.world_obj.data.vertices), 12)
+        self.assertEqual(len(res_two.world_obj.data.polygons), 10)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -322,10 +322,12 @@ def build_world_mesh(
     atlas_params: Optional[dict[str, Any]] = None,
     filter_air: bool = True,
     origin_centered: bool = True,
+    weld_vertices: bool = True,
 ) -> WorldMeshBuildResult:
     """
     Constructs the full native Blender polygon mesh with native UVMap, Material Slots,
     and Biome Tinting directly from VoxelStorage.
+    If weld_vertices is True, merges duplicate co-located vertices in-engine for optimal geometry topology.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return WorldMeshBuildResult(None, 0, 0, 0, 0, 0)
@@ -527,7 +529,11 @@ def build_world_mesh(
                         loop[uv_layer].uv = Vector((u_atlas, v_atlas))
                         loop[color_layer] = final_color
 
-    # 6. Push BMesh data back to Blender Mesh
+    # 6. Optional in-engine vertex welding for optimal topology
+    if weld_vertices and len(bm.verts) > 0:
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+
+    # 7. Push BMesh data back to Blender Mesh
     mesh.clear_geometry()
     bm.to_mesh(mesh)
     bm.free()
