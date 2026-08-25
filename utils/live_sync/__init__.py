@@ -55,6 +55,7 @@ from .material_manager import (
 from .mesh_builder import (
     WorldMeshBuildResult,
     build_world_mesh,
+    sync_world_mesh,
 )
 from .point_cloud import (
     PointCloudBuildResult,
@@ -117,6 +118,7 @@ __all__ = (
     "PointCloudBuildResult",
     "WorldMeshBuildResult",
     "build_world_mesh",
+    "sync_world_mesh",
     "set_baker_resource_source",
     "update_world_point_cloud",
     "VoxelStorage",
