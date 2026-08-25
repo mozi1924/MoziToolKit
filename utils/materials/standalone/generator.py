@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional, Tuple, Union
 
-from ..constants import DEFAULT_NAMESPACE
+from ..constants import DEFAULT_NAMESPACE, FALLBACK_TEXTURE_KEY
 from ..pipeline.provenance import canonical_texture_key
 from ..biome import BiomeResolver
 from .aligner import align_standalone_textures, is_channel_animated, _get_channel_image_size
@@ -28,7 +28,7 @@ except ImportError:
     Image = None
     HAS_PIL = False
 
-STANDALONE_FORMAT_VERSION = 1
+STANDALONE_FORMAT_VERSION = 2
 
 
 class StandaloneGenerator:
@@ -107,6 +107,22 @@ class StandaloneGenerator:
         short_hash = stack_hash[:8]
         textures_mapping: Dict[str, dict] = {}
         aliases_mapping: Dict[str, str] = {}
+
+        # Always publish a tiny procedural error texture.  It gives replacement
+        # a deterministic material even when a source resource does not exist.
+        fallback_file = "textures/mtk_fallback.png"
+        fallback_img = Image.new("RGBA", (16, 16), (24, 24, 24, 255))
+        for y in range(16):
+            for x in range(16):
+                if ((x // 4) + (y // 4)) % 2 == 0:
+                    fallback_img.putpixel((x, y), (255, 0, 255, 255))
+        fallback_img.save(textures_dir / "mtk_fallback.png")
+        fallback_record = {
+            "namespace": "mozi", "texture_name": "fallback", "texture_key": "fallback",
+            "canonical_key": FALLBACK_TEXTURE_KEY, "files": {"albedo": fallback_file, "normal": None, "specular": None, "overlay": None},
+            "is_animated": False, "animation": None, "tint_info": {}, "is_fallback": True,
+        }
+        textures_mapping[FALLBACK_TEXTURE_KEY] = fallback_record
 
         try:
             for idx, ((ns, path_key), raw_info) in enumerate(valid_entries.items()):

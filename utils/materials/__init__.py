@@ -54,6 +54,8 @@ from .constants import (
     ATTR_ALPHA_MODE,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
+    ATTR_FACE_MATERIAL_METADATA,
+    FALLBACK_TEXTURE_KEY,
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,
@@ -218,6 +220,8 @@ from .pipeline import (
     get_atlas_mapping_from_mesh,
     write_provenance_schema,
     write_face_source_provenance,
+    write_face_material_metadata,
+    read_face_material_metadata,
     ensure_face_attribute,
     read_face_vector_attribute,
     read_face_float_attribute,
@@ -234,6 +238,7 @@ from .pipeline import (
     name_replaced_material,
     find_existing_replacement,
     apply_mesh_face_materials_and_provenance,
+    cleanup_unused_mtk_datablocks,
     build_material_face_cache,
     cached_face_texture_info,
     get_polygon_material_indices,
@@ -259,4 +264,3 @@ from .yefira import (
     resolve_block_state_face_locations,
     refresh_baker_sources,
 )
-

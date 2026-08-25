@@ -21,11 +21,13 @@ from ..constants import (
     ATTR_UV_TILING_TRANSFORM,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
+    FALLBACK_TEXTURE_KEY,
 )
 from ..pipeline.provenance import (
     canonical_texture_key,
     split_texture_key,
     write_provenance_schema,
+    read_face_material_metadata,
 )
 from ..matching import material_source_origin
 from ..pack.pack_stack import ResourcePackStack
@@ -59,6 +61,7 @@ from ..pipeline.session import (
     find_existing_replacement,
     apply_mesh_face_materials_and_provenance,
     apply_generic_procedural_atlas_material,
+    cleanup_unused_mtk_datablocks,
 )
 
 
@@ -163,6 +166,10 @@ class AtlasReplacementEngine:
             if "/" in texture_name:
                 basename = texture_name.rsplit("/", 1)[-1]
                 texture_map.setdefault(canonical_texture_key(namespace, basename), location)
+        fallback_location = texture_map.get(FALLBACK_TEXTURE_KEY)
+        if fallback_location is None:
+            yield StepResult.failed("Atlas mapping is missing its required fallback tile (chunk 0, slot 0).")
+            return
 
         chunks_by_id = {int(chunk["chunk_id"]): chunk for chunk in mapping_data.get("chunks", [])}
 
@@ -213,7 +220,9 @@ class AtlasReplacementEngine:
             yield StepResult.cancelled("Material replacement cancelled by user.")
             return
 
-        effective_chunks = required_chunk_ids if required_chunk_ids else {0}
+        # Fallback is always materialized; unsupported faces may be discovered
+        # after the initial source scan.
+        effective_chunks = (required_chunk_ids if required_chunk_ids else {0}) | {0}
         atlas_materials = build_atlas_chunk_materials(
             atlas_dir,
             pack_hash=effective_pack_hash,
@@ -288,6 +297,9 @@ class AtlasReplacementEngine:
             resolved_standalone = [None] * len(mesh.polygons)
             source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
             source_origins = read_face_string_attribute(mesh, ATTR_SOURCE_ORIGIN)
+            for idx, record in enumerate(read_face_material_metadata(mesh)):
+                source_keys[idx] = source_keys[idx] or str(record.get("source_texture_key", ""))
+                source_origins[idx] = source_origins[idx] or str(record.get("source_origin", ""))
             unresolved_faces = []
             skipped_faces = []
             face_materials = [
@@ -307,10 +319,26 @@ class AtlasReplacementEngine:
                     yield ProgressUpdate(sub_prog, 1.0, f"Scanning Atlas faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
 
                 if material_index >= len(slot_materials):
+                    namespace, texture_key = split_texture_key(source_keys[poly_idx])
+                    chunk_ids[poly_idx] = 0.0
+                    texture_ids[poly_idx] = 0.0
+                    poly_tint_map[poly_idx] = fallback_location
+                    resolved_locations[poly_idx] = (fallback_location, None, "GENERIC", None)
+                    if not source_keys[poly_idx] and texture_key:
+                        source_keys[poly_idx] = canonical_texture_key(namespace, texture_key)
+                    poly_updated = True
                     unresolved_faces.append(poly_idx)
                     continue
                 orig_mat = slot_materials[material_index]
                 if not orig_mat:
+                    namespace, texture_key = split_texture_key(source_keys[poly_idx])
+                    chunk_ids[poly_idx] = 0.0
+                    texture_ids[poly_idx] = 0.0
+                    poly_tint_map[poly_idx] = fallback_location
+                    resolved_locations[poly_idx] = (fallback_location, None, "GENERIC", None)
+                    if not source_keys[poly_idx] and texture_key:
+                        source_keys[poly_idx] = canonical_texture_key(namespace, texture_key)
+                    poly_updated = True
                     unresolved_faces.append(poly_idx)
                     continue
                 state = material_cache[orig_mat]
@@ -384,14 +412,25 @@ class AtlasReplacementEngine:
                             poly_updated = True
                             continue
 
+                    # Retain the source identity, but render the stable atlas
+                    # fallback at chunk 0 / texture 0.  This keeps the object
+                    # convertible when only one block is unsupported.
+                    new_location = fallback_location
+                    chunk_ids[poly_idx] = 0.0
+                    texture_ids[poly_idx] = 0.0
+                    poly_tint_map[poly_idx] = fallback_location
+                    resolved_locations[poly_idx] = (new_location, old_loc, orig_mode, old_mapping)
+                    if not source_keys[poly_idx] and candidates:
+                        source_keys[poly_idx] = canonical_texture_key(namespace, candidates[0])
+                    source_origins[poly_idx] = source_origins[poly_idx] or state["origin"]
+                    poly_updated = True
                     unresolved_faces.append(poly_idx)
 
             if skipped_faces:
                 pipeline_context.report("INFO", f"'{obj.name}': retained {len(skipped_faces)} Ice Cube internal face(s).")
 
             if unresolved_faces:
-                pipeline_context.report("WARNING", f"'{obj.name}' was left unchanged: {len(unresolved_faces)} face(s) could not be matched exactly.")
-                continue
+                pipeline_context.report("WARNING", f"'{obj.name}': {len(unresolved_faces)} unsupported face(s) assigned atlas fallback chunk 0 / texture 0.")
 
             if poly_updated:
                 if uv_layer is not None:
@@ -514,5 +553,6 @@ class AtlasReplacementEngine:
 
             replaced_objects += 1
 
+        cleanup_unused_mtk_datablocks()
         yield ProgressUpdate(1.0, 1.0, f"Atlas replacement finished ({replaced_objects} object(s)).")
         yield StepResult.success(f"Successfully processed {replaced_objects} object(s) in Atlas Mode.")

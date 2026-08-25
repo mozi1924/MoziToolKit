@@ -17,10 +17,13 @@ from ..constants import (
     ATTR_UV_ROTATION,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
+    FALLBACK_TEXTURE_KEY,
 )
 from ..pipeline.provenance import (
     canonical_texture_key,
     detect_material_mode,
+    split_texture_key,
+    read_face_material_metadata,
 )
 from ..matching import material_source_origin
 from ..pack.pack_stack import ResourcePackStack
@@ -49,6 +52,7 @@ from ..pipeline.session import (
     name_replaced_material,
     find_existing_replacement,
     apply_mesh_face_materials_and_provenance,
+    cleanup_unused_mtk_datablocks,
 )
 
 
@@ -256,6 +260,9 @@ class StandaloneReplacementEngine:
             material_indices = get_polygon_material_indices(mesh)
             existing_source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
             existing_source_origins = read_face_string_attribute(mesh, ATTR_SOURCE_ORIGIN)
+            for idx, record in enumerate(read_face_material_metadata(mesh)):
+                existing_source_keys[idx] = existing_source_keys[idx] or str(record.get("source_texture_key", ""))
+                existing_source_origins[idx] = existing_source_origins[idx] or str(record.get("source_origin", ""))
 
             resolved_faces = []
             unresolved_faces = []
@@ -276,11 +283,13 @@ class StandaloneReplacementEngine:
                     yield ProgressUpdate(sub_prog, 1.0, f"Scanning faces: {obj.name} ({poly_idx:,}/{total_polys:,})")
 
                 if material_index >= len(slot_materials):
-                    unresolved_faces.append(poly_idx)
+                    namespace, texture_key = split_texture_key(existing_source_keys[poly_idx])
+                    unresolved_faces.append((poly_idx, None, None, namespace, [texture_key] if texture_key else [], None, None))
                     continue
                 orig_mat = slot_materials[material_index]
                 if not orig_mat:
-                    unresolved_faces.append(poly_idx)
+                    namespace, texture_key = split_texture_key(existing_source_keys[poly_idx])
+                    unresolved_faces.append((poly_idx, None, None, namespace, [texture_key] if texture_key else [], None, None))
                     continue
                 state = material_cache[orig_mat]
                 if state["is_internal"]:
@@ -296,16 +305,10 @@ class StandaloneReplacementEngine:
                 tex_info = resolve_texture_info(namespace, candidates)
 
                 if not tex_info:
-                    unresolved_faces.append(poly_idx)
+                    unresolved_faces.append((poly_idx, orig_mat, state, namespace, candidates, old_loc, old_mapping))
                     continue
                 resolved_faces.append((poly_idx, tex_info, orig_mat, orig_mode, old_loc, old_mapping))
 
-            if unresolved_faces:
-                pipeline_context.report(
-                    "WARNING",
-                    f"'{obj.name}' was left unchanged: {len(unresolved_faces)} face(s) could not be matched exactly."
-                )
-                continue
             if skipped_faces:
                 pipeline_context.report(
                     "INFO",
@@ -319,6 +322,18 @@ class StandaloneReplacementEngine:
             texture_infos_by_key = {}
             target_animation_by_texture = {}
             material_build_failed = False
+
+            # The generated procedural tile is a real standalone material, so
+            # a single bad source never aborts a mixed-material object.
+            fallback_tex_info = resolve_texture_info("mozi", ["fallback"])
+            fallback_material = None
+            if unresolved_faces and fallback_tex_info:
+                fallback_material, fallback_is_new = get_or_create_replacement_material(fallback_tex_info)
+                if fallback_is_new:
+                    replaced_count += 1
+            if unresolved_faces and not fallback_material:
+                pipeline_context.report("ERROR", f"'{obj.name}' fallback material construction failed; no conversion was applied.")
+                continue
 
             for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping in resolved_faces:
                 texture_key = (tex_info["namespace"], tex_info["texture_name"])
@@ -343,6 +358,19 @@ class StandaloneReplacementEngine:
                     replaced_count += 1
                     tex_info = texture_infos_by_key[texture_key]
                     pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
+
+            for poly_idx, original_material, state, namespace, candidates, _old_loc, _old_mapping in unresolved_faces:
+                face_materials[poly_idx] = fallback_material
+                # Never replace provenance with ``mozi:fallback``: retaining the
+                # original key lets a later pack replace this face normally.
+                if not source_keys[poly_idx] and candidates:
+                    source_keys[poly_idx] = canonical_texture_key(namespace, candidates[0])
+                if original_material and not source_origins[poly_idx]:
+                    source_origins[poly_idx] = state["origin"] if state else material_source_origin(original_material)
+                poly_modified = True
+                assigned_count += 1
+            if unresolved_faces:
+                pipeline_context.report("WARNING", f"'{obj.name}': {len(unresolved_faces)} unsupported face(s) assigned the procedural fallback.")
 
             total_prep = max(1, len(resolved_faces))
             for prep_idx, (poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping) in enumerate(resolved_faces):
@@ -429,7 +457,7 @@ class StandaloneReplacementEngine:
                 has_retained_atlas_face = any(
                     face_materials[poly_idx]
                     and detect_material_mode(face_materials[poly_idx]) in ("ATLAS_CHUNK", "ATLAS_UNIFIED")
-                    for poly_idx in unresolved_faces + skipped_faces
+                    for poly_idx in ([entry[0] for entry in unresolved_faces] + skipped_faces)
                 )
                 if not has_retained_atlas_face:
                     for attr_name in ANIM_AND_ATLAS_ATTR_NAMES:
@@ -439,8 +467,10 @@ class StandaloneReplacementEngine:
                     cleanup_object_anim_properties(obj)
 
         if assigned_count == 0:
+            cleanup_unused_mtk_datablocks()
             yield StepResult.success("No exact material matches found; selected objects were left unchanged.")
             return
 
+        cleanup_unused_mtk_datablocks()
         yield ProgressUpdate(1.0, 1.0, f"Standalone replacement finished ({assigned_count} slots assigned).")
         yield StepResult.success(f"Successfully processed Standalone replacement ({assigned_count} slot(s) assigned, {replaced_count} new material(s) created).")

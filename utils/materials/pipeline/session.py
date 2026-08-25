@@ -17,10 +17,15 @@ from .provenance import (
     split_texture_key,
     get_atlas_mapping_from_material,
     get_atlas_mapping_from_mesh,
+    write_face_material_metadata,
 )
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
+    PROP_ATLAS_MAPPING,
+    PROP_CREATED_BY,
+    PROP_PACK_HASH,
+    PROP_SOURCE_FILE,
 )
 
 
@@ -92,6 +97,56 @@ def apply_mesh_face_materials_and_provenance(
         )
 
     write_face_source_provenance(mesh, source_keys, source_origins)
+    records = []
+    for mat, source_key, source_origin in zip(face_materials, source_keys, source_origins):
+        # Custom properties are deliberately copied rather than referenced:
+        # node trees and material slots are editable Blender data, this record is not.
+        props = {}
+        if mat:
+            for key, value in mat.items():
+                # The complete atlas mapping belongs once on the mesh.  Copying
+                # it to every face turns a multi-megabyte mapping into a
+                # face-count-sized memory leak; chunk/source fields below are
+                # sufficient to address that mesh-level mapping exactly.
+                if str(key).startswith("mtk:") and str(key) != PROP_ATLAS_MAPPING:
+                    try:
+                        json.dumps(value)
+                        props[str(key)] = value
+                    except TypeError:
+                        props[str(key)] = str(value)
+        records.append({
+            "schema_version": 1,
+            "source_texture_key": source_key,
+            "source_origin": source_origin,
+            "material_name": mat.name if mat else "",
+            "material_mode": detect_material_mode(mat),
+            "material_properties": props,
+            "atlas_mapping_owner": "mesh" if mat and PROP_ATLAS_MAPPING in mat else "",
+        })
+    write_face_material_metadata(mesh, records)
+
+
+def cleanup_unused_mtk_datablocks() -> tuple[int, int]:
+    """Release only MTK-owned orphan materials/images after a replacement pass.
+
+    Blender does not collect unused datablocks automatically.  Limiting this
+    to explicitly MTK-owned data preserves imported/user materials while
+    preventing repeated pack replacements from retaining old shader graphs,
+    packed textures, and image buffers indefinitely.
+    """
+    removed_materials = 0
+    for material in list(bpy.data.materials):
+        if material.users == 0 and material.get(PROP_CREATED_BY) == "MoziToolKit":
+            bpy.data.materials.remove(material)
+            removed_materials += 1
+
+    removed_images = 0
+    for image in list(bpy.data.images):
+        is_mtk_image = bool(image.get(PROP_PACK_HASH) or image.get(PROP_SOURCE_FILE))
+        if image.users == 0 and is_mtk_image:
+            bpy.data.images.remove(image)
+            removed_images += 1
+    return removed_materials, removed_images
 
 
 def build_material_face_cache(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> tuple[list, dict]:
