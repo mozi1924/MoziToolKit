@@ -80,6 +80,8 @@ def atlas_uv_from_rect(
         1.0 - (pixel_y + (1.0 - v) * rect_height) / atlas_height,
     )
 
+from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
+
 logger = logging.getLogger("MoziToolKit.MeshBuilder")
 
 # Direction vectors in Minecraft space (East=+X, West=-X, Up=+Y, Down=-Y, South=+Z, North=-Z)
@@ -129,6 +131,17 @@ def _mc_local_to_blender(lx: float, ly: float, lz: float) -> tuple[float, float,
     )
 
 
+def _rotate_uv(u: float, v: float, angle_deg: float) -> tuple[float, float]:
+    """Rotate local UV coordinate clockwise by 0, 90, 180, or 270 degrees."""
+    if angle_deg == 90.0:
+        return (v, 1.0 - u)
+    elif angle_deg == 180.0:
+        return (1.0 - u, 1.0 - v)
+    elif angle_deg == 270.0:
+        return (1.0 - v, u)
+    return (u, v)
+
+
 class CachedStateMeta:
     """Precomputed metadata for a unique block state."""
     __slots__ = (
@@ -136,7 +149,7 @@ class CachedStateMeta:
         'is_fluid', 'is_transparent', 'baked_model', 'faces_info'
     )
 
-    def __init__(self, state_str: str, atlas_params: dict[str, Any], baker: StateBaker):
+    def __init__(self, state_str: str, mat_manager: LiveSyncMaterialManager, baker: StateBaker):
         self.state_str = state_str
         self.parsed: ParsedBlock = parse_and_classify(state_str)
         name_low = self.parsed.name.lower()
@@ -171,96 +184,35 @@ class CachedStateMeta:
             self.is_cube = self.parsed.block_type == BlockTypeEnum.CUBE
             self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
 
-        # Precompute face mapping info (skip for air)
-        self.faces_info = self._resolve_faces_info(atlas_params) if not self.is_air else {}
+        # Resolve per-face texture addressing via MaterialManager
+        self.faces_info: dict[str, ResolvedFaceTexture] = {}
+        if not self.is_air:
+            json_faces = None
+            if self.state_str and self.state_str.startswith("{") and self.state_str.endswith("}"):
+                try:
+                    import json
+                    j_obj = json.loads(self.state_str)
+                    if isinstance(j_obj, dict) and isinstance(j_obj.get("faces"), dict):
+                        json_faces = j_obj["faces"]
+                except Exception:
+                    json_faces = None
 
-    def _resolve_faces_info(self, atlas_params: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        info = {}
-        json_faces = None
-        if self.state_str and self.state_str.startswith("{") and self.state_str.endswith("}"):
-            try:
-                import json
-                j_obj = json.loads(self.state_str)
-                if isinstance(j_obj, dict) and isinstance(j_obj.get("faces"), dict):
-                    json_faces = j_obj["faces"]
-            except Exception:
-                json_faces = None
-
-        mapping_tex = atlas_params.get("mapping", {}).get("textures", {}) if isinstance(atlas_params.get("mapping"), dict) else {}
-        if not mapping_tex and "atlas_mapping_textures" in atlas_params:
-            mapping_tex = atlas_params["atlas_mapping_textures"]
-
-        tile_size = float(atlas_params.get("tile_size", DEFAULT_TILE_SIZE))
-        atlas_w = float(atlas_params.get("width", DEFAULT_ATLAS_WIDTH))
-        atlas_h = float(atlas_params.get("height", DEFAULT_ATLAS_HEIGHT))
-        tiles_per_row = int(atlas_params.get("tiles_per_row", DEFAULT_TILES_PER_ROW))
-
-        anim_w = float(atlas_params.get("anim_atlas_width", atlas_params.get("chunk_1_width", DEFAULT_ANIM_ATLAS_WIDTH)))
-        anim_h = float(atlas_params.get("anim_atlas_height", atlas_params.get("chunk_1_height", DEFAULT_ANIM_ATLAS_HEIGHT)))
-
-        block_face_lut = atlas_params.get("block_face_lut", {})
-        block_face_chunk_lut = atlas_params.get("block_face_chunk_lut", {})
-        block_face_tint_lut = atlas_params.get("block_face_tint_lut", {})
-
-        for f_idx, f_name in enumerate(FACES):
-            tex_name = None
-            uv_rot = 0.0
-            tint_idx = -1
-            if json_faces and f_name in json_faces:
-                f_item = json_faces[f_name]
-                tex_name = f_item.get("tex")
-                uv_rot = float(f_item.get("rot", 0.0))
-                tint_idx = int(f_item.get("tint", -1))
-            elif self.baked_model and len(self.baked_model.faces) > f_idx:
-                bf = self.baked_model.faces[f_idx]
-                tex_name = bf.texture
-                uv_rot = bf.uv_rot
-                tint_idx = bf.tint_index
-
-            loc = None
-            if tex_name and mapping_tex:
-                short_tex = tex_name.split(":", 1)[-1].removeprefix("block/")
-                loc = (
-                    mapping_tex.get(tex_name)
-                    or mapping_tex.get(f"minecraft:{short_tex}")
-                    or mapping_tex.get(f"minecraft:block/{short_tex}")
-                    or mapping_tex.get(short_tex)
+            for f_idx, f_name in enumerate(FACES):
+                baked_face = self.baked_model.faces[f_idx] if (self.baked_model and len(self.baked_model.faces) > f_idx) else None
+                j_face = json_faces.get(f_name) if json_faces else None
+                resolved = mat_manager.resolve_block_face(
+                    parsed=self.parsed,
+                    face_name=f_name,
+                    face_index=f_idx,
+                    baked_face=baked_face,
+                    json_face_info=j_face,
                 )
-            if loc is None and mapping_tex and self.parsed.name in mapping_tex:
-                loc = mapping_tex.get(self.parsed.name)
-
-            chunk_id = 0
-            if loc:
-                chunk_id = int(loc.get("chunk_id", 0))
-            elif block_face_chunk_lut:
-                c_lut = block_face_chunk_lut.get(self.parsed.name) or block_face_chunk_lut.get(self.parsed.full_state)
-                if c_lut and len(c_lut) > f_idx:
-                    chunk_id = int(c_lut[f_idx])
-
-            # Tint weight / data
-            tint_color = self.parsed.tint_color
-            if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
-                use_tint = True
-            elif block_face_tint_lut:
-                t_lut = block_face_tint_lut.get(self.parsed.name) or block_face_tint_lut.get(self.parsed.full_state)
-                use_tint = bool(t_lut and len(t_lut) > f_idx and t_lut[f_idx][2] > 0)
-            else:
-                use_tint = False
-
-            info[f_name] = {
-                "loc": loc,
-                "chunk_id": chunk_id,
-                "uv_rot": uv_rot,
-                "use_tint": use_tint,
-                "tint_color": tint_color,
-                "tile_size": tile_size,
-                "atlas_width": atlas_w,
-                "atlas_height": atlas_h,
-                "tiles_per_row": tiles_per_row,
-                "anim_atlas_width": anim_w,
-                "anim_atlas_height": anim_h,
-            }
-        return info
+                self.faces_info[f_name] = resolved
+                # Also set aliases for top/up and bottom/down
+                if f_name == "top":
+                    self.faces_info["up"] = resolved
+                elif f_name == "bottom":
+                    self.faces_info["down"] = resolved
 
 
 def _calculate_atlas_uv(u: float, v: float, face_info: dict[str, Any]) -> tuple[float, float]:
@@ -338,21 +290,15 @@ def build_world_mesh(
 
     refresh_shared_baker_sources()
     baker = get_shared_state_baker()
-    params = atlas_params or {}
 
-    # 1. Precompute metadata for unique block states in the storage
-    unique_states = set(block_map.values())
-    state_cache: dict[str, CachedStateMeta] = {
-        s: CachedStateMeta(s, params, baker) for s in unique_states
-    }
 
-    # 2. Coordinate transformation parameters
+    # 1. Coordinate transformation parameters
     min_x, min_y, min_z = storage.min_x, storage.min_y, storage.min_z
     size_x, size_y, size_z = storage.size_x, storage.size_y, storage.size_z
     half_x = size_x / 2.0 - 0.5
     half_z = size_z / 2.0 - 0.5
 
-    # 3. Create or acquire target Mesh Object
+    # 2. Create or acquire target Mesh Object
     obj_name = DEFAULT_WORLD_OBJECT_NAME
     mesh_name = DEFAULT_WORLD_MESH_NAME
 
@@ -365,18 +311,14 @@ def build_world_mesh(
         obj.location = (0.0, 0.0, 0.0)
         context.collection.objects.link(obj)
 
-    # 4. Setup material slots on target object for all chunks
-    try:
-        from ..materials.yefira import (
-            find_bound_atlas_material,
-            get_or_create_atlas_material,
-            setup_material_slots_for_object,
-        )
-        bound_mat = find_bound_atlas_material(obj) or get_or_create_atlas_material()
-        chunk_mapping = params.get("mapping")
-        setup_material_slots_for_object(obj, bound_mat, chunk_mapping)
-    except Exception:
-        pass
+    # 3. Dynamic Material Manager: auto-loads precompiled chunk materials and sets slots
+    mat_manager = LiveSyncMaterialManager(world_obj=obj, atlas_params=atlas_params)
+
+    # 4. Precompute metadata for unique block states in the storage
+    unique_states = set(block_map.values())
+    state_cache: dict[str, CachedStateMeta] = {
+        s: CachedStateMeta(s, mat_manager, baker) for s in unique_states
+    }
 
     bm = bmesh.new()
     uv_layer = bm.loops.layers.uv.new("UVMap")
@@ -401,8 +343,6 @@ def build_world_mesh(
             by = -float(z)
             bz = float(y)
 
-        center = (bx, by, bz)
-
         if meta.is_fluid:
             fluids_count += 1
             # Fluid top surface & visible faces
@@ -416,11 +356,9 @@ def build_world_mesh(
                     if n_meta and (n_meta.is_opaque or n_meta.is_fluid):
                         continue
 
-                f_info = meta.faces_info[f_name]
+                f_res: ResolvedFaceTexture = meta.faces_info[f_name]
                 mc_verts = CUBE_FACE_MC_VERTICES[f_name]
                 default_uvs = CUBE_FACE_DEFAULT_UVS[f_name]
-                chunk_id = f_info.get("chunk_id", 0)
-                tint_color = f_info.get("tint_color", (1.0, 1.0, 1.0, 1.0))
 
                 face_bm_verts = []
                 for (lx, ly, lz) in mc_verts:
@@ -432,13 +370,12 @@ def build_world_mesh(
                 except ValueError:
                     continue
 
-                bm_face.material_index = chunk_id
+                bm_face.material_index = f_res.slot_index
 
                 for loop_idx, loop in enumerate(bm_face.loops):
                     u_raw, v_raw = default_uvs[loop_idx]
-                    u_atlas, v_atlas = _calculate_atlas_uv(u_raw, v_raw, f_info)
-                    loop[uv_layer].uv = Vector((u_atlas, v_atlas))
-                    loop[color_layer] = tint_color
+                    loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_raw, v_raw))
+                    loop[color_layer] = f_res.tint_color
 
         elif meta.is_cube:
             cubes_count += 1
@@ -454,14 +391,9 @@ def build_world_mesh(
                     if n_meta and n_meta.is_cube and n_meta.is_opaque:
                         continue
 
-                f_info = meta.faces_info[f_name]
+                f_res: ResolvedFaceTexture = meta.faces_info[f_name]
                 mc_verts = CUBE_FACE_MC_VERTICES[f_name]
                 default_uvs = CUBE_FACE_DEFAULT_UVS[f_name]
-                uv_rot = f_info.get("uv_rot", 0.0)
-                chunk_id = f_info.get("chunk_id", 0)
-                tint_color = f_info.get("tint_color", (1.0, 1.0, 1.0, 1.0))
-                use_tint = f_info.get("use_tint", False)
-                final_color = tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
 
                 # Construct 4 vertices for this face
                 face_bm_verts = []
@@ -474,15 +406,14 @@ def build_world_mesh(
                 except ValueError:
                     continue
 
-                bm_face.material_index = chunk_id
+                bm_face.material_index = f_res.slot_index
 
                 # Assign loop UV and loop Color
                 for loop_idx, loop in enumerate(bm_face.loops):
                     u_raw, v_raw = default_uvs[loop_idx]
-                    u_rot, v_rot = _rotate_uv(u_raw, v_raw, uv_rot)
-                    u_atlas, v_atlas = _calculate_atlas_uv(u_rot, v_rot, f_info)
-                    loop[uv_layer].uv = Vector((u_atlas, v_atlas))
-                    loop[color_layer] = final_color
+                    u_rot, v_rot = _rotate_uv(u_raw, v_raw, f_res.uv_rot)
+                    loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_rot, v_rot))
+                    loop[color_layer] = f_res.tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
 
         elif meta.baked_model and meta.baked_model.elements:
             props_count += 1
@@ -502,10 +433,7 @@ def build_world_mesh(
                             if n_meta and n_meta.is_cube and n_meta.is_opaque:
                                 continue
 
-                    f_info = meta.faces_info.get(bf.direction, meta.faces_info["east"])
-                    chunk_id = f_info.get("chunk_id", 0)
-                    use_tint = bf.tint_index >= 0 or f_info.get("use_tint", False)
-                    final_color = meta.parsed.tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
+                    f_res: ResolvedFaceTexture = meta.faces_info.get(bf.direction, meta.faces_info["east"])
 
                     face_bm_verts = []
                     for (lx, ly, lz) in bf.vertices:
@@ -517,7 +445,7 @@ def build_world_mesh(
                     except ValueError:
                         continue
 
-                    bm_face.material_index = chunk_id
+                    bm_face.material_index = f_res.slot_index
 
                     for loop_idx, loop in enumerate(bm_face.loops):
                         if loop_idx < len(bf.uvs):
@@ -525,9 +453,8 @@ def build_world_mesh(
                         else:
                             u_raw, v_raw = (0.0, 0.0)
                         u_rot, v_rot = _rotate_uv(u_raw, 1.0 - v_raw, bf.uv_rot)
-                        u_atlas, v_atlas = _calculate_atlas_uv(u_rot, v_rot, f_info)
-                        loop[uv_layer].uv = Vector((u_atlas, v_atlas))
-                        loop[color_layer] = final_color
+                        loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_rot, v_rot))
+                        loop[color_layer] = meta.parsed.tint_color if (bf.tint_index >= 0 or f_res.use_tint) else (1.0, 1.0, 1.0, 1.0)
 
     # 6. Optional in-engine vertex welding for optimal topology
     if weld_vertices and len(bm.verts) > 0:
