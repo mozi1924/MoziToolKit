@@ -25,6 +25,11 @@
 ---
 
 ### 3. 网格与建模工具系统 (Mesh & UV Modeling)
+- **[实时同步系统架构与数据规范 (Live Sync)](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/live_sync/live_sync_architecture.md)**：
+  - 材质约定体系与自定义属性规范（`mtk:atlas_chunk_id`, `mtk:pack_hash`）。
+  - 连接握手 CRC32 差异校验与已有场景物体智能免重刷机制。
+  - “刷新数据 (Refresh Data)” 与 “重建网格 (Rebuild Mesh)” 行为边界划分。
+  - 内存体素模型（`VoxelStorage`）与 Blender 场景持久化数据生命周期。
 - **[原生网格实时同步构建体系 (Direct Mesh)](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/direct_mesh.md)**：
   - 16x16x16 Section 分块容器、6 向邻域遮挡剔除、拓扑微距焊接。
   - 毫秒级增量更新（Delta Update）与原生多图集 UVMap 写入。

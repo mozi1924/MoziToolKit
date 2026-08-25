@@ -372,6 +372,87 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
         bpy.data.meshes.remove(mesh)
 
+    def test_storage_manifest_export_import(self):
+        """Test VoxelStorage manifest metadata export and round-trip import."""
+        palette = ["minecraft:air", "minecraft:stone"]
+        indices = [1] * 4096
+        self.storage.set_full_snapshot(10, 20, 30, 16, 16, 16, palette, indices)
+
+        exported = self.storage.export_manifest_metadata()
+        self.assertEqual(exported["min_x"], 10)
+        self.assertEqual(exported["min_y"], 20)
+        self.assertEqual(exported["min_z"], 30)
+        self.assertEqual(exported["size_x"], 16)
+        self.assertEqual(exported["size_y"], 16)
+        self.assertEqual(exported["size_z"], 16)
+        self.assertIn("0,1,1", exported["section_crcs"])
+
+        # Import into fresh storage
+        new_storage = VoxelStorage()
+        success = new_storage.import_manifest_metadata(exported)
+        self.assertTrue(success)
+        self.assertEqual(new_storage.min_x, 10)
+        self.assertEqual(new_storage.size_x, 16)
+        self.assertEqual(new_storage.section_crc_map[(0, 1, 1)], exported["section_crcs"]["0,1,1"])
+
+    def test_scene_restoration_and_manifest_persistence(self):
+        """Test persisting sync manifest to scene object and restoring it."""
+        from operators.sync.op_sync_connect import persist_sync_state_to_scene, restore_sync_state_from_scene
+        from utils.live_sync.storage import voxel_storage
+        from utils.live_sync.constants import DEFAULT_WORLD_OBJECT_NAME
+
+        # Clean slate
+        voxel_storage.clear()
+        world_mesh = bpy.data.meshes.new("TestWorldMesh")
+        world_obj = bpy.data.objects.new(DEFAULT_WORLD_OBJECT_NAME, world_mesh)
+        bpy.context.collection.objects.link(world_obj)
+
+        try:
+            # Set storage data and persist
+            voxel_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, ["minecraft:air", "minecraft:stone"], [1] * 4096)
+            persist_sync_state_to_scene(bpy.context)
+
+            self.assertIn("mtk:sync_manifest", world_obj)
+
+            # Clear memory storage to simulate reloading blend file
+            voxel_storage.clear()
+            self.assertEqual(voxel_storage.size_x, 0)
+
+            # Restore from scene object
+            restored = restore_sync_state_from_scene(bpy.context)
+            self.assertTrue(restored)
+            self.assertEqual(voxel_storage.size_x, 16)
+            self.assertEqual(voxel_storage.size_y, 16)
+            self.assertIn((0, 0, 0), voxel_storage.section_crc_map)
+        finally:
+            bpy.data.objects.remove(world_obj, do_unlink=True)
+            bpy.data.meshes.remove(world_mesh, do_unlink=True)
+            voxel_storage.clear()
+
+    def test_material_reuse_convention(self):
+        """Test that LiveSyncMaterialManager strictly reuses existing scene materials and avoids duplicate '.001' proliferation."""
+        from utils.live_sync.material_manager import LiveSyncMaterialManager, PROP_ATLAS_CHUNK_ID, PROP_PACK_HASH
+
+        # Pre-create standard chunk material
+        mat_name = "MC_Atlas_Chunk_0"
+        existing_mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(name=mat_name)
+        existing_mat[PROP_ATLAS_CHUNK_ID] = 0
+        existing_mat[PROP_PACK_HASH] = "test_hash"
+
+        initial_mat_count = len(bpy.data.materials)
+
+        # Create MaterialManager
+        mgr = LiveSyncMaterialManager(atlas_params={"mapping": {"chunks": [{"chunk_id": 0}]}})
+        mgr._target_pack_hash = "test_hash"
+        slot = mgr.ensure_chunk_loaded(0)
+
+        self.assertEqual(slot, 0)
+        self.assertEqual(mgr.chunk_materials[0], existing_mat)
+        # Verify no duplicate materials were added
+        self.assertEqual(len(bpy.data.materials), initial_mat_count)
+        self.assertNotIn("MC_Atlas_Chunk_0.001", bpy.data.materials)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

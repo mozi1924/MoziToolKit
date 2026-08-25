@@ -340,22 +340,29 @@ class LiveSyncMaterialManager:
         # Collect or create fallback for missing default chunks
         for cid in default_chunk_ids:
             if cid not in self.chunk_materials:
-                # Create standard principled shader fallback material
                 mat_name = f"MC_Atlas_Chunk_{cid}"
-                mat = bpy.data.materials.new(name=mat_name)
-                mat.use_nodes = True
-                nodes = mat.node_tree.nodes
-                links = mat.node_tree.links
-                nodes.clear()
-                out_node = nodes.new("ShaderNodeOutputMaterial")
-                out_node.location = (400, 0)
-                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-                bsdf.location = (0, 0)
-                links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
-                mat[PROP_ATLAS_CHUNK_ID] = cid
-                if target_pack_hash:
-                    mat[PROP_PACK_HASH] = target_pack_hash
-                self.chunk_materials[cid] = mat
+                existing_mat = bpy.data.materials.get(mat_name)
+                if existing_mat is not None:
+                    existing_mat[PROP_ATLAS_CHUNK_ID] = cid
+                    if target_pack_hash:
+                        existing_mat[PROP_PACK_HASH] = target_pack_hash
+                    self.chunk_materials[cid] = existing_mat
+                else:
+                    # Create standard principled shader fallback material
+                    mat = bpy.data.materials.new(name=mat_name)
+                    mat.use_nodes = True
+                    nodes = mat.node_tree.nodes
+                    links = mat.node_tree.links
+                    nodes.clear()
+                    out_node = nodes.new("ShaderNodeOutputMaterial")
+                    out_node.location = (400, 0)
+                    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+                    bsdf.location = (0, 0)
+                    links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
+                    mat[PROP_ATLAS_CHUNK_ID] = cid
+                    if target_pack_hash:
+                        mat[PROP_PACK_HASH] = target_pack_hash
+                    self.chunk_materials[cid] = mat
 
         # Setup object material slots
         if self.world_obj:
@@ -395,20 +402,27 @@ class LiveSyncMaterialManager:
 
         if chunk_id not in self.chunk_materials:
             mat_name = f"MC_Atlas_Chunk_{chunk_id}"
-            mat = bpy.data.materials.new(name=mat_name)
-            mat.use_nodes = True
-            nodes = mat.node_tree.nodes
-            links = mat.node_tree.links
-            nodes.clear()
-            out_node = nodes.new("ShaderNodeOutputMaterial")
-            out_node.location = (400, 0)
-            bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-            bsdf.location = (0, 0)
-            links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
-            mat[PROP_ATLAS_CHUNK_ID] = chunk_id
-            if self._target_pack_hash:
-                mat[PROP_PACK_HASH] = self._target_pack_hash
-            self.chunk_materials[chunk_id] = mat
+            existing_mat = bpy.data.materials.get(mat_name)
+            if existing_mat is not None:
+                existing_mat[PROP_ATLAS_CHUNK_ID] = chunk_id
+                if self._target_pack_hash:
+                    existing_mat[PROP_PACK_HASH] = self._target_pack_hash
+                self.chunk_materials[chunk_id] = existing_mat
+            else:
+                mat = bpy.data.materials.new(name=mat_name)
+                mat.use_nodes = True
+                nodes = mat.node_tree.nodes
+                links = mat.node_tree.links
+                nodes.clear()
+                out_node = nodes.new("ShaderNodeOutputMaterial")
+                out_node.location = (400, 0)
+                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+                bsdf.location = (0, 0)
+                links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
+                mat[PROP_ATLAS_CHUNK_ID] = chunk_id
+                if self._target_pack_hash:
+                    mat[PROP_PACK_HASH] = self._target_pack_hash
+                self.chunk_materials[chunk_id] = mat
 
         if self.world_obj:
             self._sync_object_material_slots()

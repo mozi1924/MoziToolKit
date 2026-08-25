@@ -324,6 +324,47 @@ class VoxelStorage:
                 mismatched.append(key)
         return mismatched
 
+    def export_manifest_metadata(self) -> dict:
+        """Export current bounds and section CRC map for scene/object persistence."""
+        crc_export = {}
+        for (sx, sy, sz), crc_val in self.section_crc_map.items():
+            crc_export[f"{sx},{sy},{sz}"] = crc_val
+        return {
+            "min_x": self.min_x,
+            "min_y": self.min_y,
+            "min_z": self.min_z,
+            "size_x": self.size_x,
+            "size_y": self.size_y,
+            "size_z": self.size_z,
+            "generation": self.generation,
+            "section_crcs": crc_export,
+        }
+
+    def import_manifest_metadata(self, data: dict) -> bool:
+        """Import bounds and section CRC map from serialized persistent scene/object data."""
+        if not isinstance(data, dict):
+            return False
+        try:
+            self.min_x = int(data.get("min_x", 0))
+            self.min_y = int(data.get("min_y", 0))
+            self.min_z = int(data.get("min_z", 0))
+            self.size_x = int(data.get("size_x", 0))
+            self.size_y = int(data.get("size_y", 0))
+            self.size_z = int(data.get("size_z", 0))
+            self.generation = int(data.get("generation", 0))
+            crc_data = data.get("section_crcs", {})
+            self.section_crc_map.clear()
+            if isinstance(crc_data, dict):
+                for k, v in crc_data.items():
+                    parts = k.split(",")
+                    if len(parts) == 3:
+                        sx, sy, sz = int(parts[0]), int(parts[1]), int(parts[2])
+                        self.section_crc_map[(sx, sy, sz)] = int(v) & 0xFFFFFFFF
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to import manifest metadata: {e}")
+            return False
+
 
 # Global singleton instance for live syncing in Blender session
 voxel_storage = VoxelStorage()

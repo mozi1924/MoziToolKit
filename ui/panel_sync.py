@@ -65,7 +65,7 @@ class MOZI_PT_live_sync(bpy.types.Panel):
             row_btn.operator("mozi.sync_connect", text="Connect", icon='PLAY')
         else:
             row_btn.operator("mozi.sync_disconnect", text="Disconnect", icon='CANCEL')
-            row_btn.operator("mozi.sync_refresh", text="Refresh", icon='FILE_REFRESH')
+            row_btn.operator("mozi.sync_refresh", text="Refresh Data", icon='FILE_REFRESH')
 
         # Status badge
         row_status = box_conn.row(align=True)
@@ -96,7 +96,7 @@ class MOZI_PT_live_sync(bpy.types.Panel):
 
             row_actions = box_geo.row(align=True)
             row_actions.prop(props, "filter_air", text="Filter Air")
-            row_actions.operator("mozi.sync_rebuild_world", text="Rebuild", icon='FILE_REFRESH')
+            row_actions.operator("mozi.sync_rebuild_world", text="Rebuild Mesh", icon='FILE_REFRESH')
 
             # 3. Block Palette
             box_pal = layout.box()
