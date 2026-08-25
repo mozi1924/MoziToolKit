@@ -122,7 +122,21 @@ def _pump_main_thread_events() -> Optional[float]:
                     props.props_count = res.props_count
                     props.fluids_count = res.fluids_count
             else:
-                schedule_mesh_sync()
+                # Batch sync: regenerate affected dirty 16x16x16 sections in sub-millisecond time
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                mat = find_bound_atlas_material(existing_world) if existing_world else None
+                atlas_params = get_cached_atlas_params(mat)
+                res = sync_world_mesh(
+                    context=bpy.context,
+                    storage=voxel_storage,
+                    atlas_params=atlas_params,
+                    force_full_rebuild=False,
+                )
+                if props:
+                    props.point_count = res.vertex_count
+                    props.cubes_count = res.cubes_count
+                    props.props_count = res.props_count
+                    props.fluids_count = res.fluids_count
 
             props.update_counter += 1
             props.last_update_info = f"Delta: {len(accumulated_changes)} blocks (seq {latest_seq_id})"
