@@ -157,7 +157,7 @@ class CachedStateMeta:
             self.is_cube = False
             self.is_opaque = False
         elif baked is not None:
-            self.is_cube = (self.parsed.block_type == BlockTypeEnum.CUBE) or baked.is_cube
+            self.is_cube = (self.parsed.block_type == BlockTypeEnum.CUBE) and baked.is_cube
             self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
         else:
             self.is_cube = self.parsed.block_type == BlockTypeEnum.CUBE
@@ -779,14 +779,6 @@ def build_world_mesh(
     mesh.clear_geometry()
     bm.to_mesh(mesh)
     bm.free()
-
-    # Re-sync materials onto world object to capture any on-demand loaded chunks
-    while len(obj.data.materials) <= max(mat_manager.chunk_materials.keys(), default=0):
-        obj.data.materials.append(None)
-    for cid, mat in mat_manager.chunk_materials.items():
-        if cid < len(obj.data.materials):
-            obj.data.materials[cid] = mat
-
     mesh.update()
 
     vertex_count = len(mesh.vertices)
