@@ -347,6 +347,78 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(res.is_success, ctx.reports)
         self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
 
+    def test_self_repair_reconstructs_standalone_materials_when_all_slots_deleted(self):
+        """When all material slots are deleted, standalone pipeline reconstructs materials from mtk_source_texture_key."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+        standalone = {
+            "zip_path": str(self.pack_dir), "material_mode": "STANDALONE",
+            "pack_textures": False, "use_cache": True,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=standalone, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertIn("mtk_source_texture_key", self.cube.data.attributes)
+
+        # Delete all material slots on the object
+        self.cube.data.materials.clear()
+        self.assertEqual(len(self.cube.material_slots), 0)
+
+        # Self-repair: re-run replacement
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=standalone, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertEqual(len(self.cube.material_slots), 1)
+        self.assertTrue(self.cube.material_slots[0].material.name.startswith("mtk:minecraft:stone"))
+
+    def test_self_repair_reconstructs_atlas_materials_when_all_slots_deleted(self):
+        """When all material slots are deleted, atlas pipeline reconstructs materials from mtk_source_texture_key."""
+        from utils.system import has_pillow
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+        params = {
+            "zip_path": str(self.pack_dir), "material_mode": "STANDALONE",
+            "pack_textures": False, "use_cache": True,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+
+        # Delete all material slots on the object
+        self.cube.data.materials.clear()
+        self.assertEqual(len(self.cube.material_slots), 0)
+
+        # Self-repair in Atlas mode
+        atlas_params = dict(params, material_mode="ATLAS")
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=atlas_params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertGreater(len(self.cube.material_slots), 0)
+        self.assertIn("mtk_atlas_chunk_id", self.cube.data.attributes)
+
+    def test_self_repair_reconstructs_multi_texture_standalone_materials(self):
+        """When all material slots are deleted, multi-material faces recover their respective materials."""
+        from utils.system import has_pillow
+        from utils.materials.pipeline import write_face_source_provenance
+        if not has_pillow():
+            self.skipTest("Pillow is not installed in current environment")
+
+        # Assign dirt to face 0, stone to the remaining 5 faces
+        keys = ["minecraft:dirt"] + ["minecraft:stone"] * 5
+        write_face_source_provenance(self.cube.data, keys)
+        self.cube.data.materials.clear()
+        self.assertEqual(len(self.cube.material_slots), 0)
+
+        params = {
+            "zip_path": str(self.pack_dir), "material_mode": "STANDALONE",
+            "pack_textures": False, "use_cache": True,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
+        self.assertTrue(res.is_success, ctx.reports)
+        self.assertEqual(len(self.cube.material_slots), 2)
+
+        face0_mat = self.cube.material_slots[self.cube.data.polygons[0].material_index].material
+        face1_mat = self.cube.material_slots[self.cube.data.polygons[1].material_index].material
+        self.assertTrue(face0_mat.name.startswith("mtk:minecraft:dirt"))
+        self.assertTrue(face1_mat.name.startswith("mtk:minecraft:stone"))
+
     def test_ice_cube_internal_faces_are_retained_per_face(self):
         """An internal_face_deletion.001 slot must not become oak leaves."""
         leaves_file = self.pack_dir / "assets/minecraft/textures/block/oak_leaves.png"
