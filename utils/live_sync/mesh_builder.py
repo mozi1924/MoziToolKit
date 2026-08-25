@@ -146,8 +146,8 @@ class CachedStateMeta:
             self.is_cube = False
             self.is_opaque = False
         elif baked is not None:
-            self.is_cube = baked.is_cube
-            self.is_opaque = baked.is_opaque and not self.is_transparent
+            self.is_cube = baked.is_cube or (self.parsed.block_type == BlockTypeEnum.CUBE)
+            self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
         else:
             self.is_cube = self.parsed.block_type == BlockTypeEnum.CUBE
             self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
@@ -306,9 +306,10 @@ def _generate_voxel_geometry(
                 neighbor_state = block_map.get(neighbor_pos)
                 if neighbor_state is not None:
                     n_meta = state_cache.get(neighbor_state)
-                    # Cull if neighbor is opaque cube or same fluid
-                    if n_meta and (n_meta.is_opaque or n_meta.is_fluid):
-                        continue
+                    # Cull if neighbor is same fluid OR an opaque full cube
+                    if n_meta and not n_meta.is_air:
+                        if n_meta.is_fluid or (n_meta.is_cube and n_meta.is_opaque):
+                            continue
 
                 f_res = meta.faces_info.get(f_name, meta.faces_info.get("up"))
                 mc_verts = CUBE_FACE_MC_VERTICES[f_name]
@@ -356,8 +357,15 @@ def _generate_voxel_geometry(
                         n_state = block_map.get(n_pos)
                         if n_state is not None:
                             n_meta = state_cache.get(n_state)
-                            if n_meta and n_meta.is_cube and n_meta.is_opaque:
-                                continue
+                            if n_meta and not n_meta.is_air and n_meta.is_cube:
+                                # Geometry Nodes Culling Logic (groups/culling_merge.py):
+                                # 1. Opaque vs Opaque
+                                if meta.is_opaque and n_meta.is_opaque:
+                                    continue
+                                # 2. Translucent vs Opaque OR Translucent vs Same Translucent
+                                elif not meta.is_opaque:
+                                    if n_meta.is_opaque or n_meta.parsed.name == meta.parsed.name:
+                                        continue
 
                     f_res = meta.get_face_res(bf, f_dir)
 
@@ -401,8 +409,12 @@ def _generate_voxel_geometry(
 
                 if neighbor_state is not None:
                     n_meta = state_cache.get(neighbor_state)
-                    if n_meta and n_meta.is_cube and n_meta.is_opaque:
-                        continue
+                    if n_meta and not n_meta.is_air and n_meta.is_cube:
+                        if meta.is_opaque and n_meta.is_opaque:
+                            continue
+                        elif not meta.is_opaque:
+                            if n_meta.is_opaque or n_meta.parsed.name == meta.parsed.name:
+                                continue
 
                 f_res = meta.faces_info.get(f_name, meta.faces_info.get("east"))
                 mc_verts = CUBE_FACE_MC_VERTICES[f_name]

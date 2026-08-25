@@ -788,6 +788,52 @@ class TestDirectMeshSync(unittest.TestCase):
             rot_val = rot_attr.data[poly_idx].value
             self.assertEqual(rot_val, 0.0, f"Polygon {poly_idx} must have mtk_uv_rotation == 0.0 (no double rotation)")
 
+    def test_grass_block_and_translucent_culling(self):
+        """Test Geometry Nodes compatible culling for grass blocks, translucent blocks, and fluids."""
+        # 1. Two adjacent grass blocks (6 + 6 - 2 = 10 faces)
+        s1 = VoxelStorage()
+        s1.set_block(0, 0, 0, "minecraft:grass_block")
+        s1.set_block(1, 0, 0, "minecraft:grass_block")
+        r1 = build_world_mesh(bpy.context, s1)
+        self.assertEqual(len(r1.world_obj.data.polygons), 10, "2 adjacent grass blocks must have exactly 10 faces")
+
+        # 2. 3x3x3 solid grass blocks (6 * 9 = 54 faces)
+        s2 = VoxelStorage()
+        for x in range(3):
+            for y in range(3):
+                for z in range(3):
+                    s2.set_block(x, y, z, "minecraft:grass_block")
+        r2 = build_world_mesh(bpy.context, s2)
+        self.assertEqual(len(r2.world_obj.data.polygons), 54, "3x3x3 solid grass blocks must have exactly 54 faces")
+
+        # 3. Grass block touching stone (6 + 6 - 2 = 10 faces)
+        s3 = VoxelStorage()
+        s3.set_block(0, 0, 0, "minecraft:grass_block")
+        s3.set_block(0, -1, 0, "minecraft:stone")
+        r3 = build_world_mesh(bpy.context, s3)
+        self.assertEqual(len(r3.world_obj.data.polygons), 10, "Grass block touching stone must have touching faces culled")
+
+        # 4. Two adjacent glass blocks (6 + 6 - 2 = 10 faces)
+        s4 = VoxelStorage()
+        s4.set_block(0, 0, 0, "minecraft:glass")
+        s4.set_block(1, 0, 0, "minecraft:glass")
+        r4 = build_world_mesh(bpy.context, s4)
+        self.assertEqual(len(r4.world_obj.data.polygons), 10, "Adjacent same translucent blocks must cull internal faces")
+
+        # 5. Two adjacent leaves blocks (6 + 6 - 2 = 10 faces)
+        s5 = VoxelStorage()
+        s5.set_block(0, 0, 0, "minecraft:oak_leaves")
+        s5.set_block(0, 1, 0, "minecraft:oak_leaves")
+        r5 = build_world_mesh(bpy.context, s5)
+        self.assertEqual(len(r5.world_obj.data.polygons), 10, "Adjacent same leaves must cull internal faces")
+
+        # 6. Two adjacent water blocks (6 + 6 - 2 = 10 faces)
+        s6 = VoxelStorage()
+        s6.set_block(0, 0, 0, "minecraft:water")
+        s6.set_block(1, 0, 0, "minecraft:water")
+        r6 = build_world_mesh(bpy.context, s6)
+        self.assertEqual(len(r6.world_obj.data.polygons), 10, "Adjacent fluids must cull internal faces")
+
 
 if __name__ == "__main__":
     unittest.main()
