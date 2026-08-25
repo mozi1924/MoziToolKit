@@ -202,9 +202,47 @@ class CachedStateMeta:
 
     def get_face_res(self, baked_face: Optional[BakedFace], direction: str) -> ResolvedFaceTexture:
         """Retrieve resolved face texture metadata for a given BakedFace or direction."""
+        base_res = None
         if baked_face and baked_face.texture in self.tex_to_res:
-            return self.tex_to_res[baked_face.texture]
-        return self.faces_info.get(direction, self.faces_info.get("east", next(iter(self.faces_info.values()))))
+            base_res = self.tex_to_res[baked_face.texture]
+        else:
+            base_res = self.faces_info.get(direction, self.faces_info.get("east", next(iter(self.faces_info.values()), None)))
+
+        if not base_res:
+            return base_res
+
+        if baked_face:
+            needs_override = False
+            rot = base_res.uv_rot if self.is_fluid else 0.0
+            if self.is_fluid and baked_face.uv_rot != base_res.uv_rot:
+                rot = baked_face.uv_rot
+                needs_override = True
+
+            use_tint = base_res.use_tint
+            if baked_face.tint_index >= 0 and not use_tint:
+                use_tint = True
+                needs_override = True
+
+            if needs_override:
+                tint_weight = 1.0 if use_tint else 0.0
+                hardcoded_weight = base_res.biome_tint_data[3]
+                b_tint_data = (base_res.biome_tint_data[0], base_res.biome_tint_data[1], tint_weight, hardcoded_weight)
+                b_tint_col = self.parsed.tint_color if use_tint else base_res.biome_tint_color
+                return ResolvedFaceTexture(
+                    chunk_id=base_res.chunk_id,
+                    slot_index=base_res.slot_index,
+                    uv_rot=rot,
+                    use_tint=use_tint,
+                    tint_color=b_tint_col,
+                    calc_uv_fn=base_res.calc_uv_fn,
+                    anim_timing=base_res.anim_timing,
+                    anim_frame_size=base_res.anim_frame_size,
+                    uv_tiling_transform=base_res.uv_tiling_transform,
+                    biome_tint_data=b_tint_data,
+                    biome_tint_color=b_tint_col,
+                )
+
+        return base_res
 
 
 class WorldMeshBuildResult(NamedTuple):
@@ -230,11 +268,20 @@ def _generate_voxel_geometry(
     """
     Constructs BMesh geometry for a collection of voxels with 6-face culling,
     exact MC Baker BakedFace vertex transformations, and native Atlas UV loop projection.
+    Dynamically writes named face attributes for shaders (Anim Timing, Frame Size, Biome Tint, UV Rotation).
     Returns (cubes_count, props_count, fluids_count).
     """
     cubes_count = 0
     props_count = 0
     fluids_count = 0
+
+    # Ensure BMesh face attribute layers exist for material shaders
+    rot_layer = bm.faces.layers.float.get("mtk_uv_rotation") or bm.faces.layers.float.new("mtk_uv_rotation")
+    timing_layer = bm.faces.layers.float_color.get("mtk_anim_timing") or bm.faces.layers.float_color.new("mtk_anim_timing")
+    frame_size_layer = bm.faces.layers.float_color.get("mtk_anim_frame_size") or bm.faces.layers.float_color.new("mtk_anim_frame_size")
+    tiling_layer = bm.faces.layers.float_color.get("mtk_uv_tiling_transform") or bm.faces.layers.float_color.new("mtk_uv_tiling_transform")
+    tint_data_layer = bm.faces.layers.float_color.get("mtk_biome_tint_data") or bm.faces.layers.float_color.new("mtk_biome_tint_data")
+    tint_color_layer = bm.faces.layers.float_color.get("mtk_biome_tint_color") or bm.faces.layers.float_color.new("mtk_biome_tint_color")
 
     for (x, y, z), state_str in voxel_items:
         meta = state_cache.get(state_str)
@@ -278,11 +325,17 @@ def _generate_voxel_geometry(
                     continue
 
                 bm_face.material_index = f_res.slot_index
+                bm_face[rot_layer] = f_res.uv_rot
+                bm_face[timing_layer] = f_res.anim_timing
+                bm_face[frame_size_layer] = f_res.anim_frame_size
+                bm_face[tiling_layer] = f_res.uv_tiling_transform
+                bm_face[tint_data_layer] = f_res.biome_tint_data
+                bm_face[tint_color_layer] = f_res.biome_tint_color
 
                 for loop_idx, loop in enumerate(bm_face.loops):
                     u_mc, v_mc = canonical_uvs[loop_idx]
                     loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-                    loop[color_layer] = f_res.tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
+                    loop[color_layer] = f_res.biome_tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
 
         elif meta.baked_model and meta.baked_model.elements:
             if meta.is_cube:
@@ -319,6 +372,13 @@ def _generate_voxel_geometry(
                         continue
 
                     bm_face.material_index = f_res.slot_index
+                    # UV rotation is already baked directly into vertex/loop UVs for all solid/directional block models.
+                    bm_face[rot_layer] = 0.0
+                    bm_face[timing_layer] = f_res.anim_timing
+                    bm_face[frame_size_layer] = f_res.anim_frame_size
+                    bm_face[tiling_layer] = f_res.uv_tiling_transform
+                    bm_face[tint_data_layer] = f_res.biome_tint_data
+                    bm_face[tint_color_layer] = f_res.biome_tint_color
 
                     # Assign loop UV and loop Color
                     # bf.uvs are in Minecraft texture space [0..1] (v=0 is top, v=1 is bottom)
@@ -329,7 +389,7 @@ def _generate_voxel_geometry(
                         else:
                             u_mc, v_mc = (0.0, 0.0)
                         loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-                        loop[color_layer] = meta.parsed.tint_color if (bf.tint_index >= 0 or f_res.use_tint) else (1.0, 1.0, 1.0, 1.0)
+                        loop[color_layer] = f_res.biome_tint_color if (bf.tint_index >= 0 or f_res.use_tint) else (1.0, 1.0, 1.0, 1.0)
 
         else:
             # Standard Fallback Cube
@@ -359,11 +419,17 @@ def _generate_voxel_geometry(
                     continue
 
                 bm_face.material_index = f_res.slot_index
+                bm_face[rot_layer] = 0.0
+                bm_face[timing_layer] = f_res.anim_timing
+                bm_face[frame_size_layer] = f_res.anim_frame_size
+                bm_face[tiling_layer] = f_res.uv_tiling_transform
+                bm_face[tint_data_layer] = f_res.biome_tint_data
+                bm_face[tint_color_layer] = f_res.biome_tint_color
 
                 for loop_idx, loop in enumerate(bm_face.loops):
                     u_mc, v_mc = canonical_uvs[loop_idx]
                     loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-                    loop[color_layer] = f_res.tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
+                    loop[color_layer] = f_res.biome_tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
 
     return cubes_count, props_count, fluids_count
 

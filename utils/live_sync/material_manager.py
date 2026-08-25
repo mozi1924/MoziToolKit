@@ -103,6 +103,12 @@ class ResolvedFaceTexture(NamedTuple):
     tint_color: tuple[float, float, float, float]
     # Function to calculate Atlas UV from local (u, v) in [0..1]
     calc_uv_fn: Any
+    # Shader node attributes
+    anim_timing: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 1.0)
+    anim_frame_size: tuple[float, float, float, float] = (16.0, 16.0, 0.0, 0.0)
+    uv_tiling_transform: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
+    biome_tint_data: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
+    biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
 
 
 class LiveSyncMaterialManager:
@@ -474,13 +480,21 @@ class LiveSyncMaterialManager:
         # 1. First priority: explicit JSON face payload from Live Sync WebSocket
         if json_face_info:
             tex_name = json_face_info.get("tex")
-            uv_rot = float(json_face_info.get("rot", 0.0))
             tint_idx = int(json_face_info.get("tint", -1))
+            if parsed.name in FLUID_BLOCKS or parsed.block_type == BlockTypeEnum.FLUID or "water" in parsed.name or "lava" in parsed.name:
+                uv_rot = float(json_face_info.get("rot", json_face_info.get("flow_angle", 0.0)))
+            else:
+                uv_rot = 0.0
         # 2. Second priority: StateBaker baked face result
         elif baked_face:
             tex_name = baked_face.texture
-            uv_rot = baked_face.uv_rot
             tint_idx = baked_face.tint_index
+            # For solid / baked blocks, UV rotation is already baked directly into vertex/loop UVs.
+            # Only fluids use shader-level UV rotation.
+            if parsed.name in FLUID_BLOCKS or parsed.block_type == BlockTypeEnum.FLUID or "water" in parsed.name or "lava" in parsed.name:
+                uv_rot = baked_face.uv_rot
+            else:
+                uv_rot = 0.0
 
         loc = None
 
@@ -570,15 +584,54 @@ class LiveSyncMaterialManager:
                 target_chunk=captured_chunk,
             )
 
-        # Biome Tint calculation
-        tint_color = parsed.tint_color
-        if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
+        # 1. Animation attributes calculation
+        is_anim = bool(loc and (loc.get("kind") == "animation" or target_chunk.get("kind") == "animation"))
+        if is_anim and loc:
+            total_frames = float(loc.get("frame_count", 1))
+            frametime = float(loc.get("frametime", 2))
+            interpolate = 1.0 if loc.get("interpolate") else 0.0
+            anim_timing = (total_frames, frametime, interpolate, 1.0)
+            fw = float(loc.get("frame_width") or target_chunk.get("tile_size", 16))
+            fh = float(loc.get("frame_height") or target_chunk.get("tile_size", 16))
+            anim_frame_size = (fw, fh, 0.0, 0.0)
+        else:
+            anim_timing = (1.0, 1.0, 0.0, 1.0)
+            ts = float(target_chunk.get("tile_size", 16))
+            anim_frame_size = (ts, ts, 0.0, 0.0)
+
+        # 2. UV Tiling Transform
+        uv_tiling_transform = (1.0, 1.0, 0.0, 0.0)
+
+        # 3. Biome Tint calculation
+        from .classifier import BIOME_TINT_GRASS, BIOME_TINT_FOLIAGE, BIOME_TINT_WATER, HARDCODED_TINTS
+        is_hardcoded = bool((loc and loc.get("is_hardcoded")) or (parsed.name in HARDCODED_TINTS))
+        if (
+            tint_idx >= 0
+            or (loc and loc.get("default_tint_weight", 0.0) > 0)
+            or (parsed.name in BIOME_TINT_GRASS or parsed.name in BIOME_TINT_FOLIAGE or parsed.name in BIOME_TINT_WATER or "water" in parsed.name)
+            or is_hardcoded
+        ):
             use_tint = True
         elif self.atlas_params.get("block_face_tint_lut"):
             t_lut = self.atlas_params["block_face_tint_lut"].get(parsed.name) or self.atlas_params["block_face_tint_lut"].get(parsed.full_state)
             use_tint = bool(t_lut and len(t_lut) > face_index and t_lut[face_index][2] > 0)
         else:
             use_tint = False
+
+        base_weight = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
+        overlay_weight = float(loc.get("default_overlay_tint_weight", 1.0)) if loc else 1.0
+        tint_weight = 1.0 if use_tint else 0.0
+        hardcoded_weight = 1.0 if is_hardcoded else 0.0
+        biome_tint_data = (base_weight, overlay_weight, tint_weight, hardcoded_weight)
+
+        if is_hardcoded and loc and loc.get("hardcoded_color"):
+            biome_tint_color = tuple(loc["hardcoded_color"])
+        elif parsed.name in HARDCODED_TINTS:
+            biome_tint_color = HARDCODED_TINTS[parsed.name]
+        elif use_tint:
+            biome_tint_color = parsed.tint_color
+        else:
+            biome_tint_color = (1.0, 1.0, 1.0, 1.0)
 
         slot_index = self.get_slot_for_chunk(chunk_id)
 
@@ -587,6 +640,11 @@ class LiveSyncMaterialManager:
             slot_index=slot_index,
             uv_rot=uv_rot,
             use_tint=use_tint,
-            tint_color=tint_color,
+            tint_color=biome_tint_color,
             calc_uv_fn=calc_uv,
+            anim_timing=anim_timing,
+            anim_frame_size=anim_frame_size,
+            uv_tiling_transform=uv_tiling_transform,
+            biome_tint_data=biome_tint_data,
+            biome_tint_color=biome_tint_color,
         )
