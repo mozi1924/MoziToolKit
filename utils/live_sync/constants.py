@@ -1,25 +1,16 @@
-"""Attribute contract and constants for MoziToolKit Live Sync and Geometry Nodes."""
+"""Attribute contract and constants for MoziToolKit Live Sync and Direct Mesh Generation."""
 
 from __future__ import annotations
 from typing import Final
 
-CONTRACT_VERSION: Final = 4
+CONTRACT_VERSION: Final = 5
 FACES: Final = ("east", "west", "top", "bottom", "south", "north")
 
-# Point-cloud and procedural-template fields.
-BLOCK_TYPE: Final = "yefira_block_type"
-TEMPLATE_INDEX: Final = "yefira_template_index"
-INSTANCE_ROTATION: Final = "yefira_instance_rotation"
-BLOCK_CENTER: Final = "yefira_block_center"
-MC_POSITION: Final = "yefira_mc_position"
-BLOCK_STATE: Final = "yefira_block_state"
-BLOCK_KEY: Final = "yefira_block_key"
-CUBE_FACE_NORMAL: Final = "yefira_cube_face_normal"
-LOCAL_FACE_ID: Final = "yefira_local_face_id"
-LOCAL_UV: Final = "yefira_local_uv"
-DIRECTIONAL_FACE_V_FLIP: Final = "yefira_directional_face_v_flip"
-
-# Stable MoziToolKit interchange fields.
+# Native Direct Mesh Face Attribute Convention
+MTK_BLOCK_X: Final = "mtk_block_x"
+MTK_BLOCK_Y: Final = "mtk_block_y"
+MTK_BLOCK_Z: Final = "mtk_block_z"
+MTK_FACE_DIR: Final = "mtk_face_dir"
 MTK_MATERIAL_ID: Final = "mtk_material_id"
 MTK_IS_OPAQUE: Final = "mtk_is_opaque"
 MTK_EMISSIVE: Final = "mtk_emissive"
@@ -51,14 +42,9 @@ DEFAULT_ANIM_ATLAS_HEIGHT: Final = 1024.0
 DEFAULT_ANIM_FRAME_WIDTH: Final = 16.0
 DEFAULT_ANIM_FRAME_HEIGHT: Final = 16.0
 
-# Canonical Object, Mesh, Modifier, Node, and Collection Names
+# Canonical Object and Mesh Names
 DEFAULT_WORLD_OBJECT_NAME: Final = "Yefira_World"
 DEFAULT_WORLD_MESH_NAME: Final = "Yefira_World_Mesh"
-WORLD_MODIFIER_NAME: Final = "Yefira_WorldModifier"
-WORLD_TREE_NAME: Final = "Yefira_WorldTree"
-TEMPLATE_COLLECTION_NAME: Final = "MC_Block_Templates"
-NODE_NAME_MAT_DISPATCHER: Final = "Material Dispatcher"
-NODE_NAME_CULLING_MERGE: Final = "Hidden Face Culling & Merge"
 
 # Binary Live Sync Wire Protocol Constants
 PROTOCOL_MAGIC: Final = b"MC"
@@ -95,63 +81,6 @@ MANIFEST_ENTRY_SIZE: Final = 16
 SECTION_SNAPSHOT_HEADER_FORMAT: Final = "<iiiiiiiiiH"
 SECTION_SNAPSHOT_HEADER_SIZE: Final = 38
 
-
-def face_attribute(kind: str, face: str) -> str:
-    """Return a validated MTK per-face interchange attribute name."""
-    if face not in FACES:
-        raise ValueError(f"Unknown cube face: {face}")
-    return f"mtk_{kind}_{face}"
-
-
-FACE_TILE_ATTRIBUTES: Final = tuple(face_attribute("tile", face) for face in FACES)
-FACE_CHUNK_ATTRIBUTES: Final = tuple(face_attribute("chunk", face) for face in FACES)
-FACE_TEXTURE_ATTRIBUTES: Final = tuple(face_attribute("texture", face) for face in FACES)
-FACE_TINT_ATTRIBUTES: Final = tuple(face_attribute("tint_data", face) for face in FACES)
-FACE_ANIM_TIMING_ATTRIBUTES: Final = tuple(face_attribute("anim_timing", face) for face in FACES)
-FACE_ANIM_FRAME_SIZE_ATTRIBUTES: Final = tuple(face_attribute("anim_frame_size", face) for face in FACES)
-FACE_UV_ROT_ATTRIBUTES: Final = tuple(face_attribute("uv_rot", face) for face in FACES)
-FACE_UV_BOUNDS_ATTRIBUTES: Final = tuple(face_attribute("uv_bounds", face) for face in FACES)
-
-ATLAS_FLOAT_ATTRIBUTES: Final = (
-    MTK_ATLAS_WIDTH, MTK_ATLAS_HEIGHT, MTK_TILE_SIZE, MTK_TILES_PER_ROW,
-    MTK_ANIM_ATLAS_WIDTH, MTK_ANIM_ATLAS_HEIGHT,
-    MTK_ANIM_FRAME_WIDTH, MTK_ANIM_FRAME_HEIGHT,
-)
-
-POINT_ATTRIBUTE_NAMES: Final = frozenset((
-    BLOCK_TYPE, TEMPLATE_INDEX, INSTANCE_ROTATION, BLOCK_CENTER, MC_POSITION,
-    DIRECTIONAL_FACE_V_FLIP,
-    BLOCK_STATE, BLOCK_KEY, MTK_MATERIAL_ID, MTK_IS_OPAQUE, MTK_EMISSIVE,
-    *ATLAS_FLOAT_ATTRIBUTES, *FACE_TILE_ATTRIBUTES, *FACE_CHUNK_ATTRIBUTES,
-    *FACE_TEXTURE_ATTRIBUTES, *FACE_TINT_ATTRIBUTES,
-    *FACE_ANIM_TIMING_ATTRIBUTES, *FACE_ANIM_FRAME_SIZE_ATTRIBUTES,
-    *FACE_UV_ROT_ATTRIBUTES, *FACE_UV_BOUNDS_ATTRIBUTES,
-    MTK_BIOME_TINT_COLOR, MTK_BIOME_TINT_DATA,
-))
-
-LEGACY_POINT_ATTRIBUTE_NAMES: Final = frozenset((
-    "block_type", "instance_index", "instance_rotation", "instance_offset",
-    "block_center", "mc_pos", "block_state", "mc_block_key", "is_opaque",
-    "mtk_uv_tiling_transform", "mtk_uv_rotation", "mtk_is_opaque",
-))
-
-LEGACY_TEMPLATE_ATTRIBUTE_NAMES: Final = frozenset((
-    "CubeFaceNorm", "LocalFaceID", "LocalUV",
-    "Cube_Face_Normal", "Local_Face_ID", "Local_UV",
-))
-
-INSTANCE_TRANSFER_SPECS: Final = (
-    *((name, "INT") for name in (BLOCK_TYPE, DIRECTIONAL_FACE_V_FLIP,
-                                  MTK_MATERIAL_ID, MTK_IS_OPAQUE,
-                                  *FACE_CHUNK_ATTRIBUTES, *FACE_TEXTURE_ATTRIBUTES)),
-    *((name, "FLOAT_VECTOR") for name in (BLOCK_CENTER, *FACE_TILE_ATTRIBUTES)),
-    *((name, "FLOAT") for name in (*ATLAS_FLOAT_ATTRIBUTES, *FACE_UV_ROT_ATTRIBUTES)),
-    *((name, "FLOAT_COLOR") for name in (*FACE_TINT_ATTRIBUTES, *FACE_ANIM_TIMING_ATTRIBUTES,
-                                         *FACE_ANIM_FRAME_SIZE_ATTRIBUTES, *FACE_UV_BOUNDS_ATTRIBUTES,
-                                         MTK_BIOME_TINT_COLOR)),
-)
-
-
 CONTRACT_ATTRIBUTE_KEY: Final = "yefira:attribute_contract"
 
 
@@ -175,10 +104,3 @@ def is_contract_compatible(mesh, min_version: int = CONTRACT_VERSION) -> bool:
         return True
     return ver >= min_version
 
-
-def clear_point_attributes(mesh) -> None:
-    """Delete source-point fields from a previous schema revision."""
-    for name in POINT_ATTRIBUTE_NAMES | LEGACY_POINT_ATTRIBUTE_NAMES:
-        attr = mesh.attributes.get(name)
-        if attr is not None:
-            mesh.attributes.remove(attr)

@@ -1,10 +1,21 @@
 """Unit tests for MC_Atlas_UV_Tiling node group."""
 
+import sys
 import unittest
 import math
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 import bpy
 import bmesh
 from mathutils import Vector
+
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
 
 from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling, ATLAS_UV_TILING_VERSION
 from utils.materials.constants import ATTR_UV_TILING_TRANSFORM
@@ -131,7 +142,7 @@ class TestAtlasUVTiling(unittest.TestCase):
         import json
         import tempfile
         from pathlib import Path
-        from utils.materials.atlas_builder import build_atlas_chunk_materials
+        from utils.materials.atlas.builder import build_atlas_chunk_materials
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             atlas_dir = Path(tmp_dir)
@@ -215,4 +226,4 @@ class TestAtlasUVTiling(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

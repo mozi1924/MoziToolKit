@@ -13,6 +13,10 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Bootstrap MoziToolKit package so top-level pipeline/operators/ui imports resolve
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 try:
     import bpy
     import bmesh
@@ -355,6 +359,70 @@ class TestAdaptivePixelSplit(unittest.TestCase):
         self.assertEqual(stats["initial_faces"], 1)
         # 1 face * (2 * 10) = 20 sub-faces
         self.assertEqual(stats["final_faces"], 20)
+
+    def test_scale_uv_respects_face_selection(self):
+        """ScaleUVStep must scale only selected faces when faces are explicitly selected."""
+        from pipeline.presets import run_preset_pipeline
+
+        bpy.ops.mesh.primitive_cube_add()
+        cube = bpy.context.active_object
+        bpy.ops.object.mode_set(mode="EDIT")
+
+        bm = bmesh.from_edit_mesh(cube.data)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv.verify()
+
+        for f in bm.faces:
+            f.select = False
+        bm.faces[0].select = True
+        bmesh.update_edit_mesh(cube.data)
+
+        orig_face0_uvs = [loop[uv_layer].uv.copy() for loop in bm.faces[0].loops]
+        orig_face1_uvs = [loop[uv_layer].uv.copy() for loop in bm.faces[1].loops]
+
+        res, ctx = run_preset_pipeline("scale_uv", bpy.context, params={"scale_factor": 0.5})
+        self.assertTrue(res.is_success)
+
+        bm = bmesh.from_edit_mesh(cube.data)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv.verify()
+
+        new_face0_uvs = [loop[uv_layer].uv for loop in bm.faces[0].loops]
+        self.assertTrue(any((n - o).length > 1e-4 for n, o in zip(new_face0_uvs, orig_face0_uvs)))
+
+        new_face1_uvs = [loop[uv_layer].uv for loop in bm.faces[1].loops]
+        for n, o in zip(new_face1_uvs, orig_face1_uvs):
+            self.assertAlmostEqual((n - o).length, 0.0, places=5)
+
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+    def test_adaptive_pixel_split_restores_active_and_mode(self):
+        """AdaptivePixelSplitStep must restore initial active object and initial mode."""
+        from pipeline.steps.step_adaptive_pixel_split import AdaptivePixelSplitStep
+        from pipeline.context import PipelineContext
+
+        bpy.ops.mesh.primitive_cube_add(location=(0, 0, 0))
+        cube1 = bpy.context.active_object
+        cube1.name = "Cube1"
+
+        bpy.ops.mesh.primitive_cube_add(location=(5, 0, 0))
+        cube2 = bpy.context.active_object
+        cube2.name = "Cube2"
+
+        bpy.context.view_layer.objects.active = cube2
+        self.assertEqual(bpy.context.view_layer.objects.active, cube2)
+
+        step = AdaptivePixelSplitStep()
+        ctx = PipelineContext(
+            context=bpy.context,
+            target_objects=[cube1],
+            params={"auto_resolution": False, "resolution_width": 16, "resolution_height": 16}
+        )
+        res = step.execute(ctx)
+        self.assertTrue(res.is_success)
+
+        self.assertEqual(bpy.context.view_layer.objects.active, cube2)
+        self.assertEqual(bpy.context.mode, "OBJECT")
 
 
 if __name__ == "__main__":

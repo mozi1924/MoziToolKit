@@ -22,18 +22,21 @@ bl_info = {
     "category": "3D View",
 }
 
-from . import auto_load
 from . import i18n
-
-auto_load.init()
+from . import operators
+from . import pipeline
+from . import ui
 
 
 def register():
     i18n.register()
-    auto_load.register()
+    operators.register()
+    pipeline.register()
+    ui.register()
 
 
 def unregister():
-    auto_load.unregister()
+    ui.unregister()
+    pipeline.unregister()
+    operators.unregister()
     i18n.unregister()
-

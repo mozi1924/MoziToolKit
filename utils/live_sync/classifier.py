@@ -23,9 +23,11 @@ AIR_BLOCKS = frozenset({
     "minecraft:air",
     "minecraft:cave_air",
     "minecraft:void_air",
+    "minecraft:structure_void",
     "air",
     "cave_air",
     "void_air",
+    "structure_void",
 })
 
 # Known Fluid blocks
@@ -281,6 +283,42 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         return _STATE_PARSE_CACHE[state_str]
 
     state_str_clean = state_str.strip()
+    if state_str_clean.startswith("{") and state_str_clean.endswith("}"):
+        import json
+        json_obj = None
+        try:
+            json_obj = json.loads(state_str_clean)
+        except Exception:
+            json_obj = None
+
+        if json_obj and isinstance(json_obj, dict):
+            raw_state = json_obj.get("state", "")
+            base_parsed = parse_and_classify(raw_state) if raw_state else _make_air("")
+            # Create clone or update fields
+            b_type = int(json_obj["type"]) if "type" in json_obj else base_parsed.block_type
+            is_op = int(json_obj["opaque"]) if "opaque" in json_obj else base_parsed.is_opaque
+            is_em = int(json_obj["emissive"]) if "emissive" in json_obj else base_parsed.is_emissive
+            em_lvl = float(json_obj["emissive_level"]) if "emissive_level" in json_obj else base_parsed.emissive_level
+
+            parsed = ParsedBlock(
+                full_state=base_parsed.full_state or raw_state,
+                block_id=base_parsed.block_id,
+                namespace=base_parsed.namespace,
+                name=base_parsed.name,
+                props=base_parsed.props,
+                block_type=b_type,
+                template_name=base_parsed.template_name,
+                rot_euler=base_parsed.rot_euler,
+                offset=base_parsed.offset,
+                tint_color=base_parsed.tint_color,
+                tint_data=base_parsed.tint_data,
+                is_waterlogged=base_parsed.is_waterlogged,
+                is_opaque=is_op,
+                is_emissive=is_em,
+                emissive_level=em_lvl,
+            )
+            return _cache_parsed_block(state_str, parsed)
+
     bracket_idx = state_str_clean.find("[")
     if bracket_idx == -1:
         block_id = state_str_clean

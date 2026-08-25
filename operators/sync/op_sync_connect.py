@@ -5,46 +5,154 @@ Operators for connecting, disconnecting, and refreshing Minecraft Live Sync.
 from __future__ import annotations
 
 import logging
+import queue
 import time
 from typing import Optional
 import bpy
 
-from ...utils.geometry_nodes.world_tree import setup_world_geometry_nodes
-from ...utils.live_sync.client import SyncClientThread
-from ...utils.live_sync.constants import (
-    DEFAULT_ANIM_ATLAS_HEIGHT,
-    DEFAULT_ANIM_ATLAS_WIDTH,
-    DEFAULT_ANIM_FRAME_HEIGHT,
-    DEFAULT_ANIM_FRAME_WIDTH,
-    DEFAULT_WORLD_OBJECT_NAME,
-    WORLD_MODIFIER_NAME,
-)
-from ...utils.live_sync.point_cloud import (
-    clear_state_cache,
-    refresh_baker_sources,
-    update_world_point_cloud,
-)
-from ...utils.live_sync.storage import voxel_storage
-from ...utils.materials.yefira import (
-    extract_atlas_parameters,
-    find_bound_atlas_material,
-)
-from ...utils.system.dependencies import has_websockets
+try:
+    from ...utils.live_sync.client import SyncClientThread
+    from ...utils.live_sync.constants import (
+        DEFAULT_WORLD_OBJECT_NAME,
+    )
+    from ...utils.mc_baker import (
+        refresh_shared_baker_sources,
+        clear_shared_baker_cache,
+    )
+    from ...utils.live_sync.mesh_builder import (
+        sync_world_mesh,
+        build_world_mesh,
+        apply_block_delta_to_world,
+        clear_mesh_builder_caches,
+        preload_sync_world_data,
+        WorldMeshBuildResult,
+    )
+    from ...utils.live_sync.storage import voxel_storage
+    from ...utils.materials.yefira import (
+        extract_atlas_parameters,
+        find_bound_atlas_material,
+    )
+    from ...utils.system.dependencies import has_websockets
+except (ImportError, ValueError):
+    from utils.live_sync.client import SyncClientThread
+    from utils.live_sync.constants import (
+        DEFAULT_WORLD_OBJECT_NAME,
+    )
+    from utils.mc_baker import (
+        refresh_shared_baker_sources,
+        clear_shared_baker_cache,
+    )
+    from utils.live_sync.mesh_builder import (
+        sync_world_mesh,
+        build_world_mesh,
+        apply_block_delta_to_world,
+        clear_mesh_builder_caches,
+        preload_sync_world_data,
+        WorldMeshBuildResult,
+    )
+    from utils.live_sync.storage import voxel_storage
+    from utils.materials.yefira import (
+        extract_atlas_parameters,
+        find_bound_atlas_material,
+    )
+    from utils.system.dependencies import has_websockets
 
 logger = logging.getLogger("MoziToolKit.LiveSync")
 
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
 _rebuild_timer_registered: bool = False
-# Rebuilding a large Yefira point cloud writes dozens of Geometry Nodes
-# attributes.  50 ms allowed up to 20 full rebuilds/sec and starved Blender's
-# event loop during block bursts.  Deltas are still accumulated immediately;
-# this only caps expensive Blender-side uploads at a usable rate.
-REBUILD_DEBOUNCE_SECONDS: float = 0.15
-_pending_force_gn_setup: bool = False
+# Debounce caps expensive UI redraws while maintaining sub-millisecond sync
+REBUILD_DEBOUNCE_SECONDS: float = 0.05
+_pending_full_rebuild: bool = False
 
 _cached_atlas_params: Optional[dict] = None
 _cached_mat_signature: Optional[tuple] = None
+
+# High-frequency main-thread pump for sub-millisecond delta streaming
+_delta_queue: queue.Queue = queue.Queue()
+_pump_timer_registered: bool = False
+_PUMP_INTERVAL: float = 0.005  # 5ms (200 Hz event pump rate)
+
+
+def _pump_main_thread_events() -> Optional[float]:
+    """Continuous high-frequency event pump executing on Blender's main thread."""
+    global _pump_timer_registered, _last_seq_id
+    if not _pump_timer_registered:
+        return None
+
+    props = get_active_sync_props()
+    if not props or not props.is_connected:
+        _pump_timer_registered = False
+        return None
+
+    # Drain pending delta changes
+    accumulated_changes = []
+    latest_seq_id = _last_seq_id
+    min_x, min_y, min_z = 0, 0, 0
+
+    while not _delta_queue.empty():
+        try:
+            item = _delta_queue.get_nowait()
+            m_x, m_y, m_z, chs, seq_id = item
+            if seq_id > latest_seq_id:
+                latest_seq_id = seq_id
+                min_x, min_y, min_z = m_x, m_y, m_z
+                accumulated_changes.extend(chs)
+        except queue.Empty:
+            break
+
+    if accumulated_changes:
+        _last_seq_id = latest_seq_id
+        applied = voxel_storage.apply_delta_update(min_x, min_y, min_z, accumulated_changes)
+        if applied:
+            if len(accumulated_changes) <= 64:
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                mat = find_bound_atlas_material(existing_world) if existing_world else None
+                atlas_params = get_cached_atlas_params(mat)
+                res = apply_block_delta_to_world(
+                    context=bpy.context,
+                    storage=voxel_storage,
+                    changes=accumulated_changes,
+                    atlas_params=atlas_params,
+                )
+                if props:
+                    props.point_count = res.vertex_count
+                    props.cubes_count = res.cubes_count
+                    props.props_count = res.props_count
+                    props.fluids_count = res.fluids_count
+            else:
+                schedule_mesh_sync()
+
+            props.update_counter += 1
+            props.last_update_info = f"Delta: {len(accumulated_changes)} blocks (seq {latest_seq_id})"
+
+            # Force redraw of 3D Viewport
+            for window in bpy.context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type in ('VIEW_3D', 'PROPERTIES'):
+                        area.tag_redraw()
+
+    return _PUMP_INTERVAL
+
+
+def start_main_thread_pump():
+    """Ensure the high-frequency event pump is registered and running."""
+    global _pump_timer_registered
+    if not _pump_timer_registered:
+        _pump_timer_registered = True
+        bpy.app.timers.register(_pump_main_thread_events, first_interval=_PUMP_INTERVAL, persistent=True)
+
+
+def stop_main_thread_pump():
+    """Stop the event pump and clear pending queues."""
+    global _pump_timer_registered
+    _pump_timer_registered = False
+    while not _delta_queue.empty():
+        try:
+            _delta_queue.get_nowait()
+        except queue.Empty:
+            break
 
 
 def get_active_sync_props(context: Optional[bpy.types.Context] = None):
@@ -58,10 +166,6 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
     """Retrieve atlas parameters, invalidating when a material is edited in place."""
     global _cached_atlas_params, _cached_mat_signature
     if mat:
-        # Replacement can update custom properties on the same Blender ID.
-        # Object identity alone therefore leaves live sync using stale atlas
-        # tables until Blender restarts.  The JSON is read anyway by the
-        # parser on a miss; using it in the signature makes that update safe.
         mapping = mat.get("mtk:atlas_mapping", mat.get("mtk_atlas_mapping", ""))
         current_signature = (
             mat.as_pointer() if hasattr(mat, "as_pointer") else id(mat),
@@ -77,16 +181,17 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
 
 
 def clear_sync_caches() -> None:
-    """Invalidate atlas parameter cache and state baker attribute cache on material or world reset."""
+    """Invalidate atlas parameter cache, mesh builder caches, and baker caches on material or world reset."""
     global _cached_atlas_params, _cached_mat_signature
     _cached_atlas_params = None
     _cached_mat_signature = None
-    clear_state_cache()
+    clear_mesh_builder_caches()
+    clear_shared_baker_cache()
 
 
-def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
-    """Invoked on main thread when storage updates."""
-    refresh_baker_sources()
+def trigger_mesh_sync(context: bpy.types.Context, force_full_rebuild: bool = False) -> None:
+    """Invoked on main thread when storage updates to incrementally synchronize world mesh."""
+    refresh_shared_baker_sources()
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
 
@@ -94,64 +199,42 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
     mat = find_bound_atlas_material(existing_world) if existing_world else None
     atlas_params = get_cached_atlas_params(mat)
 
-    res = update_world_point_cloud(
+    res = sync_world_mesh(
         context=context,
         storage=voxel_storage,
-        filter_air=filter_air,
-        atlas_mapping_dict=atlas_params.get("material_id_map", {}),
-        block_face_lut=atlas_params.get("block_face_lut", {}),
-        block_face_chunk_lut=atlas_params.get("block_face_chunk_lut", {}),
-        block_face_texture_lut=atlas_params.get("block_face_texture_lut", {}),
-        block_face_tint_lut=atlas_params.get("block_face_tint_lut", {}),
-        block_face_anim_timing_lut=atlas_params.get("block_face_anim_timing_lut", {}),
-        block_face_anim_frame_size_lut=atlas_params.get("block_face_anim_frame_size_lut", {}),
-        block_face_uv_rot_lut=atlas_params.get("block_face_uv_rot_lut", {}),
-        block_face_uv_bounds_lut=atlas_params.get("block_face_uv_bounds_lut", {}),
-        atlas_mapping_textures=atlas_params.get("mapping", {}).get("textures", {}) if isinstance(atlas_params.get("mapping"), dict) else {},
-        atlas_width=atlas_params["width"],
-        atlas_height=atlas_params["height"],
-        tile_size=atlas_params["tile_size"],
-        tiles_per_row=atlas_params["tiles_per_row"],
-        anim_atlas_width=atlas_params.get("anim_atlas_width", atlas_params.get("chunk_1_width", DEFAULT_ANIM_ATLAS_WIDTH)),
-        anim_atlas_height=atlas_params.get("anim_atlas_height", atlas_params.get("chunk_1_height", DEFAULT_ANIM_ATLAS_HEIGHT)),
-        anim_frame_width=atlas_params.get("anim_frame_width", atlas_params.get("chunk_1_tile_size", DEFAULT_ANIM_FRAME_WIDTH)),
-        anim_frame_height=atlas_params.get("anim_frame_height", atlas_params.get("chunk_1_tile_size", DEFAULT_ANIM_FRAME_HEIGHT)),
+        atlas_params=atlas_params,
+        force_full_rebuild=force_full_rebuild,
     )
 
-    if res.world_obj:
-        mod = res.world_obj.modifiers.get(WORLD_MODIFIER_NAME)
-        if force_gn_setup or not mod or not mod.node_group:
-            setup_world_geometry_nodes(res.world_obj)
-
     if props:
-        props.point_count = res.point_count
+        props.point_count = res.vertex_count
         props.cubes_count = res.cubes_count
         props.props_count = res.props_count
         props.fluids_count = res.fluids_count
 
 
-def schedule_point_cloud_update(force_gn_setup: bool = False) -> None:
-    """Coalesce live updates into a single main-thread point-cloud rebuild."""
-    global _rebuild_timer_registered, _pending_force_gn_setup
-    _pending_force_gn_setup = _pending_force_gn_setup or force_gn_setup
+def schedule_mesh_sync(force_full_rebuild: bool = False) -> None:
+    """Coalesce live updates into a fast incremental main-thread mesh sync."""
+    global _rebuild_timer_registered, _pending_full_rebuild
+    _pending_full_rebuild = _pending_full_rebuild or force_full_rebuild
     if _rebuild_timer_registered:
         return
 
     _rebuild_timer_registered = True
 
     def flush():
-        global _rebuild_timer_registered, _pending_force_gn_setup
+        global _rebuild_timer_registered, _pending_full_rebuild
         try:
             if voxel_storage.size_x and voxel_storage.size_y and voxel_storage.size_z:
-                force_setup = _pending_force_gn_setup
-                _pending_force_gn_setup = False
-                trigger_point_cloud_update(bpy.context, force_gn_setup=force_setup)
+                full_rebuild = _pending_full_rebuild
+                _pending_full_rebuild = False
+                trigger_mesh_sync(bpy.context, force_full_rebuild=full_rebuild)
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type in ('VIEW_3D', 'PROPERTIES'):
                             area.tag_redraw()
         except Exception as e:
-            logger.error(f"Deferred point-cloud update error: {e}")
+            logger.error(f"Deferred mesh sync error: {e}")
         finally:
             _rebuild_timer_registered = False
         return None
@@ -192,6 +275,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             def update():
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
+                if props.is_connected:
+                    start_main_thread_pump()
+                else:
+                    stop_main_thread_pump()
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type == 'PROPERTIES':
@@ -227,7 +314,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
                 # 1. Update VoxelStorage
                 voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
-                schedule_point_cloud_update(force_gn_setup=True)
+
+                # 2. Pre-warm and pre-load all palette blockstate models and materials in RAM
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                mat = find_bound_atlas_material(existing_world) if existing_world else None
+                atlas_params = get_cached_atlas_params(mat)
+                preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
+
+                # 3. Schedule initial world mesh build
+                schedule_mesh_sync(force_full_rebuild=True)
 
                 # Update Palette UI list
                 props.palette_list.clear()
@@ -247,38 +342,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             run_in_main_thread(update)
 
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
-            def update():
-                global _last_seq_id
-                if seq_id <= _last_seq_id:
-                    return
-                _last_seq_id = seq_id
-
-                applied = voxel_storage.apply_delta_update(min_x, min_y, min_z, changes)
-                if not applied:
-                    return
-
-                schedule_point_cloud_update()
-                props.update_counter += 1
-                props.last_update_info = f"Delta: {len(changes)} blocks (seq {seq_id})"
-
-                # Efficient history list logging
-                num_changes = len(changes)
-                if num_changes <= 5:
-                    for x, y, z, state_str in changes:
-                        item = props.delta_history.add()
-                        item.timestamp = time.strftime("%H:%M:%S")
-                        item.pos_str = f"({x}, {y}, {z})"
-                        item.block_state = state_str
-                else:
-                    item = props.delta_history.add()
-                    item.timestamp = time.strftime("%H:%M:%S")
-                    item.pos_str = f"Batch ({num_changes})"
-                    item.block_state = f"{changes[0][3]} ... (+{num_changes-1})"
-
-                # Keep max 50 items in delta history
-                while len(props.delta_history) > 50:
-                    props.delta_history.remove(0)
-            run_in_main_thread(update)
+            _delta_queue.put((min_x, min_y, min_z, changes, seq_id))
 
         def on_section_manifest(server_seq_id, sections):
             def update():
@@ -296,7 +360,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     size_x, size_y, size_z, palette, grid_indices
                 )
                 if updated:
-                    schedule_point_cloud_update()
+                    schedule_mesh_sync()
                     props.update_counter += 1
                     props.last_update_info = f"Repaired Section ({sec_x}, {sec_y}, {sec_z})"
             run_in_main_thread(update)
@@ -323,6 +387,7 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
 
     def execute(self, context):
         global _client_thread
+        stop_main_thread_pump()
         props = get_active_sync_props(context)
 
         if _client_thread:
@@ -350,7 +415,8 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
 
 def cleanup_sync_state() -> None:
     """Clean up all live sync module globals, background threads, timers, and storage."""
-    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_force_gn_setup, _cached_atlas_params, _cached_mat_signature
+    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild, _cached_atlas_params, _cached_mat_signature
+    stop_main_thread_pump()
     if _client_thread:
         try:
             _client_thread.stop()
@@ -360,12 +426,12 @@ def cleanup_sync_state() -> None:
 
     _last_seq_id = 0
     _rebuild_timer_registered = False
-    _pending_force_gn_setup = False
+    _pending_full_rebuild = False
     _cached_atlas_params = None
     _cached_mat_signature = None
 
     voxel_storage.clear()
-    clear_state_cache()
+    clear_sync_caches()
 
     try:
         from ...utils.live_sync.classifier import clear_parse_cache

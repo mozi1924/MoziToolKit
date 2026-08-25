@@ -9,6 +9,10 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 from utils.materials import (
     is_mineways_material,
     mineways_texture_candidates,
@@ -182,4 +186,4 @@ class TestMinewaysMatching(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

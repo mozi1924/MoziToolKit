@@ -1,19 +1,12 @@
 """
 MoziToolKit Live Sync Module.
 Provides real-time Minecraft WebSocket communication, VoxelStorage, Block Classification,
-and Procedural Point Cloud Generation.
+and Direct Mesh Generation.
 """
 
 from .constants import (
-    BLOCK_CENTER,
-    BLOCK_KEY,
-    BLOCK_STATE,
-    BLOCK_TYPE,
     CONTRACT_VERSION,
-    DIRECTIONAL_FACE_V_FLIP,
     FACES,
-    INSTANCE_ROTATION,
-    MC_POSITION,
     MTK_ANIM_ATLAS_HEIGHT,
     MTK_ANIM_ATLAS_WIDTH,
     MTK_ANIM_FRAME_HEIGHT,
@@ -25,6 +18,10 @@ from .constants import (
     MTK_ATLAS_WIDTH,
     MTK_BIOME_TINT_COLOR,
     MTK_BIOME_TINT_DATA,
+    MTK_BLOCK_X,
+    MTK_BLOCK_Y,
+    MTK_BLOCK_Z,
+    MTK_FACE_DIR,
     MTK_EMISSIVE,
     MTK_IS_OPAQUE,
     MTK_MATERIAL_ID,
@@ -32,9 +29,9 @@ from .constants import (
     MTK_TILES_PER_ROW,
     MTK_UV_ROTATION,
     MTK_UV_TILING_TRANSFORM,
-    TEMPLATE_INDEX,
-    clear_point_attributes,
-    face_attribute,
+    UV_MAP,
+    DEFAULT_WORLD_OBJECT_NAME,
+    DEFAULT_WORLD_MESH_NAME,
 )
 from .classifier import (
     AIR_BLOCKS,
@@ -48,31 +45,25 @@ from .classifier import (
     parse_and_classify,
 )
 from .client import SyncClientThread
-from .point_cloud import (
-    PointCloudBuildResult,
-    set_baker_resource_source,
-    update_world_point_cloud,
+from .material_manager import (
+    LiveSyncMaterialManager,
+    ResolvedFaceTexture,
+)
+from .mesh_builder import (
+    WorldMeshBuildResult,
+    apply_block_delta_to_world,
+    build_world_mesh,
+    clear_mesh_builder_caches,
+    get_shared_material_manager,
+    preload_sync_world_data,
+    sync_world_mesh,
+    update_blocks_in_mesh,
 )
 from .storage import VoxelStorage, block_key, voxel_storage
-from .template_catalog import (
-    TEMPLATE_COLLECTION_NAME,
-    TemplateCatalog,
-    get_template_objects_in_instance_order,
-    get_or_create_template_collection,
-    get_template_index_map,
-    template_catalog,
-)
 
 __all__ = (
-    "BLOCK_CENTER",
-    "BLOCK_KEY",
-    "BLOCK_STATE",
-    "BLOCK_TYPE",
     "CONTRACT_VERSION",
-    "DIRECTIONAL_FACE_V_FLIP",
     "FACES",
-    "INSTANCE_ROTATION",
-    "MC_POSITION",
     "MTK_ANIM_ATLAS_HEIGHT",
     "MTK_ANIM_ATLAS_WIDTH",
     "MTK_ANIM_FRAME_HEIGHT",
@@ -84,6 +75,10 @@ __all__ = (
     "MTK_ATLAS_WIDTH",
     "MTK_BIOME_TINT_COLOR",
     "MTK_BIOME_TINT_DATA",
+    "MTK_BLOCK_X",
+    "MTK_BLOCK_Y",
+    "MTK_BLOCK_Z",
+    "MTK_FACE_DIR",
     "MTK_EMISSIVE",
     "MTK_IS_OPAQUE",
     "MTK_MATERIAL_ID",
@@ -91,9 +86,9 @@ __all__ = (
     "MTK_TILES_PER_ROW",
     "MTK_UV_ROTATION",
     "MTK_UV_TILING_TRANSFORM",
-    "TEMPLATE_INDEX",
-    "clear_point_attributes",
-    "face_attribute",
+    "UV_MAP",
+    "DEFAULT_WORLD_OBJECT_NAME",
+    "DEFAULT_WORLD_MESH_NAME",
     "AIR_BLOCKS",
     "BlockTypeEnum",
     "CROSS_PLANTS",
@@ -104,16 +99,17 @@ __all__ = (
     "classify_block_type_and_orientation",
     "parse_and_classify",
     "SyncClientThread",
-    "PointCloudBuildResult",
-    "set_baker_resource_source",
-    "update_world_point_cloud",
+    "LiveSyncMaterialManager",
+    "ResolvedFaceTexture",
+    "WorldMeshBuildResult",
+    "apply_block_delta_to_world",
+    "build_world_mesh",
+    "clear_mesh_builder_caches",
+    "get_shared_material_manager",
+    "preload_sync_world_data",
+    "sync_world_mesh",
+    "update_blocks_in_mesh",
     "VoxelStorage",
     "block_key",
     "voxel_storage",
-    "TEMPLATE_COLLECTION_NAME",
-    "TemplateCatalog",
-    "template_catalog",
-    "get_template_objects_in_instance_order",
-    "get_or_create_template_collection",
-    "get_template_index_map",
 )

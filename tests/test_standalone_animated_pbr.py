@@ -5,10 +5,19 @@ Unit and integration tests for Standalone animated material + PBR texture alignm
 from __future__ import annotations
 
 import unittest
+import sys
 from pathlib import Path
 import tempfile
 import shutil
 import json
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+# Bootstrap MoziToolKit package so top-level pipeline/operators/ui imports resolve
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
 
 import bpy
 from PIL import Image
@@ -255,4 +264,4 @@ class TestStandaloneAnimatedPBR(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

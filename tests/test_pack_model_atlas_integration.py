@@ -2,14 +2,24 @@
 Test Resource Pack Model and UV Detection into Atlas JSON and Yefira Integration.
 """
 
+import sys
 import unittest
 import tempfile
 import zipfile
 import json
 from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 from PIL import Image
 
-from utils.materials.atlas_generator import AtlasGenerator
+# Bootstrap MoziToolKit package (also activates the isolated test sandbox)
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
+from utils.materials.atlas.generator import AtlasGenerator
 from utils.materials.constants import FACE_ORDER
 
 
@@ -144,4 +154,4 @@ class TestPackModelAtlasIntegration(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])
