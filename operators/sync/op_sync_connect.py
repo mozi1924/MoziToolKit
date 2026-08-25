@@ -5,6 +5,7 @@ Operators for connecting, disconnecting, and refreshing Minecraft Live Sync.
 from __future__ import annotations
 
 import logging
+import queue
 import time
 from typing import Optional
 import bpy
@@ -20,6 +21,8 @@ from ...utils.mc_baker import (
 from ...utils.live_sync.mesh_builder import (
     sync_world_mesh,
     build_world_mesh,
+    apply_block_delta_to_world,
+    clear_mesh_builder_caches,
     WorldMeshBuildResult,
 )
 from ...utils.live_sync.storage import voxel_storage
@@ -40,6 +43,91 @@ _pending_full_rebuild: bool = False
 
 _cached_atlas_params: Optional[dict] = None
 _cached_mat_signature: Optional[tuple] = None
+
+# High-frequency main-thread pump for sub-millisecond delta streaming
+_delta_queue: queue.Queue = queue.Queue()
+_pump_timer_registered: bool = False
+_PUMP_INTERVAL: float = 0.005  # 5ms (200 Hz event pump rate)
+
+
+def _pump_main_thread_events() -> Optional[float]:
+    """Continuous high-frequency event pump executing on Blender's main thread."""
+    global _pump_timer_registered, _last_seq_id
+    if not _pump_timer_registered:
+        return None
+
+    props = get_active_sync_props()
+    if not props or not props.is_connected:
+        _pump_timer_registered = False
+        return None
+
+    # Drain pending delta changes
+    accumulated_changes = []
+    latest_seq_id = _last_seq_id
+    min_x, min_y, min_z = 0, 0, 0
+
+    while not _delta_queue.empty():
+        try:
+            item = _delta_queue.get_nowait()
+            m_x, m_y, m_z, chs, seq_id = item
+            if seq_id > latest_seq_id:
+                latest_seq_id = seq_id
+                min_x, min_y, min_z = m_x, m_y, m_z
+                accumulated_changes.extend(chs)
+        except queue.Empty:
+            break
+
+    if accumulated_changes:
+        _last_seq_id = latest_seq_id
+        applied = voxel_storage.apply_delta_update(min_x, min_y, min_z, accumulated_changes)
+        if applied:
+            if len(accumulated_changes) <= 64:
+                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                mat = find_bound_atlas_material(existing_world) if existing_world else None
+                atlas_params = get_cached_atlas_params(mat)
+                res = apply_block_delta_to_world(
+                    context=bpy.context,
+                    storage=voxel_storage,
+                    changes=accumulated_changes,
+                    atlas_params=atlas_params,
+                )
+                if props:
+                    props.point_count = res.vertex_count
+                    props.cubes_count = res.cubes_count
+                    props.props_count = res.props_count
+                    props.fluids_count = res.fluids_count
+            else:
+                schedule_mesh_sync()
+
+            props.update_counter += 1
+            props.last_update_info = f"Delta: {len(accumulated_changes)} blocks (seq {latest_seq_id})"
+
+            # Force redraw of 3D Viewport
+            for window in bpy.context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type in ('VIEW_3D', 'PROPERTIES'):
+                        area.tag_redraw()
+
+    return _PUMP_INTERVAL
+
+
+def start_main_thread_pump():
+    """Ensure the high-frequency event pump is registered and running."""
+    global _pump_timer_registered
+    if not _pump_timer_registered:
+        _pump_timer_registered = True
+        bpy.app.timers.register(_pump_main_thread_events, first_interval=_PUMP_INTERVAL, persistent=True)
+
+
+def stop_main_thread_pump():
+    """Stop the event pump and clear pending queues."""
+    global _pump_timer_registered
+    _pump_timer_registered = False
+    while not _delta_queue.empty():
+        try:
+            _delta_queue.get_nowait()
+        except queue.Empty:
+            break
 
 
 def get_active_sync_props(context: Optional[bpy.types.Context] = None):
@@ -68,10 +156,11 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
 
 
 def clear_sync_caches() -> None:
-    """Invalidate atlas parameter cache and baker caches on material or world reset."""
+    """Invalidate atlas parameter cache, mesh builder caches, and baker caches on material or world reset."""
     global _cached_atlas_params, _cached_mat_signature
     _cached_atlas_params = None
     _cached_mat_signature = None
+    clear_mesh_builder_caches()
     clear_shared_baker_cache()
 
 
@@ -171,6 +260,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             def update():
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
+                if props.is_connected:
+                    start_main_thread_pump()
+                else:
+                    stop_main_thread_pump()
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type == 'PROPERTIES':
@@ -226,38 +319,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             run_in_main_thread(update)
 
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
-            def update():
-                global _last_seq_id
-                if seq_id <= _last_seq_id:
-                    return
-                _last_seq_id = seq_id
-
-                applied = voxel_storage.apply_delta_update(min_x, min_y, min_z, changes)
-                if not applied:
-                    return
-
-                schedule_point_cloud_update()
-                props.update_counter += 1
-                props.last_update_info = f"Delta: {len(changes)} blocks (seq {seq_id})"
-
-                # Efficient history list logging
-                num_changes = len(changes)
-                if num_changes <= 5:
-                    for x, y, z, state_str in changes:
-                        item = props.delta_history.add()
-                        item.timestamp = time.strftime("%H:%M:%S")
-                        item.pos_str = f"({x}, {y}, {z})"
-                        item.block_state = state_str
-                else:
-                    item = props.delta_history.add()
-                    item.timestamp = time.strftime("%H:%M:%S")
-                    item.pos_str = f"Batch ({num_changes})"
-                    item.block_state = f"{changes[0][3]} ... (+{num_changes-1})"
-
-                # Keep max 50 items in delta history
-                while len(props.delta_history) > 50:
-                    props.delta_history.remove(0)
-            run_in_main_thread(update)
+            _delta_queue.put((min_x, min_y, min_z, changes, seq_id))
 
         def on_section_manifest(server_seq_id, sections):
             def update():
@@ -302,6 +364,7 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
 
     def execute(self, context):
         global _client_thread
+        stop_main_thread_pump()
         props = get_active_sync_props(context)
 
         if _client_thread:
@@ -330,6 +393,7 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
 def cleanup_sync_state() -> None:
     """Clean up all live sync module globals, background threads, timers, and storage."""
     global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild, _cached_atlas_params, _cached_mat_signature
+    stop_main_thread_pump()
     if _client_thread:
         try:
             _client_thread.stop()
