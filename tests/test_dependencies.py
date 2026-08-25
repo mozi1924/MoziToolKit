@@ -169,25 +169,13 @@ class TestDependencyManager(unittest.TestCase):
                         ZipResourcePack._safe_extract(zf, Path(tmp_dir) / "extracted")
                     self.assertIn("zip bomb", str(ctx.exception).lower())
 
-    def test_auto_load_toposort_deadlock_prevention(self):
-        """auto_load.toposort must break circular dependency deadlock instead of infinite looping."""
-        from MoziToolKit.auto_load import toposort
-
-        class ClassA:
-            pass
-
-        class ClassB:
-            pass
-
-        deps_dict = {
-            ClassA: {ClassB},
-            ClassB: {ClassA},
-        }
-
-        result = toposort(deps_dict)
-        self.assertEqual(len(result), 2)
-        self.assertIn(ClassA, result)
-        self.assertIn(ClassB, result)
+    def test_explicit_registration_structure(self):
+        """Root and subpackages must expose callable register and unregister functions."""
+        import MoziToolKit
+        from MoziToolKit import operators, pipeline, ui, i18n
+        for mod in (MoziToolKit, operators, pipeline, ui, i18n):
+            self.assertTrue(hasattr(mod, "register") and callable(mod.register))
+            self.assertTrue(hasattr(mod, "unregister") and callable(mod.unregister))
 
     def test_menu_config_untrusted_operator_filter(self):
         """menu_config._normalize_views_data must filter out arbitrary/unregistered operators."""

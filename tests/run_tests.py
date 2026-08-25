@@ -73,6 +73,16 @@ if wheels_dir.exists():
                 with zipfile.ZipFile(matched_whl, "r") as zf:
                     zf.extractall(unpack_dir)
 
+# Ensure any existing add-on instance is cleanly unloaded in the test sandbox
+try:
+    import addon_utils
+    for mod in list(addon_utils.modules()):
+        if "mozitoolkit" in mod.__name__.lower() or "mozitoolkit" in getattr(mod, "__file__", "").lower():
+            if addon_utils.check(mod.__name__)[0]:
+                addon_utils.disable(mod.__name__)
+except Exception:
+    pass
+
 # Ensure MoziToolKit package is registered in sys.modules
 if "MoziToolKit" not in sys.modules:
     spec = importlib.util.spec_from_file_location(
