@@ -19,7 +19,11 @@ LOCAL_FACE_ID: Final = "yefira_local_face_id"
 LOCAL_UV: Final = "yefira_local_uv"
 DIRECTIONAL_FACE_V_FLIP: Final = "yefira_directional_face_v_flip"
 
-# Stable MoziToolKit interchange fields.
+# Native Direct Mesh Face Attribute Convention
+MTK_BLOCK_X: Final = "mtk_block_x"
+MTK_BLOCK_Y: Final = "mtk_block_y"
+MTK_BLOCK_Z: Final = "mtk_block_z"
+MTK_FACE_DIR: Final = "mtk_face_dir"
 MTK_MATERIAL_ID: Final = "mtk_material_id"
 MTK_IS_OPAQUE: Final = "mtk_is_opaque"
 MTK_EMISSIVE: Final = "mtk_emissive"
