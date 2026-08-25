@@ -236,6 +236,35 @@ class TestMaterialSystemSpecification(unittest.TestCase):
         # Stack 2 has not been baked
         self.assertFalse(stack_2.is_standalone_baked())
 
+    def test_precompile_mode_dispatch_atlas_vs_standalone(self):
+        """
+        Verify that:
+        - In ATLAS mode, stack.precompile() precompiles Atlas cache only (no Standalone cache).
+        - In STANDALONE mode, stack.precompile() precompiles BOTH Atlas and Standalone caches.
+        """
+        pack = self._create_mock_pack("precompile_mode_pack", {
+            "assets/minecraft/textures/block/cobblestone.png": Image.new("RGBA", (16, 16), (100, 100, 100, 255)),
+        })
+        stack_atlas = ResourcePackStack([pack])
+
+        # 1. Precompile in ATLAS mode
+        res_atlas_mode = stack_atlas.precompile(material_mode="ATLAS")
+        self.assertIsNotNone(res_atlas_mode.get("atlas"))
+        self.assertIsNone(res_atlas_mode.get("standalone"))
+        self.assertTrue(stack_atlas.is_stack_baked(yefira_only=False))
+        self.assertFalse(stack_atlas.is_standalone_baked())
+
+        # 2. Precompile in STANDALONE mode
+        pack_st = self._create_mock_pack("precompile_mode_pack_2", {
+            "assets/minecraft/textures/block/sand.png": Image.new("RGBA", (16, 16), (200, 180, 120, 255)),
+        })
+        stack_st = ResourcePackStack([pack_st])
+        res_st_mode = stack_st.precompile(material_mode="STANDALONE")
+        self.assertIsNotNone(res_st_mode.get("atlas"))
+        self.assertIsNotNone(res_st_mode.get("standalone"))
+        self.assertTrue(stack_st.is_stack_baked(yefira_only=False))
+        self.assertTrue(stack_st.is_standalone_baked())
+
     def test_acceptance_atomic_build_protection(self):
         """
         Acceptance Matrix #6:
@@ -323,6 +352,9 @@ class TestMaterialSystemSpecification(unittest.TestCase):
 
             mat = cube.material_slots[0].material
             self.assertEqual(detect_material_mode(mat), "STANDALONE")
+
+            # Check that Atlas cache was also precompiled alongside standalone for Live Sync
+            self.assertTrue(stack.is_stack_baked(yefira_only=False))
 
             # Check loop UVs are baked to Frame 0
             uv_layer = cube.data.uv_layers.active

@@ -18,6 +18,8 @@ from utils.materials import (
 from utils.system import (
     load_pack_stack_config,
     save_pack_stack_config,
+    load_material_settings_config,
+    save_material_settings_config,
     get_enabled_pack_entries,
     get_prefs,
 )
@@ -304,9 +306,17 @@ class TestPackStackAndFallback(unittest.TestCase):
         })
 
         # Configure in preferences stack
-        save_pack_stack_config([
+        pack_entries = [
             {"name": "Test Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
-        ])
+        ]
+        save_pack_stack_config(pack_entries)
+        save_material_settings_config({"material_mode": "ATLAS"})
+
+        prefs = get_prefs(bpy.context)
+        if prefs is not None:
+            from ui.preferences import populate_resource_packs
+            populate_resource_packs(prefs, pack_entries)
+            prefs.material_mode = "ATLAS"
 
         # Create test object
         bpy.ops.mesh.primitive_cube_add()
@@ -322,23 +332,67 @@ class TestPackStackAndFallback(unittest.TestCase):
         # Clean up
         bpy.data.objects.remove(cube, do_unlink=True)
 
-    def test_precompile_cache_operator(self):
-        """Test that MOZI_OT_precompile_cache compiles Atlas cache and mapping."""
+    def test_precompile_cache_operator_atlas_mode(self):
+        """Test that MOZI_OT_precompile_cache in ATLAS mode compiles Atlas cache only."""
         from utils.system import has_pillow
+        from utils.materials.pack_stack import get_configured_pack_stack
+        from ui.preferences import populate_resource_packs
         if not has_pillow():
             self.skipTest("Pillow not installed")
 
-        pack_path = self._create_temp_pack("PrecompileTest", {
+        pack_path = self._create_temp_pack("PrecompileAtlasTest", {
             ("minecraft", "dirt"): (16, 16, (100, 70, 30, 255)),
             ("minecraft", "stone"): (16, 16, (128, 128, 128, 255)),
         })
 
-        save_pack_stack_config([
-            {"name": "Precompile Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
-        ])
+        pack_entries = [
+            {"name": "Precompile Atlas Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
+        ]
+        save_pack_stack_config(pack_entries)
+        save_material_settings_config({"material_mode": "ATLAS"})
+
+        prefs = get_prefs(bpy.context)
+        if prefs:
+            populate_resource_packs(prefs, pack_entries)
+            prefs.material_mode = "ATLAS"
 
         res = bpy.ops.mozi.precompile_cache()
         self.assertEqual(res, {'FINISHED'})
+
+        stack = get_configured_pack_stack()
+        self.assertTrue(stack.is_stack_baked(yefira_only=False))
+        self.assertFalse(stack.is_standalone_baked())
+
+    def test_precompile_cache_operator_standalone_mode(self):
+        """Test that MOZI_OT_precompile_cache in STANDALONE mode compiles BOTH Atlas and Standalone caches."""
+        from utils.system import has_pillow
+        from utils.materials.pack_stack import get_configured_pack_stack
+        from ui.preferences import populate_resource_packs
+        if not has_pillow():
+            self.skipTest("Pillow not installed")
+
+        pack_path = self._create_temp_pack("PrecompileStandaloneTest", {
+            ("minecraft", "oak_planks"): (16, 16, (160, 120, 70, 255)),
+            ("minecraft", "birch_planks"): (16, 16, (200, 190, 140, 255)),
+        })
+
+        pack_entries = [
+            {"name": "Precompile Standalone Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
+        ]
+        save_pack_stack_config(pack_entries)
+        save_material_settings_config({"material_mode": "STANDALONE"})
+
+        prefs = get_prefs(bpy.context)
+        if prefs:
+            populate_resource_packs(prefs, pack_entries)
+            prefs.material_mode = "STANDALONE"
+
+        res = bpy.ops.mozi.precompile_cache()
+        self.assertEqual(res, {'FINISHED'})
+
+        stack = get_configured_pack_stack()
+        self.assertTrue(stack.is_stack_baked(yefira_only=False))
+        self.assertTrue(stack.is_standalone_baked())
 
     def test_persistent_cache_directory_and_stats(self):
         """Test that get_cache_dir is persistent, temp extraction is in OS temp, and obsolete stack caches are pruned."""

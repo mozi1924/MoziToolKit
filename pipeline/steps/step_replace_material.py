@@ -1083,9 +1083,55 @@ class StepReplaceMaterial(PipelineStep):
 
         effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
         cache_root = get_cache_dir()
+        atlas_dir = cache_root / effective_pack_hash / "full_scene"
+        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
         standalone_dir = cache_root / effective_pack_hash / "standalone"
         mapping_path = standalone_dir / "standalone_mapping.json"
 
+        # 1. Precompile Atlas Cache if missing or incomplete (required for live sync and unified atlas)
+        atlas_is_current = False
+        if atlas_mapping_path.exists():
+            try:
+                with open(atlas_mapping_path, "r", encoding="utf-8") as fp:
+                    cached_atlas = json.load(fp)
+                    if (
+                        cached_atlas.get("format_version") == ATLAS_FORMAT_VERSION
+                        and cached_atlas.get("chunks")
+                        and cached_atlas.get("textures")
+                    ):
+                        atlas_is_current = True
+                        for chunk in cached_atlas["chunks"]:
+                            files = chunk.get("files") if isinstance(chunk, dict) else None
+                            albedo = files.get("albedo") if isinstance(files, dict) else None
+                            if not isinstance(albedo, str) or not (atlas_dir / albedo).is_file():
+                                atlas_is_current = False
+                                break
+                            for channel in ("normal", "specular", "overlay"):
+                                filename = files.get(channel)
+                                if filename and not (atlas_dir / filename).is_file():
+                                    atlas_is_current = False
+                                    break
+            except (OSError, json.JSONDecodeError):
+                atlas_is_current = False
+
+        if not atlas_is_current:
+            if not has_pillow():
+                yield StepResult.failed("Atlas precompilation requires 'Pillow' (PIL) module.")
+                return
+            pipeline_context.report("INFO", f"Precompiling Atlas cache for pack stack ({effective_pack_hash[:8]})...")
+            from ...utils.materials.atlas_generator import AtlasGenerator
+            try:
+                gen_atlas = AtlasGenerator(fallback_stack=pack_stack or pack)
+                for frac, msg, _res in gen_atlas.build_iter(atlas_dir):
+                    if pipeline_context.is_cancelled:
+                        yield StepResult.cancelled("Material replacement cancelled by user.")
+                        return
+                    yield ProgressUpdate(0.05 + 0.10 * frac, 1.0, f"Atlas: {msg}")
+            except Exception as e:
+                yield StepResult.failed(f"Failed to precompile Atlas cache: {e}")
+                return
+
+        # 2. Precompile Standalone Asset Library if missing or incomplete
         standalone_mapping = None
         if mapping_path.exists():
             try:
@@ -1109,14 +1155,15 @@ class StepReplaceMaterial(PipelineStep):
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")
                         return
-                    yield ProgressUpdate(0.10 + 0.20 * frac, 1.0, f"Standalone: {msg}")
-                clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
+                    yield ProgressUpdate(0.15 + 0.15 * frac, 1.0, f"Standalone: {msg}")
                 if mapping_path.exists():
                     with open(mapping_path, "r", encoding="utf-8") as fp:
                         standalone_mapping = json.load(fp)
             except Exception as e:
                 yield StepResult.failed(f"Failed to precompile Standalone asset library: {e}")
                 return
+
+        clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
 
         biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
         if pack_stack:
