@@ -113,6 +113,7 @@ FAST_UNIT_MODULES = {
     "test_atlas_uv_rotation",
     "test_atlas_uv_tiling",
     "test_biome_materials",
+    "test_config_manager",
     "test_dependencies",
     "test_directional_block_orientations",
     "test_jmc2obj_matching",

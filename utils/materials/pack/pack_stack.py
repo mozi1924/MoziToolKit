@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from .resource_pack import ZipResourcePack, get_pack_hash
 from ...mc_baker.resource_loader import JarResourceLoader
-from ...system.menu_config import get_enabled_pack_entries
+from ...config import get_enabled_pack_entries
 
 
 class ResourcePackStack:
