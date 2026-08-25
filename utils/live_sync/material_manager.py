@@ -1,0 +1,429 @@
+"""
+Dynamic Material Manager and Texture UV Resolver for MoziToolKit Live Sync.
+Responsible for:
+- Discovering and loading precompiled Atlas Chunk materials into the active Blender scene.
+- Dynamically managing material slots on world mesh objects based on active voxel chunks.
+- Precise per-face texture addressing (Chunk ID, Atlas Global UV, UV rotation, Biome Tint).
+- Full support for standard resolution and HD / High-Resolution Resource Packs (16x - 512x+).
+- Reusing standard Atlas Layout and Replacement Engine pipeline rules.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Set
+from pathlib import Path
+import bpy
+from mathutils import Vector
+
+def _canonical_texture_key(namespace: str, texture_name: str) -> str:
+    namespace = (namespace or "minecraft").strip().lower()
+    texture_name = (texture_name or "").strip().lower().removesuffix(".png")
+    return f"{namespace}:{texture_name}" if texture_name else ""
+
+
+def _split_texture_key(value: str) -> tuple[str, str]:
+    value = (value or "").strip().lower().removesuffix(".png")
+    if not value:
+        return "minecraft", ""
+    if ":" in value:
+        namespace, texture_name = value.split(":", 1)
+        return namespace or "minecraft", texture_name
+    return "minecraft", value
+
+
+def _remap_local_to_target_uv(
+    u_local: float,
+    v_local: float,
+    target_location: Optional[dict] = None,
+    target_chunk: Optional[dict] = None,
+) -> tuple[float, float]:
+    """Project local UV [0..1] to global Atlas UV [0..1] across HD and standard packs."""
+    if target_location and target_chunk:
+        packing = target_location.get("packing") or target_chunk.get("packing", "grid")
+        if target_location.get("kind") == "animation" or packing in ("rect_bin_pack", "rect") or "pixel_x" in target_location:
+            px = float(target_location.get("pixel_x", 0))
+            py = float(target_location.get("pixel_y", 0))
+            rw = float(target_location.get("rect_width") or target_location.get("frame_width") or target_chunk.get("tile_size", 16))
+            rh = float(target_location.get("rect_height") or target_location.get("frame_height") or target_chunk.get("tile_size", 16))
+            aw = float(target_chunk.get("width", 16))
+            ah = float(target_chunk.get("height", 16))
+            return (
+                (px + u_local * rw) / aw,
+                1.0 - (py + (1.0 - v_local) * rh) / ah,
+            )
+        else:
+            col = int(target_location.get("tile_column", 0))
+            row = int(target_location.get("tile_row", 0))
+            ts = float(target_chunk.get("tile_size", 16))
+            aw = float(target_chunk.get("width", 16))
+            ah = float(target_chunk.get("height", 16))
+            return (
+                (float(col) + u_local) * ts / aw,
+                1.0 - (float(row) + 1.0 - v_local) * ts / ah,
+            )
+    return u_local, v_local
+
+PROP_PACK_HASH = "mtk:pack_hash"
+PROP_PACK_HASH_SHORT = "mtk:pack_hash_short"
+PROP_ATLAS_CHUNK_ID = "mtk:atlas_chunk_id"
+PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
+
+from ..mc_baker import StateBaker, BakedModel, BakedFace
+from .constants import (
+    DEFAULT_ATLAS_WIDTH,
+    DEFAULT_ATLAS_HEIGHT,
+    DEFAULT_TILE_SIZE,
+    DEFAULT_TILES_PER_ROW,
+    DEFAULT_ANIM_ATLAS_WIDTH,
+    DEFAULT_ANIM_ATLAS_HEIGHT,
+    DEFAULT_ANIM_FRAME_WIDTH,
+    DEFAULT_ANIM_FRAME_HEIGHT,
+    FACES,
+)
+from .classifier import (
+    ParsedBlock,
+    atlas_lookup_keys,
+    BlockTypeEnum,
+    AIR_BLOCKS,
+    FLUID_BLOCKS,
+    TRANSPARENT_BLOCKS,
+)
+
+logger = logging.getLogger("MoziToolKit.LiveSync.MaterialManager")
+
+
+class ResolvedFaceTexture(NamedTuple):
+    chunk_id: int
+    slot_index: int
+    uv_rot: float
+    use_tint: bool
+    tint_color: tuple[float, float, float, float]
+    # Function to calculate Atlas UV from local (u, v) in [0..1]
+    calc_uv_fn: Any
+
+
+class LiveSyncMaterialManager:
+    """
+    Dynamic material manager that links precompiled Atlas materials to the scene
+    and resolves face-level texture addressing on the fly with full HD resolution support.
+    """
+
+    def __init__(self, world_obj: Optional[bpy.types.Object] = None, atlas_params: Optional[dict[str, Any]] = None):
+        self.world_obj = world_obj
+        self.atlas_params: dict[str, Any] = {}
+        if atlas_params:
+            self.atlas_params.update(atlas_params)
+        self.chunk_materials: dict[int, bpy.types.Material] = {}
+        self.chunk_to_slot: dict[int, int] = {}
+        self._texture_map: dict[str, dict] = {}
+        self._chunks_by_id: dict[int, dict] = {}
+        self._state_face_cache: dict[str, dict[str, ResolvedFaceTexture]] = {}
+        self._last_mat_signature: Optional[tuple] = None
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Synchronize with active scene materials or precompiled pack caches with Hash validation."""
+        self._state_face_cache.clear()
+        try:
+            self._ensure_chunk_materials_with_hash_validation()
+            self._build_texture_index_map()
+        except Exception as e:
+            logger.warning(f"Error during MaterialManager refresh: {e}")
+
+    def _build_texture_index_map(self) -> None:
+        """Build multi-key lookup table supporting HD packs, animations, rect-packing, and aliases."""
+        self._texture_map.clear()
+        self._chunks_by_id.clear()
+
+        mapping = self.atlas_params.get("mapping")
+        if not isinstance(mapping, dict):
+            return
+
+        for chunk in mapping.get("chunks", []):
+            if isinstance(chunk, dict) and "chunk_id" in chunk:
+                self._chunks_by_id[int(chunk["chunk_id"])] = chunk
+
+        # Index all textures in mapping
+        raw_textures = mapping.get("textures", {})
+        if isinstance(raw_textures, dict):
+            for name, location in raw_textures.items():
+                if not isinstance(location, dict):
+                    continue
+                tex_key = location.get("texture_key", name)
+                ns, tex_name = _split_texture_key(tex_key)
+                canon = _canonical_texture_key(ns, tex_name)
+                self._texture_map[canon] = location
+                self._texture_map[tex_key] = location
+                self._texture_map[name] = location
+
+                leg_ns, leg_tex = _split_texture_key(name)
+                self._texture_map.setdefault(_canonical_texture_key(leg_ns, leg_tex), location)
+
+                # Short basename fallback (e.g. 'stone' -> 'block/stone')
+                short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
+                self._texture_map.setdefault(short_name, location)
+                self._texture_map.setdefault(f"minecraft:{short_name}", location)
+                self._texture_map.setdefault(f"minecraft:block/{short_name}", location)
+
+    def _ensure_chunk_materials_with_hash_validation(self) -> None:
+        """
+        Validates materials against the prebaked pack hash and rebuilds them if outdated or missing.
+        Completely eliminates legacy 'Master' material reliance in favor of native chunk materials.
+        """
+        from ..materials.atlas.builder import build_atlas_chunk_materials
+        from ..materials.pack.pack_stack import get_configured_pack_stack
+        from ..materials.pack.resource_pack import get_cache_dir
+
+        pack_stack = None
+        target_pack_hash = ""
+        try:
+            pack_stack = get_configured_pack_stack()
+            target_pack_hash = getattr(pack_stack, "stack_hash", "") or getattr(pack_stack, "cache_key", "") or getattr(pack_stack, "pack_hash", "")
+        except Exception:
+            pack_stack = None
+
+        atlas_dir: Optional[Path] = None
+        cache_root = get_cache_dir()
+        if target_pack_hash:
+            for cand in (cache_root / target_pack_hash / "full_scene", cache_root / target_pack_hash):
+                if cand.exists() and (cand / "atlas_mapping.json").exists():
+                    atlas_dir = cand
+                    break
+
+            # If pack stack is configured but cache not yet compiled, auto-compile on the fly
+            if not atlas_dir and pack_stack and pack_stack.packs:
+                try:
+                    from ..materials.atlas.generator import AtlasGenerator
+                    target_dir = cache_root / target_pack_hash / "full_scene"
+                    gen = AtlasGenerator(fallback_stack=pack_stack)
+                    gen.build(target_dir)
+                    if (target_dir / "atlas_mapping.json").exists():
+                        atlas_dir = target_dir
+                except Exception as e:
+                    logger.warning(f"Failed to auto-generate atlas cache: {e}")
+
+        # Determine mapping data
+        mapping = self.atlas_params.get("mapping")
+        if not mapping and atlas_dir:
+            try:
+                import json
+                with open(atlas_dir / "atlas_mapping.json", "r", encoding="utf-8") as f:
+                    mapping = json.load(f)
+                    self.atlas_params["mapping"] = mapping
+            except Exception:
+                mapping = None
+
+        chunks = mapping.get("chunks", []) if isinstance(mapping, dict) else []
+        chunk_ids = [int(c.get("chunk_id", i)) for i, c in enumerate(chunks)] if chunks else [0, 1]
+
+        self.chunk_materials.clear()
+
+        # Check existing materials in bpy.data.materials matching chunk_id and target_pack_hash
+        for mat in bpy.data.materials:
+            cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
+            if cid is not None and int(cid) in chunk_ids:
+                mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
+                if not target_pack_hash or mat_hash == target_pack_hash:
+                    self.chunk_materials[int(cid)] = mat
+
+        # Check if any required chunk material is missing
+        missing_chunks = [cid for cid in chunk_ids if cid not in self.chunk_materials]
+        if missing_chunks and atlas_dir:
+            try:
+                rebuilt_mats = build_atlas_chunk_materials(
+                    atlas_dir=atlas_dir,
+                    pack_hash=target_pack_hash,
+                    pack_textures=True,
+                    uv_attribute=None,  # Use native Blender UVMap
+                )
+                for r_cid, r_mat in rebuilt_mats.items():
+                    self.chunk_materials[r_cid] = r_mat
+            except Exception as e:
+                logger.warning(f"Failed to build precompiled atlas chunk materials: {e}")
+
+        # Collect or create fallback for all chunks
+        for cid in chunk_ids:
+            if cid not in self.chunk_materials:
+                # Create standard principled shader fallback material
+                mat_name = f"MC_Atlas_Chunk_{cid}"
+                mat = bpy.data.materials.new(name=mat_name)
+                mat.use_nodes = True
+                nodes = mat.node_tree.nodes
+                links = mat.node_tree.links
+                nodes.clear()
+                out_node = nodes.new("ShaderNodeOutputMaterial")
+                out_node.location = (400, 0)
+                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+                bsdf.location = (0, 0)
+                links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
+                mat[PROP_ATLAS_CHUNK_ID] = cid
+                if target_pack_hash:
+                    mat[PROP_PACK_HASH] = target_pack_hash
+                self.chunk_materials[cid] = mat
+
+        # Setup object material slots
+        if self.world_obj:
+            self._sync_object_material_slots()
+
+    def _sync_object_material_slots(self) -> None:
+        """Assign chunk materials directly into object material slots."""
+        if not self.world_obj:
+            return
+
+        sorted_chunks = sorted(self.chunk_materials.items(), key=lambda item: item[0])
+        max_chunk_id = max(self.chunk_materials.keys()) if self.chunk_materials else 0
+
+        # Ensure object mesh has enough material slots
+        while len(self.world_obj.data.materials) <= max_chunk_id:
+            self.world_obj.data.materials.append(None)
+
+        for cid, mat in sorted_chunks:
+            if cid < len(self.world_obj.data.materials):
+                self.world_obj.data.materials[cid] = mat
+
+        self._update_chunk_to_slot_map()
+
+    def _update_chunk_to_slot_map(self) -> None:
+        """Map chunk IDs to actual material slot indices on world_obj."""
+        self.chunk_to_slot.clear()
+        if not self.world_obj:
+            return
+
+        for slot_idx, slot in enumerate(self.world_obj.material_slots):
+            if not slot.material:
+                continue
+            mat = slot.material
+            cid = mat.get("mtk:atlas_chunk_id", mat.get("mtk_atlas_chunk_id", None))
+            if cid is not None:
+                self.chunk_to_slot[int(cid)] = slot_idx
+            else:
+                self.chunk_to_slot.setdefault(slot_idx, slot_idx)
+
+        # Default fallback
+        for cid in range(16):
+            self.chunk_to_slot.setdefault(cid, cid)
+
+    def get_slot_for_chunk(self, chunk_id: int) -> int:
+        """Return the material slot index for a given Chunk ID."""
+        return self.chunk_to_slot.get(chunk_id, 0)
+
+    def resolve_block_face(
+        self,
+        parsed: ParsedBlock,
+        face_name: str,
+        face_index: int,
+        baked_face: Optional[BakedFace] = None,
+        json_face_info: Optional[dict[str, Any]] = None,
+    ) -> ResolvedFaceTexture:
+        """
+        Dynamically address texture chunk and UV coordinate rule for a specific block face.
+        Fully supports standard & High-Resolution (HD 16x - 512x) Texture Packs and Animation/Rect Chunks.
+        """
+        tex_name: Optional[str] = None
+        uv_rot: float = 0.0
+        tint_idx: int = -1
+
+        # 1. First priority: explicit JSON face payload from Live Sync WebSocket
+        if json_face_info:
+            tex_name = json_face_info.get("tex")
+            uv_rot = float(json_face_info.get("rot", 0.0))
+            tint_idx = int(json_face_info.get("tint", -1))
+        # 2. Second priority: StateBaker baked face result
+        elif baked_face:
+            tex_name = baked_face.texture
+            uv_rot = baked_face.uv_rot
+            tint_idx = baked_face.tint_index
+
+        loc = None
+
+        # Try texture_map lookup
+        if tex_name:
+            ns, name = _split_texture_key(tex_name)
+            canon = _canonical_texture_key(ns, name)
+            loc = (
+                self._texture_map.get(canon)
+                or self._texture_map.get(tex_name)
+                or self._texture_map.get(name)
+                or self._texture_map.get(name.rsplit("/", 1)[-1])
+            )
+
+        if loc is None:
+            short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
+            candidate_keys = []
+            try:
+                for k in atlas_lookup_keys(parsed):
+                    candidate_keys.append(k)
+                    candidate_keys.append(f"minecraft:{k}")
+                    candidate_keys.append(f"minecraft:block/{k}")
+            except Exception:
+                pass
+
+            candidate_keys.extend([
+                parsed.name,
+                parsed.block_id,
+                f"minecraft:{short_name}",
+                f"minecraft:block/{short_name}",
+                short_name,
+            ])
+            try:
+                from ..materials.constants import BLOCK_TO_TEXTURE_ALIASES
+                if short_name in BLOCK_TO_TEXTURE_ALIASES:
+                    for alt in BLOCK_TO_TEXTURE_ALIASES[short_name]:
+                        candidate_keys.extend((alt, f"minecraft:{alt}", f"minecraft:block/{alt}"))
+            except Exception:
+                pass
+
+            for k in candidate_keys:
+                if k in self._texture_map:
+                    loc = self._texture_map[k]
+                    break
+
+        chunk_id = int(loc.get("chunk_id", 0)) if loc else 0
+        if not loc and self.atlas_params.get("block_face_chunk_lut"):
+            c_lut = self.atlas_params["block_face_chunk_lut"].get(parsed.name) or self.atlas_params["block_face_chunk_lut"].get(parsed.full_state)
+            if c_lut and len(c_lut) > face_index:
+                chunk_id = int(c_lut[face_index])
+
+        target_chunk = self._chunks_by_id.get(chunk_id)
+        if not target_chunk:
+            # Fallback chunk metadata with atlas_params
+            target_chunk = {
+                "chunk_id": chunk_id,
+                "width": float(self.atlas_params.get("width", DEFAULT_ATLAS_WIDTH)),
+                "height": float(self.atlas_params.get("height", DEFAULT_ATLAS_HEIGHT)),
+                "tile_size": float(self.atlas_params.get("tile_size", DEFAULT_TILE_SIZE)),
+                "tiles_per_row": int(self.atlas_params.get("tiles_per_row", DEFAULT_TILES_PER_ROW)),
+            }
+
+        # Accurate UV Projection Closure supporting HD Packs and arbitrary Chunk dimensions
+        captured_loc = loc
+        captured_chunk = target_chunk
+
+        def calc_uv(u: float, v: float) -> tuple[float, float]:
+            return _remap_local_to_target_uv(
+                u, v,
+                target_location=captured_loc,
+                target_chunk=captured_chunk,
+            )
+
+        # Biome Tint calculation
+        tint_color = parsed.tint_color
+        if tint_idx >= 0 or (loc and loc.get("default_tint_weight", 0.0) > 0):
+            use_tint = True
+        elif self.atlas_params.get("block_face_tint_lut"):
+            t_lut = self.atlas_params["block_face_tint_lut"].get(parsed.name) or self.atlas_params["block_face_tint_lut"].get(parsed.full_state)
+            use_tint = bool(t_lut and len(t_lut) > face_index and t_lut[face_index][2] > 0)
+        else:
+            use_tint = False
+
+        slot_index = self.get_slot_for_chunk(chunk_id)
+
+        return ResolvedFaceTexture(
+            chunk_id=chunk_id,
+            slot_index=slot_index,
+            uv_rot=uv_rot,
+            use_tint=use_tint,
+            tint_color=tint_color,
+            calc_uv_fn=calc_uv,
+        )

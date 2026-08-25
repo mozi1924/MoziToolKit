@@ -48,6 +48,10 @@ from .classifier import (
     parse_and_classify,
 )
 from .client import SyncClientThread
+from .material_manager import (
+    LiveSyncMaterialManager,
+    ResolvedFaceTexture,
+)
 from .mesh_builder import (
     WorldMeshBuildResult,
     build_world_mesh,
@@ -108,6 +112,8 @@ __all__ = (
     "classify_block_type_and_orientation",
     "parse_and_classify",
     "SyncClientThread",
+    "LiveSyncMaterialManager",
+    "ResolvedFaceTexture",
     "PointCloudBuildResult",
     "WorldMeshBuildResult",
     "build_world_mesh",
