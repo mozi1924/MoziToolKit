@@ -9,7 +9,6 @@ import time
 from typing import Optional
 import bpy
 
-from ...utils.geometry_nodes.world_tree import setup_world_geometry_nodes
 from ...utils.live_sync.client import SyncClientThread
 from ...utils.live_sync.constants import (
     DEFAULT_ANIM_ATLAS_HEIGHT,
@@ -22,7 +21,10 @@ from ...utils.live_sync.constants import (
 from ...utils.live_sync.point_cloud import (
     clear_state_cache,
     refresh_baker_sources,
-    update_world_point_cloud,
+)
+from ...utils.live_sync.mesh_builder import (
+    build_world_mesh,
+    WorldMeshBuildResult,
 )
 from ...utils.live_sync.storage import voxel_storage
 from ...utils.materials.yefira import (
@@ -36,10 +38,7 @@ logger = logging.getLogger("MoziToolKit.LiveSync")
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
 _rebuild_timer_registered: bool = False
-# Rebuilding a large Yefira point cloud writes dozens of Geometry Nodes
-# attributes.  50 ms allowed up to 20 full rebuilds/sec and starved Blender's
-# event loop during block bursts.  Deltas are still accumulated immediately;
-# this only caps expensive Blender-side uploads at a usable rate.
+# Rebuilding direct world mesh in Blender. Debounce caps expensive UI redraws.
 REBUILD_DEBOUNCE_SECONDS: float = 0.15
 _pending_force_gn_setup: bool = False
 
@@ -58,10 +57,6 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
     """Retrieve atlas parameters, invalidating when a material is edited in place."""
     global _cached_atlas_params, _cached_mat_signature
     if mat:
-        # Replacement can update custom properties on the same Blender ID.
-        # Object identity alone therefore leaves live sync using stale atlas
-        # tables until Blender restarts.  The JSON is read anyway by the
-        # parser on a miss; using it in the signature makes that update safe.
         mapping = mat.get("mtk:atlas_mapping", mat.get("mtk_atlas_mapping", ""))
         current_signature = (
             mat.as_pointer() if hasattr(mat, "as_pointer") else id(mat),
@@ -85,7 +80,7 @@ def clear_sync_caches() -> None:
 
 
 def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool = False) -> None:
-    """Invoked on main thread when storage updates."""
+    """Invoked on main thread when storage updates to build direct world mesh."""
     refresh_baker_sources()
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
@@ -94,37 +89,21 @@ def trigger_point_cloud_update(context: bpy.types.Context, force_gn_setup: bool 
     mat = find_bound_atlas_material(existing_world) if existing_world else None
     atlas_params = get_cached_atlas_params(mat)
 
-    res = update_world_point_cloud(
+    res = build_world_mesh(
         context=context,
         storage=voxel_storage,
+        atlas_params=atlas_params,
         filter_air=filter_air,
-        atlas_mapping_dict=atlas_params.get("material_id_map", {}),
-        block_face_lut=atlas_params.get("block_face_lut", {}),
-        block_face_chunk_lut=atlas_params.get("block_face_chunk_lut", {}),
-        block_face_texture_lut=atlas_params.get("block_face_texture_lut", {}),
-        block_face_tint_lut=atlas_params.get("block_face_tint_lut", {}),
-        block_face_anim_timing_lut=atlas_params.get("block_face_anim_timing_lut", {}),
-        block_face_anim_frame_size_lut=atlas_params.get("block_face_anim_frame_size_lut", {}),
-        block_face_uv_rot_lut=atlas_params.get("block_face_uv_rot_lut", {}),
-        block_face_uv_bounds_lut=atlas_params.get("block_face_uv_bounds_lut", {}),
-        atlas_mapping_textures=atlas_params.get("mapping", {}).get("textures", {}) if isinstance(atlas_params.get("mapping"), dict) else {},
-        atlas_width=atlas_params["width"],
-        atlas_height=atlas_params["height"],
-        tile_size=atlas_params["tile_size"],
-        tiles_per_row=atlas_params["tiles_per_row"],
-        anim_atlas_width=atlas_params.get("anim_atlas_width", atlas_params.get("chunk_1_width", DEFAULT_ANIM_ATLAS_WIDTH)),
-        anim_atlas_height=atlas_params.get("anim_atlas_height", atlas_params.get("chunk_1_height", DEFAULT_ANIM_ATLAS_HEIGHT)),
-        anim_frame_width=atlas_params.get("anim_frame_width", atlas_params.get("chunk_1_tile_size", DEFAULT_ANIM_FRAME_WIDTH)),
-        anim_frame_height=atlas_params.get("anim_frame_height", atlas_params.get("chunk_1_tile_size", DEFAULT_ANIM_FRAME_HEIGHT)),
     )
 
     if res.world_obj:
+        # Clean up legacy Geometry Nodes modifier if present
         mod = res.world_obj.modifiers.get(WORLD_MODIFIER_NAME)
-        if force_gn_setup or not mod or not mod.node_group:
-            setup_world_geometry_nodes(res.world_obj)
+        if mod:
+            res.world_obj.modifiers.remove(mod)
 
     if props:
-        props.point_count = res.point_count
+        props.point_count = res.vertex_count
         props.cubes_count = res.cubes_count
         props.props_count = res.props_count
         props.fluids_count = res.fluids_count

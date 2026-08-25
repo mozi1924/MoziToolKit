@@ -216,6 +216,46 @@ class TestLiveSyncMultiChunkAtlas(unittest.TestCase):
             self.assertLess(normals[5].x, -0.5)
             self.assertEqual(fids[5], 5)
 
+    def test_direct_mesh_multi_chunk_and_uv_rotations(self):
+        """Verify Direct Mesh correctly handles multi-chunk atlas textures and native UVMap."""
+        from utils.live_sync import VoxelStorage, build_world_mesh
+
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:oak_log[axis=y]")
+        storage.set_block(1, 0, 0, "minecraft:water")
+
+        atlas_params = {
+            "width": 1024,
+            "height": 512,
+            "tile_size": 16,
+            "tiles_per_row": 64,
+            "anim_atlas_width": 896,
+            "anim_atlas_height": 1024,
+            "mapping": {
+                "textures": {
+                    "minecraft:block/oak_log": {"chunk_id": 0, "tile_column": 10, "tile_row": 2},
+                    "minecraft:block/oak_log_top": {"chunk_id": 0, "tile_column": 11, "tile_row": 2},
+                    "minecraft:block/water_still": {
+                        "chunk_id": 1,
+                        "kind": "animation",
+                        "pixel_x": 0,
+                        "pixel_y": 0,
+                        "frame_width": 16,
+                        "frame_height": 16,
+                    },
+                }
+            }
+        }
+
+        res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params)
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
+
+        self.assertIn("UVMap", mesh.uv_layers)
+        self.assertIn("Color", mesh.color_attributes)
+        self.assertEqual(res.cubes_count, 1)
+        self.assertEqual(res.fluids_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

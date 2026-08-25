@@ -48,6 +48,10 @@ from .classifier import (
     parse_and_classify,
 )
 from .client import SyncClientThread
+from .mesh_builder import (
+    WorldMeshBuildResult,
+    build_world_mesh,
+)
 from .point_cloud import (
     PointCloudBuildResult,
     set_baker_resource_source,
@@ -105,6 +109,8 @@ __all__ = (
     "parse_and_classify",
     "SyncClientThread",
     "PointCloudBuildResult",
+    "WorldMeshBuildResult",
+    "build_world_mesh",
     "set_baker_resource_source",
     "update_world_point_cloud",
     "VoxelStorage",
