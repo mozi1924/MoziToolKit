@@ -207,6 +207,40 @@ class TestDirectionalBlockOrientations(unittest.TestCase):
         self.assertEqual(p_east.faces[0].texture, 'minecraft:block/piston_top')
         self.assertEqual(p_east.faces[1].texture, 'minecraft:block/piston_bottom')
 
+    def test_direct_mesh_directional_orientations_and_uv_rot(self):
+        """Verify Direct Mesh generation bakes precise UVMap and orientations for directional blocks."""
+        from utils.live_sync import build_world_mesh
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, 'minecraft:furnace[facing=east,lit=false]')
+        storage.set_block(2, 0, 0, 'minecraft:oak_log[axis=x]')
+
+        def loc(col, row, tex_id):
+            return {'tile_column': col, 'tile_row': row, 'chunk_id': 0, 'texture_id': tex_id}
+
+        mapping_textures = {
+            'minecraft:block/furnace_top': loc(1, 0, 10),
+            'minecraft:block/furnace_side': loc(2, 0, 20),
+            'minecraft:block/furnace_front': loc(3, 0, 30),
+            'minecraft:block/oak_log': loc(4, 0, 40),
+            'minecraft:block/oak_log_top': loc(5, 0, 50),
+        }
+
+        atlas_params = {
+            'width': 1024,
+            'height': 512,
+            'tile_size': 16,
+            'tiles_per_row': 64,
+            'mapping': {'textures': mapping_textures},
+        }
+
+        res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params)
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
+
+        # 2 non-adjacent cubes -> 12 faces
+        self.assertEqual(len(mesh.polygons), 12)
+        self.assertIn("UVMap", mesh.uv_layers)
+
     def test_world_tree_uv_rotations(self):
         """Verify Geometry Nodes world tree evaluates UV rotation in CW direction (90, 180, 270)."""
         from utils.geometry_nodes.world_tree import setup_world_geometry_nodes

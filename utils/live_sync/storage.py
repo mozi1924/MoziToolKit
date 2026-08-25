@@ -60,6 +60,24 @@ class VoxelStorage:
         """Get blockstate string at (x, y, z)."""
         return self.block_map.get((x, y, z))
 
+    def set_block(self, x: int, y: int, z: int, state_str: str) -> None:
+        """Set blockstate string at (x, y, z), expanding storage bounds if needed."""
+        self.block_map[(x, y, z)] = state_str
+        if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
+            self.min_x, self.min_y, self.min_z = x, y, z
+            self.size_x, self.size_y, self.size_z = 1, 1, 1
+        else:
+            max_x = max(self.min_x + self.size_x - 1, x)
+            max_y = max(self.min_y + self.size_y - 1, y)
+            max_z = max(self.min_z + self.size_z - 1, z)
+            self.min_x = min(self.min_x, x)
+            self.min_y = min(self.min_y, y)
+            self.min_z = min(self.min_z, z)
+            self.size_x = max_x - self.min_x + 1
+            self.size_y = max_y - self.min_y + 1
+            self.size_z = max_z - self.min_z + 1
+        self.generation += 1
+
     def set_full_snapshot(
         self,
         min_x: int, min_y: int, min_z: int,
