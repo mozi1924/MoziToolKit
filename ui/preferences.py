@@ -62,6 +62,8 @@ def refresh_ui_and_menus(context=None):
 
 
 def _safe_get_prefs(self_or_context=None):
+    if hasattr(self_or_context, "resource_packs"):
+        return self_or_context
     if isinstance(self_or_context, bpy.types.Context):
         prefs = get_prefs(self_or_context)
         if prefs:
@@ -1118,25 +1120,42 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             clear_shared_baker_cache()
             cache_root = get_cache_dir()
 
-            # 1. Precompile Atlas Cache
+            prefs = _safe_get_prefs(context)
+            if prefs and hasattr(prefs, "material_mode"):
+                material_mode = prefs.material_mode
+            else:
+                try:
+                    from ..utils.system import load_material_settings_config
+                except (ImportError, ValueError):
+                    from utils.system import load_material_settings_config
+                material_mode = load_material_settings_config().get("material_mode", "ATLAS")
+
+            # 1. Always Precompile Atlas Cache (needed for Atlas Mode and Live Sync)
             atlas_dir = cache_root / stack.stack_hash / "full_scene"
             gen_atlas = AtlasGenerator(fallback_stack=stack)
             res_atlas = gen_atlas.build(atlas_dir)
-
-            # 2. Precompile Standalone Asset Library
-            standalone_dir = cache_root / stack.stack_hash / "standalone"
-            gen_st = StandaloneGenerator(fallback_stack=stack)
-            res_st = gen_st.build(standalone_dir)
-
-            clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
             num_chunks = len(res_atlas.get("chunks", []))
             num_baked = len(res_atlas.get("materials", []))
-            num_st = res_st.get("texture_count", 0)
-            refresh_ui_and_menus(context)
-            self.report(
-                {'INFO'},
-                f"Successfully precompiled caches for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials; Standalone: {num_st} textures)."
-            )
+
+            # 2. Conditionally Precompile Standalone Asset Library (only if STANDALONE mode)
+            if material_mode == "STANDALONE":
+                standalone_dir = cache_root / stack.stack_hash / "standalone"
+                gen_st = StandaloneGenerator(fallback_stack=stack)
+                res_st = gen_st.build(standalone_dir)
+                num_st = res_st.get("texture_count", 0)
+                clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
+                refresh_ui_and_menus(context)
+                self.report(
+                    {'INFO'},
+                    f"Successfully precompiled caches for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials; Standalone: {num_st} textures)."
+                )
+            else:
+                clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
+                refresh_ui_and_menus(context)
+                self.report(
+                    {'INFO'},
+                    f"Successfully precompiled Atlas cache for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials)."
+                )
             return {'FINISHED'}
         except Exception as e:
             self.report({'ERROR'}, f"Failed to precompile stack cache: {e}")

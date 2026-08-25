@@ -256,6 +256,56 @@ class ResourcePackStack:
         gen = StandaloneGenerator(fallback_stack=self)
         return gen.build(target_dir, progress_callback=progress_callback)
 
+    def precompile_atlas(
+        self,
+        output_dir: Optional[Union[str, Path]] = None,
+        yefira_only: bool = False,
+        progress_callback=None,
+    ) -> dict:
+        """Precompile and build the atlas cache for this pack stack."""
+        from .atlas_generator import AtlasGenerator
+        from .constants import (
+            ATLAS_CATEGORY_BLOCKS,
+            ATLAS_CATEGORY_ITEMS,
+            ATLAS_CATEGORY_ENTITIES,
+            ATLAS_CATEGORY_CHEST,
+            ATLAS_CATEGORY_SHULKER_BOXES,
+            ATLAS_CATEGORY_BANNER_PATTERNS,
+            ATLAS_CATEGORY_DECORATED_POT,
+        )
+        target_dir = Path(output_dir) if output_dir else self.get_baked_atlas_dir(yefira_only=yefira_only)
+        yefira_categories = {
+            ATLAS_CATEGORY_BLOCKS,
+            ATLAS_CATEGORY_ITEMS,
+            ATLAS_CATEGORY_ENTITIES,
+            ATLAS_CATEGORY_CHEST,
+            ATLAS_CATEGORY_SHULKER_BOXES,
+            ATLAS_CATEGORY_BANNER_PATTERNS,
+            ATLAS_CATEGORY_DECORATED_POT,
+        } if yefira_only else None
+        gen = AtlasGenerator(fallback_stack=self, included_categories=yefira_categories)
+        return gen.build(target_dir, progress_callback=progress_callback)
+
+    def precompile(
+        self,
+        material_mode: str = "ATLAS",
+        yefira_only: bool = False,
+        progress_callback=None,
+    ) -> dict:
+        """
+        Precompile caches according to material mode:
+        - If material_mode is "STANDALONE": precompiles both Atlas and Standalone caches.
+        - If material_mode is "ATLAS": precompiles Atlas cache only.
+        """
+        res_atlas = self.precompile_atlas(yefira_only=yefira_only, progress_callback=progress_callback)
+        res_st = None
+        if material_mode == "STANDALONE":
+            res_st = self.precompile_standalone(progress_callback=progress_callback)
+        return {
+            "atlas": res_atlas,
+            "standalone": res_st,
+        }
+
     def get_composite_loader(self) -> Optional[JarResourceLoader]:
         """
         Build a chained JarResourceLoader linked through `fallback_loader` attributes
