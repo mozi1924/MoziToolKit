@@ -1107,7 +1107,11 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             num_chunks = len(res_atlas.get("chunks", []))
             num_baked = len(res_atlas.get("materials", []))
 
-            # 2. Conditionally Precompile Standalone Asset Library (only if STANDALONE mode)
+            # 2. Always Precompile Models Cache (needed for Live Sync zero-latency model dispatch)
+            res_models = stack.precompile_models()
+            num_models = res_models.get("models_count", 0)
+
+            # 3. Conditionally Precompile Standalone Asset Library (only if STANDALONE mode)
             if material_mode == "STANDALONE":
                 standalone_dir = cache_root / stack.stack_hash / "standalone"
                 gen_st = StandaloneGenerator(fallback_stack=stack)
@@ -1117,14 +1121,14 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
                 refresh_ui_and_menus(context)
                 self.report(
                     {'INFO'},
-                    f"Successfully precompiled caches for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials; Standalone: {num_st} textures)."
+                    f"Successfully precompiled caches for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials; Models: {num_models} models; Standalone: {num_st} textures)."
                 )
             else:
                 clean_obsolete_stack_caches(current_stack_hash=stack.stack_hash)
                 refresh_ui_and_menus(context)
                 self.report(
                     {'INFO'},
-                    f"Successfully precompiled Atlas cache for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials)."
+                    f"Successfully precompiled caches for pack stack (Atlas: {num_chunks} chunks, {num_baked} materials; Models: {num_models} models)."
                 )
             return {'FINISHED'}
         except Exception as e:

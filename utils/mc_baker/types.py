@@ -76,3 +76,88 @@ class BakedModel:
         if idx is not None and idx < len(self.faces):
             return self.faces[idx]
         return None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize BakedModel to JSON-compatible dictionary."""
+        return {
+            "block_state": self.block_state,
+            "is_cube": self.is_cube,
+            "is_opaque": self.is_opaque,
+            "is_emissive": self.is_emissive,
+            "emissive_level": self.emissive_level,
+            "faces": [
+                {
+                    "direction": f.direction,
+                    "texture": f.texture,
+                    "uv_rot": f.uv_rot,
+                    "uv_bounds": list(f.uv_bounds),
+                    "tint_index": f.tint_index,
+                    "cullface": f.cullface,
+                    "vertices": [list(v) for v in f.vertices],
+                    "uvs": [list(u) for u in f.uvs],
+                } for f in self.faces
+            ],
+            "elements": [
+                {
+                    "from_pos": list(el.from_pos),
+                    "to_pos": list(el.to_pos),
+                    "rotation": el.rotation,
+                    "faces": {
+                        d: {
+                            "direction": f.direction,
+                            "texture": f.texture,
+                            "uv_rot": f.uv_rot,
+                            "uv_bounds": list(f.uv_bounds),
+                            "tint_index": f.tint_index,
+                            "cullface": f.cullface,
+                            "vertices": [list(v) for v in f.vertices],
+                            "uvs": [list(u) for u in f.uvs],
+                        } for d, f in el.faces.items()
+                    }
+                } for el in self.elements
+            ]
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BakedModel:
+        """Deserialize BakedModel from dictionary."""
+        faces = [
+            BakedFace(
+                direction=f["direction"],
+                texture=f["texture"],
+                uv_rot=f.get("uv_rot", 0.0),
+                uv_bounds=tuple(f.get("uv_bounds", (0.0, 0.0, 1.0, 1.0))),
+                tint_index=f.get("tint_index", -1),
+                cullface=f.get("cullface"),
+                vertices=tuple(tuple(v) for v in f.get("vertices", ())),
+                uvs=tuple(tuple(u) for u in f.get("uvs", ())),
+            ) for f in data.get("faces", [])
+        ]
+        elements = [
+            BakedElement(
+                from_pos=tuple(el["from_pos"]),
+                to_pos=tuple(el["to_pos"]),
+                rotation=el.get("rotation"),
+                faces={
+                    d: BakedFace(
+                        direction=f["direction"],
+                        texture=f["texture"],
+                        uv_rot=f.get("uv_rot", 0.0),
+                        uv_bounds=tuple(f.get("uv_bounds", (0.0, 0.0, 1.0, 1.0))),
+                        tint_index=f.get("tint_index", -1),
+                        cullface=f.get("cullface"),
+                        vertices=tuple(tuple(v) for v in f.get("vertices", ())),
+                        uvs=tuple(tuple(u) for u in f.get("uvs", ())),
+                    ) for d, f in el.get("faces", {}).items()
+                }
+            ) for el in data.get("elements", [])
+        ]
+        return cls(
+            block_state=data["block_state"],
+            elements=elements,
+            faces=faces,
+            is_cube=data.get("is_cube", True),
+            is_opaque=data.get("is_opaque", True),
+            is_emissive=data.get("is_emissive", False),
+            emissive_level=data.get("emissive_level", 0.0),
+        )

@@ -76,21 +76,34 @@ def get_shared_state_baker() -> StateBaker:
     return _GLOBAL_STATE_BAKER
 
 
-def refresh_shared_baker_sources() -> StateBaker:
-    """Synchronize shared StateBaker with the active Resource Pack Stack."""
+def refresh_shared_baker_sources(force_precompile_if_missing: bool = True) -> StateBaker:
+    """Synchronize shared StateBaker with the active Resource Pack Stack.
+    Enforces that all model sources are 100% precompiled. If precompiled models do not
+    exist on disk for the current stack, immediately executes on-the-fly full precompilation.
+    """
     global _last_pack_fingerprint, _last_configured_loader
     baker = get_shared_state_baker()
     try:
         from ..materials.pack import get_configured_pack_stack, get_pack_stack_fingerprint
         current_fingerprint = get_pack_stack_fingerprint()
-        if current_fingerprint != _last_pack_fingerprint:
+        if current_fingerprint != _last_pack_fingerprint or (force_precompile_if_missing and not baker._bake_cache):
             _last_pack_fingerprint = current_fingerprint
-            composite_loader = get_configured_pack_stack().get_composite_loader()
+            stack = get_configured_pack_stack()
+            composite_loader = stack.get_composite_loader()
             _last_configured_loader = composite_loader
             baker.resource_loader = composite_loader
             baker.model_parser.model_loader_fn = composite_loader.load_model if composite_loader else None
             baker.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate if composite_loader else None
             baker.clear_cache()
+            if stack.is_models_baked():
+                manifest_path = stack.get_baked_models_dir() / "models_manifest.json"
+                baker.load_precompiled_manifest(manifest_path)
+            elif force_precompile_if_missing and stack.packs:
+                # Precompiled model cache missing: immediately compile ALL models on the fly!
+                stack.precompile_models()
+                if stack.is_models_baked():
+                    manifest_path = stack.get_baked_models_dir() / "models_manifest.json"
+                    baker.load_precompiled_manifest(manifest_path)
     except Exception:
         pass
     return baker
@@ -445,7 +458,7 @@ class StateBaker:
                         uvs=tuple(loop_uvs),
                     )
 
-                    elem_faces[new_dir] = baked_face
+                    elem_faces[orig_dir] = baked_face
 
                     face_idx = DIR_TO_INDEX.get(new_dir)
                     if face_idx is not None and six_faces[face_idx] is None:
@@ -559,10 +572,61 @@ class StateBaker:
                             baked_dict[f"{block_id}[powered=true,{variant_key}]"] = baked
                     except Exception:
                         pass
+            elif "multipart" in state_json:
+                try:
+                    baked_dict[block_id] = self.bake_block_state(block_id)
+                    baked_dict[f"{block_id}[waterlogged=false]"] = self.bake_block_state(f"{block_id}[waterlogged=false]")
+                    baked_dict[f"{block_id}[waterlogged=true]"] = self.bake_block_state(f"{block_id}[waterlogged=true]")
+                except Exception:
+                    pass
             else:
                 try:
                     baked_dict[block_id] = self.bake_block_state(block_id)
                 except Exception:
                     pass
         return baked_dict
+
+    def save_precompiled_manifest(self, output_file: Union[str, Path]) -> int:
+        """
+        Bake all pack states and save to a JSON manifest file on disk.
+        Returns the number of baked models saved.
+        """
+        import json
+        baked_dict = self.bake_all_pack_states()
+        manifest_data = {
+            "format_version": "1.0.0",
+            "models_count": len(baked_dict),
+            "models": {k: v.to_dict() for k, v in baked_dict.items()},
+        }
+        out_path = Path(output_file)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(manifest_data, f, separators=(",", ":"))
+        return len(baked_dict)
+
+    def load_precompiled_manifest(self, source: Union[str, Path, dict]) -> int:
+        """
+        Load precompiled baked models directly into the internal cache.
+        Returns the number of loaded models.
+        """
+        import json
+        if isinstance(source, dict):
+            data = source
+        else:
+            p = Path(source)
+            if not p.exists():
+                return 0
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+        models_map = data.get("models", {})
+        loaded_count = 0
+        for state_str, model_dict in models_map.items():
+            try:
+                baked = BakedModel.from_dict(model_dict)
+                self._bake_cache[state_str] = baked
+                loaded_count += 1
+            except Exception:
+                pass
+        return loaded_count
 
