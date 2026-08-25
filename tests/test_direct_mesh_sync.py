@@ -548,6 +548,143 @@ class TestDirectMeshSync(unittest.TestCase):
             self.assertGreaterEqual(uv.x, 3 * 16 / 1024 - 1e-4)
             self.assertLessEqual(uv.x, 4 * 16 / 1024 + 1e-4)
 
+    def test_material_category_lazy_loading(self):
+        """Verify that UI/items chunks are NOT loaded into scene by default, and loaded on-demand when needed."""
+        from utils.live_sync.material_manager import LiveSyncMaterialManager
+        from utils.live_sync.classifier import parse_and_classify
+
+        mapping = {
+            "chunks": [
+                {"chunk_id": 0, "category": "blocks", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+                {"chunk_id": 1, "category": "blocks", "kind": "animation", "width": 512, "height": 512, "tile_size": 16},
+                {"chunk_id": 2, "category": "items", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+                {"chunk_id": 3, "category": "gui", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+            ],
+            "textures": {
+                "minecraft:block/stone": {"chunk_id": 0, "category": "blocks", "tile_column": 0, "tile_row": 0},
+                "minecraft:item/diamond_sword": {"chunk_id": 2, "category": "items", "tile_column": 0, "tile_row": 0},
+                "minecraft:gui/widgets": {"chunk_id": 3, "category": "gui", "tile_column": 0, "tile_row": 0},
+            },
+            "animations": [
+                {
+                    "name": "minecraft:block/water_still",
+                    "texture_key": "minecraft:block/water_still",
+                    "category": "blocks",
+                    "chunk_id": 1,
+                    "pixel_x": 0,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 32,
+                }
+            ]
+        }
+
+        # Clear any preexisting test materials
+        for m in list(bpy.data.materials):
+            if m.name.startswith("MC_Atlas_Chunk_"):
+                bpy.data.materials.remove(m, do_unlink=True)
+
+        world_obj = bpy.data.objects.new("TestWorld", bpy.data.meshes.new("TestWorldMesh"))
+        bpy.context.collection.objects.link(world_obj)
+
+        mat_mgr = LiveSyncMaterialManager(world_obj=world_obj, atlas_params={"mapping": mapping})
+
+        # By default, only category 'blocks' chunks (0 and 1) should be loaded
+        self.assertIn(0, mat_mgr.chunk_materials)
+        self.assertIn(1, mat_mgr.chunk_materials)
+        # Chunks 2 (items) and 3 (gui) must NOT be loaded yet!
+        self.assertNotIn(2, mat_mgr.chunk_materials)
+        self.assertNotIn(3, mat_mgr.chunk_materials)
+
+        # Now resolve a block that uses an item texture (chunk 2)
+        parsed_item = parse_and_classify("minecraft:diamond_sword")
+        res_item = mat_mgr.resolve_block_face(parsed_item, "north", 0)
+        self.assertEqual(res_item.chunk_id, 2)
+
+        # Chunk 2 must now be loaded on-demand, while chunk 3 (gui) STILL remains unloaded!
+        self.assertIn(2, mat_mgr.chunk_materials)
+        self.assertNotIn(3, mat_mgr.chunk_materials)
+
+        # Cleanup
+        bpy.data.objects.remove(world_obj, do_unlink=True)
+
+    def test_animated_materials_frame_0_addressing(self):
+        """Verify that animated textures (water, lava, sea_lantern, fire, etc.) address Frame 0 in animation chunk."""
+        from utils.live_sync.material_manager import LiveSyncMaterialManager
+        from utils.live_sync.classifier import parse_and_classify
+
+        mapping = {
+            "chunks": [
+                {"chunk_id": 0, "category": "blocks", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+                {"chunk_id": 1, "category": "blocks", "kind": "animation", "width": 512, "height": 512, "tile_size": 16},
+            ],
+            "textures": {
+                "minecraft:block/stone": {"chunk_id": 0, "category": "blocks", "tile_column": 0, "tile_row": 0},
+                # Even if mapping has a stale static placeholder entry for water:
+                "minecraft:block/water_still": {"chunk_id": 0, "category": "blocks", "tile_column": 1, "tile_row": 0},
+            },
+            "animations": [
+                {
+                    "name": "minecraft:block/water_still",
+                    "texture_key": "minecraft:block/water_still",
+                    "category": "blocks",
+                    "chunk_id": 1,
+                    "pixel_x": 32,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 32,
+                },
+                {
+                    "name": "minecraft:block/lava_still",
+                    "texture_key": "minecraft:block/lava_still",
+                    "category": "blocks",
+                    "chunk_id": 1,
+                    "pixel_x": 48,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 32,
+                },
+                {
+                    "name": "minecraft:block/sea_lantern",
+                    "texture_key": "minecraft:block/sea_lantern",
+                    "category": "blocks",
+                    "chunk_id": 1,
+                    "pixel_x": 64,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "frame_count": 5,
+                },
+            ]
+        }
+
+        mat_mgr = LiveSyncMaterialManager(atlas_params={"mapping": mapping})
+
+        # Test water addressing
+        parsed_water = parse_and_classify("minecraft:water")
+        res_water = mat_mgr.resolve_block_face(parsed_water, "up", 2)
+        self.assertEqual(res_water.chunk_id, 1, "Water must resolve to animation chunk ID 1, not static chunk 0")
+
+        # Evaluate UVs on Frame 0:
+        # In Minecraft space: top-left (0, 0), bottom-right (1, 1).
+        # In Blender space: u_local in [0, 1], v_local in [0, 1].
+        # Frame 0 spans U in [32/512, 48/512] -> [0.0625, 0.09375]
+        # Frame 0 spans V in [1.0 - 16/512, 1.0] -> [0.96875, 1.0]
+        uv_bl = res_water.calc_uv_fn(0.0, 0.0) # bottom-left in Blender
+        uv_tr = res_water.calc_uv_fn(1.0, 1.0) # top-right in Blender
+
+        self.assertAlmostEqual(uv_bl[0], 32.0 / 512.0, places=5)
+        self.assertAlmostEqual(uv_bl[1], 1.0 - 16.0 / 512.0, places=5)
+        self.assertAlmostEqual(uv_tr[0], 48.0 / 512.0, places=5)
+        self.assertAlmostEqual(uv_tr[1], 1.0, places=5)
+
+        # Test sea_lantern addressing
+        parsed_sl = parse_and_classify("minecraft:sea_lantern")
+        res_sl = mat_mgr.resolve_block_face(parsed_sl, "north", 4)
+        self.assertEqual(res_sl.chunk_id, 1, "Sea lantern must resolve to animation chunk ID 1")
+        uv_sl_bl = res_sl.calc_uv_fn(0.0, 0.0)
+        self.assertAlmostEqual(uv_sl_bl[0], 64.0 / 512.0, places=5)
+        self.assertAlmostEqual(uv_sl_bl[1], 1.0 - 16.0 / 512.0, places=5)
+
 
 if __name__ == "__main__":
     unittest.main()

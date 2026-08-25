@@ -582,6 +582,14 @@ def sync_world_mesh(
         sec_mesh.clear_geometry()
         bm.to_mesh(sec_mesh)
         bm.free()
+
+        # Re-sync materials onto section object to capture any on-demand loaded chunks
+        while len(sec_obj.data.materials) <= max(mat_manager.chunk_materials.keys(), default=0):
+            sec_obj.data.materials.append(None)
+        for cid, mat in mat_manager.chunk_materials.items():
+            if cid < len(sec_obj.data.materials):
+                sec_obj.data.materials[cid] = mat
+
         sec_mesh.update()
 
     # Clear storage dirty set
