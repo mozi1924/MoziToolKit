@@ -482,10 +482,11 @@ class StateBaker:
                 ))
 
         is_cube = (
-            len(baked_elements) == 1
-            and baked_elements[0].from_pos == (0, 0, 0)
-            and baked_elements[0].to_pos == (16, 16, 16)
-            and not baked_elements[0].rotation
+            len(baked_elements) >= 1
+            and all(
+                el.from_pos == (0, 0, 0) and el.to_pos == (16, 16, 16) and not el.rotation
+                for el in baked_elements
+            )
         )
 
         baked_model = BakedModel(
