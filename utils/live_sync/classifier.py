@@ -270,6 +270,23 @@ def atlas_lookup_keys(parsed_or_name: Union[ParsedBlock, str], props: Optional[D
     if p.get("snowy") == "true" and name in ("grass_block", "podzol", "mycelium"):
         keys.append("grass_block_snow")
 
+    if name in ("chest", "trapped_chest", "ender_chest"):
+        c_type = p.get("type", "single")
+        c_stem = "normal" if name == "chest" else ("trapped" if name == "trapped_chest" else "ender")
+        if c_type in ("left", "right") and name != "ender_chest":
+            keys.append(f"minecraft:entity/chest/{c_stem}_{c_type}")
+            keys.append(f"entity/chest/{c_stem}_{c_type}")
+        keys.append(f"minecraft:entity/chest/{c_stem}")
+        keys.append(f"entity/chest/{c_stem}")
+        keys.append("minecraft:block/oak_planks")
+
+    if name.endswith("_banner") or name.endswith("_wall_banner"):
+        color = name.replace("_wall_banner", "").replace("_banner", "")
+        keys.append("minecraft:entity/banner/base")
+        keys.append("entity/banner/base")
+        keys.append(f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool")
+        keys.append("minecraft:block/oak_planks")
+
     keys.extend((name, parsed.block_id, f"minecraft:{name}"))
     return tuple(dict.fromkeys(keys))
 

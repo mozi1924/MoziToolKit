@@ -171,11 +171,23 @@ class LiveSyncMaterialManager:
                 leg_ns, leg_tex = _split_texture_key(name)
                 self._texture_map.setdefault(_canonical_texture_key(leg_ns, leg_tex), location)
 
-                # Short basename fallback (e.g. 'stone' -> 'block/stone')
-                short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
-                self._texture_map.setdefault(short_name, location)
-                self._texture_map.setdefault(f"minecraft:{short_name}", location)
-                self._texture_map.setdefault(f"minecraft:block/{short_name}", location)
+                # Only categories suitable for 3D world blocks/entities register unqualified short-name aliases
+                # Non-block categories (map_decorations, gui, celestials, particles, armor_trims) must NEVER pollute short name aliases!
+                cid = int(location.get("chunk_id", 0))
+                target_chunk = self._chunks_by_id.get(cid, {})
+                category = location.get("category") or target_chunk.get("category", "blocks")
+
+                if category in ("blocks", "items", "chest", "banner_patterns", "shulker_boxes", "entities"):
+                    short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
+                    if not short_name.startswith("map_") and not short_name.startswith("gui_"):
+                        self._texture_map.setdefault(short_name, location)
+                        self._texture_map.setdefault(f"minecraft:{short_name}", location)
+                        if category == "blocks":
+                            self._texture_map.setdefault(f"minecraft:block/{short_name}", location)
+                        elif category == "items":
+                            self._texture_map.setdefault(f"minecraft:item/{short_name}", location)
+                        elif category == "chest":
+                            self._texture_map.setdefault(f"minecraft:entity/chest/{short_name}", location)
 
         # 2. Priority index: Animations in mapping (overwrites any static fallback for animated textures)
         animations = mapping.get("animations", [])
@@ -239,12 +251,22 @@ class LiveSyncMaterialManager:
             "sculk_shrieker": ["sculk_shrieker_top", "minecraft:block/sculk_shrieker_top"],
             "sculk_catalyst": ["sculk_catalyst_top", "minecraft:block/sculk_catalyst_top"],
         }
-        for base_name, alt_list in animated_aliases.items():
-            for alt in alt_list:
-                if alt in self._texture_map and self._texture_map[alt].get("kind") == "animation":
-                    self._texture_map.setdefault(base_name, self._texture_map[alt])
-                    self._texture_map.setdefault(f"minecraft:{base_name}", self._texture_map[alt])
-                    self._texture_map.setdefault(f"minecraft:block/{base_name}", self._texture_map[alt])
+        # 4. Canonical entity and special block texture aliases
+        entity_block_aliases = {
+            "chest": ["entity/chest/normal", "chest/normal", "minecraft:entity/chest/normal"],
+            "trapped_chest": ["entity/chest/trapped", "chest/trapped", "minecraft:entity/chest/trapped"],
+            "ender_chest": ["entity/chest/ender", "chest/ender", "minecraft:entity/chest/ender"],
+            "banner_base": ["entity/banner/base", "entity/banner_base", "minecraft:entity/banner/base"],
+            "banner": ["entity/banner/base", "entity/banner_base", "minecraft:entity/banner/base"],
+        }
+        for base_key, cand_list in entity_block_aliases.items():
+            for cand in cand_list:
+                cand_ns, cand_name = _split_texture_key(cand)
+                canon_cand = _canonical_texture_key(cand_ns, cand_name)
+                cand_loc = self._texture_map.get(canon_cand) or self._texture_map.get(cand)
+                if cand_loc:
+                    self._texture_map.setdefault(base_key, cand_loc)
+                    self._texture_map.setdefault(f"minecraft:{base_key}", cand_loc)
                     break
 
     def _ensure_chunk_materials_with_hash_validation(self) -> None:
@@ -433,20 +455,23 @@ class LiveSyncMaterialManager:
         return self.chunk_to_slot.get(chunk_id, 0)
 
     def _sync_object_material_slots(self) -> None:
-        """Assign chunk materials directly into object material slots."""
+        """Assign chunk materials directly into object material slots without empty slots."""
         if not self.world_obj:
             return
 
-        sorted_chunks = sorted(self.chunk_materials.items(), key=lambda item: item[0])
-        max_chunk_id = max(self.chunk_materials.keys()) if self.chunk_materials else 0
+        mats = self.world_obj.data.materials
+        # Clean any trailing or internal None slots
+        while mats and mats[-1] is None:
+            mats.pop(index=len(mats) - 1)
+        for i in reversed(range(len(mats))):
+            if mats[i] is None:
+                mats.pop(index=i)
 
-        # Ensure object mesh has enough material slots
-        while len(self.world_obj.data.materials) <= max_chunk_id:
-            self.world_obj.data.materials.append(None)
-
-        for cid, mat in sorted_chunks:
-            if cid < len(self.world_obj.data.materials):
-                self.world_obj.data.materials[cid] = mat
+        existing_mats = list(mats)
+        for cid, mat in sorted(self.chunk_materials.items(), key=lambda item: item[0]):
+            if mat and mat not in existing_mats:
+                mats.append(mat)
+                existing_mats.append(mat)
 
         self._update_chunk_to_slot_map()
 
@@ -458,17 +483,18 @@ class LiveSyncMaterialManager:
                 if not slot.material:
                     continue
                 mat = slot.material
-                cid = mat.get("mtk:atlas_chunk_id", mat.get("mtk_atlas_chunk_id", None))
+                cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", mat.get("mtk_atlas_chunk_id", None)))
                 if cid is not None:
                     self.chunk_to_slot[int(cid)] = slot_idx
+
+        # Map any loaded chunk materials not yet registered
+        for cid, mat in self.chunk_materials.items():
+            if cid not in self.chunk_to_slot:
+                if self.world_obj:
+                    self.world_obj.data.materials.append(mat)
+                    self.chunk_to_slot[cid] = len(self.world_obj.data.materials) - 1
                 else:
-                    self.chunk_to_slot.setdefault(slot_idx, slot_idx)
-
-        for cid in self.chunk_materials.keys():
-            self.chunk_to_slot.setdefault(cid, cid)
-
-        for cid in range(16):
-            self.chunk_to_slot.setdefault(cid, cid)
+                    self.chunk_to_slot[cid] = cid
 
     def get_slot_for_chunk(self, chunk_id: int) -> int:
         """Return the material slot index for a given Chunk ID, loading it on-demand if necessary."""
