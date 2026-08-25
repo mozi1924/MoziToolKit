@@ -15,8 +15,6 @@ from .provenance import (
     get_atlas_mapping_from_mesh,
     write_provenance_schema,
     write_face_source_provenance,
-    write_face_material_metadata,
-    read_face_material_metadata,
 )
 
 from .mesh_attributes import (
@@ -62,8 +60,6 @@ __all__ = [
     "get_atlas_mapping_from_mesh",
     "write_provenance_schema",
     "write_face_source_provenance",
-    "write_face_material_metadata",
-    "read_face_material_metadata",
     "ensure_face_attribute",
     "read_face_vector_attribute",
     "read_face_float_attribute",

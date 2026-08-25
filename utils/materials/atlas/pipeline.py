@@ -27,7 +27,6 @@ from ..pipeline.provenance import (
     canonical_texture_key,
     split_texture_key,
     write_provenance_schema,
-    read_face_material_metadata,
 )
 from ..matching import material_source_origin
 from ..pack.pack_stack import ResourcePackStack
@@ -297,9 +296,6 @@ class AtlasReplacementEngine:
             resolved_standalone = [None] * len(mesh.polygons)
             source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
             source_origins = read_face_string_attribute(mesh, ATTR_SOURCE_ORIGIN)
-            for idx, record in enumerate(read_face_material_metadata(mesh)):
-                source_keys[idx] = source_keys[idx] or str(record.get("source_texture_key", ""))
-                source_origins[idx] = source_origins[idx] or str(record.get("source_origin", ""))
             unresolved_faces = []
             skipped_faces = []
             face_materials = [
