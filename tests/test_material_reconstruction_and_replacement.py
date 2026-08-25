@@ -308,7 +308,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             slot.material and slot.material.name.startswith("mtk:minecraft:stone")
             for slot in self.cube.material_slots
         ))
-        self.assertIn("mtk_face_material_metadata", self.cube.data.attributes)
+        self.assertIn("mtk_source_texture_key", self.cube.data.attributes)
 
     def test_atlas_unmatched_face_uses_reserved_zero_zero_fallback(self):
         """Atlas fallback is always the reserved first chunk / first tile."""
@@ -325,7 +325,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(res.is_success, ctx.reports)
         self.assertEqual(self.cube.data.attributes["mtk_atlas_chunk_id"].data[0].value, 0.0)
         self.assertEqual(self.cube.data.attributes["mtk_atlas_texture_id"].data[0].value, 0.0)
-        self.assertIn("mtk_face_material_metadata", self.cube.data.attributes)
+        self.assertIn("mtk_source_texture_key", self.cube.data.attributes)
 
     def test_face_metadata_survives_lost_material_node_trees(self):
         """A converted mesh remains replaceable after all MTK shaders are erased."""
@@ -338,7 +338,7 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=standalone, target_objects=[self.cube])
         self.assertTrue(res.is_success, ctx.reports)
-        self.assertIn("mtk_face_material_metadata", self.cube.data.attributes)
+        self.assertIn("mtk_source_texture_key", self.cube.data.attributes)
         for slot in self.cube.material_slots:
             if slot.material and slot.material.node_tree:
                 slot.material.node_tree.nodes.clear()

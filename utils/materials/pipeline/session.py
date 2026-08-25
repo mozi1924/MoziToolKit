@@ -17,7 +17,6 @@ from .provenance import (
     split_texture_key,
     get_atlas_mapping_from_material,
     get_atlas_mapping_from_mesh,
-    write_face_material_metadata,
 )
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
@@ -97,33 +96,6 @@ def apply_mesh_face_materials_and_provenance(
         )
 
     write_face_source_provenance(mesh, source_keys, source_origins)
-    records = []
-    for mat, source_key, source_origin in zip(face_materials, source_keys, source_origins):
-        # Custom properties are deliberately copied rather than referenced:
-        # node trees and material slots are editable Blender data, this record is not.
-        props = {}
-        if mat:
-            for key, value in mat.items():
-                # The complete atlas mapping belongs once on the mesh.  Copying
-                # it to every face turns a multi-megabyte mapping into a
-                # face-count-sized memory leak; chunk/source fields below are
-                # sufficient to address that mesh-level mapping exactly.
-                if str(key).startswith("mtk:") and str(key) != PROP_ATLAS_MAPPING:
-                    try:
-                        json.dumps(value)
-                        props[str(key)] = value
-                    except TypeError:
-                        props[str(key)] = str(value)
-        records.append({
-            "schema_version": 1,
-            "source_texture_key": source_key,
-            "source_origin": source_origin,
-            "material_name": mat.name if mat else "",
-            "material_mode": detect_material_mode(mat),
-            "material_properties": props,
-            "atlas_mapping_owner": "mesh" if mat and PROP_ATLAS_MAPPING in mat else "",
-        })
-    write_face_material_metadata(mesh, records)
 
 
 def cleanup_unused_mtk_datablocks() -> tuple[int, int]:

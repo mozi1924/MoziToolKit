@@ -140,10 +140,6 @@ ATTR_ALPHA_MODE = "mtk_alpha_mode"
 # polygons share the same Blender material (as happens in atlas mode).
 ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
 ATTR_SOURCE_ORIGIN = "mtk_source_origin"
-# A self-contained JSON record for every polygon.  Unlike a material slot or
-# node tree this survives shader edits, so it is the durable reconstruction
-# contract for a converted mesh.
-ATTR_FACE_MATERIAL_METADATA = "mtk_face_material_metadata"
 FALLBACK_TEXTURE_KEY = "mozi:fallback"
 PROVENANCE_SCHEMA_VERSION = 2
 

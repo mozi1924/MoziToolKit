@@ -23,7 +23,6 @@ from ..pipeline.provenance import (
     canonical_texture_key,
     detect_material_mode,
     split_texture_key,
-    read_face_material_metadata,
 )
 from ..matching import material_source_origin
 from ..pack.pack_stack import ResourcePackStack
@@ -260,9 +259,6 @@ class StandaloneReplacementEngine:
             material_indices = get_polygon_material_indices(mesh)
             existing_source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
             existing_source_origins = read_face_string_attribute(mesh, ATTR_SOURCE_ORIGIN)
-            for idx, record in enumerate(read_face_material_metadata(mesh)):
-                existing_source_keys[idx] = existing_source_keys[idx] or str(record.get("source_texture_key", ""))
-                existing_source_origins[idx] = existing_source_origins[idx] or str(record.get("source_origin", ""))
 
             resolved_faces = []
             unresolved_faces = []
