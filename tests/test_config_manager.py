@@ -167,6 +167,49 @@ class TestConfigManager(unittest.TestCase):
         self.assertEqual(len(self.mgr.get_resource_packs()), 2)
         self.assertEqual(self.mgr.get_resource_packs()[0]["name"], "Crucial Pack 1")
 
+    def test_default_menu_views_populated(self):
+        """Verify default ConfigData and fresh manager instance populate views from registered operator presets."""
+        cfg = ConfigData()
+        self.assertIn("mesh", cfg.views)
+        self.assertIn("object", cfg.views)
+        self.assertIn("uv", cfg.views)
+        self.assertGreater(len(cfg.views["mesh"]), 0, "Default mesh menu views must not be empty.")
+        self.assertGreater(len(cfg.views["object"]), 0, "Default object menu views must not be empty.")
+        self.assertGreater(len(cfg.views["uv"]), 0, "Default uv menu views must not be empty.")
+
+        # Check default operator IDs
+        mesh_ops = [item.operator for item in cfg.views["mesh"]]
+        self.assertIn("mozi.adaptive_pixel_split", mesh_ops)
+
+    def test_reset_views_preserves_packs_and_settings(self):
+        """Verify reset_views restores default menu presets while keeping resource packs and material settings intact."""
+        # 1. Custom modified views, packs, and material settings
+        self.mgr.set_views({"mesh": [], "object": [], "uv": []})
+        self.mgr.set_resource_packs([
+            {"name": "Keep This Pack", "path": "/path/keep.zip", "enabled": True, "pack_type": "RESOURCE_PACK"}
+        ])
+        self.mgr.set_material_settings({"material_mode": "STANDALONE", "biome_preset": "BADLANDS"})
+
+        self.assertEqual(len(self.mgr.get_views()["mesh"]), 0)
+        self.assertEqual(len(self.mgr.get_resource_packs()), 1)
+
+        # 2. Reset only views
+        self.mgr.reset_views()
+
+        # 3. Verify views are restored to default presets
+        views = self.mgr.get_views()
+        self.assertGreater(len(views["mesh"]), 0)
+        self.assertGreater(len(views["object"]), 0)
+        self.assertGreater(len(views["uv"]), 0)
+
+        # 4. Verify packs and material settings were NOT wiped
+        packs = self.mgr.get_resource_packs()
+        self.assertEqual(len(packs), 1)
+        self.assertEqual(packs[0]["name"], "Keep This Pack")
+        mat = self.mgr.get_material_settings()
+        self.assertEqual(mat["material_mode"], "STANDALONE")
+        self.assertEqual(mat["biome_preset"], "BADLANDS")
+
     def test_export_and_import_config(self):
         """Verify exporting and importing configuration files."""
         self.mgr.set_resource_packs([

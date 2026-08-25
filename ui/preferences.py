@@ -18,6 +18,7 @@ try:
         save_material_settings_config,
         get_enabled_pack_entries,
         reset_config,
+        reset_views_config,
         export_config,
         import_config,
         normalize_operator_id,
@@ -45,6 +46,7 @@ except (ImportError, ValueError):
         save_material_settings_config,
         get_enabled_pack_entries,
         reset_config,
+        reset_views_config,
         export_config,
         import_config,
         normalize_operator_id,
@@ -97,6 +99,8 @@ def _safe_get_prefs(self_or_context=None):
 
 def on_backend_type_changed(self, context):
     """Callback when storage backend type is switched in preferences UI."""
+    if get_config_manager().is_syncing():
+        return
     prefs = _safe_get_prefs(self)
     if prefs and hasattr(prefs, "backend_type"):
         mgr = get_config_manager()
@@ -107,6 +111,8 @@ def on_backend_type_changed(self, context):
 
 def on_material_setting_changed(self, context):
     """Callback when global material replacement preferences are edited."""
+    if get_config_manager().is_syncing():
+        return
     prefs = _safe_get_prefs(self)
     if prefs:
         get_config_manager().sync_from_preferences(prefs)
@@ -115,6 +121,8 @@ def on_material_setting_changed(self, context):
 
 def on_item_label_changed(self, context):
     """Callback when an item's custom label is edited."""
+    if get_config_manager().is_syncing():
+        return
     prefs = _safe_get_prefs(self)
     if prefs:
         get_config_manager().sync_from_preferences(prefs)
@@ -137,7 +145,7 @@ def reorder_resource_packs_by_tier(prefs):
     3. VANILLA (bottom)
     Preserves existing relative order within each tier using stable in-place moves.
     """
-    if _get_is_reordering() or getattr(prefs, "_mozi_is_syncing", False):
+    if _get_is_reordering() or get_config_manager().is_syncing():
         return
     if prefs is None or not hasattr(prefs, "resource_packs") or len(prefs.resource_packs) <= 1:
         return
@@ -165,7 +173,7 @@ def reorder_resource_packs_by_tier(prefs):
 
 def on_pack_entry_changed(self, context):
     """Callback when a resource pack entry's attributes change."""
-    if _get_is_reordering() or getattr(self, "_mozi_is_syncing", False):
+    if _get_is_reordering() or get_config_manager().is_syncing():
         return
     prefs = _safe_get_prefs(self)
     if prefs:
@@ -175,7 +183,7 @@ def on_pack_entry_changed(self, context):
 
 def on_pack_type_changed(self, context):
     """Callback when a resource pack entry's pack_type tier changes."""
-    if _get_is_reordering() or getattr(self, "_mozi_is_syncing", False):
+    if _get_is_reordering() or get_config_manager().is_syncing():
         return
     prefs = _safe_get_prefs(self)
     if prefs:
@@ -186,7 +194,7 @@ def on_pack_type_changed(self, context):
 
 def on_pack_path_changed(self, context):
     """Auto-detect pack name and type when path is changed."""
-    if _get_is_reordering() or getattr(self, "_mozi_is_syncing", False):
+    if _get_is_reordering() or get_config_manager().is_syncing():
         return
     try:
         p = Path(self.path.strip())
@@ -564,12 +572,12 @@ class MOZI_OT_menu_reset_config(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
-        get_config_manager().reset()
+        get_config_manager().reset_views()
         prefs = _safe_get_prefs(context)
         if prefs:
             get_config_manager().sync_to_preferences(prefs)
         refresh_ui_and_menus(context)
-        self.report({"INFO"}, "Configuration reset to default presets.")
+        self.report({"INFO"}, "Right-click context menu reset to default presets.")
         return {"FINISHED"}
 
 

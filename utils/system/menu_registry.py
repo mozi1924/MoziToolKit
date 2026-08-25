@@ -15,8 +15,115 @@ except ImportError:
 from ..config.models import normalize_operator_id, is_valid_operator_id
 from ..config import load_config
 
-# Central Registry Dictionary for Registered Menu Items
-_REGISTERED_MENU_ITEMS: Dict[str, Dict[str, Any]] = {}
+CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
+    "mesh": [
+        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
+        {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
+        {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
+        {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
+        {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
+        {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+    ],
+    "object": [
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
+        {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+    ],
+    "uv": [
+        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.scale_uv", "label": "Scale UV Faces", "enabled": True},
+        {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
+        {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
+    ],
+}
+
+CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
+    "mozi.adaptive_pixel_split": {
+        "canonical_id": "mozi.adaptive_pixel_split",
+        "label": "Adaptive Pixel Split",
+        "default_label": "Adaptive Pixel Split",
+        "views": ["mesh", "object", "uv"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.auto_extrude_repair": {
+        "canonical_id": "mozi.auto_extrude_repair",
+        "label": "Auto Extrude Repair",
+        "default_label": "Auto Extrude Repair",
+        "views": ["mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.clear_custom_normals": {
+        "canonical_id": "mozi.clear_custom_normals",
+        "label": "Clear Custom Normals",
+        "default_label": "Clear Custom Normals",
+        "views": ["mesh", "object"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.random_extrude": {
+        "canonical_id": "mozi.random_extrude",
+        "label": "Random Extrude",
+        "default_label": "Random Extrude",
+        "views": ["mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.select_hard_edges": {
+        "canonical_id": "mozi.select_hard_edges",
+        "label": "Select Hard & Sharp Edges",
+        "default_label": "Select Hard & Sharp Edges",
+        "views": ["mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.replace_material": {
+        "canonical_id": "mozi.replace_material",
+        "label": "Replace Material",
+        "default_label": "Replace Material",
+        "views": ["object"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.set_texture_interpolation_closest": {
+        "canonical_id": "mozi.set_texture_interpolation_closest",
+        "label": "Set Image Interpolation to Closest",
+        "default_label": "Set Image Interpolation to Closest",
+        "views": ["object"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.repair_fluid_uv": {
+        "canonical_id": "mozi.repair_fluid_uv",
+        "label": "Repair Fluid UV",
+        "default_label": "Repair Fluid UV",
+        "views": ["uv", "mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.scale_uv": {
+        "canonical_id": "mozi.scale_uv",
+        "label": "Scale UV Faces",
+        "default_label": "Scale UV Faces",
+        "views": ["uv"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.select_transparent_faces": {
+        "canonical_id": "mozi.select_transparent_faces",
+        "label": "Select Transparent Faces",
+        "default_label": "Select Transparent Faces",
+        "views": ["mesh", "uv"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+}
+
+# Central Registry Dictionary for Registered Menu Items initialized with Canonical Operators
+_REGISTERED_MENU_ITEMS: Dict[str, Dict[str, Any]] = {k: dict(v) for k, v in CANONICAL_OPERATORS.items()}
 
 
 def register_operator_menu_item(op_id: str, label: str, views: Optional[List[str]] = None, enabled: bool = True):
@@ -87,6 +194,10 @@ def get_default_presets() -> Dict[str, List[Dict[str, Any]]]:
                     "label": info.get("label", ""),
                     "enabled": info.get("enabled", True),
                 })
+
+    for view in ["mesh", "object", "uv"]:
+        if not presets[view]:
+            presets[view] = [dict(it) for it in CANONICAL_DEFAULT_PRESETS.get(view, [])]
 
     return presets
 

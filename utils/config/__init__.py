@@ -92,8 +92,13 @@ def save_material_settings_config(material_settings: Union[Dict[str, Any], Mater
 
 
 def reset_config() -> Dict[str, Any]:
-    """Reset configuration to defaults and save."""
+    """Reset full configuration to defaults and save."""
     return get_config_manager().reset().to_dict()
+
+
+def reset_views_config() -> Dict[str, List[Dict[str, Any]]]:
+    """Reset only context menu views to default presets."""
+    return get_config_manager().reset_views(save=True)
 
 
 def export_config(filepath: Union[str, Path], views_data: Optional[Dict[str, Any]] = None) -> bool:
@@ -132,6 +137,7 @@ __all__ = [
     "load_material_settings_config",
     "save_material_settings_config",
     "reset_config",
+    "reset_views_config",
     "export_config",
     "import_config",
 ]
