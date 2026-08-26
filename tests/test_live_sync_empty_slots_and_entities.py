@@ -98,31 +98,43 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         self.assertEqual(resolved.chunk_id, 0, "White banner should resolve to block chunk 0!")
 
     def test_chest_model_baking(self):
-        """Verify that chests bake accurate 3D multipart models (body + latch) and not 1x1x1 cubes."""
+        """Verify that chests bake accurate 3D multipart models (lid + body + latch) and not 1x1x1 cubes."""
         baker = StateBaker()
 
         # 1. Single Chest Facing North
         baked_north = baker.bake_block_state("minecraft:chest[facing=north,type=single,waterlogged=false]")
         self.assertFalse(baked_north.is_cube, "Chest should not be classified as a full cube!")
-        self.assertGreater(len(baked_north.elements), 1, "Chest should have multiple 3D elements (body and latch)!")
+        self.assertEqual(len(baked_north.elements), 3, "Chest should have 3 distinct 3D elements (lid, body, and latch)!")
 
-        # Verify bounding box of main body is 14x14x14 (inset by 1/16 on sides)
-        body_elem = baked_north.elements[0]
-        # In Minecraft block local coords [0..1]
-        all_verts = [v for face in body_elem.faces.values() for v in face.vertices]
-        min_x = min(v[0] for v in all_verts)
-        max_x = max(v[0] for v in all_verts)
-        min_y = min(v[1] for v in all_verts)
-        max_y = max(v[1] for v in all_verts)
-        min_z = min(v[2] for v in all_verts)
-        max_z = max(v[2] for v in all_verts)
+        # Verify Lid element (element 0)
+        lid_elem = baked_north.elements[0]
+        lid_verts = [v for face in lid_elem.faces.values() for v in face.vertices]
+        self.assertAlmostEqual(min(v[0] for v in lid_verts), 1.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[0] for v in lid_verts), 15.0 / 16.0, places=2)
+        self.assertAlmostEqual(min(v[1] for v in lid_verts), 9.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[1] for v in lid_verts), 14.0 / 16.0, places=2)
+        self.assertAlmostEqual(min(v[2] for v in lid_verts), 1.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[2] for v in lid_verts), 15.0 / 16.0, places=2)
 
-        self.assertAlmostEqual(min_x, 1.0 / 16.0, places=2)
-        self.assertAlmostEqual(max_x, 15.0 / 16.0, places=2)
-        self.assertAlmostEqual(min_y, 0.0, places=2)
-        self.assertAlmostEqual(max_y, 14.0 / 16.0, places=2)
-        self.assertAlmostEqual(min_z, 1.0 / 16.0, places=2)
-        self.assertAlmostEqual(max_z, 15.0 / 16.0, places=2)
+        # Verify Body element (element 1)
+        body_elem = baked_north.elements[1]
+        body_verts = [v for face in body_elem.faces.values() for v in face.vertices]
+        self.assertAlmostEqual(min(v[0] for v in body_verts), 1.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[0] for v in body_verts), 15.0 / 16.0, places=2)
+        self.assertAlmostEqual(min(v[1] for v in body_verts), 0.0, places=2)
+        self.assertAlmostEqual(max(v[1] for v in body_verts), 10.0 / 16.0, places=2)
+        self.assertAlmostEqual(min(v[2] for v in body_verts), 1.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[2] for v in body_verts), 15.0 / 16.0, places=2)
+
+        # Verify Latch element (element 2)
+        latch_elem = baked_north.elements[2]
+        latch_verts = [v for face in latch_elem.faces.values() for v in face.vertices]
+        self.assertAlmostEqual(min(v[0] for v in latch_verts), 7.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[0] for v in latch_verts), 9.0 / 16.0, places=2)
+        self.assertAlmostEqual(min(v[1] for v in latch_verts), 7.0 / 16.0, places=2)
+        self.assertAlmostEqual(max(v[1] for v in latch_verts), 11.0 / 16.0, places=2)
+        self.assertAlmostEqual(min(v[2] for v in latch_verts), 0.0, places=2)
+        self.assertAlmostEqual(max(v[2] for v in latch_verts), 1.0 / 16.0, places=2)
 
         # Verify chest texture key is entity texture
         for face in body_elem.faces.values():

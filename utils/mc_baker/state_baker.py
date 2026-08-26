@@ -387,26 +387,30 @@ class StateBaker:
 
     @staticmethod
     def _resolve_chest_elements(short_name: str, props: dict[str, str]) -> list[dict]:
-        """Construct multipart 3D elements for chests (box + lid + front latch)."""
+        """Construct multipart 3D elements for chests (lid + body + lock)."""
         facing = props.get("facing", "north")
         chest_type = props.get("type", "single")
 
         if short_name == "ender_chest":
             tex = "minecraft:entity/chest/ender"
         elif short_name == "trapped_chest":
-            if chest_type == "left":
-                tex = "minecraft:entity/chest/trapped_left"
-            elif chest_type == "right":
-                tex = "minecraft:entity/chest/trapped_right"
+            if chest_type in ("left", "right"):
+                tex = f"minecraft:entity/chest/trapped_{chest_type}"
             else:
                 tex = "minecraft:entity/chest/trapped"
-        else:
-            if chest_type == "left":
-                tex = "minecraft:entity/chest/normal_left"
-            elif chest_type == "right":
-                tex = "minecraft:entity/chest/normal_right"
+        elif short_name == "chest":
+            if chest_type in ("left", "right"):
+                tex = f"minecraft:entity/chest/normal_{chest_type}"
             else:
                 tex = "minecraft:entity/chest/normal"
+        elif short_name.endswith("_chest"):
+            base = short_name.removesuffix("_chest")
+            if chest_type in ("left", "right"):
+                tex = f"minecraft:entity/chest/{base}_{chest_type}"
+            else:
+                tex = f"minecraft:entity/chest/{base}"
+        else:
+            tex = "minecraft:entity/chest/normal"
 
         rot_angle = 0.0
         if facing == "south":
@@ -419,39 +423,104 @@ class StateBaker:
         elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
 
         if chest_type == "left":
+            lid_from = [1, 9, 1]
+            lid_to = [16, 14, 15]
             body_from = [1, 0, 1]
-            body_to = [16, 14, 15]
+            body_to = [16, 10, 15]
             latch_from = [15, 7, 0]
             latch_to = [16, 11, 1]
+
+            lid_faces = {
+                "up": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
+                "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
+                "east": {"texture": tex, "uv": [29, 14, 43, 19], "uv_size": 64},
+            }
+            body_faces = {
+                "up": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
+                "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
+                "east": {"texture": tex, "uv": [29, 33, 43, 43], "uv_size": 64},
+            }
+            latch_faces = {
+                "north": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
+                "south": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
+                "up": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+                "east": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
+            }
         elif chest_type == "right":
+            lid_from = [0, 9, 1]
+            lid_to = [15, 14, 15]
             body_from = [0, 0, 1]
-            body_to = [15, 14, 15]
+            body_to = [15, 10, 15]
             latch_from = [0, 7, 0]
             latch_to = [1, 11, 1]
+
+            lid_faces = {
+                "up": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
+                "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
+                "east": {"texture": tex, "uv": [29, 14, 43, 19], "uv_size": 64},
+            }
+            body_faces = {
+                "up": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
+                "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
+                "east": {"texture": tex, "uv": [29, 33, 43, 43], "uv_size": 64},
+            }
+            latch_faces = {
+                "north": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
+                "south": {"texture": tex, "uv": [4, 1, 5, 5], "uv_size": 64},
+                "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [3, 0, 4, 1], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+                "east": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
+            }
         else:
+            lid_from = [1, 9, 1]
+            lid_to = [15, 14, 15]
             body_from = [1, 0, 1]
-            body_to = [15, 14, 15]
+            body_to = [15, 10, 15]
             latch_from = [7, 7, 0]
             latch_to = [9, 11, 1]
 
-        body_faces = {
-            "up": {"texture": tex, "uv": [14, 0, 28, 14], "uv_size": 64},
-            "down": {"texture": tex, "uv": [28, 0, 42, 14], "uv_size": 64},
-            "north": {"texture": tex, "uv": [14, 14, 28, 28], "uv_size": 64},
-            "south": {"texture": tex, "uv": [42, 14, 56, 28], "uv_size": 64},
-            "west": {"texture": tex, "uv": [0, 14, 14, 28], "uv_size": 64},
-            "east": {"texture": tex, "uv": [28, 14, 42, 28], "uv_size": 64},
-        }
-
-        latch_faces = {
-            "north": {"texture": tex, "uv": [1, 1, 3, 5], "uv_size": 64},
-            "up": {"texture": tex, "uv": [1, 0, 3, 1], "uv_size": 64},
-            "down": {"texture": tex, "uv": [3, 0, 5, 1], "uv_size": 64},
-            "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
-            "east": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
-        }
+            lid_faces = {
+                "up": {"texture": tex, "uv": [14, 0, 28, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [28, 0, 42, 14], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 14, 28, 19], "uv_size": 64},
+                "south": {"texture": tex, "uv": [42, 14, 56, 19], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
+                "east": {"texture": tex, "uv": [28, 14, 42, 19], "uv_size": 64},
+            }
+            body_faces = {
+                "up": {"texture": tex, "uv": [14, 19, 28, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [28, 19, 42, 33], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 33, 28, 43], "uv_size": 64},
+                "south": {"texture": tex, "uv": [42, 33, 56, 43], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
+                "east": {"texture": tex, "uv": [28, 33, 42, 43], "uv_size": 64},
+            }
+            latch_faces = {
+                "north": {"texture": tex, "uv": [1, 1, 3, 5], "uv_size": 64},
+                "south": {"texture": tex, "uv": [4, 1, 6, 5], "uv_size": 64},
+                "up": {"texture": tex, "uv": [1, 0, 3, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [3, 0, 5, 1], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+                "east": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
+            }
 
         elements = [
+            {"from": lid_from, "to": lid_to, "faces": lid_faces},
             {"from": body_from, "to": body_to, "faces": body_faces},
             {"from": latch_from, "to": latch_to, "faces": latch_faces},
         ]
@@ -466,8 +535,9 @@ class StateBaker:
         """Construct multipart 3D elements for standing and wall banners.
 
         Uses the authoritative 64x64 entity texture 'minecraft:entity/banner/banner_base'
-        (Row 0 of banner_patterns atlas chunk) which contains the complete wood stand
-        (pole & crossbar) and cloth face in vanilla Minecraft.
+        with exact official Minecraft ModelBanner / BannerFlagModel dimensions:
+        - Standing banner: 2-block height frame with seamless pole-to-crossbar joint and front-facing cloth.
+        - Wall banner: Wall-mounted crossbar with front-facing cloth hanging downwards.
         """
         is_wall = "_wall_banner" in short_name
         banner_tex = "minecraft:entity/banner/banner_base"
@@ -485,10 +555,10 @@ class StateBaker:
 
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
 
-            # Cloth first so it takes priority in the 6-face summary
+            # Cloth first so it takes priority in the 6-face summary (mounted on front face of crossbar)
             cloth = {
-                "from": [3, -5, 14.5],
-                "to": [13, 13, 15.5],
+                "from": [1.333333, -13.0, 13.666667],
+                "to": [14.666667, 13.666667, 14.333333],
                 "faces": {
                     "north": {"texture": banner_tex, "uv": [1, 1, 21, 41], "uv_size": 64, "tintindex": 0},
                     "south": {"texture": banner_tex, "uv": [22, 1, 42, 41], "uv_size": 64, "tintindex": 0},
@@ -499,8 +569,8 @@ class StateBaker:
                 },
             }
             crossbar = {
-                "from": [2, 12, 14],
-                "to": [14, 14, 16],
+                "from": [1.333333, 12.333333, 14.333333],
+                "to": [14.666667, 13.666667, 15.666667],
                 "faces": {
                     "north": {"texture": banner_tex, "uv": [2, 44, 22, 46], "uv_size": 64, "tintindex": -1},
                     "south": {"texture": banner_tex, "uv": [24, 44, 44, 46], "uv_size": 64, "tintindex": -1},
@@ -521,10 +591,10 @@ class StateBaker:
             angle = (rot_idx * 22.5) % 360.0
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": angle} if angle != 0.0 else None
 
-            # Cloth first so it takes priority in the 6-face summary
+            # Cloth first so it takes priority in the 6-face summary (mounted on front face of crossbar)
             cloth = {
-                "from": [3, 1, 7.8],
-                "to": [13, 19.5, 8.2],
+                "from": [1.333333, 2.666667, 6.666667],
+                "to": [14.666667, 29.333333, 7.333333],
                 "faces": {
                     "north": {"texture": banner_tex, "uv": [1, 1, 21, 41], "uv_size": 64, "tintindex": 0},
                     "south": {"texture": banner_tex, "uv": [22, 1, 42, 41], "uv_size": 64, "tintindex": 0},
@@ -535,8 +605,8 @@ class StateBaker:
                 },
             }
             crossbar = {
-                "from": [2, 19, 7.5],
-                "to": [14, 20.5, 8.5],
+                "from": [1.333333, 28.0, 7.333333],
+                "to": [14.666667, 29.333333, 8.666667],
                 "faces": {
                     "north": {"texture": banner_tex, "uv": [2, 44, 22, 46], "uv_size": 64, "tintindex": -1},
                     "south": {"texture": banner_tex, "uv": [24, 44, 44, 46], "uv_size": 64, "tintindex": -1},
@@ -547,8 +617,8 @@ class StateBaker:
                 },
             }
             pole = {
-                "from": [7.5, 0, 7.5],
-                "to": [8.5, 16, 8.5],
+                "from": [7.333333, 0.0, 7.333333],
+                "to": [8.666667, 28.0, 8.666667],
                 "faces": {
                     "north": {"texture": banner_tex, "uv": [44, 2, 46, 44], "uv_size": 64, "tintindex": -1},
                     "south": {"texture": banner_tex, "uv": [48, 2, 50, 44], "uv_size": 64, "tintindex": -1},
@@ -658,7 +728,7 @@ class StateBaker:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                if short_name in ("chest", "trapped_chest", "ender_chest"):
+                if short_name in ("chest", "trapped_chest", "ender_chest") or short_name.endswith("_chest"):
                     raw_elements = self._resolve_chest_elements(short_name, props)
                 elif short_name.endswith(("_banner", "_wall_banner")):
                     raw_elements = self._resolve_banner_elements(short_name, props)
@@ -676,7 +746,21 @@ class StateBaker:
                 elem_faces: dict[str, BakedFace] = {}
                 is_full_cuboid = (from_pos == (0, 0, 0) and to_pos == (16, 16, 16) and not elem_rot)
 
-                for orig_dir, face_data in elem.get("faces", {}).items():
+                # Filter zero-thickness opposing faces (e.g. cross models, crops, lily pads, vines)
+                # to prevent internal overlapping faces and Z-fighting in Blender
+                is_zero_x = abs(from_pos[0] - to_pos[0]) < 1e-5
+                is_zero_y = abs(from_pos[1] - to_pos[1]) < 1e-5
+                is_zero_z = abs(from_pos[2] - to_pos[2]) < 1e-5
+
+                raw_faces_items = list(elem.get("faces", {}).items())
+                if is_zero_z and "north" in elem.get("faces", {}) and "south" in elem.get("faces", {}):
+                    raw_faces_items = [(d, fd) for d, fd in raw_faces_items if d != "south"]
+                if is_zero_x and "west" in elem.get("faces", {}) and "east" in elem.get("faces", {}):
+                    raw_faces_items = [(d, fd) for d, fd in raw_faces_items if d != "east"]
+                if is_zero_y and "up" in elem.get("faces", {}) and "down" in elem.get("faces", {}):
+                    raw_faces_items = [(d, fd) for d, fd in raw_faces_items if d != "down"]
+
+                for orig_dir, face_data in raw_faces_items:
                     texture = face_data.get("texture", fallback_texture)
                     cullface = face_data.get("cullface")
                     if not cullface and is_full_cuboid:

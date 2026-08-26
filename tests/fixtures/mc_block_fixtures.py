@@ -73,6 +73,16 @@ FIXTURE_BLOCKSTATES: dict[str, dict[str, Any]] = {
             "extended=true,facing=up":     {"model": "minecraft:block/piston_extended", "x": 270},
             "extended=true,facing=west":   {"model": "minecraft:block/piston_extended", "y": 270}
         }
+    },
+    "minecraft:poppy": {
+        "variants": {
+            "": {"model": "minecraft:block/poppy"}
+        }
+    },
+    "minecraft:lily_pad": {
+        "variants": {
+            "": {"model": "minecraft:block/lily_pad"}
+        }
     }
 }
 
@@ -81,6 +91,58 @@ FIXTURE_BLOCKSTATES: dict[str, dict[str, Any]] = {
 # -------------------------------------------------------------------------
 
 FIXTURE_MODELS: dict[str, dict[str, Any]] = {
+    # Cross base
+    "minecraft:block/cross": {
+        "ambientocclusion": False,
+        "textures": {
+            "particle": "#cross"
+        },
+        "elements": [
+            {
+                "from": [0.8, 0, 8],
+                "to": [15.2, 16, 8],
+                "rotation": {"origin": [8, 8, 8], "axis": "y", "angle": 45, "rescale": True},
+                "shade": False,
+                "faces": {
+                    "north": {"uv": [0, 0, 16, 16], "texture": "#cross"},
+                    "south": {"uv": [0, 0, 16, 16], "texture": "#cross"}
+                }
+            },
+            {
+                "from": [8, 0, 0.8],
+                "to": [8, 16, 15.2],
+                "rotation": {"origin": [8, 8, 8], "axis": "y", "angle": 45, "rescale": True},
+                "shade": False,
+                "faces": {
+                    "west": {"uv": [0, 0, 16, 16], "texture": "#cross"},
+                    "east": {"uv": [0, 0, 16, 16], "texture": "#cross"}
+                }
+            }
+        ]
+    },
+    "minecraft:block/poppy": {
+        "parent": "minecraft:block/cross",
+        "textures": {
+            "cross": "minecraft:block/poppy"
+        }
+    },
+    "minecraft:block/lily_pad": {
+        "ambientocclusion": False,
+        "textures": {
+            "particle": "minecraft:block/lily_pad",
+            "texture": "minecraft:block/lily_pad"
+        },
+        "elements": [
+            {
+                "from": [0, 0.25, 0],
+                "to": [16, 0.25, 16],
+                "faces": {
+                    "down": {"uv": [0, 0, 16, 16], "texture": "#texture"},
+                    "up": {"uv": [0, 0, 16, 16], "texture": "#texture"}
+                }
+            }
+        ]
+    },
     # Block base
     "minecraft:block/block": {
         "textures": {
