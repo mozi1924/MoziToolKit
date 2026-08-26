@@ -22,7 +22,7 @@ def make_box_element(
 ) -> dict:
     """
     Construct a canonical 6-face Minecraft element dict from box coordinates
-    and ModelPart texture offset (u, v) using official Java UV unwrapping logic.
+    and ModelPart texture offset (u, v) using official Java ModelPart$Cube & Polygon logic.
     """
     dx = float(to_pos[0] - from_pos[0])
     dy = float(to_pos[1] - from_pos[1])
@@ -30,17 +30,18 @@ def make_box_element(
 
     cull = cullface_map or {}
 
-    # Official Minecraft Java ModelPart$Cube face unwrapping:
-    # Up:    [u + dz,      v,           u + dz + dx,      v + dz]
-    # Down:  [u + dz + dx, v,           u + dz + 2*dx,    v + dz]
-    # West:  [u,           v + dz,      u + dz,           v + dz + dy]
-    # North: [u + dz,      v + dz,      u + dz + dx,      v + dz + dy]
-    # East:  [u + dz + dx, v + dz,      u + 2*dz + dx,    v + dz + dy]
-    # South: [u + 2*dz+dx, v + dz,      u + 2*dz + 2*dx,  v + dz + dy]
+    # Official Minecraft Java ModelPart$Cube & ModelPart$Polygon unwrapping
+    # mapped to BlockModel FaceBakery canonical vertex order:
+    # UP:    [u + dz,          v + dz,      u + dz + dx,      v]           (inverted V for front-back continuity)
+    # DOWN:  [u + dz + dx,     v,           u + dz + 2*dx,    v + dz]
+    # WEST:  [u + dz,          v + dz,      u,                v + dz + dy] (inverted U)
+    # NORTH: [u + dz + dx,     v + dz,      u + dz,           v + dz + dy] (inverted U)
+    # EAST:  [u + 2*dz + dx,   v + dz,      u + dz + dx,      v + dz + dy] (inverted U)
+    # SOUTH: [u + 2*dz + 2*dx, v + dz,      u + 2*dz + dx,    v + dz + dy] (inverted U)
     faces = {
         "up": {
             "texture": tex_name,
-            "uv": [tex_u + dz, tex_v, tex_u + dz + dx, tex_v + dz],
+            "uv": [tex_u + dz, tex_v + dz, tex_u + dz + dx, tex_v],
             "uv_size": tex_size,
             "tintindex": tintindex,
         },
@@ -52,25 +53,25 @@ def make_box_element(
         },
         "west": {
             "texture": tex_name,
-            "uv": [tex_u, tex_v + dz, tex_u + dz, tex_v + dz + dy],
+            "uv": [tex_u + dz, tex_v + dz, tex_u, tex_v + dz + dy],
             "uv_size": tex_size,
             "tintindex": tintindex,
         },
         "north": {
             "texture": tex_name,
-            "uv": [tex_u + dz, tex_v + dz, tex_u + dz + dx, tex_v + dz + dy],
+            "uv": [tex_u + dz + dx, tex_v + dz, tex_u + dz, tex_v + dz + dy],
             "uv_size": tex_size,
             "tintindex": tintindex,
         },
         "east": {
             "texture": tex_name,
-            "uv": [tex_u + dz + dx, tex_v + dz, tex_u + 2 * dz + dx, tex_v + dz + dy],
+            "uv": [tex_u + 2 * dz + dx, tex_v + dz, tex_u + dz + dx, tex_v + dz + dy],
             "uv_size": tex_size,
             "tintindex": tintindex,
         },
         "south": {
             "texture": tex_name,
-            "uv": [tex_u + 2 * dz + dx, tex_v + dz, tex_u + 2 * dz + 2 * dx, tex_v + dz + dy],
+            "uv": [tex_u + 2 * dz + 2 * dx, tex_v + dz, tex_u + 2 * dz + dx, tex_v + dz + dy],
             "uv_size": tex_size,
             "tintindex": tintindex,
         },
