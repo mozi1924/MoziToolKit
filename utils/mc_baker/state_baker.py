@@ -449,7 +449,7 @@ class StateBaker:
                 "south": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
                 "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
                 "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+                "west": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
             }
         elif chest_type == "right":
             lid_from = [0, 9, 1]
@@ -478,7 +478,7 @@ class StateBaker:
                 "south": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
                 "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
                 "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "east": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
+                "east": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
             }
         else:
             lid_from = [1, 9, 1]
