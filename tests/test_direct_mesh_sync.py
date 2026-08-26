@@ -27,6 +27,7 @@ import bpy
 from utils.live_sync import (
     VoxelStorage,
     build_world_mesh,
+    sync_world_mesh,
     WorldMeshBuildResult,
     clear_mesh_builder_caches,
 )
@@ -95,6 +96,44 @@ class TestDirectMeshSync(unittest.TestCase):
         if isinstance(first_key, bytes):
             first_key = first_key.decode("utf-8")
         self.assertEqual(first_key, "minecraft:block/stone")
+
+    def test_section_slots_follow_compact_special_chunk_indices(self):
+        """A sparse banner chunk must not become empty slots or a block-material face."""
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:red_banner[rotation=0]")
+
+        atlas_params = {
+            "mapping": {
+                "chunks": [
+                    {"chunk_id": 0, "category": "blocks", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+                    {"chunk_id": 7, "category": "banner_patterns", "kind": "static", "width": 256, "height": 128, "packing": "rect_bin_pack"},
+                ],
+                "textures": {
+                    "minecraft:block/oak_planks": {"chunk_id": 0, "tile_column": 0, "tile_row": 0, "category": "blocks"},
+                    "minecraft:entity/banner/base": {
+                        "chunk_id": 7, "pixel_x": 0, "pixel_y": 0,
+                        "rect_width": 64, "rect_height": 64, "category": "banner_patterns",
+                    },
+                },
+            }
+        }
+
+        result = sync_world_mesh(bpy.context, storage, atlas_params=atlas_params, force_full_rebuild=True)
+        section = next(child for child in result.world_obj.children if child.name.startswith("Yefira_Section_"))
+        self.assertEqual(len(section.data.materials), 2)
+        self.assertTrue(all(material is not None for material in section.data.materials))
+
+        source_key = section.data.attributes["mtk_source_texture_key"]
+        banner_poly = next(
+            poly for poly in section.data.polygons
+            if (
+                source_key.data[poly.index].value.decode("utf-8")
+                if isinstance(source_key.data[poly.index].value, bytes)
+                else source_key.data[poly.index].value
+            ) == "minecraft:entity/banner/base"
+        )
+        banner_mat = section.data.materials[banner_poly.material_index]
+        self.assertEqual(banner_mat["mtk:atlas_chunk_id"], 7)
 
     def test_face_culling_between_adjacent_cubes(self):
         """Two adjacent opaque cubes should have their touching faces culled (12 - 2 = 10 faces)."""

@@ -50,6 +50,7 @@ from .constants import (
     MTK_UV_TILING_TRANSFORM,
     MTK_BIOME_TINT_DATA,
     MTK_BIOME_TINT_COLOR,
+    MTK_ATLAS_CHUNK_ID,
     MTK_SOURCE_TEXTURE_KEY,
     UV_MAP,
 )
@@ -297,6 +298,49 @@ def get_shared_material_manager(
     return _GLOBAL_MAT_MANAGER
 
 
+def _sync_section_material_slots(
+    section_obj: bpy.types.Object,
+    mat_manager: LiveSyncMaterialManager,
+) -> None:
+    """Mirror the manager's compact slot layout onto one Direct-Mesh section.
+
+    ``ResolvedFaceTexture.slot_index`` is a Blender material-slot index, not
+    an atlas ``chunk_id``.  Chunk IDs may be sparse (for example, a banner
+    chunk can be 7), so assigning a material to ``materials[chunk_id]`` both
+    creates empty slots and makes faces point at unrelated block materials.
+    """
+    mat_manager.sync_material_slots(section_obj)
+
+
+def _rebind_mesh_material_indices(
+    mesh: bpy.types.Mesh,
+    mat_manager: LiveSyncMaterialManager,
+) -> None:
+    """Repair/render-bind faces from their persistent chunk identity.
+
+    Older live-sync meshes do not have the chunk attribute, so their
+    ``mtk_source_texture_key`` is used once to migrate them.  The material
+    index itself is never used as an atlas identifier.
+    """
+    chunk_attr = mesh.attributes.get(MTK_ATLAS_CHUNK_ID)
+    created_chunk_attr = chunk_attr is None
+    if not chunk_attr:
+        chunk_attr = mesh.attributes.new(MTK_ATLAS_CHUNK_ID, "INT", "FACE")
+    source_attr = mesh.attributes.get(MTK_SOURCE_TEXTURE_KEY)
+
+    for poly in mesh.polygons:
+        chunk_id = int(chunk_attr.data[poly.index].value)
+        if (created_chunk_attr or chunk_id not in mat_manager.chunk_materials) and source_attr:
+            raw_key = source_attr.data[poly.index].value
+            source_key = raw_key.decode("utf-8", "replace") if isinstance(raw_key, bytes) else str(raw_key or "")
+            location = mat_manager.resolver.lookup_texture(source_key) if source_key else None
+            if location:
+                chunk_id = int(location.get("chunk_id", 0))
+                chunk_attr.data[poly.index].value = chunk_id
+        if chunk_id in mat_manager.chunk_materials:
+            poly.material_index = mat_manager.get_slot_for_chunk(chunk_id)
+
+
 def get_cached_state_meta(
     state_str: str,
     mat_manager: LiveSyncMaterialManager,
@@ -444,6 +488,7 @@ def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
         "block_y": bm.faces.layers.int.get(MTK_BLOCK_Y) or bm.faces.layers.int.new(MTK_BLOCK_Y),
         "block_z": bm.faces.layers.int.get(MTK_BLOCK_Z) or bm.faces.layers.int.new(MTK_BLOCK_Z),
         "face_dir": bm.faces.layers.int.get(MTK_FACE_DIR) or bm.faces.layers.int.new(MTK_FACE_DIR),
+        "atlas_chunk": bm.faces.layers.int.get(MTK_ATLAS_CHUNK_ID) or bm.faces.layers.int.new(MTK_ATLAS_CHUNK_ID),
         "source_key": bm.faces.layers.string.get(MTK_SOURCE_TEXTURE_KEY) or bm.faces.layers.string.new(MTK_SOURCE_TEXTURE_KEY),
     }
 
@@ -498,6 +543,7 @@ def _generate_single_block_faces(
     block_y_layer = layers["block_y"]
     block_z_layer = layers["block_z"]
     face_dir_layer = layers["face_dir"]
+    atlas_chunk_layer = layers["atlas_chunk"]
     source_key_layer = layers.get("source_key")
 
     def _get_neighbor_meta(pos: tuple[int, int, int]) -> Optional[CachedStateMeta]:
@@ -543,6 +589,7 @@ def _generate_single_block_faces(
                 continue
 
             bm_face.material_index = f_res.slot_index
+            bm_face[atlas_chunk_layer] = f_res.chunk_id
             bm_face[rot_layer] = f_res.uv_rot
             bm_face[timing_layer] = f_res.anim_timing
             bm_face[frame_size_layer] = f_res.anim_frame_size
@@ -597,6 +644,7 @@ def _generate_single_block_faces(
                     continue
 
                 bm_face.material_index = f_res.slot_index
+                bm_face[atlas_chunk_layer] = f_res.chunk_id
                 bm_face[rot_layer] = 0.0
                 bm_face[timing_layer] = f_res.anim_timing
                 bm_face[frame_size_layer] = f_res.anim_frame_size
@@ -646,6 +694,7 @@ def _generate_single_block_faces(
                 continue
 
             bm_face.material_index = f_res.slot_index
+            bm_face[atlas_chunk_layer] = f_res.chunk_id
             bm_face[rot_layer] = 0.0
             bm_face[timing_layer] = f_res.anim_timing
             bm_face[frame_size_layer] = f_res.anim_frame_size
@@ -960,12 +1009,8 @@ def sync_world_mesh(
             sec_obj.parent = root_obj
             context.collection.objects.link(sec_obj)
 
-        # Sync materials onto section object
-        while len(sec_obj.data.materials) <= max(mat_manager.chunk_materials.keys(), default=0):
-            sec_obj.data.materials.append(None)
-        for cid, mat in mat_manager.chunk_materials.items():
-            if cid < len(sec_obj.data.materials):
-                sec_obj.data.materials[cid] = mat
+        # Keep section slot indices identical to the root material manager.
+        _sync_section_material_slots(sec_obj, mat_manager)
 
         # Construct section BMesh
         bm = bmesh.new()
@@ -991,12 +1036,9 @@ def sync_world_mesh(
         bm.to_mesh(sec_mesh)
         bm.free()
 
-        # Re-sync materials onto section object to capture any on-demand loaded chunks
-        while len(sec_obj.data.materials) <= max(mat_manager.chunk_materials.keys(), default=0):
-            sec_obj.data.materials.append(None)
-        for cid, mat in mat_manager.chunk_materials.items():
-            if cid < len(sec_obj.data.materials):
-                sec_obj.data.materials[cid] = mat
+        # Face resolution may have loaded an additional chunk while building.
+        _sync_section_material_slots(sec_obj, mat_manager)
+        _rebind_mesh_material_indices(sec_mesh, mat_manager)
 
         sec_mesh.update()
 
@@ -1132,12 +1174,8 @@ def apply_block_delta_to_world(
                 sec_obj.parent = root_obj
                 context.collection.objects.link(sec_obj)
 
-            # Sync material slots
-            while len(sec_obj.data.materials) <= max(mat_manager.chunk_materials.keys(), default=0):
-                sec_obj.data.materials.append(None)
-            for cid, mat in mat_manager.chunk_materials.items():
-                if cid < len(sec_obj.data.materials):
-                    sec_obj.data.materials[cid] = mat
+            # Keep section slot indices identical to the root material manager.
+            _sync_section_material_slots(sec_obj, mat_manager)
 
             update_blocks_in_mesh(
                 mesh=sec_obj.data,
@@ -1151,12 +1189,9 @@ def apply_block_delta_to_world(
                 baker=baker,
             )
 
-            # Re-sync materials onto section object
-            while len(sec_obj.data.materials) <= max(mat_manager.chunk_materials.keys(), default=0):
-                sec_obj.data.materials.append(None)
-            for cid, mat in mat_manager.chunk_materials.items():
-                if cid < len(sec_obj.data.materials):
-                    sec_obj.data.materials[cid] = mat
+            # Capture chunks loaded while resolving changed faces.
+            _sync_section_material_slots(sec_obj, mat_manager)
+            _rebind_mesh_material_indices(sec_obj.data, mat_manager)
 
             # If section became empty, clean it up
             if len(sec_obj.data.polygons) == 0 and not has_solid_blocks:
@@ -1206,4 +1241,3 @@ def apply_block_delta_to_world(
         props_count=total_props,
         fluids_count=total_fluids,
     )
-
