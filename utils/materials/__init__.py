@@ -81,6 +81,11 @@ from .constants import (
     ANIM_AND_ATLAS_ATTR_NAMES,
     LEGACY_SPLIT_ATTR_NAMES,
     BLOCK_TO_TEXTURE_ALIASES,
+    is_scene_blacklisted,
+    SCENE_BLACKLIST_CATEGORIES,
+    SCENE_BLACKLIST_PREFIXES,
+    LIVING_MOB_ENTITY_PREFIXES,
+    ALLOWED_SCENE_ENTITY_PREFIXES,
 )
 
 from .biome import (
@@ -142,6 +147,8 @@ from .atlas import (
     build_atlas_material,
     build_atlas_chunk_materials,
     AtlasReplacementEngine,
+    AtlasAddressResolver,
+    ResolvedAtlasAddress,
 )
 
 from .standalone import (

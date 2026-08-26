@@ -33,6 +33,11 @@ from .pipeline import (
     AtlasReplacementEngine,
 )
 
+from .addressing import (
+    AtlasAddressResolver,
+    ResolvedAtlasAddress,
+)
+
 __all__ = [
     "PackedRect",
     "MaxRectsBinPack",
@@ -52,4 +57,6 @@ __all__ = [
     "build_atlas_material",
     "build_atlas_chunk_materials",
     "AtlasReplacementEngine",
+    "AtlasAddressResolver",
+    "ResolvedAtlasAddress",
 ]

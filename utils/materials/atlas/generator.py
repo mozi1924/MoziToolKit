@@ -21,6 +21,7 @@ from ..constants import (
     ATLAS_CATEGORY_PRIORITY,
     RECT_PACKED_CATEGORIES,
     classify_texture_category,
+    is_scene_blacklisted,
 )
 from .packer import pack_category_textures
 from ..biome import BiomeResolver
@@ -159,6 +160,7 @@ class AtlasGenerator:
         max_chunk_size: int = 4096,
         fallback_stack: Optional[ResourcePackStack] = None,
         included_categories: Optional[set[str]] = None,
+        filter_scene_blacklist: bool = False,
     ):
         if isinstance(resource_path, ResourcePackStack):
             self.pack_stack = resource_path
@@ -180,6 +182,7 @@ class AtlasGenerator:
         # mesh replacement.  Yefira world replacement supplies a focused set
         # so UI/particle atlases are never decoded or brought into Blender.
         self.included_categories = frozenset(included_categories) if included_categories else None
+        self.filter_scene_blacklist = filter_scene_blacklist
 
         self.static_textures = {}    # clean_stem -> Image
         self.animated_textures = {}  # clean_stem -> {image: Image, mcmeta: dict}
@@ -275,6 +278,9 @@ class AtlasGenerator:
             category = classify_texture_category(base_rel)
             if not self._includes_category(category):
                 continue
+            if self.filter_scene_blacklist and is_scene_blacklisted(base_rel):
+                if not (self.included_categories and category in self.included_categories):
+                    continue
 
             if base_rel.startswith("block/"):
                 clean_name = self._texture_name(ns, base_rel.removeprefix("block/"))

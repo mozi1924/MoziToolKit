@@ -4,8 +4,11 @@ Maps standard texture resource identifiers to Atlas tiles, material IDs, and sha
 """
 
 from __future__ import annotations
-from typing import Any, Optional, NamedTuple
+from typing import Any, Optional, NamedTuple, TYPE_CHECKING
 from .types import BakedModel, BakedFace
+
+if TYPE_CHECKING:
+    from ..materials.atlas.addressing import AtlasAddressResolver, ResolvedAtlasAddress
 
 
 class ResolvedAtlasFace(NamedTuple):
@@ -17,41 +20,36 @@ class ResolvedAtlasFace(NamedTuple):
     uv_rot: float
     uv_bounds: tuple[float, float, float, float]
     tint_index: int
+    chunk_id: int = 0
+    texture_id: int = 0
+    calc_uv_fn: Any = None
+    source_texture_key: str = ""
 
 
 class AtlasBridge:
     def __init__(self, atlas_mapping: Optional[dict[str, Any]] = None):
+        from ..materials.atlas.addressing import AtlasAddressResolver
         self.atlas_mapping = atlas_mapping or {}
+        self.resolver = AtlasAddressResolver(self.atlas_mapping)
 
     def set_mapping(self, atlas_mapping: dict[str, Any]):
-        self.atlas_mapping = atlas_mapping
+        from ..materials.atlas.addressing import AtlasAddressResolver
+        self.atlas_mapping = atlas_mapping or {}
+        if not hasattr(self, "resolver") or self.resolver is None:
+            self.resolver = AtlasAddressResolver(self.atlas_mapping)
+        else:
+            self.resolver.set_mapping(self.atlas_mapping)
 
     def resolve_face(self, face: BakedFace) -> ResolvedAtlasFace:
         """
-        Map a single BakedFace to MoziToolKit Atlas tile coordinates and material ID.
+        Map a single BakedFace to MoziToolKit Atlas tile coordinates and material ID
+        using the authoritative AtlasAddressResolver.
         """
-        tex_name = face.texture
-        short_name = tex_name.split(":", 1)[-1].removeprefix("block/")
-
-        textures_map = self.atlas_mapping.get("textures", {})
-        tile_info = None
-
-        # Look up in textures mapping with fallback aliases
-        for candidate in (tex_name, short_name, f"minecraft:{short_name}", f"minecraft:block/{short_name}"):
-            if candidate in textures_map:
-                tile_info = textures_map[candidate]
-                break
-
-        if isinstance(tile_info, dict):
-            tile_col = int(tile_info.get("col", 0))
-            tile_row = int(tile_info.get("row", 0))
-            mat_id = int(tile_info.get("material_id", 0))
-        elif isinstance(tile_info, (list, tuple)) and len(tile_info) >= 2:
-            tile_col = int(tile_info[0])
-            tile_row = int(tile_info[1])
-            mat_id = int(tile_info[2]) if len(tile_info) > 2 else 0
-        else:
-            tile_col, tile_row, mat_id = 0, 0, 0
+        resolved: ResolvedAtlasAddress = self.resolver.resolve_baked_face(face)
+        loc = resolved.location
+        tile_col = int(loc.get("tile_column", loc.get("col", 0)))
+        tile_row = int(loc.get("tile_row", loc.get("row", 0)))
+        mat_id = int(loc.get("material_id", resolved.chunk_id))
 
         return ResolvedAtlasFace(
             direction=face.direction,
@@ -62,6 +60,10 @@ class AtlasBridge:
             uv_rot=face.uv_rot,
             uv_bounds=face.uv_bounds,
             tint_index=face.tint_index,
+            chunk_id=resolved.chunk_id,
+            texture_id=resolved.texture_id,
+            calc_uv_fn=resolved.calc_uv_fn,
+            source_texture_key=resolved.source_texture_key,
         )
 
     def resolve_model_faces(self, baked_model: BakedModel) -> list[ResolvedAtlasFace]:

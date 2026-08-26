@@ -18,11 +18,15 @@ class ModelParser:
         self._model_cache[self._normalize_id(model_id)] = data
 
     def _normalize_id(self, model_id: str) -> str:
-        if not model_id.startswith("minecraft:"):
-            model_id = f"minecraft:{model_id}"
-        if not model_id.startswith("minecraft:block/") and not model_id.startswith("minecraft:item/"):
-            model_id = f"minecraft:block/{model_id[10:]}"
-        return model_id
+        if not model_id:
+            return ""
+        if ":" in model_id:
+            namespace, path = model_id.split(":", 1)
+        else:
+            namespace, path = "minecraft", model_id
+        if not path.startswith("block/") and not path.startswith("item/"):
+            path = f"block/{path}"
+        return f"{namespace}:{path}"
 
     def load_raw_model(self, model_id: str) -> Optional[dict[str, Any]]:
         norm_id = self._normalize_id(model_id)
@@ -117,9 +121,10 @@ class ModelParser:
     def _normalize_texture(self, tex: str) -> str:
         if not tex or tex.startswith("#"):
             return tex
-        if not tex.startswith("minecraft:"):
-            tex = f"minecraft:{tex}"
-        sub = tex[10:]
-        if "/" not in sub:
-            tex = f"minecraft:block/{sub}"
-        return tex
+        if ":" in tex:
+            ns, path = tex.split(":", 1)
+        else:
+            ns, path = "minecraft", tex
+        if "/" not in path:
+            path = f"block/{path}"
+        return f"{ns}:{path}"
