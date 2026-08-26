@@ -73,6 +73,14 @@ PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 
 from ..mc_baker import StateBaker, BakedModel, BakedFace
 from ..materials.atlas.addressing import AtlasAddressResolver, ResolvedAtlasAddress
+from ..materials.constants import (
+    ATLAS_CATEGORY_BLOCKS,
+    ATLAS_CATEGORY_CHEST,
+    ATLAS_CATEGORY_SHULKER_BOXES,
+    ATLAS_CATEGORY_BANNER_PATTERNS,
+    ATLAS_CATEGORY_DECORATED_POT,
+    ATLAS_CATEGORY_ENTITIES,
+)
 from .constants import (
     DEFAULT_ATLAS_WIDTH,
     DEFAULT_ATLAS_HEIGHT,
@@ -94,6 +102,19 @@ from .classifier import (
 )
 
 logger = logging.getLogger("MoziToolKit.LiveSync.MaterialManager")
+
+# A streamed block can be represented by a multipart model whose faces refer
+# to one of these non-block texture categories.  Keep this list deliberately
+# narrow: UI/map/painting/etc. chunks are not valid world-block materials and
+# must not become material slots on every live-sync object.
+LIVE_SYNC_MODEL_ATLAS_CATEGORIES = frozenset({
+    ATLAS_CATEGORY_BLOCKS,
+    ATLAS_CATEGORY_CHEST,
+    ATLAS_CATEGORY_SHULKER_BOXES,
+    ATLAS_CATEGORY_BANNER_PATTERNS,
+    ATLAS_CATEGORY_DECORATED_POT,
+    ATLAS_CATEGORY_ENTITIES,
+})
 
 
 class ResolvedFaceTexture(NamedTuple):
@@ -153,8 +174,11 @@ class LiveSyncMaterialManager:
 
     def _ensure_chunk_materials_with_hash_validation(self) -> None:
         """
-        Validates materials against the prebaked pack hash and loads only default block chunks.
-        Non-block chunks (UI, items, entities) are lazily loaded on demand when needed.
+        Validates materials against the prebaked pack hash and loads every
+        atlas category a block model can reference.  This must happen before
+        BMesh faces receive their material indices: special blocks such as
+        chests, shulker boxes, banners and decorated pots use separate atlas
+        chunks rather than the block/animation pair.
         """
         from ..materials.atlas.builder import build_atlas_chunk_materials
         from ..materials.pack.pack_stack import get_configured_pack_stack
@@ -207,11 +231,12 @@ class LiveSyncMaterialManager:
             if isinstance(c, dict) and "chunk_id" in c:
                 self._chunks_by_id[int(c["chunk_id"])] = c
 
-        # Filter default chunk IDs: only load pure block chunks (static and animated block strips)
-        # Non-block categories (items, gui, particles, paintings, entities) are loaded on-demand.
+        # Load all chunks that are valid sources for a streamed block model.
+        # Do not use ``chunk_id in (0, 1)`` here: chunk numbering is generated
+        # from the resource pack and is neither stable nor category-specific.
         default_chunk_ids = [
             int(c.get("chunk_id", i)) for i, c in enumerate(chunks)
-            if c.get("category", "blocks") == "blocks"
+            if c.get("category", ATLAS_CATEGORY_BLOCKS) in LIVE_SYNC_MODEL_ATLAS_CATEGORIES
         ] if chunks else [0, 1]
         if not default_chunk_ids and chunks:
             default_chunk_ids = [int(chunks[0].get("chunk_id", 0))]

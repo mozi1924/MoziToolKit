@@ -55,15 +55,17 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         for idx, slot_mat in enumerate(self.obj.data.materials):
             self.assertIsNotNone(slot_mat, f"Slot {idx} is None (empty material slot)!")
 
-        # Default block chunks loaded should only be blocks category (chunk 0, 1)
+        # Every atlas category usable by a streamed block model is prepared
+        # before geometry generation.  Map decorations remain excluded.
         self.assertIn(0, mgr.chunk_materials)
         self.assertIn(1, mgr.chunk_materials)
+        self.assertIn(5, mgr.chunk_materials)
         self.assertNotIn(12, mgr.chunk_materials)  # map_decorations must NOT be preloaded
 
         # Slot count should exactly match number of loaded chunk materials
         self.assertEqual(len(self.obj.data.materials), len(mgr.chunk_materials))
 
-        # Dynamically load on-demand chunk 5 (chest)
+        # A previously loaded special-model chunk retains a valid slot.
         slot_5 = mgr.get_slot_for_chunk(5)
         self.assertGreaterEqual(slot_5, 0)
         self.assertIn(5, mgr.chunk_materials)
@@ -142,15 +144,57 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         self.assertFalse(standing.is_cube)
         self.assertEqual(len(standing.elements), 3, "Standing banner should have pole, crossbar, and cloth elements!")
 
-        # Pole and crossbar use wood texture, cloth uses red wool / banner
+        # Pole and crossbar use wood texture; cloth uses the banner entity atlas.
         cloth_elem = standing.elements[2]
-        self.assertIn("red_wool", cloth_elem.faces["north"].texture)
+        self.assertEqual(cloth_elem.faces["north"].texture, "minecraft:entity/banner/base")
 
         # 2. Wall Banner facing south
         wall = baker.bake_block_state("minecraft:blue_wall_banner[facing=south]")
         self.assertFalse(wall.is_cube)
         self.assertEqual(len(wall.elements), 2, "Wall banner should have crossbar and cloth elements!")
-        self.assertIn("blue_wool", wall.elements[1].faces["north"].texture)
+        self.assertEqual(wall.elements[1].faces["north"].texture, "minecraft:entity/banner/base")
+
+    def test_special_model_chunks_are_bound_before_face_generation(self):
+        """Chest/banner model faces must select their own atlas chunks, never chunk 0/1 fallbacks."""
+        atlas_params = {
+            "mapping": {
+                "chunks": [
+                    {"chunk_id": 0, "category": "blocks", "width": 512, "height": 512, "tile_size": 16},
+                    {"chunk_id": 1, "category": "blocks", "kind": "animation", "width": 16, "height": 512},
+                    {"chunk_id": 5, "category": "chest", "width": 256, "height": 128, "packing": "rect_bin_pack"},
+                    {"chunk_id": 6, "category": "shulker_boxes", "width": 256, "height": 128, "packing": "rect_bin_pack"},
+                    {"chunk_id": 7, "category": "banner_patterns", "width": 256, "height": 128, "packing": "rect_bin_pack"},
+                    {"chunk_id": 12, "category": "map_decorations", "width": 256, "height": 256},
+                ],
+                "textures": {
+                    "minecraft:block/oak_planks": {"chunk_id": 0, "tile_column": 0, "tile_row": 0, "category": "blocks"},
+                    "minecraft:entity/chest/normal": {"chunk_id": 5, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "chest"},
+                    "minecraft:entity/shulker/shulker": {"chunk_id": 6, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "shulker_boxes"},
+                    "minecraft:entity/banner/base": {"chunk_id": 7, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "banner_patterns"},
+                    "minecraft:map/decorations/banner_white": {"chunk_id": 12, "pixel_x": 0, "pixel_y": 0, "rect_width": 8, "rect_height": 8, "category": "map_decorations"},
+                },
+            }
+        }
+        mgr = LiveSyncMaterialManager(world_obj=self.obj, atlas_params=atlas_params)
+        self.assertTrue({0, 1, 5, 6, 7}.issubset(mgr.chunk_materials))
+        self.assertNotIn(12, mgr.chunk_materials)
+
+        baker = StateBaker()
+        chest = baker.bake_block_state("minecraft:chest[facing=north,type=single]")
+        chest_resolved = mgr.resolve_block_face(
+            parse_and_classify("minecraft:chest[facing=north,type=single]"), "up", 2,
+            baked_face=chest.elements[0].faces["up"],
+        )
+        self.assertEqual(chest_resolved.chunk_id, 5)
+        self.assertEqual(self.obj.material_slots[chest_resolved.slot_index].material, mgr.chunk_materials[5])
+
+        banner = baker.bake_block_state("minecraft:red_banner[rotation=0]")
+        banner_resolved = mgr.resolve_block_face(
+            parse_and_classify("minecraft:red_banner[rotation=0]"), "north", 5,
+            baked_face=banner.elements[2].faces["north"],
+        )
+        self.assertEqual(banner_resolved.chunk_id, 7)
+        self.assertEqual(self.obj.material_slots[banner_resolved.slot_index].material, mgr.chunk_materials[7])
 
     def test_model_parser_normalize_texture(self):
         """Verify model parser preserves entity namespaces and doesn't prepend block/."""

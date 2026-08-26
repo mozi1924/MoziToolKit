@@ -568,6 +568,8 @@ class AtlasAddressResolver:
             ])
             loc = self.lookup_texture(cands)
 
+        p_name = getattr(parsed, "name", "")
+
         # Fallback to procedural chunk 0 or chunk LUT if entirely missing
         chunk_id = int(loc.get("chunk_id", 0)) if loc else 0
         if not loc and block_face_chunk_lut:
@@ -597,7 +599,6 @@ class AtlasAddressResolver:
             anim_frame_size = (ts, ts, 0.0, 0.0)
 
         # Biome Tint calculation
-        p_name = getattr(parsed, "name", "")
         p_short = p_name.split(":", 1)[-1].removeprefix("block/")
         is_hardcoded = bool((loc and loc.get("is_hardcoded")) or (p_short in HARDCODED_TINTS))
 
