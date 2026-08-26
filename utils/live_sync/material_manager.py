@@ -448,12 +448,9 @@ class LiveSyncMaterialManager:
             packing in ("rect_bin_pack", "rect", "vertical_columns")
             or "pixel_x" in location
         )
-        if is_rect:
-            source_width = float(location.get("rect_width") or location.get("frame_width") or 16.0)
-            source_height = float(location.get("rect_height") or location.get("frame_height") or 16.0)
-            model_uv_scale = (16.0 / max(source_width, 1.0), 16.0 / max(source_height, 1.0))
-        else:
-            model_uv_scale = (1.0, 1.0)
+        # StateBaker models and external assets (JMC2OBJ, ICECube) adhere to
+        # canonical [0..1] normalized UV coordinates for their target texture rect.
+        model_uv_scale = (1.0, 1.0)
         return ResolvedFaceTexture(
             chunk_id=res.chunk_id,
             slot_index=slot_index,

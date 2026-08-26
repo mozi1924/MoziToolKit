@@ -435,20 +435,20 @@ class StateBaker:
             latch_to = [9, 11, 1]
 
         body_faces = {
-            "up": {"texture": tex, "uv": [14, 0, 28, 14]},
-            "down": {"texture": tex, "uv": [28, 0, 42, 14]},
-            "north": {"texture": tex, "uv": [14, 14, 28, 28]},
-            "south": {"texture": tex, "uv": [42, 14, 56, 28]},
-            "west": {"texture": tex, "uv": [0, 14, 14, 28]},
-            "east": {"texture": tex, "uv": [28, 14, 42, 28]},
+            "up": {"texture": tex, "uv": [14, 0, 28, 14], "uv_size": 64},
+            "down": {"texture": tex, "uv": [28, 0, 42, 14], "uv_size": 64},
+            "north": {"texture": tex, "uv": [14, 14, 28, 28], "uv_size": 64},
+            "south": {"texture": tex, "uv": [42, 14, 56, 28], "uv_size": 64},
+            "west": {"texture": tex, "uv": [0, 14, 14, 28], "uv_size": 64},
+            "east": {"texture": tex, "uv": [28, 14, 42, 28], "uv_size": 64},
         }
 
         latch_faces = {
-            "north": {"texture": tex, "uv": [1, 1, 3, 5]},
-            "up": {"texture": tex, "uv": [1, 0, 3, 1]},
-            "down": {"texture": tex, "uv": [3, 0, 5, 1]},
-            "west": {"texture": tex, "uv": [0, 1, 1, 5]},
-            "east": {"texture": tex, "uv": [3, 1, 4, 5]},
+            "north": {"texture": tex, "uv": [1, 1, 3, 5], "uv_size": 64},
+            "up": {"texture": tex, "uv": [1, 0, 3, 1], "uv_size": 64},
+            "down": {"texture": tex, "uv": [3, 0, 5, 1], "uv_size": 64},
+            "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+            "east": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
         }
 
         elements = [
@@ -463,8 +463,15 @@ class StateBaker:
 
     @staticmethod
     def _resolve_banner_elements(short_name: str, props: dict[str, str]) -> list[dict]:
-        """Construct multipart 3D elements for standing and wall banners."""
+        """Construct multipart 3D elements for standing and wall banners.
+
+        Uses the authoritative 64x64 entity texture 'minecraft:entity/banner/banner_base'
+        (Row 0 of banner_patterns atlas chunk) which contains the complete wood stand
+        (pole & crossbar) and cloth face in vanilla Minecraft.
+        """
         is_wall = "_wall_banner" in short_name
+        banner_tex = "minecraft:entity/banner/banner_base"
+
         if is_wall:
             color = short_name.replace("_wall_banner", "")
             facing = props.get("facing", "north")
@@ -478,36 +485,32 @@ class StateBaker:
 
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
 
-            wood_tex = "minecraft:block/oak_planks"
-            # Banners are entity-texture models.  Substituting coloured wool
-            # looks plausible in simple packs but makes the cloth resolve to
-            # the block atlas and breaks the UV layout of the banner texture.
-            cloth_tex = "minecraft:entity/banner/base"
-
-            crossbar = {
-                "from": [2, 12, 14],
-                "to": [14, 14, 16],
-                "faces": {
-                    "north": {"texture": wood_tex, "uv": [2, 12, 14, 14]},
-                    "south": {"texture": wood_tex, "uv": [2, 12, 14, 14]},
-                    "up": {"texture": wood_tex, "uv": [2, 14, 14, 16]},
-                    "down": {"texture": wood_tex, "uv": [2, 14, 14, 16]},
-                    "west": {"texture": wood_tex, "uv": [14, 12, 16, 14]},
-                    "east": {"texture": wood_tex, "uv": [14, 12, 16, 14]},
-                }
-            }
+            # Cloth first so it takes priority in the 6-face summary
             cloth = {
                 "from": [3, -5, 14.5],
                 "to": [13, 13, 15.5],
                 "faces": {
-                    "north": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
-                    "south": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
-                    "west": {"texture": cloth_tex, "uv": [14, 0, 15, 16]},
-                    "east": {"texture": cloth_tex, "uv": [14, 0, 15, 16]},
-                    "down": {"texture": cloth_tex, "uv": [3, 14, 13, 15]},
-                }
+                    "north": {"texture": banner_tex, "uv": [1, 1, 21, 41], "uv_size": 64, "tintindex": 0},
+                    "south": {"texture": banner_tex, "uv": [22, 1, 42, 41], "uv_size": 64, "tintindex": 0},
+                    "west": {"texture": banner_tex, "uv": [0, 1, 1, 41], "uv_size": 64, "tintindex": 0},
+                    "east": {"texture": banner_tex, "uv": [21, 1, 22, 41], "uv_size": 64, "tintindex": 0},
+                    "up": {"texture": banner_tex, "uv": [1, 0, 21, 1], "uv_size": 64, "tintindex": 0},
+                    "down": {"texture": banner_tex, "uv": [21, 0, 41, 1], "uv_size": 64, "tintindex": 0},
+                },
             }
-            elements = [crossbar, cloth]
+            crossbar = {
+                "from": [2, 12, 14],
+                "to": [14, 14, 16],
+                "faces": {
+                    "north": {"texture": banner_tex, "uv": [2, 44, 22, 46], "uv_size": 64, "tintindex": -1},
+                    "south": {"texture": banner_tex, "uv": [24, 44, 44, 46], "uv_size": 64, "tintindex": -1},
+                    "up": {"texture": banner_tex, "uv": [2, 42, 22, 44], "uv_size": 64, "tintindex": -1},
+                    "down": {"texture": banner_tex, "uv": [22, 42, 42, 44], "uv_size": 64, "tintindex": -1},
+                    "west": {"texture": banner_tex, "uv": [0, 44, 2, 46], "uv_size": 64, "tintindex": -1},
+                    "east": {"texture": banner_tex, "uv": [22, 44, 24, 46], "uv_size": 64, "tintindex": -1},
+                },
+            }
+            elements = [cloth, crossbar]
             if elem_rot:
                 for elem in elements:
                     elem["rotation"] = elem_rot
@@ -518,47 +521,44 @@ class StateBaker:
             angle = (rot_idx * 22.5) % 360.0
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": angle} if angle != 0.0 else None
 
-            wood_tex = "minecraft:block/oak_planks"
-            # See wall-banner branch above: the base/pattern textures live in
-            # the banner-pattern atlas, not in the coloured wool block atlas.
-            cloth_tex = "minecraft:entity/banner/base"
-
-            pole = {
-                "from": [7.5, 0, 7.5],
-                "to": [8.5, 16, 8.5],
+            # Cloth first so it takes priority in the 6-face summary
+            cloth = {
+                "from": [3, 1, 7.8],
+                "to": [13, 19.5, 8.2],
                 "faces": {
-                    "north": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
-                    "south": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
-                    "east": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
-                    "west": {"texture": wood_tex, "uv": [7, 0, 8, 16]},
-                    "up": {"texture": wood_tex, "uv": [7, 7, 8, 8]},
-                    "down": {"texture": wood_tex, "uv": [7, 7, 8, 8]},
-                }
+                    "north": {"texture": banner_tex, "uv": [1, 1, 21, 41], "uv_size": 64, "tintindex": 0},
+                    "south": {"texture": banner_tex, "uv": [22, 1, 42, 41], "uv_size": 64, "tintindex": 0},
+                    "west": {"texture": banner_tex, "uv": [0, 1, 1, 41], "uv_size": 64, "tintindex": 0},
+                    "east": {"texture": banner_tex, "uv": [21, 1, 22, 41], "uv_size": 64, "tintindex": 0},
+                    "up": {"texture": banner_tex, "uv": [1, 0, 21, 1], "uv_size": 64, "tintindex": 0},
+                    "down": {"texture": banner_tex, "uv": [21, 0, 41, 1], "uv_size": 64, "tintindex": 0},
+                },
             }
             crossbar = {
                 "from": [2, 19, 7.5],
                 "to": [14, 20.5, 8.5],
                 "faces": {
-                    "north": {"texture": wood_tex, "uv": [2, 14, 14, 15]},
-                    "south": {"texture": wood_tex, "uv": [2, 14, 14, 15]},
-                    "east": {"texture": wood_tex, "uv": [7, 14, 8, 15]},
-                    "west": {"texture": wood_tex, "uv": [7, 14, 8, 15]},
-                    "up": {"texture": wood_tex, "uv": [2, 7, 14, 8]},
-                    "down": {"texture": wood_tex, "uv": [2, 7, 14, 8]},
-                }
+                    "north": {"texture": banner_tex, "uv": [2, 44, 22, 46], "uv_size": 64, "tintindex": -1},
+                    "south": {"texture": banner_tex, "uv": [24, 44, 44, 46], "uv_size": 64, "tintindex": -1},
+                    "west": {"texture": banner_tex, "uv": [0, 44, 2, 46], "uv_size": 64, "tintindex": -1},
+                    "east": {"texture": banner_tex, "uv": [22, 44, 24, 46], "uv_size": 64, "tintindex": -1},
+                    "up": {"texture": banner_tex, "uv": [2, 42, 22, 44], "uv_size": 64, "tintindex": -1},
+                    "down": {"texture": banner_tex, "uv": [22, 42, 42, 44], "uv_size": 64, "tintindex": -1},
+                },
             }
-            cloth = {
-                "from": [3, 1, 7.8],
-                "to": [13, 19.5, 8.2],
+            pole = {
+                "from": [7.5, 0, 7.5],
+                "to": [8.5, 16, 8.5],
                 "faces": {
-                    "north": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
-                    "south": {"texture": cloth_tex, "uv": [3, 0, 13, 16]},
-                    "east": {"texture": cloth_tex, "uv": [7, 0, 8, 16]},
-                    "west": {"texture": cloth_tex, "uv": [7, 0, 8, 16]},
-                    "down": {"texture": cloth_tex, "uv": [3, 7, 13, 8]},
-                }
+                    "north": {"texture": banner_tex, "uv": [44, 2, 46, 44], "uv_size": 64, "tintindex": -1},
+                    "south": {"texture": banner_tex, "uv": [48, 2, 50, 44], "uv_size": 64, "tintindex": -1},
+                    "east": {"texture": banner_tex, "uv": [50, 2, 52, 44], "uv_size": 64, "tintindex": -1},
+                    "west": {"texture": banner_tex, "uv": [46, 2, 48, 44], "uv_size": 64, "tintindex": -1},
+                    "up": {"texture": banner_tex, "uv": [46, 0, 48, 2], "uv_size": 64, "tintindex": -1},
+                    "down": {"texture": banner_tex, "uv": [48, 0, 50, 2], "uv_size": 64, "tintindex": -1},
+                },
             }
-            elements = [pole, crossbar, cloth]
+            elements = [cloth, crossbar, pole]
             if elem_rot:
                 for elem in elements:
                     elem["rotation"] = elem_rot
@@ -685,19 +685,24 @@ class StateBaker:
                     tint_index = int(face_data.get("tintindex", -1))
 
                     raw_uv = face_data.get("uv")
-                    uv_bounds_16 = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3])) if raw_uv else None
+                    uv_bounds_raw = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3])) if raw_uv else None
+                    uv_base = float(face_data.get("uv_size", 16.0))
+                    if uv_base == 16.0 and texture and any(k in texture for k in ("entity/chest", "entity/banner", "entity/shulker")):
+                        if raw_uv and max(raw_uv) > 16.0:
+                            uv_base = 64.0
 
                     # Exact Minecraft 26.2 FaceBakery baking
                     new_dir, uv_rot, transformed_verts, loop_uvs, uv_bounds = bake_face_exact(
                         orig_dir=orig_dir,
                         from_pos=from_pos,
                         to_pos=to_pos,
-                        uv_bounds=uv_bounds_16,
+                        uv_bounds=uv_bounds_raw,
                         face_rotation_deg=face_rot,
                         rot_x=match.rot_x,
                         rot_y=match.rot_y,
                         elem_rotation=elem_rot,
                         uvlock=match.uvlock,
+                        uv_base=uv_base,
                     )
 
                     baked_face = BakedFace(

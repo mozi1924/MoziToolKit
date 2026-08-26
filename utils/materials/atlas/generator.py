@@ -20,6 +20,7 @@ from ..constants import (
     ATLAS_FORMAT_VERSION,
     ATLAS_CATEGORY_PRIORITY,
     RECT_PACKED_CATEGORIES,
+    SHORT_NAME_ALLOWED_CATEGORIES,
     classify_texture_category,
     is_scene_blacklisted,
 )
@@ -622,18 +623,20 @@ class AtlasGenerator:
                                 texture_locations[raw_key] = loc_entry
                                 if ns == "minecraft":
                                     texture_locations[f"minecraft:{rel_p}"] = loc_entry
-                                    texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
-                                    texture_locations.setdefault(stem, loc_entry)
-                                    if rel_p.startswith("item/"):
-                                        texture_locations[f"item_{stem}"] = loc_entry
-                                        texture_locations[f"minecraft:item_{stem}"] = loc_entry
-                                    elif rel_p.startswith("block/"):
-                                        texture_locations[stem] = loc_entry
-                                        texture_locations[f"minecraft:{stem}"] = loc_entry
+                                    if cat in SHORT_NAME_ALLOWED_CATEGORIES:
+                                        texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
+                                        texture_locations.setdefault(stem, loc_entry)
+                                        if rel_p.startswith("item/"):
+                                            texture_locations[f"item_{stem}"] = loc_entry
+                                            texture_locations[f"minecraft:item_{stem}"] = loc_entry
+                                        elif rel_p.startswith("block/"):
+                                            texture_locations[stem] = loc_entry
+                                            texture_locations[f"minecraft:{stem}"] = loc_entry
                                 else:
-                                    texture_locations[f"{ns}:{stem}"] = loc_entry
-                                    if rel_p.startswith("item/"):
-                                        texture_locations[f"{ns}:item_{stem}"] = loc_entry
+                                    if cat in SHORT_NAME_ALLOWED_CATEGORIES:
+                                        texture_locations[f"{ns}:{stem}"] = loc_entry
+                                        if rel_p.startswith("item/"):
+                                            texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
                             if chunk_has_overlay and overlay_img_canvas is not None:
                                 images["overlay"] = overlay_img_canvas
@@ -787,18 +790,20 @@ class AtlasGenerator:
                                 texture_locations[raw_key] = loc_entry
                                 if ns == "minecraft":
                                     texture_locations[f"minecraft:{rel_p}"] = loc_entry
-                                    texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
-                                    texture_locations.setdefault(stem, loc_entry)
-                                    if rel_p.startswith("item/"):
-                                        texture_locations[f"item_{stem}"] = loc_entry
-                                        texture_locations[f"minecraft:item_{stem}"] = loc_entry
-                                    elif rel_p.startswith("block/"):
-                                        texture_locations[stem] = loc_entry
-                                        texture_locations[f"minecraft:{stem}"] = loc_entry
+                                    if cat in SHORT_NAME_ALLOWED_CATEGORIES:
+                                        texture_locations.setdefault(f"minecraft:{stem}", loc_entry)
+                                        texture_locations.setdefault(stem, loc_entry)
+                                        if rel_p.startswith("item/"):
+                                            texture_locations[f"item_{stem}"] = loc_entry
+                                            texture_locations[f"minecraft:item_{stem}"] = loc_entry
+                                        elif rel_p.startswith("block/"):
+                                            texture_locations[stem] = loc_entry
+                                            texture_locations[f"minecraft:{stem}"] = loc_entry
                                 else:
-                                    texture_locations[f"{ns}:{stem}"] = loc_entry
-                                    if rel_p.startswith("item/"):
-                                        texture_locations[f"{ns}:item_{stem}"] = loc_entry
+                                    if cat in SHORT_NAME_ALLOWED_CATEGORIES:
+                                        texture_locations[f"{ns}:{stem}"] = loc_entry
+                                        if rel_p.startswith("item/"):
+                                            texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
                                 images["albedo"].paste(tile_for(rel_p, "albedo"), (x, y))
                                 if has_normal:
@@ -1145,6 +1150,16 @@ class AtlasGenerator:
         mc_chunk = next((c for c in chunks if c.get("namespace") == "minecraft" and "tile_size" in c), None)
         primary_tile_size = mc_chunk["tile_size"] if mc_chunk else (chunks[0].get("tile_size", self.default_tile_size) if chunks else self.default_tile_size)
 
+        # Group canonical keys by category for scoped/partitioned lookup
+        categories_index: dict[str, list[str]] = {}
+        for key, loc in texture_locations.items():
+            if ":" in key and "/" in key and not loc.get("is_fallback"):
+                cat = loc.get("category")
+                if cat:
+                    categories_index.setdefault(cat, []).append(key)
+        for cat_list in categories_index.values():
+            cat_list.sort()
+
         mapping_data = {
             "format_version": ATLAS_FORMAT_VERSION,
             "provenance_schema_version": 1,
@@ -1152,6 +1167,7 @@ class AtlasGenerator:
             "tile_size": primary_tile_size,
             "face_order": list(FACE_ORDER),
             "chunks": chunks,
+            "categories": categories_index,
             "textures": texture_locations,
             "materials": materials,
             "block_states": block_states_data,

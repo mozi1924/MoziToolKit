@@ -78,9 +78,35 @@ ENTITY_BLOCK_ALIASES: dict[str, list[str]] = {
     "chest": ["entity/chest/normal", "chest/normal", "minecraft:entity/chest/normal"],
     "trapped_chest": ["entity/chest/trapped", "chest/trapped", "minecraft:entity/chest/trapped"],
     "ender_chest": ["entity/chest/ender", "chest/ender", "minecraft:entity/chest/ender"],
-    "banner_base": ["entity/banner/base", "entity/banner_base", "minecraft:entity/banner/base"],
-    "banner": ["entity/banner/base", "entity/banner_base", "minecraft:entity/banner/base"],
+    "banner_base": [
+        "entity/banner/banner_base",
+        "minecraft:entity/banner/banner_base",
+        "entity/banner_base",
+        "entity/banner/base",
+    ],
+    "banner": [
+        "entity/banner/banner_base",
+        "minecraft:entity/banner/banner_base",
+        "entity/banner_base",
+        "entity/banner/base",
+    ],
 }
+for _c in (
+    "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+    "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"
+):
+    ENTITY_BLOCK_ALIASES[f"{_c}_banner"] = [
+        "entity/banner/banner_base",
+        "minecraft:entity/banner/banner_base",
+        "entity/banner_base",
+        "entity/banner/base",
+    ]
+    ENTITY_BLOCK_ALIASES[f"{_c}_wall_banner"] = [
+        "entity/banner/banner_base",
+        "minecraft:entity/banner/banner_base",
+        "entity/banner_base",
+        "entity/banner/base",
+    ]
 
 # Standard hardcoded tint blocks for vanilla blocks that do not use colormaps
 HARDCODED_TINTS: dict[str, tuple[float, float, float, float]] = {
@@ -183,20 +209,31 @@ class AtlasAddressResolver:
                 except (TypeError, ValueError):
                     cid = 0
 
-                # Register unqualified short-name aliases only for scene-compatible categories
+                # Register unqualified short-name aliases only for blocks and items.
+                # Non-block/item categories retain category-prefixed entity paths.
                 target_chunk = self._chunks_by_id.get(cid, {})
                 category = location.get("category") or target_chunk.get("category", "blocks")
-                if category in ("blocks", "items", "chest", "banner_patterns", "shulker_boxes", "entities"):
-                    short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
-                    if not is_scene_blacklisted(short_name):
+                short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
+                if not is_scene_blacklisted(short_name):
+                    if category in ("blocks", "items"):
                         self._locations.setdefault(short_name, location)
                         self._locations.setdefault(f"minecraft:{short_name}", location)
                         if category == "blocks":
                             self._locations.setdefault(f"minecraft:block/{short_name}", location)
                         elif category == "items":
                             self._locations.setdefault(f"minecraft:item/{short_name}", location)
-                        elif category == "chest":
-                            self._locations.setdefault(f"minecraft:entity/chest/{short_name}", location)
+                    elif category == "chest":
+                        self._locations.setdefault(f"minecraft:entity/chest/{short_name}", location)
+                        self._locations.setdefault(f"entity/chest/{short_name}", location)
+                    elif category == "banner_patterns":
+                        self._locations.setdefault(f"minecraft:entity/banner/{short_name}", location)
+                        self._locations.setdefault(f"entity/banner/{short_name}", location)
+                    elif category == "shulker_boxes":
+                        self._locations.setdefault(f"minecraft:entity/shulker/{short_name}", location)
+                        self._locations.setdefault(f"entity/shulker/{short_name}", location)
+                    elif category == "decorated_pot":
+                        self._locations.setdefault(f"minecraft:entity/decorated_pot/{short_name}", location)
+                        self._locations.setdefault(f"entity/decorated_pot/{short_name}", location)
 
         # 3. Index animations (overwrites static fallbacks for animated textures)
         animations = self.mapping.get("animations", [])
@@ -282,15 +319,27 @@ class AtlasAddressResolver:
         self,
         candidate_or_candidates: Union[str, list[str], tuple[str, ...]],
         namespace: str = DEFAULT_NAMESPACE,
+        category: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Authoritative lookup resolving a candidate or list of candidates to an Atlas location dict.
         Filters out scene-blacklisted candidates (Mobs, UI, Map graphics).
+        Supports optional category constraint/preference.
         """
         if isinstance(candidate_or_candidates, str):
             candidates = [candidate_or_candidates]
         else:
             candidates = list(candidate_or_candidates)
+
+        def _is_category(loc_dict: Optional[dict]) -> bool:
+            if not loc_dict or not category:
+                return True
+            cid = int(loc_dict.get("chunk_id", 0))
+            chunk = self._chunks_by_id.get(cid, {})
+            loc_cat = loc_dict.get("category") or chunk.get("category")
+            return loc_cat == category
+
+        any_match = None
 
         for cand in candidates:
             if not cand or not isinstance(cand, str):
@@ -301,7 +350,11 @@ class AtlasAddressResolver:
 
             # 1. Exact lookup
             if cand_clean in self._locations:
-                return self._locations[cand_clean]
+                loc = self._locations[cand_clean]
+                if _is_category(loc):
+                    return loc
+                if any_match is None:
+                    any_match = loc
 
             cand_ns, cand_name = split_texture_key(cand_clean)
             target_ns = cand_ns if cand_ns != DEFAULT_NAMESPACE else namespace
@@ -309,34 +362,56 @@ class AtlasAddressResolver:
             # 2. Canonical key lookup
             canon = canonical_texture_key(target_ns, cand_name)
             if canon in self._locations:
-                return self._locations[canon]
+                loc = self._locations[canon]
+                if _is_category(loc):
+                    return loc
+                if any_match is None:
+                    any_match = loc
 
             # 3. Path variations: try block/ or item/ prefix
             if "/" not in cand_name:
                 cand_block = f"{target_ns}:block/{cand_name}"
                 if cand_block in self._locations:
-                    return self._locations[cand_block]
+                    loc = self._locations[cand_block]
+                    if _is_category(loc):
+                        return loc
+                    if any_match is None:
+                        any_match = loc
                 cand_item = f"{target_ns}:item/{cand_name}"
                 if cand_item in self._locations:
-                    return self._locations[cand_item]
+                    loc = self._locations[cand_item]
+                    if _is_category(loc):
+                        return loc
+                    if any_match is None:
+                        any_match = loc
 
             # 4. Short stem lookup
             stem = cand_name.rsplit("/", 1)[-1]
             if stem and not self.is_blacklisted(stem):
                 if stem in self._locations:
-                    return self._locations[stem]
+                    loc = self._locations[stem]
+                    if _is_category(loc):
+                        return loc
+                    if any_match is None:
+                        any_match = loc
                 stem_canon = canonical_texture_key(target_ns, stem)
                 if stem_canon in self._locations:
-                    return self._locations[stem_canon]
+                    loc = self._locations[stem_canon]
+                    if _is_category(loc):
+                        return loc
+                    if any_match is None:
+                        any_match = loc
 
             # 5. Check BLOCK_TO_TEXTURE_ALIASES
             if stem in BLOCK_TO_TEXTURE_ALIASES:
                 for alt in BLOCK_TO_TEXTURE_ALIASES[stem]:
-                    alt_loc = self.lookup_texture(alt, namespace=target_ns)
-                    if alt_loc:
+                    alt_loc = self.lookup_texture(alt, namespace=target_ns, category=category)
+                    if alt_loc and _is_category(alt_loc):
                         return alt_loc
+                    if alt_loc and any_match is None:
+                        any_match = alt_loc
 
-        return None
+        return any_match if category is None else None
 
     def remap_uv(
         self,
@@ -381,13 +456,16 @@ class AtlasAddressResolver:
 
     def get_calc_uv_fn(
         self,
-        location: Optional[dict] = None,
+        location: Union[dict, str, None] = None,
         chunk: Optional[dict] = None,
         fallback_params: Optional[dict[str, Any]] = None,
     ) -> Callable[[float, float], tuple[float, float]]:
         """Return a self-contained closure that maps local UV to global Atlas UV for a specific location."""
-        captured_loc = location
-        cid = int(location.get("chunk_id", 0)) if location else 0
+        if isinstance(location, str):
+            captured_loc = self.lookup_texture(location)
+        else:
+            captured_loc = location
+        cid = int(captured_loc.get("chunk_id", 0)) if captured_loc else 0
         captured_chunk = chunk or self.get_target_chunk(cid, fallback_params=fallback_params)
 
         def calc_uv(u: float, v: float) -> tuple[float, float]:

@@ -127,6 +127,25 @@ HARDCODED_TINTS = {
     "lily_pad": (0.12549, 0.50196, 0.18824, 1.0),
 }
 
+DYE_COLORS_RGB: dict[str, tuple[float, float, float, float]] = {
+    "white": (0.976, 0.976, 0.976, 1.0),
+    "orange": (0.976, 0.502, 0.114, 1.0),
+    "magenta": (0.780, 0.306, 0.741, 1.0),
+    "light_blue": (0.227, 0.702, 0.855, 1.0),
+    "yellow": (0.996, 0.847, 0.239, 1.0),
+    "lime": (0.502, 0.780, 0.122, 1.0),
+    "pink": (0.953, 0.545, 0.667, 1.0),
+    "gray": (0.278, 0.310, 0.322, 1.0),
+    "light_gray": (0.616, 0.616, 0.592, 1.0),
+    "cyan": (0.086, 0.612, 0.612, 1.0),
+    "purple": (0.537, 0.196, 0.722, 1.0),
+    "blue": (0.235, 0.267, 0.667, 1.0),
+    "brown": (0.514, 0.329, 0.196, 1.0),
+    "green": (0.369, 0.486, 0.086, 1.0),
+    "red": (0.690, 0.180, 0.149, 1.0),
+    "black": (0.114, 0.114, 0.129, 1.0),
+}
+
 from ..mc_baker.state_baker import EMISSIVE_BLOCKS, is_block_emissive
 
 
@@ -282,6 +301,8 @@ def atlas_lookup_keys(parsed_or_name: Union[ParsedBlock, str], props: Optional[D
 
     if name.endswith("_banner") or name.endswith("_wall_banner"):
         color = name.replace("_wall_banner", "").replace("_banner", "")
+        keys.append("minecraft:entity/banner/banner_base")
+        keys.append("entity/banner/banner_base")
         keys.append("minecraft:entity/banner/base")
         keys.append("entity/banner/base")
         keys.append(f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool")
@@ -364,6 +385,10 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     snowy = props.get("snowy") == "true"
     if name in HARDCODED_TINTS:
         tint_color = HARDCODED_TINTS[name]
+        tint_data = (1.0, 1.0, 1.0, 1.0)
+    elif name.endswith("_banner") or name.endswith("_wall_banner"):
+        color = name.replace("_wall_banner", "").replace("_banner", "")
+        tint_color = DYE_COLORS_RGB.get(color, (1.0, 1.0, 1.0, 1.0))
         tint_data = (1.0, 1.0, 1.0, 1.0)
     elif name == "redstone_wire":
         power = int(props.get("power", "0")) if "power" in props else 0
