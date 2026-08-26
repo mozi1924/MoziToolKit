@@ -208,8 +208,8 @@ class TestMCModelBaker(unittest.TestCase):
         self.assertEqual(lid.to_pos, (15, 14, 15))
         self.assertEqual(body.from_pos, (1, 0, 1))
         self.assertEqual(body.to_pos, (15, 10, 15))
-        self.assertEqual(latch.from_pos, (7, 7, 0))
-        self.assertEqual(latch.to_pos, (9, 11, 1))
+        self.assertEqual(latch.from_pos, (7, 7, 15))
+        self.assertEqual(latch.to_pos, (9, 11, 16))
 
         # Check UV coordinate bounds for 64x64 entity texture
         # Lid top: [28, 0, 42, 14] in 64x64 -> min_u=28/64, min_v=0/64, max_u=42/64, max_v=14/64
@@ -220,24 +220,26 @@ class TestMCModelBaker(unittest.TestCase):
         self.assertEqual(body.faces["up"].uv_bounds, (28.0 / 64.0, 19.0 / 64.0, 42.0 / 64.0, 33.0 / 64.0))
         # Body bottom: [14, 19, 28, 33] in 64x64
         self.assertEqual(body.faces["down"].uv_bounds, (14.0 / 64.0, 19.0 / 64.0, 28.0 / 64.0, 33.0 / 64.0))
-        # Body front: [14, 33, 28, 43] in 64x64
+        # Body front (with latch shadow): [42, 33, 56, 43] in 64x64
+        self.assertEqual(body.faces["south"].uv_bounds, (42.0 / 64.0, 33.0 / 64.0, 56.0 / 64.0, 43.0 / 64.0))
+        # Body back: [14, 33, 28, 43] in 64x64
         self.assertEqual(body.faces["north"].uv_bounds, (14.0 / 64.0, 33.0 / 64.0, 28.0 / 64.0, 43.0 / 64.0))
         # Latch top: [3, 0, 5, 1] in 64x64
         self.assertEqual(latch.faces["up"].uv_bounds, (3.0 / 64.0, 0.0, 5.0 / 64.0, 1.0 / 64.0))
         # Latch bottom: [1, 0, 3, 1] in 64x64
         self.assertEqual(latch.faces["down"].uv_bounds, (1.0 / 64.0, 0.0, 3.0 / 64.0, 1.0 / 64.0))
-        # Latch front: [1, 1, 3, 5] in 64x64
-        self.assertEqual(latch.faces["north"].uv_bounds, (1.0 / 64.0, 1.0 / 64.0, 3.0 / 64.0, 5.0 / 64.0))
+        # Latch front: [4, 1, 6, 5] in 64x64
+        self.assertEqual(latch.faces["south"].uv_bounds, (4.0 / 64.0, 1.0 / 64.0, 6.0 / 64.0, 5.0 / 64.0))
 
         # 2. Double Chest Left & Right
         left = self.baker.bake_block_state("minecraft:chest[facing=north,type=left]")
-        self.assertEqual(left.elements[0].from_pos, (1, 9, 1))
-        self.assertEqual(left.elements[0].to_pos, (16, 14, 15))
+        self.assertEqual(left.elements[0].from_pos, (0, 9, 1))
+        self.assertEqual(left.elements[0].to_pos, (15, 14, 15))
         self.assertEqual(left.elements[0].faces["up"].texture, "minecraft:entity/chest/normal_left")
 
         right = self.baker.bake_block_state("minecraft:chest[facing=north,type=right]")
-        self.assertEqual(right.elements[0].from_pos, (0, 9, 1))
-        self.assertEqual(right.elements[0].to_pos, (15, 14, 15))
+        self.assertEqual(right.elements[0].from_pos, (1, 9, 1))
+        self.assertEqual(right.elements[0].to_pos, (16, 14, 15))
         self.assertEqual(right.elements[0].faces["up"].texture, "minecraft:entity/chest/normal_right")
 
     def test_banner_proportions_and_assembly(self):

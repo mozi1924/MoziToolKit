@@ -173,6 +173,7 @@ class TestPackStackAndFallback(unittest.TestCase):
         self.assertEqual(len(enabled), 2)  # 2 enabled entries
 
         # 2. Preferences UI operators
+        save_pack_stack_config([])
         prefs = get_prefs(bpy.context)
         if prefs is not None:
             prefs.resource_packs.clear()
