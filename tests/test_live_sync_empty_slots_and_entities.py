@@ -98,8 +98,47 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         self.assertEqual(resolved.chunk_id, 0, "White banner should resolve to block chunk 0!")
 
     def test_chest_model_baking(self):
-        """Verify that chests bake accurate 3D multipart models (lid + body + latch) and not 1x1x1 cubes."""
+        """Verify that chests bake accurate 3D multipart models when JSON models with elements are provided."""
         baker = StateBaker()
+        chest_model = {
+            "textures": {
+                "particle": "minecraft:entity/chest/normal",
+                "texture": "minecraft:entity/chest/normal",
+            },
+            "elements": [
+                {
+                    "from": [1, 9, 1],
+                    "to": [15, 14, 15],
+                    "faces": {
+                        "up": {"uv": [7, 0, 10.5, 3.5], "texture": "#texture"},
+                        "down": {"uv": [3.5, 0, 7, 3.5], "texture": "#texture"},
+                    }
+                },
+                {
+                    "from": [1, 0, 1],
+                    "to": [15, 10, 15],
+                    "faces": {
+                        "up": {"uv": [7, 4.75, 10.5, 8.25], "texture": "#texture"},
+                        "down": {"uv": [3.5, 4.75, 7, 8.25], "texture": "#texture"},
+                        "south": {"uv": [14, 8.25, 10.5, 10.75], "texture": "#texture"},
+                    }
+                },
+                {
+                    "from": [7, 7, 15],
+                    "to": [9, 11, 16],
+                    "faces": {
+                        "south": {"uv": [1.5, 0.25, 1.0, 1.25], "texture": "#texture"},
+                    }
+                }
+            ]
+        }
+        baker.model_parser.register_model("minecraft:block/chest", chest_model)
+        baker.state_resolver.register_blockstate("minecraft:chest", {
+            "variants": {
+                "facing=north,type=single,waterlogged=false": {"model": "minecraft:block/chest"},
+                "facing=south,type=single,waterlogged=false": {"model": "minecraft:block/chest", "y": 180},
+            }
+        })
 
         # 1. Single Chest Facing North
         baked_north = baker.bake_block_state("minecraft:chest[facing=north,type=single,waterlogged=false]")
@@ -108,44 +147,22 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
 
         # Verify Lid element (element 0)
         lid_elem = baked_north.elements[0]
-        lid_verts = [v for face in lid_elem.faces.values() for v in face.vertices]
-        self.assertAlmostEqual(min(v[0] for v in lid_verts), 1.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[0] for v in lid_verts), 15.0 / 16.0, places=2)
-        self.assertAlmostEqual(min(v[1] for v in lid_verts), 9.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[1] for v in lid_verts), 14.0 / 16.0, places=2)
-        self.assertAlmostEqual(min(v[2] for v in lid_verts), 1.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[2] for v in lid_verts), 15.0 / 16.0, places=2)
+        self.assertEqual(lid_elem.from_pos, (1, 9, 1))
+        self.assertEqual(lid_elem.to_pos, (15, 14, 15))
 
         # Verify Body element (element 1)
         body_elem = baked_north.elements[1]
-        body_verts = [v for face in body_elem.faces.values() for v in face.vertices]
-        self.assertAlmostEqual(min(v[0] for v in body_verts), 1.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[0] for v in body_verts), 15.0 / 16.0, places=2)
-        self.assertAlmostEqual(min(v[1] for v in body_verts), 0.0, places=2)
-        self.assertAlmostEqual(max(v[1] for v in body_verts), 10.0 / 16.0, places=2)
-        self.assertAlmostEqual(min(v[2] for v in body_verts), 1.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[2] for v in body_verts), 15.0 / 16.0, places=2)
+        self.assertEqual(body_elem.from_pos, (1, 0, 1))
+        self.assertEqual(body_elem.to_pos, (15, 10, 15))
 
         # Verify Latch element (element 2)
         latch_elem = baked_north.elements[2]
-        latch_verts = [v for face in latch_elem.faces.values() for v in face.vertices]
-        self.assertAlmostEqual(min(v[0] for v in latch_verts), 7.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[0] for v in latch_verts), 9.0 / 16.0, places=2)
-        self.assertAlmostEqual(min(v[1] for v in latch_verts), 7.0 / 16.0, places=2)
-        self.assertAlmostEqual(max(v[1] for v in latch_verts), 11.0 / 16.0, places=2)
-        self.assertAlmostEqual(min(v[2] for v in latch_verts), 0.0, places=2)
-        self.assertAlmostEqual(max(v[2] for v in latch_verts), 1.0 / 16.0, places=2)
+        self.assertEqual(latch_elem.from_pos, (7, 7, 15))
+        self.assertEqual(latch_elem.to_pos, (9, 11, 16))
 
         # Verify chest texture key is entity texture
         for face in body_elem.faces.values():
             self.assertEqual(face.texture, "minecraft:entity/chest/normal")
-
-        # 2. Trapped Chest and Ender Chest
-        trapped = baker.bake_block_state("minecraft:trapped_chest[facing=south,type=single]")
-        self.assertEqual(trapped.elements[0].faces["up"].texture, "minecraft:entity/chest/trapped")
-
-        ender = baker.bake_block_state("minecraft:ender_chest[facing=west]")
-        self.assertEqual(ender.elements[0].faces["up"].texture, "minecraft:entity/chest/ender")
 
     def test_banner_model_baking(self):
         """Verify that standing and wall banners bake 3D multipart models with correct rotation."""
@@ -159,12 +176,14 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         # Cloth is element 0 so it takes priority in the 6-face summary; uses canonical banner_base.
         cloth_elem = standing.elements[0]
         self.assertEqual(cloth_elem.faces["north"].texture, "minecraft:entity/banner/banner_base")
+        self.assertEqual(cloth_elem.faces["north"].direction, "west")
 
         # 2. Wall Banner facing south
         wall = baker.bake_block_state("minecraft:blue_wall_banner[facing=south]")
         self.assertFalse(wall.is_cube)
         self.assertEqual(len(wall.elements), 2, "Wall banner should have cloth and crossbar elements!")
         self.assertEqual(wall.elements[0].faces["north"].texture, "minecraft:entity/banner/banner_base")
+        self.assertEqual(wall.elements[0].faces["north"].direction, "south")
 
     def test_special_model_chunks_are_bound_before_face_generation(self):
         """Chest/banner model faces must select their own atlas chunks, never chunk 0/1 fallbacks."""

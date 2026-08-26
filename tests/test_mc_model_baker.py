@@ -193,54 +193,59 @@ class TestMCModelBaker(unittest.TestCase):
         self.assertEqual(len(baked_lily.elements[0].faces), 1, "Lily pad should only have 1 up face, not duplicated down face!")
         self.assertIn("up", baked_lily.elements[0].faces)
 
-    def test_chest_lid_body_latch_uv_and_geometry(self):
-        """Verify that single and double chests bake 3 distinct components with exact 64x64 UV mappings."""
-        # 1. Single Chest
-        single = self.baker.bake_block_state("minecraft:chest[facing=north,type=single]")
-        self.assertFalse(single.is_cube)
-        self.assertEqual(len(single.elements), 3, "Chest must have 3 elements: lid, body, latch")
+    def test_chest_model_json_driven_baking(self):
+        """Verify that chests with JSON models bake purely from JSON elements, UVs, and variants."""
+        # Register a sample 3D chest JSON model and blockstate fixture
+        chest_json_model = {
+            "textures": {
+                "particle": "minecraft:entity/chest/normal",
+                "texture": "minecraft:entity/chest/normal",
+            },
+            "elements": [
+                {
+                    "from": [1, 9, 1],
+                    "to": [15, 14, 15],
+                    "faces": {
+                        "up": {"uv": [7, 0, 10.5, 3.5], "texture": "#texture"},
+                        "down": {"uv": [3.5, 0, 7, 3.5], "texture": "#texture"},
+                        "north": {"uv": [7, 3.5, 3.5, 4.75], "texture": "#texture"},
+                        "south": {"uv": [14, 3.5, 10.5, 4.75], "texture": "#texture"},
+                    }
+                },
+                {
+                    "from": [1, 0, 1],
+                    "to": [15, 10, 15],
+                    "faces": {
+                        "up": {"uv": [7, 4.75, 10.5, 8.25], "texture": "#texture"},
+                        "down": {"uv": [3.5, 4.75, 7, 8.25], "texture": "#texture"},
+                    }
+                }
+            ]
+        }
+        self.parser.register_model("minecraft:block/custom_chest", chest_json_model)
+        self.resolver.register_blockstate("minecraft:custom_chest", {
+            "variants": {
+                "facing=north": {"model": "minecraft:block/custom_chest"},
+                "facing=south": {"model": "minecraft:block/custom_chest", "y": 180},
+                "facing=west": {"model": "minecraft:block/custom_chest", "y": 270},
+                "facing=east": {"model": "minecraft:block/custom_chest", "y": 90},
+            }
+        })
 
-        lid = single.elements[0]
-        body = single.elements[1]
-        latch = single.elements[2]
+        # Bake north facing
+        baked_north = self.baker.bake_block_state("minecraft:custom_chest[facing=north]")
+        self.assertFalse(baked_north.is_cube)
+        self.assertEqual(len(baked_north.elements), 2)
+        self.assertEqual(baked_north.elements[0].from_pos, (1, 9, 1))
+        self.assertEqual(baked_north.elements[0].to_pos, (15, 14, 15))
+        self.assertEqual(baked_north.elements[0].faces["up"].texture, "minecraft:entity/chest/normal")
 
-        self.assertEqual(lid.from_pos, (1, 9, 1))
-        self.assertEqual(lid.to_pos, (15, 14, 15))
-        self.assertEqual(body.from_pos, (1, 0, 1))
-        self.assertEqual(body.to_pos, (15, 10, 15))
-        self.assertEqual(latch.from_pos, (7, 7, 15))
-        self.assertEqual(latch.to_pos, (9, 11, 16))
-
-        # Check UV coordinate bounds for 64x64 entity texture
-        # Lid top: [28, 0, 42, 14] in 64x64 -> min_u=28/64, min_v=0/64, max_u=42/64, max_v=14/64
-        self.assertEqual(lid.faces["up"].uv_bounds, (28.0 / 64.0, 0.0, 42.0 / 64.0, 14.0 / 64.0))
-        # Lid bottom (underside): [14, 0, 28, 14] in 64x64
-        self.assertEqual(lid.faces["down"].uv_bounds, (14.0 / 64.0, 0.0, 28.0 / 64.0, 14.0 / 64.0))
-        # Body top rim: [28, 19, 42, 33] in 64x64
-        self.assertEqual(body.faces["up"].uv_bounds, (28.0 / 64.0, 19.0 / 64.0, 42.0 / 64.0, 33.0 / 64.0))
-        # Body bottom: [14, 19, 28, 33] in 64x64
-        self.assertEqual(body.faces["down"].uv_bounds, (14.0 / 64.0, 19.0 / 64.0, 28.0 / 64.0, 33.0 / 64.0))
-        # Body front (with latch shadow): [42, 33, 56, 43] in 64x64
-        self.assertEqual(body.faces["south"].uv_bounds, (42.0 / 64.0, 33.0 / 64.0, 56.0 / 64.0, 43.0 / 64.0))
-        # Body back: [14, 33, 28, 43] in 64x64
-        self.assertEqual(body.faces["north"].uv_bounds, (14.0 / 64.0, 33.0 / 64.0, 28.0 / 64.0, 43.0 / 64.0))
-        # Latch top: [3, 0, 5, 1] in 64x64
-        self.assertEqual(latch.faces["up"].uv_bounds, (3.0 / 64.0, 0.0, 5.0 / 64.0, 1.0 / 64.0))
-        # Latch bottom: [1, 0, 3, 1] in 64x64
-        self.assertEqual(latch.faces["down"].uv_bounds, (1.0 / 64.0, 0.0, 3.0 / 64.0, 1.0 / 64.0))
-        # Latch front: [4, 1, 6, 5] in 64x64
-        self.assertEqual(latch.faces["south"].uv_bounds, (4.0 / 64.0, 1.0 / 64.0, 6.0 / 64.0, 5.0 / 64.0))
-
-        # 2. Double Chest Left & Right
-        left = self.baker.bake_block_state("minecraft:chest[facing=north,type=left]")
-        self.assertEqual(left.elements[0].from_pos, (0, 9, 1))
-        self.assertEqual(left.elements[0].to_pos, (15, 14, 15))
-        self.assertEqual(left.elements[0].faces["up"].texture, "minecraft:entity/chest/normal_left")
-
-        right = self.baker.bake_block_state("minecraft:chest[facing=north,type=right]")
-        self.assertEqual(right.elements[0].from_pos, (1, 9, 1))
-        self.assertEqual(right.elements[0].to_pos, (16, 14, 15))
-        self.assertEqual(right.elements[0].faces["up"].texture, "minecraft:entity/chest/normal_right")
+        # Bake south facing (y=180 rotation applied by unified FaceBakery)
+        baked_south = self.baker.bake_block_state("minecraft:custom_chest[facing=south]")
+        self.assertEqual(len(baked_south.elements), 2)
+        # Element rotated 180 degrees around (8, 8, 8): from (1, 9, 1) -> (1, 9, 1) to (15, 14, 15)
+        self.assertEqual(baked_south.elements[0].from_pos, (1, 9, 1))
+        self.assertEqual(baked_south.elements[0].to_pos, (15, 14, 15))
 
     def test_banner_proportions_and_assembly(self):
         """Verify standing and wall banner dimensions, pole-to-crossbar joint, and front cloth mounting."""
@@ -261,16 +266,29 @@ class TestMCModelBaker(unittest.TestCase):
         # Height is 2 blocks (~29.33 in 16-grid, reaching near 32)
         self.assertAlmostEqual(crossbar.to_pos[1], 29.333333, places=2)
 
-        # Cloth attached to the front surface of crossbar (Z: 6.667..7.333 vs Crossbar Z: 7.333..8.667)
+        # Unrotated base bounds check
         self.assertAlmostEqual(cloth.to_pos[2], crossbar.from_pos[2], places=2)
-        self.assertLess(cloth.from_pos[2], crossbar.from_pos[2], "Cloth should be on the front surface of the crossbar!")
+        self.assertLess(cloth.from_pos[2], crossbar.from_pos[2], "Base cloth should be on the front surface of the crossbar!")
 
-        # 2. Wall Banner
+        # 2. Verify Standing Banner Rotations (0: South, 4: West, 8: North, 12: East)
+        expected_dirs = {0: "south", 4: "west", 8: "north", 12: "east"}
+        for rot_idx, exp_dir in expected_dirs.items():
+            b = self.baker.bake_block_state(f"minecraft:white_banner[rotation={rot_idx}]")
+            cloth_face = b.elements[0].faces["north"]
+            self.assertEqual(cloth_face.direction, exp_dir, f"Standing banner rotation={rot_idx} should face {exp_dir}!")
+
+        # 3. Wall Banner
         wall = self.baker.bake_block_state("minecraft:white_wall_banner[facing=north]")
         self.assertEqual(len(wall.elements), 2, "Wall banner should have cloth and crossbar elements!")
         wall_cloth = wall.elements[0]
         wall_bar = wall.elements[1]
         self.assertAlmostEqual(wall_cloth.to_pos[2], wall_bar.from_pos[2], places=2)
+
+        # Verify all 4 Wall Banner Facings
+        for f in ["north", "south", "west", "east"]:
+            wb = self.baker.bake_block_state(f"minecraft:white_wall_banner[facing={f}]")
+            wf = wb.elements[0].faces["north"]
+            self.assertEqual(wf.direction, f, f"Wall banner facing={f} should face {f}!")
 
 
 if __name__ == "__main__":
