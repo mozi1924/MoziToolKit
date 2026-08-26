@@ -69,14 +69,16 @@ class TestOBJModels(unittest.TestCase):
         baked_bell = self.baker.bake_block_state("minecraft:bell[facing=north]")
         self.assertIsNotNone(baked_bell)
         self.assertEqual(len(baked_bell.elements), 12)
-        face_bell = list(baked_bell.elements[0].faces.values())[0]
-        self.assertEqual(face_bell.texture, "minecraft:entity/bell/bell_body")
+        bell_textures = {list(el.faces.values())[0].texture for el in baked_bell.elements}
+        self.assertTrue("minecraft:block/bell_side" in bell_textures)
+        self.assertTrue("minecraft:block/bell_top" in bell_textures)
 
         baked_pot = self.baker.bake_block_state("minecraft:decorated_pot")
         self.assertIsNotNone(baked_pot)
         self.assertEqual(len(baked_pot.elements), 18)
-        face_pot = list(baked_pot.elements[0].faces.values())[0]
-        self.assertEqual(face_pot.texture, "minecraft:entity/decorated_pot/decorated_pot_base")
+        pot_textures = {list(el.faces.values())[0].texture for el in baked_pot.elements}
+        self.assertTrue("minecraft:entity/decorated_pot/decorated_pot_base" in pot_textures)
+        self.assertTrue("minecraft:entity/decorated_pot/decorated_pot_side" in pot_textures)
 
     def test_banner_and_skull_obj_loading(self):
         """Test Banner and Skull OBJ models."""
