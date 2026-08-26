@@ -1,6 +1,6 @@
 """
-Unit tests for 1:1 OBJ Model Loading and Baking in MC Baker.
-Tests Chests (Single/Double/Copper/Trapped/Ender), Bells, Decorated Pots, Banners, Skulls, and Hanging Signs.
+Unit tests for 1:1 OBJ Model Loading and Special Entity Model Baking in MC Baker.
+Tests Chests, Shulker Boxes, Conduits, End Portals, Bells, Decorated Pots, Banners, Skulls, and Hanging Signs.
 """
 
 import unittest
@@ -14,11 +14,13 @@ if str(PROJECT_DIR) not in sys.path:
 from tests._bootstrap import bootstrap_environment  # noqa: E402
 bootstrap_environment()
 
-from utils.mc_baker import StateBaker
+from utils.mc_baker import StateBaker, build_blender_mesh_from_baked_model
 from utils.mc_baker.obj_loader import (
     resolve_obj_model_for_state,
     build_baked_model_from_obj,
-    _OBJ_CACHE,
+    build_shulker_box_model,
+    build_conduit_model,
+    build_end_portal_model,
 )
 
 
@@ -31,7 +33,7 @@ class TestOBJModels(unittest.TestCase):
         # 1. Single Chest (Normal, Copper, Trapped, Ender)
         baked_single = self.baker.bake_block_state("minecraft:chest[facing=north,type=single]")
         self.assertIsNotNone(baked_single)
-        self.assertEqual(len(baked_single.elements), 18)  # 18 faces from chest.obj#chest
+        self.assertEqual(len(baked_single.elements), 18)
         face0 = list(baked_single.elements[0].faces.values())[0]
         self.assertEqual(face0.texture, "minecraft:entity/chest/normal")
 
@@ -64,6 +66,27 @@ class TestOBJModels(unittest.TestCase):
         face_right = list(baked_right.elements[0].faces.values())[0]
         self.assertEqual(face_right.texture, "minecraft:entity/chest/normal_right")
 
+    def test_shulker_box_and_conduit_and_portal(self):
+        """Test Shulker Box (undyed & 16 colors across facings), Conduit, and End Portal."""
+        # 1. Shulker Box
+        shulker_up = self.baker.bake_block_state("minecraft:shulker_box[facing=up]")
+        self.assertEqual(len(shulker_up.elements), 2)
+        self.assertEqual(shulker_up.elements[0].faces["up"].texture, "minecraft:entity/shulker/shulker")
+
+        shulker_cyan = self.baker.bake_block_state("minecraft:cyan_shulker_box[facing=north]")
+        self.assertEqual(len(shulker_cyan.elements), 2)
+        self.assertEqual(shulker_cyan.elements[0].faces["north"].texture, "minecraft:entity/shulker/shulker_cyan")
+
+        # 2. Conduit
+        conduit = self.baker.bake_block_state("minecraft:conduit")
+        self.assertEqual(len(conduit.elements), 1)
+        self.assertEqual(conduit.elements[0].faces["up"].texture, "minecraft:entity/conduit/base")
+
+        # 3. End Portal
+        portal = self.baker.bake_block_state("minecraft:end_portal")
+        self.assertEqual(len(portal.elements), 1)
+        self.assertEqual(portal.elements[0].faces["up"].texture, "minecraft:entity/end_portal")
+
     def test_bell_and_pot_obj_loading(self):
         """Test Bell and Decorated Pot OBJ models."""
         baked_bell = self.baker.bake_block_state("minecraft:bell[facing=north]")
@@ -81,12 +104,12 @@ class TestOBJModels(unittest.TestCase):
         self.assertTrue("minecraft:entity/decorated_pot/decorated_pot_side" in pot_textures)
 
     def test_banner_and_skull_obj_loading(self):
-        """Test Banner and Skull OBJ models."""
+        """Test Banner and Skull OBJ models with exact rotation matching."""
         # 1. Banners
-        baked_banner = self.baker.bake_block_state("minecraft:white_banner[rotation=0]")
-        self.assertIsNotNone(baked_banner)
-        self.assertEqual(len(baked_banner.elements), 18)
-        face_banner = list(baked_banner.elements[0].faces.values())[0]
+        baked_banner0 = self.baker.bake_block_state("minecraft:white_banner[rotation=0]")
+        self.assertIsNotNone(baked_banner0)
+        self.assertEqual(len(baked_banner0.elements), 18)
+        face_banner = list(baked_banner0.elements[0].faces.values())[0]
         self.assertEqual(face_banner.texture, "minecraft:entity/banner/banner_base")
 
         baked_wall_banner = self.baker.bake_block_state("minecraft:red_wall_banner[facing=north]")
