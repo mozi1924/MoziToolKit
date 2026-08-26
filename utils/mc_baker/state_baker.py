@@ -431,16 +431,16 @@ class StateBaker:
             latch_to = [16, 11, 1]
 
             lid_faces = {
-                "up": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
+                "up": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
                 "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
                 "east": {"texture": tex, "uv": [29, 14, 43, 19], "uv_size": 64},
             }
             body_faces = {
-                "up": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
+                "up": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
                 "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
@@ -449,8 +449,8 @@ class StateBaker:
             latch_faces = {
                 "north": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
                 "south": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
-                "up": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
+                "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
                 "east": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
             }
@@ -463,16 +463,16 @@ class StateBaker:
             latch_to = [1, 11, 1]
 
             lid_faces = {
-                "up": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
+                "up": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
                 "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
                 "east": {"texture": tex, "uv": [29, 14, 43, 19], "uv_size": 64},
             }
             body_faces = {
-                "up": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
+                "up": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
                 "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
@@ -481,8 +481,8 @@ class StateBaker:
             latch_faces = {
                 "north": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
                 "south": {"texture": tex, "uv": [4, 1, 5, 5], "uv_size": 64},
-                "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [3, 0, 4, 1], "uv_size": 64},
+                "up": {"texture": tex, "uv": [3, 0, 4, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
                 "east": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
             }
@@ -495,16 +495,16 @@ class StateBaker:
             latch_to = [9, 11, 1]
 
             lid_faces = {
-                "up": {"texture": tex, "uv": [14, 0, 28, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [28, 0, 42, 14], "uv_size": 64},
+                "up": {"texture": tex, "uv": [28, 0, 42, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [14, 0, 28, 14], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 14, 28, 19], "uv_size": 64},
                 "south": {"texture": tex, "uv": [42, 14, 56, 19], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
                 "east": {"texture": tex, "uv": [28, 14, 42, 19], "uv_size": 64},
             }
             body_faces = {
-                "up": {"texture": tex, "uv": [14, 19, 28, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [28, 19, 42, 33], "uv_size": 64},
+                "up": {"texture": tex, "uv": [28, 19, 42, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [14, 19, 28, 33], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 33, 28, 43], "uv_size": 64},
                 "south": {"texture": tex, "uv": [42, 33, 56, 43], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
@@ -513,8 +513,8 @@ class StateBaker:
             latch_faces = {
                 "north": {"texture": tex, "uv": [1, 1, 3, 5], "uv_size": 64},
                 "south": {"texture": tex, "uv": [4, 1, 6, 5], "uv_size": 64},
-                "up": {"texture": tex, "uv": [1, 0, 3, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [3, 0, 5, 1], "uv_size": 64},
+                "up": {"texture": tex, "uv": [3, 0, 5, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [1, 0, 3, 1], "uv_size": 64},
                 "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
                 "east": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
             }
