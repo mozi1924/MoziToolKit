@@ -260,6 +260,7 @@ class CachedStateMeta:
                     biome_tint_data=b_tint_data,
                     biome_tint_color=b_tint_col,
                     source_texture_key=base_res.source_texture_key,
+                    model_uv_scale=base_res.model_uv_scale,
                 )
 
         return base_res
@@ -663,6 +664,12 @@ def _generate_single_block_faces(
                         u_mc, v_mc = bf.uvs[loop_idx]
                     else:
                         u_mc, v_mc = (0.0, 0.0)
+                    # StateBaker UVs are normalized against Minecraft's
+                    # canonical 16x16 model grid.  Rect-packed entity
+                    # textures may be 64x64 (or HD variants), so scale them
+                    # into that texture's local space before atlas placement.
+                    u_mc = float(u_mc) * f_res.model_uv_scale[0]
+                    v_mc = float(v_mc) * f_res.model_uv_scale[1]
                     loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
                     loop[color_layer] = f_res.biome_tint_color if (bf.tint_index >= 0 or f_res.use_tint) else (1.0, 1.0, 1.0, 1.0)
 
