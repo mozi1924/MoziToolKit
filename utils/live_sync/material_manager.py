@@ -146,6 +146,11 @@ class LiveSyncMaterialManager:
         if atlas_params:
             self.atlas_params.update(atlas_params)
         self.chunk_materials: dict[int, bpy.types.Material] = {}
+        # Atlas chunk identity and Blender material slots are intentionally
+        # different domains.  This ordered list is the sole runtime bridge
+        # between them; its indices are the only values allowed in
+        # MeshPolygon.material_index.
+        self._slot_to_chunk: list[int] = []
         self.chunk_to_slot: dict[int, int] = {}
         self.resolver = AtlasAddressResolver(self.atlas_params.get("mapping"), fallback_params=self.atlas_params)
         self._texture_map: dict[str, dict] = self.resolver._locations
@@ -362,46 +367,42 @@ class LiveSyncMaterialManager:
         return self.chunk_to_slot.get(chunk_id, 0)
 
     def _sync_object_material_slots(self) -> None:
-        """Assign chunk materials directly into object material slots without empty slots."""
-        if not self.world_obj:
+        """Synchronize the root object's compact, stable chunk-to-slot layout."""
+        if self.world_obj:
+            self.sync_material_slots(self.world_obj)
+        else:
+            self._refresh_flat_slot_mapping()
+
+    def _refresh_flat_slot_mapping(self) -> None:
+        """Maintain a compact mapping without treating sparse chunk IDs as slots."""
+        loaded = {cid for cid, mat in self.chunk_materials.items() if mat}
+        retained = [cid for cid in self._slot_to_chunk if cid in loaded]
+        retained_set = set(retained)
+        # New chunks append instead of reordering existing slots.  Cached
+        # geometry therefore remains valid during an incremental sync.
+        retained.extend(sorted(loaded - retained_set))
+        self._slot_to_chunk = retained
+        self.chunk_to_slot = {cid: slot for slot, cid in enumerate(retained)}
+
+    def sync_material_slots(self, obj: bpy.types.Object) -> None:
+        """Apply the flattened slot layout to any Live Sync mesh object.
+
+        This is deliberately separate from atlas chunk IDs: a chunk numbered
+        11 may occupy Blender slot 4, and no empty intermediate slots are
+        created.
+        """
+        self._refresh_flat_slot_mapping()
+        expected = [self.chunk_materials[cid] for cid in self._slot_to_chunk]
+        slots = obj.data.materials
+        if list(slots) == expected:
             return
-
-        mats = self.world_obj.data.materials
-        # Clean any trailing or internal None slots
-        while mats and mats[-1] is None:
-            mats.pop(index=len(mats) - 1)
-        for i in reversed(range(len(mats))):
-            if mats[i] is None:
-                mats.pop(index=i)
-
-        existing_mats = list(mats)
-        for cid, mat in sorted(self.chunk_materials.items(), key=lambda item: item[0]):
-            if mat and mat not in existing_mats:
-                mats.append(mat)
-                existing_mats.append(mat)
-
-        self._update_chunk_to_slot_map()
+        slots.clear()
+        for material in expected:
+            slots.append(material)
 
     def _update_chunk_to_slot_map(self) -> None:
-        """Map chunk IDs to actual material slot indices on world_obj."""
-        self.chunk_to_slot.clear()
-        if self.world_obj:
-            for slot_idx, slot in enumerate(self.world_obj.material_slots):
-                if not slot.material:
-                    continue
-                mat = slot.material
-                cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", mat.get("mtk_atlas_chunk_id", None)))
-                if cid is not None:
-                    self.chunk_to_slot[int(cid)] = slot_idx
-
-        # Map any loaded chunk materials not yet registered
-        for cid, mat in self.chunk_materials.items():
-            if cid not in self.chunk_to_slot:
-                if self.world_obj:
-                    self.world_obj.data.materials.append(mat)
-                    self.chunk_to_slot[cid] = len(self.world_obj.data.materials) - 1
-                else:
-                    self.chunk_to_slot[cid] = cid
+        """Compatibility wrapper for callers of the former slot-scanning API."""
+        self._refresh_flat_slot_mapping()
 
     def get_slot_for_chunk(self, chunk_id: int) -> int:
         """Return the material slot index for a given Chunk ID, loading it on-demand if necessary."""
