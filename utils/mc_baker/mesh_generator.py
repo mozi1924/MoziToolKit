@@ -191,7 +191,7 @@ def build_blender_mesh_from_baked_model(
 
     for element in baked_model.elements:
         for face_dir, baked_face in element.faces.items():
-            if not baked_face.vertices or len(baked_face.vertices) < 4:
+            if not baked_face.vertices or len(baked_face.vertices) < 3:
                 continue
 
             for mc_vertices, face_uvs in _face_pieces_excluding_hidden_volume(baked_face, element_bounds):
@@ -202,7 +202,7 @@ def build_blender_mesh_from_baked_model(
                 except ValueError:
                     continue
 
-                if len(face_uvs) == 4:
+                if len(face_uvs) == len(bm_face.loops):
                     for i, loop in enumerate(bm_face.loops):
                         u, v = face_uvs[i]
                         loop[uv_layer].uv = Vector((u, 1.0 - v))

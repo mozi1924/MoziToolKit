@@ -32,7 +32,10 @@ from .state_baker import (
     refresh_shared_baker_sources,
     clear_shared_baker_cache,
 )
-from .atlas_bridge import AtlasBridge, ResolvedAtlasFace
+from .obj_loader import (
+    resolve_obj_model_for_state,
+    build_baked_model_from_obj,
+)
 from .mesh_generator import (
     mc_pos_to_blender,
     build_blender_mesh_from_baked_model,
@@ -65,8 +68,8 @@ __all__ = [
     "get_shared_state_baker",
     "refresh_shared_baker_sources",
     "clear_shared_baker_cache",
-    "AtlasBridge",
-    "ResolvedAtlasFace",
+    "resolve_obj_model_for_state",
+    "build_baked_model_from_obj",
     "mc_pos_to_blender",
     "build_blender_mesh_from_baked_model",
     "create_block_object",
