@@ -423,35 +423,6 @@ class StateBaker:
         elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
 
         if chest_type == "left":
-            lid_from = [0, 9, 1]
-            lid_to = [15, 14, 15]
-            body_from = [0, 0, 1]
-            body_to = [15, 10, 15]
-            latch_from = [0, 7, 0]
-            latch_to = [1, 11, 1]
-
-            lid_faces = {
-                "up": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
-                "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
-                "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
-                "east": {"texture": tex, "uv": [29, 14, 43, 19], "uv_size": 64},
-            }
-            body_faces = {
-                "up": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
-                "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
-                "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
-                "east": {"texture": tex, "uv": [29, 33, 43, 43], "uv_size": 64},
-            }
-            latch_faces = {
-                "north": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
-                "south": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
-                "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "east": {"texture": tex, "uv": [2, 1, 3, 5], "uv_size": 64},
-            }
-        elif chest_type == "right":
             lid_from = [1, 9, 1]
             lid_to = [16, 14, 15]
             body_from = [1, 0, 1]
@@ -460,25 +431,54 @@ class StateBaker:
             latch_to = [16, 11, 1]
 
             lid_faces = {
-                "up": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
+                "up": {"texture": tex, "uv": [44, 0, 29, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 0, 14, 14], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
                 "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
+                "west": {"texture": tex, "uv": [29, 14, 43, 19], "uv_size": 64},
             }
             body_faces = {
-                "up": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
+                "up": {"texture": tex, "uv": [44, 19, 29, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 19, 14, 33], "uv_size": 64},
                 "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
                 "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
+                "west": {"texture": tex, "uv": [29, 33, 43, 43], "uv_size": 64},
             }
             latch_faces = {
                 "north": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
                 "south": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
+                "up": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
+                "down": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
+                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+            }
+        elif chest_type == "right":
+            lid_from = [0, 9, 1]
+            lid_to = [15, 14, 15]
+            body_from = [0, 0, 1]
+            body_to = [15, 10, 15]
+            latch_from = [0, 7, 0]
+            latch_to = [1, 11, 1]
+
+            lid_faces = {
+                "up": {"texture": tex, "uv": [44, 0, 29, 14], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 0, 14, 14], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 14, 29, 19], "uv_size": 64},
+                "south": {"texture": tex, "uv": [43, 14, 58, 19], "uv_size": 64},
+                "east": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
+            }
+            body_faces = {
+                "up": {"texture": tex, "uv": [44, 19, 29, 33], "uv_size": 64},
+                "down": {"texture": tex, "uv": [29, 19, 14, 33], "uv_size": 64},
+                "north": {"texture": tex, "uv": [14, 33, 29, 43], "uv_size": 64},
+                "south": {"texture": tex, "uv": [43, 33, 58, 43], "uv_size": 64},
+                "east": {"texture": tex, "uv": [0, 33, 14, 43], "uv_size": 64},
+            }
+            latch_faces = {
+                "north": {"texture": tex, "uv": [3, 1, 4, 5], "uv_size": 64},
+                "south": {"texture": tex, "uv": [1, 1, 2, 5], "uv_size": 64},
                 "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
                 "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
+                "east": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
             }
         else:
             lid_from = [1, 9, 1]
