@@ -36,6 +36,7 @@ from ..nodes.builder import rebuild_material
 from ..pack.animation import get_material_animation_info
 from .builder import build_atlas_chunk_materials
 from .generator import AtlasGenerator
+from .addressing import AtlasAddressResolver
 from ..pipeline.mesh_attributes import (
     ensure_face_attribute,
     read_face_string_attribute,
@@ -153,24 +154,14 @@ class AtlasReplacementEngine:
             yield StepResult.failed("Atlas generation produced no usable texture chunks.")
             return
 
-        texture_map = {}
-        for name, location in mapping_data.get("textures", {}).items():
-            if location is None:
-                continue
-            namespace, texture_name = split_texture_key(location.get("texture_key", name))
-            texture_map[canonical_texture_key(namespace, texture_name)] = location
-            legacy_namespace, legacy_texture = split_texture_key(name)
-            texture_map.setdefault(canonical_texture_key(legacy_namespace, legacy_texture), location)
-            # Index base filename fallback to support pack texture path moves (e.g. block/chain <-> item/chain)
-            if "/" in texture_name:
-                basename = texture_name.rsplit("/", 1)[-1]
-                texture_map.setdefault(canonical_texture_key(namespace, basename), location)
-        fallback_location = texture_map.get(FALLBACK_TEXTURE_KEY)
+        resolver = AtlasAddressResolver(mapping_data)
+        fallback_location = resolver.lookup_texture(FALLBACK_TEXTURE_KEY) or resolver._locations.get(FALLBACK_TEXTURE_KEY)
         if fallback_location is None:
             yield StepResult.failed("Atlas mapping is missing its required fallback tile (chunk 0, slot 0).")
             return
 
-        chunks_by_id = {int(chunk["chunk_id"]): chunk for chunk in mapping_data.get("chunks", [])}
+        chunks_by_id = resolver._chunks_by_id
+        texture_map = resolver._locations
 
         standard_mesh_objects = [obj for obj in valid_objects if len(obj.data.polygons) > 0]
         generic_procedural_objects = [obj for obj in valid_objects if len(obj.data.polygons) == 0]
@@ -203,11 +194,9 @@ class AtlasReplacementEngine:
                 namespace, candidates, _old_loc = cached_face_texture_info(
                     mesh, poly_idx, slot_mat, state, source_keys[poly_idx]
                 )
-                for cand in candidates:
-                    loc = texture_map.get(canonical_texture_key(namespace, cand))
-                    if loc is not None:
-                        required_chunk_ids.add(int(loc["chunk_id"]))
-                        break
+                loc = resolver.lookup_texture(candidates, namespace=namespace)
+                if loc is not None:
+                    required_chunk_ids.add(int(loc["chunk_id"]))
 
         if generic_procedural_objects or not required_chunk_ids:
             static_chunks = [int(c["chunk_id"]) for c in mapping_data.get("chunks", []) if c.get("kind") == "static"]
@@ -349,11 +338,7 @@ class AtlasReplacementEngine:
                         mesh, poly_idx, orig_mat, state, source_key
                     )
 
-                new_location = None
-                for candidate in candidates:
-                    new_location = texture_map.get(canonical_texture_key(namespace, candidate))
-                    if new_location is not None:
-                        break
+                new_location = resolver.lookup_texture(candidates, namespace=namespace)
 
                 if new_location is not None:
                     chunk_ids[poly_idx] = float(new_location["chunk_id"])

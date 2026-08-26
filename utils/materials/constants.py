@@ -129,6 +129,172 @@ def classify_texture_category(path_or_key: str) -> str:
     return ATLAS_CATEGORY_MISC
 
 
+# Scene Object Blacklist Categories (Non-scene graphical assets)
+SCENE_BLACKLIST_CATEGORIES = frozenset({
+    ATLAS_CATEGORY_GUI,
+    ATLAS_CATEGORY_MAP_DECORATIONS,
+})
+
+# Path prefixes that are explicitly blacklisted for world scene rendering
+SCENE_BLACKLIST_PREFIXES = (
+    "gui/",
+    "textures/gui/",
+    "title/",
+    "widgets/",
+    "container/",
+    "toast/",
+    "advancements/",
+    "hud/",
+    "map/",
+    "textures/map/",
+    "map_decorations/",
+)
+
+# Allowed placeable entity prefixes that DO appear as blocks or static scene props
+ALLOWED_SCENE_ENTITY_PREFIXES = (
+    "entity/chest/",
+    "chest/",
+    "entity/shulker/",
+    "shulker/",
+    "shulker_boxes/",
+    "entity/banner/",
+    "banner/",
+    "entity/shield/",
+    "shield/",
+    "entity/decorated_pot/",
+    "decorated_pot/",
+    "entity/bed/",
+    "bed/",
+    "entity/bell/",
+    "bell/",
+    "entity/signs/",
+    "entity/sign/",
+    "signs/",
+    "sign/",
+    "entity/conduit/",
+    "conduit/",
+    "entity/end_portal/",
+    "end_portal/",
+    "entity/enchanting_table/",
+    "enchanting_table/",
+    "entity/armorstand/",
+    "armorstand/",
+    "painting/",
+    "paintings/",
+)
+
+# Known living mob / creature entity subpaths that should NEVER be resolved or placed as scene blocks/props
+LIVING_MOB_ENTITY_PREFIXES = (
+    "entity/zombie",
+    "entity/skeleton",
+    "entity/creeper",
+    "entity/spider",
+    "entity/enderman",
+    "entity/cow",
+    "entity/pig",
+    "entity/sheep",
+    "entity/chicken",
+    "entity/villager",
+    "entity/illager",
+    "entity/pillager",
+    "entity/witch",
+    "entity/slime",
+    "entity/magma_cube",
+    "entity/ghast",
+    "entity/blaze",
+    "entity/wither",
+    "entity/dragon",
+    "entity/enderdragon",
+    "entity/player",
+    "entity/steve",
+    "entity/alex",
+    "entity/horse",
+    "entity/donkey",
+    "entity/mule",
+    "entity/llama",
+    "entity/wolf",
+    "entity/cat",
+    "entity/ocelot",
+    "entity/fox",
+    "entity/bee",
+    "entity/bat",
+    "entity/squid",
+    "entity/dolphin",
+    "entity/turtle",
+    "entity/panda",
+    "entity/polarbear",
+    "entity/guardian",
+    "entity/warden",
+    "entity/breeze",
+    "entity/sniffer",
+    "entity/allay",
+    "entity/axolotl",
+    "entity/frog",
+    "entity/tadpole",
+    "entity/goat",
+    "entity/camel",
+    "entity/strider",
+    "entity/phantom",
+    "entity/drowned",
+    "entity/husk",
+    "entity/stray",
+    "entity/bogged",
+    "entity/piglin",
+    "entity/hoglin",
+    "entity/iron_golem",
+    "entity/snow_golem",
+    "entity/fish",
+    "entity/salmon",
+    "entity/cod",
+    "entity/pufferfish",
+    "entity/silverfish",
+    "entity/endermite",
+    "entity/vex",
+)
+
+
+def is_scene_blacklisted(path_or_key: str) -> bool:
+    """Return True if a texture path or resource key belongs to non-scene objects (Living Mobs, UI, Map)."""
+    if not path_or_key:
+        return False
+    k = str(path_or_key).replace("\\", "/").strip("/").lower()
+    if ":" in k:
+        k = k.split(":", 1)[1].strip("/")
+    if "textures/" in k:
+        k = k.split("textures/", 1)[1].strip("/")
+
+    # Remove channel suffixes like _n, _s and extensions
+    if k.endswith((".png", ".png.mcmeta")):
+        k = k.removesuffix(".png.mcmeta").removesuffix(".png")
+    if k.endswith(("_n", "_s")):
+        k = k[:-2]
+
+    # Check GUI and Map prefixes
+    for prefix in SCENE_BLACKLIST_PREFIXES:
+        if k.startswith(prefix) or f"/{prefix}" in f"/{k}":
+            return True
+
+    # Check Map explicit filenames
+    if k in ("map_icons", "map_background", "map_empty", "map_decorations") or k.startswith("map/"):
+        return True
+
+    # Check Living Mobs (unless explicitly in allowed placeable scene entity list)
+    if k.startswith(("entity/", "entities/")):
+        # First check allowed placeable scene entities
+        for allowed in ALLOWED_SCENE_ENTITY_PREFIXES:
+            if k.startswith(allowed) or f"/{allowed}" in f"/{k}":
+                return False
+        # Any other entity (or explicit living mob prefix) is blacklisted for scenes
+        for mob in LIVING_MOB_ENTITY_PREFIXES:
+            if k.startswith(mob):
+                return True
+        # If it's under entity/ and not explicitly allowed, it's considered non-scene
+        return True
+
+    return False
+
+
+
 # Atlas Mesh Attribute Names (Namespaced with mtk_)
 ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
 ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"

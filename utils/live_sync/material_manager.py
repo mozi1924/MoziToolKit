@@ -72,6 +72,7 @@ PROP_ATLAS_CHUNK_ID = "mtk:atlas_chunk_id"
 PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 
 from ..mc_baker import StateBaker, BakedModel, BakedFace
+from ..materials.atlas.addressing import AtlasAddressResolver, ResolvedAtlasAddress
 from .constants import (
     DEFAULT_ATLAS_WIDTH,
     DEFAULT_ATLAS_HEIGHT,
@@ -125,8 +126,9 @@ class LiveSyncMaterialManager:
             self.atlas_params.update(atlas_params)
         self.chunk_materials: dict[int, bpy.types.Material] = {}
         self.chunk_to_slot: dict[int, int] = {}
-        self._texture_map: dict[str, dict] = {}
-        self._chunks_by_id: dict[int, dict] = {}
+        self.resolver = AtlasAddressResolver(self.atlas_params.get("mapping"), fallback_params=self.atlas_params)
+        self._texture_map: dict[str, dict] = self.resolver._locations
+        self._chunks_by_id: dict[int, dict] = self.resolver._chunks_by_id
         self._state_face_cache: dict[str, dict[str, ResolvedFaceTexture]] = {}
         self._last_mat_signature: Optional[tuple] = None
         self._atlas_dir: Optional[Path] = None
@@ -144,130 +146,10 @@ class LiveSyncMaterialManager:
 
     def _build_texture_index_map(self) -> None:
         """Build multi-key lookup table supporting HD packs, animations, rect-packing, and aliases."""
-        self._texture_map.clear()
-        self._chunks_by_id.clear()
-
         mapping = self.atlas_params.get("mapping")
-        if not isinstance(mapping, dict):
-            return
-
-        for chunk in mapping.get("chunks", []):
-            if isinstance(chunk, dict) and "chunk_id" in chunk:
-                self._chunks_by_id[int(chunk["chunk_id"])] = chunk
-
-        # 1. Index all static/general textures in mapping
-        raw_textures = mapping.get("textures", {})
-        if isinstance(raw_textures, dict):
-            for name, location in raw_textures.items():
-                if not isinstance(location, dict):
-                    continue
-                tex_key = location.get("texture_key", name)
-                ns, tex_name = _split_texture_key(tex_key)
-                canon = _canonical_texture_key(ns, tex_name)
-                self._texture_map[canon] = location
-                self._texture_map[tex_key] = location
-                self._texture_map[name] = location
-
-                leg_ns, leg_tex = _split_texture_key(name)
-                self._texture_map.setdefault(_canonical_texture_key(leg_ns, leg_tex), location)
-
-                # Only categories suitable for 3D world blocks/entities register unqualified short-name aliases
-                # Non-block categories (map_decorations, gui, celestials, particles, armor_trims) must NEVER pollute short name aliases!
-                cid = int(location.get("chunk_id", 0))
-                target_chunk = self._chunks_by_id.get(cid, {})
-                category = location.get("category") or target_chunk.get("category", "blocks")
-
-                if category in ("blocks", "items", "chest", "banner_patterns", "shulker_boxes", "entities"):
-                    short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
-                    if not short_name.startswith("map_") and not short_name.startswith("gui_"):
-                        self._texture_map.setdefault(short_name, location)
-                        self._texture_map.setdefault(f"minecraft:{short_name}", location)
-                        if category == "blocks":
-                            self._texture_map.setdefault(f"minecraft:block/{short_name}", location)
-                        elif category == "items":
-                            self._texture_map.setdefault(f"minecraft:item/{short_name}", location)
-                        elif category == "chest":
-                            self._texture_map.setdefault(f"minecraft:entity/chest/{short_name}", location)
-
-        # 2. Priority index: Animations in mapping (overwrites any static fallback for animated textures)
-        animations = mapping.get("animations", [])
-        if isinstance(animations, list):
-            for anim in animations:
-                if not isinstance(anim, dict):
-                    continue
-                cid = int(anim.get("chunk_id", 0))
-                target_chunk = self._chunks_by_id.get(cid, {})
-                anim_loc = {
-                    "chunk_id": cid,
-                    "texture_id": anim.get("texture_id", 0),
-                    "kind": "animation",
-                    "category": anim.get("category", "blocks"),
-                    "namespace": anim.get("namespace", "minecraft"),
-                    "pixel_x": float(anim.get("pixel_x", 0)),
-                    "pixel_y": 0.0,  # Always Frame 0
-                    "frame_width": float(anim.get("frame_width") or target_chunk.get("tile_size", 16)),
-                    "frame_height": float(anim.get("frame_height") or target_chunk.get("tile_size", 16)),
-                    "frame_count": int(anim.get("frame_count", 1)),
-                    "frametime": int(anim.get("frametime", 2)),
-                    "interpolate": bool(anim.get("interpolate", False)),
-                    "default_tint_weight": float(anim.get("default_tint_weight", 0.0)),
-                }
-
-                tex_key = anim.get("texture_key") or anim.get("name", "")
-                ns, tex_name = _split_texture_key(tex_key)
-                canon = _canonical_texture_key(ns, tex_name)
-
-                self._texture_map[canon] = anim_loc
-                self._texture_map[tex_key] = anim_loc
-                if anim.get("name"):
-                    self._texture_map[anim["name"]] = anim_loc
-
-                short_name = tex_name.rsplit("/", 1)[-1] if "/" in tex_name else tex_name
-                self._texture_map[short_name] = anim_loc
-                self._texture_map[f"minecraft:{short_name}"] = anim_loc
-                self._texture_map[f"minecraft:block/{short_name}"] = anim_loc
-
-        # 3. Canonical animated block name aliases (e.g. water, lava, fire, portal, sea_lantern)
-        animated_aliases = {
-            "water": ["water_still", "minecraft:block/water_still", "water_flow", "minecraft:block/water_flow"],
-            "flowing_water": ["water_flow", "minecraft:block/water_flow", "water_still"],
-            "lava": ["lava_still", "minecraft:block/lava_still", "lava_flow", "minecraft:block/lava_flow"],
-            "flowing_lava": ["lava_flow", "minecraft:block/lava_flow", "lava_still"],
-            "fire": ["fire_0", "minecraft:block/fire_0", "fire_1", "minecraft:block/fire_1"],
-            "soul_fire": ["soul_fire_0", "minecraft:block/soul_fire_0", "soul_fire_1", "minecraft:block/soul_fire_1"],
-            "portal": ["nether_portal", "minecraft:block/nether_portal"],
-            "nether_portal": ["nether_portal", "minecraft:block/nether_portal"],
-            "sea_lantern": ["sea_lantern", "minecraft:block/sea_lantern"],
-            "magma_block": ["magma", "minecraft:block/magma", "magma_block", "minecraft:block/magma_block"],
-            "magma": ["magma", "minecraft:block/magma"],
-            "prismarine": ["prismarine", "minecraft:block/prismarine"],
-            "campfire": ["campfire_fire", "minecraft:block/campfire_fire"],
-            "soul_campfire": ["soul_campfire_fire", "minecraft:block/soul_campfire_fire"],
-            "respawn_anchor": ["respawn_anchor_top", "minecraft:block/respawn_anchor_top"],
-            "kelp": ["kelp", "minecraft:block/kelp", "kelp_plant"],
-            "lantern": ["lantern", "minecraft:block/lantern"],
-            "soul_lantern": ["soul_lantern", "minecraft:block/soul_lantern"],
-            "sculk_sensor": ["sculk_sensor_top", "minecraft:block/sculk_sensor_top"],
-            "sculk_shrieker": ["sculk_shrieker_top", "minecraft:block/sculk_shrieker_top"],
-            "sculk_catalyst": ["sculk_catalyst_top", "minecraft:block/sculk_catalyst_top"],
-        }
-        # 4. Canonical entity and special block texture aliases
-        entity_block_aliases = {
-            "chest": ["entity/chest/normal", "chest/normal", "minecraft:entity/chest/normal"],
-            "trapped_chest": ["entity/chest/trapped", "chest/trapped", "minecraft:entity/chest/trapped"],
-            "ender_chest": ["entity/chest/ender", "chest/ender", "minecraft:entity/chest/ender"],
-            "banner_base": ["entity/banner/base", "entity/banner_base", "minecraft:entity/banner/base"],
-            "banner": ["entity/banner/base", "entity/banner_base", "minecraft:entity/banner/base"],
-        }
-        for base_key, cand_list in entity_block_aliases.items():
-            for cand in cand_list:
-                cand_ns, cand_name = _split_texture_key(cand)
-                canon_cand = _canonical_texture_key(cand_ns, cand_name)
-                cand_loc = self._texture_map.get(canon_cand) or self._texture_map.get(cand)
-                if cand_loc:
-                    self._texture_map.setdefault(base_key, cand_loc)
-                    self._texture_map.setdefault(f"minecraft:{base_key}", cand_loc)
-                    break
+        self.resolver.set_mapping(mapping if isinstance(mapping, dict) else {}, fallback_params=self.atlas_params)
+        self._texture_map = self.resolver._locations
+        self._chunks_by_id = self.resolver._chunks_by_id
 
     def _ensure_chunk_materials_with_hash_validation(self) -> None:
         """
@@ -513,191 +395,32 @@ class LiveSyncMaterialManager:
         """
         Dynamically address texture chunk and UV coordinate rule for a specific block face.
         Fully supports standard & High-Resolution (HD 16x - 512x) Texture Packs and Animation/Rect Chunks.
+        Delegates authoritative atlas addressing to AtlasAddressResolver.
         """
-        tex_name: Optional[str] = None
-        uv_rot: float = 0.0
-        tint_idx: int = -1
-
-        # 1. First priority: explicit JSON face payload from Live Sync WebSocket
-        if json_face_info:
-            tex_name = json_face_info.get("tex")
-            tint_idx = int(json_face_info.get("tint", -1))
-            if parsed.name in FLUID_BLOCKS or parsed.block_type == BlockTypeEnum.FLUID or "water" in parsed.name or "lava" in parsed.name:
-                uv_rot = float(json_face_info.get("rot", json_face_info.get("flow_angle", 0.0)))
-            else:
-                uv_rot = 0.0
-        # 2. Second priority: StateBaker baked face result
-        elif baked_face:
-            tex_name = baked_face.texture
-            tint_idx = baked_face.tint_index
-            # For solid / baked blocks, UV rotation is already baked directly into vertex/loop UVs.
-            # Only fluids use shader-level UV rotation.
-            if parsed.name in FLUID_BLOCKS or parsed.block_type == BlockTypeEnum.FLUID or "water" in parsed.name or "lava" in parsed.name:
-                uv_rot = baked_face.uv_rot
-            else:
-                uv_rot = 0.0
-
-        loc = None
-
-        # Try texture_map lookup
-        if tex_name:
-            ns, name = _split_texture_key(tex_name)
-            canon = _canonical_texture_key(ns, name)
-            loc = (
-                self._texture_map.get(canon)
-                or self._texture_map.get(tex_name)
-                or self._texture_map.get(name)
-                or self._texture_map.get(name.rsplit("/", 1)[-1])
-            )
-
-        # Check if parsed block matches an animated block with animation candidate keys
-        if loc is None or loc.get("kind") != "animation":
-            short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
-            try:
-                from ..materials.constants import BLOCK_TO_TEXTURE_ALIASES
-                if short_name in BLOCK_TO_TEXTURE_ALIASES:
-                    for alt in BLOCK_TO_TEXTURE_ALIASES[short_name]:
-                        for cand in (alt, f"minecraft:{alt}", f"minecraft:block/{alt}"):
-                            if cand in self._texture_map and self._texture_map[cand].get("kind") == "animation":
-                                loc = self._texture_map[cand]
-                                break
-                        if loc and loc.get("kind") == "animation":
-                            break
-            except Exception:
-                pass
-
-        if loc is None:
-            short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
-            candidate_keys = []
-            try:
-                for k in atlas_lookup_keys(parsed):
-                    candidate_keys.append(k)
-                    candidate_keys.append(f"minecraft:{k}")
-                    candidate_keys.append(f"minecraft:block/{k}")
-            except Exception:
-                pass
-
-            candidate_keys.extend([
-                parsed.name,
-                parsed.block_id,
-                f"minecraft:{short_name}",
-                f"minecraft:block/{short_name}",
-                short_name,
-            ])
-            try:
-                from ..materials.constants import BLOCK_TO_TEXTURE_ALIASES
-                if short_name in BLOCK_TO_TEXTURE_ALIASES:
-                    for alt in BLOCK_TO_TEXTURE_ALIASES[short_name]:
-                        candidate_keys.extend((alt, f"minecraft:{alt}", f"minecraft:block/{alt}"))
-            except Exception:
-                pass
-
-            for k in candidate_keys:
-                if k in self._texture_map:
-                    loc = self._texture_map[k]
-                    break
-
-        chunk_id = int(loc.get("chunk_id", 0)) if loc else 0
-        if not loc and self.atlas_params.get("block_face_chunk_lut"):
-            c_lut = self.atlas_params["block_face_chunk_lut"].get(parsed.name) or self.atlas_params["block_face_chunk_lut"].get(parsed.full_state)
-            if c_lut and len(c_lut) > face_index:
-                chunk_id = int(c_lut[face_index])
-
-        target_chunk = self._chunks_by_id.get(chunk_id)
-        if not target_chunk:
-            # Fallback chunk metadata with atlas_params
-            target_chunk = {
-                "chunk_id": chunk_id,
-                "width": float(self.atlas_params.get("width", DEFAULT_ATLAS_WIDTH)),
-                "height": float(self.atlas_params.get("height", DEFAULT_ATLAS_HEIGHT)),
-                "tile_size": float(self.atlas_params.get("tile_size", DEFAULT_TILE_SIZE)),
-                "tiles_per_row": int(self.atlas_params.get("tiles_per_row", DEFAULT_TILES_PER_ROW)),
-            }
-
-        # Accurate UV Projection Closure supporting HD Packs and arbitrary Chunk dimensions
-        captured_loc = loc
-        captured_chunk = target_chunk
-
-        def calc_uv(u: float, v: float) -> tuple[float, float]:
-            return _remap_local_to_target_uv(
-                u, v,
-                target_location=captured_loc,
-                target_chunk=captured_chunk,
-            )
-
-        # 1. Animation attributes calculation
-        is_anim = bool(loc and (loc.get("kind") == "animation" or target_chunk.get("kind") == "animation"))
-        if is_anim and loc:
-            total_frames = float(loc.get("frame_count", 1))
-            frametime = float(loc.get("frametime", 2))
-            interpolate = 1.0 if loc.get("interpolate") else 0.0
-            anim_timing = (total_frames, frametime, interpolate, 1.0)
-            fw = float(loc.get("frame_width") or target_chunk.get("tile_size", 16))
-            fh = float(loc.get("frame_height") or target_chunk.get("tile_size", 16))
-            anim_frame_size = (fw, fh, 0.0, 0.0)
-        else:
-            anim_timing = (1.0, 1.0, 0.0, 1.0)
-            ts = float(target_chunk.get("tile_size", 16))
-            anim_frame_size = (ts, ts, 0.0, 0.0)
-
-        # 2. UV Tiling Transform
-        uv_tiling_transform = (1.0, 1.0, 0.0, 0.0)
-
-        # 3. Biome Tint calculation
-        from .classifier import BIOME_TINT_GRASS, BIOME_TINT_FOLIAGE, BIOME_TINT_WATER, HARDCODED_TINTS
-        is_hardcoded = bool((loc and loc.get("is_hardcoded")) or (parsed.name in HARDCODED_TINTS))
-        if (
-            tint_idx >= 0
-            or (loc and loc.get("default_tint_weight", 0.0) > 0)
-            or (parsed.name in BIOME_TINT_GRASS or parsed.name in BIOME_TINT_FOLIAGE or parsed.name in BIOME_TINT_WATER or "water" in parsed.name)
-            or is_hardcoded
-        ):
-            use_tint = True
-        elif self.atlas_params.get("block_face_tint_lut"):
-            t_lut = self.atlas_params["block_face_tint_lut"].get(parsed.name) or self.atlas_params["block_face_tint_lut"].get(parsed.full_state)
-            use_tint = bool(t_lut and len(t_lut) > face_index and t_lut[face_index][2] > 0)
-        else:
-            use_tint = False
-
-        base_weight = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
-        overlay_weight = float(loc.get("default_overlay_tint_weight", 1.0)) if loc else 1.0
-        tint_weight = 1.0 if use_tint else 0.0
-        hardcoded_weight = 1.0 if is_hardcoded else 0.0
-        biome_tint_data = (base_weight, overlay_weight, tint_weight, hardcoded_weight)
-
-        if is_hardcoded and loc and loc.get("hardcoded_color"):
-            biome_tint_color = tuple(loc["hardcoded_color"])
-        elif parsed.name in HARDCODED_TINTS:
-            biome_tint_color = HARDCODED_TINTS[parsed.name]
-        elif use_tint:
-            biome_tint_color = parsed.tint_color
-        else:
-            biome_tint_color = (1.0, 1.0, 1.0, 1.0)
-
-        slot_index = self.get_slot_for_chunk(chunk_id)
-
-        # Determine canonical source texture key
-        source_key = ""
-        if loc:
-            source_key = loc.get("texture_key") or loc.get("name", "")
-        if not source_key and tex_name:
-            ns, name = _split_texture_key(tex_name)
-            source_key = _canonical_texture_key(ns, name)
-        if not source_key:
-            short_name = parsed.name.split(":", 1)[-1].removeprefix("block/")
-            source_key = f"minecraft:block/{short_name}"
-
+        c_lut = self.atlas_params.get("block_face_chunk_lut")
+        t_lut = self.atlas_params.get("block_face_tint_lut")
+        res = self.resolver.resolve_dynamic_face(
+            parsed=parsed,
+            face_name=face_name,
+            face_index=face_index,
+            baked_face=baked_face,
+            json_face_info=json_face_info,
+            block_face_chunk_lut=c_lut,
+            block_face_tint_lut=t_lut,
+            fallback_params=self.atlas_params,
+        )
+        slot_index = self.get_slot_for_chunk(res.chunk_id)
         return ResolvedFaceTexture(
-            chunk_id=chunk_id,
+            chunk_id=res.chunk_id,
             slot_index=slot_index,
-            uv_rot=uv_rot,
-            use_tint=use_tint,
-            tint_color=biome_tint_color,
-            calc_uv_fn=calc_uv,
-            anim_timing=anim_timing,
-            anim_frame_size=anim_frame_size,
-            uv_tiling_transform=uv_tiling_transform,
-            biome_tint_data=biome_tint_data,
-            biome_tint_color=biome_tint_color,
-            source_texture_key=source_key,
+            uv_rot=res.uv_rot,
+            use_tint=bool(res.biome_tint_data[2] > 0 or res.biome_tint_data[3] > 0),
+            tint_color=res.biome_tint_color,
+            calc_uv_fn=res.calc_uv_fn,
+            anim_timing=res.anim_timing,
+            anim_frame_size=res.anim_frame_size,
+            uv_tiling_transform=res.uv_tiling_transform,
+            biome_tint_data=res.biome_tint_data,
+            biome_tint_color=res.biome_tint_color,
+            source_texture_key=res.source_texture_key,
         )
