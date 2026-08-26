@@ -132,6 +132,11 @@ class ResolvedFaceTexture(NamedTuple):
     biome_tint_data: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     source_texture_key: str = ""
+    # StateBaker returns Minecraft model UVs normalized against its canonical
+    # 16x16 model unit grid.  Entity rectangles (chests, banners, shulkers)
+    # are often 64x64, so they need an additional local-space scale before
+    # atlas projection.
+    model_uv_scale: tuple[float, float] = (1.0, 1.0)
 
 
 class LiveSyncMaterialManager:
@@ -436,6 +441,19 @@ class LiveSyncMaterialManager:
             fallback_params=self.atlas_params,
         )
         slot_index = self.get_slot_for_chunk(res.chunk_id)
+        location = res.location or {}
+        target_chunk = self.resolver.get_target_chunk(res.chunk_id, fallback_params=self.atlas_params)
+        packing = location.get("packing") or target_chunk.get("packing", "grid")
+        is_rect = (
+            packing in ("rect_bin_pack", "rect", "vertical_columns")
+            or "pixel_x" in location
+        )
+        if is_rect:
+            source_width = float(location.get("rect_width") or location.get("frame_width") or 16.0)
+            source_height = float(location.get("rect_height") or location.get("frame_height") or 16.0)
+            model_uv_scale = (16.0 / max(source_width, 1.0), 16.0 / max(source_height, 1.0))
+        else:
+            model_uv_scale = (1.0, 1.0)
         return ResolvedFaceTexture(
             chunk_id=res.chunk_id,
             slot_index=slot_index,
@@ -449,4 +467,5 @@ class LiveSyncMaterialManager:
             biome_tint_data=res.biome_tint_data,
             biome_tint_color=res.biome_tint_color,
             source_texture_key=res.source_texture_key,
+            model_uv_scale=model_uv_scale,
         )
