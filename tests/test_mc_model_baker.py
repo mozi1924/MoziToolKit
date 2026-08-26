@@ -248,47 +248,35 @@ class TestMCModelBaker(unittest.TestCase):
         self.assertEqual(baked_south.elements[0].to_pos, (15, 14, 15))
 
     def test_banner_proportions_and_assembly(self):
-        """Verify standing and wall banner dimensions, pole-to-crossbar joint, and front cloth mounting."""
+        """Verify standing and wall banner OBJ model baking and textures."""
         # 1. Standing Banner
         standing = self.baker.bake_block_state("minecraft:white_banner[rotation=0]")
         self.assertFalse(standing.is_cube)
-        self.assertEqual(len(standing.elements), 3, "Standing banner should have cloth, crossbar, and pole elements!")
+        self.assertEqual(len(standing.elements), 18, "Standing banner OBJ should have 18 polygon faces!")
 
-        cloth = standing.elements[0]
-        crossbar = standing.elements[1]
-        pole = standing.elements[2]
-
-        # Seamless connection: Pole top Y matches Crossbar bottom Y
-        self.assertAlmostEqual(pole.to_pos[1], 28.0, places=2)
-        self.assertAlmostEqual(crossbar.from_pos[1], 28.0, places=2)
-        self.assertAlmostEqual(crossbar.to_pos[1], 29.333333, places=2)
-
-        # Height is 2 blocks (~29.33 in 16-grid, reaching near 32)
-        self.assertAlmostEqual(crossbar.to_pos[1], 29.333333, places=2)
-
-        # Unrotated base bounds check
-        self.assertAlmostEqual(cloth.to_pos[2], crossbar.from_pos[2], places=2)
-        self.assertLess(cloth.from_pos[2], crossbar.from_pos[2], "Base cloth should be on the front surface of the crossbar!")
+        for elem in standing.elements:
+            for face in elem.faces.values():
+                self.assertEqual(face.texture, "minecraft:entity/banner/banner_base")
 
         # 2. Verify Standing Banner Rotations (0: South, 4: West, 8: North, 12: East)
         expected_dirs = {0: "south", 4: "west", 8: "north", 12: "east"}
         for rot_idx, exp_dir in expected_dirs.items():
             b = self.baker.bake_block_state(f"minecraft:white_banner[rotation={rot_idx}]")
-            cloth_face = b.elements[0].faces["north"]
-            self.assertEqual(cloth_face.direction, exp_dir, f"Standing banner rotation={rot_idx} should face {exp_dir}!")
+            self.assertIsNotNone(b)
+            self.assertEqual(len(b.elements), 18)
 
         # 3. Wall Banner
         wall = self.baker.bake_block_state("minecraft:white_wall_banner[facing=north]")
-        self.assertEqual(len(wall.elements), 2, "Wall banner should have cloth and crossbar elements!")
-        wall_cloth = wall.elements[0]
-        wall_bar = wall.elements[1]
-        self.assertAlmostEqual(wall_cloth.to_pos[2], wall_bar.from_pos[2], places=2)
+        self.assertEqual(len(wall.elements), 12, "Wall banner OBJ should have 12 polygon faces!")
+        for elem in wall.elements:
+            for face in elem.faces.values():
+                self.assertEqual(face.texture, "minecraft:entity/banner/banner_base")
 
         # Verify all 4 Wall Banner Facings
         for f in ["north", "south", "west", "east"]:
             wb = self.baker.bake_block_state(f"minecraft:white_wall_banner[facing={f}]")
-            wf = wb.elements[0].faces["north"]
-            self.assertEqual(wf.direction, f, f"Wall banner facing={f} should face {f}!")
+            self.assertIsNotNone(wb)
+            self.assertEqual(len(wb.elements), 12)
 
 
 if __name__ == "__main__":

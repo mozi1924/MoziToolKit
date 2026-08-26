@@ -21,7 +21,7 @@ from .math_utils import (
 from .model_parser import ModelParser
 from .blockstate_resolver import BlockStateResolver, parse_block_state_string
 from .resource_loader import JarResourceLoader
-from .procedural import get_procedural_elements
+from .obj_loader import resolve_obj_model_for_state
 
 # Known Emissive blocks in Minecraft
 EMISSIVE_BLOCKS = frozenset({
@@ -398,34 +398,32 @@ class StateBaker:
             return self._bake_cache[state_str_clean]
 
         block_id, props = parse_block_state_string(state_str_clean)
+        short_name = block_id.split(":", 1)[-1]
+        fallback_texture = f"minecraft:block/{short_name}"
+        is_emissive = is_block_emissive(short_name, props)
+
+        # 1. First check if block has a 1:1 author-crafted OBJ model (Chest, Bell, Decorated Pot, Skull, Banner, etc.)
+        obj_model = resolve_obj_model_for_state(block_id, props, fallback_texture)
+        if obj_model:
+            obj_model.is_emissive = is_emissive
+            self._bake_cache[state_str_clean] = obj_model
+            return obj_model
+
         variant_matches = self.state_resolver.resolve_state(state_str_clean)
 
         baked_elements: list[BakedElement] = []
         six_faces: list[Optional[BakedFace]] = [None] * 6
 
-        short_name = block_id.split(":", 1)[-1]
-        fallback_texture = f"minecraft:block/{short_name}"
-
         is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab", "chest", "banner", "bed", "carpet", "pot"))
-        is_emissive = is_block_emissive(short_name, props)
 
         for match in variant_matches:
             resolved_model = self.model_parser.resolve_model(match.model_id)
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                procedural_elements = get_procedural_elements(
-                    block_id=block_id,
-                    props=props,
-                    fallback_texture=fallback_texture,
-                    resolved_model=resolved_model,
+                raw_elements = self._resolve_base_face_elements(
+                    short_name, props, fallback_texture, resolved_model.get("textures", {})
                 )
-                if procedural_elements:
-                    raw_elements = procedural_elements
-                else:
-                    raw_elements = self._resolve_base_face_elements(
-                        short_name, props, fallback_texture, resolved_model.get("textures", {})
-                    )
 
             for elem in raw_elements:
                 from_pos = tuple(elem.get("from", [0, 0, 0]))

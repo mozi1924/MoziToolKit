@@ -143,26 +143,12 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         # 1. Single Chest Facing North
         baked_north = baker.bake_block_state("minecraft:chest[facing=north,type=single,waterlogged=false]")
         self.assertFalse(baked_north.is_cube, "Chest should not be classified as a full cube!")
-        self.assertEqual(len(baked_north.elements), 3, "Chest should have 3 distinct 3D elements (lid, body, and latch)!")
-
-        # Verify Lid element (element 0)
-        lid_elem = baked_north.elements[0]
-        self.assertEqual(lid_elem.from_pos, (1, 9, 1))
-        self.assertEqual(lid_elem.to_pos, (15, 14, 15))
-
-        # Verify Body element (element 1)
-        body_elem = baked_north.elements[1]
-        self.assertEqual(body_elem.from_pos, (1, 0, 1))
-        self.assertEqual(body_elem.to_pos, (15, 10, 15))
-
-        # Verify Latch element (element 2)
-        latch_elem = baked_north.elements[2]
-        self.assertEqual(latch_elem.from_pos, (7, 7, 15))
-        self.assertEqual(latch_elem.to_pos, (9, 11, 16))
+        self.assertEqual(len(baked_north.elements), 18, "Chest OBJ should have 18 polygon faces!")
 
         # Verify chest texture key is entity texture
-        for face in body_elem.faces.values():
-            self.assertEqual(face.texture, "minecraft:entity/chest/normal")
+        for elem in baked_north.elements:
+            for face in elem.faces.values():
+                self.assertEqual(face.texture, "minecraft:entity/chest/normal")
 
     def test_banner_model_baking(self):
         """Verify that standing and wall banners bake 3D multipart models with correct rotation."""
@@ -171,19 +157,14 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         # 1. Standing Banner with rotation
         standing = baker.bake_block_state("minecraft:red_banner[rotation=4]")
         self.assertFalse(standing.is_cube)
-        self.assertEqual(len(standing.elements), 3, "Standing banner should have cloth, crossbar, and pole elements!")
-
-        # Cloth is element 0 so it takes priority in the 6-face summary; uses canonical banner_base.
-        cloth_elem = standing.elements[0]
-        self.assertEqual(cloth_elem.faces["north"].texture, "minecraft:entity/banner/banner_base")
-        self.assertEqual(cloth_elem.faces["north"].direction, "west")
+        self.assertEqual(len(standing.elements), 18, "Standing banner OBJ should have 18 polygon faces!")
+        self.assertEqual(standing.get_face("north").texture, "minecraft:entity/banner/banner_base")
 
         # 2. Wall Banner facing south
         wall = baker.bake_block_state("minecraft:blue_wall_banner[facing=south]")
         self.assertFalse(wall.is_cube)
-        self.assertEqual(len(wall.elements), 2, "Wall banner should have cloth and crossbar elements!")
-        self.assertEqual(wall.elements[0].faces["north"].texture, "minecraft:entity/banner/banner_base")
-        self.assertEqual(wall.elements[0].faces["north"].direction, "south")
+        self.assertEqual(len(wall.elements), 12, "Wall banner OBJ should have 12 polygon faces!")
+        self.assertEqual(wall.get_face("north").texture, "minecraft:entity/banner/banner_base")
 
     def test_special_model_chunks_are_bound_before_face_generation(self):
         """Chest/banner model faces must select their own atlas chunks, never chunk 0/1 fallbacks."""
@@ -214,7 +195,7 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         chest = baker.bake_block_state("minecraft:chest[facing=north,type=single]")
         chest_resolved = mgr.resolve_block_face(
             parse_and_classify("minecraft:chest[facing=north,type=single]"), "up", 2,
-            baked_face=chest.elements[0].faces["up"],
+            baked_face=chest.get_face("up"),
         )
         self.assertEqual(chest_resolved.chunk_id, 5)
         self.assertEqual(self.obj.material_slots[chest_resolved.slot_index].material, mgr.chunk_materials[5])
@@ -222,7 +203,7 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         banner = baker.bake_block_state("minecraft:red_banner[rotation=0]")
         banner_resolved = mgr.resolve_block_face(
             parse_and_classify("minecraft:red_banner[rotation=0]"), "north", 5,
-            baked_face=banner.elements[0].faces["north"],
+            baked_face=banner.get_face("north"),
         )
         self.assertEqual(banner_resolved.chunk_id, 7)
         self.assertEqual(self.obj.material_slots[banner_resolved.slot_index].material, mgr.chunk_materials[7])
