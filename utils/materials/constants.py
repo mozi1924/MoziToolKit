@@ -74,6 +74,20 @@ RECT_PACKED_CATEGORIES = frozenset({
     ATLAS_CATEGORY_MISC,
 })
 
+# Categories permitted to register unqualified short-name aliases (e.g. 'oak_planks' or 'minecraft:oak_planks')
+# Non-block/non-item categories (UI, particles, map decorations, entity textures) must retain explicit path prefixes.
+SHORT_NAME_ALLOWED_CATEGORIES = frozenset({
+    ATLAS_CATEGORY_BLOCKS,
+    ATLAS_CATEGORY_ITEMS,
+})
+
+DOMAIN_BLOCK = "block"
+DOMAIN_ITEM = "item"
+DOMAIN_ENTITY = "entity"
+DOMAIN_MAP = "map"
+DOMAIN_GUI = "gui"
+DOMAIN_PARTICLE = "particle"
+
 
 def classify_texture_category(path_or_key: str) -> str:
     """Classify a relative texture path or resource key into its canonical Atlas category.

@@ -126,16 +126,18 @@ def default_face_uv(facing: str, from_pos: Vec3, to_pos: Vec3) -> Tuple[float, f
     return (0.0, 0.0, 16.0, 16.0)
 
 
-def cuboid_face_get_u(uvs: Tuple[float, float, float, float], rot_shift: int, vertex: int) -> float:
+def cuboid_face_get_u(uvs: Tuple[float, float, float, float], rot_shift: int, vertex: int, uv_base: float = 16.0) -> float:
     min_u, min_v, max_u, max_v = uvs
     idx = (vertex + rot_shift) % 4
-    return (max_u if (idx != 0 and idx != 1) else min_u) / 16.0
+    base = float(uv_base) if uv_base > 0.0 else 16.0
+    return (max_u if (idx != 0 and idx != 1) else min_u) / base
 
 
-def cuboid_face_get_v(uvs: Tuple[float, float, float, float], rot_shift: int, vertex: int) -> float:
+def cuboid_face_get_v(uvs: Tuple[float, float, float, float], rot_shift: int, vertex: int, uv_base: float = 16.0) -> float:
     min_u, min_v, max_u, max_v = uvs
     idx = (vertex + rot_shift) % 4
-    return (max_v if (idx != 0 and idx != 3) else min_v) / 16.0
+    base = float(uv_base) if uv_base > 0.0 else 16.0
+    return (max_v if (idx != 0 and idx != 3) else min_v) / base
 
 
 # 3D Matrix & Rotation Math
@@ -377,7 +379,8 @@ def bake_face_exact(
     rot_x: float = 0.0,
     rot_y: float = 0.0,
     elem_rotation: Optional[dict] = None,
-    uvlock: bool = False
+    uvlock: bool = False,
+    uv_base: float = 16.0,
 ) -> Tuple[str, float, List[Vec3], List[Vec2], Tuple[float, float, float, float]]:
     """
     Exact FaceBakery.bakeQuad pipeline:
@@ -391,7 +394,7 @@ def bake_face_exact(
 
     # 1. Raw canonical vertices and UVs
     raw_positions = [get_face_canonical_vertex(orig_dir, from_pos, to_pos, i) for i in range(4)]
-    raw_uvs = [(cuboid_face_get_u(uv_bounds, rot_shift, i), cuboid_face_get_v(uv_bounds, rot_shift, i)) for i in range(4)]
+    raw_uvs = [(cuboid_face_get_u(uv_bounds, rot_shift, i, uv_base=uv_base), cuboid_face_get_v(uv_bounds, rot_shift, i, uv_base=uv_base)) for i in range(4)]
 
     # 2. Transform 3D vertices (local element rotation first, then model variant rotation)
     transformed_positions = []

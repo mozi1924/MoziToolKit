@@ -203,7 +203,9 @@ class CachedStateMeta:
                     self.faces_info["down"] = resolved
 
                 if baked_face and baked_face.texture:
-                    self.tex_to_res[baked_face.texture] = resolved
+                    j_tex = j_face.get("tex") if j_face else None
+                    if not j_tex or j_tex == baked_face.texture or baked_face.texture not in self.tex_to_res:
+                        self.tex_to_res[baked_face.texture] = resolved
 
             # Also resolve any element-specific textures if present
             if self.baked_model and self.baked_model.elements:

@@ -13,7 +13,7 @@ from ..pipeline.provenance import without_blender_suffix, is_mozi_material
 
 
 JMC2OBJ_BANNER_SHORT_ALIASES = {
-    "pattern_base": "entity/banner/base",
+    "pattern_base": "entity/banner/banner_base",
     "pattern_bs": "entity/banner/stripe_bottom",
     "pattern_ts": "entity/banner/stripe_top",
     "pattern_ls": "entity/banner/stripe_left",
@@ -138,6 +138,8 @@ EXPLICIT_MATERIAL_ALIASES = {
     "ender_chest": ["entity/chest/ender"],
     "banner_standing": ["entity/banner/banner_base", "entity/banner/base"],
     "banner_wall": ["entity/banner/banner_base", "entity/banner/base"],
+    "banner_base": ["entity/banner/banner_base", "entity/banner/base"],
+    "banner": ["entity/banner/banner_base", "entity/banner/base"],
 }
 
 
@@ -296,6 +298,15 @@ def _expand_semantic_candidates(stem: str) -> list[str]:
             "block/redstone_dust_line1",
             "block/redstone_dust_dot",
             "block/redstone_dust_overlay",
+        ])
+
+    # 2c-2. Banners (all 16 colors + wall / standing variants)
+    if "banner" in clean_stem:
+        cands.extend([
+            "entity/banner/banner_base",
+            "minecraft:entity/banner/banner_base",
+            "entity/banner_base",
+            "entity/banner/base",
         ])
 
     # 2d. Shelves (All wood variants)

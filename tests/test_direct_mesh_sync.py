@@ -110,7 +110,7 @@ class TestDirectMeshSync(unittest.TestCase):
                 ],
                 "textures": {
                     "minecraft:block/oak_planks": {"chunk_id": 0, "tile_column": 0, "tile_row": 0, "category": "blocks"},
-                    "minecraft:entity/banner/base": {
+                    "minecraft:entity/banner/banner_base": {
                         "chunk_id": 7, "pixel_x": 0, "pixel_y": 0,
                         "rect_width": 64, "rect_height": 64, "category": "banner_patterns",
                     },
@@ -130,7 +130,7 @@ class TestDirectMeshSync(unittest.TestCase):
                 source_key.data[poly.index].value.decode("utf-8")
                 if isinstance(source_key.data[poly.index].value, bytes)
                 else source_key.data[poly.index].value
-            ) == "minecraft:entity/banner/base"
+            ) == "minecraft:entity/banner/banner_base"
         )
         banner_mat = section.data.materials[banner_poly.material_index]
         self.assertEqual(banner_mat["mtk:atlas_chunk_id"], 7)

@@ -142,17 +142,17 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         # 1. Standing Banner with rotation
         standing = baker.bake_block_state("minecraft:red_banner[rotation=4]")
         self.assertFalse(standing.is_cube)
-        self.assertEqual(len(standing.elements), 3, "Standing banner should have pole, crossbar, and cloth elements!")
+        self.assertEqual(len(standing.elements), 3, "Standing banner should have cloth, crossbar, and pole elements!")
 
-        # Pole and crossbar use wood texture; cloth uses the banner entity atlas.
-        cloth_elem = standing.elements[2]
-        self.assertEqual(cloth_elem.faces["north"].texture, "minecraft:entity/banner/base")
+        # Cloth is element 0 so it takes priority in the 6-face summary; uses canonical banner_base.
+        cloth_elem = standing.elements[0]
+        self.assertEqual(cloth_elem.faces["north"].texture, "minecraft:entity/banner/banner_base")
 
         # 2. Wall Banner facing south
         wall = baker.bake_block_state("minecraft:blue_wall_banner[facing=south]")
         self.assertFalse(wall.is_cube)
-        self.assertEqual(len(wall.elements), 2, "Wall banner should have crossbar and cloth elements!")
-        self.assertEqual(wall.elements[1].faces["north"].texture, "minecraft:entity/banner/base")
+        self.assertEqual(len(wall.elements), 2, "Wall banner should have cloth and crossbar elements!")
+        self.assertEqual(wall.elements[0].faces["north"].texture, "minecraft:entity/banner/banner_base")
 
     def test_special_model_chunks_are_bound_before_face_generation(self):
         """Chest/banner model faces must select their own atlas chunks, never chunk 0/1 fallbacks."""
@@ -170,7 +170,7 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
                     "minecraft:block/oak_planks": {"chunk_id": 0, "tile_column": 0, "tile_row": 0, "category": "blocks"},
                     "minecraft:entity/chest/normal": {"chunk_id": 5, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "chest"},
                     "minecraft:entity/shulker/shulker": {"chunk_id": 6, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "shulker_boxes"},
-                    "minecraft:entity/banner/base": {"chunk_id": 7, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "banner_patterns"},
+                    "minecraft:entity/banner/banner_base": {"chunk_id": 7, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "banner_patterns"},
                     "minecraft:map/decorations/banner_white": {"chunk_id": 12, "pixel_x": 0, "pixel_y": 0, "rect_width": 8, "rect_height": 8, "category": "map_decorations"},
                 },
             }
@@ -191,7 +191,7 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         banner = baker.bake_block_state("minecraft:red_banner[rotation=0]")
         banner_resolved = mgr.resolve_block_face(
             parse_and_classify("minecraft:red_banner[rotation=0]"), "north", 5,
-            baked_face=banner.elements[2].faces["north"],
+            baked_face=banner.elements[0].faces["north"],
         )
         self.assertEqual(banner_resolved.chunk_id, 7)
         self.assertEqual(self.obj.material_slots[banner_resolved.slot_index].material, mgr.chunk_materials[7])
