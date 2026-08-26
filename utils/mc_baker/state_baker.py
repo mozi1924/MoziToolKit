@@ -385,151 +385,7 @@ class StateBaker:
 
         return [{"from": [0, 0, 0], "to": [16, 16, 16], "faces": faces_dict}]
 
-    @staticmethod
-    def _resolve_chest_elements(short_name: str, props: dict[str, str]) -> list[dict]:
-        """Construct multipart 3D elements for chests (lid + body + lock)."""
-        facing = props.get("facing", "north")
-        chest_type = props.get("type", "single")
 
-        if short_name == "ender_chest":
-            tex = "minecraft:entity/chest/ender"
-        elif short_name == "trapped_chest":
-            if chest_type in ("left", "right"):
-                tex = f"minecraft:entity/chest/trapped_{chest_type}"
-            else:
-                tex = "minecraft:entity/chest/trapped"
-        elif short_name == "chest":
-            if chest_type in ("left", "right"):
-                tex = f"minecraft:entity/chest/normal_{chest_type}"
-            else:
-                tex = "minecraft:entity/chest/normal"
-        elif short_name.endswith("_chest"):
-            base = short_name.removesuffix("_chest")
-            if base.startswith("waxed_"):
-                base = base.removeprefix("waxed_")
-            if base in ("exposed_copper", "weathered_copper", "oxidized_copper"):
-                var, mat = base.split("_", 1)
-                base = f"{mat}_{var}"
-            if chest_type in ("left", "right"):
-                tex = f"minecraft:entity/chest/{base}_{chest_type}"
-            else:
-                tex = f"minecraft:entity/chest/{base}"
-        else:
-            tex = "minecraft:entity/chest/normal"
-
-        rot_angle = 0.0
-        if facing == "north":
-            rot_angle = 180.0
-        elif facing == "west":
-            rot_angle = 270.0
-        elif facing == "east":
-            rot_angle = 90.0
-        elif facing == "south":
-            rot_angle = 0.0
-
-        elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
-
-        if chest_type == "left":
-            lid_from = [0, 9, 1]
-            lid_to = [15, 14, 15]
-            body_from = [0, 0, 1]
-            body_to = [15, 10, 15]
-            latch_from = [0, 7, 15]
-            latch_to = [1, 11, 16]
-
-            lid_faces = {
-                "up": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
-                "north": {"texture": tex, "uv": [29, 14, 14, 19], "uv_size": 64},
-                "south": {"texture": tex, "uv": [58, 14, 43, 19], "uv_size": 64},
-                "east": {"texture": tex, "uv": [43, 14, 29, 19], "uv_size": 64},
-            }
-            body_faces = {
-                "up": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
-                "north": {"texture": tex, "uv": [29, 43, 14, 33], "uv_size": 64},
-                "south": {"texture": tex, "uv": [58, 43, 43, 33], "uv_size": 64},
-                "east": {"texture": tex, "uv": [43, 43, 29, 33], "uv_size": 64},
-            }
-            latch_faces = {
-                "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "north": {"texture": tex, "uv": [2, 1, 1, 5], "uv_size": 64},
-                "south": {"texture": tex, "uv": [4, 1, 3, 5], "uv_size": 64},
-                "east": {"texture": tex, "uv": [3, 1, 2, 5], "uv_size": 64},
-            }
-        elif chest_type == "right":
-            lid_from = [1, 9, 1]
-            lid_to = [16, 14, 15]
-            body_from = [1, 0, 1]
-            body_to = [16, 10, 15]
-            latch_from = [15, 7, 15]
-            latch_to = [16, 11, 16]
-
-            lid_faces = {
-                "up": {"texture": tex, "uv": [29, 0, 44, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 0, 29, 14], "uv_size": 64},
-                "north": {"texture": tex, "uv": [29, 14, 14, 19], "uv_size": 64},
-                "south": {"texture": tex, "uv": [58, 14, 43, 19], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
-            }
-            body_faces = {
-                "up": {"texture": tex, "uv": [29, 19, 44, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 19, 29, 33], "uv_size": 64},
-                "north": {"texture": tex, "uv": [29, 43, 14, 33], "uv_size": 64},
-                "south": {"texture": tex, "uv": [58, 43, 43, 33], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 43, 14, 33], "uv_size": 64},
-            }
-            latch_faces = {
-                "up": {"texture": tex, "uv": [2, 0, 3, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [1, 0, 2, 1], "uv_size": 64},
-                "north": {"texture": tex, "uv": [2, 1, 1, 5], "uv_size": 64},
-                "south": {"texture": tex, "uv": [4, 1, 3, 5], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
-            }
-        else:
-            lid_from = [1, 9, 1]
-            lid_to = [15, 14, 15]
-            body_from = [1, 0, 1]
-            body_to = [15, 10, 15]
-            latch_from = [7, 7, 15]
-            latch_to = [9, 11, 16]
-
-            lid_faces = {
-                "up": {"texture": tex, "uv": [28, 0, 42, 14], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 0, 28, 14], "uv_size": 64},
-                "north": {"texture": tex, "uv": [28, 14, 14, 19], "uv_size": 64},
-                "south": {"texture": tex, "uv": [56, 14, 42, 19], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 14, 14, 19], "uv_size": 64},
-                "east": {"texture": tex, "uv": [42, 14, 28, 19], "uv_size": 64},
-            }
-            body_faces = {
-                "up": {"texture": tex, "uv": [28, 19, 42, 33], "uv_size": 64},
-                "down": {"texture": tex, "uv": [14, 19, 28, 33], "uv_size": 64},
-                "north": {"texture": tex, "uv": [28, 43, 14, 33], "uv_size": 64},
-                "south": {"texture": tex, "uv": [56, 43, 42, 33], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 43, 14, 33], "uv_size": 64},
-                "east": {"texture": tex, "uv": [42, 43, 28, 33], "uv_size": 64},
-            }
-            latch_faces = {
-                "up": {"texture": tex, "uv": [3, 0, 5, 1], "uv_size": 64},
-                "down": {"texture": tex, "uv": [1, 0, 3, 1], "uv_size": 64},
-                "north": {"texture": tex, "uv": [3, 1, 1, 5], "uv_size": 64},
-                "south": {"texture": tex, "uv": [6, 1, 4, 5], "uv_size": 64},
-                "west": {"texture": tex, "uv": [0, 1, 1, 5], "uv_size": 64},
-                "east": {"texture": tex, "uv": [4, 1, 3, 5], "uv_size": 64},
-            }
-
-        elements = [
-            {"from": lid_from, "to": lid_to, "faces": lid_faces},
-            {"from": body_from, "to": body_to, "faces": body_faces},
-            {"from": latch_from, "to": latch_to, "faces": latch_faces},
-        ]
-        if elem_rot:
-            for elem in elements:
-                elem["rotation"] = elem_rot
-
-        return elements
 
     @staticmethod
     def _resolve_banner_elements(short_name: str, props: dict[str, str]) -> list[dict]:
@@ -545,18 +401,8 @@ class StateBaker:
 
         if is_wall:
             color = short_name.replace("_wall_banner", "")
-            facing = props.get("facing", "north")
-            rot_angle = 0.0
-            if facing == "south":
-                rot_angle = 180.0
-            elif facing == "west":
-                rot_angle = 270.0
-            elif facing == "east":
-                rot_angle = 90.0
-
-            elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
-
-            # Cloth first so it takes priority in the 6-face summary (mounted on front face of crossbar)
+            # Wall banners are mounted against the south wall by default in the base model (facing north).
+            # Variant rotations (facing=north/south/west/east) are handled by the blockstate resolver variant match.
             cloth = {
                 "from": [1.333333, -13.0, 13.666667],
                 "to": [14.666667, 13.666667, 14.333333],
@@ -581,15 +427,11 @@ class StateBaker:
                     "east": {"texture": banner_tex, "uv": [22, 44, 24, 46], "uv_size": 64, "tintindex": -1},
                 },
             }
-            elements = [cloth, crossbar]
-            if elem_rot:
-                for elem in elements:
-                    elem["rotation"] = elem_rot
-            return elements
+            return [cloth, crossbar]
         else:
             color = short_name.replace("_banner", "")
             rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-            angle = (rot_idx * 22.5) % 360.0
+            angle = (180.0 - rot_idx * 22.5) % 360.0
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": angle} if angle != 0.0 else None
 
             # Cloth first so it takes priority in the 6-face summary (mounted on front face of crossbar)
@@ -640,17 +482,6 @@ class StateBaker:
         """Construct multipart 3D elements for beds (legs + mattress + blanket/pillow)."""
         color = short_name.replace("_bed", "")
         part = props.get("part", "foot")
-        facing = props.get("facing", "north")
-
-        rot_angle = 0.0
-        if facing == "south":
-            rot_angle = 180.0
-        elif facing == "west":
-            rot_angle = 270.0
-        elif facing == "east":
-            rot_angle = 90.0
-
-        elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
 
         wood_tex = "minecraft:block/oak_planks"
         wool_tex = f"minecraft:block/{color}_wool" if color else "minecraft:block/red_wool"
@@ -659,11 +490,11 @@ class StateBaker:
         elements = []
         if part == "foot":
             elements.append({
-                "from": [0, 0, 0], "to": [3, 3, 3],
+                "from": [0, 0, 13], "to": [3, 3, 16],
                 "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
             })
             elements.append({
-                "from": [13, 0, 0], "to": [16, 3, 3],
+                "from": [13, 0, 13], "to": [16, 3, 16],
                 "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
             })
             elements.append({
@@ -679,11 +510,11 @@ class StateBaker:
             })
         else:
             elements.append({
-                "from": [0, 0, 13], "to": [3, 3, 16],
+                "from": [0, 0, 0], "to": [3, 3, 3],
                 "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
             })
             elements.append({
-                "from": [13, 0, 13], "to": [16, 3, 16],
+                "from": [13, 0, 0], "to": [16, 3, 3],
                 "faces": {d: {"texture": wood_tex} for d in MC_DIRECTIONS}
             })
             elements.append({
@@ -691,16 +522,13 @@ class StateBaker:
                 "faces": {
                     "up": {"texture": white_wool},
                     "down": {"texture": wood_tex},
-                    "north": {"texture": wool_tex},
-                    "south": {"texture": white_wool},
+                    "north": {"texture": white_wool},
+                    "south": {"texture": wool_tex},
                     "east": {"texture": wool_tex},
                     "west": {"texture": wool_tex},
                 }
             })
 
-        if elem_rot:
-            for elem in elements:
-                elem["rotation"] = elem_rot
         return elements
 
     def bake_block_state(self, state_str: str) -> BakedModel:
@@ -729,9 +557,7 @@ class StateBaker:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                if short_name in ("chest", "trapped_chest", "ender_chest") or short_name.endswith("_chest"):
-                    raw_elements = self._resolve_chest_elements(short_name, props)
-                elif short_name.endswith(("_banner", "_wall_banner")):
+                if short_name.endswith(("_banner", "_wall_banner")):
                     raw_elements = self._resolve_banner_elements(short_name, props)
                 elif short_name.endswith("_bed"):
                     raw_elements = self._resolve_bed_elements(short_name, props)
@@ -772,9 +598,8 @@ class StateBaker:
                     raw_uv = face_data.get("uv")
                     uv_bounds_raw = (float(raw_uv[0]), float(raw_uv[1]), float(raw_uv[2]), float(raw_uv[3])) if raw_uv else None
                     uv_base = float(face_data.get("uv_size", 16.0))
-                    if uv_base == 16.0 and texture and any(k in texture for k in ("entity/chest", "entity/banner", "entity/shulker")):
-                        if raw_uv and max(raw_uv) > 16.0:
-                            uv_base = 64.0
+                    if uv_base == 16.0 and raw_uv and max(raw_uv) > 16.0:
+                        uv_base = 64.0
 
                     # Exact Minecraft 26.2 FaceBakery baking
                     new_dir, uv_rot, transformed_verts, loop_uvs, uv_bounds = bake_face_exact(
@@ -924,30 +749,6 @@ class StateBaker:
                     pass
                 try:
                     baked_dict[block_id] = self.bake_block_state(block_id)
-                except Exception:
-                    pass
-
-        # Expand chest and container variants that lack variant permutations in blockstate JSON
-        for c_stem in ("chest", "trapped_chest"):
-            for facing in ("north", "south", "east", "west"):
-                for c_type in ("single", "left", "right"):
-                    for wl in ("false", "true"):
-                        for st in (
-                            f"minecraft:{c_stem}[facing={facing},type={c_type},waterlogged={wl}]",
-                            f"minecraft:{c_stem}[facing={facing},type={c_type}]",
-                            f"minecraft:{c_stem}[type={c_type},facing={facing}]",
-                        ):
-                            try:
-                                baked = self.bake_block_state(st)
-                                baked_dict[st] = baked
-                            except Exception:
-                                pass
-        for facing in ("north", "south", "east", "west"):
-            for wl in ("false", "true"):
-                st = f"minecraft:ender_chest[facing={facing},waterlogged={wl}]"
-                try:
-                    baked = self.bake_block_state(st)
-                    baked_dict[st] = baked
                 except Exception:
                     pass
 
