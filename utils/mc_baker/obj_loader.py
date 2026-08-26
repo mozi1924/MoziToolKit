@@ -1,13 +1,13 @@
 """
 OBJ Model Loader & Registry for Minecraft Block Entity models.
 Loads 1:1 author-crafted models from jmc2obj (GPL v2) with dynamic texture substitution
-and BlockState facing/rotation transformations.
+and BlockState facing/rotation/scale/offset transformations conforming to upstream jmc2obj.
 """
 
 from __future__ import annotations
 import math
 from pathlib import Path
-from typing import Optional, Any, Tuple
+from typing import Optional, Any, Tuple, Union, Sequence
 
 from .types import BakedModel, BakedElement, BakedFace, MC_DIRECTIONS
 
@@ -25,8 +25,31 @@ def rotate_y(p: Vec3, deg: float) -> Vec3:
     c, s = math.cos(rad), math.sin(rad)
     x, y, z = p
     # In Minecraft coordinate space: +X=East, +Y=Up, +Z=South
-    # Rotating clockwise (South -> East -> North -> West):
+    # Clockwise rotation:
     return (x * c + z * s, y, -x * s + z * c)
+
+
+def transform_obj_point(
+    p: Vec3,
+    scale: Vec3 = (1.0, 1.0, 1.0),
+    rot_y: float = 0.0,
+    offset: Vec3 = (0.0, 0.0, 0.0),
+) -> Vec3:
+    """Apply scale, Y-rotation, and translation to a point in OBJ space."""
+    x, y, z = p
+    sx, sy, sz = scale
+    # 1. Scale
+    x, y, z = x * sx, y * sy, z * sz
+    # 2. Rotate around Y
+    if rot_y != 0.0:
+        rad = math.radians(rot_y)
+        c, s = math.cos(rad), math.sin(rad)
+        nx = x * c + z * s
+        nz = -x * s + z * c
+        x, z = nx, nz
+    # 3. Translate
+    tx, ty, tz = offset
+    return (x + tx, y + ty, z + tz)
 
 
 def calculate_normal(p0: Vec3, p1: Vec3, p2: Vec3) -> Vec3:
@@ -176,21 +199,25 @@ def get_block_facing_angle_y(facing: str) -> float:
 def build_baked_model_from_obj(
     block_state: str,
     obj_filename: str,
-    sub_object: Optional[str] = None,
+    sub_objects: Optional[Union[str, Sequence[str]]] = None,
     material_override: Optional[str] = None,
     material_map: Optional[dict[str, str]] = None,
+    scale: Vec3 = (1.0, 1.0, 1.0),
     rot_y: float = 0.0,
+    offset: Vec3 = (0.0, 0.0, 0.0),
 ) -> Optional[BakedModel]:
     """
     Construct a canonical BakedModel from an author-crafted OBJ model file.
-    Applies exact Y-rotation and maps UV coordinates to standard BakedFace data.
+    Applies exact scaling, Y-rotation, and translation offsets conforming to upstream jmc2obj.
     """
     obj_data = _OBJ_CACHE.load(obj_filename)
     if not obj_data:
         return None
 
-    if sub_object:
-        faces_list = obj_data.get(sub_object, [])
+    if sub_objects:
+        if isinstance(sub_objects, str):
+            sub_objects = [sub_objects]
+        faces_list = [f for name in sub_objects if name in obj_data for f in obj_data[name]]
     else:
         faces_list = [f for obj_faces in obj_data.values() for f in obj_faces]
 
@@ -200,7 +227,7 @@ def build_baked_model_from_obj(
     elements: list[BakedElement] = []
     face_objects: list[BakedFace] = []
 
-    for i, f_data in enumerate(faces_list):
+    for f_data in faces_list:
         raw_verts = f_data["verts"]
         raw_uvs = f_data["uvs"]
         orig_mtl = f_data.get("mtl", "")
@@ -210,21 +237,21 @@ def build_baked_model_from_obj(
             tex_id = material_override
         elif material_map and orig_mtl in material_map:
             tex_id = material_map[orig_mtl]
-        elif orig_mtl:
+        elif orig_mtl and orig_mtl != "None":
             tex_id = f"minecraft:{orig_mtl}" if ":" not in orig_mtl else orig_mtl
         else:
             tex_id = "minecraft:block/dirt"
 
-        # 2. Transform Vertices by rot_y and convert from centered [-0.5, 0.5] to block space [0..1]
-        rotated_mc_verts = []
+        # 2. Transform Vertices: Scale -> Rotate Y -> Offset -> Convert to MC block space [0..1]
+        transformed_mc_verts = []
         for v in raw_verts:
-            vr = rotate_y(v, rot_y)
-            # Centered [-0.5, 0.5] -> [0.0, 1.0]
-            rotated_mc_verts.append((vr[0] + 0.5, vr[1] + 0.5, vr[2] + 0.5))
+            vt = transform_obj_point(v, scale=scale, rot_y=rot_y, offset=offset)
+            # Centered [-0.5, 0.5] + offset -> [0.0, 1.0]
+            transformed_mc_verts.append((vt[0] + 0.5, vt[1] + 0.5, vt[2] + 0.5))
 
         # 3. Calculate Normal & Direction
-        if len(rotated_mc_verts) >= 3:
-            norm = calculate_normal(rotated_mc_verts[0], rotated_mc_verts[1], rotated_mc_verts[2])
+        if len(transformed_mc_verts) >= 3:
+            norm = calculate_normal(transformed_mc_verts[0], transformed_mc_verts[1], transformed_mc_verts[2])
             face_dir = normal_to_mc_direction(norm)
         else:
             face_dir = "up"
@@ -244,15 +271,15 @@ def build_baked_model_from_obj(
             direction=face_dir,
             texture=tex_id,
             uv_bounds=(min_u, min_v, max_u, max_v),
-            vertices=tuple(rotated_mc_verts),
+            vertices=tuple(transformed_mc_verts),
             uvs=tuple(mc_uvs),
         )
         face_objects.append(baked_face)
 
         # Build element container
-        xs = [v[0] for v in rotated_mc_verts]
-        ys = [v[1] for v in rotated_mc_verts]
-        zs = [v[2] for v in rotated_mc_verts]
+        xs = [v[0] for v in transformed_mc_verts]
+        ys = [v[1] for v in transformed_mc_verts]
+        zs = [v[2] for v in transformed_mc_verts]
         from_pos = (min(xs) * 16.0, min(ys) * 16.0, min(zs) * 16.0)
         to_pos = (max(xs) * 16.0, max(ys) * 16.0, max(zs) * 16.0)
 
@@ -290,7 +317,7 @@ def resolve_obj_model_for_state(
 ) -> Optional[BakedModel]:
     """
     Dispatcher that resolves known Block Entity / special model blocks to their 1:1 OBJ models.
-    Returns None if the block should use standard JSON models.
+    Applies exact transforms conforming to upstream jmc2obj.
     """
     short_name = block_id.split(":", 1)[-1]
     name_no_wax = short_name.removeprefix("waxed_")
@@ -314,7 +341,7 @@ def resolve_obj_model_for_state(
         return build_baked_model_from_obj(
             block_state=f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id,
             obj_filename="chest.obj",
-            sub_object=sub_obj,
+            sub_objects=sub_obj,
             material_override=mat_id,
             rot_y=rot_y,
         )
@@ -326,7 +353,11 @@ def resolve_obj_model_for_state(
         return build_baked_model_from_obj(
             block_state=f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id,
             obj_filename="bell.obj",
-            material_override="minecraft:entity/bell/bell_body",
+            material_map={
+                "block/bell_top": "minecraft:block/bell_top",
+                "block/bell_side": "minecraft:block/bell_side",
+                "block/bell_bottom": "minecraft:block/bell_bottom",
+            },
             rot_y=rot_y,
         )
 
@@ -335,78 +366,119 @@ def resolve_obj_model_for_state(
         return build_baked_model_from_obj(
             block_state=block_id,
             obj_filename="decorated_pot.obj",
-            material_override="minecraft:entity/decorated_pot/decorated_pot_base",
+            material_map={
+                "entity/decorated_pot/decorated_pot_base": "minecraft:entity/decorated_pot/decorated_pot_base",
+                "entity/decorated_pot/decorated_pot_side": "minecraft:entity/decorated_pot/decorated_pot_side",
+            },
             rot_y=0.0,
         )
 
-    # 4. Banners
-    if short_name.endswith("_banner") or short_name.endswith("_wall_banner"):
+    # 4. Banners (Conforming to jmc2obj Banner.java)
+    if short_name.endswith(("_banner", "_wall_banner")):
         is_wall = "_wall_banner" in short_name
         obj_file = "banner_wall.obj" if is_wall else "banner_standing.obj"
+        scale = (0.5, 0.5, 0.5)
+
         if is_wall:
             facing = props.get("facing", "north").lower()
-            rot_y = get_block_facing_angle_y(facing)
+            wall_transforms = {
+                "north": (-90.0, (0.0, -1.51, 0.514)),
+                "east": (0.0, (-0.514, -1.51, 0.0)),
+                "south": (90.0, (0.0, -1.51, -0.52)),
+                "west": (180.0, (0.52, -1.51, 0.0)),
+            }
+            rot_y, offset = wall_transforms.get(facing, (-90.0, (0.0, -1.51, 0.514)))
         else:
             rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-            rot_y = (180.0 - rot_idx * 22.5) % 360.0
+            # jmc2obj Banner.java: rotation = 90 + (360/16)*dataRot
+            rot_y = (90.0 + (360.0 / 16.0) * rot_idx)
+            offset = (0.0, -0.48, 0.0)
 
         return build_baked_model_from_obj(
             block_state=f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id,
             obj_filename=obj_file,
             material_override="minecraft:entity/banner/banner_base",
+            scale=scale,
             rot_y=rot_y,
+            offset=offset,
         )
 
-    # 5. Skulls and Heads
+    # 5. Skulls and Heads (Conforming to jmc2obj Head.java)
     if short_name.endswith(("_head", "_skull", "_wall_head", "_wall_skull")):
         is_wall = "_wall_" in short_name
         is_dragon = "dragon" in short_name
 
         if is_dragon:
             obj_file = "dragon_wall_head.obj" if is_wall else "dragon_head.obj"
-        else:
-            obj_file = "player_head.obj"
-
-        if is_wall:
-            facing = props.get("facing", "north").lower()
-            rot_y = get_block_facing_angle_y(facing)
-        else:
-            rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-            rot_y = (180.0 - rot_idx * 22.5) % 360.0
-
-        # Texture mapping
-        head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
-        if head_type == "skeleton":
-            mat = "minecraft:entity/skeleton/skeleton"
-        elif head_type == "wither_skeleton":
-            mat = "minecraft:entity/skeleton/wither_skeleton"
-        elif head_type == "zombie":
-            mat = "minecraft:entity/zombie/zombie"
-        elif head_type == "creeper":
-            mat = "minecraft:entity/creeper/creeper"
-        elif head_type == "piglin":
-            mat = "minecraft:entity/piglin/piglin"
-        elif head_type == "dragon":
+            if is_wall:
+                facing = props.get("facing", "north").lower()
+                rot_y = {"north": 180.0, "south": 0.0, "west": 90.0, "east": 270.0}.get(facing, 180.0)
+            else:
+                rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
+                rot_y = (180.0 - rot_idx * 22.5) % 360.0
+            offset = (0.0, 0.0, 0.0)
+            scale = (1.0, 1.0, 1.0)
             mat = "minecraft:entity/enderdragon/dragon"
         else:
-            mat = "minecraft:entity/player/wide/steve"
+            obj_file = "player_head.obj"
+            scale = (1.0, 1.0, 1.0)
+            if is_wall:
+                facing = props.get("facing", "north").lower()
+                wall_configs = {
+                    "north": (0.0, (0.0, 0.0, 0.25)),
+                    "south": (180.0, (0.0, 0.0, -0.25)),
+                    "west": (-90.0, (0.25, 0.0, 0.0)),
+                    "east": (90.0, (-0.25, 0.0, 0.0)),
+                }
+                rot_y, offset = wall_configs.get(facing, (0.0, (0.0, 0.0, 0.25)))
+            else:
+                rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
+                rot_y = rot_idx * 22.5
+                offset = (0.0, -0.25, 0.0)
+
+            head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
+            if head_type == "skeleton":
+                mat = "minecraft:entity/skeleton/skeleton"
+            elif head_type == "wither_skeleton":
+                mat = "minecraft:entity/skeleton/wither_skeleton"
+            elif head_type == "zombie":
+                mat = "minecraft:entity/zombie/zombie"
+            elif head_type == "creeper":
+                mat = "minecraft:entity/creeper/creeper"
+            elif head_type == "piglin":
+                mat = "minecraft:entity/piglin/piglin"
+            else:
+                mat = "minecraft:entity/player/wide/steve"
 
         return build_baked_model_from_obj(
             block_state=f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id,
             obj_filename=obj_file,
             material_override=mat,
+            scale=scale,
             rot_y=rot_y,
+            offset=offset,
         )
 
-    # 6. Hanging Signs
+    # 6. Hanging Signs (Conforming to jmc2obj SignHanging.java / SignHangingWall.java)
     if "hanging_sign" in short_name:
-        facing = props.get("facing", props.get("rotation", "north"))
-        rot_y = get_block_facing_angle_y(str(facing)) if not str(facing).isdigit() else (int(facing) * 22.5) % 360.0
         wood_type = short_name.replace("_wall_hanging_sign", "").replace("_hanging_sign", "")
+        tex_path = f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak"
+
+        if "_wall_" in short_name:
+            facing = props.get("facing", "north").lower()
+            rot_y = {"north": 180.0, "west": 90.0, "south": 0.0, "east": -90.0}.get(facing, 180.0)
+            sub_objs = ["sign", "chains", "top_bar"]
+        else:
+            rot_idx = int(props.get("rotation", "0")) if props.get("rotation", "").isdigit() else 0
+            rot_y = rot_idx * 22.5
+            attached = props.get("attached", "false").lower() == "true"
+            sub_objs = ["sign", "chains_attached" if attached else "chains"]
+
         return build_baked_model_from_obj(
             block_state=f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id,
             obj_filename="hanging_sign.obj",
-            material_override=f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak",
+            sub_objects=sub_objs,
+            material_override=tex_path,
             rot_y=rot_y,
         )
 
