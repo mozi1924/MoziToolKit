@@ -18,6 +18,7 @@ def make_box_element(
     tintindex: int = -1,
     cullface_map: Optional[dict[str, str]] = None,
     custom_faces: Optional[dict[str, dict]] = None,
+    omitted_faces: Optional[list[str]] = None,
 ) -> dict:
     """
     Construct a canonical 6-face Minecraft element dict from box coordinates
@@ -75,6 +76,10 @@ def make_box_element(
         },
     }
 
+    if omitted_faces:
+        for face_name in omitted_faces:
+            faces.pop(face_name, None)
+
     for d, cf in cull.items():
         if d in faces:
             faces[d]["cullface"] = cf
@@ -94,11 +99,22 @@ def make_box_element(
 
 
 def get_facing_angle_y(facing: str) -> float:
-    """Return Y-rotation angle in degrees for horizontal facing directions."""
+    """Return Y-rotation angle in degrees for block models whose default unrotated front is North."""
     facing_map = {
         "north": 0.0,
         "east": 90.0,
         "south": 180.0,
+        "west": 270.0,
+    }
+    return facing_map.get(facing.lower(), 0.0)
+
+
+def get_entity_facing_angle_y(facing: str) -> float:
+    """Return Y-rotation angle in degrees for entity models (Chests, etc.) whose unrotated front is South."""
+    facing_map = {
+        "south": 0.0,
+        "north": 180.0,
+        "east": 90.0,
         "west": 270.0,
     }
     return facing_map.get(facing.lower(), 0.0)
