@@ -47,6 +47,8 @@ class TestProceduralModels(unittest.TestCase):
         self.assertEqual(len(elems_single), 3)  # bottom, lid, lock
         self.assertEqual(elems_single[0]["from"], [1, 0, 1])
         self.assertEqual(elems_single[0]["to"], [15, 10, 15])
+        self.assertEqual(elems_single[2]["from"], [7, 7, 15])
+        self.assertEqual(elems_single[2]["to"], [9, 11, 16])
         self.assertEqual(elems_single[0]["faces"]["north"]["texture"], "minecraft:entity/chest/normal")
 
         # 2. Trapped Chest & Ender Chest
@@ -59,10 +61,12 @@ class TestProceduralModels(unittest.TestCase):
         # 3. Double Chest (Left & Right)
         elems_left = build_chest_elements("chest", {"facing": "north", "type": "left"})
         self.assertEqual(elems_left[0]["from"], [0, 0, 1])
+        self.assertNotIn("west", elems_left[0]["faces"])
         self.assertEqual(elems_left[0]["faces"]["north"]["texture"], "minecraft:entity/chest/normal_left")
 
         elems_right = build_chest_elements("chest", {"facing": "north", "type": "right"})
         self.assertEqual(elems_right[0]["to"], [16, 10, 15])
+        self.assertNotIn("east", elems_right[0]["faces"])
         self.assertEqual(elems_right[0]["faces"]["north"]["texture"], "minecraft:entity/chest/normal_right")
 
         # 4. Baking through StateBaker
