@@ -921,11 +921,35 @@ class StateBaker:
                     baked_dict[f"{block_id}[waterlogged=true]"] = self.bake_block_state(f"{block_id}[waterlogged=true]")
                 except Exception:
                     pass
-            else:
                 try:
                     baked_dict[block_id] = self.bake_block_state(block_id)
                 except Exception:
                     pass
+
+        # Expand chest and container variants that lack variant permutations in blockstate JSON
+        for c_stem in ("chest", "trapped_chest"):
+            for facing in ("north", "south", "east", "west"):
+                for c_type in ("single", "left", "right"):
+                    for wl in ("false", "true"):
+                        for st in (
+                            f"minecraft:{c_stem}[facing={facing},type={c_type},waterlogged={wl}]",
+                            f"minecraft:{c_stem}[facing={facing},type={c_type}]",
+                            f"minecraft:{c_stem}[type={c_type},facing={facing}]",
+                        ):
+                            try:
+                                baked = self.bake_block_state(st)
+                                baked_dict[st] = baked
+                            except Exception:
+                                pass
+        for facing in ("north", "south", "east", "west"):
+            for wl in ("false", "true"):
+                st = f"minecraft:ender_chest[facing={facing},waterlogged={wl}]"
+                try:
+                    baked = self.bake_block_state(st)
+                    baked_dict[st] = baked
+                except Exception:
+                    pass
+
         return baked_dict
 
     def save_precompiled_manifest(self, output_file: Union[str, Path]) -> int:

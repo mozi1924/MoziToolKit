@@ -183,6 +183,20 @@ class TestAtlasAddressResolver(unittest.TestCase):
                     "tile_row": 2,
                     "texture_key": "minecraft:entity/chest/normal",
                 },
+                "minecraft:entity/chest/normal_left": {
+                    "chunk_id": 0,
+                    "texture_id": 6,
+                    "tile_column": 8,
+                    "tile_row": 2,
+                    "texture_key": "minecraft:entity/chest/normal_left",
+                },
+                "minecraft:entity/chest/normal_right": {
+                    "chunk_id": 0,
+                    "texture_id": 7,
+                    "tile_column": 9,
+                    "tile_row": 2,
+                    "texture_key": "minecraft:entity/chest/normal_right",
+                },
                 # Intentionally present in raw mapping to verify blacklist filtering
                 "minecraft:entity/zombie/zombie": {
                     "chunk_id": 0,
@@ -247,6 +261,22 @@ class TestAtlasAddressResolver(unittest.TestCase):
         loc_chest = self.resolver.lookup_texture("chest")
         self.assertIsNotNone(loc_chest)
         self.assertEqual(loc_chest["texture_key"], "minecraft:entity/chest/normal")
+
+    def test_double_chest_addressing(self):
+        """Verify that double chest left and right textures resolve distinctly from normal single chest."""
+        loc_left = self.resolver.lookup_texture("entity/chest/normal_left")
+        self.assertIsNotNone(loc_left)
+        self.assertEqual(loc_left["texture_key"], "minecraft:entity/chest/normal_left")
+
+        loc_right = self.resolver.lookup_texture("entity/chest/normal_right")
+        self.assertIsNotNone(loc_right)
+        self.assertEqual(loc_right["texture_key"], "minecraft:entity/chest/normal_right")
+
+        # Verify alias lookups
+        self.assertEqual(self.resolver.lookup_texture("chest_left")["texture_key"], "minecraft:entity/chest/normal_left")
+        self.assertEqual(self.resolver.lookup_texture("chest_right")["texture_key"], "minecraft:entity/chest/normal_right")
+        self.assertEqual(self.resolver.lookup_texture("double_chest_left")["texture_key"], "minecraft:entity/chest/normal_left")
+        self.assertEqual(self.resolver.lookup_texture("double_chest_right")["texture_key"], "minecraft:entity/chest/normal_right")
 
     def test_lookup_texture_rejects_blacklisted_items(self):
         """Verify that blacklisted mobs, UI, and maps return None during lookup."""

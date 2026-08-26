@@ -129,9 +129,13 @@ def generate_hot_prewarm_states() -> tuple[str, ...]:
 
     # 8. Containers & Utility Workstations
     for facing in HORIZONTAL_FACINGS:
-        states.append(f"minecraft:chest[facing={facing},type=single,waterlogged=false]")
-        states.append(f"minecraft:trapped_chest[facing={facing},type=single,waterlogged=false]")
+        for c_type in ("single", "left", "right"):
+            states.append(f"minecraft:chest[facing={facing},type={c_type},waterlogged=false]")
+            states.append(f"minecraft:chest[facing={facing},type={c_type},waterlogged=true]")
+            states.append(f"minecraft:trapped_chest[facing={facing},type={c_type},waterlogged=false]")
+            states.append(f"minecraft:trapped_chest[facing={facing},type={c_type},waterlogged=true]")
         states.append(f"minecraft:ender_chest[facing={facing},waterlogged=false]")
+        states.append(f"minecraft:ender_chest[facing={facing},waterlogged=true]")
         for is_lit in ("false", "true"):
             states.append(f"minecraft:furnace[facing={facing},lit={is_lit}]")
             states.append(f"minecraft:blast_furnace[facing={facing},lit={is_lit}]")

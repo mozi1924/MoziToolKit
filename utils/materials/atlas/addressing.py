@@ -76,8 +76,27 @@ ANIMATED_BLOCK_ALIASES: dict[str, list[str]] = {
 # Canonical entity and special block texture aliases
 ENTITY_BLOCK_ALIASES: dict[str, list[str]] = {
     "chest": ["entity/chest/normal", "chest/normal", "minecraft:entity/chest/normal"],
+    "chest_left": ["entity/chest/normal_left", "minecraft:entity/chest/normal_left", "entity/chest/normal"],
+    "chest_right": ["entity/chest/normal_right", "minecraft:entity/chest/normal_right", "entity/chest/normal"],
+    "normal_chest_left": ["entity/chest/normal_left", "minecraft:entity/chest/normal_left"],
+    "normal_chest_right": ["entity/chest/normal_right", "minecraft:entity/chest/normal_right"],
+    "normal_left": ["entity/chest/normal_left", "minecraft:entity/chest/normal_left"],
+    "normal_right": ["entity/chest/normal_right", "minecraft:entity/chest/normal_right"],
+    "double_chest_left": ["entity/chest/normal_left", "minecraft:entity/chest/normal_left"],
+    "double_chest_right": ["entity/chest/normal_right", "minecraft:entity/chest/normal_right"],
     "trapped_chest": ["entity/chest/trapped", "chest/trapped", "minecraft:entity/chest/trapped"],
+    "trapped_chest_left": ["entity/chest/trapped_left", "minecraft:entity/chest/trapped_left", "entity/chest/trapped"],
+    "trapped_chest_right": ["entity/chest/trapped_right", "minecraft:entity/chest/trapped_right", "entity/chest/trapped"],
+    "trapped_double_chest_left": ["entity/chest/trapped_left", "minecraft:entity/chest/trapped_left"],
+    "trapped_double_chest_right": ["entity/chest/trapped_right", "minecraft:entity/chest/trapped_right"],
+    "trapped_left": ["entity/chest/trapped_left", "minecraft:entity/chest/trapped_left"],
+    "trapped_right": ["entity/chest/trapped_right", "minecraft:entity/chest/trapped_right"],
     "ender_chest": ["entity/chest/ender", "chest/ender", "minecraft:entity/chest/ender"],
+    "copper_chest": ["entity/chest/copper", "minecraft:entity/chest/copper"],
+    "copper_chest_left": ["entity/chest/copper_left", "minecraft:entity/chest/copper_left"],
+    "copper_chest_right": ["entity/chest/copper_right", "minecraft:entity/chest/copper_right"],
+    "copper_double_chest_left": ["entity/chest/copper_left", "minecraft:entity/chest/copper_left"],
+    "copper_double_chest_right": ["entity/chest/copper_right", "minecraft:entity/chest/copper_right"],
     "banner_base": [
         "entity/banner/banner_base",
         "minecraft:entity/banner/banner_base",
@@ -225,6 +244,28 @@ class AtlasAddressResolver:
                     elif category == "chest":
                         self._locations.setdefault(f"minecraft:entity/chest/{short_name}", location)
                         self._locations.setdefault(f"entity/chest/{short_name}", location)
+                        self._locations.setdefault(f"chest/{short_name}", location)
+                        self._locations.setdefault(short_name, location)
+                        self._locations.setdefault(f"minecraft:{short_name}", location)
+                        if short_name.startswith("normal_"):
+                            sub = short_name.removeprefix("normal_")
+                            self._locations.setdefault(f"chest_{sub}", location)
+                            self._locations.setdefault(f"minecraft:chest_{sub}", location)
+                            self._locations.setdefault(f"double_chest_{sub}", location)
+                            self._locations.setdefault(f"minecraft:double_chest_{sub}", location)
+                        elif short_name.startswith("trapped_"):
+                            sub = short_name.removeprefix("trapped_")
+                            self._locations.setdefault(f"trapped_chest_{sub}", location)
+                            self._locations.setdefault(f"minecraft:trapped_chest_{sub}", location)
+                            self._locations.setdefault(f"trapped_double_chest_{sub}", location)
+                            self._locations.setdefault(f"minecraft:trapped_double_chest_{sub}", location)
+                        elif short_name.endswith(("_left", "_right")):
+                            sub = "left" if short_name.endswith("_left") else "right"
+                            base = short_name.removesuffix(f"_{sub}")
+                            self._locations.setdefault(f"{base}_chest_{sub}", location)
+                            self._locations.setdefault(f"minecraft:{base}_chest_{sub}", location)
+                            self._locations.setdefault(f"{base}_double_chest_{sub}", location)
+                            self._locations.setdefault(f"minecraft:{base}_double_chest_{sub}", location)
                     elif category == "banner_patterns":
                         self._locations.setdefault(f"minecraft:entity/banner/{short_name}", location)
                         self._locations.setdefault(f"entity/banner/{short_name}", location)
@@ -581,17 +622,23 @@ class AtlasAddressResolver:
         uv_rot: float = 0.0
         tint_idx: int = -1
 
-        # 1. Highest priority: explicit WebSocket JSON face info
-        if json_face_info:
-            tex_name = json_face_info.get("tex")
-            tint_idx = int(json_face_info.get("tint", -1))
-            uv_rot = float(json_face_info.get("rot", json_face_info.get("flow_angle", 0.0)))
-        # 2. Second priority: mc_baker BakedFace (handles custom resource pack models)
-        elif baked_face:
-            tex_name = getattr(baked_face, "texture", None)
+        # 1. Authoritative BakedFace (handles custom resource pack models and specific multipart variants)
+        if baked_face and getattr(baked_face, "texture", None):
+            tex_name = baked_face.texture
             tint_idx = getattr(baked_face, "tint_index", -1)
             is_fluid = getattr(parsed, "name", "") in ("water", "lava") or "water" in getattr(parsed, "name", "")
             uv_rot = getattr(baked_face, "uv_rot", 0.0) if is_fluid else 0.0
+        # 2. WebSocket JSON face info
+        elif json_face_info:
+            tex_name = json_face_info.get("tex")
+            tint_idx = int(json_face_info.get("tint", -1))
+            uv_rot = float(json_face_info.get("rot", json_face_info.get("flow_angle", 0.0)))
+
+        if json_face_info:
+            if tint_idx < 0 and "tint" in json_face_info:
+                tint_idx = int(json_face_info.get("tint", -1))
+            if uv_rot == 0.0:
+                uv_rot = float(json_face_info.get("rot", json_face_info.get("flow_angle", 0.0)))
 
         loc = None
 
