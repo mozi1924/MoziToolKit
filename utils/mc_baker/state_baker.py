@@ -479,7 +479,10 @@ class StateBaker:
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": rot_angle} if rot_angle != 0.0 else None
 
             wood_tex = "minecraft:block/oak_planks"
-            cloth_tex = f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool"
+            # Banners are entity-texture models.  Substituting coloured wool
+            # looks plausible in simple packs but makes the cloth resolve to
+            # the block atlas and breaks the UV layout of the banner texture.
+            cloth_tex = "minecraft:entity/banner/base"
 
             crossbar = {
                 "from": [2, 12, 14],
@@ -516,7 +519,9 @@ class StateBaker:
             elem_rot = {"origin": [8, 8, 8], "axis": "y", "angle": angle} if angle != 0.0 else None
 
             wood_tex = "minecraft:block/oak_planks"
-            cloth_tex = f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool"
+            # See wall-banner branch above: the base/pattern textures live in
+            # the banner-pattern atlas, not in the coloured wool block atlas.
+            cloth_tex = "minecraft:entity/banner/base"
 
             pole = {
                 "from": [7.5, 0, 7.5],
@@ -877,4 +882,3 @@ class StateBaker:
             except Exception:
                 pass
         return loaded_count
-
