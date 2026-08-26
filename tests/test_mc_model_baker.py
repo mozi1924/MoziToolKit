@@ -231,13 +231,13 @@ class TestMCModelBaker(unittest.TestCase):
 
         # 2. Double Chest Left & Right
         left = self.baker.bake_block_state("minecraft:chest[facing=north,type=left]")
-        self.assertEqual(left.elements[0].from_pos, (1, 9, 1))
-        self.assertEqual(left.elements[0].to_pos, (16, 14, 15))
+        self.assertEqual(left.elements[0].from_pos, (0, 9, 1))
+        self.assertEqual(left.elements[0].to_pos, (15, 14, 15))
         self.assertEqual(left.elements[0].faces["up"].texture, "minecraft:entity/chest/normal_left")
 
         right = self.baker.bake_block_state("minecraft:chest[facing=north,type=right]")
-        self.assertEqual(right.elements[0].from_pos, (0, 9, 1))
-        self.assertEqual(right.elements[0].to_pos, (15, 14, 15))
+        self.assertEqual(right.elements[0].from_pos, (1, 9, 1))
+        self.assertEqual(right.elements[0].to_pos, (16, 14, 15))
         self.assertEqual(right.elements[0].faces["up"].texture, "minecraft:entity/chest/normal_right")
 
     def test_banner_proportions_and_assembly(self):
