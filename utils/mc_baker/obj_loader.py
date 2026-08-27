@@ -318,7 +318,7 @@ def build_baked_model_from_obj(
 
 
 # ---------------------------------------------------------------------------
-# Dedicated Shulker Box & Conduit Model Builders (Authoritative BER geometry)
+# Dedicated Shulker Box, Conduit & Portal Model Builders (Authoritative geometry)
 # ---------------------------------------------------------------------------
 
 def rotate_shulker_vertex(v: Vec3, facing: str) -> Vec3:
@@ -360,14 +360,6 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
         # --- Base ---
         {
             "bounds": ((-0.5, -0.5, -0.5), (0.5, 0.0, 0.5)),
-            # Face definitions: vertices (counter-clockwise looking at face from outside) and exact matching UVs
-            # Standard MC UV layout for Base (64x64):
-            # up (inside cavity): U in [16..32], V in [28..44]
-            # down (outside bottom): U in [32..48], V in [28..44]
-            # west: U in [0..16], V in [44..52]
-            # north: U in [16..32], V in [44..52]
-            # east: U in [32..48], V in [44..52]
-            # south: U in [48..64], V in [44..52]
             "faces": {
                 "up": (
                     [(-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.0, -0.5), (-0.5, 0.0, -0.5)], # SW, SE, NE, NW
@@ -398,13 +390,6 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
         # --- Lid ---
         {
             "bounds": ((-0.5, 0.0, -0.5), (0.5, 0.5, 0.5)),
-            # Standard MC UV layout for Lid (64x64):
-            # up (outside top): U in [16..32], V in [0..16]
-            # down (inside rim): U in [32..48], V in [0..16]
-            # west: U in [0..16], V in [16..24]
-            # north: U in [16..32], V in [16..24]
-            # east: U in [32..48], V in [16..24]
-            # south: U in [48..64], V in [16..24]
             "faces": {
                 "up": (
                     [(-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5)], # SW, SE, NE, NW
@@ -493,13 +478,6 @@ def build_conduit_model(block_state: str) -> BakedModel:
     x0, y0, z0 = 5/16, 5/16, 5/16
     x1, y1, z1 = 11/16, 11/16, 11/16
 
-    # 32x16 standard entity box unwrapping:
-    # up: U in [6..12]/32, V in [0..6]/16
-    # down: U in [12..18]/32, V in [0..6]/16
-    # west: U in [0..6]/32, V in [6..12]/16
-    # north: U in [6..12]/32, V in [6..12]/16
-    # east: U in [12..18]/32, V in [6..12]/16
-    # south: U in [18..24]/32, V in [6..12]/16
     face_defs = {
         "up": (
             [(x0, y1, z1), (x1, y1, z1), (x1, y1, z0), (x0, y1, z0)],
@@ -556,25 +534,98 @@ def build_conduit_model(block_state: str) -> BakedModel:
 
 
 def build_end_portal_model(block_state: str) -> BakedModel:
-    """Construct End Portal / Gateway horizontal plane model at Y=0.75."""
+    """
+    Construct End Portal (horizontal starry portal plane at Y=0.75 / 12/16)
+    conforming to jmc2obj PortalHoriz.java with double-sided top and bottom faces.
+    """
     tex_id = "minecraft:entity/end_portal"
-    raw_v = [(0.0, 0.75, 1.0), (1.0, 0.75, 1.0), (1.0, 0.75, 0.0), (0.0, 0.75, 0.0)]
-    quad_uvs = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
-    bf = BakedFace(
+    # Top face at Y=0.75, normal pointing UP
+    top_v = [(0.0, 0.75, 1.0), (1.0, 0.75, 1.0), (1.0, 0.75, 0.0), (0.0, 0.75, 0.0)]
+    top_uvs = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+    bf_top = BakedFace(
         direction="up",
         texture=tex_id,
         uv_bounds=(0.0, 0.0, 1.0, 1.0),
-        vertices=tuple(raw_v),
-        uvs=quad_uvs,
+        vertices=tuple(top_v),
+        uvs=top_uvs,
     )
-    elem = BakedElement(from_pos=(0.0, 12.0, 0.0), to_pos=(16.0, 12.0, 16.0), faces={"up": bf})
-    six_faces = [bf] * 6
+
+    # Bottom face at Y=0.75, normal pointing DOWN (conforming to PortalHoriz.java)
+    bot_v = [(1.0, 0.75, 1.0), (0.0, 0.75, 1.0), (0.0, 0.75, 0.0), (1.0, 0.75, 0.0)]
+    bot_uvs = ((1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0))
+    bf_bot = BakedFace(
+        direction="down",
+        texture=tex_id,
+        uv_bounds=(0.0, 0.0, 1.0, 1.0),
+        vertices=tuple(bot_v),
+        uvs=bot_uvs,
+    )
+
+    elem = BakedElement(from_pos=(0.0, 12.0, 0.0), to_pos=(16.0, 12.0, 16.0), faces={"up": bf_top, "down": bf_bot})
+    six_faces = [bf_top, bf_bot, bf_top, bf_top, bf_top, bf_top]
     return BakedModel(
         block_state=block_state,
         elements=[elem],
         faces=six_faces,
         is_cube=False,
         is_opaque=False,
+        is_emissive=True,
+    )
+
+
+def build_end_gateway_model(block_state: str) -> BakedModel:
+    """
+    Construct End Gateway (FULL 1x1x1 solid block surrounded by bedrock)
+    with starry portal texture across all 6 faces.
+    """
+    tex_id = "minecraft:entity/end_portal"
+    face_defs = {
+        "up": (
+            [(0.0, 1.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)],
+            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+        ),
+        "down": (
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 0.0, 1.0)],
+            ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+        ),
+        "north": (
+            [(1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0)],
+            ((1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0))
+        ),
+        "south": (
+            [(0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0)],
+            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+        ),
+        "west": (
+            [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 1.0), (0.0, 1.0, 0.0)],
+            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+        ),
+        "east": (
+            [(1.0, 0.0, 1.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (1.0, 1.0, 1.0)],
+            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
+        ),
+    }
+
+    elem_faces = {}
+    face_objects = []
+    for d, (raw_v, raw_uvs) in face_defs.items():
+        bf = BakedFace(
+            direction=d,
+            texture=tex_id,
+            uv_bounds=(0.0, 0.0, 1.0, 1.0),
+            vertices=tuple(raw_v),
+            uvs=raw_uvs,
+        )
+        elem_faces[d] = bf
+        face_objects.append(bf)
+
+    elem = BakedElement(from_pos=(0.0, 0.0, 0.0), to_pos=(16.0, 16.0, 16.0), faces=elem_faces)
+    return BakedModel(
+        block_state=block_state,
+        elements=[elem],
+        faces=face_objects,
+        is_cube=True,
+        is_opaque=True,
         is_emissive=True,
     )
 
@@ -624,7 +675,7 @@ def resolve_obj_model_for_state(
     if short_name == "shulker_box" or short_name.endswith("_shulker_box"):
         return build_shulker_box_model(state_str, short_name, props)
 
-    # 3. End Portal Frame
+    # 3. End Portal Frame (with / without eye of ender)
     if short_name == "end_portal_frame":
         has_eye = props.get("eye", "false").lower() == "true"
         sub_objs = ["base", "eye"] if has_eye else ["base"]
@@ -644,15 +695,19 @@ def resolve_obj_model_for_state(
             rot_y=rot_y,
         )
 
-    # 4. End Portal & End Gateway
-    if short_name in ("end_portal", "end_gateway"):
+    # 4. End Portal (horizontal portal plane at Y=0.75)
+    if short_name == "end_portal":
         return build_end_portal_model(state_str)
 
-    # 5. Conduit
+    # 5. End Gateway (FULL 1x1x1 solid block)
+    if short_name == "end_gateway":
+        return build_end_gateway_model(state_str)
+
+    # 6. Conduit
     if short_name == "conduit":
         return build_conduit_model(state_str)
 
-    # 6. Bell
+    # 7. Bell
     if short_name == "bell":
         facing = props.get("facing", "north").lower()
         rot_y = get_block_facing_angle_y(facing)
@@ -667,7 +722,7 @@ def resolve_obj_model_for_state(
             rot_y=rot_y,
         )
 
-    # 7. Decorated Pot
+    # 8. Decorated Pot
     if short_name == "decorated_pot":
         return build_baked_model_from_obj(
             block_state=state_str,
@@ -679,7 +734,7 @@ def resolve_obj_model_for_state(
             rot_y=0.0,
         )
 
-    # 8. Banners (Conforming to jmc2obj Banner.java)
+    # 9. Banners (Conforming to jmc2obj Banner.java)
     if short_name.endswith(("_banner", "_wall_banner")):
         is_wall = "_wall_banner" in short_name
         obj_file = "banner_wall.obj" if is_wall else "banner_standing.obj"
@@ -709,7 +764,7 @@ def resolve_obj_model_for_state(
             offset=offset,
         )
 
-    # 9. Skulls and Heads (Conforming to jmc2obj Head.java)
+    # 10. Skulls and Heads (Conforming to jmc2obj Head.java)
     if short_name.endswith(("_head", "_skull", "_wall_head", "_wall_skull")):
         is_wall = "_wall_" in short_name
         is_dragon = "dragon" in short_name
@@ -765,7 +820,7 @@ def resolve_obj_model_for_state(
             offset=offset,
         )
 
-    # 10. Hanging Signs (Conforming to jmc2obj SignHanging.java / SignHangingWall.java)
+    # 11. Hanging Signs (Conforming to jmc2obj SignHanging.java / SignHangingWall.java)
     if "hanging_sign" in short_name:
         wood_type = short_name.replace("_wall_hanging_sign", "").replace("_hanging_sign", "")
         tex_path = f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak"
