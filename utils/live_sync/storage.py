@@ -28,6 +28,7 @@ class VoxelStorage:
         self.size_y: int = 0
         self.size_z: int = 0
         self.block_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> state_str
+        self._state_counts: Dict[str, int] = {}
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
         self._dirty_sections: Set[Tuple[int, int, int]] = set()
         self.generation: int = 0
@@ -35,6 +36,7 @@ class VoxelStorage:
     def clear(self) -> None:
         """Clear all stored voxel and section data."""
         self.block_map.clear()
+        self._state_counts.clear()
         self.section_crc_map.clear()
         self._dirty_sections.clear()
         self.min_x = self.min_y = self.min_z = 0
@@ -104,9 +106,26 @@ class VoxelStorage:
                         result[(x, y, z)] = state
         return result
 
+    def get_state_counts(self) -> Dict[str, int]:
+        """Return canonical dictionary of state_str -> count across active blocks."""
+        if not self._state_counts and self.block_map:
+            from collections import Counter
+            self._state_counts = dict(Counter(self.block_map.values()))
+        return self._state_counts
+
     def set_block(self, x: int, y: int, z: int, state_str: str) -> None:
         """Set blockstate string at (x, y, z), expanding storage bounds if needed and marking dirty sections."""
+        old_state = self.block_map.get((x, y, z))
+        if old_state == state_str:
+            return
+        if old_state:
+            self._state_counts[old_state] = self._state_counts.get(old_state, 1) - 1
+            if self._state_counts[old_state] <= 0:
+                self._state_counts.pop(old_state, None)
+
         self.block_map[(x, y, z)] = state_str
+        self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
+
         if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
             self.min_x, self.min_y, self.min_z = x, y, z
             self.size_x, self.size_y, self.size_z = 1, 1, 1
@@ -148,6 +167,7 @@ class VoxelStorage:
         self.min_x, self.min_y, self.min_z = min_x, min_y, min_z
         self.size_x, self.size_y, self.size_z = size_x, size_y, size_z
         self.block_map.clear()
+        self._state_counts.clear()
         self.section_crc_map.clear()
         self._dirty_sections.clear()
         self.generation += 1
@@ -167,6 +187,7 @@ class VoxelStorage:
                 abs_y = min_y + y
                 abs_z = min_z + z
                 self.block_map[(abs_x, abs_y, abs_z)] = state_str
+                self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
         self.recalculate_all_section_crcs()
         return self.generation
@@ -257,7 +278,15 @@ class VoxelStorage:
             abs_x = start_x + x
             abs_y = start_y + y
             abs_z = start_z + z
-            self.block_map[(abs_x, abs_y, abs_z)] = state_str
+            key = (abs_x, abs_y, abs_z)
+            old_state = self.block_map.get(key)
+            if old_state != state_str:
+                if old_state:
+                    self._state_counts[old_state] = self._state_counts.get(old_state, 1) - 1
+                    if self._state_counts[old_state] <= 0:
+                        self._state_counts.pop(old_state, None)
+                self.block_map[key] = state_str
+                self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
         self._dirty_sections.discard((sec_x, sec_y, sec_z))
         self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
@@ -279,9 +308,16 @@ class VoxelStorage:
         changed = False
         for abs_x, abs_y, abs_z, state_str in changes:
             key = (abs_x, abs_y, abs_z)
-            if self.block_map.get(key) == state_str:
+            old_state = self.block_map.get(key)
+            if old_state == state_str:
                 continue
+            if old_state:
+                self._state_counts[old_state] = self._state_counts.get(old_state, 1) - 1
+                if self._state_counts[old_state] <= 0:
+                    self._state_counts.pop(old_state, None)
             self.block_map[key] = state_str
+            self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
+
             sx, sy, sz = abs_x >> 4, abs_y >> 4, abs_z >> 4
             self._dirty_sections.add((sx, sy, sz))
 

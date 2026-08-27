@@ -401,6 +401,9 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     props.sync_verified = True
                     props.validation_info = "Verified (100% in sync with scene)"
                     _skip_next_full_snapshot = False
+                    mat = find_bound_atlas_material(existing_world) if existing_world else None
+                    atlas_params = get_cached_atlas_params(mat)
+                    preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
                     return
 
                 _skip_next_full_snapshot = False

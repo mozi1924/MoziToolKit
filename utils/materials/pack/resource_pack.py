@@ -37,17 +37,7 @@ def get_temp_extraction_dir() -> Path:
         if temp_root.name != "extracted":
             temp_root = temp_root / "extracted"
     else:
-        temp_root = None
-        if bpy and hasattr(bpy, "app") and hasattr(bpy.app, "tempdir"):
-            try:
-                b_temp = bpy.app.tempdir
-                if b_temp:
-                    temp_root = Path(b_temp) / "MoziToolKit" / "extracted"
-            except Exception:
-                temp_root = None
-
-        if not temp_root:
-            temp_root = Path(tempfile.gettempdir()) / "MoziToolKit" / "extracted"
+        temp_root = Path(tempfile.gettempdir()) / "MoziToolKit" / "extracted"
 
     temp_root.mkdir(parents=True, exist_ok=True)
     return temp_root
