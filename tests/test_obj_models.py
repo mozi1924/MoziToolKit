@@ -82,10 +82,22 @@ class TestOBJModels(unittest.TestCase):
         self.assertEqual(len(conduit.elements), 1)
         self.assertEqual(conduit.elements[0].faces["up"].texture, "minecraft:entity/conduit/base")
 
-        # 3. End Portal
+        # 3. End Portal & Frame
         portal = self.baker.bake_block_state("minecraft:end_portal")
         self.assertEqual(len(portal.elements), 1)
         self.assertEqual(portal.elements[0].faces["up"].texture, "minecraft:entity/end_portal")
+
+        frame_eye = self.baker.bake_block_state("minecraft:end_portal_frame[eye=true,facing=north]")
+        self.assertEqual(len(frame_eye.elements), 11)
+        eye_texs = {f.texture for el in frame_eye.elements for f in el.faces.values()}
+        self.assertTrue("minecraft:block/end_portal_frame_eye" in eye_texs)
+        self.assertTrue("minecraft:block/end_portal_frame_top" in eye_texs)
+
+        frame_no_eye = self.baker.bake_block_state("minecraft:end_portal_frame[eye=false,facing=east]")
+        self.assertEqual(len(frame_no_eye.elements), 6)
+        no_eye_texs = {f.texture for el in frame_no_eye.elements for f in el.faces.values()}
+        self.assertFalse("minecraft:block/end_portal_frame_eye" in no_eye_texs)
+        self.assertTrue("minecraft:block/end_portal_frame_side" in no_eye_texs)
 
     def test_bell_and_pot_obj_loading(self):
         """Test Bell and Decorated Pot OBJ models."""

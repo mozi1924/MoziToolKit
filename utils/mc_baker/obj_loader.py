@@ -1,7 +1,7 @@
 """
 OBJ Model Loader & Registry for Minecraft Block Entity models.
 Loads 1:1 author-crafted models from jmc2obj (GPL v2) and authoritative Block Entity models
-(Chests, Shulker Boxes, Banners, Heads, Bells, Pots, Conduits, End Portals, Hanging Signs)
+(Chests, Shulker Boxes, End Portal Frame, End Portal, End Gateway, Banners, Heads, Bells, Pots, Conduits, Hanging Signs)
 with dynamic texture substitution and transformations conforming to upstream jmc2obj.
 """
 
@@ -353,32 +353,83 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
 
     facing = props.get("facing", "up").lower()
 
-    # Define the 2 cuboids in canonical "up" facing centered [-0.5, 0.5]:
+    # Base & Lid parts in canonical "up" facing centered [-0.5, 0.5]:
     # Base: from [-0.5, -0.5, -0.5] to [0.5, 0.0, 0.5] (16x8x16, Y in [0, 8])
     # Lid:  from [-0.5, 0.0, -0.5]  to [0.5, 0.5, 0.5] (16x8x16, Y in [8, 16])
-    parts_data = [
+    parts = [
         # --- Base ---
         {
             "bounds": ((-0.5, -0.5, -0.5), (0.5, 0.0, 0.5)),
-            "uvs": {
-                "up":    (16/64, 44/64, 32/64, 28/64),
-                "down":  (32/64, 44/64, 48/64, 28/64),
-                "west":  (0/64,  44/64, 16/64, 52/64),
-                "north": (16/64, 44/64, 32/64, 52/64),
-                "east":  (32/64, 44/64, 48/64, 52/64),
-                "south": (48/64, 44/64, 64/64, 52/64),
+            # Face definitions: vertices (counter-clockwise looking at face from outside) and exact matching UVs
+            # Standard MC UV layout for Base (64x64):
+            # up (inside cavity): U in [16..32], V in [28..44]
+            # down (outside bottom): U in [32..48], V in [28..44]
+            # west: U in [0..16], V in [44..52]
+            # north: U in [16..32], V in [44..52]
+            # east: U in [32..48], V in [44..52]
+            # south: U in [48..64], V in [44..52]
+            "faces": {
+                "up": (
+                    [(-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.0, -0.5), (-0.5, 0.0, -0.5)], # SW, SE, NE, NW
+                    ((16/64, 44/64), (32/64, 44/64), (32/64, 28/64), (16/64, 28/64))
+                ),
+                "down": (
+                    [(-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5)], # NW, NE, SE, SW
+                    ((32/64, 28/64), (48/64, 28/64), (48/64, 44/64), (32/64, 44/64))
+                ),
+                "north": (
+                    [(0.5, -0.5, -0.5), (-0.5, -0.5, -0.5), (-0.5, 0.0, -0.5), (0.5, 0.0, -0.5)], # BR, BL, TL, TR
+                    ((32/64, 52/64), (16/64, 52/64), (16/64, 44/64), (32/64, 44/64))
+                ),
+                "south": (
+                    [(-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.0, 0.5), (-0.5, 0.0, 0.5)], # BL, BR, TR, TL
+                    ((48/64, 52/64), (64/64, 52/64), (64/64, 44/64), (48/64, 44/64))
+                ),
+                "west": (
+                    [(-0.5, -0.5, -0.5), (-0.5, -0.5, 0.5), (-0.5, 0.0, 0.5), (-0.5, 0.0, -0.5)], # BL, BR, TR, TL
+                    ((0/64, 52/64), (16/64, 52/64), (16/64, 44/64), (0/64, 44/64))
+                ),
+                "east": (
+                    [(0.5, -0.5, 0.5), (0.5, -0.5, -0.5), (0.5, 0.0, -0.5), (0.5, 0.0, 0.5)], # BL, BR, TR, TL
+                    ((32/64, 52/64), (48/64, 52/64), (48/64, 44/64), (32/64, 44/64))
+                ),
             }
         },
         # --- Lid ---
         {
             "bounds": ((-0.5, 0.0, -0.5), (0.5, 0.5, 0.5)),
-            "uvs": {
-                "up":    (16/64, 16/64, 32/64, 0/64),
-                "down":  (32/64, 16/64, 48/64, 0/64),
-                "west":  (0/64,  16/64, 16/64, 24/64),
-                "north": (16/64, 16/64, 32/64, 24/64),
-                "east":  (32/64, 16/64, 48/64, 24/64),
-                "south": (48/64, 16/64, 64/64, 24/64),
+            # Standard MC UV layout for Lid (64x64):
+            # up (outside top): U in [16..32], V in [0..16]
+            # down (inside rim): U in [32..48], V in [0..16]
+            # west: U in [0..16], V in [16..24]
+            # north: U in [16..32], V in [16..24]
+            # east: U in [32..48], V in [16..24]
+            # south: U in [48..64], V in [16..24]
+            "faces": {
+                "up": (
+                    [(-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5)], # SW, SE, NE, NW
+                    ((16/64, 16/64), (32/64, 16/64), (32/64, 0/64), (16/64, 0/64))
+                ),
+                "down": (
+                    [(-0.5, 0.0, -0.5), (0.5, 0.0, -0.5), (0.5, 0.0, 0.5), (-0.5, 0.0, 0.5)], # NW, NE, SE, SW
+                    ((32/64, 0/64), (48/64, 0/64), (48/64, 16/64), (32/64, 16/64))
+                ),
+                "north": (
+                    [(0.5, 0.0, -0.5), (-0.5, 0.0, -0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)], # BR, BL, TL, TR
+                    ((32/64, 24/64), (16/64, 24/64), (16/64, 16/64), (32/64, 16/64))
+                ),
+                "south": (
+                    [(-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5)], # BL, BR, TR, TL
+                    ((48/64, 24/64), (64/64, 24/64), (64/64, 16/64), (48/64, 16/64))
+                ),
+                "west": (
+                    [(-0.5, 0.0, -0.5), (-0.5, 0.0, 0.5), (-0.5, 0.5, 0.5), (-0.5, 0.5, -0.5)], # BL, BR, TR, TL
+                    ((0/64, 24/64), (16/64, 24/64), (16/64, 16/64), (0/64, 16/64))
+                ),
+                "east": (
+                    [(0.5, 0.0, 0.5), (0.5, 0.0, -0.5), (0.5, 0.5, -0.5), (0.5, 0.5, 0.5)], # BL, BR, TR, TL
+                    ((32/64, 24/64), (48/64, 24/64), (48/64, 16/64), (32/64, 16/64))
+                ),
             }
         }
     ]
@@ -386,22 +437,9 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
     elements: list[BakedElement] = []
     face_objects: list[BakedFace] = []
 
-    for part in parts_data:
-        (x0, y0, z0), (x1, y1, z1) = part["bounds"]
-        uv_map = part["uvs"]
-
-        # 6 canonical faces
-        face_defs = {
-            "up":    [(x0, y1, z1), (x1, y1, z1), (x1, y1, z0), (x0, y1, z0)],
-            "down":  [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
-            "west":  [(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)],
-            "east":  [(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)],
-            "north": [(x1, y0, z0), (x0, y0, z0), (x0, y1, z0), (x1, y1, z0)],
-            "south": [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
-        }
-
+    for part in parts:
         elem_faces: dict[str, BakedFace] = {}
-        for d, raw_v in face_defs.items():
+        for d, (raw_v, raw_uvs) in part["faces"].items():
             # Rotate vertices according to facing
             rot_mc_verts = []
             for v in raw_v:
@@ -411,15 +449,17 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
             norm = calculate_normal(rot_mc_verts[0], rot_mc_verts[1], rot_mc_verts[2])
             calc_dir = normal_to_mc_direction(norm)
 
-            u0, v0, u1, v1 = uv_map[d]
-            quad_uvs = ((u0, v0), (u1, v0), (u1, v1), (u0, v1))
+            min_u = min(u for u, _ in raw_uvs)
+            max_u = max(u for u, _ in raw_uvs)
+            min_v = min(v for _, v in raw_uvs)
+            max_v = max(v for _, v in raw_uvs)
 
             bf = BakedFace(
                 direction=calc_dir,
                 texture=tex_id,
-                uv_bounds=(min(u0, u1), min(v0, v1), max(u0, u1), max(v0, v1)),
+                uv_bounds=(min_u, min_v, max_u, max_v),
                 vertices=tuple(rot_mc_verts),
-                uvs=quad_uvs,
+                uvs=raw_uvs,
             )
             elem_faces[calc_dir] = bf
             face_objects.append(bf)
@@ -450,40 +490,56 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
 def build_conduit_model(block_state: str) -> BakedModel:
     """Construct the Conduit 6x6x6 centered cube model with 32x16 texture UVs."""
     tex_id = "minecraft:entity/conduit/base"
-    # Centered 6x6x6 cube: X[-3/16..3/16], Y[-3/16..3/16], Z[-3/16..3/16]
-    # In block space [0..1]: [5/16..11/16] in all axes
     x0, y0, z0 = 5/16, 5/16, 5/16
     x1, y1, z1 = 11/16, 11/16, 11/16
 
-    uv_map = {
-        "up":    (6/32, 6/16, 12/32, 0/16),
-        "down":  (12/32, 6/16, 18/32, 0/16),
-        "west":  (0/32, 6/16, 6/32, 12/16),
-        "north": (6/32, 6/16, 12/32, 12/16),
-        "east":  (12/32, 6/16, 18/32, 12/16),
-        "south": (18/32, 6/16, 24/32, 12/16),
-    }
-
+    # 32x16 standard entity box unwrapping:
+    # up: U in [6..12]/32, V in [0..6]/16
+    # down: U in [12..18]/32, V in [0..6]/16
+    # west: U in [0..6]/32, V in [6..12]/16
+    # north: U in [6..12]/32, V in [6..12]/16
+    # east: U in [12..18]/32, V in [6..12]/16
+    # south: U in [18..24]/32, V in [6..12]/16
     face_defs = {
-        "up":    [(x0, y1, z1), (x1, y1, z1), (x1, y1, z0), (x0, y1, z0)],
-        "down":  [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
-        "west":  [(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)],
-        "east":  [(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)],
-        "north": [(x1, y0, z0), (x0, y0, z0), (x0, y1, z0), (x1, y1, z0)],
-        "south": [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
+        "up": (
+            [(x0, y1, z1), (x1, y1, z1), (x1, y1, z0), (x0, y1, z0)],
+            ((6/32, 6/16), (12/32, 6/16), (12/32, 0/16), (6/32, 0/16))
+        ),
+        "down": (
+            [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
+            ((12/32, 0/16), (18/32, 0/16), (18/32, 6/16), (12/32, 6/16))
+        ),
+        "north": (
+            [(x1, y0, z0), (x0, y0, z0), (x0, y1, z0), (x1, y1, z0)],
+            ((12/32, 12/16), (6/32, 12/16), (6/32, 6/16), (12/32, 6/16))
+        ),
+        "south": (
+            [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
+            ((18/32, 12/16), (24/32, 12/16), (24/32, 6/16), (18/32, 6/16))
+        ),
+        "west": (
+            [(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)],
+            ((0/32, 12/16), (6/32, 12/16), (6/32, 6/16), (0/32, 6/16))
+        ),
+        "east": (
+            [(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)],
+            ((12/32, 12/16), (18/32, 12/16), (18/32, 6/16), (12/32, 6/16))
+        ),
     }
 
     elem_faces = {}
     face_objects = []
-    for d, raw_v in face_defs.items():
-        u0, v0, u1, v1 = uv_map[d]
-        quad_uvs = ((u0, v0), (u1, v0), (u1, v1), (u0, v1))
+    for d, (raw_v, raw_uvs) in face_defs.items():
+        min_u = min(u for u, _ in raw_uvs)
+        max_u = max(u for u, _ in raw_uvs)
+        min_v = min(v for _, v in raw_uvs)
+        max_v = max(v for _, v in raw_uvs)
         bf = BakedFace(
             direction=d,
             texture=tex_id,
-            uv_bounds=(min(u0, u1), min(v0, v1), max(u0, u1), max(v0, v1)),
+            uv_bounds=(min_u, min_v, max_u, max_v),
             vertices=tuple(raw_v),
-            uvs=quad_uvs,
+            uvs=raw_uvs,
         )
         elem_faces[d] = bf
         face_objects.append(bf)
@@ -500,7 +556,7 @@ def build_conduit_model(block_state: str) -> BakedModel:
 
 
 def build_end_portal_model(block_state: str) -> BakedModel:
-    """Construct End Portal horizontal plane model at Y=0.75."""
+    """Construct End Portal / Gateway horizontal plane model at Y=0.75."""
     tex_id = "minecraft:entity/end_portal"
     raw_v = [(0.0, 0.75, 1.0), (1.0, 0.75, 1.0), (1.0, 0.75, 0.0), (0.0, 0.75, 0.0)]
     quad_uvs = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
@@ -568,15 +624,35 @@ def resolve_obj_model_for_state(
     if short_name == "shulker_box" or short_name.endswith("_shulker_box"):
         return build_shulker_box_model(state_str, short_name, props)
 
-    # 3. Conduit
+    # 3. End Portal Frame
+    if short_name == "end_portal_frame":
+        has_eye = props.get("eye", "false").lower() == "true"
+        sub_objs = ["base", "eye"] if has_eye else ["base"]
+        facing = props.get("facing", "north").lower()
+        rot_y = get_block_facing_angle_y(facing)
+
+        return build_baked_model_from_obj(
+            block_state=state_str,
+            obj_filename="endportal_frame.obj",
+            sub_objects=sub_objs,
+            material_map={
+                "block/end_portal_frame_eye": "minecraft:block/end_portal_frame_eye",
+                "block/end_portal_frame_side": "minecraft:block/end_portal_frame_side",
+                "block/end_portal_frame_top": "minecraft:block/end_portal_frame_top",
+                "block/end_stone": "minecraft:block/end_stone",
+            },
+            rot_y=rot_y,
+        )
+
+    # 4. End Portal & End Gateway
+    if short_name in ("end_portal", "end_gateway"):
+        return build_end_portal_model(state_str)
+
+    # 5. Conduit
     if short_name == "conduit":
         return build_conduit_model(state_str)
 
-    # 4. End Portal
-    if short_name == "end_portal":
-        return build_end_portal_model(state_str)
-
-    # 5. Bell
+    # 6. Bell
     if short_name == "bell":
         facing = props.get("facing", "north").lower()
         rot_y = get_block_facing_angle_y(facing)
@@ -591,7 +667,7 @@ def resolve_obj_model_for_state(
             rot_y=rot_y,
         )
 
-    # 6. Decorated Pot
+    # 7. Decorated Pot
     if short_name == "decorated_pot":
         return build_baked_model_from_obj(
             block_state=state_str,
@@ -603,7 +679,7 @@ def resolve_obj_model_for_state(
             rot_y=0.0,
         )
 
-    # 7. Banners (Conforming to jmc2obj Banner.java)
+    # 8. Banners (Conforming to jmc2obj Banner.java)
     if short_name.endswith(("_banner", "_wall_banner")):
         is_wall = "_wall_banner" in short_name
         obj_file = "banner_wall.obj" if is_wall else "banner_standing.obj"
@@ -633,7 +709,7 @@ def resolve_obj_model_for_state(
             offset=offset,
         )
 
-    # 8. Skulls and Heads (Conforming to jmc2obj Head.java)
+    # 9. Skulls and Heads (Conforming to jmc2obj Head.java)
     if short_name.endswith(("_head", "_skull", "_wall_head", "_wall_skull")):
         is_wall = "_wall_" in short_name
         is_dragon = "dragon" in short_name
@@ -689,7 +765,7 @@ def resolve_obj_model_for_state(
             offset=offset,
         )
 
-    # 9. Hanging Signs (Conforming to jmc2obj SignHanging.java / SignHangingWall.java)
+    # 10. Hanging Signs (Conforming to jmc2obj SignHanging.java / SignHangingWall.java)
     if "hanging_sign" in short_name:
         wood_type = short_name.replace("_wall_hanging_sign", "").replace("_hanging_sign", "")
         tex_path = f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak"
