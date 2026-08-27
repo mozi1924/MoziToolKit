@@ -372,6 +372,34 @@ def is_fluid_flowing(
     return False
 
 
+def should_cull_fluid_face(
+    neighbor_state: Optional[str],
+    fluid_type: str,
+) -> bool:
+    """
+    Authoritative face culling for fluid faces against adjacent blocks.
+    A fluid face (Top, Bottom, North, South, West, East) is culled if:
+    1. The neighbor is the SAME fluid (water against water, lava against lava).
+    2. The neighbor is an opaque solid block (stone, dirt, planks, ores, etc.).
+    """
+    if not neighbor_state:
+        return False
+
+    parsed = parse_and_classify(neighbor_state)
+
+    # 1. Neighbor is same fluid
+    if parsed.block_type == BlockTypeEnum.FLUID or parsed.name in FLUID_BLOCKS:
+        n_fluid = parsed.name.replace("flowing_", "")
+        if n_fluid == fluid_type:
+            return True
+
+    # 2. Neighbor is an opaque solid block
+    if parsed.is_opaque and parsed.block_type not in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID):
+        return True
+
+    return False
+
+
 def generate_fluid_mesh_faces(
     bm: bmesh.types.BMesh,
     x: int, y: int, z: int,
@@ -445,15 +473,8 @@ def generate_fluid_mesh_faces(
     # -------------------------------------------------------------
     # 1. Top Face (UP)
     # -------------------------------------------------------------
-    # Cull if block directly above is the same fluid
-    above_state = block_map.get((x, y + 1, z))
-    cull_top = False
-    if above_state:
-        p_above = parse_and_classify(above_state)
-        if p_above.name.replace("flowing_", "") == fluid_type:
-            cull_top = True
-
-    if not cull_top:
+    # Cull if block directly above is the same fluid or an opaque solid block
+    if not should_cull_fluid_face(block_map.get((x, y + 1, z)), fluid_type):
         v_nw = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_sw = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
@@ -480,16 +501,8 @@ def generate_fluid_mesh_faces(
     # -------------------------------------------------------------
     # 2. Bottom Face (DOWN)
     # -------------------------------------------------------------
-    below_state = block_map.get((x, y - 1, z))
-    cull_bottom = False
-    if below_state:
-        p_below = parse_and_classify(below_state)
-        if p_below.name.replace("flowing_", "") == fluid_type:
-            cull_bottom = True
-        elif p_below.is_opaque and p_below.block_type not in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID):
-            cull_bottom = True
-
-    if not cull_bottom:
+    # Cull if block directly below is the same fluid or an opaque solid block
+    if not should_cull_fluid_face(block_map.get((x, y - 1, z)), fluid_type):
         v_bot_sw = (bx - 0.5, by - 0.5, bz - 0.5)
         v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
         v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
@@ -512,27 +525,8 @@ def generate_fluid_mesh_faces(
     # -------------------------------------------------------------
     # 3. Side Faces (North, South, West, East) - Mineways Accurate UV
     # -------------------------------------------------------------
-    # Side faces always use flowing texture (water_flow / lava_flow)
-
-    def _should_cull_side(nx: int, ny: int, nz: int, h_top_max: float) -> bool:
-        n_state = block_map.get((nx, ny, nz))
-        if not n_state:
-            return False
-        p_n = parse_and_classify(n_state)
-        if p_n.is_opaque and p_n.block_type not in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID):
-            return True
-        if p_n.name.replace("flowing_", "") == fluid_type:
-            # Check if neighbor has water above it
-            above_n = block_map.get((nx, ny + 1, nz))
-            if above_n and parse_and_classify(above_n).name.replace("flowing_", "") == fluid_type:
-                return True
-            n_base_h = get_fluid_base_height(n_state)
-            if n_base_h >= h_top_max - 1e-4:
-                return True
-        return False
-
     # A. North Face (facing Blender +Y / MC North -Z)
-    if not _should_cull_side(x, y, z - 1, max(c_NW, c_NE)):
+    if not should_cull_fluid_face(block_map.get((x, y, z - 1)), fluid_type):
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
@@ -558,7 +552,7 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # B. South Face (facing Blender -Y / MC South +Z)
-    if not _should_cull_side(x, y, z + 1, max(c_SW, c_SE)):
+    if not should_cull_fluid_face(block_map.get((x, y, z + 1)), fluid_type):
         v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
@@ -583,7 +577,7 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # C. West Face (facing Blender -X / MC West -X)
-    if not _should_cull_side(x - 1, y, z, max(c_NW, c_SW)):
+    if not should_cull_fluid_face(block_map.get((x - 1, y, z)), fluid_type):
         v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
@@ -608,7 +602,7 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # D. East Face (facing Blender +X / MC East +X)
-    if not _should_cull_side(x + 1, y, z, max(c_SE, c_NE)):
+    if not should_cull_fluid_face(block_map.get((x + 1, y, z)), fluid_type):
         v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)

@@ -36,6 +36,7 @@ from utils.live_sync.fluid_mesher import (
     calculate_fluid_corner_heights,
     calculate_fluid_flow_vector,
     is_fluid_flowing,
+    should_cull_fluid_face,
     generate_fluid_mesh_faces,
     MAX_FLUID_HEIGHT,
 )
@@ -277,11 +278,16 @@ class TestFluidLiveSync(unittest.TestCase):
         bm.free()
 
     def test_fluid_culling(self):
-        """Test that top face is culled when water is above, and bottom is culled when solid block is below."""
+        """Test fluid face culling against same fluid, solid blocks, air, and glass."""
+        # 1. Test top/bottom culling
         block_map = {
             (0, 0, 0): "minecraft:water[level=0]",
-            (0, 1, 0): "minecraft:water[level=0]",  # Water above -> culls top of (0,0,0)
-            (0, -1, 0): "minecraft:stone",          # Stone below -> culls bottom of (0,0,0)
+            (0, 1, 0): "minecraft:stone",          # Stone ceiling -> culls top of (0,0,0)
+            (0, -1, 0): "minecraft:stone",         # Stone floor -> culls bottom of (0,0,0)
+            (0, 0, -1): "minecraft:water[level=0]",# Water North -> culls North side
+            (0, 0, 1): "minecraft:stone",          # Stone South -> culls South side
+            (1, 0, 0): "minecraft:glass",          # Glass East -> keeps East side
+            # West is air -> keeps West side
         }
         bm = bmesh.new()
         uv_layer = bm.loops.layers.uv.new(UV_MAP)
@@ -315,8 +321,12 @@ class TestFluidLiveSync(unittest.TestCase):
             mat_manager=mat_mgr,
         )
         face_dirs = [f[layers["face_dir"]] for f in bm.faces]
-        self.assertNotIn(2, face_dirs, "Top face (dir 2) must be culled because water is above")
-        self.assertNotIn(3, face_dirs, "Bottom face (dir 3) must be culled because stone is below")
+        self.assertNotIn(2, face_dirs, "Top face (dir 2) must be culled under stone ceiling")
+        self.assertNotIn(3, face_dirs, "Bottom face (dir 3) must be culled above stone floor")
+        self.assertNotIn(5, face_dirs, "North face (dir 5) must be culled against adjacent water")
+        self.assertNotIn(4, face_dirs, "South face (dir 4) must be culled against solid stone wall")
+        self.assertIn(0, face_dirs, "East face (dir 0) must be retained facing glass")
+        self.assertIn(1, face_dirs, "West face (dir 1) must be retained facing air")
         bm.free()
 
     def test_flowing_top_face_uv_full_scale_and_shader_rotation(self):
