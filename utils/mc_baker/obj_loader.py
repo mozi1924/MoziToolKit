@@ -630,6 +630,51 @@ def build_end_gateway_model(block_state: str) -> BakedModel:
     )
 
 
+def build_bell_model(
+    block_state: str,
+    props: dict[str, str],
+    support_elements: Optional[list[BakedElement]] = None,
+    support_faces: Optional[list[BakedFace]] = None,
+    rot_y: Optional[float] = None,
+) -> BakedModel:
+    """
+    Construct a hybrid Minecraft Bell model combining the JSON-modeled support frame
+    (floor stone posts, ceiling bracket, wall bracket, or between walls bar) with
+    the 1:1 author-crafted golden bell body from bell.obj.
+    """
+    attachment = props.get("attachment", "floor").lower()
+    facing = props.get("facing", "north").lower()
+
+    if rot_y is None:
+        if attachment in ("single_wall", "double_wall"):
+            rot_y = {"east": 0.0, "south": 90.0, "west": 180.0, "north": 270.0}.get(facing, 0.0)
+        else:
+            rot_y = {"north": 0.0, "east": 90.0, "south": 180.0, "west": 270.0}.get(facing, 0.0)
+
+    bell_body_model = build_baked_model_from_obj(
+        block_state=block_state,
+        obj_filename="bell.obj",
+        material_map={
+            "block/bell_top": "minecraft:block/bell_top",
+            "block/bell_side": "minecraft:block/bell_side",
+            "block/bell_bottom": "minecraft:block/bell_bottom",
+        },
+        rot_y=rot_y,
+    )
+
+    combined_elements = list(support_elements or []) + list(bell_body_model.elements)
+    combined_faces = list(support_faces or []) + list(bell_body_model.faces)
+
+    return BakedModel(
+        block_state=block_state,
+        elements=combined_elements,
+        faces=combined_faces,
+        is_cube=False,
+        is_opaque=False,
+        is_emissive=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Primary Dispatcher
 # ---------------------------------------------------------------------------
@@ -671,21 +716,20 @@ def resolve_obj_model_for_state(
             rot_y=rot_y,
         )
 
-    # 2. Shulker Boxes (all 16 colors + undyed)
-    if short_name == "shulker_box" or short_name.endswith("_shulker_box"):
+    # 2. Shulker Boxes (All 16 colors + undyed, all 6 directional facings)
+    if short_name.endswith("shulker_box"):
         return build_shulker_box_model(state_str, short_name, props)
 
-    # 3. End Portal Frame (with / without eye of ender)
+    # 3. End Portal Frame (Base + Eye sub-objects)
     if short_name == "end_portal_frame":
         has_eye = props.get("eye", "false").lower() == "true"
-        sub_objs = ["base", "eye"] if has_eye else ["base"]
+        sub_objects = ["base", "eye"] if has_eye else ["base"]
         facing = props.get("facing", "north").lower()
         rot_y = get_block_facing_angle_y(facing)
-
         return build_baked_model_from_obj(
             block_state=state_str,
             obj_filename="endportal_frame.obj",
-            sub_objects=sub_objs,
+            sub_objects=sub_objects,
             material_map={
                 "block/end_portal_frame_eye": "minecraft:block/end_portal_frame_eye",
                 "block/end_portal_frame_side": "minecraft:block/end_portal_frame_side",
@@ -695,7 +739,7 @@ def resolve_obj_model_for_state(
             rot_y=rot_y,
         )
 
-    # 4. End Portal (horizontal portal plane at Y=0.75)
+    # 4. End Portal (Horizontal plane at Y=0.75 / 12/16)
     if short_name == "end_portal":
         return build_end_portal_model(state_str)
 
@@ -707,20 +751,9 @@ def resolve_obj_model_for_state(
     if short_name == "conduit":
         return build_conduit_model(state_str)
 
-    # 7. Bell
+    # 7. Bell is handled as a hybrid JSON + OBJ block in StateBaker
     if short_name == "bell":
-        facing = props.get("facing", "north").lower()
-        rot_y = get_block_facing_angle_y(facing)
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename="bell.obj",
-            material_map={
-                "block/bell_top": "minecraft:block/bell_top",
-                "block/bell_side": "minecraft:block/bell_side",
-                "block/bell_bottom": "minecraft:block/bell_bottom",
-            },
-            rot_y=rot_y,
-        )
+        return None
 
     # 8. Decorated Pot
     if short_name == "decorated_pot":

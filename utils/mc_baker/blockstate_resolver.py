@@ -80,6 +80,22 @@ class BlockStateResolver:
             rot_y = 0.0
             rot_x = 0.0
 
+            if short_name == "bell":
+                attachment = props.get("attachment", "floor")
+                facing = props.get("facing", "north")
+                if attachment == "floor":
+                    rot_y = {"north": 0.0, "east": 90.0, "south": 180.0, "west": 270.0}.get(facing, 0.0)
+                    return [VariantMatch(model_id="minecraft:block/bell_floor", rot_y=rot_y, variant_props=props)]
+                elif attachment == "ceiling":
+                    rot_y = {"north": 0.0, "east": 90.0, "south": 180.0, "west": 270.0}.get(facing, 0.0)
+                    return [VariantMatch(model_id="minecraft:block/bell_ceiling", rot_y=rot_y, variant_props=props)]
+                elif attachment == "single_wall":
+                    rot_y = {"east": 0.0, "south": 90.0, "west": 180.0, "north": 270.0}.get(facing, 0.0)
+                    return [VariantMatch(model_id="minecraft:block/bell_wall", rot_y=rot_y, variant_props=props)]
+                elif attachment == "double_wall":
+                    rot_y = {"east": 0.0, "south": 90.0, "west": 180.0, "north": 270.0}.get(facing, 0.0)
+                    return [VariantMatch(model_id="minecraft:block/bell_between_walls", rot_y=rot_y, variant_props=props)]
+
             if "glazed_terracotta" in short_name:
                 rot_y = {"south": 0.0, "west": 90.0, "north": 180.0, "east": 270.0}.get(facing, 0.0)
             elif short_name in ("dispenser", "dropper"):
