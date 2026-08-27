@@ -154,11 +154,12 @@ def build_baked_model_from_obj(
     material_map: Optional[dict[str, str]] = None,
     scale: Vec3 = (1.0, 1.0, 1.0),
     rot_y: float = 0.0,
+    rot_facing: Optional[str] = None,
     offset: Vec3 = (0.0, 0.0, 0.0),
 ) -> Optional[BakedModel]:
     """
     Construct a canonical BakedModel from an author-crafted OBJ model file.
-    Applies exact scaling, Y-rotation, and translation offsets conforming to upstream jmc2obj.
+    Applies exact scaling, Y-rotation/directional facing, and translation offsets conforming to upstream jmc2obj.
     """
     obj_data = _OBJ_CACHE.load(obj_filename)
     if not obj_data:
@@ -192,10 +193,12 @@ def build_baked_model_from_obj(
         else:
             tex_id = "minecraft:block/dirt"
 
-        # 2. Transform Vertices: Scale -> Rotate Y -> Offset -> Convert to MC block space [0..1]
+        # 2. Transform Vertices: Scale -> Rotate Y -> Facing Rotate -> Offset -> Convert to MC block space [0..1]
         transformed_mc_verts = []
         for v in raw_verts:
             vt = transform_obj_point(v, scale=scale, rot_y=rot_y, offset=offset)
+            if rot_facing:
+                vt = rotate_point_by_facing(vt, rot_facing)
             # Centered [-0.5, 0.5] + offset -> [0.0, 1.0]
             transformed_mc_verts.append((vt[0] + 0.5, vt[1] + 0.5, vt[2] + 0.5))
 
@@ -271,7 +274,8 @@ def rotate_shulker_vertex(v: Vec3, facing: str) -> Vec3:
 
 def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, str]) -> BakedModel:
     """
-    Construct a pixel-perfect Shulker Box model (Lid & Base) with authoritative 64x64 entity texture UVs.
+    Construct a pixel-perfect Shulker Box model (Lid & Base) from authoritative OBJ geometry
+    with 1:1 64x64 entity texture UVs.
     Supports all 16 colors + undyed across all 6 directional facings.
     """
     color = short_name.removesuffix("_shulker_box")
@@ -282,35 +286,21 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
 
     facing = props.get("facing", "up").lower()
 
-    # Base: from [-0.5, -0.5, -0.5] to [0.5, 0.0, 0.5] (16x8x16) -> (u=0, v=28, dx=16, dy=8, dz=16)
-    base_uvs = compute_box_face_uvs(0, 28, 16, 8, 16, tex_w=64, tex_h=64)
-    base_elem, base_faces = build_cuboid_element(
-        bounds_min=(-0.5, -0.5, -0.5),
-        bounds_max=(0.5, 0.0, 0.5),
-        texture=tex_id,
-        uvs_by_face=base_uvs,
+    baked = build_baked_model_from_obj(
+        block_state=block_state,
+        obj_filename="shulker_box.obj",
+        material_override=tex_id,
         rot_facing=facing,
     )
-
-    # Lid: from [-0.5, 0.0, -0.5] to [0.5, 0.5, 0.5] (16x8x16) -> (u=0, v=0, dx=16, dy=8, dz=16)
-    lid_uvs = compute_box_face_uvs(0, 0, 16, 8, 16, tex_w=64, tex_h=64)
-    lid_elem, lid_faces = build_cuboid_element(
-        bounds_min=(-0.5, 0.0, -0.5),
-        bounds_max=(0.5, 0.5, 0.5),
-        texture=tex_id,
-        uvs_by_face=lid_uvs,
-        rot_facing=facing,
-    )
-
-    all_faces = base_faces + lid_faces
-    six_faces = [next((f for f in all_faces if f.direction == d), all_faces[0]) for d in MC_DIRECTIONS]
+    if baked is not None:
+        return baked
 
     return BakedModel(
         block_state=block_state,
-        elements=[base_elem, lid_elem],
-        faces=six_faces,
-        is_cube=True,
-        is_opaque=True,
+        elements=[],
+        faces=[BakedFace(direction=d, texture=tex_id) for d in MC_DIRECTIONS],
+        is_cube=False,
+        is_opaque=False,
     )
 
 
@@ -561,7 +551,7 @@ def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, st
             rot_y = {"north": 180.0, "south": 0.0, "west": 90.0, "east": 270.0}.get(facing, 180.0)
         else:
             rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-            rot_y = (180.0 - rot_idx * 22.5) % 360.0
+            rot_y = (180.0 + rot_idx * 22.5) % 360.0
         offset = (0.0, 0.0, 0.0)
         scale = (1.0, 1.0, 1.0)
         mat = "minecraft:entity/enderdragon/dragon"
