@@ -429,20 +429,50 @@ def build_atlas_chunk_materials(
         split_tiling.location = (-1330, -600)
         links.new(attr_tiling.outputs["Color"], split_tiling.inputs["Color"])
 
+        # Safe Scale fallback: if Red / Green == 0 (e.g. default / missing attribute), default Scale to 1.0
+        cmp_scale_x = nodes.new("ShaderNodeMath")
+        cmp_scale_x.name = "Is Scale X Non-Zero"
+        cmp_scale_x.operation = 'GREATER_THAN'
+        cmp_scale_x.inputs[1].default_value = 0.0001
+        cmp_scale_x.location = (-1160, -500)
+        links.new(split_tiling.outputs["Red"], cmp_scale_x.inputs[0])
+
+        mix_scale_x = nodes.new("ShaderNodeMix")
+        mix_scale_x.name = "Safe Scale X"
+        mix_scale_x.data_type = 'FLOAT'
+        mix_scale_x.inputs[2].default_value = 1.0
+        mix_scale_x.location = (-1000, -500)
+        links.new(cmp_scale_x.outputs["Value"], mix_scale_x.inputs[0])
+        links.new(split_tiling.outputs["Red"], mix_scale_x.inputs[3])
+
+        cmp_scale_y = nodes.new("ShaderNodeMath")
+        cmp_scale_y.name = "Is Scale Y Non-Zero"
+        cmp_scale_y.operation = 'GREATER_THAN'
+        cmp_scale_y.inputs[1].default_value = 0.0001
+        cmp_scale_y.location = (-1160, -620)
+        links.new(split_tiling.outputs["Green"], cmp_scale_y.inputs[0])
+
+        mix_scale_y = nodes.new("ShaderNodeMix")
+        mix_scale_y.name = "Safe Scale Y"
+        mix_scale_y.data_type = 'FLOAT'
+        mix_scale_y.inputs[2].default_value = 1.0
+        mix_scale_y.location = (-1000, -620)
+        links.new(cmp_scale_y.outputs["Value"], mix_scale_y.inputs[0])
+        links.new(split_tiling.outputs["Green"], mix_scale_y.inputs[3])
+
         comb_scale = nodes.new("ShaderNodeCombineXYZ")
         comb_scale.name = "Combine UV Tiling Scale"
         comb_scale.inputs[2].default_value = 1.0
-        comb_scale.location = (-1150, -550)
-        links.new(split_tiling.outputs["Red"], comb_scale.inputs[0])
-        links.new(split_tiling.outputs["Green"], comb_scale.inputs[1])
+        comb_scale.location = (-840, -550)
+        links.new(mix_scale_x.outputs[0], comb_scale.inputs[0])
+        links.new(mix_scale_y.outputs[0], comb_scale.inputs[1])
 
         comb_loc = nodes.new("ShaderNodeCombineXYZ")
         comb_loc.name = "Combine UV Tiling Location"
         comb_loc.inputs[2].default_value = 0.0
-        comb_loc.location = (-1150, -700)
+        comb_loc.location = (-840, -700)
         links.new(split_tiling.outputs["Blue"], comb_loc.inputs[0])
         links.new(attr_tiling.outputs["Alpha"], comb_loc.inputs[1])
-
 
         if is_animated:
             # Two RGBA streams replace five scalar attributes.  This is
@@ -516,6 +546,19 @@ def build_atlas_chunk_materials(
                 links.new(max_time.outputs["Value"], scheduler.inputs["Frametime"])
                 links.new(split_timing.outputs["Blue"], scheduler.inputs["Interpolate"])
 
+                # Tiling on Frame 0 before animation stepping
+                tiling_frame0 = nodes.new("ShaderNodeGroup")
+                tiling_frame0.node_tree = templates["MC_Atlas_UV_Tiling"]
+                tiling_frame0.name = f"MC Atlas UV Tiling ({channel_name})"
+                tiling_frame0.location = (-1050, base_y)
+                tiling_frame0.inputs["Atlas Width"].default_value = float(chunk.get("width", 16))
+                tiling_frame0.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
+                links.new(max_width.outputs["Value"], tiling_frame0.inputs["Tile Width"])
+                links.new(max_height.outputs["Value"], tiling_frame0.inputs["Tile Height"])
+                links.new(uv_socket, tiling_frame0.inputs["Vector"])
+                links.new(comb_scale.outputs["Vector"], tiling_frame0.inputs["Scale"])
+                links.new(comb_loc.outputs["Vector"], tiling_frame0.inputs["Location"])
+
                 # UV Mapper
                 uv_node = nodes.new("ShaderNodeGroup")
                 uv_node.node_tree = templates["MC_Animated_UV_Mapping"]
@@ -528,7 +571,7 @@ def build_atlas_chunk_materials(
                 if "Atlas Mode" in uv_node.inputs:
                     uv_node.inputs["Atlas Mode"].default_value = 1.0
 
-                links.new(uv_socket, uv_node.inputs["Vector"])
+                links.new(tiling_frame0.outputs["Atlas UV"], uv_node.inputs["Vector"])
                 links.new(scheduler.outputs["Current Frame"], uv_node.inputs["Current Frame"])
                 links.new(scheduler.outputs["Next Frame"], uv_node.inputs["Next Frame"])
                 links.new(scheduler.outputs["Blend Factor"], uv_node.inputs["Blend Factor"])
@@ -536,22 +579,6 @@ def build_atlas_chunk_materials(
                 curr_uv_socket = uv_node.outputs["Current UV"]
                 next_uv_socket = uv_node.outputs["Next UV"]
 
-                # Tiling Current & Next
-                tiling_curr = nodes.new("ShaderNodeGroup")
-                tiling_curr.node_tree = templates["MC_Atlas_UV_Tiling"]
-                tiling_curr.name = f"MC Atlas UV Tiling Current ({channel_name})"
-                tiling_curr.location = (-550, base_y + 120)
-                links.new(curr_uv_socket, tiling_curr.inputs["Vector"])
-                links.new(comb_scale.outputs["Vector"], tiling_curr.inputs["Scale"])
-                links.new(comb_loc.outputs["Vector"], tiling_curr.inputs["Location"])
-
-                tiling_next = nodes.new("ShaderNodeGroup")
-                tiling_next.node_tree = templates["MC_Atlas_UV_Tiling"]
-                tiling_next.name = f"MC Atlas UV Tiling Next ({channel_name})"
-                tiling_next.location = (-550, base_y - 120)
-                links.new(next_uv_socket, tiling_next.inputs["Vector"])
-                links.new(comb_scale.outputs["Vector"], tiling_next.inputs["Scale"])
-                links.new(comb_loc.outputs["Vector"], tiling_next.inputs["Location"])
 
                 # Tex Current & Next
                 tex_curr = nodes.new("ShaderNodeTexImage")
@@ -560,7 +587,7 @@ def build_atlas_chunk_materials(
                 tex_curr.interpolation = "Closest"
                 tex_curr.extension = "CLIP"
                 tex_curr.location = (-320, base_y + 120)
-                links.new(tiling_curr.outputs["Atlas UV"], tex_curr.inputs["Vector"])
+                links.new(curr_uv_socket, tex_curr.inputs["Vector"])
 
                 if channel_key == "albedo":
                     albedo_tex_node = tex_curr
@@ -571,7 +598,7 @@ def build_atlas_chunk_materials(
                 tex_next.interpolation = "Closest"
                 tex_next.extension = "CLIP"
                 tex_next.location = (-320, base_y - 120)
-                links.new(tiling_next.outputs["Atlas UV"], tex_next.inputs["Vector"])
+                links.new(next_uv_socket, tex_next.inputs["Vector"])
 
                 # Frame Blend
                 blend_node = nodes.new("ShaderNodeGroup")
@@ -598,10 +625,15 @@ def build_atlas_chunk_materials(
             tiling_node.node_tree = templates["MC_Atlas_UV_Tiling"]
             tiling_node.name = "MC Atlas UV Tiling"
             tiling_node.location = (-800, 0)
+            tiling_node.inputs["Atlas Width"].default_value = float(chunk.get("width", 16))
+            tiling_node.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
+            tiling_node.inputs["Tile Width"].default_value = float(chunk.get("tile_size", 16))
+            tiling_node.inputs["Tile Height"].default_value = float(chunk.get("tile_size", 16))
             links.new(uv_socket, tiling_node.inputs["Vector"])
             links.new(comb_scale.outputs["Vector"], tiling_node.inputs["Scale"])
             links.new(comb_loc.outputs["Vector"], tiling_node.inputs["Location"])
             uv_source_socket = tiling_node.outputs["Atlas UV"]
+
 
 
 
