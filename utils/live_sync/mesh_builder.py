@@ -438,10 +438,16 @@ def apply_block_delta_to_world(
     for abs_x, abs_y, abs_z, _state in changes:
         blocks_to_update.add((abs_x, abs_y, abs_z))
         is_fluid_change = is_fluid_block(_state) or is_fluid_block(storage.get_block(abs_x, abs_y, abs_z))
+        if not is_fluid_change:
+            for dx, dy, dz in MC_DIR_OFFSETS.values():
+                if is_fluid_block(storage.get_block(abs_x + dx, abs_y + dy, abs_z + dz)):
+                    is_fluid_change = True
+                    break
+
         if is_fluid_change:
             for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    for dz in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for dy in range(-2, 3):
                         nx, ny, nz = abs_x + dx, abs_y + dy, abs_z + dz
                         if storage.contains(nx, ny, nz):
                             blocks_to_update.add((nx, ny, nz))
@@ -473,6 +479,9 @@ def apply_block_delta_to_world(
             mat_manager=mat_manager,
             baker=baker,
         )
+        slots_changed = sync_section_material_slots(root_obj, mat_manager)
+        if slots_changed:
+            rebind_mesh_material_indices(root_obj.data, mat_manager)
     else:
         # Section-based Hierarchy Mode
         sec_grouped: dict[tuple[int, int, int], set[tuple[int, int, int]]] = {}
@@ -480,6 +489,7 @@ def apply_block_delta_to_world(
             sec_coord = (bx >> 4, by >> 4, bz >> 4)
             sec_grouped.setdefault(sec_coord, set()).add((bx, by, bz))
 
+        any_slots_changed = False
         for (sx, sy, sz), sec_blocks in sec_grouped.items():
             sec_obj_name = f"Yefira_Section_{sx}_{sy}_{sz}"
             sec_mesh_name = f"Mesh_{sec_obj_name}"
@@ -520,6 +530,7 @@ def apply_block_delta_to_world(
             slots_changed = sync_section_material_slots(sec_obj, mat_manager)
             if slots_changed:
                 rebind_mesh_material_indices(sec_obj.data, mat_manager)
+                any_slots_changed = True
 
             # If section became empty, clean it up
             if len(sec_obj.data.polygons) == 0 and not has_solid_blocks:
@@ -527,6 +538,12 @@ def apply_block_delta_to_world(
                 bpy.data.objects.remove(sec_obj, do_unlink=True)
                 if sec_mesh:
                     bpy.data.meshes.remove(sec_mesh, do_unlink=True)
+
+        if any_slots_changed:
+            for child in root_obj.children:
+                if child.name.startswith("Yefira_Section_") and child.data:
+                    sync_section_material_slots(child, mat_manager)
+                    rebind_mesh_material_indices(child.data, mat_manager)
 
     # 5. Clear storage dirty set
     storage.clear_dirty_sections()

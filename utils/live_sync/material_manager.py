@@ -307,10 +307,17 @@ class LiveSyncMaterialManager:
         # Setup object material slots
         if self.world_obj:
             self._sync_object_material_slots()
+        else:
+            self._refresh_flat_slot_mapping()
 
     def ensure_chunk_loaded(self, chunk_id: int) -> int:
         """Dynamically load and bind a material chunk on demand if not already loaded in the scene."""
         if chunk_id in self.chunk_materials:
+            if chunk_id not in self.chunk_to_slot:
+                if self.world_obj:
+                    self._sync_object_material_slots()
+                else:
+                    self._refresh_flat_slot_mapping()
             return self.chunk_to_slot.get(chunk_id, 0)
 
         # 1. Try finding existing valid material in bpy.data.materials
@@ -367,7 +374,7 @@ class LiveSyncMaterialManager:
         if self.world_obj:
             self._sync_object_material_slots()
         else:
-            self._update_chunk_to_slot_map()
+            self._refresh_flat_slot_mapping()
 
         return self.chunk_to_slot.get(chunk_id, 0)
 

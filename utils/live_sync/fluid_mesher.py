@@ -289,6 +289,7 @@ def _emit_fluid_face(
     face_dir_idx: int,
     uv_rot: float = 0.0,
     use_tint: bool = True,
+    mat_manager: Optional[LiveSyncMaterialManager] = None,
 ) -> bool:
     """Helper to emit a single fluid polygon into BMesh."""
     face_bm_verts = [bm.verts.new(v) for v in verts_coords]
@@ -297,7 +298,7 @@ def _emit_fluid_face(
     except ValueError:
         return False
 
-    bm_face.material_index = f_res.slot_index
+    bm_face.material_index = mat_manager.get_slot_for_chunk(f_res.chunk_id) if mat_manager else f_res.slot_index
     bm_face[layers["atlas_chunk"]] = f_res.chunk_id
     bm_face[layers["rot"]] = uv_rot
     bm_face[layers["timing"]] = f_res.anim_timing
@@ -523,6 +524,7 @@ def generate_fluid_mesh_faces(
             face_dir_idx=DIR_TO_INDEX["up"],
             uv_rot=flow_angle if is_flowing else 0.0,
             use_tint=top_res.use_tint,
+            mat_manager=mat_manager,
         ):
             faces_emitted += 1
 
@@ -550,6 +552,7 @@ def generate_fluid_mesh_faces(
             face_dir_idx=DIR_TO_INDEX["down"],
             uv_rot=0.0,
             use_tint=res_still.use_tint,
+            mat_manager=mat_manager,
         ):
             faces_emitted += 1
 
@@ -581,6 +584,7 @@ def generate_fluid_mesh_faces(
             face_dir_idx=DIR_TO_INDEX["north"],
             uv_rot=0.0,
             use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
         ):
             faces_emitted += 1
 
@@ -606,6 +610,7 @@ def generate_fluid_mesh_faces(
             face_dir_idx=DIR_TO_INDEX["south"],
             uv_rot=0.0,
             use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
         ):
             faces_emitted += 1
 
@@ -631,6 +636,7 @@ def generate_fluid_mesh_faces(
             face_dir_idx=DIR_TO_INDEX["west"],
             uv_rot=0.0,
             use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
         ):
             faces_emitted += 1
 
@@ -656,6 +662,7 @@ def generate_fluid_mesh_faces(
             face_dir_idx=DIR_TO_INDEX["east"],
             uv_rot=0.0,
             use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
         ):
             faces_emitted += 1
 

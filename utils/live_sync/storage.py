@@ -17,6 +17,25 @@ def block_key(x: int, y: int, z: int) -> str:
     return f"{int(x)},{int(y)},{int(z)}"
 
 
+def _extract_canonical_state_str(raw_state: str) -> str:
+    """Extract canonical Minecraft blockstate string from raw or JSON-wrapped state string."""
+    if not raw_state:
+        return "minecraft:air"
+    if raw_state.startswith('{"state":"'):
+        end_idx = raw_state.find('"', 10)
+        if end_idx != -1:
+            return raw_state[10:end_idx]
+    elif raw_state.startswith("{"):
+        try:
+            import json
+            data = json.loads(raw_state)
+            if isinstance(data, dict) and "state" in data:
+                return str(data["state"])
+        except Exception:
+            pass
+    return raw_state
+
+
 class VoxelStorage:
     """In-memory 3D sparse/dense voxel array with section-based CRC32 validation."""
 
@@ -356,7 +375,8 @@ class VoxelStorage:
         for x in range(start_x, end_x + 1):
             for y in range(start_y, end_y + 1):
                 for z in range(start_z, end_z + 1):
-                    state_str = self.block_map.get((x, y, z), "minecraft:air")
+                    raw_state = self.block_map.get((x, y, z), "minecraft:air")
+                    state_str = _extract_canonical_state_str(raw_state)
                     crc_val = zlib.crc32(state_str.encode("utf-8"), crc_val)
 
         unsigned_crc = crc_val & 0xFFFFFFFF

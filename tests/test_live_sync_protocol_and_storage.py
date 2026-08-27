@@ -491,6 +491,31 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
             )
         )
 
+    def test_canonical_state_str_extraction_and_crc(self):
+        """Verify CRC32 calculation accurately extracts canonical states from raw JSON models."""
+        from utils.live_sync.storage import _extract_canonical_state_str
+        raw_json = '{"state":"minecraft:water[level=0]","type":6,"opaque":0,"emissive":0,"faces":{}}'
+        self.assertEqual(_extract_canonical_state_str(raw_json), "minecraft:water[level=0]")
+        self.assertEqual(_extract_canonical_state_str("minecraft:stone"), "minecraft:stone")
+
+    def test_material_manager_standalone_slot_mapping(self):
+        """Verify LiveSyncMaterialManager initializes non-empty slots and assigns proper slot indices to entity blocks."""
+        from utils.live_sync.material_manager import LiveSyncMaterialManager
+        from utils.live_sync.classifier import parse_and_classify
+        mat_mgr = LiveSyncMaterialManager()
+        self.assertGreater(len(mat_mgr._slot_to_chunk), 0)
+        self.assertGreater(len(mat_mgr.chunk_to_slot), 0)
+
+        # Nether portal uses animation chunk (Chunk 1)
+        portal_res = mat_mgr.resolve_block_face(parse_and_classify("minecraft:nether_portal[axis=x]"), "north", 5)
+        self.assertEqual(portal_res.chunk_id, 1)
+        self.assertEqual(portal_res.slot_index, mat_mgr.get_slot_for_chunk(1))
+
+        # End portal uses starry entity chunk (Chunk 17)
+        end_portal_res = mat_mgr.resolve_block_face(parse_and_classify("minecraft:end_portal"), "top", 2)
+        self.assertEqual(end_portal_res.chunk_id, 17)
+        self.assertEqual(end_portal_res.slot_index, mat_mgr.get_slot_for_chunk(17))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
