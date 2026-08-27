@@ -378,18 +378,10 @@ def generate_fluid_mesh_faces(
         v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_ne = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
 
-        if not is_flowing:
-            top_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
-        else:
-            # Rotated UV coordinates according to Minecraft FlowingFluid
-            s = math.sin(flow_angle) * 0.25
-            c = math.cos(flow_angle) * 0.25
-            top_uvs_mc = (
-                (0.5 - c - s, 0.5 - c + s),  # NW
-                (0.5 - c + s, 0.5 + c + s),  # SW
-                (0.5 + c + s, 0.5 + c - s),  # SE
-                (0.5 + c - s, 0.5 - c - s),  # NE
-            )
+        # Top face UVs are kept in canonical unrotated [0, 1] coordinates at full 1:1 scale.
+        # Flow rotation is delegated to the shader via mtk_uv_rotation (MC_Atlas_UV_Tiling),
+        # matching the static mesh material replacement pipeline and preventing double-rotation/scaling shrinkage.
+        top_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
 
         if _emit_fluid_face(
             bm=bm,

@@ -318,6 +318,70 @@ class TestFluidLiveSync(unittest.TestCase):
         self.assertNotIn(3, face_dirs, "Bottom face (dir 3) must be culled because stone is below")
         bm.free()
 
+    def test_flowing_top_face_uv_full_scale_and_shader_rotation(self):
+        """
+        Verify that flowing fluid top face UVs remain full-scale [0, 1] (not shrunk by 0.25)
+        and that flow direction angle is written directly to the mtk_uv_rotation attribute for the shader.
+        """
+        block_map = {
+            (0, 0, 0): "minecraft:water[level=0]",
+            (1, 0, 0): "minecraft:water[level=2]",  # Water flowing towards East (+X in MC)
+        }
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.new(UV_MAP)
+        color_layer = bm.loops.layers.color.new("Color")
+        layers = {
+            "uv": uv_layer,
+            "color": color_layer,
+            "rot": bm.faces.layers.float.new(MTK_UV_ROTATION),
+            "timing": bm.faces.layers.float_color.new("mtk_anim_timing"),
+            "frame_size": bm.faces.layers.float_color.new("mtk_anim_frame_size"),
+            "tiling": bm.faces.layers.float_color.new("mtk_uv_tiling_transform"),
+            "tint_data": bm.faces.layers.float_color.new("mtk_biome_tint_data"),
+            "tint_color": bm.faces.layers.float_color.new(MTK_BIOME_TINT_COLOR),
+            "block_x": bm.faces.layers.int.new("mtk_block_x"),
+            "block_y": bm.faces.layers.int.new("mtk_block_y"),
+            "block_z": bm.faces.layers.int.new("mtk_block_z"),
+            "face_dir": bm.faces.layers.int.new("mtk_face_dir"),
+            "atlas_chunk": bm.faces.layers.int.new(MTK_ATLAS_CHUNK_ID),
+        }
+        mat_mgr = LiveSyncMaterialManager(world_obj=None, atlas_params=self.atlas_params)
+
+        generate_fluid_mesh_faces(
+            bm=bm,
+            x=0, y=0, z=0,
+            state_str="minecraft:water[level=0]",
+            block_map=block_map,
+            layers=layers,
+            origin_centered=False,
+            min_x=0, min_y=0, min_z=0,
+            half_x=0.0, half_z=0.0,
+            mat_manager=mat_mgr,
+        )
+
+        top_face = None
+        for f in bm.faces:
+            if f[layers["face_dir"]] == 2:  # Up face
+                top_face = f
+                break
+
+        self.assertIsNotNone(top_face, "Top face must be generated")
+
+        # 1. Verify rotation angle is written to face attribute
+        rot_val = top_face[layers["rot"]]
+        self.assertNotEqual(rot_val, 0.0, "Flowing top face must have non-zero mtk_uv_rotation")
+        self.assertAlmostEqual(rot_val, -math.pi / 2.0, places=4, msg="Eastward flow angle should be -pi/2")
+
+        # 2. Verify UV coordinates span the full tile frame in Atlas space (full 1:1 scale, not shrunk to 0.25)
+        u_vals = [loop[uv_layer].uv.x for loop in top_face.loops]
+        v_vals = [loop[uv_layer].uv.y for loop in top_face.loops]
+        span_u = max(u_vals) - min(u_vals)
+        span_v = max(v_vals) - min(v_vals)
+        self.assertGreater(span_u, 0.01)
+        self.assertGreater(span_v, 0.01)
+
+        bm.free()
+
     def test_full_world_mesh_build_with_water(self):
         """Test full world mesh generation containing solid terrain and water bodies."""
         self.storage.set_block(0, 0, 0, "minecraft:stone")
