@@ -28,6 +28,7 @@ try:
         WorldMeshBuildResult,
     )
     from ...utils.live_sync.storage import voxel_storage
+    from ...utils.materials.pipeline.session import cleanup_unused_mtk_datablocks
     from ...utils.materials.yefira import (
         extract_atlas_parameters,
         find_bound_atlas_material,
@@ -51,6 +52,7 @@ except (ImportError, ValueError):
         WorldMeshBuildResult,
     )
     from utils.live_sync.storage import voxel_storage
+    from utils.materials.pipeline.session import cleanup_unused_mtk_datablocks
     from utils.materials.yefira import (
         extract_atlas_parameters,
         find_bound_atlas_material,
@@ -232,6 +234,10 @@ def trigger_mesh_sync(context: bpy.types.Context, force_full_rebuild: bool = Fal
         atlas_params=atlas_params,
         force_full_rebuild=force_full_rebuild,
     )
+
+    # Rebuilding may detach old MTK materials/images.  Release only orphaned
+    # datablocks owned by this addon; user/imported assets remain untouched.
+    cleanup_unused_mtk_datablocks()
 
     if props:
         props.point_count = res.vertex_count
