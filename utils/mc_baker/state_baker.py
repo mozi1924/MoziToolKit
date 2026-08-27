@@ -23,21 +23,13 @@ from .blockstate_resolver import BlockStateResolver, parse_block_state_string
 from .resource_loader import JarResourceLoader
 from .obj_loader import resolve_obj_model_for_state, build_bell_model
 
-# Known Emissive blocks in Minecraft
+# Canonical Minecraft Emissive block base names
 EMISSIVE_BLOCKS = frozenset({
     "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
     "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
     "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
     "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
     "ochre_froglight", "pearlescent_froglight", "verdant_froglight",
-    "minecraft:glowstone", "minecraft:sea_lantern", "minecraft:shroomlight",
-    "minecraft:magma_block", "minecraft:magma", "minecraft:crying_obsidian",
-    "minecraft:jack_o_lantern", "minecraft:beacon", "minecraft:end_rod",
-    "minecraft:lantern", "minecraft:soul_lantern", "minecraft:torch",
-    "minecraft:soul_torch", "minecraft:wall_torch", "minecraft:soul_wall_torch",
-    "minecraft:lava", "minecraft:flowing_lava", "minecraft:fire",
-    "minecraft:soul_fire", "minecraft:conduit", "minecraft:sculk_catalyst",
-    "minecraft:ochre_froglight", "minecraft:pearlescent_froglight", "minecraft:verdant_froglight",
 })
 
 
@@ -45,7 +37,7 @@ def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -
     """Return True if block/state is emissive (light emitting), else False."""
     p = props or {}
     short_name = block_name.split(":", 1)[-1].removeprefix("block/")
-    if short_name in EMISSIVE_BLOCKS or block_name in EMISSIVE_BLOCKS or short_name.endswith("_froglight"):
+    if short_name in EMISSIVE_BLOCKS or short_name.endswith("_froglight"):
         return True
     is_lit = p.get("lit") == "true"
     if is_lit and (
@@ -119,6 +111,70 @@ def clear_shared_baker_cache() -> None:
     _last_configured_loader = None
 
 
+# ---------------------------------------------------------------------------
+# Fallback Texture Resolution Rules
+# ---------------------------------------------------------------------------
+
+_WOOD_TYPES = ("oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak", "bamboo", "crimson", "warped")
+_BRICK_VARIANTS = ("stone_brick", "mossy_stone_brick", "nether_brick", "red_nether_brick", "end_stone_brick", "deepslate_brick", "deepslate_tile", "polished_blackstone_brick", "mud_brick", "tuff_brick")
+_DERIVATIVE_SUFFIXES = ("_slab", "_stairs", "_wall", "_fence_gate", "_fence", "_button", "_pressure_plate")
+
+
+def _resolve_derivative_stem(short_name: str) -> str:
+    """Resolve derivative block stems (slabs, stairs, walls, signs, carpets, beds, waxed)."""
+    stem = short_name
+    if stem.startswith("waxed_"):
+        stem = stem.removeprefix("waxed_")
+    if stem.startswith("potted_"):
+        stem = stem.removeprefix("potted_")
+    elif stem.endswith("_carpet"):
+        return stem.replace("_carpet", "_wool")
+    elif stem.endswith("_bed"):
+        return stem.replace("_bed", "_wool")
+    elif stem.endswith("_banner") or stem.endswith("_wall_banner"):
+        color = stem.replace("_wall_banner", "").replace("_banner", "")
+        return f"{color}_wool" if color else "white_wool"
+    elif stem.endswith("_wood"):
+        return stem.replace("_wood", "_log")
+    elif stem.endswith("_hyphae"):
+        return stem.replace("_hyphae", "_stem")
+    elif "_wall_hanging_sign" in stem:
+        wood = stem.replace("_wall_hanging_sign", "")
+        return f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
+    elif "_hanging_sign" in stem:
+        wood = stem.replace("_hanging_sign", "")
+        return f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
+    elif "_wall_sign" in stem:
+        return stem.replace("_wall_sign", "_planks")
+    elif "_sign" in stem:
+        return stem.replace("_sign", "_planks")
+
+    for suffix in _DERIVATIVE_SUFFIXES:
+        if stem.endswith(suffix):
+            base = stem[:-len(suffix)]
+            if base in _WOOD_TYPES:
+                return f"{base}_planks"
+            elif base == "bamboo_mosaic":
+                return "bamboo_mosaic"
+            elif base in _BRICK_VARIANTS:
+                return f"{base}s"
+            elif base == "brick":
+                return "bricks"
+            elif base == "smooth_sandstone":
+                return "sandstone_top"
+            elif base == "smooth_red_sandstone":
+                return "red_sandstone_top"
+            elif base == "smooth_quartz":
+                return "quartz_block_bottom"
+            elif base == "quartz":
+                return "quartz_block_side"
+            elif base == "purpur":
+                return "purpur_block"
+            return base
+
+    return stem
+
+
 class StateBaker:
     def __init__(
         self,
@@ -165,10 +221,9 @@ class StateBaker:
         # 1. Furnace, Blast Furnace, Smoker
         if short_name in ("furnace", "blast_furnace", "smoker"):
             top = f"minecraft:block/{short_name}_top"
-            bottom = f"minecraft:block/{short_name}_top"
             side = f"minecraft:block/{short_name}_side"
             front = f"minecraft:block/{short_name}_front_on" if is_lit else f"minecraft:block/{short_name}_front"
-            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": front}
+            return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": front}
 
         # 2. Beehive, Bee Nest
         if short_name in ("beehive", "bee_nest"):
@@ -189,18 +244,15 @@ class StateBaker:
         # 4. Dispenser, Dropper
         if short_name in ("dispenser", "dropper"):
             is_vertical = props.get("facing") in ("up", "down")
+            top = "minecraft:block/furnace_top"
             if is_vertical:
                 front = f"minecraft:block/{short_name}_front_vertical"
-                top = "minecraft:block/furnace_top"
                 return {"east": top, "west": top, "up": front, "down": top, "south": top, "north": top}
-            else:
-                top = "minecraft:block/furnace_top"
-                bottom = "minecraft:block/furnace_top"
-                side = "minecraft:block/furnace_side"
-                front = f"minecraft:block/{short_name}_front"
-                return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": front}
+            side = f"minecraft:block/furnace_side"
+            front = f"minecraft:block/{short_name}_front"
+            return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": front}
 
-        # 4.5 Crafter
+        # 5. Crafter
         if short_name == "crafter":
             is_crafting = props.get("crafting") == "true"
             is_triggered = props.get("triggered") == "true"
@@ -209,39 +261,39 @@ class StateBaker:
             front = "minecraft:block/crafter_front_powered" if is_powered else "minecraft:block/crafter_front"
             bottom = "minecraft:block/crafter_bottom"
             side = "minecraft:block/crafter_side"
-            east = "minecraft:block/crafter_east"
-            west = "minecraft:block/crafter_west"
-            return {"east": east, "west": west, "up": top, "down": bottom, "south": side, "north": front}
+            return {"east": "minecraft:block/crafter_east", "west": "minecraft:block/crafter_west", "up": top, "down": bottom, "south": side, "north": front}
 
-        # 4.6 Glazed Terracotta
+        # 6. Glazed Terracotta / Redstone Lamp
         if "glazed_terracotta" in short_name:
             pattern = f"minecraft:block/{short_name}"
             return {d: pattern for d in MC_DIRECTIONS}
+        if short_name == "redstone_lamp":
+            lamp = "minecraft:block/redstone_lamp_on" if is_lit else "minecraft:block/redstone_lamp"
+            return {d: lamp for d in MC_DIRECTIONS}
 
-        # 5. Observer
+        # 7. Observer
         if short_name == "observer":
-            top = "minecraft:block/observer_top"
-            side = "minecraft:block/observer_side"
-            back = "minecraft:block/observer_back"
-            front = "minecraft:block/observer_front"
-            return {"east": side, "west": side, "up": top, "down": top, "south": back, "north": front}
+            return {
+                "east": "minecraft:block/observer_side", "west": "minecraft:block/observer_side",
+                "up": "minecraft:block/observer_top", "down": "minecraft:block/observer_top",
+                "south": "minecraft:block/observer_back", "north": "minecraft:block/observer_front"
+            }
 
-        # 6. Piston, Sticky Piston
+        # 8. Piston, Sticky Piston
         if short_name in ("piston", "sticky_piston"):
             top = "minecraft:block/piston_top_sticky" if short_name == "sticky_piston" else "minecraft:block/piston_top"
-            bottom = "minecraft:block/piston_bottom"
             side = "minecraft:block/piston_side"
+            bottom = "minecraft:block/piston_bottom"
             return {"east": side, "west": side, "up": side, "down": side, "south": bottom, "north": top}
 
-        # 7. Barrel
+        # 9. Barrel
         if short_name == "barrel":
-            is_open = props.get("open") == "true"
-            top = "minecraft:block/barrel_top_open" if is_open else "minecraft:block/barrel_top"
+            top = "minecraft:block/barrel_top_open" if props.get("open") == "true" else "minecraft:block/barrel_top"
             bottom = "minecraft:block/barrel_bottom"
             side = "minecraft:block/barrel_side"
             return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
 
-        # 8. Respawn Anchor
+        # 10. Respawn Anchor
         if short_name == "respawn_anchor":
             charges = props.get("charges", "0")
             has_charges = str(charges) not in ("0", "")
@@ -250,103 +302,39 @@ class StateBaker:
             side = f"minecraft:block/respawn_anchor_side{charges}" if has_charges else "minecraft:block/respawn_anchor_side0"
             return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
 
-        # 9. Command Blocks
+        # 11. Command Blocks
         if "command_block" in short_name:
-            front = f"minecraft:block/{short_name}_front"
-            back = f"minecraft:block/{short_name}_back"
-            side = f"minecraft:block/{short_name}_side"
-            return {"east": side, "west": side, "up": side, "down": side, "south": back, "north": front}
+            return {
+                "east": f"minecraft:block/{short_name}_side", "west": f"minecraft:block/{short_name}_side",
+                "up": f"minecraft:block/{short_name}_side", "down": f"minecraft:block/{short_name}_side",
+                "south": f"minecraft:block/{short_name}_back", "north": f"minecraft:block/{short_name}_front"
+            }
 
-        # 10. Grass Block, Podzol, Mycelium
+        # 12. Grass Block, Podzol, Mycelium
         if short_name in ("grass_block", "podzol", "mycelium"):
             snowy = props.get("snowy") == "true"
             top = f"minecraft:block/{short_name}_top"
-            bottom = "minecraft:block/dirt"
             side = "minecraft:block/grass_block_snow" if snowy else f"minecraft:block/{short_name}_side"
-            return {"east": side, "west": side, "up": top, "down": bottom, "south": side, "north": side}
+            return {"east": side, "west": side, "up": top, "down": "minecraft:block/dirt", "south": side, "north": side}
 
-        # 11. Mushroom Blocks
+        # 13. Mushroom Blocks
         if short_name in ("red_mushroom_block", "brown_mushroom_block", "mushroom_stem"):
             skin = f"minecraft:block/{short_name}"
             inside = "minecraft:block/mushroom_block_inside"
-            return {
-                "east": inside if props.get("east") == "false" else skin,
-                "west": inside if props.get("west") == "false" else skin,
-                "up": inside if props.get("up") == "false" else skin,
-                "down": inside if props.get("down") == "false" else skin,
-                "south": inside if props.get("south") == "false" else skin,
-                "north": inside if props.get("north") == "false" else skin,
-            }
+            return {d: (inside if props.get(d) == "false" else skin) for d in MC_DIRECTIONS}
 
-        # 12. Axis Blocks (Logs, Wood, Hyphae, Basalt, Hay, Bone)
+        # 14. Axis Blocks (Logs, Wood, Hyphae, Basalt, Hay, Bone)
         is_axis = "axis" in props or short_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block"))
         if is_axis:
             top_stem = f"{short_name}_top" if not short_name.endswith(("_wood", "_hyphae")) else (f"{short_name[:-4]}log_top" if short_name.endswith("_wood") else f"{short_name[:-7]}stem_top")
             top = f"minecraft:block/{top_stem}"
-            side = f"minecraft:block/{short_name}" if short_name.endswith(("_wood", "_hyphae")) else f"minecraft:block/{short_name}"
+            side = f"minecraft:block/{short_name}"
             return {"east": side, "west": side, "up": top, "down": top, "south": side, "north": side}
 
-        # 13. Redstone Lamp
-        if short_name == "redstone_lamp":
-            lamp = "minecraft:block/redstone_lamp_on" if is_lit else "minecraft:block/redstone_lamp"
-            return {d: lamp for d in MC_DIRECTIONS}
-
-        # 14. Smart Derivative Fallbacks (Slabs, Stairs, Walls, Fences, Gates, Buttons, Plates, Waxed, Beds, Carpets, Banners)
-        stem = short_name
-        if stem.startswith("waxed_"):
-            stem = stem.removeprefix("waxed_")
-        if stem.startswith("potted_"):
-            stem = stem.removeprefix("potted_")
-        elif stem.endswith("_carpet"):
-            stem = stem.replace("_carpet", "_wool")
-        elif stem.endswith("_bed"):
-            stem = stem.replace("_bed", "_wool")
-        elif stem.endswith("_banner") or stem.endswith("_wall_banner"):
-            color = stem.replace("_wall_banner", "").replace("_banner", "")
-            stem = f"{color}_wool" if color else "white_wool"
-        elif stem.endswith("_wood"):
-            stem = stem.replace("_wood", "_log")
-        elif stem.endswith("_hyphae"):
-            stem = stem.replace("_hyphae", "_stem")
-        elif "_wall_hanging_sign" in stem:
-            wood = stem.replace("_wall_hanging_sign", "")
-            stem = f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
-        elif "_hanging_sign" in stem:
-            wood = stem.replace("_hanging_sign", "")
-            stem = f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
-        elif "_wall_sign" in stem:
-            stem = stem.replace("_wall_sign", "_planks")
-        elif "_sign" in stem:
-            stem = stem.replace("_sign", "_planks")
-        else:
-            for suffix in ("_slab", "_stairs", "_wall", "_fence_gate", "_fence", "_button", "_pressure_plate"):
-                if stem.endswith(suffix):
-                    base = stem[:-len(suffix)]
-                    if base in ("oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "mangrove", "cherry", "pale_oak", "bamboo", "crimson", "warped"):
-                        stem = f"{base}_planks"
-                    elif base == "bamboo_mosaic":
-                        stem = "bamboo_mosaic"
-                    elif base in ("stone_brick", "mossy_stone_brick", "nether_brick", "red_nether_brick", "end_stone_brick", "deepslate_brick", "deepslate_tile", "polished_blackstone_brick", "mud_brick", "tuff_brick"):
-                        stem = f"{base}s"
-                    elif base == "brick":
-                        stem = "bricks"
-                    elif base == "smooth_sandstone":
-                        stem = "sandstone_top"
-                    elif base == "smooth_red_sandstone":
-                        stem = "red_sandstone_top"
-                    elif base == "smooth_quartz":
-                        stem = "quartz_block_bottom"
-                    elif base == "quartz":
-                        stem = "quartz_block_side"
-                    elif base == "purpur":
-                        stem = "purpur_block"
-                    else:
-                        stem = base
-                    break
-
-        if stem != short_name:
-            fallback = f"minecraft:block/{stem}"
-            return {d: fallback for d in MC_DIRECTIONS}
+        # 15. Smart Derivative Fallbacks
+        resolved_stem = _resolve_derivative_stem(short_name)
+        if resolved_stem != short_name:
+            fallback = f"minecraft:block/{resolved_stem}"
 
         return {d: fallback for d in MC_DIRECTIONS}
 

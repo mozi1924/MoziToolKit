@@ -8,30 +8,26 @@ with dynamic texture substitution and transformations conforming to upstream jmc
 from __future__ import annotations
 import math
 from pathlib import Path
-from typing import Optional, Any, Tuple, Union, Sequence
+from typing import Optional, Any, Tuple, Union, Sequence, Callable, Dict, List
 
 from .types import BakedModel, BakedElement, BakedFace, MC_DIRECTIONS
+from .primitives import (
+    Vec3, Vec2,
+    rotate_y_point,
+    rotate_point_by_facing,
+    get_entity_facing_angle_y,
+    get_block_facing_angle_y,
+    calculate_normal,
+    normal_to_mc_direction,
+    compute_box_face_uvs,
+    build_cuboid_element,
+    build_plane_element,
+)
 
 MODELS_DIR = Path(__file__).parent / "assets" / "models"
 
-Vec3 = Tuple[float, float, float]
-Vec2 = Tuple[float, float]
-
-
-def jmc_rotate_y(v: Vec3, deg: float) -> Vec3:
-    """
-    Rotate a point (x, y, z) around origin (0, 0, 0) by deg degrees matching jmc2obj Transform.rotation(0, deg, 0).
-    Formula: x' = x*cos(b) - z*sin(b), z' = x*sin(b) + z*cos(b).
-    """
-    if deg == 0.0:
-        return v
-    rad = math.radians(deg)
-    c = math.cos(rad)
-    s = math.sin(rad)
-    x, y, z = v
-    nx = x * c - z * s
-    nz = x * s + z * c
-    return (nx, y, nz)
+# Compatibility aliases
+jmc_rotate_y = rotate_y_point
 
 
 def transform_obj_point(
@@ -47,35 +43,10 @@ def transform_obj_point(
     x, y, z = x * sx, y * sy, z * sz
     # 2. Rotate around Y (conforming to jmc2obj Transform.rotation)
     if rot_y != 0.0:
-        x, y, z = jmc_rotate_y((x, y, z), rot_y)
+        x, y, z = rotate_y_point((x, y, z), rot_y)
     # 3. Translate
     tx, ty, tz = offset
     return (x + tx, y + ty, z + tz)
-
-
-def calculate_normal(p0: Vec3, p1: Vec3, p2: Vec3) -> Vec3:
-    """Calculate normalized face normal from 3 vertices."""
-    v1 = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
-    v2 = (p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2])
-    nx = v1[1] * v2[2] - v1[2] * v2[1]
-    ny = v1[2] * v2[0] - v1[0] * v2[2]
-    nz = v1[0] * v2[1] - v1[1] * v2[0]
-    length = math.sqrt(nx * nx + ny * ny + nz * nz)
-    if length > 1e-6:
-        return (nx / length, ny / length, nz / length)
-    return (0.0, 1.0, 0.0)
-
-
-def normal_to_mc_direction(normal: Vec3) -> str:
-    """Map a 3D normal vector to the closest standard Minecraft face direction name."""
-    nx, ny, nz = normal
-    abs_x, abs_y, abs_z = abs(nx), abs(ny), abs(nz)
-    if abs_y >= abs_x and abs_y >= abs_z:
-        return "up" if ny > 0 else "down"
-    elif abs_x >= abs_z:
-        return "east" if nx > 0 else "west"
-    else:
-        return "south" if nz > 0 else "north"
 
 
 class OBJModelCache:
@@ -133,7 +104,7 @@ class OBJModelCache:
 
                     f_verts.append(verts[vi])
                     f_uvs.append(uvs[ti] if ti >= 0 else (0.0, 0.0))
-                    if ni >= 0 and ni < len(normals):
+                    if 0 <= ni < len(normals):
                         f_norms.append(normals[ni])
 
                 objects[curr_obj].append({
@@ -173,34 +144,6 @@ def resolve_chest_material(short_name: str, chest_type: str) -> str:
     elif chest_type == "right":
         return f"{stem}_right"
     return stem
-
-
-def get_entity_facing_angle_y(facing: str) -> float:
-    """
-    Return Y-rotation angle in degrees for entity models whose unrotated front is South (+Z).
-    South: 0, North: 180, East: 270 (-90), West: 90.
-    """
-    facing_map = {
-        "south": 0.0,
-        "north": 180.0,
-        "east": 270.0,
-        "west": 90.0,
-    }
-    return facing_map.get(facing.lower(), 0.0)
-
-
-def get_block_facing_angle_y(facing: str) -> float:
-    """
-    Return Y-rotation angle in degrees for block models whose default unrotated front is North (-Z).
-    North: 0, East: 90, South: 180, West: 270.
-    """
-    facing_map = {
-        "north": 0.0,
-        "east": 90.0,
-        "south": 180.0,
-        "west": 270.0,
-    }
-    return facing_map.get(facing.lower(), 0.0)
 
 
 def build_baked_model_from_obj(
@@ -322,22 +265,8 @@ def build_baked_model_from_obj(
 # ---------------------------------------------------------------------------
 
 def rotate_shulker_vertex(v: Vec3, facing: str) -> Vec3:
-    """Rotate a vertex around block center (0, 0, 0) for the 6 Minecraft Shulker Box facings."""
-    x, y, z = v
-    facing_lower = facing.lower()
-    if facing_lower == "up":
-        return (x, y, z)
-    elif facing_lower == "down":
-        return (x, -y, -z)
-    elif facing_lower == "north":
-        return (x, z, -y)
-    elif facing_lower == "south":
-        return (x, -z, y)
-    elif facing_lower == "west":
-        return (-y, x, z)
-    elif facing_lower == "east":
-        return (y, -x, z)
-    return (x, y, z)
+    """Compatibility wrapper for vertex rotation by facing."""
+    return rotate_point_by_facing(v, facing)
 
 
 def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, str]) -> BakedModel:
@@ -353,119 +282,32 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
 
     facing = props.get("facing", "up").lower()
 
-    # Base & Lid parts in canonical "up" facing centered [-0.5, 0.5]:
-    # Base: from [-0.5, -0.5, -0.5] to [0.5, 0.0, 0.5] (16x8x16, Y in [0, 8])
-    # Lid:  from [-0.5, 0.0, -0.5]  to [0.5, 0.5, 0.5] (16x8x16, Y in [8, 16])
-    parts = [
-        # --- Base ---
-        {
-            "bounds": ((-0.5, -0.5, -0.5), (0.5, 0.0, 0.5)),
-            "faces": {
-                "up": (
-                    [(-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.0, -0.5), (-0.5, 0.0, -0.5)], # SW, SE, NE, NW
-                    ((16/64, 44/64), (32/64, 44/64), (32/64, 28/64), (16/64, 28/64))
-                ),
-                "down": (
-                    [(-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5)], # NW, NE, SE, SW
-                    ((32/64, 28/64), (48/64, 28/64), (48/64, 44/64), (32/64, 44/64))
-                ),
-                "north": (
-                    [(0.5, -0.5, -0.5), (-0.5, -0.5, -0.5), (-0.5, 0.0, -0.5), (0.5, 0.0, -0.5)], # BR, BL, TL, TR
-                    ((32/64, 52/64), (16/64, 52/64), (16/64, 44/64), (32/64, 44/64))
-                ),
-                "south": (
-                    [(-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.0, 0.5), (-0.5, 0.0, 0.5)], # BL, BR, TR, TL
-                    ((48/64, 52/64), (64/64, 52/64), (64/64, 44/64), (48/64, 44/64))
-                ),
-                "west": (
-                    [(-0.5, -0.5, -0.5), (-0.5, -0.5, 0.5), (-0.5, 0.0, 0.5), (-0.5, 0.0, -0.5)], # BL, BR, TR, TL
-                    ((0/64, 52/64), (16/64, 52/64), (16/64, 44/64), (0/64, 44/64))
-                ),
-                "east": (
-                    [(0.5, -0.5, 0.5), (0.5, -0.5, -0.5), (0.5, 0.0, -0.5), (0.5, 0.0, 0.5)], # BL, BR, TR, TL
-                    ((32/64, 52/64), (48/64, 52/64), (48/64, 44/64), (32/64, 44/64))
-                ),
-            }
-        },
-        # --- Lid ---
-        {
-            "bounds": ((-0.5, 0.0, -0.5), (0.5, 0.5, 0.5)),
-            "faces": {
-                "up": (
-                    [(-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5)], # SW, SE, NE, NW
-                    ((16/64, 16/64), (32/64, 16/64), (32/64, 0/64), (16/64, 0/64))
-                ),
-                "down": (
-                    [(-0.5, 0.0, -0.5), (0.5, 0.0, -0.5), (0.5, 0.0, 0.5), (-0.5, 0.0, 0.5)], # NW, NE, SE, SW
-                    ((32/64, 0/64), (48/64, 0/64), (48/64, 16/64), (32/64, 16/64))
-                ),
-                "north": (
-                    [(0.5, 0.0, -0.5), (-0.5, 0.0, -0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5)], # BR, BL, TL, TR
-                    ((32/64, 24/64), (16/64, 24/64), (16/64, 16/64), (32/64, 16/64))
-                ),
-                "south": (
-                    [(-0.5, 0.0, 0.5), (0.5, 0.0, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5)], # BL, BR, TR, TL
-                    ((48/64, 24/64), (64/64, 24/64), (64/64, 16/64), (48/64, 16/64))
-                ),
-                "west": (
-                    [(-0.5, 0.0, -0.5), (-0.5, 0.0, 0.5), (-0.5, 0.5, 0.5), (-0.5, 0.5, -0.5)], # BL, BR, TR, TL
-                    ((0/64, 24/64), (16/64, 24/64), (16/64, 16/64), (0/64, 16/64))
-                ),
-                "east": (
-                    [(0.5, 0.0, 0.5), (0.5, 0.0, -0.5), (0.5, 0.5, -0.5), (0.5, 0.5, 0.5)], # BL, BR, TR, TL
-                    ((32/64, 24/64), (48/64, 24/64), (48/64, 16/64), (32/64, 16/64))
-                ),
-            }
-        }
-    ]
+    # Base: from [-0.5, -0.5, -0.5] to [0.5, 0.0, 0.5] (16x8x16) -> (u=0, v=28, dx=16, dy=8, dz=16)
+    base_uvs = compute_box_face_uvs(0, 28, 16, 8, 16, tex_w=64, tex_h=64)
+    base_elem, base_faces = build_cuboid_element(
+        bounds_min=(-0.5, -0.5, -0.5),
+        bounds_max=(0.5, 0.0, 0.5),
+        texture=tex_id,
+        uvs_by_face=base_uvs,
+        rot_facing=facing,
+    )
 
-    elements: list[BakedElement] = []
-    face_objects: list[BakedFace] = []
+    # Lid: from [-0.5, 0.0, -0.5] to [0.5, 0.5, 0.5] (16x8x16) -> (u=0, v=0, dx=16, dy=8, dz=16)
+    lid_uvs = compute_box_face_uvs(0, 0, 16, 8, 16, tex_w=64, tex_h=64)
+    lid_elem, lid_faces = build_cuboid_element(
+        bounds_min=(-0.5, 0.0, -0.5),
+        bounds_max=(0.5, 0.5, 0.5),
+        texture=tex_id,
+        uvs_by_face=lid_uvs,
+        rot_facing=facing,
+    )
 
-    for part in parts:
-        elem_faces: dict[str, BakedFace] = {}
-        for d, (raw_v, raw_uvs) in part["faces"].items():
-            # Rotate vertices according to facing
-            rot_mc_verts = []
-            for v in raw_v:
-                vr = rotate_shulker_vertex(v, facing)
-                rot_mc_verts.append((vr[0] + 0.5, vr[1] + 0.5, vr[2] + 0.5))
-
-            norm = calculate_normal(rot_mc_verts[0], rot_mc_verts[1], rot_mc_verts[2])
-            calc_dir = normal_to_mc_direction(norm)
-
-            min_u = min(u for u, _ in raw_uvs)
-            max_u = max(u for u, _ in raw_uvs)
-            min_v = min(v for _, v in raw_uvs)
-            max_v = max(v for _, v in raw_uvs)
-
-            bf = BakedFace(
-                direction=calc_dir,
-                texture=tex_id,
-                uv_bounds=(min_u, min_v, max_u, max_v),
-                vertices=tuple(rot_mc_verts),
-                uvs=raw_uvs,
-            )
-            elem_faces[calc_dir] = bf
-            face_objects.append(bf)
-
-        xs = [v[0] for f in elem_faces.values() for v in f.vertices]
-        ys = [v[1] for f in elem_faces.values() for v in f.vertices]
-        zs = [v[2] for f in elem_faces.values() for v in f.vertices]
-        elements.append(BakedElement(
-            from_pos=(min(xs) * 16.0, min(ys) * 16.0, min(zs) * 16.0),
-            to_pos=(max(xs) * 16.0, max(ys) * 16.0, max(zs) * 16.0),
-            faces=elem_faces
-        ))
-
-    six_faces = []
-    for d in MC_DIRECTIONS:
-        match = next((f for f in face_objects if f.direction == d), None)
-        six_faces.append(match if match else face_objects[0])
+    all_faces = base_faces + lid_faces
+    six_faces = [next((f for f in all_faces if f.direction == d), all_faces[0]) for d in MC_DIRECTIONS]
 
     return BakedModel(
         block_state=block_state,
-        elements=elements,
+        elements=[base_elem, lid_elem],
         faces=six_faces,
         is_cube=True,
         is_opaque=True,
@@ -475,58 +317,17 @@ def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, 
 def build_conduit_model(block_state: str) -> BakedModel:
     """Construct the Conduit 6x6x6 centered cube model with 32x16 texture UVs."""
     tex_id = "minecraft:entity/conduit/base"
-    x0, y0, z0 = 5/16, 5/16, 5/16
-    x1, y1, z1 = 11/16, 11/16, 11/16
-
-    face_defs = {
-        "up": (
-            [(x0, y1, z1), (x1, y1, z1), (x1, y1, z0), (x0, y1, z0)],
-            ((6/32, 6/16), (12/32, 6/16), (12/32, 0/16), (6/32, 0/16))
-        ),
-        "down": (
-            [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
-            ((12/32, 0/16), (18/32, 0/16), (18/32, 6/16), (12/32, 6/16))
-        ),
-        "north": (
-            [(x1, y0, z0), (x0, y0, z0), (x0, y1, z0), (x1, y1, z0)],
-            ((12/32, 12/16), (6/32, 12/16), (6/32, 6/16), (12/32, 6/16))
-        ),
-        "south": (
-            [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
-            ((18/32, 12/16), (24/32, 12/16), (24/32, 6/16), (18/32, 6/16))
-        ),
-        "west": (
-            [(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)],
-            ((0/32, 12/16), (6/32, 12/16), (6/32, 6/16), (0/32, 6/16))
-        ),
-        "east": (
-            [(x1, y0, z1), (x1, y0, z0), (x1, y1, z0), (x1, y1, z1)],
-            ((12/32, 12/16), (18/32, 12/16), (18/32, 6/16), (12/32, 6/16))
-        ),
-    }
-
-    elem_faces = {}
-    face_objects = []
-    for d, (raw_v, raw_uvs) in face_defs.items():
-        min_u = min(u for u, _ in raw_uvs)
-        max_u = max(u for u, _ in raw_uvs)
-        min_v = min(v for _, v in raw_uvs)
-        max_v = max(v for _, v in raw_uvs)
-        bf = BakedFace(
-            direction=d,
-            texture=tex_id,
-            uv_bounds=(min_u, min_v, max_u, max_v),
-            vertices=tuple(raw_v),
-            uvs=raw_uvs,
-        )
-        elem_faces[d] = bf
-        face_objects.append(bf)
-
-    elem = BakedElement(from_pos=(5.0, 5.0, 5.0), to_pos=(11.0, 11.0, 11.0), faces=elem_faces)
+    conduit_uvs = compute_box_face_uvs(0, 0, 6, 6, 6, tex_w=32, tex_h=16)
+    elem, faces_list = build_cuboid_element(
+        bounds_min=(-3/16, -3/16, -3/16),
+        bounds_max=(3/16, 3/16, 3/16),
+        texture=tex_id,
+        uvs_by_face=conduit_uvs,
+    )
     return BakedModel(
         block_state=block_state,
         elements=[elem],
-        faces=face_objects,
+        faces=faces_list,
         is_cube=False,
         is_opaque=False,
         is_emissive=True,
@@ -539,30 +340,17 @@ def build_end_portal_model(block_state: str) -> BakedModel:
     conforming to jmc2obj PortalHoriz.java with double-sided top and bottom faces.
     """
     tex_id = "minecraft:entity/end_portal"
-    # Top face at Y=0.75, normal pointing UP
-    top_v = [(0.0, 0.75, 1.0), (1.0, 0.75, 1.0), (1.0, 0.75, 0.0), (0.0, 0.75, 0.0)]
-    top_uvs = ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
-    bf_top = BakedFace(
-        direction="up",
+    top_v = (0.0, 0.75, 1.0)
+    top_v1 = (1.0, 0.75, 1.0)
+    top_v2 = (1.0, 0.75, 0.0)
+    top_v3 = (0.0, 0.75, 0.0)
+    elem, faces_list = build_plane_element(
+        top_v, top_v1, top_v2, top_v3,
         texture=tex_id,
-        uv_bounds=(0.0, 0.0, 1.0, 1.0),
-        vertices=tuple(top_v),
-        uvs=top_uvs,
+        uvs=((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)),
+        double_sided=True,
     )
-
-    # Bottom face at Y=0.75, normal pointing DOWN (conforming to PortalHoriz.java)
-    bot_v = [(1.0, 0.75, 1.0), (0.0, 0.75, 1.0), (0.0, 0.75, 0.0), (1.0, 0.75, 0.0)]
-    bot_uvs = ((1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0))
-    bf_bot = BakedFace(
-        direction="down",
-        texture=tex_id,
-        uv_bounds=(0.0, 0.0, 1.0, 1.0),
-        vertices=tuple(bot_v),
-        uvs=bot_uvs,
-    )
-
-    elem = BakedElement(from_pos=(0.0, 12.0, 0.0), to_pos=(16.0, 12.0, 16.0), faces={"up": bf_top, "down": bf_bot})
-    six_faces = [bf_top, bf_bot, bf_top, bf_top, bf_top, bf_top]
+    six_faces = [faces_list[0], faces_list[1], faces_list[0], faces_list[0], faces_list[0], faces_list[0]]
     return BakedModel(
         block_state=block_state,
         elements=[elem],
@@ -579,51 +367,17 @@ def build_end_gateway_model(block_state: str) -> BakedModel:
     with starry portal texture across all 6 faces.
     """
     tex_id = "minecraft:entity/end_portal"
-    face_defs = {
-        "up": (
-            [(0.0, 1.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)],
-            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
-        ),
-        "down": (
-            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 0.0, 1.0)],
-            ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
-        ),
-        "north": (
-            [(1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 1.0, 0.0)],
-            ((1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0))
-        ),
-        "south": (
-            [(0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0)],
-            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
-        ),
-        "west": (
-            [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 1.0), (0.0, 1.0, 0.0)],
-            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
-        ),
-        "east": (
-            [(1.0, 0.0, 1.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (1.0, 1.0, 1.0)],
-            ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0))
-        ),
-    }
-
-    elem_faces = {}
-    face_objects = []
-    for d, (raw_v, raw_uvs) in face_defs.items():
-        bf = BakedFace(
-            direction=d,
-            texture=tex_id,
-            uv_bounds=(0.0, 0.0, 1.0, 1.0),
-            vertices=tuple(raw_v),
-            uvs=raw_uvs,
-        )
-        elem_faces[d] = bf
-        face_objects.append(bf)
-
-    elem = BakedElement(from_pos=(0.0, 0.0, 0.0), to_pos=(16.0, 16.0, 16.0), faces=elem_faces)
+    cube_uvs = {d: ((0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)) for d in MC_DIRECTIONS}
+    elem, faces_list = build_cuboid_element(
+        bounds_min=(-0.5, -0.5, -0.5),
+        bounds_max=(0.5, 0.5, 0.5),
+        texture=tex_id,
+        uvs_by_face=cube_uvs,
+    )
     return BakedModel(
         block_state=block_state,
         elements=[elem],
-        faces=face_objects,
+        faces=faces_list,
         is_cube=True,
         is_opaque=True,
         is_emissive=True,
@@ -676,8 +430,254 @@ def build_bell_model(
 
 
 # ---------------------------------------------------------------------------
-# Primary Dispatcher
+# Specialized Model Provider Registry & Dispatcher
 # ---------------------------------------------------------------------------
+
+ModelBuilderFn = Callable[[str, str, dict[str, str]], Optional[BakedModel]]
+
+
+class SpecialModelRegistry:
+    """
+    Declarative registry for specialized Block Entity model builders.
+    Decouples individual block model logic from a monolithic dispatcher function.
+    """
+    def __init__(self):
+        self._exact_match_providers: Dict[str, ModelBuilderFn] = {}
+        self._predicate_providers: List[Tuple[Callable[[str, dict[str, str]], bool], ModelBuilderFn]] = []
+
+    def register_exact(self, short_name: str, builder_fn: ModelBuilderFn):
+        self._exact_match_providers[short_name] = builder_fn
+
+    def register_predicate(self, predicate: Callable[[str, dict[str, str]], bool], builder_fn: ModelBuilderFn):
+        self._predicate_providers.append((predicate, builder_fn))
+
+    def resolve(self, block_id: str, props: dict[str, str], fallback_texture: str = "") -> Optional[BakedModel]:
+        short_name = block_id.split(":", 1)[-1]
+        state_str = f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id
+
+        # 1. Exact match
+        if short_name in self._exact_match_providers:
+            return self._exact_match_providers[short_name](state_str, short_name, props)
+
+        # 2. Predicate match
+        for predicate, builder in self._predicate_providers:
+            if predicate(short_name, props):
+                return builder(state_str, short_name, props)
+
+        return None
+
+
+# --- Individual Providers ---
+
+def _build_chest_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    chest_type = props.get("type", "single").lower()
+    sub_obj = "chest"
+    if chest_type == "left":
+        sub_obj = "chest_left"
+    elif chest_type == "right":
+        sub_obj = "chest_right"
+
+    facing = props.get("facing", "north").lower()
+    rot_y = get_entity_facing_angle_y(facing)
+    mat_id = resolve_chest_material(short_name, chest_type)
+
+    return build_baked_model_from_obj(
+        block_state=state_str,
+        obj_filename="chest.obj",
+        sub_objects=sub_obj,
+        material_override=mat_id,
+        rot_y=rot_y,
+    )
+
+
+def _build_end_portal_frame_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    has_eye = props.get("eye", "false").lower() == "true"
+    sub_objects = ["base", "eye"] if has_eye else ["base"]
+    facing = props.get("facing", "north").lower()
+    rot_y = get_block_facing_angle_y(facing)
+    return build_baked_model_from_obj(
+        block_state=state_str,
+        obj_filename="endportal_frame.obj",
+        sub_objects=sub_objects,
+        material_map={
+            "block/end_portal_frame_eye": "minecraft:block/end_portal_frame_eye",
+            "block/end_portal_frame_side": "minecraft:block/end_portal_frame_side",
+            "block/end_portal_frame_top": "minecraft:block/end_portal_frame_top",
+            "block/end_stone": "minecraft:block/end_stone",
+        },
+        rot_y=rot_y,
+    )
+
+
+def _build_decorated_pot_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    return build_baked_model_from_obj(
+        block_state=state_str,
+        obj_filename="decorated_pot.obj",
+        material_map={
+            "entity/decorated_pot/decorated_pot_base": "minecraft:entity/decorated_pot/decorated_pot_base",
+            "entity/decorated_pot/decorated_pot_side": "minecraft:entity/decorated_pot/decorated_pot_side",
+        },
+        rot_y=0.0,
+    )
+
+
+def _build_banner_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    is_wall = "_wall_banner" in short_name
+    obj_file = "banner_wall.obj" if is_wall else "banner_standing.obj"
+    scale = (0.5, 0.5, 0.5)
+
+    if is_wall:
+        facing = props.get("facing", "north").lower()
+        wall_transforms = {
+            "north": (-90.0, (0.0, -1.51, 0.514)),
+            "east": (0.0, (-0.514, -1.51, 0.0)),
+            "south": (90.0, (0.0, -1.51, -0.52)),
+            "west": (180.0, (0.52, -1.51, 0.0)),
+        }
+        rot_y, offset = wall_transforms.get(facing, (-90.0, (0.0, -1.51, 0.514)))
+    else:
+        rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
+        rot_y = (90.0 + (360.0 / 16.0) * rot_idx)
+        offset = (0.0, -0.48, 0.0)
+
+    return build_baked_model_from_obj(
+        block_state=state_str,
+        obj_filename=obj_file,
+        material_override="minecraft:entity/banner/banner_base",
+        scale=scale,
+        rot_y=rot_y,
+        offset=offset,
+    )
+
+
+def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    is_wall = "_wall_" in short_name
+    is_dragon = "dragon" in short_name
+
+    if is_dragon:
+        obj_file = "dragon_wall_head.obj" if is_wall else "dragon_head.obj"
+        if is_wall:
+            facing = props.get("facing", "north").lower()
+            rot_y = {"north": 180.0, "south": 0.0, "west": 90.0, "east": 270.0}.get(facing, 180.0)
+        else:
+            rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
+            rot_y = (180.0 - rot_idx * 22.5) % 360.0
+        offset = (0.0, 0.0, 0.0)
+        scale = (1.0, 1.0, 1.0)
+        mat = "minecraft:entity/enderdragon/dragon"
+    else:
+        obj_file = "player_head.obj"
+        scale = (1.0, 1.0, 1.0)
+        if is_wall:
+            facing = props.get("facing", "north").lower()
+            wall_configs = {
+                "north": (0.0, (0.0, 0.0, 0.25)),
+                "south": (180.0, (0.0, 0.0, -0.25)),
+                "west": (-90.0, (0.25, 0.0, 0.0)),
+                "east": (90.0, (-0.25, 0.0, 0.0)),
+            }
+            rot_y, offset = wall_configs.get(facing, (0.0, (0.0, 0.0, 0.25)))
+        else:
+            rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
+            rot_y = rot_idx * 22.5
+            offset = (0.0, -0.25, 0.0)
+
+        head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
+        if head_type == "skeleton":
+            mat = "minecraft:entity/skeleton/skeleton"
+        elif head_type == "wither_skeleton":
+            mat = "minecraft:entity/skeleton/wither_skeleton"
+        elif head_type == "zombie":
+            mat = "minecraft:entity/zombie/zombie"
+        elif head_type == "creeper":
+            mat = "minecraft:entity/creeper/creeper"
+        elif head_type == "piglin":
+            mat = "minecraft:entity/piglin/piglin"
+        else:
+            mat = "minecraft:entity/player/wide/steve"
+
+    return build_baked_model_from_obj(
+        block_state=state_str,
+        obj_filename=obj_file,
+        material_override=mat,
+        scale=scale,
+        rot_y=rot_y,
+        offset=offset,
+    )
+
+
+def _build_hanging_sign_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    wood_type = short_name.replace("_wall_hanging_sign", "").replace("_hanging_sign", "")
+    tex_path = f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak"
+
+    if "_wall_" in short_name:
+        facing = props.get("facing", "north").lower()
+        rot_y = {"north": 180.0, "west": 90.0, "south": 0.0, "east": -90.0}.get(facing, 180.0)
+        sub_objs = ["sign", "chains", "top_bar"]
+    else:
+        rot_idx = int(props.get("rotation", "0")) if props.get("rotation", "").isdigit() else 0
+        rot_y = rot_idx * 22.5
+        attached = props.get("attached", "false").lower() == "true"
+        sub_objs = ["sign", "chains_attached" if attached else "chains"]
+
+    return build_baked_model_from_obj(
+        block_state=state_str,
+        obj_filename="hanging_sign.obj",
+        sub_objects=sub_objs,
+        material_override=tex_path,
+        rot_y=rot_y,
+    )
+
+
+def _create_default_special_registry() -> SpecialModelRegistry:
+    reg = SpecialModelRegistry()
+
+    # Exact matches
+    reg.register_exact("conduit", lambda s, n, p: build_conduit_model(s))
+    reg.register_exact("end_portal", lambda s, n, p: build_end_portal_model(s))
+    reg.register_exact("end_gateway", lambda s, n, p: build_end_gateway_model(s))
+    reg.register_exact("end_portal_frame", _build_end_portal_frame_model)
+    reg.register_exact("decorated_pot", _build_decorated_pot_model)
+
+    # Chests
+    chest_names = {
+        "chest", "trapped_chest", "ender_chest",
+        "copper_chest", "exposed_copper_chest", "weathered_copper_chest", "oxidized_copper_chest"
+    }
+    reg.register_predicate(
+        lambda n, p: n.removeprefix("waxed_") in chest_names,
+        _build_chest_model
+    )
+
+    # Shulker Boxes
+    reg.register_predicate(
+        lambda n, p: n.endswith("shulker_box"),
+        lambda s, n, p: build_shulker_box_model(s, n, p)
+    )
+
+    # Banners
+    reg.register_predicate(
+        lambda n, p: n.endswith(("_banner", "_wall_banner")),
+        _build_banner_model
+    )
+
+    # Skulls / Heads
+    reg.register_predicate(
+        lambda n, p: n.endswith(("_head", "_skull", "_wall_head", "_wall_skull")),
+        _build_skull_head_model
+    )
+
+    # Hanging Signs
+    reg.register_predicate(
+        lambda n, p: "hanging_sign" in n,
+        _build_hanging_sign_model
+    )
+
+    return reg
+
+
+_DEFAULT_REGISTRY = _create_default_special_registry()
+
 
 def resolve_obj_model_for_state(
     block_id: str,
@@ -685,195 +685,7 @@ def resolve_obj_model_for_state(
     fallback_texture: str = ""
 ) -> Optional[BakedModel]:
     """
-    Dispatcher that resolves known Block Entity / special model blocks to their 1:1 OBJ models.
-    Applies exact transforms conforming to upstream jmc2obj.
+    Primary dispatcher resolving known Block Entity / special model blocks to their 1:1 models.
+    Delegates to the SpecialModelRegistry.
     """
-    short_name = block_id.split(":", 1)[-1]
-    name_no_wax = short_name.removeprefix("waxed_")
-    state_str = f"{block_id}[{','.join(f'{k}={v}' for k, v in sorted(props.items()))}]" if props else block_id
-
-    # 1. Chests
-    if name_no_wax in (
-        "chest", "trapped_chest", "ender_chest",
-        "copper_chest", "exposed_copper_chest", "weathered_copper_chest", "oxidized_copper_chest"
-    ):
-        chest_type = props.get("type", "single").lower()
-        sub_obj = "chest"
-        if chest_type == "left":
-            sub_obj = "chest_left"
-        elif chest_type == "right":
-            sub_obj = "chest_right"
-
-        facing = props.get("facing", "north").lower()
-        rot_y = get_entity_facing_angle_y(facing)
-        mat_id = resolve_chest_material(short_name, chest_type)
-
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename="chest.obj",
-            sub_objects=sub_obj,
-            material_override=mat_id,
-            rot_y=rot_y,
-        )
-
-    # 2. Shulker Boxes (All 16 colors + undyed, all 6 directional facings)
-    if short_name.endswith("shulker_box"):
-        return build_shulker_box_model(state_str, short_name, props)
-
-    # 3. End Portal Frame (Base + Eye sub-objects)
-    if short_name == "end_portal_frame":
-        has_eye = props.get("eye", "false").lower() == "true"
-        sub_objects = ["base", "eye"] if has_eye else ["base"]
-        facing = props.get("facing", "north").lower()
-        rot_y = get_block_facing_angle_y(facing)
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename="endportal_frame.obj",
-            sub_objects=sub_objects,
-            material_map={
-                "block/end_portal_frame_eye": "minecraft:block/end_portal_frame_eye",
-                "block/end_portal_frame_side": "minecraft:block/end_portal_frame_side",
-                "block/end_portal_frame_top": "minecraft:block/end_portal_frame_top",
-                "block/end_stone": "minecraft:block/end_stone",
-            },
-            rot_y=rot_y,
-        )
-
-    # 4. End Portal (Horizontal plane at Y=0.75 / 12/16)
-    if short_name == "end_portal":
-        return build_end_portal_model(state_str)
-
-    # 5. End Gateway (FULL 1x1x1 solid block)
-    if short_name == "end_gateway":
-        return build_end_gateway_model(state_str)
-
-    # 6. Conduit
-    if short_name == "conduit":
-        return build_conduit_model(state_str)
-
-    # 7. Bell is handled as a hybrid JSON + OBJ block in StateBaker
-    if short_name == "bell":
-        return None
-
-    # 8. Decorated Pot
-    if short_name == "decorated_pot":
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename="decorated_pot.obj",
-            material_map={
-                "entity/decorated_pot/decorated_pot_base": "minecraft:entity/decorated_pot/decorated_pot_base",
-                "entity/decorated_pot/decorated_pot_side": "minecraft:entity/decorated_pot/decorated_pot_side",
-            },
-            rot_y=0.0,
-        )
-
-    # 9. Banners (Conforming to jmc2obj Banner.java)
-    if short_name.endswith(("_banner", "_wall_banner")):
-        is_wall = "_wall_banner" in short_name
-        obj_file = "banner_wall.obj" if is_wall else "banner_standing.obj"
-        scale = (0.5, 0.5, 0.5)
-
-        if is_wall:
-            facing = props.get("facing", "north").lower()
-            wall_transforms = {
-                "north": (-90.0, (0.0, -1.51, 0.514)),
-                "east": (0.0, (-0.514, -1.51, 0.0)),
-                "south": (90.0, (0.0, -1.51, -0.52)),
-                "west": (180.0, (0.52, -1.51, 0.0)),
-            }
-            rot_y, offset = wall_transforms.get(facing, (-90.0, (0.0, -1.51, 0.514)))
-        else:
-            rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-            # jmc2obj Banner.java: rotation = 90 + (360/16)*dataRot
-            rot_y = (90.0 + (360.0 / 16.0) * rot_idx)
-            offset = (0.0, -0.48, 0.0)
-
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename=obj_file,
-            material_override="minecraft:entity/banner/banner_base",
-            scale=scale,
-            rot_y=rot_y,
-            offset=offset,
-        )
-
-    # 10. Skulls and Heads (Conforming to jmc2obj Head.java)
-    if short_name.endswith(("_head", "_skull", "_wall_head", "_wall_skull")):
-        is_wall = "_wall_" in short_name
-        is_dragon = "dragon" in short_name
-
-        if is_dragon:
-            obj_file = "dragon_wall_head.obj" if is_wall else "dragon_head.obj"
-            if is_wall:
-                facing = props.get("facing", "north").lower()
-                rot_y = {"north": 180.0, "south": 0.0, "west": 90.0, "east": 270.0}.get(facing, 180.0)
-            else:
-                rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-                rot_y = (180.0 - rot_idx * 22.5) % 360.0
-            offset = (0.0, 0.0, 0.0)
-            scale = (1.0, 1.0, 1.0)
-            mat = "minecraft:entity/enderdragon/dragon"
-        else:
-            obj_file = "player_head.obj"
-            scale = (1.0, 1.0, 1.0)
-            if is_wall:
-                facing = props.get("facing", "north").lower()
-                wall_configs = {
-                    "north": (0.0, (0.0, 0.0, 0.25)),
-                    "south": (180.0, (0.0, 0.0, -0.25)),
-                    "west": (-90.0, (0.25, 0.0, 0.0)),
-                    "east": (90.0, (-0.25, 0.0, 0.0)),
-                }
-                rot_y, offset = wall_configs.get(facing, (0.0, (0.0, 0.0, 0.25)))
-            else:
-                rot_idx = int(props.get("rotation", "0")) if "rotation" in props else 0
-                rot_y = rot_idx * 22.5
-                offset = (0.0, -0.25, 0.0)
-
-            head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
-            if head_type == "skeleton":
-                mat = "minecraft:entity/skeleton/skeleton"
-            elif head_type == "wither_skeleton":
-                mat = "minecraft:entity/skeleton/wither_skeleton"
-            elif head_type == "zombie":
-                mat = "minecraft:entity/zombie/zombie"
-            elif head_type == "creeper":
-                mat = "minecraft:entity/creeper/creeper"
-            elif head_type == "piglin":
-                mat = "minecraft:entity/piglin/piglin"
-            else:
-                mat = "minecraft:entity/player/wide/steve"
-
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename=obj_file,
-            material_override=mat,
-            scale=scale,
-            rot_y=rot_y,
-            offset=offset,
-        )
-
-    # 11. Hanging Signs (Conforming to jmc2obj SignHanging.java / SignHangingWall.java)
-    if "hanging_sign" in short_name:
-        wood_type = short_name.replace("_wall_hanging_sign", "").replace("_hanging_sign", "")
-        tex_path = f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak"
-
-        if "_wall_" in short_name:
-            facing = props.get("facing", "north").lower()
-            rot_y = {"north": 180.0, "west": 90.0, "south": 0.0, "east": -90.0}.get(facing, 180.0)
-            sub_objs = ["sign", "chains", "top_bar"]
-        else:
-            rot_idx = int(props.get("rotation", "0")) if props.get("rotation", "").isdigit() else 0
-            rot_y = rot_idx * 22.5
-            attached = props.get("attached", "false").lower() == "true"
-            sub_objs = ["sign", "chains_attached" if attached else "chains"]
-
-        return build_baked_model_from_obj(
-            block_state=state_str,
-            obj_filename="hanging_sign.obj",
-            sub_objects=sub_objs,
-            material_override=tex_path,
-            rot_y=rot_y,
-        )
-
-    return None
+    return _DEFAULT_REGISTRY.resolve(block_id, props, fallback_texture)
