@@ -39,6 +39,8 @@ from .constants import (
     DEFAULT_ANIM_ATLAS_HEIGHT,
     DEFAULT_ANIM_FRAME_WIDTH,
     DEFAULT_ANIM_FRAME_HEIGHT,
+    DIR_TO_INDEX,
+    MC_DIR_OFFSETS,
     FACES,
     MTK_BLOCK_X,
     MTK_BLOCK_Y,
@@ -62,31 +64,9 @@ from ..mc_baker import (
     refresh_shared_baker_sources,
 )
 from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
+from .fluid_mesher import generate_fluid_mesh_faces, is_fluid_block
 
 logger = logging.getLogger("MoziToolKit.MeshBuilder")
-
-# Direction vectors in Minecraft space (East=+X, West=-X, Up=+Y, Down=-Y, South=+Z, North=-Z)
-MC_DIR_OFFSETS: dict[str, tuple[int, int, int]] = {
-    "east": (1, 0, 0),
-    "west": (-1, 0, 0),
-    "up": (0, 1, 0),
-    "top": (0, 1, 0),
-    "down": (0, -1, 0),
-    "bottom": (0, -1, 0),
-    "south": (0, 0, 1),
-    "north": (0, 0, -1),
-}
-
-DIR_TO_INDEX: dict[str, int] = {
-    "east": 0,
-    "west": 1,
-    "up": 2,
-    "top": 2,
-    "down": 3,
-    "bottom": 3,
-    "south": 4,
-    "north": 5,
-}
 
 # Standard Unit Cube Quads in Minecraft local coordinates [0..1]
 CUBE_FACE_MC_VERTICES: dict[str, tuple[tuple[float, float, float], ...]] = {
@@ -497,44 +477,6 @@ def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
     }
 
 
-def _generate_single_block_faces(
-    bm: bmesh.types.BMesh,
-    x: int, y: int, z: int,
-    state_str: str,
-    block_map: dict[tuple[int, int, int], str],
-    state_cache: dict[str, CachedStateMeta],
-    layers: dict[str, Any],
-    origin_centered: bool,
-    min_x: int, min_y: int, min_z: int,
-    half_x: float, half_z: float,
-    mat_manager: Optional[LiveSyncMaterialManager] = None,
-    baker: Optional[StateBaker] = None,
-) -> tuple[int, int, int]:
-    """
-    Generates faces for a single block at (x, y, z) into BMesh with full 6-face neighbor culling.
-    Returns (is_cube, is_prop, is_fluid).
-    """
-    meta = state_cache.get(state_str)
-    if not meta and state_str:
-        if state_str in _GLOBAL_STATE_META_CACHE:
-            meta = _GLOBAL_STATE_META_CACHE[state_str]
-        elif mat_manager is not None and baker is not None:
-            meta = get_cached_state_meta(state_str, mat_manager, baker)
-        if meta:
-            state_cache[state_str] = meta
-
-    if not meta or meta.is_air:
-        return (0, 0, 0)
-
-    if origin_centered:
-        bx = (x - min_x) - half_x
-        by = -((z - min_z) - half_z)
-        bz = (y - min_y) + 0.5
-    else:
-        bx = float(x)
-        by = -float(z)
-        bz = float(y)
-
 def _emit_bmesh_face(
     bm: bmesh.types.BMesh,
     verts_coords: Sequence[tuple[float, float, float]],
@@ -643,32 +585,19 @@ def _generate_single_block_faces(
     is_fluid_cnt = 0
 
     if meta.is_fluid:
-        is_fluid_cnt = 1
-        for f_name in ("east", "west", "up", "down", "south", "north"):
-            dx, dy, dz = MC_DIR_OFFSETS[f_name]
-            neighbor_pos = (x + dx, y + dy, z + dz)
-            n_meta = _get_neighbor_meta(neighbor_pos)
-            if n_meta and not n_meta.is_air:
-                if n_meta.is_fluid or (n_meta.is_cube and n_meta.is_opaque):
-                    continue
-
-            f_res = meta.faces_info.get(f_name, meta.faces_info.get("up"))
-            mc_verts = CUBE_FACE_MC_VERTICES[f_name]
-            canonical_uvs = CUBE_FACE_CANONICAL_UVS[f_name]
-            bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in mc_verts]
-            world_coords = [(bx + vx, by + vy, bz + vz) for vx, vy, vz in bl_coords]
-
-            _emit_bmesh_face(
-                bm=bm,
-                verts_coords=world_coords,
-                f_res=f_res,
-                layers=layers,
-                block_pos=(x, y, z),
-                face_dir_idx=DIR_TO_INDEX.get(f_name, -1),
-                loop_uvs_mc=canonical_uvs,
-                uv_rot=f_res.uv_rot,
-                use_tint=f_res.use_tint,
-            )
+        eff_mat_mgr = mat_manager or _GLOBAL_MAT_MANAGER or get_shared_material_manager(world_obj=None, atlas_params=None)
+        fluid_faces = generate_fluid_mesh_faces(
+            bm=bm,
+            x=x, y=y, z=z,
+            state_str=state_str,
+            block_map=block_map,
+            layers=layers,
+            origin_centered=origin_centered,
+            min_x=min_x, min_y=min_y, min_z=min_z,
+            half_x=half_x, half_z=half_z,
+            mat_manager=eff_mat_mgr,
+        )
+        is_fluid_cnt = 1 if fluid_faces > 0 else 0
 
     elif meta.baked_model and meta.baked_model.elements:
         if meta.is_cube:
@@ -917,6 +846,8 @@ def build_world_mesh(
         origin_centered=origin_centered,
         min_x=min_x, min_y=min_y, min_z=min_z,
         half_x=half_x, half_z=half_z,
+        mat_manager=mat_manager,
+        baker=baker,
     )
 
     # 5. Optional in-engine vertex welding for optimal topology
@@ -1055,6 +986,8 @@ def sync_world_mesh(
             origin_centered=origin_centered,
             min_x=min_x, min_y=min_y, min_z=min_z,
             half_x=half_x, half_z=half_z,
+            mat_manager=mat_manager,
+            baker=baker,
         )
 
         if weld_vertices and len(bm.verts) > 0:
@@ -1145,14 +1078,23 @@ def apply_block_delta_to_world(
     # 2. Material Manager for chunk materials (cached singleton)
     mat_manager = get_shared_material_manager(world_obj=root_obj, atlas_params=atlas_params)
 
-    # 3. Find all blocks to update: changed blocks + 6 orthogonal neighbors
+    # 3. Find all blocks to update: changed blocks + neighbors (including 3x3 diagonal window for fluids)
     blocks_to_update: set[tuple[int, int, int]] = set()
     for abs_x, abs_y, abs_z, _state in changes:
         blocks_to_update.add((abs_x, abs_y, abs_z))
-        for dx, dy, dz in MC_DIR_OFFSETS.values():
-            nx, ny, nz = abs_x + dx, abs_y + dy, abs_z + dz
-            if storage.contains(nx, ny, nz):
-                blocks_to_update.add((nx, ny, nz))
+        is_fluid_change = is_fluid_block(_state) or is_fluid_block(storage.get_block(abs_x, abs_y, abs_z))
+        if is_fluid_change:
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for dz in (-1, 0, 1):
+                        nx, ny, nz = abs_x + dx, abs_y + dy, abs_z + dz
+                        if storage.contains(nx, ny, nz):
+                            blocks_to_update.add((nx, ny, nz))
+        else:
+            for dx, dy, dz in MC_DIR_OFFSETS.values():
+                nx, ny, nz = abs_x + dx, abs_y + dy, abs_z + dz
+                if storage.contains(nx, ny, nz):
+                    blocks_to_update.add((nx, ny, nz))
 
     # Pre-populate global cache for any new unique states in blocks_to_update
     for (x, y, z) in blocks_to_update:
