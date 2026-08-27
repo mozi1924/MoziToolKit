@@ -304,15 +304,16 @@ def get_shared_material_manager(
 def _sync_section_material_slots(
     section_obj: bpy.types.Object,
     mat_manager: LiveSyncMaterialManager,
-) -> None:
+) -> bool:
     """Mirror the manager's compact slot layout onto one Direct-Mesh section.
 
     ``ResolvedFaceTexture.slot_index`` is a Blender material-slot index, not
     an atlas ``chunk_id``.  Chunk IDs may be sparse (for example, a banner
     chunk can be 7), so assigning a material to ``materials[chunk_id]`` both
     creates empty slots and makes faces point at unrelated block materials.
+    Returns True if material slots were changed, False otherwise.
     """
-    mat_manager.sync_material_slots(section_obj)
+    return mat_manager.sync_material_slots(section_obj)
 
 
 def _rebind_mesh_material_indices(
@@ -1085,16 +1086,18 @@ def sync_world_mesh(
             total_verts += len(child.data.vertices)
             total_faces += len(child.data.polygons)
 
-    for state_str in block_map.values():
+    for state_str, count in storage.get_state_counts().items():
+        if count <= 0:
+            continue
         m = state_cache.get(state_str)
         if not m or m.is_air:
             continue
         if m.is_fluid:
-            total_fluids += 1
+            total_fluids += count
         elif m.is_cube:
-            total_cubes += 1
+            total_cubes += count
         else:
-            total_props += 1
+            total_props += count
 
     return WorldMeshBuildResult(
         world_obj=root_obj,
@@ -1217,8 +1220,9 @@ def apply_block_delta_to_world(
             )
 
             # Capture chunks loaded while resolving changed faces.
-            _sync_section_material_slots(sec_obj, mat_manager)
-            _rebind_mesh_material_indices(sec_obj.data, mat_manager)
+            slots_changed = _sync_section_material_slots(sec_obj, mat_manager)
+            if slots_changed:
+                _rebind_mesh_material_indices(sec_obj.data, mat_manager)
 
             # If section became empty, clean it up
             if len(sec_obj.data.polygons) == 0 and not has_solid_blocks:
@@ -1246,19 +1250,20 @@ def apply_block_delta_to_world(
         total_verts = len(root_obj.data.vertices)
         total_faces = len(root_obj.data.polygons)
 
-    for state_str in storage.block_map.values():
+    for state_str, count in storage.get_state_counts().items():
+        if count <= 0:
+            continue
         m = _GLOBAL_STATE_META_CACHE.get(state_str)
         if not m and state_str:
-            m = CachedStateMeta(state_str, mat_manager, baker)
-            _GLOBAL_STATE_META_CACHE[state_str] = m
+            m = get_cached_state_meta(state_str, mat_manager, baker)
         if not m or m.is_air:
             continue
         if m.is_fluid:
-            total_fluids += 1
+            total_fluids += count
         elif m.is_cube:
-            total_cubes += 1
+            total_cubes += count
         else:
-            total_props += 1
+            total_props += count
 
     return WorldMeshBuildResult(
         world_obj=root_obj,

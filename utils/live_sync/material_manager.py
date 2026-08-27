@@ -389,21 +389,23 @@ class LiveSyncMaterialManager:
         self._slot_to_chunk = retained
         self.chunk_to_slot = {cid: slot for slot, cid in enumerate(retained)}
 
-    def sync_material_slots(self, obj: bpy.types.Object) -> None:
+    def sync_material_slots(self, obj: bpy.types.Object) -> bool:
         """Apply the flattened slot layout to any Live Sync mesh object.
 
         This is deliberately separate from atlas chunk IDs: a chunk numbered
         11 may occupy Blender slot 4, and no empty intermediate slots are
         created.
+        Returns True if material slots were changed, False if already up-to-date.
         """
         self._refresh_flat_slot_mapping()
         expected = [self.chunk_materials[cid] for cid in self._slot_to_chunk]
         slots = obj.data.materials
         if list(slots) == expected:
-            return
+            return False
         slots.clear()
         for material in expected:
             slots.append(material)
+        return True
 
     def _update_chunk_to_slot_map(self) -> None:
         """Compatibility wrapper for callers of the former slot-scanning API."""
