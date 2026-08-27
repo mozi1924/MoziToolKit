@@ -37,18 +37,41 @@ def load_image_texture(
     short_hash = pack_hash[:12] if pack_hash else None
     expected_name = f"{filepath.name}:{short_hash}" if short_hash else filepath.name
 
+    def _is_usable(candidate: bpy.types.Image) -> bool:
+        """Reject missing/corrupt images before reusing a datablock."""
+        if candidate is None:
+            return False
+        try:
+            if getattr(candidate, "is_missing", False):
+                return False
+            # A zero-sized image is an uninitialised/corrupt datablock.
+            if candidate.size[0] <= 0 or candidate.size[1] <= 0:
+                return False
+            stored_path = candidate.get("mtk:source_path", "")
+            if stored_path and stored_path != str_path:
+                return False
+            stored_hash = candidate.get(PROP_PACK_HASH, "")
+            if pack_hash and stored_hash and stored_hash != pack_hash:
+                return False
+            return True
+        except Exception:
+            return False
+
     # 1. Check for existing matching image datablock in Blender
     img = None
     for existing in bpy.data.images:
         if expected_name and existing.name == expected_name:
-            img = existing
-            break
+            if _is_usable(existing):
+                img = existing
+                break
         if pack_hash and existing.get(PROP_PACK_HASH) == pack_hash and existing.get(PROP_SOURCE_FILE) == filepath.name:
-            img = existing
-            break
+            if _is_usable(existing):
+                img = existing
+                break
         if existing.filepath and str(Path(bpy.path.abspath(existing.filepath)).resolve()) == str_path:
-            img = existing
-            break
+            if _is_usable(existing):
+                img = existing
+                break
 
     # 2. Load from disk if not already present in bpy.data.images
     if not img:
@@ -59,8 +82,16 @@ def load_image_texture(
             img[PROP_PACK_HASH] = pack_hash
             img[PROP_PACK_HASH_SHORT] = short_hash
             img[PROP_SOURCE_FILE] = filepath.name
+        img["mtk:source_path"] = str_path
     elif expected_name and img.name != expected_name:
         img.name = expected_name
+
+    # Stamp the canonical source on reused datablocks too.  This makes future
+    # validation independent of Blender's packed-file filepath rewriting.
+    try:
+        img["mtk:source_path"] = str_path
+    except Exception:
+        pass
 
     # Configure image properties for pixel art & color space
     if hasattr(img, "colorspace_settings"):
