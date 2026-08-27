@@ -37,7 +37,11 @@
 - **[原生网格实时同步构建体系 (Direct Mesh)](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/direct_mesh.md)**：
   - 16x16x16 Section 分块容器、6 向邻域遮挡剔除、拓扑微距焊接。
   - 毫秒级增量更新（Delta Update）与原生多图集 UVMap 写入。
+- **[面剔除系统与原版遮挡算法 (Face Culling)](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/face_culling.md)**：
+  - 对齐 Minecraft 1.21+ 原版 `Block.shouldRenderFace` 与 `BlockBehaviour.skipRendering`。
+  - 4 大核心分类（实心不透明、半透玻璃组、透空树叶 Fancy/SingleFace/Fast、局部台阶/楼梯 2D 几何投影裁剪）。
 - **[自适应像素网格切分系统 (Adaptive Pixel Split)](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/pixel_split.md)**：
+
   - 1 面 = 1 贴图像素自适应分辨率计算。
   - 动画贴图单帧正方形边界识别（避免过度切分）。
   - 骨骼权重（Vertex Groups）与网格属性双线性插值保真。

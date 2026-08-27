@@ -43,21 +43,19 @@ $$z_{blender} = y_{mc} - \text{min\_y} + 0.5$$
 
 ## 2. 6向邻域遮挡剔除 (Neighbor Culling) 与拓扑焊接
 
-### 2.1 方块类型分类与剔除规则 (`classifier.py`)
-每个方块被归类为 [`BlockTypeEnum`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/live_sync/classifier.py#L18-L25)：
-1. **`OPAQUE`（不透明实心方块）**：
-   - 石头、泥土、木板等。
-   - 当相邻方块也是 `OPAQUE` 时，两个方块的接触面被 **100% 双向剔除**，不生成任何多边形。
-2. **`TRANSPARENT`（半透明与镂空方块）**：
-   - 玻璃、铁栏杆、树叶等。
-   - 与 `OPAQUE` 邻居接触时，`OPAQUE` 面被遮挡剔除，但半透方块保留外表面；两个同类玻璃方块接触时可配置内部剔除。
-3. **`NON_CUBE`（复杂非满方块）**：
-   - 楼梯、台阶、栅栏、门、火把等。
-   - 依据各自 `cullface` 属性及与邻居的共面性执行精确的局域面剔除。
+### 2.1 统一面剔除系统 (`utils.culling.FaceCuller`)
+Direct Mesh 网格构建全面接入统一的面剔除引擎 [`FaceCuller`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/culling/engine.py)，对齐 Minecraft 1.21+ 原版 `Block.shouldRenderFace` 与 `BlockBehaviour.skipRendering` 规范：
+1. **实心不透明方块（Solid Opaque）**：相交接触面 100% 双向剔除；接触玻璃/树叶/流体/空气时正常保留渲染。
+2. **半透明与玻璃（Glass & Translucent）**：同类玻璃相互剔除内部接缝；接触实心方块时玻璃面剔除自身，实心方块正常渲染实体表面。
+3. **透空树叶（Cutout Leaves）**：支持 Fancy（双面透空）、Single-Face（单向消重）与 Fast（外壳剔除）模式；接触原木时叶片贴合面被剔除。
+4. **局部与非满方块（Partial Shapes）**：台阶、楼梯与接触面执行 2D 矩形投影几何遮挡计算（`Shapes.joinIsNotEmpty`）。
+
+> 详细规范与原版逆向机制请参见 [面剔除系统完整技术文档](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/face_culling.md)。
 
 ### 2.2 拓扑微距焊接 (Weld Vertices)
 - **焊接距离**：默认 $dist = 1.0 \times 10^{-4}$（$0.1\text{mm}$）。
 - **拓扑收益**：将相邻方块生成的共面共点顶点自动缝合为流形网格。单个满方块仅 8 顶点 6 面；多个相连方块合并为水密轻量几何体，显存占用降低 60% 以上。
+
 
 ---
 

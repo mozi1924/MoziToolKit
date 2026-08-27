@@ -65,8 +65,14 @@ from ..mc_baker import (
 )
 from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
 from .fluid_mesher import generate_fluid_mesh_faces, is_fluid_block
+from ..culling import (
+    get_shared_face_culler,
+    BlockCullMeta,
+    FaceCuller,
+)
 
 logger = logging.getLogger("MoziToolKit.MeshBuilder")
+
 
 # Standard Unit Cube Quads in Minecraft local coordinates [0..1]
 CUBE_FACE_MC_VERTICES: dict[str, tuple[tuple[float, float, float], ...]] = {
@@ -107,7 +113,7 @@ class CachedStateMeta:
     __slots__ = (
         'state_str', 'parsed', 'is_cube', 'is_opaque', 'is_air',
         'is_fluid', 'is_transparent', 'baked_model', 'faces_info',
-        'tex_to_res'
+        'tex_to_res', 'cull_meta'
     )
 
     def __init__(self, state_str: str, mat_manager: LiveSyncMaterialManager, baker: StateBaker):
@@ -151,8 +157,15 @@ class CachedStateMeta:
             self.is_cube = self.parsed.block_type == BlockTypeEnum.CUBE
             self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
 
+        self.cull_meta: BlockCullMeta = get_shared_face_culler().get_meta(
+            state_str=self.state_str,
+            baked_model=self.baked_model,
+            is_opaque_hint=self.is_opaque,
+        )
+
         self.faces_info: dict[str, ResolvedFaceTexture] = {}
         self.tex_to_res: dict[str, ResolvedFaceTexture] = {}
+
 
         if not self.is_air:
             json_faces = None
@@ -584,6 +597,8 @@ def _generate_single_block_faces(
     is_prop_cnt = 0
     is_fluid_cnt = 0
 
+    face_culler = get_shared_face_culler()
+
     if meta.is_fluid:
         eff_mat_mgr = mat_manager or _GLOBAL_MAT_MANAGER or get_shared_material_manager(world_obj=None, atlas_params=None)
         fluid_faces = generate_fluid_mesh_faces(
@@ -615,12 +630,14 @@ def _generate_single_block_faces(
                     dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
                     n_pos = (x + dx, y + dy, z + dz)
                     n_meta = _get_neighbor_meta(n_pos)
-                    if n_meta and not n_meta.is_air and n_meta.is_cube:
-                        if meta.is_opaque and n_meta.is_opaque:
-                            continue
-                        elif not meta.is_opaque:
-                            if n_meta.is_opaque or n_meta.parsed.name == meta.parsed.name:
-                                continue
+                    if not face_culler.should_render_face(
+                        state_meta=meta.cull_meta,
+                        neighbor_meta=n_meta.cull_meta if n_meta else None,
+                        direction=cull_dir,
+                        block_pos=(x, y, z),
+                        neighbor_pos=n_pos,
+                    ):
+                        continue
 
                 f_res = meta.get_face_res(bf, f_dir)
                 bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in bf.vertices]
@@ -645,18 +662,21 @@ def _generate_single_block_faces(
             dx, dy, dz = MC_DIR_OFFSETS[f_name]
             neighbor_pos = (x + dx, y + dy, z + dz)
             n_meta = _get_neighbor_meta(neighbor_pos)
-            if n_meta and not n_meta.is_air and n_meta.is_cube:
-                if meta.is_opaque and n_meta.is_opaque:
-                    continue
-                elif not meta.is_opaque:
-                    if n_meta.is_opaque or n_meta.parsed.name == meta.parsed.name:
-                        continue
+            if not face_culler.should_render_face(
+                state_meta=meta.cull_meta,
+                neighbor_meta=n_meta.cull_meta if n_meta else None,
+                direction=f_name,
+                block_pos=(x, y, z),
+                neighbor_pos=neighbor_pos,
+            ):
+                continue
 
             f_res = meta.faces_info.get(f_name, meta.faces_info.get("east"))
             mc_verts = CUBE_FACE_MC_VERTICES[f_name]
             canonical_uvs = CUBE_FACE_CANONICAL_UVS[f_name]
             bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in mc_verts]
             world_coords = [(bx + vx, by + vy, bz + vz) for vx, vy, vz in bl_coords]
+
 
             _emit_bmesh_face(
                 bm=bm,

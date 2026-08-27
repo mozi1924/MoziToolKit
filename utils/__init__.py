@@ -15,6 +15,7 @@ from . import node_groups
 from . import pixel_split
 from . import extrude_repair
 from . import system
+from . import culling
 
 __all__ = [
     "materials",
@@ -23,4 +24,6 @@ __all__ = [
     "pixel_split",
     "extrude_repair",
     "system",
+    "culling",
 ]
+
