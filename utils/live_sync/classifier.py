@@ -308,6 +308,46 @@ def atlas_lookup_keys(parsed_or_name: Union[ParsedBlock, str], props: Optional[D
         keys.append(f"minecraft:block/{color}_wool" if color else "minecraft:block/white_wool")
         keys.append("minecraft:block/oak_planks")
 
+    if name in ("end_portal", "end_gateway"):
+        keys.append("minecraft:entity/end_portal")
+        keys.append("entity/end_portal")
+        keys.append("minecraft:entity/end_portal/end_portal")
+        keys.append("entity/end_portal/end_portal")
+
+    if name.endswith(("_head", "_skull", "_wall_head", "_wall_skull")):
+        head_type = name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
+        if head_type == "skeleton":
+            keys.extend(["minecraft:entity/skeleton/skeleton", "entity/skeleton/skeleton"])
+        elif head_type == "wither_skeleton":
+            keys.extend(["minecraft:entity/skeleton/wither_skeleton", "entity/skeleton/wither_skeleton"])
+        elif head_type == "zombie":
+            keys.extend(["minecraft:entity/zombie/zombie", "entity/zombie/zombie"])
+        elif head_type == "creeper":
+            keys.extend(["minecraft:entity/creeper/creeper", "entity/creeper/creeper"])
+        elif head_type == "piglin":
+            keys.extend(["minecraft:entity/piglin/piglin", "entity/piglin/piglin"])
+        elif head_type == "dragon":
+            keys.extend(["minecraft:entity/enderdragon/dragon", "entity/enderdragon/dragon"])
+        else:
+            keys.extend(["minecraft:entity/player/wide/steve", "entity/player/wide/steve", "minecraft:entity/steve", "entity/steve"])
+
+    if name == "conduit":
+        keys.extend(["minecraft:entity/conduit/base", "entity/conduit/base"])
+
+    if name == "decorated_pot":
+        keys.extend(["minecraft:entity/decorated_pot/decorated_pot_base", "entity/decorated_pot/decorated_pot_base"])
+
+    if name.endswith("_shulker_box") or name == "shulker_box":
+        color = name.removesuffix("_shulker_box")
+        if color == "shulker_box" or not color:
+            keys.extend(["minecraft:entity/shulker/shulker", "entity/shulker/shulker"])
+        else:
+            keys.extend([f"minecraft:entity/shulker/shulker_{color}", f"entity/shulker/shulker_{color}", "minecraft:entity/shulker/shulker", "entity/shulker/shulker"])
+
+    if name.endswith("_bed") or name == "bed":
+        color = name.removesuffix("_bed") if name.endswith("_bed") else "white"
+        keys.extend([f"minecraft:entity/bed/{color}", f"entity/bed/{color}", f"minecraft:block/{color}_wool"])
+
     keys.extend((name, parsed.block_id, f"minecraft:{name}"))
     return tuple(dict.fromkeys(keys))
 

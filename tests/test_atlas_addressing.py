@@ -35,21 +35,19 @@ class TestSceneObjectBlacklist(unittest.TestCase):
     def test_living_mob_entities_blacklisted(self):
         """Living mob entities must be recognized as blacklisted."""
         mobs = [
-            "entity/zombie/zombie",
-            "entity/skeleton/skeleton",
-            "entity/creeper/creeper",
             "entity/spider/spider",
             "entity/cow/cow",
             "entity/pig/pig",
             "entity/sheep/sheep",
             "entity/chicken/chicken",
             "entity/villager/villager",
-            "entity/player/wide/steve",
-            "entity/alex",
             "entity/warden/warden",
-            "entity/enderdragon/dragon",
-            "minecraft:entity/zombie/zombie",
-            "textures/entity/creeper/creeper.png",
+            "entity/frog/frog",
+            "entity/axolotl/axolotl",
+            "entity/breeze/breeze",
+            "entity/sniffer/sniffer",
+            "entity/allay/allay",
+            "textures/entity/spider/spider.png",
         ]
         for mob in mobs:
             self.assertTrue(is_scene_blacklisted(mob), f"Expected {mob} to be blacklisted")
@@ -95,10 +93,22 @@ class TestSceneObjectBlacklist(unittest.TestCase):
             "entity/signs/oak",
             "entity/sign/oak",
             "entity/conduit/conduit",
+            "entity/end_portal",
             "entity/end_portal/end_portal",
+            "entity/end_gateway",
             "entity/enchanting_table/book",
             "entity/armorstand/wood",
             "painting/kebab",
+            # Skulls and Heads
+            "entity/skeleton/skeleton",
+            "entity/skeleton/wither_skeleton",
+            "entity/zombie/zombie",
+            "entity/creeper/creeper",
+            "entity/piglin/piglin",
+            "entity/player/wide/steve",
+            "entity/steve",
+            "entity/alex",
+            "entity/enderdragon/dragon",
         ]
         for item in allowed:
             self.assertFalse(is_scene_blacklisted(item), f"Expected {item} to be allowed in scene")
@@ -198,12 +208,12 @@ class TestAtlasAddressResolver(unittest.TestCase):
                     "texture_key": "minecraft:entity/chest/normal_right",
                 },
                 # Intentionally present in raw mapping to verify blacklist filtering
-                "minecraft:entity/zombie/zombie": {
+                "minecraft:entity/spider/spider": {
                     "chunk_id": 0,
                     "texture_id": 5,
                     "tile_column": 7,
                     "tile_row": 2,
-                    "texture_key": "minecraft:entity/zombie/zombie",
+                    "texture_key": "minecraft:entity/spider/spider",
                 },
             },
             "animations": [
@@ -280,8 +290,8 @@ class TestAtlasAddressResolver(unittest.TestCase):
 
     def test_lookup_texture_rejects_blacklisted_items(self):
         """Verify that blacklisted mobs, UI, and maps return None during lookup."""
-        self.assertIsNone(self.resolver.lookup_texture("minecraft:entity/zombie/zombie"))
-        self.assertIsNone(self.resolver.lookup_texture("entity/creeper/creeper"))
+        self.assertIsNone(self.resolver.lookup_texture("minecraft:entity/spider/spider"))
+        self.assertIsNone(self.resolver.lookup_texture("entity/cow/cow"))
         self.assertIsNone(self.resolver.lookup_texture("gui/widgets"))
         self.assertIsNone(self.resolver.lookup_texture("map/map_icons"))
 

@@ -166,42 +166,53 @@ SCENE_BLACKLIST_PREFIXES = (
 
 # Allowed placeable entity prefixes that DO appear as blocks or static scene props
 ALLOWED_SCENE_ENTITY_PREFIXES = (
-    "entity/chest/",
-    "chest/",
-    "entity/shulker/",
-    "shulker/",
-    "shulker_boxes/",
-    "entity/banner/",
-    "banner/",
-    "entity/shield/",
-    "shield/",
-    "entity/decorated_pot/",
-    "decorated_pot/",
-    "entity/bed/",
-    "bed/",
-    "entity/bell/",
-    "bell/",
-    "entity/signs/",
-    "entity/sign/",
-    "signs/",
-    "sign/",
-    "entity/conduit/",
-    "conduit/",
-    "entity/end_portal/",
-    "end_portal/",
-    "entity/enchanting_table/",
-    "enchanting_table/",
-    "entity/armorstand/",
-    "armorstand/",
-    "painting/",
-    "paintings/",
+    "entity/chest",
+    "chest",
+    "entity/shulker",
+    "shulker",
+    "shulker_boxes",
+    "entity/banner",
+    "banner",
+    "entity/shield",
+    "shield",
+    "entity/decorated_pot",
+    "decorated_pot",
+    "entity/bed",
+    "bed",
+    "entity/bell",
+    "bell",
+    "entity/signs",
+    "entity/sign",
+    "signs",
+    "sign",
+    "entity/conduit",
+    "conduit",
+    "entity/end_portal",
+    "end_portal",
+    "entity/end_gateway",
+    "end_gateway",
+    "entity/enchanting_table",
+    "enchanting_table",
+    "entity/armorstand",
+    "armorstand",
+    "painting",
+    "paintings",
+    # Skulls and Heads (Head.java / placeable head block entities)
+    "entity/skeleton",
+    "entity/wither_skeleton",
+    "entity/zombie",
+    "entity/creeper",
+    "entity/piglin",
+    "entity/player",
+    "entity/steve",
+    "entity/alex",
+    "entity/enderdragon",
+    "entity/dragon",
+    "entity/wither",
 )
 
 # Known living mob / creature entity subpaths that should NEVER be resolved or placed as scene blocks/props
 LIVING_MOB_ENTITY_PREFIXES = (
-    "entity/zombie",
-    "entity/skeleton",
-    "entity/creeper",
     "entity/spider",
     "entity/enderman",
     "entity/cow",
@@ -216,12 +227,6 @@ LIVING_MOB_ENTITY_PREFIXES = (
     "entity/magma_cube",
     "entity/ghast",
     "entity/blaze",
-    "entity/wither",
-    "entity/dragon",
-    "entity/enderdragon",
-    "entity/player",
-    "entity/steve",
-    "entity/alex",
     "entity/horse",
     "entity/donkey",
     "entity/mule",
@@ -253,7 +258,6 @@ LIVING_MOB_ENTITY_PREFIXES = (
     "entity/husk",
     "entity/stray",
     "entity/bogged",
-    "entity/piglin",
     "entity/hoglin",
     "entity/iron_golem",
     "entity/snow_golem",
@@ -296,11 +300,13 @@ def is_scene_blacklisted(path_or_key: str) -> bool:
     if k.startswith(("entity/", "entities/")):
         # First check allowed placeable scene entities
         for allowed in ALLOWED_SCENE_ENTITY_PREFIXES:
-            if k.startswith(allowed) or f"/{allowed}" in f"/{k}":
+            clean_allowed = allowed.rstrip("/")
+            if k == clean_allowed or k.startswith(f"{clean_allowed}/") or f"/{clean_allowed}/" in f"/{k}/" or f"/{clean_allowed}" == f"/{k}":
                 return False
         # Any other entity (or explicit living mob prefix) is blacklisted for scenes
         for mob in LIVING_MOB_ENTITY_PREFIXES:
-            if k.startswith(mob):
+            clean_mob = mob.rstrip("/")
+            if k == clean_mob or k.startswith(f"{clean_mob}/"):
                 return True
         # If it's under entity/ and not explicitly allowed, it's considered non-scene
         return True

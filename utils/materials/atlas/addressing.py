@@ -109,6 +109,52 @@ ENTITY_BLOCK_ALIASES: dict[str, list[str]] = {
         "entity/banner_base",
         "entity/banner/base",
     ],
+    "end_portal": [
+        "entity/end_portal",
+        "minecraft:entity/end_portal",
+        "entity/end_portal/end_portal",
+        "minecraft:entity/end_portal/end_portal",
+    ],
+    "end_gateway": [
+        "entity/end_portal",
+        "minecraft:entity/end_portal",
+        "entity/end_portal/end_portal",
+        "minecraft:entity/end_portal/end_portal",
+    ],
+    "skeleton_skull": ["entity/skeleton/skeleton", "minecraft:entity/skeleton/skeleton"],
+    "skeleton_wall_skull": ["entity/skeleton/skeleton", "minecraft:entity/skeleton/skeleton"],
+    "wither_skeleton_skull": ["entity/skeleton/wither_skeleton", "minecraft:entity/skeleton/wither_skeleton"],
+    "wither_skeleton_wall_skull": ["entity/skeleton/wither_skeleton", "minecraft:entity/skeleton/wither_skeleton"],
+    "zombie_head": ["entity/zombie/zombie", "minecraft:entity/zombie/zombie"],
+    "zombie_wall_head": ["entity/zombie/zombie", "minecraft:entity/zombie/zombie"],
+    "creeper_head": ["entity/creeper/creeper", "minecraft:entity/creeper/creeper"],
+    "creeper_wall_head": ["entity/creeper/creeper", "minecraft:entity/creeper/creeper"],
+    "piglin_head": ["entity/piglin/piglin", "minecraft:entity/piglin/piglin"],
+    "piglin_wall_head": ["entity/piglin/piglin", "minecraft:entity/piglin/piglin"],
+    "player_head": [
+        "entity/player/wide/steve",
+        "minecraft:entity/player/wide/steve",
+        "entity/steve",
+        "minecraft:entity/steve",
+    ],
+    "player_wall_head": [
+        "entity/player/wide/steve",
+        "minecraft:entity/player/wide/steve",
+        "entity/steve",
+        "minecraft:entity/steve",
+    ],
+    "dragon_head": [
+        "entity/enderdragon/dragon",
+        "minecraft:entity/enderdragon/dragon",
+        "entity/dragon/dragon",
+        "minecraft:entity/dragon/dragon",
+    ],
+    "dragon_wall_head": [
+        "entity/enderdragon/dragon",
+        "minecraft:entity/enderdragon/dragon",
+        "entity/dragon/dragon",
+        "minecraft:entity/dragon/dragon",
+    ],
 }
 for _c in (
     "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
@@ -275,6 +321,54 @@ class AtlasAddressResolver:
                     elif category == "decorated_pot":
                         self._locations.setdefault(f"minecraft:entity/decorated_pot/{short_name}", location)
                         self._locations.setdefault(f"entity/decorated_pot/{short_name}", location)
+                    elif category == "entities":
+                        self._locations.setdefault(f"minecraft:entity/{tex_name.removeprefix('entity/').removeprefix('entities/')}", location)
+                        self._locations.setdefault(f"entity/{tex_name.removeprefix('entity/').removeprefix('entities/')}", location)
+                        self._locations.setdefault(f"minecraft:{tex_name}", location)
+                        self._locations.setdefault(tex_name, location)
+                        if tex_name.startswith("entity/end_portal") or tex_name == "end_portal":
+                            self._locations.setdefault("minecraft:entity/end_portal", location)
+                            self._locations.setdefault("entity/end_portal", location)
+                            self._locations.setdefault("minecraft:end_portal", location)
+                            self._locations.setdefault("end_portal", location)
+                        elif "skeleton" in tex_name:
+                            if "wither" in tex_name:
+                                self._locations.setdefault("minecraft:entity/skeleton/wither_skeleton", location)
+                                self._locations.setdefault("entity/skeleton/wither_skeleton", location)
+                                self._locations.setdefault("wither_skeleton_skull", location)
+                                self._locations.setdefault("minecraft:wither_skeleton_skull", location)
+                            else:
+                                self._locations.setdefault("minecraft:entity/skeleton/skeleton", location)
+                                self._locations.setdefault("entity/skeleton/skeleton", location)
+                                self._locations.setdefault("skeleton_skull", location)
+                                self._locations.setdefault("minecraft:skeleton_skull", location)
+                        elif "zombie" in tex_name:
+                            self._locations.setdefault("minecraft:entity/zombie/zombie", location)
+                            self._locations.setdefault("entity/zombie/zombie", location)
+                            self._locations.setdefault("zombie_head", location)
+                            self._locations.setdefault("minecraft:zombie_head", location)
+                        elif "creeper" in tex_name:
+                            self._locations.setdefault("minecraft:entity/creeper/creeper", location)
+                            self._locations.setdefault("entity/creeper/creeper", location)
+                            self._locations.setdefault("creeper_head", location)
+                            self._locations.setdefault("minecraft:creeper_head", location)
+                        elif "piglin" in tex_name:
+                            self._locations.setdefault("minecraft:entity/piglin/piglin", location)
+                            self._locations.setdefault("entity/piglin/piglin", location)
+                            self._locations.setdefault("piglin_head", location)
+                            self._locations.setdefault("minecraft:piglin_head", location)
+                        elif "player" in tex_name or "steve" in tex_name:
+                            self._locations.setdefault("minecraft:entity/player/wide/steve", location)
+                            self._locations.setdefault("entity/player/wide/steve", location)
+                            self._locations.setdefault("minecraft:entity/steve", location)
+                            self._locations.setdefault("entity/steve", location)
+                            self._locations.setdefault("player_head", location)
+                            self._locations.setdefault("minecraft:player_head", location)
+                        elif "dragon" in tex_name:
+                            self._locations.setdefault("minecraft:entity/enderdragon/dragon", location)
+                            self._locations.setdefault("entity/enderdragon/dragon", location)
+                            self._locations.setdefault("dragon_head", location)
+                            self._locations.setdefault("minecraft:dragon_head", location)
 
         # 3. Index animations (overwrites static fallbacks for animated textures)
         animations = self.mapping.get("animations", [])

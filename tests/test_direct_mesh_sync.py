@@ -135,6 +135,71 @@ class TestDirectMeshSync(unittest.TestCase):
         banner_mat = section.data.materials[banner_poly.material_index]
         self.assertEqual(banner_mat["mtk:atlas_chunk_id"], 7)
 
+    def test_section_slots_for_skulls_and_end_portal_entity_chunks(self):
+        """Skulls, heads, and end portal must address entities_chunk (chunk 8), never falling back to blocks_chunk_001 (chunk 0)."""
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:skeleton_skull[rotation=0]")
+        storage.set_block(1, 0, 0, "minecraft:end_portal")
+        storage.set_block(2, 0, 0, "minecraft:dragon_head[rotation=0]")
+
+        atlas_params = {
+            "mapping": {
+                "chunks": [
+                    {"chunk_id": 0, "category": "blocks", "kind": "static", "width": 512, "height": 512, "tile_size": 16},
+                    {"chunk_id": 8, "category": "entities", "kind": "static", "width": 512, "height": 512, "packing": "rect_bin_pack"},
+                ],
+                "textures": {
+                    "minecraft:block/oak_planks": {"chunk_id": 0, "tile_column": 0, "tile_row": 0, "category": "blocks"},
+                    "minecraft:entity/skeleton/skeleton": {
+                        "chunk_id": 8, "pixel_x": 0, "pixel_y": 0,
+                        "rect_width": 64, "rect_height": 32, "category": "entities",
+                    },
+                    "minecraft:entity/end_portal": {
+                        "chunk_id": 8, "pixel_x": 64, "pixel_y": 0,
+                        "rect_width": 16, "rect_height": 16, "category": "entities",
+                    },
+                    "minecraft:entity/enderdragon/dragon": {
+                        "chunk_id": 8, "pixel_x": 128, "pixel_y": 0,
+                        "rect_width": 128, "rect_height": 64, "category": "entities",
+                    },
+                },
+            }
+        }
+
+        result = sync_world_mesh(bpy.context, storage, atlas_params=atlas_params, force_full_rebuild=True)
+        section = next(child for child in result.world_obj.children if child.name.startswith("Yefira_Section_"))
+        self.assertTrue(any(mat and mat.get("mtk:atlas_chunk_id") == 8 for mat in section.data.materials))
+
+        source_key = section.data.attributes["mtk_source_texture_key"]
+        chunk_id_attr = section.data.attributes["mtk_atlas_chunk_id"]
+
+        def _get_key(poly_idx):
+            v = source_key.data[poly_idx].value
+            return v.decode("utf-8") if isinstance(v, bytes) else v
+
+        skull_polys = [p for p in section.data.polygons if _get_key(p.index) == "minecraft:entity/skeleton/skeleton"]
+        portal_polys = [p for p in section.data.polygons if _get_key(p.index) == "minecraft:entity/end_portal"]
+        dragon_polys = [p for p in section.data.polygons if _get_key(p.index) == "minecraft:entity/enderdragon/dragon"]
+
+        self.assertGreater(len(skull_polys), 0, "Skeleton skull polygons missing")
+        self.assertGreater(len(portal_polys), 0, "End portal polygons missing")
+        self.assertGreater(len(dragon_polys), 0, "Dragon head polygons missing")
+
+        for poly in skull_polys:
+            mat = section.data.materials[poly.material_index]
+            self.assertEqual(mat["mtk:atlas_chunk_id"], 8, "Skeleton skull assigned to wrong chunk material")
+            self.assertEqual(chunk_id_attr.data[poly.index].value, 8)
+
+        for poly in portal_polys:
+            mat = section.data.materials[poly.material_index]
+            self.assertEqual(mat["mtk:atlas_chunk_id"], 8, "End portal assigned to wrong chunk material")
+            self.assertEqual(chunk_id_attr.data[poly.index].value, 8)
+
+        for poly in dragon_polys:
+            mat = section.data.materials[poly.material_index]
+            self.assertEqual(mat["mtk:atlas_chunk_id"], 8, "Dragon head assigned to wrong chunk material")
+            self.assertEqual(chunk_id_attr.data[poly.index].value, 8)
+
     def test_face_culling_between_adjacent_cubes(self):
         """Two adjacent opaque cubes should have their touching faces culled (12 - 2 = 10 faces)."""
         storage = VoxelStorage()
