@@ -330,6 +330,13 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         if voxel_storage.size_x == 0 or not voxel_storage.section_crc_map:
             restore_sync_state_from_scene(context)
 
+        # 2. Immediately trigger eager pre-warming of hot states, material manager, and baker
+        existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        mat = find_bound_atlas_material(existing_world) if existing_world else None
+        atlas_params = get_cached_atlas_params(mat)
+        known_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
+        preload_sync_world_data(palette=known_palette, world_obj=existing_world, atlas_params=atlas_params)
+
         def run_in_main_thread(func):
             def wrapper():
                 try:
@@ -344,6 +351,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
                 if props.is_connected:
+                    cur_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                    cur_mat = find_bound_atlas_material(cur_world) if cur_world else None
+                    cur_atlas_params = get_cached_atlas_params(cur_mat)
+                    cur_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
+                    preload_sync_world_data(palette=cur_palette, world_obj=cur_world, atlas_params=cur_atlas_params)
                     start_main_thread_pump()
                 else:
                     stop_main_thread_pump()
@@ -362,6 +374,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.max_z = min_z + size_z - 1
                 props.size_x, props.size_y, props.size_z = size_x, size_y, size_z
                 props.total_blocks = size_x * size_y * size_z
+                cur_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                cur_mat = find_bound_atlas_material(cur_world) if cur_world else None
+                cur_atlas_params = get_cached_atlas_params(cur_mat)
+                cur_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
+                preload_sync_world_data(palette=cur_palette, world_obj=cur_world, atlas_params=cur_atlas_params)
             run_in_main_thread(update)
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
@@ -448,6 +465,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
                 )
 
+                cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
+                cur_atlas_params = get_cached_atlas_params(cur_mat)
+                cur_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
+                preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=cur_atlas_params)
+
                 if not _force_next_full_rebuild and props.sync_verified and has_existing_mesh:
                     _skip_next_full_snapshot = True
                     props.validation_info = "Verified (100% in sync with scene)"
@@ -468,6 +490,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     size_x, size_y, size_z, palette, grid_indices
                 )
                 if updated:
+                    existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                    cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
+                    cur_atlas_params = get_cached_atlas_params(cur_mat)
+                    preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=cur_atlas_params)
                     schedule_mesh_sync()
                     props.update_counter += 1
                     props.last_update_info = f"Repaired Section ({sec_x}, {sec_y}, {sec_z})"

@@ -377,7 +377,7 @@ _idle_prewarm_pending: list[str] = []
 
 
 def _idle_prewarm_tick() -> Optional[float]:
-    """Background idle timer that warms remaining cold blockstates in tiny batches during idle frames."""
+    """Background idle timer that warms remaining cold blockstates rapidly during idle frames."""
     global _idle_prewarm_timer_registered, _idle_prewarm_pending
     if not _idle_prewarm_timer_registered or not _idle_prewarm_pending:
         _idle_prewarm_timer_registered = False
@@ -388,7 +388,7 @@ def _idle_prewarm_tick() -> Optional[float]:
         return None
 
     baker = get_shared_state_baker()
-    batch_size = 20
+    batch_size = 50
     batch = _idle_prewarm_pending[:batch_size]
     _idle_prewarm_pending = _idle_prewarm_pending[batch_size:]
 
@@ -401,7 +401,7 @@ def _idle_prewarm_tick() -> Optional[float]:
                 pass
 
     if _idle_prewarm_pending:
-        return 0.1  # Schedule next batch in 100ms
+        return 0.02  # Schedule next batch in 20ms
     else:
         _idle_prewarm_timer_registered = False
         logger.info(f"Live Sync: Completed full background pre-warming ({len(_GLOBAL_STATE_META_CACHE)} total states).")
@@ -453,7 +453,7 @@ def preload_sync_world_data(
             if not _idle_prewarm_timer_registered and hasattr(bpy, "app") and hasattr(bpy.app, "timers"):
                 try:
                     _idle_prewarm_timer_registered = True
-                    bpy.app.timers.register(_idle_prewarm_tick, first_interval=0.5)
+                    bpy.app.timers.register(_idle_prewarm_tick, first_interval=0.01)
                 except Exception:
                     _idle_prewarm_timer_registered = False
 
