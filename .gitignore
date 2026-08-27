@@ -240,3 +240,5 @@ Icon?
 .DocumentRevisions-V100
 
 *.blend*
+
+.VSCodeCounter

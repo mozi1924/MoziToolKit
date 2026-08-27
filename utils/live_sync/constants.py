@@ -6,6 +6,29 @@ from typing import Final
 CONTRACT_VERSION: Final = 5
 FACES: Final = ("east", "west", "top", "bottom", "south", "north")
 
+# Direction vectors in Minecraft space (East=+X, West=-X, Up=+Y, Down=-Y, South=+Z, North=-Z)
+MC_DIR_OFFSETS: Final[dict[str, tuple[int, int, int]]] = {
+    "east": (1, 0, 0),
+    "west": (-1, 0, 0),
+    "up": (0, 1, 0),
+    "top": (0, 1, 0),
+    "down": (0, -1, 0),
+    "bottom": (0, -1, 0),
+    "south": (0, 0, 1),
+    "north": (0, 0, -1),
+}
+
+DIR_TO_INDEX: Final[dict[str, int]] = {
+    "east": 0,
+    "west": 1,
+    "up": 2,
+    "top": 2,
+    "down": 3,
+    "bottom": 3,
+    "south": 4,
+    "north": 5,
+}
+
 # Native Direct Mesh Face Attribute Convention
 MTK_BLOCK_X: Final = "mtk_block_x"
 MTK_BLOCK_Y: Final = "mtk_block_y"
