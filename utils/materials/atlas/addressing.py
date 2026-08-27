@@ -452,19 +452,25 @@ class AtlasAddressResolver:
 
     def lookup_texture(
         self,
-        candidate_or_candidates: Union[str, list[str], tuple[str, ...]],
+        candidate_or_candidates: Union[str, Sequence[str]],
         namespace: str = DEFAULT_NAMESPACE,
         category: Optional[str] = None,
+        _visited: Optional[set[str]] = None,
     ) -> Optional[dict]:
         """
-        Authoritative lookup resolving a candidate or list of candidates to an Atlas location dict.
-        Filters out scene-blacklisted candidates (Mobs, UI, Map graphics).
-        Supports optional category constraint/preference.
+        Locate metadata for a Minecraft texture key across namespaces and variations.
+        Supports single keys or prioritize-ordered lists of candidates.
         """
+        if not candidate_or_candidates:
+            return None
+
         if isinstance(candidate_or_candidates, str):
             candidates = [candidate_or_candidates]
         else:
             candidates = list(candidate_or_candidates)
+
+        if _visited is None:
+            _visited = set()
 
         def _is_category(loc_dict: Optional[dict]) -> bool:
             if not loc_dict or not category:
@@ -480,6 +486,10 @@ class AtlasAddressResolver:
             if not cand or not isinstance(cand, str):
                 continue
             cand_clean = cand.strip()
+            if cand_clean in _visited:
+                continue
+            _visited.add(cand_clean)
+
             if self.is_blacklisted(cand_clean):
                 continue
 
@@ -540,11 +550,12 @@ class AtlasAddressResolver:
             # 5. Check BLOCK_TO_TEXTURE_ALIASES
             if stem in BLOCK_TO_TEXTURE_ALIASES:
                 for alt in BLOCK_TO_TEXTURE_ALIASES[stem]:
-                    alt_loc = self.lookup_texture(alt, namespace=target_ns, category=category)
-                    if alt_loc and _is_category(alt_loc):
-                        return alt_loc
-                    if alt_loc and any_match is None:
-                        any_match = alt_loc
+                    if alt not in _visited:
+                        alt_loc = self.lookup_texture(alt, namespace=target_ns, category=category, _visited=_visited)
+                        if alt_loc and _is_category(alt_loc):
+                            return alt_loc
+                        if alt_loc and any_match is None:
+                            any_match = alt_loc
 
         return any_match if category is None else None
 
@@ -795,6 +806,23 @@ class AtlasAddressResolver:
             c_lut = block_face_chunk_lut.get(p_name) or block_face_chunk_lut.get(getattr(parsed, "full_state", ""))
             if c_lut and len(c_lut) > face_index:
                 chunk_id = int(c_lut[face_index])
+
+        if not loc and chunk_id == 0:
+            short_p = p_name.split(":", 1)[-1].removeprefix("block/")
+            if "end_portal" in short_p or "gateway" in short_p:
+                chunk_id = 17
+            elif short_p in ANIMATED_BLOCK_ALIASES or "portal" in short_p or "water" in short_p or "lava" in short_p or "fire" in short_p:
+                chunk_id = 1
+            elif "chest" in short_p:
+                chunk_id = 8
+            elif "shulker" in short_p:
+                chunk_id = 9
+            elif "decorated_pot" in short_p or "pot" in short_p:
+                chunk_id = 11
+            elif "head" in short_p or "skull" in short_p:
+                chunk_id = 12
+            elif "banner" in short_p:
+                chunk_id = 18
 
         texture_id = int(loc.get("texture_id", 0)) if loc else 0
         target_chunk = self.get_target_chunk(chunk_id, fallback_params=fallback_params)
