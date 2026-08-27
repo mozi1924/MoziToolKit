@@ -29,6 +29,7 @@ from mathutils import Vector
 from utils.live_sync.storage import VoxelStorage
 from utils.live_sync.material_manager import LiveSyncMaterialManager
 from utils.live_sync.mesh_builder import build_world_mesh, apply_block_delta_to_world
+from utils.live_sync.classifier import parse_and_classify
 from utils.live_sync.fluid_mesher import (
     get_fluid_base_height,
     sample_fluid_height,
@@ -36,6 +37,7 @@ from utils.live_sync.fluid_mesher import (
     calculate_fluid_corner_heights,
     calculate_fluid_flow_vector,
     is_fluid_flowing,
+    is_fluid_block,
     should_cull_fluid_face,
     generate_fluid_mesh_faces,
     MAX_FLUID_HEIGHT,
@@ -511,6 +513,112 @@ class TestFluidLiveSync(unittest.TestCase):
                 self.assertAlmostEqual(f[layers["rot"]], 0.0, places=4, msg="Stationary pool rotation must be 0")
 
         bm.free()
+
+    def test_waterlogged_block_fluid_surface_and_culling(self):
+        """
+        Verify that waterlogged blocks (e.g. waterlogged stairs or slabs) are recognized
+        as fluid-bearing blocks, generate fluid surfaces, and correctly cull/connect with adjacent water.
+        """
+        stair_state = "minecraft:oak_stairs[facing=north,half=bottom,shape=straight,waterlogged=true]"
+        self.assertTrue(is_fluid_block(stair_state), "Waterlogged stair must be recognized as fluid block")
+
+        block_map = {
+            (0, 0, 0): stair_state,
+            (1, 0, 0): "minecraft:water[level=0]",  # Adjacent water source
+        }
+
+        # 1. Height sampling: waterlogged stair returns 8/9 base height
+        h_stair = sample_fluid_height(block_map, 0, 0, 0, "water")
+        self.assertAlmostEqual(h_stair, MAX_FLUID_HEIGHT, places=4)
+
+        # 2. Adjacent water at (1, 0, 0) connects to stair at (0, 0, 0): West corners (NW, SW) higher than air corners (NE, SE)
+        c_nw, c_ne, c_se, c_sw = calculate_fluid_corner_heights(block_map, 1, 0, 0, "water")
+        self.assertGreater(c_nw, c_ne, "West corners touching waterlogged block must be higher than air corners")
+        self.assertGreater(c_sw, c_se, "West corners touching waterlogged block must be higher than air corners")
+
+        # 3. Full 3x3 pool with waterlogged blocks in it produces full MAX_FLUID_HEIGHT flat surface
+        pool_map = {
+            (x, 0, z): stair_state if (x == 0 and z == 0) else "minecraft:water[level=0]"
+            for x in (0, 1, 2)
+            for z in (0, 1, 2)
+        }
+        p_nw, p_ne, p_se, p_sw = calculate_fluid_corner_heights(pool_map, 1, 0, 1, "water")
+        self.assertAlmostEqual(p_nw, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(p_ne, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(p_se, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(p_sw, MAX_FLUID_HEIGHT, places=4)
+
+        # 3. Full mesh build: produces both stair model faces and water fluid faces
+        self.storage.set_block(0, 0, 0, stair_state)
+        res = build_world_mesh(
+            context=bpy.context,
+            storage=self.storage,
+            atlas_params=self.atlas_params,
+            origin_centered=True,
+        )
+        self.assertIsNotNone(res.world_obj)
+        self.assertGreater(res.fluids_count, 0, "Waterlogged stair must increment fluids count")
+        self.assertGreater(res.face_count, 0)
+
+    def test_kelp_and_seagrass_inherent_waterlogged(self):
+        """
+        Verify that underwater plants (seagrass, kelp) are inherently classified as waterlogged.
+        """
+        p_kelp = parse_and_classify("minecraft:kelp[age=5]")
+        self.assertTrue(p_kelp.is_waterlogged, "Kelp must be inherently waterlogged")
+
+        p_seagrass = parse_and_classify("minecraft:seagrass")
+        self.assertTrue(p_seagrass.is_waterlogged, "Seagrass must be inherently waterlogged")
+
+    def test_waterlogged_outflow_slanted_side_and_top_uv_rotation(self):
+        """
+        Verify that water flowing outward down the 4 slanted slopes from a waterlogged block
+        (as in the cross-fountain configuration) computes the exact cardinal flow angles.
+        """
+        slab_state = "minecraft:oak_slab[type=bottom,waterlogged=true]"
+        fountain_map = {
+            (0, -1, 0): "minecraft:stone",          # Solid pillar support below
+            (0, 0, 0): slab_state,
+            (0, 0, 1): "minecraft:water[level=1]",   # South slope (+Z)
+            (1, 0, 0): "minecraft:water[level=1]",   # East slope (+X)
+            (0, 0, -1): "minecraft:water[level=1]",  # North slope (-Z)
+            (-1, 0, 0): "minecraft:water[level=1]",  # West slope (-X)
+        }
+
+        # 1. South slope at (0, 0, 1) -> must flow South (flow_angle ~ 0.0)
+        h_s = get_fluid_base_height("minecraft:water[level=1]")
+        vx_s, vz_s, angle_s = calculate_fluid_flow_vector(fountain_map, 0, 0, 1, "water", h_s)
+        self.assertGreater(vz_s, 0.0, "South slope must have positive vz flow")
+        self.assertAlmostEqual(vx_s, 0.0, places=4)
+        self.assertAlmostEqual(angle_s, 0.0, places=4, msg="South slope flow angle must be 0.0")
+
+        # 2. East slope at (1, 0, 0) -> must flow East (flow_angle ~ -pi/2)
+        h_e = get_fluid_base_height("minecraft:water[level=1]")
+        vx_e, vz_e, angle_e = calculate_fluid_flow_vector(fountain_map, 1, 0, 0, "water", h_e)
+        self.assertGreater(vx_e, 0.0, "East slope must have positive vx flow")
+        self.assertAlmostEqual(vz_e, 0.0, places=4)
+        self.assertAlmostEqual(angle_e, -math.pi / 2.0, places=4, msg="East slope flow angle must be -pi/2")
+
+        # 3. North slope at (0, 0, -1) -> must flow North (flow_angle ~ -pi)
+        h_n = get_fluid_base_height("minecraft:water[level=1]")
+        vx_n, vz_n, angle_n = calculate_fluid_flow_vector(fountain_map, 0, 0, -1, "water", h_n)
+        self.assertLess(vz_n, 0.0, "North slope must have negative vz flow")
+        self.assertAlmostEqual(vx_n, 0.0, places=4)
+        self.assertAlmostEqual(angle_n, -math.pi, places=4, msg="North slope flow angle must be -pi")
+
+        # 4. West slope at (-1, 0, 0) -> must flow West (flow_angle ~ pi/2)
+        h_w = get_fluid_base_height("minecraft:water[level=1]")
+        vx_w, vz_w, angle_w = calculate_fluid_flow_vector(fountain_map, -1, 0, 0, "water", h_w)
+        self.assertLess(vx_w, 0.0, "West slope must have negative vx flow")
+        self.assertAlmostEqual(vz_w, 0.0, places=4)
+        self.assertAlmostEqual(angle_w, math.pi / 2.0, places=4, msg="West slope flow angle must be pi/2")
+
+        # 5. Center waterlogged slab at (0, 0, 0) -> symmetric outflow, flow vector = (0, 0) -> still water
+        h_c = get_fluid_base_height(slab_state)
+        vx_c, vz_c, angle_c = calculate_fluid_flow_vector(fountain_map, 0, 0, 0, "water", h_c)
+        self.assertAlmostEqual(vx_c, 0.0, places=4)
+        self.assertAlmostEqual(vz_c, 0.0, places=4)
+        self.assertFalse(is_fluid_flowing(slab_state, fountain_map, 0, 0, 0, "water", vx_c, vz_c))
 
     def test_full_world_mesh_build_with_water(self):
         """Test full world mesh generation containing solid terrain and water bodies."""

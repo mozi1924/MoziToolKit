@@ -81,6 +81,9 @@ def should_skip_rendering(
             # Same fluid type (water vs water, lava vs lava) culls mutual boundary
             if state_meta.cull_group == neighbor_meta.cull_group:
                 return True
+        elif state_meta.cull_group == "water" and neighbor_meta.is_waterlogged:
+            # Water against waterlogged block culls face
+            return True
         return False
 
     # 4. Mangrove Roots (MangroveRootsBlock)

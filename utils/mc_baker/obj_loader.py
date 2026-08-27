@@ -566,7 +566,9 @@ def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, st
         scale = (1.0, 1.0, 1.0)
         mat = "minecraft:entity/enderdragon/dragon"
     else:
-        obj_file = "player_head.obj"
+        head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
+        is_mob_half_tex = head_type in ("skeleton", "wither_skeleton", "creeper")
+        obj_file = "mob_head.obj" if is_mob_half_tex else "player_head.obj"
         scale = (1.0, 1.0, 1.0)
         if is_wall:
             facing = props.get("facing", "north").lower()
@@ -582,7 +584,6 @@ def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, st
             rot_y = rot_idx * 22.5
             offset = (0.0, -0.25, 0.0)
 
-        head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
         if head_type == "skeleton":
             mat = "minecraft:entity/skeleton/skeleton"
         elif head_type == "wither_skeleton":

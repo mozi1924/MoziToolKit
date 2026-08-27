@@ -153,8 +153,38 @@ class TestOBJModels(unittest.TestCase):
         # 2. Skulls
         baked_head = self.baker.bake_block_state("minecraft:player_head[rotation=0]")
         self.assertIsNotNone(baked_head)
+        self.assertEqual(len(baked_head.elements), 12, "Player head should have 12 faces (base head + hat layer)")
         face_head = list(baked_head.elements[0].faces.values())[0]
         self.assertEqual(face_head.texture, "minecraft:entity/player/wide/steve")
+
+        # Mob heads (64x32 MobHalfTex: 6 faces, no hat layer, V spans [0.5, 1.0])
+        baked_skel = self.baker.bake_block_state("minecraft:skeleton_skull[rotation=0]")
+        self.assertIsNotNone(baked_skel)
+        self.assertEqual(len(baked_skel.elements), 6, "Skeleton skull should have 6 faces (no hat layer)")
+        face_skel = list(baked_skel.elements[0].faces.values())[0]
+        self.assertEqual(face_skel.texture, "minecraft:entity/skeleton/skeleton")
+        # Check that UV V-span goes down to 0.5 (in mc_uvs space, v goes up to 0.5)
+        skel_max_v = max(v for el in baked_skel.elements for f in el.faces.values() for _, v in f.uvs)
+        self.assertAlmostEqual(skel_max_v, 0.5, places=3, msg="Skeleton skull UVs should cover 64x32 head area (mc_uvs v up to 0.5)")
+
+        baked_wither = self.baker.bake_block_state("minecraft:wither_skeleton_skull[rotation=0]")
+        self.assertIsNotNone(baked_wither)
+        self.assertEqual(len(baked_wither.elements), 6)
+        face_wither = list(baked_wither.elements[0].faces.values())[0]
+        self.assertEqual(face_wither.texture, "minecraft:entity/skeleton/wither_skeleton")
+
+        baked_creeper = self.baker.bake_block_state("minecraft:creeper_head[rotation=0]")
+        self.assertIsNotNone(baked_creeper)
+        self.assertEqual(len(baked_creeper.elements), 6)
+        face_creeper = list(baked_creeper.elements[0].faces.values())[0]
+        self.assertEqual(face_creeper.texture, "minecraft:entity/creeper/creeper")
+
+        # Zombie head (64x64: 12 faces)
+        baked_zombie = self.baker.bake_block_state("minecraft:zombie_head[rotation=0]")
+        self.assertIsNotNone(baked_zombie)
+        self.assertEqual(len(baked_zombie.elements), 12, "Zombie head should have 12 faces (64x64 layout)")
+        face_zombie = list(baked_zombie.elements[0].faces.values())[0]
+        self.assertEqual(face_zombie.texture, "minecraft:entity/zombie/zombie")
 
         baked_dragon = self.baker.bake_block_state("minecraft:dragon_head[rotation=0]")
         self.assertIsNotNone(baked_dragon)
