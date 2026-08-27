@@ -104,6 +104,7 @@ def _emit_bmesh_face(
     uv_rot: float = 0.0,
     use_tint: bool = False,
     model_uv_scale: tuple[float, float] = (1.0, 1.0),
+    mat_manager: Optional[LiveSyncMaterialManager] = None,
 ) -> bool:
     """Helper to emit a single polygon face into BMesh with all shader attributes and UVs."""
     face_bm_verts = [bm.verts.new(v) for v in verts_coords]
@@ -112,7 +113,7 @@ def _emit_bmesh_face(
     except ValueError:
         return False
 
-    bm_face.material_index = f_res.slot_index
+    bm_face.material_index = mat_manager.get_slot_for_chunk(f_res.chunk_id) if mat_manager else f_res.slot_index
     bm_face[layers["atlas_chunk"]] = f_res.chunk_id
     bm_face[layers["rot"]] = uv_rot
     bm_face[layers["timing"]] = f_res.anim_timing
@@ -257,6 +258,7 @@ def generate_single_block_faces(
                     uv_rot=0.0,
                     use_tint=(bf.tint_index >= 0 or f_res.use_tint),
                     model_uv_scale=f_res.model_uv_scale,
+                    mat_manager=mat_manager,
                 )
 
     else:
@@ -290,6 +292,7 @@ def generate_single_block_faces(
                 loop_uvs_mc=canonical_uvs,
                 uv_rot=0.0,
                 use_tint=f_res.use_tint,
+                mat_manager=mat_manager,
             )
 
     # If block is waterlogged:

@@ -53,9 +53,9 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(PacketType.SELECTION_INFO, 0x01)
         self.assertEqual(PacketType.FULL_SNAPSHOT, 0x02)
         self.assertEqual(PacketType.DELTA_UPDATE, 0x03)
-        self.assertEqual(PacketType.REPAIR_REQUEST, 0x04)
         self.assertEqual(PacketType.SECTION_MANIFEST, 0x05)
         self.assertEqual(PacketType.SECTION_SNAPSHOT, 0x06)
+        self.assertEqual(PacketType.REPAIR_REQUEST, 0x81)
 
     def test_parse_selection_info_packet(self):
         """Test binary parsing for PacketType.SELECTION_INFO (0x01)."""
