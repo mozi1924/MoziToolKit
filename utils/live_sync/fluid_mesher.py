@@ -44,6 +44,8 @@ from .constants import (
     MTK_SOURCE_TEXTURE_KEY,
 )
 from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
+from ..culling import get_shared_face_culler
+
 
 # Maximum height of a Minecraft source water/lava block (8/9)
 MAX_FLUID_HEIGHT: float = 8.0 / 9.0  # ~0.8888889
@@ -375,29 +377,27 @@ def is_fluid_flowing(
 def should_cull_fluid_face(
     neighbor_state: Optional[str],
     fluid_type: str,
+    direction: str = "up",
+    own_state: Optional[str] = None,
 ) -> bool:
     """
     Authoritative face culling for fluid faces against adjacent blocks.
-    A fluid face (Top, Bottom, North, South, West, East) is culled if:
-    1. The neighbor is the SAME fluid (water against water, lava against lava).
-    2. The neighbor is an opaque solid block (stone, dirt, planks, ores, etc.).
+    Delegates to FaceCuller engine for canonical Minecraft 1.21+ fluid occlusion.
     """
     if not neighbor_state:
         return False
 
-    parsed = parse_and_classify(neighbor_state)
+    culler = get_shared_face_culler()
+    state_str = own_state or f"minecraft:{fluid_type}"
+    meta_a = culler.get_meta(state_str)
+    meta_b = culler.get_meta(neighbor_state)
 
-    # 1. Neighbor is same fluid
-    if parsed.block_type == BlockTypeEnum.FLUID or parsed.name in FLUID_BLOCKS:
-        n_fluid = parsed.name.replace("flowing_", "")
-        if n_fluid == fluid_type:
-            return True
+    return not culler.should_render_face(
+        state_meta=meta_a,
+        neighbor_meta=meta_b,
+        direction=direction,
+    )
 
-    # 2. Neighbor is an opaque solid block
-    if parsed.is_opaque and parsed.block_type not in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID):
-        return True
-
-    return False
 
 
 def generate_fluid_mesh_faces(

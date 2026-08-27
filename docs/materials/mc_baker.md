@@ -123,5 +123,6 @@ Minecraft 26.2 原版 `FaceInfo` 严格定义了 6 个面的标准顶点缠绕�
 
 > [!IMPORTANT]
 > 1. **UV V轴翻转的一致性**：所有从 JSON 解析的 UV 坐标在构建到 Blender 面之前，必须严格执行 $1.0 - v$ 映射，严禁在未翻转状态下直接塞入 BMesh。
-> 2. **Cullface 不得越界裁剪非共面表面**：只有当 Cullface 指定的方向与相邻方块物理相切共面时方可标记剔除，非满立方体（如台阶侧面）绝对不能误标记外层 Cullface。
+> 2. **Cullface 遵循原版面遮挡规则**：只有当 Cullface 指定的方向与相邻方块物理相切共面且满足遮挡形状条件时方可剔除，非满立方体（如台阶侧面）绝对不能误标记外层 Cullface。具体遮挡算法详见 [面剔除系统文档](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/face_culling.md)。
 > 3. **Multipart AND/OR 嵌套优先级**：Multipart 条件计算中，`OR` 列表内包含多个条件分支，任一分支满足即为 True；单分支内多键值必须同时满足（AND 关系）。
+
