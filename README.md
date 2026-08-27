@@ -2,7 +2,9 @@
 
 **MoziToolKit** 是一套专为 Blender 艺术家、动画师与游戏资产开发者打造的高效生产力工具集。针对 **Minecraft 资产转换**、**纹理图集（Texture Atlas）烘焙**、**自适应像素网格切分**、**UV 修正**、**智能挤出建模** 以及 **模块化自动化流水线** 进行了深度优化与自动化集成。
 
-> 📖 **架构设计与防回归规范**：详细设计理念、数学原理、边界约束与防回归规范请参阅 [MoziToolKit 技术文档与设计规范导航](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/README.md)。
+> 📖 **架构设计与防回归规范**：详细设计理念、数学原理、边界约束与防回归规范请参阅 [MoziToolKit 技术文档与设计规范导航](docs/README.md)。
+
+> 由此插件，献给我的朋友 [白巧克力酱OvO](https://space.bilibili.com/475942905)
 
 ---
 
