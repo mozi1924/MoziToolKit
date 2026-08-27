@@ -20,6 +20,13 @@ from ...mesh.uv_rotation import (
     face_uv_requires_atlas_tiling,
     restore_atlas_tiling_uv,
 )
+from ...mesh.fluid_uv import (
+    is_fluid_texture_name,
+    is_flowing_fluid_texture,
+    normalize_static_fluid_face_uv,
+    repair_polygon_fluid_uv,
+)
+
 
 
 def remap_polygon_loop_uvs(

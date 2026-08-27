@@ -149,38 +149,28 @@ class TestAtlasUVRotation(unittest.TestCase):
 
             materials = build_atlas_chunk_materials(atlas_dir, pack_textures=False)
 
-            # 1. Static Material
+            # 1. Static Material (Direct UV connection, no tiling nodes or rotation attributes)
             mat_static = materials[0]
             nodes_static = {n.name: n for n in mat_static.node_tree.nodes}
-            self.assertIn("Attr UV Rotation", nodes_static)
-            self.assertIn("Combine UV Rotation", nodes_static)
-            self.assertIn("MC Atlas UV Tiling", nodes_static)
+            self.assertNotIn("Attr UV Rotation", nodes_static)
+            self.assertNotIn("Combine UV Rotation", nodes_static)
+            self.assertNotIn("MC Atlas UV Tiling", nodes_static)
+            tex_static = nodes_static["Atlas Chunk 000 Static (Albedo)"]
+            self.assertEqual(tex_static.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
 
-            attr_rot_static = nodes_static["Attr UV Rotation"]
-            comb_rot_static = nodes_static["Combine UV Rotation"]
-            tiling_static = nodes_static["MC Atlas UV Tiling"]
-
-            self.assertEqual(attr_rot_static.attribute_name, ATTR_UV_ROTATION)
-            self.assertEqual(comb_rot_static.inputs["Z"].links[0].from_node, attr_rot_static)
-            self.assertEqual(tiling_static.inputs["Rotation"].links[0].from_node, comb_rot_static)
-
-            # 2. Animated Material
+            # 2. Animated Material (Direct UV connection from mapper, no tiling nodes)
             mat_anim = materials[1]
             nodes_anim = {n.name: n for n in mat_anim.node_tree.nodes}
-            self.assertIn("Attr UV Rotation", nodes_anim)
-            self.assertIn("Combine UV Rotation", nodes_anim)
-            self.assertIn("MC Atlas UV Tiling Current (Albedo)", nodes_anim)
-            self.assertIn("MC Atlas UV Tiling Next (Albedo)", nodes_anim)
+            self.assertNotIn("Attr UV Rotation", nodes_anim)
+            self.assertNotIn("Combine UV Rotation", nodes_anim)
+            self.assertNotIn("MC Atlas UV Tiling Current (Albedo)", nodes_anim)
+            self.assertNotIn("MC Atlas UV Tiling Next (Albedo)", nodes_anim)
+            tex_curr = nodes_anim["Tex Current (Albedo)"]
+            tex_next = nodes_anim["Tex Next (Albedo)"]
+            uv_mapper = nodes_anim["MC UV Mapping (Albedo)"]
+            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, uv_mapper)
+            self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
 
-            attr_rot_anim = nodes_anim["Attr UV Rotation"]
-            comb_rot_anim = nodes_anim["Combine UV Rotation"]
-            tiling_curr = nodes_anim["MC Atlas UV Tiling Current (Albedo)"]
-            tiling_next = nodes_anim["MC Atlas UV Tiling Next (Albedo)"]
-
-            self.assertEqual(attr_rot_anim.attribute_name, ATTR_UV_ROTATION)
-            self.assertEqual(comb_rot_anim.inputs["Z"].links[0].from_node, attr_rot_anim)
-            self.assertEqual(tiling_curr.inputs["Rotation"].links[0].from_node, comb_rot_anim)
-            self.assertEqual(tiling_next.inputs["Rotation"].links[0].from_node, comb_rot_anim)
 
     def test_process_mesh_uv_rotations_batch(self):
         """Test process_mesh_uv_rotations on a mesh with mixed unrotated and rotated faces."""

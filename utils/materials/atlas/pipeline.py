@@ -15,10 +15,8 @@ from ..constants import (
     ATLAS_FORMAT_VERSION,
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
-    ATTR_UV_ROTATION,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
-    ATTR_UV_TILING_TRANSFORM,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
     FALLBACK_TEXTURE_KEY,
@@ -52,7 +50,10 @@ from ..pipeline.uv_pipeline import (
     remap_face_uv_to_local,
     restore_face_atlas_tiling,
     straighten_and_normalize_face_uv,
+    is_fluid_texture_name,
+    normalize_static_fluid_face_uv,
 )
+
 from ..pipeline.session import (
     build_material_face_cache,
     cached_face_texture_info,
@@ -267,12 +268,6 @@ class AtlasReplacementEngine:
 
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
-            uv_rotations = [0.0] * len(mesh.polygons)
-            uv_tiling_scales = [(1.0, 1.0, 1.0)] * len(mesh.polygons)
-            uv_tiling_locations = [(0.0, 0.0, 0.0)] * len(mesh.polygons)
-            existing_rot_attr = mesh.attributes.get(ATTR_UV_ROTATION)
-            if existing_rot_attr and len(existing_rot_attr.data) == len(mesh.polygons):
-                uv_rotations = [float(item.value) for item in existing_rot_attr.data]
 
             anim_frames = [1.0] * len(mesh.polygons)
             anim_frametimes = [1.0] * len(mesh.polygons)
@@ -450,13 +445,13 @@ class AtlasReplacementEngine:
 
                         if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
                             old_tiling_scale, old_tiling_location = read_face_tiling(mesh, poly_idx)
-                            old_tiling_rotation = read_face_float_attribute(mesh, ATTR_UV_ROTATION, poly_idx)
+                            old_tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx)
                             restore_face_atlas_tiling(polygon, uv_layer, old_tiling_scale, old_tiling_location, old_tiling_rotation)
 
-                        rot_angle, scale, location = straighten_and_normalize_face_uv(polygon, uv_layer)
-                        uv_rotations[poly_idx] = rot_angle
-                        uv_tiling_scales[poly_idx] = scale
-                        uv_tiling_locations[poly_idx] = location
+                        tex_name = new_location.get("texture_name") or new_location.get("texture_key") or (source_keys[poly_idx] if poly_idx < len(source_keys) else "")
+                        if is_fluid_texture_name(tex_name):
+                            normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_name)
+
 
                         remap_polygon_loop_uvs(
                             polygon=polygon,
@@ -469,7 +464,6 @@ class AtlasReplacementEngine:
                 for attr_name, data in (
                     (ATTR_ATLAS_CHUNK_ID, chunk_ids),
                     (ATTR_ATLAS_TEXTURE_ID, texture_ids),
-                    (ATTR_UV_ROTATION, uv_rotations),
                 ):
                     ensure_face_attribute(mesh, attr_name, "FLOAT").data.foreach_set("value", data)
 
@@ -481,13 +475,13 @@ class AtlasReplacementEngine:
                 for attr_name, data in (
                     (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),
                     (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0, 1.0) for width, height in zip(anim_widths, anim_heights))),
-                    (ATTR_UV_TILING_TRANSFORM, ((scale[0], scale[1], location[0], location[1]) for scale, location in zip(uv_tiling_scales, uv_tiling_locations))),
                 ):
                     ensure_face_attribute(mesh, attr_name, "FLOAT_COLOR").data.foreach_set(
                         "color", [component for value in data for component in value]
                     )
 
                 cleanup_legacy_mesh_attributes(mesh)
+
 
                 # Revert standalone fallback faces to local UVs
                 for poly_idx, st_res in enumerate(resolved_standalone):

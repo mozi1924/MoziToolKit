@@ -186,43 +186,29 @@ class TestAtlasUVTiling(unittest.TestCase):
             # 1. Verify Static Material (Chunk 0)
             mat_static = materials[0]
             nodes_static = {n.name: n for n in mat_static.node_tree.nodes}
-            self.assertIn("MC Atlas UV Tiling", nodes_static)
-            tiling_static = nodes_static["MC Atlas UV Tiling"]
+            self.assertNotIn("MC Atlas UV Tiling", nodes_static)
+            self.assertNotIn("Attr UV Tiling Transform", nodes_static)
             tex_static = nodes_static["Atlas Chunk 000 Static (Albedo)"]
-            self.assertEqual(nodes_static["Attr UV Tiling Transform"].attribute_name, ATTR_UV_TILING_TRANSFORM)
-
-            # TexCoord -> MC Atlas UV Tiling -> Texture Node
-            self.assertEqual(tiling_static.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
-            self.assertEqual(tiling_static.inputs["Scale"].links[0].from_node, nodes_static["Combine UV Tiling Scale"])
-            self.assertEqual(tiling_static.inputs["Location"].links[0].from_node, nodes_static["Combine UV Tiling Location"])
-            self.assertEqual(tex_static.inputs["Vector"].links[0].from_node, tiling_static)
+            self.assertEqual(tex_static.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
 
             # 2. Verify Animated Material (Chunk 1)
             mat_anim = materials[1]
             nodes_anim = {n.name: n for n in mat_anim.node_tree.nodes}
             self.assertIn("MC UV Mapping (Albedo)", nodes_anim)
-            self.assertIn("MC Atlas UV Tiling Current (Albedo)", nodes_anim)
-            self.assertIn("MC Atlas UV Tiling Next (Albedo)", nodes_anim)
+            self.assertNotIn("MC Atlas UV Tiling Current (Albedo)", nodes_anim)
+            self.assertNotIn("MC Atlas UV Tiling Next (Albedo)", nodes_anim)
 
             uv_mapper = nodes_anim["MC UV Mapping (Albedo)"]
-            tiling_curr = nodes_anim["MC Atlas UV Tiling Current (Albedo)"]
-            tiling_next = nodes_anim["MC Atlas UV Tiling Next (Albedo)"]
             tex_curr = nodes_anim["Tex Current (Albedo)"]
             tex_next = nodes_anim["Tex Next (Albedo)"]
 
-            # TexCoord -> MC UV Mapping (Albedo) -> MC Atlas UV Tiling Current/Next -> Tex Current/Next
+            # TexCoord -> MC UV Mapping (Albedo) -> Tex Current/Next directly
             self.assertEqual(uv_mapper.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
-            self.assertEqual(tiling_curr.inputs["Vector"].links[0].from_node, uv_mapper)
-            self.assertEqual(tiling_curr.inputs["Vector"].links[0].from_socket.name, "Current UV")
-            self.assertEqual(tiling_next.inputs["Vector"].links[0].from_node, uv_mapper)
-            self.assertEqual(tiling_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
-            self.assertEqual(tiling_curr.inputs["Scale"].links[0].from_node, nodes_anim["Combine UV Tiling Scale"])
-            self.assertEqual(tiling_curr.inputs["Location"].links[0].from_node, nodes_anim["Combine UV Tiling Location"])
+            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, uv_mapper)
+            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_socket.name, "Current UV")
+            self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
+            self.assertEqual(tex_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
 
-            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, tiling_curr)
-            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_socket.name, "Atlas UV")
-            self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, tiling_next)
-            self.assertEqual(tex_next.inputs["Vector"].links[0].from_socket.name, "Atlas UV")
 
 
 if __name__ == "__main__":

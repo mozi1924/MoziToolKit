@@ -45,6 +45,8 @@ from .constants import (
 )
 from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
 from ..culling import get_shared_face_culler
+from ..mesh.fluid_uv import get_fluid_top_uvs, get_fluid_side_uvs
+
 
 
 # Maximum height of a Minecraft source water/lava block (8/9)
@@ -509,10 +511,7 @@ def generate_fluid_mesh_faces(
         # but they only sample a 16x16 window (radius 0.25, span [0.25, 0.75]) centered at (0.5, 0.5).
         # This keeps the on-screen pixel density strictly identical to 16x16 still water and solid blocks (16 texels/block)
         # while preventing UV bleeding when rotated in the atlas by MC_Atlas_UV_Tiling.
-        if is_flowing:
-            top_uvs_mc = ((0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25))
-        else:
-            top_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
+        top_uvs_mc = get_fluid_top_uvs(is_flowing=is_flowing, rotation=flow_angle if is_flowing else 0.0)
 
         if _emit_fluid_face(
             bm=bm,
@@ -522,7 +521,7 @@ def generate_fluid_mesh_faces(
             layers=layers,
             block_pos=(x, y, z),
             face_dir_idx=DIR_TO_INDEX["up"],
-            uv_rot=flow_angle if is_flowing else 0.0,
+            uv_rot=0.0,
             use_tint=top_res.use_tint,
             mat_manager=mat_manager,
         ):
@@ -537,10 +536,7 @@ def generate_fluid_mesh_faces(
         v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
         v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
         v_bot_se = (bx + 0.5, by - 0.5, bz - 0.5)
-        if is_flowing:
-            bot_uvs_mc = ((0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25))
-        else:
-            bot_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
+        bot_uvs_mc = get_fluid_top_uvs(is_flowing=is_flowing, rotation=0.0)
 
         if _emit_fluid_face(
             bm=bm,
@@ -568,12 +564,7 @@ def generate_fluid_mesh_faces(
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
         v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
-        north_uvs_mc = (
-            (0.0, (1.0 - top_NE) * 0.5),
-            (0.0, 0.5),
-            (0.5, 0.5),
-            (0.5, (1.0 - top_NW) * 0.5),
-        )
+        north_uvs_mc = get_fluid_side_uvs(top_NE, top_NW)
         if _emit_fluid_face(
             bm=bm,
             verts_coords=(v_ne_top, v_ne_bot, v_nw_bot, v_nw_top),
@@ -594,12 +585,7 @@ def generate_fluid_mesh_faces(
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
         v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
-        south_uvs_mc = (
-            (0.0, (1.0 - top_SW) * 0.5),
-            (0.0, 0.5),
-            (0.5, 0.5),
-            (0.5, (1.0 - top_SE) * 0.5),
-        )
+        south_uvs_mc = get_fluid_side_uvs(top_SW, top_SE)
         if _emit_fluid_face(
             bm=bm,
             verts_coords=(v_sw_top, v_sw_bot, v_se_bot, v_se_top),
@@ -620,12 +606,7 @@ def generate_fluid_mesh_faces(
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
         v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
-        west_uvs_mc = (
-            (0.0, (1.0 - top_NW) * 0.5),
-            (0.0, 0.5),
-            (0.5, 0.5),
-            (0.5, (1.0 - top_SW) * 0.5),
-        )
+        west_uvs_mc = get_fluid_side_uvs(top_NW, top_SW)
         if _emit_fluid_face(
             bm=bm,
             verts_coords=(v_nw_top, v_nw_bot, v_sw_bot, v_sw_top),
@@ -646,12 +627,7 @@ def generate_fluid_mesh_faces(
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
-        east_uvs_mc = (
-            (0.0, (1.0 - top_SE) * 0.5),
-            (0.0, 0.5),
-            (0.5, 0.5),
-            (0.5, (1.0 - top_NE) * 0.5),
-        )
+        east_uvs_mc = get_fluid_side_uvs(top_SE, top_NE)
         if _emit_fluid_face(
             bm=bm,
             verts_coords=(v_se_top, v_se_bot, v_ne_bot, v_ne_top),
@@ -667,3 +643,4 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     return faces_emitted
+
