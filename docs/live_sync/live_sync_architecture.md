@@ -127,7 +127,21 @@ graph TD
 
 ---
 
-## 5. 防回归与工程规范总结
+## 6. 代码模块化与子系统划分 (Modular Architecture)
+
+为保持代码清晰与易维护性，实时同步几何与材质构建子系统解耦为如下独立职责模块：
+
+- **`utils/live_sync/storage.py`**：内存体素存储、包围盒管理与 16x16x16 Section 脏区块追踪。
+- **`utils/live_sync/classifier.py`**：方块分类器与方向解析（Cube, Prop, Fluid, Translucent, Air）。
+- **`utils/live_sync/mesh_cache.py`**：方块状态元数据缓存（`CachedStateMeta`）、L1/L2 预热机制与闲时空闲帧预计算调度。
+- **`utils/live_sync/geometry_builder.py`**：BMesh 几何生成、6 面遮挡剔除、顶点微距焊接与着色器面属性写入。
+- **`utils/live_sync/material_binding.py`**：材质槽位管理单例、Section 插槽同步与材质索引重新绑定。
+- **`utils/live_sync/fluid_mesher.py`**：流体（水/岩浆）表面张力与相邻高度差网格生成器。
+- **`utils/live_sync/mesh_builder.py`**：顶层编排器，提供 `build_world_mesh`、`sync_world_mesh` 和 `apply_block_delta_to_world`。
+
+---
+
+## 7. 防回归与工程规范总结
 > [!IMPORTANT]
 > 1. **断点续接无损性**：重新打开 `.blend` 文件后发起连接，只要游戏服务端场景未发生变动，必须通过 CRC 校验实现 0 耗时即时验证，不得触发冗余全量重建。
 > 2. **材质插槽不漂移**：任何增量更新或重建操作，均不得改变已有材质插槽与 `chunk_id` 的映射关系。
