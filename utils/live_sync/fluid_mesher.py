@@ -480,10 +480,14 @@ def generate_fluid_mesh_faces(
         v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_ne = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
 
-        # Top face UVs are kept in canonical unrotated [0, 1] coordinates at full 1:1 scale.
-        # Flow rotation is delegated to the shader via mtk_uv_rotation (MC_Atlas_UV_Tiling),
-        # matching the static mesh material replacement pipeline and preventing double-rotation/scaling shrinkage.
-        top_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
+        # In vanilla Minecraft, flowing fluids (water_flow / lava_flow) are 32x32 textures,
+        # but they only sample a 16x16 window (radius 0.25, span [0.25, 0.75]) centered at (0.5, 0.5).
+        # This keeps the on-screen pixel density strictly identical to 16x16 still water and solid blocks (16 texels/block)
+        # while preventing UV bleeding when rotated in the atlas by MC_Atlas_UV_Tiling.
+        if is_flowing:
+            top_uvs_mc = ((0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25))
+        else:
+            top_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
 
         if _emit_fluid_face(
             bm=bm,
@@ -507,7 +511,10 @@ def generate_fluid_mesh_faces(
         v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
         v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
         v_bot_se = (bx + 0.5, by - 0.5, bz - 0.5)
-        bot_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
+        if is_flowing:
+            bot_uvs_mc = ((0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25))
+        else:
+            bot_uvs_mc = ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
 
         if _emit_fluid_face(
             bm=bm,
@@ -523,20 +530,22 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # -------------------------------------------------------------
-    # 3. Side Faces (North, South, West, East) - Mineways Accurate UV
+    # 3. Side Faces (North, South, West, East) - Mineways & Vanilla UV
     # -------------------------------------------------------------
+    # In vanilla Minecraft FluidRenderer, side faces sample the [0.0, 0.5] quadrant of the 32x32 sprite,
+    # mapping a 1-block height to 16 pixels (0.5 * 32px) and scaling height proportionally.
+
     # A. North Face (facing Blender +Y / MC North -Z)
     if not should_cull_fluid_face(block_map.get((x, y, z - 1)), fluid_type):
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
         v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
-        # Mineways & Vanilla UV mapping: top vertex at height h gets V_mc = 1.0 - h
         north_uvs_mc = (
-            (0.0, 1.0 - top_NE),
-            (0.0, 1.0),
-            (1.0, 1.0),
-            (1.0, 1.0 - top_NW),
+            (0.0, (1.0 - top_NE) * 0.5),
+            (0.0, 0.5),
+            (0.5, 0.5),
+            (0.5, (1.0 - top_NW) * 0.5),
         )
         if _emit_fluid_face(
             bm=bm,
@@ -558,10 +567,10 @@ def generate_fluid_mesh_faces(
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
         v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         south_uvs_mc = (
-            (0.0, 1.0 - top_SW),
-            (0.0, 1.0),
-            (1.0, 1.0),
-            (1.0, 1.0 - top_SE),
+            (0.0, (1.0 - top_SW) * 0.5),
+            (0.0, 0.5),
+            (0.5, 0.5),
+            (0.5, (1.0 - top_SE) * 0.5),
         )
         if _emit_fluid_face(
             bm=bm,
@@ -583,10 +592,10 @@ def generate_fluid_mesh_faces(
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
         v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         west_uvs_mc = (
-            (0.0, 1.0 - top_NW),
-            (0.0, 1.0),
-            (1.0, 1.0),
-            (1.0, 1.0 - top_SW),
+            (0.0, (1.0 - top_NW) * 0.5),
+            (0.0, 0.5),
+            (0.5, 0.5),
+            (0.5, (1.0 - top_SW) * 0.5),
         )
         if _emit_fluid_face(
             bm=bm,
@@ -608,10 +617,10 @@ def generate_fluid_mesh_faces(
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
         east_uvs_mc = (
-            (0.0, 1.0 - top_SE),
-            (0.0, 1.0),
-            (1.0, 1.0),
-            (1.0, 1.0 - top_NE),
+            (0.0, (1.0 - top_SE) * 0.5),
+            (0.0, 0.5),
+            (0.5, 0.5),
+            (0.5, (1.0 - top_NE) * 0.5),
         )
         if _emit_fluid_face(
             bm=bm,
