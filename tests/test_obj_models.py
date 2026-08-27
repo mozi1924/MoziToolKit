@@ -106,13 +106,29 @@ class TestOBJModels(unittest.TestCase):
         self.assertTrue("minecraft:block/end_portal_frame_side" in no_eye_texs)
 
     def test_bell_and_pot_obj_loading(self):
-        """Test Bell and Decorated Pot OBJ models."""
-        baked_bell = self.baker.bake_block_state("minecraft:bell[facing=north]")
-        self.assertIsNotNone(baked_bell)
-        self.assertEqual(len(baked_bell.elements), 12)
-        bell_textures = {list(el.faces.values())[0].texture for el in baked_bell.elements}
+        """Test hybrid Bell and Decorated Pot OBJ models."""
+        # 1. Hybrid Bell (attachment=floor -> 3 JSON support frame + 12 OBJ bell = 15 elements)
+        baked_bell_floor = self.baker.bake_block_state("minecraft:bell[attachment=floor,facing=north]")
+        self.assertIsNotNone(baked_bell_floor)
+        self.assertEqual(len(baked_bell_floor.elements), 15)
+        bell_textures = {f.texture for el in baked_bell_floor.elements for f in el.faces.values()}
+        self.assertTrue("minecraft:block/dark_oak_planks" in bell_textures)
+        self.assertTrue("minecraft:block/stone" in bell_textures)
         self.assertTrue("minecraft:block/bell_side" in bell_textures)
         self.assertTrue("minecraft:block/bell_top" in bell_textures)
+        self.assertTrue("minecraft:block/bell_bottom" in bell_textures)
+
+        # 2. Hybrid Bell (attachment=ceiling -> 2 JSON support + 12 OBJ bell = 14 elements)
+        baked_bell_ceil = self.baker.bake_block_state("minecraft:bell[attachment=ceiling,facing=east]")
+        self.assertEqual(len(baked_bell_ceil.elements), 14)
+
+        # 3. Hybrid Bell (attachment=single_wall -> 2 JSON support + 12 OBJ bell = 14 elements)
+        baked_bell_wall = self.baker.bake_block_state("minecraft:bell[attachment=single_wall,facing=south]")
+        self.assertEqual(len(baked_bell_wall.elements), 14)
+
+        # 4. Hybrid Bell (attachment=double_wall -> 1 JSON support + 12 OBJ bell = 13 elements)
+        baked_bell_between = self.baker.bake_block_state("minecraft:bell[attachment=double_wall,facing=west]")
+        self.assertEqual(len(baked_bell_between.elements), 13)
 
         baked_pot = self.baker.bake_block_state("minecraft:decorated_pot")
         self.assertIsNotNone(baked_pot)

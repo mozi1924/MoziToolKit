@@ -21,7 +21,7 @@ from .math_utils import (
 from .model_parser import ModelParser
 from .blockstate_resolver import BlockStateResolver, parse_block_state_string
 from .resource_loader import JarResourceLoader
-from .obj_loader import resolve_obj_model_for_state
+from .obj_loader import resolve_obj_model_for_state, build_bell_model
 
 # Known Emissive blocks in Minecraft
 EMISSIVE_BLOCKS = frozenset({
@@ -528,6 +528,19 @@ class StateBaker:
                 for el in baked_elements
             )
         )
+
+        # Check if hybrid block (e.g. Bell: JSON support frame + OBJ bell body)
+        if short_name == "bell":
+            rot_y = variant_matches[0].rot_y if variant_matches else None
+            baked_model = build_bell_model(
+                block_state=state_str_clean,
+                props=props,
+                support_elements=baked_elements,
+                support_faces=final_six_faces,
+                rot_y=rot_y,
+            )
+            self._bake_cache[state_str_clean] = baked_model
+            return baked_model
 
         baked_model = BakedModel(
             block_state=state_str_clean,

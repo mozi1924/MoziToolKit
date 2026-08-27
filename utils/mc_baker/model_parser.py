@@ -9,6 +9,137 @@ import copy
 from typing import Any, Optional, Union
 
 
+BUILTIN_MODELS: dict[str, dict[str, Any]] = {
+    "minecraft:block/bell_floor": {
+        "textures": {
+            "particle": "minecraft:block/bell_bottom",
+            "bar": "minecraft:block/dark_oak_planks",
+            "post": "minecraft:block/stone",
+        },
+        "elements": [
+            {
+                "from": [2, 13, 7],
+                "to": [14, 15, 9],
+                "faces": {
+                    "north": {"uv": [2, 2, 14, 4], "texture": "#bar"},
+                    "south": {"uv": [2, 3, 14, 5], "texture": "#bar"},
+                    "up": {"uv": [2, 3, 14, 5], "texture": "#bar"},
+                    "down": {"uv": [2, 3, 14, 5], "texture": "#bar"},
+                },
+            },
+            {
+                "from": [14, 0, 6],
+                "to": [16, 16, 10],
+                "faces": {
+                    "north": {"uv": [0, 1, 2, 16], "texture": "#post"},
+                    "east": {"uv": [0, 1, 4, 16], "texture": "#post"},
+                    "south": {"uv": [0, 1, 2, 16], "texture": "#post"},
+                    "west": {"uv": [0, 1, 4, 16], "texture": "#post"},
+                    "up": {"uv": [0, 1, 2, 5], "texture": "#post"},
+                    "down": {"uv": [0, 1, 2, 5], "texture": "#post"},
+                },
+            },
+            {
+                "from": [0, 0, 6],
+                "to": [2, 16, 10],
+                "faces": {
+                    "north": {"uv": [0, 1, 2, 16], "texture": "#post"},
+                    "east": {"uv": [0, 1, 4, 16], "texture": "#post"},
+                    "south": {"uv": [0, 1, 2, 16], "texture": "#post"},
+                    "west": {"uv": [0, 1, 4, 16], "texture": "#post"},
+                    "up": {"uv": [0, 1, 2, 5], "texture": "#post"},
+                    "down": {"uv": [0, 1, 2, 5], "texture": "#post"},
+                },
+            },
+        ],
+    },
+    "minecraft:block/bell_ceiling": {
+        "textures": {
+            "particle": "minecraft:block/bell_bottom",
+            "bar": "minecraft:block/dark_oak_planks",
+            "post": "minecraft:block/stone",
+        },
+        "elements": [
+            {
+                "from": [4, 13, 7],
+                "to": [12, 15, 9],
+                "faces": {
+                    "north": {"uv": [4, 2, 12, 4], "texture": "#bar"},
+                    "east": {"uv": [4, 2, 6, 4], "texture": "#bar"},
+                    "south": {"uv": [4, 3, 12, 5], "texture": "#bar"},
+                    "west": {"uv": [4, 3, 6, 5], "texture": "#bar"},
+                    "up": {"uv": [4, 3, 12, 5], "texture": "#bar"},
+                    "down": {"uv": [4, 3, 12, 5], "texture": "#bar"},
+                },
+            },
+            {
+                "from": [7, 13, 7],
+                "to": [9, 16, 9],
+                "faces": {
+                    "north": {"uv": [0, 0, 2, 3], "texture": "#post"},
+                    "east": {"uv": [0, 0, 2, 3], "texture": "#post"},
+                    "south": {"uv": [0, 0, 2, 3], "texture": "#post"},
+                    "west": {"uv": [0, 0, 2, 3], "texture": "#post"},
+                    "up": {"uv": [0, 0, 2, 2], "texture": "#post"},
+                    "down": {"uv": [0, 0, 2, 2], "texture": "#post"},
+                },
+            },
+        ],
+    },
+    "minecraft:block/bell_wall": {
+        "textures": {
+            "particle": "minecraft:block/bell_bottom",
+            "bar": "minecraft:block/dark_oak_planks",
+            "post": "minecraft:block/stone",
+        },
+        "elements": [
+            {
+                "from": [4, 13, 7],
+                "to": [12, 15, 9],
+                "faces": {
+                    "north": {"uv": [4, 2, 12, 4], "texture": "#bar"},
+                    "east": {"uv": [4, 2, 6, 4], "texture": "#bar"},
+                    "south": {"uv": [4, 3, 12, 5], "texture": "#bar"},
+                    "west": {"uv": [4, 3, 6, 5], "texture": "#bar"},
+                    "up": {"uv": [4, 3, 12, 5], "texture": "#bar"},
+                    "down": {"uv": [4, 3, 12, 5], "texture": "#bar"},
+                },
+            },
+            {
+                "from": [6, 7, 0],
+                "to": [10, 16, 8],
+                "faces": {
+                    "north": {"uv": [0, 7, 4, 16], "texture": "#post"},
+                    "east": {"uv": [0, 7, 8, 16], "texture": "#post"},
+                    "south": {"uv": [0, 7, 4, 16], "texture": "#post"},
+                    "west": {"uv": [0, 7, 8, 16], "texture": "#post"},
+                    "up": {"uv": [0, 7, 4, 15], "texture": "#post"},
+                    "down": {"uv": [0, 7, 4, 15], "texture": "#post"},
+                },
+            },
+        ],
+    },
+    "minecraft:block/bell_between_walls": {
+        "textures": {
+            "particle": "minecraft:block/bell_bottom",
+            "bar": "minecraft:block/dark_oak_planks",
+        },
+        "elements": [
+            {
+                "from": [0, 13, 7],
+                "to": [16, 15, 9],
+                "faces": {
+                    "north": {"uv": [0, 2, 16, 4], "texture": "#bar"},
+                    "south": {"uv": [0, 3, 16, 5], "texture": "#bar"},
+                    "up": {"uv": [0, 3, 16, 5], "texture": "#bar"},
+                    "down": {"uv": [0, 3, 16, 5], "texture": "#bar"},
+                },
+            },
+        ],
+    },
+}
+
+
 class ModelParser:
     def __init__(self, model_loader_fn=None):
         self.model_loader_fn = model_loader_fn
@@ -38,6 +169,10 @@ class ModelParser:
             if data:
                 self._model_cache[norm_id] = data
                 return copy.deepcopy(data)
+
+        if norm_id in BUILTIN_MODELS:
+            return copy.deepcopy(BUILTIN_MODELS[norm_id])
+
         return None
 
     def resolve_model(self, model_id: str) -> dict[str, Any]:
