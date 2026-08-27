@@ -619,7 +619,7 @@ def _generate_single_block_faces(
 
         for elem in meta.baked_model.elements:
             for f_dir, bf in elem.faces.items():
-                if not bf.vertices or len(bf.vertices) < 4:
+                if not bf.vertices or len(bf.vertices) < 3:
                     continue
 
                 cull_dir = bf.cullface or (f_dir if meta.is_cube else None)

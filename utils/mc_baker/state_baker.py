@@ -394,20 +394,20 @@ class StateBaker:
         quad vertices in [0..1] block space, loop UV coordinates, and 6-face summary.
         """
         state_str_clean = state_str.strip()
-        if state_str_clean in self._bake_cache:
-            return self._bake_cache[state_str_clean]
-
         block_id, props = parse_block_state_string(state_str_clean)
         short_name = block_id.split(":", 1)[-1]
         fallback_texture = f"minecraft:block/{short_name}"
         is_emissive = is_block_emissive(short_name, props)
 
-        # 1. First check if block has a 1:1 author-crafted OBJ model (Chest, Bell, Decorated Pot, Skull, Banner, etc.)
+        # 1. First check if block has a 1:1 author-crafted OBJ model (Chest, Bell, Decorated Pot, Skull, Banner, Shulker, Portal, Frame, Conduit, etc.)
         obj_model = resolve_obj_model_for_state(block_id, props, fallback_texture)
         if obj_model:
             obj_model.is_emissive = is_emissive
             self._bake_cache[state_str_clean] = obj_model
             return obj_model
+
+        if state_str_clean in self._bake_cache:
+            return self._bake_cache[state_str_clean]
 
         variant_matches = self.state_resolver.resolve_state(state_str_clean)
 

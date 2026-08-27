@@ -257,6 +257,7 @@ def schedule_mesh_sync(force_full_rebuild: bool = False) -> None:
 
 
 _skip_next_full_snapshot: bool = False
+_force_next_full_rebuild: bool = False
 
 
 def persist_sync_state_to_scene(context: Optional[bpy.types.Context] = None) -> None:
@@ -365,7 +366,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
             def update():
-                global _last_seq_id, _skip_next_full_snapshot
+                global _last_seq_id, _skip_next_full_snapshot, _force_next_full_rebuild
                 _last_seq_id = 0
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
@@ -394,7 +395,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices
                 )
 
-                if is_identical or (_skip_next_full_snapshot and has_existing_mesh and voxel_storage.matches_bounds(min_x, min_y, min_z)):
+                if not _force_next_full_rebuild and (is_identical or (_skip_next_full_snapshot and has_existing_mesh and voxel_storage.matches_bounds(min_x, min_y, min_z))):
                     logger.info("Live Sync: Verified existing scene mesh matches server snapshot (identical data), skipping full rebuild.")
                     props.last_update_info = f"Verified: {total_blocks:,} blocks (reused existing mesh)"
                     props.sync_verified = True
@@ -403,6 +404,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     return
 
                 _skip_next_full_snapshot = False
+                _force_next_full_rebuild = False
                 clear_sync_caches()
 
                 # 1. Update VoxelStorage
@@ -435,7 +437,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         def on_section_manifest(server_seq_id, sections):
             def update():
-                global _skip_next_full_snapshot
+                global _skip_next_full_snapshot, _force_next_full_rebuild
                 mismatched = voxel_storage.validate_manifest(sections)
                 props.sync_verified = (len(mismatched) == 0)
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
@@ -443,7 +445,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
                 )
 
-                if props.sync_verified and has_existing_mesh:
+                if not _force_next_full_rebuild and props.sync_verified and has_existing_mesh:
                     _skip_next_full_snapshot = True
                     props.validation_info = "Verified (100% in sync with scene)"
                     logger.info("Live Sync: Handshake verified 100% match with existing scene objects.")
@@ -512,8 +514,12 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
     bl_description = "Request fresh data snapshot and re-verify sync state with server"
 
     def execute(self, context):
-        global _skip_next_full_snapshot
+        global _skip_next_full_snapshot, _force_next_full_rebuild
         _skip_next_full_snapshot = False
+        _force_next_full_rebuild = True
+        clear_sync_caches()
+        clear_mesh_builder_caches()
+        clear_shared_baker_cache()
         props = get_active_sync_props(context)
         if props and props.is_connected:
             # Re-fetch fresh full data from server

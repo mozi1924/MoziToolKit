@@ -82,10 +82,16 @@ class TestOBJModels(unittest.TestCase):
         self.assertEqual(len(conduit.elements), 1)
         self.assertEqual(conduit.elements[0].faces["up"].texture, "minecraft:entity/conduit/base")
 
-        # 3. End Portal & Frame
+        # 3. End Portal & End Gateway & Frame
         portal = self.baker.bake_block_state("minecraft:end_portal")
         self.assertEqual(len(portal.elements), 1)
+        self.assertFalse(portal.is_cube)
         self.assertEqual(portal.elements[0].faces["up"].texture, "minecraft:entity/end_portal")
+
+        gateway = self.baker.bake_block_state("minecraft:end_gateway")
+        self.assertEqual(len(gateway.elements), 1)
+        self.assertTrue(gateway.is_cube)
+        self.assertEqual(gateway.elements[0].faces["up"].texture, "minecraft:entity/end_portal")
 
         frame_eye = self.baker.bake_block_state("minecraft:end_portal_frame[eye=true,facing=north]")
         self.assertEqual(len(frame_eye.elements), 11)
@@ -141,4 +147,5 @@ class TestOBJModels(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    import sys
+    unittest.main(argv=[sys.argv[0]])

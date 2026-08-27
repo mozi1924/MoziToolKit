@@ -5,8 +5,15 @@ Test Suite for MoziToolKit Live Sync:
 - Entity Texture Resolution and Non-Block Category Isolation (No Map Decoration Pollution)
 """
 
-import unittest
+import sys
 from pathlib import Path
+
+# Ensure repo root is on sys.path
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+import unittest
 import bpy
 import bmesh
 from mathutils import Vector
@@ -271,4 +278,4 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])
