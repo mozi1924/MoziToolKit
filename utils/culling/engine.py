@@ -176,6 +176,7 @@ class FaceCuller:
         name, props = _parse_block_name_and_props(state_str)
         name_low = name.lower()
 
+        is_waterlogged = props.get("waterlogged", "false") == "true" or name_low in ("seagrass", "tall_seagrass", "kelp", "kelp_plant")
         is_air = (not state_str) or name_low in _AIR_NAMES or name_low.endswith("air")
         is_fluid = not is_air and (name_low in _FLUID_NAMES or "water" in name_low or "lava" in name_low)
         is_leaves = not is_air and (name_low in _LEAVES_NAMES or name_low.endswith("_leaves") or name_low == "mangrove_roots")
@@ -331,6 +332,7 @@ class FaceCuller:
             full_face_mask=full_face_mask,
             empty_face_mask=empty_face_mask,
             props=props,
+            is_waterlogged=is_waterlogged,
         )
 
         if len(self._meta_cache) < 8192:

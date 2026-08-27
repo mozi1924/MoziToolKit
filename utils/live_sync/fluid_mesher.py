@@ -54,14 +54,16 @@ FLUID_EPSILON: float = 0.001
 
 def get_fluid_base_height(state_str: str) -> float:
     """
-    Compute own fluid height in [0..1] for a single fluid blockstate.
-    Level 0 = Source block (8/9).
+    Compute own fluid height in [0..1] for a single fluid or waterlogged blockstate.
+    Level 0 / Waterlogged = Source block (8/9).
     Level 1..7 = Flowing levels (7/9 .. 1/9).
     Level 8..15 = Falling fluid (8/9).
     """
     if not state_str:
         return 0.0
     parsed = parse_and_classify(state_str)
+    if parsed.is_waterlogged:
+        return MAX_FLUID_HEIGHT
     if parsed.block_type != BlockTypeEnum.FLUID and parsed.name not in FLUID_BLOCKS:
         return 0.0
 
@@ -80,11 +82,11 @@ def get_fluid_base_height(state_str: str) -> float:
 
 
 def is_fluid_block(state_str: Optional[str]) -> bool:
-    """Check if a blockstate is water or lava."""
+    """Check if a blockstate is water, lava, or waterlogged."""
     if not state_str:
         return False
     parsed = parse_and_classify(state_str)
-    return parsed.block_type == BlockTypeEnum.FLUID or parsed.name in FLUID_BLOCKS
+    return parsed.block_type == BlockTypeEnum.FLUID or parsed.name in FLUID_BLOCKS or parsed.is_waterlogged
 
 
 def is_same_fluid(state_a: Optional[str], state_b: Optional[str]) -> bool:
@@ -95,6 +97,10 @@ def is_same_fluid(state_a: Optional[str], state_b: Optional[str]) -> bool:
     pb = parse_and_classify(state_b)
     name_a = pa.name.replace("flowing_", "")
     name_b = pb.name.replace("flowing_", "")
+    if name_a == "water" and pb.is_waterlogged:
+        return True
+    if name_b == "water" and pa.is_waterlogged:
+        return True
     return name_a == name_b and name_a in ("water", "lava")
 
 
@@ -105,8 +111,8 @@ def sample_fluid_height(
 ) -> float:
     """
     Sample fluid height at (x, y, z):
-    - Returns 1.0 if (x, y, z) has the same fluid and the block directly above (x, y+1, z) is also the same fluid.
-    - Returns own_height in (0..1) if (x, y, z) is the same fluid.
+    - Returns 1.0 if (x, y, z) has the same fluid/waterlogged and the block directly above (x, y+1, z) is also water/submerged.
+    - Returns own_height in (0..1) if (x, y, z) is the same fluid or waterlogged block.
     - Returns -1.0 if (x, y, z) is a solid opaque block (indicates solid boundary, excluded from corner averaging).
     - Returns 0.0 if (x, y, z) is air or non-solid / non-fluid block.
     """
@@ -116,17 +122,20 @@ def sample_fluid_height(
 
     parsed = parse_and_classify(state_str)
     name_clean = parsed.name.replace("flowing_", "")
+    is_fluid_match = (name_clean == fluid_type) or (fluid_type == "water" and parsed.is_waterlogged)
 
-    if name_clean == fluid_type:
-        # Check if block directly above is also the same fluid (e.g. waterfall / submerged)
+    if is_fluid_match:
+        # Check if block directly above is also the same fluid / waterlogged
         above_state = block_map.get((x, y + 1, z))
         if above_state:
             p_above = parse_and_classify(above_state)
-            if p_above.name.replace("flowing_", "") == fluid_type:
+            if (p_above.name.replace("flowing_", "") == fluid_type) or (fluid_type == "water" and p_above.is_waterlogged):
                 return 1.0
+        if parsed.is_waterlogged and fluid_type == "water":
+            return MAX_FLUID_HEIGHT
         return get_fluid_base_height(state_str)
 
-    # If it's a solid opaque block, return -1.0 to indicate solid wall (JMC2OBJ optimization)
+    # If it's a solid opaque block that is not waterlogged, return -1.0
     if parsed.is_opaque and parsed.block_type not in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID):
         return -1.0
 
@@ -190,7 +199,7 @@ def calculate_fluid_corner_heights(
     above_state = block_map.get((x, y + 1, z))
     if above_state:
         p_above = parse_and_classify(above_state)
-        if p_above.name.replace("flowing_", "") == fluid_type:
+        if p_above.name.replace("flowing_", "") == fluid_type or (fluid_type == "water" and p_above.is_waterlogged):
             return (1.0, 1.0, 1.0, 1.0)
 
     h_center = sample_fluid_height(block_map, x, y, z, fluid_type)
@@ -234,19 +243,32 @@ def calculate_fluid_flow_vector(
             below_state = block_map.get((nx, ny - 1, nz))
             if below_state:
                 p_below = parse_and_classify(below_state)
-                if p_below.name.replace("flowing_", "") == fluid_type:
+                is_below_fluid = (p_below.name.replace("flowing_", "") == fluid_type) or (fluid_type == "water" and p_below.is_waterlogged)
+                if is_below_fluid:
                     b_h = get_fluid_base_height(below_state)
                     diff = own_height - (b_h - MAX_FLUID_HEIGHT)
                     vx += dx * diff
                     vz += dz * diff
         else:
             p_n = parse_and_classify(n_state)
-            if p_n.name.replace("flowing_", "") == fluid_type:
+            is_n_fluid = (p_n.name.replace("flowing_", "") == fluid_type) or (fluid_type == "water" and p_n.is_waterlogged)
+            if is_n_fluid:
                 n_h = get_fluid_base_height(n_state)
                 diff = own_height - n_h
                 if diff != 0.0:
                     vx += dx * diff
                     vz += dz * diff
+            elif not p_n.is_opaque:
+                # Non-opaque non-fluid neighbor: check block below
+                below_state = block_map.get((nx, ny - 1, nz))
+                if below_state:
+                    p_below = parse_and_classify(below_state)
+                    is_below_fluid = (p_below.name.replace("flowing_", "") == fluid_type) or (fluid_type == "water" and p_below.is_waterlogged)
+                    if is_below_fluid:
+                        b_h = get_fluid_base_height(below_state)
+                        diff = own_height - (b_h - MAX_FLUID_HEIGHT)
+                        vx += dx * diff
+                        vz += dz * diff
 
     flow_len = math.sqrt(vx * vx + vz * vz)
     if flow_len < 1e-4:
@@ -336,7 +358,7 @@ def is_fluid_flowing(
     except (ValueError, TypeError):
         level_int = 0
 
-    if level_int > 0:
+    if level_int > 0 and not parsed.is_waterlogged:
         return True
 
     # 3. Horizontal flow vector
@@ -348,7 +370,7 @@ def is_fluid_flowing(
     above_state = block_map.get((x, y + 1, z))
     if above_state:
         p_above = parse_and_classify(above_state)
-        if p_above.name.replace("flowing_", "") == fluid_type:
+        if p_above.name.replace("flowing_", "") == fluid_type or (fluid_type == "water" and p_above.is_waterlogged):
             return True
 
     # Check block directly below:
@@ -359,7 +381,9 @@ def is_fluid_flowing(
         return True
     else:
         p_below = parse_and_classify(below_state)
-        if p_below.block_type in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID) and not p_below.is_opaque:
+        if fluid_type == "water" and p_below.is_waterlogged:
+            pass
+        elif p_below.block_type in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID) and not p_below.is_opaque:
             if p_below.block_type == BlockTypeEnum.FLUID:
                 b_level = 0
                 try:

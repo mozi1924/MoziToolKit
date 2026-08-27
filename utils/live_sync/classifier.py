@@ -454,7 +454,10 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         tint_data = (0.0, 0.0, 0.0, 0.0)
 
     # 2. Check Waterlogged
-    is_waterlogged = props.get("waterlogged", "false") == "true"
+    is_waterlogged = (
+        props.get("waterlogged", "false") == "true"
+        or name in ("seagrass", "tall_seagrass", "kelp", "kelp_plant")
+    )
 
     # 3. Determine Emissive Status and Level
     is_emissive = 1 if is_block_emissive(name, props) or is_block_emissive(block_id, props) else 0

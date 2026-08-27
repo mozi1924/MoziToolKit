@@ -690,6 +690,23 @@ def _generate_single_block_faces(
                 use_tint=f_res.use_tint,
             )
 
+    # If block is waterlogged (e.g. waterlogged stairs, slab, fence, chest, kelp, seagrass):
+    if meta.parsed.is_waterlogged and not meta.is_fluid:
+        eff_mat_mgr = mat_manager or _GLOBAL_MAT_MANAGER or get_shared_material_manager(world_obj=None, atlas_params=None)
+        fluid_faces = generate_fluid_mesh_faces(
+            bm=bm,
+            x=x, y=y, z=z,
+            state_str="minecraft:water[level=0]",
+            block_map=block_map,
+            layers=layers,
+            origin_centered=origin_centered,
+            min_x=min_x, min_y=min_y, min_z=min_z,
+            half_x=half_x, half_z=half_z,
+            mat_manager=eff_mat_mgr,
+        )
+        if fluid_faces > 0:
+            is_fluid_cnt = 1
+
     return (is_cube_cnt, is_prop_cnt, is_fluid_cnt)
 
 
@@ -1045,8 +1062,11 @@ def sync_world_mesh(
         m = state_cache.get(state_str)
         if not m or m.is_air:
             continue
-        if m.is_fluid:
+        if m.parsed.is_waterlogged:
             total_fluids += count
+        if m.is_fluid:
+            if not m.parsed.is_waterlogged:
+                total_fluids += count
         elif m.is_cube:
             total_cubes += count
         else:
@@ -1220,8 +1240,11 @@ def apply_block_delta_to_world(
             m = get_cached_state_meta(state_str, mat_manager, baker)
         if not m or m.is_air:
             continue
-        if m.is_fluid:
+        if m.parsed.is_waterlogged:
             total_fluids += count
+        if m.is_fluid:
+            if not m.parsed.is_waterlogged:
+                total_fluids += count
         elif m.is_cube:
             total_cubes += count
         else:
