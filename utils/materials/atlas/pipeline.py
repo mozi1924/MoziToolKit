@@ -17,6 +17,7 @@ from ..constants import (
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
+    ATTR_UV_TILING_TRANSFORM,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
     FALLBACK_TEXTURE_KEY,
@@ -45,6 +46,10 @@ from ..pipeline.mesh_attributes import (
     cleanup_legacy_mesh_attributes,
     cleanup_object_anim_properties,
 )
+from ...mesh.uv_rotation import (
+    face_uv_requires_atlas_tiling,
+    normalize_face_uv_for_atlas_tiling,
+)
 from ..pipeline.uv_pipeline import (
     remap_polygon_loop_uvs,
     remap_face_uv_to_local,
@@ -53,6 +58,7 @@ from ..pipeline.uv_pipeline import (
     is_fluid_texture_name,
     normalize_static_fluid_face_uv,
 )
+
 
 from ..pipeline.session import (
     build_material_face_cache,
@@ -268,6 +274,9 @@ class AtlasReplacementEngine:
 
             chunk_ids = [-1.0] * len(mesh.polygons)
             texture_ids = [-1.0] * len(mesh.polygons)
+            uv_tiling_scales = [(1.0, 1.0, 1.0)] * len(mesh.polygons)
+            uv_tiling_locations = [(0.0, 0.0, 0.0)] * len(mesh.polygons)
+
 
             anim_frames = [1.0] * len(mesh.polygons)
             anim_frametimes = [1.0] * len(mesh.polygons)
@@ -451,7 +460,10 @@ class AtlasReplacementEngine:
                         tex_name = new_location.get("texture_name") or new_location.get("texture_key") or (source_keys[poly_idx] if poly_idx < len(source_keys) else "")
                         if is_fluid_texture_name(tex_name):
                             normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_name)
-
+                        elif face_uv_requires_atlas_tiling(polygon, uv_layer):
+                            scale, location = normalize_face_uv_for_atlas_tiling(polygon, uv_layer)
+                            uv_tiling_scales[poly_idx] = scale
+                            uv_tiling_locations[poly_idx] = location
 
                         remap_polygon_loop_uvs(
                             polygon=polygon,
@@ -475,10 +487,12 @@ class AtlasReplacementEngine:
                 for attr_name, data in (
                     (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),
                     (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0, 1.0) for width, height in zip(anim_widths, anim_heights))),
+                    (ATTR_UV_TILING_TRANSFORM, ((scale[0], scale[1], location[0], location[1]) for scale, location in zip(uv_tiling_scales, uv_tiling_locations))),
                 ):
                     ensure_face_attribute(mesh, attr_name, "FLOAT_COLOR").data.foreach_set(
                         "color", [component for value in data for component in value]
                     )
+
 
                 cleanup_legacy_mesh_attributes(mesh)
 

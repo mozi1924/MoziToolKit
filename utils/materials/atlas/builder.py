@@ -31,9 +31,11 @@ from ..constants import (
     ATTR_FACE_MATERIAL_ID,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
+    ATTR_UV_TILING_TRANSFORM,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
 )
+
 
 
 
@@ -415,6 +417,33 @@ def build_atlas_chunk_materials(
 
         is_animated = (chunk.get("kind") == "animation")
 
+        # Tiling attribute node (RGBA: scale XY, location XY)
+        attr_tiling = nodes.new("ShaderNodeAttribute")
+        attr_tiling.name = "Attr UV Tiling Transform"
+        attr_tiling.attribute_type = "GEOMETRY"
+        attr_tiling.attribute_name = ATTR_UV_TILING_TRANSFORM
+        attr_tiling.location = (-1500, -600)
+
+        split_tiling = nodes.new("ShaderNodeSeparateColor")
+        split_tiling.name = "Split UV Tiling Transform"
+        split_tiling.location = (-1330, -600)
+        links.new(attr_tiling.outputs["Color"], split_tiling.inputs["Color"])
+
+        comb_scale = nodes.new("ShaderNodeCombineXYZ")
+        comb_scale.name = "Combine UV Tiling Scale"
+        comb_scale.inputs[2].default_value = 1.0
+        comb_scale.location = (-1150, -550)
+        links.new(split_tiling.outputs["Red"], comb_scale.inputs[0])
+        links.new(split_tiling.outputs["Green"], comb_scale.inputs[1])
+
+        comb_loc = nodes.new("ShaderNodeCombineXYZ")
+        comb_loc.name = "Combine UV Tiling Location"
+        comb_loc.inputs[2].default_value = 0.0
+        comb_loc.location = (-1150, -700)
+        links.new(split_tiling.outputs["Blue"], comb_loc.inputs[0])
+        links.new(attr_tiling.outputs["Alpha"], comb_loc.inputs[1])
+
+
         if is_animated:
             # Two RGBA streams replace five scalar attributes.  This is
             # essential for EEVEE's per-material attribute budget.
@@ -507,6 +536,22 @@ def build_atlas_chunk_materials(
                 curr_uv_socket = uv_node.outputs["Current UV"]
                 next_uv_socket = uv_node.outputs["Next UV"]
 
+                # Tiling Current & Next
+                tiling_curr = nodes.new("ShaderNodeGroup")
+                tiling_curr.node_tree = templates["MC_Atlas_UV_Tiling"]
+                tiling_curr.name = f"MC Atlas UV Tiling Current ({channel_name})"
+                tiling_curr.location = (-550, base_y + 120)
+                links.new(curr_uv_socket, tiling_curr.inputs["Vector"])
+                links.new(comb_scale.outputs["Vector"], tiling_curr.inputs["Scale"])
+                links.new(comb_loc.outputs["Vector"], tiling_curr.inputs["Location"])
+
+                tiling_next = nodes.new("ShaderNodeGroup")
+                tiling_next.node_tree = templates["MC_Atlas_UV_Tiling"]
+                tiling_next.name = f"MC Atlas UV Tiling Next ({channel_name})"
+                tiling_next.location = (-550, base_y - 120)
+                links.new(next_uv_socket, tiling_next.inputs["Vector"])
+                links.new(comb_scale.outputs["Vector"], tiling_next.inputs["Scale"])
+                links.new(comb_loc.outputs["Vector"], tiling_next.inputs["Location"])
 
                 # Tex Current & Next
                 tex_curr = nodes.new("ShaderNodeTexImage")
@@ -515,7 +560,7 @@ def build_atlas_chunk_materials(
                 tex_curr.interpolation = "Closest"
                 tex_curr.extension = "CLIP"
                 tex_curr.location = (-320, base_y + 120)
-                links.new(curr_uv_socket, tex_curr.inputs["Vector"])
+                links.new(tiling_curr.outputs["Atlas UV"], tex_curr.inputs["Vector"])
 
                 if channel_key == "albedo":
                     albedo_tex_node = tex_curr
@@ -526,7 +571,7 @@ def build_atlas_chunk_materials(
                 tex_next.interpolation = "Closest"
                 tex_next.extension = "CLIP"
                 tex_next.location = (-320, base_y - 120)
-                links.new(next_uv_socket, tex_next.inputs["Vector"])
+                links.new(tiling_next.outputs["Atlas UV"], tex_next.inputs["Vector"])
 
                 # Frame Blend
                 blend_node = nodes.new("ShaderNodeGroup")
@@ -548,8 +593,16 @@ def build_atlas_chunk_materials(
                     links.new(blend_node.outputs["Alpha"], decoder_node.inputs[alpha_socket])
 
         else:
-            # Static Branch (direct UV mapping from baked UVs)
-            uv_source_socket = uv_socket
+            # Static Branch (tiled UV mapping for merged quads)
+            tiling_node = nodes.new("ShaderNodeGroup")
+            tiling_node.node_tree = templates["MC_Atlas_UV_Tiling"]
+            tiling_node.name = "MC Atlas UV Tiling"
+            tiling_node.location = (-800, 0)
+            links.new(uv_socket, tiling_node.inputs["Vector"])
+            links.new(comb_scale.outputs["Vector"], tiling_node.inputs["Scale"])
+            links.new(comb_loc.outputs["Vector"], tiling_node.inputs["Location"])
+            uv_source_socket = tiling_node.outputs["Atlas UV"]
+
 
 
             # Check if overlay texture exists for static chunk

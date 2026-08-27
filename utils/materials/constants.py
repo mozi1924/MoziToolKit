@@ -435,15 +435,14 @@ LEGACY_SPLIT_ATTR_NAMES = (
     ATTR_UV_ROTATION,
     ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_LOCATION,
-    ATTR_UV_TILING_TRANSFORM,
     "mtk_uv_rotation",
-    "mtk_uv_tiling_transform",
     "mtk_anim_total_frames",
     "mtk_anim_frametime",
     "mtk_anim_interpolate",
     "mtk_anim_frame_width",
     "mtk_anim_frame_height",
 )
+
 
 
 # Canonical Block name -> Texture candidate aliases mapping
