@@ -198,25 +198,23 @@ class TestAtlasUVTiling(unittest.TestCase):
             # 2. Verify Animated Material (Chunk 1)
             mat_anim = materials[1]
             nodes_anim = {n.name: n for n in mat_anim.node_tree.nodes}
+            self.assertIn("MC Atlas UV Tiling (Albedo)", nodes_anim)
             self.assertIn("MC UV Mapping (Albedo)", nodes_anim)
-            self.assertIn("MC Atlas UV Tiling Current (Albedo)", nodes_anim)
-            self.assertIn("MC Atlas UV Tiling Next (Albedo)", nodes_anim)
 
+            tiling_anim = nodes_anim["MC Atlas UV Tiling (Albedo)"]
             uv_mapper = nodes_anim["MC UV Mapping (Albedo)"]
-            tiling_curr = nodes_anim["MC Atlas UV Tiling Current (Albedo)"]
-            tiling_next = nodes_anim["MC Atlas UV Tiling Next (Albedo)"]
             tex_curr = nodes_anim["Tex Current (Albedo)"]
             tex_next = nodes_anim["Tex Next (Albedo)"]
 
-            self.assertEqual(uv_mapper.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
-            self.assertEqual(tiling_curr.inputs["Vector"].links[0].from_node, uv_mapper)
-            self.assertEqual(tiling_curr.inputs["Vector"].links[0].from_socket.name, "Current UV")
-            self.assertEqual(tiling_next.inputs["Vector"].links[0].from_node, uv_mapper)
-            self.assertEqual(tiling_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
-            self.assertEqual(tiling_curr.inputs["Scale"].links[0].from_node, nodes_anim["Combine UV Tiling Scale"])
-            self.assertEqual(tiling_curr.inputs["Location"].links[0].from_node, nodes_anim["Combine UV Tiling Location"])
-            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, tiling_curr)
-            self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, tiling_next)
+            self.assertEqual(tiling_anim.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
+            self.assertEqual(uv_mapper.inputs["Vector"].links[0].from_node, tiling_anim)
+            self.assertEqual(uv_mapper.inputs["Vector"].links[0].from_socket.name, "Atlas UV")
+            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, uv_mapper)
+            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_socket.name, "Current UV")
+            self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
+            self.assertEqual(tex_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
+
+
 
 
 
