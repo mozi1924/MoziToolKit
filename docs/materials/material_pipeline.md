@@ -269,3 +269,24 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 | 构建中断 | 图集写入过程中取消/抛错/模拟不完整输出 | 上一份完整缓存仍可读取；不完整新缓存不得绑定。 |
 | 配置主文件损坏 | 主 JSON 截断或无法解析，`.bak` 有效 | 自动从 `.bak` 恢复；资源包顺序与启用状态不丢失。 |
 | Standalone 预编译 | 含动画 Albedo 与静态 PBR 的栈 | 预编译阶段生成对齐资产；替换阶段不读取原始包、不重新采样或平铺图片。 |
+
+---
+
+## 8. 材质子系统模块化划分 (Subsystem Decomposition)
+
+为消除巨石单文件与高耦合，材质系统划分为清晰的子模块架构：
+
+### 8.1 图集生成引擎 (`utils/materials/atlas/`)
+- **`image_utils.py`**：Pillow 图像安全读取（Zip-Slip 与文件句柄管理）、尺寸越界校验、透明度与 Alpha 模式分析（Opaque/Cutout/Translucent）及动画判定。
+- **`model_resolver.py`**：Minecraft 模型 JSON 继承树递归解析与 `#variable` 引用展开、6 面立方体纹理映射。
+- **`chunk_packer.py`**：2D 矩形装箱（Rect Bin Packing）、网格分片装箱（Grid Packing）、垂直逐帧动画切条（Animation Columns）及图集映射元数据烘焙。
+- **`generator.py`**：顶层 `AtlasGenerator` 调度器，执行多包资产聚合与原子发布。
+
+### 8.2 导入器匹配与 UV 解算 (`utils/materials/matching/`)
+- **`mineways_table.py`**：Mineways 1200+ 项静态 Tile 表与图集命名模式常量。
+- **`mineways_atlas.py`**：Mineways 图集识别、面多边形 UV 反向解算与局部 UV 还原逻辑。
+- **`jmc2obj.py`**：jmc2obj 材质与 UV 坐标系匹配。
+
+### 8.3 Yefira 图集着色器集成 (`utils/materials/yefira/`)
+- **`face_lut.py`**：Minecraft 方块状态 6 面查找表（Face LUT）、染色映射表、动画查找表及 UV 旋转映射表生成器。
+- **`atlas_integration.py`**：Yefira Master 图集着色器节点树构建、材质插槽分配与图集元数据提取。

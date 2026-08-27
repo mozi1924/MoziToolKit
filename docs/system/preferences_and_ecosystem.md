@@ -126,3 +126,13 @@ graph TD
 > 1. **配置写入原子性保障**：严禁直接打开主配置文件进行 `open('w')`，必须经由 `.tmp` 写入并在 `fsync` 后原子重命名。
 > 2. **空材质包栈保护**：清空材质包栈必须只能通过用户在 UI 上的显式删除操作发生，配置加载异常或迁移失败时绝对禁止静默写入空列表。
 > 3. **依赖加载沙盒化**：从 `wheels/` 解压或加载第三方库时，必须限制在插件自身的命名空间内，防止与用户安装的其他 Blender 插件产生包版本冲突。
+
+---
+
+## 7. 偏好设置 UI 架构与模块解耦 (UI Architecture)
+
+偏好设置由以下模块协同组成：
+
+- **`ui/preferences_packs.py`**：资源包层级管理（Resource Pack, Mod JAR, Vanilla JAR）、`MOZI_PG_resource_pack_entry` 属性组、`MOZI_UL_resource_packs_list` 绘制列表、分层排序（`reorder_resource_packs_by_tier`）及添加/移除/移动算子。
+- **`ui/preferences_menus.py`**：右键菜单项配置属性组（`MOZI_PG_context_menu_item`, `MOZI_PG_available_menu_item`）、已添加/未添加列表绘制器及菜单导入/导出/重置算子。
+- **`ui/preferences.py`**：顶层 `MOZI_AddonPreferences`，调度三大主选项卡（资源包栈、右键菜单、系统环境与存储后端）、预编译缓存算子（`MOZI_OT_precompile_cache`）以及跨模块符号重导出。
