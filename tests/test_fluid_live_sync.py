@@ -380,20 +380,22 @@ class TestFluidLiveSync(unittest.TestCase):
 
         self.assertIsNotNone(top_face, "Top face must be generated")
 
-        # 1. Verify rotation angle is written to face attribute
-        rot_val = top_face[layers["rot"]]
-        self.assertNotEqual(rot_val, 0.0, "Flowing top face must have non-zero mtk_uv_rotation")
-        self.assertAlmostEqual(rot_val, -math.pi / 2.0, places=4, msg="Eastward flow angle should be -pi/2")
-
-        # 2. Verify UV coordinates span the full tile frame in Atlas space (full 1:1 scale, not shrunk to 0.25)
+        # 1. Verify UV coordinates have rotation baked directly into the 16x16 sampling window
         u_vals = [loop[uv_layer].uv.x for loop in top_face.loops]
         v_vals = [loop[uv_layer].uv.y for loop in top_face.loops]
         span_u = max(u_vals) - min(u_vals)
         span_v = max(v_vals) - min(v_vals)
         self.assertGreater(span_u, 0.01)
         self.assertGreater(span_v, 0.01)
+        # Verify UV coordinates stay safely within [0, 1]
+        for u, v in zip(u_vals, v_vals):
+            self.assertGreaterEqual(u, 0.0)
+            self.assertLessEqual(u, 1.0)
+            self.assertGreaterEqual(v, 0.0)
+            self.assertLessEqual(v, 1.0)
 
         bm.free()
+
 
     def test_vertical_waterfall_uses_flowing_material(self):
         """

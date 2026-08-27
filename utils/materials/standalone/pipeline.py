@@ -34,6 +34,7 @@ from ..atlas.generator import AtlasGenerator
 from .generator import StandaloneGenerator, STANDALONE_FORMAT_VERSION
 from ..atlas.layout import remap_uv_to_local, remap_local_to_target_uv
 from ...mesh import restore_atlas_tiling_uv
+from ...mesh.fluid_uv import is_fluid_texture_name, normalize_static_fluid_face_uv
 from ..pipeline.mesh_attributes import (
     read_face_string_attribute,
     read_face_float_attribute,
@@ -43,6 +44,7 @@ from ..pipeline.mesh_attributes import (
     cleanup_legacy_mesh_attributes,
     cleanup_object_anim_properties,
 )
+
 from ..pipeline.uv_pipeline import remap_polygon_loop_uvs
 from ..pipeline.session import (
     build_material_face_cache,
@@ -429,9 +431,12 @@ class StandaloneReplacementEngine:
                         continue
 
                     polygon = mesh.polygons[poly_idx]
+                    if is_fluid_texture_name(tex_info["texture_name"]):
+                        normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_info["texture_name"])
+
                     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
                         tiling_scale, tiling_location = read_face_tiling(mesh, poly_idx)
-                        tiling_rotation = read_face_float_attribute(mesh, ATTR_UV_ROTATION, poly_idx)
+                        tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx)
                         for loop_index in polygon.loop_indices:
                             uv = uv_layer.data[loop_index].uv
                             local_u, local_v = remap_uv_to_local(
@@ -453,6 +458,7 @@ class StandaloneReplacementEngine:
                             old_anim_info=old_anim_info,
                             target_anim_info=target_anim_info,
                         )
+
 
             if poly_modified:
                 poly_tint_map = {

@@ -110,6 +110,79 @@ class TestRepairFluidUV(unittest.TestCase):
         self.assertEqual(len(pipeline.steps), 1)
         self.assertEqual(pipeline.steps[0].name, "Repair Fluid UV")
 
+    def test_shared_fluid_uv_top_and_side_generation(self):
+        """Verify get_fluid_top_uvs and get_fluid_side_uvs mathematical boundaries."""
+        from utils.mesh.fluid_uv import (
+            get_fluid_top_uvs,
+            get_fluid_side_uvs,
+            is_fluid_texture_name,
+            is_flowing_fluid_texture,
+        )
+        import math
+
+        self.assertTrue(is_fluid_texture_name("minecraft:block/water_flow"))
+        self.assertTrue(is_fluid_texture_name("minecraft:block/lava_still"))
+        self.assertFalse(is_fluid_texture_name("minecraft:block/stone"))
+
+        self.assertTrue(is_flowing_fluid_texture("minecraft:block/water_flow"))
+        self.assertTrue(is_flowing_fluid_texture("flowing_lava"))
+        self.assertFalse(is_flowing_fluid_texture("minecraft:block/water_still"))
+
+        # Stationary top: [0, 1]
+        still_uvs = get_fluid_top_uvs(is_flowing=False)
+        self.assertEqual(still_uvs, ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)))
+
+        # Flowing top: [0.25, 0.75] window centered at (0.5, 0.5)
+        flow_uvs = get_fluid_top_uvs(is_flowing=True, rotation=0.0)
+        self.assertEqual(flow_uvs, ((0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25)))
+
+        # Flowing top with 45 degree rotation: all points remain strictly within [0.14, 0.86]
+        flow_rot_uvs = get_fluid_top_uvs(is_flowing=True, rotation=math.pi / 4.0)
+        for u, v in flow_rot_uvs:
+            self.assertGreater(u, 0.14)
+            self.assertLess(u, 0.86)
+            self.assertGreater(v, 0.14)
+            self.assertLess(v, 0.86)
+
+        # Side face UVs
+        side_uvs = get_fluid_side_uvs(0.8, 0.4)
+        self.assertAlmostEqual(side_uvs[0][1], (1.0 - 0.8) * 0.5, places=4)
+        self.assertAlmostEqual(side_uvs[3][1], (1.0 - 0.4) * 0.5, places=4)
+        self.assertEqual(side_uvs[1], (0.0, 0.5))
+        self.assertEqual(side_uvs[2], (0.5, 0.5))
+
+    def test_normalize_static_fluid_face_uv_top_and_side(self):
+        """Verify normalize_static_fluid_face_uv scales flowing top faces to 16x16 window."""
+        from utils.mesh.fluid_uv import normalize_static_fluid_face_uv
+
+        # Create mesh with top face (Z=1.0)
+        mesh = bpy.data.meshes.new("TestStaticFluidMesh")
+        verts = [(-0.5, -0.5, 1.0), (-0.5, 0.5, 1.0), (0.5, 0.5, 1.0), (0.5, -0.5, 1.0)]
+        faces = [[0, 1, 2, 3]]
+        mesh.from_pydata(verts, [], faces)
+        mesh.update()
+
+
+        uv_layer = mesh.uv_layers.new(name="UVMap")
+        # Initialize full [0, 1] UVs
+        uv_layer.data[0].uv = Vector((0.0, 0.0))
+        uv_layer.data[1].uv = Vector((0.0, 1.0))
+        uv_layer.data[2].uv = Vector((1.0, 1.0))
+        uv_layer.data[3].uv = Vector((1.0, 0.0))
+
+        # Normalize as flowing water
+        res = normalize_static_fluid_face_uv(mesh.polygons[0], mesh, uv_layer, texture_name="water_flow")
+        self.assertTrue(res)
+
+        # Loop UVs should now be centered at (0.5, 0.5) with span [0.25, 0.75]
+        self.assertAlmostEqual(uv_layer.data[0].uv.x, 0.25, places=4)
+        self.assertAlmostEqual(uv_layer.data[0].uv.y, 0.25, places=4)
+        self.assertAlmostEqual(uv_layer.data[2].uv.x, 0.75, places=4)
+        self.assertAlmostEqual(uv_layer.data[2].uv.y, 0.75, places=4)
+
+        bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

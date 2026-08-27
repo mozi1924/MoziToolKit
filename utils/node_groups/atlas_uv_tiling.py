@@ -1,9 +1,11 @@
-"""Shader node group for Atlas UV Self-Tiling.
+"""Shader node group for Atlas UV Self-Tiling (Legacy / Standalone Fallback).
 
-Allows artists to scale, translate, and rotate UV coordinates on Atlas materials
-using standard mapping operations from the UV center point without texture coordinates
-bleeding into neighboring atlas tiles.
+Retained for backward compatibility and specialized shader use cases.
+Modern MoziToolKit pipelines bake UV rotation, 16x16 sampling windows, and
+affine transformations directly into vertex/loop geometry UV coordinates,
+achieving zero runtime shader overhead and saving mesh attribute slots under EEVEE.
 """
+
 
 from __future__ import annotations
 
