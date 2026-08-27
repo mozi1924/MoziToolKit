@@ -177,8 +177,8 @@ def build_world_mesh(
         obj.location = (0.0, 0.0, 0.0)
         context.collection.objects.link(obj)
 
-    # 3. Material Manager
-    mat_manager = LiveSyncMaterialManager(world_obj=obj, atlas_params=atlas_params)
+    # 3. Material Manager (cached singleton)
+    mat_manager = get_shared_material_manager(world_obj=obj, atlas_params=atlas_params)
 
     # 4. Precompute unique block states
     unique_states = set(block_map.values())
@@ -265,8 +265,8 @@ def sync_world_mesh(
         root_obj.location = (0.0, 0.0, 0.0)
         context.collection.objects.link(root_obj)
 
-    # 2. Material Manager for chunk materials
-    mat_manager = LiveSyncMaterialManager(world_obj=root_obj, atlas_params=atlas_params)
+    # 2. Material Manager for chunk materials (cached singleton)
+    mat_manager = get_shared_material_manager(world_obj=root_obj, atlas_params=atlas_params)
 
     # 3. Precompute unique block states
     unique_states = set(block_map.values())

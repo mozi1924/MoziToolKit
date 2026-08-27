@@ -80,9 +80,9 @@ class PacketType:
     SELECTION_INFO: Final = 0x01
     FULL_SNAPSHOT: Final = 0x02
     DELTA_UPDATE: Final = 0x03
-    REPAIR_REQUEST: Final = 0x04
     SECTION_MANIFEST: Final = 0x05
     SECTION_SNAPSHOT: Final = 0x06
+    REPAIR_REQUEST: Final = 0x81
 
 
 HEADER_FORMAT: Final = "<2sBB"

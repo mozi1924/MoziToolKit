@@ -191,6 +191,7 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
     if _cached_atlas_params is None or _cached_mat_signature != current_signature:
         _cached_mat_signature = current_signature
         _cached_atlas_params = extract_atlas_parameters(mat)
+        clear_mesh_builder_caches()
     return _cached_atlas_params
 
 
@@ -402,18 +403,17 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     item = props.palette_list.add()
                     item.state_str = p_item
 
-                # If manifest validation or in-memory snapshot comparison confirms identical state with existing scene mesh, skip full rebuild
+                # 1. ALWAYS populate VoxelStorage in RAM so face culling and delta neighbor lookups are 100% complete
+                voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
+
+                # 2. Check if existing scene mesh can be safely reused without full geometry rebuild
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                 has_existing_mesh = existing_world is not None and (
                     len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
                 )
 
-                is_identical = has_existing_mesh and voxel_storage.is_snapshot_identical(
-                    min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices
-                )
-
-                if not _force_next_full_rebuild and (is_identical or (_skip_next_full_snapshot and has_existing_mesh and voxel_storage.matches_bounds(min_x, min_y, min_z))):
-                    logger.info("Live Sync: Verified existing scene mesh matches server snapshot (identical data), skipping full rebuild.")
+                if not _force_next_full_rebuild and (_skip_next_full_snapshot or props.sync_verified) and has_existing_mesh:
+                    logger.info("Live Sync: Verified existing scene mesh matches server snapshot (identical data), skipping full mesh rebuild.")
                     props.last_update_info = f"Verified: {total_blocks:,} blocks (reused existing mesh)"
                     props.sync_verified = True
                     props.validation_info = "Verified (100% in sync with scene)"
@@ -421,26 +421,24 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     mat = find_bound_atlas_material(existing_world) if existing_world else None
                     atlas_params = get_cached_atlas_params(mat)
                     preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
+                    persist_sync_state_to_scene(bpy.context)
                     return
 
                 _skip_next_full_snapshot = False
                 _force_next_full_rebuild = False
                 clear_sync_caches()
 
-                # 1. Update VoxelStorage
-                voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
-
-                # 2. Pre-warm and pre-load all palette blockstate models and materials in RAM
+                # 3. Pre-warm and pre-load all palette blockstate models and materials in RAM
                 mat = find_bound_atlas_material(existing_world) if existing_world else None
                 atlas_params = get_cached_atlas_params(mat)
                 preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
 
-                # 3. Schedule initial world mesh build
+                # 4. Schedule initial world mesh build
                 schedule_mesh_sync(force_full_rebuild=True)
 
                 props.last_update_info = f"Snapshot: {total_blocks} blocks (gen {voxel_storage.generation})"
 
-                # 4. Persist metadata onto world object
+                # 5. Persist metadata onto world object
                 persist_sync_state_to_scene(bpy.context)
 
                 # Log delta history
@@ -479,7 +477,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 else:
                     _skip_next_full_snapshot = False
                     props.validation_info = f"Mismatch in {len(mismatched)} section(s)"
-                    if _client_thread:
+                    if _client_thread and _client_thread.is_connected:
+                        logger.info(f"Live Sync: Requesting auto-healing repair for {len(mismatched)} mismatched section(s)...")
                         _client_thread.send_repair_request(mismatched)
             run_in_main_thread(update)
 
