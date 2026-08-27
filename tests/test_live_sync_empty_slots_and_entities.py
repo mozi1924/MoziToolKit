@@ -167,7 +167,7 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         self.assertEqual(wall.get_face("north").texture, "minecraft:entity/banner/banner_base")
 
     def test_special_model_chunks_are_bound_before_face_generation(self):
-        """Chest/banner model faces must select their own atlas chunks, never chunk 0/1 fallbacks."""
+        """Chest/banner/skull/end portal model faces must select their own atlas chunks, never chunk 0/1 fallbacks."""
         atlas_params = {
             "mapping": {
                 "chunks": [
@@ -176,6 +176,7 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
                     {"chunk_id": 5, "category": "chest", "width": 256, "height": 128, "packing": "rect_bin_pack"},
                     {"chunk_id": 6, "category": "shulker_boxes", "width": 256, "height": 128, "packing": "rect_bin_pack"},
                     {"chunk_id": 7, "category": "banner_patterns", "width": 256, "height": 128, "packing": "rect_bin_pack"},
+                    {"chunk_id": 8, "category": "entities", "width": 512, "height": 512, "packing": "rect_bin_pack"},
                     {"chunk_id": 12, "category": "map_decorations", "width": 256, "height": 256},
                 ],
                 "textures": {
@@ -183,12 +184,21 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
                     "minecraft:entity/chest/normal": {"chunk_id": 5, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "chest"},
                     "minecraft:entity/shulker/shulker": {"chunk_id": 6, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "shulker_boxes"},
                     "minecraft:entity/banner/banner_base": {"chunk_id": 7, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "banner_patterns"},
+                    "minecraft:entity/skeleton/skeleton": {"chunk_id": 8, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 32, "category": "entities"},
+                    "minecraft:entity/skeleton/wither_skeleton": {"chunk_id": 8, "pixel_x": 64, "pixel_y": 0, "rect_width": 64, "rect_height": 32, "category": "entities"},
+                    "minecraft:entity/zombie/zombie": {"chunk_id": 8, "pixel_x": 128, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "entities"},
+                    "minecraft:entity/creeper/creeper": {"chunk_id": 8, "pixel_x": 192, "pixel_y": 0, "rect_width": 64, "rect_height": 32, "category": "entities"},
+                    "minecraft:entity/piglin/piglin": {"chunk_id": 8, "pixel_x": 256, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "entities"},
+                    "minecraft:entity/player/wide/steve": {"chunk_id": 8, "pixel_x": 320, "pixel_y": 0, "rect_width": 64, "rect_height": 64, "category": "entities"},
+                    "minecraft:entity/enderdragon/dragon": {"chunk_id": 8, "pixel_x": 384, "pixel_y": 0, "rect_width": 128, "rect_height": 64, "category": "entities"},
+                    "minecraft:entity/end_portal": {"chunk_id": 8, "pixel_x": 0, "pixel_y": 128, "rect_width": 16, "rect_height": 16, "category": "entities"},
+                    "minecraft:entity/conduit/base": {"chunk_id": 8, "pixel_x": 16, "pixel_y": 128, "rect_width": 32, "rect_height": 16, "category": "entities"},
                     "minecraft:map/decorations/banner_white": {"chunk_id": 12, "pixel_x": 0, "pixel_y": 0, "rect_width": 8, "rect_height": 8, "category": "map_decorations"},
                 },
             }
         }
         mgr = LiveSyncMaterialManager(world_obj=self.obj, atlas_params=atlas_params)
-        self.assertTrue({0, 1, 5, 6, 7}.issubset(mgr.chunk_materials))
+        self.assertTrue({0, 1, 5, 6, 7, 8}.issubset(mgr.chunk_materials))
         self.assertNotIn(12, mgr.chunk_materials)
 
         baker = StateBaker()
@@ -207,6 +217,49 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
         )
         self.assertEqual(banner_resolved.chunk_id, 7)
         self.assertEqual(self.obj.material_slots[banner_resolved.slot_index].material, mgr.chunk_materials[7])
+
+        # Skulls / Heads
+        skulls_to_test = [
+            ("minecraft:skeleton_skull[rotation=0]", "minecraft:entity/skeleton/skeleton"),
+            ("minecraft:wither_skeleton_skull[rotation=0]", "minecraft:entity/skeleton/wither_skeleton"),
+            ("minecraft:zombie_head[rotation=0]", "minecraft:entity/zombie/zombie"),
+            ("minecraft:creeper_head[rotation=0]", "minecraft:entity/creeper/creeper"),
+            ("minecraft:piglin_head[rotation=0]", "minecraft:entity/piglin/piglin"),
+            ("minecraft:player_head[rotation=0]", "minecraft:entity/player/wide/steve"),
+            ("minecraft:dragon_head[rotation=0]", "minecraft:entity/enderdragon/dragon"),
+        ]
+        for state_str, expected_tex in skulls_to_test:
+            skull_model = baker.bake_block_state(state_str)
+            self.assertIsNotNone(skull_model, f"Failed to bake {state_str}")
+            bf = skull_model.elements[0].faces[list(skull_model.elements[0].faces.keys())[0]]
+            self.assertEqual(bf.texture, expected_tex)
+            resolved = mgr.resolve_block_face(parse_and_classify(state_str), "up", 2, baked_face=bf)
+            self.assertEqual(resolved.chunk_id, 8, f"{state_str} failed to address chunk 8 (entities_chunk)")
+            self.assertEqual(
+                self.obj.material_slots[resolved.slot_index].material,
+                mgr.chunk_materials[8],
+                f"{state_str} material slot mismatch",
+            )
+
+        # End Portal & Gateway
+        portal_model = baker.bake_block_state("minecraft:end_portal")
+        portal_bf = portal_model.elements[0].faces["up"]
+        portal_res = mgr.resolve_block_face(parse_and_classify("minecraft:end_portal"), "up", 2, baked_face=portal_bf)
+        self.assertEqual(portal_res.chunk_id, 8, "End portal failed to address chunk 8 (entities_chunk)")
+        self.assertEqual(
+            self.obj.material_slots[portal_res.slot_index].material,
+            mgr.chunk_materials[8],
+            "End portal material slot mismatch",
+        )
+
+        gateway_model = baker.bake_block_state("minecraft:end_gateway")
+        gateway_bf = gateway_model.elements[0].faces["up"]
+        gateway_res = mgr.resolve_block_face(parse_and_classify("minecraft:end_gateway"), "up", 2, baked_face=gateway_bf)
+        self.assertEqual(gateway_res.chunk_id, 8, "End gateway failed to address chunk 8 (entities_chunk)")
+        self.assertEqual(
+            self.obj.material_slots[gateway_res.slot_index].material,
+            mgr.chunk_materials[8],
+        )
 
     def test_model_parser_normalize_texture(self):
         """Verify model parser preserves entity namespaces and doesn't prepend block/."""
