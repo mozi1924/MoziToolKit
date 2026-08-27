@@ -35,6 +35,7 @@ from utils.live_sync.fluid_mesher import (
     calculate_corner_average,
     calculate_fluid_corner_heights,
     calculate_fluid_flow_vector,
+    is_fluid_flowing,
     generate_fluid_mesh_faces,
     MAX_FLUID_HEIGHT,
 )
@@ -379,6 +380,125 @@ class TestFluidLiveSync(unittest.TestCase):
         span_v = max(v_vals) - min(v_vals)
         self.assertGreater(span_u, 0.01)
         self.assertGreater(span_v, 0.01)
+
+        bm.free()
+
+    def test_vertical_waterfall_uses_flowing_material(self):
+        """
+        Verify that vertical falling water (e.g. level=8, or water with air below / water above)
+        is correctly identified as flowing and uses water_flow for top/side faces.
+        """
+        # Waterfall column: water at y=1 with air at y=0 below it
+        block_map = {
+            (0, 1, 0): "minecraft:water[level=8]",  # Falling water block
+        }
+        self.assertTrue(
+            is_fluid_flowing("minecraft:water[level=8]", block_map, 0, 1, 0, "water", 0.0, 0.0),
+            "Falling water level=8 must be identified as flowing",
+        )
+
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.new(UV_MAP)
+        color_layer = bm.loops.layers.color.new("Color")
+        source_key_layer = bm.faces.layers.string.new("mtk_source_texture_key")
+        layers = {
+            "uv": uv_layer,
+            "color": color_layer,
+            "rot": bm.faces.layers.float.new(MTK_UV_ROTATION),
+            "timing": bm.faces.layers.float_color.new("mtk_anim_timing"),
+            "frame_size": bm.faces.layers.float_color.new("mtk_anim_frame_size"),
+            "tiling": bm.faces.layers.float_color.new("mtk_uv_tiling_transform"),
+            "tint_data": bm.faces.layers.float_color.new("mtk_biome_tint_data"),
+            "tint_color": bm.faces.layers.float_color.new(MTK_BIOME_TINT_COLOR),
+            "block_x": bm.faces.layers.int.new("mtk_block_x"),
+            "block_y": bm.faces.layers.int.new("mtk_block_y"),
+            "block_z": bm.faces.layers.int.new("mtk_block_z"),
+            "face_dir": bm.faces.layers.int.new("mtk_face_dir"),
+            "atlas_chunk": bm.faces.layers.int.new(MTK_ATLAS_CHUNK_ID),
+            "source_key": source_key_layer,
+        }
+        mat_mgr = LiveSyncMaterialManager(world_obj=None, atlas_params=self.atlas_params)
+
+        generate_fluid_mesh_faces(
+            bm=bm,
+            x=0, y=1, z=0,
+            state_str="minecraft:water[level=8]",
+            block_map=block_map,
+            layers=layers,
+            origin_centered=False,
+            min_x=0, min_y=0, min_z=0,
+            half_x=0.0, half_z=0.0,
+            mat_manager=mat_mgr,
+        )
+
+        # North side face (face_dir == 5)
+        for f in bm.faces:
+            if f[layers["face_dir"]] == 5:
+                src_key = f[source_key_layer].decode("utf-8")
+                self.assertIn("water_flow", src_key, "Vertical waterfall sides must use water_flow texture")
+            elif f[layers["face_dir"]] == 2:
+                src_key = f[source_key_layer].decode("utf-8")
+                self.assertIn("water_flow", src_key, "Falling water top face must use water_flow texture")
+
+        bm.free()
+
+    def test_still_water_pool_uses_still_material(self):
+        """
+        Verify that a 1-deep stationary source water pool with solid base and boundaries
+        uses water_still for the top surface.
+        """
+        block_map = {
+            (1, 0, 1): "minecraft:water[level=0]",
+            (1, -1, 1): "minecraft:stone",  # solid bottom
+            (0, 0, 1): "minecraft:stone",
+            (2, 0, 1): "minecraft:stone",
+            (1, 0, 0): "minecraft:stone",
+            (1, 0, 2): "minecraft:stone",
+        }
+        self.assertFalse(
+            is_fluid_flowing("minecraft:water[level=0]", block_map, 1, 0, 1, "water", 0.0, 0.0),
+            "Stationary source pool must NOT be identified as flowing",
+        )
+
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.new(UV_MAP)
+        color_layer = bm.loops.layers.color.new("Color")
+        source_key_layer = bm.faces.layers.string.new("mtk_source_texture_key")
+        layers = {
+            "uv": uv_layer,
+            "color": color_layer,
+            "rot": bm.faces.layers.float.new(MTK_UV_ROTATION),
+            "timing": bm.faces.layers.float_color.new("mtk_anim_timing"),
+            "frame_size": bm.faces.layers.float_color.new("mtk_anim_frame_size"),
+            "tiling": bm.faces.layers.float_color.new("mtk_uv_tiling_transform"),
+            "tint_data": bm.faces.layers.float_color.new("mtk_biome_tint_data"),
+            "tint_color": bm.faces.layers.float_color.new(MTK_BIOME_TINT_COLOR),
+            "block_x": bm.faces.layers.int.new("mtk_block_x"),
+            "block_y": bm.faces.layers.int.new("mtk_block_y"),
+            "block_z": bm.faces.layers.int.new("mtk_block_z"),
+            "face_dir": bm.faces.layers.int.new("mtk_face_dir"),
+            "atlas_chunk": bm.faces.layers.int.new(MTK_ATLAS_CHUNK_ID),
+            "source_key": source_key_layer,
+        }
+        mat_mgr = LiveSyncMaterialManager(world_obj=None, atlas_params=self.atlas_params)
+
+        generate_fluid_mesh_faces(
+            bm=bm,
+            x=1, y=0, z=1,
+            state_str="minecraft:water[level=0]",
+            block_map=block_map,
+            layers=layers,
+            origin_centered=False,
+            min_x=0, min_y=0, min_z=0,
+            half_x=0.0, half_z=0.0,
+            mat_manager=mat_mgr,
+        )
+
+        for f in bm.faces:
+            if f[layers["face_dir"]] == 2:  # Top face
+                src_key = f[source_key_layer].decode("utf-8")
+                self.assertIn("water_still", src_key, "Stationary pool top face must use water_still texture")
+                self.assertAlmostEqual(f[layers["rot"]], 0.0, places=4, msg="Stationary pool rotation must be 0")
 
         bm.free()
 

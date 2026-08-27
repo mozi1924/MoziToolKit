@@ -303,6 +303,75 @@ def _emit_fluid_face(
     return True
 
 
+def is_fluid_flowing(
+    state_str: str,
+    block_map: dict[tuple[int, int, int], str],
+    x: int, y: int, z: int,
+    fluid_type: str,
+    vx: float, vz: float,
+) -> bool:
+    """
+    Determine whether a fluid block is in a flowing state (horizontally or vertically).
+    Returns True for flowing streams, waterfalls, and falling fluid columns.
+    Returns False only for completely stationary source pools.
+    """
+    if not state_str:
+        return False
+
+    parsed = parse_and_classify(state_str)
+
+    # 1. State name check (e.g. minecraft:flowing_water, minecraft:flowing_lava)
+    if "flowing" in parsed.name:
+        return True
+
+    # 2. BlockState level property:
+    # level=0 is source block.
+    # level=1..7 is flowing downhill.
+    # level=8..15 is falling fluid (bit 0x8 set, e.g. waterfalls).
+    raw_level = parsed.props.get("level", "0")
+    try:
+        level_int = int(raw_level)
+    except (ValueError, TypeError):
+        level_int = 0
+
+    if level_int > 0:
+        return True
+
+    # 3. Horizontal flow vector
+    if abs(vx) > 1e-4 or abs(vz) > 1e-4:
+        return True
+
+    # 4. Vertical flow check:
+    # Fluid directly above dropping down into this block (waterfall column)
+    above_state = block_map.get((x, y + 1, z))
+    if above_state:
+        p_above = parse_and_classify(above_state)
+        if p_above.name.replace("flowing_", "") == fluid_type:
+            return True
+
+    # Check block directly below:
+    # If below is air or a non-solid / lower fluid block, fluid falls downward
+    below_state = block_map.get((x, y - 1, z))
+    if not below_state:
+        # Air below -> falling fluid
+        return True
+    else:
+        p_below = parse_and_classify(below_state)
+        if p_below.block_type in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID) and not p_below.is_opaque:
+            if p_below.block_type == BlockTypeEnum.FLUID:
+                b_level = 0
+                try:
+                    b_level = int(p_below.props.get("level", "0"))
+                except (ValueError, TypeError):
+                    pass
+                if b_level > 0:
+                    return True
+            else:
+                return True
+
+    return False
+
+
 def generate_fluid_mesh_faces(
     bm: bmesh.types.BMesh,
     x: int, y: int, z: int,
@@ -344,18 +413,30 @@ def generate_fluid_mesh_faces(
 
     # 1. Flow Direction and UV Rotation
     vx, vz, flow_angle = calculate_fluid_flow_vector(block_map, x, y, z, fluid_type, own_height)
-    is_flowing = (abs(vx) > 1e-4 or abs(vz) > 1e-4)
+    is_flowing = is_fluid_flowing(state_str, block_map, x, y, z, fluid_type, vx, vz)
 
     # Resolve Still and Flowing Face Resources
     target_tex_still = f"minecraft:block/{fluid_type}_still"
     target_tex_flow = f"minecraft:block/{fluid_type}_flow"
 
-    res_still = mat_manager.resolve_block_face(parsed, "top", DIR_TO_INDEX["up"])
+    res_still = mat_manager.resolve_block_face(
+        parsed=parsed,
+        face_name="top",
+        face_index=DIR_TO_INDEX["up"],
+        json_face_info={"tex": target_tex_still, "rot": 0.0},
+    )
     res_flow = mat_manager.resolve_block_face(
         parsed=parsed,
         face_name="top",
         face_index=DIR_TO_INDEX["up"],
-        json_face_info={"tex": target_tex_flow, "rot": flow_angle} if is_flowing else None,
+        json_face_info={"tex": target_tex_flow, "rot": flow_angle if is_flowing else 0.0},
+    )
+    # Side faces always use the flowing material in Minecraft/Mineways
+    side_res = mat_manager.resolve_block_face(
+        parsed=parsed,
+        face_name="north",
+        face_index=DIR_TO_INDEX["north"],
+        json_face_info={"tex": target_tex_flow, "rot": 0.0},
     )
 
     top_res = res_flow if is_flowing else res_still
@@ -419,7 +500,7 @@ def generate_fluid_mesh_faces(
             bm=bm,
             verts_coords=(v_bot_sw, v_bot_nw, v_bot_ne, v_bot_se),
             loop_uvs_mc=bot_uvs_mc,
-            f_res=res_still,
+            f_res=res_flow if is_flowing else res_still,
             layers=layers,
             block_pos=(x, y, z),
             face_dir_idx=DIR_TO_INDEX["down"],
@@ -431,8 +512,7 @@ def generate_fluid_mesh_faces(
     # -------------------------------------------------------------
     # 3. Side Faces (North, South, West, East) - Mineways Accurate UV
     # -------------------------------------------------------------
-    # For flowing side faces, Minecraft uses flowing texture (water_flow / lava_flow)
-    side_res = res_flow if (is_flowing or own_height < MAX_FLUID_HEIGHT) else res_still
+    # Side faces always use flowing texture (water_flow / lava_flow)
 
     def _should_cull_side(nx: int, ny: int, nz: int, h_top_max: float) -> bool:
         n_state = block_map.get((nx, ny, nz))
