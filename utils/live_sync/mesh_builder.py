@@ -534,20 +534,94 @@ def _generate_single_block_faces(
         by = -float(z)
         bz = float(y)
 
+def _emit_bmesh_face(
+    bm: bmesh.types.BMesh,
+    verts_coords: Sequence[tuple[float, float, float]],
+    f_res: ResolvedFaceTexture,
+    layers: dict[str, Any],
+    block_pos: tuple[int, int, int],
+    face_dir_idx: int,
+    loop_uvs_mc: Sequence[tuple[float, float]],
+    uv_rot: float = 0.0,
+    use_tint: bool = False,
+    model_uv_scale: tuple[float, float] = (1.0, 1.0),
+) -> bool:
+    """Helper to emit a single polygon face into BMesh with all shader attributes and UVs."""
+    face_bm_verts = [bm.verts.new(v) for v in verts_coords]
+    try:
+        bm_face = bm.faces.new(face_bm_verts)
+    except ValueError:
+        return False
+
+    bm_face.material_index = f_res.slot_index
+    bm_face[layers["atlas_chunk"]] = f_res.chunk_id
+    bm_face[layers["rot"]] = uv_rot
+    bm_face[layers["timing"]] = f_res.anim_timing
+    bm_face[layers["frame_size"]] = f_res.anim_frame_size
+    bm_face[layers["tiling"]] = f_res.uv_tiling_transform
+    bm_face[layers["tint_data"]] = f_res.biome_tint_data
+    bm_face[layers["tint_color"]] = f_res.biome_tint_color
+    bm_face[layers["block_x"]] = block_pos[0]
+    bm_face[layers["block_y"]] = block_pos[1]
+    bm_face[layers["block_z"]] = block_pos[2]
+    bm_face[layers["face_dir"]] = face_dir_idx
+    if layers.get("source_key") and f_res.source_texture_key:
+        bm_face[layers["source_key"]] = f_res.source_texture_key.encode("utf-8")
+
     uv_layer = layers["uv"]
     color_layer = layers["color"]
-    rot_layer = layers["rot"]
-    timing_layer = layers["timing"]
-    frame_size_layer = layers["frame_size"]
-    tiling_layer = layers["tiling"]
-    tint_data_layer = layers["tint_data"]
-    tint_color_layer = layers["tint_color"]
-    block_x_layer = layers["block_x"]
-    block_y_layer = layers["block_y"]
-    block_z_layer = layers["block_z"]
-    face_dir_layer = layers["face_dir"]
-    atlas_chunk_layer = layers["atlas_chunk"]
-    source_key_layer = layers.get("source_key")
+    sx, sy = model_uv_scale
+
+    for loop_idx, loop in enumerate(bm_face.loops):
+        if loop_idx < len(loop_uvs_mc):
+            u_mc, v_mc = loop_uvs_mc[loop_idx]
+        else:
+            u_mc, v_mc = (0.0, 0.0)
+        u_scaled = float(u_mc) * sx
+        v_scaled = float(v_mc) * sy
+        loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_scaled, 1.0 - v_scaled))
+        loop[color_layer] = f_res.biome_tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
+
+    return True
+
+
+def _generate_single_block_faces(
+    bm: bmesh.types.BMesh,
+    x: int, y: int, z: int,
+    state_str: str,
+    block_map: dict[tuple[int, int, int], str],
+    state_cache: dict[str, CachedStateMeta],
+    layers: dict[str, Any],
+    origin_centered: bool,
+    min_x: int, min_y: int, min_z: int,
+    half_x: float, half_z: float,
+    mat_manager: Optional[LiveSyncMaterialManager] = None,
+    baker: Optional[StateBaker] = None,
+) -> tuple[int, int, int]:
+    """
+    Generates faces for a single block at (x, y, z) into BMesh with full 6-face neighbor culling.
+    Returns (is_cube, is_prop, is_fluid).
+    """
+    meta = state_cache.get(state_str)
+    if not meta and state_str:
+        if state_str in _GLOBAL_STATE_META_CACHE:
+            meta = _GLOBAL_STATE_META_CACHE[state_str]
+        elif mat_manager is not None and baker is not None:
+            meta = get_cached_state_meta(state_str, mat_manager, baker)
+        if meta:
+            state_cache[state_str] = meta
+
+    if not meta or meta.is_air:
+        return (0, 0, 0)
+
+    if origin_centered:
+        bx = (x - min_x) - half_x
+        by = -((z - min_z) - half_z)
+        bz = (y - min_y) + 0.5
+    else:
+        bx = float(x)
+        by = -float(z)
+        bz = float(y)
 
     def _get_neighbor_meta(pos: tuple[int, int, int]) -> Optional[CachedStateMeta]:
         n_state = block_map.get(pos)
@@ -580,36 +654,20 @@ def _generate_single_block_faces(
             f_res = meta.faces_info.get(f_name, meta.faces_info.get("up"))
             mc_verts = CUBE_FACE_MC_VERTICES[f_name]
             canonical_uvs = CUBE_FACE_CANONICAL_UVS[f_name]
+            bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in mc_verts]
+            world_coords = [(bx + vx, by + vy, bz + vz) for vx, vy, vz in bl_coords]
 
-            face_bm_verts = []
-            for (lx, ly, lz) in mc_verts:
-                vx, vy, vz = _mc_local_to_blender(lx, ly, lz)
-                face_bm_verts.append(bm.verts.new((bx + vx, by + vy, bz + vz)))
-
-            try:
-                bm_face = bm.faces.new(face_bm_verts)
-            except ValueError:
-                continue
-
-            bm_face.material_index = f_res.slot_index
-            bm_face[atlas_chunk_layer] = f_res.chunk_id
-            bm_face[rot_layer] = f_res.uv_rot
-            bm_face[timing_layer] = f_res.anim_timing
-            bm_face[frame_size_layer] = f_res.anim_frame_size
-            bm_face[tiling_layer] = f_res.uv_tiling_transform
-            bm_face[tint_data_layer] = f_res.biome_tint_data
-            bm_face[tint_color_layer] = f_res.biome_tint_color
-            bm_face[block_x_layer] = x
-            bm_face[block_y_layer] = y
-            bm_face[block_z_layer] = z
-            bm_face[face_dir_layer] = DIR_TO_INDEX.get(f_name, -1)
-            if source_key_layer and f_res.source_texture_key:
-                bm_face[source_key_layer] = f_res.source_texture_key.encode("utf-8")
-
-            for loop_idx, loop in enumerate(bm_face.loops):
-                u_mc, v_mc = canonical_uvs[loop_idx]
-                loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-                loop[color_layer] = f_res.biome_tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
+            _emit_bmesh_face(
+                bm=bm,
+                verts_coords=world_coords,
+                f_res=f_res,
+                layers=layers,
+                block_pos=(x, y, z),
+                face_dir_idx=DIR_TO_INDEX.get(f_name, -1),
+                loop_uvs_mc=canonical_uvs,
+                uv_rot=f_res.uv_rot,
+                use_tint=f_res.use_tint,
+            )
 
     elif meta.baked_model and meta.baked_model.elements:
         if meta.is_cube:
@@ -635,45 +693,21 @@ def _generate_single_block_faces(
                                 continue
 
                 f_res = meta.get_face_res(bf, f_dir)
+                bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in bf.vertices]
+                world_coords = [(bx + vx, by + vy, bz + vz) for vx, vy, vz in bl_coords]
 
-                face_bm_verts = []
-                for (lx, ly, lz) in bf.vertices:
-                    vx, vy, vz = _mc_local_to_blender(lx, ly, lz)
-                    face_bm_verts.append(bm.verts.new((bx + vx, by + vy, bz + vz)))
-
-                try:
-                    bm_face = bm.faces.new(face_bm_verts)
-                except ValueError:
-                    continue
-
-                bm_face.material_index = f_res.slot_index
-                bm_face[atlas_chunk_layer] = f_res.chunk_id
-                bm_face[rot_layer] = 0.0
-                bm_face[timing_layer] = f_res.anim_timing
-                bm_face[frame_size_layer] = f_res.anim_frame_size
-                bm_face[tiling_layer] = f_res.uv_tiling_transform
-                bm_face[tint_data_layer] = f_res.biome_tint_data
-                bm_face[tint_color_layer] = f_res.biome_tint_color
-                bm_face[block_x_layer] = x
-                bm_face[block_y_layer] = y
-                bm_face[block_z_layer] = z
-                bm_face[face_dir_layer] = DIR_TO_INDEX.get(f_dir, -1)
-                if source_key_layer and f_res.source_texture_key:
-                    bm_face[source_key_layer] = f_res.source_texture_key.encode("utf-8")
-
-                for loop_idx, loop in enumerate(bm_face.loops):
-                    if loop_idx < len(bf.uvs):
-                        u_mc, v_mc = bf.uvs[loop_idx]
-                    else:
-                        u_mc, v_mc = (0.0, 0.0)
-                    # StateBaker UVs are normalized against Minecraft's
-                    # canonical 16x16 model grid.  Rect-packed entity
-                    # textures may be 64x64 (or HD variants), so scale them
-                    # into that texture's local space before atlas placement.
-                    u_mc = float(u_mc) * f_res.model_uv_scale[0]
-                    v_mc = float(v_mc) * f_res.model_uv_scale[1]
-                    loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-                    loop[color_layer] = f_res.biome_tint_color if (bf.tint_index >= 0 or f_res.use_tint) else (1.0, 1.0, 1.0, 1.0)
+                _emit_bmesh_face(
+                    bm=bm,
+                    verts_coords=world_coords,
+                    f_res=f_res,
+                    layers=layers,
+                    block_pos=(x, y, z),
+                    face_dir_idx=DIR_TO_INDEX.get(f_dir, -1),
+                    loop_uvs_mc=bf.uvs,
+                    uv_rot=0.0,
+                    use_tint=(bf.tint_index >= 0 or f_res.use_tint),
+                    model_uv_scale=f_res.model_uv_scale,
+                )
 
     else:
         is_cube_cnt = 1
@@ -691,36 +725,20 @@ def _generate_single_block_faces(
             f_res = meta.faces_info.get(f_name, meta.faces_info.get("east"))
             mc_verts = CUBE_FACE_MC_VERTICES[f_name]
             canonical_uvs = CUBE_FACE_CANONICAL_UVS[f_name]
+            bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in mc_verts]
+            world_coords = [(bx + vx, by + vy, bz + vz) for vx, vy, vz in bl_coords]
 
-            face_bm_verts = []
-            for (lx, ly, lz) in mc_verts:
-                vx, vy, vz = _mc_local_to_blender(lx, ly, lz)
-                face_bm_verts.append(bm.verts.new((bx + vx, by + vy, bz + vz)))
-
-            try:
-                bm_face = bm.faces.new(face_bm_verts)
-            except ValueError:
-                continue
-
-            bm_face.material_index = f_res.slot_index
-            bm_face[atlas_chunk_layer] = f_res.chunk_id
-            bm_face[rot_layer] = 0.0
-            bm_face[timing_layer] = f_res.anim_timing
-            bm_face[frame_size_layer] = f_res.anim_frame_size
-            bm_face[tiling_layer] = f_res.uv_tiling_transform
-            bm_face[tint_data_layer] = f_res.biome_tint_data
-            bm_face[tint_color_layer] = f_res.biome_tint_color
-            bm_face[block_x_layer] = x
-            bm_face[block_y_layer] = y
-            bm_face[block_z_layer] = z
-            bm_face[face_dir_layer] = DIR_TO_INDEX.get(f_name, -1)
-            if source_key_layer and f_res.source_texture_key:
-                bm_face[source_key_layer] = f_res.source_texture_key.encode("utf-8")
-
-            for loop_idx, loop in enumerate(bm_face.loops):
-                u_mc, v_mc = canonical_uvs[loop_idx]
-                loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-                loop[color_layer] = f_res.biome_tint_color if f_res.use_tint else (1.0, 1.0, 1.0, 1.0)
+            _emit_bmesh_face(
+                bm=bm,
+                verts_coords=world_coords,
+                f_res=f_res,
+                layers=layers,
+                block_pos=(x, y, z),
+                face_dir_idx=DIR_TO_INDEX.get(f_name, -1),
+                loop_uvs_mc=canonical_uvs,
+                uv_rot=0.0,
+                use_tint=f_res.use_tint,
+            )
 
     return (is_cube_cnt, is_prop_cnt, is_fluid_cnt)
 
