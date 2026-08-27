@@ -403,6 +403,7 @@ def apply_block_delta_to_world(
     changes: list[tuple[int, int, int, str]],
     atlas_params: Optional[dict[str, Any]] = None,
     origin_centered: bool = True,
+    previous_states: Optional[dict[tuple[int, int, int], str]] = None,
 ) -> WorldMeshBuildResult:
     """
     Ultra-high-performance block-level incremental mesh modifier.
@@ -435,9 +436,17 @@ def apply_block_delta_to_world(
 
     # 3. Find all blocks to update: changed blocks + neighbors (including 3x3 diagonal window for fluids)
     blocks_to_update: set[tuple[int, int, int]] = set()
+    previous_states = previous_states or {}
     for abs_x, abs_y, abs_z, _state in changes:
         blocks_to_update.add((abs_x, abs_y, abs_z))
-        is_fluid_change = is_fluid_block(_state) or is_fluid_block(storage.get_block(abs_x, abs_y, abs_z))
+        # The current storage value is already the new state.  Consult the
+        # pre-delta state as well, otherwise water -> air is treated as an
+        # ordinary block removal and leaves neighboring sloped faces behind.
+        is_fluid_change = (
+            is_fluid_block(_state)
+            or is_fluid_block(previous_states.get((abs_x, abs_y, abs_z)))
+            or is_fluid_block(storage.get_block(abs_x, abs_y, abs_z))
+        )
         if not is_fluid_change:
             for dx, dy, dz in MC_DIR_OFFSETS.values():
                 if is_fluid_block(storage.get_block(abs_x + dx, abs_y + dy, abs_z + dz)):

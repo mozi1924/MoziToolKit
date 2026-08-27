@@ -329,6 +329,20 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertNotEqual(old_crc, new_crc)
         self.assertEqual(self.storage.validate_manifest([(0, 0, 0, new_crc)]), [])
 
+    def test_storage_delta_details_preserve_old_state_for_fluid_removal(self):
+        """Water -> air must expose the old fluid state to the mesh synchronizer."""
+        self.storage.set_full_snapshot(
+            0, 0, 0, 1, 1, 1,
+            ["minecraft:water[level=0]"], [0],
+        )
+        applied = self.storage.apply_delta_update_detailed(
+            0, 0, 0, [(0, 0, 0, "minecraft:air")]
+        )
+        self.assertEqual(
+            applied,
+            [(0, 0, 0, "minecraft:water[level=0]", "minecraft:air")],
+        )
+
     def test_storage_ignores_noop_delta(self):
         """Repeated server deltas must not schedule an expensive world rebuild."""
         palette = ["minecraft:air", "minecraft:stone"]
@@ -352,7 +366,11 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
         self.assertEqual(self.storage.get_block(0, 0, 0), "minecraft:gold_block")
         self.assertEqual(self.storage.get_block(15, 15, 15), "minecraft:gold_block")
-        self.assertNotIn((0, 0, 0), self.storage._dirty_sections)
+        # A repaired snapshot has changed local voxel data and must trigger a
+        # mesh rebuild, including neighboring sections used by fluid sampling.
+        self.assertIn((0, 0, 0), self.storage._dirty_sections)
+        self.assertIn((1, 0, 0), self.storage._dirty_sections)
+        self.assertIn((1, 1, 1), self.storage._dirty_sections)
 
     def test_contract_version_read_verification(self):
         """Test read-side attribute contract version verification helpers."""
@@ -519,4 +537,3 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
-

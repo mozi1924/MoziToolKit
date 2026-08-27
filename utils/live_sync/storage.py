@@ -307,7 +307,15 @@ class VoxelStorage:
                 self.block_map[key] = state_str
                 self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
-        self._dirty_sections.discard((sec_x, sec_y, sec_z))
+        # A repair snapshot replaces voxel data directly, so its section must
+        # be rebuilt.  Discarding it here made ``schedule_mesh_sync()`` a
+        # no-op: storage became correct while the old water/entity geometry
+        # stayed in the scene.  Fluids sample diagonal neighbours for their
+        # corner heights, hence invalidate the full 3x3x3 section halo.
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    self._dirty_sections.add((sec_x + dx, sec_y + dy, sec_z + dz))
         self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
         return True
 
@@ -317,14 +325,28 @@ class VoxelStorage:
         changes: List[Tuple[int, int, int, str]],
     ) -> bool:
         """Apply incremental delta changes to voxel storage, tracking dirty sections and boundary neighbors."""
+        return bool(self.apply_delta_update_detailed(min_x, min_y, min_z, changes))
+
+    def apply_delta_update_detailed(
+        self,
+        min_x: int, min_y: int, min_z: int,
+        changes: List[Tuple[int, int, int, str]],
+    ) -> List[Tuple[int, int, int, str, str]]:
+        """Apply a delta and return the *effective* ``(x, y, z, old, new)`` edits.
+
+        The old state is essential to mesh synchronization: removing water must
+        rebuild the surrounding fluid surface even though the new state is air.
+        Returning only a boolean used to lose that information, leaving stale
+        fluid faces in the scene.
+        """
         if not self.matches_bounds(min_x, min_y, min_z):
             logger.warning("Discarded delta for stale selection bounds (%d, %d, %d)", min_x, min_y, min_z)
-            return False
+            return []
         if any(not self.contains(x, y, z) for x, y, z, _state in changes):
             logger.warning("Discarded delta containing coordinates outside active selection")
-            return False
+            return []
 
-        changed = False
+        applied: List[Tuple[int, int, int, str, str]] = []
         for abs_x, abs_y, abs_z, state_str in changes:
             key = (abs_x, abs_y, abs_z)
             old_state = self.block_map.get(key)
@@ -354,9 +376,9 @@ class VoxelStorage:
             elif (abs_z & 15) == 15:
                 self._dirty_sections.add((sx, sy, sz + 1))
 
-            changed = True
+            applied.append((abs_x, abs_y, abs_z, old_state or "minecraft:air", state_str))
 
-        return changed
+        return applied
 
     def calculate_and_store_section_crc(self, sec_x: int, sec_y: int, sec_z: int) -> int:
         """Compute CRC32 for a single 16x16x16 chunk section."""
@@ -459,4 +481,3 @@ class VoxelStorage:
 
 # Global singleton instance for live syncing in Blender session
 voxel_storage = VoxelStorage()
-
