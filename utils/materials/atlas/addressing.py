@@ -173,6 +173,23 @@ for _c in (
         "entity/banner/base",
     ]
 
+ENTITY_BLOCK_ALIASES["shulker_box"] = [
+    "entity/shulker/shulker",
+    "minecraft:entity/shulker/shulker",
+    "entity/shulker",
+    "shulker",
+]
+for _c in (
+    "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+    "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"
+):
+    ENTITY_BLOCK_ALIASES[f"{_c}_shulker_box"] = [
+        f"entity/shulker/shulker_{_c}",
+        f"minecraft:entity/shulker/shulker_{_c}",
+        f"entity/shulker/{_c}",
+        f"shulker_{_c}",
+    ]
+
 # Standard hardcoded tint blocks for vanilla blocks that do not use colormaps
 HARDCODED_TINTS: dict[str, tuple[float, float, float, float]] = {
     "spruce_leaves": (0.380, 0.600, 0.380, 1.0),
@@ -318,6 +335,25 @@ class AtlasAddressResolver:
                     elif category == "shulker_boxes":
                         self._locations.setdefault(f"minecraft:entity/shulker/{short_name}", location)
                         self._locations.setdefault(f"entity/shulker/{short_name}", location)
+                        self._locations.setdefault(f"minecraft:{short_name}", location)
+                        self._locations.setdefault(short_name, location)
+                        if short_name == "shulker":
+                            self._locations.setdefault("minecraft:entity/shulker/shulker", location)
+                            self._locations.setdefault("entity/shulker/shulker", location)
+                            self._locations.setdefault("shulker_box", location)
+                            self._locations.setdefault("minecraft:shulker_box", location)
+                        elif short_name.startswith("shulker_"):
+                            color = short_name.removeprefix("shulker_")
+                            self._locations.setdefault(f"minecraft:entity/shulker/{color}", location)
+                            self._locations.setdefault(f"entity/shulker/{color}", location)
+                            self._locations.setdefault(f"{color}_shulker_box", location)
+                            self._locations.setdefault(f"minecraft:{color}_shulker_box", location)
+                        elif short_name.endswith("_shulker_box"):
+                            color = short_name.removesuffix("_shulker_box")
+                            self._locations.setdefault(f"minecraft:entity/shulker/shulker_{color}", location)
+                            self._locations.setdefault(f"entity/shulker/shulker_{color}", location)
+                            self._locations.setdefault(f"minecraft:entity/shulker/{color}", location)
+                            self._locations.setdefault(f"entity/shulker/{color}", location)
                     elif category == "decorated_pot":
                         self._locations.setdefault(f"minecraft:entity/decorated_pot/{short_name}", location)
                         self._locations.setdefault(f"entity/decorated_pot/{short_name}", location)

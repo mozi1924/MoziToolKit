@@ -68,14 +68,25 @@ class TestOBJModels(unittest.TestCase):
 
     def test_shulker_box_and_conduit_and_portal(self):
         """Test Shulker Box (undyed & 16 colors across facings), Conduit, and End Portal."""
-        # 1. Shulker Box
+        # 1. Shulker Box (1:1 OBJ model with base and lid)
         shulker_up = self.baker.bake_block_state("minecraft:shulker_box[facing=up]")
-        self.assertEqual(len(shulker_up.elements), 2)
-        self.assertEqual(shulker_up.elements[0].faces["up"].texture, "minecraft:entity/shulker/shulker")
+        self.assertEqual(len(shulker_up.elements), 122)
+        self.assertEqual(list(shulker_up.elements[0].faces.values())[0].texture, "minecraft:entity/shulker/shulker")
 
         shulker_cyan = self.baker.bake_block_state("minecraft:cyan_shulker_box[facing=north]")
-        self.assertEqual(len(shulker_cyan.elements), 2)
-        self.assertEqual(shulker_cyan.elements[0].faces["north"].texture, "minecraft:entity/shulker/shulker_cyan")
+        self.assertEqual(len(shulker_cyan.elements), 122)
+        self.assertEqual(list(shulker_cyan.elements[0].faces.values())[0].texture, "minecraft:entity/shulker/shulker_cyan")
+
+        # Test all 6 facings
+        for facing in ("up", "down", "north", "south", "east", "west"):
+            shulker_facing = self.baker.bake_block_state(f"minecraft:red_shulker_box[facing={facing}]")
+            self.assertEqual(len(shulker_facing.elements), 122)
+            self.assertEqual(list(shulker_facing.elements[0].faces.values())[0].texture, "minecraft:entity/shulker/shulker_red")
+
+        # Test Blender Mesh generation
+        mesh = build_blender_mesh_from_baked_model(shulker_up)
+        self.assertGreater(len(mesh.vertices), 0)
+        self.assertGreater(len(mesh.polygons), 0)
 
         # 2. Conduit
         conduit = self.baker.bake_block_state("minecraft:conduit")
@@ -190,6 +201,30 @@ class TestOBJModels(unittest.TestCase):
         self.assertIsNotNone(baked_dragon)
         face_dragon = list(baked_dragon.elements[0].faces.values())[0]
         self.assertEqual(face_dragon.texture, "minecraft:entity/enderdragon/dragon")
+        # Rotation 0: snout points in the same canonical front direction as player_head (-Z, min Z in block space ~ -0.719)
+        min_z_rot0 = min(p[2] for el in baked_dragon.elements for f in el.faces.values() for p in f.vertices)
+        self.assertAlmostEqual(min_z_rot0, -0.719105, places=3)
+
+        # Rotation 8: snout points in the opposite direction (+Z, max Z in block space ~ 1.719)
+        baked_dragon_north = self.baker.bake_block_state("minecraft:dragon_head[rotation=8]")
+        max_z_rot8 = max(p[2] for el in baked_dragon_north.elements for f in el.faces.values() for p in f.vertices)
+        self.assertAlmostEqual(max_z_rot8, 1.719105, places=3)
+
+        # Dragon Wall Head facing north: snout points North (-Z) and back against wall (+Z)
+        baked_dragon_wall = self.baker.bake_block_state("minecraft:dragon_wall_head[facing=north]")
+        self.assertIsNotNone(baked_dragon_wall)
+        min_z_wall = min(p[2] for el in baked_dragon_wall.elements for f in el.faces.values() for p in f.vertices)
+        max_z_wall = max(p[2] for el in baked_dragon_wall.elements for f in el.faces.values() for p in f.vertices)
+        self.assertAlmostEqual(min_z_wall, -0.500005, places=3)
+        self.assertAlmostEqual(max_z_wall, 0.999995, places=3)
+
+        # Player Wall Head facing north: face at Z~0.48 (pointing -Z), back at Z~1.02 (hat layer)
+        baked_player_wall = self.baker.bake_block_state("minecraft:player_wall_head[facing=north]")
+        self.assertIsNotNone(baked_player_wall)
+        min_z_pwall = min(p[2] for el in baked_player_wall.elements for f in el.faces.values() for p in f.vertices)
+        max_z_pwall = max(p[2] for el in baked_player_wall.elements for f in el.faces.values() for p in f.vertices)
+        self.assertAlmostEqual(min_z_pwall, 0.4835, places=2)
+        self.assertAlmostEqual(max_z_pwall, 1.0165, places=2)
 
 
 if __name__ == "__main__":
