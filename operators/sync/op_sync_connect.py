@@ -87,9 +87,12 @@ def _pump_main_thread_events() -> Optional[float]:
         return None
 
     # Drain pending delta changes
-    accumulated_changes = []
+    # Coalesce repeated writes to a voxel, retaining the latest state.  A
+    # single pump can consume several network packets, and feeding duplicate
+    # intermediate writes into BMesh makes the result order-dependent.
+    accumulated_changes: dict[tuple[int, int, int], str] = {}
     latest_seq_id = _last_seq_id
-    min_x, min_y, min_z = 0, 0, 0
+    active_origin = (voxel_storage.min_x, voxel_storage.min_y, voxel_storage.min_z)
 
     while not _delta_queue.empty():
         try:
@@ -97,24 +100,33 @@ def _pump_main_thread_events() -> Optional[float]:
             m_x, m_y, m_z, chs, seq_id = item
             if seq_id > latest_seq_id:
                 latest_seq_id = seq_id
-                min_x, min_y, min_z = m_x, m_y, m_z
-                accumulated_changes.extend(chs)
+                # Selection changes may leave old packets in the queue.  Do
+                # not let their origin validate a batch for the new selection.
+                if (m_x, m_y, m_z) == active_origin:
+                    for x, y, z, state in chs:
+                        accumulated_changes[(x, y, z)] = state
         except queue.Empty:
             break
 
     if accumulated_changes:
         _last_seq_id = latest_seq_id
-        applied = voxel_storage.apply_delta_update(min_x, min_y, min_z, accumulated_changes)
+        coalesced_changes = [
+            (x, y, z, state) for (x, y, z), state in accumulated_changes.items()
+        ]
+        applied = voxel_storage.apply_delta_update_detailed(*active_origin, coalesced_changes)
         if applied:
-            if len(accumulated_changes) <= 64:
+            mesh_changes = [(x, y, z, new_state) for x, y, z, _old_state, new_state in applied]
+            previous_states = {(x, y, z): old_state for x, y, z, old_state, _new_state in applied}
+            if len(mesh_changes) <= 64:
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                 mat = find_bound_atlas_material(existing_world) if existing_world else None
                 atlas_params = get_cached_atlas_params(mat)
                 res = apply_block_delta_to_world(
                     context=bpy.context,
                     storage=voxel_storage,
-                    changes=accumulated_changes,
+                    changes=mesh_changes,
                     atlas_params=atlas_params,
+                    previous_states=previous_states,
                 )
                 if props:
                     props.point_count = res.vertex_count
@@ -139,7 +151,7 @@ def _pump_main_thread_events() -> Optional[float]:
                     props.fluids_count = res.fluids_count
 
             props.update_counter += 1
-            props.last_update_info = f"Delta: {len(accumulated_changes)} blocks (seq {latest_seq_id})"
+            props.last_update_info = f"Delta: {len(mesh_changes)} blocks (seq {latest_seq_id})"
 
             # Force redraw of 3D Viewport
             for window in bpy.context.window_manager.windows:
@@ -406,24 +418,14 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 # 1. ALWAYS populate VoxelStorage in RAM so face culling and delta neighbor lookups are 100% complete
                 voxel_storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
-                # 2. Check if existing scene mesh can be safely reused without full geometry rebuild
+                # 2. Resolve the currently bound material before rebuilding.
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-                has_existing_mesh = existing_world is not None and (
-                    len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
-                )
 
-                if not _force_next_full_rebuild and (_skip_next_full_snapshot or props.sync_verified) and has_existing_mesh:
-                    logger.info("Live Sync: Verified existing scene mesh matches server snapshot (identical data), skipping full mesh rebuild.")
-                    props.last_update_info = f"Verified: {total_blocks:,} blocks (reused existing mesh)"
-                    props.sync_verified = True
-                    props.validation_info = "Verified (100% in sync with scene)"
-                    _skip_next_full_snapshot = False
-                    mat = find_bound_atlas_material(existing_world) if existing_world else None
-                    atlas_params = get_cached_atlas_params(mat)
-                    preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
-                    persist_sync_state_to_scene(bpy.context)
-                    return
-
+                # A voxel CRC/full snapshot can validate storage only; it
+                # cannot prove the existing Blender mesh still has the right
+                # faces, UVs, or material slots.  Treat every authoritative
+                # full snapshot as a mesh repair point rather than reusing a
+                # potentially stale scene mesh.
                 _skip_next_full_snapshot = False
                 _force_next_full_rebuild = False
                 clear_sync_caches()
