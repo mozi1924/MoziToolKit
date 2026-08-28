@@ -41,7 +41,7 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             self.report(
                 {'ERROR'},
                 "The configured Resource Pack Stack has not been precompiled. "
-                "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache' before using Live Sync."
             )
             return {'CANCELLED'}
 

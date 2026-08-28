@@ -171,3 +171,8 @@ sequenceDiagram
 ## 6. 异常处理与自愈机制 (Resilience & Self-Healing)
 1. **网络重连数据幂等**：重连时客户端自动执行 `is_snapshot_identical` 校验，未发生实质改变的 Snapshot 绝不触发任何网格拓扑计算。
 2. **场景网格丢失恢复**：若内存数据存在但视口物体被用户意外删除，点击 **Rebuild Mesh (`mozi.sync_rebuild_world`)** 可在完全离线状态下瞬时从内存 `VoxelStorage` 重新生成全部多边形。
+3. **断线重试次数约束与手动取消**：
+   - 当遇到网络波动或连接异常断开时，客户端自动执行指数退避重连；
+   - **重连尝试上限为 5 次**。若连续重试超过 5 次仍无法建立连接，客户端立即终止重连，并将状态标记为 `DISCONNECTED (Failed after 5 attempts)`；
+   - 在连接尝试或反复重连的过程中，UI 面板上的“Connect”按钮动态切换为“**Cancel Connection**”，允许用户随时一键手动中止连接与重试循环。
+

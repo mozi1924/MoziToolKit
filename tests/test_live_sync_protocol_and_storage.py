@@ -617,9 +617,9 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
             p_dir = Path(tmp_dir)
             tex_dir = p_dir / "assets/minecraft/textures/block"
             tex_dir.mkdir(parents=True, exist_ok=True)
-            img = Image.new("RGBA", (16, 16), (128, 128, 128, 255))
-            img.save(tex_dir / "stone.png")
-            save_pack_stack_config([{"name": "TestPack", "path": str(p_dir), "enabled": True, "pack_type": "RESOURCE_PACK"}])
+            img = Image.new("RGBA", (16, 16), (200, 100, 50, 255))
+            img.save(tex_dir / "rebuild_stone.png")
+            save_pack_stack_config([{"name": "TestRebuildPack", "path": str(p_dir), "enabled": True, "pack_type": "RESOURCE_PACK"}])
             stack = get_configured_pack_stack()
             stack.precompile("ATLAS")
             palette = ["minecraft:air", "minecraft:stone"]
@@ -649,6 +649,52 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
                     if root_mesh:
                         bpy.data.meshes.remove(root_mesh, do_unlink=True)
                 voxel_storage.clear()
+                try:
+                    from utils.materials.pack import clear_resource_pack_cache
+                    clear_resource_pack_cache()
+                except Exception:
+                    pass
+                save_pack_stack_config([])
+
+    def test_client_thread_max_reconnect_attempts(self):
+        """Verify SyncClientThread honors max_reconnect_attempts constraint and stops retrying."""
+        statuses = []
+        client = SyncClientThread(
+            url="ws://127.0.0.1:59999",  # non-existent port
+            on_status_change=lambda s: statuses.append(s),
+            on_selection_info=lambda *a: None,
+            on_full_snapshot=lambda *a: None,
+            on_delta_update=lambda *a: None,
+            auto_reconnect=True,
+            max_reconnect_attempts=2,
+        )
+        client.start()
+        client.join(timeout=8.0)
+        self.assertFalse(client.is_alive())
+        self.assertGreater(client.reconnect_attempts, 2)
+        # Should finish in DISCONNECTED state indicating max attempts reached
+        self.assertTrue(any("Exceeded" in s or "Failed" in s for s in statuses))
+
+    def test_client_thread_manual_cancel_during_retry(self):
+        """Verify client.stop() immediately aborts retry loop and marks DISCONNECTED."""
+        import time
+        statuses = []
+        client = SyncClientThread(
+            url="ws://127.0.0.1:59999",
+            on_status_change=lambda s: statuses.append(s),
+            on_selection_info=lambda *a: None,
+            on_full_snapshot=lambda *a: None,
+            on_delta_update=lambda *a: None,
+            auto_reconnect=True,
+            max_reconnect_attempts=10,
+        )
+        client.start()
+        time.sleep(0.3)
+        client.stop()
+        client.join(timeout=3.0)
+        self.assertFalse(client.is_alive())
+        self.assertFalse(client.running)
+        self.assertEqual(statuses[-1], "DISCONNECTED")
 
 
 if __name__ == "__main__":
