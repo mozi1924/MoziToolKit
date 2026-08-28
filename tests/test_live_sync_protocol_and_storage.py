@@ -58,6 +58,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(PacketType.SECTION_MANIFEST, 0x05)
         self.assertEqual(PacketType.SECTION_SNAPSHOT, 0x06)
         self.assertEqual(PacketType.HANDSHAKE_INFO, 0x07)
+        self.assertEqual(PacketType.FULL_SYNC_REQUEST, 0x80)
         self.assertEqual(PacketType.REPAIR_REQUEST, 0x81)
 
     def test_parse_handshake_info_packet(self):
@@ -367,6 +368,32 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         new_crc = self.storage.section_crc_map[(0, 0, 0)]
         self.assertNotEqual(old_crc, new_crc)
         self.assertEqual(self.storage.validate_manifest([(0, 0, 0, new_crc)]), [])
+
+    def test_storage_validate_manifest_bad_chunk_missing_mesh(self):
+        """Verify bad chunk detection flags non-empty sections whose mesh objects are missing from scene."""
+        from utils.live_sync.storage import EMPTY_SECTION_CRC
+        palette = ["minecraft:air", "minecraft:stone"]
+        indices = [1] * 4096  # all stone -> non-empty chunk
+        self.storage.set_full_snapshot(0, 0, 0, 32, 16, 16, palette, indices + [0] * 4096)
+        crc_0 = self.storage.calculate_and_store_section_crc(0, 0, 0)
+        crc_1 = self.storage.calculate_and_store_section_crc(1, 0, 0)
+
+        manifest = [(0, 0, 0, crc_0), (1, 0, 0, crc_1)]
+
+        # 1. When all meshes exist: 0 mismatched
+        existing_meshes = {(0, 0, 0), (1, 0, 0)}
+        mismatched = self.storage.validate_manifest(manifest, existing_section_meshes=existing_meshes)
+        self.assertEqual(mismatched, [])
+
+        # 2. When Section (0,0,0) mesh is missing from DCC scene: flagged as bad chunk
+        damaged_meshes = {(1, 0, 0)}
+        mismatched_bad = self.storage.validate_manifest(manifest, existing_section_meshes=damaged_meshes)
+        self.assertEqual(mismatched_bad, [(0, 0, 0)])
+
+        # 3. An empty air chunk (crc == EMPTY_SECTION_CRC) missing from mesh is NOT flagged as bad
+        empty_manifest = [(1, 0, 0, EMPTY_SECTION_CRC)]
+        mismatched_empty = self.storage.validate_manifest(empty_manifest, existing_section_meshes=set())
+        self.assertEqual(mismatched_empty, [])
 
     def test_storage_delta_details_preserve_old_state_for_fluid_removal(self):
         """Water -> air must expose the old fluid state to the mesh synchronizer."""

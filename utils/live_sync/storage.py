@@ -36,6 +36,18 @@ def _extract_canonical_state_str(raw_state: str) -> str:
     return raw_state
 
 
+def get_empty_section_crc() -> int:
+    """Compute canonical CRC32 for an empty 16x16x16 chunk of air."""
+    crc_val = 0
+    air_bytes = b"minecraft:air"
+    for _ in range(4096):
+        crc_val = zlib.crc32(air_bytes, crc_val)
+    return crc_val & 0xFFFFFFFF
+
+
+EMPTY_SECTION_CRC = get_empty_section_crc()
+
+
 class VoxelStorage:
     """In-memory 3D sparse/dense voxel array with section-based CRC32 validation."""
 
@@ -51,6 +63,7 @@ class VoxelStorage:
         self._state_counts: Dict[str, int] = {}
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
         self._dirty_sections: Set[Tuple[int, int, int]] = set()
+        self._known_empty_sections: Set[Tuple[int, int, int]] = set()
         self.generation: int = 0
 
     def clear(self) -> None:
@@ -60,6 +73,7 @@ class VoxelStorage:
         self._state_counts.clear()
         self.section_crc_map.clear()
         self._dirty_sections.clear()
+        self._known_empty_sections.clear()
         self.min_x = self.min_y = self.min_z = 0
         self.size_x = self.size_y = self.size_z = 0
         self.generation += 1
@@ -461,8 +475,15 @@ class VoxelStorage:
                 for sz in range(min_sec_z, max_sec_z + 1):
                     self.calculate_and_store_section_crc(sx, sy, sz)
 
-    def validate_manifest(self, server_sections: List[Tuple[int, int, int, int]]) -> List[Tuple[int, int, int]]:
-        """Compare server CRC32 hashes with local ones and return mismatched section coords."""
+    def validate_manifest(
+        self,
+        server_sections: List[Tuple[int, int, int, int]],
+        existing_section_meshes: Optional[Set[Tuple[int, int, int]]] = None,
+    ) -> List[Tuple[int, int, int]]:
+        """Compare server CRC32 hashes with local ones and check DCC scene mesh health.
+
+        Returns mismatched or corrupted section coords (CRC mismatch, dirty, or missing mesh object).
+        """
         mismatched = []
         for sec_x, sec_y, sec_z, server_crc32 in server_sections:
             key = (sec_x, sec_y, sec_z)
@@ -471,6 +492,16 @@ class VoxelStorage:
             local_crc = self.section_crc_map.get(key, None)
             if local_crc != server_crc32:
                 mismatched.append(key)
+                continue
+
+            # Bad chunk / missing mesh verification:
+            # If the server reports a non-empty section (CRC differs from full air),
+            # but the section generated visible geometry previously and its child mesh object is missing in Blender,
+            # mark as a bad chunk. Empty / culled sections in _known_empty_sections are ignored.
+            if existing_section_meshes is not None and server_crc32 != EMPTY_SECTION_CRC:
+                if key not in existing_section_meshes and key not in self._known_empty_sections:
+                    mismatched.append(key)
+
         return mismatched
 
     def export_manifest_metadata(self) -> dict:
@@ -478,6 +509,7 @@ class VoxelStorage:
         crc_export = {}
         for (sx, sy, sz), crc_val in self.section_crc_map.items():
             crc_export[f"{sx},{sy},{sz}"] = crc_val
+        empty_export = [f"{sx},{sy},{sz}" for (sx, sy, sz) in self._known_empty_sections]
         return {
             "min_x": self.min_x,
             "min_y": self.min_y,
@@ -487,6 +519,7 @@ class VoxelStorage:
             "size_z": self.size_z,
             "generation": self.generation,
             "section_crcs": crc_export,
+            "known_empty_sections": empty_export,
         }
 
     def import_manifest_metadata(self, data: dict) -> bool:
@@ -509,6 +542,14 @@ class VoxelStorage:
                     if len(parts) == 3:
                         sx, sy, sz = int(parts[0]), int(parts[1]), int(parts[2])
                         self.section_crc_map[(sx, sy, sz)] = int(v) & 0xFFFFFFFF
+            self._known_empty_sections.clear()
+            empty_data = data.get("known_empty_sections", [])
+            if isinstance(empty_data, (list, set)):
+                for k in empty_data:
+                    parts = str(k).split(",")
+                    if len(parts) == 3:
+                        sx, sy, sz = int(parts[0]), int(parts[1]), int(parts[2])
+                        self._known_empty_sections.add((sx, sy, sz))
             return True
         except Exception as e:
             logger.warning(f"Failed to import manifest metadata: {e}")

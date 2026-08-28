@@ -139,18 +139,21 @@ sequenceDiagram
     Note over MC,DCC: 1. 客户端建立连接 (onOpen)
     DCC->>MC: WebSocket 连接请求
     MC->>DCC: 0x01 SELECTION_INFO
-    MC->>DCC: 0x05 SECTION_MANIFEST (所有 Section CRC32)
-    MC->>DCC: 0x02 FULL_SNAPSHOT (全量备用数据)
+    MC->>DCC: 0x07 HANDSHAKE_INFO (总区块数、非空区块数、方块体积、维度)
+    MC->>DCC: 0x05 SECTION_MANIFEST (所有 Section CRC32 清单)
+    Note over MC: 服务端暂存数据，等待 DCC 校验决策，不主动发送巨型快照！
 
-    Note over DCC: 2. 客户端秒级比对 (Handshake Validation)
-    alt 本地数据/场景网格存在且 Section CRC 100% 匹配
-        Note over DCC: 校验通过！短路跳过后续 0x02 全量网格重建 (0ms 耗时)
-    else 存在局部差异 (少数 Section CRC 不匹配)
-        DCC->>MC: 0x81 PACKET_C2S_REQ_SECTION_SYNC (差异 Section 列表)
-        MC->>DCC: 0x06 SECTION_SNAPSHOT (仅发送差异区块)
-        Note over DCC: 仅局部更新对应 Section 子网格
-    else 全新工程或选区边界完全改变
-        Note over DCC: 执行 0x02 全量解析与 BMesh 网格生成
+    Note over DCC: 2. 客户端秒级比对 (Handshake Validation & Bad Chunk Check)
+    alt 本地数据/场景网格 100% 匹配且子网格物体健康
+        Note over DCC: 瞬间判定为 Verified (100% in sync with scene)！<br/>0ms 耗时，0 几何数据传输，直接进入监听
+    else 存在局部差异 / 坏区块 / 网格丢失 (0 < K < N)
+        DCC->>MC: 0x81 PACKET_C2S_REQ_SECTION_SYNC (仅请求 K 个差异 Section 坐标)
+        MC->>DCC: 0x06 SECTION_SNAPSHOT (仅发送这 K 个区块的压缩快照)
+        Note over DCC: 仅局部增量更新对应 Section 子网格与邻域 (<5ms)
+    else 全新工程 / 无网格物体 / 选区边界完全改变 / 用户主动点击刷新
+        DCC->>MC: 0x80 PACKET_C2S_REQ_FULL_SYNC
+        MC->>DCC: 0x02 FULL_SNAPSHOT 或流式分块发送 0x06 SECTION_SNAPSHOT
+        Note over DCC: 执行全量渐进式解析与 BMesh 网格生成
     end
 
     Note over MC,DCC: 3. 运行中交互与微操作 (Live Session)

@@ -29,11 +29,13 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
         name="Is Connected",
         description="Whether Live Sync client is currently connected",
         default=False,
+        options={'SKIP_SAVE'},
     )
     connection_status: StringProperty(
         name="Status",
         description="Live Sync connection status message",
         default="DISCONNECTED",
+        options={'SKIP_SAVE'},
     )
     show_3d_bbox: BoolProperty(
         name="Show 3D BBox",
@@ -66,9 +68,9 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
     cubes_count: IntProperty(name="Cubes Count", default=0)
     props_count: IntProperty(name="Props Count", default=0)
     fluids_count: IntProperty(name="Fluids Count", default=0)
-    sync_verified: BoolProperty(name="Sync Verified", default=False)
-    validation_info: StringProperty(name="Validation Status", default="Pending validation...")
-    last_update_info: StringProperty(name="Last Update", default="No updates received yet.")
+    sync_verified: BoolProperty(name="Sync Verified", default=False, options={'SKIP_SAVE'})
+    validation_info: StringProperty(name="Validation Status", default="Pending validation...", options={'SKIP_SAVE'})
+    last_update_info: StringProperty(name="Last Update", default="No updates received yet.", options={'SKIP_SAVE'})
 
     # Lists
     palette_list: CollectionProperty(type=MoziSyncPaletteItem)
@@ -77,11 +79,27 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
     delta_active_index: IntProperty(name="Active Delta Index", default=0)
 
 
+@bpy.app.handlers.persistent
+def _on_blend_file_loaded(dummy=None):
+    """Ensure runtime connection properties are strictly reset upon loading any .blend file."""
+    for scene in bpy.data.scenes:
+        if hasattr(scene, "mozi_sync"):
+            props = scene.mozi_sync
+            props.is_connected = False
+            props.connection_status = "DISCONNECTED"
+            props.sync_verified = False
+            props.validation_info = "Ready to connect"
+
+
 def register():
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
+    if _on_blend_file_loaded not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_blend_file_loaded)
 
 
 def unregister():
+    if _on_blend_file_loaded in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_blend_file_loaded)
     if hasattr(bpy.types.Scene, "mozi_sync"):
         try:
             del bpy.types.Scene.mozi_sync

@@ -39,19 +39,20 @@ sequenceDiagram
 
     Scene->>Storage: 启动连接前，从已有物体持久化属性恢复 Bounds 与 Section CRC
     Client->>Server: 建立 WebSocket 握手
-    Server->>Client: 发送 SELECTION_INFO 与 SECTION_MANIFEST (各 16x16x16 区块 CRC32)
-    Client->>Storage: 比对服务器 Manifest 与本地 Section CRC
+    Server->>Client: 发送 SELECTION_INFO, HANDSHAKE_INFO 与 SECTION_MANIFEST (各 16x16x16 区块 CRC32)
+    Client->>Storage: 比对服务器 Manifest 与本地 Section CRC，并校验场景子网格物体健康状态
     
-    alt 100% 校验一致 (所有区块 CRC 完全匹配且场景物体存在)
+    alt 100% 校验一致且场景子网格完好 (所有区块 CRC 完全匹配且场景物体存在)
         Storage->>Scene: 标记 Verified (100% in sync with scene)，跳过全量构建
-        Note over Scene,Storage: 跳过后续接收到的全量快照重建，直接保持已有网格并进入 Delta 监听
-    else 存在局部差异 (部分 Section CRC 不一致)
-        Storage->>Client: 计算差异 Section 坐标列表
-        Client->>Server: 发送 REPAIR_REQUEST (仅请求不匹配的区块)
+        Note over Scene,Storage: 0ms 瞬间连接，0 额外网络流量，直接保持已有网格并进入 Delta 监听
+    else 存在坏区块或局部差异 (部分 Section CRC 不一致或场景子网格丢失)
+        Storage->>Client: 计算差异与坏区块 Section 坐标列表
+        Client->>Server: 发送 REPAIR_REQUEST (仅请求不匹配或损坏的区块)
         Server->>Client: 发送 SECTION_SNAPSHOT
-        Client->>Scene: 仅重构/修复发生变更的 Section 子网格
-    else 场景为空或选区 Bounds 完全变更
-        Server->>Client: 发送 FULL_SNAPSHOT
+        Client->>Scene: 仅增量重构/修复发生变更的 Section 子网格及邻域
+    else 场景为空、子网格丢失或选区 Bounds 完全变更
+        Client->>Server: 发送 FULL_SYNC_REQUEST
+        Server->>Client: 流式发送 SECTION_SNAPSHOT
         Client->>Scene: 清理缓存并执行全量网格构建
     end
 ```
