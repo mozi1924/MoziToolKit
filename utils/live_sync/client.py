@@ -124,7 +124,7 @@ class SyncClientThread(threading.Thread):
             self.on_status_change("DISCONNECTED")
 
     def send_repair_request(self, sections: List[Tuple[int, int, int]]) -> None:
-        """Send a Section Repair Request (0x04) back to server on background loop."""
+        """Send a Section Repair Request (0x81) back to server on background loop."""
         if not self.is_connected or not self.websocket or not self.loop:
             return
 
@@ -142,6 +142,27 @@ class SyncClientThread(threading.Thread):
                     await self.websocket.send(bytes(packet))
             except Exception as e:
                 logger.error(f"Failed to send repair request: {e}")
+
+        asyncio.run_coroutine_threadsafe(_send(), self.loop)
+
+    def send_sync_config(self, throttle_mode: int = 0, target_fps: int = 60, is_active: bool = True) -> None:
+        """Send a Sync Config (0x82) to adapt server-side broadcast and throttle delivery."""
+        if not self.is_connected or not self.websocket or not self.loop:
+            return
+
+        packet = bytearray()
+        packet.extend(PROTOCOL_MAGIC)
+        packet.append(PROTOCOL_VERSION)
+        packet.append(PacketType.SYNC_CONFIG)
+        flags = 1 if is_active else 0
+        packet.extend(struct.pack('<BBB', throttle_mode & 0xFF, target_fps & 0xFF, flags & 0xFF))
+
+        async def _send():
+            try:
+                if self.websocket:
+                    await self.websocket.send(bytes(packet))
+            except Exception as e:
+                logger.debug(f"Failed to send sync config: {e}")
 
         asyncio.run_coroutine_threadsafe(_send(), self.loop)
 

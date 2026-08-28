@@ -71,14 +71,15 @@ _pending_full_rebuild: bool = False
 _cached_atlas_params: Optional[dict] = None
 _cached_mat_signature: Optional[tuple] = None
 
-# High-frequency main-thread pump for sub-millisecond delta streaming
+# Adaptive dynamic main-thread pump for sub-millisecond delta streaming
 _delta_queue: queue.Queue = queue.Queue()
 _pump_timer_registered: bool = False
-_PUMP_INTERVAL: float = 0.005  # 5ms (200 Hz event pump rate)
+_PUMP_INTERVAL_ACTIVE: float = 0.015  # 15ms (~66 Hz when processing active deltas)
+_PUMP_INTERVAL_IDLE: float = 0.035    # 35ms (~28 Hz idle throttle to save CPU)
 
 
 def _pump_main_thread_events() -> Optional[float]:
-    """Continuous high-frequency event pump executing on Blender's main thread."""
+    """Continuous adaptive event pump executing on Blender's main thread."""
     global _pump_timer_registered, _last_seq_id
     if not _pump_timer_registered:
         return None
@@ -161,15 +162,17 @@ def _pump_main_thread_events() -> Optional[float]:
                     if area.type in ('VIEW_3D', 'PROPERTIES'):
                         area.tag_redraw()
 
-    return _PUMP_INTERVAL
+        return _PUMP_INTERVAL_ACTIVE
+
+    return _PUMP_INTERVAL_IDLE
 
 
 def start_main_thread_pump():
-    """Ensure the high-frequency event pump is registered and running."""
+    """Ensure the adaptive dynamic event pump is registered and running."""
     global _pump_timer_registered
     if not _pump_timer_registered:
         _pump_timer_registered = True
-        bpy.app.timers.register(_pump_main_thread_events, first_interval=_PUMP_INTERVAL, persistent=True)
+        bpy.app.timers.register(_pump_main_thread_events, first_interval=_PUMP_INTERVAL_ACTIVE, persistent=True)
 
 
 def stop_main_thread_pump():
@@ -370,6 +373,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
                 if props.is_connected:
+                    if _client_thread:
+                        _client_thread.send_sync_config(throttle_mode=0, target_fps=60, is_active=True)
                     cur_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                     cur_mat = find_bound_atlas_material(cur_world) if cur_world else None
                     cur_atlas_params = get_cached_atlas_params(cur_mat)

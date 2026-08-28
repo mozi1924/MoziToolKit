@@ -190,6 +190,7 @@ class CachedStateMeta:
 
 
 _GLOBAL_STATE_META_CACHE: dict[str, CachedStateMeta] = {}
+_MAX_STATE_META_CACHE_SIZE: int = 1024
 
 COMMON_PREWARM_STATES = (
     "minecraft:air",
@@ -203,54 +204,27 @@ COMMON_PREWARM_STATES = (
     "minecraft:lava[level=0]",
 )
 
-_idle_prewarm_timer_registered: bool = False
-_idle_prewarm_pending: list[str] = []
-
 
 def get_cached_state_meta(
     state_str: str,
     mat_manager: LiveSyncMaterialManager,
     baker: StateBaker,
 ) -> CachedStateMeta:
-    """Retrieve or compute CachedStateMeta using the global cache."""
+    """Retrieve or compute CachedStateMeta using the bounded global cache."""
     meta = _GLOBAL_STATE_META_CACHE.get(state_str)
     if meta is None:
+        if len(_GLOBAL_STATE_META_CACHE) >= _MAX_STATE_META_CACHE_SIZE:
+            # Evict oldest entry to keep memory footprint bounded
+            oldest_key = next(iter(_GLOBAL_STATE_META_CACHE))
+            _GLOBAL_STATE_META_CACHE.pop(oldest_key, None)
         meta = CachedStateMeta(state_str, mat_manager, baker)
         _GLOBAL_STATE_META_CACHE[state_str] = meta
     return meta
 
 
-def _idle_prewarm_tick() -> Optional[float]:
-    """Background idle timer that warms remaining cold blockstates rapidly during idle frames."""
-    global _idle_prewarm_timer_registered, _idle_prewarm_pending
-    if not _idle_prewarm_timer_registered or not _idle_prewarm_pending:
-        _idle_prewarm_timer_registered = False
-        return None
-
-    from .material_binding import _GLOBAL_MAT_MANAGER
-    if _GLOBAL_MAT_MANAGER is None:
-        _idle_prewarm_timer_registered = False
-        return None
-
-    baker = get_shared_state_baker()
-    batch_size = 50
-    batch = _idle_prewarm_pending[:batch_size]
-    _idle_prewarm_pending = _idle_prewarm_pending[batch_size:]
-
-    for state_str in batch:
-        if state_str not in _GLOBAL_STATE_META_CACHE:
-            try:
-                meta = CachedStateMeta(state_str, _GLOBAL_MAT_MANAGER, baker)
-                _GLOBAL_STATE_META_CACHE[state_str] = meta
-            except Exception:
-                pass
-
-    if _idle_prewarm_pending:
-        return 0.02  # Schedule next batch in 20ms
-    else:
-        _idle_prewarm_timer_registered = False
-        logger.info(f"Live Sync: Completed full background pre-warming ({len(_GLOBAL_STATE_META_CACHE)} total states).")
-        return None
+def _idle_prewarm_tick() -> None:
+    """Legacy stub maintained for backward compatibility (idle timer loop is deprecated)."""
+    return None
 
 
 def preload_sync_world_data(
@@ -259,20 +233,18 @@ def preload_sync_world_data(
     atlas_params: Optional[dict[str, Any]] = None,
 ) -> int:
     """
-    Pre-load and pre-warm all blockstate models, elements, face textures,
+    Pre-load and pre-warm active blockstate models, elements, face textures,
     atlas UV mappings, and materials into RAM upon initial world synchronization.
-    Eliminates cold-start calculation overhead on subsequent live sync updates.
+    Only warms active palette and hot common states, avoiding blind full-pack memory bloat.
     """
-    global _idle_prewarm_timer_registered, _idle_prewarm_pending
     refresh_shared_baker_sources()
     baker = get_shared_state_baker()
     mat_manager = get_shared_material_manager(world_obj=world_obj, atlas_params=atlas_params)
 
-    # L1: High-Priority Hot BlockStates
+    # 1. Warm core high-priority states
     states_to_warm = set(COMMON_PREWARM_STATES)
-    states_to_warm.update(HOT_PREWARM_STATES)
 
-    # L2: Snapshot Palette from current selection
+    # 2. Warm snapshot palette from current selection
     if palette:
         for s in palette:
             if s and s.strip():
@@ -288,20 +260,7 @@ def preload_sync_world_data(
             except Exception as e:
                 logger.debug(f"Prewarm skipped for {state_str}: {e}")
 
-    logger.info(f"Live Sync: L1 Pre-warmed {len(_GLOBAL_STATE_META_CACHE)} hot blockstates in memory ({warmed_count} newly loaded).")
-
-    # L3: Queue remaining cold models from baked pack cache for smooth background idle warming
-    if baker and baker._bake_cache:
-        remaining = [s for s in baker._bake_cache.keys() if s not in _GLOBAL_STATE_META_CACHE]
-        if remaining:
-            _idle_prewarm_pending = remaining
-            if not _idle_prewarm_timer_registered and hasattr(bpy, "app") and hasattr(bpy.app, "timers"):
-                try:
-                    _idle_prewarm_timer_registered = True
-                    bpy.app.timers.register(_idle_prewarm_tick, first_interval=0.01)
-                except Exception:
-                    _idle_prewarm_timer_registered = False
-
+    logger.info(f"Live Sync: Pre-warmed {len(_GLOBAL_STATE_META_CACHE)} active blockstates in memory ({warmed_count} newly loaded).")
     return len(_GLOBAL_STATE_META_CACHE)
 
 
