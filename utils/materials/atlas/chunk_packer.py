@@ -420,6 +420,51 @@ def pack_grid_category_chunks(
         outputs["chunks"].append(output_path / files["albedo"])
 
 
+def _paste_channel_tiled_vertically(
+    img_canvas: Image.Image,
+    src_img: Image.Image,
+    x_offset: int,
+    target_w: int,
+    target_h: int,
+) -> None:
+    """
+    Paste a companion channel (normal, specular, overlay, etc.) onto the canvas column.
+    If the source channel has fewer frames or is shorter than target_h, it is tiled
+    vertically across all frames instead of being stretched/distorted.
+    """
+    if src_img is None or target_w <= 0 or target_h <= 0:
+        return
+
+    # 1. Match column width if necessary (preserving aspect ratio)
+    if src_img.width != target_w:
+        scale = target_w / src_img.width
+        scaled_h = max(1, int(round(src_img.height * scale)))
+        src_img = src_img.resize((target_w, scaled_h), Image.NEAREST)
+
+    src_w, src_h = src_img.size
+
+    # 2. Exact match
+    if src_h == target_h:
+        img_canvas.paste(src_img, (x_offset, 0))
+        return
+
+    # 3. Source is shorter (e.g. 1-frame PBR companion for multi-frame albedo animation):
+    # Tile vertically down the column until target_h is completely filled.
+    if src_h < target_h:
+        y = 0
+        while y < target_h:
+            h_chunk = min(src_h, target_h - y)
+            if h_chunk < src_h:
+                img_canvas.paste(src_img.crop((0, 0, src_w, h_chunk)), (x_offset, y))
+            else:
+                img_canvas.paste(src_img, (x_offset, y))
+            y += src_h
+        return
+
+    # 4. Source is taller than target_h: crop to fit
+    img_canvas.paste(src_img.crop((0, 0, src_w, target_h)), (x_offset, 0))
+
+
 def pack_animated_category_chunks(
     cat: str,
     ns: str,
@@ -492,15 +537,11 @@ def pack_animated_category_chunks(
                 elif channel == "normal":
                     norm_src = category_normals.get(rel_p)
                     if norm_src:
-                        if norm_src.size != (target_w, target_h):
-                            norm_src = norm_src.resize((target_w, target_h), Image.NEAREST)
-                        img_canvas.paste(norm_src, (x_offset, 0))
+                        _paste_channel_tiled_vertically(img_canvas, norm_src, x_offset, target_w, target_h)
                 elif channel == "specular":
                     spec_src = category_speculars.get(rel_p)
                     if spec_src:
-                        if spec_src.size != (target_w, target_h):
-                            spec_src = spec_src.resize((target_w, target_h), Image.NEAREST)
-                        img_canvas.paste(spec_src, (x_offset, 0))
+                        _paste_channel_tiled_vertically(img_canvas, spec_src, x_offset, target_w, target_h)
 
             stem = rel_p.split("/")[-1]
             raw_name = clean_k
@@ -512,16 +553,11 @@ def pack_animated_category_chunks(
             overlay_stem = tint_info.get("overlay_texture")
             if overlay_stem:
                 overlay_src = find_static_image_fn(overlay_stem, namespace=namespace_val, category=category_val)
-                if overlay_src is not None:
-                    if overlay_src.size != (target_w, target_w):
-                        overlay_src = overlay_src.resize((target_w, target_w), Image.NEAREST)
-                    if overlay_src.getbbox():
-                        if overlay_img_canvas is None:
-                            overlay_img_canvas = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
-                        num_frames = max(1, target_h // target_w)
-                        for f_idx in range(num_frames):
-                            overlay_img_canvas.paste(overlay_src, (x_offset, f_idx * target_w))
-                        chunk_has_overlay = True
+                if overlay_src is not None and overlay_src.getbbox():
+                    if overlay_img_canvas is None:
+                        overlay_img_canvas = Image.new("RGBA", (chunk_width, chunk_height), (0, 0, 0, 0))
+                    _paste_channel_tiled_vertically(overlay_img_canvas, overlay_src, x_offset, target_w, target_h)
+                    chunk_has_overlay = True
 
             frame_width = int(metadata.get("width") or image.width) if isinstance(metadata, dict) else image.width
             frame_height = int(metadata.get("height") or frame_width) if isinstance(metadata, dict) else frame_width

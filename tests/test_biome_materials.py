@@ -478,6 +478,26 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         self.assertEqual(len(gen.static_textures), 0)
         self.assertEqual(len(gen.static_by_ns_cat), 0)
 
+    def test_animated_pbr_channel_vertical_tiling(self):
+        """Verify 1-frame PBR companion textures tile vertically across multi-frame animated textures."""
+        from MoziToolKit.utils.materials.atlas.chunk_packer import _paste_channel_tiled_vertically
+
+        # Create canvas for 4-frame animation strip (16x64)
+        canvas = Image.new("RGBA", (16, 64), (0, 0, 0, 0))
+        # Create 1-frame PBR companion (16x16) with distinct pixel at (2, 2)
+        single_frame_pbr = Image.new("RGBA", (16, 16), (100, 100, 100, 255))
+        single_frame_pbr.putpixel((2, 2), (255, 0, 0, 255))
+
+        _paste_channel_tiled_vertically(canvas, single_frame_pbr, x_offset=0, target_w=16, target_h=64)
+
+        # Verify that each of the 4 frames received the tiled PBR frame without vertical stretching
+        for frame_idx in range(4):
+            y_base = frame_idx * 16
+            # The pixel at (2, 2) relative to frame should be red
+            self.assertEqual(canvas.getpixel((2, y_base + 2)), (255, 0, 0, 255))
+            # The pixel at (2, 3) relative to frame should be the base color (not stretched red)
+            self.assertEqual(canvas.getpixel((2, y_base + 3)), (100, 100, 100, 255))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
