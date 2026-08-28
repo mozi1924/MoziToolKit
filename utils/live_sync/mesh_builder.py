@@ -307,6 +307,7 @@ def sync_world_mesh(
 
         # If section is empty or only air, remove
         if not sec_blocks or all(state_cache.get(s) and state_cache[s].is_air for s in sec_blocks.values()):
+            storage._known_empty_sections.add((sx, sy, sz))
             sec_obj = bpy.data.objects.get(sec_obj_name)
             if sec_obj:
                 sec_mesh = sec_obj.data
@@ -324,6 +325,9 @@ def sync_world_mesh(
             sec_obj.location = (0.0, 0.0, 0.0)
             sec_obj.parent = root_obj
             context.collection.objects.link(sec_obj)
+
+        sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
+        sec_obj["mtk:section_pos"] = [sx, sy, sz]
 
         # Keep section slot indices identical to the root material manager.
         sync_section_material_slots(sec_obj, mat_manager)
@@ -355,6 +359,12 @@ def sync_world_mesh(
             bm.to_mesh(sec_mesh)
         finally:
             bm.free()
+
+        # If after culling this section has 0 polygons, track in _known_empty_sections
+        if len(sec_mesh.polygons) == 0:
+            storage._known_empty_sections.add((sx, sy, sz))
+        else:
+            storage._known_empty_sections.discard((sx, sy, sz))
 
         # Face resolution may have loaded an additional chunk while building.
         sync_section_material_slots(sec_obj, mat_manager)

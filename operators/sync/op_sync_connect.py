@@ -75,6 +75,7 @@ _pending_full_rebuild: bool = False
 
 _cached_atlas_params: Optional[dict] = None
 _cached_mat_signature: Optional[tuple] = None
+_is_repairing_partial: bool = False
 
 # Adaptive dynamic main-thread pump for sub-millisecond delta and stream chunk processing
 _delta_queue: queue.Queue = queue.Queue()
@@ -87,7 +88,7 @@ _PUMP_INTERVAL_IDLE: float = 0.035    # 35ms (~28 Hz idle throttle to save CPU)
 
 def _pump_main_thread_events() -> Optional[float]:
     """Continuous adaptive event pump executing on Blender's main thread."""
-    global _pump_timer_registered, _last_seq_id, _stream_received_sections, _stream_total_sections
+    global _pump_timer_registered, _last_seq_id, _stream_received_sections, _stream_total_sections, _is_repairing_partial
     if not _pump_timer_registered:
         return None
 
@@ -121,13 +122,16 @@ def _pump_main_thread_events() -> Optional[float]:
             if _accumulated_stream_palettes:
                 preload_sync_world_data(palette=list(_accumulated_stream_palettes), world_obj=existing_world, atlas_params=cur_atlas_params)
                 _accumulated_stream_palettes.clear()
-            schedule_mesh_sync(force_full_rebuild=True)
+
+            rebuild_full = not _is_repairing_partial
+            schedule_mesh_sync(force_full_rebuild=rebuild_full)
             persist_sync_state_to_scene(bpy.context)
             if props:
                 props.update_counter += 1
-                props.last_update_info = f"Streamed {total_target} sections"
+                props.last_update_info = f"Repaired {total_target} sections" if _is_repairing_partial else f"Streamed {total_target} sections"
+            _is_repairing_partial = False
             _is_initial_handshake = False
-            ProgressBar.finish(message=f"Streamed all {total_target} chunks (Sync Ready)", auto_dismiss_delay=1.0)
+            ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=1.0)
         else:
             ProgressBar.update(current=pct, total=100.0, message=f"Streaming chunk ({_stream_received_sections}/{total_target})")
 
@@ -554,12 +558,28 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         def on_section_manifest(server_seq_id, sections):
             def update():
-                global _skip_next_full_snapshot, _force_next_full_rebuild, _is_initial_handshake, _stream_total_sections, _stream_received_sections
-                mismatched = voxel_storage.validate_manifest(sections)
-                props.sync_verified = (len(mismatched) == 0)
+                global _skip_next_full_snapshot, _force_next_full_rebuild, _is_initial_handshake, _stream_total_sections, _stream_received_sections, _is_repairing_partial
+
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                existing_section_meshes: set[tuple[int, int, int]] = set()
+                if existing_world:
+                    for child in existing_world.children:
+                        if child.name.startswith("Yefira_Section_") and child.data and len(child.data.polygons) > 0:
+                            try:
+                                parts = child.name.split("_")[2:]
+                                existing_section_meshes.add((int(parts[0]), int(parts[1]), int(parts[2])))
+                            except Exception:
+                                pass
+                    if not existing_section_meshes and existing_world.data and len(existing_world.data.polygons) > 0:
+                        existing_section_meshes = set(voxel_storage.get_all_sections())
+
+                mismatched = voxel_storage.validate_manifest(
+                    sections,
+                    existing_section_meshes=existing_section_meshes if existing_world else None
+                )
+                props.sync_verified = (len(mismatched) == 0)
                 has_existing_mesh = existing_world is not None and (
-                    len(existing_world.children) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
+                    len(existing_section_meshes) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
                 )
 
                 cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
@@ -569,27 +589,36 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
                 if not _force_next_full_rebuild and props.sync_verified and has_existing_mesh:
                     _skip_next_full_snapshot = True
+                    _is_repairing_partial = False
                     props.validation_info = "Verified (100% in sync with scene)"
                     logger.info("Live Sync: Handshake verified 100% match with existing scene objects.")
                     if _is_initial_handshake or ProgressBar.is_active():
                         ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
                     _is_initial_handshake = False
-                elif props.sync_verified:
-                    props.validation_info = "Verified (100% in sync)"
-                    if _is_initial_handshake or ProgressBar.is_active():
-                        ProgressBar.finish(message="Verified: 100% in sync", auto_dismiss_delay=0.8)
-                    _is_initial_handshake = False
-                else:
+                elif not _force_next_full_rebuild and has_existing_mesh and 0 < len(mismatched) < len(sections):
+                    # Targeted partial repair / Bad chunk auto-healing
                     _skip_next_full_snapshot = False
+                    _is_repairing_partial = True
                     _stream_total_sections = len(mismatched)
                     _stream_received_sections = 0
                     props.validation_info = f"Repairing {len(mismatched)} section(s)..."
-                    # Validation mismatch: trigger progress bar to show section repair
                     ProgressBar.begin(title="Live Sync Repair", total=100.0, message=f"Repairing {len(mismatched)} section(s)...")
                     ProgressBar.update(current=30.0, total=100.0, message=f"Repairing {len(mismatched)} section(s)...")
                     if _client_thread and _client_thread.is_connected:
-                        logger.info(f"Live Sync: Requesting auto-healing repair for {len(mismatched)} mismatched section(s)...")
+                        logger.info(f"Live Sync: Requesting auto-healing repair for {len(mismatched)} bad/mismatched section(s)...")
                         _client_thread.send_repair_request(mismatched)
+                else:
+                    # Full sync required (fresh scene, completely changed bounds, or force rebuild)
+                    _skip_next_full_snapshot = False
+                    _is_repairing_partial = False
+                    _stream_total_sections = len(sections)
+                    _stream_received_sections = 0
+                    props.validation_info = f"Full sync ({len(sections)} sections)..."
+                    ProgressBar.begin(title="Live Sync", total=100.0, message=f"Full sync ({len(sections)} chunks)...")
+                    ProgressBar.update(current=30.0, total=100.0, message="Requesting full world data...")
+                    if _client_thread and _client_thread.is_connected:
+                        logger.info(f"Live Sync: Requesting full sync ({len(sections)} sections)...")
+                        _client_thread.send_full_sync_request()
             run_in_main_thread(update)
 
         def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
@@ -624,10 +653,11 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
     bl_description = "Disconnect from Minecraft Live Sync server"
 
     def execute(self, context):
-        global _client_thread
+        global _client_thread, _is_repairing_partial
         stop_main_thread_pump()
         ProgressBar.end(context=context)
         props = get_active_sync_props(context)
+        _is_repairing_partial = False
 
         if _client_thread:
             _client_thread.stop()
@@ -647,17 +677,17 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
     bl_description = "Request fresh data snapshot and re-verify sync state with server"
 
     def execute(self, context):
-        global _skip_next_full_snapshot, _force_next_full_rebuild
+        global _skip_next_full_snapshot, _force_next_full_rebuild, _is_repairing_partial
         _skip_next_full_snapshot = False
         _force_next_full_rebuild = True
+        _is_repairing_partial = False
         clear_sync_caches()
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
         props = get_active_sync_props(context)
-        if props and props.is_connected:
-            # Re-fetch fresh full data from server
-            bpy.ops.mozi.sync_disconnect()
-            bpy.ops.mozi.sync_connect()
+        if props and props.is_connected and _client_thread and _client_thread.is_connected:
+            ProgressBar.begin(title="Live Sync Refresh", total=100.0, message="Requesting full snapshot...", context=context)
+            _client_thread.send_full_sync_request()
             self.report({'INFO'}, "Refreshing live sync data from server...")
         else:
             bpy.ops.mozi.sync_connect()
@@ -666,7 +696,7 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
 
 def cleanup_sync_state() -> None:
     """Clean up all live sync module globals, background threads, timers, and storage."""
-    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild, _cached_atlas_params, _cached_mat_signature, _is_initial_handshake
+    global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild, _cached_atlas_params, _cached_mat_signature, _is_initial_handshake, _is_repairing_partial
     stop_main_thread_pump()
     if _client_thread:
         try:
@@ -677,6 +707,7 @@ def cleanup_sync_state() -> None:
 
     _last_seq_id = 0
     _is_initial_handshake = False
+    _is_repairing_partial = False
     _rebuild_timer_registered = False
     _pending_full_rebuild = False
     _cached_atlas_params = None

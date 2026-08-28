@@ -50,6 +50,7 @@ class SyncClientThread(threading.Thread):
         on_section_manifest: Optional[Callable[[int, List[Tuple[int, int, int, int]]], None]] = None,
         on_section_snapshot: Optional[Callable[[int, int, int, int, int, int, int, int, int, List[str], List[int]], None]] = None,
         on_handshake_info: Optional[Callable[[int, int, int, str, int], None]] = None,
+        auto_reconnect: bool = True,
     ) -> None:
         super().__init__(daemon=True)
         self.url = url
@@ -60,6 +61,7 @@ class SyncClientThread(threading.Thread):
         self.on_section_manifest = on_section_manifest
         self.on_section_snapshot = on_section_snapshot
         self.on_handshake_info = on_handshake_info
+        self.auto_reconnect = auto_reconnect
         self.running = True
         self.is_connected = False
         self.websocket = None
@@ -79,6 +81,7 @@ class SyncClientThread(threading.Thread):
     def stop(self) -> None:
         """Signal thread and event loop to cleanly disconnect and terminate."""
         self.running = False
+        self.auto_reconnect = False
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self._cancel_all_tasks)
 
@@ -94,44 +97,77 @@ class SyncClientThread(threading.Thread):
             logger.error("Missing 'websockets' module.")
             return
 
-        self.on_status_change("CONNECTING...")
-        logger.info(f"Connecting to Minecraft Live Sync WebSocket at: {self.url}")
+        while self.running:
+            self.on_status_change("CONNECTING...")
+            logger.info(f"Connecting to Minecraft Live Sync WebSocket at: {self.url}")
 
-        try:
-            async with websockets.connect(
-                self.url,
-                max_size=None,  # No artificial limit on frame size for high-res voxel sync
-                max_queue=2048,
-                ping_interval=30,
-                ping_timeout=30,
-            ) as websocket:
-                self.websocket = websocket
-                self.is_connected = True
-                self.on_status_change("CONNECTED")
-                logger.info("Connected to Minecraft Live Sync server successfully.")
+            try:
+                async with websockets.connect(
+                    self.url,
+                    max_size=None,  # No artificial limit on frame size for high-res voxel sync
+                    max_queue=2048,
+                    ping_interval=30,
+                    ping_timeout=30,
+                ) as websocket:
+                    self.websocket = websocket
+                    self.is_connected = True
+                    self.on_status_change("CONNECTED")
+                    logger.info("Connected to Minecraft Live Sync server successfully.")
 
-                while self.running and self.is_connected:
-                    try:
-                        message = await websocket.recv()
-                        if isinstance(message, bytes):
-                            self._parse_binary_packet(message)
-                        elif isinstance(message, str):
-                            logger.debug(f"Received text message: {message}")
-                    except websockets.ConnectionClosed:
-                        logger.info("WebSocket connection closed by server.")
-                        break
-                    except asyncio.CancelledError:
-                        break
-                    except Exception as e:
-                        logger.error(f"Error receiving message: {e}")
-                        break
-        except Exception as e:
-            logger.error(f"Failed to connect to Live Sync WebSocket: {e}")
-            self.on_status_change(f"ERROR: {e}")
-        finally:
-            self.is_connected = False
-            self.websocket = None
-            self.on_status_change("DISCONNECTED")
+                    while self.running and self.is_connected:
+                        try:
+                            message = await websocket.recv()
+                            if isinstance(message, bytes):
+                                self._parse_binary_packet(message)
+                            elif isinstance(message, str):
+                                logger.debug(f"Received text message: {message}")
+                        except websockets.ConnectionClosed:
+                            logger.info("WebSocket connection closed by server.")
+                            break
+                        except asyncio.CancelledError:
+                            break
+                        except Exception as e:
+                            logger.error(f"Error receiving message: {e}")
+                            break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                if not self.running:
+                    break
+                logger.warning(f"Failed to connect to Live Sync WebSocket: {e}. Will retry...")
+                self.on_status_change(f"RECONNECTING... ({e})")
+            finally:
+                self.is_connected = False
+                self.websocket = None
+
+            if self.running and self.auto_reconnect:
+                try:
+                    await asyncio.sleep(2.0)
+                except asyncio.CancelledError:
+                    break
+            else:
+                break
+
+        self.on_status_change("DISCONNECTED")
+
+    def send_full_sync_request(self) -> None:
+        """Send Full Sync Request (0x80) to request a complete snapshot from server."""
+        if not self.is_connected or not self.websocket or not self.loop:
+            return
+
+        packet = bytearray()
+        packet.extend(PROTOCOL_MAGIC)
+        packet.append(PROTOCOL_VERSION)
+        packet.append(PacketType.FULL_SYNC_REQUEST)
+
+        async def _send():
+            try:
+                if self.websocket:
+                    await self.websocket.send(bytes(packet))
+            except Exception as e:
+                logger.error(f"Failed to send full sync request: {e}")
+
+        asyncio.run_coroutine_threadsafe(_send(), self.loop)
 
     def send_repair_request(self, sections: List[Tuple[int, int, int]]) -> None:
         """Send Section Repair Requests (0x81) in batches to keep frames lightweight."""
