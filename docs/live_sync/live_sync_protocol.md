@@ -34,13 +34,15 @@ MoziToolKit 与 Yefira Minecraft Fabric Mod 之间通过高性能异步 WebSocke
 
 | 包类型 ID | 名称 (Name) | 方向 | 描述 (Description) |
 | :--- | :--- | :--- | :--- |
-| **`0x01`** | `PACKET_SELECTION_INFO` | S $ightarrow$ C | 广播当前选区包围盒坐标（Min Pos & Size） |
-| **`0x02`** | `PACKET_FULL_SNAPSHOT` | S $ightarrow$ C | 全量选区方块快照（包含全量 Palette 与 3D 体素索引阵列） |
-| **`0x03`** | `PACKET_DELTA_UPDATE` | S $ightarrow$ C | 单方块或微量方块增量变更列表 |
-| **`0x05`** | `PACKET_SECTION_MANIFEST` | S $ightarrow$ C | 选区内所有 16x16x16 区块（Section）的 CRC32 校验清单 |
-| **`0x06`** | `PACKET_SECTION_SNAPSHOT` | S $ightarrow$ C | 单个 16x16x16 区块的压缩快照（用于局部修复或密集批量变更） |
-| **`0x80`** | `PACKET_C2S_REQ_FULL_SYNC` | C $ightarrow$ S | 客户端主动请求全量快照（Full Sync） |
-| **`0x81`** | `PACKET_C2S_REQ_SECTION_SYNC` | C $ightarrow$ S | 客户端主动请求指定坐标的 Section 局部修复快照 |
+| **`0x01`** | `PACKET_SELECTION_INFO` | S $\rightarrow$ C | 广播当前选区包围盒坐标（Min Pos & Size） |
+| **`0x02`** | `PACKET_FULL_SNAPSHOT` | S $\rightarrow$ C | 全量选区方块快照（包含全量 Palette 与 3D 体素索引阵列） |
+| **`0x03`** | `PACKET_DELTA_UPDATE` | S $\rightarrow$ C | 单方块或微量方块增量变更列表 |
+| **`0x05`** | `PACKET_SECTION_MANIFEST` | S $\rightarrow$ C | 选区内所有 16x16x16 区块（Section）的 CRC32 校验清单 |
+| **`0x06`** | `PACKET_SECTION_SNAPSHOT` | S $\rightarrow$ C | 单个 16x16x16 区块的压缩快照（用于局部修复或密集批量变更） |
+| **`0x07`** | `PACKET_HANDSHAKE_INFO` | S $\rightarrow$ C | 握手同步元信息包（总区块数、非空区块数、方块体积、维度名称及流式标识） |
+| **`0x80`** | `PACKET_C2S_REQ_FULL_SYNC` | C $\rightarrow$ S | 客户端主动请求全量快照（Full Sync） |
+| **`0x81`** | `PACKET_C2S_REQ_SECTION_SYNC` | C $\rightarrow$ S | 客户端主动请求指定坐标的 Section 局部修复快照 |
+| **`0x82`** | `PACKET_C2S_SYNC_CONFIG` | C $\rightarrow$ S | 客户端同步配置更新（Throttle 模式、Target FPS 等） |
 
 ---
 
@@ -93,7 +95,20 @@ Offset | Type   | Description
 --     | Array  | (SizeX * SizeY * SizeZ) 个体素调色板索引
 ```
 
-### 4.4 `0x03` DELTA_UPDATE (增量变更包)
+### 4.4 `0x07` HANDSHAKE_INFO (握手与同步元信息)
+```
+Offset | Type   | Description
+-------+--------+---------------------------------------
+0..3   | Header | Magic (0x4D, 0x43), Version (0x02), Type (0x07)
+4..5   | uint16 | Total Section Count (选区覆盖区块总数)
+6..7   | uint16 | Non-Empty Section Count (含有效方块待流式传输的区块数)
+8..11  | uint32 | Total Volume (方块总体积)
+12..13 | uint16 | Dimension String Length (D)
+14..   | bytes  | UTF-8 Dimension Name (如 "minecraft:overworld")
+--     | uint16 | Flags (Bit 0: Streaming Mode, Bit 1: Compressed)
+```
+
+### 4.5 `0x03` DELTA_UPDATE (增量变更包)
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------

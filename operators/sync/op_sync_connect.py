@@ -34,6 +34,7 @@ try:
         find_bound_atlas_material,
     )
     from ...utils.system.dependencies import has_websockets
+    from ...pipeline.progress import ProgressBar
 except (ImportError, ValueError):
     from utils.live_sync.client import SyncClientThread
     from utils.live_sync.constants import (
@@ -58,11 +59,14 @@ except (ImportError, ValueError):
         find_bound_atlas_material,
     )
     from utils.system.dependencies import has_websockets
+    from pipeline.progress import ProgressBar
 
 logger = logging.getLogger("MoziToolKit.LiveSync")
 
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
+_stream_total_sections: int = 0
+_stream_received_sections: int = 0
 _rebuild_timer_registered: bool = False
 # Debounce caps expensive UI redraws while maintaining sub-millisecond sync
 REBUILD_DEBOUNCE_SECONDS: float = 0.05
@@ -359,6 +363,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         known_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
         preload_sync_world_data(palette=known_palette, world_obj=existing_world, atlas_params=atlas_params)
 
+        ProgressBar.begin(title="Live Sync", total=100.0, message="Connecting to Minecraft...", context=context)
+
         def run_in_main_thread(func):
             def wrapper():
                 try:
@@ -373,6 +379,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
                 if props.is_connected:
+                    ProgressBar.update(current=20.0, total=100.0, message="Handshake established...")
                     if _client_thread:
                         _client_thread.send_sync_config(throttle_mode=0, target_fps=60, is_active=True)
                     cur_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
@@ -383,10 +390,23 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     start_main_thread_pump()
                 else:
                     stop_main_thread_pump()
+                    if status.startswith("ERROR"):
+                        ProgressBar.cancel(message=status)
+                    else:
+                        ProgressBar.end()
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
                         if area.type == 'PROPERTIES':
                             area.tag_redraw()
+            run_in_main_thread(update)
+
+        def on_handshake_info(total_sections, non_empty_sections, total_volume, dimension, flags):
+            def update():
+                global _stream_total_sections, _stream_received_sections
+                _stream_total_sections = max(1, non_empty_sections)
+                _stream_received_sections = 0
+                props.last_update_info = f"Handshake: {dimension} ({non_empty_sections} chunks, {total_volume:,} blocks)"
+                ProgressBar.update(current=25.0, total=100.0, message=f"Handshake: {dimension} ({non_empty_sections} chunks)")
             run_in_main_thread(update)
 
         def on_selection_info(min_x, min_y, min_z, size_x, size_y, size_z):
@@ -446,6 +466,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 schedule_mesh_sync(force_full_rebuild=True)
 
                 props.last_update_info = f"Snapshot: {total_blocks} blocks (gen {voxel_storage.generation})"
+                ProgressBar.finish(message=f"Snapshot ({total_blocks:,} blocks) loaded", auto_dismiss_delay=0.8)
 
                 # 5. Persist metadata onto world object
                 persist_sync_state_to_scene(bpy.context)
@@ -481,11 +502,14 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     _skip_next_full_snapshot = True
                     props.validation_info = "Verified (100% in sync with scene)"
                     logger.info("Live Sync: Handshake verified 100% match with existing scene objects.")
+                    ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=1.0)
                 elif props.sync_verified:
                     props.validation_info = "Verified (100% in sync)"
+                    ProgressBar.finish(message="Verified: 100% in sync", auto_dismiss_delay=0.8)
                 else:
                     _skip_next_full_snapshot = False
                     props.validation_info = f"Syncing {len(mismatched)} section(s)..."
+                    ProgressBar.update(current=30.0, total=100.0, message=f"Syncing {len(mismatched)} section(s)...")
                     if _client_thread and _client_thread.is_connected:
                         logger.info(f"Live Sync: Requesting auto-healing repair for {len(mismatched)} mismatched section(s)...")
                         _client_thread.send_repair_request(mismatched)
@@ -499,6 +523,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             )
             if updated:
                 def update():
+                    global _stream_received_sections, _stream_total_sections
                     existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                     cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
                     cur_atlas_params = get_cached_atlas_params(cur_mat)
@@ -507,6 +532,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     props.update_counter += 1
                     props.last_update_info = f"Streamed Section ({sec_x}, {sec_y}, {sec_z})"
                     persist_sync_state_to_scene(bpy.context)
+
+                    _stream_received_sections += 1
+                    total_target = max(1, _stream_total_sections)
+                    frac = min(1.0, _stream_received_sections / total_target)
+                    pct = int(30.0 + frac * 65.0)
+                    if _stream_received_sections >= total_target:
+                        ProgressBar.finish(message=f"Streamed all {total_target} chunks (Sync Ready)", auto_dismiss_delay=1.0)
+                    else:
+                        ProgressBar.update(current=pct, total=100.0, message=f"Streaming chunk ({_stream_received_sections}/{total_target})")
                 run_in_main_thread(update)
 
         _client_thread = SyncClientThread(
@@ -517,6 +551,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             on_delta_update=on_delta_update,
             on_section_manifest=on_section_manifest,
             on_section_snapshot=on_section_snapshot,
+            on_handshake_info=on_handshake_info,
         )
         _client_thread.start()
 
@@ -532,6 +567,7 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
     def execute(self, context):
         global _client_thread
         stop_main_thread_pump()
+        ProgressBar.end(context=context)
         props = get_active_sync_props(context)
 
         if _client_thread:
@@ -588,6 +624,7 @@ def cleanup_sync_state() -> None:
 
     voxel_storage.clear()
     clear_sync_caches()
+    ProgressBar.end()
 
     try:
         from ...utils.live_sync.classifier import clear_parse_cache

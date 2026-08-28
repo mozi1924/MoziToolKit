@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import bpy
 from .context import PipelineContext
 from .pipeline import Pipeline
-from .progress import ProgressUpdate
+from .progress import ProgressUpdate, ProgressBar
 from .step import StepResult, StepStatus
 
 
@@ -41,8 +41,9 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
             return {"CANCELLED"}
 
         wm = context.window_manager
+        title = runner_data.get("title", "MoziToolKit")
+        ProgressBar.begin(title=title, total=100.0, message="", context=context)
         try:
-            wm.progress_begin(0, 100)
             wm.cursor_set_wait()
         except Exception:
             pass
@@ -72,6 +73,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
         if event.type == "ESC":
             ctx.is_cancelled = True
             self._drain_generator(generator)
+            ProgressBar.cancel("Operation cancelled by user.", context=context)
             self._cleanup(context)
             res = StepResult.cancelled("Operation cancelled by user.")
             ctx.report("WARNING", res.message)
@@ -88,11 +90,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
 
                 if isinstance(item, ProgressUpdate):
                     pct = int(item.fraction * 100.0)
-                    if hasattr(context.window_manager, "progress_update"):
-                        context.window_manager.progress_update(pct)
-                    if hasattr(context, "workspace") and context.workspace:
-                        msg_text = f"{title}: {item.message} ({pct}%)" if item.message else f"{title}: {pct}%"
-                        context.workspace.status_text_set(msg_text)
+                    ProgressBar.update(current=pct, total=100.0, message=item.message, context=context)
                     return {"RUNNING_MODAL"}
 
                 elif isinstance(item, StepResult):
@@ -102,6 +100,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                     # generator at ``yield last_result`` and a debugger shows
                     # a misleading GeneratorExit.
                     self._drain_generator(generator)
+                    ProgressBar.finish(item.message if item.is_success else "Failed", context=context)
                     self._cleanup(context)
                     if on_finish:
                         on_finish(item, ctx)
@@ -112,6 +111,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                     return {"FINISHED"} if item.is_success else {"CANCELLED"}
 
             except StopIteration:
+                ProgressBar.finish("Finished", context=context)
                 self._cleanup(context)
                 res = StepResult.success("Pipeline finished.")
                 if on_finish:
@@ -122,6 +122,7 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                 return {"FINISHED"}
 
             except Exception as e:
+                ProgressBar.cancel(f"Error: {e}", context=context)
                 self._cleanup(context)
                 err_res = StepResult.failed(f"Pipeline error: {e}")
                 ctx.report("ERROR", err_res.message)
@@ -155,19 +156,11 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                 except Exception:
                     pass
 
+        ProgressBar.end(context=context)
+
         if hasattr(context, "window_manager") and context.window_manager:
             try:
-                context.window_manager.progress_end()
-            except Exception:
-                pass
-            try:
                 context.window_manager.cursor_set_restore()
-            except Exception:
-                pass
-
-        if hasattr(context, "workspace") and context.workspace:
-            try:
-                context.workspace.status_text_set(None)
             except Exception:
                 pass
 
