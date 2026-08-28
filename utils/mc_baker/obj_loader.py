@@ -558,7 +558,12 @@ def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, st
     else:
         head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
         is_mob_half_tex = head_type in ("skeleton", "wither_skeleton", "creeper")
-        obj_file = "mob_head.obj" if is_mob_half_tex else "player_head.obj"
+        if head_type == "piglin":
+            obj_file = "piglin_head.obj"
+        elif is_mob_half_tex:
+            obj_file = "mob_head.obj"
+        else:
+            obj_file = "player_head.obj"
         scale = (1.0, 1.0, 1.0)
         if is_wall:
             facing = props.get("facing", "north").lower()
