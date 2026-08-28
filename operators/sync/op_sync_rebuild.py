@@ -15,15 +15,39 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
     bl_description = "Reconstruct meshes, face culling, UV maps, and material slots purely from local voxel data"
 
     def execute(self, context):
-        if voxel_storage.size_x == 0:
-            restore_sync_state_from_scene(context)
-
-        if voxel_storage.size_x == 0 and not voxel_storage.block_map:
+        from .op_sync_connect import (
+            find_bound_atlas_material,
+            get_cached_atlas_params,
+            preload_sync_world_data,
+            DEFAULT_WORLD_OBJECT_NAME,
+            get_active_sync_props,
+            _client_thread,
+        )
+        if not voxel_storage.block_map:
+            if _client_thread and _client_thread.is_connected:
+                self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")
+                bpy.ops.mozi.sync_refresh()
+                return {'FINISHED'}
             self.report({'WARNING'}, "No voxel data in memory. Connect to server or click Refresh first.")
             return {'CANCELLED'}
 
         clear_sync_caches()
+
+        existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        mat = find_bound_atlas_material(existing_world) if existing_world else None
+        atlas_params = get_cached_atlas_params(mat)
+        cur_palette = list(voxel_storage.get_state_counts().keys())
+        preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=atlas_params)
+
         trigger_mesh_sync(context, force_full_rebuild=True)
-        self.report({'INFO'}, "Reconstructed meshes and material bindings from local voxel data.")
+
+        for window in context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type in ('VIEW_3D', 'PROPERTIES'):
+                    area.tag_redraw()
+
+        props = get_active_sync_props(context)
+        total_pts = props.point_count if props else 0
+        self.report({'INFO'}, f"Rebuilt world mesh successfully ({total_pts:,} vertices).")
         return {'FINISHED'}
 

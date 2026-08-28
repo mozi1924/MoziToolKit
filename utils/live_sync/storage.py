@@ -140,21 +140,28 @@ class VoxelStorage:
         """Return all section coordinates that contain at least one non-air voxel."""
         sections = set()
         air_names = {"", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void"}
-        for sec_key, sec_dict in self._section_map.items():
-            if any(s and s not in air_names and not s.startswith("minecraft:air") for s in sec_dict.values()):
+        for sec_key, sec_dict in list(self._section_map.items()):
+            if any(s and s not in air_names and not s.startswith("minecraft:air") for s in list(sec_dict.values())):
                 sections.add(sec_key)
         return sections
 
     def get_section_blocks(self, sec_x: int, sec_y: int, sec_z: int) -> Dict[Tuple[int, int, int], str]:
         """Return all (abs_x, abs_y, abs_z) -> state_str within the given 16x16x16 section in O(1)."""
-        return self._section_map.get((sec_x, sec_y, sec_z), {})
+        sec = self._section_map.get((sec_x, sec_y, sec_z))
+        return dict(sec) if sec else {}
 
     def get_state_counts(self) -> Dict[str, int]:
         """Return canonical dictionary of state_str -> count across active blocks."""
         if not self._state_counts and self.block_map:
             from collections import Counter
-            self._state_counts = dict(Counter(self.block_map.values()))
-        return self._state_counts
+            self._state_counts = dict(Counter(list(self.block_map.values())))
+        return dict(self._state_counts)
+
+    def get_unique_states(self) -> List[str]:
+        """Return snapshot list of unique block states currently in storage."""
+        if self._state_counts:
+            return list(self._state_counts.keys())
+        return list(set(list(self.block_map.values())))
 
     def set_block(self, x: int, y: int, z: int, state_str: str) -> None:
         """Set blockstate string at (x, y, z), expanding storage bounds if needed and marking dirty sections."""
