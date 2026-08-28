@@ -390,6 +390,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             run_in_main_thread(update)
 
         def on_selection_info(min_x, min_y, min_z, size_x, size_y, size_z):
+            voxel_storage.set_bounds(min_x, min_y, min_z, size_x, size_y, size_z)
             def update():
                 props.has_selection = True
                 props.min_x, props.min_y, props.min_z = min_x, min_y, min_z
@@ -432,11 +433,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 # 2. Resolve the currently bound material before rebuilding.
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
 
-                # A voxel CRC/full snapshot can validate storage only; it
-                # cannot prove the existing Blender mesh still has the right
-                # faces, UVs, or material slots.  Treat every authoritative
-                # full snapshot as a mesh repair point rather than reusing a
-                # potentially stale scene mesh.
                 _skip_next_full_snapshot = False
                 _force_next_full_rebuild = False
                 clear_sync_caches()
@@ -489,28 +485,29 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     props.validation_info = "Verified (100% in sync)"
                 else:
                     _skip_next_full_snapshot = False
-                    props.validation_info = f"Mismatch in {len(mismatched)} section(s)"
+                    props.validation_info = f"Syncing {len(mismatched)} section(s)..."
                     if _client_thread and _client_thread.is_connected:
                         logger.info(f"Live Sync: Requesting auto-healing repair for {len(mismatched)} mismatched section(s)...")
                         _client_thread.send_repair_request(mismatched)
             run_in_main_thread(update)
 
         def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
-            def update():
-                updated = voxel_storage.set_section_snapshot(
-                    sec_x, sec_y, sec_z, start_x, start_y, start_z,
-                    size_x, size_y, size_z, palette, grid_indices
-                )
-                if updated:
+            # 1. Update in-memory storage immediately on worker thread for high throughput
+            updated = voxel_storage.set_section_snapshot(
+                sec_x, sec_y, sec_z, start_x, start_y, start_z,
+                size_x, size_y, size_z, palette, grid_indices
+            )
+            if updated:
+                def update():
                     existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                     cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
                     cur_atlas_params = get_cached_atlas_params(cur_mat)
                     preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=cur_atlas_params)
                     schedule_mesh_sync()
                     props.update_counter += 1
-                    props.last_update_info = f"Repaired Section ({sec_x}, {sec_y}, {sec_z})"
+                    props.last_update_info = f"Streamed Section ({sec_x}, {sec_y}, {sec_z})"
                     persist_sync_state_to_scene(bpy.context)
-            run_in_main_thread(update)
+                run_in_main_thread(update)
 
         _client_thread = SyncClientThread(
             url=props.url,

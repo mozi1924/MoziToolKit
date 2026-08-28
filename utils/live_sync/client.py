@@ -94,7 +94,13 @@ class SyncClientThread(threading.Thread):
         logger.info(f"Connecting to Minecraft Live Sync WebSocket at: {self.url}")
 
         try:
-            async with websockets.connect(self.url) as websocket:
+            async with websockets.connect(
+                self.url,
+                max_size=None,  # No artificial limit on frame size for high-res voxel sync
+                max_queue=2048,
+                ping_interval=30,
+                ping_timeout=30,
+            ) as websocket:
                 self.websocket = websocket
                 self.is_connected = True
                 self.on_status_change("CONNECTED")
@@ -124,26 +130,31 @@ class SyncClientThread(threading.Thread):
             self.on_status_change("DISCONNECTED")
 
     def send_repair_request(self, sections: List[Tuple[int, int, int]]) -> None:
-        """Send a Section Repair Request (0x81) back to server on background loop."""
-        if not self.is_connected or not self.websocket or not self.loop:
+        """Send Section Repair Requests (0x81) in batches to keep frames lightweight."""
+        if not self.is_connected or not self.websocket or not self.loop or not sections:
             return
 
-        packet = bytearray()
-        packet.extend(PROTOCOL_MAGIC)
-        packet.append(PROTOCOL_VERSION)
-        packet.append(PacketType.REPAIR_REQUEST)
-        packet.extend(struct.pack('<H', len(sections)))
-        for sx, sy, sz in sections:
-            packet.extend(struct.pack('<iii', sx, sy, sz))
+        # Chunk into batches of at most 64 sections per packet
+        batch_size = 64
+        batches = [sections[i:i + batch_size] for i in range(0, len(sections), batch_size)]
 
-        async def _send():
+        async def _send_batches():
             try:
-                if self.websocket:
+                for batch in batches:
+                    if not self.websocket or not self.is_connected:
+                        break
+                    packet = bytearray()
+                    packet.extend(PROTOCOL_MAGIC)
+                    packet.append(PROTOCOL_VERSION)
+                    packet.append(PacketType.REPAIR_REQUEST)
+                    packet.extend(struct.pack('<H', len(batch)))
+                    for sx, sy, sz in batch:
+                        packet.extend(struct.pack('<iii', sx, sy, sz))
                     await self.websocket.send(bytes(packet))
             except Exception as e:
-                logger.error(f"Failed to send repair request: {e}")
+                logger.error(f"Failed to send repair request batch: {e}")
 
-        asyncio.run_coroutine_threadsafe(_send(), self.loop)
+        asyncio.run_coroutine_threadsafe(_send_batches(), self.loop)
 
     def send_sync_config(self, throttle_mode: int = 0, target_fps: int = 60, is_active: bool = True) -> None:
         """Send a Sync Config (0x82) to adapt server-side broadcast and throttle delivery."""

@@ -64,6 +64,24 @@ class VoxelStorage:
         self.size_x = self.size_y = self.size_z = 0
         self.generation += 1
 
+    def set_bounds(self, min_x: int, min_y: int, min_z: int, size_x: int, size_y: int, size_z: int) -> None:
+        """Initialize or update selection bounding box from selection info."""
+        if (self.min_x, self.min_y, self.min_z, self.size_x, self.size_y, self.size_z) != (min_x, min_y, min_z, size_x, size_y, size_z):
+            # If bounds changed completely, clear stale block data
+            if self.size_x > 0 and (self.min_x != min_x or self.min_y != min_y or self.min_z != min_z):
+                self.block_map.clear()
+                self._section_map.clear()
+                self._state_counts.clear()
+                self.section_crc_map.clear()
+                self._dirty_sections.clear()
+            self.min_x = min_x
+            self.min_y = min_y
+            self.min_z = min_z
+            self.size_x = size_x
+            self.size_y = size_y
+            self.size_z = size_z
+            self.generation += 1
+
     def matches_bounds(self, min_x: int, min_y: int, min_z: int) -> bool:
         """Check if an incoming packet matches active selection bounds origin."""
         return (
@@ -258,10 +276,15 @@ class VoxelStorage:
         grid_indices: List[int],
     ) -> bool:
         """Update a specific 16x16x16 section from a section repair snapshot."""
-        if not self.matches_bounds(self.min_x, self.min_y, self.min_z):
-            return False
         if size_x <= 0 or size_y <= 0 or size_z <= 0:
             return False
+        if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
+            self.min_x = start_x
+            self.min_y = start_y
+            self.min_z = start_z
+            self.size_x = size_x
+            self.size_y = size_y
+            self.size_z = size_z
 
         total_blocks = size_x * size_y * size_z
         max_x = self.min_x + self.size_x - 1
