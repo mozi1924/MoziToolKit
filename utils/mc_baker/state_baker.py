@@ -22,8 +22,6 @@ from .model_parser import ModelParser
 from .blockstate_resolver import BlockStateResolver, parse_block_state_string
 from .resource_loader import JarResourceLoader
 from .obj_loader import resolve_obj_model_for_state, build_bell_model
-from .csg_baker import bake_waterlogged_elements
-
 
 # Canonical Minecraft Emissive block base names
 EMISSIVE_BLOCKS = frozenset({
@@ -531,14 +529,6 @@ class StateBaker:
             )
             self._bake_cache[state_str_clean] = baked_model
             return baked_model
-
-        # Check if block is waterlogged:
-        is_waterlogged = props.get("waterlogged") == "true" or short_name in ("seagrass", "tall_seagrass", "kelp", "kelp_plant")
-        if is_waterlogged and short_name not in ("water", "flowing_water", "lava", "flowing_lava"):
-            is_opaque = False
-            is_cube = False
-            water_elements = bake_waterlogged_elements(baked_elements)
-            baked_elements.extend(water_elements)
 
         baked_model = BakedModel(
             block_state=state_str_clean,
