@@ -12,6 +12,7 @@ from .step_select_transparent_faces import SelectTransparentFacesStep
 from .step_texture_interpolation import TextureInterpolationStep
 from .step_replace_material import StepReplaceMaterial
 from .step_repair_fluid_uv import RepairFluidUVStep
+from .step_precompile_cache import StepPrecompileCache
 
 __all__ = [
     "AdaptivePixelSplitStep",
@@ -24,4 +25,5 @@ __all__ = [
     "TextureInterpolationStep",
     "StepReplaceMaterial",
     "RepairFluidUVStep",
+    "StepPrecompileCache",
 ]

@@ -5,7 +5,7 @@ Lanterns, Chains, Doors, etc.) directly from official JAR / resource pack defini
 """
 
 from __future__ import annotations
-from typing import Optional, Any, Union
+from typing import Optional, Any, Union, Iterator, Tuple, Callable
 from pathlib import Path
 import copy
 
@@ -543,16 +543,17 @@ class StateBaker:
         self._bake_cache[state_str_clean] = baked_model
         return baked_model
 
-    def bake_all_pack_states(self) -> dict[str, BakedModel]:
+    def bake_all_pack_states_iter(self) -> Iterator[Tuple[float, str, dict[str, BakedModel]]]:
         """
-        Scan and bake all blockstates in the resource pack / JAR.
-        Returns mapping from state_str to BakedModel.
+        Scan and bake all blockstates in the resource pack / JAR incrementally.
+        Yields (fraction: float, message: str, current_baked_dict: dict[str, BakedModel]).
         """
         if not self.resource_loader:
-            return {}
+            return
         all_block_ids = self.resource_loader.list_all_blockstates()
+        total_blocks = max(1, len(all_block_ids))
         baked_dict: dict[str, BakedModel] = {}
-        for block_id in all_block_ids:
+        for idx, block_id in enumerate(all_block_ids):
             state_json = self.resource_loader.load_blockstate(block_id)
             if not state_json:
                 continue
@@ -612,15 +613,39 @@ class StateBaker:
                 except Exception:
                     pass
 
-        return baked_dict
+            if idx % 10 == 0 or idx == total_blocks - 1:
+                frac = (idx + 1) / total_blocks
+                yield (frac, f"Baking models: {short_name} ({idx + 1}/{total_blocks})", baked_dict)
 
-    def save_precompiled_manifest(self, output_file: Union[str, Path]) -> int:
+    def bake_all_pack_states(self, progress_callback: Optional[Callable[[float, str], None]] = None) -> dict[str, BakedModel]:
         """
-        Bake all pack states and save to a JSON manifest file on disk.
-        Returns the number of baked models saved.
+        Scan and bake all blockstates in the resource pack / JAR.
+        Returns mapping from state_str to BakedModel.
+        """
+        final_dict: dict[str, BakedModel] = {}
+        for frac, msg, cur_dict in self.bake_all_pack_states_iter():
+            if progress_callback:
+                try:
+                    progress_callback(frac, msg)
+                except Exception:
+                    pass
+            final_dict = cur_dict
+        return final_dict
+
+    def save_precompiled_manifest_iter(
+        self, output_file: Union[str, Path]
+    ) -> Iterator[Tuple[float, str, Optional[int]]]:
+        """
+        Bake all pack states and save to a JSON manifest file on disk with progress updates.
+        Yields (fraction: float, message: str, baked_count: Optional[int]).
         """
         import json
-        baked_dict = self.bake_all_pack_states()
+        baked_dict: dict[str, BakedModel] = {}
+        for frac, msg, cur_dict in self.bake_all_pack_states_iter():
+            baked_dict = cur_dict
+            yield (frac * 0.95, msg, None)
+
+        yield (0.96, f"Saving {len(baked_dict)} baked models to manifest...", None)
         manifest_data = {
             "format_version": "1.0.0",
             "models_count": len(baked_dict),
@@ -630,7 +655,26 @@ class StateBaker:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(manifest_data, f, separators=(",", ":"))
-        return len(baked_dict)
+
+        yield (1.0, f"Successfully baked and cached {len(baked_dict)} models.", len(baked_dict))
+
+    def save_precompiled_manifest(
+        self, output_file: Union[str, Path], progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> int:
+        """
+        Bake all pack states and save to a JSON manifest file on disk.
+        Returns the number of baked models saved.
+        """
+        final_count = 0
+        for frac, msg, count in self.save_precompiled_manifest_iter(output_file):
+            if progress_callback:
+                try:
+                    progress_callback(frac, msg)
+                except Exception:
+                    pass
+            if count is not None:
+                final_count = count
+        return final_count
 
     def load_precompiled_manifest(self, source: Union[str, Path, dict]) -> int:
         """

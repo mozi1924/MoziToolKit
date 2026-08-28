@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Iterator, Callable
 
 from .resource_pack import ZipResourcePack, get_pack_hash
 from ...mc_baker.resource_loader import JarResourceLoader
@@ -249,20 +249,36 @@ class ResourcePackStack:
         except (OSError, json.JSONDecodeError):
             return False
 
-    def precompile_standalone(self, output_dir: Optional[Union[str, Path]] = None, progress_callback=None) -> dict:
-        """Precompile and build the standalone asset library for this pack stack."""
+    def precompile_standalone_iter(
+        self, output_dir: Optional[Union[str, Path]] = None
+    ) -> Iterator[Tuple[float, str, Optional[dict]]]:
+        """Iteratively precompile and build the standalone asset library for this pack stack."""
         from ..standalone.generator import StandaloneGenerator
         target_dir = Path(output_dir) if output_dir else self.get_baked_standalone_dir()
         gen = StandaloneGenerator(fallback_stack=self)
-        return gen.build(target_dir, progress_callback=progress_callback)
+        yield from gen.build_iter(target_dir)
 
-    def precompile_atlas(
+    def precompile_standalone(
+        self, output_dir: Optional[Union[str, Path]] = None, progress_callback: Optional[Callable[[float, str], None]] = None
+    ) -> dict:
+        """Precompile and build the standalone asset library for this pack stack."""
+        final_res = {}
+        for frac, msg, outputs in self.precompile_standalone_iter(output_dir=output_dir):
+            if progress_callback:
+                try:
+                    progress_callback(frac, msg)
+                except Exception:
+                    pass
+            if outputs:
+                final_res = outputs
+        return final_res
+
+    def precompile_atlas_iter(
         self,
         output_dir: Optional[Union[str, Path]] = None,
         yefira_only: bool = False,
-        progress_callback=None,
-    ) -> dict:
-        """Precompile and build the atlas cache for this pack stack."""
+    ) -> Iterator[Tuple[float, str, Optional[dict]]]:
+        """Iteratively precompile and build the atlas cache for this pack stack."""
         from ..atlas.generator import AtlasGenerator
         from ..constants import (
             ATLAS_CATEGORY_BLOCKS,
@@ -284,7 +300,25 @@ class ResourcePackStack:
             ATLAS_CATEGORY_DECORATED_POT,
         } if yefira_only else None
         gen = AtlasGenerator(fallback_stack=self, included_categories=yefira_categories)
-        return gen.build(target_dir, progress_callback=progress_callback)
+        yield from gen.build_iter(target_dir)
+
+    def precompile_atlas(
+        self,
+        output_dir: Optional[Union[str, Path]] = None,
+        yefira_only: bool = False,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
+    ) -> dict:
+        """Precompile and build the atlas cache for this pack stack."""
+        final_res = {}
+        for frac, msg, outputs in self.precompile_atlas_iter(output_dir=output_dir, yefira_only=yefira_only):
+            if progress_callback:
+                try:
+                    progress_callback(frac, msg)
+                except Exception:
+                    pass
+            if outputs:
+                final_res = outputs
+        return final_res
 
     def get_baked_models_dir(self) -> Path:
         """Get the persistent baked models cache directory for this stack."""
@@ -297,18 +331,16 @@ class ResourcePackStack:
         manifest_path = self.get_baked_models_dir() / "models_manifest.json"
         return manifest_path.is_file() and manifest_path.stat().st_size > 10
 
-    def precompile_models(
+    def precompile_models_iter(
         self,
         output_dir: Optional[Union[str, Path]] = None,
-        progress_callback=None,
-    ) -> dict:
-        """Precompile and bake all blockstate models for this pack stack."""
+    ) -> Iterator[Tuple[float, str, Optional[dict]]]:
+        """Iteratively precompile and bake all blockstate models for this pack stack."""
         from ...mc_baker import StateBaker
         target_dir = Path(output_dir) if output_dir else self.get_baked_models_dir()
         target_file = target_dir / "models_manifest.json"
 
-        if progress_callback:
-            progress_callback(0.05, "Initializing model baker across pack stack...")
+        yield (0.02, "Initializing model baker across pack stack...", None)
 
         composite_loader = self.get_composite_loader()
         baker = StateBaker(jar_path=None)
@@ -317,18 +349,34 @@ class ResourcePackStack:
             baker.model_parser.model_loader_fn = composite_loader.load_model
             baker.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
 
-        if progress_callback:
-            progress_callback(0.2, "Baking blockstate variants...")
+        count = 0
+        for frac, msg, res_count in baker.save_precompiled_manifest_iter(target_file):
+            if res_count is not None:
+                count = res_count
+            yield (0.02 + 0.98 * frac, msg, None)
 
-        count = baker.save_precompiled_manifest(target_file)
-
-        if progress_callback:
-            progress_callback(1.0, f"Precompiled {count} blockstate models.")
-
-        return {
+        results = {
             "models_count": count,
             "manifest_file": target_file,
         }
+        yield (1.0, f"Precompiled {count} blockstate models.", results)
+
+    def precompile_models(
+        self,
+        output_dir: Optional[Union[str, Path]] = None,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
+    ) -> dict:
+        """Precompile and bake all blockstate models for this pack stack."""
+        final_results = {}
+        for frac, msg, res in self.precompile_models_iter(output_dir=output_dir):
+            if progress_callback:
+                try:
+                    progress_callback(frac, msg)
+                except Exception:
+                    pass
+            if res is not None:
+                final_results = res
+        return final_results
 
     def load_precompiled_models(self, target_dir: Optional[Union[str, Path]] = None) -> dict:
         """Load all precompiled BakedModel objects for this stack into memory."""
@@ -340,27 +388,70 @@ class ResourcePackStack:
             return baker._bake_cache
         return {}
 
+    def precompile_iter(
+        self,
+        material_mode: str = "ATLAS",
+        yefira_only: bool = False,
+    ) -> Iterator[Tuple[float, str, Optional[dict]]]:
+        """
+        Iteratively precompile all caches according to material mode with progress streaming.
+        Yields (fraction: float, message: str, outputs: Optional[dict]).
+        """
+        results = {}
+        if material_mode == "STANDALONE":
+            # 1. Atlas Cache (0.0 -> 0.40)
+            for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
+                if out:
+                    results["atlas"] = out
+                yield (0.40 * frac, f"Atlas: {msg}", None)
+
+            # 2. Models Cache (0.40 -> 0.70)
+            for frac, msg, out in self.precompile_models_iter():
+                if out:
+                    results["models"] = out
+                yield (0.40 + 0.30 * frac, f"Models: {msg}", None)
+
+            # 3. Standalone Cache (0.70 -> 1.00)
+            for frac, msg, out in self.precompile_standalone_iter():
+                if out:
+                    results["standalone"] = out
+                yield (0.70 + 0.30 * frac, f"Standalone: {msg}", None)
+        else:
+            # 1. Atlas Cache (0.0 -> 0.60)
+            for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
+                if out:
+                    results["atlas"] = out
+                yield (0.60 * frac, f"Atlas: {msg}", None)
+
+            # 2. Models Cache (0.60 -> 1.00)
+            for frac, msg, out in self.precompile_models_iter():
+                if out:
+                    results["models"] = out
+                yield (0.60 + 0.40 * frac, f"Models: {msg}", None)
+
+        yield (1.0, "Precompilation completed.", results)
+
     def precompile(
         self,
         material_mode: str = "ATLAS",
         yefira_only: bool = False,
-        progress_callback=None,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> dict:
         """
         Precompile caches according to material mode:
         - If material_mode is "STANDALONE": precompiles Atlas, Standalone, and Models caches.
         - If material_mode is "ATLAS": precompiles Atlas and Models cache.
         """
-        res_atlas = self.precompile_atlas(yefira_only=yefira_only, progress_callback=progress_callback)
-        res_models = self.precompile_models(progress_callback=progress_callback)
-        res_st = None
-        if material_mode == "STANDALONE":
-            res_st = self.precompile_standalone(progress_callback=progress_callback)
-        return {
-            "atlas": res_atlas,
-            "models": res_models,
-            "standalone": res_st,
-        }
+        final_results = {}
+        for frac, msg, out in self.precompile_iter(material_mode=material_mode, yefira_only=yefira_only):
+            if progress_callback:
+                try:
+                    progress_callback(frac, msg)
+                except Exception:
+                    pass
+            if out:
+                final_results = out
+        return final_results
 
     def get_composite_loader(self) -> Optional[JarResourceLoader]:
         """

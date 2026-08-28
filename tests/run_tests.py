@@ -124,6 +124,7 @@ FAST_UNIT_MODULES = {
     "test_mineways_matching",
     "test_pack_stack_and_fallback",
     "test_pbr_pack_stack",
+    "test_precompile_pipeline",
     "test_rect_packer",
     "test_repair_fluid_uv",
     "test_sandbox_isolation",
