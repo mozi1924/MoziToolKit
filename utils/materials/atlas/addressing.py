@@ -614,6 +614,43 @@ class AtlasAddressResolver:
 
         return any_match if category is None else None
 
+    def get_fallback_location(self) -> dict:
+        """
+        Return the pre-allocated fallback texture slot metadata (Chunk 0 fallback slot).
+        Used for unknown / unresolved blocks to prevent UVs from stretching across the full atlas.
+        """
+        for key in (
+            FALLBACK_TEXTURE_KEY,
+            "minecraft:__mtk_fallback__",
+            "__mtk_fallback__",
+            "fallback",
+            "minecraft:fallback",
+        ):
+            if key in self._locations and isinstance(self._locations[key], dict):
+                return self._locations[key]
+
+        # Default chunk 0, tile (0, 0) procedural fallback descriptor
+        chunk_0 = self.get_target_chunk(0)
+        ts = float(chunk_0.get("tile_size", 16))
+        return {
+            "texture_key": FALLBACK_TEXTURE_KEY,
+            "category": "blocks",
+            "namespace": "minecraft",
+            "chunk_id": 0,
+            "texture_id": 0,
+            "pixel_x": 0,
+            "pixel_y": 0,
+            "tile_column": 0,
+            "tile_row": 0,
+            "tile_size": ts,
+            "frame_width": ts,
+            "frame_height": ts,
+            "frame_count": 1,
+            "kind": "static",
+            "is_opaque": True,
+            "is_fallback": True,
+        }
+
     def remap_uv(
         self,
         u_local: float,
@@ -625,12 +662,10 @@ class AtlasAddressResolver:
         Authoritatively project local [0..1] UV to global Atlas UV [0..1].
         Supports Standard and HD Packs (16x to 512x+), Rect Packing, and Animation Strips (Frame 0).
         """
-        if not location:
-            return u_local, v_local
-
-        cid = int(location.get("chunk_id", 0))
-        target_chunk = chunk or self._chunks_by_id.get(cid, {})
-        return remap_local_to_target_uv(u_local, v_local, target_location=location, target_chunk=target_chunk)
+        target_location = location if location else self.get_fallback_location()
+        cid = int(target_location.get("chunk_id", 0))
+        target_chunk = chunk or self._chunks_by_id.get(cid, self.get_target_chunk(cid))
+        return remap_local_to_target_uv(u_local, v_local, target_location=target_location, target_chunk=target_chunk)
 
     def get_target_chunk(
         self,
@@ -663,9 +698,11 @@ class AtlasAddressResolver:
     ) -> Callable[[float, float], tuple[float, float]]:
         """Return a self-contained closure that maps local UV to global Atlas UV for a specific location."""
         if isinstance(location, str):
-            captured_loc = self.lookup_texture(location)
-        else:
+            captured_loc = self.lookup_texture(location) or self.get_fallback_location()
+        elif location:
             captured_loc = location
+        else:
+            captured_loc = self.get_fallback_location()
         cid = int(captured_loc.get("chunk_id", 0)) if captured_loc else 0
         captured_chunk = chunk or self.get_target_chunk(cid, fallback_params=fallback_params)
 
@@ -879,6 +916,11 @@ class AtlasAddressResolver:
             elif "banner" in short_p:
                 chunk_id = 18
 
+        if not loc:
+            loc = self.get_fallback_location()
+            if chunk_id == 0:
+                chunk_id = int(loc.get("chunk_id", 0))
+
         texture_id = int(loc.get("texture_id", 0)) if loc else 0
         target_chunk = self.get_target_chunk(chunk_id, fallback_params=fallback_params)
 
@@ -964,6 +1006,8 @@ class AtlasAddressResolver:
         """
         tex_name = getattr(baked_face, "texture", "")
         loc = self.lookup_texture(tex_name) if tex_name else None
+        if not loc:
+            loc = self.get_fallback_location()
         chunk_id = int(loc.get("chunk_id", 0)) if loc else 0
         texture_id = int(loc.get("texture_id", 0)) if loc else 0
         target_chunk = self._chunks_by_id.get(chunk_id, {"chunk_id": chunk_id, "tile_size": 16, "width": 512, "height": 512})
