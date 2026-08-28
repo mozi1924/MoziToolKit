@@ -445,6 +445,59 @@ class TestCustomModelBakerConvention(unittest.TestCase):
         u, v = res_face.calc_uv_fn(0.0, 0.0)
         self.assertAlmostEqual(u, 10 * 16 / 1024, places=5)
 
+    def test_unknown_block_fallback_slot(self):
+        """Unknown or missing blocks must map to the reserved fallback tile slot without stretching across full atlas."""
+        mapping = {
+            "chunks": [
+                {
+                    "chunk_id": 0,
+                    "kind": "static",
+                    "width": 1024,
+                    "height": 512,
+                    "tile_size": 16,
+                    "tiles_per_row": 64,
+                }
+            ],
+            "textures": {
+                FALLBACK_TEXTURE_KEY: {
+                    "chunk_id": 0,
+                    "texture_id": 0,
+                    "tile_column": 0,
+                    "tile_row": 0,
+                    "pixel_x": 0,
+                    "pixel_y": 0,
+                    "tile_size": 16,
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "texture_key": FALLBACK_TEXTURE_KEY,
+                }
+            }
+        }
+        resolver = AtlasAddressResolver(mapping)
+
+        # 1. Remap UV with location=None should map to fallback tile
+        u0, v0 = resolver.remap_uv(0.0, 0.0, location=None)
+        u1, v1 = resolver.remap_uv(1.0, 1.0, location=None)
+        self.assertAlmostEqual(u0, 0.0, places=5)
+        self.assertAlmostEqual(u1, 16.0 / 1024.0, places=5)
+        self.assertAlmostEqual(v0, 1.0 - 16.0 / 512.0, places=5)
+        self.assertAlmostEqual(v1, 1.0, places=5)
+
+        # 2. Dynamic face resolution for an unknown block
+        from MoziToolKit.utils.live_sync.classifier import parse_and_classify
+        parsed = parse_and_classify("unknown_mod:alien_crystal")
+        res = resolver.resolve_dynamic_face(parsed, "north", 0)
+        self.assertEqual(res.chunk_id, 0)
+        self.assertEqual(res.texture_id, 0)
+
+        # Calc UV should map strictly inside the 16x16 fallback tile
+        calc_u0, calc_v0 = res.calc_uv_fn(0.0, 0.0)
+        calc_u1, calc_v1 = res.calc_uv_fn(1.0, 1.0)
+        self.assertAlmostEqual(calc_u0, 0.0, places=5)
+        self.assertAlmostEqual(calc_u1, 16.0 / 1024.0, places=5)
+        self.assertAlmostEqual(calc_v0, 1.0 - 16.0 / 512.0, places=5)
+        self.assertAlmostEqual(calc_v1, 1.0, places=5)
+
 
 if __name__ == "__main__":
     unittest.main()
