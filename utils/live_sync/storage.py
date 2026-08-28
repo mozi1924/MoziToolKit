@@ -36,16 +36,40 @@ def _extract_canonical_state_str(raw_state: str) -> str:
     return raw_state
 
 
-def get_empty_section_crc() -> int:
-    """Compute canonical CRC32 for an empty 16x16x16 chunk of air."""
+_EMPTY_CRC_TABLE: List[int] = []
+
+
+def _init_empty_crc_table() -> None:
+    global _EMPTY_CRC_TABLE
+    if _EMPTY_CRC_TABLE:
+        return
+    table = [0] * 4097
     crc_val = 0
     air_bytes = b"minecraft:air"
-    for _ in range(4096):
+    table[0] = 0
+    for count in range(1, 4097):
+        crc_val = zlib.crc32(air_bytes, crc_val) & 0xFFFFFFFF
+        table[count] = crc_val
+    _EMPTY_CRC_TABLE = table
+
+
+_init_empty_crc_table()
+
+
+def get_empty_section_crc(block_count: int = 4096) -> int:
+    """Compute canonical CRC32 for an empty chunk/section of air with `block_count` blocks."""
+    if not _EMPTY_CRC_TABLE:
+        _init_empty_crc_table()
+    if 0 <= block_count < len(_EMPTY_CRC_TABLE):
+        return _EMPTY_CRC_TABLE[block_count]
+    crc_val = 0
+    air_bytes = b"minecraft:air"
+    for _ in range(max(0, block_count)):
         crc_val = zlib.crc32(air_bytes, crc_val)
     return crc_val & 0xFFFFFFFF
 
 
-EMPTY_SECTION_CRC = get_empty_section_crc()
+EMPTY_SECTION_CRC = get_empty_section_crc(4096)
 
 
 class VoxelStorage:
@@ -482,6 +506,34 @@ class VoxelStorage:
                 for sz in range(min_sec_z, max_sec_z + 1):
                     self.calculate_and_store_section_crc(sx, sy, sz)
 
+    def get_section_block_bounds(self, sec_x: int, sec_y: int, sec_z: int) -> Tuple[int, int, int, int, int, int]:
+        """Return (start_x, start_y, start_z, size_x, size_y, size_z) for a section clamped to bounds."""
+        if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
+            return (sec_x << 4, sec_y << 4, sec_z << 4, 16, 16, 16)
+        max_x = self.min_x + self.size_x - 1
+        max_y = self.min_y + self.size_y - 1
+        max_z = self.min_z + self.size_z - 1
+        start_x = max(self.min_x, sec_x << 4)
+        end_x = min(max_x, (sec_x << 4) + 15)
+        start_y = max(self.min_y, sec_y << 4)
+        end_y = min(max_y, (sec_y << 4) + 15)
+        start_z = max(self.min_z, sec_z << 4)
+        end_z = min(max_z, (sec_z << 4) + 15)
+        sx = max(0, end_x - start_x + 1)
+        sy = max(0, end_y - start_y + 1)
+        sz = max(0, end_z - start_z + 1)
+        return (start_x, start_y, start_z, sx, sy, sz)
+
+    def get_section_block_count(self, sec_x: int, sec_y: int, sec_z: int) -> int:
+        """Return total number of blocks within bounding box for given section."""
+        _, _, _, sx, sy, sz = self.get_section_block_bounds(sec_x, sec_y, sec_z)
+        return sx * sy * sz
+
+    def is_empty_section_crc(self, sec_x: int, sec_y: int, sec_z: int, crc_val: int) -> bool:
+        """Check if crc_val matches canonical CRC of all-air blocks for this section."""
+        count = self.get_section_block_count(sec_x, sec_y, sec_z)
+        return crc_val == get_empty_section_crc(count)
+
     def validate_manifest(
         self,
         server_sections: List[Tuple[int, int, int, int]],
@@ -502,10 +554,10 @@ class VoxelStorage:
                 continue
 
             # Bad chunk / missing mesh verification:
-            # If the server reports a non-empty section (CRC differs from full air),
+            # If the server reports a non-empty section (CRC differs from all-air blocks),
             # but the section generated visible geometry previously and its child mesh object is missing in Blender,
             # mark as a bad chunk. Empty / culled sections in _known_empty_sections are ignored.
-            if existing_section_meshes is not None and server_crc32 != EMPTY_SECTION_CRC:
+            if existing_section_meshes is not None and not self.is_empty_section_crc(sec_x, sec_y, sec_z, server_crc32):
                 if key not in existing_section_meshes and key not in self._known_empty_sections:
                     mismatched.append(key)
 

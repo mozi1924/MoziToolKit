@@ -697,5 +697,58 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(statuses[-1], "DISCONNECTED")
 
 
+    def test_empty_section_crc_table_and_boundary_calculation(self):
+        """Verify get_empty_section_crc computes correct canonical CRC for arbitrary block counts."""
+        from utils.live_sync.storage import get_empty_section_crc, EMPTY_SECTION_CRC
+        import zlib
+
+        # 1. Zero blocks
+        self.assertEqual(get_empty_section_crc(0), 0)
+
+        # 2. 4096 blocks (full 16x16x16 chunk)
+        self.assertEqual(get_empty_section_crc(4096), EMPTY_SECTION_CRC)
+
+        # 3. Partial block counts match step-by-step zlib.crc32
+        for count in (1, 16, 256, 512, 1024, 2048):
+            expected = 0
+            for _ in range(count):
+                expected = zlib.crc32(b"minecraft:air", expected) & 0xFFFFFFFF
+            self.assertEqual(get_empty_section_crc(count), expected)
+
+    def test_validate_manifest_empty_boundary_section_not_bad(self):
+        """Verify boundary sections that are pure air are not flagged as bad chunks or counted as non-empty."""
+        from utils.live_sync.storage import get_empty_section_crc
+
+        # Set bounds with partial boundary chunks: 20x20x20 (min=(0,0,0), size=(20,20,20))
+        # This covers sections (0,0,0), (1,0,0), (0,1,0), (1,1,0), (0,0,1), etc.
+        # Section (0,0,0) has 16x16x16 = 4096 blocks.
+        # Section (1,0,0) has 4x16x16 = 1024 blocks.
+        self.storage.set_bounds(0, 0, 0, 20, 20, 20)
+
+        # Section (0,0,0) contains stone
+        for x in range(16):
+            self.storage.block_map[(x, 0, 0)] = "minecraft:stone"
+        crc_000 = self.storage.calculate_and_store_section_crc(0, 0, 0)
+
+        # Section (1,0,0) is all air
+        crc_100 = self.storage.calculate_and_store_section_crc(1, 0, 0)
+        expected_air_crc_100 = get_empty_section_crc(self.storage.get_section_block_count(1, 0, 0))
+        self.assertEqual(crc_100, expected_air_crc_100)
+        self.assertTrue(self.storage.is_empty_section_crc(1, 0, 0, crc_100))
+        self.assertFalse(self.storage.is_empty_section_crc(0, 0, 0, crc_000))
+
+        # Test validate_manifest with only section (0,0,0) mesh existing in Blender
+        manifest = [(0, 0, 0, crc_000), (1, 0, 0, crc_100)]
+        existing_meshes = {(0, 0, 0)}
+        mismatched = self.storage.validate_manifest(manifest, existing_section_meshes=existing_meshes)
+        self.assertEqual(mismatched, [])
+
+        # Test counting non-empty manifest entries: only 1 section is non-empty
+        non_empty_count = sum(
+            1 for sx, sy, sz, crc in manifest if not self.storage.is_empty_section_crc(sx, sy, sz, crc)
+        )
+        self.assertEqual(non_empty_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

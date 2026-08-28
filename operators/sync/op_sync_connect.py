@@ -67,6 +67,7 @@ _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
 _stream_total_sections: int = 0
 _stream_received_sections: int = 0
+_is_streaming: bool = False
 _is_initial_handshake: bool = False
 _rebuild_timer_registered: bool = False
 # Debounce caps expensive UI redraws while maintaining sub-millisecond sync
@@ -85,14 +86,14 @@ _pump_timer_registered: bool = False
 _PUMP_INTERVAL_ACTIVE: float = 0.015  # 15ms (~66 Hz when processing active deltas/chunks)
 _PUMP_INTERVAL_IDLE: float = 0.035    # 35ms (~28 Hz idle throttle to save CPU)
 
-
+_SETTLE_TIMEOUT_SECONDS: float = 3.0
 _stream_last_drain_time: float = 0.0
 
 
 def _finalize_stream_sync(props, total_target: int) -> None:
     """Finalize world mesh build, clean up stream flags, and smoothly finish progress bar."""
     global _is_repairing_partial, _is_initial_handshake, _force_next_full_rebuild, _pending_full_sync_request
-    global _stream_received_sections, _stream_total_sections
+    global _stream_received_sections, _stream_total_sections, _is_streaming
 
     existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
     cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
@@ -110,6 +111,7 @@ def _finalize_stream_sync(props, total_target: int) -> None:
         props.last_update_info = f"Repaired {total_target} sections" if _is_repairing_partial else f"Streamed {total_target} sections"
         props.sync_verified = True
         props.validation_info = "Verified (100% in sync)"
+    _is_streaming = False
     _is_repairing_partial = False
     _is_initial_handshake = False
     _force_next_full_rebuild = False
@@ -122,7 +124,7 @@ def _finalize_stream_sync(props, total_target: int) -> None:
 def _pump_main_thread_events() -> Optional[float]:
     """Continuous adaptive event pump executing on Blender's main thread."""
     global _pump_timer_registered, _last_seq_id, _stream_received_sections, _stream_total_sections
-    global _is_repairing_partial, _stream_last_drain_time
+    global _is_repairing_partial, _stream_last_drain_time, _is_streaming
     if not _pump_timer_registered:
         return None
 
@@ -159,9 +161,10 @@ def _pump_main_thread_events() -> Optional[float]:
             for area in window.screen.areas:
                 if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
                     area.tag_redraw()
-    elif _stream_received_sections > 0 and _stream_section_queue.empty() and ProgressBar.is_active():
-        # Settle timeout: If snapshots finished streaming and queue has been idle for >0.4s, complete progress
-        if _stream_last_drain_time > 0 and (time.time() - _stream_last_drain_time > 0.4):
+    elif _is_streaming and _stream_received_sections > 0 and _stream_section_queue.empty() and ProgressBar.is_active():
+        # Settle timeout: If snapshots finished streaming and queue has been idle for >_SETTLE_TIMEOUT_SECONDS, complete progress
+        if _stream_last_drain_time > 0 and (time.time() - _stream_last_drain_time > _SETTLE_TIMEOUT_SECONDS):
+            logger.info("Live Sync: Stream settle timeout reached (%s sections processed). Finalizing.", _stream_received_sections)
             _finalize_stream_sync(props, _stream_received_sections)
 
     # 2. Drain pending delta changes
@@ -589,10 +592,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             def update():
                 global _skip_next_full_snapshot, _force_next_full_rebuild, _is_initial_handshake
                 global _stream_total_sections, _stream_received_sections, _is_repairing_partial
-                global _pending_full_sync_request
+                global _pending_full_sync_request, _is_streaming
 
                 non_empty_manifest_count = sum(
-                    1 for _sx, _sy, _sz, _crc in sections if _crc != EMPTY_SECTION_CRC
+                    1 for _sx, _sy, _sz, _crc in sections if not voxel_storage.is_empty_section_crc(_sx, _sy, _sz, _crc)
                 )
 
                 # If full sync was requested by Refresh or initial sync, this manifest is header of incoming stream.
@@ -600,6 +603,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 if _pending_full_sync_request or _force_next_full_rebuild:
                     _pending_full_sync_request = False
                     _skip_next_full_snapshot = False
+                    _is_streaming = True
                     _stream_total_sections = max(1, non_empty_manifest_count)
                     _stream_received_sections = 0
                     props.validation_info = f"Syncing ({non_empty_manifest_count} chunks)..."
@@ -607,6 +611,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         _finalize_stream_sync(props, 0)
                     else:
                         ProgressBar.update(current=30.0, total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
+                    return
+
+                # If an active stream is currently in progress, do not let periodic heartbeats interrupt it
+                if _is_streaming:
+                    logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
                     return
 
                 existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
@@ -643,6 +652,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     # Targeted partial repair / Bad chunk auto-healing
                     _skip_next_full_snapshot = False
                     _is_repairing_partial = True
+                    _is_streaming = True
                     _stream_total_sections = len(mismatched)
                     _stream_received_sections = 0
                     props.validation_info = f"Repairing {len(mismatched)} section(s)..."
@@ -657,6 +667,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     _is_repairing_partial = False
                     _pending_full_sync_request = True
                     _is_initial_handshake = False
+                    _is_streaming = True
                     _stream_total_sections = max(1, non_empty_manifest_count)
                     _stream_received_sections = 0
                     props.validation_info = f"Full sync ({non_empty_manifest_count} chunks)..."
@@ -670,12 +681,16 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     if len(mismatched) > 0 and _client_thread and _client_thread.is_connected:
                         logger.info(f"Live Sync: Periodic manifest check detected {len(mismatched)} mismatched sections. Requesting repair...")
                         _is_repairing_partial = True
+                        _is_streaming = True
                         _stream_total_sections = len(mismatched)
                         _stream_received_sections = 0
                         _client_thread.send_repair_request(mismatched)
             run_in_main_thread(update)
 
         def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
+            global _stream_last_drain_time, _is_streaming
+            _is_streaming = True
+            _stream_last_drain_time = time.time()
             # 1. Update in-memory storage immediately on worker thread for high throughput
             updated = voxel_storage.set_section_snapshot(
                 sec_x, sec_y, sec_z, start_x, start_y, start_z,
@@ -707,10 +722,11 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
     bl_description = "Disconnect from Minecraft Live Sync server"
 
     def execute(self, context):
-        global _client_thread, _is_repairing_partial, _pending_full_sync_request
+        global _client_thread, _is_repairing_partial, _pending_full_sync_request, _is_streaming
         stop_main_thread_pump()
         ProgressBar.end(context=context)
         props = get_active_sync_props(context)
+        _is_streaming = False
         _is_repairing_partial = False
         _pending_full_sync_request = False
 
@@ -732,11 +748,12 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
     bl_description = "Request fresh data snapshot and re-verify sync state with server"
 
     def execute(self, context):
-        global _skip_next_full_snapshot, _force_next_full_rebuild, _is_repairing_partial, _pending_full_sync_request
+        global _skip_next_full_snapshot, _force_next_full_rebuild, _is_repairing_partial, _pending_full_sync_request, _is_streaming
         _skip_next_full_snapshot = False
         _force_next_full_rebuild = True
         _pending_full_sync_request = True
         _is_repairing_partial = False
+        _is_streaming = True
         clear_sync_caches()
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
@@ -754,6 +771,7 @@ def cleanup_sync_state() -> None:
     """Clean up all live sync module globals, background threads, timers, and storage."""
     global _client_thread, _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild
     global _cached_atlas_params, _cached_mat_signature, _is_initial_handshake, _is_repairing_partial, _pending_full_sync_request
+    global _is_streaming, _stream_received_sections, _stream_total_sections
     stop_main_thread_pump()
     if _client_thread:
         try:
@@ -763,6 +781,9 @@ def cleanup_sync_state() -> None:
         _client_thread = None
 
     _last_seq_id = 0
+    _is_streaming = False
+    _stream_received_sections = 0
+    _stream_total_sections = 0
     _is_initial_handshake = False
     _is_repairing_partial = False
     _pending_full_sync_request = False
