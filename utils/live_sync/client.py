@@ -30,6 +30,8 @@ from .constants import (
     MANIFEST_ENTRY_SIZE,
     SECTION_SNAPSHOT_HEADER_FORMAT,
     SECTION_SNAPSHOT_HEADER_SIZE,
+    HANDSHAKE_INFO_HEADER_FORMAT,
+    HANDSHAKE_INFO_HEADER_SIZE,
 )
 
 logger = logging.getLogger("MoziToolKit.LiveSync")
@@ -47,6 +49,7 @@ class SyncClientThread(threading.Thread):
         on_delta_update: Callable[[int, int, int, List[Tuple[int, int, int, str]], int], None],
         on_section_manifest: Optional[Callable[[int, List[Tuple[int, int, int, int]]], None]] = None,
         on_section_snapshot: Optional[Callable[[int, int, int, int, int, int, int, int, int, List[str], List[int]], None]] = None,
+        on_handshake_info: Optional[Callable[[int, int, int, str, int], None]] = None,
     ) -> None:
         super().__init__(daemon=True)
         self.url = url
@@ -56,6 +59,7 @@ class SyncClientThread(threading.Thread):
         self.on_delta_update = on_delta_update
         self.on_section_manifest = on_section_manifest
         self.on_section_snapshot = on_section_snapshot
+        self.on_handshake_info = on_handshake_info
         self.running = True
         self.is_connected = False
         self.websocket = None
@@ -300,3 +304,19 @@ class SyncClientThread(threading.Thread):
 
             if self.on_section_snapshot:
                 self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices)
+
+        elif packet_type == PacketType.HANDSHAKE_INFO:
+            if len(data) < offset + HANDSHAKE_INFO_HEADER_SIZE:
+                return
+            total_sections, non_empty_sections, total_volume, dim_len = struct.unpack(
+                HANDSHAKE_INFO_HEADER_FORMAT, data[offset:offset + HANDSHAKE_INFO_HEADER_SIZE]
+            )
+            offset += HANDSHAKE_INFO_HEADER_SIZE
+            if len(data) < offset + dim_len + 2:
+                return
+            dimension = data[offset:offset + dim_len].decode('utf-8', errors='replace')
+            offset += dim_len
+            flags = struct.unpack('<H', data[offset:offset + 2])[0]
+
+            if self.on_handshake_info:
+                self.on_handshake_info(total_sections, non_empty_sections, total_volume, dimension, flags)

@@ -34,6 +34,8 @@ from utils.live_sync.constants import (
     MANIFEST_HEADER_FORMAT,
     MANIFEST_ENTRY_FORMAT,
     SECTION_SNAPSHOT_HEADER_FORMAT,
+    HANDSHAKE_INFO_HEADER_FORMAT,
+    HANDSHAKE_INFO_HEADER_SIZE,
     CONTRACT_VERSION,
     CONTRACT_ATTRIBUTE_KEY,
     get_attribute_contract_version,
@@ -55,7 +57,44 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(PacketType.DELTA_UPDATE, 0x03)
         self.assertEqual(PacketType.SECTION_MANIFEST, 0x05)
         self.assertEqual(PacketType.SECTION_SNAPSHOT, 0x06)
+        self.assertEqual(PacketType.HANDSHAKE_INFO, 0x07)
         self.assertEqual(PacketType.REPAIR_REQUEST, 0x81)
+
+    def test_parse_handshake_info_packet(self):
+        """Test binary parsing for PacketType.HANDSHAKE_INFO (0x07)."""
+        received = {}
+
+        def on_handshake_info(total_sections, non_empty_sections, volume, dimension, flags):
+            received.update({
+                "total_sections": total_sections,
+                "non_empty_sections": non_empty_sections,
+                "volume": volume,
+                "dimension": dimension,
+                "flags": flags,
+            })
+
+        client = SyncClientThread("ws://dummy", on_status_change=lambda s: None,
+                                  on_selection_info=lambda *a: None,
+                                  on_full_snapshot=lambda *a: None,
+                                  on_delta_update=lambda *a: None,
+                                  on_handshake_info=on_handshake_info)
+
+        dim_str = b"minecraft:the_nether"
+        header_payload = struct.pack(HANDSHAKE_INFO_HEADER_FORMAT, 16, 12, 65536, len(dim_str))
+        packet = (
+            struct.pack(HEADER_FORMAT, PROTOCOL_MAGIC, PROTOCOL_VERSION, PacketType.HANDSHAKE_INFO)
+            + header_payload
+            + dim_str
+            + struct.pack("<H", 1)
+        )
+
+        client._parse_binary_packet(packet)
+
+        self.assertEqual(received["total_sections"], 16)
+        self.assertEqual(received["non_empty_sections"], 12)
+        self.assertEqual(received["volume"], 65536)
+        self.assertEqual(received["dimension"], "minecraft:the_nether")
+        self.assertEqual(received["flags"], 1)
 
     def test_parse_selection_info_packet(self):
         """Test binary parsing for PacketType.SELECTION_INFO (0x01)."""
