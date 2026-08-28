@@ -194,13 +194,13 @@ class LiveSyncMaterialManager:
         from ..materials.pack.pack_stack import get_configured_pack_stack
         from ..materials.pack.resource_pack import get_cache_dir
 
-        pack_stack = None
-        target_pack_hash = ""
-        try:
-            pack_stack = get_configured_pack_stack()
-            target_pack_hash = getattr(pack_stack, "stack_hash", "") or getattr(pack_stack, "cache_key", "") or getattr(pack_stack, "pack_hash", "")
-        except Exception:
-            pack_stack = None
+        target_pack_hash = self.atlas_params.get("pack_hash", "")
+        if not target_pack_hash:
+            try:
+                pack_stack = get_configured_pack_stack()
+                target_pack_hash = getattr(pack_stack, "stack_hash", "") or getattr(pack_stack, "cache_key", "") or getattr(pack_stack, "pack_hash", "")
+            except Exception:
+                pack_stack = None
 
         atlas_dir: Optional[Path] = None
         cache_root = get_cache_dir()
@@ -244,6 +244,7 @@ class LiveSyncMaterialManager:
         self.chunk_materials.clear()
 
         # Check existing materials in bpy.data.materials matching chunk_id and target_pack_hash
+        candidate_mats: dict[int, list[bpy.types.Material]] = {}
         for mat in bpy.data.materials:
             cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
             if cid is not None:
@@ -254,7 +255,31 @@ class LiveSyncMaterialManager:
                 if not default_chunk_ids or cid_int in default_chunk_ids:
                     mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
                     if not target_pack_hash or not mat_hash or mat_hash == target_pack_hash:
-                        self.chunk_materials[cid_int] = mat
+                        candidate_mats.setdefault(cid_int, []).append(mat)
+
+        def _score_candidate(m: bpy.types.Material, c_id: int) -> int:
+            score = 0
+            m_hash = m.get(PROP_PACK_HASH, m.get("mtk:pack_hash", m.get("mtk_pack_hash", "")))
+            if target_pack_hash and m_hash == target_pack_hash:
+                score += 1000
+            elif not target_pack_hash and m_hash:
+                score += 500
+            elif not m_hash:
+                score += 100
+            if self.world_obj:
+                world_mat_names = {slot.material.name for slot in self.world_obj.material_slots if slot.material}
+                if m.name in world_mat_names:
+                    score += 200
+            if m.name == f"MC_Atlas_Chunk_{c_id}":
+                score += 100
+            elif "." in m.name and m.name.rsplit(".", 1)[1].isdigit():
+                score -= 100
+            return score
+
+        for cid_int, mats in candidate_mats.items():
+            if mats:
+                mats.sort(key=lambda m: _score_candidate(m, cid_int), reverse=True)
+                self.chunk_materials[cid_int] = mats[0]
 
         # Check if any required default chunk material is missing and rebuild from prebaked atlas
         missing_chunks = [cid for cid in default_chunk_ids if cid not in self.chunk_materials]
@@ -281,15 +306,18 @@ class LiveSyncMaterialManager:
     def ensure_chunk_loaded(self, chunk_id: int) -> int:
         """Dynamically load and bind a material chunk on demand if not already loaded in the scene."""
         if chunk_id in self.chunk_materials:
-            if chunk_id not in self.chunk_to_slot:
-                if self.world_obj:
-                    self._sync_object_material_slots()
-                else:
-                    self._refresh_flat_slot_mapping()
-            return self.chunk_to_slot.get(chunk_id, 0)
+            current_mat = self.chunk_materials[chunk_id]
+            cur_hash = current_mat.get(PROP_PACK_HASH, current_mat.get("mtk:pack_hash", current_mat.get("mtk_pack_hash", "")))
+            if not self._target_pack_hash or not cur_hash or cur_hash == self._target_pack_hash:
+                if chunk_id not in self.chunk_to_slot:
+                    if self.world_obj:
+                        self._sync_object_material_slots()
+                    else:
+                        self._refresh_flat_slot_mapping()
+                return self.chunk_to_slot.get(chunk_id, 0)
 
         # 1. Try finding existing valid material in bpy.data.materials
-        found_mat = None
+        matching_mats = []
         for mat in bpy.data.materials:
             cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
             if cid is not None:
@@ -297,10 +325,31 @@ class LiveSyncMaterialManager:
                     if int(cid) == chunk_id:
                         mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
                         if not self._target_pack_hash or not mat_hash or mat_hash == self._target_pack_hash:
-                            found_mat = mat
-                            break
+                            matching_mats.append(mat)
                 except (ValueError, TypeError):
                     continue
+
+        found_mat = None
+        if matching_mats:
+            def _score_loaded(m: bpy.types.Material) -> int:
+                score = 0
+                m_hash = m.get(PROP_PACK_HASH, m.get("mtk:pack_hash", m.get("mtk_pack_hash", "")))
+                if self._target_pack_hash and m_hash == self._target_pack_hash:
+                    score += 1000
+                elif not m_hash:
+                    score += 100
+                if self.world_obj:
+                    world_mat_names = {slot.material.name for slot in self.world_obj.material_slots if slot.material}
+                    if m.name in world_mat_names:
+                        score += 200
+                if m.name == f"MC_Atlas_Chunk_{chunk_id}":
+                    score += 100
+                elif "." in m.name and m.name.rsplit(".", 1)[1].isdigit():
+                    score -= 100
+                return score
+
+            matching_mats.sort(key=_score_loaded, reverse=True)
+            found_mat = matching_mats[0]
 
         if found_mat:
             self.chunk_materials[chunk_id] = found_mat

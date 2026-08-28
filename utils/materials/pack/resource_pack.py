@@ -153,32 +153,70 @@ def get_cache_stats(force_refresh: bool = False) -> dict:
     return _cached_stats
 
 
-def clear_resource_pack_cache() -> tuple[int, int]:
+def clear_temp_extraction_cache() -> tuple[int, int]:
     """
-    Clear all cached extracted resource packs and temporary atlas outputs in both persistent and temp directories.
+    Clear all temporary extracted raw resource pack files in OS temp.
     Returns (files_removed_count, bytes_freed).
     """
     import shutil
     files_count = 0
     bytes_freed = 0
-
-    for root_dir in (get_cache_dir(), get_temp_extraction_dir()):
-        if root_dir.exists():
-            for item in list(root_dir.iterdir()):
-                try:
-                    if item.is_dir():
-                        for sub in item.rglob("*"):
-                            if sub.is_file():
-                                bytes_freed += sub.stat().st_size
-                                files_count += 1
-                        shutil.rmtree(item, ignore_errors=True)
-                    elif item.is_file():
-                        bytes_freed += item.stat().st_size
-                        files_count += 1
-                        item.unlink(missing_ok=True)
-                except Exception:
-                    pass
+    temp_dir = get_temp_extraction_dir()
+    if temp_dir.exists():
+        for item in list(temp_dir.iterdir()):
+            try:
+                if item.is_dir():
+                    for sub in item.rglob("*"):
+                        if sub.is_file():
+                            bytes_freed += sub.stat().st_size
+                            files_count += 1
+                    shutil.rmtree(item, ignore_errors=True)
+                elif item.is_file():
+                    bytes_freed += item.stat().st_size
+                    files_count += 1
+                    item.unlink(missing_ok=True)
+            except Exception:
+                pass
     return files_count, bytes_freed
+
+
+def clear_baked_stack_cache() -> tuple[int, int]:
+    """
+    Clear all compiled baked stack atlas, model, and standalone caches in persistent storage.
+    Returns (files_removed_count, bytes_freed).
+    """
+    import shutil
+    files_count = 0
+    bytes_freed = 0
+    cache_root = get_cache_dir()
+    if cache_root.exists():
+        for item in list(cache_root.iterdir()):
+            try:
+                if item.is_dir():
+                    for sub in item.rglob("*"):
+                        if sub.is_file():
+                            bytes_freed += sub.stat().st_size
+                            files_count += 1
+                    shutil.rmtree(item, ignore_errors=True)
+                elif item.is_file():
+                    bytes_freed += item.stat().st_size
+                    files_count += 1
+                    item.unlink(missing_ok=True)
+            except Exception:
+                pass
+    get_cache_stats(force_refresh=True)
+    return files_count, bytes_freed
+
+
+def clear_resource_pack_cache() -> tuple[int, int]:
+    """
+    Clear all cached extracted resource packs and compiled atlas outputs in both persistent and temp directories.
+    Invoked exclusively by explicit user action in Addon Preferences.
+    Returns (files_removed_count, bytes_freed).
+    """
+    f1, b1 = clear_temp_extraction_cache()
+    f2, b2 = clear_baked_stack_cache()
+    return f1 + f2, b1 + b2
 
 
 def get_file_hash(filepath: str) -> str:
@@ -353,18 +391,24 @@ class ZipResourcePack:
     """
     Manages extraction, caching, and indexing of a Minecraft Java Edition
     resource pack supplied as a ZIP/JAR archive or an unpacked directory.
+    Supports lazy extraction so pack hashes and bake manifests can be inspected
+    without unpacking archives to disk.
     """
 
-    def __init__(self, zip_path: str, use_cache: bool = True):
+    def __init__(self, zip_path: str, use_cache: bool = True, lazy: Optional[bool] = None):
         self.zip_path = Path(zip_path)
         self.use_cache = use_cache
-        self.extract_dir = None
+        self.lazy = (use_cache if lazy is None else lazy)
+        self._extract_dir = None
         self.pack_hash = None
-        self.texture_index = {}
-        self.texture_path_index = {}
-        self._load_pack()
+        self._texture_index = None
+        self._texture_path_index = None
+        self._loaded = False
+        self._load_pack_metadata()
+        if not self.lazy:
+            self.ensure_extracted()
 
-    def _load_pack(self):
+    def _load_pack_metadata(self):
         if not self.zip_path.exists():
             raise FileNotFoundError(f"Resource pack not found: {self.zip_path}")
 
@@ -372,28 +416,63 @@ class ZipResourcePack:
         self.pack_hash = get_pack_hash(self.zip_path)
 
         if self.zip_path.is_dir():
-            # An unpacked development/resource-pack directory is already in
-            # the form consumed by _build_index.  Do not copy or mutate it.
-            self.extract_dir = self.zip_path
-            self._build_index()
-            return
-
-        if not zipfile.is_zipfile(self.zip_path):
+            self._extract_dir = self.zip_path
+        elif zipfile.is_zipfile(self.zip_path):
+            cache_root = get_temp_extraction_dir()
+            self._extract_dir = cache_root / self.pack_hash
+        else:
             raise ValueError(f"Resource pack must be a ZIP/JAR archive or directory: {self.zip_path}")
 
-        cache_root = get_temp_extraction_dir()
-        self.extract_dir = cache_root / self.pack_hash
+    @property
+    def extract_dir(self) -> Path:
+        self.ensure_extracted()
+        return self._extract_dir
 
-        marker_file = self.extract_dir / ".extracted"
+    @extract_dir.setter
+    def extract_dir(self, value: Path):
+        self._extract_dir = value
+
+    @property
+    def texture_index(self) -> dict:
+        self.ensure_extracted()
+        return self._texture_index if self._texture_index is not None else {}
+
+    @texture_index.setter
+    def texture_index(self, value: dict):
+        self._texture_index = value
+
+    @property
+    def texture_path_index(self) -> dict:
+        self.ensure_extracted()
+        return self._texture_path_index if self._texture_path_index is not None else {}
+
+    @texture_path_index.setter
+    def texture_path_index(self, value: dict):
+        self._texture_path_index = value
+
+    def ensure_extracted(self) -> Path:
+        """Ensure archive is safely unpacked to temp and texture indices are built in RAM."""
+        if self._loaded:
+            return self._extract_dir
+
+        if self.zip_path.is_dir():
+            self._extract_dir = self.zip_path
+            self._build_index()
+            self._loaded = True
+            return self._extract_dir
+
+        marker_file = self._extract_dir / ".extracted"
         if not (self.use_cache and marker_file.exists()):
-            self.extract_dir.mkdir(parents=True, exist_ok=True)
-            print(f"[MoziToolKit] Extracting resource pack to {self.extract_dir}")
+            self._extract_dir.mkdir(parents=True, exist_ok=True)
+            print(f"[MoziToolKit] Extracting resource pack to {self._extract_dir}")
             with zipfile.ZipFile(self.zip_path, 'r') as zf:
-                self._safe_extract(zf, self.extract_dir)
+                self._safe_extract(zf, self._extract_dir)
             with open(marker_file, 'w', encoding='utf-8') as f:
                 f.write("OK")
 
         self._build_index()
+        self._loaded = True
+        return self._extract_dir
 
     @staticmethod
     def _safe_extract(zf: zipfile.ZipFile, target_dir: Path) -> None:
@@ -433,10 +512,13 @@ class ZipResourcePack:
 
     def _build_index(self):
         """Index block, item, entity, and misc textures and their matching .mcmeta files."""
-        self.texture_index = {}
-        self.texture_path_index = {}
+        self._texture_index = {}
+        self._texture_path_index = {}
         
-        assets_root = self.extract_dir / "assets"
+        if not self._extract_dir:
+            return
+
+        assets_root = self._extract_dir / "assets"
         if not assets_root.exists():
             return
 
@@ -480,8 +562,8 @@ class ZipResourcePack:
                     base_stem = base_stem.lower()
                     texture_name = derive_texture_name(texture_key, base_stem)
                     path_index_key = (namespace, texture_key)
-                    if path_index_key not in self.texture_path_index:
-                        self.texture_path_index[path_index_key] = {
+                    if path_index_key not in self._texture_path_index:
+                        self._texture_path_index[path_index_key] = {
                             "namespace": namespace,
                             "texture_name": texture_name,
                             # Canonical resource location survives same-name
@@ -499,25 +581,25 @@ class ZipResourcePack:
                     mcmeta_file = root_path / f"{fname}.mcmeta"
                     mcmeta_data = parse_mcmeta(mcmeta_file)
 
-                    entry = self.texture_path_index[path_index_key]
+                    entry = self._texture_path_index[path_index_key]
                     entry[channel] = full_path
                     entry[f"{channel}_mcmeta"] = mcmeta_data
 
                     # Primary index by derived texture_name (e.g. "bed-white", "chest-normal", "stone")
-                    self.texture_index[(namespace, texture_name)] = entry
+                    self._texture_index[(namespace, texture_name)] = entry
                     if "-" in texture_name:
-                        self.texture_index[(namespace, texture_name.replace("-", "/"))] = entry
+                        self._texture_index[(namespace, texture_name.replace("-", "/"))] = entry
 
                     # Fallback short stem index with deterministic category priority
                     stem_index_key = (namespace, base_stem)
-                    existing_entry = self.texture_index.get(stem_index_key)
+                    existing_entry = self._texture_index.get(stem_index_key)
                     if existing_entry is None:
-                        self.texture_index[stem_index_key] = entry
+                        self._texture_index[stem_index_key] = entry
                     else:
                         new_pri = texture_category_priority(texture_key)
                         old_pri = texture_category_priority(existing_entry.get("texture_key", ""))
                         if new_pri < old_pri:
-                            self.texture_index[stem_index_key] = entry
+                            self._texture_index[stem_index_key] = entry
 
     def get_texture_info(self, base_name: str, namespace: str = DEFAULT_NAMESPACE) -> dict | None:
         """

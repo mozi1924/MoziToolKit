@@ -806,17 +806,8 @@ def cleanup_sync_state() -> None:
         except Exception:
             pass
 
-    try:
-        from ...utils.materials.pack import clear_resource_pack_cache
-        clear_resource_pack_cache()
-    except Exception:
-        try:
-            from utils.materials.pack import clear_resource_pack_cache
-            clear_resource_pack_cache()
-        except Exception:
-            pass
-
 
 def unregister():
     """Unregister cleanup hook called when addon is disabled/uninstalled."""
     cleanup_sync_state()
+

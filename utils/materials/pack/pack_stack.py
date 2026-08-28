@@ -48,7 +48,7 @@ class ResourcePackStack:
                 pack = ZipResourcePack(str(p), use_cache=True)
 
             self.packs.append(pack)
-            loader = JarResourceLoader(pack.extract_dir or pack.zip_path)
+            loader = JarResourceLoader(pack.zip_path)
             self._loaders.append(loader)
             return pack
         except Exception as e:
