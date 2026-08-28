@@ -47,6 +47,7 @@ class VoxelStorage:
         self.size_y: int = 0
         self.size_z: int = 0
         self.block_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> state_str
+        self._section_map: Dict[Tuple[int, int, int], Dict[Tuple[int, int, int], str]] = {}  # sec_pos -> {abs_pos: state_str}
         self._state_counts: Dict[str, int] = {}
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
         self._dirty_sections: Set[Tuple[int, int, int]] = set()
@@ -55,6 +56,7 @@ class VoxelStorage:
     def clear(self) -> None:
         """Clear all stored voxel and section data."""
         self.block_map.clear()
+        self._section_map.clear()
         self._state_counts.clear()
         self.section_crc_map.clear()
         self._dirty_sections.clear()
@@ -106,24 +108,14 @@ class VoxelStorage:
         """Return all section coordinates that contain at least one non-air voxel."""
         sections = set()
         air_names = {"", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void"}
-        for (x, y, z), state in self.block_map.items():
-            if state and state not in air_names and not state.startswith("minecraft:air"):
-                sections.add((x >> 4, y >> 4, z >> 4))
+        for sec_key, sec_dict in self._section_map.items():
+            if any(s and s not in air_names and not s.startswith("minecraft:air") for s in sec_dict.values()):
+                sections.add(sec_key)
         return sections
 
     def get_section_blocks(self, sec_x: int, sec_y: int, sec_z: int) -> Dict[Tuple[int, int, int], str]:
-        """Return all (abs_x, abs_y, abs_z) -> state_str within the given 16x16x16 section."""
-        start_x = sec_x << 4
-        start_y = sec_y << 4
-        start_z = sec_z << 4
-        result = {}
-        for x in range(start_x, start_x + 16):
-            for y in range(start_y, start_y + 16):
-                for z in range(start_z, start_z + 16):
-                    state = self.block_map.get((x, y, z))
-                    if state is not None:
-                        result[(x, y, z)] = state
-        return result
+        """Return all (abs_x, abs_y, abs_z) -> state_str within the given 16x16x16 section in O(1)."""
+        return self._section_map.get((sec_x, sec_y, sec_z), {})
 
     def get_state_counts(self) -> Dict[str, int]:
         """Return canonical dictionary of state_str -> count across active blocks."""
@@ -143,6 +135,10 @@ class VoxelStorage:
                 self._state_counts.pop(old_state, None)
 
         self.block_map[(x, y, z)] = state_str
+        sec_key = (x >> 4, y >> 4, z >> 4)
+        if sec_key not in self._section_map:
+            self._section_map[sec_key] = {}
+        self._section_map[sec_key][(x, y, z)] = state_str
         self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
         if self.size_x == 0 or self.size_y == 0 or self.size_z == 0:
@@ -160,6 +156,7 @@ class VoxelStorage:
             self.size_z = max_z - self.min_z + 1
 
         sx, sy, sz = x >> 4, y >> 4, z >> 4
+        self.section_crc_map.pop((sx, sy, sz), None)
         self._dirty_sections.add((sx, sy, sz))
         if (x & 15) == 0:
             self._dirty_sections.add((sx - 1, sy, sz))
@@ -186,6 +183,7 @@ class VoxelStorage:
         self.min_x, self.min_y, self.min_z = min_x, min_y, min_z
         self.size_x, self.size_y, self.size_z = size_x, size_y, size_z
         self.block_map.clear()
+        self._section_map.clear()
         self._state_counts.clear()
         self.section_crc_map.clear()
         self._dirty_sections.clear()
@@ -205,7 +203,12 @@ class VoxelStorage:
                 abs_x = min_x + x
                 abs_y = min_y + y
                 abs_z = min_z + z
-                self.block_map[(abs_x, abs_y, abs_z)] = state_str
+                pos = (abs_x, abs_y, abs_z)
+                self.block_map[pos] = state_str
+                sec_key = (abs_x >> 4, abs_y >> 4, abs_z >> 4)
+                if sec_key not in self._section_map:
+                    self._section_map[sec_key] = {}
+                self._section_map[sec_key][pos] = state_str
                 self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
         self.recalculate_all_section_crcs()
@@ -286,6 +289,7 @@ class VoxelStorage:
             logger.warning("Discarded malformed section snapshot for (%d, %d, %d)", sec_x, sec_y, sec_z)
             return False
 
+        sec_key = (sec_x, sec_y, sec_z)
         for idx in range(total_blocks):
             palette_idx = grid_indices[idx]
             state_str = palette[palette_idx]
@@ -305,6 +309,9 @@ class VoxelStorage:
                     if self._state_counts[old_state] <= 0:
                         self._state_counts.pop(old_state, None)
                 self.block_map[key] = state_str
+                if sec_key not in self._section_map:
+                    self._section_map[sec_key] = {}
+                self._section_map[sec_key][key] = state_str
                 self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
         # A repair snapshot replaces voxel data directly, so its section must
@@ -357,9 +364,15 @@ class VoxelStorage:
                 if self._state_counts[old_state] <= 0:
                     self._state_counts.pop(old_state, None)
             self.block_map[key] = state_str
+            sx, sy, sz = abs_x >> 4, abs_y >> 4, abs_z >> 4
+            sec_key = (sx, sy, sz)
+            if sec_key not in self._section_map:
+                self._section_map[sec_key] = {}
+            self._section_map[sec_key][key] = state_str
             self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
             sx, sy, sz = abs_x >> 4, abs_y >> 4, abs_z >> 4
+            self.section_crc_map.pop((sx, sy, sz), None)
             self._dirty_sections.add((sx, sy, sz))
 
             # Check boundary conditions and mark adjacent section dirty for face culling consistency

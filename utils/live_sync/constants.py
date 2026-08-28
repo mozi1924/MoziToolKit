@@ -83,6 +83,7 @@ class PacketType:
     SECTION_MANIFEST: Final = 0x05
     SECTION_SNAPSHOT: Final = 0x06
     REPAIR_REQUEST: Final = 0x81
+    SYNC_CONFIG: Final = 0x82
 
 
 HEADER_FORMAT: Final = "<2sBB"

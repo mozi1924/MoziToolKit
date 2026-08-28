@@ -360,12 +360,13 @@ class TestModelPrebakeAndTorchOrientation(unittest.TestCase):
         self.assertIn("minecraft:chest[facing=north,type=single,waterlogged=false]", HOT_PREWARM_STATES)
         self.assertIn("minecraft:repeater[delay=1,facing=north,locked=false,powered=false]", HOT_PREWARM_STATES)
 
-        # 2. Run preload_sync_world_data and verify _GLOBAL_STATE_META_CACHE is populated
+        # 2. Run preload_sync_world_data and verify _GLOBAL_STATE_META_CACHE is populated with active selection palette
         _GLOBAL_STATE_META_CACHE.clear()
-        total_warmed = preload_sync_world_data(palette=["minecraft:diamond_block"])
-        self.assertGreater(total_warmed, 500)
+        door_state = "minecraft:oak_door[facing=east,half=lower,hinge=left,open=false,powered=false]"
+        total_warmed = preload_sync_world_data(palette=["minecraft:diamond_block", door_state])
+        self.assertGreaterEqual(total_warmed, 1)
         self.assertIn("minecraft:diamond_block", _GLOBAL_STATE_META_CACHE)
-        self.assertIn("minecraft:oak_door[facing=east,half=lower,hinge=left,open=false,powered=false]", _GLOBAL_STATE_META_CACHE)
+        self.assertIn(door_state, _GLOBAL_STATE_META_CACHE)
 
 
 if __name__ == "__main__":

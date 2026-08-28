@@ -89,50 +89,52 @@ def update_blocks_in_mesh(
     and inserts newly visible faces without regenerating the rest of the mesh.
     """
     bm = bmesh.new()
-    bm.from_mesh(mesh)
-    layers = _get_or_create_bmesh_layers(bm)
+    try:
+        bm.from_mesh(mesh)
+        layers = _get_or_create_bmesh_layers(bm)
 
-    block_x_layer = layers["block_x"]
-    block_y_layer = layers["block_y"]
-    block_z_layer = layers["block_z"]
+        block_x_layer = layers["block_x"]
+        block_y_layer = layers["block_y"]
+        block_z_layer = layers["block_z"]
 
-    # 1. Delete all existing faces belonging to any block in blocks_to_update
-    faces_to_delete = [
-        f for f in bm.faces
-        if (f[block_x_layer], f[block_y_layer], f[block_z_layer]) in blocks_to_update
-    ]
-    if faces_to_delete:
-        bmesh.ops.delete(bm, geom=faces_to_delete, context='FACES')
+        # 1. Delete all existing faces belonging to any block in blocks_to_update
+        faces_to_delete = [
+            f for f in bm.faces
+            if (f[block_x_layer], f[block_y_layer], f[block_z_layer]) in blocks_to_update
+        ]
+        if faces_to_delete:
+            bmesh.ops.delete(bm, geom=faces_to_delete, context='FACES')
+            orphan_verts = [v for v in bm.verts if not v.link_faces]
+            if orphan_verts:
+                bmesh.ops.delete(bm, geom=orphan_verts, context='VERTS')
+
+        # 2. Generate visible faces for non-air blocks in blocks_to_update
+        for (x, y, z) in blocks_to_update:
+            state_str = storage.get_block(x, y, z)
+            if state_str:
+                generate_single_block_faces(
+                    bm=bm,
+                    x=x, y=y, z=z,
+                    state_str=state_str,
+                    block_map=storage.block_map,
+                    state_cache=state_cache,
+                    layers=layers,
+                    origin_centered=origin_centered,
+                    min_x=min_x, min_y=min_y, min_z=min_z,
+                    half_x=half_x, half_z=half_z,
+                    mat_manager=mat_manager,
+                    baker=baker,
+                )
+
+        # 3. Clean up any leftover orphan vertices
         orphan_verts = [v for v in bm.verts if not v.link_faces]
         if orphan_verts:
             bmesh.ops.delete(bm, geom=orphan_verts, context='VERTS')
 
-    # 2. Generate visible faces for non-air blocks in blocks_to_update
-    for (x, y, z) in blocks_to_update:
-        state_str = storage.get_block(x, y, z)
-        if state_str:
-            generate_single_block_faces(
-                bm=bm,
-                x=x, y=y, z=z,
-                state_str=state_str,
-                block_map=storage.block_map,
-                state_cache=state_cache,
-                layers=layers,
-                origin_centered=origin_centered,
-                min_x=min_x, min_y=min_y, min_z=min_z,
-                half_x=half_x, half_z=half_z,
-                mat_manager=mat_manager,
-                baker=baker,
-            )
-
-    # 3. Clean up any leftover orphan vertices
-    orphan_verts = [v for v in bm.verts if not v.link_faces]
-    if orphan_verts:
-        bmesh.ops.delete(bm, geom=orphan_verts, context='VERTS')
-
-    mesh.clear_geometry()
-    bm.to_mesh(mesh)
-    bm.free()
+        mesh.clear_geometry()
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
     mesh.update()
 
 
@@ -187,31 +189,33 @@ def build_world_mesh(
     }
 
     bm = bmesh.new()
-    uv_layer = bm.loops.layers.uv.new("UVMap")
-    color_layer = bm.loops.layers.color.new("Color")
+    try:
+        uv_layer = bm.loops.layers.uv.new("UVMap")
+        color_layer = bm.loops.layers.color.new("Color")
 
-    cubes_count, props_count, fluids_count = generate_voxel_geometry(
-        bm=bm,
-        voxel_items=list(block_map.items()),
-        block_map=block_map,
-        state_cache=state_cache,
-        uv_layer=uv_layer,
-        color_layer=color_layer,
-        origin_centered=origin_centered,
-        min_x=min_x, min_y=min_y, min_z=min_z,
-        half_x=half_x, half_z=half_z,
-        mat_manager=mat_manager,
-        baker=baker,
-    )
+        cubes_count, props_count, fluids_count = generate_voxel_geometry(
+            bm=bm,
+            voxel_items=list(block_map.items()),
+            block_map=block_map,
+            state_cache=state_cache,
+            uv_layer=uv_layer,
+            color_layer=color_layer,
+            origin_centered=origin_centered,
+            min_x=min_x, min_y=min_y, min_z=min_z,
+            half_x=half_x, half_z=half_z,
+            mat_manager=mat_manager,
+            baker=baker,
+        )
 
-    # 5. Optional in-engine vertex welding for optimal topology
-    if weld_vertices and len(bm.verts) > 0:
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        # 5. Optional in-engine vertex welding for optimal topology
+        if weld_vertices and len(bm.verts) > 0:
+            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
 
-    # 6. Push BMesh data back to Blender Mesh
-    mesh.clear_geometry()
-    bm.to_mesh(mesh)
-    bm.free()
+        # 6. Push BMesh data back to Blender Mesh
+        mesh.clear_geometry()
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
     mesh.update()
 
     vertex_count = len(mesh.vertices)
@@ -326,29 +330,31 @@ def sync_world_mesh(
 
         # Construct section BMesh
         bm = bmesh.new()
-        uv_layer = bm.loops.layers.uv.new("UVMap")
-        color_layer = bm.loops.layers.color.new("Color")
+        try:
+            uv_layer = bm.loops.layers.uv.new("UVMap")
+            color_layer = bm.loops.layers.color.new("Color")
 
-        generate_voxel_geometry(
-            bm=bm,
-            voxel_items=list(sec_blocks.items()),
-            block_map=block_map,
-            state_cache=state_cache,
-            uv_layer=uv_layer,
-            color_layer=color_layer,
-            origin_centered=origin_centered,
-            min_x=min_x, min_y=min_y, min_z=min_z,
-            half_x=half_x, half_z=half_z,
-            mat_manager=mat_manager,
-            baker=baker,
-        )
+            generate_voxel_geometry(
+                bm=bm,
+                voxel_items=list(sec_blocks.items()),
+                block_map=block_map,
+                state_cache=state_cache,
+                uv_layer=uv_layer,
+                color_layer=color_layer,
+                origin_centered=origin_centered,
+                min_x=min_x, min_y=min_y, min_z=min_z,
+                half_x=half_x, half_z=half_z,
+                mat_manager=mat_manager,
+                baker=baker,
+            )
 
-        if weld_vertices and len(bm.verts) > 0:
-            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+            if weld_vertices and len(bm.verts) > 0:
+                bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
 
-        sec_mesh.clear_geometry()
-        bm.to_mesh(sec_mesh)
-        bm.free()
+            sec_mesh.clear_geometry()
+            bm.to_mesh(sec_mesh)
+        finally:
+            bm.free()
 
         # Face resolution may have loaded an additional chunk while building.
         sync_section_material_slots(sec_obj, mat_manager)
