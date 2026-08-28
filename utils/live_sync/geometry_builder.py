@@ -38,6 +38,9 @@ from .material_binding import (
     get_shared_material_manager,
     _GLOBAL_MAT_MANAGER,
 )
+from ..materials.biome.biome import KNOWN_OVERLAY_PAIRS
+
+OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
 
 # Standard Unit Cube Quads in Minecraft local coordinates [0..1]
 CUBE_FACE_MC_VERTICES: dict[str, tuple[tuple[float, float, float], ...]] = {
@@ -224,9 +227,17 @@ def generate_single_block_faces(
         else:
             is_prop_cnt = 1
 
+        rendered_cube_faces: set[str] = set()
         for elem in meta.baked_model.elements:
             for f_dir, bf in elem.faces.items():
                 if not bf.vertices or len(bf.vertices) < 3:
+                    continue
+
+                # If this block is a standard cube and this face direction was already rendered
+                # by a base element (e.g. grass_block Element 0 provides grass_block_side with
+                # integrated atlas overlay composite), skip the duplicate overlay quad.
+                clean_tex = (bf.texture or "").split(":", 1)[-1].removeprefix("block/")
+                if meta.is_cube and f_dir in rendered_cube_faces and clean_tex in OVERLAY_TO_BASE_MAP:
                     continue
 
                 cull_dir = bf.cullface or (f_dir if meta.is_cube else None)
@@ -247,7 +258,7 @@ def generate_single_block_faces(
                 bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in bf.vertices]
                 world_coords = [(bx + vx, by + vy, bz + vz) for vx, vy, vz in bl_coords]
 
-                _emit_bmesh_face(
+                if _emit_bmesh_face(
                     bm=bm,
                     verts_coords=world_coords,
                     f_res=f_res,
@@ -259,7 +270,9 @@ def generate_single_block_faces(
                     use_tint=(bf.tint_index >= 0 or f_res.use_tint),
                     model_uv_scale=f_res.model_uv_scale,
                     mat_manager=mat_manager,
-                )
+                ):
+                    if meta.is_cube:
+                        rendered_cube_faces.add(f_dir)
 
     else:
         is_cube_cnt = 1

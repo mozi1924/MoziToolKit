@@ -19,6 +19,9 @@ from ..constants import (
     SHORT_NAME_ALLOWED_CATEGORIES,
     FACE_ORDER,
 )
+from ..biome.biome import KNOWN_OVERLAY_PAIRS
+
+OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
 
 
 def pack_rect_category_chunks(
@@ -40,7 +43,8 @@ def pack_rect_category_chunks(
     texture_name_fn: Callable,
 ):
     """Pack irregular sized textures using 2D Rect Bin Packing."""
-    rect_items = [(rel_p, static_map[rel_p].width, static_map[rel_p].height) for rel_p in sorted(static_map.keys())]
+    filtered_keys = [rel_p for rel_p in sorted(static_map.keys()) if rel_p.split("/")[-1] not in OVERLAY_TO_BASE_MAP]
+    rect_items = [(rel_p, static_map[rel_p].width, static_map[rel_p].height) for rel_p in filtered_keys]
     packed_chunks = pack_category_textures(rect_items, max_chunk_size=max_chunk_size)
 
     for chunk_w, chunk_h, placed_rects in packed_chunks:
@@ -161,6 +165,12 @@ def pack_rect_category_chunks(
                     if rel_p.startswith("item/"):
                         texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
+            if overlay_stem:
+                texture_locations[f"{ns}:{overlay_stem}"] = loc_entry
+                texture_locations[f"{ns}:block/{overlay_stem}"] = loc_entry
+                texture_locations[f"block/{overlay_stem}"] = loc_entry
+                texture_locations[overlay_stem] = loc_entry
+
         if chunk_has_overlay and overlay_img_canvas is not None:
             images["overlay"] = overlay_img_canvas
 
@@ -168,6 +178,12 @@ def pack_rect_category_chunks(
             filename = f"{cat}_chunk_{cat_chunk_index:03d}_{channel}.png"
             image.save(staging_dir / filename)
             files[channel] = filename
+            if hasattr(image, "close"):
+                try:
+                    image.close()
+                except Exception:
+                    pass
+        images.clear()
 
         chunks.append({
             "chunk_id": chunk_id,
@@ -225,7 +241,7 @@ def pack_grid_category_chunks(
 
     tiles_per_row = max(1, max_chunk_size // cat_tile_size)
     capacity = max(1, tiles_per_row * tiles_per_row)
-    static_rel_paths = sorted(static_map.keys())
+    static_rel_paths = [rel_p for rel_p in sorted(static_map.keys()) if rel_p.split("/")[-1] not in OVERLAY_TO_BASE_MAP]
 
     def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
         clean_k = texture_name_fn(namespace_val, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
@@ -350,13 +366,19 @@ def pack_grid_category_chunks(
                     if rel_p.startswith("item/"):
                         texture_locations[f"{ns}:item_{stem}"] = loc_entry
 
+            overlay_stem = tint_info.get("overlay_texture")
+            if overlay_stem:
+                texture_locations[f"{ns}:{overlay_stem}"] = loc_entry
+                texture_locations[f"{ns}:block/{overlay_stem}"] = loc_entry
+                texture_locations[f"block/{overlay_stem}"] = loc_entry
+                texture_locations[overlay_stem] = loc_entry
+
             images["albedo"].paste(tile_for(rel_p, "albedo"), (x, y))
             if has_normal:
                 images["normal"].paste(tile_for(rel_p, "normal"), (x, y))
             if has_specular:
                 images["specular"].paste(tile_for(rel_p, "specular"), (x, y))
 
-            overlay_stem = tint_info.get("overlay_texture")
             if overlay_stem:
                 overlay_tile = tile_for(overlay_stem, "albedo")
                 if overlay_tile and overlay_tile.getbbox():
@@ -372,6 +394,12 @@ def pack_grid_category_chunks(
             filename = f"{cat}_chunk_{cat_chunk_index:03d}_{channel}.png"
             image.save(staging_dir / filename)
             files[channel] = filename
+            if hasattr(image, "close"):
+                try:
+                    image.close()
+                except Exception:
+                    pass
+        images.clear()
 
         chunks.append({
             "chunk_id": chunk_id,
@@ -574,6 +602,12 @@ def pack_animated_category_chunks(
             filename = f"{category_val}_chunk_{cat_chunk_index:03d}_{channel}.png"
             img_canvas.save(staging_dir / filename)
             files[channel] = filename
+            if hasattr(img_canvas, "close"):
+                try:
+                    img_canvas.close()
+                except Exception:
+                    pass
+        images.clear()
 
         chunks.append({
             "chunk_id": chunk_id,
