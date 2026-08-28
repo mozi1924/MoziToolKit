@@ -226,6 +226,30 @@ class TestOBJModels(unittest.TestCase):
         self.assertAlmostEqual(min_z_pwall, 0.4835, places=2)
         self.assertAlmostEqual(max_z_pwall, 1.0165, places=2)
 
+        # Piglin Head (36 faces: head + ears + snout + tusks, 64x64 texture)
+        baked_piglin = self.baker.bake_block_state("minecraft:piglin_head[rotation=0]")
+        self.assertIsNotNone(baked_piglin)
+        self.assertEqual(len(baked_piglin.elements), 36, "Piglin head should have 36 faces")
+        face_piglin = list(baked_piglin.elements[0].faces.values())[0]
+        self.assertEqual(face_piglin.texture, "minecraft:entity/piglin/piglin")
+        p_min_y = min(p[1] for el in baked_piglin.elements for f in el.faces.values() for p in f.vertices)
+        p_max_y = max(p[1] for el in baked_piglin.elements for f in el.faces.values() for p in f.vertices)
+        self.assertAlmostEqual(p_min_y, 0.0, places=3)
+        self.assertAlmostEqual(p_max_y, 0.5, places=3)
+
+        # Piglin Wall Head facing north: back against north wall (+Z), snout pointing south/forward
+        baked_piglin_wall = self.baker.bake_block_state("minecraft:piglin_wall_head[facing=north]")
+        self.assertIsNotNone(baked_piglin_wall)
+        self.assertEqual(len(baked_piglin_wall.elements), 36)
+        pw_min_y = min(p[1] for el in baked_piglin_wall.elements for f in el.faces.values() for p in f.vertices)
+        pw_max_y = max(p[1] for el in baked_piglin_wall.elements for f in el.faces.values() for p in f.vertices)
+        pw_min_z = min(p[2] for el in baked_piglin_wall.elements for f in el.faces.values() for p in f.vertices)
+        pw_max_z = max(p[2] for el in baked_piglin_wall.elements for f in el.faces.values() for p in f.vertices)
+        self.assertAlmostEqual(pw_min_y, 0.25, places=3)
+        self.assertAlmostEqual(pw_max_y, 0.75, places=3)
+        self.assertAlmostEqual(pw_min_z, 0.4375, places=3)
+        self.assertAlmostEqual(pw_max_z, 1.0, places=3)
+
 
 if __name__ == "__main__":
     import sys
