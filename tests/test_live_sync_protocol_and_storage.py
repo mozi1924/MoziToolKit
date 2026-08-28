@@ -586,6 +586,9 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         """Verify LiveSyncMaterialManager initializes non-empty slots and assigns proper slot indices to entity blocks."""
         from utils.live_sync.material_manager import LiveSyncMaterialManager
         from utils.live_sync.classifier import parse_and_classify
+        for cid in [0, 1, 17]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m["mtk:atlas_chunk_id"] = cid
         mat_mgr = LiveSyncMaterialManager()
         self.assertGreater(len(mat_mgr._slot_to_chunk), 0)
         self.assertGreater(len(mat_mgr.chunk_to_slot), 0)
@@ -604,35 +607,48 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         """Verify MOZI_OT_sync_rebuild_world rebuilds mesh from local voxel memory without network dependencies."""
         from operators.sync.op_sync_connect import DEFAULT_WORLD_OBJECT_NAME
         from utils.live_sync.storage import voxel_storage
+        from utils.system.menu_config import save_pack_stack_config
+        from utils.materials.pack import get_configured_pack_stack
+        import tempfile
+        from PIL import Image
         import bpy
 
-        palette = ["minecraft:air", "minecraft:stone"]
-        indices = [1] * 4096  # full 16x16x16 stone chunk
-        voxel_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, indices)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            p_dir = Path(tmp_dir)
+            tex_dir = p_dir / "assets/minecraft/textures/block"
+            tex_dir.mkdir(parents=True, exist_ok=True)
+            img = Image.new("RGBA", (16, 16), (128, 128, 128, 255))
+            img.save(tex_dir / "stone.png")
+            save_pack_stack_config([{"name": "TestPack", "path": str(p_dir), "enabled": True, "pack_type": "RESOURCE_PACK"}])
+            stack = get_configured_pack_stack()
+            stack.precompile("ATLAS")
+            palette = ["minecraft:air", "minecraft:stone"]
+            indices = [1] * 4096  # full 16x16x16 stone chunk
+            voxel_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, indices)
 
-        try:
-            res = bpy.ops.mozi.sync_rebuild_world()
-            self.assertEqual(res, {'FINISHED'})
+            try:
+                res = bpy.ops.mozi.sync_rebuild_world()
+                self.assertEqual(res, {'FINISHED'})
 
-            world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-            self.assertIsNotNone(world_obj)
-            # Child section mesh should have been generated
-            sec_obj = bpy.data.objects.get("Yefira_Section_0_0_0")
-            self.assertIsNotNone(sec_obj)
-            self.assertGreater(len(sec_obj.data.polygons), 0)
-        finally:
-            world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-            if world_obj:
-                for child in list(world_obj.children):
-                    child_mesh = child.data
-                    bpy.data.objects.remove(child, do_unlink=True)
-                    if child_mesh:
-                        bpy.data.meshes.remove(child_mesh, do_unlink=True)
-                root_mesh = world_obj.data
-                bpy.data.objects.remove(world_obj, do_unlink=True)
-                if root_mesh:
-                    bpy.data.meshes.remove(root_mesh, do_unlink=True)
-            voxel_storage.clear()
+                world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                self.assertIsNotNone(world_obj)
+                # Child section mesh should have been generated
+                sec_obj = bpy.data.objects.get("Yefira_Section_0_0_0")
+                self.assertIsNotNone(sec_obj)
+                self.assertGreater(len(sec_obj.data.polygons), 0)
+            finally:
+                world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                if world_obj:
+                    for child in list(world_obj.children):
+                        child_mesh = child.data
+                        bpy.data.objects.remove(child, do_unlink=True)
+                        if child_mesh:
+                            bpy.data.meshes.remove(child_mesh, do_unlink=True)
+                    root_mesh = world_obj.data
+                    bpy.data.objects.remove(world_obj, do_unlink=True)
+                    if root_mesh:
+                        bpy.data.meshes.remove(root_mesh, do_unlink=True)
+                voxel_storage.clear()
 
 
 if __name__ == "__main__":

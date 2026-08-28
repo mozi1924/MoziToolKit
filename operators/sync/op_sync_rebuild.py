@@ -23,6 +23,28 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             get_active_sync_props,
             _client_thread,
         )
+        try:
+            from ...utils.materials.pack import get_configured_pack_stack
+        except (ImportError, ValueError):
+            from utils.materials.pack import get_configured_pack_stack
+
+        pack_stack = get_configured_pack_stack()
+        if not pack_stack or not pack_stack.packs:
+            self.report(
+                {'ERROR'},
+                "No active resource packs or Minecraft JARs configured. "
+                "Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+            )
+            return {'CANCELLED'}
+
+        if not pack_stack.is_stack_baked():
+            self.report(
+                {'ERROR'},
+                "The configured Resource Pack Stack has not been precompiled. "
+                "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+            )
+            return {'CANCELLED'}
+
         if not voxel_storage.block_map:
             if _client_thread and _client_thread.is_connected:
                 self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")

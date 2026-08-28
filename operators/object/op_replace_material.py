@@ -27,7 +27,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         if not pack_stack.packs:
             self.report(
                 {'ERROR'},
-                "No active resource packs or Minecraft JARs found! Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit > Resource Packs & Base JARs."
+                "No active resource packs or Minecraft JARs found! Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
             )
             return {"CANCELLED"}
 
@@ -35,6 +35,23 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         material_mode = getattr(prefs, "material_mode", "ATLAS") if prefs else "ATLAS"
         biome_preset = getattr(prefs, "biome_preset", "PLAINS") if prefs else "PLAINS"
         pack_textures = getattr(prefs, "pack_textures", True) if prefs else True
+
+        if material_mode == "STANDALONE":
+            if not pack_stack.is_standalone_baked():
+                self.report(
+                    {'ERROR'},
+                    "The configured Resource Pack Stack has not been precompiled for Standalone mode. "
+                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                )
+                return {"CANCELLED"}
+        else:
+            if not pack_stack.is_stack_baked():
+                self.report(
+                    {'ERROR'},
+                    "The configured Resource Pack Stack has not been precompiled. "
+                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                )
+                return {"CANCELLED"}
 
         params = {
             "pack_stack": pack_stack,

@@ -210,17 +210,9 @@ class LiveSyncMaterialManager:
                     atlas_dir = cand
                     break
 
-            # If pack stack is configured but cache not yet compiled, auto-compile on the fly
-            if not atlas_dir and pack_stack and pack_stack.packs:
-                try:
-                    from ..materials.atlas.generator import AtlasGenerator
-                    target_dir = cache_root / target_pack_hash / "full_scene"
-                    gen = AtlasGenerator(fallback_stack=pack_stack)
-                    gen.build(target_dir)
-                    if (target_dir / "atlas_mapping.json").exists():
-                        atlas_dir = target_dir
-                except Exception as e:
-                    logger.warning(f"Failed to auto-generate atlas cache: {e}")
+            # If pack stack is configured but cache not yet compiled, do NOT auto-compile.
+            # Live Sync requires the user to precompile the pack stack in preferences.
+            pass
 
         self._atlas_dir = atlas_dir
         self._target_pack_hash = target_pack_hash
@@ -242,12 +234,10 @@ class LiveSyncMaterialManager:
                 self._chunks_by_id[int(c["chunk_id"])] = c
 
         # Load all chunks that are valid sources for a streamed block model.
-        # Do not use ``chunk_id in (0, 1)`` here: chunk numbering is generated
-        # from the resource pack and is neither stable nor category-specific.
         default_chunk_ids = [
             int(c.get("chunk_id", i)) for i, c in enumerate(chunks)
             if c.get("category", ATLAS_CATEGORY_BLOCKS) in LIVE_SYNC_MODEL_ATLAS_CATEGORIES
-        ] if chunks else [0, 1]
+        ] if chunks else []
         if not default_chunk_ids and chunks:
             default_chunk_ids = [int(chunks[0].get("chunk_id", 0))]
 
@@ -256,12 +246,17 @@ class LiveSyncMaterialManager:
         # Check existing materials in bpy.data.materials matching chunk_id and target_pack_hash
         for mat in bpy.data.materials:
             cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
-            if cid is not None and int(cid) in default_chunk_ids:
-                mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
-                if not target_pack_hash or mat_hash == target_pack_hash:
-                    self.chunk_materials[int(cid)] = mat
+            if cid is not None:
+                try:
+                    cid_int = int(cid)
+                except (ValueError, TypeError):
+                    continue
+                if not default_chunk_ids or cid_int in default_chunk_ids:
+                    mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
+                    if not target_pack_hash or not mat_hash or mat_hash == target_pack_hash:
+                        self.chunk_materials[cid_int] = mat
 
-        # Check if any required default chunk material is missing
+        # Check if any required default chunk material is missing and rebuild from prebaked atlas
         missing_chunks = [cid for cid in default_chunk_ids if cid not in self.chunk_materials]
         if missing_chunks and atlas_dir:
             try:
@@ -276,33 +271,6 @@ class LiveSyncMaterialManager:
                     self.chunk_materials[r_cid] = r_mat
             except Exception as e:
                 logger.warning(f"Failed to build precompiled atlas chunk materials: {e}")
-
-        # Collect or create fallback for missing default chunks
-        for cid in default_chunk_ids:
-            if cid not in self.chunk_materials:
-                mat_name = f"MC_Atlas_Chunk_{cid}"
-                existing_mat = bpy.data.materials.get(mat_name)
-                if existing_mat is not None:
-                    existing_mat[PROP_ATLAS_CHUNK_ID] = cid
-                    if target_pack_hash:
-                        existing_mat[PROP_PACK_HASH] = target_pack_hash
-                    self.chunk_materials[cid] = existing_mat
-                else:
-                    # Create standard principled shader fallback material
-                    mat = bpy.data.materials.new(name=mat_name)
-                    mat.use_nodes = True
-                    nodes = mat.node_tree.nodes
-                    links = mat.node_tree.links
-                    nodes.clear()
-                    out_node = nodes.new("ShaderNodeOutputMaterial")
-                    out_node.location = (400, 0)
-                    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-                    bsdf.location = (0, 0)
-                    links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
-                    mat[PROP_ATLAS_CHUNK_ID] = cid
-                    if target_pack_hash:
-                        mat[PROP_PACK_HASH] = target_pack_hash
-                    self.chunk_materials[cid] = mat
 
         # Setup object material slots
         if self.world_obj:
@@ -324,11 +292,15 @@ class LiveSyncMaterialManager:
         found_mat = None
         for mat in bpy.data.materials:
             cid = mat.get(PROP_ATLAS_CHUNK_ID, mat.get("mtk:atlas_chunk_id", None))
-            if cid is not None and int(cid) == chunk_id:
-                mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
-                if not self._target_pack_hash or mat_hash == self._target_pack_hash:
-                    found_mat = mat
-                    break
+            if cid is not None:
+                try:
+                    if int(cid) == chunk_id:
+                        mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
+                        if not self._target_pack_hash or not mat_hash or mat_hash == self._target_pack_hash:
+                            found_mat = mat
+                            break
+                except (ValueError, TypeError):
+                    continue
 
         if found_mat:
             self.chunk_materials[chunk_id] = found_mat
@@ -346,30 +318,6 @@ class LiveSyncMaterialManager:
                     self.chunk_materials[r_cid] = r_mat
             except Exception as e:
                 logger.warning(f"Failed to on-demand build chunk {chunk_id}: {e}")
-
-        if chunk_id not in self.chunk_materials:
-            mat_name = f"MC_Atlas_Chunk_{chunk_id}"
-            existing_mat = bpy.data.materials.get(mat_name)
-            if existing_mat is not None:
-                existing_mat[PROP_ATLAS_CHUNK_ID] = chunk_id
-                if self._target_pack_hash:
-                    existing_mat[PROP_PACK_HASH] = self._target_pack_hash
-                self.chunk_materials[chunk_id] = existing_mat
-            else:
-                mat = bpy.data.materials.new(name=mat_name)
-                mat.use_nodes = True
-                nodes = mat.node_tree.nodes
-                links = mat.node_tree.links
-                nodes.clear()
-                out_node = nodes.new("ShaderNodeOutputMaterial")
-                out_node.location = (400, 0)
-                bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-                bsdf.location = (0, 0)
-                links.new(bsdf.outputs["BSDF"], out_node.inputs["Surface"])
-                mat[PROP_ATLAS_CHUNK_ID] = chunk_id
-                if self._target_pack_hash:
-                    mat[PROP_PACK_HASH] = self._target_pack_hash
-                self.chunk_materials[chunk_id] = mat
 
         if self.world_obj:
             self._sync_object_material_slots()

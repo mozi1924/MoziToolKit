@@ -335,6 +335,10 @@ class TestPackStackAndFallback(unittest.TestCase):
         mat = bpy.data.materials.new(name="stone")
         cube.data.materials.append(mat)
 
+        # Precompile cache
+        pre_res = bpy.ops.mozi.precompile_cache()
+        self.assertEqual(pre_res, {'FINISHED'})
+
         # Execute operator directly (no file dialog)
         res = bpy.ops.mozi.replace_material()
         self.assertEqual(res, {'FINISHED'})

@@ -188,6 +188,10 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         # Animation mcmeta for water_still
         (tex_dir / "water_still.png.mcmeta").write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
 
+        from utils.materials.pack import ResourcePackStack
+        stack = ResourcePackStack([cls.pack_dir])
+        stack.precompile(material_mode="STANDALONE")
+
     @classmethod
     def tearDownClass(cls):
         if hasattr(cls, "temp_dir"):
@@ -318,9 +322,11 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         missing = bpy.data.materials.new(name="not_in_atlas_pack")
         self.cube.data.materials.append(missing)
         self.cube.data.polygons[0].material_index = 1
+        from utils.materials.pack import ResourcePackStack
+        ResourcePackStack([self.pack_dir]).precompile(material_mode="ATLAS")
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params={
             "zip_path": str(self.pack_dir), "material_mode": "ATLAS",
-            "pack_textures": False, "use_cache": False,
+            "pack_textures": False, "use_cache": True,
         }, target_objects=[self.cube])
         self.assertTrue(res.is_success, ctx.reports)
         self.assertEqual(self.cube.data.attributes["mtk_atlas_chunk_id"].data[0].value, 0.0)
@@ -515,11 +521,14 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             ["standalone"] * len(self.cube.data.polygons),
         )
 
+        from utils.materials.pack import ResourcePackStack
+        ResourcePackStack([self.pack_dir]).precompile(material_mode="STANDALONE")
+
         standalone_params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         res_standalone, ctx_standalone = run_preset_pipeline(
             "replace_material", bpy.context, params=standalone_params, target_objects=[self.cube]
@@ -555,11 +564,13 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             ["minecraft:block/chain"] * len(self.cube.data.polygons),
             ["standalone"] * len(self.cube.data.polygons),
         )
+        from utils.materials.pack import ResourcePackStack
+        ResourcePackStack([self.pack_dir]).precompile(material_mode="STANDALONE")
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         result, context = run_preset_pipeline(
             "replace_material", bpy.context, params=params, target_objects=[self.cube]
@@ -607,12 +618,15 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         img.save()
         bpy.data.images.remove(img)
 
+        from utils.materials.pack import ResourcePackStack
+        ResourcePackStack([self.pack_dir]).precompile(material_mode="STANDALONE")
+
         self.cube.data.materials[0].name = "examplemod:copper"
         atlas_params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "ATLAS",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         res_atlas, ctx_atlas = run_preset_pipeline(
             "replace_material", bpy.context, params=atlas_params, target_objects=[self.cube]
@@ -860,11 +874,14 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         mat_yellow = bpy.data.materials.new("minecraft_entity-bed-yellow")
         cube_yellow.data.materials.append(mat_yellow)
 
+        from utils.materials.pack import ResourcePackStack
+        ResourcePackStack([self.pack_dir]).precompile(material_mode="STANDALONE")
+
         params = {
             "zip_path": str(self.pack_dir),
             "material_mode": "STANDALONE",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline(
             "replace_material", bpy.context, params=params,
