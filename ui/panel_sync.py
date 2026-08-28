@@ -61,7 +61,16 @@ class MOZI_PT_live_sync(bpy.types.Panel):
 
         row_btn = box_conn.row(align=True)
         row_btn.scale_y = 1.25
-        if not props.is_connected:
+        is_busy_connecting = (
+            not props.is_connected and (
+                props.connection_status.startswith("CONNECTING") or
+                props.connection_status.startswith("RECONNECTING")
+            )
+        )
+
+        if is_busy_connecting:
+            row_btn.operator("mozi.sync_disconnect", text="Cancel Connection", icon='CANCEL')
+        elif not props.is_connected:
             row_btn.operator("mozi.sync_connect", text="Connect", icon='PLAY')
         else:
             row_btn.operator("mozi.sync_disconnect", text="Disconnect", icon='CANCEL')
@@ -69,7 +78,12 @@ class MOZI_PT_live_sync(bpy.types.Panel):
 
         # Status badge
         row_status = box_conn.row(align=True)
-        status_icon = 'CHECKMARK' if props.is_connected else ('SORTTIME' if props.connection_status == "CONNECTING" else 'RADIOBUT_OFF')
+        if props.is_connected:
+            status_icon = 'CHECKMARK'
+        elif is_busy_connecting:
+            status_icon = 'SORTTIME'
+        else:
+            status_icon = 'RADIOBUT_OFF'
         row_status.label(text=f"Status: {props.connection_status}", icon=status_icon)
 
         # 2. World Selection & Metrics

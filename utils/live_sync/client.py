@@ -51,6 +51,7 @@ class SyncClientThread(threading.Thread):
         on_section_snapshot: Optional[Callable[[int, int, int, int, int, int, int, int, int, List[str], List[int]], None]] = None,
         on_handshake_info: Optional[Callable[[int, int, int, str, int], None]] = None,
         auto_reconnect: bool = True,
+        max_reconnect_attempts: int = 5,
     ) -> None:
         super().__init__(daemon=True)
         self.url = url
@@ -62,6 +63,8 @@ class SyncClientThread(threading.Thread):
         self.on_section_snapshot = on_section_snapshot
         self.on_handshake_info = on_handshake_info
         self.auto_reconnect = auto_reconnect
+        self.max_reconnect_attempts = max_reconnect_attempts
+        self.reconnect_attempts: int = 0
         self.running = True
         self.is_connected = False
         self.websocket = None
@@ -79,7 +82,7 @@ class SyncClientThread(threading.Thread):
                 pass
 
     def stop(self) -> None:
-        """Signal thread and event loop to cleanly disconnect and terminate."""
+        """Signal thread and event loop to cleanly disconnect, cancel retries, and terminate."""
         self.running = False
         self.auto_reconnect = False
         if self.loop and self.loop.is_running():
@@ -98,7 +101,10 @@ class SyncClientThread(threading.Thread):
             return
 
         while self.running:
-            self.on_status_change("CONNECTING...")
+            if self.reconnect_attempts > 0:
+                self.on_status_change(f"RECONNECTING... ({self.reconnect_attempts}/{self.max_reconnect_attempts})")
+            else:
+                self.on_status_change("CONNECTING...")
             logger.info(f"Connecting to Minecraft Live Sync WebSocket at: {self.url}")
 
             try:
@@ -111,6 +117,7 @@ class SyncClientThread(threading.Thread):
                 ) as websocket:
                     self.websocket = websocket
                     self.is_connected = True
+                    self.reconnect_attempts = 0
                     self.on_status_change("CONNECTED")
                     logger.info("Connected to Minecraft Live Sync server successfully.")
 
@@ -134,13 +141,18 @@ class SyncClientThread(threading.Thread):
             except Exception as e:
                 if not self.running:
                     break
-                logger.warning(f"Failed to connect to Live Sync WebSocket: {e}. Will retry...")
-                self.on_status_change(f"RECONNECTING... ({e})")
+                self.reconnect_attempts += 1
+                if self.reconnect_attempts > self.max_reconnect_attempts:
+                    logger.warning(f"Live Sync: Exceeded max reconnection attempts ({self.max_reconnect_attempts}). Stopping.")
+                    self.on_status_change(f"DISCONNECTED (Exceeded {self.max_reconnect_attempts} reconnect attempts)")
+                    break
+                logger.warning(f"Failed to connect to Live Sync WebSocket: {e}. Will retry ({self.reconnect_attempts}/{self.max_reconnect_attempts})...")
+                self.on_status_change(f"RECONNECTING... ({self.reconnect_attempts}/{self.max_reconnect_attempts})")
             finally:
                 self.is_connected = False
                 self.websocket = None
 
-            if self.running and self.auto_reconnect:
+            if self.running and self.auto_reconnect and self.reconnect_attempts <= self.max_reconnect_attempts:
                 try:
                     await asyncio.sleep(2.0)
                 except asyncio.CancelledError:
@@ -148,7 +160,10 @@ class SyncClientThread(threading.Thread):
             else:
                 break
 
-        self.on_status_change("DISCONNECTED")
+        if not self.running:
+            self.on_status_change("DISCONNECTED")
+        elif self.reconnect_attempts > self.max_reconnect_attempts:
+            self.on_status_change(f"DISCONNECTED (Failed after {self.max_reconnect_attempts} attempts)")
 
     def send_full_sync_request(self) -> None:
         """Send Full Sync Request (0x80) to request a complete snapshot from server."""
