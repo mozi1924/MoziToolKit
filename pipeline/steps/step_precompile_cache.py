@@ -15,6 +15,7 @@ from ..step import PipelineStep, StepResult
 from ...utils.materials.pack import (
     ResourcePackStack,
     get_configured_pack_stack,
+    get_cache_stats,
 )
 from ...utils.materials.pack.resource_pack import clean_obsolete_stack_caches
 from ...utils.mc_baker import clear_shared_baker_cache
@@ -63,6 +64,8 @@ class StepPrecompileCache(PipelineStep):
             yield ProgressUpdate(frac, 1.0, msg)
 
         clean_obsolete_stack_caches(current_stack_hash=pack_stack.stack_hash)
+        stats = get_cache_stats(force_refresh=True)
+        res_data["cache_stats"] = stats
 
         num_chunks = len(res_data.get("atlas", {}).get("chunks", []))
         num_models = res_data.get("models", {}).get("models_count", 0)

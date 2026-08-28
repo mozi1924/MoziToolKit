@@ -99,6 +99,7 @@ def clean_obsolete_stack_caches(current_stack_hash: Optional[str] = None) -> tup
                 dirs_removed += 1
             except Exception:
                 pass
+    get_cache_stats(force_refresh=True)
     return dirs_removed, bytes_freed
 
 

@@ -118,3 +118,11 @@ class TestPrecompileProgressPipeline(unittest.TestCase):
         res, ctx = run_preset_pipeline("precompile_cache", context, params=params)
         self.assertTrue(res.is_success)
         self.assertIn("Successfully precompiled", res.message)
+        self.assertIn("cache_stats", res.data)
+        self.assertGreater(res.data["cache_stats"]["files_count"], 0)
+        self.assertGreater(res.data["cache_stats"]["total_size_bytes"], 0)
+
+        from utils.materials.pack import get_cache_stats
+        fresh_stats = get_cache_stats()
+        self.assertGreater(fresh_stats["files_count"], 0)
+        self.assertGreater(fresh_stats["total_size_bytes"], 0)
