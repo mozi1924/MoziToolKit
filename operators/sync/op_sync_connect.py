@@ -97,8 +97,9 @@ def _finalize_stream_sync(props, total_target: int) -> None:
     existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
     cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
     cur_atlas_params = get_cached_atlas_params(cur_mat)
-    if _accumulated_stream_palettes:
-        preload_sync_world_data(palette=list(_accumulated_stream_palettes), world_obj=existing_world, atlas_params=cur_atlas_params)
+    target_palette = _accumulated_stream_palettes if _accumulated_stream_palettes else voxel_storage.get_unique_states()
+    if target_palette:
+        preload_sync_world_data(palette=target_palette, world_obj=existing_world, atlas_params=cur_atlas_params)
         _accumulated_stream_palettes.clear()
 
     rebuild_full = not _is_repairing_partial
@@ -462,13 +463,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         if voxel_storage.size_x == 0 or not voxel_storage.section_crc_map:
             restore_sync_state_from_scene(context)
 
-        # 2. Immediately trigger eager pre-warming of hot states, material manager, and baker
-        existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-        mat = find_bound_atlas_material(existing_world) if existing_world else None
-        atlas_params = get_cached_atlas_params(mat)
-        known_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
-        preload_sync_world_data(palette=known_palette, world_obj=existing_world, atlas_params=atlas_params)
-
         ProgressBar.begin(title="Live Sync", total=100.0, message="Connecting to Minecraft...", context=context)
 
         def run_in_main_thread(func):
@@ -488,11 +482,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     ProgressBar.update(current=20.0, total=100.0, message="Handshake established...")
                     if _client_thread:
                         _client_thread.send_sync_config(throttle_mode=0, target_fps=60, is_active=True)
-                    cur_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-                    cur_mat = find_bound_atlas_material(cur_world) if cur_world else None
-                    cur_atlas_params = get_cached_atlas_params(cur_mat)
-                    cur_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
-                    preload_sync_world_data(palette=cur_palette, world_obj=cur_world, atlas_params=cur_atlas_params)
                     start_main_thread_pump()
                 else:
                     stop_main_thread_pump()
@@ -525,11 +514,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 props.max_z = min_z + size_z - 1
                 props.size_x, props.size_y, props.size_z = size_x, size_y, size_z
                 props.total_blocks = size_x * size_y * size_z
-                cur_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
-                cur_mat = find_bound_atlas_material(cur_world) if cur_world else None
-                cur_atlas_params = get_cached_atlas_params(cur_mat)
-                cur_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
-                preload_sync_world_data(palette=cur_palette, world_obj=cur_world, atlas_params=cur_atlas_params)
             run_in_main_thread(update)
 
         start_main_thread_pump()
@@ -646,11 +630,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 has_existing_mesh = existing_world is not None and (
                     len(existing_section_meshes) > 0 or (existing_world.data and len(existing_world.data.polygons) > 0)
                 )
-
-                cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
-                cur_atlas_params = get_cached_atlas_params(cur_mat)
-                cur_palette = list(voxel_storage.get_state_counts().keys()) if voxel_storage.block_map else None
-                preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=cur_atlas_params)
 
                 if props.sync_verified and has_existing_mesh:
                     _skip_next_full_snapshot = True

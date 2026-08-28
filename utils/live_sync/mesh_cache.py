@@ -228,7 +228,7 @@ def _idle_prewarm_tick() -> None:
 
 
 def preload_sync_world_data(
-    palette: Optional[list[str]] = None,
+    palette: Optional[Iterable[str]] = None,
     world_obj: Optional[bpy.types.Object] = None,
     atlas_params: Optional[dict[str, Any]] = None,
 ) -> int:
@@ -244,7 +244,7 @@ def preload_sync_world_data(
     # 1. Warm core high-priority states
     states_to_warm = set(COMMON_PREWARM_STATES)
 
-    # 2. Warm snapshot palette from current selection
+    # 2. Warm snapshot palette directly without redundant conversion
     if palette:
         for s in palette:
             if s and s.strip():
