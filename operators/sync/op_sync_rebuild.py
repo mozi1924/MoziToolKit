@@ -58,7 +58,7 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
         existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
         mat = find_bound_atlas_material(existing_world) if existing_world else None
         atlas_params = get_cached_atlas_params(mat)
-        cur_palette = list(voxel_storage.get_state_counts().keys())
+        cur_palette = voxel_storage.get_unique_states()
         preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=atlas_params)
 
         trigger_mesh_sync(context, force_full_rebuild=True)
