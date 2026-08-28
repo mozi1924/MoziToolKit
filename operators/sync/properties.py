@@ -2,8 +2,11 @@
 Scene Properties and PropertyGroups for MoziToolKit Live Sync and Yefira DCC compatibility.
 """
 
+import logging
 import bpy
 from bpy.props import BoolProperty, CollectionProperty, IntProperty, PointerProperty, StringProperty
+
+logger = logging.getLogger("MoziToolKit.LiveSync")
 
 
 class MoziSyncPaletteItem(bpy.types.PropertyGroup):
@@ -80,8 +83,30 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
 
 
 @bpy.app.handlers.persistent
+def _on_blend_file_pre_load(dummy=None):
+    """Disconnect Live Sync client and free preloaded resources before loading a new project or file."""
+    try:
+        try:
+            from .op_sync_connect import cleanup_sync_state
+        except (ImportError, ValueError):
+            from operators.sync.op_sync_connect import cleanup_sync_state
+        cleanup_sync_state()
+    except Exception as e:
+        logger.debug(f"Error in Live Sync pre-load handler: {e}")
+
+
+@bpy.app.handlers.persistent
 def _on_blend_file_loaded(dummy=None):
-    """Ensure runtime connection properties are strictly reset upon loading any .blend file."""
+    """Ensure runtime connection properties and background sync states are strictly reset upon loading any .blend file."""
+    try:
+        try:
+            from .op_sync_connect import cleanup_sync_state
+        except (ImportError, ValueError):
+            from operators.sync.op_sync_connect import cleanup_sync_state
+        cleanup_sync_state()
+    except Exception as e:
+        logger.debug(f"Error in Live Sync post-load cleanup: {e}")
+
     for scene in bpy.data.scenes:
         if hasattr(scene, "mozi_sync"):
             props = scene.mozi_sync
@@ -93,11 +118,15 @@ def _on_blend_file_loaded(dummy=None):
 
 def register():
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
+    if _on_blend_file_pre_load not in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.append(_on_blend_file_pre_load)
     if _on_blend_file_loaded not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_blend_file_loaded)
 
 
 def unregister():
+    if _on_blend_file_pre_load in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.remove(_on_blend_file_pre_load)
     if _on_blend_file_loaded in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_blend_file_loaded)
     if hasattr(bpy.types.Scene, "mozi_sync"):

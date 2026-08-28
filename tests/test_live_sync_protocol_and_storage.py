@@ -749,6 +749,40 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         )
         self.assertEqual(non_empty_count, 1)
 
+    def test_blend_file_load_handlers_disconnect_and_free_resources(self):
+        """Verify load_pre and load_post handlers cleanly disconnect background client and free preloaded caches."""
+        from operators.sync.properties import _on_blend_file_pre_load, _on_blend_file_loaded
+        import operators.sync.op_sync_connect as sync_op
+        from utils.live_sync.storage import voxel_storage
+        from utils.live_sync.mesh_cache import _GLOBAL_STATE_META_CACHE
+
+        # 1. Simulate active connection state & preloaded cache
+        mock_client = SyncClientThread("ws://dummy", lambda *a: None, lambda *a: None, lambda *a: None, lambda *a: None)
+        sync_op._client_thread = mock_client
+        sync_op._is_streaming = True
+        voxel_storage.set_bounds(0, 0, 0, 16, 16, 16)
+        voxel_storage.block_map[(0, 0, 0)] = "minecraft:stone"
+        _GLOBAL_STATE_META_CACHE["minecraft:stone"] = None
+
+        if hasattr(bpy.context.scene, "mozi_sync"):
+            bpy.context.scene.mozi_sync.is_connected = True
+            bpy.context.scene.mozi_sync.connection_status = "CONNECTED"
+
+        # 2. Trigger pre-load handler (as when File > New or File > Open occurs)
+        _on_blend_file_pre_load()
+
+        # Verify client is stopped and cleared
+        self.assertIsNone(sync_op._client_thread)
+        self.assertFalse(sync_op._is_streaming)
+        self.assertEqual(len(voxel_storage.block_map), 0)
+        self.assertEqual(len(_GLOBAL_STATE_META_CACHE), 0)
+
+        # 3. Trigger post-load handler
+        _on_blend_file_loaded()
+        if hasattr(bpy.context.scene, "mozi_sync"):
+            self.assertFalse(bpy.context.scene.mozi_sync.is_connected)
+            self.assertEqual(bpy.context.scene.mozi_sync.connection_status, "DISCONNECTED")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

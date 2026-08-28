@@ -800,7 +800,21 @@ def cleanup_sync_state() -> None:
         from ...utils.live_sync.classifier import clear_parse_cache
         clear_parse_cache()
     except Exception:
-        pass
+        try:
+            from utils.live_sync.classifier import clear_parse_cache
+            clear_parse_cache()
+        except Exception:
+            pass
+
+    try:
+        from ...utils.materials.pack import clear_resource_pack_cache
+        clear_resource_pack_cache()
+    except Exception:
+        try:
+            from utils.materials.pack import clear_resource_pack_cache
+            clear_resource_pack_cache()
+        except Exception:
+            pass
 
 
 def unregister():
