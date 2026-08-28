@@ -113,13 +113,8 @@ class StandaloneReplacementEngine:
             )
             return
 
-        clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
-
-        biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
-        if pack_stack:
-            for p in pack_stack.packs:
-                if p.extract_dir and p.extract_dir != pack.extract_dir:
-                    biome_resolver.load_from_pack_root(p.extract_dir)
+        biome_root = pack.zip_path if pack.zip_path.is_dir() else (pack._extract_dir if pack._loaded else None)
+        biome_resolver = BiomeResolver(pack_root=biome_root)
 
         total_objs = len(valid_objects)
         textures_map = standalone_mapping.get("textures", {}) if standalone_mapping else {}

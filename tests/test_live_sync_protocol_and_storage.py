@@ -517,9 +517,13 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         """Test that LiveSyncMaterialManager strictly reuses existing scene materials and avoids duplicate '.001' proliferation."""
         from utils.live_sync.material_manager import LiveSyncMaterialManager, PROP_ATLAS_CHUNK_ID, PROP_PACK_HASH
 
+        for m in list(bpy.data.materials):
+            if m.name.startswith("MC_Atlas_Chunk_"):
+                bpy.data.materials.remove(m, do_unlink=True)
+
         # Pre-create standard chunk material
         mat_name = "MC_Atlas_Chunk_0"
-        existing_mat = bpy.data.materials.get(mat_name) or bpy.data.materials.new(name=mat_name)
+        existing_mat = bpy.data.materials.new(name=mat_name)
         existing_mat[PROP_ATLAS_CHUNK_ID] = 0
         existing_mat[PROP_PACK_HASH] = "test_hash"
 
