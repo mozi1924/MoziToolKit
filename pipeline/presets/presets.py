@@ -20,6 +20,7 @@ from ..steps import (
     TextureInterpolationStep,
     StepReplaceMaterial,
     RepairFluidUVStep,
+    StepPrecompileCache,
 )
 
 
@@ -75,6 +76,11 @@ def create_preset_pipelines() -> Dict[str, Pipeline]:
             name="Repair Fluid UV Preset",
             description="Pipeline for repairing inverted UV height mapping on sloped fluid side faces",
             steps=[RepairFluidUVStep()],
+        ),
+        "precompile_cache": Pipeline(
+            name="Precompile Cache Preset",
+            description="Pipeline for precompiling Atlas, Models, and Standalone caches",
+            steps=[StepPrecompileCache()],
         ),
     }
 

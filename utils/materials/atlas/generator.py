@@ -472,11 +472,13 @@ class AtlasGenerator:
                         texture_name_fn=self._texture_name,
                     )
 
-        yield (0.85, "Baking block models and custom UV definitions...", None)
+        yield (0.82, "Baking block models and custom UV definitions...", None)
         baked_states = {}
         if hasattr(self, "baker") and self.baker:
             try:
-                baked_states = self.baker.bake_all_pack_states()
+                for frac, msg, cur_states in self.baker.bake_all_pack_states_iter():
+                    baked_states = cur_states
+                    yield (0.82 + 0.10 * frac, f"Atlas: {msg}", None)
             except Exception as e:
                 print(f"[AtlasGenerator] Warning: StateBaker bake_all_pack_states: {e}")
 
@@ -510,7 +512,12 @@ class AtlasGenerator:
 
         materials = []
         all_material_names = sorted(set(self.models) | set(self.static_textures) | set(self.animated_textures))
+        total_mats = max(1, len(all_material_names))
         for material_id, name in enumerate(all_material_names):
+            if material_id % 50 == 0 or material_id == total_mats - 1:
+                mat_pct = 0.92 + 0.06 * ((material_id + 1) / total_mats)
+                yield (mat_pct, f"Atlas: Resolving material definitions ({material_id + 1}/{total_mats})...", None)
+
             baked_model = None
             if hasattr(self, "baker") and self.baker:
                 try:
