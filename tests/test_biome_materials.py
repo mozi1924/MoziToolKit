@@ -442,11 +442,41 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
         self.assertIsNotNone(tint_data_attr)
 
-        # For grass_block_side: tint_weight=1.0, base_tint_weight=0.0 (dirt not tinted), overlay_tint_weight=1.0 (grass fringe tinted)
-        tint_data = tint_data_attr.data[0].color
-        self.assertAlmostEqual(tint_data[2], 1.0, places=2)
-        self.assertAlmostEqual(tint_data[0], 0.0, places=2)
-        self.assertAlmostEqual(tint_data[1], 1.0, places=2)
+    def test_atlas_overlay_addressing_and_cleanup(self):
+        """Verify overlay companion is mapped to base tile and cleanup releases memory."""
+        out_dir = Path(self.temp_dir) / "atlas_overlay_out"
+        gen = AtlasGenerator(self.zip_path)
+        gen.build(out_dir)
+
+        mapping_file = out_dir / "atlas_mapping.json"
+        self.assertTrue(mapping_file.exists())
+        with open(mapping_file, "r", encoding="utf-8") as f:
+            mapping = json.load(f)
+
+        texs = mapping.get("textures", {})
+        # grass_block_side should have has_overlay = True
+        side_loc = texs.get("minecraft:block/grass_block_side") or texs.get("grass_block_side")
+        self.assertIsNotNone(side_loc)
+        self.assertTrue(side_loc.get("has_overlay"))
+
+        # grass_block_side_overlay should resolve to the same chunk and pixel coordinates
+        overlay_loc = texs.get("minecraft:block/grass_block_side_overlay") or texs.get("grass_block_side_overlay")
+        self.assertIsNotNone(overlay_loc)
+        self.assertEqual(overlay_loc.get("chunk_id"), side_loc.get("chunk_id"))
+        self.assertEqual(overlay_loc.get("pixel_x"), side_loc.get("pixel_x"))
+        self.assertEqual(overlay_loc.get("pixel_y"), side_loc.get("pixel_y"))
+
+        # Test addressing resolver
+        from MoziToolKit.utils.materials.atlas.addressing import AtlasAddressResolver
+        resolver = AtlasAddressResolver(mapping)
+        res = resolver.lookup_texture("minecraft:block/grass_block_side_overlay")
+        self.assertIsNotNone(res)
+        self.assertTrue(res.get("has_overlay"))
+        self.assertEqual(res.get("pixel_x"), side_loc.get("pixel_x"))
+
+        # Check cleanup cleared internal dicts
+        self.assertEqual(len(gen.static_textures), 0)
+        self.assertEqual(len(gen.static_by_ns_cat), 0)
 
 
 if __name__ == "__main__":

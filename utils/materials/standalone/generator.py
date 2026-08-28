@@ -287,6 +287,8 @@ class StandaloneGenerator:
         finally:
             if staging_dir.exists():
                 shutil.rmtree(staging_dir, ignore_errors=True)
+            import gc
+            gc.collect()
 
     def build(self, output_dir: Union[str, Path], progress_callback=None) -> dict:
         """Synchronously build the standalone asset library."""

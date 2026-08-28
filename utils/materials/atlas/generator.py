@@ -313,11 +313,44 @@ class AtlasGenerator:
 
         return None
 
-    def build_iter(self, output_dir: str | Path):
+    def cleanup(self) -> None:
+        """Explicitly release all loaded image objects and model caches to reclaim RAM."""
+        for mapping in (
+            getattr(self, "static_textures", {}),
+            getattr(self, "normal_textures", {}),
+            getattr(self, "specular_textures", {}),
+        ):
+            if isinstance(mapping, dict):
+                for img in mapping.values():
+                    if hasattr(img, "close"):
+                        try:
+                            img.close()
+                        except Exception:
+                            pass
+                mapping.clear()
+
+        for d_name in ("static_by_namespace", "normal_by_namespace", "specular_by_namespace",
+                       "static_by_ns_cat", "normal_by_ns_cat", "specular_by_ns_cat",
+                       "animated_textures", "animated_by_namespace", "animated_by_ns_cat",
+                       "models", "block_mappings"):
+            d = getattr(self, d_name, None)
+            if isinstance(d, dict):
+                d.clear()
+
+        import gc
+        gc.collect()
+
+    def build_iter(self, output_dir: str | Path) -> Iterator[Tuple[float, str, Optional[dict]]]:
         """
-        Build deduplicated, size-bounded atlas chunks partitioned strictly per namespace.
-        Yields (fraction: float, message: str, outputs: Optional[dict]).
+        Iteratively construct and save atlas chunks, yielding progress fraction and message.
+        Outputs atlas images and atlas_mapping.json to output_dir atomically.
         """
+        try:
+            yield from self._build_iter_impl(output_dir)
+        finally:
+            self.cleanup()
+
+    def _build_iter_impl(self, output_dir: str | Path) -> Iterator[Tuple[float, str, Optional[dict]]]:
         if not HAS_PIL:
             raise ImportError("Pillow library is required for AtlasGenerator. Please install it using 'pip install pillow'.")
         Image.init()

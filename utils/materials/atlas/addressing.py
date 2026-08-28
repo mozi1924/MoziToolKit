@@ -45,6 +45,9 @@ from .layout import (
     remap_local_to_target_uv,
     find_texture_id_from_atlas_uv,
 )
+from ..biome.biome import KNOWN_OVERLAY_PAIRS
+
+OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
 
 logger = logging.getLogger("MoziToolKit.AtlasAddressing")
 
@@ -592,6 +595,22 @@ class AtlasAddressResolver:
                             return alt_loc
                         if alt_loc and any_match is None:
                             any_match = alt_loc
+
+            # 6. Check overlay companion pairs (e.g. grass_block_side_overlay -> grass_block_side)
+            base_overlay_stem = OVERLAY_TO_BASE_MAP.get(stem)
+            if base_overlay_stem:
+                base_cands = [
+                    f"{target_ns}:block/{base_overlay_stem}",
+                    f"{target_ns}:{base_overlay_stem}",
+                    base_overlay_stem,
+                ]
+                for b_cand in base_cands:
+                    if b_cand not in _visited:
+                        b_loc = self.lookup_texture(b_cand, namespace=target_ns, category=category, _visited=_visited)
+                        if b_loc and _is_category(b_loc):
+                            return b_loc
+                        if b_loc and any_match is None:
+                            any_match = b_loc
 
         return any_match if category is None else None
 
