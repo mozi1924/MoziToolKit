@@ -142,8 +142,20 @@ graph TD
 
 ---
 
-## 7. 防回归与工程规范总结
+## 7. 线程安全与防回归工程规范 (Concurrency & Anti-Regression Guidelines)
+
 > [!IMPORTANT]
-> 1. **断点续接无损性**：重新打开 `.blend` 文件后发起连接，只要游戏服务端场景未发生变动，必须通过 CRC 校验实现 0 耗时即时验证，不得触发冗余全量重建。
-> 2. **材质插槽不漂移**：任何增量更新或重建操作，均不得改变已有材质插槽与 `chunk_id` 的映射关系。
-> 3. **职责隔离**：“刷新”管网络，“重建”管网格，两者代码逻辑与 UI 按钮严格解耦。
+> 1. **非空区块与流式目标基数对齐（Non-Empty Stream Alignment）**：
+>    - 游戏服务端在流式传输时（`streamNonEmptySectionSnapshots`）仅发送包含实体方块的非空区块（`server_crc != EMPTY_SECTION_CRC`），纯空气区块跳过不发；
+>    - 客户端设置 `_stream_total_sections` 时，必须以 `non_empty_manifest_count = sum(1 for crc in sections if crc != EMPTY_SECTION_CRC)` 为准，并在事件泵中配置静默超时（Settle Timeout）双重保障，绝不允许进度条卡在 91% 等中间状态。
+> 2. **跨线程字典快照安全（Thread-Safe Snapshotting）**：
+>    - 客户端后台网络线程（`SyncClientThread`）高频写入 `VoxelStorage.block_map` 与 `_section_map`；
+>    - Blender 主线程在执行网格生成（`sync_world_mesh`）与状态统计时，必须调用 `storage.get_unique_states()`、`get_all_sections()`、`get_section_blocks()` 等返回浅拷贝快照的方法，严禁在迭代中直接遍历动态变化的字典视图，彻底规避 `RuntimeError: dictionary changed size during iteration`。
+> 3. **运行时属性不可持久化（`SKIP_SAVE` 约束）**：
+>    - 连接状态（`is_connected`、`connection_status`、`validation_info`）属于运行时动态会话，必须在 PropertyGroup 中声明 `options={'SKIP_SAVE'}`，并在 `load_post` 钩子中重置为断开，禁止污染 `.blend` 文件。
+> 4. **断点续接 0 耗时校验（0ms Instant Validation）**：
+>    - 重新打开 `.blend` 文件后发起连接，只要游戏服务端场景未发生变动，必须通过 CRC 校验与 `_known_empty_sections` 记录实现 0 耗时即时验证，不得触发冗余全量重建或误报坏区块。
+> 5. **操作职责严格隔离**：
+>    - “刷新 (Refresh)”：负责网络请求全量快照，必须带有 `_pending_full_sync_request` 守卫以防递归死循环；
+>    - “重建 (Rebuild)”：负责本地离线重新计算网格与面剔除，不发送任何网络请求。
+

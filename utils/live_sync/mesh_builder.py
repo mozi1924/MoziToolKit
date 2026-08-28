@@ -273,7 +273,7 @@ def sync_world_mesh(
     mat_manager = get_shared_material_manager(world_obj=root_obj, atlas_params=atlas_params)
 
     # 3. Precompute unique block states
-    unique_states = set(block_map.values())
+    unique_states = set(storage.get_unique_states())
     state_cache: dict[str, CachedStateMeta] = {
         s: get_cached_state_meta(s, mat_manager, baker) for s in unique_states
     }

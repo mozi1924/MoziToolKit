@@ -600,6 +600,40 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(end_portal_res.chunk_id, 17)
         self.assertEqual(end_portal_res.slot_index, mat_mgr.get_slot_for_chunk(17))
 
+    def test_rebuild_world_operator_execution(self):
+        """Verify MOZI_OT_sync_rebuild_world rebuilds mesh from local voxel memory without network dependencies."""
+        from operators.sync.op_sync_connect import DEFAULT_WORLD_OBJECT_NAME
+        from utils.live_sync.storage import voxel_storage
+        import bpy
+
+        palette = ["minecraft:air", "minecraft:stone"]
+        indices = [1] * 4096  # full 16x16x16 stone chunk
+        voxel_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, indices)
+
+        try:
+            res = bpy.ops.mozi.sync_rebuild_world()
+            self.assertEqual(res, {'FINISHED'})
+
+            world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+            self.assertIsNotNone(world_obj)
+            # Child section mesh should have been generated
+            sec_obj = bpy.data.objects.get("Yefira_Section_0_0_0")
+            self.assertIsNotNone(sec_obj)
+            self.assertGreater(len(sec_obj.data.polygons), 0)
+        finally:
+            world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+            if world_obj:
+                for child in list(world_obj.children):
+                    child_mesh = child.data
+                    bpy.data.objects.remove(child, do_unlink=True)
+                    if child_mesh:
+                        bpy.data.meshes.remove(child_mesh, do_unlink=True)
+                root_mesh = world_obj.data
+                bpy.data.objects.remove(world_obj, do_unlink=True)
+                if root_mesh:
+                    bpy.data.meshes.remove(root_mesh, do_unlink=True)
+            voxel_storage.clear()
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
