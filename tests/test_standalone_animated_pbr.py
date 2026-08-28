@@ -214,11 +214,15 @@ class TestStandaloneAnimatedPBR(unittest.TestCase):
         initial_mat = bpy.data.materials.new(name="sea_lantern")
         self.cube.data.materials.append(initial_mat)
 
+        from utils.materials.pack import ResourcePackStack
+        stack = ResourcePackStack([self.pack_dir])
+        stack.precompile(material_mode="STANDALONE")
+
         params = {
-            "zip_path": str(self.pack_dir),
+            "pack_stack": stack,
             "material_mode": "STANDALONE",
             "pack_textures": True,
-            "use_cache": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.cube])
         self.assertTrue(res.is_success, ctx.reports)

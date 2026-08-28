@@ -69,10 +69,9 @@ def get_shared_state_baker() -> StateBaker:
     return _GLOBAL_STATE_BAKER
 
 
-def refresh_shared_baker_sources(force_precompile_if_missing: bool = True) -> StateBaker:
+def refresh_shared_baker_sources(force_precompile_if_missing: bool = False) -> StateBaker:
     """Synchronize shared StateBaker with the active Resource Pack Stack.
-    Enforces that all model sources are 100% precompiled. If precompiled models do not
-    exist on disk for the current stack, immediately executes on-the-fly full precompilation.
+    Loads precompiled models from disk cache if available.
     """
     global _last_pack_fingerprint, _last_configured_loader
     baker = get_shared_state_baker()
@@ -92,7 +91,6 @@ def refresh_shared_baker_sources(force_precompile_if_missing: bool = True) -> St
                 manifest_path = stack.get_baked_models_dir() / "models_manifest.json"
                 baker.load_precompiled_manifest(manifest_path)
             elif force_precompile_if_missing and stack.packs:
-                # Precompiled model cache missing: immediately compile ALL models on the fly!
                 stack.precompile_models()
                 if stack.is_models_baked():
                     manifest_path = stack.get_baked_models_dir() / "models_manifest.json"

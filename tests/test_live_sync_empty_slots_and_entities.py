@@ -55,6 +55,9 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
                 }
             }
         }
+        for cid in [0, 1, 5, 12]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m[PROP_ATLAS_CHUNK_ID] = cid
 
         mgr = LiveSyncMaterialManager(world_obj=self.obj, atlas_params=atlas_params)
 
@@ -204,6 +207,10 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
                 },
             }
         }
+        for cid in [0, 1, 5, 6, 7, 8, 12]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m[PROP_ATLAS_CHUNK_ID] = cid
+
         mgr = LiveSyncMaterialManager(world_obj=self.obj, atlas_params=atlas_params)
         self.assertTrue({0, 1, 5, 6, 7, 8}.issubset(mgr.chunk_materials))
         self.assertNotIn(12, mgr.chunk_materials)

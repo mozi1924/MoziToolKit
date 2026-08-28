@@ -175,26 +175,34 @@ class TestPipelineFramework(unittest.TestCase):
             mat3 = bpy.data.materials.new(name="oak_log")
             cube3.data.materials.append(mat3)
 
+            from utils.materials.pack import ResourcePackStack
+            stack_a = ResourcePackStack([dir_a])
+            stack_b = ResourcePackStack([dir_b])
+            stack_a.precompile(material_mode="STANDALONE")
+            stack_b.precompile(material_mode="STANDALONE")
+
             res1, ctx1 = run_preset_pipeline(
                 "replace_material",
                 bpy.context,
-                params={"zip_path": dir_a, "material_mode": "STANDALONE", "use_cache": False},
+                params={"pack_stack": stack_a, "material_mode": "STANDALONE", "use_cache": True},
                 target_objects=[cube1],
             )
             self.assertTrue(res1.is_success, msg=getattr(res1, "message", None))
 
+            stack_b.precompile(material_mode="STANDALONE")
             res2, ctx2 = run_preset_pipeline(
                 "replace_material",
                 bpy.context,
-                params={"zip_path": dir_b, "material_mode": "STANDALONE", "use_cache": False},
+                params={"pack_stack": stack_b, "material_mode": "STANDALONE", "use_cache": True},
                 target_objects=[cube2],
             )
             self.assertTrue(res2.is_success, msg=getattr(res2, "message", None))
 
+            stack_a.precompile(material_mode="STANDALONE")
             res3, ctx3 = run_preset_pipeline(
                 "replace_material",
                 bpy.context,
-                params={"zip_path": dir_a, "material_mode": "STANDALONE", "use_cache": False},
+                params={"pack_stack": stack_a, "material_mode": "STANDALONE", "use_cache": True},
                 target_objects=[cube3],
             )
             self.assertTrue(res3.is_success, msg=getattr(res3, "message", None))
@@ -374,6 +382,9 @@ class TestPipelineFramework(unittest.TestCase):
             cube2 = bpy.context.active_object
             mat2 = bpy.data.materials.new(name="stone")
             cube2.data.materials.append(mat2)
+
+            from utils.materials.pack import ResourcePackStack
+            ResourcePackStack([temporary_dir]).precompile(material_mode="ATLAS")
 
             res, ctx = run_preset_pipeline(
                 "replace_material",

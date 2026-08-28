@@ -95,46 +95,7 @@ class StandaloneReplacementEngine:
 
         use_cache = pipeline_context.get_param("use_cache", True)
 
-        # 1. Precompile Atlas Cache if missing or incomplete
-        atlas_is_current = False
-        if use_cache and atlas_mapping_path.exists():
-            try:
-                with open(atlas_mapping_path, "r", encoding="utf-8") as fp:
-                    cached_atlas = json.load(fp)
-                    if (
-                        cached_atlas.get("format_version") == ATLAS_FORMAT_VERSION
-                        and cached_atlas.get("chunks")
-                        and cached_atlas.get("textures")
-                    ):
-                        atlas_is_current = True
-                        for chunk in cached_atlas["chunks"]:
-                            files = chunk.get("files") if isinstance(chunk, dict) else None
-                            albedo = files.get("albedo") if isinstance(files, dict) else None
-                            if not isinstance(albedo, str) or not (atlas_dir / albedo).is_file():
-                                atlas_is_current = False
-                                break
-                            for channel in ("normal", "specular", "overlay"):
-                                filename = files.get(channel)
-                                if filename and not (atlas_dir / filename).is_file():
-                                    atlas_is_current = False
-                                    break
-            except (OSError, json.JSONDecodeError):
-                atlas_is_current = False
-
-        if not atlas_is_current:
-            pipeline_context.report("INFO", f"Precompiling Atlas cache for pack stack ({effective_pack_hash[:8]})...")
-            try:
-                gen_atlas = AtlasGenerator(fallback_stack=pack_stack or pack)
-                for frac, msg, _res in gen_atlas.build_iter(atlas_dir):
-                    if pipeline_context.is_cancelled:
-                        yield StepResult.cancelled("Material replacement cancelled by user.")
-                        return
-                    yield ProgressUpdate(0.05 + 0.10 * frac, 1.0, f"Atlas: {msg}")
-            except Exception as e:
-                yield StepResult.failed(f"Failed to precompile Atlas cache: {e}")
-                return
-
-        # 2. Precompile Standalone Asset Library if missing or incomplete
+        # 1. Validate Standalone Asset Library
         standalone_mapping = None
         if use_cache and mapping_path.exists():
             try:
@@ -146,20 +107,11 @@ class StandaloneReplacementEngine:
                 standalone_mapping = None
 
         if not standalone_mapping:
-            pipeline_context.report("INFO", f"Precompiling Standalone asset library for pack stack ({effective_pack_hash[:8]})...")
-            try:
-                gen = StandaloneGenerator(fallback_stack=pack_stack or pack)
-                for frac, msg, _res in gen.build_iter(standalone_dir):
-                    if pipeline_context.is_cancelled:
-                        yield StepResult.cancelled("Material replacement cancelled by user.")
-                        return
-                    yield ProgressUpdate(0.15 + 0.15 * frac, 1.0, f"Standalone: {msg}")
-                if mapping_path.exists():
-                    with open(mapping_path, "r", encoding="utf-8") as fp:
-                        standalone_mapping = json.load(fp)
-            except Exception as e:
-                yield StepResult.failed(f"Failed to precompile Standalone asset library: {e}")
-                return
+            yield StepResult.failed(
+                "The configured Resource Pack Stack has not been precompiled for Standalone mode. "
+                "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+            )
+            return
 
         clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
 

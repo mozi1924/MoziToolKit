@@ -366,12 +366,16 @@ class TestBiomePipelineIntegration(unittest.TestCase):
             bpy.data.objects.remove(self.obj)
 
     def test_standalone_biome_preset_pipeline(self):
+        from utils.materials.pack import ResourcePackStack
+        stack = ResourcePackStack([self.zip_path])
+        stack.precompile(material_mode="STANDALONE")
+
         params = {
-            "zip_path": str(self.zip_path),
+            "pack_stack": stack,
             "material_mode": "STANDALONE",
             "biome_preset": "SWAMP",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
         self.assertTrue(res.is_success, msg=res.message)
@@ -395,12 +399,16 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         self.assertAlmostEqual(actual_col[2], expected_b, places=2)
 
     def test_atlas_biome_preset_pipeline(self):
+        from utils.materials.pack import ResourcePackStack
+        stack = ResourcePackStack([self.zip_path])
+        stack.precompile(material_mode="ATLAS")
+
         params = {
-            "zip_path": str(self.zip_path),
+            "pack_stack": stack,
             "material_mode": "ATLAS",
             "biome_preset": "JUNGLE",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
         self.assertTrue(res.is_success, msg=res.message)
@@ -428,12 +436,16 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         self.obj.data.materials.clear()
         self.obj.data.materials.append(mat_side)
 
+        from utils.materials.pack import ResourcePackStack
+        stack = ResourcePackStack([self.zip_path])
+        stack.precompile(material_mode="STANDALONE")
+
         params = {
-            "zip_path": str(self.zip_path),
+            "pack_stack": stack,
             "material_mode": "STANDALONE",
             "biome_preset": "PLAINS",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
         self.assertTrue(res.is_success, msg=res.message)

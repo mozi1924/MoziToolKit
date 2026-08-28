@@ -117,6 +117,9 @@ class TestDirectMeshSync(unittest.TestCase):
                 },
             }
         }
+        for cid in [0, 7]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m["mtk:atlas_chunk_id"] = cid
 
         result = sync_world_mesh(bpy.context, storage, atlas_params=atlas_params, force_full_rebuild=True)
         section = next(child for child in result.world_obj.children if child.name.startswith("Yefira_Section_"))
@@ -165,6 +168,9 @@ class TestDirectMeshSync(unittest.TestCase):
                 },
             }
         }
+        for cid in [0, 8]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m["mtk:atlas_chunk_id"] = cid
 
         result = sync_world_mesh(bpy.context, storage, atlas_params=atlas_params, force_full_rebuild=True)
         section = next(child for child in result.world_obj.children if child.name.startswith("Yefira_Section_"))
@@ -260,6 +266,10 @@ class TestDirectMeshSync(unittest.TestCase):
                 }
             }
         }
+
+        for cid in [0, 1]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m["mtk:atlas_chunk_id"] = cid
 
         res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params)
         mesh = res.world_obj.data
@@ -402,6 +412,10 @@ class TestDirectMeshSync(unittest.TestCase):
             if "Yefira_Atlas_Master" in m.name or "MC_Atlas_Chunk" in m.name:
                 bpy.data.materials.remove(m)
 
+        for cid in [0]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m["mtk:atlas_chunk_id"] = cid
+
         storage = VoxelStorage()
         storage.set_block(0, 0, 0, "minecraft:stone")
 
@@ -416,13 +430,18 @@ class TestDirectMeshSync(unittest.TestCase):
         # 2. Verify native chunk materials are mounted
         self.assertTrue(any("MC_Atlas_Chunk_0" in name for name in slot_names))
 
-        # 3. Simulate outdated hash on material
+        # 3. Simulate outdated hash on material - must reject outdated material
         chunk_0_mat = bpy.data.materials.get("MC_Atlas_Chunk_0")
         self.assertIsNotNone(chunk_0_mat)
         chunk_0_mat["mtk:pack_hash"] = "outdated_pack_hash_0000"
 
-        # Refresh material manager and ensure slots and chunks are synced
+        # Refresh material manager and ensure outdated material is rejected
         mat_manager = LiveSyncMaterialManager(world_obj=obj)
+        self.assertNotIn(0, mat_manager.chunk_materials)
+
+        # Restoring matching hash allows loading
+        chunk_0_mat["mtk:pack_hash"] = mat_manager._target_pack_hash
+        mat_manager.refresh()
         self.assertIn(0, mat_manager.chunk_materials)
 
     def test_prebaked_atlas_material_shader_graph_construction(self):
@@ -708,6 +727,10 @@ class TestDirectMeshSync(unittest.TestCase):
         for m in list(bpy.data.materials):
             if m.name.startswith("MC_Atlas_Chunk_"):
                 bpy.data.materials.remove(m, do_unlink=True)
+
+        for cid in [0, 1, 2, 3]:
+            m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
+            m["mtk:atlas_chunk_id"] = cid
 
         world_obj = bpy.data.objects.new("TestWorld", bpy.data.meshes.new("TestWorldMesh"))
         bpy.context.collection.objects.link(world_obj)

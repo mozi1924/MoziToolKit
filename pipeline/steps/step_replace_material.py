@@ -58,9 +58,24 @@ class StepReplaceMaterial(PipelineStep):
         if not pack_stack or not pack_stack.packs:
             yield StepResult.failed(
                 "No active resource packs or Minecraft JARs configured. "
-                "Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit."
+                "Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
             )
             return
+
+        if material_mode == "STANDALONE":
+            if not pack_stack.is_standalone_baked():
+                yield StepResult.failed(
+                    "The configured Resource Pack Stack has not been precompiled for Standalone mode. "
+                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                )
+                return
+        else:
+            if not pack_stack.is_stack_baked():
+                yield StepResult.failed(
+                    "The configured Resource Pack Stack has not been precompiled. "
+                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                )
+                return
 
         pack = pack_stack.packs[0]
 

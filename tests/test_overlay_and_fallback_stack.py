@@ -147,13 +147,16 @@ class TestOverlayAndFallbackStack(unittest.TestCase):
             {"name": "Primary", "path": str(self.primary_dir), "enabled": True, "pack_type": "RESOURCE_PACK"},
             {"name": "Fallback", "path": str(self.fallback_dir), "enabled": True, "pack_type": "VANILLA"},
         ])
+        from utils.materials.pack import get_configured_pack_stack
+        stack = get_configured_pack_stack()
+        stack.precompile(material_mode="ATLAS")
 
         params = {
             "zip_path": str(self.primary_dir),
             "material_mode": "ATLAS",
             "biome_preset": "PLAINS",
             "pack_textures": False,
-            "use_cache": False,
+            "use_cache": True,
         }
 
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[obj])

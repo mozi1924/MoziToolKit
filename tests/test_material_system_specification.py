@@ -318,8 +318,8 @@ class TestMaterialSystemSpecification(unittest.TestCase):
         stack = ResourcePackStack([pack])
         st_dir = stack.get_baked_standalone_dir()
 
-        # 1. Precompile Standalone library
-        res = stack.precompile_standalone(st_dir)
+        # 1. Precompile Standalone and Atlas library
+        res = stack.precompile(material_mode="STANDALONE")
         self.assertTrue(stack.is_standalone_baked())
 
         mapping_file = st_dir / "standalone_mapping.json"

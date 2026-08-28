@@ -144,11 +144,15 @@ class TestImporterModelMatching(unittest.TestCase):
         cube.data.polygons[0].material_index = 0
         cube.data.polygons[1].material_index = 1
 
+        from utils.materials.pack import ResourcePackStack
+        stack = ResourcePackStack([self.tmp_jar])
+        stack.precompile(material_mode="STANDALONE")
+
         # 1. Standalone mode replacement
         res, pctx = run_preset_pipeline(
             'replace_material',
             bpy.context,
-            params={'zip_path': self.tmp_jar, 'material_mode': 'STANDALONE', 'pack_textures': False, 'use_cache': True},
+            params={'pack_stack': stack, 'material_mode': 'STANDALONE', 'pack_textures': False, 'use_cache': True},
             target_objects=[cube]
         )
         self.assertTrue(res.is_success, f"Standalone pipeline failed: {res.message} - {pctx.reports}")
@@ -157,7 +161,7 @@ class TestImporterModelMatching(unittest.TestCase):
         res2, pctx2 = run_preset_pipeline(
             'replace_material',
             bpy.context,
-            params={'zip_path': self.tmp_jar, 'material_mode': 'ATLAS', 'pack_textures': False, 'use_cache': True},
+            params={'pack_stack': stack, 'material_mode': 'ATLAS', 'pack_textures': False, 'use_cache': True},
             target_objects=[cube]
         )
         self.assertTrue(res2.is_success, f"Atlas pipeline failed: {res2.message} - {pctx2.reports}")

@@ -138,19 +138,11 @@ class AtlasReplacementEngine:
                 cache_is_current = False
 
         if not cache_is_current:
-            pipeline_context.report("INFO", f"Generating Atlas texture for pack hash {effective_pack_hash[:12]}...")
-            try:
-                gen = AtlasGenerator(fallback_stack=pack_stack or pack)
-                for frac, msg, _res in gen.build_iter(atlas_dir):
-                    if pipeline_context.is_cancelled:
-                        yield StepResult.cancelled("Material replacement cancelled by user.")
-                        return
-                    atlas_pct = 0.15 + 0.20 * frac
-                    yield ProgressUpdate(atlas_pct, 1.0, f"Atlas: {msg}")
-                clean_obsolete_stack_caches(current_stack_hash=effective_pack_hash)
-            except Exception as e:
-                yield StepResult.failed(f"Failed to generate Atlas texture: {e}")
-                return
+            yield StepResult.failed(
+                "The configured Resource Pack Stack has not been precompiled. "
+                "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+            )
+            return
 
         yield ProgressUpdate(0.35, 1.0, "Reading Atlas mapping and required chunks...")
 
