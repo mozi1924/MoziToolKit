@@ -84,6 +84,17 @@ class MOZI_PT_live_sync(bpy.types.Panel):
             draw_websockets_warning(layout)
             return
 
+        # Check Blender online access permission
+        if hasattr(bpy.app, "online_access") and not bpy.app.online_access:
+            box_online = layout.box()
+            box_online.alert = True
+            box_online.label(text="Network Access Disabled", icon='ERROR')
+            box_online.label(text="Enable in Preferences > System > Network to use Live Sync.")
+            row_pref = box_online.row()
+            op_pref = row_pref.operator("screen.userpref_show", text="Open System Preferences", icon='PREFERENCES')
+            op_pref.section = 'SYSTEM'
+            return
+
         # 1. Hierarchy & Container Context
         box_hierarchy = layout.box()
         is_child = is_yefira_child_section(active_obj) and active_obj != root_obj

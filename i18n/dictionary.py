@@ -322,5 +322,8 @@ translations_dict = {
         ("*", "Request fresh data snapshot and re-verify sync state with server"): "向服务端请求最新体素数据快照并重新校验同步状态",
         ("*", "Clear all entries from the live delta change history log"): "清空实时增量变更历史记录日志",
         ("*", "Edit Mode is not supported during Live Sync. Switched to Object Mode."): "实时同步连接状态下不支持编辑模式，已自动切回物体模式。",
+        ("*", "Network Access Disabled"): "网络访问已被禁用",
+        ("*", "Enable in Preferences > System > Network to use Live Sync."): "请在“偏好设置 > 系统 > 网络”中启用网络连接以使用实时同步。",
+        ("*", "Open System Preferences"): "打开系统偏好设置",
     }
 }

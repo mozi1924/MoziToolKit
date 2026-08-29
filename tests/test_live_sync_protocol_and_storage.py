@@ -787,6 +787,26 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
             self.assertFalse(bpy.context.scene.mozi_sync.is_connected)
             self.assertEqual(bpy.context.scene.mozi_sync.connection_status, "DISCONNECTED")
 
+    def test_sync_client_thread_respects_network_timeout(self):
+        """Verify SyncClientThread accepts custom timeout parameter and defaults sensibly."""
+        client_default = SyncClientThread("ws://dummy", lambda *a: None, lambda *a: None, lambda *a: None, lambda *a: None)
+        self.assertEqual(client_default.timeout, 10.0)
+
+        client_custom = SyncClientThread("ws://dummy", lambda *a: None, lambda *a: None, lambda *a: None, lambda *a: None, timeout=25.0)
+        self.assertEqual(client_custom.timeout, 25.0)
+
+    def test_sync_connect_operator_respects_online_access_disabled(self):
+        """Verify MOZI_OT_sync_connect aborts when bpy.app.online_access is False."""
+        orig_online = getattr(bpy.context.preferences.system, "use_online_access", True)
+        try:
+            bpy.context.preferences.system.use_online_access = False
+            self.assertFalse(bpy.app.online_access)
+            with self.assertRaises(RuntimeError) as ctx:
+                bpy.ops.mozi.sync_connect()
+            self.assertIn("Internet / Network access is disabled in Blender preferences", str(ctx.exception))
+        finally:
+            bpy.context.preferences.system.use_online_access = orig_online
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

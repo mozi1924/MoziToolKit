@@ -796,6 +796,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
     def execute(self, context):
         global _client_thread
+        # Check Blender online access permission (official manual requirement for network extensions)
+        if hasattr(bpy.app, "online_access") and not bpy.app.online_access:
+            self.report(
+                {'ERROR'},
+                "Internet / Network access is disabled in Blender preferences. "
+                "Please go to Edit > Preferences > System > Network and enable 'Allow Online Access' to use Live Sync."
+            )
+            return {'CANCELLED'}
+
         if not has_websockets():
             self.report({'WARNING'}, "Missing 'websockets' library! Check bundled extension wheels.")
             return {'CANCELLED'}
@@ -835,6 +844,22 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         if not props:
             self.report({'ERROR'}, "Container properties not initialized.")
             return {'CANCELLED'}
+
+        # 2. Check Blender system network connection limit
+        sys_pref = getattr(context.preferences, "system", None)
+        conn_limit = getattr(sys_pref, "network_connection_limit", 0) if sys_pref else 0
+        if conn_limit > 0:
+            active_sessions = [
+                s for s in _session_manager.get_all_sessions()
+                if s.target_object_name != target_obj.name and s.client_thread and s.client_thread.is_alive()
+            ]
+            if len(active_sessions) >= conn_limit:
+                self.report(
+                    {'ERROR'},
+                    f"Live Sync connection limit reached ({len(active_sessions)}/{conn_limit}). "
+                    f"Please increase the limit in Edit > Preferences > System > Network, or disconnect unused sessions."
+                )
+                return {'CANCELLED'}
 
         url = props.url if props.url else "ws://localhost:8765"
         session = _session_manager.get_or_create_session(target_obj.name, url=url)
@@ -1100,6 +1125,9 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             if updated:
                 session.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
 
+        timeout_sec = getattr(sys_pref, "network_timeout", 0) if sys_pref else 0
+        effective_timeout = float(timeout_sec) if timeout_sec > 0 else 10.0
+
         session.client_thread = SyncClientThread(
             url=props.url,
             on_status_change=on_status_change,
@@ -1109,6 +1137,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             on_section_manifest=on_section_manifest,
             on_section_snapshot=on_section_snapshot,
             on_handshake_info=on_handshake_info,
+            timeout=effective_timeout,
         )
         _client_thread = session.client_thread
         session.client_thread.start()

@@ -52,6 +52,7 @@ class SyncClientThread(threading.Thread):
         on_handshake_info: Optional[Callable[[int, int, int, str, int], None]] = None,
         auto_reconnect: bool = True,
         max_reconnect_attempts: int = 5,
+        timeout: float = 10.0,
     ) -> None:
         super().__init__(daemon=True)
         self.url = url
@@ -64,6 +65,7 @@ class SyncClientThread(threading.Thread):
         self.on_handshake_info = on_handshake_info
         self.auto_reconnect = auto_reconnect
         self.max_reconnect_attempts = max_reconnect_attempts
+        self.timeout: float = max(1.0, float(timeout)) if timeout else 10.0
         self.reconnect_attempts: int = 0
         self.running = True
         self.is_connected = False
@@ -112,8 +114,10 @@ class SyncClientThread(threading.Thread):
                     self.url,
                     max_size=None,  # No artificial limit on frame size for high-res voxel sync
                     max_queue=2048,
+                    open_timeout=self.timeout,
+                    close_timeout=self.timeout,
                     ping_interval=30,
-                    ping_timeout=30,
+                    ping_timeout=max(10.0, self.timeout),
                 ) as websocket:
                     self.websocket = websocket
                     self.is_connected = True
