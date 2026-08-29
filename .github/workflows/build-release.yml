@@ -1,0 +1,104 @@
+name: Build & Release MoziToolKit
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '*'
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Publish as Pre-Release (Yellow Tag)'
+        type: boolean
+        required: true
+        default: true
+      tag_name:
+        description: 'Custom Tag Name (optional, defaults to Git tag or manifest version)'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Multi-Platform Packages & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl \
+            xz-utils \
+            libgl1 \
+            libegl1 \
+            libxi6 \
+            libxxf86vm1 \
+            libxfixes3 \
+            libxrender1 \
+            libxkbcommon0 \
+            libsm6 \
+            libxext6
+
+      - name: Download & Install Blender 5.2.1
+        run: |
+          echo "⬇️ Downloading Blender 5.2.1..."
+          curl -fL -o blender.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz
+          mkdir -p /opt/blender
+          tar -xJf blender.tar.xz -C /opt/blender --strip-components=1
+          rm -f blender.tar.xz
+          echo "/opt/blender" >> $GITHUB_PATH
+          /opt/blender/blender --version
+
+      - name: Build & Package Extension
+        run: |
+          python3 build.py --blender /opt/blender/blender --clean-wheels --download-deps
+
+      - name: Run Test Suite
+        run: |
+          /opt/blender/blender -b --python tests/run_tests.py -- -f
+
+      - name: Determine Release Tag & Status
+        id: release_meta
+        run: |
+          if [ -n "${{ inputs.tag_name }}" ]; then
+            TAG="${{ inputs.tag_name }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            MANIFEST_VER=$(python3 -c "import tomllib; print(tomllib.load(open('blender_manifest.toml', 'rb'))['version'])")
+            TAG="v${MANIFEST_VER}-build.${{ github.run_number }}"
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IS_PRERELEASE="${{ inputs.prerelease }}"
+          else
+            IS_PRERELEASE="true"
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "Release Tag: $TAG (Pre-release: $IS_PRERELEASE)"
+
+      - name: Upload Artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: MoziToolKit ${{ steps.release_meta.outputs.tag }}
+          draft: false
+          prerelease: ${{ steps.release_meta.outputs.is_prerelease == 'true' }}
+          files: dist/*.zip
+          generate_release_notes: true
