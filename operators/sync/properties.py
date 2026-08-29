@@ -116,15 +116,39 @@ def _on_blend_file_loaded(dummy=None):
             props.validation_info = "Ready to connect"
 
 
+@bpy.app.handlers.persistent
+def _on_depsgraph_update_post(scene, depsgraph):
+    """Detect when a Yefira World empty object is renamed, and automatically update child section and mesh names."""
+    try:
+        for obj in scene.objects:
+            if obj.type == 'EMPTY' and (obj.get("mtk:is_yefira_world") or any(c.get("mtk:section_pos") is not None for c in obj.children)):
+                last_name = obj.get("mtk:last_name")
+                if last_name and last_name != obj.name:
+                    try:
+                        from ...utils.live_sync.mesh_builder import sync_child_section_names
+                    except (ImportError, ValueError):
+                        from utils.live_sync.mesh_builder import sync_child_section_names
+                    sync_child_section_names(obj)
+                    obj["mtk:last_name"] = obj.name
+                elif not last_name:
+                    obj["mtk:last_name"] = obj.name
+    except Exception as e:
+        logger.debug(f"Error in Live Sync rename handler: {e}")
+
+
 def register():
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
     if _on_blend_file_pre_load not in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.append(_on_blend_file_pre_load)
     if _on_blend_file_loaded not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_blend_file_loaded)
+    if _on_depsgraph_update_post not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
 
 
 def unregister():
+    if _on_depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post)
     if _on_blend_file_pre_load in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(_on_blend_file_pre_load)
     if _on_blend_file_loaded in bpy.app.handlers.load_post:

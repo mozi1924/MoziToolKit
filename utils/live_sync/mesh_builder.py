@@ -189,6 +189,7 @@ def get_or_create_world_root(
     root_obj.empty_display_size = 1.0
     root_obj["mtk:is_yefira_world"] = True
     root_obj["mtk:sync_manifest"] = "{}"
+    root_obj["mtk:last_name"] = root_obj.name
     root_obj.location = (0.0, 0.0, 0.0)
 
     col = getattr(ctx, "collection", None) if ctx else None
@@ -225,6 +226,7 @@ def sync_child_section_names(root_obj: bpy.types.Object) -> None:
     if not root_obj:
         return
     root_prefix = root_obj.name
+    root_obj["mtk:last_name"] = root_prefix
     for child in list(root_obj.children):
         pos = child.get("mtk:section_pos")
         if pos is not None and len(pos) == 3:

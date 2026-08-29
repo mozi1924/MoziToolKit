@@ -1020,6 +1020,37 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertIsNone(bpy.data.objects.get("Custom_World_Section_0_0_0"))
         self.assertIsNone(bpy.data.objects.get("Custom_World_Section_1_0_0"))
 
+    def test_immediate_depsgraph_rename_propagation(self):
+        """Verify that renaming an empty container immediately updates all child sections and meshes via depsgraph handler."""
+        res_op = bpy.ops.mozi.add_yefira_world(name="Base_World")
+        self.assertEqual(res_op, {'FINISHED'})
+
+        root = bpy.data.objects.get("Base_World")
+        self.assertIsNotNone(root)
+
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:stone")
+        storage.set_block(16, 0, 0, "minecraft:oak_planks")
+        sync_world_mesh(bpy.context, storage, target_obj=root, force_full_rebuild=True)
+
+        sec0 = bpy.data.objects.get("Base_World_Section_0_0_0")
+        self.assertIsNotNone(sec0)
+        self.assertEqual(sec0.data.name, "Mesh_Base_World_Section_0_0_0")
+
+        # Rename root object directly in Blender (as user does in Outliner or Properties panel)
+        root.name = "Fortress"
+        # Trigger depsgraph update
+        bpy.context.view_layer.update()
+
+        # Check that children and their meshes were immediately renamed
+        new_sec0 = bpy.data.objects.get("Fortress_Section_0_0_0")
+        new_sec1 = bpy.data.objects.get("Fortress_Section_1_0_0")
+        self.assertIsNotNone(new_sec0)
+        self.assertIsNotNone(new_sec1)
+        self.assertEqual(new_sec0.data.name, "Mesh_Fortress_Section_0_0_0")
+        self.assertEqual(new_sec1.data.name, "Mesh_Fortress_Section_1_0_0")
+        self.assertIsNone(bpy.data.objects.get("Base_World_Section_0_0_0"))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
