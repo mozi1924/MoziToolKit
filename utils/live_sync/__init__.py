@@ -64,6 +64,10 @@ from .mesh_builder import (
     preload_sync_world_data,
     sync_world_mesh,
     update_blocks_in_mesh,
+    resolve_world_root_object,
+    get_or_create_world_root,
+    find_root_section_children,
+    sync_child_section_names,
 )
 from .storage import VoxelStorage, block_key, voxel_storage
 

@@ -88,21 +88,31 @@ _PUMP_INTERVAL_IDLE: float = 0.035    # 35ms (~28 Hz idle throttle to save CPU)
 
 _SETTLE_TIMEOUT_SECONDS: float = 3.0
 def get_current_world_object(context: Optional[bpy.types.Context] = None) -> Optional[bpy.types.Object]:
-    """Retrieve the currently active or existing Yefira World object."""
+    """Retrieve the currently active or existing Yefira World container object."""
+    try:
+        from ...utils.live_sync.mesh_builder import resolve_world_root_object
+    except (ImportError, ValueError):
+        from utils.live_sync.mesh_builder import resolve_world_root_object
+
     ctx = context or (bpy.context if hasattr(bpy, "context") else None)
     active_obj = getattr(ctx, "active_object", None) if ctx else None
     if active_obj:
-        if active_obj.get("mtk:is_yefira_world") or active_obj.name == DEFAULT_WORLD_OBJECT_NAME or active_obj.name.startswith("Yefira_World"):
-            return active_obj
-        if active_obj.parent and (active_obj.parent.get("mtk:is_yefira_world") or active_obj.parent.name.startswith("Yefira_World")):
-            return active_obj.parent
+        root = resolve_world_root_object(active_obj)
+        if root:
+            return root
+
+    if ctx and hasattr(ctx, "selected_objects"):
+        for sel in ctx.selected_objects:
+            root = resolve_world_root_object(sel)
+            if root:
+                return root
 
     world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
     if world_obj is not None:
-        return world_obj
+        return resolve_world_root_object(world_obj) or world_obj
 
     for obj in bpy.data.objects:
-        if obj.get("mtk:is_yefira_world"):
+        if obj.get("mtk:is_yefira_world") and (obj.type == 'EMPTY' or obj.parent is None):
             return obj
     return None
 
