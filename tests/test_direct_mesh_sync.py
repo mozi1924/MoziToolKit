@@ -1122,6 +1122,31 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertEqual(res5.face_count, 0)
         self.assertIsNone(bpy.data.objects.get("Yefira_World_Section_0_0_0"))
 
+    def test_edit_mode_auto_revert_guard_when_connected(self):
+        """Verify that attempting to enter Edit Mode while Live Sync is connected automatically reverts to Object Mode."""
+        mesh = bpy.data.meshes.new("TestMesh")
+        obj = bpy.data.objects.new("TestObject", mesh)
+        bpy.context.collection.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+
+        props = bpy.context.scene.mozi_sync
+        props.is_connected = True
+
+        # Enter Edit Mode
+        bpy.ops.object.mode_set(mode='EDIT')
+        # Trigger depsgraph update
+        bpy.context.view_layer.update()
+        from operators.sync.properties import _deferred_enforce_object_mode
+        _deferred_enforce_object_mode()
+
+        # The depsgraph handler should have immediately reverted it to OBJECT mode
+        self.assertEqual(bpy.context.mode, 'OBJECT')
+        self.assertEqual(obj.mode, 'OBJECT')
+        self.assertTrue("Edit Mode is not supported" in props.validation_info or "不支持编辑模式" in props.validation_info)
+
+        props.is_connected = False
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
