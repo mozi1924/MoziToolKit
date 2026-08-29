@@ -8,8 +8,12 @@ from ..context import PipelineContext
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
-from ...utils.mesh import set_select_mode
-from ...utils.pixel_split import SplitConfig, process_adaptive_pixel_split
+try:
+    from ...utils.mesh import set_select_mode
+    from ...utils.pixel_split import SplitConfig, process_adaptive_pixel_split
+except (ImportError, ValueError):
+    from utils.mesh import set_select_mode
+    from utils.pixel_split import SplitConfig, process_adaptive_pixel_split
 
 
 class AdaptivePixelSplitStep(PipelineStep):

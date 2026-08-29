@@ -206,6 +206,19 @@ def cached_face_texture_info(
         except (IndexError, TypeError, ValueError):
             chunk_id, texture_id = -1, -1
         location = state["locations"].get((chunk_id, texture_id))
+        if not location and state.get("mapping"):
+            textures_map = state["mapping"].get("textures", {})
+            if source_key and source_key in textures_map:
+                location = textures_map[source_key]
+            elif provenance:
+                for cand in provenance[1]:
+                    if cand in textures_map:
+                        location = textures_map[cand]
+                        break
+                    cand_full = f"{provenance[0]}:{cand}"
+                    if cand_full in textures_map:
+                        location = textures_map[cand_full]
+                        break
         if location:
             if provenance:
                 return *provenance, location

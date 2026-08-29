@@ -296,6 +296,15 @@ def extract_face_texture_info(
                     namespace, texture_name = split_texture_key((loc or anim).get("texture_key", anim["name"]))
                     return (*provenance, loc or anim) if provenance else (namespace, [texture_name], loc or anim)
 
+            if provenance:
+                textures_map = mapping.get("textures", {})
+                for cand in provenance[1]:
+                    if cand in textures_map:
+                        return *provenance, textures_map[cand]
+                    cand_full = f"{provenance[0]}:{cand}"
+                    if cand_full in textures_map:
+                        return *provenance, textures_map[cand_full]
+
     if mat_mode == "MINEWAYS_ATLAS":
         uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
         if uv_layer and poly_idx < len(mesh.polygons):
