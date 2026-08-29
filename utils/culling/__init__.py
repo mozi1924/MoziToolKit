@@ -27,6 +27,15 @@ from .engine import (
     get_shared_face_culler,
     get_visible_face_directions,
 )
+from .primitives import (
+    MC_DIR_OFFSETS,
+    DIR_TO_INDEX,
+    INDEX_TO_DIR,
+    CUBE_FACE_MC_VERTICES,
+    CUBE_FACE_CANONICAL_UVS,
+    mc_local_to_blender,
+    get_cube_face_geometry,
+)
 
 __all__ = [
     "CullCategory",
@@ -45,5 +54,13 @@ __all__ = [
     "FaceCuller",
     "get_shared_face_culler",
     "get_visible_face_directions",
+    "MC_DIR_OFFSETS",
+    "DIR_TO_INDEX",
+    "INDEX_TO_DIR",
+    "CUBE_FACE_MC_VERTICES",
+    "CUBE_FACE_CANONICAL_UVS",
+    "mc_local_to_blender",
+    "get_cube_face_geometry",
 ]
+
 
