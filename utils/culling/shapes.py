@@ -123,3 +123,51 @@ def extract_face_occlusion_from_elements(
     # Filter out empty rectangles
     valid_rects = tuple(r for r in rects if not r.is_empty)
     return valid_rects
+
+
+def extract_quad_face_occlusion_rect(
+    vertices: Sequence[Tuple[float, float, float]],
+    direction: str,
+) -> Optional[FaceOcclusionRect]:
+    """
+    Extract 2D FaceOcclusionRect on the outer plane for a single quad face's vertices in [0..1] space.
+    If the quad lies on the boundary plane corresponding to direction, returns the 2D rect;
+    otherwise returns None.
+    """
+    if not vertices or len(vertices) < 3:
+        return None
+    dir_low = direction.lower()
+    xs = [v[0] for v in vertices]
+    ys = [v[1] for v in vertices]
+    zs = [v[2] for v in vertices]
+
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    min_z, max_z = min(zs), max(zs)
+
+    if dir_low == "east":
+        if abs(max_x - 1.0) <= _EPSILON and abs(min_x - 1.0) <= _EPSILON:
+            r = FaceOcclusionRect(min_z, min_y, max_z, max_y)
+            return r if not r.is_empty else None
+    elif dir_low == "west":
+        if abs(min_x - 0.0) <= _EPSILON and abs(max_x - 0.0) <= _EPSILON:
+            r = FaceOcclusionRect(min_z, min_y, max_z, max_y)
+            return r if not r.is_empty else None
+    elif dir_low in ("up", "top"):
+        if abs(max_y - 1.0) <= _EPSILON and abs(min_y - 1.0) <= _EPSILON:
+            r = FaceOcclusionRect(min_x, min_z, max_x, max_z)
+            return r if not r.is_empty else None
+    elif dir_low in ("down", "bottom"):
+        if abs(min_y - 0.0) <= _EPSILON and abs(max_y - 0.0) <= _EPSILON:
+            r = FaceOcclusionRect(min_x, min_z, max_x, max_z)
+            return r if not r.is_empty else None
+    elif dir_low == "south":
+        if abs(max_z - 1.0) <= _EPSILON and abs(min_z - 1.0) <= _EPSILON:
+            r = FaceOcclusionRect(min_x, min_y, max_x, max_y)
+            return r if not r.is_empty else None
+    elif dir_low == "north":
+        if abs(min_z - 0.0) <= _EPSILON and abs(max_z - 0.0) <= _EPSILON:
+            r = FaceOcclusionRect(min_x, min_y, max_x, max_y)
+            return r if not r.is_empty else None
+    return None
+

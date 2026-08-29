@@ -99,7 +99,7 @@ class BlockCullMeta:
         'state_str', 'block_name', 'category', 'is_full_cube',
         'is_opaque', 'is_air', 'is_fluid', 'cull_group',
         'face_shapes', 'full_face_mask', 'empty_face_mask',
-        'props', 'is_waterlogged'
+        'props', 'is_waterlogged', '_has_baked_model'
     )
 
     def __init__(
@@ -117,6 +117,7 @@ class BlockCullMeta:
         empty_face_mask: int,
         props: Optional[dict[str, str]] = None,
         is_waterlogged: bool = False,
+        has_baked_model: bool = False,
     ):
         self.state_str = state_str
         self.block_name = block_name
@@ -131,6 +132,8 @@ class BlockCullMeta:
         self.empty_face_mask = empty_face_mask
         self.props = props or {}
         self.is_waterlogged = is_waterlogged
+        self._has_baked_model = has_baked_model
+
 
     def has_full_face(self, direction: str) -> bool:
         mask = DIR_TO_MASK.get(direction, 0)

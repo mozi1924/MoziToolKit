@@ -32,7 +32,9 @@ from ..culling import (
     MC_DIR_OFFSETS,
     DIR_TO_INDEX,
     mc_local_to_blender,
+    extract_quad_face_occlusion_rect,
 )
+
 from ..mc_baker import StateBaker
 from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
 from .fluid_mesher import generate_fluid_mesh_faces
@@ -223,14 +225,18 @@ def generate_single_block_faces(
                     dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
                     n_pos = (x + dx, y + dy, z + dz)
                     n_meta = _get_neighbor_meta(n_pos)
+                    quad_rect = extract_quad_face_occlusion_rect(bf.vertices, cull_dir) if not meta.is_cube else None
+                    quad_shape = (quad_rect,) if quad_rect else None
                     if not face_culler.should_render_face(
                         state_meta=meta.cull_meta,
                         neighbor_meta=n_meta.cull_meta if n_meta else None,
                         direction=cull_dir,
+                        quad_face_shape=quad_shape,
                         block_pos=(x, y, z),
                         neighbor_pos=n_pos,
                     ):
                         continue
+
 
                 f_res = meta.get_face_res(bf, f_dir)
                 bl_coords = [_mc_local_to_blender(lx, ly, lz) for lx, ly, lz in bf.vertices]

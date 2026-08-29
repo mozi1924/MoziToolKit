@@ -171,7 +171,12 @@ class FaceCuller:
         """Retrieve or compute BlockCullMeta for a given block state."""
         meta = self._meta_cache.get(state_str)
         if meta is not None:
-            return meta
+            # If we now have an authoritative baked_model but the cached meta was built without one, refresh it
+            if baked_model is not None and getattr(meta, "_has_baked_model", False) is False:
+                pass
+            else:
+                return meta
+
 
         name, props = _parse_block_name_and_props(state_str)
         name_low = name.lower()
@@ -333,7 +338,9 @@ class FaceCuller:
             empty_face_mask=empty_face_mask,
             props=props,
             is_waterlogged=is_waterlogged,
+            has_baked_model=bool(baked_model is not None),
         )
+
 
         if len(self._meta_cache) < 8192:
             self._meta_cache[state_str] = meta

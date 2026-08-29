@@ -20,7 +20,9 @@ from .shapes import (
     subtract_rect,
     is_face_completely_occluded,
     extract_face_occlusion_from_elements,
+    extract_quad_face_occlusion_rect,
 )
+
 from .rules import should_skip_rendering
 from .engine import (
     FaceCuller,
@@ -50,7 +52,9 @@ __all__ = [
     "subtract_rect",
     "is_face_completely_occluded",
     "extract_face_occlusion_from_elements",
+    "extract_quad_face_occlusion_rect",
     "should_skip_rendering",
+
     "FaceCuller",
     "get_shared_face_culler",
     "get_visible_face_directions",
