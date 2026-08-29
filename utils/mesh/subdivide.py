@@ -40,6 +40,148 @@ def _get_edge_between(bm, v_a: bmesh.types.BMVert, v_b: bmesh.types.BMVert) -> O
     return None
 
 
+def _extract_all_face_layers(bm: bmesh.types.BMesh, face: bmesh.types.BMFace, is_subdivided: bool = False) -> dict:
+    """Extract all custom layer values from a BMFace across all face layer collections.
+
+    When is_subdivided is True (cols > 1 or rows > 1), affine UV tiling and rotation metadata
+    (mtk_uv_tiling_transform, mtk_uv_tiling_scale, mtk_uv_tiling_location, mtk_uv_rotation)
+    are sanitized/reset to identity defaults (Scale=(1,1), Loc=(0,0), Rot=0.0). This ensures
+    that all subdivided sub-faces together seamlessly reconstruct a single complete texture
+    when materials are replaced or UVs are re-baked, preventing double-rotation or duplicate scaling.
+    """
+    layer_values = {}
+    is_fluid = False
+    fluid_layer = bm.faces.layers.bool.get("mtk_is_fluid")
+    if fluid_layer:
+        is_fluid = bool(face[fluid_layer])
+
+    for attr_name in dir(bm.faces.layers):
+        if attr_name.startswith("_"):
+            continue
+        try:
+            layer_col = getattr(bm.faces.layers, attr_name)
+            if isinstance(layer_col, bmesh.types.BMLayerCollection):
+                for layer in layer_col:
+                    val = face[layer]
+                    name = layer.name.lower()
+                    if is_subdivided:
+                        if name in ("mtk_uv_tiling_transform", "uv_tiling_transform"):
+                            val = Vector((1.0, 1.0, 0.0, 0.0)) if hasattr(val, "__len__") else (1.0, 1.0, 0.0, 0.0)
+                        elif name in ("mtk_uv_tiling_scale", "uv_tiling_scale"):
+                            val = Vector((1.0, 1.0)) if hasattr(val, "__len__") else (1.0, 1.0)
+                        elif name in ("mtk_uv_tiling_location", "uv_tiling_location"):
+                            val = Vector((0.0, 0.0)) if hasattr(val, "__len__") else (0.0, 0.0)
+                        elif name in ("mtk_uv_rotation", "uv_rotation") and not is_fluid:
+                            val = 0.0
+                        elif hasattr(val, "copy"):
+                            val = val.copy()
+                    else:
+                        if hasattr(val, "copy"):
+                            val = val.copy()
+                    layer_values[layer] = val
+        except Exception:
+            pass
+    return layer_values
+
+
+def _apply_all_face_layers(sub_face: bmesh.types.BMFace, layer_values: dict) -> None:
+    """Apply all extracted custom layer values to a newly created BMFace."""
+    for layer, val in layer_values.items():
+        try:
+            sub_face[layer] = val.copy() if hasattr(val, "copy") else val
+        except Exception:
+            pass
+
+
+def _extract_all_vert_layers(bm: bmesh.types.BMesh, v0, v1, v2, v3):
+    """Extract interpolatable and discrete vertex layers across 4 quad corners."""
+    interp_layers = []
+    discrete_layers = []
+    for attr_name in dir(bm.verts.layers):
+        if attr_name.startswith("_") or attr_name == "deform":
+            continue
+        try:
+            layer_col = getattr(bm.verts.layers, attr_name)
+            if isinstance(layer_col, bmesh.types.BMLayerCollection):
+                for layer in layer_col:
+                    if attr_name in ("float", "float_vector", "float_color", "color"):
+                        val0 = v0[layer]
+                        val1 = v1[layer]
+                        val2 = v2[layer]
+                        val3 = v3[layer]
+                        if hasattr(val0, "__len__") and not isinstance(val0, (str, bytes)):
+                            val0, val1, val2, val3 = Vector(val0), Vector(val1), Vector(val2), Vector(val3)
+                        else:
+                            val0, val1, val2, val3 = float(val0), float(val1), float(val2), float(val3)
+                        interp_layers.append((layer, val0, val1, val2, val3))
+                    else:
+                        discrete_layers.append(layer)
+        except Exception:
+            pass
+    return interp_layers, discrete_layers
+
+
+def _extract_all_loop_layers(bm: bmesh.types.BMesh, loops):
+    """Extract loop layers (excluding UVs) for bilinear interpolation or discrete nearest assignment."""
+    interp_layers = {}
+    discrete_layers = {}
+    for attr_name in dir(bm.loops.layers):
+        if attr_name.startswith("_") or attr_name == "uv":
+            continue
+        try:
+            layer_col = getattr(bm.loops.layers, attr_name)
+            if isinstance(layer_col, bmesh.types.BMLayerCollection):
+                for layer in layer_col:
+                    vals = [l[layer] for l in loops]
+                    if attr_name in ("color", "float_color", "float_vector", "float"):
+                        if hasattr(vals[0], "__len__") and not isinstance(vals[0], (str, bytes)):
+                            vals = [Vector(v) for v in vals]
+                        else:
+                            vals = [float(v) for v in vals]
+                        interp_layers[layer] = vals
+                    else:
+                        discrete_layers[layer] = vals
+        except Exception:
+            pass
+    return interp_layers, discrete_layers
+
+
+def _extract_edge_attrs(bm: bmesh.types.BMesh, edge: Optional[bmesh.types.BMEdge]) -> dict:
+    """Safely extract sharpness, seam, and all custom layer attributes from a BMEdge."""
+    if not edge:
+        return {"smooth": True, "seam": False, "layers": {}}
+    edge_layer_values = {}
+    for attr_name in dir(bm.edges.layers):
+        if attr_name.startswith("_"):
+            continue
+        try:
+            layer_col = getattr(bm.edges.layers, attr_name)
+            if isinstance(layer_col, bmesh.types.BMLayerCollection):
+                for layer in layer_col:
+                    val = edge[layer]
+                    if hasattr(val, "copy"):
+                        val = val.copy()
+                    edge_layer_values[layer] = val
+        except Exception:
+            pass
+    return {
+        "smooth": edge.smooth,
+        "seam": edge.seam,
+        "layers": edge_layer_values,
+    }
+
+
+def _apply_edge_attrs(edge: bmesh.types.BMEdge, attrs: dict) -> None:
+    """Apply extracted edge attributes to a newly created or linked BMEdge."""
+    edge.smooth = attrs["smooth"]
+    edge.seam = attrs["seam"]
+    for layer, val in attrs["layers"].items():
+        try:
+            edge[layer] = val.copy() if hasattr(val, "copy") else val
+        except Exception:
+            pass
+
+
 def subdivide_quad_face(
     bm: bmesh.types.BMesh,
     face: bmesh.types.BMFace,
@@ -50,7 +192,7 @@ def subdivide_quad_face(
 ) -> List[bmesh.types.BMFace]:
     """Subdivide a single Quad face into a grid of (cols x rows) quad sub-faces.
 
-    Migrates vertex deform weights, face/vert/edge attributes, UV seams, and sharpness.
+    Migrates vertex deform weights, face/vert/edge/loop attributes, UV seams, and sharpness.
     Cleans up the original base face and any orphan edges left behind.
 
     :param bm: BMesh object
@@ -84,11 +226,10 @@ def subdivide_quad_face(
                         loop[uv_lay].uv = uv_val
         return [face]
 
-    # Active UV loop layers & Color layers
+    # Active UV loop layers
     uv_layers = [uv_layer] if uv_layer else list(bm.loops.layers.uv)
     if not uv_layers:
         uv_layers = [bm.loops.layers.uv.verify()]
-    color_layers = list(bm.loops.layers.color) if hasattr(bm.loops.layers, "color") else []
 
     loops = face.loops
     v0, v1, v2, v3 = [l.vert for l in loops]
@@ -116,24 +257,14 @@ def subdivide_quad_face(
                 Vector((0.0, 1.0)),
             )
 
-    # Extract Loop Colors for all Color layers
-    loop_col_maps = {}
-    for col_l in color_layers:
-        loop_col_maps[col_l] = [Vector(l[col_l]) for l in loops]
+    # Extract non-UV loop custom layers (color, float_color, etc.)
+    loop_interp_layers, loop_discrete_layers = _extract_all_loop_layers(bm, loops)
 
     mat_idx = face.material_index
     smooth = face.smooth
 
-    # 0. Extract face custom attributes (Int, Float, Vector, String layers)
-    face_float_layers = list(bm.faces.layers.float)
-    face_vector_layers = list(bm.faces.layers.float_vector)
-    face_int_layers = list(bm.faces.layers.int)
-    face_string_layers = list(bm.faces.layers.string)
-
-    face_floats = {l: face[l] for l in face_float_layers}
-    face_vectors = {l: Vector(face[l]) for l in face_vector_layers}
-    face_ints = {l: face[l] for l in face_int_layers}
-    face_strings = {l: face[l] for l in face_string_layers}
+    # 0. Extract all face custom attributes (all layer collections: int, float, string, bool, vector, color, etc.)
+    face_layer_values = _extract_all_face_layers(bm, face, is_subdivided=(cols > 1 or rows > 1))
 
     # 1. Extract 4 outer edge attributes before face deletion
     e01 = _get_edge_between(bm, v0, v1)
@@ -141,30 +272,15 @@ def subdivide_quad_face(
     e23 = _get_edge_between(bm, v2, v3)
     e30 = _get_edge_between(bm, v3, v0)
 
-    edge_float_layers = list(bm.edges.layers.float)
-    edge_int_layers = list(bm.edges.layers.int)
-
-    def extract_edge_attrs(edge):
-        if not edge:
-            return {"smooth": True, "seam": False, "float": {}, "int": {}}
-        return {
-            "smooth": edge.smooth,
-            "seam": edge.seam,
-            "float": {l: float(edge[l]) for l in edge_float_layers},
-            "int": {l: int(edge[l]) for l in edge_int_layers},
-        }
-
     edge_attrs = {
-        "bot": extract_edge_attrs(e01),
-        "right": extract_edge_attrs(e12),
-        "top": extract_edge_attrs(e23),
-        "left": extract_edge_attrs(e30),
+        "bot": _extract_edge_attrs(bm, e01),
+        "right": _extract_edge_attrs(bm, e12),
+        "top": _extract_edge_attrs(bm, e23),
+        "left": _extract_edge_attrs(bm, e30),
     }
 
-    # 2. Extract vertex deform weights and float/int custom attributes
-    dlayer = bm.verts.layers.deform.verify() if len(bm.verts.layers.deform) > 0 else None
-    vert_float_layers = list(bm.verts.layers.float)
-    vert_int_layers = list(bm.verts.layers.int)
+    # 2. Extract vertex deform weights and all custom vertex layers
+    dlayer = bm.verts.layers.deform.active or (bm.verts.layers.deform[0] if len(bm.verts.layers.deform) > 0 else None)
 
     w0_dict = _get_vertex_weights(v0, dlayer)
     w1_dict = _get_vertex_weights(v1, dlayer)
@@ -172,12 +288,7 @@ def subdivide_quad_face(
     w3_dict = _get_vertex_weights(v3, dlayer)
     group_ids = set(w0_dict.keys()) | set(w1_dict.keys()) | set(w2_dict.keys()) | set(w3_dict.keys())
 
-    v_floats_0 = [float(v0[l]) for l in vert_float_layers]
-    v_floats_1 = [float(v1[l]) for l in vert_float_layers]
-    v_floats_2 = [float(v2[l]) for l in vert_float_layers]
-    v_floats_3 = [float(v3[l]) for l in vert_float_layers]
-
-    v_ints_0 = [int(v0[l]) for l in vert_int_layers]
+    vert_interp_layers, vert_discrete_layers = _extract_all_vert_layers(bm, v0, v1, v2, v3)
 
     # 2D Grid of vertices: shape (rows + 1) x (cols + 1)
     grid_verts = [[None for _ in range(cols + 1)] for _ in range(rows + 1)]
@@ -212,14 +323,21 @@ def subdivide_quad_face(
                     if w_interp > 1e-5:
                         dvert[g_int] = w_interp
 
-            # Interpolate vertex float custom layers (creases, etc.)
-            for idx, fl_layer in enumerate(vert_float_layers):
-                val_interp = _interpolate_bilinear(v_floats_0[idx], v_floats_1[idx], v_floats_2[idx], v_floats_3[idx], u_factor, v_factor)
-                new_v[fl_layer] = val_interp
+            # Interpolate continuous vertex layers (float, float_vector, color, float_color)
+            for layer, val0, val1, val2, val3 in vert_interp_layers:
+                try:
+                    new_v[layer] = _interpolate_bilinear(val0, val1, val2, val3, u_factor, v_factor)
+                except Exception:
+                    pass
 
-            # Transfer vertex int custom layers
-            for idx, int_layer in enumerate(vert_int_layers):
-                new_v[int_layer] = v_ints_0[idx]
+            # Transfer discrete vertex layers (int, bool, string) from nearest corner
+            nearest_vert = v0 if (u_factor < 0.5 and v_factor < 0.5) else (v1 if (u_factor >= 0.5 and v_factor < 0.5) else (v2 if (u_factor >= 0.5 and v_factor >= 0.5) else v3))
+            for layer in vert_discrete_layers:
+                try:
+                    val = nearest_vert[layer]
+                    new_v[layer] = val.copy() if hasattr(val, "copy") else val
+                except Exception:
+                    pass
 
             grid_verts[r][c] = new_v
 
@@ -245,15 +363,8 @@ def subdivide_quad_face(
                 sub_face.material_index = mat_idx
                 sub_face.smooth = smooth
 
-                # Transfer face custom attributes (atlas_chunk_id, atlas_texture_id, provenance, etc.)
-                for l, val in face_floats.items():
-                    sub_face[l] = val
-                for l, val in face_vectors.items():
-                    sub_face[l] = val
-                for l, val in face_ints.items():
-                    sub_face[l] = val
-                for l, val in face_strings.items():
-                    sub_face[l] = val
+                # Transfer all face custom attributes
+                _apply_all_face_layers(sub_face, face_layer_values)
 
                 # Assign UV coordinates
                 if normalize_uvs:
@@ -272,17 +383,29 @@ def subdivide_quad_face(
                         for loop, uv_val in zip(sub_face.loops, cell_uvs):
                             loop[uv_l].uv = uv_val
 
-                # Assign interpolated Colors for all Color layers
-                for col_l, corners in loop_col_maps.items():
+                # Assign interpolated loop layers (color, float_color, float_vector, etc.)
+                for layer, corners in loop_interp_layers.items():
                     c0, c1, c2, c3 = corners
-                    cell_cols = (
+                    cell_vals = (
                         _interpolate_bilinear(c0, c1, c2, c3, u_left, v_bot),
                         _interpolate_bilinear(c0, c1, c2, c3, u_right, v_bot),
                         _interpolate_bilinear(c0, c1, c2, c3, u_right, v_top),
                         _interpolate_bilinear(c0, c1, c2, c3, u_left, v_top),
                     )
-                    for loop, col_val in zip(sub_face.loops, cell_cols):
-                        loop[col_l] = col_val
+                    for loop, val in zip(sub_face.loops, cell_vals):
+                        try:
+                            loop[layer] = val
+                        except Exception:
+                            pass
+
+                # Assign discrete loop layers (int, bool, string)
+                for layer, corners in loop_discrete_layers.items():
+                    for loop_idx, loop in enumerate(sub_face.loops):
+                        try:
+                            val = corners[loop_idx]
+                            loop[layer] = val.copy() if hasattr(val, "copy") else val
+                        except Exception:
+                            pass
 
                 new_faces.append(sub_face)
             except ValueError:
@@ -295,49 +418,25 @@ def subdivide_quad_face(
             if r == 0:
                 e_bot = _get_edge_between(bm, grid_verts[0][c], grid_verts[0][c + 1])
                 if e_bot:
-                    attrs = edge_attrs["bot"]
-                    e_bot.smooth = attrs["smooth"]
-                    e_bot.seam = attrs["seam"]
-                    for l, val in attrs["float"].items():
-                        e_bot[l] = val
-                    for l, val in attrs["int"].items():
-                        e_bot[l] = val
+                    _apply_edge_attrs(e_bot, edge_attrs["bot"])
 
             # Top boundary sub-edge (r=rows-1)
             if r == rows - 1:
                 e_top = _get_edge_between(bm, grid_verts[rows][c], grid_verts[rows][c + 1])
                 if e_top:
-                    attrs = edge_attrs["top"]
-                    e_top.smooth = attrs["smooth"]
-                    e_top.seam = attrs["seam"]
-                    for l, val in attrs["float"].items():
-                        e_top[l] = val
-                    for l, val in attrs["int"].items():
-                        e_top[l] = val
+                    _apply_edge_attrs(e_top, edge_attrs["top"])
 
             # Left boundary sub-edge (c=0)
             if c == 0:
                 e_left = _get_edge_between(bm, grid_verts[r][0], grid_verts[r + 1][0])
                 if e_left:
-                    attrs = edge_attrs["left"]
-                    e_left.smooth = attrs["smooth"]
-                    e_left.seam = attrs["seam"]
-                    for l, val in attrs["float"].items():
-                        e_left[l] = val
-                    for l, val in attrs["int"].items():
-                        e_left[l] = val
+                    _apply_edge_attrs(e_left, edge_attrs["left"])
 
             # Right boundary sub-edge (c=cols-1)
             if c == cols - 1:
                 e_right = _get_edge_between(bm, grid_verts[r][cols], grid_verts[r + 1][cols])
                 if e_right:
-                    attrs = edge_attrs["right"]
-                    e_right.smooth = attrs["smooth"]
-                    e_right.seam = attrs["seam"]
-                    for l, val in attrs["float"].items():
-                        e_right[l] = val
-                    for l, val in attrs["int"].items():
-                        e_right[l] = val
+                    _apply_edge_attrs(e_right, edge_attrs["right"])
 
     # 5. Remove original base face and clean up orphan outer edges
     orig_edges = list(face.edges)

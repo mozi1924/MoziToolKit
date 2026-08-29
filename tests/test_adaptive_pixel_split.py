@@ -424,7 +424,188 @@ class TestAdaptivePixelSplit(unittest.TestCase):
         self.assertEqual(bpy.context.view_layer.objects.active, cube2)
         self.assertEqual(bpy.context.mode, "OBJECT")
 
+    def test_attribute_and_weight_full_preservation(self):
+        """Verify that all face attributes (bool, int, float, color, string, vector) and vertex deform weights are preserved."""
+        bpy.ops.mesh.primitive_plane_add(size=2.0)
+        plane = bpy.context.active_object
+
+        bm = bmesh.new()
+        bm.from_mesh(plane.data)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces[0].loops[0][uv_layer].uv = Vector((0.0, 0.0))
+        bm.faces[0].loops[1][uv_layer].uv = Vector((1.0, 0.0))
+        bm.faces[0].loops[2][uv_layer].uv = Vector((1.0, 1.0))
+        bm.faces[0].loops[3][uv_layer].uv = Vector((0.0, 1.0))
+        bm.to_mesh(plane.data)
+        bm.free()
+
+        # Add various attribute types on FACE domain
+        plane.data.attributes.new(name="attr_int", type="INT", domain="FACE")
+        plane.data.attributes["attr_int"].data[0].value = 12345
+        plane.data.attributes.new(name="attr_str", type="STRING", domain="FACE")
+        plane.data.attributes["attr_str"].data[0].value = b"custom_texture_key"
+        plane.data.attributes.new(name="attr_color", type="FLOAT_COLOR", domain="FACE")
+        plane.data.attributes["attr_color"].data[0].color = (0.25, 0.5, 0.75, 1.0)
+        plane.data.attributes.new(name="attr_bool", type="BOOLEAN", domain="FACE")
+        plane.data.attributes["attr_bool"].data[0].value = True
+        plane.data.attributes.new(name="attr_float", type="FLOAT", domain="FACE")
+        plane.data.attributes["attr_float"].data[0].value = 90.0
+        plane.data.attributes.new(name="attr_vec", type="FLOAT_VECTOR", domain="FACE")
+        plane.data.attributes["attr_vec"].data[0].vector = (1.0, 2.0, 3.0)
+
+        # Add Vertex Groups
+        vg_a = plane.vertex_groups.new(name="BoneA")
+        vg_a.add([0, 3], 1.0, "REPLACE")
+        vg_a.add([1, 2], 0.0, "REPLACE")
+
+        vg_b = plane.vertex_groups.new(name="BoneB")
+        vg_b.add([0, 1], 1.0, "REPLACE")
+        vg_b.add([2, 3], 0.0, "REPLACE")
+
+        # Split 1 face into 2x2 = 4 sub-faces
+        config = SplitConfig(auto_resolution=False, manual_resolution=(2, 2), selection_scope="ALL", pixels_per_face=1)
+        stats = process_adaptive_pixel_split(bpy.context, config, target_obj=plane)
+
+        self.assertEqual(stats["initial_faces"], 1)
+        self.assertEqual(stats["final_faces"], 4)
+
+        # Check Face attributes on all 4 subdivided faces
+        self.assertEqual(len(plane.data.attributes["attr_int"].data), 4)
+        for item in plane.data.attributes["attr_int"].data:
+            self.assertEqual(item.value, 12345)
+
+        for item in plane.data.attributes["attr_str"].data:
+            self.assertEqual(item.value, b"custom_texture_key")
+
+        for item in plane.data.attributes["attr_color"].data:
+            self.assertAlmostEqual(item.color[0], 0.25, places=4)
+            self.assertAlmostEqual(item.color[1], 0.5, places=4)
+            self.assertAlmostEqual(item.color[2], 0.75, places=4)
+            self.assertAlmostEqual(item.color[3], 1.0, places=4)
+
+        for item in plane.data.attributes["attr_bool"].data:
+            self.assertTrue(item.value)
+
+        for item in plane.data.attributes["attr_float"].data:
+            self.assertAlmostEqual(item.value, 90.0, places=4)
+
+        for item in plane.data.attributes["attr_vec"].data:
+            self.assertAlmostEqual(item.vector[0], 1.0, places=4)
+            self.assertAlmostEqual(item.vector[1], 2.0, places=4)
+            self.assertAlmostEqual(item.vector[2], 3.0, places=4)
+
+        # Check interpolated Vertex Groups (center vertex at (0, 0) should have BoneA=0.5, BoneB=0.5)
+        center_vert = next((v for v in plane.data.vertices if abs(v.co.x) < 1e-4 and abs(v.co.y) < 1e-4), None)
+        self.assertIsNotNone(center_vert)
+        weights = {plane.vertex_groups[g.group].name: g.weight for g in center_vert.groups}
+        self.assertAlmostEqual(weights.get("BoneA", 0.0), 0.5, places=3)
+        self.assertAlmostEqual(weights.get("BoneB", 0.0), 0.5, places=3)
+
+    def test_material_replacement_and_live_sync_attributes_after_split(self):
+        """Verify Live Sync and Material Replacement metadata layers survive adaptive pixel split intact."""
+        from utils.materials.constants import ATTR_SOURCE_TEXTURE_KEY, ATTR_ATLAS_CHUNK_ID, ATTR_ATLAS_TEXTURE_ID
+        from utils.live_sync import MTK_BLOCK_X, MTK_BLOCK_Y, MTK_BLOCK_Z, MTK_FACE_DIR, MTK_BIOME_TINT_COLOR, MTK_IS_OPAQUE
+
+        bpy.ops.mesh.primitive_plane_add(size=2.0)
+        plane = bpy.context.active_object
+
+        bm = bmesh.new()
+        bm.from_mesh(plane.data)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces[0].loops[0][uv_layer].uv = Vector((0.0, 0.0))
+        bm.faces[0].loops[1][uv_layer].uv = Vector((1.0, 0.0))
+        bm.faces[0].loops[2][uv_layer].uv = Vector((1.0, 1.0))
+        bm.faces[0].loops[3][uv_layer].uv = Vector((0.0, 1.0))
+        bm.to_mesh(plane.data)
+        bm.free()
+
+        plane.data.attributes.new(name=ATTR_SOURCE_TEXTURE_KEY, type="STRING", domain="FACE")
+        plane.data.attributes[ATTR_SOURCE_TEXTURE_KEY].data[0].value = b"minecraft:block/oak_planks"
+
+        plane.data.attributes.new(name=ATTR_ATLAS_CHUNK_ID, type="INT", domain="FACE")
+        plane.data.attributes[ATTR_ATLAS_CHUNK_ID].data[0].value = 2
+
+        plane.data.attributes.new(name=ATTR_ATLAS_TEXTURE_ID, type="INT", domain="FACE")
+        plane.data.attributes[ATTR_ATLAS_TEXTURE_ID].data[0].value = 105
+
+        plane.data.attributes.new(name=MTK_BLOCK_X, type="INT", domain="FACE")
+        plane.data.attributes[MTK_BLOCK_X].data[0].value = 128
+
+        plane.data.attributes.new(name=MTK_BLOCK_Y, type="INT", domain="FACE")
+        plane.data.attributes[MTK_BLOCK_Y].data[0].value = 64
+
+        plane.data.attributes.new(name=MTK_BLOCK_Z, type="INT", domain="FACE")
+        plane.data.attributes[MTK_BLOCK_Z].data[0].value = -256
+
+        plane.data.attributes.new(name=MTK_FACE_DIR, type="INT", domain="FACE")
+        plane.data.attributes[MTK_FACE_DIR].data[0].value = 1  # UP
+
+        plane.data.attributes.new(name=MTK_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+        plane.data.attributes[MTK_BIOME_TINT_COLOR].data[0].color = (0.35, 0.75, 0.2, 1.0)
+
+        plane.data.attributes.new(name=MTK_IS_OPAQUE, type="BOOLEAN", domain="FACE")
+        plane.data.attributes[MTK_IS_OPAQUE].data[0].value = True
+
+        config = SplitConfig(auto_resolution=False, manual_resolution=(2, 2), selection_scope="ALL", pixels_per_face=1)
+        process_adaptive_pixel_split(bpy.context, config, target_obj=plane)
+
+        # Confirm all 4 faces preserved all Live Sync & Material Replacement attributes
+        for face_idx in range(4):
+            self.assertEqual(plane.data.attributes[ATTR_SOURCE_TEXTURE_KEY].data[face_idx].value, b"minecraft:block/oak_planks")
+            self.assertEqual(plane.data.attributes[ATTR_ATLAS_CHUNK_ID].data[face_idx].value, 2)
+            self.assertEqual(plane.data.attributes[ATTR_ATLAS_TEXTURE_ID].data[face_idx].value, 105)
+            self.assertEqual(plane.data.attributes[MTK_BLOCK_X].data[face_idx].value, 128)
+            self.assertEqual(plane.data.attributes[MTK_BLOCK_Y].data[face_idx].value, 64)
+            self.assertEqual(plane.data.attributes[MTK_BLOCK_Z].data[face_idx].value, -256)
+            self.assertEqual(plane.data.attributes[MTK_FACE_DIR].data[face_idx].value, 1)
+            color = plane.data.attributes[MTK_BIOME_TINT_COLOR].data[face_idx].color
+            self.assertAlmostEqual(color[0], 0.35, places=3)
+            self.assertAlmostEqual(color[1], 0.75, places=3)
+            self.assertAlmostEqual(color[2], 0.2, places=3)
+            self.assertTrue(plane.data.attributes[MTK_IS_OPAQUE].data[face_idx].value)
+
+    def test_uv_transform_attributes_sanitized_during_subdivision(self):
+        """Verify that UV affine transform metadata (mtk_uv_tiling_transform, rotation) is reset on sub-faces to preserve single complete texture mapping."""
+        from utils.materials.constants import ATTR_UV_TILING_TRANSFORM, ATTR_UV_ROTATION
+
+        bpy.ops.mesh.primitive_plane_add(size=2.0)
+        plane = bpy.context.active_object
+
+        bm = bmesh.new()
+        bm.from_mesh(plane.data)
+        bm.faces.ensure_lookup_table()
+        uv_layer = bm.loops.layers.uv.verify()
+        bm.faces[0].loops[0][uv_layer].uv = Vector((0.0, 0.0))
+        bm.faces[0].loops[1][uv_layer].uv = Vector((1.0, 0.0))
+        bm.faces[0].loops[2][uv_layer].uv = Vector((1.0, 1.0))
+        bm.faces[0].loops[3][uv_layer].uv = Vector((0.0, 1.0))
+        bm.to_mesh(plane.data)
+        bm.free()
+
+        # Set non-identity tiling and rotation on the parent macro face
+        plane.data.attributes.new(name=ATTR_UV_TILING_TRANSFORM, type="FLOAT_COLOR", domain="FACE")
+        plane.data.attributes[ATTR_UV_TILING_TRANSFORM].data[0].color = (4.0, 4.0, 0.2, 0.3)
+
+        plane.data.attributes.new(name=ATTR_UV_ROTATION, type="FLOAT", domain="FACE")
+        plane.data.attributes[ATTR_UV_ROTATION].data[0].value = 1.570796
+
+        config = SplitConfig(auto_resolution=False, manual_resolution=(2, 2), selection_scope="ALL", pixels_per_face=1)
+        process_adaptive_pixel_split(bpy.context, config, target_obj=plane)
+
+        # After split, all 4 sub-faces must have identity tiling (1, 1, 0, 0) and 0.0 rotation so they form 1 continuous texture
+        for face_idx in range(4):
+            tiling = plane.data.attributes[ATTR_UV_TILING_TRANSFORM].data[face_idx].color
+            self.assertAlmostEqual(tiling[0], 1.0, places=4)
+            self.assertAlmostEqual(tiling[1], 1.0, places=4)
+            self.assertAlmostEqual(tiling[2], 0.0, places=4)
+            self.assertAlmostEqual(tiling[3], 0.0, places=4)
+            rot = plane.data.attributes[ATTR_UV_ROTATION].data[face_idx].value
+            self.assertAlmostEqual(rot, 0.0, places=4)
+
 
 if __name__ == "__main__":
     import sys
     unittest.main(argv=[sys.argv[0]])
+

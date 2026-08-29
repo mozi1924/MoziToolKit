@@ -478,7 +478,7 @@ class AtlasReplacementEngine:
                             uv_tiling_locations[poly_idx] = location
 
                         tex_name = new_location.get("texture_name") or new_location.get("texture_key") or (source_keys[poly_idx] if poly_idx < len(source_keys) else "")
-                        if is_fluid_texture_name(tex_name):
+                        if is_fluid_texture_name(tex_name) and orig_mode == "GENERIC" and not _object_is_yefira(obj):
                             normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_name)
 
 
