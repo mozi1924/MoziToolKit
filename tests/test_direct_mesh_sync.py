@@ -1041,6 +1041,9 @@ class TestDirectMeshSync(unittest.TestCase):
         root.name = "Fortress"
         # Trigger depsgraph update
         bpy.context.view_layer.update()
+        # In non-interactive headless testing, flush the deferred main thread timer
+        from operators.sync.properties import _deferred_sync_renamed_roots
+        _deferred_sync_renamed_roots()
 
         # Check that children and their meshes were immediately renamed
         new_sec0 = bpy.data.objects.get("Fortress_Section_0_0_0")
@@ -1050,6 +1053,74 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertEqual(new_sec0.data.name, "Mesh_Fortress_Section_0_0_0")
         self.assertEqual(new_sec1.data.name, "Mesh_Fortress_Section_1_0_0")
         self.assertIsNone(bpy.data.objects.get("Base_World_Section_0_0_0"))
+
+    def test_sync_and_delta_in_active_edit_mode(self):
+        """Verify that world sync and incremental delta updates succeed without errors even when in Edit Mode."""
+        storage = VoxelStorage()
+        storage.set_full_snapshot(
+            min_x=0, min_y=0, min_z=0,
+            size_x=16, size_y=16, size_z=16,
+            palette=["minecraft:air", "minecraft:stone"],
+            grid_indices=[1 if i == 0 else 0 for i in range(4096)],
+        )
+        res1 = sync_world_mesh(bpy.context, storage, force_full_rebuild=True)
+
+        sec0 = bpy.data.objects.get("Yefira_World_Section_0_0_0")
+        self.assertIsNotNone(sec0)
+
+        # 1. Enter Edit Mode on the section object
+        bpy.context.view_layer.objects.active = sec0
+        bpy.ops.object.mode_set(mode='EDIT')
+        self.assertEqual(sec0.mode, 'EDIT')
+        self.assertTrue(sec0.data.is_editmode)
+
+        # 2. Incremental Delta update while in Edit Mode (stone at 0,0,0 touching diamond at 1,0,0 -> 10 faces)
+        storage.apply_delta_update(0, 0, 0, [(1, 0, 0, "minecraft:diamond_block")])
+        res2 = apply_block_delta_to_world(
+            context=bpy.context,
+            storage=storage,
+            changes=[(1, 0, 0, "minecraft:diamond_block")],
+            target_obj=res1.world_obj,
+        )
+        self.assertEqual(res2.face_count, 10)
+
+        # 3. Full rebuild while in Edit Mode (add gold block at 2,0,0 -> 14 faces)
+        storage.apply_delta_update(0, 0, 0, [(2, 0, 0, "minecraft:gold_block")])
+        res3 = sync_world_mesh(bpy.context, storage, force_full_rebuild=True, target_obj=res1.world_obj)
+        self.assertEqual(res3.face_count, 14)
+
+        # 4. Unrelated object in Edit Mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+        other_mesh = bpy.data.meshes.new("OtherMesh")
+        other_obj = bpy.data.objects.new("OtherObj", other_mesh)
+        bpy.context.collection.objects.link(other_obj)
+        bpy.context.view_layer.objects.active = other_obj
+        bpy.ops.object.mode_set(mode='EDIT')
+        self.assertEqual(other_obj.mode, 'EDIT')
+
+        # Sync while unrelated object is in Edit Mode
+        storage.apply_delta_update(0, 0, 0, [(3, 0, 0, "minecraft:iron_block")])
+        res4 = apply_block_delta_to_world(
+            context=bpy.context,
+            storage=storage,
+            changes=[(3, 0, 0, "minecraft:iron_block")],
+            target_obj=res1.world_obj,
+        )
+        self.assertEqual(res4.face_count, 18)
+
+        # 5. Section object in Edit Mode emptied/pruned
+        bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.context.view_layer.objects.active = sec0
+        bpy.ops.object.mode_set(mode='EDIT')
+        storage.apply_delta_update(0, 0, 0, [
+            (0, 0, 0, "minecraft:air"),
+            (1, 0, 0, "minecraft:air"),
+            (2, 0, 0, "minecraft:air"),
+            (3, 0, 0, "minecraft:air"),
+        ])
+        res5 = sync_world_mesh(bpy.context, storage, force_full_rebuild=True, target_obj=res1.world_obj)
+        self.assertEqual(res5.face_count, 0)
+        self.assertIsNone(bpy.data.objects.get("Yefira_World_Section_0_0_0"))
 
 
 if __name__ == "__main__":
