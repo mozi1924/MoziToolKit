@@ -20,8 +20,49 @@ from ..constants import (
     PROP_CREATED_BY,
     PROP_PROVENANCE_SCHEMA_VERSION,
     PROP_ATLAS_MAPPING,
+    PROP_PACK_HASH,
+    PROP_PACK_HASH_SHORT,
     PROVENANCE_SCHEMA_VERSION,
 )
+
+
+def get_effective_pack_hash(source: Any) -> str:
+    """Extract authoritative stack_hash or pack_hash across single packs, pack stacks, materials, meshes, or mappings."""
+    if not source:
+        return ""
+    if isinstance(source, str):
+        return source.strip()
+    # 1. ResourcePackStack / Stack objects
+    stack_h = getattr(source, "stack_hash", None)
+    if stack_h and isinstance(stack_h, str):
+        return stack_h.strip()
+    cache_k = getattr(source, "cache_key", None)
+    if cache_k and isinstance(cache_k, str):
+        return cache_k.strip()
+    # 2. ZipResourcePack / Pack objects
+    pack_h = getattr(source, "pack_hash", None)
+    if pack_h and isinstance(pack_h, str):
+        return pack_h.strip()
+    # 3. Dictionaries (texture_info, mapping, atlas_params)
+    if isinstance(source, dict):
+        return str(source.get("stack_hash") or source.get("pack_hash") or source.get("cache_key") or "").strip()
+    # 4. Blender Datablocks (Material, Mesh, Image)
+    if hasattr(source, "get"):
+        return str(source.get(PROP_PACK_HASH) or source.get("mtk:pack_hash") or source.get("mtk_pack_hash") or "").strip()
+    return str(source).strip()
+
+
+def is_material_hash_valid(mat: Any, target_hash: str) -> bool:
+    """Check if a material exists, has a valid shader node tree, and matches the target pack/stack hash."""
+    if not mat or not target_hash:
+        return False
+    mat_hash = get_effective_pack_hash(mat)
+    if not mat_hash or mat_hash != target_hash:
+        return False
+    node_tree = getattr(mat, "node_tree", None)
+    if node_tree is None or not hasattr(node_tree, "nodes") or len(node_tree.nodes) == 0:
+        return False
+    return True
 
 
 def without_blender_suffix(value: str) -> str:

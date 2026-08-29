@@ -119,6 +119,7 @@ FAST_UNIT_MODULES = {
     "test_jmc2obj_matching",
     "test_live_sync_empty_slots_and_entities",
     "test_live_sync_protocol_and_storage",
+    "test_material_hash_rebuild_and_dedup",
     "test_mc_model_baker",
     "test_mineways_atlas_unpack",
     "test_mineways_matching",

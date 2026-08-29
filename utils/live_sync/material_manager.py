@@ -73,6 +73,7 @@ PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 
 from ..mc_baker import StateBaker, BakedModel, BakedFace
 from ..materials.atlas.addressing import AtlasAddressResolver, ResolvedAtlasAddress
+from ..materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
 from ..materials.constants import (
     ATLAS_CATEGORY_BLOCKS,
     ATLAS_CATEGORY_CHEST,
@@ -185,39 +186,37 @@ class LiveSyncMaterialManager:
     def _ensure_chunk_materials_with_hash_validation(self) -> None:
         """
         Validates materials against the prebaked pack hash and loads every
-        atlas category a block model can reference.  This must happen before
-        BMesh faces receive their material indices: special blocks such as
-        chests, shulker boxes, banners and decorated pots use separate atlas
-        chunks rather than the block/animation pair.
+        atlas category a block model can reference. If existing materials in
+        scene have outdated hash, they are completely rebuilt from the authoritative cache.
         """
         from ..materials.atlas.builder import build_atlas_chunk_materials
         from ..materials.pack.pack_stack import get_configured_pack_stack
         from ..materials.pack.resource_pack import get_cache_dir
 
-        target_pack_hash = self.atlas_params.get("pack_hash", "")
+        target_pack_hash = get_effective_pack_hash(self.atlas_params)
         if not target_pack_hash:
             try:
                 pack_stack = get_configured_pack_stack()
-                target_pack_hash = getattr(pack_stack, "stack_hash", "") or getattr(pack_stack, "cache_key", "") or getattr(pack_stack, "pack_hash", "")
+                target_pack_hash = get_effective_pack_hash(pack_stack)
             except Exception:
                 pack_stack = None
 
         atlas_dir: Optional[Path] = None
         cache_root = get_cache_dir()
         if target_pack_hash:
-            for cand in (cache_root / target_pack_hash / "full_scene", cache_root / target_pack_hash):
+            for cand in (
+                cache_root / target_pack_hash / "yefira_world",
+                cache_root / target_pack_hash / "full_scene",
+                cache_root / target_pack_hash,
+            ):
                 if cand.exists() and (cand / "atlas_mapping.json").exists():
                     atlas_dir = cand
                     break
 
-            # If pack stack is configured but cache not yet compiled, do NOT auto-compile.
-            # Live Sync requires the user to precompile the pack stack in preferences.
-            pass
-
         self._atlas_dir = atlas_dir
         self._target_pack_hash = target_pack_hash
 
-        # Determine mapping data
+        # Determine mapping data authoritatively from cache directory
         mapping = self.atlas_params.get("mapping")
         if not mapping and atlas_dir:
             try:
@@ -253,13 +252,13 @@ class LiveSyncMaterialManager:
                 except (ValueError, TypeError):
                     continue
                 if not default_chunk_ids or cid_int in default_chunk_ids:
-                    mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
+                    mat_hash = get_effective_pack_hash(mat)
                     if not target_pack_hash or not mat_hash or mat_hash == target_pack_hash:
                         candidate_mats.setdefault(cid_int, []).append(mat)
 
         def _score_candidate(m: bpy.types.Material, c_id: int) -> int:
             score = 0
-            m_hash = m.get(PROP_PACK_HASH, m.get("mtk:pack_hash", m.get("mtk_pack_hash", "")))
+            m_hash = get_effective_pack_hash(m)
             if target_pack_hash and m_hash == target_pack_hash:
                 score += 1000
             elif not target_pack_hash and m_hash:
@@ -281,7 +280,7 @@ class LiveSyncMaterialManager:
                 mats.sort(key=lambda m: _score_candidate(m, cid_int), reverse=True)
                 self.chunk_materials[cid_int] = mats[0]
 
-        # Check if any required default chunk material is missing and rebuild from prebaked atlas
+        # Check if any required default chunk material is missing or outdated and rebuild from prebaked atlas
         missing_chunks = [cid for cid in default_chunk_ids if cid not in self.chunk_materials]
         if missing_chunks and atlas_dir:
             try:
@@ -308,7 +307,7 @@ class LiveSyncMaterialManager:
         """Dynamically load and bind a material chunk on demand if not already loaded in the scene."""
         if chunk_id in self.chunk_materials:
             current_mat = self.chunk_materials[chunk_id]
-            cur_hash = current_mat.get(PROP_PACK_HASH, current_mat.get("mtk:pack_hash", current_mat.get("mtk_pack_hash", "")))
+            cur_hash = get_effective_pack_hash(current_mat)
             if not self._target_pack_hash or not cur_hash or cur_hash == self._target_pack_hash:
                 if chunk_id not in self.chunk_to_slot:
                     if self.world_obj:
@@ -324,7 +323,7 @@ class LiveSyncMaterialManager:
             if cid is not None:
                 try:
                     if int(cid) == chunk_id:
-                        mat_hash = mat.get(PROP_PACK_HASH, mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")))
+                        mat_hash = get_effective_pack_hash(mat)
                         if not self._target_pack_hash or not mat_hash or mat_hash == self._target_pack_hash:
                             matching_mats.append(mat)
                 except (ValueError, TypeError):
@@ -334,7 +333,7 @@ class LiveSyncMaterialManager:
         if matching_mats:
             def _score_loaded(m: bpy.types.Material) -> int:
                 score = 0
-                m_hash = m.get(PROP_PACK_HASH, m.get("mtk:pack_hash", m.get("mtk_pack_hash", "")))
+                m_hash = get_effective_pack_hash(m)
                 if self._target_pack_hash and m_hash == self._target_pack_hash:
                     score += 1000
                 elif not m_hash:
