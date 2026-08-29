@@ -147,7 +147,7 @@ class TestAtlasUVRotation(unittest.TestCase):
             with open(atlas_dir / "atlas_mapping.json", "w", encoding="utf-8") as fp:
                 json.dump(mapping, fp)
 
-            materials = build_atlas_chunk_materials(atlas_dir, pack_textures=False)
+            materials = build_atlas_chunk_materials(atlas_dir, pack_textures=False, enable_uv_tiling=True)
 
             # 1. Static Material (No Attr UV Rotation, uses MC Atlas UV Tiling with Scale/Location)
             mat_static = materials[0]

@@ -22,6 +22,7 @@ PROP_TILE_SIZE = "mtk_tile_size"
 PROP_TILES_PER_ROW = "mtk_tiles_per_row"
 PROP_CREATED_BY = "mtk:created_by"
 PROP_PROVENANCE_SCHEMA_VERSION = "mtk:provenance_schema_version"
+PROP_ENABLE_UV_TILING = "mtk:enable_uv_tiling"
 
 # Atlas Categories & Priority Order (Minecraft-aligned)
 ATLAS_CATEGORY_BLOCKS = "blocks"

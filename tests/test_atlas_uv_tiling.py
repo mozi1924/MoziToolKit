@@ -138,11 +138,86 @@ class TestAtlasUVTiling(unittest.TestCase):
         for exp in expected_outputs:
             self.assertIn(exp, output_names)
 
-    def test_atlas_material_builder_static_and_animated_tiling_nodes(self):
+    def test_atlas_material_builder_tiling_disabled_by_default(self):
+        """When enable_uv_tiling=False (default for Yefira and Ice Cube), no tiling nodes or attributes exist."""
         import json
         import tempfile
         from pathlib import Path
         from utils.materials.atlas.builder import build_atlas_chunk_materials
+        from utils.materials.constants import PROP_ENABLE_UV_TILING
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            atlas_dir = Path(tmp_dir)
+
+            for name in ["chunk_000_albedo.png", "chunk_001_albedo.png"]:
+                img = bpy.data.images.new(name, width=64, height=64)
+                img.filepath_raw = str(atlas_dir / name)
+                img.file_format = "PNG"
+                img.save()
+                bpy.data.images.remove(img)
+
+            mapping = {
+                "atlas_version": 1,
+                "tile_size": 16,
+                "chunks": [
+                    {
+                        "chunk_id": 0,
+                        "kind": "static",
+                        "width": 64,
+                        "height": 64,
+                        "tile_size": 16,
+                        "files": {"albedo": "chunk_000_albedo.png"}
+                    },
+                    {
+                        "chunk_id": 1,
+                        "kind": "animation",
+                        "width": 64,
+                        "height": 64,
+                        "tile_size": 16,
+                        "files": {"albedo": "chunk_001_albedo.png"}
+                    }
+                ]
+            }
+            with open(atlas_dir / "atlas_mapping.json", "w", encoding="utf-8") as fp:
+                json.dump(mapping, fp)
+
+            materials = build_atlas_chunk_materials(atlas_dir, pack_textures=False, enable_uv_tiling=False)
+            self.assertEqual(len(materials), 2)
+
+            # 1. Verify Static Material (Chunk 0) has NO tiling nodes/attributes
+            mat_static = materials[0]
+            self.assertFalse(mat_static.get(PROP_ENABLE_UV_TILING, False))
+            nodes_static = {n.name: n for n in mat_static.node_tree.nodes}
+            self.assertNotIn("MC Atlas UV Tiling", nodes_static)
+            self.assertNotIn("Attr UV Tiling Transform", nodes_static)
+            self.assertNotIn("Combine UV Tiling Scale", nodes_static)
+            self.assertNotIn("Combine UV Tiling Location", nodes_static)
+
+            tex_static = nodes_static["Atlas Chunk 000 Static (Albedo)"]
+            self.assertEqual(tex_static.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
+
+            # 2. Verify Animated Material (Chunk 1) has NO tiling nodes/attributes
+            mat_anim = materials[1]
+            self.assertFalse(mat_anim.get(PROP_ENABLE_UV_TILING, False))
+            nodes_anim = {n.name: n for n in mat_anim.node_tree.nodes}
+            self.assertNotIn("MC Atlas UV Tiling (Albedo)", nodes_anim)
+            self.assertNotIn("Attr UV Tiling Transform", nodes_anim)
+
+            uv_mapper = nodes_anim["MC UV Mapping (Albedo)"]
+            tex_curr = nodes_anim["Tex Current (Albedo)"]
+            tex_next = nodes_anim["Tex Next (Albedo)"]
+
+            self.assertEqual(uv_mapper.inputs["Vector"].links[0].from_node.bl_idname, "ShaderNodeTexCoord")
+            self.assertEqual(tex_curr.inputs["Vector"].links[0].from_node, uv_mapper)
+            self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
+
+    def test_atlas_material_builder_static_and_animated_tiling_nodes(self):
+        """When enable_uv_tiling=True (for JMC2OBJ/Mineways static replacement), tiling nodes are created."""
+        import json
+        import tempfile
+        from pathlib import Path
+        from utils.materials.atlas.builder import build_atlas_chunk_materials
+        from utils.materials.constants import PROP_ENABLE_UV_TILING
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             atlas_dir = Path(tmp_dir)
@@ -180,11 +255,12 @@ class TestAtlasUVTiling(unittest.TestCase):
             with open(atlas_dir / "atlas_mapping.json", "w", encoding="utf-8") as fp:
                 json.dump(mapping, fp)
 
-            materials = build_atlas_chunk_materials(atlas_dir, pack_textures=False)
+            materials = build_atlas_chunk_materials(atlas_dir, pack_textures=False, enable_uv_tiling=True)
             self.assertEqual(len(materials), 2)
 
             # 1. Verify Static Material (Chunk 0)
             mat_static = materials[0]
+            self.assertTrue(mat_static.get(PROP_ENABLE_UV_TILING, False))
             nodes_static = {n.name: n for n in mat_static.node_tree.nodes}
             self.assertIn("MC Atlas UV Tiling", nodes_static)
             self.assertIn("Attr UV Tiling Transform", nodes_static)
@@ -197,6 +273,7 @@ class TestAtlasUVTiling(unittest.TestCase):
 
             # 2. Verify Animated Material (Chunk 1)
             mat_anim = materials[1]
+            self.assertTrue(mat_anim.get(PROP_ENABLE_UV_TILING, False))
             nodes_anim = {n.name: n for n in mat_anim.node_tree.nodes}
             self.assertIn("MC Atlas UV Tiling (Albedo)", nodes_anim)
             self.assertIn("MC UV Mapping (Albedo)", nodes_anim)
@@ -214,9 +291,38 @@ class TestAtlasUVTiling(unittest.TestCase):
             self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
             self.assertEqual(tex_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
 
+    def test_pipeline_origin_tiling_decision(self):
+        """Verify the pipeline's detection of whether UV tiling is required based on object/material origin."""
+        from utils.materials.matching import material_source_origin
 
+        # JMC2OBJ / Mineways -> requires tiling
+        mat_jmc = bpy.data.materials.new("jmc2obj_stone")
+        mat_jmc.use_nodes = True
+        bsdf_jmc = mat_jmc.node_tree.nodes.new("ShaderNodeBsdfPrincipled")
+        tex_jmc = mat_jmc.node_tree.nodes.new("ShaderNodeTexImage")
+        img_jmc = bpy.data.images.new("stone.png", width=16, height=16)
+        tex_jmc.image = img_jmc
+        mat_jmc.node_tree.links.new(tex_jmc.outputs["Color"], bsdf_jmc.inputs["Base Color"])
 
+        mat_mw = bpy.data.materials.new("mw_chest_normal")
 
+        # Ice Cube / Yefira -> does NOT require tiling
+        mat_ice = bpy.data.materials.new("oak_planks")
+        mat_ice["ice_cube.material_id"] = "minecraft:oak_planks"
+
+        yefira_obj = bpy.data.objects.new("Yefira_Section_0_0_0", bpy.data.meshes.new("YefiraMesh"))
+        yefira_obj["mtk:is_yefira_world"] = True
+
+        self.assertEqual(material_source_origin(mat_jmc), "jmc2obj")
+        self.assertEqual(material_source_origin(mat_mw), "mineways")
+        self.assertEqual(material_source_origin(mat_ice), "ice_cube")
+        self.assertTrue(yefira_obj.get("mtk:is_yefira_world"))
+
+        # Clean up
+        for m in (mat_jmc, mat_mw, mat_ice):
+            bpy.data.materials.remove(m)
+        bpy.data.images.remove(img_jmc)
+        bpy.data.objects.remove(yefira_obj)
 
 
 if __name__ == "__main__":

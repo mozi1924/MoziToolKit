@@ -291,6 +291,7 @@ class LiveSyncMaterialManager:
                     pack_textures=True,
                     uv_attribute=None,  # Use native Blender UVMap
                     chunk_ids=missing_chunks,
+                    enable_uv_tiling=False,
                 )
                 for r_cid, r_mat in rebuilt_mats.items():
                     self.chunk_materials[r_cid] = r_mat
@@ -362,6 +363,7 @@ class LiveSyncMaterialManager:
                     pack_textures=True,
                     uv_attribute=None,
                     chunk_ids=[chunk_id],
+                    enable_uv_tiling=False,
                 )
                 for r_cid, r_mat in rebuilt_mats.items():
                     self.chunk_materials[r_cid] = r_mat

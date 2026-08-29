@@ -203,9 +203,29 @@ class AtlasReplacementEngine:
 
         yield ProgressUpdate(0.45, 1.0, "Building Atlas chunk material(s)...")
 
-        if pipeline_context.is_cancelled:
-            yield StepResult.cancelled("Material replacement cancelled by user.")
-            return
+        def _object_is_yefira(target_obj: bpy.types.Object) -> bool:
+            return bool(
+                target_obj.get("mtk:is_yefira_world")
+                or target_obj.get("mtk:section_pos") is not None
+                or target_obj.name.startswith("Yefira_")
+            )
+
+        def _object_needs_uv_tiling(target_obj: bpy.types.Object) -> bool:
+            if _object_is_yefira(target_obj):
+                return False
+            target_mesh = getattr(target_obj, "data", None)
+            if not target_mesh or not hasattr(target_mesh, "polygons") or len(target_mesh.polygons) == 0:
+                return False
+            tiling_origins = {"jmc2obj", "mineways"}
+            origins = read_face_string_attribute(target_mesh, ATTR_SOURCE_ORIGIN)
+            if any(o in tiling_origins for o in origins if o):
+                return True
+            for s in target_obj.material_slots:
+                if s.material and material_source_origin(s.material) in tiling_origins:
+                    return True
+            return False
+
+        needs_uv_tiling = any(_object_needs_uv_tiling(obj) for obj in standard_mesh_objects)
 
         # Fallback is always materialized; unsupported faces may be discovered
         # after the initial source scan.
@@ -215,6 +235,7 @@ class AtlasReplacementEngine:
             pack_hash=effective_pack_hash,
             pack_textures=pack_textures,
             chunk_ids=effective_chunks,
+            enable_uv_tiling=needs_uv_tiling,
         )
 
         session_materials = {}
@@ -410,6 +431,8 @@ class AtlasReplacementEngine:
             if unresolved_faces:
                 pipeline_context.report("WARNING", f"'{obj.name}': {len(unresolved_faces)} unsupported face(s) assigned atlas fallback chunk 0 / texture 0.")
 
+            obj_needs_tiling = _object_needs_uv_tiling(obj)
+
             if poly_updated:
                 if uv_layer is not None:
                     for poly_idx, resolved in enumerate(resolved_locations):
@@ -449,7 +472,7 @@ class AtlasReplacementEngine:
                             old_tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx)
                             restore_face_atlas_tiling(polygon, uv_layer, old_tiling_scale, old_tiling_location, old_tiling_rotation)
 
-                        if face_uv_requires_atlas_tiling(polygon, uv_layer):
+                        if obj_needs_tiling and face_uv_requires_atlas_tiling(polygon, uv_layer):
                             scale, location = normalize_face_uv_for_atlas_tiling(polygon, uv_layer)
                             uv_tiling_scales[poly_idx] = scale
                             uv_tiling_locations[poly_idx] = location
@@ -482,12 +505,19 @@ class AtlasReplacementEngine:
                 for attr_name, data in (
                     (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),
                     (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0, 1.0) for width, height in zip(anim_widths, anim_heights))),
-                    (ATTR_UV_TILING_TRANSFORM, ((scale[0], scale[1], location[0], location[1]) for scale, location in zip(uv_tiling_scales, uv_tiling_locations))),
                 ):
                     ensure_face_attribute(mesh, attr_name, "FLOAT_COLOR").data.foreach_set(
                         "color", [component for value in data for component in value]
                     )
 
+                if obj_needs_tiling:
+                    ensure_face_attribute(mesh, ATTR_UV_TILING_TRANSFORM, "FLOAT_COLOR").data.foreach_set(
+                        "color", [component for scale, location in zip(uv_tiling_scales, uv_tiling_locations) for component in (scale[0], scale[1], location[0], location[1])]
+                    )
+                else:
+                    tiling_attr = mesh.attributes.get(ATTR_UV_TILING_TRANSFORM)
+                    if tiling_attr:
+                        mesh.attributes.remove(tiling_attr)
 
                 cleanup_legacy_mesh_attributes(mesh)
 
