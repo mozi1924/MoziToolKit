@@ -29,6 +29,7 @@ class MOZI_OT_add_yefira_world(bpy.types.Operator):
         root_obj.empty_display_size = 1.0
         root_obj["mtk:is_yefira_world"] = True
         root_obj["mtk:sync_manifest"] = "{}"
+        root_obj["mtk:last_name"] = root_obj.name
 
         # Place at 3D cursor or world origin
         if hasattr(context.scene, "cursor"):
