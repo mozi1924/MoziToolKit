@@ -138,10 +138,10 @@ def _resolve_derivative_stem(short_name: str) -> str:
         return stem.replace("_hyphae", "_stem")
     elif "_wall_hanging_sign" in stem:
         wood = stem.replace("_wall_hanging_sign", "")
-        return f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
+        return f"{wood}_hanging_sign"
     elif "_hanging_sign" in stem:
         wood = stem.replace("_hanging_sign", "")
-        return f"stripped_{wood}_log" if not wood.startswith("stripped_") else f"{wood}_log"
+        return f"{wood}_hanging_sign"
     elif "_wall_sign" in stem:
         return stem.replace("_wall_sign", "_planks")
     elif "_sign" in stem:
@@ -381,36 +381,57 @@ class StateBaker:
         quad vertices in [0..1] block space, loop UV coordinates, and 6-face summary.
         """
         state_str_clean = state_str.strip()
+        if state_str_clean in self._bake_cache:
+            return self._bake_cache[state_str_clean]
+
         block_id, props = parse_block_state_string(state_str_clean)
         short_name = block_id.split(":", 1)[-1]
         fallback_texture = f"minecraft:block/{short_name}"
         is_emissive = is_block_emissive(short_name, props)
 
-        # 1. First check if block has a 1:1 author-crafted OBJ model (Chest, Bell, Decorated Pot, Skull, Banner, Shulker, Portal, Frame, Conduit, etc.)
-        obj_model = resolve_obj_model_for_state(block_id, props, fallback_texture)
-        if obj_model:
-            obj_model.is_emissive = is_emissive
-            self._bake_cache[state_str_clean] = obj_model
-            return obj_model
-
-        if state_str_clean in self._bake_cache:
-            return self._bake_cache[state_str_clean]
-
+        # 1. Resolve JSON blockstate variants and models first
         variant_matches = self.state_resolver.resolve_state(state_str_clean)
+
+        resolved_models: list[tuple[Any, dict[str, Any]]] = []
+        has_json_elements = False
+        for match in variant_matches:
+            resolved_model = self.model_parser.resolve_model(match.model_id)
+            resolved_models.append((match, resolved_model))
+            if resolved_model.get("elements"):
+                has_json_elements = True
+
+        # 2. Fallback to 1:1 author-crafted OBJ model if no valid JSON elements exist
+        # (e.g. true entity blocks like Chest, Shulker Box, Banner, Skull, Conduit, End Portal, or legacy resource packs)
+        if not has_json_elements:
+            obj_model = resolve_obj_model_for_state(block_id, props, fallback_texture)
+            if obj_model:
+                obj_model.is_emissive = is_emissive
+                self._bake_cache[state_str_clean] = obj_model
+                return obj_model
 
         baked_elements: list[BakedElement] = []
         six_faces: list[Optional[BakedFace]] = [None] * 6
 
-        is_opaque = not any(w in short_name for w in ("glass", "leaves", "ice", "water", "air", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern", "stairs", "slab", "chest", "banner", "bed", "carpet", "pot"))
+        is_opaque = not any(w in short_name for w in (
+            "glass", "leaves", "ice", "water", "air", "pane", "fence", "door",
+            "trapdoor", "bars", "chain", "lantern", "stairs", "slab", "chest",
+            "banner", "bed", "carpet", "pot", "sign", "hanging_sign", "head",
+            "skull", "rod", "hook", "lever", "rail", "torch", "candle",
+            "flower", "plant", "sapling", "vine", "bush", "wire", "repeater",
+            "comparator", "cauldron", "hopper", "bell", "anvil", "stand",
+            "frame", "portal", "conduit", "grindstone", "cutter", "piston"
+        ))
 
-        for match in variant_matches:
-            resolved_model = self.model_parser.resolve_model(match.model_id)
+        for match, resolved_model in resolved_models:
             raw_elements = resolved_model.get("elements", [])
 
             if not raw_elements:
-                raw_elements = self._resolve_base_face_elements(
-                    short_name, props, fallback_texture, resolved_model.get("textures", {})
-                )
+                if not has_json_elements:
+                    raw_elements = self._resolve_base_face_elements(
+                        short_name, props, fallback_texture, resolved_model.get("textures", {})
+                    )
+                else:
+                    raw_elements = []
 
             for elem in raw_elements:
                 from_pos = tuple(elem.get("from", [0, 0, 0]))
