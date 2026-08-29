@@ -8,11 +8,15 @@ from __future__ import annotations
 import sys
 import os
 import json
+import logging
 import zipfile
 import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Optional, Union
+
+logger = logging.getLogger("MoziToolKit.Atlas.Generator")
+
 
 from ..constants import (
     FACE_ORDER,
@@ -215,7 +219,7 @@ class AtlasGenerator:
                         self.static_by_namespace.setdefault(ns, {})[base_stem] = img
                         self.static_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = img
                 except Exception as e:
-                    print(f"[AtlasGenerator] Warning: failed to load albedo {albedo_file}: {e}")
+                    logger.warning(f"Failed to load albedo {albedo_file}: {e}")
 
             normal_file = info.get("normal")
             if normal_file and Path(normal_file).exists():
@@ -225,7 +229,7 @@ class AtlasGenerator:
                     self.normal_by_namespace.setdefault(ns, {})[base_stem] = n_img
                     self.normal_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = n_img
                 except Exception as e:
-                    print(f"[AtlasGenerator] Warning: failed to load normal {normal_file}: {e}")
+                    logger.warning(f"Failed to load normal {normal_file}: {e}")
 
             specular_file = info.get("specular")
             if specular_file and Path(specular_file).exists():
@@ -235,7 +239,8 @@ class AtlasGenerator:
                     self.specular_by_namespace.setdefault(ns, {})[base_stem] = s_img
                     self.specular_by_ns_cat.setdefault(ns, {}).setdefault(category, {})[base_rel] = s_img
                 except Exception as e:
-                    print(f"[AtlasGenerator] Warning: failed to load specular {specular_file}: {e}")
+                    logger.warning(f"Failed to load specular {specular_file}: {e}")
+
 
         # 3. Setup biome resolver across all packs
         for p in self.pack_stack.packs:
@@ -480,7 +485,8 @@ class AtlasGenerator:
                     baked_states = cur_states
                     yield (0.82 + 0.10 * frac, f"Atlas: {msg}", None)
             except Exception as e:
-                print(f"[AtlasGenerator] Warning: StateBaker bake_all_pack_states: {e}")
+                logger.warning(f"StateBaker bake_all_pack_states: {e}")
+
 
         dir_to_face_order = {"east": "+X", "west": "-X", "up": "+Y", "down": "-Y", "south": "+Z", "north": "-Z"}
         block_states_data = {}

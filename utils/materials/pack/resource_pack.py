@@ -2,6 +2,7 @@
 Resource pack extraction, indexing, caching, and .mcmeta parsing for Minecraft textures.
 """
 
+import logging
 import os
 import zipfile
 import hashlib
@@ -9,6 +10,9 @@ import json
 import tempfile
 from pathlib import Path
 from typing import Optional, Union, Any, Tuple
+
+logger = logging.getLogger("MoziToolKit.Materials.ResourcePack")
+
 try:
     import bpy
     HAS_BPY = True
@@ -336,8 +340,9 @@ def parse_mcmeta(mcmeta_path: Path) -> dict:
                 "height": anim.get("height")
             }
     except Exception as e:
-        print(f"[MoziToolKit] Error reading mcmeta {mcmeta_path}: {e}")
+        logger.error(f"Error reading mcmeta {mcmeta_path}: {e}")
         return None
+
 
 
 def derive_texture_name(texture_key: str, base_stem: str = "") -> str:
@@ -464,11 +469,12 @@ class ZipResourcePack:
         marker_file = self._extract_dir / ".extracted"
         if not (self.use_cache and marker_file.exists()):
             self._extract_dir.mkdir(parents=True, exist_ok=True)
-            print(f"[MoziToolKit] Extracting resource pack to {self._extract_dir}")
+            logger.info(f"Extracting resource pack to {self._extract_dir}")
             with zipfile.ZipFile(self.zip_path, 'r') as zf:
                 self._safe_extract(zf, self._extract_dir)
             with open(marker_file, 'w', encoding='utf-8') as f:
                 f.write("OK")
+
 
         self._build_index()
         self._loaded = True

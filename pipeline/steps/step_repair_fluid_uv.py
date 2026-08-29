@@ -1,9 +1,7 @@
-"""
-Repair Fluid UV Pipeline Step
-"""
-
+from typing import Iterator, Union
 import bpy
 from ..context import PipelineContext
+from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
 from ...utils.mesh import (
@@ -18,9 +16,16 @@ class RepairFluidUVStep(PipelineStep):
     name = "Repair Fluid UV"
     description = "Repair inverted UV height mapping on sloped fluid side faces"
 
-    def execute(self, ctx: PipelineContext) -> StepResult:
+    def execute_iter(self, ctx: PipelineContext) -> Iterator[Union[ProgressUpdate, StepResult]]:
         if not poll_edit_mesh(ctx.context):
-            return StepResult.cancelled("Must be in Edit Mode with a Mesh object active.")
+            yield StepResult.cancelled("Must be in Edit Mode with a Mesh object active.")
+            return
+
+        yield ProgressUpdate(0.1, 1.0, "Repair Fluid UV: analyzing fluid faces...")
+
+        if ctx.is_cancelled:
+            yield StepResult.cancelled("Repair fluid UV cancelled by user.")
+            return
 
         selection_scope = self.get_param(ctx, "selection_scope", "SELECTED")
 
@@ -31,7 +36,8 @@ class RepairFluidUVStep(PipelineStep):
             selected_faces = [f for f in bm.faces if f.select]
             if selection_scope == "SELECTED":
                 if not selected_faces:
-                    return StepResult.cancelled("No faces selected to repair fluid UV.")
+                    yield StepResult.cancelled("No faces selected to repair fluid UV.")
+                    return
                 target_faces = selected_faces
                 force_repair = True
             elif selection_scope == "ALL":
@@ -54,8 +60,11 @@ class RepairFluidUVStep(PipelineStep):
             else:
                 msg = "No inverted fluid UV faces detected in mesh."
             ctx.set_data("repaired_fluid_uv_count", 0)
-            return StepResult.success(msg, {"repaired_faces_count": 0})
+            yield StepResult.success(msg, {"repaired_faces_count": 0})
+            return
 
         msg = f"Successfully repaired fluid UV for {repaired_count} face(s)."
+        yield ProgressUpdate(1.0, 1.0, f"Repair Fluid UV: {msg}")
         ctx.set_data("repaired_fluid_uv_count", repaired_count)
-        return StepResult.success(msg, {"repaired_faces_count": repaired_count})
+        yield StepResult.success(msg, {"repaired_faces_count": repaired_count})
+

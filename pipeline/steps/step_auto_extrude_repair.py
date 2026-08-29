@@ -1,10 +1,8 @@
-"""
-Auto Extrude Repair Pipeline Step
-"""
-
+from typing import Iterator, Union
 import bmesh
 import bpy
 from ..context import PipelineContext
+from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
 from ...utils.mesh import poll_edit_mesh
@@ -15,13 +13,21 @@ class AutoExtrudeRepairStep(PipelineStep):
     name = "Auto Extrude Repair"
     description = "Repair UV overlap and add Mean Crease to extruded side faces"
 
-    def execute(self, ctx: PipelineContext) -> StepResult:
+    def execute_iter(self, ctx: PipelineContext) -> Iterator[Union[ProgressUpdate, StepResult]]:
         if not poll_edit_mesh(ctx.context):
-            return StepResult.cancelled("Must be in Edit Mode with a Mesh object active.")
+            yield StepResult.cancelled("Must be in Edit Mode with a Mesh object active.")
+            return
 
         obj = ctx.active_object
         if not obj or obj.type != "MESH":
-            return StepResult.cancelled("No active mesh object.")
+            yield StepResult.cancelled("No active mesh object.")
+            return
+
+        yield ProgressUpdate(0.1, 1.0, f"Auto Extrude Repair: analyzing {obj.name}...")
+
+        if ctx.is_cancelled:
+            yield StepResult.cancelled("Auto extrude repair cancelled by user.")
+            return
 
         repair_uv = self.get_param(ctx, "repair_uv", True)
         add_mean_crease = self.get_param(ctx, "add_mean_crease", False)
@@ -50,5 +56,7 @@ class AutoExtrudeRepairStep(PipelineStep):
         else:
             msg = "No extruded side faces to repair"
 
+        yield ProgressUpdate(1.0, 1.0, f"Auto Extrude Repair: completed ({msg})")
         ctx.set_data("repaired_faces_count", count)
-        return StepResult.success(msg, {"repaired_count": count})
+        yield StepResult.success(msg, {"repaired_count": count})
+

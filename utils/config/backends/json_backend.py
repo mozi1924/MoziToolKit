@@ -5,6 +5,7 @@ JSON File Configuration Backend with Atomic I/O and Backup Recovery.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -12,6 +13,9 @@ from typing import Optional
 
 from .base import ConfigBackend
 from ..models import ConfigData
+
+logger = logging.getLogger("MoziToolKit.Config.JSON")
+
 
 try:
     import bpy
@@ -105,7 +109,7 @@ class JsonConfigBackend(ConfigBackend):
         backup_path = filepath.with_suffix(filepath.suffix + ".bak")
         backup_data = self._load_json_dict(backup_path)
         if backup_data is not None and ("views" in backup_data or "resource_packs" in backup_data or "material_settings" in backup_data):
-            print(f"[MoziToolKit] Recovered configuration from backup: {backup_path}")
+            logger.info(f"Recovered configuration from backup: {backup_path}")
             cfg = ConfigData.from_dict(backup_data)
             cfg.backend_type = "JSON"
             # Restore primary file from valid backup
@@ -132,7 +136,7 @@ class JsonConfigBackend(ConfigBackend):
             self._atomic_write_json(backup_path, dict_data)
             return True
         except Exception as e:
-            print(f"[MoziToolKit] Error saving JSON config to {filepath}: {e}")
+            logger.error(f"Error saving JSON config to {filepath}: {e}", exc_info=True)
             return False
 
     def reset(self) -> ConfigData:
@@ -151,7 +155,7 @@ class JsonConfigBackend(ConfigBackend):
                 json.dump(data.to_dict(), f, indent=4, ensure_ascii=False)
             return True
         except Exception as e:
-            print(f"[MoziToolKit] Error exporting config to {filepath}: {e}")
+            logger.error(f"Error exporting config to {filepath}: {e}", exc_info=True)
             return False
 
     def import_from_file(self, filepath: Path) -> Optional[ConfigData]:
@@ -163,5 +167,6 @@ class JsonConfigBackend(ConfigBackend):
                 cfg = ConfigData.from_dict(data)
                 return cfg
         except Exception as e:
-            print(f"[MoziToolKit] Error importing config from {filepath}: {e}")
+            logger.error(f"Error importing config from {filepath}: {e}", exc_info=True)
         return None
+

@@ -6,11 +6,15 @@ Persists configuration directly into Blender's user preferences (userpref.blend)
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 from .base import ConfigBackend
 from ..models import ConfigData, PackEntry, MaterialSettings, MenuItem
+
+logger = logging.getLogger("MoziToolKit.Config.BlenderPrefs")
+
 
 try:
     import bpy
@@ -161,7 +165,7 @@ class BlenderPreferencesConfigBackend(ConfigBackend):
 
             return True
         except Exception as e:
-            print(f"[MoziToolKit] Error saving to Blender preferences: {e}")
+            logger.error(f"Error saving to Blender preferences: {e}", exc_info=True)
             return False
 
     def reset(self) -> ConfigData:
@@ -179,7 +183,7 @@ class BlenderPreferencesConfigBackend(ConfigBackend):
                 json.dump(data.to_dict(), f, indent=4, ensure_ascii=False)
             return True
         except Exception as e:
-            print(f"[MoziToolKit] Error exporting config to {filepath}: {e}")
+            logger.error(f"Error exporting config to {filepath}: {e}", exc_info=True)
             return False
 
     def import_from_file(self, filepath: Path) -> Optional[ConfigData]:
@@ -192,5 +196,6 @@ class BlenderPreferencesConfigBackend(ConfigBackend):
                 cfg.backend_type = "BLENDER_PREFS"
                 return cfg
         except Exception as e:
-            print(f"[MoziToolKit] Error importing config from {filepath}: {e}")
+            logger.error(f"Error importing config from {filepath}: {e}", exc_info=True)
         return None
+

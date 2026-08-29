@@ -25,6 +25,7 @@ from .rules import should_skip_rendering
 from .engine import (
     FaceCuller,
     get_shared_face_culler,
+    get_visible_face_directions,
 )
 
 __all__ = [
@@ -43,4 +44,6 @@ __all__ = [
     "should_skip_rendering",
     "FaceCuller",
     "get_shared_face_culler",
+    "get_visible_face_directions",
 ]
+

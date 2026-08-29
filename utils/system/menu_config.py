@@ -5,7 +5,11 @@ Delegates configuration persistence to utils.config and menu registration to uti
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Union
+
+logger = logging.getLogger("MoziToolKit.System.MenuConfig")
+
 
 from ..config import (
     ConfigManager,
@@ -56,10 +60,11 @@ def _normalize_views_data(views_data: dict) -> dict:
                             norm_item["operator"] = canonical_op
                             norm_items.append(norm_item)
                         else:
-                            print(f"[MoziToolKit] Ignoring untrusted/unregistered menu operator: {norm_item.get('operator')}")
+                            logger.warning(f"Ignoring untrusted/unregistered menu operator: {norm_item.get('operator')}")
                     else:
                         norm_items.append(norm_item)
             normalized[view] = norm_items
+
         else:
             normalized[view] = items
     return normalized

@@ -6,11 +6,15 @@ and unified animation metadata, preventing UV stretching / distortion when mesh 
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from ..pack.resource_pack import get_cache_dir
 from ...system.dependencies import has_pillow
+
+logger = logging.getLogger("MoziToolKit.Materials.Aligner")
+
 
 try:
     from PIL import Image
@@ -185,6 +189,7 @@ def align_standalone_textures(
                 "height": ch_frame_h,
             }
         except Exception as e:
-            print(f"[MoziToolKit] Warning: Failed to align standalone channel '{ch}' for '{tex_name}': {e}")
+            logger.warning(f"Failed to align standalone channel '{ch}' for '{tex_name}': {e}")
 
     return result_info
+
