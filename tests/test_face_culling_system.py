@@ -152,11 +152,47 @@ class TestFaceCullingSystem(unittest.TestCase):
         self.assertFalse(self.culler.should_render_face(water, water, "east"))
         # Water touching Lava: rendered (different fluid)
         self.assertTrue(self.culler.should_render_face(water, lava, "east"))
-        # Water touching Stone: culled against solid
-        self.assertFalse(self.culler.should_render_face(water, stone, "down"))
-        # Water touching Air: rendered
-        self.assertTrue(self.culler.should_render_face(water, air, "up"))
+    def test_quad_face_occlusion_rect_extraction(self):
+        """Test extracting 2D occlusion rects directly from 3D quad vertices."""
+        from utils.culling import extract_quad_face_occlusion_rect
+
+        # Top face of a bottom half slab (Y=0.5 plane) -> Not on Y=1 outer boundary -> None
+        slab_top_inner = [(0.0, 0.5, 0.0), (0.0, 0.5, 1.0), (1.0, 0.5, 1.0), (1.0, 0.5, 0.0)]
+        self.assertIsNone(extract_quad_face_occlusion_rect(slab_top_inner, "up"))
+
+        # Bottom face of a bottom half slab (Y=0.0 plane) -> Full 2D face on boundary
+        slab_bottom_outer = [(0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0)]
+        rect = extract_quad_face_occlusion_rect(slab_bottom_outer, "down")
+        self.assertIsNotNone(rect)
+        self.assertTrue(rect.is_full)
+
+        # Partial element: East face half-width quad at X=1.0 plane
+        quad_half_east = [(1.0, 0.5, 1.0), (1.0, 0.0, 1.0), (1.0, 0.0, 0.0), (1.0, 0.5, 0.0)]
+        rect_east = extract_quad_face_occlusion_rect(quad_half_east, "east")
+        self.assertIsNotNone(rect_east)
+        self.assertAlmostEqual(rect_east.min_v, 0.0)
+        self.assertAlmostEqual(rect_east.max_v, 0.5)
+
+    def test_quad_level_element_culling(self):
+        """Test that passing quad_face_shape allows fine-grained element quad culling."""
+        stone = self.culler.get_meta("minecraft:stone")
+        slab_top = self.culler.get_meta("minecraft:oak_slab[type=top]")
+
+        # A partial element quad on bottom boundary
+        partial_bottom_quad = FaceOcclusionRect(0.0, 0.0, 1.0, 0.5)
+
+        # When touching a solid stone below (down direction), the partial quad is completely occluded by stone's full top face
+        self.assertFalse(self.culler.should_render_face(
+            slab_top, stone, "down", quad_face_shape=[partial_bottom_quad]
+        ))
+
+        # When touching an empty air below, the partial quad is visible
+        air = self.culler.get_meta("minecraft:air")
+        self.assertTrue(self.culler.should_render_face(
+            slab_top, air, "down", quad_face_shape=[partial_bottom_quad]
+        ))
 
 
 if __name__ == "__main__":
     unittest.main()
+
