@@ -378,7 +378,8 @@ class StandaloneReplacementEngine:
                         continue
 
                     polygon = mesh.polygons[poly_idx]
-                    if is_fluid_texture_name(tex_info["texture_name"]):
+                    is_yefira = bool(obj.get("mtk:is_yefira_world") or obj.get("mtk:section_pos") is not None or obj.name.startswith("Yefira_"))
+                    if is_fluid_texture_name(tex_info["texture_name"]) and orig_mode == "GENERIC" and not is_yefira:
                         normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_info["texture_name"])
 
                     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
