@@ -161,26 +161,58 @@ def get_section_mesh_name(root_prefix: str, sx: int, sy: int, sz: int) -> str:
     return f"Mesh_{root_prefix}_Section_{sx}_{sy}_{sz}"
 
 
+def is_yefira_root_object(obj: Optional[bpy.types.Object]) -> bool:
+    """Identify whether a Blender object is a root Yefira live sync world container."""
+    if not obj:
+        return False
+    if obj.get("mtk:is_yefira_world"):
+        if not obj.parent or not obj.parent.get("mtk:is_yefira_world"):
+            return True
+    if obj.type == 'EMPTY' and (obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_World")):
+        return True
+    if obj.type == 'EMPTY' and any(c.get("mtk:section_pos") is not None or "_Section_" in c.name for c in obj.children):
+        return True
+    return False
+
+
+def is_yefira_child_section(obj: Optional[bpy.types.Object]) -> bool:
+    """Identify whether a Blender object is a child section mesh chunk of a Yefira world."""
+    if not obj or obj.type != 'MESH':
+        return False
+    if obj.get("mtk:section_pos") is not None:
+        return True
+    if "_Section_" in obj.name:
+        return True
+    return False
+
+
+def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
+    """Identify whether a Blender object is either a root container or child section of Yefira."""
+    if not obj:
+        return False
+    return is_yefira_root_object(obj) or is_yefira_child_section(obj) or bool(obj.get("mtk:is_yefira_world"))
+
+
 def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
-    """Given any object (root empty or child section mesh), resolve to the topmost Yefira World root container."""
+    """Given any object (root empty, child section mesh, or descendant), resolve to the topmost Yefira World root container."""
     if not obj:
         return None
-    # 1. If object has a parent, climb up if the parent is a Yefira world or Empty container
-    if obj.parent:
-        if obj.parent.get("mtk:is_yefira_world") or obj.parent.type == 'EMPTY' or obj.parent.name == DEFAULT_WORLD_OBJECT_NAME:
-            return resolve_world_root_object(obj.parent)
-        if obj.get("mtk:section_pos") is not None or "_Section_" in obj.name:
-            return resolve_world_root_object(obj.parent)
-    # 2. If the object itself is a child section mesh without a parent yet
-    if (obj.get("mtk:section_pos") is not None or "_Section_" in obj.name) and obj.type == 'MESH':
-        if obj.parent:
-            return resolve_world_root_object(obj.parent)
+    # 1. If object has a parent, climb up to find the root container
+    curr = obj
+    while curr.parent:
+        if is_yefira_root_object(curr.parent):
+            return curr.parent
+        curr = curr.parent
+    if is_yefira_root_object(curr):
+        return curr
+    # 2. If the object itself is a child section mesh without a linked parent yet
+    if is_yefira_child_section(obj):
         prefix = obj.name.split("_Section_")[0]
         root_match = bpy.data.objects.get(prefix)
-        if root_match and root_match.type == 'EMPTY':
+        if root_match and is_yefira_root_object(root_match):
             return root_match
     # 3. If the object is an Empty or tagged as world
-    if obj.get("mtk:is_yefira_world") or obj.type == 'EMPTY' or obj.name == DEFAULT_WORLD_OBJECT_NAME:
+    if is_yefira_root_object(obj):
         return obj
     return None
 
@@ -196,12 +228,18 @@ def get_or_create_world_root(
     """
     if target_obj and getattr(target_obj, "name", None) in bpy.data.objects:
         resolved = resolve_world_root_object(target_obj)
-        return resolved or target_obj
+        if resolved:
+            return resolved
+        if is_yefira_root_object(target_obj):
+            return target_obj
 
     if root_name and root_name in bpy.data.objects:
         obj = bpy.data.objects[root_name]
         resolved = resolve_world_root_object(obj)
-        return resolved or obj
+        if resolved:
+            return resolved
+        if is_yefira_root_object(obj):
+            return obj
 
     ctx = context or (bpy.context if hasattr(bpy, "context") else None)
     active_obj = getattr(ctx, "active_object", None) if ctx else None
@@ -214,11 +252,12 @@ def get_or_create_world_root(
     if target_name in bpy.data.objects:
         obj = bpy.data.objects[target_name]
         resolved = resolve_world_root_object(obj)
-        return resolved or obj
+        if resolved:
+            return resolved
 
     # Find any existing object tagged as Yefira world (prefer empty roots)
     for obj in bpy.data.objects:
-        if obj.get("mtk:is_yefira_world") and (obj.type == 'EMPTY' or obj.parent is None):
+        if is_yefira_root_object(obj):
             return obj
 
     # Create new Empty object container (no dummy mesh)

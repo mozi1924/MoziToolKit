@@ -53,7 +53,28 @@ class MOZI_PT_live_sync(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        props = getattr(context.scene, "mozi_sync", None)
+        active_obj = context.object
+        if not active_obj:
+            layout.label(text="No active object", icon='ERROR')
+            return
+
+        try:
+            from ..utils.live_sync.mesh_builder import (
+                resolve_world_root_object,
+                is_yefira_root_object,
+                is_yefira_child_section,
+                find_root_section_children,
+            )
+        except (ImportError, ValueError):
+            from utils.live_sync.mesh_builder import (
+                resolve_world_root_object,
+                is_yefira_root_object,
+                is_yefira_child_section,
+                find_root_section_children,
+            )
+
+        root_obj = resolve_world_root_object(active_obj) or active_obj
+        props = getattr(root_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)
         if not props:
             layout.label(text="Properties unavailable", icon='ERROR')
             return
@@ -63,9 +84,29 @@ class MOZI_PT_live_sync(bpy.types.Panel):
             draw_websockets_warning(layout)
             return
 
-        # 1. Connection Section
+        # 1. Hierarchy & Container Context
+        box_hierarchy = layout.box()
+        is_child = is_yefira_child_section(active_obj) and active_obj != root_obj
+        if is_child:
+            row = box_hierarchy.row(align=True)
+            row.label(text=f"Child Section: {active_obj.name}", icon='MESH_DATA')
+            sec_pos = active_obj.get("mtk:section_pos")
+            if sec_pos is not None and len(sec_pos) == 3:
+                row.label(text=f"Chunk: ({sec_pos[0]}, {sec_pos[1]}, {sec_pos[2]})")
+
+            row_parent = box_hierarchy.row(align=True)
+            row_parent.label(text=f"Parent Container: {root_obj.name}", icon='EMPTY_AXIS')
+            op = row_parent.operator("mozi.sync_select_root", text="Select Parent", icon='RESTRICT_SELECT_OFF')
+            op.container_name = root_obj.name
+        else:
+            row = box_hierarchy.row(align=True)
+            row.label(text=f"Container Root: {root_obj.name}", icon='EMPTY_AXIS')
+            children_map = find_root_section_children(root_obj)
+            row.label(text=f"Sections: {len(children_map)} chunks")
+
+        # 2. Connection Section (bound to root_obj)
         box_conn = layout.box()
-        box_conn.label(text="Connection", icon='URL')
+        box_conn.label(text=f"Connection ({root_obj.name})", icon='URL')
         row = box_conn.row(align=True)
         row.prop(props, "url", text="")
 
@@ -79,12 +120,16 @@ class MOZI_PT_live_sync(bpy.types.Panel):
         )
 
         if is_busy_connecting:
-            row_btn.operator("mozi.sync_disconnect", text="Cancel Connection", icon='CANCEL')
+            op = row_btn.operator("mozi.sync_disconnect", text="Cancel Connection", icon='CANCEL')
+            op.target_container = root_obj.name
         elif not props.is_connected:
-            row_btn.operator("mozi.sync_connect", text="Connect", icon='PLAY')
+            op = row_btn.operator("mozi.sync_connect", text="Connect", icon='PLAY')
+            op.target_container = root_obj.name
         else:
-            row_btn.operator("mozi.sync_disconnect", text="Disconnect", icon='CANCEL')
-            row_btn.operator("mozi.sync_refresh", text="Refresh Data", icon='FILE_REFRESH')
+            op_disc = row_btn.operator("mozi.sync_disconnect", text="Disconnect", icon='CANCEL')
+            op_disc.target_container = root_obj.name
+            op_ref = row_btn.operator("mozi.sync_refresh", text="Refresh Data", icon='FILE_REFRESH')
+            op_ref.target_container = root_obj.name
 
         # Status badge
         row_status = box_conn.row(align=True)
@@ -96,7 +141,7 @@ class MOZI_PT_live_sync(bpy.types.Panel):
             status_icon = 'RADIOBUT_OFF'
         row_status.label(text=f"Status: {props.connection_status}", icon=status_icon)
 
-        # 2. World Selection & Metrics
+        # 3. World Selection & Metrics
         if props.has_selection:
             box_sel = layout.box()
             box_sel.label(text="Selection Bounds", icon='SHADING_BBOX')
@@ -120,9 +165,10 @@ class MOZI_PT_live_sync(bpy.types.Panel):
 
             row_actions = box_geo.row(align=True)
             row_actions.prop(props, "filter_air", text="Filter Air")
-            row_actions.operator("mozi.sync_rebuild_world", text="Rebuild Mesh", icon='FILE_REFRESH')
+            op_reb = row_actions.operator("mozi.sync_rebuild_world", text="Rebuild Mesh", icon='FILE_REFRESH')
+            op_reb.target_container = root_obj.name
 
-            # 3. Block Palette
+            # 4. Block Palette
             box_pal = layout.box()
             row_pal = box_pal.row(align=True)
             row_pal.label(text=f"Palette ({props.palette_count})", icon='COLOR')
@@ -136,11 +182,12 @@ class MOZI_PT_live_sync(bpy.types.Panel):
                 rows=3,
             )
 
-            # 4. Delta History
+            # 5. Delta History
             box_delta = layout.box()
             row_hist = box_delta.row(align=True)
             row_hist.label(text=f"Delta Log ({len(props.delta_history)})", icon='LONGDISPLAY')
-            row_hist.operator("mozi.sync_clear_history", text="", icon='TRASH')
+            op_clr = row_hist.operator("mozi.sync_clear_history", text="", icon='TRASH')
+            op_clr.target_container = root_obj.name
             box_delta.template_list(
                 "MOZI_UL_sync_delta_list",
                 "",

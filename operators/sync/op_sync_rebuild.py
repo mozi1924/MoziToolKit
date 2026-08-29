@@ -14,13 +14,16 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
     bl_label = "Rebuild World"
     bl_description = "Reconstruct meshes, face culling, UV maps, and material slots purely from local voxel data"
 
+    target_container: bpy.props.StringProperty(name="Target Container", default="")
+
     def execute(self, context):
         from .op_sync_connect import (
             find_bound_atlas_material,
             get_cached_atlas_params,
             preload_sync_world_data,
-            get_current_world_object,
+            get_target_world_object,
             get_active_sync_props,
+            get_active_session_manager,
             _client_thread,
         )
         try:
@@ -45,8 +48,29 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             )
             return {'CANCELLED'}
 
-        if not voxel_storage.block_map:
-            if _client_thread and _client_thread.is_connected:
+        target_obj = None
+        if self.target_container:
+            target_obj = bpy.data.objects.get(self.target_container)
+        if not target_obj:
+            target_obj = get_target_world_object(context)
+
+        session_mgr = get_active_session_manager()
+        session = session_mgr.get_session(target_obj.name) if target_obj else None
+        active_storage = session.storage if session else voxel_storage
+
+        if not active_storage.block_map:
+            # Try restoring from scene first
+            if session and session.restore_sync_state_from_scene(target_obj):
+                pass
+            elif restore_sync_state_from_scene(context, target_obj=target_obj):
+                pass
+
+        if not active_storage.block_map:
+            if session and session.client_thread and session.client_thread.is_connected:
+                self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")
+                bpy.ops.mozi.sync_refresh(target_container=target_obj.name if target_obj else "")
+                return {'FINISHED'}
+            elif _client_thread and _client_thread.is_connected:
                 self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")
                 bpy.ops.mozi.sync_refresh()
                 return {'FINISHED'}
@@ -55,20 +79,20 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
 
         clear_sync_caches()
 
-        existing_world = get_current_world_object(context)
+        existing_world = target_obj or get_target_world_object(context)
         mat = find_bound_atlas_material(existing_world) if existing_world else None
         atlas_params = get_cached_atlas_params(mat)
-        cur_palette = voxel_storage.get_unique_states()
+        cur_palette = active_storage.get_unique_states()
         preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=atlas_params)
 
-        trigger_mesh_sync(context, force_full_rebuild=True)
+        trigger_mesh_sync(context, force_full_rebuild=True, target_obj=existing_world, storage=active_storage)
 
         for window in context.window_manager.windows:
             for area in window.screen.areas:
                 if area.type in ('VIEW_3D', 'PROPERTIES'):
                     area.tag_redraw()
 
-        props = get_active_sync_props(context)
+        props = get_active_sync_props(context, target_obj=existing_world)
         total_pts = props.point_count if props else 0
         self.report({'INFO'}, f"Rebuilt world mesh successfully ({total_pts:,} vertices).")
         return {'FINISHED'}
