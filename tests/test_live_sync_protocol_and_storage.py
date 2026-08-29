@@ -637,7 +637,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
                 world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
                 self.assertIsNotNone(world_obj)
                 # Child section mesh should have been generated
-                sec_obj = bpy.data.objects.get("Yefira_Section_0_0_0")
+                sec_obj = bpy.data.objects.get("Yefira_World_Section_0_0_0")
                 self.assertIsNotNone(sec_obj)
                 self.assertGreater(len(sec_obj.data.polygons), 0)
             finally:

@@ -28,6 +28,7 @@ from utils.live_sync import (
     VoxelStorage,
     build_world_mesh,
     sync_world_mesh,
+    apply_block_delta_to_world,
     WorldMeshBuildResult,
     clear_mesh_builder_caches,
 )
@@ -122,7 +123,7 @@ class TestDirectMeshSync(unittest.TestCase):
             m["mtk:atlas_chunk_id"] = cid
 
         result = sync_world_mesh(bpy.context, storage, atlas_params=atlas_params, force_full_rebuild=True)
-        section = next(child for child in result.world_obj.children if child.name.startswith("Yefira_Section_"))
+        section = next(child for child in result.world_obj.children if "_Section_" in child.name)
         self.assertEqual(len(section.data.materials), 2)
         self.assertTrue(all(material is not None for material in section.data.materials))
 
@@ -152,19 +153,9 @@ class TestDirectMeshSync(unittest.TestCase):
                     {"chunk_id": 8, "category": "entities", "kind": "static", "width": 512, "height": 512, "packing": "rect_bin_pack"},
                 ],
                 "textures": {
-                    "minecraft:block/oak_planks": {"chunk_id": 0, "tile_column": 0, "tile_row": 0, "category": "blocks"},
-                    "minecraft:entity/skeleton/skeleton": {
-                        "chunk_id": 8, "pixel_x": 0, "pixel_y": 0,
-                        "rect_width": 64, "rect_height": 32, "category": "entities",
-                    },
-                    "minecraft:entity/end_portal": {
-                        "chunk_id": 8, "pixel_x": 64, "pixel_y": 0,
-                        "rect_width": 16, "rect_height": 16, "category": "entities",
-                    },
-                    "minecraft:entity/enderdragon/dragon": {
-                        "chunk_id": 8, "pixel_x": 128, "pixel_y": 0,
-                        "rect_width": 128, "rect_height": 64, "category": "entities",
-                    },
+                    "minecraft:entity/skeleton/skeleton": {"chunk_id": 8, "pixel_x": 0, "pixel_y": 0, "rect_width": 64, "rect_height": 32, "category": "entities"},
+                    "minecraft:entity/end_portal": {"chunk_id": 8, "pixel_x": 0, "pixel_y": 32, "rect_width": 16, "rect_height": 16, "category": "entities"},
+                    "minecraft:entity/enderdragon/dragon": {"chunk_id": 8, "pixel_x": 64, "pixel_y": 0, "rect_width": 128, "rect_height": 64, "category": "entities"},
                 },
             }
         }
@@ -173,7 +164,7 @@ class TestDirectMeshSync(unittest.TestCase):
             m["mtk:atlas_chunk_id"] = cid
 
         result = sync_world_mesh(bpy.context, storage, atlas_params=atlas_params, force_full_rebuild=True)
-        section = next(child for child in result.world_obj.children if child.name.startswith("Yefira_Section_"))
+        section = next(child for child in result.world_obj.children if "_Section_" in child.name)
         self.assertTrue(any(mat and mat.get("mtk:atlas_chunk_id") == 8 for mat in section.data.materials))
 
         source_key = section.data.attributes["mtk_source_texture_key"]
@@ -612,8 +603,8 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertIsNotNone(res.world_obj)
         root = res.world_obj
 
-        sec0_obj = bpy.data.objects.get("Yefira_Section_0_0_0")
-        sec1_obj = bpy.data.objects.get("Yefira_Section_1_0_0")
+        sec0_obj = bpy.data.objects.get("Yefira_World_Section_0_0_0")
+        sec1_obj = bpy.data.objects.get("Yefira_World_Section_1_0_0")
         self.assertIsNotNone(sec0_obj)
         self.assertIsNotNone(sec1_obj)
 
@@ -644,16 +635,16 @@ class TestDirectMeshSync(unittest.TestCase):
         storage.set_block(25, 5, 5, "minecraft:stone")
 
         sync_world_mesh(bpy.context, storage, force_full_rebuild=True)
-        self.assertIn("Yefira_Section_0_0_0", bpy.data.objects)
-        self.assertIn("Yefira_Section_1_0_0", bpy.data.objects)
+        self.assertIn("Yefira_World_Section_0_0_0", bpy.data.objects)
+        self.assertIn("Yefira_World_Section_1_0_0", bpy.data.objects)
 
         # Turn the block in Section 1 into air
         storage.apply_delta_update(storage.min_x, storage.min_y, storage.min_z, [(25, 5, 5, "minecraft:air")])
         sync_world_mesh(bpy.context, storage, force_full_rebuild=False)
 
         # Section 1 object should be removed
-        self.assertNotIn("Yefira_Section_1_0_0", bpy.data.objects)
-        self.assertIn("Yefira_Section_0_0_0", bpy.data.objects)
+        self.assertNotIn("Yefira_World_Section_1_0_0", bpy.data.objects)
+        self.assertIn("Yefira_World_Section_0_0_0", bpy.data.objects)
 
     def test_directional_furnace_exact_uvs(self):
         """Verify furnace facing East maps furnace_front to East face and rotated top to Up face."""
@@ -981,6 +972,53 @@ class TestDirectMeshSync(unittest.TestCase):
         s6.set_block(1, 0, 0, "minecraft:water")
         r6 = build_world_mesh(bpy.context, s6)
         self.assertEqual(len(r6.world_obj.data.polygons), 10, "Adjacent fluids must cull internal faces")
+
+    def test_empty_root_world_container_and_renaming(self):
+        """Verify root object is an Empty container and renaming root propagates prefix to child sections."""
+        # 1. Operator creation
+        res_op = bpy.ops.mozi.add_yefira_world(name="Custom_World")
+        self.assertEqual(res_op, {'FINISHED'})
+
+        custom_root = bpy.data.objects.get("Custom_World")
+        self.assertIsNotNone(custom_root)
+        self.assertEqual(custom_root.type, 'EMPTY')
+        self.assertTrue(custom_root.get("mtk:is_yefira_world"))
+
+        # 2. Sync world geometry under custom empty root
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:stone")
+        storage.set_block(16, 0, 0, "minecraft:oak_planks")
+
+        res_sync = sync_world_mesh(bpy.context, storage, target_obj=custom_root, force_full_rebuild=True)
+        self.assertEqual(res_sync.world_obj.name, "Custom_World")
+        self.assertEqual(res_sync.world_obj.type, 'EMPTY')
+
+        sec0 = bpy.data.objects.get("Custom_World_Section_0_0_0")
+        sec1 = bpy.data.objects.get("Custom_World_Section_1_0_0")
+        self.assertIsNotNone(sec0)
+        self.assertIsNotNone(sec1)
+        self.assertEqual(sec0.parent, custom_root)
+        self.assertEqual(sec1.parent, custom_root)
+
+        # 3. Rename root object and verify propagation on subsequent sync
+        custom_root.name = "My_Castle"
+        self.assertEqual(custom_root.name, "My_Castle")
+
+        # Delta sync
+        storage.apply_delta_update(0, 0, 0, [(1, 0, 0, "minecraft:glass")])
+        res_delta = apply_block_delta_to_world(
+            context=bpy.context,
+            storage=storage,
+            changes=[(1, 0, 0, "minecraft:glass")],
+            target_obj=custom_root,
+        )
+
+        renamed_sec0 = bpy.data.objects.get("My_Castle_Section_0_0_0")
+        renamed_sec1 = bpy.data.objects.get("My_Castle_Section_1_0_0")
+        self.assertIsNotNone(renamed_sec0, "Section 0 must be renamed to My_Castle_Section_0_0_0")
+        self.assertIsNotNone(renamed_sec1, "Section 1 must be renamed to My_Castle_Section_1_0_0")
+        self.assertIsNone(bpy.data.objects.get("Custom_World_Section_0_0_0"))
+        self.assertIsNone(bpy.data.objects.get("Custom_World_Section_1_0_0"))
 
 
 if __name__ == "__main__":

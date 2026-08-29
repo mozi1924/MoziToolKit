@@ -163,10 +163,10 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
 
         res1 = sync_world_mesh(bpy.context, storage)
         self.assertEqual(res1.face_count, 6)
-        sec0 = bpy.data.objects.get("Yefira_Section_0_0_0")
+        sec0 = bpy.data.objects.get("Yefira_World_Section_0_0_0")
         self.assertIsNotNone(sec0)
         self.assertEqual(len(sec0.data.polygons), 6)
-        self.assertIsNone(bpy.data.objects.get("Yefira_Section_1_0_0"))
+        self.assertIsNone(bpy.data.objects.get("Yefira_World_Section_1_0_0"))
 
         # Incrementally place block (16, 0, 0) in Section (1, 0, 0)
         storage.apply_delta_update(0, 0, 0, [(16, 0, 0, "minecraft:stone")])
@@ -177,7 +177,7 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
         )
 
         self.assertEqual(res2.face_count, 10)
-        sec1 = bpy.data.objects.get("Yefira_Section_1_0_0")
+        sec1 = bpy.data.objects.get("Yefira_World_Section_1_0_0")
         self.assertIsNotNone(sec1)
         # Sec 0 block at x=15 has east face culled -> 5 faces
         self.assertEqual(len(sec0.data.polygons), 5)
@@ -195,7 +195,7 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
         self.assertEqual(res3.face_count, 6)
         self.assertEqual(len(sec0.data.polygons), 6)
         # Sec 1 should have been cleaned up
-        self.assertIsNone(bpy.data.objects.get("Yefira_Section_1_0_0"))
+        self.assertIsNone(bpy.data.objects.get("Yefira_World_Section_1_0_0"))
 
     def test_multipart_and_fluid_incremental_sync(self):
         """Verify multipart models (stairs) and fluids update incrementally with accurate culling and UVs."""
@@ -325,7 +325,7 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
         self.assertTrue(_delta_queue.empty())
 
         # Check that both blocks were placed and mesh updated to 10 faces
-        sec0 = bpy.data.objects.get("Yefira_Section_0_0_0")
+        sec0 = bpy.data.objects.get("Yefira_World_Section_0_0_0")
         self.assertIsNotNone(sec0)
         self.assertEqual(len(sec0.data.polygons), 10)
 

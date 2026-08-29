@@ -377,7 +377,7 @@ class LiveSyncMaterialManager:
 
     def _sync_object_material_slots(self) -> None:
         """Synchronize the root object's compact, stable chunk-to-slot layout."""
-        if self.world_obj:
+        if self.world_obj and getattr(self.world_obj, "data", None) is not None and hasattr(self.world_obj.data, "materials"):
             self.sync_material_slots(self.world_obj)
         else:
             self._refresh_flat_slot_mapping()
@@ -402,6 +402,8 @@ class LiveSyncMaterialManager:
         Returns True if material slots were changed, False if already up-to-date.
         """
         self._refresh_flat_slot_mapping()
+        if not obj or getattr(obj, "data", None) is None or not hasattr(obj.data, "materials"):
+            return False
         expected = [self.chunk_materials[cid] for cid in self._slot_to_chunk]
         slots = obj.data.materials
         if list(slots) == expected:
