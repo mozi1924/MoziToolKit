@@ -67,6 +67,8 @@ paths_exclude_pattern = [
   ".DS_Store",
   ".vscode/",
   ".venv/",
+  ".VSCodeCounter/",
+  "docs/",
   "build.py",
   ".gitignore",
 ]
