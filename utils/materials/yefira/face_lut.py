@@ -20,6 +20,10 @@ HARDCODED_TINT_BLOCKS = {
     "birch_leaves": (1.0, 1.0, 1.0, 1.0),
     "lily_pad": (1.0, 1.0, 1.0, 1.0),
     "redstone_wire": (1.0, 1.0, 1.0, 1.0),
+    "attached_melon_stem": (1.0, 1.0, 1.0, 1.0),
+    "attached_pumpkin_stem": (1.0, 1.0, 1.0, 1.0),
+    "melon_stem": (1.0, 1.0, 1.0, 1.0),
+    "pumpkin_stem": (1.0, 1.0, 1.0, 1.0),
 }
 
 
@@ -500,16 +504,22 @@ def build_block_face_tint_lut(mapping: Optional[dict]) -> dict[str, list[tuple[f
         elif short_n == "grass_block_snow":
             tint_lut[name] = [(0.0, 0.0, 0.0, 0.0)] * 6
         else:
-            tint_lut[name] = [
-                (
-                    float(location.get("default_base_tint_weight", 0.0)),
-                    float(location.get("default_overlay_tint_weight", 0.0)),
-                    float(location.get("default_tint_weight", 0.0)),
-                    1.0 if location.get("is_hardcoded", False) else 0.0,
-                )
-                if location else (0.0, 0.0, 0.0, 0.0)
-                for location in locations
-            ]
+            face_tints = []
+            for location in locations:
+                if not location:
+                    face_tints.append((0.0, 0.0, 0.0, 0.0))
+                    continue
+                base_w = float(location.get("default_base_tint_weight", 0.0))
+                overlay_w = float(location.get("default_overlay_tint_weight", 0.0))
+                def_w = float(location.get("default_tint_weight", 0.0))
+                is_hc = 1.0 if location.get("is_hardcoded", False) else 0.0
+                tint_cat = location.get("tint_category")
+                if (not def_w or def_w == 0.0) and tint_cat in ("grass", "foliage", "water"):
+                    def_w = 1.0
+                    base_w = 1.0
+                    overlay_w = 1.0
+                face_tints.append((base_w, overlay_w, def_w, is_hc))
+            tint_lut[name] = face_tints
 
     return tint_lut
 

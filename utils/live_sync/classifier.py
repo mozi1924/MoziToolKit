@@ -120,22 +120,30 @@ SKULL_HEAD_BLOCKS = frozenset({
 BIOME_TINT_GRASS = frozenset({
     "minecraft:grass_block", "minecraft:short_grass", "minecraft:tall_grass",
     "minecraft:fern", "minecraft:large_fern", "minecraft:sugar_cane",
+    "minecraft:potted_fern", "minecraft:bush", "minecraft:pink_petals", "minecraft:wildflowers",
     "grass_block", "short_grass", "tall_grass", "fern", "large_fern", "sugar_cane",
+    "potted_fern", "bush", "pink_petals", "wildflowers",
 })
 BIOME_TINT_FOLIAGE = frozenset({
     "minecraft:oak_leaves", "minecraft:jungle_leaves", "minecraft:acacia_leaves",
     "minecraft:dark_oak_leaves", "minecraft:mangrove_leaves", "minecraft:vine",
+    "minecraft:leaf_litter",
     "oak_leaves", "jungle_leaves", "acacia_leaves", "dark_oak_leaves", "mangrove_leaves", "vine",
+    "leaf_litter",
 })
 BIOME_TINT_WATER = frozenset({
-    "minecraft:water", "minecraft:flowing_water", "minecraft:water_cauldron",
-    "water", "flowing_water", "water_cauldron",
+    "minecraft:water", "minecraft:flowing_water", "minecraft:water_cauldron", "minecraft:bubble_column",
+    "water", "flowing_water", "water_cauldron", "bubble_column",
 })
 
 HARDCODED_TINTS = {
     "spruce_leaves": (0.38039, 0.60000, 0.38039, 1.0),
     "birch_leaves": (0.50196, 0.65490, 0.33333, 1.0),
     "lily_pad": (0.12549, 0.50196, 0.18824, 1.0),
+    "attached_melon_stem": (0.8784, 0.7804, 0.1098, 1.0),
+    "attached_pumpkin_stem": (0.8784, 0.7804, 0.1098, 1.0),
+    "melon_stem": (0.8784, 0.7804, 0.1098, 1.0),
+    "pumpkin_stem": (0.8784, 0.7804, 0.1098, 1.0),
 }
 
 DYE_COLORS_RGB: dict[str, tuple[float, float, float, float]] = {
@@ -451,13 +459,13 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     elif snowy and name in ("grass_block", "podzol", "mycelium"):
         tint_color = (1.0, 1.0, 1.0, 1.0)
         tint_data = (0.0, 0.0, 0.0, 0.0)
-    elif block_id in BIOME_TINT_GRASS:
+    elif block_id in BIOME_TINT_GRASS or name in BIOME_TINT_GRASS:
         tint_color = (0.35, 0.72, 0.22, 1.0)
         tint_data = (1.0, 1.0, 1.0, 0.0)
-    elif block_id in BIOME_TINT_FOLIAGE:
+    elif block_id in BIOME_TINT_FOLIAGE or name in BIOME_TINT_FOLIAGE or (name.endswith("_leaves") and not any(w in name for w in ("cherry", "azalea", "pale_oak", "spruce", "birch"))):
         tint_color = (0.28, 0.65, 0.18, 1.0)
         tint_data = (1.0, 1.0, 1.0, 0.0)
-    elif block_id in BIOME_TINT_WATER or "water" in block_id:
+    elif block_id in BIOME_TINT_WATER or "water" in block_id or name in BIOME_TINT_WATER:
         tint_color = (0.24, 0.45, 0.85, 0.8)
         tint_data = (1.0, 1.0, 1.0, 0.0)
     else:

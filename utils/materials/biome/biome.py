@@ -76,7 +76,7 @@ def linear_rgba_to_hex(rgba: tuple[float, ...]) -> str:
 
 
 
-# --- Standard Biome Palettes ---
+# ---# Standard Biome Palettes
 # Colors represent vanilla Minecraft defaults (hex sRGB).
 BIOME_PALETTES: dict[str, dict[str, Any]] = {
     "PLAINS": {
@@ -266,6 +266,45 @@ HARDCODED_BLOCK_TINTS: dict[str, str] = {
     "attached_pumpkin_stem": "#E0C71C",
 }
 
+# Canonical Minecraft 26.2 Block Colors Registry
+# Maps block stem to list of layer definitions (tuple of (category, weight_or_hex))
+BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
+    # Grass & Flora
+    "grass_block": [("grass", 1.0)],
+    "short_grass": [("grass", 1.0)],
+    "grass": [("grass", 1.0)],
+    "tall_grass": [("grass", 1.0)],
+    "fern": [("grass", 1.0)],
+    "large_fern": [("grass", 1.0)],
+    "potted_fern": [("grass", 1.0)],
+    "bush": [("grass", 1.0)],
+    "sugar_cane": [("grass", 1.0)],
+    # Multi-layer Flora (Layer 0 = Petals/Blank, Layer 1 = Stem/Grass)
+    "pink_petals": [("none", 0.0), ("grass", 1.0)],
+    "wildflowers": [("none", 0.0), ("grass", 1.0)],
+    # Foliage
+    "oak_leaves": [("foliage", 1.0)],
+    "jungle_leaves": [("foliage", 1.0)],
+    "acacia_leaves": [("foliage", 1.0)],
+    "dark_oak_leaves": [("foliage", 1.0)],
+    "vine": [("foliage", 1.0)],
+    "mangrove_leaves": [("foliage", 1.0)],
+    "leaf_litter": [("foliage", 1.0)],
+    # Water & Fluid
+    "water": [("water", 1.0)],
+    "flowing_water": [("water", 1.0)],
+    "water_cauldron": [("water", 1.0)],
+    "bubble_column": [("water", 1.0)],
+    # Hardcoded tints
+    "spruce_leaves": [("hardcoded", "#619961")],
+    "birch_leaves": [("hardcoded", "#80A755")],
+    "lily_pad": [("hardcoded", "#208030")],
+    "attached_melon_stem": [("hardcoded", "#E0C71C")],
+    "attached_pumpkin_stem": [("hardcoded", "#E0C71C")],
+    "melon_stem": [("hardcoded", "#E0C71C")],
+    "pumpkin_stem": [("hardcoded", "#E0C71C")],
+}
+
 
 def get_hardcoded_block_tint_rgba(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
     """Return sRGB RGBA tuple for a hardcoded block name."""
@@ -297,10 +336,7 @@ TINT_TYPE_FOLIAGE = 2
 TINT_TYPE_WATER = 3
 TINT_TYPE_HARDCODED = 4
 
-# Vanilla texture stems with a biome colour provider.  Keep this as an exact
-# allow-list: a model face's ``tintindex`` only selects a colour slot; it does
-# not mean Minecraft supplies a biome colour for that block.  For example,
-# stonecutter_saw has tintindex 0 but must remain its authored grey.
+# Vanilla texture stems with a biome colour provider.
 KNOWN_GRASS_STEMS = frozenset({
     "grass_block_top",
     "grass_block_side_overlay",
@@ -326,6 +362,7 @@ KNOWN_FOLIAGE_STEMS = frozenset({
     "dark_oak_leaves",
     "vine",
     "mangrove_leaves",
+    "leaf_litter",
 })
 
 KNOWN_WATER_STEMS = frozenset({
@@ -334,21 +371,67 @@ KNOWN_WATER_STEMS = frozenset({
     "water_overlay",
 })
 
-def classify_tint_category(clean_stem: str) -> str:
+
+def classify_tint_category(
+    clean_stem: str,
+    block_name: Optional[str] = None,
+    tint_index: Optional[int] = None,
+) -> str:
     """
-    Classify a clean texture stem into a tint category: 'grass', 'foliage', 'water', or 'none'.
-    Only known vanilla biome-colour textures are tinted. Names and model
-    tintindex values are not reliable evidence that an arbitrary texture
-    receives a biome colour in Minecraft.
+    Classify a texture stem and/or block name into a tint category:
+    'grass', 'foliage', 'water', 'hardcoded', or 'none'.
+    Respects BlockColors semantic registration and face tintindex.
     """
-    if not clean_stem:
+    if not clean_stem and not block_name:
         return "none"
-    if clean_stem in KNOWN_GRASS_STEMS:
+
+    # 1. Check explicit block-level registration if block_name is provided
+    if block_name:
+        clean_block = block_name.lower().removeprefix("minecraft:").removeprefix("block/")
+        if "[" in clean_block:
+            clean_block = clean_block.split("[", 1)[0]
+        if clean_block in BLOCK_TINT_REGISTRY:
+            layers = BLOCK_TINT_REGISTRY[clean_block]
+            if tint_index is not None:
+                if tint_index < 0:
+                    return "none"
+                if tint_index < len(layers):
+                    return layers[tint_index][0]
+                return layers[-1][0]
+            # When tint_index is not provided, return first non-none category
+            for cat, _ in layers:
+                if cat != "none":
+                    return cat
+
+    # 2. Check canonical known stems
+    stem_norm = clean_stem.lower().removeprefix("minecraft:").removeprefix("block/") if clean_stem else ""
+    if ":" in stem_norm:
+        stem_norm = stem_norm.split(":", 1)[1]
+
+    if stem_norm in HARDCODED_BLOCK_TINTS:
+        return "hardcoded"
+    if stem_norm in KNOWN_GRASS_STEMS:
         return "grass"
-    if clean_stem in KNOWN_FOLIAGE_STEMS:
+    if stem_norm in KNOWN_FOLIAGE_STEMS:
         return "foliage"
-    if clean_stem in KNOWN_WATER_STEMS:
+    if stem_norm in KNOWN_WATER_STEMS:
         return "water"
+
+    # 3. Heuristic fallback for custom models (e.g. 05m_oak_leaves_cube, custom_leaves, custom_water)
+    if "leaves" in stem_norm:
+        if "spruce" in stem_norm:
+            return "hardcoded"
+        if "birch" in stem_norm:
+            return "hardcoded"
+        if any(w in stem_norm for w in ("cherry", "azalea", "pale_oak")):
+            return "none"
+        return "foliage"
+
+    if "water" in stem_norm:
+        return "water"
+
+    if any(stem_norm.endswith(w) for w in ("_grass", "_fern", "_vine")):
+        return "grass"
 
     return "none"
 
@@ -362,6 +445,8 @@ class BiomeResolver:
     def __init__(self, models: dict[str, dict] | None = None, pack_root: str | Path | None = None):
         self.models = dict(models) if models else {}
         self.overlay_pairs: dict[str, str] = dict(KNOWN_OVERLAY_PAIRS)
+        self.texture_tint_categories: dict[str, str] = {}
+        self.texture_hardcoded_colors: dict[str, str] = {}
         if pack_root:
             self.load_from_pack_root(pack_root)
         elif self.models:
@@ -389,14 +474,16 @@ class BiomeResolver:
         """Set or update loaded block models and re-analyze."""
         self.models = models
         self.overlay_pairs = dict(KNOWN_OVERLAY_PAIRS)
+        self.texture_tint_categories.clear()
+        self.texture_hardcoded_colors.clear()
         self._analyze_models()
 
     def _analyze_models(self):
-        """Analyze loaded model JSONs to discover overlay pairs and tint indexes."""
+        """Analyze loaded model JSONs to discover overlay pairs, tint indexes, and custom textures."""
         for model_name, model_data in self.models.items():
             if not isinstance(model_data, dict):
                 continue
-            
+
             textures = model_data.get("textures", {})
             if isinstance(textures, dict):
                 # Discover overlay pairs: e.g. "side" + "overlay"
@@ -408,6 +495,42 @@ class BiomeResolver:
                     if clean_side and clean_overlay and clean_side != clean_overlay:
                         self.overlay_pairs[clean_side] = clean_overlay
 
+            # Discover tint association for custom model textures
+            elements = model_data.get("elements")
+            if isinstance(elements, list):
+                for elem in elements:
+                    if not isinstance(elem, dict):
+                        continue
+                    faces = elem.get("faces", {})
+                    if not isinstance(faces, dict):
+                        continue
+                    for f_name, f_data in faces.items():
+                        if not isinstance(f_data, dict):
+                            continue
+                        tint_idx = f_data.get("tintindex")
+                        if tint_idx is not None and tint_idx >= 0:
+                            tex_ref = f_data.get("texture", "")
+                            while isinstance(tex_ref, str) and tex_ref.startswith("#") and isinstance(textures, dict):
+                                tex_ref = textures.get(tex_ref[1:], "")
+                            if isinstance(tex_ref, str) and tex_ref:
+                                clean_tex = tex_ref.replace("minecraft:block/", "").replace("block/", "").lower()
+                                if ":" in clean_tex:
+                                    clean_tex = clean_tex.split(":", 1)[1]
+                                model_stem = model_name.lower().removeprefix("block/").removeprefix("models/block/")
+                                cat = classify_tint_category(clean_tex, block_name=model_stem, tint_index=tint_idx)
+                                if cat != "none":
+                                    self.texture_tint_categories[clean_tex] = cat
+            else:
+                model_stem = model_name.lower().removeprefix("block/").removeprefix("models/block/")
+                cat = classify_tint_category("", block_name=model_stem)
+                if cat == "foliage" and isinstance(textures, dict):
+                    for tex_var, tex_path in textures.items():
+                        if isinstance(tex_path, str) and not tex_path.startswith("#"):
+                            clean_tex = tex_path.replace("minecraft:block/", "").replace("block/", "").lower()
+                            if ":" in clean_tex:
+                                clean_tex = clean_tex.split(":", 1)[1]
+                            self.texture_tint_categories[clean_tex] = cat
+
     def get_overlay_texture(self, texture_stem: str) -> Optional[str]:
         """Return the paired overlay texture stem for a given base texture stem, or None."""
         clean = texture_stem.lower().replace("block/", "")
@@ -415,29 +538,24 @@ class BiomeResolver:
             clean = clean.split(":", 1)[1]
         return self.overlay_pairs.get(clean)
 
-    def get_tint_info(self, texture_name: str) -> dict[str, Any]:
+    def get_tint_info(
+        self,
+        texture_name: str,
+        block_name: Optional[str] = None,
+        tint_index: Optional[int] = None,
+    ) -> dict[str, Any]:
         """
         Determine full tint metadata for a texture stem / resource key.
-        Returns dictionary:
-        {
-            "tint_type": int (0=None, 1=Grass, 2=Foliage, 3=Water, 4=Hardcoded),
-            "tint_category": str ("grass", "foliage", "water", "hardcoded", "none"),
-            "tint_weight": float (0.0 or 1.0),
-            "has_overlay": bool,
-            "overlay_texture": str | None,
-            "is_hardcoded": bool,
-            "hardcoded_color": tuple[float, float, float, float] | None,
-            "hardcoded_hex": str | None,
-        }
+        Returns dictionary with tint_type, tint_category, weights, and hardcoded colors.
         """
         clean = texture_name.lower().replace("block/", "")
         if ":" in clean:
             clean = clean.split(":", 1)[1]
 
         # 1. Check Hardcoded block tints
-        if clean in HARDCODED_BLOCK_TINTS:
-            hex_col = HARDCODED_BLOCK_TINTS[clean]
-            linear_rgba = hex_to_linear_rgba(hex_col)
+        if clean in HARDCODED_BLOCK_TINTS or (block_name and block_name in HARDCODED_BLOCK_TINTS):
+            hex_col = HARDCODED_BLOCK_TINTS.get(clean) or HARDCODED_BLOCK_TINTS.get(block_name or "")
+            linear_rgba = hex_to_linear_rgba(hex_col) if hex_col else (1.0, 1.0, 1.0, 1.0)
             return {
                 "tint_type": TINT_TYPE_HARDCODED,
                 "tint_category": "hardcoded",
@@ -455,13 +573,13 @@ class BiomeResolver:
         overlay_stem = self.get_overlay_texture(clean)
         has_overlay = overlay_stem is not None
 
-        # 3. Centralized category classification.  The base layer of a
-        # paired overlay (``grass_block_side``) is deliberately untinted, but
-        # its overlay is grass-tinted.  Classifying only the base silently
-        # discarded that relationship and made the atlas metadata unusable.
-        category = classify_tint_category(clean)
+        # 3. Category classification (Prioritize discovered model textures, then block semantic, then stem)
+        category = self.texture_tint_categories.get(clean)
+        if not category or category == "none":
+            category = classify_tint_category(clean, block_name=block_name, tint_index=tint_index)
         if category == "none" and overlay_stem:
-            category = classify_tint_category(overlay_stem)
+            category = classify_tint_category(overlay_stem, block_name=block_name, tint_index=tint_index)
+
         if category == "grass":
             base_weight = 0.0 if has_overlay else 1.0
             return {
@@ -502,6 +620,21 @@ class BiomeResolver:
                 "hardcoded_color": None,
                 "hardcoded_hex": None,
             }
+        elif category == "hardcoded":
+            hex_col = self.texture_hardcoded_colors.get(clean, HARDCODED_BLOCK_TINTS.get(clean, "#619961"))
+            linear_rgba = hex_to_linear_rgba(hex_col)
+            return {
+                "tint_type": TINT_TYPE_HARDCODED,
+                "tint_category": "hardcoded",
+                "tint_weight": 1.0,
+                "base_tint_weight": 1.0,
+                "overlay_tint_weight": 1.0,
+                "has_overlay": False,
+                "overlay_texture": None,
+                "is_hardcoded": True,
+                "hardcoded_color": linear_rgba,
+                "hardcoded_hex": hex_col,
+            }
 
         # 4. Non-tinted default
         return {
@@ -516,6 +649,7 @@ class BiomeResolver:
             "hardcoded_color": None,
             "hardcoded_hex": None,
         }
+
 
 
 
