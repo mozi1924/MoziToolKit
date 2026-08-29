@@ -115,6 +115,14 @@ def _on_blend_file_loaded(dummy=None):
             props.sync_verified = False
             props.validation_info = "Ready to connect"
 
+    for obj in bpy.data.objects:
+        if hasattr(obj, "mozi_sync"):
+            props = obj.mozi_sync
+            props.is_connected = False
+            props.connection_status = "DISCONNECTED"
+            props.sync_verified = False
+            props.validation_info = "Ready to connect"
+
 
 _pending_rename_roots: set[str] = set()
 
@@ -156,12 +164,18 @@ def _on_depsgraph_update_post(scene, depsgraph):
     try:
         # 1. Guard against Edit Mode while Live Sync is actively connected (defer operator call)
         props = getattr(scene, "mozi_sync", None)
-        if props and props.is_connected:
-            active_obj = getattr(bpy.context, "active_object", None)
+        active_obj = getattr(bpy.context, "active_object", None)
+        obj_props = getattr(active_obj, "mozi_sync", None) if active_obj else None
+        is_any_connected = (props and props.is_connected) or (obj_props and obj_props.is_connected)
+        if is_any_connected:
             if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
                 msg = bpy.app.translations.pgettext_iface("Edit Mode is not supported during Live Sync. Switched to Object Mode.")
-                props.validation_info = msg
-                props.last_update_info = msg
+                if props:
+                    props.validation_info = msg
+                    props.last_update_info = msg
+                if obj_props:
+                    obj_props.validation_info = msg
+                    obj_props.last_update_info = msg
                 if not bpy.app.timers.is_registered(_deferred_enforce_object_mode):
                     bpy.app.timers.register(_deferred_enforce_object_mode, first_interval=0.0)
 
@@ -179,6 +193,7 @@ def _on_depsgraph_update_post(scene, depsgraph):
 
 def register():
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
+    bpy.types.Object.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
     if _on_blend_file_pre_load not in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.append(_on_blend_file_pre_load)
     if _on_blend_file_loaded not in bpy.app.handlers.load_post:
@@ -200,6 +215,11 @@ def unregister():
         bpy.app.handlers.load_pre.remove(_on_blend_file_pre_load)
     if _on_blend_file_loaded in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_blend_file_loaded)
+    if hasattr(bpy.types.Object, "mozi_sync"):
+        try:
+            del bpy.types.Object.mozi_sync
+        except Exception:
+            pass
     if hasattr(bpy.types.Scene, "mozi_sync"):
         try:
             del bpy.types.Scene.mozi_sync

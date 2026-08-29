@@ -253,7 +253,7 @@ def extract_atlas_parameters(
             res["tiles_per_row"] = int(mat["mtk_tiles_per_row"])
 
     if mapping:
-        if "tile_size" in mapping and "mtk_tile_size" not in mat:
+        if "tile_size" in mapping and (not mat or "mtk_tile_size" not in mat):
             res["tile_size"] = float(mapping["tile_size"])
         chunks = mapping.get("chunks", [])
         chunks_by_id = {c.get("chunk_id", i): c for i, c in enumerate(chunks)}

@@ -220,6 +220,14 @@ class TestMaterialHashRebuildAndDedup(unittest.TestCase):
             bpy.data.objects.remove(obj)
             bpy.data.meshes.remove(mesh)
 
+    def test_extract_atlas_parameters_with_none_mat(self):
+        """Verify extract_atlas_parameters does not crash when mat is None."""
+        params = extract_atlas_parameters(mat=None)
+        self.assertIsNotNone(params)
+        self.assertIn("tile_size", params)
+        self.assertIn("width", params)
+        self.assertIn("height", params)
+
 
 if __name__ == "__main__":
     unittest.main()

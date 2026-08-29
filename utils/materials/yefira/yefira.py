@@ -74,9 +74,11 @@ def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
         return True
     if obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_World") or obj.name.startswith("Yefira_Section_"):
         return True
-    if "_Section_" in obj.name and (obj.parent and (obj.parent.get("mtk:is_yefira_world") or obj.parent.name.startswith("Yefira_World"))):
+    if "_Section_" in obj.name:
         return True
-    if obj.type == 'EMPTY' and any(c.get("mtk:section_pos") is not None for c in obj.children):
+    if obj.type == 'EMPTY' and any(c.get("mtk:section_pos") is not None or "_Section_" in c.name for c in obj.children):
+        return True
+    if obj.parent and (obj.parent.get("mtk:is_yefira_world") or obj.parent.name.startswith("Yefira_World") or obj.parent.name == DEFAULT_WORLD_OBJECT_NAME):
         return True
     return False
 

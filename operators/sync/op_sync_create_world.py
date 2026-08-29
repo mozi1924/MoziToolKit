@@ -31,6 +31,14 @@ class MOZI_OT_add_yefira_world(bpy.types.Operator):
         root_obj["mtk:sync_manifest"] = "{}"
         root_obj["mtk:last_name"] = root_obj.name
 
+        # Initialize object-level live sync properties
+        if hasattr(root_obj, "mozi_sync"):
+            scene_props = getattr(context.scene, "mozi_sync", None)
+            if scene_props and scene_props.url:
+                root_obj.mozi_sync.url = scene_props.url
+            else:
+                root_obj.mozi_sync.url = "ws://localhost:8765"
+
         # Place at 3D cursor or world origin
         if hasattr(context.scene, "cursor"):
             root_obj.location = context.scene.cursor.location
@@ -46,4 +54,28 @@ class MOZI_OT_add_yefira_world(bpy.types.Operator):
         context.view_layer.objects.active = root_obj
 
         self.report({'INFO'}, f"Created Yefira World Empty: {root_obj.name}")
+        return {'FINISHED'}
+
+
+class MOZI_OT_sync_select_root(bpy.types.Operator):
+    """Select the parent Yefira World container object in the 3D Viewport."""
+    bl_idname = "mozi.sync_select_root"
+    bl_label = "Select Parent Container"
+    bl_description = "Select the parent Yefira World container object"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    container_name: StringProperty(
+        name="Container Name",
+        description="Name of the root container object to select",
+        default="",
+    )
+
+    def execute(self, context):
+        target = bpy.data.objects.get(self.container_name)
+        if target:
+            for obj in context.selected_objects:
+                obj.select_set(False)
+            target.select_set(True)
+            context.view_layer.objects.active = target
+            self.report({'INFO'}, f"Selected parent container: {target.name}")
         return {'FINISHED'}
