@@ -250,6 +250,34 @@ class TestOBJModels(unittest.TestCase):
         self.assertAlmostEqual(pw_min_z, 0.4375, places=3)
         self.assertAlmostEqual(pw_max_z, 1.0, places=3)
 
+    def test_piston_head_not_intercepted_as_skull(self):
+        """Verify piston_head is not hijacked by skull OBJ loader and bakes standard piston textures."""
+        from utils.live_sync.classifier import atlas_lookup_keys
+
+        # 1. Normal Piston Head
+        baked_piston = self.baker.bake_block_state("minecraft:piston_head[facing=up,short=false,type=normal]")
+        self.assertIsNotNone(baked_piston)
+        textures = {f.texture for el in baked_piston.elements for f in el.faces.values()}
+        self.assertNotIn("minecraft:entity/player/wide/steve", textures)
+        self.assertIn("minecraft:block/piston_top", textures)
+        self.assertIn("minecraft:block/piston_side", textures)
+
+        # 2. Sticky Piston Head
+        baked_sticky = self.baker.bake_block_state("minecraft:piston_head[facing=north,short=false,type=sticky]")
+        self.assertIsNotNone(baked_sticky)
+        sticky_textures = {f.texture for el in baked_sticky.elements for f in el.faces.values()}
+        self.assertNotIn("minecraft:entity/player/wide/steve", sticky_textures)
+        self.assertIn("minecraft:block/piston_top_sticky", sticky_textures)
+        self.assertIn("minecraft:block/piston_side", sticky_textures)
+
+        # 3. Verify classifier material keys
+        piston_keys = atlas_lookup_keys("minecraft:piston_head[facing=up,short=false,type=normal]")
+        self.assertNotIn("minecraft:entity/player/wide/steve", piston_keys)
+        self.assertNotIn("entity/player/wide/steve", piston_keys)
+
+        player_keys = atlas_lookup_keys("minecraft:player_head[rotation=0]")
+        self.assertIn("minecraft:entity/player/wide/steve", player_keys)
+
 
 if __name__ == "__main__":
     import sys
