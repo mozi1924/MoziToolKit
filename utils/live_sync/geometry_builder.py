@@ -25,10 +25,17 @@ from .constants import (
     MTK_SOURCE_TEXTURE_KEY,
     UV_MAP,
 )
+from ..culling import (
+    get_shared_face_culler,
+    CUBE_FACE_MC_VERTICES,
+    CUBE_FACE_CANONICAL_UVS,
+    MC_DIR_OFFSETS,
+    DIR_TO_INDEX,
+    mc_local_to_blender,
+)
 from ..mc_baker import StateBaker
 from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
 from .fluid_mesher import generate_fluid_mesh_faces
-from ..culling import get_shared_face_culler
 from .mesh_cache import (
     CachedStateMeta,
     get_cached_state_meta,
@@ -42,38 +49,9 @@ from ..materials.biome.biome import KNOWN_OVERLAY_PAIRS
 
 OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
 
-# Standard Unit Cube Quads in Minecraft local coordinates [0..1]
-CUBE_FACE_MC_VERTICES: dict[str, tuple[tuple[float, float, float], ...]] = {
-    "east": ((1.0, 1.0, 1.0), (1.0, 0.0, 1.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)),
-    "west": ((0.0, 1.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 1.0)),
-    "up": ((0.0, 1.0, 0.0), (0.0, 1.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 0.0)),
-    "top": ((0.0, 1.0, 0.0), (0.0, 1.0, 1.0), (1.0, 1.0, 1.0), (1.0, 1.0, 0.0)),
-    "down": ((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0)),
-    "bottom": ((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0)),
-    "south": ((0.0, 1.0, 1.0), (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0)),
-    "north": ((1.0, 1.0, 0.0), (1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0)),
-}
+# Backward-compatibility aliases
+_mc_local_to_blender = mc_local_to_blender
 
-# Standard Default Face UVs in Minecraft texture space [0..1] (v=0 is top, v=1 is bottom)
-CUBE_FACE_CANONICAL_UVS: dict[str, tuple[tuple[float, float], ...]] = {
-    "east": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "west": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "up": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "top": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "down": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "bottom": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "south": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-    "north": ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)),
-}
-
-
-def _mc_local_to_blender(lx: float, ly: float, lz: float) -> tuple[float, float, float]:
-    """Convert Minecraft local offset [0..1] relative to block center to Blender space."""
-    return (
-        lx - 0.5,
-        -(lz - 0.5),  # MC North (-Z) is Blender +Y, MC South (+Z) is Blender -Y
-        ly - 0.5,     # MC Up (+Y) is Blender +Z
-    )
 
 
 def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
