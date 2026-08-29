@@ -540,7 +540,25 @@ def _build_banner_model(state_str: str, short_name: str, props: dict[str, str]) 
     )
 
 
+VALID_SKULL_HEAD_TYPES = frozenset({
+    "player", "zombie", "creeper", "dragon", "piglin", "skeleton", "wither_skeleton"
+})
+
+SKULL_HEAD_BLOCK_NAMES = frozenset({
+    "player_head", "player_wall_head",
+    "zombie_head", "zombie_wall_head",
+    "creeper_head", "creeper_wall_head",
+    "dragon_head", "dragon_wall_head",
+    "piglin_head", "piglin_wall_head",
+    "skeleton_skull", "skeleton_wall_skull",
+    "wither_skeleton_skull", "wither_skeleton_wall_skull",
+})
+
+
 def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
+    if short_name not in SKULL_HEAD_BLOCK_NAMES:
+        return None
+
     is_wall = "_wall_" in short_name
     is_dragon = "dragon" in short_name
 
@@ -557,6 +575,8 @@ def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, st
         mat = "minecraft:entity/enderdragon/dragon"
     else:
         head_type = short_name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
+        if head_type not in VALID_SKULL_HEAD_TYPES:
+            return None
         is_mob_half_tex = head_type in ("skeleton", "wither_skeleton", "creeper")
         if head_type == "piglin":
             obj_file = "piglin_head.obj"
@@ -659,7 +679,7 @@ def _create_default_special_registry() -> SpecialModelRegistry:
 
     # Skulls / Heads
     reg.register_predicate(
-        lambda n, p: n.endswith(("_head", "_skull", "_wall_head", "_wall_skull")),
+        lambda n, p: n in SKULL_HEAD_BLOCK_NAMES,
         _build_skull_head_model
     )
 

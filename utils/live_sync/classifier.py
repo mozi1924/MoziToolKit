@@ -105,6 +105,17 @@ CROSS_PLANTS = frozenset({
     "potatoes", "beetroots", "sweet_berry_bush", "nether_wart", "crimson_roots", "warped_roots",
 })
 
+# Skulls and Heads (Entity models)
+SKULL_HEAD_BLOCKS = frozenset({
+    "player_head", "player_wall_head",
+    "zombie_head", "zombie_wall_head",
+    "creeper_head", "creeper_wall_head",
+    "dragon_head", "dragon_wall_head",
+    "piglin_head", "piglin_wall_head",
+    "skeleton_skull", "skeleton_wall_skull",
+    "wither_skeleton_skull", "wither_skeleton_wall_skull",
+})
+
 # Biome Tint categories for Minecraft block states
 BIOME_TINT_GRASS = frozenset({
     "minecraft:grass_block", "minecraft:short_grass", "minecraft:tall_grass",
@@ -314,7 +325,7 @@ def atlas_lookup_keys(parsed_or_name: Union[ParsedBlock, str], props: Optional[D
         keys.append("minecraft:entity/end_portal/end_portal")
         keys.append("entity/end_portal/end_portal")
 
-    if name.endswith(("_head", "_skull", "_wall_head", "_wall_skull")):
+    if name in SKULL_HEAD_BLOCKS:
         head_type = name.replace("_wall_", "_").removesuffix("_skull").removesuffix("_head")
         if head_type == "skeleton":
             keys.extend(["minecraft:entity/skeleton/skeleton", "entity/skeleton/skeleton"])
@@ -328,7 +339,7 @@ def atlas_lookup_keys(parsed_or_name: Union[ParsedBlock, str], props: Optional[D
             keys.extend(["minecraft:entity/piglin/piglin", "entity/piglin/piglin"])
         elif head_type == "dragon":
             keys.extend(["minecraft:entity/enderdragon/dragon", "entity/enderdragon/dragon"])
-        else:
+        elif head_type == "player":
             keys.extend(["minecraft:entity/player/wide/steve", "entity/player/wide/steve", "minecraft:entity/steve", "entity/steve"])
 
     if name == "conduit":

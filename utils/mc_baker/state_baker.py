@@ -277,9 +277,10 @@ class StateBaker:
                 "south": "minecraft:block/observer_back", "north": "minecraft:block/observer_front"
             }
 
-        # 8. Piston, Sticky Piston
-        if short_name in ("piston", "sticky_piston"):
-            top = "minecraft:block/piston_top_sticky" if short_name == "sticky_piston" else "minecraft:block/piston_top"
+        # 8. Piston, Sticky Piston, Piston Head
+        if short_name in ("piston", "sticky_piston", "piston_head"):
+            is_sticky = short_name == "sticky_piston" or props.get("type") == "sticky"
+            top = "minecraft:block/piston_top_sticky" if is_sticky else "minecraft:block/piston_top"
             side = "minecraft:block/piston_side"
             bottom = "minecraft:block/piston_bottom"
             return {"east": side, "west": side, "up": side, "down": side, "south": bottom, "north": top}
