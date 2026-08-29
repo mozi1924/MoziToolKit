@@ -185,6 +185,14 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
             img.save()
             bpy.data.images.remove(img)
 
+        entity_sign_dir = cls.pack_dir / "assets/minecraft/textures/entity/signs/hanging"
+        entity_sign_dir.mkdir(parents=True, exist_ok=True)
+        img_sign = bpy.data.images.new("temp_init_oak_sign", width=64, height=32)
+        img_sign.filepath_raw = str(entity_sign_dir / "oak.png")
+        img_sign.file_format = "PNG"
+        img_sign.save()
+        bpy.data.images.remove(img_sign)
+
         # Animation mcmeta for water_still
         (tex_dir / "water_still.png.mcmeta").write_text('{"animation": {"frametime": 2}}', encoding="utf-8")
 
@@ -919,6 +927,84 @@ class TestCrossModeMaterialReplacement(unittest.TestCase):
         self.assertTrue(cube_bed.material_slots[0].material.name.startswith("mtk:minecraft:bed-white:"))
         self.assertTrue(cube_chest.material_slots[0].material.name.startswith("mtk:minecraft:chest-normal:"))
         self.assertTrue(cube_yellow.material_slots[0].material.name.startswith("mtk:minecraft:bed-yellow:"))
+
+    def test_rect_packed_block_entity_atlas_to_atlas_replacement(self):
+        """Verify that Atlas -> Atlas replacement for rect-packed entity faces (e.g. hanging sign) inverts and restores UVs precisely without drift."""
+        from utils.materials.constants import ATTR_SOURCE_TEXTURE_KEY, ATTR_ATLAS_CHUNK_ID
+        from utils.materials.atlas.layout import remap_local_to_target_uv
+        import bmesh
+
+        # 1. Create a quad representing a hanging sign face
+        mesh = bpy.data.meshes.new("HangingSignMesh")
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.new("UVMap")
+        key_layer = bm.faces.layers.string.new(ATTR_SOURCE_TEXTURE_KEY)
+        chunk_layer = bm.faces.layers.int.new(ATTR_ATLAS_CHUNK_ID)
+
+        v0 = bm.verts.new((-0.5, 0, 0))
+        v1 = bm.verts.new((0.5, 0, 0))
+        v2 = bm.verts.new((0.5, 1, 0))
+        v3 = bm.verts.new((-0.5, 1, 0))
+        face = bm.faces.new((v0, v1, v2, v3))
+        face[key_layer] = b"minecraft:entity/signs/hanging/oak"
+        face[chunk_layer] = 17
+
+        # Canonical sign UV: [0.28125, 0.25] to [0.5, 0.5625]
+        local_coords = [(0.28125, 0.25), (0.5, 0.25), (0.5, 0.5625), (0.28125, 0.5625)]
+        target_loc = {"chunk_id": 17, "pixel_x": 768, "pixel_y": 608, "rect_width": 64, "rect_height": 32, "packing": "rect"}
+        target_chunk = {"chunk_id": 17, "width": 1024, "height": 4096, "packing": "rect_bin_pack"}
+
+        for loop, (lu, lv) in zip(face.loops, local_coords):
+            au, av = remap_local_to_target_uv(lu, lv, target_location=target_loc, target_chunk=target_chunk)
+            loop[uv_layer].uv = (au, av)
+
+        bm.to_mesh(mesh)
+        bm.free()
+
+        obj = bpy.data.objects.new("HangingSignObj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        mat = bpy.data.materials.new(name="mtk:minecraft:entities_chunk_001:test")
+        mat["mtk:atlas_chunk_id"] = 17
+        old_mapping_dict = {
+            "chunks": [target_chunk],
+            "textures": {"minecraft:entity/signs/hanging/oak": target_loc}
+        }
+        import json
+        mesh["mtk:atlas_mapping"] = json.dumps(old_mapping_dict)
+        obj.data.materials.append(mat)
+
+        orig_uvs = [(item.uv.x, item.uv.y) for item in obj.data.uv_layers.active.data]
+
+        # 2. Execute Atlas -> Atlas replacement
+        params = {
+            "zip_path": str(self.pack_dir),
+            "material_mode": "ATLAS",
+            "pack_textures": False,
+            "use_cache": True,
+        }
+        res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[obj])
+        self.assertTrue(res.is_success, ctx.reports)
+
+        # 3. Assert new UV correctly matches target projection in the new atlas
+        new_uvs = [(item.uv.x, item.uv.y) for item in obj.data.uv_layers.active.data]
+        from utils.materials.atlas.layout import remap_uv_to_local, remap_local_to_target_uv
+        from utils.materials.pipeline.session import get_atlas_mapping_from_mesh
+        new_mapping = get_atlas_mapping_from_mesh(obj.data)
+        new_tex_loc = new_mapping["textures"]["minecraft:entity/signs/hanging/oak"]
+        new_chunk_loc = next(c for c in new_mapping["chunks"] if c["chunk_id"] == new_tex_loc["chunk_id"])
+
+        expected_u, expected_v = remap_local_to_target_uv(local_coords[0][0], local_coords[0][1], target_location=new_tex_loc, target_chunk=new_chunk_loc)
+        self.assertAlmostEqual(new_uvs[0][0], expected_u, places=5)
+        self.assertAlmostEqual(new_uvs[0][1], expected_v, places=5)
+
+        # 4. Invert from the new atlas back to local to confirm 100% mathematical fidelity
+        inv_u, inv_v = remap_uv_to_local(new_uvs[0][0], new_uvs[0][1], orig_mode="ATLAS_CHUNK", old_loc=new_tex_loc, old_chunk=new_chunk_loc)
+        self.assertAlmostEqual(inv_u, local_coords[0][0], places=5)
+        self.assertAlmostEqual(inv_v, local_coords[0][1], places=5)
+
+        bpy.data.objects.remove(obj, do_unlink=True)
+        bpy.data.meshes.remove(mesh, do_unlink=True)
 
 
 @unittest.skipUnless(HAS_BPY, "bpy module is required")
