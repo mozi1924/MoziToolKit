@@ -1,5 +1,8 @@
 translations_dict = {
     "zh_HANS": {
+        ("*", "Yefira World"): "Yefira 世界",
+        ("*", "Create a new Yefira World Empty container for Minecraft live synchronization"): "新建用于 Minecraft 实时同步的 Yefira 世界空物体容器",
+        ("*", "Yefira Live Sync"): "Yefira 实时同步",
         ("*", "Scale UV Faces"): "缩放 UV 面",
         ("*", "Scale factor for UV faces"): "每个 UV 面的独立缩放比例",
         ("*", "Scale Factor"): "缩放比例",

@@ -138,6 +138,115 @@ def update_blocks_in_mesh(
     mesh.update()
 
 
+# Helper functions for root container and section object naming
+
+
+def get_section_object_name(root_prefix: str, sx: int, sy: int, sz: int) -> str:
+    """Return canonical object name for a 16x16x16 section chunk under root object."""
+    return f"{root_prefix}_Section_{sx}_{sy}_{sz}"
+
+
+def get_section_mesh_name(root_prefix: str, sx: int, sy: int, sz: int) -> str:
+    """Return canonical mesh name for a 16x16x16 section chunk under root object."""
+    return f"Mesh_{root_prefix}_Section_{sx}_{sy}_{sz}"
+
+
+def get_or_create_world_root(
+    context: Optional[bpy.types.Context] = None,
+    root_name: Optional[str] = None,
+    target_obj: Optional[bpy.types.Object] = None,
+) -> bpy.types.Object:
+    """
+    Acquire or instantiate the root Empty container for Yefira Live Sync world geometry.
+    Supports renamed root objects and multi-selection world containers.
+    """
+    if target_obj and getattr(target_obj, "name", None) in bpy.data.objects:
+        return target_obj
+
+    if root_name and root_name in bpy.data.objects:
+        return bpy.data.objects[root_name]
+
+    ctx = context or (bpy.context if hasattr(bpy, "context") else None)
+    active_obj = getattr(ctx, "active_object", None) if ctx else None
+    if active_obj:
+        if active_obj.get("mtk:is_yefira_world") or active_obj.name == DEFAULT_WORLD_OBJECT_NAME or active_obj.name.startswith("Yefira_World"):
+            return active_obj
+        if active_obj.parent and (active_obj.parent.get("mtk:is_yefira_world") or active_obj.parent.name.startswith("Yefira_World")):
+            return active_obj.parent
+
+    target_name = root_name or DEFAULT_WORLD_OBJECT_NAME
+    if target_name in bpy.data.objects:
+        return bpy.data.objects[target_name]
+
+    # Find any existing object tagged as Yefira world
+    for obj in bpy.data.objects:
+        if obj.get("mtk:is_yefira_world"):
+            return obj
+
+    # Create new Empty object container (no dummy mesh)
+    root_obj = bpy.data.objects.new(target_name, None)
+    root_obj.empty_display_type = 'PLAIN_AXES'
+    root_obj.empty_display_size = 1.0
+    root_obj["mtk:is_yefira_world"] = True
+    root_obj["mtk:sync_manifest"] = "{}"
+    root_obj.location = (0.0, 0.0, 0.0)
+
+    col = getattr(ctx, "collection", None) if ctx else None
+    if col is None and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
+        col = bpy.context.scene.collection
+    if col:
+        col.objects.link(root_obj)
+
+    return root_obj
+
+
+def find_root_section_children(root_obj: bpy.types.Object) -> dict[tuple[int, int, int], bpy.types.Object]:
+    """Find and map all child section objects of root_obj by their section coordinates."""
+    sections: dict[tuple[int, int, int], bpy.types.Object] = {}
+    if not root_obj:
+        return sections
+    for child in root_obj.children:
+        pos = child.get("mtk:section_pos")
+        if pos is not None and len(pos) == 3:
+            sections[(int(pos[0]), int(pos[1]), int(pos[2]))] = child
+        elif "_Section_" in child.name:
+            try:
+                parts = child.name.split("_Section_")[-1].split("_")
+                coords = (int(parts[0]), int(parts[1]), int(parts[2]))
+                sections[coords] = child
+                child["mtk:section_pos"] = list(coords)
+            except Exception:
+                pass
+    return sections
+
+
+def sync_child_section_names(root_obj: bpy.types.Object) -> None:
+    """Propagate root object name prefix to all child section objects and meshes when root is renamed."""
+    if not root_obj:
+        return
+    root_prefix = root_obj.name
+    for child in list(root_obj.children):
+        pos = child.get("mtk:section_pos")
+        if pos is not None and len(pos) == 3:
+            sx, sy, sz = int(pos[0]), int(pos[1]), int(pos[2])
+        elif "_Section_" in child.name:
+            try:
+                parts = child.name.split("_Section_")[-1].split("_")
+                sx, sy, sz = int(parts[0]), int(parts[1]), int(parts[2])
+                child["mtk:section_pos"] = [sx, sy, sz]
+            except Exception:
+                continue
+        else:
+            continue
+
+        target_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
+        target_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
+        if child.name != target_obj_name:
+            child.name = target_obj_name
+        if child.data and child.data.name != target_mesh_name:
+            child.data.name = target_mesh_name
+
+
 def build_world_mesh(
     context: bpy.types.Context,
     storage: VoxelStorage,
@@ -238,10 +347,12 @@ def sync_world_mesh(
     force_full_rebuild: bool = False,
     origin_centered: bool = True,
     weld_vertices: bool = True,
+    target_obj: Optional[bpy.types.Object] = None,
+    root_name: Optional[str] = None,
 ) -> WorldMeshBuildResult:
     """
     High-performance incremental section-based World Mesh synchronizer.
-    Maintains 16x16x16 child section objects (Yefira_Section_<x>_<y>_<z>) under Yefira_World.
+    Maintains 16x16x16 child section objects ({root_name}_Section_<x>_<y>_<z>) under Yefira World Empty root.
     Only regenerates dirty sections and boundary neighbors, delivering sub-millisecond real-time sync.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
@@ -259,15 +370,10 @@ def sync_world_mesh(
     half_x = size_x / 2.0 - 0.5
     half_z = size_z / 2.0 - 0.5
 
-    # 1. Acquire root container object
-    root_name = DEFAULT_WORLD_OBJECT_NAME
-    if root_name in bpy.data.objects:
-        root_obj = bpy.data.objects[root_name]
-    else:
-        mesh = bpy.data.meshes.new(DEFAULT_WORLD_MESH_NAME)
-        root_obj = bpy.data.objects.new(root_name, mesh)
-        root_obj.location = (0.0, 0.0, 0.0)
-        context.collection.objects.link(root_obj)
+    # 1. Acquire root Empty container object
+    root_obj = get_or_create_world_root(context, root_name=root_name, target_obj=target_obj)
+    sync_child_section_names(root_obj)
+    root_prefix = root_obj.name
 
     # 2. Material Manager for chunk materials (cached singleton)
     mat_manager = get_shared_material_manager(world_obj=root_obj, atlas_params=atlas_params)
@@ -278,53 +384,55 @@ def sync_world_mesh(
         s: get_cached_state_meta(s, mat_manager, baker) for s in unique_states
     }
 
-    # 4. Determine sections to update
+    # 4. Map existing child section objects
+    existing_sections = find_root_section_children(root_obj)
     all_sections = storage.get_all_sections()
-    if force_full_rebuild or not root_obj.children:
+    if force_full_rebuild or not existing_sections:
         target_sections = all_sections
     else:
         target_sections = storage.get_dirty_sections().intersection(all_sections)
 
     # Prune any section objects whose sections no longer exist or contain only air
-    for child in list(root_obj.children):
-        if child.name.startswith("Yefira_Section_"):
-            try:
-                parts = child.name.split("_")[2:]
-                coords = (int(parts[0]), int(parts[1]), int(parts[2]))
-                if coords not in all_sections:
-                    child_mesh = child.data
-                    bpy.data.objects.remove(child, do_unlink=True)
-                    if child_mesh:
-                        bpy.data.meshes.remove(child_mesh, do_unlink=True)
-            except Exception:
-                pass
+    for coords, child in list(existing_sections.items()):
+        if coords not in all_sections:
+            child_mesh = child.data
+            bpy.data.objects.remove(child, do_unlink=True)
+            if child_mesh:
+                bpy.data.meshes.remove(child_mesh, do_unlink=True)
+            existing_sections.pop(coords, None)
 
     # 5. Build/Update target sections
     for (sx, sy, sz) in target_sections:
         sec_blocks = storage.get_section_blocks(sx, sy, sz)
-        sec_obj_name = f"Yefira_Section_{sx}_{sy}_{sz}"
-        sec_mesh_name = f"Mesh_{sec_obj_name}"
+        sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
+        sec_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
 
         # If section is empty or only air, remove
         if not sec_blocks or all(state_cache.get(s) and state_cache[s].is_air for s in sec_blocks.values()):
             storage._known_empty_sections.add((sx, sy, sz))
-            sec_obj = bpy.data.objects.get(sec_obj_name)
+            sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
             if sec_obj:
                 sec_mesh = sec_obj.data
                 bpy.data.objects.remove(sec_obj, do_unlink=True)
                 if sec_mesh:
                     bpy.data.meshes.remove(sec_mesh, do_unlink=True)
+                existing_sections.pop((sx, sy, sz), None)
             continue
 
-        if sec_obj_name in bpy.data.objects:
+        if (sx, sy, sz) in existing_sections:
+            sec_obj = existing_sections[(sx, sy, sz)]
+            sec_mesh = sec_obj.data
+        elif sec_obj_name in bpy.data.objects:
             sec_obj = bpy.data.objects[sec_obj_name]
             sec_mesh = sec_obj.data
+            existing_sections[(sx, sy, sz)] = sec_obj
         else:
             sec_mesh = bpy.data.meshes.new(sec_mesh_name)
             sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
             sec_obj.location = (0.0, 0.0, 0.0)
             sec_obj.parent = root_obj
             context.collection.objects.link(sec_obj)
+            existing_sections[(sx, sy, sz)] = sec_obj
 
         sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
         sec_obj["mtk:section_pos"] = [sx, sy, sz]
@@ -420,6 +528,8 @@ def apply_block_delta_to_world(
     atlas_params: Optional[dict[str, Any]] = None,
     origin_centered: bool = True,
     previous_states: Optional[dict[tuple[int, int, int], str]] = None,
+    target_obj: Optional[bpy.types.Object] = None,
+    root_name: Optional[str] = None,
 ) -> WorldMeshBuildResult:
     """
     Ultra-high-performance block-level incremental mesh modifier.
@@ -437,15 +547,10 @@ def apply_block_delta_to_world(
     half_x = size_x / 2.0 - 0.5
     half_z = size_z / 2.0 - 0.5
 
-    # 1. Acquire root container object
-    root_name = DEFAULT_WORLD_OBJECT_NAME
-    if root_name in bpy.data.objects:
-        root_obj = bpy.data.objects[root_name]
-    else:
-        mesh = bpy.data.meshes.new(DEFAULT_WORLD_MESH_NAME)
-        root_obj = bpy.data.objects.new(root_name, mesh)
-        root_obj.location = (0.0, 0.0, 0.0)
-        context.collection.objects.link(root_obj)
+    # 1. Acquire root Empty container object
+    root_obj = get_or_create_world_root(context, root_name=root_name, target_obj=target_obj)
+    sync_child_section_names(root_obj)
+    root_prefix = root_obj.name
 
     # 2. Material Manager for chunk materials (cached singleton)
     mat_manager = get_shared_material_manager(world_obj=root_obj, atlas_params=atlas_params)
@@ -455,9 +560,6 @@ def apply_block_delta_to_world(
     previous_states = previous_states or {}
     for abs_x, abs_y, abs_z, _state in changes:
         blocks_to_update.add((abs_x, abs_y, abs_z))
-        # The current storage value is already the new state.  Consult the
-        # pre-delta state as well, otherwise water -> air is treated as an
-        # ordinary block removal and leaves neighboring sloped faces behind.
         is_fluid_change = (
             is_fluid_block(_state)
             or is_fluid_block(previous_states.get((abs_x, abs_y, abs_z)))
@@ -489,7 +591,8 @@ def apply_block_delta_to_world(
             _GLOBAL_STATE_META_CACHE[s] = CachedStateMeta(s, mat_manager, baker)
 
     # 4. Check whether we are using section-based hierarchy or single-mesh mode
-    has_section_children = any(c.name.startswith("Yefira_Section_") for c in root_obj.children)
+    existing_sections = find_root_section_children(root_obj)
+    has_section_children = bool(existing_sections)
 
     if not has_section_children and not root_obj.children and root_obj.data and len(root_obj.data.polygons) > 0:
         # Single World Mesh Mode
@@ -516,8 +619,8 @@ def apply_block_delta_to_world(
 
         any_slots_changed = False
         for (sx, sy, sz), sec_blocks in sec_grouped.items():
-            sec_obj_name = f"Yefira_Section_{sx}_{sy}_{sz}"
-            sec_mesh_name = f"Mesh_{sec_obj_name}"
+            sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
+            sec_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
 
             sec_all_blocks = storage.get_section_blocks(sx, sy, sz)
             has_solid_blocks = bool(sec_all_blocks and any(
@@ -526,7 +629,7 @@ def apply_block_delta_to_world(
                 for (px, py, pz), s in sec_all_blocks.items()
             ))
 
-            sec_obj = bpy.data.objects.get(sec_obj_name)
+            sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
             if not sec_obj:
                 if not has_solid_blocks:
                     continue
@@ -535,6 +638,9 @@ def apply_block_delta_to_world(
                 sec_obj.location = (0.0, 0.0, 0.0)
                 sec_obj.parent = root_obj
                 context.collection.objects.link(sec_obj)
+                existing_sections[(sx, sy, sz)] = sec_obj
+
+            sec_obj["mtk:section_pos"] = [sx, sy, sz]
 
             # Keep section slot indices identical to the root material manager.
             sync_section_material_slots(sec_obj, mat_manager)
@@ -563,10 +669,11 @@ def apply_block_delta_to_world(
                 bpy.data.objects.remove(sec_obj, do_unlink=True)
                 if sec_mesh:
                     bpy.data.meshes.remove(sec_mesh, do_unlink=True)
+                existing_sections.pop((sx, sy, sz), None)
 
         if any_slots_changed:
             for child in root_obj.children:
-                if child.name.startswith("Yefira_Section_") and child.data:
+                if (child.get("mtk:section_pos") is not None or "_Section_" in child.name) and child.data:
                     sync_section_material_slots(child, mat_manager)
                     rebind_mesh_material_indices(child.data, mat_manager)
 

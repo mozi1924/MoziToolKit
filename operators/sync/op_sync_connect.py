@@ -87,7 +87,24 @@ _PUMP_INTERVAL_ACTIVE: float = 0.015  # 15ms (~66 Hz when processing active delt
 _PUMP_INTERVAL_IDLE: float = 0.035    # 35ms (~28 Hz idle throttle to save CPU)
 
 _SETTLE_TIMEOUT_SECONDS: float = 3.0
-_stream_last_drain_time: float = 0.0
+def get_current_world_object(context: Optional[bpy.types.Context] = None) -> Optional[bpy.types.Object]:
+    """Retrieve the currently active or existing Yefira World object."""
+    ctx = context or (bpy.context if hasattr(bpy, "context") else None)
+    active_obj = getattr(ctx, "active_object", None) if ctx else None
+    if active_obj:
+        if active_obj.get("mtk:is_yefira_world") or active_obj.name == DEFAULT_WORLD_OBJECT_NAME or active_obj.name.startswith("Yefira_World"):
+            return active_obj
+        if active_obj.parent and (active_obj.parent.get("mtk:is_yefira_world") or active_obj.parent.name.startswith("Yefira_World")):
+            return active_obj.parent
+
+    world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+    if world_obj is not None:
+        return world_obj
+
+    for obj in bpy.data.objects:
+        if obj.get("mtk:is_yefira_world"):
+            return obj
+    return None
 
 
 def _finalize_stream_sync(props, total_target: int) -> None:
@@ -95,7 +112,7 @@ def _finalize_stream_sync(props, total_target: int) -> None:
     global _is_repairing_partial, _is_initial_handshake, _force_next_full_rebuild, _pending_full_sync_request
     global _stream_received_sections, _stream_total_sections, _is_streaming
 
-    existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+    existing_world = get_current_world_object(bpy.context)
     cur_mat = find_bound_atlas_material(existing_world) if existing_world else None
     cur_atlas_params = get_cached_atlas_params(cur_mat)
     target_palette = _accumulated_stream_palettes if _accumulated_stream_palettes else voxel_storage.get_unique_states()
@@ -200,7 +217,7 @@ def _pump_main_thread_events() -> Optional[float]:
             mesh_changes = [(x, y, z, new_state) for x, y, z, _old_state, new_state in applied]
             previous_states = {(x, y, z): old_state for x, y, z, old_state, _new_state in applied}
             if len(mesh_changes) <= 64:
-                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                existing_world = get_current_world_object(bpy.context)
                 mat = find_bound_atlas_material(existing_world) if existing_world else None
                 atlas_params = get_cached_atlas_params(mat)
                 res = apply_block_delta_to_world(
@@ -209,6 +226,7 @@ def _pump_main_thread_events() -> Optional[float]:
                     changes=mesh_changes,
                     atlas_params=atlas_params,
                     previous_states=previous_states,
+                    target_obj=existing_world,
                 )
                 if props:
                     props.point_count = res.vertex_count
@@ -217,7 +235,7 @@ def _pump_main_thread_events() -> Optional[float]:
                     props.fluids_count = res.fluids_count
             else:
                 # Batch sync: regenerate affected dirty 16x16x16 sections in sub-millisecond time
-                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                existing_world = get_current_world_object(bpy.context)
                 mat = find_bound_atlas_material(existing_world) if existing_world else None
                 atlas_params = get_cached_atlas_params(mat)
                 res = sync_world_mesh(
@@ -225,6 +243,7 @@ def _pump_main_thread_events() -> Optional[float]:
                     storage=voxel_storage,
                     atlas_params=atlas_params,
                     force_full_rebuild=False,
+                    target_obj=existing_world,
                 )
                 if props:
                     props.point_count = res.vertex_count
@@ -317,7 +336,7 @@ def trigger_mesh_sync(context: bpy.types.Context, force_full_rebuild: bool = Fal
     props = get_active_sync_props(context)
     filter_air = props.filter_air if props else True
 
-    existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+    existing_world = get_current_world_object(context)
     mat = find_bound_atlas_material(existing_world) if existing_world else None
     atlas_params = get_cached_atlas_params(mat)
 
@@ -326,6 +345,7 @@ def trigger_mesh_sync(context: bpy.types.Context, force_full_rebuild: bool = Fal
         storage=voxel_storage,
         atlas_params=atlas_params,
         force_full_rebuild=force_full_rebuild,
+        target_obj=existing_world,
     )
 
     # Rebuilding may detach old MTK materials/images.  Release only orphaned
@@ -376,7 +396,7 @@ _pending_full_sync_request: bool = False
 def persist_sync_state_to_scene(context: Optional[bpy.types.Context] = None) -> None:
     """Persist bounds, generation, and section CRC manifest onto Yefira_World object and scene properties."""
     try:
-        world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        world_obj = get_current_world_object(context)
         if world_obj is not None:
             manifest_dict = voxel_storage.export_manifest_metadata()
             import json
@@ -392,7 +412,7 @@ def persist_sync_state_to_scene(context: Optional[bpy.types.Context] = None) -> 
 def restore_sync_state_from_scene(context: Optional[bpy.types.Context] = None) -> bool:
     """Attempt to restore live sync voxel metadata from existing Yefira_World scene object."""
     try:
-        world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        world_obj = get_current_world_object(context)
         if world_obj is None:
             return False
 
@@ -552,7 +572,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 ProgressBar.update(current=40.0, total=100.0, message="Pre-warming voxel models...")
 
                 def step2_preload_and_build():
-                    existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                    existing_world = get_current_world_object(bpy.context)
                     mat = find_bound_atlas_material(existing_world) if existing_world else None
                     atlas_params = get_cached_atlas_params(mat)
                     preload_sync_world_data(palette=palette, world_obj=existing_world, atlas_params=atlas_params)
@@ -618,16 +638,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
                     return
 
-                existing_world = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                existing_world = get_current_world_object(bpy.context)
                 existing_section_meshes: set[tuple[int, int, int]] = set()
                 if existing_world:
-                    for child in existing_world.children:
-                        if child.name.startswith("Yefira_Section_"):
-                            try:
-                                parts = child.name.split("_")[2:]
-                                existing_section_meshes.add((int(parts[0]), int(parts[1]), int(parts[2])))
-                            except Exception:
-                                pass
+                    try:
+                        from ...utils.live_sync.mesh_builder import find_root_section_children
+                    except (ImportError, ValueError):
+                        from utils.live_sync.mesh_builder import find_root_section_children
+                    sections_map = find_root_section_children(existing_world)
+                    existing_section_meshes = set(sections_map.keys())
                     if not existing_section_meshes and existing_world.data and len(existing_world.data.polygons) > 0:
                         existing_section_meshes = set(voxel_storage.get_all_sections())
 

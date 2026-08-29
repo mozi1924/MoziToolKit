@@ -67,10 +67,16 @@ def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -
 
 
 def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
-    """Identify whether a Blender object is a Yefira live sync world object."""
-    if not obj or getattr(obj, "type", None) != 'MESH' or not getattr(obj, "data", None):
+    """Identify whether a Blender object is a Yefira live sync world object (root Empty or child section)."""
+    if not obj:
         return False
-    if obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_Section_"):
+    if obj.get("mtk:is_yefira_world") or obj.get("mtk:section_pos") is not None:
+        return True
+    if obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_World") or obj.name.startswith("Yefira_Section_"):
+        return True
+    if "_Section_" in obj.name and (obj.parent and (obj.parent.get("mtk:is_yefira_world") or obj.parent.name.startswith("Yefira_World"))):
+        return True
+    if obj.type == 'EMPTY' and any(c.get("mtk:section_pos") is not None for c in obj.children):
         return True
     return False
 

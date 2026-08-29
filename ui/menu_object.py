@@ -30,15 +30,23 @@ def draw_object_menu_func(self, context):
     draw_dynamic_menu(self.layout, "object")
 
 
+def draw_add_menu_func(self, context):
+    self.layout.separator()
+    self.layout.operator("mozi.add_yefira_world", text="Yefira World", icon="WORLD")
+
 
 def register():
     if hasattr(bpy.types, "VIEW3D_MT_object"):
         bpy.types.VIEW3D_MT_object.append(draw_object_workspace_menu_func)
     if hasattr(bpy.types, "VIEW3D_MT_object_context_menu"):
         bpy.types.VIEW3D_MT_object_context_menu.append(draw_object_menu_func)
+    if hasattr(bpy.types, "VIEW3D_MT_add"):
+        bpy.types.VIEW3D_MT_add.append(draw_add_menu_func)
 
 
 def unregister():
+    if hasattr(bpy.types, "VIEW3D_MT_add"):
+        bpy.types.VIEW3D_MT_add.remove(draw_add_menu_func)
     if hasattr(bpy.types, "VIEW3D_MT_object_context_menu"):
         bpy.types.VIEW3D_MT_object_context_menu.remove(draw_object_menu_func)
     if hasattr(bpy.types, "VIEW3D_MT_object"):

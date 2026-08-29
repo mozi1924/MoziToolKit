@@ -34,12 +34,22 @@ class MOZI_UL_sync_delta_list(bpy.types.UIList):
 
 
 class MOZI_PT_live_sync(bpy.types.Panel):
-    """Live Sync control panel in 3D View sidebar."""
-    bl_label = "Live Sync"
+    """Live Sync control panel in Object Properties tab."""
+    bl_label = "Yefira Live Sync"
     bl_idname = "MOZI_PT_live_sync"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "Mozi"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.object:
+            return False
+        try:
+            from ..utils.materials.yefira import is_yefira_object
+            return is_yefira_object(context.object)
+        except Exception:
+            return context.object.name.startswith("Yefira_") or bool(context.object.get("mtk:is_yefira_world"))
 
     def draw(self, context):
         layout = self.layout

@@ -18,6 +18,7 @@ from .op_sync_connect import (
 )
 from .op_sync_rebuild import MOZI_OT_sync_rebuild_world
 from .op_sync_clear_history import MOZI_OT_sync_clear_history
+from .op_sync_create_world import MOZI_OT_add_yefira_world
 
 classes = (
     MoziSyncPaletteItem,
@@ -28,6 +29,7 @@ classes = (
     MOZI_OT_sync_refresh,
     MOZI_OT_sync_rebuild_world,
     MOZI_OT_sync_clear_history,
+    MOZI_OT_add_yefira_world,
 )
 
 
