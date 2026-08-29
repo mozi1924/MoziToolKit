@@ -320,7 +320,7 @@ translations_dict = {
         ("*", "Connect to Minecraft Live Sync WebSocket Server"): "连接到 Minecraft 实时同步 WebSocket 服务端",
         ("*", "Disconnect from Minecraft Live Sync server"): "从 Minecraft 实时同步服务端断开连接",
         ("*", "Request fresh data snapshot and re-verify sync state with server"): "向服务端请求最新体素数据快照并重新校验同步状态",
-        ("*", "Reconstruct meshes, face culling, UV maps, and material slots purely from local voxel data"): "纯粹依据本地体素数据重新计算 6 面剔除、重建网格、UV 映射及材质插槽",
         ("*", "Clear all entries from the live delta change history log"): "清空实时增量变更历史记录日志",
+        ("*", "Edit Mode is not supported during Live Sync. Switched to Object Mode."): "实时同步连接状态下不支持编辑模式，已自动切回物体模式。",
     }
 }

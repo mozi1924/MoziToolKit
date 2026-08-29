@@ -148,6 +148,18 @@ def _pump_main_thread_events() -> Optional[float]:
     props = get_active_sync_props()
     has_active_work = False
 
+    # Guard: Force back to Object Mode if user attempts entering Edit Mode while Live Sync is connected
+    if props and props.is_connected:
+        active_obj = getattr(bpy.context, "active_object", None)
+        if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
+            try:
+                bpy.ops.object.mode_set(mode='OBJECT')
+                msg = bpy.app.translations.pgettext_iface("Edit Mode is not supported during Live Sync. Switched to Object Mode.")
+                props.validation_info = msg
+                props.last_update_info = msg
+            except Exception:
+                pass
+
     # 1. Drain pending streamed section snapshots (batch up to 16 chunks per tick to keep UI buttery smooth)
     sections_drained = 0
     while not _stream_section_queue.empty() and sections_drained < 16:

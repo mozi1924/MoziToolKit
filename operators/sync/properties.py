@@ -138,11 +138,34 @@ def _deferred_sync_renamed_roots():
     return None
 
 
+def _deferred_enforce_object_mode():
+    """Safely switch back to Object Mode on Blender's main event queue outside depsgraph evaluation."""
+    active_obj = getattr(bpy.context, "active_object", None)
+    if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
+        try:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        except Exception:
+            pass
+    return None
+
+
 @bpy.app.handlers.persistent
 def _on_depsgraph_update_post(scene, depsgraph):
-    """Detect when a Yefira World empty object is renamed, safely scheduling deferred propagation."""
+    """Detect when Live Sync is active to disallow Edit Mode, and detect Yefira World renames."""
     global _pending_rename_roots
     try:
+        # 1. Guard against Edit Mode while Live Sync is actively connected (defer operator call)
+        props = getattr(scene, "mozi_sync", None)
+        if props and props.is_connected:
+            active_obj = getattr(bpy.context, "active_object", None)
+            if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
+                msg = bpy.app.translations.pgettext_iface("Edit Mode is not supported during Live Sync. Switched to Object Mode.")
+                props.validation_info = msg
+                props.last_update_info = msg
+                if not bpy.app.timers.is_registered(_deferred_enforce_object_mode):
+                    bpy.app.timers.register(_deferred_enforce_object_mode, first_interval=0.0)
+
+        # 2. Check for renamed Yefira World objects
         for obj in scene.objects:
             if obj.type == 'EMPTY' and (obj.get("mtk:is_yefira_world") or any(c.get("mtk:section_pos") is not None for c in obj.children)):
                 last_name = obj.get("mtk:last_name")
@@ -151,7 +174,7 @@ def _on_depsgraph_update_post(scene, depsgraph):
                     if not bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
                         bpy.app.timers.register(_deferred_sync_renamed_roots, first_interval=0.0)
     except Exception as e:
-        logger.debug(f"Error in Live Sync rename handler: {e}")
+        logger.debug(f"Error in Live Sync depsgraph handler: {e}")
 
 
 def register():
@@ -169,6 +192,8 @@ def unregister():
     _pending_rename_roots.clear()
     if bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
         bpy.app.timers.unregister(_deferred_sync_renamed_roots)
+    if bpy.app.timers.is_registered(_deferred_enforce_object_mode):
+        bpy.app.timers.unregister(_deferred_enforce_object_mode)
     if _on_depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post)
     if _on_blend_file_pre_load in bpy.app.handlers.load_pre:
