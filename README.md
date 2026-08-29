@@ -81,21 +81,22 @@
 ## 📦 依赖管理与 Python Wheels (Python Wheels & Dependencies)
 
 MoziToolKit 基础建模与 UV 工具均为纯 Blender Python 实现，无需额外依赖。  
-**Atlas 材质图集生成与图像像素采样** 依赖轻量图像处理库 `Pillow` (PIL)。
+- **Atlas 材质图集生成与图像像素采样** 依赖轻量图像处理库 `Pillow` (PIL)。
+- **Minecraft Live Sync 实时双向同步** 依赖高性能 WebSocket 库 `websockets`。
 
-根据 **Blender 4.2+ / 5.x 扩展平台 (Extensions Platform)** 规范，推荐通过 **Python Wheels (`.whl`)** 打包依赖，实现环境完全隔离与离线即用，避免全局 Python 环境污染或依赖版本冲突。
+根据 **Blender 4.2+ / 5.x 扩展平台 (Extensions Platform)** 规范，通过 **Python Wheels (`.whl`)** 打包依赖，实现环境完全隔离与离线即用，避免全局 Python 环境污染或依赖版本冲突。
 
-### 1. 预置 Wheels 结构
+### 1. 跨平台预置 Wheels 结构
 
-项目在 `wheels/` 目录下准备了兼容各平台 Python 3.13 的预编译包：
-- `pillow-*-macosx_11_0_arm64.whl` (macOS Apple Silicon)
-- `pillow-*-win_amd64.whl` (Windows x64)
-- `pillow-*-win_arm64.whl` (Windows Arm64)
-- `pillow-*-manylinux_*.whl` (Linux x64)
+项目在 `wheels/` 目录下准备了对齐全平台的预编译 Wheels 包（兼容 Python 3.13 / Blender 4.2+）：
+- **macOS ARM64 (Apple Silicon)**: `pillow-*-macosx_*_arm64.whl`, `websockets-*-macosx_*_arm64.whl`
+- **Windows AMD64 (x86_64)**: `pillow-*-win_amd64.whl`, `websockets-*-win_amd64.whl`
+- **Windows ARM64**: `pillow-*-win_arm64.whl`, `websockets-*-py3-none-any.whl`
+- **Linux AMD64 (x86_64)**: `pillow-*-manylinux_*.whl`, `websockets-*-manylinux_*.whl`
 
 ### 2. 在 Manifest 中声明
 
-在 `blender_manifest.toml` 中配置：
+在 `blender_manifest.toml` 中配置支持平台与 Wheels 列表：
 
 ```toml
 platforms = ["windows-x64", "windows-arm64", "macos-arm64", "linux-x64"]
@@ -105,6 +106,10 @@ wheels = [
   "wheels/pillow-12.3.0-cp313-cp313-win_arm64.whl",
   "wheels/pillow-12.3.0-cp313-cp313-win_amd64.whl",
   "wheels/pillow-12.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+  "wheels/websockets-15.0.1-cp313-cp313-macosx_11_0_arm64.whl",
+  "wheels/websockets-15.0.1-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+  "wheels/websockets-15.0.1-cp313-cp313-win_amd64.whl",
+  "wheels/websockets-15.0.1-py3-none-any.whl",
 ]
 ```
 
@@ -112,14 +117,22 @@ wheels = [
 
 ## 🚀 构建与打包 (Build & Package)
 
-### 方式 A：使用内置构建脚本（推荐）
+### 方式 A：使用内置多平台协调构建脚本（推荐）
+
+`build.py` 会自动定位系统中的 Blender，提取其内置 Python 与 pip，下载补齐依赖，校验扩展元数据并执行全平台独立分包：
 
 ```bash
-# 默认构建扩展包至 dist/ 目录
-python3 build.py -o dist
+# 默认协调 Blender Python 下载依赖、校验并分平台打包至 dist/
+python3 build.py
 
-# 分平台独立构建（为不同操作系统生成轻量化专属 zip）
-python3 build.py -o dist --split-platforms
+# 仅验证扩展元数据
+python3 build.py --validate-only
+
+# 清理并重新下载全平台最新依赖 wheels
+python3 build.py --clean-wheels
+
+# 同时生成全量 Universal 独立安装包
+python3 build.py --universal
 
 # 指定特定 Blender 执行程序路径
 python3 build.py --blender /Applications/Blender.app/Contents/MacOS/blender
