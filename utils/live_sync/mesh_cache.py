@@ -81,10 +81,10 @@ class CachedStateMeta:
             self.is_opaque = False
         elif baked is not None:
             self.is_cube = baked.is_cube
-            self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
+            self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent and self.is_cube
         else:
             self.is_cube = self.parsed.block_type == BlockTypeEnum.CUBE
-            self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent
+            self.is_opaque = (self.parsed.is_opaque != 0) and not self.is_transparent and self.is_cube
 
         self.cull_meta: BlockCullMeta = get_shared_face_culler().get_meta(
             state_str=self.state_str,

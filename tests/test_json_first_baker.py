@@ -127,6 +127,45 @@ class TestJsonFirstBaker(unittest.TestCase):
         self.assertIn("minecraft:block/stripped_oak_log", textures)
         self.assertIn("minecraft:entity/signs/hanging/oak", textures)
 
+    def test_spbr21_pbr_resource_pack(self):
+        """Test baking against real SPBR-21.zip PBR resource pack with custom 3D hanging sign models."""
+        spbr_path = "/Users/jaxlocke/Downloads/SPBR-21.zip"
+        jar_path = "/Users/jaxlocke/26.2-Fabric.jar"
+        if not Path(spbr_path).exists():
+            self.skipTest(f"SPBR pack not found at {spbr_path}")
+
+        jar_loader = JarResourceLoader(jar_path) if Path(jar_path).exists() else None
+        spbr_loader = JarResourceLoader(spbr_path, fallback_loader=jar_loader)
+
+        parser = ModelParser(model_loader_fn=spbr_loader.load_model)
+        resolver = BlockStateResolver(blockstate_loader_fn=spbr_loader.load_blockstate)
+        baker = StateBaker(model_parser=parser, state_resolver=resolver)
+        baker.resource_loader = spbr_loader
+
+        # 1. Attached Triangular Chain Hanging Sign (from custom SPBR multipart JSON: 32 chain elements + 1 board)
+        b_att = baker.bake_block_state("minecraft:oak_hanging_sign[attached=true,rotation=0]")
+        self.assertIsNotNone(b_att)
+        self.assertFalse(b_att.is_cube)
+        self.assertFalse(b_att.is_opaque)
+        # SPBR defines custom multipart 3D triangular chain models (33 elements total)
+        self.assertEqual(len(b_att.elements), 33)
+        att_texs = {f.texture for el in b_att.elements for f in el.faces.values()}
+        self.assertIn("minecraft:block/iron_chain", att_texs)
+
+        # 2. Parallel Ceiling Chain Hanging Sign (16 chain elements + 1 board = 17 elements)
+        b_par = baker.bake_block_state("minecraft:oak_hanging_sign[attached=false,rotation=0]")
+        self.assertIsNotNone(b_par)
+        self.assertFalse(b_par.is_cube)
+        self.assertFalse(b_par.is_opaque)
+        self.assertEqual(len(b_par.elements), 17)
+
+        # 3. Wall Hanging Sign with Bracket
+        b_wall = baker.bake_block_state("minecraft:oak_wall_hanging_sign[facing=north]")
+        self.assertIsNotNone(b_wall)
+        self.assertFalse(b_wall.is_cube)
+        self.assertFalse(b_wall.is_opaque)
+        self.assertEqual(len(b_wall.elements), 18)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

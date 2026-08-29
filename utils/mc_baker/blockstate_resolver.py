@@ -35,7 +35,7 @@ def parse_block_state_string(state_str: str) -> tuple[str, dict[str, str]]:
             for pair in props_str.split(","):
                 if "=" in pair:
                     k, v = pair.split("=", 1)
-                    props[k.strip()] = v.strip()
+                    props[k.strip().lower()] = v.strip().lower()
 
     if ":" not in block_id:
         block_id = f"minecraft:{block_id}"
@@ -249,8 +249,14 @@ class BlockStateResolver:
             return all(self._evaluate_multipart_when(clause, props) for clause in when["AND"])
 
         for prop_name, expected_vals in when.items():
-            actual_val = props.get(prop_name)
-            expected_list = [v.strip() for v in str(expected_vals).split("|")]
+            actual_val = str(props.get(prop_name, "")).strip().lower()
+            if isinstance(expected_vals, bool):
+                expected_list = ["true" if expected_vals else "false"]
+            elif isinstance(expected_vals, (int, float)):
+                expected_list = [str(expected_vals)]
+            else:
+                expected_list = [v.strip().lower() for v in str(expected_vals).split("|")]
+
             if actual_val not in expected_list:
                 return False
         return True
