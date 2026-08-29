@@ -239,9 +239,18 @@ def pack_grid_category_chunks(
     if cat_tile_size > max_chunk_size:
         raise ValueError(f"Tile size {cat_tile_size}px for category '{cat}' ({ns}) exceeds chunk limit {max_chunk_size}px.")
 
+    # Separate uniform grid tiles from irregular/higher-resolution multi-size textures (e.g. 32x32 hanging signs)
+    grid_static_map = {}
+    irregular_static_map = {}
+    for rel_p, img in static_map.items():
+        if img.size == (cat_tile_size, cat_tile_size) or rel_p == fallback_rel_path:
+            grid_static_map[rel_p] = img
+        else:
+            irregular_static_map[rel_p] = img
+
     tiles_per_row = max(1, max_chunk_size // cat_tile_size)
     capacity = max(1, tiles_per_row * tiles_per_row)
-    static_rel_paths = [rel_p for rel_p in sorted(static_map.keys()) if rel_p.split("/")[-1] not in OVERLAY_TO_BASE_MAP]
+    static_rel_paths = [rel_p for rel_p in sorted(grid_static_map.keys()) if rel_p.split("/")[-1] not in OVERLAY_TO_BASE_MAP]
 
     def tile_for(rel_p, channel, tile_sz=cat_tile_size, namespace_val=ns, category_val=cat):
         clean_k = texture_name_fn(namespace_val, rel_p.removeprefix("block/") if rel_p.startswith("block/") else rel_p)
@@ -418,6 +427,8 @@ def pack_grid_category_chunks(
             "files": files,
         })
         outputs["chunks"].append(output_path / files["albedo"])
+
+    return irregular_static_map
 
 
 def _paste_channel_tiled_vertically(

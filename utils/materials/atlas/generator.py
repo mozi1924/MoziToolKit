@@ -408,6 +408,7 @@ class AtlasGenerator:
                 if not self._includes_category(cat):
                     continue
                 static_map = self.static_by_ns_cat.get(ns, {}).get(cat, {})
+                irregular_static_map = {}
                 if static_map:
                     yield (ns_progress_base, f"Packing static atlas chunks for namespace '{ns}' [{cat}]...", None)
                     is_rect_packed = (cat in RECT_PACKED_CATEGORIES)
@@ -432,7 +433,7 @@ class AtlasGenerator:
                             texture_name_fn=self._texture_name,
                         )
                     else:
-                        pack_grid_category_chunks(
+                        irregular_static_map = pack_grid_category_chunks(
                             cat=cat,
                             ns=ns,
                             static_map=static_map,
@@ -452,9 +453,9 @@ class AtlasGenerator:
                             fallback_rel_path=fallback_rel_path,
                             find_static_image_fn=self._find_static_image,
                             texture_name_fn=self._texture_name,
-                        )
+                        ) or {}
 
-                # Animated textures for (ns, cat)
+                # Animated textures for (ns, cat) -> chunk 002
                 anim_map = self.animated_by_ns_cat.get(ns, {}).get(cat, {})
                 if anim_map:
                     yield (ns_progress_base + 0.05, f"Packing animated strip chunks for namespace '{ns}' [{cat}]...", None)
@@ -473,6 +474,28 @@ class AtlasGenerator:
                         output_path=output_path,
                         outputs=outputs,
                         biome_resolver=self.biome_resolver,
+                        find_static_image_fn=self._find_static_image,
+                        texture_name_fn=self._texture_name,
+                    )
+
+                # Irregular / multi-size block textures (e.g. 32x32 signs, hanging signs, shelves) -> chunk 003
+                if irregular_static_map:
+                    yield (ns_progress_base + 0.08, f"Packing multi-size / sign atlas chunks for namespace '{ns}' [{cat}]...", None)
+                    pack_rect_category_chunks(
+                        cat=cat,
+                        ns=ns,
+                        static_map=irregular_static_map,
+                        normal_by_ns_cat=self.normal_by_ns_cat,
+                        specular_by_ns_cat=self.specular_by_ns_cat,
+                        max_chunk_size=self.max_chunk_size,
+                        chunks=chunks,
+                        category_chunk_counts=category_chunk_counts,
+                        texture_locations=texture_locations,
+                        staging_dir=staging_dir,
+                        output_path=output_path,
+                        outputs=outputs,
+                        biome_resolver=self.biome_resolver,
+                        fallback_rel_path=fallback_rel_path,
                         find_static_image_fn=self._find_static_image,
                         texture_name_fn=self._texture_name,
                     )
