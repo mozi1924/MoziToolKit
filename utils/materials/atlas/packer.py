@@ -9,7 +9,10 @@ deterministic placement, and optimal space utilization.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any, Optional
+
+logger = logging.getLogger("MoziToolKit.Atlas.Packer")
 
 
 @dataclass(slots=True)
@@ -169,15 +172,21 @@ def pack_category_textures(
         return []
 
     # Sort deterministically: tallest first, widest second, stable key third
-    pending = sorted(items, key=lambda it: (-it[2], -it[1], str(it[0])))
+    sorted_items = sorted(items, key=lambda it: (-it[2], -it[1], str(it[0])))
 
-    # Verify no individual texture exceeds maximum chunk size
-    for key, w, h in pending:
+    # Filter out textures that exceed maximum chunk size and log a warning
+    pending = []
+    for key, w, h in sorted_items:
         if w > max_chunk_size or h > max_chunk_size:
-            raise ValueError(
-                f"Texture '{key}' ({w}x{h}) exceeds the maximum atlas chunk size ({max_chunk_size}px) "
+            logger.warning(
+                f"Skipping texture '{key}' ({w}x{h}): exceeds maximum atlas chunk size ({max_chunk_size}px) "
                 f"and cannot be packed losslessly."
             )
+        else:
+            pending.append((key, w, h))
+
+    if not pending:
+        return []
 
     chunks_result: list[tuple[int, int, list[PackedRect]]] = []
 

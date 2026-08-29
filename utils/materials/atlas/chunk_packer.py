@@ -5,8 +5,11 @@ Chunk packing strategies (Rect Bin Pack, Uniform Grid, Vertical Animation Strips
 from __future__ import annotations
 
 from pathlib import Path
+import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from collections import Counter
+
+logger = logging.getLogger("MoziToolKit.Atlas.ChunkPacker")
 
 from .image_utils import (
     Image,
@@ -500,10 +503,11 @@ def pack_animated_category_chunks(
         source = anim_map[rel_p]
         image = source["image"]
         if image.width > max_chunk_size or image.height > max_chunk_size:
-            raise ValueError(
-                f"Animation '{ns}:{rel_p}' ({image.width}x{image.height}) exceeds "
-                f"the {max_chunk_size}px chunk limit and cannot be stored losslessly."
+            logger.warning(
+                f"Skipping animation '{ns}:{rel_p}' ({image.width}x{image.height}): "
+                f"exceeds maximum atlas chunk size ({max_chunk_size}px) and cannot be packed losslessly."
             )
+            continue
         meta_val = source.get("mcmeta") or {}
         anim_dict = meta_val.get("animation") if isinstance(meta_val.get("animation"), dict) else meta_val
         animation_columns.append((rel_p, image, anim_dict))
