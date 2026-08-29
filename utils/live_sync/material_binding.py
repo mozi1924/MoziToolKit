@@ -76,7 +76,28 @@ def rebind_mesh_material_indices(
     Older live-sync meshes do not have the chunk attribute, so their
     ``mtk_source_texture_key`` is used once to migrate them. The material
     index itself is never used as an atlas identifier.
+    Supports both Object Mode and Edit Mode seamlessly.
     """
+    if getattr(mesh, "is_editmode", False):
+        import bmesh
+        bm = bmesh.from_edit_mesh(mesh)
+        chunk_layer = bm.faces.layers.int.get(MTK_ATLAS_CHUNK_ID)
+        source_layer = bm.faces.layers.string.get(MTK_SOURCE_TEXTURE_KEY)
+        for face in bm.faces:
+            chunk_id = face[chunk_layer] if chunk_layer else 0
+            if (chunk_layer is None or chunk_id not in mat_manager.chunk_materials) and source_layer:
+                raw_key = face[source_layer]
+                source_key = raw_key.decode("utf-8", "replace") if isinstance(raw_key, bytes) else str(raw_key or "")
+                location = mat_manager.resolver.lookup_texture(source_key) if source_key else None
+                if location:
+                    chunk_id = int(location.get("chunk_id", 0))
+                    if chunk_layer:
+                        face[chunk_layer] = chunk_id
+            if chunk_id in mat_manager.chunk_materials:
+                face.material_index = mat_manager.get_slot_for_chunk(chunk_id)
+        bmesh.update_edit_mesh(mesh, loop_triangles=True, destructive=False)
+        return
+
     chunk_attr = mesh.attributes.get(MTK_ATLAS_CHUNK_ID)
     created_chunk_attr = chunk_attr is None
     if not chunk_attr:

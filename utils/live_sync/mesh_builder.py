@@ -87,10 +87,16 @@ def update_blocks_in_mesh(
     Incrementally edits target blocks within an existing Mesh via BMesh.
     Deletes old faces of affected blocks, cleans up orphan vertices,
     and inserts newly visible faces without regenerating the rest of the mesh.
+    Supports both Object Mode and active Edit Mode seamlessly.
     """
-    bm = bmesh.new()
-    try:
+    is_edit = getattr(mesh, "is_editmode", False)
+    if is_edit:
+        bm = bmesh.from_edit_mesh(mesh)
+    else:
+        bm = bmesh.new()
         bm.from_mesh(mesh)
+
+    try:
         layers = _get_or_create_bmesh_layers(bm)
 
         block_x_layer = layers["block_x"]
@@ -131,11 +137,15 @@ def update_blocks_in_mesh(
         if orphan_verts:
             bmesh.ops.delete(bm, geom=orphan_verts, context='VERTS')
 
-        mesh.clear_geometry()
-        bm.to_mesh(mesh)
+        if is_edit:
+            bmesh.update_edit_mesh(mesh, loop_triangles=True, destructive=True)
+        else:
+            mesh.clear_geometry()
+            bm.to_mesh(mesh)
+            mesh.update()
     finally:
-        bm.free()
-    mesh.update()
+        if not is_edit:
+            bm.free()
 
 
 # Helper functions for root container and section object naming
@@ -249,6 +259,38 @@ def sync_child_section_names(root_obj: bpy.types.Object) -> None:
             child.data.name = target_mesh_name
 
 
+def _safe_remove_section_object(obj: Optional[bpy.types.Object], mesh: Optional[bpy.types.Mesh] = None) -> None:
+    """Safely remove a section object and its mesh datablock, handling Edit Mode if active."""
+    if not obj:
+        return
+    try:
+        if getattr(obj, "mode", None) == 'EDIT':
+            if hasattr(bpy.context, "view_layer") and getattr(bpy.context.view_layer.objects, "active", None) == obj:
+                try:
+                    bpy.ops.object.mode_set(mode='OBJECT')
+                except Exception:
+                    pass
+        if obj.name in bpy.data.objects:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        if mesh and getattr(mesh, "name", None) in bpy.data.meshes:
+            bpy.data.meshes.remove(mesh, do_unlink=True)
+    except Exception as e:
+        logger.debug(f"Safe remove section object error: {e}")
+
+
+def _get_mesh_vertex_and_face_count(mesh: Optional[bpy.types.Mesh]) -> tuple[int, int]:
+    """Return (vertex_count, face_count) correctly in either Object Mode or active Edit Mode."""
+    if not mesh:
+        return 0, 0
+    if getattr(mesh, "is_editmode", False):
+        try:
+            bm = bmesh.from_edit_mesh(mesh)
+            return len(bm.verts), len(bm.faces)
+        except Exception:
+            pass
+    return len(mesh.vertices), len(mesh.polygons)
+
+
 def build_world_mesh(
     context: bpy.types.Context,
     storage: VoxelStorage,
@@ -260,6 +302,7 @@ def build_world_mesh(
     """
     Constructs the full native Blender polygon mesh directly on the world object.
     Maintains 100% backward compatibility for single-mesh queries and unit tests.
+    Supports both Object Mode and Edit Mode seamlessly.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return WorldMeshBuildResult(None, 0, 0, 0, 0, 0)
@@ -299,10 +342,16 @@ def build_world_mesh(
         s: get_cached_state_meta(s, mat_manager, baker) for s in unique_states
     }
 
-    bm = bmesh.new()
+    is_edit = getattr(mesh, "is_editmode", False)
+    if is_edit:
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.clear()
+    else:
+        bm = bmesh.new()
+
     try:
-        uv_layer = bm.loops.layers.uv.new("UVMap")
-        color_layer = bm.loops.layers.color.new("Color")
+        uv_layer = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
+        color_layer = bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color")
 
         cubes_count, props_count, fluids_count = generate_voxel_geometry(
             bm=bm,
@@ -323,14 +372,18 @@ def build_world_mesh(
             bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
 
         # 6. Push BMesh data back to Blender Mesh
-        mesh.clear_geometry()
-        bm.to_mesh(mesh)
+        if is_edit:
+            bmesh.update_edit_mesh(mesh, loop_triangles=True, destructive=True)
+        else:
+            mesh.clear_geometry()
+            bm.to_mesh(mesh)
+            mesh.update()
     finally:
-        bm.free()
-    mesh.update()
+        if not is_edit:
+            bm.free()
 
-    vertex_count = len(mesh.vertices)
-    face_count = len(mesh.polygons)
+    vertex_count = len(mesh.vertices) if not is_edit else len(bm.verts)
+    face_count = len(mesh.polygons) if not is_edit else len(bm.faces)
 
     return WorldMeshBuildResult(
         world_obj=obj,
@@ -356,6 +409,7 @@ def sync_world_mesh(
     High-performance incremental section-based World Mesh synchronizer.
     Maintains 16x16x16 child section objects ({root_name}_Section_<x>_<y>_<z>) under Yefira World Empty root.
     Only regenerates dirty sections and boundary neighbors, delivering sub-millisecond real-time sync.
+    Supports both Object Mode and active Edit Mode seamlessly.
     """
     if storage.size_x == 0 or storage.size_y == 0 or storage.size_z == 0:
         return WorldMeshBuildResult(None, 0, 0, 0, 0, 0)
@@ -397,10 +451,7 @@ def sync_world_mesh(
     # Prune any section objects whose sections no longer exist or contain only air
     for coords, child in list(existing_sections.items()):
         if coords not in all_sections:
-            child_mesh = child.data
-            bpy.data.objects.remove(child, do_unlink=True)
-            if child_mesh:
-                bpy.data.meshes.remove(child_mesh, do_unlink=True)
+            _safe_remove_section_object(child, child.data)
             existing_sections.pop(coords, None)
 
     # 5. Build/Update target sections
@@ -414,10 +465,7 @@ def sync_world_mesh(
             storage._known_empty_sections.add((sx, sy, sz))
             sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
             if sec_obj:
-                sec_mesh = sec_obj.data
-                bpy.data.objects.remove(sec_obj, do_unlink=True)
-                if sec_mesh:
-                    bpy.data.meshes.remove(sec_mesh, do_unlink=True)
+                _safe_remove_section_object(sec_obj, sec_obj.data)
                 existing_sections.pop((sx, sy, sz), None)
             continue
 
@@ -442,11 +490,17 @@ def sync_world_mesh(
         # Keep section slot indices identical to the root material manager.
         sync_section_material_slots(sec_obj, mat_manager)
 
-        # Construct section BMesh
-        bm = bmesh.new()
+        # Construct section BMesh (handles active Edit Mode or Object Mode)
+        is_edit = getattr(sec_mesh, "is_editmode", False)
+        if is_edit:
+            bm = bmesh.from_edit_mesh(sec_mesh)
+            bm.clear()
+        else:
+            bm = bmesh.new()
+
         try:
-            uv_layer = bm.loops.layers.uv.new("UVMap")
-            color_layer = bm.loops.layers.color.new("Color")
+            uv_layer = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
+            color_layer = bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color")
 
             generate_voxel_geometry(
                 bm=bm,
@@ -465,13 +519,19 @@ def sync_world_mesh(
             if weld_vertices and len(bm.verts) > 0:
                 bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
 
-            sec_mesh.clear_geometry()
-            bm.to_mesh(sec_mesh)
+            if is_edit:
+                bmesh.update_edit_mesh(sec_mesh, loop_triangles=True, destructive=True)
+            else:
+                sec_mesh.clear_geometry()
+                bm.to_mesh(sec_mesh)
+                sec_mesh.update()
         finally:
-            bm.free()
+            if not is_edit:
+                bm.free()
 
         # If after culling this section has 0 polygons, track in _known_empty_sections
-        if len(sec_mesh.polygons) == 0:
+        poly_count = len(sec_mesh.polygons) if not is_edit else len(bm.faces)
+        if poly_count == 0:
             storage._known_empty_sections.add((sx, sy, sz))
         else:
             storage._known_empty_sections.discard((sx, sy, sz))
@@ -480,7 +540,8 @@ def sync_world_mesh(
         sync_section_material_slots(sec_obj, mat_manager)
         rebind_mesh_material_indices(sec_mesh, mat_manager)
 
-        sec_mesh.update()
+        if not is_edit:
+            sec_mesh.update()
 
     # Clear storage dirty set
     storage.clear_dirty_sections()
@@ -494,8 +555,9 @@ def sync_world_mesh(
 
     for child in root_obj.children:
         if child.data and isinstance(child.data, bpy.types.Mesh):
-            total_verts += len(child.data.vertices)
-            total_faces += len(child.data.polygons)
+            v_cnt, f_cnt = _get_mesh_vertex_and_face_count(child.data)
+            total_verts += v_cnt
+            total_faces += f_cnt
 
     for state_str, count in storage.get_state_counts().items():
         if count <= 0:
@@ -666,11 +728,9 @@ def apply_block_delta_to_world(
                 any_slots_changed = True
 
             # If section became empty, clean it up
-            if len(sec_obj.data.polygons) == 0 and not has_solid_blocks:
-                sec_mesh = sec_obj.data
-                bpy.data.objects.remove(sec_obj, do_unlink=True)
-                if sec_mesh:
-                    bpy.data.meshes.remove(sec_mesh, do_unlink=True)
+            v_cnt, f_cnt = _get_mesh_vertex_and_face_count(sec_obj.data)
+            if f_cnt == 0 and not has_solid_blocks:
+                _safe_remove_section_object(sec_obj, sec_obj.data)
                 existing_sections.pop((sx, sy, sz), None)
 
         if any_slots_changed:
@@ -692,11 +752,13 @@ def apply_block_delta_to_world(
     if has_section_children or root_obj.children:
         for child in root_obj.children:
             if child.data and isinstance(child.data, bpy.types.Mesh):
-                total_verts += len(child.data.vertices)
-                total_faces += len(child.data.polygons)
+                v_cnt, f_cnt = _get_mesh_vertex_and_face_count(child.data)
+                total_verts += v_cnt
+                total_faces += f_cnt
     elif root_obj.data and isinstance(root_obj.data, bpy.types.Mesh):
-        total_verts = len(root_obj.data.vertices)
-        total_faces = len(root_obj.data.polygons)
+        v_cnt, f_cnt = _get_mesh_vertex_and_face_count(root_obj.data)
+        total_verts = v_cnt
+        total_faces = f_cnt
 
     for state_str, count in storage.get_state_counts().items():
         if count <= 0:
