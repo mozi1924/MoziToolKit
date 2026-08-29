@@ -150,15 +150,21 @@ class TestLiveSyncEmptySlotsAndEntities(unittest.TestCase):
             }
         })
 
-        # 1. Single Chest Facing North
+        # 1. Single Chest with registered custom JSON model (should bake custom 3 elements)
         baked_north = baker.bake_block_state("minecraft:chest[facing=north,type=single,waterlogged=false]")
         self.assertFalse(baked_north.is_cube, "Chest should not be classified as a full cube!")
-        self.assertEqual(len(baked_north.elements), 18, "Chest OBJ should have 18 polygon faces!")
+        self.assertEqual(len(baked_north.elements), 3, "Custom JSON model should have 3 elements!")
 
         # Verify chest texture key is entity texture
         for elem in baked_north.elements:
             for face in elem.faces.values():
                 self.assertEqual(face.texture, "minecraft:entity/chest/normal")
+
+        # 2. Single Chest with default baker (no custom JSON, falls back to 1:1 OBJ with 18 faces)
+        default_baker = StateBaker()
+        baked_default = default_baker.bake_block_state("minecraft:chest[facing=north,type=single,waterlogged=false]")
+        self.assertFalse(baked_default.is_cube)
+        self.assertEqual(len(baked_default.elements), 18, "Chest OBJ fallback should have 18 elements!")
 
     def test_banner_model_baking(self):
         """Verify that standing and wall banners bake 3D multipart models with correct rotation."""

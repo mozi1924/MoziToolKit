@@ -556,7 +556,24 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         if "wall" in name or ("torch" in name and facing in ("north", "south", "east", "west")):
             rot_x = math.radians(-22.5)
 
-    elif name.endswith(("_bed", "_door", "_trapdoor", "_fence", "_fence_gate", "_wall", "_carpet", "_chest", "_bell", "_anvil")) or name in ("chest", "trapped_chest", "ender_chest", "bell", "anvil", "bed", "carpet", "trapdoor"):
+    elif (
+        name.endswith((
+            "_bed", "_door", "_trapdoor", "_fence", "_fence_gate", "_wall",
+            "_carpet", "_chest", "_bell", "_anvil", "_sign", "_wall_sign",
+            "_hanging_sign", "_wall_hanging_sign", "_banner", "_wall_banner",
+            "_head", "_wall_head", "_skull", "_wall_skull", "_shulker_box",
+            "_candle", "_cake", "_pot", "_rod", "_coral", "_fan", "_chain",
+        ))
+        or name in (
+            "chest", "trapped_chest", "ender_chest", "bell", "anvil", "bed",
+            "carpet", "trapdoor", "shulker_box", "conduit", "decorated_pot",
+            "end_portal_frame", "end_portal", "end_gateway", "chain", "iron_chain",
+            "copper_chain", "exposed_copper_chain", "weathered_copper_chain", "oxidized_copper_chain",
+            "cauldron", "hopper", "brewing_stand", "lectern", "grindstone", "stonecutter",
+            "lever", "tripwire_hook", "repeater", "comparator", "daylight_detector",
+            "lightning_rod", "end_rod", "dragon_egg", "flower_pot"
+        )
+    ):
         block_type = BlockTypeEnum.PROP_TEMPLATE
         template_name = name
         if name.endswith("_bed"):
@@ -573,8 +590,13 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
         block_type = BlockTypeEnum.CUBE
         template_name = "cube"
 
-    # Determine opacity
-    if block_id in TRANSPARENT_BLOCKS or name.endswith(("_glass", "_stained_glass", "_leaves", "_pane")) or name in ("glass", "tinted_glass", "ice", "water", "slime_block", "honey_block", "beacon"):
+    # Determine opacity: only non-transparent full cubes can be opaque
+    if (
+        block_type != BlockTypeEnum.CUBE
+        or block_id in TRANSPARENT_BLOCKS
+        or name.endswith(("_glass", "_stained_glass", "_leaves", "_pane"))
+        or name in ("glass", "tinted_glass", "ice", "water", "slime_block", "honey_block", "beacon")
+    ):
         is_opaque = 0
     else:
         is_opaque = 1

@@ -624,7 +624,7 @@ def _build_skull_head_model(state_str: str, short_name: str, props: dict[str, st
 
 def _build_hanging_sign_model(state_str: str, short_name: str, props: dict[str, str]) -> Optional[BakedModel]:
     wood_type = short_name.replace("_wall_hanging_sign", "").replace("_hanging_sign", "")
-    tex_path = f"minecraft:entity/signs/hanging/{wood_type}" if wood_type else "minecraft:entity/signs/hanging/oak"
+    wood = wood_type if wood_type else "oak"
 
     if "_wall_" in short_name:
         facing = props.get("facing", "north").lower()
@@ -636,11 +636,22 @@ def _build_hanging_sign_model(state_str: str, short_name: str, props: dict[str, 
         attached = props.get("attached", "false").lower() == "true"
         sub_objs = ["sign", "chains_attached" if attached else "chains"]
 
+    stripped_stem = "stripped_warped_stem" if wood == "warped" else ("stripped_crimson_stem" if wood == "crimson" else f"stripped_{wood}_log")
+    if wood.startswith("stripped_"):
+        stripped_stem = f"{wood}_log"
+
+    mat_map = {
+        "sign": f"minecraft:entity/signs/hanging/{wood}",
+        "top_bar": f"minecraft:block/{stripped_stem}",
+        "chains": "minecraft:block/iron_chain",
+        "entity/signs/hanging/oak": f"minecraft:entity/signs/hanging/{wood}",
+    }
+
     return build_baked_model_from_obj(
         block_state=state_str,
         obj_filename="hanging_sign.obj",
         sub_objects=sub_objs,
-        material_override=tex_path,
+        material_map=mat_map,
         rot_y=rot_y,
     )
 
