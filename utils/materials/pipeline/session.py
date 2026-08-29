@@ -17,6 +17,8 @@ from .provenance import (
     split_texture_key,
     get_atlas_mapping_from_material,
     get_atlas_mapping_from_mesh,
+    get_effective_pack_hash,
+    is_material_hash_valid,
 )
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
@@ -24,6 +26,7 @@ from ..constants import (
     PROP_ATLAS_MAPPING,
     PROP_CREATED_BY,
     PROP_PACK_HASH,
+    PROP_PACK_HASH_SHORT,
     PROP_SOURCE_FILE,
 )
 
@@ -43,14 +46,18 @@ def name_replaced_material(
     """Assign a compact visible identity and durable provenance metadata."""
     namespace = texture_info["namespace"]
     texture_name = texture_info["texture_name"]
-    full_hash = getattr(pack_or_hash, "pack_hash", str(pack_or_hash))
-    mat.name = f"mtk:{namespace}:{texture_name}:{full_hash[:12]}"
+    full_hash = get_effective_pack_hash(pack_or_hash) or getattr(pack_or_hash, "pack_hash", str(pack_or_hash))
+    short_hash = full_hash[:12] if full_hash else ""
+    mat.name = f"mtk:{namespace}:{texture_name}:{short_hash}" if short_hash else f"mtk:{namespace}:{texture_name}"
     mat.use_fake_user = False
     mat["mtk:source_namespace"] = namespace
     mat["mtk:source_texture"] = texture_name
     mat["mtk:material_id"] = f"{namespace}:{texture_name}"
-    mat["mtk:pack_hash"] = full_hash
-    mat["mtk:pack_hash_short"] = full_hash[:12]
+    if full_hash:
+        mat["mtk:pack_hash"] = full_hash
+        mat["mtk:pack_hash_short"] = short_hash
+        if mat.node_tree:
+            mat.node_tree["mtk:pack_hash"] = full_hash
     write_provenance_schema(mat)
 
 
@@ -58,17 +65,20 @@ def find_existing_replacement(
     texture_info: dict,
     pack_or_hash: Union[str, Any],
 ) -> Optional[bpy.types.Material]:
-    """Find an existing material datablock matching the exact pack hash and texture key."""
+    """Find an existing valid material datablock matching the exact pack hash and texture key."""
     namespace = texture_info["namespace"]
     texture_name = texture_info["texture_name"]
-    full_hash = getattr(pack_or_hash, "pack_hash", str(pack_or_hash))
+    full_hash = get_effective_pack_hash(pack_or_hash) or getattr(pack_or_hash, "pack_hash", str(pack_or_hash))
     for material in bpy.data.materials:
         if (
             material.get("mtk:source_namespace") == namespace
             and material.get("mtk:source_texture") == texture_name
-            and material.get("mtk:pack_hash") == full_hash
         ):
-            return material
+            mat_hash = get_effective_pack_hash(material)
+            if full_hash and mat_hash == full_hash and is_material_hash_valid(material, full_hash):
+                return material
+            elif not full_hash and not mat_hash and getattr(material, "use_nodes", False) and material.node_tree:
+                return material
     return None
 
 

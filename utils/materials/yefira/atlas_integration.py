@@ -159,15 +159,61 @@ from ...live_sync.constants import (
 )
 
 
-def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[str, Any]:
+def extract_atlas_parameters(
+    mat: Optional[bpy.types.Material] = None,
+    pack_stack: Optional[Any] = None,
+) -> dict[str, Any]:
     """
     Extract complete Atlas parameters: width, height, tile_size, tiles_per_row, chunk dimensions and LUTs.
+    Prioritizes loading authoritative mapping from the active Resource Pack Stack baked cache.
     """
+    from ..pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+
     if mat is None:
         mat = find_active_atlas_material()
 
+    target_pack_hash = ""
+    if pack_stack is None:
+        try:
+            from ..pack.pack_stack import get_configured_pack_stack
+            pack_stack = get_configured_pack_stack()
+        except Exception:
+            pack_stack = None
+
+    if pack_stack:
+        target_pack_hash = get_effective_pack_hash(pack_stack)
+
+    # 1. Authoritative mapping lookup from active precompiled cache directory
+    mapping = None
+    if pack_stack and target_pack_hash:
+        baked_atlas_dir = None
+        try:
+            from ..pack.resource_pack import get_cache_dir
+            cache_root = get_cache_dir()
+            for cand in (
+                cache_root / target_pack_hash / "yefira_world",
+                cache_root / target_pack_hash / "full_scene",
+                cache_root / target_pack_hash,
+            ):
+                if cand.exists() and (cand / "atlas_mapping.json").exists():
+                    baked_atlas_dir = cand
+                    break
+        except Exception:
+            pass
+
+        if baked_atlas_dir:
+            try:
+                with open(baked_atlas_dir / "atlas_mapping.json", "r", encoding="utf-8") as f:
+                    mapping = json.load(f)
+            except Exception:
+                mapping = None
+
+    if mapping is None and mat:
+        mapping = parse_atlas_mapping(mat)
+
     res = {
         "material": mat,
+        "pack_hash": target_pack_hash or (get_effective_pack_hash(mat) if mat else ""),
         "width": DEFAULT_ATLAS_WIDTH,
         "height": DEFAULT_ATLAS_HEIGHT,
         "tile_size": DEFAULT_TILE_SIZE,
@@ -183,7 +229,7 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         "anim_atlas_height": DEFAULT_ANIM_ATLAS_HEIGHT,
         "anim_frame_width": DEFAULT_ANIM_FRAME_WIDTH,
         "anim_frame_height": DEFAULT_ANIM_FRAME_HEIGHT,
-        "mapping": None,
+        "mapping": mapping,
         "block_face_lut": {},
         "block_face_chunk_lut": {},
         "block_face_texture_lut": {},
@@ -193,20 +239,18 @@ def extract_atlas_parameters(mat: Optional[bpy.types.Material] = None) -> dict[s
         "material_id_map": {},
     }
 
-    if not mat:
+    if not mat and not mapping:
         return res
 
-    mapping = parse_atlas_mapping(mat)
-    res["mapping"] = mapping
-
-    if "mtk_atlas_width" in mat:
-        res["width"] = float(mat["mtk_atlas_width"])
-    if "mtk_atlas_height" in mat:
-        res["height"] = float(mat["mtk_atlas_height"])
-    if "mtk_tile_size" in mat:
-        res["tile_size"] = float(mat["mtk_tile_size"])
-    if "mtk_tiles_per_row" in mat:
-        res["tiles_per_row"] = int(mat["mtk_tiles_per_row"])
+    if mat:
+        if "mtk_atlas_width" in mat:
+            res["width"] = float(mat["mtk_atlas_width"])
+        if "mtk_atlas_height" in mat:
+            res["height"] = float(mat["mtk_atlas_height"])
+        if "mtk_tile_size" in mat:
+            res["tile_size"] = float(mat["mtk_tile_size"])
+        if "mtk_tiles_per_row" in mat:
+            res["tiles_per_row"] = int(mat["mtk_tiles_per_row"])
 
     if mapping:
         if "tile_size" in mapping and "mtk_tile_size" not in mat:
@@ -382,6 +426,8 @@ def find_all_atlas_chunk_materials(
     if not HAS_BPY:
         return {}
 
+    from ..pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+
     chunk_materials: dict[int, bpy.types.Material] = {}
 
     if bound_material is None and obj is not None:
@@ -390,18 +436,19 @@ def find_all_atlas_chunk_materials(
     target_pack_hash = None
     target_uv_source = None
     if bound_material:
-        target_pack_hash = bound_material.get("mtk:pack_hash") or bound_material.get("mtk_pack_hash")
+        target_pack_hash = get_effective_pack_hash(bound_material)
         target_uv_source = bound_material.get("mtk:atlas_uv_source")
-        # Direct chunk 0 binding
+        # Direct chunk 0 binding if valid
         for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
             if key in bound_material:
                 try:
                     cid0 = int(bound_material[key])
-                    chunk_materials[cid0] = bound_material
+                    if not target_pack_hash or is_material_hash_valid(bound_material, target_pack_hash):
+                        chunk_materials[cid0] = bound_material
                     break
                 except (ValueError, TypeError):
                     pass
-        if not chunk_materials:
+        if not chunk_materials and (not target_pack_hash or is_material_hash_valid(bound_material, target_pack_hash)):
             chunk_materials[0] = bound_material
 
     # 1. First priority: Check materials already assigned to object material slots
@@ -409,7 +456,8 @@ def find_all_atlas_chunk_materials(
         for slot_idx, slot_mat in enumerate(obj.data.materials):
             if not slot_mat:
                 continue
-            slot_hash = slot_mat.get("mtk:pack_hash") or slot_mat.get("mtk_pack_hash")
+            if target_pack_hash and not is_material_hash_valid(slot_mat, target_pack_hash):
+                continue
             slot_cid = None
             for key in ("mtk:atlas_chunk_id", "mtk_atlas_chunk_id"):
                 if key in slot_mat:
@@ -425,8 +473,6 @@ def find_all_atlas_chunk_materials(
                     slot_cid = int(m.group(1))
 
             if slot_cid is not None:
-                if target_pack_hash and slot_hash and slot_hash != target_pack_hash:
-                    continue
                 if slot_cid not in chunk_materials:
                     chunk_materials[slot_cid] = slot_mat
 
@@ -440,11 +486,11 @@ def find_all_atlas_chunk_materials(
 
     # 2. Match materials in bpy.data.materials filtering by target pack hash & UV source
     for mat in mats_sorted:
-        mat_hash = mat.get("mtk:pack_hash") or mat.get("mtk_pack_hash")
+        mat_hash = get_effective_pack_hash(mat)
         mat_uv = mat.get("mtk:atlas_uv_source")
 
-        # Skip materials from a different resource pack hash
-        if target_pack_hash and (not mat_hash or mat_hash != target_pack_hash):
+        # Skip materials from a different resource pack hash or invalid node tree
+        if target_pack_hash and not is_material_hash_valid(mat, target_pack_hash):
             continue
         # Skip materials with different UV source when target UV source is specified
         if target_uv_source and mat_uv and mat_uv != target_uv_source:

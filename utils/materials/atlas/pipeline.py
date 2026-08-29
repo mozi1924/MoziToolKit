@@ -247,7 +247,7 @@ class AtlasReplacementEngine:
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
-            canonical_mat = session_materials.get(texture_key) or find_existing_replacement(texture_info, pack)
+            canonical_mat = session_materials.get(texture_key) or find_existing_replacement(texture_info, effective_pack_hash)
             if canonical_mat:
                 session_materials[texture_key] = canonical_mat
                 return canonical_mat, False
@@ -258,7 +258,7 @@ class AtlasReplacementEngine:
                 bpy.data.materials.remove(mat)
                 return None, False
 
-            name_replaced_material(mat, texture_info, pack)
+            name_replaced_material(mat, texture_info, effective_pack_hash)
             session_materials[texture_key] = mat
             return mat, True
 

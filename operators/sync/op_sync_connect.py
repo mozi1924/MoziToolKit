@@ -325,20 +325,41 @@ def get_active_sync_props(context: Optional[bpy.types.Context] = None):
 
 
 def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
-    """Retrieve atlas parameters, invalidating when a material is edited in place."""
+    """Retrieve atlas parameters authoritatively, invalidating when a material, node tree, or pack stack changes."""
     global _cached_atlas_params, _cached_mat_signature
+    try:
+        from ...utils.materials.pack import get_configured_pack_stack
+        from ...utils.materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+    except (ImportError, ValueError):
+        from utils.materials.pack import get_configured_pack_stack
+        from utils.materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+
+    pack_stack = None
+    stack_hash = ""
+    try:
+        pack_stack = get_configured_pack_stack()
+        stack_hash = get_effective_pack_hash(pack_stack)
+    except Exception:
+        pass
+
+    # If mat exists but has outdated hash or empty node tree, mat is considered invalid
+    if mat and stack_hash and not is_material_hash_valid(mat, stack_hash):
+        mat = None
+
     if mat:
         mapping = mat.get("mtk:atlas_mapping", mat.get("mtk_atlas_mapping", ""))
         current_signature = (
             mat.as_pointer() if hasattr(mat, "as_pointer") else id(mat),
             mapping,
-            mat.get("mtk:pack_hash", mat.get("mtk_pack_hash", "")),
+            get_effective_pack_hash(mat),
+            stack_hash,
         )
     else:
-        current_signature = (0, "", "")
+        current_signature = (0, "", "", stack_hash)
+
     if _cached_atlas_params is None or _cached_mat_signature != current_signature:
         _cached_mat_signature = current_signature
-        _cached_atlas_params = extract_atlas_parameters(mat)
+        _cached_atlas_params = extract_atlas_parameters(mat, pack_stack=pack_stack)
         clear_mesh_builder_caches()
     return _cached_atlas_params
 

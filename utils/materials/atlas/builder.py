@@ -376,6 +376,8 @@ def build_atlas_chunk_materials(
         if pack_hash:
             mat[PROP_PACK_HASH] = pack_hash
             mat[PROP_PACK_HASH_SHORT] = short_hash
+            mat.node_tree[PROP_PACK_HASH] = pack_hash
+            mat.node_tree[PROP_PACK_HASH_SHORT] = short_hash
         mat[PROP_ATLAS_CHUNK_ID] = chunk_id
         mat[PROP_ATLAS_CHUNK_KIND] = chunk["kind"]
         mat[PROP_ATLAS_CHUNK_CATEGORY] = chunk.get("category", "blocks")
