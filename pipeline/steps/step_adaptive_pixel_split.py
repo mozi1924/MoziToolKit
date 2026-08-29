@@ -2,8 +2,10 @@
 Adaptive Pixel Split Pipeline Step
 """
 
+from typing import Iterator, Union
 import bpy
 from ..context import PipelineContext
+from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
 from ...utils.mesh import set_select_mode
@@ -14,10 +16,11 @@ class AdaptivePixelSplitStep(PipelineStep):
     name = "Adaptive Pixel Split"
     description = "Subdivide or adjust mesh faces to match texture pixel resolution"
 
-    def execute(self, ctx: PipelineContext) -> StepResult:
+    def execute_iter(self, ctx: PipelineContext) -> Iterator[Union[ProgressUpdate, StepResult]]:
         mesh_objs = ctx.target_objects
         if not mesh_objs:
-            return StepResult.cancelled("No mesh objects selected.")
+            yield StepResult.cancelled("No mesh objects selected.")
+            return
 
         selection_scope = self.get_param(ctx, "selection_scope", "SELECTED")
         auto_resolution = self.get_param(ctx, "auto_resolution", True)
@@ -44,9 +47,20 @@ class AdaptivePixelSplitStep(PipelineStep):
 
         total_initial = 0
         total_final = 0
+        num_objs = len(mesh_objs)
 
         try:
-            for obj in mesh_objs:
+            for idx, obj in enumerate(mesh_objs):
+                if ctx.is_cancelled:
+                    yield StepResult.cancelled("Adaptive pixel split cancelled by user.")
+                    return
+
+                yield ProgressUpdate(
+                    current=idx,
+                    total=num_objs,
+                    message=f"Adaptive pixel split: processing {obj.name} ({idx + 1}/{num_objs})...",
+                )
+
                 stats = process_adaptive_pixel_split(ctx.context, config, target_obj=obj)
                 total_initial += stats.get("initial_faces", 0)
                 total_final += stats.get("final_faces", 0)
@@ -62,6 +76,8 @@ class AdaptivePixelSplitStep(PipelineStep):
                 except Exception:
                     pass
 
-        msg = f"Adaptive Pixel Split ({len(mesh_objs)} mesh object(s)): {total_initial} face(s) -> {total_final} face(s)"
         ctx.set_data("pixel_split_stats", {"initial": total_initial, "final": total_final})
-        return StepResult.success(msg, {"initial_faces": total_initial, "final_faces": total_final})
+        yield StepResult.success(
+            f"Adaptive pixel split: {total_initial} face(s) -> {total_final} face(s)",
+            {"initial_faces": total_initial, "final_faces": total_final},
+        )

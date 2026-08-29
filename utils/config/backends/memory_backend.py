@@ -6,11 +6,14 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 from .base import ConfigBackend
 from ..models import ConfigData
+
+logger = logging.getLogger("MoziToolKit.Config.Memory")
 
 
 class MemoryConfigBackend(ConfigBackend):
@@ -50,7 +53,7 @@ class MemoryConfigBackend(ConfigBackend):
                 json.dump(data.to_dict(), f, indent=4, ensure_ascii=False)
             return True
         except Exception as e:
-            print(f"[MoziToolKit] Error exporting memory config to {filepath}: {e}")
+            logger.error(f"Error exporting memory config to {filepath}: {e}", exc_info=True)
             return False
 
     def import_from_file(self, filepath: Path) -> Optional[ConfigData]:
@@ -63,5 +66,6 @@ class MemoryConfigBackend(ConfigBackend):
                 cfg.backend_type = "MEMORY"
                 return cfg
         except Exception as e:
-            print(f"[MoziToolKit] Error importing memory config from {filepath}: {e}")
+            logger.error(f"Error importing memory config from {filepath}: {e}", exc_info=True)
         return None
+

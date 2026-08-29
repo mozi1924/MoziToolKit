@@ -1,9 +1,12 @@
+import logging
 import bmesh
 import bpy
 
 from ...utils.system import register_menu_item
 from ...utils.mesh import poll_edit_mesh
 from ...utils.extrude_repair import repair_extruded_side_faces
+
+logger = logging.getLogger("MoziToolKit.AutoExtrudeRepair")
 
 _smart_extrude_sessions = {}
 
@@ -300,8 +303,7 @@ def _deferred_extrude_repair_tick():
         if repaired_count > 0:
             bmesh.update_edit_mesh(obj.data)
     except Exception as e:
-        import sys
-        print(f"[MoziToolKit Exception] Error in auto extrude repair tick: {e}", file=sys.stderr)
+        logger.error(f"Error in auto extrude repair tick: {e}", exc_info=True)
     finally:
         _is_updating = False
 
@@ -365,8 +367,7 @@ def depsgraph_auto_extrude_repair_handler(scene, depsgraph):
             if not bpy.app.timers.is_registered(_deferred_extrude_repair_tick):
                 bpy.app.timers.register(_deferred_extrude_repair_tick, first_interval=0.001, persistent=True)
     except Exception as e:
-        import sys
-        print(f"[MoziToolKit Exception] Error in depsgraph_auto_extrude_repair_handler: {e}", file=sys.stderr)
+        logger.error(f"Error in depsgraph_auto_extrude_repair_handler: {e}", exc_info=True)
 
 
 def register():

@@ -422,3 +422,48 @@ def get_shared_face_culler(
         _GLOBAL_FACE_CULLER.glass_cull_mode = glass_cull_mode
     return _GLOBAL_FACE_CULLER
 
+
+def get_visible_face_directions(
+    x: int,
+    y: int,
+    z: int,
+    state_str: str,
+    block_map: dict[tuple[int, int, int], str],
+    culler: Optional[FaceCuller] = None,
+) -> list[str]:
+    """
+    Public utility to compute all visible face directions for a single voxel block.
+    Can be used by static mesh rebuilders, voxel meshing tools, and preview operators.
+    """
+    if not state_str:
+        return []
+    culler = culler or get_shared_face_culler()
+    meta = culler.get_meta(state_str)
+    if meta.is_air:
+        return []
+
+    visible_dirs = []
+    offsets = {
+        "east": (1, 0, 0),
+        "west": (-1, 0, 0),
+        "up": (0, 1, 0),
+        "down": (0, -1, 0),
+        "south": (0, 0, 1),
+        "north": (0, 0, -1),
+    }
+
+    for direction, (dx, dy, dz) in offsets.items():
+        n_pos = (x + dx, y + dy, z + dz)
+        n_state = block_map.get(n_pos)
+        n_meta = culler.get_meta(n_state) if n_state else None
+        if culler.should_render_face(
+            state_meta=meta,
+            neighbor_meta=n_meta,
+            direction=direction,
+            block_pos=(x, y, z),
+            neighbor_pos=n_pos,
+        ):
+            visible_dirs.append(direction)
+
+    return visible_dirs
+

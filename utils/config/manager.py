@@ -5,6 +5,7 @@ Provides unified, thread-safe, backend-agnostic configuration management.
 
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -14,6 +15,9 @@ from .backends.json_backend import JsonConfigBackend
 from .backends.blender_backend import BlenderPreferencesConfigBackend
 from .backends.memory_backend import MemoryConfigBackend
 from .models import ConfigData, PackEntry, MaterialSettings, MenuItem, normalize_operator_id, get_default_menu_views
+
+logger = logging.getLogger("MoziToolKit.Config")
+
 
 
 class ConfigManager:
@@ -368,9 +372,10 @@ class ConfigManager:
 
             # Anti-wipe check: If prefs is not initialized and has 0 resource packs but storage has packs, abort!
             if not is_init and hasattr(prefs, "resource_packs") and len(prefs.resource_packs) == 0 and len(data.resource_packs) > 0:
-                print("[MoziToolKit] Anti-Wipe Guard prevented uninitialized AddonPreferences from overwriting configuration.")
+                logger.warning("Anti-Wipe Guard prevented uninitialized AddonPreferences from overwriting configuration.")
                 self.sync_to_preferences(prefs)
                 return False
+
 
             # Extract views
             views_data = {}

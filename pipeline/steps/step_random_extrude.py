@@ -1,10 +1,8 @@
-"""
-Random Extrude Pipeline Step
-"""
-
+from typing import Iterator, Union
 import bmesh
 import bpy
 from ..context import PipelineContext
+from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
 from ...utils.mesh import poll_edit_mesh, process_random_extrude
@@ -14,13 +12,21 @@ class RandomExtrudeStep(PipelineStep):
     name = "Random Extrude"
     description = "Extrude selected faces individually along face normals with random height and UV repair"
 
-    def execute(self, ctx: PipelineContext) -> StepResult:
+    def execute_iter(self, ctx: PipelineContext) -> Iterator[Union[ProgressUpdate, StepResult]]:
         if not poll_edit_mesh(ctx.context):
-            return StepResult.cancelled("Must be in Edit Mode with a Mesh object active.")
+            yield StepResult.cancelled("Must be in Edit Mode with a Mesh object active.")
+            return
 
         obj = ctx.active_object
         if not obj or obj.type != "MESH":
-            return StepResult.cancelled("No active mesh object.")
+            yield StepResult.cancelled("No active mesh object.")
+            return
+
+        yield ProgressUpdate(0.1, 1.0, f"Random Extrude: extruding faces for {obj.name}...")
+
+        if ctx.is_cancelled:
+            yield StepResult.cancelled("Random extrude cancelled by user.")
+            return
 
         min_height = self.get_param(ctx, "min_height", 0.1)
         max_height = self.get_param(ctx, "max_height", 1.0)
@@ -55,6 +61,8 @@ class RandomExtrudeStep(PipelineStep):
         else:
             msg = "No selected faces to extrude"
 
+        yield ProgressUpdate(1.0, 1.0, f"Random Extrude: completed ({msg})")
         ctx.set_data("extruded_faces_count", extruded_count)
         ctx.set_data("repaired_faces_count", repaired_count)
-        return StepResult.success(msg, {"extruded_count": extruded_count, "repaired_count": repaired_count})
+        yield StepResult.success(msg, {"extruded_count": extruded_count, "repaired_count": repaired_count})
+

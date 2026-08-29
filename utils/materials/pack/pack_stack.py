@@ -5,6 +5,7 @@ Supports cascading fallback lookup across prioritized Resource Packs, Mod JARs, 
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, Iterator, Callable
@@ -12,6 +13,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Iterator, Callable
 from .resource_pack import ZipResourcePack, get_pack_hash
 from ...mc_baker.resource_loader import JarResourceLoader
 from ...config import get_enabled_pack_entries
+
+logger = logging.getLogger("MoziToolKit.Materials.PackStack")
+
 
 
 class ResourcePackStack:
@@ -52,8 +56,9 @@ class ResourcePackStack:
             self._loaders.append(loader)
             return pack
         except Exception as e:
-            print(f"[MoziToolKit] Warning: Failed to add pack source '{source}': {e}")
+            logger.warning(f"Failed to add pack source '{source}': {e}")
             return None
+
 
     def get_texture_info(self, base_name: str, namespace: str = "minecraft") -> Optional[dict]:
         """

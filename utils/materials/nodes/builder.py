@@ -2,12 +2,16 @@
 Material node tree construction, inspection, and repair with LabPBR 1.3 standard.
 """
 
+import logging
 import os
 import shutil
 from pathlib import Path
 import bpy
 
 from ...node_groups import ensure_all_templates
+
+logger = logging.getLogger("MoziToolKit.Materials.Nodes")
+
 from ..matching import extract_material_texture_keys
 from ..pipeline.provenance import detect_material_mode
 from ..constants import (
@@ -106,7 +110,7 @@ def load_image_texture(
             try:
                 img.pack()
             except Exception as e:
-                print(f"[MoziToolKit] Failed to pack image {img.name}: {e}")
+                logger.error(f"Failed to pack image {img.name}: {e}")
     else:
         # Save relative to blend file if blend file is saved
         if bpy.data.is_saved:
@@ -118,7 +122,7 @@ def load_image_texture(
                 try:
                     shutil.copy2(filepath, target_path)
                 except Exception as e:
-                    print(f"[MoziToolKit] Error copying texture to relative directory: {e}")
+                    logger.error(f"Error copying texture to relative directory: {e}")
             try:
                 rel_path = "//" + os.path.relpath(target_path, blend_dir)
                 img.filepath = rel_path
@@ -126,6 +130,7 @@ def load_image_texture(
                 pass
 
     return img
+
 
 
 def set_material_displacement_method(mat: bpy.types.Material, method: str = "BOTH") -> None:
