@@ -220,6 +220,7 @@ def download_dependencies(
     wheels_dir: Path,
     clean_first: bool = False,
     specs: list[str] | None = None,
+    py_ver_dotted: str = "3.13",
 ) -> list[Path]:
     """
     Download cross-platform wheels for specified dependencies using Blender's Python and pip.
@@ -231,6 +232,11 @@ def download_dependencies(
     if clean_first:
         print(f"🧹 Cleaning existing wheels in: {wheels_dir}")
         for whl in wheels_dir.glob("*.whl"):
+            whl.unlink()
+    else:
+        # Always remove any obsolete or accidental platform-specific websockets wheels
+        for whl in wheels_dir.glob("websockets*cp*.whl"):
+            print(f"🧹 Removing platform-specific websockets wheel: {whl.name}")
             whl.unlink()
 
     print(f"\n📦 Coordinating with Blender Python ({blender_py}) to download dependencies:")
@@ -306,15 +312,28 @@ def download_dependencies(
                 "pip",
                 "download",
                 pkg,
+                "--only-binary=:all:",
+                "--platform",
+                "any",
+                "--python-version",
+                py_ver_dotted,
+                "--implementation",
+                "py",
+                "--abi",
+                "none",
                 "--no-deps",
                 "-d",
                 str(wheels_dir),
             ]
             res_any = subprocess.run(cmd_any, capture_output=True, text=True)
             if res_any.returncode == 0:
-                print(f"     ✓ {pkg} ready (universal pure Python)")
+                print(f"     ✓ {pkg} ready (universal pure Python py3-none-any)")
             else:
-                print(f"     ⚠️ Failed downloading {pkg} pure Python wheel")
+                print(f"     ⚠️ Failed downloading {pkg} pure Python wheel: {res_any.stderr.strip()}")
+
+    # Ensure no platform websockets wheels remain
+    for whl in wheels_dir.glob("websockets*cp*.whl"):
+        whl.unlink()
 
     all_wheels = sorted(wheels_dir.glob("*.whl"))
     new_wheels = set(all_wheels) - downloaded_files
@@ -332,7 +351,15 @@ def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
     if not manifest_path.exists():
         return []
 
-    relative_wheels = sorted([f"wheels/{whl.name}" for whl in wheels_dir.glob("*.whl")])
+    # Filter out any platform-specific websockets wheels
+    for whl in wheels_dir.glob("websockets*cp*.whl"):
+        whl.unlink()
+
+    valid_wheels = [
+        whl for whl in wheels_dir.glob("*.whl")
+        if not (whl.name.startswith("websockets") and "cp" in whl.name)
+    ]
+    relative_wheels = sorted([f"wheels/{whl.name}" for whl in valid_wheels])
     with open(manifest_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -519,6 +546,7 @@ def main():
             py_version_tag=py_version_tag,
             wheels_dir=wheels_dir,
             clean_first=args.clean_wheels,
+            py_ver_dotted=py_ver_dotted,
         )
 
     # Step 2: Synchronize Manifest wheels list
