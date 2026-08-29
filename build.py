@@ -36,10 +36,15 @@ except ImportError:
 
 
 # Default dependency targets aligned for Blender 4.2+ / 5.x Extensions
-DEFAULT_DEPENDENCY_SPECS = [
+PLATFORM_DEPENDENCY_SPECS = [
     "pillow==12.3.0",
+]
+
+PURE_PYTHON_DEPENDENCY_SPECS = [
     "websockets==15.0.1",
 ]
+
+DEFAULT_DEPENDENCY_SPECS = PLATFORM_DEPENDENCY_SPECS + PURE_PYTHON_DEPENDENCY_SPECS
 
 TARGET_PLATFORMS = [
     {
@@ -234,12 +239,18 @@ def download_dependencies(
 
     downloaded_files = set(wheels_dir.glob("*.whl"))
 
+    platform_specs = [s for s in specs if any(s.startswith(p.split("==")[0]) for p in PLATFORM_DEPENDENCY_SPECS)]
+    pure_specs = [s for s in specs if any(s.startswith(p.split("==")[0]) for p in PURE_PYTHON_DEPENDENCY_SPECS)]
+    # Any remaining specs without explicit categorization default to platform specs
+    unclassified = [s for s in specs if s not in platform_specs and s not in pure_specs]
+    platform_specs.extend(unclassified)
+
     for target in TARGET_PLATFORMS:
         plat_id = target["id"]
         label = target["label"]
         print(f"  ⬇️  Downloading wheels for platform [{plat_id}] ({label})...")
 
-        for pkg in specs:
+        for pkg in platform_specs:
             success = False
             for plat_tag in target["pip_platforms"]:
                 cmd = [
@@ -266,7 +277,6 @@ def download_dependencies(
                     success = True
                     break
 
-            # Fallback to pure Python wheel if platform binary not available (e.g. websockets for win_arm64)
             if not success:
                 cmd_any = [
                     blender_py,
@@ -286,6 +296,25 @@ def download_dependencies(
                 print(f"     ✓ {pkg} ready for {plat_id}")
             else:
                 print(f"     ⚠️ Failed downloading {pkg} for {plat_id}")
+
+    if pure_specs:
+        print(f"  ⬇️  Downloading universal pure-Python wheels ({', '.join(pure_specs)})...")
+        for pkg in pure_specs:
+            cmd_any = [
+                blender_py,
+                "-m",
+                "pip",
+                "download",
+                pkg,
+                "--no-deps",
+                "-d",
+                str(wheels_dir),
+            ]
+            res_any = subprocess.run(cmd_any, capture_output=True, text=True)
+            if res_any.returncode == 0:
+                print(f"     ✓ {pkg} ready (universal pure Python)")
+            else:
+                print(f"     ⚠️ Failed downloading {pkg} pure Python wheel")
 
     all_wheels = sorted(wheels_dir.glob("*.whl"))
     new_wheels = set(all_wheels) - downloaded_files
