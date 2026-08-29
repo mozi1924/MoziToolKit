@@ -1147,6 +1147,48 @@ class TestDirectMeshSync(unittest.TestCase):
 
         props.is_connected = False
 
+    def test_child_section_selection_resolves_to_parent_world_root(self):
+        """Verify that selecting a child section object resolves to the parent empty container, avoiding nested sub-objects."""
+        res_op = bpy.ops.mozi.add_yefira_world(name="Kingdom_World")
+        self.assertEqual(res_op, {'FINISHED'})
+        root = bpy.data.objects.get("Kingdom_World")
+        self.assertIsNotNone(root)
+
+        storage = VoxelStorage()
+        storage.set_full_snapshot(
+            min_x=0, min_y=0, min_z=0,
+            size_x=32, size_y=1, size_z=1,
+            palette=["minecraft:air", "minecraft:stone"],
+            grid_indices=[1 if i == 0 else 0 for i in range(32)],
+        )
+        sync_world_mesh(bpy.context, storage, target_obj=root, force_full_rebuild=True)
+
+        sec0 = bpy.data.objects.get("Kingdom_World_Section_0_0_0")
+        self.assertIsNotNone(sec0)
+        self.assertEqual(sec0.parent, root)
+
+        # 1. Select the child section object and make it active
+        bpy.context.view_layer.objects.active = sec0
+        for o in bpy.context.selected_objects:
+            o.select_set(False)
+        sec0.select_set(True)
+
+        # 2. Call get_current_world_object
+        from operators.sync.op_sync_connect import get_current_world_object
+        resolved = get_current_world_object(bpy.context)
+        self.assertEqual(resolved, root, "Active child section MUST resolve to the root Empty container Kingdom_World")
+
+        # 3. Perform a sync without explicitly specifying target_obj while sec0 is active
+        storage.apply_delta_update(0, 0, 0, [(16, 0, 0, "minecraft:oak_planks")])
+        res_sync = sync_world_mesh(bpy.context, storage, force_full_rebuild=True)
+
+        # Verify that sec0 and sec1 are direct children of root, NOT nested under sec0
+        self.assertEqual(res_sync.world_obj, root)
+        sec1 = bpy.data.objects.get("Kingdom_World_Section_1_0_0")
+        self.assertIsNotNone(sec1)
+        self.assertEqual(sec1.parent, root)
+        self.assertEqual(len(sec0.children), 0, "Child section must NOT have any nested child sub-objects")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
