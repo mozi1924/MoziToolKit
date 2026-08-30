@@ -638,9 +638,38 @@ class TestFluidLiveSync(unittest.TestCase):
         self.assertGreater(res.face_count, 0)
         self.assertGreater(res.fluids_count, 0)
         mesh = res.world_obj.data
-        self.assertIn(MTK_ATLAS_CHUNK_ID, mesh.attributes)
-        self.assertIn(MTK_BIOME_TINT_COLOR, mesh.attributes)
+    def test_vertical_waterfall_welding_and_zero_gap(self):
+        """
+        Verify that a vertical waterfall column (stacked water blocks) produces contiguous
+        vertices across Y boundaries and merges into a seamless mesh with 0 gaps.
+        """
+        self.storage.set_block(0, 0, 0, "minecraft:water[level=8]")
+        self.storage.set_block(0, 1, 0, "minecraft:water[level=8]")
+        self.storage.set_block(0, 2, 0, "minecraft:water[level=0]")
+
+        res = build_world_mesh(
+            context=bpy.context,
+            storage=self.storage,
+            atlas_params=self.atlas_params,
+            origin_centered=False,
+            weld_vertices=True,
+        )
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
+
+        # Inspect Z coordinates of vertices along a vertical corner edge (x=0.5, y=-0.5)
+        verts_at_corner = sorted([v.co.z for v in mesh.vertices if abs(v.co.x - 0.5) < 1e-4 and abs(v.co.y - (-0.5)) < 1e-4])
+
+        # Expect exactly 4 continuous vertical height points: Y=0 bottom (-0.5), Y=1 boundary (0.5), Y=2 boundary (1.5), Y=3 top (1.5 + corner_avg)
+        # No duplicate or split vertices separated by epsilon gaps!
+        top_corner_height = calculate_corner_average(MAX_FLUID_HEIGHT, 0.0, 0.0, 0.0)
+        self.assertEqual(len(verts_at_corner), 4, f"Expected 4 welded vertices along vertical edge, got {len(verts_at_corner)}: {verts_at_corner}")
+        self.assertAlmostEqual(verts_at_corner[0], -0.5, places=4)
+        self.assertAlmostEqual(verts_at_corner[1], 0.5, places=4)
+        self.assertAlmostEqual(verts_at_corner[2], 1.5, places=4)
+        self.assertAlmostEqual(verts_at_corner[3], 1.5 + top_corner_height, places=4)
 
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

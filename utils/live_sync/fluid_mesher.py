@@ -51,7 +51,7 @@ from ..mesh.fluid_uv import get_fluid_top_uvs, get_fluid_side_uvs
 
 # Maximum height of a Minecraft source water/lava block (8/9)
 MAX_FLUID_HEIGHT: float = 8.0 / 9.0  # ~0.8888889
-FLUID_EPSILON: float = 0.001
+FLUID_EPSILON: float = 0.0  # Kept 0.0 to ensure adjacent vertical fluid columns weld perfectly without gaps
 
 
 def get_fluid_base_height(state_str: str) -> float:
