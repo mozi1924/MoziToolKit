@@ -95,13 +95,13 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(emit_links[0].from_node, mix_node)
 
         # Check Transmission and Alpha nodes
-        eff_trans = ng.nodes.get("Effective Transmission")
+        eff_trans = ng.nodes.get("Final Transmission")
         self.assertIsNotNone(eff_trans)
         trans_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Transmission Weight"]
         self.assertEqual(len(trans_links), 1)
         self.assertEqual(trans_links[0].from_node, eff_trans)
 
-        eff_alpha = ng.nodes.get("Effective Alpha")
+        eff_alpha = ng.nodes.get("Final Alpha")
         self.assertIsNotNone(eff_alpha)
         alpha_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Alpha"]
         self.assertEqual(len(alpha_links), 1)
@@ -220,14 +220,11 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertFalse(is_thin_wall_block("mushroom_stem"))
 
     def test_vanilla_catalog_transmission_whitelist(self):
-        """Verify that glass, stained glass, water, ice, and slime are identified for transmission."""
+        """Verify that stained glass, water, ice, and slime are identified for transmission."""
         transmissives = [
-            "glass",
-            "minecraft:glass",
             "tinted_glass",
             "white_stained_glass",
             "red_stained_glass",
-            "glass_pane",
             "blue_stained_glass_pane",
             "water",
             "flowing_water",
@@ -245,6 +242,9 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
             self.assertEqual(get_block_transmission_weight(name), 1.0, f"{name} transmission weight should be 1.0")
 
         non_transmissives = [
+            "glass",
+            "glass_pane",
+            "minecraft:glass",
             "stone",
             "oak_planks",
             "dirt",
@@ -288,7 +288,7 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(decoder_leaves.inputs["Thin Wall"].default_value, True)
         self.assertEqual(decoder_leaves.inputs["Transmission Weight"].default_value, 0.0)
 
-        # Test glass
+        # Test uncolored glass (cutout: transmission = 0.0)
         mat_glass = bpy.data.materials.new("glass")
         tex_info_glass = {
             "texture_name": "glass",
@@ -301,7 +301,22 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertIsNotNone(decoder_glass)
         self.assertEqual(decoder_glass.inputs["Hardcoded Emission"].default_value, 0.0)
         self.assertEqual(decoder_glass.inputs["Thin Wall"].default_value, False)
-        self.assertEqual(decoder_glass.inputs["Transmission Weight"].default_value, 1.0)
+        self.assertEqual(decoder_glass.inputs["Transmission Weight"].default_value, 0.0)
+
+        # Test stained glass (translucent dielectric: transmission = 1.0)
+        mat_stained = bpy.data.materials.new("white_stained_glass")
+        tex_info_stained = {
+            "texture_name": "white_stained_glass",
+            "source_texture": "minecraft:block/white_stained_glass",
+        }
+        success_stained = rebuild_material(mat_stained, tex_info_stained)
+        self.assertTrue(success_stained)
+
+        decoder_stained = mat_stained.node_tree.nodes.get("LabPBR 1.3 Decoder")
+        self.assertIsNotNone(decoder_stained)
+        self.assertEqual(decoder_stained.inputs["Hardcoded Emission"].default_value, 0.0)
+        self.assertEqual(decoder_stained.inputs["Thin Wall"].default_value, False)
+        self.assertEqual(decoder_stained.inputs["Transmission Weight"].default_value, 1.0)
 
     def test_atlas_material_builder_wires_material_props(self):
         """Verify that build_atlas_chunk_materials wires Attr Material Props (Emission, Thin Wall, Transmission)."""

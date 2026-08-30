@@ -529,8 +529,18 @@ class StateBaker:
                     uv_bounds=(0.0, 0.0, 1.0, 1.0),
                 ))
 
+        is_known_non_cube = any(w in short_name for w in (
+            "glass_pane", "pane", "fence", "door", "trapdoor", "bars", "chain", "lantern",
+            "stairs", "slab", "chest", "banner", "bed", "carpet", "pot", "sign", "hanging_sign",
+            "head", "skull", "rod", "hook", "lever", "rail", "torch", "candle", "flower",
+            "plant", "sapling", "vine", "bush", "wire", "repeater", "comparator", "cauldron",
+            "hopper", "bell", "anvil", "stand", "frame", "portal", "conduit", "grindstone",
+            "stonecutter", "scaffolding", "dripstone", "amethyst", "sensor", "shrieker"
+        )) and not (short_name.endswith("_slab") and props.get("type") == "double")
+
         is_cube = (
-            len(baked_elements) >= 1
+            not is_known_non_cube
+            and len(baked_elements) >= 1
             and all(
                 el.from_pos == (0, 0, 0) and el.to_pos == (16, 16, 16) and not el.rotation
                 for el in baked_elements

@@ -15,10 +15,10 @@ LABPBR_TEMPLATE_VERSION = 14
 # boolean Thin Wall transmission support, hardcoded emission direct input,
 # Transmission Weight physical refraction decoding, perceptual roughness fix,
 # and non-negative SSS clamping.
-LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 87
-LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 124
-LABPBR_REFERENCE_NODE_COUNT = 56
-LABPBR_REFERENCE_LINK_COUNT = 92
+LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 90
+LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 129
+LABPBR_REFERENCE_NODE_COUNT = 59
+LABPBR_REFERENCE_LINK_COUNT = 97
 LABPBR_REFERENCE_FRAMES = frozenset({
     "Optional _n: DirectX normal, AO, height",
     "Optional _s: smoothness, F0, metal, porosity / SSS, emission",
@@ -227,8 +227,11 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     final_emission = node(nodes, "ShaderNodeMix", "Select Emission Mode", location=(120, -1600), properties={"data_type": "FLOAT", "blend_type": "MIX"})
 
     alpha_inverse = _math(nodes, "1 − Albedo Alpha", "SUBTRACT", (500, 50), {"Value[0]": 1.0})
-    effective_transmission = _math(nodes, "Effective Transmission", "MULTIPLY", (700, 50))
-    effective_alpha = node(nodes, "ShaderNodeMix", "Effective Alpha", location=(700, 200), properties={"data_type": "FLOAT", "blend_type": "MIX"}, inputs={"B[0]": 1.0})
+    has_alpha = _math(nodes, "Alpha > 0", "GREATER_THAN", (500, 200), {"Value[1]": 0.001})
+    raw_transmission = _math(nodes, "Raw Transmission", "MULTIPLY", (700, 50))
+    translucent_alpha = node(nodes, "ShaderNodeMix", "Translucent Alpha", location=(700, 200), properties={"data_type": "FLOAT", "blend_type": "MIX"}, inputs={"B[0]": 1.0})
+    final_alpha = _math(nodes, "Final Alpha", "MULTIPLY", (900, 200))
+    final_transmission = _math(nodes, "Final Transmission", "MULTIPLY", (900, 50))
 
     for child in (decode_normal, albedo_ao, normal_x, normal_y, x_squared, y_squared, xy_squared, normal_z_base, clamp_normal_z, normal_z, encode_x, encode_y, encode_z, reconstructed_normal, normal_map, height_bump, height_minus_one, labpbr_depth, effective_displacement):
         child.parent = normal_frame
@@ -273,16 +276,22 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, enable_labpbr, "Value", final_emission, "Factor[0]"); link(links, group_input, "Hardcoded Emission", final_emission, "A[0]"); link(links, artist_emission, "Value", final_emission, "B[0]")
     link(links, enable_labpbr, "Value", normal_map, "Strength")
 
-    # Transmission and Alpha decoding
-    link(links, group_input, "Transmission Weight", effective_alpha, "Factor[0]")
-    link(links, group_input, "Albedo Alpha", effective_alpha, "A[0]")
+    # Transmission and Alpha decoding (Zero-alpha cutout protected)
+    link(links, group_input, "Albedo Alpha", has_alpha, "Value[0]")
+    link(links, group_input, "Transmission Weight", translucent_alpha, "Factor[0]")
+    link(links, group_input, "Albedo Alpha", translucent_alpha, "A[0]")
+    link(links, translucent_alpha, "Result[0]", final_alpha, "Value[0]")
+    link(links, has_alpha, "Value", final_alpha, "Value[1]")
+
     link(links, group_input, "Albedo Alpha", alpha_inverse, "Value[1]")
-    link(links, alpha_inverse, "Value", effective_transmission, "Value[0]")
-    link(links, group_input, "Transmission Weight", effective_transmission, "Value[1]")
+    link(links, alpha_inverse, "Value", raw_transmission, "Value[0]")
+    link(links, group_input, "Transmission Weight", raw_transmission, "Value[1]")
+    link(links, raw_transmission, "Value", final_transmission, "Value[0]")
+    link(links, has_alpha, "Value", final_transmission, "Value[1]")
 
     link(links, enable_ao, "Result[2]", principled, "Base Color"); link(links, enable_roughness, "Result[0]", principled, "Roughness"); link(links, enable_metallic, "Value", principled, "Metallic"); link(links, enable_ior, "Result[0]", principled, "IOR")
-    link(links, effective_alpha, "Result[0]", principled, "Alpha")
-    link(links, effective_transmission, "Value", principled, "Transmission Weight")
+    link(links, final_alpha, "Value", principled, "Alpha")
+    link(links, final_transmission, "Value", principled, "Transmission Weight")
     link(links, normal_map, "Normal", height_bump, "Normal"); link(links, enable_displacement, "Value", height_bump, "Height"); link(links, height_bump, "Normal", principled, "Normal")
     link(links, enable_sss, "Value", principled, "Subsurface Weight"); link(links, group_input, "Albedo Color", principled, "Emission Color"); link(links, final_emission, "Result[0]", principled, "Emission Strength")
     link(links, group_input, "Thin Wall", principled, "Thin Wall")

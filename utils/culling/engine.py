@@ -104,6 +104,38 @@ _NON_OCCLUDING_NAMES = frozenset({
     "barrier", "light", "structure_void",
 })
 
+_PARTIAL_SHAPE_SUFFIXES = (
+    "_fence", "_fence_gate", "_wall", "_pane", "_bars", "_trapdoor", "_door",
+    "_carpet", "_bed", "_sign", "_hanging_sign", "_head", "_skull", "_banner",
+    "_candle", "_pot", "_rod", "_coral", "_fan", "_chain",
+)
+
+_PARTIAL_SHAPE_EXACT_NAMES = frozenset({
+    "iron_bars", "glass_pane", "chest", "trapped_chest", "ender_chest", "bell",
+    "anvil", "chipped_anvil", "damaged_anvil", "cauldron", "water_cauldron",
+    "lava_cauldron", "powder_snow_cauldron", "hopper", "brewing_stand",
+    "flower_pot", "conduit", "beacon", "decorated_pot", "end_portal_frame",
+    "end_portal", "end_gateway", "chain", "iron_chain", "copper_chain",
+    "exposed_copper_chain", "weathered_copper_chain", "oxidized_copper_chain",
+    "lever", "tripwire_hook", "tripwire", "repeater", "comparator",
+    "daylight_detector", "lightning_rod", "end_rod", "dragon_egg",
+    "scaffolding", "pointed_dripstone", "amethyst_cluster", "small_amethyst_bud",
+    "medium_amethyst_bud", "large_amethyst_bud", "calibrated_sculk_sensor",
+    "sculk_sensor", "sculk_shrieker", "sculk_vein", "snow", "ladder",
+    "grindstone", "stonecutter", "lectern", "sniffer_egg"
+})
+
+
+def is_non_full_or_partial_block(name_low: str) -> bool:
+    """Return True if the block is a non-full block (fence, pane, wall, carpet, etc.)."""
+    if name_low in _PARTIAL_SHAPE_EXACT_NAMES or name_low in _NON_OCCLUDING_NAMES:
+        return True
+    if name_low.endswith(_PARTIAL_SHAPE_SUFFIXES):
+        return True
+    if any(w in name_low for w in ("flower", "sapling", "torch", "lantern", "pane", "fence", "wall", "carpet", "trapdoor", "door")):
+        return True
+    return False
+
 
 def _parse_block_name_and_props(state_str: str) -> tuple[str, dict[str, str]]:
     """Fast extraction of raw block name and properties."""
@@ -185,8 +217,12 @@ class FaceCuller:
         is_air = (not state_str) or name_low in _AIR_NAMES or name_low.endswith("air")
         is_fluid = not is_air and (name_low in _FLUID_NAMES or "water" in name_low or "lava" in name_low)
         is_leaves = not is_air and (name_low in _LEAVES_NAMES or name_low.endswith("_leaves") or name_low == "mangrove_roots")
-        is_glass = not is_air and (name_low in _GLASS_NAMES or "stained_glass" in name_low or name_low.endswith("glass") or name_low.endswith("ice"))
-        is_non_occluding = not is_air and (name_low in _NON_OCCLUDING_NAMES or name_low.endswith("_flower") or name_low.endswith("_sapling"))
+        
+        # Panes (glass_pane, stained_glass_pane, iron_bars) are non-full thin shapes, NOT full glass cubes
+        is_pane = name_low.endswith(("_pane", "_bars")) or name_low in ("glass_pane", "iron_bars")
+        is_glass = not is_air and not is_pane and (name_low in _GLASS_NAMES or ("stained_glass" in name_low and not is_pane) or (name_low.endswith("glass") and not is_pane) or name_low.endswith("ice"))
+        is_non_occluding = not is_air and (name_low in _NON_OCCLUDING_NAMES or name_low.endswith(("_flower", "_sapling", "_torch", "_lantern", "_plant", "_bush")))
+        is_non_full = not is_air and (is_pane or is_non_full_or_partial_block(name_low))
 
         # Determine Category
         if is_air:
@@ -234,7 +270,11 @@ class FaceCuller:
         elif baked_model is not None:
             # Analyze baked model geometry
             is_full_cube = getattr(baked_model, "is_cube", False)
-            is_opaque = is_opaque_hint if is_opaque_hint is not None else is_full_cube
+            # Guard against fallback cuboids on non-full block types (slabs, stairs, fences, panes, etc.)
+            if is_non_full and not (name_low.endswith("_slab") and props.get("type") == "double"):
+                is_full_cube = False
+
+            is_opaque = (is_opaque_hint if is_opaque_hint is not None else is_full_cube) and not is_non_full
 
             if is_full_cube and is_opaque:
                 category = CullCategory.SOLID_OPAQUE
@@ -242,6 +282,12 @@ class FaceCuller:
                 face_shapes = {d: (FULL_FACE_RECT,) for d in ALL_6_DIRS}
                 full_face_mask = FULL_6_DIRS_MASK
                 empty_face_mask = 0
+            elif is_non_full and not (name_low.endswith("_slab") or name_low.endswith("_stairs")):
+                category = CullCategory.PARTIAL_SHAPE
+                cull_group = "partial"
+                face_shapes = {d: () for d in ALL_6_DIRS}
+                full_face_mask = 0
+                empty_face_mask = FULL_6_DIRS_MASK
             else:
                 category = CullCategory.PARTIAL_SHAPE
                 cull_group = "partial"
@@ -278,6 +324,7 @@ class FaceCuller:
                 cull_group = "slab"
                 slab_type = props.get("type", "bottom")
                 if slab_type == "double":
+                    category = CullCategory.SOLID_OPAQUE
                     is_full_cube = True
                     face_shapes = {d: (FULL_FACE_RECT,) for d in ALL_6_DIRS}
                     full_face_mask = FULL_6_DIRS_MASK
@@ -314,6 +361,15 @@ class FaceCuller:
                 face_shapes = {d: (FULL_FACE_RECT,) if (DIR_TO_MASK[d] & full_mask) else () for d in ALL_6_DIRS}
                 full_face_mask = full_mask
                 empty_face_mask = 0
+            elif is_non_full or is_pane:
+                # Non-full blocks (fences, walls, panes, bars, trapdoors, doors, carpets, chests, pots, etc.)
+                category = CullCategory.PARTIAL_SHAPE
+                is_full_cube = False
+                is_opaque = False
+                cull_group = "partial"
+                face_shapes = {d: () for d in ALL_6_DIRS}
+                full_face_mask = 0
+                empty_face_mask = FULL_6_DIRS_MASK
             else:
                 # Standard full solid cube
                 category = CullCategory.SOLID_OPAQUE
