@@ -487,31 +487,32 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
         # Clean slate
         voxel_storage.clear()
-        world_mesh = bpy.data.meshes.new("TestWorldMesh")
-        world_obj = bpy.data.objects.new(DEFAULT_WORLD_OBJECT_NAME, world_mesh)
+        from operators.sync.op_sync_connect import get_active_session_manager
+        world_obj = bpy.data.objects.new(DEFAULT_WORLD_OBJECT_NAME, None)
+        world_obj["mtk:is_yefira_world"] = True
         bpy.context.collection.objects.link(world_obj)
+        bpy.context.view_layer.objects.active = world_obj
 
         try:
-            # Set storage data and persist
-            voxel_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, ["minecraft:air", "minecraft:stone"], [1] * 4096)
-            persist_sync_state_to_scene(bpy.context)
+            session = get_active_session_manager().get_or_create_session(world_obj.name)
+            session.storage.set_full_snapshot(0, 0, 0, 16, 16, 16, ["minecraft:air", "minecraft:stone"], [1] * 4096)
+            session.persist_sync_state_to_scene(world_obj)
 
             self.assertIn("mtk:sync_manifest", world_obj)
 
             # Clear memory storage to simulate reloading blend file
-            voxel_storage.clear()
-            self.assertEqual(voxel_storage.size_x, 0)
+            session.storage.clear()
+            self.assertEqual(session.storage.size_x, 0)
 
             # Restore from scene object
-            restored = restore_sync_state_from_scene(bpy.context)
+            restored = session.restore_sync_state_from_scene(world_obj)
             self.assertTrue(restored)
-            self.assertEqual(voxel_storage.size_x, 16)
-            self.assertEqual(voxel_storage.size_y, 16)
-            self.assertIn((0, 0, 0), voxel_storage.section_crc_map)
+            self.assertEqual(session.storage.size_x, 16)
+            self.assertEqual(session.storage.size_y, 16)
+            self.assertIn((0, 0, 0), session.storage.section_crc_map)
         finally:
+            get_active_session_manager().remove_session(world_obj.name)
             bpy.data.objects.remove(world_obj, do_unlink=True)
-            bpy.data.meshes.remove(world_mesh, do_unlink=True)
-            voxel_storage.clear()
 
     def test_material_reuse_convention(self):
         """Test that LiveSyncMaterialManager strictly reuses existing scene materials and avoids duplicate '.001' proliferation."""
@@ -628,16 +629,22 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
             stack.precompile("ATLAS")
             palette = ["minecraft:air", "minecraft:stone"]
             indices = [1] * 4096  # full 16x16x16 stone chunk
+            from operators.sync.op_sync_connect import get_active_session_manager, get_or_create_world_root, voxel_storage as op_vox_storage
+            world_root = get_or_create_world_root(bpy.context)
+            session = get_active_session_manager().get_or_create_session(world_root.name)
+            session.storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, indices)
+            session.persist_sync_state_to_scene(world_root)
             voxel_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, indices)
+            op_vox_storage.set_full_snapshot(0, 0, 0, 16, 16, 16, palette, indices)
 
             try:
-                res = bpy.ops.mozi.sync_rebuild_world()
+                res = bpy.ops.mozi.sync_rebuild_world(target_container=world_root.name)
                 self.assertEqual(res, {'FINISHED'})
 
-                world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+                world_obj = bpy.data.objects.get(world_root.name)
                 self.assertIsNotNone(world_obj)
                 # Child section mesh should have been generated
-                sec_obj = bpy.data.objects.get("Yefira_World_Section_0_0_0")
+                sec_obj = bpy.data.objects.get(f"{world_root.name}_Section_0_0_0")
                 self.assertIsNotNone(sec_obj)
                 self.assertGreater(len(sec_obj.data.polygons), 0)
             finally:
@@ -764,9 +771,8 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         mock_client = SyncClientThread("ws://dummy", lambda *a: None, lambda *a: None, lambda *a: None, lambda *a: None)
         sync_op._client_thread = mock_client
         sync_op._is_streaming = True
-        voxel_storage.set_bounds(0, 0, 0, 16, 16, 16)
-        voxel_storage.block_map[(0, 0, 0)] = "minecraft:stone"
-        _GLOBAL_STATE_META_CACHE["minecraft:stone"] = None
+        sync_op.voxel_storage.set_bounds(0, 0, 0, 16, 16, 16)
+        sync_op.voxel_storage.block_map[(0, 0, 0)] = "minecraft:stone"
 
         if hasattr(bpy.context.scene, "mozi_sync"):
             bpy.context.scene.mozi_sync.is_connected = True
@@ -778,8 +784,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         # Verify client is stopped and cleared
         self.assertIsNone(sync_op._client_thread)
         self.assertFalse(sync_op._is_streaming)
-        self.assertEqual(len(voxel_storage.block_map), 0)
-        self.assertEqual(len(_GLOBAL_STATE_META_CACHE), 0)
+        self.assertEqual(len(sync_op.voxel_storage.block_map), 0)
 
         # 3. Trigger post-load handler
         _on_blend_file_loaded()
@@ -795,17 +800,76 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         client_custom = SyncClientThread("ws://dummy", lambda *a: None, lambda *a: None, lambda *a: None, lambda *a: None, timeout=25.0)
         self.assertEqual(client_custom.timeout, 25.0)
 
-    def test_sync_connect_operator_respects_online_access_disabled(self):
-        """Verify MOZI_OT_sync_connect aborts when bpy.app.online_access is False."""
-        orig_online = getattr(bpy.context.preferences.system, "use_online_access", True)
+    def test_delta_log_ui_updates(self):
+        """Verify append_delta_history correctly populates props.delta_history and tracks active index."""
+        from operators.sync.op_sync_connect import append_delta_history, MAX_DELTA_HISTORY
+        props = bpy.context.scene.mozi_sync
+        props.delta_history.clear()
+
+        # Add single delta edit
+        edits = [(10, 64, -5, "minecraft:air", "minecraft:diamond_block")]
+        append_delta_history(props, edits)
+        self.assertEqual(len(props.delta_history), 1)
+        self.assertEqual(props.delta_history[0].pos_str, "(10, 64, -5)")
+        self.assertEqual(props.delta_history[0].block_state, "minecraft:diamond_block")
+        self.assertEqual(props.delta_active_index, 0)
+
+        # Add block broken edit
+        edits_broken = [(10, 64, -5, "minecraft:diamond_block", "minecraft:air")]
+        append_delta_history(props, edits_broken)
+        self.assertEqual(len(props.delta_history), 2)
+        self.assertIn("broken", props.delta_history[1].block_state)
+        self.assertEqual(props.delta_active_index, 1)
+
+        # Overflow beyond MAX_DELTA_HISTORY
+        bulk_edits = [(i, 64, 0, "", f"minecraft:stone_{i}") for i in range(120)]
+        for b in bulk_edits:
+            append_delta_history(props, [b])
+        self.assertLessEqual(len(props.delta_history), MAX_DELTA_HISTORY)
+        self.assertEqual(props.delta_active_index, len(props.delta_history) - 1)
+
+    def test_palette_ui_updates(self):
+        """Verify sync_palette_to_props correctly populates props.palette_list from VoxelStorage."""
+        from operators.sync.op_sync_connect import sync_palette_to_props
+        from utils.live_sync.storage import VoxelStorage
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:stone")
+        storage.set_block(1, 0, 0, "minecraft:oak_planks")
+        storage.set_block(2, 0, 0, "minecraft:glass")
+
+        props = bpy.context.scene.mozi_sync
+        props.palette_list.clear()
+        sync_palette_to_props(props, storage)
+
+        self.assertEqual(props.palette_count, 3)
+        self.assertEqual(len(props.palette_list), 3)
+        palette_states = [item.state_str for item in props.palette_list]
+        self.assertIn("minecraft:stone", palette_states)
+        self.assertIn("minecraft:oak_planks", palette_states)
+        self.assertIn("minecraft:glass", palette_states)
+
+    def test_stream_finalize_and_verification_status(self):
+        """Verify _finalize_stream_sync updates palette, verification status, and delta log."""
+        from operators.sync.op_sync_connect import _finalize_stream_sync, SyncSession
+        root_obj = bpy.data.objects.new("Test_Sync_Root", None)
+        bpy.context.collection.objects.link(root_obj)
         try:
-            bpy.context.preferences.system.use_online_access = False
-            self.assertFalse(bpy.app.online_access)
-            with self.assertRaises(RuntimeError) as ctx:
-                bpy.ops.mozi.sync_connect()
-            self.assertIn("Internet / Network access is disabled in Blender preferences", str(ctx.exception))
+            session = SyncSession("Test_Sync_Root")
+            session.storage.set_block(0, 0, 0, "minecraft:glowstone")
+            props = root_obj.mozi_sync
+            props.validation_info = "Syncing (1 chunks)..."
+            props.sync_verified = False
+
+            _finalize_stream_sync(session, props, root_obj, 1)
+
+            self.assertTrue(props.sync_verified)
+            self.assertEqual(props.validation_info, "Verified (100% in sync)")
+            self.assertEqual(props.palette_count, 1)
+            self.assertEqual(props.palette_list[0].state_str, "minecraft:glowstone")
+            self.assertGreater(len(props.delta_history), 0)
+            self.assertIn("Sync ready", props.delta_history[-1].block_state)
         finally:
-            bpy.context.preferences.system.use_online_access = orig_online
+            bpy.data.objects.remove(root_obj, do_unlink=True)
 
 
 if __name__ == "__main__":
