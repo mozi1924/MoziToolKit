@@ -32,6 +32,7 @@ from ..constants import (
     ATTR_FACE_MATERIAL_ID,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
+    ATTR_MATERIAL_PROPS,
     ATTR_UV_TILING_TRANSFORM,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
@@ -258,6 +259,32 @@ def add_packed_biome_attribute_nodes(nodes, links, biome_tint_node, location=(-3
     links.new(color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
 
 
+def add_packed_material_props_nodes(nodes, links, decoder_node, location=(-300, -200)):
+    """Connect packed material properties attribute (Hardcoded Emission, Thin Wall) to decoder."""
+    attr_props = nodes.new("ShaderNodeAttribute")
+    attr_props.name = "Attr Material Props"
+    attr_props.attribute_type = "GEOMETRY"
+    attr_props.attribute_name = ATTR_MATERIAL_PROPS
+    attr_props.location = location
+
+    split_props = nodes.new("ShaderNodeSeparateColor")
+    split_props.name = "Split Material Props"
+    split_props.location = (location[0] + 180, location[1])
+    links.new(attr_props.outputs["Color"], split_props.inputs["Color"])
+
+    # Red: Hardcoded Emission
+    links.new(split_props.outputs["Red"], decoder_node.inputs["Hardcoded Emission"])
+
+    # Green: Thin Wall (clamped with Greater Than 0.5 to prevent float jitter)
+    clamp_thin = nodes.new("ShaderNodeMath")
+    clamp_thin.name = "Clamp Thin Wall"
+    clamp_thin.operation = 'GREATER_THAN'
+    clamp_thin.inputs[1].default_value = 0.5
+    clamp_thin.location = (location[0] + 360, location[1] - 50)
+    links.new(split_props.outputs["Green"], clamp_thin.inputs[0])
+    links.new(clamp_thin.outputs["Value"], decoder_node.inputs["Thin Wall"])
+
+
 def build_atlas_chunk_materials(
     atlas_dir: str | Path,
     pack_hash: str | None = None,
@@ -402,6 +429,13 @@ def build_atlas_chunk_materials(
         links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
         if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
             links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
+
+        # Configure PBR gating and connect packed material properties (Hardcoded Emission, Thin Wall)
+        has_pbr = bool(chunk_files.get("normal") or chunk_files.get("specular"))
+        if "Enable PBR (0-1)" in decoder_node.inputs:
+            decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
+
+        add_packed_material_props_nodes(nodes, links, decoder_node)
 
         # Setup Biome Tint Node Group (only if chunk contains tinted/overlay textures)
         needs_biome_tint = chunk.get("has_tint", False) or chunk.get("has_overlay", False) or bool(chunk_files.get("overlay"))

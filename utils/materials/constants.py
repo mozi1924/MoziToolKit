@@ -402,6 +402,9 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 # fallback-only chunk, preserving the stable address without an empty sheet.
 ATLAS_FORMAT_VERSION = 16
 
+# Material Physical Properties Attribute (Packed FLOAT_COLOR: R=Emission, G=ThinWall, B=Reserved, A=Reserved)
+ATTR_MATERIAL_PROPS = "mtk_material_props"
+
 # All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
 ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_ATLAS_CHUNK_ID,
@@ -414,6 +417,7 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_UV_TILING_TRANSFORM,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
+    ATTR_MATERIAL_PROPS,
     "atlas_chunk_id",
     "atlas_texture_id",
     "material_id",
@@ -423,6 +427,7 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     "mtk_anim_interpolate",
     "mtk_anim_frame_width",
     "mtk_anim_frame_height",
+    "mtk_material_props",
 )
 
 # Obsolete / split stream attribute names cleaned up when compact attributes are written

@@ -18,6 +18,7 @@ from .constants import (
     MTK_UV_ROTATION,
     MTK_ANIM_TIMING,
     MTK_ANIM_FRAME_SIZE,
+    MTK_MATERIAL_PROPS,
     MTK_UV_TILING_TRANSFORM,
     MTK_BIOME_TINT_DATA,
     MTK_BIOME_TINT_COLOR,
@@ -64,6 +65,7 @@ def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
         "rot": bm.faces.layers.float.get(MTK_UV_ROTATION) or bm.faces.layers.float.new(MTK_UV_ROTATION),
         "timing": bm.faces.layers.float_color.get(MTK_ANIM_TIMING) or bm.faces.layers.float_color.new(MTK_ANIM_TIMING),
         "frame_size": bm.faces.layers.float_color.get(MTK_ANIM_FRAME_SIZE) or bm.faces.layers.float_color.new(MTK_ANIM_FRAME_SIZE),
+        "material_props": bm.faces.layers.float_color.get(MTK_MATERIAL_PROPS) or bm.faces.layers.float_color.new(MTK_MATERIAL_PROPS),
         "tiling": bm.faces.layers.float_color.get(MTK_UV_TILING_TRANSFORM) or bm.faces.layers.float_color.new(MTK_UV_TILING_TRANSFORM),
         "tint_data": bm.faces.layers.float_color.get(MTK_BIOME_TINT_DATA) or bm.faces.layers.float_color.new(MTK_BIOME_TINT_DATA),
         "tint_color": bm.faces.layers.float_color.get(MTK_BIOME_TINT_COLOR) or bm.faces.layers.float_color.new(MTK_BIOME_TINT_COLOR),
@@ -101,6 +103,7 @@ def _emit_bmesh_face(
     bm_face[layers["rot"]] = uv_rot
     bm_face[layers["timing"]] = f_res.anim_timing
     bm_face[layers["frame_size"]] = f_res.anim_frame_size
+    bm_face[layers["material_props"]] = f_res.material_props
     bm_face[layers["tiling"]] = f_res.uv_tiling_transform
     bm_face[layers["tint_data"]] = f_res.biome_tint_data
     bm_face[layers["tint_color"]] = f_res.biome_tint_color

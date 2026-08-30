@@ -464,7 +464,7 @@ class TestPipelineFramework(unittest.TestCase):
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
         self.assertEqual(len(ng.nodes), 53)
-        self.assertEqual(len(ng.links), 85)
+        self.assertEqual(len(ng.links), 86)
         self.assertFalse(any(node.bl_idname == "NodeReroute" for node in ng.nodes))
         self.assertEqual(reference_shape_errors(ng), ())
         self.assertEqual(ng.get("mozi_template_version"), LABPBR_TEMPLATE_VERSION)
@@ -489,10 +489,14 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertEqual(emission_strength.min_value, 0.0)
         self.assertEqual(emission_strength.max_value, 1000.0)
 
-        thin_wall = sockets["Thin Wall (0-1)"]
-        self.assertEqual(thin_wall.default_value, 0.0)
-        self.assertEqual(thin_wall.min_value, 0.0)
-        self.assertEqual(thin_wall.max_value, 1.0)
+        hardcoded_emission = sockets["Hardcoded Emission"]
+        self.assertEqual(hardcoded_emission.default_value, 0.0)
+        self.assertEqual(hardcoded_emission.min_value, 0.0)
+        self.assertEqual(hardcoded_emission.max_value, 1000.0)
+
+        thin_wall = sockets["Thin Wall"]
+        self.assertEqual(thin_wall.default_value, False)
+        self.assertEqual(thin_wall.socket_type, "NodeSocketBool")
 
         sss_scale = sockets["Subsurface Scale"]
         self.assertAlmostEqual(sss_scale.default_value, 0.1)

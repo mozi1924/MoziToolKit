@@ -1,0 +1,272 @@
+"""Unit tests for LabPBR Hardcoded Emission, boolean Thin Wall socket, and Minecraft catalog."""
+
+import sys
+import unittest
+from pathlib import Path
+
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+PARENT_DIR = PROJECT_DIR.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+import bpy
+from tests._bootstrap import bootstrap_environment
+bootstrap_environment()
+
+from utils.node_groups.labpbr import (
+    LABPBR_GROUP_NAME,
+    LABPBR_TEMPLATE_VERSION,
+    LABPBR_INTERFACE,
+    ensure_labpbr_decoder,
+    assert_reference_shape,
+    reference_shape_errors,
+)
+from utils.materials.catalog import (
+    get_block_emission_strength,
+    is_thin_wall_block,
+    VANILLA_STATIC_EMISSION_LEVELS,
+    VANILLA_THIN_WALL_EXACT_BLOCKS,
+)
+from utils.materials.nodes.builder import rebuild_material
+
+
+class TestLabPBRIssuesAndCatalog(unittest.TestCase):
+
+    def setUp(self):
+        for ng in list(bpy.data.node_groups):
+            if LABPBR_GROUP_NAME in ng.name:
+                bpy.data.node_groups.remove(ng)
+
+    def test_labpbr_decoder_interface_and_sockets(self):
+        """Verify LabPBR 1.3 Decoder v13 public interface and socket configurations."""
+        ng = ensure_labpbr_decoder()
+        self.assertIsNotNone(ng)
+        self.assertEqual(ng.get("mozi_template_version"), 13)
+        self.assertEqual(reference_shape_errors(ng), ())
+        assert_reference_shape(ng)
+
+        sockets = {s.name: s for s in ng.interface.items_tree if s.item_type == "SOCKET"}
+
+        # Verify Thin Wall is NodeSocketBool with default False
+        self.assertIn("Thin Wall", sockets)
+        thin_wall = sockets["Thin Wall"]
+        self.assertEqual(thin_wall.socket_type, "NodeSocketBool")
+        self.assertEqual(thin_wall.default_value, False)
+
+        # Verify Hardcoded Emission is NodeSocketFloat with 0.0..1000.0 range
+        self.assertIn("Hardcoded Emission", sockets)
+        hardcoded_emission = sockets["Hardcoded Emission"]
+        self.assertEqual(hardcoded_emission.socket_type, "NodeSocketFloat")
+        self.assertEqual(hardcoded_emission.default_value, 0.0)
+        self.assertEqual(hardcoded_emission.min_value, 0.0)
+        self.assertEqual(hardcoded_emission.max_value, 1000.0)
+
+    def test_labpbr_decoder_wiring(self):
+        """Verify that Select Emission Mode mix node and Thin Wall link are correctly wired."""
+        ng = ensure_labpbr_decoder()
+        principled = ng.nodes.get("LabPBR Principled BSDF")
+        self.assertIsNotNone(principled)
+
+        # Check Thin Wall connection
+        thin_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Thin Wall"]
+        self.assertEqual(len(thin_links), 1)
+        self.assertEqual(thin_links[0].from_socket.name, "Thin Wall")
+
+        # Check Emission mix node
+        mix_node = ng.nodes.get("Select Emission Mode")
+        self.assertIsNotNone(mix_node)
+        self.assertEqual(mix_node.data_type, "FLOAT")
+
+        emit_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Emission Strength"]
+        self.assertEqual(len(emit_links), 1)
+        self.assertEqual(emit_links[0].from_node, mix_node)
+
+    def test_vanilla_catalog_static_emissions(self):
+        """Verify static vanilla block emission calculations."""
+        self.assertEqual(get_block_emission_strength("minecraft:glowstone"), 15.0)
+        self.assertEqual(get_block_emission_strength("sea_lantern"), 15.0)
+        self.assertEqual(get_block_emission_strength("torch"), 14.0)
+        self.assertEqual(get_block_emission_strength("crying_obsidian"), 10.0)
+        self.assertEqual(get_block_emission_strength("magma_block"), 3.0)
+        self.assertEqual(get_block_emission_strength("stone"), 0.0)
+
+    def test_vanilla_catalog_state_aware_emissions(self):
+        """Verify state-dependent block emission calculations."""
+        # Campfire
+        self.assertEqual(get_block_emission_strength("campfire", {"lit": "true"}), 15.0)
+        self.assertEqual(get_block_emission_strength("campfire", {"lit": "false"}), 0.0)
+        self.assertEqual(get_block_emission_strength("soul_campfire", {"lit": "true"}), 10.0)
+
+        # Furnace & Smoker
+        self.assertEqual(get_block_emission_strength("furnace", {"lit": "true"}), 13.0)
+        self.assertEqual(get_block_emission_strength("furnace", {"lit": "false"}), 0.0)
+        self.assertEqual(get_block_emission_strength("blast_furnace", {"lit": "true"}), 13.0)
+        self.assertEqual(get_block_emission_strength("smoker", {"lit": "true"}), 13.0)
+
+        # Redstone Lamp & Torch
+        self.assertEqual(get_block_emission_strength("redstone_lamp", {"lit": "true"}), 15.0)
+        self.assertEqual(get_block_emission_strength("redstone_lamp", {"lit": "false"}), 0.0)
+        self.assertEqual(get_block_emission_strength("redstone_torch", {"lit": "true"}), 7.0)
+        self.assertEqual(get_block_emission_strength("redstone_torch", {"lit": "false"}), 0.0)
+
+        # Copper Bulb variants
+        self.assertEqual(get_block_emission_strength("copper_bulb", {"lit": "true"}), 15.0)
+        self.assertEqual(get_block_emission_strength("exposed_copper_bulb", {"lit": "true"}), 12.0)
+        self.assertEqual(get_block_emission_strength("weathered_copper_bulb", {"lit": "true"}), 8.0)
+        self.assertEqual(get_block_emission_strength("oxidized_copper_bulb", {"lit": "true"}), 4.0)
+
+        # Candles & Sea Pickle
+        self.assertEqual(get_block_emission_strength("candle", {"lit": "true", "candles": 3}), 9.0)
+        self.assertEqual(get_block_emission_strength("candle", {"lit": "false", "candles": 3}), 0.0)
+        self.assertEqual(get_block_emission_strength("sea_pickle", {"waterlogged": "true", "pickles": 4}), 15.0)
+
+        # Cave vines
+        self.assertEqual(get_block_emission_strength("cave_vines", {"berries": "true"}), 14.0)
+        self.assertEqual(get_block_emission_strength("cave_vines", {"berries": "false"}), 0.0)
+
+    
+    def test_non_emissive_blocks_and_textures_are_zero(self):
+        """Verify that banners, colored beds/wool, corals, torchflower, etc. are NOT emissive."""
+        non_emissives = [
+            "banner",
+            "white_banner",
+            "light_blue_banner",
+            "light_gray_banner",
+            "light_blue_wool",
+            "light_gray_bed",
+            "light_blue_concrete",
+            "light_weighted_pressure_plate",
+            "lightning_rod",
+            "fire_coral",
+            "fire_coral_block",
+            "fire_coral_fan",
+            "torchflower",
+            "torchflower_crop",
+            "redstone_torch_off",
+            "entity/banner/banner_base",
+            "entity/shulker/shulker",
+            "stone",
+            "oak_planks",
+        ]
+        for name in non_emissives:
+            self.assertEqual(
+                get_block_emission_strength(name, texture_name=name),
+                0.0,
+                f"{name} should have 0.0 emission",
+            )
+
+    def test_vanilla_catalog_thin_wall_whitelist(self):
+        """Verify that foliage, crops, and leaves are correctly identified for Thin Wall."""
+        # Leaves
+        self.assertTrue(is_thin_wall_block("minecraft:oak_leaves"))
+        self.assertTrue(is_thin_wall_block("spruce_leaves"))
+        self.assertTrue(is_thin_wall_block("cherry_leaves"))
+        self.assertTrue(is_thin_wall_block("azalea_leaves"))
+
+        # Crops & Flowers
+        self.assertTrue(is_thin_wall_block("wheat"))
+        self.assertTrue(is_thin_wall_block("carrots"))
+        self.assertTrue(is_thin_wall_block("dandelion"))
+        self.assertTrue(is_thin_wall_block("poppy"))
+        self.assertTrue(is_thin_wall_block("sunflower"))
+        self.assertTrue(is_thin_wall_block("pink_petals"))
+
+        # Vines & Grass
+        self.assertTrue(is_thin_wall_block("vine"))
+        self.assertTrue(is_thin_wall_block("weeping_vines"))
+        self.assertTrue(is_thin_wall_block("short_grass"))
+        self.assertTrue(is_thin_wall_block("fern"))
+        self.assertTrue(is_thin_wall_block("kelp"))
+        self.assertTrue(is_thin_wall_block("sugar_cane"))
+
+        # Non-vegetation solid blocks
+        self.assertFalse(is_thin_wall_block("stone"))
+        self.assertFalse(is_thin_wall_block("oak_planks"))
+        self.assertFalse(is_thin_wall_block("dirt"))
+        self.assertFalse(is_thin_wall_block("moss_block"))
+        self.assertFalse(is_thin_wall_block("mushroom_stem"))
+
+    def test_material_builder_applies_catalog_defaults(self):
+        """Verify that rebuild_material configures Hardcoded Emission and Thin Wall."""
+        mat = bpy.data.materials.new("minecraft_torch")
+        tex_info = {
+            "texture_name": "torch",
+            "source_texture": "minecraft:block/torch",
+        }
+        success = rebuild_material(mat, tex_info)
+        self.assertTrue(success)
+
+        decoder = mat.node_tree.nodes.get("LabPBR 1.3 Decoder")
+        self.assertIsNotNone(decoder)
+        self.assertEqual(decoder.inputs["Enable PBR (0-1)"].default_value, 0.0)
+        self.assertEqual(decoder.inputs["Hardcoded Emission"].default_value, 14.0)
+        self.assertEqual(decoder.inputs["Thin Wall"].default_value, False)
+
+        # Test leaves
+        mat_leaves = bpy.data.materials.new("oak_leaves")
+        tex_info_leaves = {
+            "texture_name": "oak_leaves",
+            "source_texture": "minecraft:block/oak_leaves",
+        }
+        success_leaves = rebuild_material(mat_leaves, tex_info_leaves)
+        self.assertTrue(success_leaves)
+
+        decoder_leaves = mat_leaves.node_tree.nodes.get("LabPBR 1.3 Decoder")
+        self.assertIsNotNone(decoder_leaves)
+        self.assertEqual(decoder_leaves.inputs["Hardcoded Emission"].default_value, 0.0)
+        self.assertEqual(decoder_leaves.inputs["Thin Wall"].default_value, True)
+
+
+
+    def test_atlas_material_builder_wires_material_props(self):
+        """Verify that build_atlas_chunk_materials wires Attr Material Props with Greater Than 0.5 clamp."""
+        from utils.materials.atlas.builder import add_packed_material_props_nodes
+        mat = bpy.data.materials.new("test_atlas_chunk")
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        links = mat.node_tree.links
+        nodes.clear()
+        decoder = nodes.new("ShaderNodeGroup")
+        decoder.node_tree = ensure_labpbr_decoder()
+        decoder.name = "LabPBR 1.3 Decoder"
+
+        add_packed_material_props_nodes(nodes, links, decoder)
+
+        attr_node = nodes.get("Attr Material Props")
+        self.assertIsNotNone(attr_node)
+        self.assertEqual(attr_node.attribute_name, "mtk_material_props")
+
+        split_node = nodes.get("Split Material Props")
+        self.assertIsNotNone(split_node)
+
+        clamp_node = nodes.get("Clamp Thin Wall")
+        self.assertIsNotNone(clamp_node)
+        self.assertEqual(clamp_node.operation, "GREATER_THAN")
+        self.assertEqual(clamp_node.inputs[1].default_value, 0.5)
+
+        # Verify links to decoder
+        emit_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Hardcoded Emission"]
+        self.assertEqual(len(emit_link), 1)
+        self.assertEqual(emit_link[0].from_node, split_node)
+        self.assertEqual(emit_link[0].from_socket.name, "Red")
+
+        thin_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Thin Wall"]
+        self.assertEqual(len(thin_link), 1)
+        self.assertEqual(thin_link[0].from_node, clamp_node)
+
+    def test_livesync_bmesh_layers_include_material_props(self):
+        """Verify that LiveSync geometry builder allocates and sets the material_props layer."""
+        import bmesh
+        from utils.live_sync.geometry_builder import _get_or_create_bmesh_layers
+        from utils.live_sync.constants import MTK_MATERIAL_PROPS
+        bm = bmesh.new()
+        layers = _get_or_create_bmesh_layers(bm)
+        self.assertIn("material_props", layers)
+        self.assertIsNotNone(bm.faces.layers.float_color.get(MTK_MATERIAL_PROPS))
+        bm.free()
+
+
+if __name__ == "__main__":
+    unittest.main(argv=[sys.argv[0]])

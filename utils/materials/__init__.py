@@ -89,6 +89,14 @@ from .constants import (
     ALLOWED_SCENE_ENTITY_PREFIXES,
 )
 
+from .catalog import (
+    VANILLA_STATIC_EMISSION_LEVELS,
+    VANILLA_THIN_WALL_EXACT_BLOCKS,
+    VANILLA_THIN_WALL_KEYWORDS,
+    get_block_emission_strength,
+    is_thin_wall_block,
+)
+
 from .biome import (
     hex_to_rgb,
     srgb_to_linear,

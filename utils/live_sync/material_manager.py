@@ -133,6 +133,7 @@ class ResolvedFaceTexture(NamedTuple):
     biome_tint_data: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     source_texture_key: str = ""
+    material_props: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
     # StateBaker returns Minecraft model UVs normalized against its canonical
     # 16x16 model unit grid.  Entity rectangles (chests, banners, shulkers)
     # are often 64x64, so they need an additional local-space scale before
@@ -473,5 +474,6 @@ class LiveSyncMaterialManager:
             biome_tint_data=res.biome_tint_data,
             biome_tint_color=res.biome_tint_color,
             source_texture_key=res.source_texture_key,
+            material_props=getattr(res, "material_props", (0.0, 0.0, 0.0, 0.0)),
             model_uv_scale=model_uv_scale,
         )
