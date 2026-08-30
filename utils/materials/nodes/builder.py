@@ -479,6 +479,23 @@ def rebuild_material(
             shared_uv_node=shared_uv_node,
         )
 
+    # Configure PBR gating and catalog defaults (Hardcoded Emission & Thin Wall)
+    has_pbr = bool(texture_info.get("normal") or texture_info.get("specular"))
+    if "Enable PBR (0-1)" in decoder_node.inputs:
+        decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
+
+    from ..catalog import get_block_emission_strength, is_thin_wall_block
+    tex_name = texture_info.get("texture_name", "") or texture_info.get("source_texture", "")
+    mat_name = mat.name
+
+    emission_val = get_block_emission_strength(mat_name, texture_name=tex_name)
+    is_thin = is_thin_wall_block(mat_name, texture_name=tex_name)
+
+    if "Hardcoded Emission" in decoder_node.inputs:
+        decoder_node.inputs["Hardcoded Emission"].default_value = float(emission_val)
+    if "Thin Wall" in decoder_node.inputs:
+        decoder_node.inputs["Thin Wall"].default_value = bool(is_thin)
+
     mat.use_fake_user = False
 
     # Ensure Albedo image texture node is active and selected for Solid Viewport mode

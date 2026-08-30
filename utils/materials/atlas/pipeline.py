@@ -18,6 +18,7 @@ from ..constants import (
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
     ATTR_UV_TILING_TRANSFORM,
+    ATTR_MATERIAL_PROPS,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
     FALLBACK_TEXTURE_KEY,
@@ -509,6 +510,18 @@ class AtlasReplacementEngine:
                     ensure_face_attribute(mesh, attr_name, "FLOAT_COLOR").data.foreach_set(
                         "color", [component for value in data for component in value]
                     )
+
+                from ..catalog import get_block_emission_strength, is_thin_wall_block
+                material_props_data = []
+                for poly_idx in range(len(mesh.polygons)):
+                    tex_key = source_keys[poly_idx] if poly_idx < len(source_keys) else ""
+                    emission = get_block_emission_strength("", texture_name=tex_key)
+                    thin_wall = 1.0 if is_thin_wall_block("", texture_name=tex_key) else 0.0
+                    material_props_data.append((float(emission), float(thin_wall), 0.0, 0.0))
+
+                ensure_face_attribute(mesh, ATTR_MATERIAL_PROPS, "FLOAT_COLOR").data.foreach_set(
+                    "color", [comp for val in material_props_data for comp in val]
+                )
 
                 if obj_needs_tiling:
                     ensure_face_attribute(mesh, ATTR_UV_TILING_TRANSFORM, "FLOAT_COLOR").data.foreach_set(

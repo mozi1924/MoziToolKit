@@ -216,6 +216,7 @@ class ResolvedAtlasAddress(NamedTuple):
     biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     uv_rot: float = 0.0
     uv_tiling_transform: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
+    material_props: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)
 
 
 class AtlasAddressResolver:
@@ -984,6 +985,14 @@ class AtlasAddressResolver:
         if not source_key:
             source_key = f"minecraft:block/{p_short}"
 
+        # Material physical properties (Hardcoded Emission & Thin Wall)
+        from ..catalog import get_block_emission_strength, is_thin_wall_block
+        b_props = getattr(parsed, "properties", {}) or {}
+        b_name = getattr(parsed, "name", p_short)
+        emission_strength = get_block_emission_strength(b_name, properties=b_props, texture_name=source_key)
+        thin_wall_flag = 1.0 if is_thin_wall_block(b_name, texture_name=source_key) else 0.0
+        mat_props = (float(emission_strength), float(thin_wall_flag), 0.0, 0.0)
+
         return ResolvedAtlasAddress(
             chunk_id=chunk_id,
             texture_id=texture_id,
@@ -997,6 +1006,7 @@ class AtlasAddressResolver:
             biome_tint_color=biome_tint_color,
             uv_rot=uv_rot,
             uv_tiling_transform=(1.0, 1.0, 0.0, 0.0),
+            material_props=mat_props,
         )
 
     def resolve_baked_face(self, baked_face: Any) -> ResolvedAtlasAddress:
@@ -1018,6 +1028,11 @@ class AtlasAddressResolver:
 
         source_key = loc.get("texture_key", tex_name) if loc else tex_name
 
+        from ..catalog import get_block_emission_strength, is_thin_wall_block
+        emission_strength = get_block_emission_strength("", texture_name=source_key)
+        thin_wall_flag = 1.0 if is_thin_wall_block("", texture_name=source_key) else 0.0
+        mat_props = (float(emission_strength), float(thin_wall_flag), 0.0, 0.0)
+
         return ResolvedAtlasAddress(
             chunk_id=chunk_id,
             texture_id=texture_id,
@@ -1026,6 +1041,7 @@ class AtlasAddressResolver:
             source_texture_key=source_key,
             is_animated=bool(loc and loc.get("kind") == "animation"),
             uv_rot=uv_rot,
+            material_props=mat_props,
         )
 
 

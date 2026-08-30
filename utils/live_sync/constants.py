@@ -55,6 +55,7 @@ MTK_SOURCE_TEXTURE_KEY: Final = "mtk_source_texture_key"
 MTK_SOURCE_ORIGIN: Final = "mtk_source_origin"
 MTK_ANIM_TIMING: Final = "mtk_anim_timing"
 MTK_ANIM_FRAME_SIZE: Final = "mtk_anim_frame_size"
+MTK_MATERIAL_PROPS: Final = "mtk_material_props"
 UV_MAP: Final = "UVMap"
 
 # Standard Atlas Dimension Defaults
