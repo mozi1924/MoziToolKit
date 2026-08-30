@@ -284,6 +284,9 @@ def add_packed_material_props_nodes(nodes, links, decoder_node, location=(-300, 
     links.new(split_props.outputs["Green"], clamp_thin.inputs[0])
     links.new(clamp_thin.outputs["Value"], decoder_node.inputs["Thin Wall"])
 
+    # Blue: Transmission Weight
+    links.new(split_props.outputs["Blue"], decoder_node.inputs["Transmission Weight"])
+
 
 def build_atlas_chunk_materials(
     atlas_dir: str | Path,

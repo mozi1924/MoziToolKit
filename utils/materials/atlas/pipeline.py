@@ -511,13 +511,14 @@ class AtlasReplacementEngine:
                         "color", [component for value in data for component in value]
                     )
 
-                from ..catalog import get_block_emission_strength, is_thin_wall_block
+                from ..catalog import get_block_emission_strength, is_thin_wall_block, get_block_transmission_weight
                 material_props_data = []
                 for poly_idx in range(len(mesh.polygons)):
                     tex_key = source_keys[poly_idx] if poly_idx < len(source_keys) else ""
                     emission = get_block_emission_strength("", texture_name=tex_key)
                     thin_wall = 1.0 if is_thin_wall_block("", texture_name=tex_key) else 0.0
-                    material_props_data.append((float(emission), float(thin_wall), 0.0, 0.0))
+                    transmission = get_block_transmission_weight("", texture_name=tex_key)
+                    material_props_data.append((float(emission), float(thin_wall), float(transmission), 0.0))
 
                 ensure_face_attribute(mesh, ATTR_MATERIAL_PROPS, "FLOAT_COLOR").data.foreach_set(
                     "color", [comp for val in material_props_data for comp in val]

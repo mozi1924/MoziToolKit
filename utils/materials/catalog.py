@@ -393,3 +393,64 @@ def is_thin_wall_block(block_name: str, texture_name: Optional[str] = None) -> b
             return True
 
     return False
+
+
+VANILLA_TRANSMISSION_EXACT_BLOCKS: frozenset[str] = frozenset({
+    "glass", "glass_pane", "tinted_glass",
+    "white_stained_glass", "orange_stained_glass", "magenta_stained_glass",
+    "light_blue_stained_glass", "yellow_stained_glass", "lime_stained_glass",
+    "pink_stained_glass", "gray_stained_glass", "light_gray_stained_glass",
+    "cyan_stained_glass", "purple_stained_glass", "blue_stained_glass",
+    "brown_stained_glass", "green_stained_glass", "red_stained_glass",
+    "black_stained_glass",
+    "white_stained_glass_pane", "orange_stained_glass_pane", "magenta_stained_glass_pane",
+    "light_blue_stained_glass_pane", "yellow_stained_glass_pane", "lime_stained_glass_pane",
+    "pink_stained_glass_pane", "gray_stained_glass_pane", "light_gray_stained_glass_pane",
+    "cyan_stained_glass_pane", "purple_stained_glass_pane", "blue_stained_glass_pane",
+    "brown_stained_glass_pane", "green_stained_glass_pane", "red_stained_glass_pane",
+    "black_stained_glass_pane",
+    "water", "flowing_water", "water_still", "water_flow",
+    "ice", "packed_ice", "blue_ice", "frosted_ice",
+    "slime_block", "slime", "honey_block", "honey",
+    "beacon",
+})
+
+VANILLA_TRANSMISSION_KEYWORDS: tuple[str, ...] = (
+    "stained_glass",
+    "glass_pane",
+    "glass",
+    "water",
+    "ice",
+    "frosted_ice",
+    "slime",
+    "honey",
+    "beacon",
+)
+
+
+def is_transmissive_block(block_name: str, texture_name: Optional[str] = None) -> bool:
+    """Return True if the block represents a transmissive / refractive dielectric (glass, water, ice, etc.)."""
+    clean_name = (block_name or "").lower().replace("minecraft:", "").strip()
+    clean_tex = (texture_name or "").lower().replace("minecraft:", "").replace("block/", "").strip()
+    if clean_tex.endswith(".png"):
+        clean_tex = clean_tex[:-4]
+
+    if clean_name in VANILLA_TRANSMISSION_EXACT_BLOCKS:
+        return True
+    if clean_tex in VANILLA_TRANSMISSION_EXACT_BLOCKS:
+        return True
+
+    for kw in VANILLA_TRANSMISSION_KEYWORDS:
+        if kw in clean_name or (clean_tex and kw in clean_tex):
+            # Exclude spyglass item texture or non-block keywords if applicable
+            if "spyglass" in clean_name or (clean_tex and "spyglass" in clean_tex):
+                return False
+            return True
+
+    return False
+
+
+def get_block_transmission_weight(block_name: str, texture_name: Optional[str] = None) -> float:
+    """Return transmission weight (1.0 for glass/water/ice dielectric transmission, 0.0 otherwise)."""
+    return 1.0 if is_transmissive_block(block_name, texture_name=texture_name) else 0.0
+
