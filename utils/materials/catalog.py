@@ -396,7 +396,7 @@ def is_thin_wall_block(block_name: str, texture_name: Optional[str] = None) -> b
 
 
 VANILLA_TRANSMISSION_EXACT_BLOCKS: frozenset[str] = frozenset({
-    "glass", "glass_pane", "tinted_glass",
+    "tinted_glass",
     "white_stained_glass", "orange_stained_glass", "magenta_stained_glass",
     "light_blue_stained_glass", "yellow_stained_glass", "lime_stained_glass",
     "pink_stained_glass", "gray_stained_glass", "light_gray_stained_glass",
@@ -417,8 +417,7 @@ VANILLA_TRANSMISSION_EXACT_BLOCKS: frozenset[str] = frozenset({
 
 VANILLA_TRANSMISSION_KEYWORDS: tuple[str, ...] = (
     "stained_glass",
-    "glass_pane",
-    "glass",
+    "tinted_glass",
     "water",
     "ice",
     "frosted_ice",
@@ -429,11 +428,15 @@ VANILLA_TRANSMISSION_KEYWORDS: tuple[str, ...] = (
 
 
 def is_transmissive_block(block_name: str, texture_name: Optional[str] = None) -> bool:
-    """Return True if the block represents a transmissive / refractive dielectric (glass, water, ice, etc.)."""
+    """Return True if the block represents a transmissive / refractive dielectric (stained glass, water, ice, etc.)."""
     clean_name = (block_name or "").lower().replace("minecraft:", "").strip()
     clean_tex = (texture_name or "").lower().replace("minecraft:", "").replace("block/", "").strip()
     if clean_tex.endswith(".png"):
         clean_tex = clean_tex[:-4]
+
+    # Explicit uncolored glass / glass pane exclusion (vanilla cutout behavior)
+    if clean_name in ("glass", "glass_pane") or clean_tex in ("glass", "glass_pane"):
+        return False
 
     if clean_name in VANILLA_TRANSMISSION_EXACT_BLOCKS:
         return True
@@ -448,6 +451,7 @@ def is_transmissive_block(block_name: str, texture_name: Optional[str] = None) -
             return True
 
     return False
+
 
 
 def get_block_transmission_weight(block_name: str, texture_name: Optional[str] = None) -> float:
