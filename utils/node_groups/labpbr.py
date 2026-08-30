@@ -8,7 +8,7 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 11
+LABPBR_TEMPLATE_VERSION = 12
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The graph contains 53 functional nodes and 85 effective links with Random Walk SSS,
@@ -146,7 +146,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         ("Specular (_s) Color", "INPUT", "NodeSocketColor", (0.292893, 0.04, 0.0, 1.0)),
         ("Specular (_s) Alpha (Emission)", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Displacement Scale", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
-        ("Emission Strength", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1000.0),
+        ("Emission Strength", "INPUT", "NodeSocketFloat", 5.0, 0.0, 1000.0),
         ("Thin Wall (0-1)", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Subsurface Scale", "INPUT", "NodeSocketFloat", 0.1, 0.0, 10.0),
     ))
