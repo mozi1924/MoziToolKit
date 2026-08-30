@@ -220,6 +220,7 @@ class SyncSession:
                         props.size_x, props.size_y, props.size_z = self.storage.size_x, self.storage.size_y, self.storage.size_z
                         props.total_blocks = self.storage.size_x * self.storage.size_y * self.storage.size_z
                         props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
+                        sync_palette_to_props(props, self.storage)
                     logger.info(f"Restored Live Sync metadata for {self.target_object_name} ({self.storage.size_x}x{self.storage.size_y}x{self.storage.size_z})")
                     return True
         except Exception as e:
@@ -288,6 +289,9 @@ _session_manager = SyncSessionManager()
 
 
 def get_active_session_manager() -> SyncSessionManager:
+    if hasattr(bpy.types, "_mozi_session_manager"):
+        return bpy.types._mozi_session_manager
+    bpy.types._mozi_session_manager = _session_manager
     return _session_manager
 
 
@@ -532,11 +536,68 @@ def restore_sync_state_from_scene(context: Optional[bpy.types.Context] = None, t
                     props.size_x, props.size_y, props.size_z = storage.size_x, storage.size_y, storage.size_z
                     props.total_blocks = storage.size_x * storage.size_y * storage.size_z
                     props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
+                    sync_palette_to_props(props, storage)
                 logger.info(f"Restored Live Sync metadata for {world_obj.name} ({storage.size_x}x{storage.size_y}x{storage.size_z})")
                 return True
     except Exception as e:
         logger.warning(f"Failed to restore live sync state from scene object: {e}")
     return False
+
+
+MAX_DELTA_HISTORY: int = 100
+
+
+def sync_palette_to_props(props: Any, storage: VoxelStorage) -> None:
+    """Sync unique block states from VoxelStorage to props.palette_list and update palette_count."""
+    if not props or not storage:
+        return
+    unique_states = sorted(storage.get_unique_states())
+    props.palette_count = len(unique_states)
+    props.palette_list.clear()
+    for state in unique_states:
+        item = props.palette_list.add()
+        item.state_str = state
+
+
+def append_delta_history(props: Any, applied_changes: List[Tuple[int, int, int, str, str]]) -> None:
+    """Append block change delta records to props.delta_history and scroll to newest item."""
+    if not props or not applied_changes:
+        return
+
+    cur_time = time.strftime("%H:%M:%S")
+    if len(applied_changes) <= 12:
+        for x, y, z, old_state, new_state in applied_changes:
+            item = props.delta_history.add()
+            item.timestamp = cur_time
+            item.pos_str = f"({x}, {y}, {z})"
+            if new_state.endswith(":air") or new_state == "air" or new_state.startswith("minecraft:air"):
+                old_name = old_state.split("[")[0].split(":")[-1] if old_state else "block"
+                item.block_state = f"{old_name} (broken)"
+            elif not old_state or old_state.endswith(":air") or old_state == "air" or old_state.startswith("minecraft:air"):
+                item.block_state = new_state
+            else:
+                old_name = old_state.split("[")[0].split(":")[-1]
+                new_name = new_state.split("[")[0].split(":")[-1]
+                item.block_state = f"{old_name} -> {new_name}"
+    else:
+        for x, y, z, old_state, new_state in applied_changes[:10]:
+            item = props.delta_history.add()
+            item.timestamp = cur_time
+            item.pos_str = f"({x}, {y}, {z})"
+            if new_state.endswith(":air") or new_state == "air" or new_state.startswith("minecraft:air"):
+                old_name = old_state.split("[")[0].split(":")[-1] if old_state else "block"
+                item.block_state = f"{old_name} (broken)"
+            else:
+                item.block_state = new_state
+        item = props.delta_history.add()
+        item.timestamp = cur_time
+        item.pos_str = f"+{len(applied_changes) - 10} more"
+        item.block_state = f"Batch ({len(applied_changes)} total edits)"
+
+    while len(props.delta_history) > MAX_DELTA_HISTORY:
+        props.delta_history.remove(0)
+
+    props.delta_active_index = max(0, len(props.delta_history) - 1)
 
 
 def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.types.Object, total_target: int) -> None:
@@ -554,10 +615,20 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         session.persist_sync_state_to_scene(target_obj)
 
         if props:
+            sync_palette_to_props(props, session.storage)
             props.update_counter += 1
             props.last_update_info = f"Repaired {total_target} sections" if session.is_repairing_partial else f"Streamed {total_target} sections"
             props.sync_verified = True
             props.validation_info = "Verified (100% in sync)"
+
+            # Record completion in delta history log
+            item = props.delta_history.add()
+            item.timestamp = time.strftime("%H:%M:%S")
+            item.pos_str = f"Stream ({total_target} chunks)"
+            item.block_state = f"Sync ready ({props.total_blocks:,} blks)" if props.total_blocks else f"Sync ready ({total_target} chunks)"
+            while len(props.delta_history) > MAX_DELTA_HISTORY:
+                props.delta_history.remove(0)
+            props.delta_active_index = max(0, len(props.delta_history) - 1)
     except Exception as e:
         logger.error(f"Finalize stream sync error for {session.target_object_name}: {e}", exc_info=True)
         if props:
@@ -590,7 +661,7 @@ def _pump_main_thread_events() -> Optional[float]:
         if target_obj is None:
             continue
 
-        props = getattr(target_obj, "mozi_sync", None) or getattr(bpy.context.scene, "mozi_sync", None)
+        props = get_active_sync_props(bpy.context, target_obj=target_obj)
         if session.client_thread and session.client_thread.is_connected:
             any_connected = True
 
@@ -635,8 +706,9 @@ def _pump_main_thread_events() -> Optional[float]:
                 for area in window.screen.areas:
                     if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
                         area.tag_redraw()
-        elif session.is_streaming and session.stream_received_sections > 0 and session.stream_section_queue.empty() and ProgressBar.is_active():
-            if session.stream_last_drain_time > 0 and (time.time() - session.stream_last_drain_time > _SETTLE_TIMEOUT_SECONDS):
+        elif session.is_streaming and session.stream_section_queue.empty():
+            drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
+            if session.stream_last_drain_time > 0 and drain_elapsed > _SETTLE_TIMEOUT_SECONDS:
                 logger.info("Live Sync: Stream settle timeout reached for %s (%s sections processed). Finalizing.", session.target_object_name, session.stream_received_sections)
                 _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
 
@@ -695,6 +767,9 @@ def _pump_main_thread_events() -> Optional[float]:
                     props.fluids_count = res.fluids_count
                     props.update_counter += 1
                     props.last_update_info = f"Delta: {len(mesh_changes)} blocks (seq {latest_seq_id})"
+                    append_delta_history(props, applied)
+                    if len(session.storage.get_unique_states()) != props.palette_count:
+                        sync_palette_to_props(props, session.storage)
 
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
@@ -762,6 +837,14 @@ def _pump_main_thread_events() -> Optional[float]:
                     global_props.fluids_count = res_g.fluids_count
                     global_props.update_counter += 1
                     global_props.last_update_info = f"Delta: {len(mesh_changes_g)} blocks (seq {latest_seq_id_g})"
+                    append_delta_history(global_props, applied_g)
+                    if len(voxel_storage.get_unique_states()) != global_props.palette_count:
+                        sync_palette_to_props(global_props, voxel_storage)
+
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type in ('VIEW_3D', 'PROPERTIES'):
+                            area.tag_redraw()
 
     if has_active_work:
         return _PUMP_INTERVAL_ACTIVE
@@ -955,11 +1038,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         cur_props.palette_count = len(palette)
                         cur_props.total_blocks = size_x * size_y * size_z
                         cur_props.update_counter += 1
+                        cur_props.sync_verified = True
+                        cur_props.validation_info = "Verified (100% in sync)"
 
-                        cur_props.palette_list.clear()
-                        for p_item in palette:
-                            item = cur_props.palette_list.add()
-                            item.state_str = p_item
+                        sync_palette_to_props(cur_props, session.storage)
 
                     session.skip_next_full_snapshot = False
                     session.force_next_full_rebuild = False
@@ -984,12 +1066,16 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                                     inner_props = get_active_sync_props(bpy.context, target_obj=world_obj_inner)
                                     if inner_props:
                                         inner_props.last_update_info = f"Snapshot: {total_blks:,} blocks (gen {session.storage.generation})"
+                                        inner_props.sync_verified = True
+                                        inner_props.validation_info = "Verified (100% in sync)"
+                                        sync_palette_to_props(inner_props, session.storage)
                                         item = inner_props.delta_history.add()
                                         item.timestamp = time.strftime("%H:%M:%S")
                                         item.pos_str = f"Bounds: {size_x}x{size_y}x{size_z}"
                                         item.block_state = f"Snapshot ({total_blks:,} blks)"
-                                        while len(inner_props.delta_history) > 50:
+                                        while len(inner_props.delta_history) > MAX_DELTA_HISTORY:
                                             inner_props.delta_history.remove(0)
+                                        inner_props.delta_active_index = max(0, len(inner_props.delta_history) - 1)
 
                                     session.persist_sync_state_to_scene(world_obj_inner)
                                     session.is_initial_handshake = False
@@ -1049,44 +1135,21 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
                         return
 
-                    existing_section_meshes: set[tuple[int, int, int]] = set()
-                    if cur_obj:
-                        sections_map = find_root_section_children(cur_obj)
-                        existing_section_meshes = set(sections_map.keys())
-                        if not existing_section_meshes and cur_obj.data and len(cur_obj.data.polygons) > 0:
-                            existing_section_meshes = set(session.storage.get_all_sections())
-
-                    mismatched = session.storage.validate_manifest(
-                        sections,
-                        existing_section_meshes=existing_section_meshes if cur_obj else None
-                    )
+                    # Verify CRC mismatch against local voxel storage
+                    mismatched_crc = session.storage.validate_manifest(sections, existing_section_meshes=None)
                     if cur_props:
-                        cur_props.sync_verified = (len(mismatched) == 0)
-                    has_existing_mesh = cur_obj is not None and (
-                        len(existing_section_meshes) > 0 or (cur_obj.data and len(cur_obj.data.polygons) > 0)
-                    )
+                        cur_props.sync_verified = (len(mismatched_crc) == 0)
 
-                    if cur_props and cur_props.sync_verified and has_existing_mesh:
+                    if len(mismatched_crc) == 0:
                         session.skip_next_full_snapshot = True
                         session.is_repairing_partial = False
-                        cur_props.validation_info = "Verified (100% in sync with scene)"
-                        logger.info(f"Live Sync ({session.target_object_name}): Handshake verified 100% match with scene.")
+                        if cur_props:
+                            cur_props.validation_info = "Verified (100% in sync)"
+                            if not cur_props.palette_list and session.storage.block_map:
+                                sync_palette_to_props(cur_props, session.storage)
                         if session.is_initial_handshake or ProgressBar.is_active():
                             ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
                         session.is_initial_handshake = False
-                    elif has_existing_mesh and 0 < len(mismatched) < len(sections):
-                        session.skip_next_full_snapshot = False
-                        session.is_repairing_partial = True
-                        session.is_streaming = True
-                        session.stream_total_sections = len(mismatched)
-                        session.stream_received_sections = 0
-                        if cur_props:
-                            cur_props.validation_info = f"Repairing {len(mismatched)} section(s)..."
-                        ProgressBar.begin(title=f"Live Sync Repair ({session.target_object_name})", total=100.0, message=f"Repairing {len(mismatched)} section(s)...")
-                        ProgressBar.update(current=30.0, total=100.0, message=f"Repairing {len(mismatched)} section(s)...")
-                        if session.client_thread and session.client_thread.is_connected:
-                            logger.info(f"Live Sync ({session.target_object_name}): Requesting auto-healing repair for {len(mismatched)} sections...")
-                            session.client_thread.send_repair_request(mismatched)
                     elif session.is_initial_handshake:
                         session.skip_next_full_snapshot = False
                         session.is_repairing_partial = False
@@ -1103,13 +1166,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                             logger.info(f"Live Sync ({session.target_object_name}): Requesting full sync ({non_empty_manifest_count} sections)...")
                             session.client_thread.send_full_sync_request()
                     else:
-                        if len(mismatched) > 0 and session.client_thread and session.client_thread.is_connected:
-                            logger.info(f"Live Sync ({session.target_object_name}): Periodic check detected {len(mismatched)} mismatched sections.")
+                        if len(mismatched_crc) > 0 and session.client_thread and session.client_thread.is_connected:
+                            logger.info(f"Live Sync ({session.target_object_name}): Detected {len(mismatched_crc)} CRC mismatches. Requesting repair...")
                             session.is_repairing_partial = True
                             session.is_streaming = True
-                            session.stream_total_sections = len(mismatched)
+                            session.stream_total_sections = len(mismatched_crc)
                             session.stream_received_sections = 0
-                            session.client_thread.send_repair_request(mismatched)
+                            if cur_props:
+                                cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                            session.client_thread.send_repair_request(mismatched_crc)
                 except Exception as e:
                     logger.error(f"Live Sync manifest error for {session.target_object_name}: {e}", exc_info=True)
                     ProgressBar.cancel(message=f"Manifest check error: {e}")

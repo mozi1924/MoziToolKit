@@ -93,6 +93,11 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                     area.tag_redraw()
 
         props = get_active_sync_props(context, target_obj=existing_world)
+        if props:
+            from .op_sync_connect import sync_palette_to_props
+            sync_palette_to_props(props, active_storage)
+            props.sync_verified = True
+            props.validation_info = "Verified (100% in sync)"
         total_pts = props.point_count if props else 0
         self.report({'INFO'}, f"Rebuilt world mesh successfully ({total_pts:,} vertices).")
         return {'FINISHED'}

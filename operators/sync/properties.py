@@ -124,16 +124,19 @@ def _on_blend_file_loaded(dummy=None):
             props.validation_info = "Ready to connect"
 
 
-_pending_rename_roots: set[str] = set()
+def _get_pending_rename_roots() -> set[str]:
+    if not hasattr(bpy.types, "_mozi_pending_rename_roots"):
+        bpy.types._mozi_pending_rename_roots = set()
+    return bpy.types._mozi_pending_rename_roots
 
 
 def _deferred_sync_renamed_roots():
     """Execute rename propagation safely on Blender's main event queue outside depsgraph evaluation."""
-    global _pending_rename_roots
-    if not _pending_rename_roots:
+    pending = _get_pending_rename_roots()
+    if not pending:
         return None
-    root_names = list(_pending_rename_roots)
-    _pending_rename_roots.clear()
+    root_names = list(pending)
+    pending.clear()
     for name in root_names:
         obj = bpy.data.objects.get(name)
         if obj and obj.type == 'EMPTY':
@@ -184,7 +187,7 @@ def _on_depsgraph_update_post(scene, depsgraph):
             if obj.type == 'EMPTY' and (obj.get("mtk:is_yefira_world") or any(c.get("mtk:section_pos") is not None for c in obj.children)):
                 last_name = obj.get("mtk:last_name")
                 if last_name and last_name != obj.name:
-                    _pending_rename_roots.add(obj.name)
+                    _get_pending_rename_roots().add(obj.name)
                     if not bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
                         bpy.app.timers.register(_deferred_sync_renamed_roots, first_interval=0.0)
     except Exception as e:
@@ -203,8 +206,7 @@ def register():
 
 
 def unregister():
-    global _pending_rename_roots
-    _pending_rename_roots.clear()
+    _get_pending_rename_roots().clear()
     if bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
         bpy.app.timers.unregister(_deferred_sync_renamed_roots)
     if bpy.app.timers.is_registered(_deferred_enforce_object_mode):

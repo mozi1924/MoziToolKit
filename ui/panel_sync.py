@@ -14,7 +14,10 @@ class MOZI_UL_sync_palette_list(bpy.types.UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row = layout.row(align=True)
             row.label(text=f"[{index}]", icon='DOT')
-            row.label(text=item.state_str)
+            state_text = item.state_str
+            if state_text.startswith("minecraft:"):
+                state_text = state_text[10:]
+            row.label(text=state_text)
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text=str(index))
@@ -27,7 +30,15 @@ class MOZI_UL_sync_delta_list(bpy.types.UIList):
             row = layout.row(align=True)
             row.label(text=item.timestamp, icon='TIME')
             row.label(text=item.pos_str)
-            row.label(text=item.block_state)
+            state_text = item.block_state
+            if state_text.startswith("minecraft:"):
+                state_text = state_text[10:]
+            icon_type = 'MESH_CUBE'
+            if "broken" in state_text or "removed" in state_text:
+                icon_type = 'TRASH'
+            elif "Snapshot" in state_text or "Stream" in state_text or "Sync ready" in state_text:
+                icon_type = 'FILE_REFRESH'
+            row.label(text=state_text, icon=icon_type)
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text=item.pos_str)

@@ -90,13 +90,14 @@ class TestUnbakedMaterialGuard(unittest.TestCase):
             p_dir = Path(tmp_dir)
             tex_dir = p_dir / "assets/minecraft/textures/block"
             tex_dir.mkdir(parents=True, exist_ok=True)
-            Image.new("RGBA", (16, 16), (128, 128, 128, 255)).save(tex_dir / "stone.png")
-
+            from utils.system.menu_config import save_pack_stack_config
+            from utils.materials.pack import clear_resource_pack_cache
             save_pack_stack_config([{"name": "TestPack", "path": str(p_dir), "enabled": True, "pack_type": "RESOURCE_PACK"}])
+            clear_resource_pack_cache()
 
             with self.assertRaises(RuntimeError) as ctx:
                 bpy.ops.mozi.sync_rebuild_world()
-            self.assertIn("The configured Resource Pack Stack has not been precompiled", str(ctx.exception))
+            self.assertIn("Precompile / Rebuild Stack Atlas Cache", str(ctx.exception))
 
     def test_live_sync_material_manager_never_creates_dummy_placeholder_materials(self):
         """LiveSyncMaterialManager must not synthesize placeholder Principled BSDF materials when unbaked."""
