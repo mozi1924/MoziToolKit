@@ -21,19 +21,22 @@ def _extract_canonical_state_str(raw_state: str) -> str:
     """Extract canonical Minecraft blockstate string from raw or JSON-wrapped state string."""
     if not raw_state:
         return "minecraft:air"
+    res = raw_state
     if raw_state.startswith('{"state":"'):
         end_idx = raw_state.find('"', 10)
         if end_idx != -1:
-            return raw_state[10:end_idx]
+            res = raw_state[10:end_idx]
     elif raw_state.startswith("{"):
         try:
             import json
             data = json.loads(raw_state)
             if isinstance(data, dict) and "state" in data:
-                return str(data["state"])
+                res = str(data["state"])
         except Exception:
             pass
-    return raw_state
+    if res in ("minecraft:air", "minecraft:cave_air", "minecraft:void_air", "air", "cave_air", "void_air"):
+        return "minecraft:air"
+    return res
 
 
 _EMPTY_CRC_TABLE: List[int] = []
@@ -165,8 +168,11 @@ class VoxelStorage:
         sections = set()
         air_names = {"", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void"}
         for sec_key, sec_dict in list(self._section_map.items()):
-            if any(s and s not in air_names and not s.startswith("minecraft:air") for s in list(sec_dict.values())):
-                sections.add(sec_key)
+            for s in sec_dict.values():
+                canonical = _extract_canonical_state_str(s)
+                if canonical and canonical not in air_names and not canonical.startswith("minecraft:air"):
+                    sections.add(sec_key)
+                    break
         return sections
 
     def get_section_blocks(self, sec_x: int, sec_y: int, sec_z: int) -> Dict[Tuple[int, int, int], str]:
@@ -550,6 +556,12 @@ class VoxelStorage:
                 self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
             local_crc = self.section_crc_map.get(key, None)
             if local_crc != server_crc32:
+                logger.debug(
+                    "Live Sync CRC mismatch for section (%d, %d, %d): local=0x%08X (%d), server=0x%08X (%d)",
+                    sec_x, sec_y, sec_z,
+                    local_crc if local_crc is not None else 0, local_crc if local_crc is not None else 0,
+                    server_crc32, server_crc32
+                )
                 mismatched.append(key)
                 continue
 
