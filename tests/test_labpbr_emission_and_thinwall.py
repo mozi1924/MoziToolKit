@@ -26,8 +26,11 @@ from utils.node_groups.labpbr import (
 from utils.materials.catalog import (
     get_block_emission_strength,
     is_thin_wall_block,
+    get_block_transmission_weight,
+    is_transmissive_block,
     VANILLA_STATIC_EMISSION_LEVELS,
     VANILLA_THIN_WALL_EXACT_BLOCKS,
+    VANILLA_TRANSMISSION_EXACT_BLOCKS,
 )
 from utils.materials.nodes.builder import rebuild_material
 
@@ -40,10 +43,10 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
                 bpy.data.node_groups.remove(ng)
 
     def test_labpbr_decoder_interface_and_sockets(self):
-        """Verify LabPBR 1.3 Decoder v13 public interface and socket configurations."""
+        """Verify LabPBR 1.3 Decoder v14 public interface and socket configurations."""
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(ng.get("mozi_template_version"), 13)
+        self.assertEqual(ng.get("mozi_template_version"), 14)
         self.assertEqual(reference_shape_errors(ng), ())
         assert_reference_shape(ng)
 
@@ -63,8 +66,16 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(hardcoded_emission.min_value, 0.0)
         self.assertEqual(hardcoded_emission.max_value, 1000.0)
 
+        # Verify Transmission Weight is NodeSocketFloat with 0.0..1.0 range
+        self.assertIn("Transmission Weight", sockets)
+        trans_weight = sockets["Transmission Weight"]
+        self.assertEqual(trans_weight.socket_type, "NodeSocketFloat")
+        self.assertEqual(trans_weight.default_value, 0.0)
+        self.assertEqual(trans_weight.min_value, 0.0)
+        self.assertEqual(trans_weight.max_value, 1.0)
+
     def test_labpbr_decoder_wiring(self):
-        """Verify that Select Emission Mode mix node and Thin Wall link are correctly wired."""
+        """Verify that Emission, Transmission, Alpha, and Roughness mix nodes are correctly wired."""
         ng = ensure_labpbr_decoder()
         principled = ng.nodes.get("LabPBR Principled BSDF")
         self.assertIsNotNone(principled)
@@ -82,6 +93,26 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         emit_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Emission Strength"]
         self.assertEqual(len(emit_links), 1)
         self.assertEqual(emit_links[0].from_node, mix_node)
+
+        # Check Transmission and Alpha nodes
+        eff_trans = ng.nodes.get("Effective Transmission")
+        self.assertIsNotNone(eff_trans)
+        trans_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Transmission Weight"]
+        self.assertEqual(len(trans_links), 1)
+        self.assertEqual(trans_links[0].from_node, eff_trans)
+
+        eff_alpha = ng.nodes.get("Effective Alpha")
+        self.assertIsNotNone(eff_alpha)
+        alpha_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Alpha"]
+        self.assertEqual(len(alpha_links), 1)
+        self.assertEqual(alpha_links[0].from_node, eff_alpha)
+
+        # Check Roughness wiring (perceptual roughness directly into enable_roughness)
+        enable_roughness = ng.nodes.get("Enable Roughness")
+        self.assertIsNotNone(enable_roughness)
+        rough_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Roughness"]
+        self.assertEqual(len(rough_links), 1)
+        self.assertEqual(rough_links[0].from_node, enable_roughness)
 
     def test_vanilla_catalog_static_emissions(self):
         """Verify static vanilla block emission calculations."""
@@ -188,8 +219,45 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertFalse(is_thin_wall_block("moss_block"))
         self.assertFalse(is_thin_wall_block("mushroom_stem"))
 
+    def test_vanilla_catalog_transmission_whitelist(self):
+        """Verify that glass, stained glass, water, ice, and slime are identified for transmission."""
+        transmissives = [
+            "glass",
+            "minecraft:glass",
+            "tinted_glass",
+            "white_stained_glass",
+            "red_stained_glass",
+            "glass_pane",
+            "blue_stained_glass_pane",
+            "water",
+            "flowing_water",
+            "water_still",
+            "ice",
+            "packed_ice",
+            "blue_ice",
+            "frosted_ice",
+            "slime_block",
+            "honey_block",
+            "beacon",
+        ]
+        for name in transmissives:
+            self.assertTrue(is_transmissive_block(name), f"{name} should be transmissive")
+            self.assertEqual(get_block_transmission_weight(name), 1.0, f"{name} transmission weight should be 1.0")
+
+        non_transmissives = [
+            "stone",
+            "oak_planks",
+            "dirt",
+            "oak_leaves",
+            "glowstone",
+            "iron_block",
+        ]
+        for name in non_transmissives:
+            self.assertFalse(is_transmissive_block(name), f"{name} should NOT be transmissive")
+            self.assertEqual(get_block_transmission_weight(name), 0.0, f"{name} transmission weight should be 0.0")
+
     def test_material_builder_applies_catalog_defaults(self):
-        """Verify that rebuild_material configures Hardcoded Emission and Thin Wall."""
+        """Verify that rebuild_material configures Hardcoded Emission, Thin Wall, and Transmission Weight."""
         mat = bpy.data.materials.new("minecraft_torch")
         tex_info = {
             "texture_name": "torch",
@@ -203,6 +271,7 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(decoder.inputs["Enable PBR (0-1)"].default_value, 0.0)
         self.assertEqual(decoder.inputs["Hardcoded Emission"].default_value, 14.0)
         self.assertEqual(decoder.inputs["Thin Wall"].default_value, False)
+        self.assertEqual(decoder.inputs["Transmission Weight"].default_value, 0.0)
 
         # Test leaves
         mat_leaves = bpy.data.materials.new("oak_leaves")
@@ -217,11 +286,25 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertIsNotNone(decoder_leaves)
         self.assertEqual(decoder_leaves.inputs["Hardcoded Emission"].default_value, 0.0)
         self.assertEqual(decoder_leaves.inputs["Thin Wall"].default_value, True)
+        self.assertEqual(decoder_leaves.inputs["Transmission Weight"].default_value, 0.0)
 
+        # Test glass
+        mat_glass = bpy.data.materials.new("glass")
+        tex_info_glass = {
+            "texture_name": "glass",
+            "source_texture": "minecraft:block/glass",
+        }
+        success_glass = rebuild_material(mat_glass, tex_info_glass)
+        self.assertTrue(success_glass)
 
+        decoder_glass = mat_glass.node_tree.nodes.get("LabPBR 1.3 Decoder")
+        self.assertIsNotNone(decoder_glass)
+        self.assertEqual(decoder_glass.inputs["Hardcoded Emission"].default_value, 0.0)
+        self.assertEqual(decoder_glass.inputs["Thin Wall"].default_value, False)
+        self.assertEqual(decoder_glass.inputs["Transmission Weight"].default_value, 1.0)
 
     def test_atlas_material_builder_wires_material_props(self):
-        """Verify that build_atlas_chunk_materials wires Attr Material Props with Greater Than 0.5 clamp."""
+        """Verify that build_atlas_chunk_materials wires Attr Material Props (Emission, Thin Wall, Transmission)."""
         from utils.materials.atlas.builder import add_packed_material_props_nodes
         mat = bpy.data.materials.new("test_atlas_chunk")
         mat.use_nodes = True
@@ -256,6 +339,11 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(len(thin_link), 1)
         self.assertEqual(thin_link[0].from_node, clamp_node)
 
+        trans_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Transmission Weight"]
+        self.assertEqual(len(trans_link), 1)
+        self.assertEqual(trans_link[0].from_node, split_node)
+        self.assertEqual(trans_link[0].from_socket.name, "Blue")
+
     def test_livesync_bmesh_layers_include_material_props(self):
         """Verify that LiveSync geometry builder allocates and sets the material_props layer."""
         import bmesh
@@ -270,3 +358,4 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
