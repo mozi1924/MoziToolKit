@@ -8,17 +8,15 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 10
+LABPBR_TEMPLATE_VERSION = 11
 
 # Captured from the verified in-Blender decoder and its appended reference.
-# The original graph has 82 nodes / 112 links because it contains 31 automatic
-# reroutes. This implementation deliberately contracts those presentation
-# nodes and removes the reference graph's unused emission gate, leaving 52
-# functional nodes and 82 effective links.
-LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 82
-LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 112
-LABPBR_REFERENCE_NODE_COUNT = 52
-LABPBR_REFERENCE_LINK_COUNT = 82
+# The graph contains 53 functional nodes and 85 effective links with Random Walk SSS,
+# Thin Wall transmission support, and non-negative SSS clamping.
+LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 84
+LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 117
+LABPBR_REFERENCE_NODE_COUNT = 53
+LABPBR_REFERENCE_LINK_COUNT = 85
 LABPBR_REFERENCE_FRAMES = frozenset({
     "Optional _n: DirectX normal, AO, height",
     "Optional _s: smoothness, F0, metal, porosity / SSS, emission",
@@ -36,6 +34,8 @@ LABPBR_INTERFACE = (
     ("Specular (_s) Alpha (Emission)", "INPUT", "NodeSocketFloat"),
     ("Displacement Scale", "INPUT", "NodeSocketFloat"),
     ("Emission Strength", "INPUT", "NodeSocketFloat"),
+    ("Thin Wall (0-1)", "INPUT", "NodeSocketFloat"),
+    ("Subsurface Scale", "INPUT", "NodeSocketFloat"),
 )
 
 
@@ -147,14 +147,18 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         ("Specular (_s) Alpha (Emission)", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Displacement Scale", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Emission Strength", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1000.0),
+        ("Thin Wall (0-1)", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Subsurface Scale", "INPUT", "NodeSocketFloat", 0.1, 0.0, 10.0),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1400, 200))
     group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(1400, 200))
-    principled = node(nodes, "ShaderNodeBsdfPrincipled", "LabPBR Principled BSDF", label="LabPBR 1.3 Material", location=(1120, 300), inputs={
+    principled = node(nodes, "ShaderNodeBsdfPrincipled", "LabPBR Principled BSDF", label="LabPBR 1.3 Material", location=(1120, 300), properties={
+        "subsurface_method": "RANDOM_WALK",
+    }, inputs={
         "Thin Wall": False, "Weight": 0.0, "Diffuse Roughness": 0.0,
-        "Subsurface Radius": (1.0, 0.2, 0.1), "Subsurface Scale": 0.005,
-        "Subsurface IOR": 1.4, "Subsurface Anisotropy": 0.0,
+        "Subsurface Radius": (1.0, 1.0, 1.0), "Subsurface Scale": 0.1,
+        "Subsurface IOR": 1.4, "Subsurface Anisotropy": 0.5,
         "Specular IOR Level": 0.5, "Specular Tint": (1, 1, 1, 1),
         "Anisotropic": 0.0, "Anisotropic Rotation": 0.0, "Tangent": (0, 0, 0),
         "Transmission Weight": 0.0, "Coat Weight": 0.0, "Coat Roughness": 0.03,
@@ -193,7 +197,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     ior_from_f0 = _math(nodes, "IOR from F0", "DIVIDE", (-120, -820))
     metal_preset = _math(nodes, "Metal preset / custom metal", "GREATER_THAN", (-560, -1020), {"Value[1]": 0.8980392157})
     sss_offset = _math(nodes, "SSS encoded offset", "SUBTRACT", (-780, -1120), {"Value[1]": 0.2549019608})
-    subsurface_weight = _math(nodes, "Subsurface Weight", "DIVIDE", (-560, -1120), {"Value[1]": 0.7450980392})
+    sss_raw_weight = _math(nodes, "SSS raw weight", "DIVIDE", (-560, -1120), {"Value[1]": 0.7450980392})
+    subsurface_weight = _math(nodes, "Subsurface Weight", "MAXIMUM", (-350, -1120), {"Value[1]": 0.0})
     porosity_scaled = _math(nodes, "Porosity scaled", "MULTIPLY", (-780, -1280), {"Value[1]": 3.984375})
     porosity_range = _math(nodes, "Is porosity range", "LESS_THAN", (-780, -1420), {"Value[1]": 0.2549019608})
     porosity = _math(nodes, "Porosity (0-1)", "MULTIPLY", (-560, -1420))
@@ -217,7 +222,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
 
     for child in (decode_normal, albedo_ao, normal_x, normal_y, x_squared, y_squared, xy_squared, normal_z_base, clamp_normal_z, normal_z, encode_x, encode_y, encode_z, reconstructed_normal, normal_map, height_bump, height_minus_one, labpbr_depth, effective_displacement):
         child.parent = normal_frame
-    for child in (decode_specular, smoothness_inverse, linear_roughness, clamp_f0, sqrt_f0, one_plus_sqrt_f0, one_minus_sqrt_f0, ior_from_f0, metal_preset, sss_offset, subsurface_weight, porosity_scaled, porosity_range, porosity, clamp_emission, emission_data, emission_strength):
+    for child in (decode_specular, smoothness_inverse, linear_roughness, clamp_f0, sqrt_f0, one_plus_sqrt_f0, one_minus_sqrt_f0, ior_from_f0, metal_preset, sss_offset, sss_raw_weight, subsurface_weight, porosity_scaled, porosity_range, porosity, clamp_emission, emission_data, emission_strength):
         child.parent = specular_frame
 
     # Decode _n: DirectX normal, AO, and height.
@@ -239,7 +244,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, decode_specular, "Red", smoothness_inverse, "Value[1]"); link(links, smoothness_inverse, "Value", linear_roughness, "Value[0]"); link(links, smoothness_inverse, "Value", linear_roughness, "Value[1]")
     link(links, decode_specular, "Green", clamp_f0, "Value[0]"); link(links, clamp_f0, "Value", sqrt_f0, "Value[0]"); link(links, sqrt_f0, "Value", one_plus_sqrt_f0, "Value[0]"); link(links, sqrt_f0, "Value", one_minus_sqrt_f0, "Value[1]"); link(links, one_plus_sqrt_f0, "Value", ior_from_f0, "Value[0]"); link(links, one_minus_sqrt_f0, "Value", ior_from_f0, "Value[1]")
     link(links, decode_specular, "Green", metal_preset, "Value[0]")
-    link(links, decode_specular, "Blue", sss_offset, "Value[0]"); link(links, sss_offset, "Value", subsurface_weight, "Value[0]")
+    link(links, decode_specular, "Blue", sss_offset, "Value[0]"); link(links, sss_offset, "Value", sss_raw_weight, "Value[0]"); link(links, sss_raw_weight, "Value", subsurface_weight, "Value[0]")
     link(links, decode_specular, "Blue", porosity_scaled, "Value[0]"); link(links, decode_specular, "Blue", porosity_range, "Value[0]"); link(links, porosity_scaled, "Value", porosity, "Value[0]"); link(links, porosity_range, "Value", porosity, "Value[1]")
     link(links, group_input, "Specular (_s) Alpha (Emission)", clamp_emission, "Value[0]"); link(links, group_input, "Specular (_s) Alpha (Emission)", emission_data, "Value[0]"); link(links, clamp_emission, "Value", emission_strength, "Value[0]"); link(links, emission_data, "Value", emission_strength, "Value[1]")
 
@@ -257,5 +262,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, enable_ao, "Result[2]", principled, "Base Color"); link(links, enable_roughness, "Result[0]", principled, "Roughness"); link(links, enable_metallic, "Value", principled, "Metallic"); link(links, enable_ior, "Result[0]", principled, "IOR"); link(links, group_input, "Albedo Alpha", principled, "Alpha")
     link(links, normal_map, "Normal", height_bump, "Normal"); link(links, enable_displacement, "Value", height_bump, "Height"); link(links, height_bump, "Normal", principled, "Normal")
     link(links, enable_sss, "Value", principled, "Subsurface Weight"); link(links, group_input, "Albedo Color", principled, "Emission Color"); link(links, final_emission, "Value", principled, "Emission Strength")
+    link(links, group_input, "Thin Wall (0-1)", principled, "Thin Wall")
+    link(links, group_input, "Subsurface Scale", principled, "Subsurface Scale")
     link(links, principled, "BSDF", group_output, "BSDF"); link(links, enable_displacement, "Value", displacement, "Height"); link(links, displacement, "Displacement", group_output, "Displacement"); link(links, enable_porosity, "Value", group_output, "Porosity (0-1)")
     return finalize_group(group)
+

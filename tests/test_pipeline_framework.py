@@ -463,8 +463,8 @@ class TestPipelineFramework(unittest.TestCase):
         from utils.node_groups.labpbr import reference_shape_errors
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(len(ng.nodes), 52)
-        self.assertEqual(len(ng.links), 82)
+        self.assertEqual(len(ng.nodes), 53)
+        self.assertEqual(len(ng.links), 85)
         self.assertFalse(any(node.bl_idname == "NodeReroute" for node in ng.nodes))
         self.assertEqual(reference_shape_errors(ng), ())
         self.assertEqual(ng.get("mozi_template_version"), LABPBR_TEMPLATE_VERSION)
@@ -483,6 +483,17 @@ class TestPipelineFramework(unittest.TestCase):
         porosity = sockets["Porosity (0-1)"]
         self.assertEqual(porosity.min_value, 0.0)
         self.assertEqual(porosity.max_value, 1.0)
+
+        thin_wall = sockets["Thin Wall (0-1)"]
+        self.assertEqual(thin_wall.default_value, 0.0)
+        self.assertEqual(thin_wall.min_value, 0.0)
+        self.assertEqual(thin_wall.max_value, 1.0)
+
+        sss_scale = sockets["Subsurface Scale"]
+        self.assertAlmostEqual(sss_scale.default_value, 0.1)
+        self.assertEqual(sss_scale.min_value, 0.0)
+        self.assertEqual(sss_scale.max_value, 10.0)
+
 
     def test_pipeline_progress_protocol_and_iterative_execution(self):
         from pipeline import Pipeline, PipelineContext, ProgressUpdate, PipelineStep, StepResult
