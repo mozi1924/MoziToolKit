@@ -484,6 +484,11 @@ class TestPipelineFramework(unittest.TestCase):
         self.assertEqual(porosity.min_value, 0.0)
         self.assertEqual(porosity.max_value, 1.0)
 
+        emission_strength = sockets["Emission Strength"]
+        self.assertEqual(emission_strength.default_value, 5.0)
+        self.assertEqual(emission_strength.min_value, 0.0)
+        self.assertEqual(emission_strength.max_value, 1000.0)
+
         thin_wall = sockets["Thin Wall (0-1)"]
         self.assertEqual(thin_wall.default_value, 0.0)
         self.assertEqual(thin_wall.min_value, 0.0)
