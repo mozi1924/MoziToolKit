@@ -2,7 +2,7 @@
 
 MoziToolKit 采用高度解耦的微内核流水线架构，所有复杂功能均拆解为标准化的原子步骤（`PipelineStep`），支持独立 Operator 触发、非阻塞 Modal Timer 步进调度及多步骤编排。
 
-- **核心实现模块**：`pipeline/` ([`pipeline.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/pipeline.py), [`step.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/step.py), [`context.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/context.py), [`progress.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/progress.py), [`modal.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/modal.py), [`presets/presets.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/presets/presets.py))
+- **核心实现模块**：`pipeline/` ([`pipeline.py`](../../pipeline/pipeline.py), [`step.py`](../../pipeline/step.py), [`context.py`](../../pipeline/context.py), [`progress.py`](../../pipeline/progress.py), [`modal.py`](../../pipeline/modal.py), [`presets/presets.py`](../../pipeline/presets/presets.py))
 
 ```mermaid
 classDiagram
@@ -75,7 +75,7 @@ classDiagram
   在 Pipeline 结束时统一分发给 Blender 消息报告系统 `self.report({level}, msg)`。
 
 ### 1.2 `PipelineStep` 原子步骤基类
-- 步骤继承自 [`PipelineStep`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/step.py#L49-L80)，实现 `execute(self, ctx: PipelineContext)`。
+- 步骤继承自 [`PipelineStep`](../../pipeline/step.py)，实现 `execute(self, ctx: PipelineContext)`。
 - **生成器支持 (Progress Streaming)**：`execute` 可以返回单个 `StepResult`，亦可使用 `yield ProgressUpdate(...)` 流式返回执行进度，支持粒度到单方块的实时进度汇报。
 
 ### 1.3 `StepResult` 与 `StepStatus` 状态机
@@ -99,7 +99,7 @@ classDiagram
 
 ## 3. 预设流水线注册表 (Preset Pipelines Registry)
 
-MoziToolKit 在 [`pipeline/presets/presets.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/pipeline/presets/presets.py) 中预注册了全部核心功能的预设流水线：
+MoziToolKit 在 [`pipeline/presets/presets.py`](../../pipeline/presets/presets.py) 中预注册了全部核心功能的预设流水线：
 
 | Preset Key | 包含原子步骤 | 主要用途 |
 | :--- | :--- | :--- |

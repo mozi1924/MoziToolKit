@@ -1,7 +1,7 @@
 # 模块四：自适应像素网格切分系统 (Adaptive Pixel Split)
 
-- **对应 Operator**：`mozi.adaptive_pixel_split` ([`operators/mesh/op_adaptive_pixel_split.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/mesh/op_adaptive_pixel_split.py))
-- **核心实现模块**：`utils/pixel_split/` ([`core.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/pixel_split/core.py), [`uv_analyzer.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/pixel_split/uv_analyzer.py), [`subdivider.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/pixel_split/subdivider.py), [`types.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/pixel_split/types.py))、`utils/mesh/subdivide.py`
+- **对应 Operator**：`mozi.adaptive_pixel_split` ([`op_adaptive_pixel_split.py`](../../operators/mesh/op_adaptive_pixel_split.py))
+- **核心实现模块**：`utils/pixel_split/` ([`core.py`](../../utils/pixel_split/core.py), [`uv_analyzer.py`](../../utils/pixel_split/uv_analyzer.py), [`subdivider.py`](../../utils/pixel_split/subdivider.py), [`types.py`](../../utils/pixel_split/types.py))、`utils/mesh/subdivide.py`
 
 ```mermaid
 graph TD

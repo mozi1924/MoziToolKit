@@ -2,7 +2,7 @@
 
 MoziToolKit 构建于现代 Blender 4.2+ 扩展架构之上，提供了高度可定制的右键上下文菜单、线程安全且具备崩溃自愈能力的持久化配置引擎、跨平台 Wheels 隔离加载体系以及完备的国际化与自动化构建流水线。
 
-- **核心实现模块**：`utils/config/` ([`manager.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/config/manager.py), `backends/`, `models.py`), `ui/` ([`preferences.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/ui/preferences.py)), `utils/system/`, `i18n/` ([`dictionary.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/i18n/dictionary.py)), `build.py`
+- **核心实现模块**：`utils/config/` ([`manager.py`](../../utils/config/manager.py), `backends/`, `models.py`), `ui/` ([`preferences.py`](../../ui/preferences.py)), `utils/system/`, `i18n/` ([`dictionary.py`](../../i18n/dictionary.py)), `build.py`
 
 ```mermaid
 graph TD
@@ -36,7 +36,7 @@ graph TD
 ## 1. 右键上下文菜单动态注册与自由重排体系
 
 ### 1.1 菜单装饰器元数据注册 (`@register_menu_item`)
-- 插件内的所有 Operator 通过 [`@register_menu_item(views=["mesh", "object", "uv"])`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/system/menu_registry.py) 声明其支持的目标视图与上下文。
+- 插件内的所有 Operator 通过 [`@register_menu_item(views=["mesh", "object", "uv"])`](../../utils/system/menu_registry.py) 声明其支持的目标视图与上下文。
 - 支持视图：
   - **`object`**：3D Viewport 物体模式（Object Mode）右键菜单。
   - **`mesh`**：3D Viewport 编辑模式（Edit Mesh Mode）右键菜单。
@@ -79,7 +79,7 @@ graph TD
   - macOS Apple Silicon & Intel (`Pillow-...-macosx_11_0_arm64.whl`, `macosx_10_10_x86_64.whl`)
   - Linux x86_64 (`Pillow-...-manylinux_2_28_x86_64.whl`)
 - **隔离加载与优雅降级**：
-  在 [`operators/misc/op_dependencies.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/misc/op_dependencies.py) 与 `utils/system/` 中，插件启动时优先将自带 `wheels/` 目录挂载到隔离 `sys.path`，绝不污染全局 Blender Python 环境；若宿主环境缺失 Pillow，基础网格清洗与 UV 工具依然可 100% 独立正常运行。
+  在 [`op_dependencies.py`](../../operators/misc/op_dependencies.py) 与 `utils/system/` 中，插件启动时优先将自带 `wheels/` 目录挂载到隔离 `sys.path`，绝不污染全局 Blender Python 环境；若宿主环境缺失 Pillow，基础网格清洗与 UV 工具依然可 100% 独立正常运行。
 
 ---
 

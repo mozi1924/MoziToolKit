@@ -24,7 +24,7 @@ graph LR
 
 ## 1. 清除自定义分割法线 (Clear Custom Normals)
 
-- **对应 Operator**：`mozi.clear_custom_normals` ([`operators/mesh/op_clear_custom_normals.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/mesh/op_clear_custom_normals.py))
+- **对应 Operator**：`mozi.clear_custom_normals` ([`op_clear_custom_normals.py`](../../operators/mesh/op_clear_custom_normals.py))
 - **设计背景与核心价值**：
   - 从外部工具导入的 OBJ/FBX 模型往往携带残留的 `custom_normal` 数据层或损坏的 Split Normals。这会导致在 Blender 中即便开启 Auto Smooth，模型表面依然出现发黑的阴影断层或反向光照。
 - **底层执行流程**：
@@ -37,7 +37,7 @@ graph LR
 
 ## 2. 锐边与硬边选择 (Select Hard & Sharp Edges)
 
-- **对应 Operator**：`mozi.select_hard_edges` ([`operators/mesh/op_select_edges.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/mesh/op_select_edges.py))
+- **对应 Operator**：`mozi.select_hard_edges` ([`op_select_edges.py`](../../operators/mesh/op_select_edges.py))
 - **算法与参数**：
   - **`sharp_angle`**（默认 $30.0^\circ$）：二面角（Dihedral Angle）判定阈值。
   - **多重硬边检测判据 (`is_hard_edge`)**：
@@ -50,7 +50,7 @@ graph LR
 
 ## 3. UV 原地独立缩放 (Scale UV Faces - 边缘抗渗色)
 
-- **对应 Operator**：`mozi.scale_uv` ([`operators/uv/op_scale_uv.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/uv/op_scale_uv.py))
+- **对应 Operator**：`mozi.scale_uv` ([`op_scale_uv.py`](../../operators/uv/op_scale_uv.py))
 - **核心数学与抗渗色原理**：
   - 在低分辨率像素贴图（如 $16 \times 16$）渲染时，GPU 纹理过滤（Mipmap 或 Bilinear 采样）常导致边界顶点采样到贴图边缘外的黑色背景或相邻像素，产生黑色接缝线（Seam Bleeding）。
 - **原地独立向心缩放算法**：
@@ -67,7 +67,7 @@ graph LR
 
 ## 4. 修复流体 UV (Repair Fluid UV)
 
-- **对应 Operator**：`mozi.repair_fluid_uv` ([`operators/uv/op_repair_fluid_uv.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/uv/op_repair_fluid_uv.py))
+- **对应 Operator**：`mozi.repair_fluid_uv` ([`op_repair_fluid_uv.py`](../../operators/uv/op_repair_fluid_uv.py))
 - **问题成因**：
   Minecraft 流动水体和岩浆具有梯级斜面几何（如 8 级水流斜坡）。地图导出工具生成的斜面侧面 UV 经常出现上下颠倒、90 度旋转错位或横向拉伸。
 - **校正算法 (`utils/mesh/fluid_uv.py`)**：
@@ -79,7 +79,7 @@ graph LR
 
 ## 5. 基于贴图 Alpha 通道智能选面 (Select Transparent Faces)
 
-- **对应 Operator**：`mozi.select_transparent_faces` ([`operators/uv/op_select_transparent_faces.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/uv/op_select_transparent_faces.py))
+- **对应 Operator**：`mozi.select_transparent_faces` ([`op_select_transparent_faces.py`](../../operators/uv/op_select_transparent_faces.py))
 - **核心功能**：
   针对树叶、草丛或镂空模型中全透明的无效几何面片进行快速筛选与清理。
 - **参数与多模式采样**：
@@ -94,7 +94,7 @@ graph LR
 
 ## 6. 纹理插值模式一键切换 (Texture Interpolation: Closest / Linear)
 
-- **对应 Operator**：`mozi.set_texture_interpolation_closest` ([`operators/object/op_texture_interpolation.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/object/op_texture_interpolation.py))
+- **对应 Operator**：`mozi.set_texture_interpolation_closest` ([`op_texture_interpolation.py`](../../operators/object/op_texture_interpolation.py))
 - **执行逻辑**：
   - 递归遍历选定物体所有材质节点树（包含嵌套的 NodeGroup 节点组内部）。
   - 批量将所有 `ShaderNodeTexImage` 图像纹理节点的 `interpolation` 属性统一设置为 `Closest`（像素风锐利）或 `Linear`（平滑过滤）。
