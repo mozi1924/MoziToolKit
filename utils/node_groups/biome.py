@@ -10,8 +10,8 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-BIOME_TINT_VERSION = 1
-COLORMAP_SAMPLER_VERSION = 1
+BIOME_TINT_VERSION = 2
+COLORMAP_SAMPLER_VERSION = 2
 
 
 def ensure_biome_tint() -> bpy.types.NodeTree:
@@ -166,8 +166,10 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
 
 def ensure_colormap_sampler() -> bpy.types.NodeTree:
     """
-    Create or return the reusable MC_Biome_Colormap_Sampler node group (Mode B).
-    Computes triangular UV coordinates from Temperature and Humidity.
+    Create or return the reusable MC_Biome_Colormap_Sampler node group.
+    Computes standard Minecraft triangular UV coordinates from Temperature and Humidity for Blender Image Texture sampling:
+      U = 1.0 - clamp(Temperature, 0.0, 1.0)
+      V = clamp(Humidity, 0.0, 1.0) * clamp(Temperature, 0.0, 1.0)
     """
     tree = ensure_group("MC_Biome_Colormap_Sampler", COLORMAP_SAMPLER_VERSION)
     if tree.nodes and tree.get("mozi_template_complete"):
@@ -225,9 +227,9 @@ def ensure_colormap_sampler() -> bpy.types.NodeTree:
     link(links, clamp_hum, "Value", max_hum, "Value[0]")
     max_hum.inputs[1].default_value = 0.0
 
-    # Minecraft triangular mapping:
+    # Minecraft triangular mapping for Blender UV (origin bottom-left):
     # U = 1.0 - Temperature
-    # V = 1.0 - (Humidity * Temperature)
+    # V = Humidity * Temperature
     sub_u = node(
         nodes,
         "ShaderNodeMath",
@@ -238,30 +240,20 @@ def ensure_colormap_sampler() -> bpy.types.NodeTree:
     sub_u.inputs[0].default_value = 1.0
     link(links, max_temp, "Value", sub_u, "Value[1]")
 
-    mult_t = node(
+    mult_v = node(
         nodes,
         "ShaderNodeMath",
-        "Humidity * Temp",
+        "Humidity * Temp (V)",
         location=(-220, -100),
         properties={"operation": "MULTIPLY"},
     )
-    link(links, max_hum, "Value", mult_t, "Value[0]")
-    link(links, max_temp, "Value", mult_t, "Value[1]")
-
-    sub_v = node(
-        nodes,
-        "ShaderNodeMath",
-        "1 - (Hum * Temp) (V)",
-        location=(-20, -100),
-        properties={"operation": "SUBTRACT"},
-    )
-    sub_v.inputs[0].default_value = 1.0
-    link(links, mult_t, "Value", sub_v, "Value[1]")
+    link(links, max_hum, "Value", mult_v, "Value[0]")
+    link(links, max_temp, "Value", mult_v, "Value[1]")
 
     # Combine UV
     comb_uv = node(nodes, "ShaderNodeCombineXYZ", "Combine Colormap UV", location=(200, 0))
     link(links, sub_u, "Value", comb_uv, "X")
-    link(links, sub_v, "Value", comb_uv, "Y")
+    link(links, mult_v, "Value", comb_uv, "Y")
     link(links, comb_uv, "Vector", group_out, "Colormap UV")
 
     return finalize_group(tree)

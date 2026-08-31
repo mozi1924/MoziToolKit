@@ -70,16 +70,18 @@ class StepPrecompileCache(PipelineStep):
         num_chunks = len(res_data.get("atlas", {}).get("chunks", []))
         num_models = res_data.get("models", {}).get("models_count", 0)
         num_st = res_data.get("standalone", {}).get("texture_count", 0)
+        num_cms = res_data.get("colormaps", {}).get("colormaps_count", 0)
 
+        cm_str = f"Colormaps: {num_cms}; " if num_cms > 0 else ""
         if material_mode == "STANDALONE":
             success_msg = (
                 f"Successfully precompiled caches for pack stack "
-                f"(Atlas: {num_chunks} chunks; Models: {num_models} models; Standalone: {num_st} textures)."
+                f"({cm_str}Atlas: {num_chunks} chunks; Models: {num_models} models; Standalone: {num_st} textures)."
             )
         else:
             success_msg = (
                 f"Successfully precompiled caches for pack stack "
-                f"(Atlas: {num_chunks} chunks; Models: {num_models} models)."
+                f"({cm_str}Atlas: {num_chunks} chunks; Models: {num_models} models)."
             )
 
         yield StepResult.success(

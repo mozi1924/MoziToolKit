@@ -25,10 +25,12 @@ from ..constants import (
 )
 from ..biome import (
     get_biome_colors,
+    blend_biome_colors,
     TINT_TYPE_GRASS,
     TINT_TYPE_FOLIAGE,
     TINT_TYPE_WATER,
     TINT_TYPE_HARDCODED,
+    TINT_TYPE_DRY_FOLIAGE,
 )
 
 
@@ -87,16 +89,32 @@ def read_face_tiling(mesh: bpy.types.Mesh, poly_idx: int) -> tuple[tuple[float, 
 def compute_biome_tint_attributes(
     num_polygons: int,
     poly_tint_map: dict[int, dict],
-    biome_preset: str,
+    biome_preset: Union[str, list[tuple[str, float]]] = "PLAINS",
 ) -> tuple[list, list]:
-    """Compute packed tint weights and colors for all polygons based on tint data and biome."""
+    """
+    Compute packed tint weights and colors for all polygons based on tint data and biome.
+    biome_preset can be a single biome preset name (e.g. 'PLAINS') or a list of weighted biomes
+    for smooth biome transition interpolation (e.g. [('PLAINS', 0.6), ('FOREST', 0.4)]).
+    """
     tint_weights = [0.0] * num_polygons
     base_tint_weights = [1.0] * num_polygons
     overlay_tint_weights = [1.0] * num_polygons
     tint_colors = [(1.0, 1.0, 1.0, 1.0)] * num_polygons
     hardcoded_colors = [(1.0, 1.0, 1.0, 1.0)] * num_polygons
     use_hardcodeds = [0.0] * num_polygons
-    biome_colors = get_biome_colors(biome_preset)
+
+    is_multi_biome = isinstance(biome_preset, list)
+    if not is_multi_biome:
+        biome_colors = get_biome_colors(str(biome_preset))
+        grass_col = biome_colors["grass_linear"]
+        foliage_col = biome_colors["foliage_linear"]
+        dry_foliage_col = biome_colors["dry_foliage_linear"]
+        water_col = biome_colors["water_linear"]
+    else:
+        grass_col = blend_biome_colors(biome_preset, "grass")
+        foliage_col = blend_biome_colors(biome_preset, "foliage")
+        dry_foliage_col = blend_biome_colors(biome_preset, "dry_foliage")
+        water_col = blend_biome_colors(biome_preset, "water")
 
     for poly_idx, tint_info in poly_tint_map.items():
         if not tint_info:
@@ -112,11 +130,13 @@ def compute_biome_tint_attributes(
         if hc_c:
             hardcoded_colors[poly_idx] = tuple(hc_c)
         if tt == TINT_TYPE_GRASS:
-            tint_colors[poly_idx] = biome_colors["grass_linear"]
+            tint_colors[poly_idx] = grass_col
         elif tt == TINT_TYPE_FOLIAGE:
-            tint_colors[poly_idx] = biome_colors["foliage_linear"]
+            tint_colors[poly_idx] = foliage_col
+        elif tt == TINT_TYPE_DRY_FOLIAGE:
+            tint_colors[poly_idx] = dry_foliage_col
         elif tt == TINT_TYPE_WATER:
-            tint_colors[poly_idx] = biome_colors["water_linear"]
+            tint_colors[poly_idx] = water_col
         elif tt == TINT_TYPE_HARDCODED:
             tint_colors[poly_idx] = hardcoded_colors[poly_idx]
         else:

@@ -1,14 +1,15 @@
 """
 Minecraft Biome Definitions, Tint Classification, and Block Model JSON Resolver.
-Provides standard vanilla biome color palettes, hardcoded block colors,
-and automatic overlay detection from block models.
+Provides canonical vanilla 26.2 biome palettes, colormap sampling algorithms,
+hardcoded block colors, and multi-biome transition blending.
 """
 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, List, Union
 
 
 # --- Color Conversion Utilities ---
@@ -75,290 +76,987 @@ def linear_rgba_to_hex(rgba: tuple[float, ...]) -> str:
     return f"#{int(round(r * 255)):02X}{int(round(g * 255)):02X}{int(round(b * 255)):02X}"
 
 
+# --- Minecraft Colormap Coordinates & Sampling ---
 
-# ---# Standard Biome Palettes
-# Colors represent modern 1.13+ Update Aquatic & Bedrock palettes (hex sRGB).
+def get_colormap_uv(temperature: float, downfall: float) -> tuple[float, float]:
+    """
+    Calculate Minecraft standard triangular Colormap UV coordinates from Temperature and Downfall (Humidity).
+    In Minecraft ColorMapColorUtil:
+      temp = clamp(temp, 0.0, 1.0)
+      downfall = clamp(downfall, 0.0, 1.0) * temp
+      U = 1.0 - temp
+      V (bottom-left origin) = downfall = hum * temp
+    Returns (U, V) in range [0.0, 1.0].
+    """
+    temp = max(0.0, min(1.0, float(temperature)))
+    hum = max(0.0, min(1.0, float(downfall)))
+    u = 1.0 - temp
+    v = hum * temp
+    return (u, v)
+
+
+def sample_colormap_pixel(
+    image_data: Any,
+    temperature: float,
+    downfall: float,
+    default_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
+) -> tuple[float, float, float]:
+    """
+    Sample an sRGB color (0..1) from a 256x256 colormap (PIL Image or NumPy array or byte array)
+    using canonical Minecraft coordinate indexing:
+      i = int((1.0 - temp) * 255.0)
+      j = int((1.0 - (downfall * temp)) * 255.0)  # row 0 at top
+    """
+    if image_data is None:
+        return default_color
+    temp = max(0.0, min(1.0, float(temperature)))
+    hum = max(0.0, min(1.0, float(downfall)))
+    adj_downfall = hum * temp
+    i = max(0, min(255, int((1.0 - temp) * 255.0)))
+    j = max(0, min(255, int((1.0 - adj_downfall) * 255.0)))
+
+    try:
+        # Handle PIL Image
+        if hasattr(image_data, "getpixel"):
+            px = image_data.getpixel((i, j))
+            if isinstance(px, (int, float)):
+                return (px / 255.0, px / 255.0, px / 255.0)
+            return (px[0] / 255.0, px[1] / 255.0, px[2] / 255.0)
+        # Handle 2D/3D array or list
+        if hasattr(image_data, "shape"):
+            px = image_data[j, i]
+            return (float(px[0]) / 255.0, float(px[1]) / 255.0, float(px[2]) / 255.0)
+    except Exception:
+        pass
+    return default_color
+
+
+# --- Canonical Minecraft 26.2 Biome Palettes Registry (66 Biomes) ---
 BIOME_PALETTES: dict[str, dict[str, Any]] = {
-    "PLAINS": {
-        "name": "Plains",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#44AFF5",
-        "temperature": 0.8,
-        "humidity": 0.4,
-    },
-    "FOREST": {
-        "name": "Forest",
-        "grass": "#79C05A",
-        "foliage": "#59AE30",
-        "water": "#1E97F2",
-        "temperature": 0.7,
-        "humidity": 0.8,
-    },
-    "BIRCH_FOREST": {
-        "name": "Birch Forest",
-        "grass": "#88BB67",
-        "foliage": "#6BA941",
-        "water": "#06B2F4",
-        "temperature": 0.6,
-        "humidity": 0.6,
-    },
-    "TAIGA": {
-        "name": "Taiga",
-        "grass": "#86B783",
-        "foliage": "#68A55E",
-        "water": "#287082",
-        "temperature": 0.25,
-        "humidity": 0.8,
-    },
-    "OLD_GROWTH_TAIGA": {
-        "name": "Old Growth Taiga",
-        "grass": "#86B783",
-        "foliage": "#68A55E",
-        "water": "#287082",
-        "temperature": 0.3,
-        "humidity": 0.8,
-    },
-    "SNOWY_PLAINS": {
-        "name": "Snowy Plains",
-        "grass": "#80B497",
-        "foliage": "#60A17B",
-        "water": "#205E83",
-        "temperature": 0.0,
-        "humidity": 0.5,
-    },
-    "SNOWY_TAIGA": {
-        "name": "Snowy Taiga",
-        "grass": "#80B497",
-        "foliage": "#60A17B",
-        "water": "#205E83",
-        "temperature": -0.5,
-        "humidity": 0.4,
-    },
-    "JUNGLE": {
-        "name": "Jungle",
-        "grass": "#59C93C",
-        "foliage": "#30BB0B",
-        "water": "#14A2C5",
-        "temperature": 0.95,
-        "humidity": 0.9,
-    },
-    "SPARSE_JUNGLE": {
-        "name": "Sparse Jungle",
-        "grass": "#64C73F",
-        "foliage": "#3EB80F",
-        "water": "#14A2C5",
-        "temperature": 0.95,
-        "humidity": 0.8,
-    },
-    "SAVANNA": {
-        "name": "Savanna",
-        "grass": "#BFB755",
-        "foliage": "#AEA42A",
-        "water": "#2C8B9C",
-        "temperature": 1.1,
-        "humidity": 0.0,
-    },
-    "DESERT": {
-        "name": "Desert",
-        "grass": "#BFB755",
-        "foliage": "#AEA42A",
-        "water": "#32A5FF",
-        "temperature": 2.0,
-        "humidity": 0.0,
-    },
     "BADLANDS": {
+        "id": "badlands",
         "name": "Badlands",
         "grass": "#90814D",
-        "foliage": "#90814D",
-        "water": "#4E7F81",
+        "foliage": "#9E814D",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
         "temperature": 2.0,
         "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": True,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": False
     },
-    "SWAMP": {
-        "name": "Swamp",
-        "grass": "#6A7039",
-        "foliage": "#6A7039",
-        "water": "#4C6559",
-        "temperature": 0.8,
+    "BAMBOO_JUNGLE": {
+        "id": "bamboo_jungle",
+        "name": "Bamboo Jungle",
+        "grass": "#59C93C",
+        "foliage": "#30BB0B",
+        "dry_foliage": "#A36346",
+        "water": "#3F76E4",
+        "temperature": 0.95,
         "humidity": 0.9,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
-    "MANGROVE_SWAMP": {
-        "name": "Mangrove Swamp",
-        "grass": "#6A7039",
-        "foliage": "#8DB127",
-        "water": "#3A7A6A",
-        "temperature": 0.8,
-        "humidity": 0.9,
-    },
-    "DARK_FOREST": {
-        "name": "Dark Forest",
-        "grass": "#507A32",
-        "foliage": "#507A32",
-        "water": "#3B6CD1",
-        "temperature": 0.7,
-        "humidity": 0.8,
-    },
-    "CHERRY_GROVE": {
-        "name": "Cherry Grove",
-        "grass": "#B6DB63",
-        "foliage": "#B6DB63",
-        "water": "#5DB7EF",
-        "temperature": 0.5,
-        "humidity": 0.8,
-    },
-    "MEADOW": {
-        "name": "Meadow",
-        "grass": "#83BB6D",
-        "foliage": "#63A948",
-        "water": "#0E4ECF",
-        "temperature": 0.5,
-        "humidity": 0.8,
-    },
-    "RIVER": {
-        "name": "River",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#0084FF",
-        "temperature": 0.8,
-        "humidity": 0.4,
+    "BASALT_DELTAS": {
+        "id": "basalt_deltas",
+        "name": "Basalt Deltas",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
     "BEACH": {
+        "id": "beach",
         "name": "Beach",
         "grass": "#91BD59",
         "foliage": "#77AB2F",
-        "water": "#157CAB",
+        "dry_foliage": "#A37546",
+        "water": "#3F76E4",
         "temperature": 0.8,
         "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
-    "OCEAN": {
-        "name": "Ocean",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#176FC4",
-        "temperature": 0.5,
-        "humidity": 0.5,
+    "BIRCH_FOREST": {
+        "id": "birch_forest",
+        "name": "Birch Forest",
+        "grass": "#88BB67",
+        "foliage": "#6BA941",
+        "dry_foliage": "#A37246",
+        "water": "#3F76E4",
+        "temperature": 0.6,
+        "humidity": 0.6,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
-    "DEEP_OCEAN": {
-        "name": "Deep Ocean",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#174094",
+    "CHERRY_GROVE": {
+        "id": "cherry_grove",
+        "name": "Cherry Grove",
+        "grass": "#B6DB61",
+        "foliage": "#B6DB61",
+        "dry_foliage": "#A17148",
+        "water": "#5DB7EF",
         "temperature": 0.5,
-        "humidity": 0.5,
-    },
-    "WARM_OCEAN": {
-        "name": "Warm Ocean",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#02B0E5",
-        "temperature": 0.5,
-        "humidity": 0.5,
-    },
-    "LUKEWARM_OCEAN": {
-        "name": "Lukewarm Ocean",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#0D96DB",
-        "temperature": 0.5,
-        "humidity": 0.5,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": True,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": False
     },
     "COLD_OCEAN": {
+        "id": "cold_ocean",
         "name": "Cold Ocean",
-        "grass": "#91BD59",
-        "foliage": "#77AB2F",
-        "water": "#2080C0",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3D57D6",
         "temperature": 0.5,
         "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
-    "FROZEN_OCEAN": {
-        "name": "Frozen Ocean",
+    "CRIMSON_FOREST": {
+        "id": "crimson_forest",
+        "name": "Crimson Forest",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "DARK_FOREST": {
+        "id": "dark_forest",
+        "name": "Dark Forest",
+        "grass": "#507A32",
+        "foliage": "#59AE30",
+        "dry_foliage": "#7B5334",
+        "water": "#3F76E4",
+        "temperature": 0.7,
+        "humidity": 0.8,
+        "modifier": "dark_forest",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": True
+    },
+    "DEEP_COLD_OCEAN": {
+        "id": "deep_cold_ocean",
+        "name": "Deep Cold Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3D57D6",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "DEEP_DARK": {
+        "id": "deep_dark",
+        "name": "Deep Dark",
         "grass": "#91BD59",
         "foliage": "#77AB2F",
-        "water": "#2570B5",
-        "temperature": 0.0,
-        "humidity": 0.5,
+        "dry_foliage": "#A37546",
+        "water": "#3F76E4",
+        "temperature": 0.8,
+        "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
-    "MUSHROOM_FIELDS": {
-        "name": "Mushroom Fields",
-        "grass": "#55C93F",
-        "foliage": "#2BBB0F",
-        "water": "#8BE3A0",
-        "temperature": 0.9,
-        "humidity": 1.0,
+    "DEEP_FROZEN_OCEAN": {
+        "id": "deep_frozen_ocean",
+        "name": "Deep Frozen Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3938C9",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "DEEP_LUKEWARM_OCEAN": {
+        "id": "deep_lukewarm_ocean",
+        "name": "Deep Lukewarm Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#45ADF2",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "DEEP_OCEAN": {
+        "id": "deep_ocean",
+        "name": "Deep Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "DESERT": {
+        "id": "desert",
+        "name": "Desert",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
     "DRIPSTONE_CAVES": {
+        "id": "dripstone_caves",
         "name": "Dripstone Caves",
         "grass": "#91BD59",
         "foliage": "#77AB2F",
-        "water": "#32A5FF",
+        "dry_foliage": "#A37546",
+        "water": "#3F76E4",
         "temperature": 0.8,
         "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
-    "LUSH_CAVES": {
-        "name": "Lush Caves",
-        "grass": "#59C93C",
-        "foliage": "#30BB0B",
-        "water": "#14A2C5",
-        "temperature": 0.95,
-        "humidity": 0.9,
-    },
-    "DEEP_DARK": {
-        "name": "Deep Dark",
-        "grass": "#507A32",
-        "foliage": "#507A32",
-        "water": "#1B2632",
-        "temperature": 0.8,
-        "humidity": 0.4,
-    },
-    "NETHER_WASTES": {
-        "name": "Nether Wastes",
-        "grass": "#90814D",
-        "foliage": "#90814D",
-        "water": "#905957",
-        "temperature": 2.0,
-        "humidity": 0.0,
-    },
-    "CRIMSON_FOREST": {
-        "name": "Crimson Forest",
-        "grass": "#90814D",
-        "foliage": "#90814D",
-        "water": "#5B2424",
-        "temperature": 2.0,
-        "humidity": 0.0,
-    },
-    "WARPED_FOREST": {
-        "name": "Warped Forest",
-        "grass": "#90814D",
-        "foliage": "#90814D",
-        "water": "#3A4449",
-        "temperature": 2.0,
-        "humidity": 0.0,
-    },
-    "SOUL_SAND_VALLEY": {
-        "name": "Soul Sand Valley",
-        "grass": "#90814D",
-        "foliage": "#90814D",
-        "water": "#3F353B",
-        "temperature": 2.0,
-        "humidity": 0.0,
-    },
-    "BASALT_DELTAS": {
-        "name": "Basalt Deltas",
-        "grass": "#90814D",
-        "foliage": "#90814D",
-        "water": "#5C4538",
-        "temperature": 2.0,
-        "humidity": 0.0,
-    },
-    "THE_END": {
-        "name": "The End",
-        "grass": "#8AB689",
-        "foliage": "#68A55E",
-        "water": "#62529E",
+    "END_BARRENS": {
+        "id": "end_barrens",
+        "name": "End Barrens",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
         "temperature": 0.5,
         "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
     },
+    "END_HIGHLANDS": {
+        "id": "end_highlands",
+        "name": "End Highlands",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "END_MIDLANDS": {
+        "id": "end_midlands",
+        "name": "End Midlands",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "ERODED_BADLANDS": {
+        "id": "eroded_badlands",
+        "name": "Eroded Badlands",
+        "grass": "#90814D",
+        "foliage": "#9E814D",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": True,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": False
+    },
+    "FLOWER_FOREST": {
+        "id": "flower_forest",
+        "name": "Flower Forest",
+        "grass": "#79C05A",
+        "foliage": "#59AE30",
+        "dry_foliage": "#A36D46",
+        "water": "#3F76E4",
+        "temperature": 0.7,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "FOREST": {
+        "id": "forest",
+        "name": "Forest",
+        "grass": "#79C05A",
+        "foliage": "#59AE30",
+        "dry_foliage": "#A36D46",
+        "water": "#3F76E4",
+        "temperature": 0.7,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "FROZEN_OCEAN": {
+        "id": "frozen_ocean",
+        "name": "Frozen Ocean",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3938C9",
+        "temperature": 0.0,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "FROZEN_PEAKS": {
+        "id": "frozen_peaks",
+        "name": "Frozen Peaks",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3F76E4",
+        "temperature": -0.7,
+        "humidity": 0.9,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "FROZEN_RIVER": {
+        "id": "frozen_river",
+        "name": "Frozen River",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3938C9",
+        "temperature": 0.0,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "GROVE": {
+        "id": "grove",
+        "name": "Grove",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3F76E4",
+        "temperature": -0.2,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "ICE_SPIKES": {
+        "id": "ice_spikes",
+        "name": "Ice Spikes",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3F76E4",
+        "temperature": 0.0,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "JAGGED_PEAKS": {
+        "id": "jagged_peaks",
+        "name": "Jagged Peaks",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3F76E4",
+        "temperature": -0.7,
+        "humidity": 0.9,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "JUNGLE": {
+        "id": "jungle",
+        "name": "Jungle",
+        "grass": "#59C93C",
+        "foliage": "#30BB0B",
+        "dry_foliage": "#A36346",
+        "water": "#3F76E4",
+        "temperature": 0.95,
+        "humidity": 0.9,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "LUKEWARM_OCEAN": {
+        "id": "lukewarm_ocean",
+        "name": "Lukewarm Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#45ADF2",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "LUSH_CAVES": {
+        "id": "lush_caves",
+        "name": "Lush Caves",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "MANGROVE_SWAMP": {
+        "id": "mangrove_swamp",
+        "name": "Mangrove Swamp",
+        "grass": "#6A7039",
+        "foliage": "#8DB127",
+        "dry_foliage": "#7B5334",
+        "water": "#3A7A6A",
+        "temperature": 0.8,
+        "humidity": 0.9,
+        "modifier": "swamp",
+        "has_custom_grass": False,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": True
+    },
+    "MEADOW": {
+        "id": "meadow",
+        "name": "Meadow",
+        "grass": "#83BB6D",
+        "foliage": "#64A948",
+        "dry_foliage": "#A17148",
+        "water": "#0E4ECF",
+        "temperature": 0.5,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "MUSHROOM_FIELDS": {
+        "id": "mushroom_fields",
+        "name": "Mushroom Fields",
+        "grass": "#55C93F",
+        "foliage": "#2BBB0F",
+        "dry_foliage": "#A36246",
+        "water": "#3F76E4",
+        "temperature": 0.9,
+        "humidity": 1.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "NETHER_WASTES": {
+        "id": "nether_wastes",
+        "name": "Nether Wastes",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "OCEAN": {
+        "id": "ocean",
+        "name": "Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "OLD_GROWTH_BIRCH_FOREST": {
+        "id": "old_growth_birch_forest",
+        "name": "Old Growth Birch Forest",
+        "grass": "#88BB67",
+        "foliage": "#6BA941",
+        "dry_foliage": "#A37246",
+        "water": "#3F76E4",
+        "temperature": 0.6,
+        "humidity": 0.6,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "OLD_GROWTH_PINE_TAIGA": {
+        "id": "old_growth_pine_taiga",
+        "name": "Old Growth Pine Taiga",
+        "grass": "#86B87F",
+        "foliage": "#68A55F",
+        "dry_foliage": "#9C754D",
+        "water": "#3F76E4",
+        "temperature": 0.3,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "OLD_GROWTH_SPRUCE_TAIGA": {
+        "id": "old_growth_spruce_taiga",
+        "name": "Old Growth Spruce Taiga",
+        "grass": "#86B783",
+        "foliage": "#68A464",
+        "dry_foliage": "#9A764F",
+        "water": "#3F76E4",
+        "temperature": 0.25,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "PALE_GARDEN": {
+        "id": "pale_garden",
+        "name": "Pale Garden",
+        "grass": "#778272",
+        "foliage": "#878D76",
+        "dry_foliage": "#A0A69C",
+        "water": "#76889D",
+        "temperature": 0.7,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": True,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": True
+    },
+    "PLAINS": {
+        "id": "plains",
+        "name": "Plains",
+        "grass": "#91BD59",
+        "foliage": "#77AB2F",
+        "dry_foliage": "#A37546",
+        "water": "#3F76E4",
+        "temperature": 0.8,
+        "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "RIVER": {
+        "id": "river",
+        "name": "River",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SAVANNA": {
+        "id": "savanna",
+        "name": "Savanna",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SAVANNA_PLATEAU": {
+        "id": "savanna_plateau",
+        "name": "Savanna Plateau",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SMALL_END_ISLANDS": {
+        "id": "small_end_islands",
+        "name": "Small End Islands",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SNOWY_BEACH": {
+        "id": "snowy_beach",
+        "name": "Snowy Beach",
+        "grass": "#83B593",
+        "foliage": "#64A278",
+        "dry_foliage": "#917958",
+        "water": "#3D57D6",
+        "temperature": 0.05,
+        "humidity": 0.3,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SNOWY_PLAINS": {
+        "id": "snowy_plains",
+        "name": "Snowy Plains",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3F76E4",
+        "temperature": 0.0,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SNOWY_SLOPES": {
+        "id": "snowy_slopes",
+        "name": "Snowy Slopes",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3F76E4",
+        "temperature": -0.3,
+        "humidity": 0.9,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SNOWY_TAIGA": {
+        "id": "snowy_taiga",
+        "name": "Snowy Taiga",
+        "grass": "#80B497",
+        "foliage": "#60A17B",
+        "dry_foliage": "#8F7A5A",
+        "water": "#3D57D6",
+        "temperature": -0.5,
+        "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SOUL_SAND_VALLEY": {
+        "id": "soul_sand_valley",
+        "name": "Soul Sand Valley",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SPARSE_JUNGLE": {
+        "id": "sparse_jungle",
+        "name": "Sparse Jungle",
+        "grass": "#64C73F",
+        "foliage": "#3EB80F",
+        "dry_foliage": "#A36646",
+        "water": "#3F76E4",
+        "temperature": 0.95,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "STONY_PEAKS": {
+        "id": "stony_peaks",
+        "name": "Stony Peaks",
+        "grass": "#9ABE4B",
+        "foliage": "#82AC1E",
+        "dry_foliage": "#A37946",
+        "water": "#3F76E4",
+        "temperature": 1.0,
+        "humidity": 0.3,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "STONY_SHORE": {
+        "id": "stony_shore",
+        "name": "Stony Shore",
+        "grass": "#8AB689",
+        "foliage": "#6DA36B",
+        "dry_foliage": "#967753",
+        "water": "#3F76E4",
+        "temperature": 0.2,
+        "humidity": 0.3,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SULFUR_CAVES": {
+        "id": "sulfur_caves",
+        "name": "Sulfur Caves",
+        "grass": "#ABA64F",
+        "foliage": "#77AB2F",
+        "dry_foliage": "#A37546",
+        "water": "#34BF89",
+        "temperature": 0.8,
+        "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": True,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SUNFLOWER_PLAINS": {
+        "id": "sunflower_plains",
+        "name": "Sunflower Plains",
+        "grass": "#91BD59",
+        "foliage": "#77AB2F",
+        "dry_foliage": "#A37546",
+        "water": "#3F76E4",
+        "temperature": 0.8,
+        "humidity": 0.4,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "SWAMP": {
+        "id": "swamp",
+        "name": "Swamp",
+        "grass": "#6A7039",
+        "foliage": "#6A7039",
+        "dry_foliage": "#7B5334",
+        "water": "#617B64",
+        "temperature": 0.8,
+        "humidity": 0.9,
+        "modifier": "swamp",
+        "has_custom_grass": False,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": True
+    },
+    "TAIGA": {
+        "id": "taiga",
+        "name": "Taiga",
+        "grass": "#86B783",
+        "foliage": "#68A464",
+        "dry_foliage": "#9A764F",
+        "water": "#3F76E4",
+        "temperature": 0.25,
+        "humidity": 0.8,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "THE_END": {
+        "id": "the_end",
+        "name": "The End",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "THE_VOID": {
+        "id": "the_void",
+        "name": "The Void",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#3F76E4",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WARM_OCEAN": {
+        "id": "warm_ocean",
+        "name": "Warm Ocean",
+        "grass": "#8EB971",
+        "foliage": "#71A74D",
+        "dry_foliage": "#A17448",
+        "water": "#43D5EE",
+        "temperature": 0.5,
+        "humidity": 0.5,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WARPED_FOREST": {
+        "id": "warped_forest",
+        "name": "Warped Forest",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WINDSWEPT_FOREST": {
+        "id": "windswept_forest",
+        "name": "Windswept Forest",
+        "grass": "#8AB689",
+        "foliage": "#6DA36B",
+        "dry_foliage": "#967753",
+        "water": "#3F76E4",
+        "temperature": 0.2,
+        "humidity": 0.3,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WINDSWEPT_GRAVELLY_HILLS": {
+        "id": "windswept_gravelly_hills",
+        "name": "Windswept Gravelly Hills",
+        "grass": "#8AB689",
+        "foliage": "#6DA36B",
+        "dry_foliage": "#967753",
+        "water": "#3F76E4",
+        "temperature": 0.2,
+        "humidity": 0.3,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WINDSWEPT_HILLS": {
+        "id": "windswept_hills",
+        "name": "Windswept Hills",
+        "grass": "#8AB689",
+        "foliage": "#6DA36B",
+        "dry_foliage": "#967753",
+        "water": "#3F76E4",
+        "temperature": 0.2,
+        "humidity": 0.3,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WINDSWEPT_SAVANNA": {
+        "id": "windswept_savanna",
+        "name": "Windswept Savanna",
+        "grass": "#BFB755",
+        "foliage": "#AEA42A",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": False,
+        "has_custom_foliage": False,
+        "has_custom_dry_foliage": False
+    },
+    "WOODED_BADLANDS": {
+        "id": "wooded_badlands",
+        "name": "Wooded Badlands",
+        "grass": "#90814D",
+        "foliage": "#9E814D",
+        "dry_foliage": "#A38046",
+        "water": "#3F76E4",
+        "temperature": 2.0,
+        "humidity": 0.0,
+        "modifier": "none",
+        "has_custom_grass": True,
+        "has_custom_foliage": True,
+        "has_custom_dry_foliage": False
+    }
 }
 
 # Hardcoded block-specific tints (independent of biome, or special formula)
@@ -368,6 +1066,8 @@ HARDCODED_BLOCK_TINTS: dict[str, str] = {
     "lily_pad": "#208030",
     "attached_melon_stem": "#E0C71C",
     "attached_pumpkin_stem": "#E0C71C",
+    "melon_stem": "#E0C71C",
+    "pumpkin_stem": "#E0C71C",
 }
 
 # Canonical Minecraft 26.2 Block Colors Registry
@@ -394,6 +1094,9 @@ BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
     "vine": [("foliage", 1.0)],
     "mangrove_leaves": [("foliage", 1.0)],
     "leaf_litter": [("foliage", 1.0)],
+    # Dry Foliage
+    "pale_hanging_moss": [("dry_foliage", 1.0)],
+    "pale_oak_leaves": [("none", 1.0)],
     # Water & Fluid
     "water": [("water", 1.0)],
     "flowing_water": [("water", 1.0)],
@@ -415,18 +1118,18 @@ BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
 def get_hardcoded_block_tint_rgba(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
     """Return sRGB RGBA tuple for a hardcoded block name."""
     clean = name.removeprefix("minecraft:").removeprefix("block/")
-    hex_str = HARDCODED_BLOCK_TINTS.get(clean)
-    if hex_str:
-        return hex_to_rgba(hex_str)
+    hex_col = HARDCODED_BLOCK_TINTS.get(clean)
+    if hex_col:
+        return hex_to_rgba(hex_col)
     return default
 
 
 def get_hardcoded_block_tint_linear(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
     """Return Linear RGBA tuple for a hardcoded block name."""
     clean = name.removeprefix("minecraft:").removeprefix("block/")
-    hex_str = HARDCODED_BLOCK_TINTS.get(clean)
-    if hex_str:
-        return hex_to_linear_rgba(hex_str)
+    hex_col = HARDCODED_BLOCK_TINTS.get(clean)
+    if hex_col:
+        return hex_to_linear_rgba(hex_col)
     return default
 
 # Known paired overlay textures (base -> overlay)
@@ -441,6 +1144,7 @@ TINT_TYPE_GRASS = 1
 TINT_TYPE_FOLIAGE = 2
 TINT_TYPE_WATER = 3
 TINT_TYPE_HARDCODED = 4
+TINT_TYPE_DRY_FOLIAGE = 5
 
 # Vanilla texture stems with a biome colour provider.
 KNOWN_GRASS_STEMS = frozenset({
@@ -471,6 +1175,11 @@ KNOWN_FOLIAGE_STEMS = frozenset({
     "leaf_litter",
 })
 
+KNOWN_DRY_FOLIAGE_STEMS = frozenset({
+    "pale_hanging_moss",
+    "pale_hanging_moss_tip",
+})
+
 KNOWN_WATER_STEMS = frozenset({
     "water_still",
     "water_flow",
@@ -485,7 +1194,7 @@ def classify_tint_category(
 ) -> str:
     """
     Classify a texture stem and/or block name into a tint category:
-    'grass', 'foliage', 'water', 'hardcoded', or 'none'.
+    'grass', 'foliage', 'dry_foliage', 'water', 'hardcoded', or 'none'.
     Respects BlockColors semantic registration and face tintindex.
     """
     if not clean_stem and not block_name:
@@ -504,7 +1213,6 @@ def classify_tint_category(
                 if tint_index < len(layers):
                     return layers[tint_index][0]
                 return layers[-1][0]
-            # When tint_index is not provided, return first non-none category
             for cat, _ in layers:
                 if cat != "none":
                     return cat
@@ -520,10 +1228,12 @@ def classify_tint_category(
         return "grass"
     if stem_norm in KNOWN_FOLIAGE_STEMS:
         return "foliage"
+    if stem_norm in KNOWN_DRY_FOLIAGE_STEMS:
+        return "dry_foliage"
     if stem_norm in KNOWN_WATER_STEMS:
         return "water"
 
-    # 3. Heuristic fallback for custom models (e.g. 05m_oak_leaves_cube, custom_leaves, custom_water)
+    # 3. Heuristic fallback for custom models
     if "leaves" in stem_norm:
         if "spruce" in stem_norm:
             return "hardcoded"
@@ -540,6 +1250,106 @@ def classify_tint_category(
         return "grass"
 
     return "none"
+
+
+def blend_biome_colors(
+    biome_weights: list[tuple[Union[str, dict], float]],
+    tint_type: str = "grass",
+) -> tuple[float, float, float, float]:
+    """
+    Compute a smooth blended Linear RGBA color across multiple weighted biomes (群系过渡).
+    biome_weights is a list of (biome_preset_name_or_dict, weight).
+    """
+    if not biome_weights:
+        return (1.0, 1.0, 1.0, 1.0)
+
+    total_weight = sum(w for _, w in biome_weights if w > 0)
+    if total_weight <= 0.0:
+        b = biome_weights[0][0]
+        name = b if isinstance(b, str) else b.get("name", "PLAINS")
+        return get_biome_colors(name)[f"{tint_type}_linear"]
+
+    r_acc, g_acc, b_acc, a_acc = 0.0, 0.0, 0.0, 0.0
+    for b_item, weight in biome_weights:
+        if weight <= 0:
+            continue
+        norm_w = weight / total_weight
+        if isinstance(b_item, str):
+            b_colors = get_biome_colors(b_item)
+            col = b_colors.get(f"{tint_type}_linear", (1.0, 1.0, 1.0, 1.0))
+        elif isinstance(b_item, dict):
+            col = b_item.get(f"{tint_type}_linear")
+            if not col:
+                hex_str = b_item.get(tint_type, "#FFFFFF")
+                col = hex_to_linear_rgba(hex_str)
+        else:
+            col = (1.0, 1.0, 1.0, 1.0)
+
+        r_acc += col[0] * norm_w
+        g_acc += col[1] * norm_w
+        b_acc += col[2] * norm_w
+        a_acc += (col[3] if len(col) > 3 else 1.0) * norm_w
+
+    return (r_acc, g_acc, b_acc, a_acc)
+
+
+def get_biome_colors(preset_name: str = "PLAINS", pack_stack: Any = None) -> dict[str, Any]:
+    """
+    Return sRGB and Linear RGBA color dict for a given biome preset.
+    If pack_stack is provided, checks for stack-level custom colormaps / biome overrides first.
+    Falls back to canonical 26.2 BIOME_PALETTES.
+    """
+    key = preset_name.upper().strip()
+    # Normalize key (e.g. 'MINECRAFT:PLAINS' -> 'PLAINS')
+    if ":" in key:
+        key = key.split(":", 1)[1]
+
+    # 1. Check pack stack for dynamic biome definition or colormap sampling if stack is passed
+    if pack_stack is not None and hasattr(pack_stack, "get_biome_data"):
+        stack_data = pack_stack.get_biome_data(key)
+        if stack_data:
+            return stack_data
+
+    palette = BIOME_PALETTES.get(key)
+    if not palette:
+        # Fuzzy case / spacing fallback
+        for k, v in BIOME_PALETTES.items():
+            if k == key or v.get("name", "").upper() == key or v.get("id", "").upper() == key:
+                palette = v
+                break
+    if not palette:
+        palette = BIOME_PALETTES.get("PLAINS", {
+            "id": "plains",
+            "name": "Plains",
+            "grass": "#91BD59",
+            "foliage": "#77AB2F",
+            "dry_foliage": "#A37546",
+            "water": "#3F76E4",
+            "temperature": 0.8,
+            "humidity": 0.4,
+            "modifier": "none",
+        })
+
+    grass_hex = palette.get("grass", "#91BD59")
+    foliage_hex = palette.get("foliage", "#77AB2F")
+    dry_foliage_hex = palette.get("dry_foliage", "#A37546")
+    water_hex = palette.get("water", "#3F76E4")
+
+    return {
+        "id": palette.get("id", key.lower()),
+        "name": palette.get("name", key.capitalize()),
+        "grass_hex": grass_hex,
+        "grass_linear": hex_to_linear_rgba(grass_hex),
+        "foliage_hex": foliage_hex,
+        "foliage_linear": hex_to_linear_rgba(foliage_hex),
+        "dry_foliage_hex": dry_foliage_hex,
+        "dry_foliage_linear": hex_to_linear_rgba(dry_foliage_hex),
+        "water_hex": water_hex,
+        "water_linear": hex_to_linear_rgba(water_hex),
+        "temperature": palette.get("temperature", 0.8),
+        "humidity": palette.get("humidity", 0.4),
+        "modifier": palette.get("modifier", "none"),
+    }
 
 
 class BiomeResolver:
@@ -592,7 +1402,6 @@ class BiomeResolver:
 
             textures = model_data.get("textures", {})
             if isinstance(textures, dict):
-                # Discover overlay pairs: e.g. "side" + "overlay"
                 side_tex = textures.get("side", "")
                 overlay_tex = textures.get("overlay", "")
                 if side_tex and overlay_tex and isinstance(side_tex, str) and isinstance(overlay_tex, str):
@@ -601,7 +1410,6 @@ class BiomeResolver:
                     if clean_side and clean_overlay and clean_side != clean_overlay:
                         self.overlay_pairs[clean_side] = clean_overlay
 
-            # Discover tint association for custom model textures
             elements = model_data.get("elements")
             if isinstance(elements, list):
                 for elem in elements:
@@ -713,6 +1521,19 @@ class BiomeResolver:
                 "hardcoded_color": None,
                 "hardcoded_hex": None,
             }
+        elif category == "dry_foliage":
+            return {
+                "tint_type": TINT_TYPE_DRY_FOLIAGE,
+                "tint_category": "dry_foliage",
+                "tint_weight": 1.0,
+                "base_tint_weight": 1.0,
+                "overlay_tint_weight": 1.0,
+                "has_overlay": has_overlay,
+                "overlay_texture": overlay_stem,
+                "is_hardcoded": False,
+                "hardcoded_color": None,
+                "hardcoded_hex": None,
+            }
         elif category == "water":
             return {
                 "tint_type": TINT_TYPE_WATER,
@@ -755,22 +1576,3 @@ class BiomeResolver:
             "hardcoded_color": None,
             "hardcoded_hex": None,
         }
-
-
-
-
-def get_biome_colors(preset_name: str = "PLAINS") -> dict[str, Any]:
-    """Return sRGB and Linear RGBA color dict for a given biome preset."""
-    key = preset_name.upper()
-    palette = BIOME_PALETTES.get(key, BIOME_PALETTES["PLAINS"])
-    return {
-        "name": palette["name"],
-        "grass_hex": palette["grass"],
-        "grass_linear": hex_to_linear_rgba(palette["grass"]),
-        "foliage_hex": palette["foliage"],
-        "foliage_linear": hex_to_linear_rgba(palette["foliage"]),
-        "water_hex": palette["water"],
-        "water_linear": hex_to_linear_rgba(palette["water"]),
-        "temperature": palette.get("temperature", 0.8),
-        "humidity": palette.get("humidity", 0.4),
-    }

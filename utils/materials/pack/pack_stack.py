@@ -393,6 +393,152 @@ class ResourcePackStack:
             return baker._bake_cache
         return {}
 
+    def get_baked_colormaps_dir(self) -> Path:
+        """Get the persistent colormaps cache directory for this stack."""
+        from .resource_pack import get_cache_dir
+        cache_root = get_cache_dir()
+        return cache_root / self.stack_hash / "colormaps"
+
+    def is_colormaps_baked(self) -> bool:
+        """Check if precompiled colormaps exist for this stack."""
+        cm_dir = self.get_baked_colormaps_dir()
+        return cm_dir.is_dir() and any(cm_dir.glob("*.png"))
+
+    def get_colormap_path(self, name: str = "grass", namespace: str = "minecraft") -> Optional[Path]:
+        """Cascading lookup for colormap path (grass, foliage, dry_foliage) across pack stack."""
+        clean_name = name.lower().removesuffix(".png")
+        for pack in self.packs:
+            p = pack.get_colormap_path(name=clean_name, namespace=namespace)
+            if p and p.is_file():
+                return p
+        return None
+
+    def get_all_colormaps(self) -> dict[str, Path]:
+        """Get all composite colormaps across the pack stack with cascading priority."""
+        colormaps = {}
+        for cm_name in ("grass", "foliage", "dry_foliage"):
+            p = self.get_colormap_path(cm_name)
+            if p:
+                colormaps[cm_name] = p
+        return colormaps
+
+    def extract_colormaps(self, output_dir: Optional[Union[str, Path]] = None) -> dict[str, Path]:
+        """Extract and cache all active colormaps for this stack into target directory."""
+        import shutil
+        target_dir = Path(output_dir) if output_dir else self.get_baked_colormaps_dir()
+        target_dir.mkdir(parents=True, exist_ok=True)
+        colormaps = self.get_all_colormaps()
+        extracted = {}
+        for name, src_path in colormaps.items():
+            dst = target_dir / f"{name}.png"
+            if src_path.resolve() != dst.resolve():
+                shutil.copy2(src_path, dst)
+            extracted[name] = dst
+        return extracted
+
+    def precompile_colormaps_iter(
+        self, output_dir: Optional[Union[str, Path]] = None
+    ) -> Iterator[Tuple[float, str, Optional[dict]]]:
+        """Iteratively extract and precompile colormaps for this pack stack."""
+        yield (0.1, "Searching and extracting active colormaps...", None)
+        extracted = self.extract_colormaps(output_dir)
+        results = {
+            "colormaps": {k: str(v) for k, v in extracted.items()},
+            "colormaps_count": len(extracted),
+        }
+        yield (1.0, f"Extracted {len(extracted)} active colormaps (grass, foliage, dry_foliage).", results)
+
+    def get_biome_data(self, biome_id: str, namespace: str = "minecraft") -> Optional[dict]:
+        """
+        Query biome metadata across the stack, sampling from active stack colormaps.
+        Falls back to canonical 26.2 biome presets if not fully specified in the pack.
+        """
+        clean_id = biome_id.lower().removeprefix("minecraft:")
+        biome_json = None
+        for pack in self.packs:
+            bj = pack.get_biome_json(clean_id, namespace=namespace)
+            if bj:
+                biome_json = bj
+                break
+
+        from ..biome import sample_colormap_pixel, hex_to_linear_rgba, BIOME_PALETTES
+        canonical = BIOME_PALETTES.get(clean_id.upper(), {})
+        temp = float(biome_json.get("temperature", canonical.get("temperature", 0.8))) if biome_json else float(canonical.get("temperature", 0.8))
+        downfall = float(biome_json.get("downfall", canonical.get("humidity", 0.4))) if biome_json else float(canonical.get("humidity", 0.4))
+        effects = biome_json.get("effects", {}) if biome_json else {}
+
+        # Resolve active stack colormaps
+        cms = self.get_all_colormaps()
+        grass_img = None
+        foliage_img = None
+        dry_foliage_img = None
+
+        try:
+            from PIL import Image
+            if "grass" in cms and cms["grass"].is_file():
+                grass_img = Image.open(cms["grass"]).convert("RGB")
+            if "foliage" in cms and cms["foliage"].is_file():
+                foliage_img = Image.open(cms["foliage"]).convert("RGB")
+            if "dry_foliage" in cms and cms["dry_foliage"].is_file():
+                dry_foliage_img = Image.open(cms["dry_foliage"]).convert("RGB")
+        except Exception:
+            pass
+
+        # Grass Color
+        if "grass_color" in effects:
+            grass_hex = effects["grass_color"].upper()
+        elif grass_img:
+            r, g, b = sample_colormap_pixel(grass_img, temp, downfall)
+            mod = effects.get("grass_color_modifier", canonical.get("modifier", "none"))
+            c_int = (int(r * 255) << 16) | (int(g * 255) << 8) | int(b * 255)
+            if mod == "dark_forest":
+                mod_int = ((c_int & 0xFEFEFE) + 0x28340A) >> 1
+                grass_hex = f"#{mod_int:06X}"
+            elif mod == "swamp":
+                grass_hex = "#6A7039"
+            else:
+                grass_hex = f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
+        else:
+            grass_hex = canonical.get("grass", "#91BD59")
+
+        # Foliage Color
+        if "foliage_color" in effects:
+            foliage_hex = effects["foliage_color"].upper()
+        elif foliage_img:
+            r, g, b = sample_colormap_pixel(foliage_img, temp, downfall)
+            foliage_hex = f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
+        else:
+            foliage_hex = canonical.get("foliage", "#77AB2F")
+
+        # Dry Foliage Color
+        if "dry_foliage_color" in effects:
+            dry_foliage_hex = effects["dry_foliage_color"].upper()
+        elif dry_foliage_img:
+            r, g, b = sample_colormap_pixel(dry_foliage_img, temp, downfall)
+            dry_foliage_hex = f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
+        else:
+            dry_foliage_hex = canonical.get("dry_foliage", "#A37546")
+
+        # Water Color
+        water_hex = effects.get("water_color", canonical.get("water", "#3F76E4")).upper()
+        display_name = canonical.get("name", clean_id.replace("_", " ").title())
+
+        return {
+            "id": clean_id,
+            "name": display_name,
+            "grass_hex": grass_hex,
+            "grass_linear": hex_to_linear_rgba(grass_hex),
+            "foliage_hex": foliage_hex,
+            "foliage_linear": hex_to_linear_rgba(foliage_hex),
+            "dry_foliage_hex": dry_foliage_hex,
+            "dry_foliage_linear": hex_to_linear_rgba(dry_foliage_hex),
+            "water_hex": water_hex,
+            "water_linear": hex_to_linear_rgba(water_hex),
+            "temperature": temp,
+            "humidity": downfall,
+            "modifier": effects.get("grass_color_modifier", canonical.get("modifier", "none")),
+        }
+
     def precompile_iter(
         self,
         material_mode: str = "ATLAS",
@@ -403,12 +549,18 @@ class ResourcePackStack:
         Yields (fraction: float, message: str, outputs: Optional[dict]).
         """
         results = {}
+        # 0. Colormaps Cache (0.0 -> 0.05)
+        for frac, msg, out in self.precompile_colormaps_iter():
+            if out:
+                results["colormaps"] = out
+            yield (0.05 * frac, f"Colormaps: {msg}", None)
+
         if material_mode == "STANDALONE":
-            # 1. Atlas Cache (0.0 -> 0.40)
+            # 1. Atlas Cache (0.05 -> 0.40)
             for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
                 if out:
                     results["atlas"] = out
-                yield (0.40 * frac, f"Atlas: {msg}", None)
+                yield (0.05 + 0.35 * frac, f"Atlas: {msg}", None)
 
             # 2. Models Cache (0.40 -> 0.70)
             for frac, msg, out in self.precompile_models_iter():
@@ -422,11 +574,11 @@ class ResourcePackStack:
                     results["standalone"] = out
                 yield (0.70 + 0.30 * frac, f"Standalone: {msg}", None)
         else:
-            # 1. Atlas Cache (0.0 -> 0.60)
+            # 1. Atlas Cache (0.05 -> 0.60)
             for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
                 if out:
                     results["atlas"] = out
-                yield (0.60 * frac, f"Atlas: {msg}", None)
+                yield (0.05 + 0.55 * frac, f"Atlas: {msg}", None)
 
             # 2. Models Cache (0.60 -> 1.00)
             for frac, msg, out in self.precompile_models_iter():

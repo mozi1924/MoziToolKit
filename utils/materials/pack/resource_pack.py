@@ -695,3 +695,66 @@ class ZipResourcePack:
 
         return None
 
+    def get_colormap_path(self, name: str = "grass", namespace: str = "minecraft") -> Optional[Path]:
+        """Get path to a colormap (e.g. 'grass', 'foliage', 'dry_foliage') in this pack if present."""
+        self.ensure_extracted()
+        if not self._extract_dir:
+            return None
+        clean = name.lower().removesuffix(".png")
+        candidate = self._extract_dir / "assets" / namespace / "textures" / "colormap" / f"{clean}.png"
+        if candidate.is_file():
+            return candidate
+        return None
+
+    def get_all_colormaps(self) -> dict[str, Path]:
+        """Return dict of all available colormaps in this pack (e.g. {'grass': Path, 'foliage': Path})."""
+        self.ensure_extracted()
+        colormaps = {}
+        if not self._extract_dir:
+            return colormaps
+        assets_dir = self._extract_dir / "assets"
+        if not assets_dir.exists():
+            return colormaps
+        for ns_dir in assets_dir.iterdir():
+            if not ns_dir.is_dir():
+                continue
+            cm_dir = ns_dir / "textures" / "colormap"
+            if cm_dir.is_dir():
+                for f in cm_dir.glob("*.png"):
+                    colormaps[f.stem.lower()] = f
+        return colormaps
+
+    def get_biome_json(self, biome_id: str, namespace: str = "minecraft") -> Optional[dict]:
+        """Load biome JSON data if present in data/<namespace>/worldgen/biome/<biome_id>.json."""
+        self.ensure_extracted()
+        if not self._extract_dir:
+            return None
+        clean_id = biome_id.lower().removeprefix("minecraft:")
+        p = self._extract_dir / "data" / namespace / "worldgen" / "biome" / f"{clean_id}.json"
+        if p.is_file():
+            try:
+                with open(p, "r", encoding="utf-8") as fp:
+                    return json.load(fp)
+            except Exception:
+                return None
+        return None
+
+    def list_all_biome_jsons(self) -> dict[str, dict]:
+        """Scan and load all biome JSONs present under data/*/worldgen/biome/."""
+        self.ensure_extracted()
+        biomes = {}
+        if not self._extract_dir:
+            return biomes
+        data_dir = self._extract_dir / "data"
+        if not data_dir.exists():
+            return biomes
+        for biome_file in data_dir.glob("*/worldgen/biome/*.json"):
+            try:
+                with open(biome_file, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+                    if isinstance(data, dict):
+                        biomes[biome_file.stem.lower()] = data
+            except Exception:
+                pass
+        return biomes
+
