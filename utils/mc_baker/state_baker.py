@@ -204,6 +204,11 @@ class StateBaker:
         self._bake_cache.clear()
         self.model_parser._model_cache.clear()
         self.state_resolver._state_cache.clear()
+        try:
+            from ..culling import get_shared_face_culler
+            get_shared_face_culler().clear_cache()
+        except Exception:
+            pass
 
     @staticmethod
     def _resolve_base_face_textures(short_name: str, props: dict[str, str], fallback: str) -> dict[str, str]:

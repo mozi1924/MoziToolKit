@@ -66,6 +66,15 @@ _SETTLE_TIMEOUT_SECONDS: float = 3.0
 MAX_DELTA_HISTORY: int = 100
 
 _pump_timer_registered: bool = False
+_MANIFEST_DICT_CACHE: dict[str, dict] = {}
+
+
+def clear_manifest_dict_cache(obj_name: Optional[str] = None) -> None:
+    """Clear memory cached manifest dictionary for live sync objects."""
+    if obj_name is not None:
+        _MANIFEST_DICT_CACHE.pop(obj_name, None)
+    else:
+        _MANIFEST_DICT_CACHE.clear()
 
 
 class SyncSession:
@@ -147,6 +156,7 @@ class SyncSession:
             obj = target_obj or bpy.data.objects.get(self.target_object_name)
             if obj is not None:
                 manifest_dict = self.storage.export_manifest_metadata()
+                _MANIFEST_DICT_CACHE[obj.name] = manifest_dict
                 import json
                 obj["mtk:sync_manifest"] = json.dumps(manifest_dict)
                 obj["mtk_block_bounds"] = [
@@ -162,24 +172,35 @@ class SyncSession:
             if obj is None:
                 return False
 
-            manifest_str = obj.get("mtk:sync_manifest", "")
-            if manifest_str and isinstance(manifest_str, str):
-                import json
-                manifest_data = json.loads(manifest_str)
-                if self.storage.import_manifest_metadata(manifest_data):
-                    props = get_active_sync_props(bpy.context, target_obj=obj)
-                    if props:
-                        props.has_selection = True
-                        props.min_x, props.min_y, props.min_z = self.storage.min_x, self.storage.min_y, self.storage.min_z
-                        props.max_x = self.storage.min_x + self.storage.size_x - 1
-                        props.max_y = self.storage.min_y + self.storage.size_y - 1
-                        props.max_z = self.storage.min_z + self.storage.size_z - 1
-                        props.size_x, props.size_y, props.size_z = self.storage.size_x, self.storage.size_y, self.storage.size_z
-                        props.total_blocks = self.storage.size_x * self.storage.size_y * self.storage.size_z
-                        props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
-                        sync_palette_to_props(props, self.storage)
-                    logger.info(f"Restored Live Sync metadata for {self.target_object_name} ({self.storage.size_x}x{self.storage.size_y}x{self.storage.size_z})")
-                    return True
+            manifest_data = _MANIFEST_DICT_CACHE.get(obj.name)
+            if manifest_data is None:
+                manifest_raw = obj.get("mtk:sync_manifest", "")
+                if manifest_raw:
+                    if isinstance(manifest_raw, dict):
+                        manifest_data = manifest_raw
+                    elif isinstance(manifest_raw, str) and manifest_raw.strip():
+                        import json
+                        try:
+                            manifest_data = json.loads(manifest_raw)
+                        except Exception:
+                            manifest_data = None
+                    if manifest_data and isinstance(manifest_data, dict):
+                        _MANIFEST_DICT_CACHE[obj.name] = manifest_data
+
+            if manifest_data and self.storage.import_manifest_metadata(manifest_data):
+                props = get_active_sync_props(bpy.context, target_obj=obj)
+                if props:
+                    props.has_selection = True
+                    props.min_x, props.min_y, props.min_z = self.storage.min_x, self.storage.min_y, self.storage.min_z
+                    props.max_x = self.storage.min_x + self.storage.size_x - 1
+                    props.max_y = self.storage.min_y + self.storage.size_y - 1
+                    props.max_z = self.storage.min_z + self.storage.size_z - 1
+                    props.size_x, props.size_y, props.size_z = self.storage.size_x, self.storage.size_y, self.storage.size_z
+                    props.total_blocks = self.storage.size_x * self.storage.size_y * self.storage.size_z
+                    props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
+                    sync_palette_to_props(props, self.storage)
+                logger.info(f"Restored Live Sync metadata for {self.target_object_name} ({self.storage.size_x}x{self.storage.size_y}x{self.storage.size_z})")
+                return True
         except Exception as e:
             logger.warning(f"Failed to restore live sync state from {self.target_object_name}: {e}")
         return False
@@ -232,6 +253,7 @@ class SyncSessionManager:
         if obj_name in self._sessions:
             session = self._sessions.pop(obj_name)
             session.stop()
+        clear_manifest_dict_cache(obj_name)
 
     def get_all_sessions(self) -> List[SyncSession]:
         return list(self._sessions.values())
@@ -240,6 +262,7 @@ class SyncSessionManager:
         for session in list(self._sessions.values()):
             session.stop()
         self._sessions.clear()
+        clear_manifest_dict_cache()
 
 
 _session_manager = SyncSessionManager()
@@ -462,6 +485,7 @@ def persist_sync_state_to_scene(context: Optional[bpy.types.Context] = None, tar
             sess = _session_manager.get_session(world_obj.name)
             storage = sess.storage if sess else voxel_storage
             manifest_dict = storage.export_manifest_metadata()
+            _MANIFEST_DICT_CACHE[world_obj.name] = manifest_dict
             import json
             world_obj["mtk:sync_manifest"] = json.dumps(manifest_dict)
             world_obj["mtk_block_bounds"] = [
@@ -482,24 +506,35 @@ def restore_sync_state_from_scene(context: Optional[bpy.types.Context] = None, t
         sess = _session_manager.get_session(world_obj.name)
         storage = sess.storage if sess else voxel_storage
 
-        manifest_str = world_obj.get("mtk:sync_manifest", "")
-        if manifest_str and isinstance(manifest_str, str):
-            import json
-            manifest_data = json.loads(manifest_str)
-            if storage.import_manifest_metadata(manifest_data):
-                props = get_active_sync_props(context, target_obj=world_obj)
-                if props:
-                    props.has_selection = True
-                    props.min_x, props.min_y, props.min_z = storage.min_x, storage.min_y, storage.min_z
-                    props.max_x = storage.min_x + storage.size_x - 1
-                    props.max_y = storage.min_y + storage.size_y - 1
-                    props.max_z = storage.min_z + storage.size_z - 1
-                    props.size_x, props.size_y, props.size_z = storage.size_x, storage.size_y, storage.size_z
-                    props.total_blocks = storage.size_x * storage.size_y * storage.size_z
-                    props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
-                    sync_palette_to_props(props, storage)
-                logger.info(f"Restored Live Sync metadata for {world_obj.name} ({storage.size_x}x{storage.size_y}x{storage.size_z})")
-                return True
+        manifest_data = _MANIFEST_DICT_CACHE.get(world_obj.name)
+        if manifest_data is None:
+            manifest_raw = world_obj.get("mtk:sync_manifest", "")
+            if manifest_raw:
+                if isinstance(manifest_raw, dict):
+                    manifest_data = manifest_raw
+                elif isinstance(manifest_raw, str) and manifest_raw.strip():
+                    import json
+                    try:
+                        manifest_data = json.loads(manifest_raw)
+                    except Exception:
+                        manifest_data = None
+                if manifest_data and isinstance(manifest_data, dict):
+                    _MANIFEST_DICT_CACHE[world_obj.name] = manifest_data
+
+        if manifest_data and storage.import_manifest_metadata(manifest_data):
+            props = get_active_sync_props(context, target_obj=world_obj)
+            if props:
+                props.has_selection = True
+                props.min_x, props.min_y, props.min_z = storage.min_x, storage.min_y, storage.min_z
+                props.max_x = storage.min_x + storage.size_x - 1
+                props.max_y = storage.min_y + storage.size_y - 1
+                props.max_z = storage.min_z + storage.size_z - 1
+                props.size_x, props.size_y, props.size_z = storage.size_x, storage.size_y, storage.size_z
+                props.total_blocks = storage.size_x * storage.size_y * storage.size_z
+                props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
+                sync_palette_to_props(props, storage)
+            logger.info(f"Restored Live Sync metadata for {world_obj.name} ({storage.size_x}x{storage.size_y}x{storage.size_z})")
+            return True
     except Exception as e:
         logger.warning(f"Failed to restore live sync state from scene object: {e}")
     return False

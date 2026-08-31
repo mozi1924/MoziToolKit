@@ -264,6 +264,11 @@ def preload_sync_world_data(
 
 
 def clear_mesh_builder_caches() -> None:
-    """Clear all global state metadata and material manager caches."""
+    """Clear all global state metadata, material manager, and face culler caches."""
     clear_shared_material_manager()
     _GLOBAL_STATE_META_CACHE.clear()
+    try:
+        from ..culling import get_shared_face_culler
+        get_shared_face_culler().clear_cache()
+    except Exception:
+        pass
