@@ -336,28 +336,18 @@ class VoxelStorage:
             self.size_x = size_x
             self.size_y = size_y
             self.size_z = size_z
+        else:
+            max_x = max(self.min_x + self.size_x - 1, start_x + size_x - 1)
+            max_y = max(self.min_y + self.size_y - 1, start_y + size_y - 1)
+            max_z = max(self.min_z + self.size_z - 1, start_z + size_z - 1)
+            self.min_x = min(self.min_x, start_x)
+            self.min_y = min(self.min_y, start_y)
+            self.min_z = min(self.min_z, start_z)
+            self.size_x = max_x - self.min_x + 1
+            self.size_y = max_y - self.min_y + 1
+            self.size_z = max_z - self.min_z + 1
 
         total_blocks = size_x * size_y * size_z
-        max_x = self.min_x + self.size_x - 1
-        max_y = self.min_y + self.size_y - 1
-        max_z = self.min_z + self.size_z - 1
-
-        expected_start = (
-            max(self.min_x, sec_x << 4),
-            max(self.min_y, sec_y << 4),
-            max(self.min_z, sec_z << 4),
-        )
-        expected_end = (
-            min(max_x, (sec_x << 4) + 15),
-            min(max_y, (sec_y << 4) + 15),
-            min(max_z, (sec_z << 4) + 15),
-        )
-        expected_size = tuple(max(0, end - start + 1) for start, end in zip(expected_start, expected_end))
-
-        if (start_x, start_y, start_z) != expected_start or (size_x, size_y, size_z) != expected_size:
-            logger.warning("Discarded section snapshot with unexpected bounds for (%d, %d, %d)", sec_x, sec_y, sec_z)
-            return False
-
         palette_len = len(palette)
         if len(grid_indices) < total_blocks or any(idx < 0 or idx >= palette_len for idx in grid_indices[:total_blocks]):
             logger.warning("Discarded malformed section snapshot for (%d, %d, %d)", sec_x, sec_y, sec_z)
