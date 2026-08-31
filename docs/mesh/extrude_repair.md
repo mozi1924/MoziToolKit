@@ -1,9 +1,9 @@
 # 模块五：智能挤出与 UV 修复系统 (Auto Extrude Repair & Modeling)
 
 - **对应 Operator**：
-  - `mozi.auto_extrude_repair` ([`operators/mesh/op_auto_extrude_repair.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/mesh/op_auto_extrude_repair.py))
-  - `mozi.random_extrude` ([`operators/mesh/op_random_extrude.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/operators/mesh/op_random_extrude.py))
-- **核心实现模块**：`utils/extrude_repair/` ([`core.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/extrude_repair/core.py), [`uv_analyzer.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/extrude_repair/uv_analyzer.py), [`types.py`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/extrude_repair/types.py))、`utils/mesh/random_extrude.py`
+  - `mozi.auto_extrude_repair` ([`op_auto_extrude_repair.py`](../../operators/mesh/op_auto_extrude_repair.py))
+  - `mozi.random_extrude` ([`op_random_extrude.py`](../../operators/mesh/op_random_extrude.py))
+- **核心实现模块**：`utils/extrude_repair/` ([`core.py`](../../utils/extrude_repair/core.py), [`uv_analyzer.py`](../../utils/extrude_repair/uv_analyzer.py), [`types.py`](../../utils/extrude_repair/types.py))、`utils/mesh/random_extrude.py`
 
 ```mermaid
 graph TD
