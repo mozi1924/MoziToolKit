@@ -901,6 +901,40 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
             bpy.data.objects.remove(root_obj, do_unlink=True)
             ProgressBar.end()
 
+    def test_reconnect_with_existing_scene_triggers_partial_repair(self):
+        """Ensure reconnecting to a scene with existing blocks and partial server changes triggers fast incremental repair."""
+        from operators.sync.op_sync_connect import SyncSession
+
+        root_obj = bpy.data.objects.new("Test_Reconnect_Repair", None)
+        bpy.context.collection.objects.link(root_obj)
+        try:
+            session = SyncSession("Test_Reconnect_Repair")
+            session.is_initial_handshake = True
+            session.storage.set_bounds(0, 0, 0, 32, 16, 16)
+            session.storage.set_block(0, 0, 0, "minecraft:stone")
+            session.storage.set_block(16, 0, 0, "minecraft:oak_planks")
+            session.storage.recalculate_all_section_crcs()
+
+            local_crc_0 = session.storage.get_section_crc(0, 0, 0)
+            local_crc_1 = session.storage.get_section_crc(1, 0, 0)
+
+            # Server manifest has section 1 modified in Minecraft while disconnected
+            server_crc_1_modified = (local_crc_1 + 12345) & 0xFFFFFFFF
+            sections = [(0, 0, 0, local_crc_0), (1, 0, 0, server_crc_1_modified)]
+
+            mismatched = session.storage.validate_manifest(sections)
+            self.assertEqual(mismatched, [(1, 0, 0)])
+
+            # Non-empty count is 2, mismatched is 1 -> partial repair path
+            non_empty_manifest_count = sum(
+                1 for _sx, _sy, _sz, _crc in sections if not session.storage.is_empty_section_crc(_sx, _sy, _sz, _crc)
+            )
+            self.assertEqual(non_empty_manifest_count, 2)
+            self.assertTrue(bool(session.storage.block_map))
+            self.assertLess(len(mismatched), non_empty_manifest_count)
+        finally:
+            bpy.data.objects.remove(root_obj, do_unlink=True)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

@@ -482,6 +482,14 @@ class VoxelStorage:
         self.section_crc_map[(sec_x, sec_y, sec_z)] = unsigned_crc
         return unsigned_crc
 
+    def get_section_crc(self, sec_x: int, sec_y: int, sec_z: int) -> Optional[int]:
+        """Return the stored CRC32 value for section (sec_x, sec_y, sec_z), if known."""
+        return self.section_crc_map.get((sec_x, sec_y, sec_z))
+
+    def set_section_crc(self, sec_x: int, sec_y: int, sec_z: int, crc: int) -> None:
+        """Manually assign or cache the CRC32 value for a section."""
+        self.section_crc_map[(sec_x, sec_y, sec_z)] = int(crc) & 0xFFFFFFFF
+
     def recalculate_all_section_crcs(self) -> None:
         """Recompute CRC32 across all sections in current bounds."""
         self.section_crc_map.clear()
