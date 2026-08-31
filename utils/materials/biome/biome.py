@@ -1376,10 +1376,25 @@ class BiomeResolver:
 
     def load_from_pack(self, pack: Any):
         """Load models from a ZipResourcePack instance (directory or zip)."""
-        if getattr(pack, "extract_dir", None) and Path(pack.extract_dir).exists():
+        if hasattr(pack, "get_all_models"):
+            self.models.update(pack.get_all_models())
+            self._update_models_index()
+            self._analyze_models()
+        elif getattr(pack, "extract_dir", None) and Path(pack.extract_dir).exists():
             self.load_from_pack_root(pack.extract_dir)
         elif getattr(pack, "zip_path", None) and Path(pack.zip_path).exists():
             self.load_from_zip(pack.zip_path)
+
+    def load_from_pack_stack(self, pack_stack: Any):
+        """Load models across a full ResourcePackStack in correct priority order."""
+        if hasattr(pack_stack, "get_all_models"):
+            self.models.update(pack_stack.get_all_models())
+            self._update_models_index()
+            self._analyze_models()
+        elif hasattr(pack_stack, "packs"):
+            for pack in reversed(pack_stack.packs):
+                self.load_from_pack(pack)
+
 
     def load_from_pack_root(self, pack_root: str | Path):
         """Scan and load models from an extracted resource pack root directory."""
