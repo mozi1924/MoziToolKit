@@ -125,13 +125,70 @@ class TestBiomeRefactor(unittest.TestCase):
         self.assertAlmostEqual(blended[2], expected_b, places=4)
 
     def test_classify_tint_category(self):
-        """Test tint category classification including dry_foliage."""
+        """Test tint category classification including dry_foliage and bush."""
         self.assertEqual(classify_tint_category("grass_block_top"), "grass")
+        self.assertEqual(classify_tint_category("bush"), "grass")
+        self.assertEqual(classify_tint_category("short_grass"), "grass")
+        self.assertEqual(classify_tint_category("pink_petals_stem"), "grass")
         self.assertEqual(classify_tint_category("oak_leaves"), "foliage")
+        self.assertEqual(classify_tint_category("leaf_litter"), "dry_foliage")
         self.assertEqual(classify_tint_category("pale_hanging_moss"), "dry_foliage")
         self.assertEqual(classify_tint_category("water_still"), "water")
         self.assertEqual(classify_tint_category("spruce_leaves"), "hardcoded")
         self.assertEqual(classify_tint_category("stone"), "none")
+
+    def test_bush_and_custom_model_inheritance(self):
+        """Test that BiomeResolver resolves parent inheritance chains and variable references."""
+        models = {
+            "tinted_cross": {
+                "textures": {"particle": "#cross"},
+                "elements": [
+                    {
+                        "from": [0.8, 0, 8], "to": [15.2, 16, 8],
+                        "faces": {
+                            "north": {"texture": "#cross", "tintindex": 0},
+                            "south": {"texture": "#cross", "tintindex": 0},
+                        }
+                    }
+                ]
+            },
+            "bush": {
+                "parent": "minecraft:block/tinted_cross",
+                "textures": {"cross": "block/bush"}
+            },
+            "custom_grass_block": {
+                "textures": {
+                    "side": "block/custom_grass_side",
+                    "overlay": "block/custom_grass_side_overlay"
+                }
+            }
+        }
+        resolver = BiomeResolver(models=models)
+        
+        # Verify bush tint
+        bush_tint = resolver.get_tint_info("bush")
+        self.assertEqual(bush_tint["tint_type"], TINT_TYPE_GRASS)
+        self.assertEqual(bush_tint["tint_category"], "grass")
+        self.assertAlmostEqual(bush_tint["tint_weight"], 1.0)
+        self.assertAlmostEqual(bush_tint["base_tint_weight"], 1.0)
+
+        # Verify discovered overlay pair
+        self.assertEqual(resolver.get_overlay_texture("custom_grass_side"), "custom_grass_side_overlay")
+
+    def test_jar_model_loading_and_fallback(self):
+        """Test loading models directly from a JAR file."""
+        jar_path = Path("/Users/jaxlocke/26.2-Fabric.jar")
+        if jar_path.exists():
+            resolver = BiomeResolver()
+            resolver.load_from_zip(jar_path)
+            self.assertGreater(len(resolver.models), 50)
+            
+            # Verify discovered tints from vanilla JAR
+            bush_info = resolver.get_tint_info("bush")
+            self.assertEqual(bush_info["tint_type"], TINT_TYPE_GRASS)
+            
+            overlay = resolver.get_overlay_texture("grass_block_side")
+            self.assertEqual(overlay, "grass_block_side_overlay")
 
     def test_colormap_sampler_node_group(self):
         """Test generation and socket structure of MC_Biome_Colormap_Sampler node group."""
