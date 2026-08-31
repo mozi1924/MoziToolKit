@@ -24,6 +24,109 @@ PROP_CREATED_BY = "mtk:created_by"
 PROP_PROVENANCE_SCHEMA_VERSION = "mtk:provenance_schema_version"
 PROP_ENABLE_UV_TILING = "mtk:enable_uv_tiling"
 
+# Standard Minecraft 6 Directions
+MC_DIRECTIONS = ("east", "west", "up", "down", "south", "north")
+
+DIR_TO_INDEX = {
+    "east": 0,
+    "west": 1,
+    "up": 2,
+    "top": 2,
+    "down": 3,
+    "bottom": 3,
+    "south": 4,
+    "north": 5,
+}
+
+INDEX_TO_DIR = {0: "east", 1: "west", 2: "up", 3: "down", 4: "south", 5: "north"}
+
+MC_DIR_OFFSETS = {
+    "east": (1, 0, 0),
+    "west": (-1, 0, 0),
+    "up": (0, 1, 0),
+    "top": (0, 1, 0),
+    "down": (0, -1, 0),
+    "bottom": (0, -1, 0),
+    "south": (0, 0, 1),
+    "north": (0, 0, -1),
+}
+
+# Authoritative Block Taxonomies
+AIR_BLOCKS = frozenset({
+    "minecraft:air",
+    "minecraft:cave_air",
+    "minecraft:void_air",
+    "minecraft:structure_void",
+    "air",
+    "cave_air",
+    "void_air",
+    "structure_void",
+})
+
+FLUID_BLOCKS = frozenset({
+    "minecraft:water",
+    "minecraft:flowing_water",
+    "minecraft:lava",
+    "minecraft:flowing_lava",
+    "water",
+    "flowing_water",
+    "lava",
+    "flowing_lava",
+})
+
+TRANSPARENT_BLOCKS = frozenset({
+    "minecraft:glass",
+    "minecraft:tinted_glass",
+    "minecraft:white_stained_glass",
+    "minecraft:orange_stained_glass",
+    "minecraft:magenta_stained_glass",
+    "minecraft:light_blue_stained_glass",
+    "minecraft:yellow_stained_glass",
+    "minecraft:lime_stained_glass",
+    "minecraft:pink_stained_glass",
+    "minecraft:gray_stained_glass",
+    "minecraft:light_gray_stained_glass",
+    "minecraft:cyan_stained_glass",
+    "minecraft:purple_stained_glass",
+    "minecraft:blue_stained_glass",
+    "minecraft:brown_stained_glass",
+    "minecraft:green_stained_glass",
+    "minecraft:red_stained_glass",
+    "minecraft:black_stained_glass",
+    "minecraft:ice",
+    "minecraft:packed_ice",
+    "minecraft:blue_ice",
+    "minecraft:frosted_ice",
+    "minecraft:water",
+    "minecraft:flowing_water",
+    "minecraft:slime_block",
+    "minecraft:honey_block",
+    "minecraft:beacon",
+    "minecraft:barrier",
+    "minecraft:structure_void",
+    "minecraft:light",
+    "minecraft:oak_leaves",
+    "minecraft:spruce_leaves",
+    "minecraft:birch_leaves",
+    "minecraft:jungle_leaves",
+    "minecraft:acacia_leaves",
+    "minecraft:dark_oak_leaves",
+    "minecraft:mangrove_leaves",
+    "minecraft:cherry_leaves",
+    "minecraft:azalea_leaves",
+    "minecraft:flowering_azalea_leaves",
+    "glass", "tinted_glass", "ice", "packed_ice", "blue_ice", "frosted_ice",
+    "water", "flowing_water", "slime_block", "honey_block", "beacon",
+})
+
+EMISSIVE_BLOCKS = frozenset({
+    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
+    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
+    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
+    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
+    "ochre_froglight", "pearlescent_froglight", "verdant_froglight",
+})
+
 # Atlas Categories & Priority Order (Minecraft-aligned)
 ATLAS_CATEGORY_BLOCKS = "blocks"
 ATLAS_CATEGORY_ITEMS = "items"

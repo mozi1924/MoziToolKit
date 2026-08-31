@@ -23,14 +23,8 @@ from .blockstate_resolver import BlockStateResolver, parse_block_state_string
 from .resource_loader import JarResourceLoader
 from .obj_loader import resolve_obj_model_for_state, build_bell_model
 
-# Canonical Minecraft Emissive block base names
-EMISSIVE_BLOCKS = frozenset({
-    "glowstone", "sea_lantern", "shroomlight", "magma_block", "magma",
-    "crying_obsidian", "jack_o_lantern", "beacon", "end_rod",
-    "lantern", "soul_lantern", "torch", "soul_torch", "wall_torch", "soul_wall_torch",
-    "lava", "flowing_lava", "fire", "soul_fire", "conduit", "sculk_catalyst",
-    "ochre_froglight", "pearlescent_froglight", "verdant_froglight",
-})
+from ..materials.constants import EMISSIVE_BLOCKS
+
 
 
 def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -> bool:
