@@ -23,25 +23,17 @@ def get_shared_material_manager(
 ) -> LiveSyncMaterialManager:
     """Retrieve or reuse shared LiveSyncMaterialManager instance to avoid re-indexing."""
     global _GLOBAL_MAT_MANAGER, _GLOBAL_MAT_MANAGER_SIG
-    obj_ptr = world_obj.as_pointer() if world_obj and hasattr(world_obj, "as_pointer") else id(world_obj)
+    obj_ptr = world_obj.as_pointer() if world_obj and hasattr(world_obj, "as_pointer") else (id(world_obj) if world_obj else 0)
     mapping_obj = atlas_params.get("mapping") if atlas_params else None
     mapping_id = id(mapping_obj) if mapping_obj else 0
-    pack_hash = atlas_params.get("pack_hash", "") if atlas_params else ""
+    pack_hash = str(atlas_params.get("pack_hash", "")) if atlas_params else ""
     current_sig = (obj_ptr, mapping_id, pack_hash)
 
-    is_valid = True
-    if _GLOBAL_MAT_MANAGER is not None:
-        for mat in _GLOBAL_MAT_MANAGER.chunk_materials.values():
-            try:
-                _ = mat.name
-            except (ReferenceError, Exception):
-                is_valid = False
-                break
+    if _GLOBAL_MAT_MANAGER is not None and _GLOBAL_MAT_MANAGER_SIG == current_sig:
+        return _GLOBAL_MAT_MANAGER
 
-    if not is_valid or _GLOBAL_MAT_MANAGER is None or _GLOBAL_MAT_MANAGER_SIG != current_sig:
-        _GLOBAL_MAT_MANAGER_SIG = current_sig
-        _GLOBAL_MAT_MANAGER = LiveSyncMaterialManager(world_obj=world_obj, atlas_params=atlas_params)
-
+    _GLOBAL_MAT_MANAGER_SIG = current_sig
+    _GLOBAL_MAT_MANAGER = LiveSyncMaterialManager(world_obj=world_obj, atlas_params=atlas_params)
     return _GLOBAL_MAT_MANAGER
 
 

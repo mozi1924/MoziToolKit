@@ -106,40 +106,13 @@ class SyncSession:
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
 
-    def get_cached_atlas_params(self, mat: Optional[bpy.types.Material]) -> dict:
-        try:
-            from ..materials.pack import get_configured_pack_stack
-            from ..materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
-        except (ImportError, ValueError):
-            from utils.materials.pack import get_configured_pack_stack
-            from utils.materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+    def get_cached_atlas_params(self, mat: Optional[bpy.types.Material] = None) -> dict:
+        mat_id = mat.as_pointer() if mat and hasattr(mat, "as_pointer") else (id(mat) if mat else 0)
+        if self.cached_atlas_params is not None and self.cached_mat_signature == mat_id:
+            return self.cached_atlas_params
 
-        pack_stack = None
-        stack_hash = ""
-        try:
-            pack_stack = get_configured_pack_stack()
-            stack_hash = get_effective_pack_hash(pack_stack)
-        except Exception:
-            pass
-
-        if mat and stack_hash and not is_material_hash_valid(mat, stack_hash):
-            mat = None
-
-        if mat:
-            mapping = mat.get("mtk:atlas_mapping", mat.get("mtk_atlas_mapping", ""))
-            current_signature = (
-                mat.as_pointer() if hasattr(mat, "as_pointer") else id(mat),
-                mapping,
-                get_effective_pack_hash(mat),
-                stack_hash,
-            )
-        else:
-            current_signature = (0, "", "", stack_hash)
-
-        if self.cached_atlas_params is None or self.cached_mat_signature != current_signature:
-            self.cached_mat_signature = current_signature
-            self.cached_atlas_params = _extract_atlas_params(mat, pack_stack=pack_stack)
-            clear_mesh_builder_caches()
+        self.cached_mat_signature = mat_id
+        self.cached_atlas_params = _extract_atlas_params(mat)
         return self.cached_atlas_params
 
     def schedule_mesh_sync(self, force_full_rebuild: bool = False) -> None:
@@ -760,7 +733,7 @@ def _pump_main_thread_events() -> Optional[float]:
 
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
-                        if area.type in ('VIEW_3D', 'PROPERTIES'):
+                        if area.type == 'VIEW_3D':
                             area.tag_redraw()
 
     # 2. Pump global fallback queues for direct/unit-test backward compatibility
@@ -830,7 +803,7 @@ def _pump_main_thread_events() -> Optional[float]:
 
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
-                        if area.type in ('VIEW_3D', 'PROPERTIES'):
+                        if area.type == 'VIEW_3D':
                             area.tag_redraw()
 
     if has_active_work:
