@@ -935,6 +935,41 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         finally:
             bpy.data.objects.remove(root_obj, do_unlink=True)
 
+    def test_validate_and_sync_scene_materials_hash_upgrade(self):
+        """Verify validate_and_sync_scene_materials detects outdated material hash in scene and upgrades it."""
+        from utils.live_sync.material_binding import validate_and_sync_scene_materials, get_shared_material_manager, clear_shared_material_manager
+        
+        mesh = bpy.data.meshes.new("Test_Mat_Sync_Mesh")
+        obj = bpy.data.objects.new("Test_Mat_Sync_Obj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        old_mat = bpy.data.materials.new("Test_Old_Atlas_Mat")
+        old_mat.use_nodes = True
+        old_mat["mtk:pack_hash"] = "old_hash_12345"
+        old_mat["mtk:atlas_chunk_id"] = 0
+        obj.data.materials.append(old_mat)
+
+        class MockPackStack:
+            def __init__(self, h):
+                self.stack_hash = h
+                self.packs = []
+
+        try:
+            mock_stack = MockPackStack("new_hash_67890")
+            # First call: detects mismatch between "old_hash_12345" and "new_hash_67890", triggers upgrade
+            upgraded = validate_and_sync_scene_materials(obj, pack_stack=mock_stack)
+            self.assertTrue(upgraded)
+
+            # Subsequent call with matching manager: fast pass (False)
+            upgraded_again = validate_and_sync_scene_materials(obj, pack_stack=mock_stack)
+            self.assertFalse(upgraded_again)
+        finally:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.meshes.remove(mesh, do_unlink=True)
+            bpy.data.materials.remove(old_mat, do_unlink=True)
+            clear_shared_material_manager()
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

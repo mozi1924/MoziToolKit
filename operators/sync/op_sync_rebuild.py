@@ -80,6 +80,12 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
         clear_sync_caches()
 
         existing_world = target_obj or get_target_world_object(context)
+        try:
+            from ...utils.live_sync.material_binding import validate_and_sync_scene_materials
+        except (ImportError, ValueError):
+            from utils.live_sync.material_binding import validate_and_sync_scene_materials
+        validate_and_sync_scene_materials(existing_world, pack_stack=pack_stack)
+
         mat = find_bound_atlas_material(existing_world) if existing_world else None
         atlas_params = get_cached_atlas_params(mat)
         cur_palette = active_storage.get_unique_states()

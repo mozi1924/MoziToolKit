@@ -258,6 +258,13 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             self.report({'INFO'}, f"Already connected or connecting: {target_obj.name}")
             return {'FINISHED'}
 
+        # Phase 1: Material Hash & Precompiled Cache Verification on Cold Start / Reconnect
+        try:
+            from ...utils.live_sync.material_binding import validate_and_sync_scene_materials
+        except (ImportError, ValueError):
+            from utils.live_sync.material_binding import validate_and_sync_scene_materials
+        validate_and_sync_scene_materials(target_obj, pack_stack=pack_stack)
+
         session.is_initial_handshake = True
         session.skip_next_full_snapshot = False
 
