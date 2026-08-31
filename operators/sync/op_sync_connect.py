@@ -380,85 +380,88 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
             session.delta_queue.put((min_x, min_y, min_z, changes, seq_id))
 
-        def on_section_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, sec_x, sec_y, sec_z, crc, palette, indices):
+        def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
             session.is_streaming = True
-            session.storage.set_section_snapshot(
-                min_x, min_y, min_z, size_x, size_y, size_z,
-                sec_x, sec_y, sec_z, crc, palette, indices
-            )
-            session.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
-
-        def on_section_manifest(min_x, min_y, min_z, size_x, size_y, size_z, entries):
-            mismatch_requests = []
-            cur_obj = bpy.data.objects.get(session.target_object_name)
-            cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
-
-            if (
-                session.storage.size_x != size_x
-                or session.storage.size_y != size_y
-                or session.storage.size_z != size_z
-                or session.storage.min_x != min_x
-                or session.storage.min_y != min_y
-                or session.storage.min_z != min_z
-                or not session.storage.section_crc_map
-                or session.force_next_full_rebuild
-            ):
-                logger.info("Manifest bounds mismatch or empty local storage. Initializing full container sync.")
-                session.storage.set_bounds(min_x, min_y, min_z, size_x, size_y, size_z)
-                for sec_x, sec_y, sec_z, server_crc in entries:
-                    session.storage.set_section_crc(sec_x, sec_y, sec_z, 0)
-                    if server_crc != EMPTY_SECTION_CRC:
-                        mismatch_requests.append((sec_x, sec_y, sec_z))
-                session.is_repairing_partial = False
-            else:
-                for sec_x, sec_y, sec_z, server_crc in entries:
-                    local_crc = session.storage.get_section_crc(sec_x, sec_y, sec_z)
-                    if local_crc != server_crc:
-                        if server_crc == EMPTY_SECTION_CRC:
-                            session.storage.clear_section(sec_x, sec_y, sec_z)
-                        else:
-                            mismatch_requests.append((sec_x, sec_y, sec_z))
-                session.is_repairing_partial = True
-
-            session.stream_total_sections = max(1, len(mismatch_requests))
-            session.stream_received_sections = 0
             session.stream_last_drain_time = time.time()
-            session.accumulated_stream_palettes.clear()
+            updated = session.storage.set_section_snapshot(
+                sec_x, sec_y, sec_z, start_x, start_y, start_z,
+                size_x, size_y, size_z, palette, grid_indices
+            )
+            if updated:
+                session.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
 
-            def update_ui_manifest():
-                c_obj = bpy.data.objects.get(session.target_object_name)
-                c_props = get_active_sync_props(bpy.context, target_obj=c_obj)
-                if c_props:
-                    c_props.has_selection = True
-                    c_props.min_x, c_props.min_y, c_props.min_z = min_x, min_y, min_z
-                    c_props.max_x = min_x + size_x - 1
-                    c_props.max_y = min_y + size_y - 1
-                    c_props.max_z = min_z + size_z - 1
-                    c_props.size_x, c_props.size_y, c_props.size_z = size_x, size_y, size_z
-                    c_props.total_blocks = size_x * size_y * size_z
-                    c_props.last_update_info = f"Manifest: {len(entries)} chunks ({len(mismatch_requests)} out-of-sync)"
-                if mismatch_requests:
-                    ProgressBar.update(current=30.0, total=100.0, message=f"Syncing {len(mismatch_requests)} chunks...")
-            run_in_main_thread(update_ui_manifest)
+        def on_section_manifest(server_seq_id, sections):
+            def update():
+                try:
+                    cur_obj = bpy.data.objects.get(session.target_object_name)
+                    cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+                    non_empty_manifest_count = sum(
+                        1 for _sx, _sy, _sz, _crc in sections if not session.storage.is_empty_section_crc(_sx, _sy, _sz, _crc)
+                    )
 
-            if mismatch_requests:
-                session.is_streaming = True
-                if session.client_thread:
-                    session.client_thread.send_repair_request(mismatch_requests)
-            else:
-                def on_clean_sync():
-                    c_obj = bpy.data.objects.get(session.target_object_name)
-                    c_props = get_active_sync_props(bpy.context, target_obj=c_obj)
-                    if c_props:
-                        c_props.sync_verified = True
-                        c_props.validation_info = "Verified (100% in sync)"
-                        c_props.last_update_info = f"Verified ({len(entries)} chunks identical)"
-                    session.is_streaming = False
-                    session.is_repairing_partial = False
-                    session.is_initial_handshake = False
-                    session.force_next_full_rebuild = False
-                    ProgressBar.finish(message=f"Sync Verified ({len(entries)} chunks up to date)", auto_dismiss_delay=1.0)
-                run_in_main_thread(on_clean_sync)
+                    if session.pending_full_sync_request or session.force_next_full_rebuild:
+                        session.pending_full_sync_request = False
+                        session.skip_next_full_snapshot = False
+                        session.is_streaming = True
+                        session.stream_total_sections = max(1, non_empty_manifest_count)
+                        session.stream_received_sections = 0
+                        if cur_props:
+                            cur_props.validation_info = f"Syncing ({non_empty_manifest_count} chunks)..."
+                        if non_empty_manifest_count == 0:
+                            _finalize_stream_sync(session, cur_props, cur_obj, 0)
+                        else:
+                            ProgressBar.update(current=30.0, total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
+                        return
+
+                    if session.is_streaming:
+                        logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
+                        return
+
+                    # Verify CRC mismatch against local voxel storage
+                    mismatched_crc = session.storage.validate_manifest(sections, existing_section_meshes=None)
+                    if cur_props:
+                        cur_props.sync_verified = (len(mismatched_crc) == 0)
+
+                    if len(mismatched_crc) == 0:
+                        session.skip_next_full_snapshot = True
+                        session.is_repairing_partial = False
+                        if cur_props:
+                            if cur_props.validation_info != "Verified (100% in sync)":
+                                cur_props.validation_info = "Verified (100% in sync)"
+                            if not cur_props.palette_list and session.storage.block_map:
+                                sync_palette_to_props(cur_props, session.storage)
+                        if session.is_initial_handshake:
+                            ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
+                        session.is_initial_handshake = False
+                    elif session.is_initial_handshake:
+                        session.skip_next_full_snapshot = False
+                        session.is_repairing_partial = False
+                        session.pending_full_sync_request = True
+                        session.is_initial_handshake = False
+                        session.is_streaming = True
+                        session.stream_total_sections = max(1, non_empty_manifest_count)
+                        session.stream_received_sections = 0
+                        if cur_props:
+                            cur_props.validation_info = f"Full sync ({non_empty_manifest_count} chunks)..."
+                        ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Full sync ({non_empty_manifest_count} chunks)...")
+                        ProgressBar.update(current=30.0, total=100.0, message="Requesting full world data...")
+                        if session.client_thread and session.client_thread.is_connected:
+                            logger.info(f"Live Sync ({session.target_object_name}): Requesting full sync ({non_empty_manifest_count} sections)...")
+                            session.client_thread.send_full_sync_request()
+                    else:
+                        if len(mismatched_crc) > 0 and session.client_thread and session.client_thread.is_connected:
+                            logger.info(f"Live Sync ({session.target_object_name}): Detected {len(mismatched_crc)} CRC mismatches. Requesting repair...")
+                            session.is_repairing_partial = True
+                            session.is_streaming = True
+                            session.stream_total_sections = len(mismatched_crc)
+                            session.stream_received_sections = 0
+                            if cur_props:
+                                cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                            session.client_thread.send_repair_request(mismatched_crc)
+                except Exception as e:
+                    logger.error(f"Live Sync manifest error for {session.target_object_name}: {e}", exc_info=True)
+                    ProgressBar.cancel(message=f"Manifest check error: {e}")
+            run_in_main_thread(update)
 
         # 3. Create client thread
         session.client_thread = SyncClientThread(

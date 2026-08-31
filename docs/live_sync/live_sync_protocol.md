@@ -24,7 +24,7 @@ MoziToolKit 与 Yefira Minecraft Fabric Mod 之间通过高性能异步 WebSocke
 ```
 +----------------+----------------+--------------------+--------------------+
 | Byte 0: 'M'    | Byte 1: 'C'    | Byte 2: Version    | Byte 3: Packet Type|
-| (0x4D)         | (0x43)         | (0x02)             | (0x01 ~ 0x81)      |
+| (0x4D)         | (0x43)         | (0x01)             | (0x01 ~ 0x82)      |
 +----------------+----------------+--------------------+--------------------+
 ```
 
@@ -52,7 +52,7 @@ MoziToolKit 与 Yefira Minecraft Fabric Mod 之间通过高性能异步 WebSocke
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
-0..3   | Header | Magic (0x4D, 0x43), Version (0x02), Type (0x01)
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x01)
 4..7   | int32  | Min X (世界绝对坐标)
 8..11  | int32  | Min Y
 12..15 | int32  | Min Z
@@ -65,7 +65,7 @@ Offset | Type   | Description
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
-0..3   | Header | Magic (0x4D, 0x43), Version (0x02), Type (0x05)
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x05)
 4..7   | uint32 | Server Sequence ID (服务程序序列号)
 8..9   | uint16 | Section Count (区块总数 N)
 10..   | Array  | N 个 Section 校验条目:
@@ -79,7 +79,7 @@ Offset | Type   | Description
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
-0..3   | Header | Magic (0x4D, 0x43), Version (0x02), Type (0x06)
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x06)
 4..7   | int32  | Section X
 8..11  | int32  | Section Y
 12..15 | int32  | Section Z
@@ -99,7 +99,7 @@ Offset | Type   | Description
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
-0..3   | Header | Magic (0x4D, 0x43), Version (0x02), Type (0x07)
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x07)
 4..5   | uint16 | Total Section Count (选区覆盖区块总数)
 6..7   | uint16 | Non-Empty Section Count (含有效方块待流式传输的区块数)
 8..11  | uint32 | Total Volume (方块总体积)
@@ -112,7 +112,7 @@ Offset | Type   | Description
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
-0..3   | Header | Magic (0x4D, 0x43), Version (0x02), Type (0x03)
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x03)
 4..7   | int32  | Min X
 8..11  | int32  | Min Y
 12..15 | int32  | Min Z
