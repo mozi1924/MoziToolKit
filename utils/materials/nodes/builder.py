@@ -25,6 +25,7 @@ from ..biome import (
     TINT_TYPE_FOLIAGE,
     TINT_TYPE_WATER,
     TINT_TYPE_HARDCODED,
+    TINT_TYPE_DRY_FOLIAGE,
 )
 
 
@@ -393,6 +394,8 @@ def rebuild_material(
                 resolved_col = biome_colors["grass_linear"]
             elif tint_type == TINT_TYPE_FOLIAGE:
                 resolved_col = biome_colors["foliage_linear"]
+            elif tint_type == TINT_TYPE_DRY_FOLIAGE:
+                resolved_col = biome_colors["dry_foliage_linear"]
             elif tint_type == TINT_TYPE_WATER:
                 resolved_col = biome_colors["water_linear"]
             else:
