@@ -457,3 +457,19 @@ def get_block_transmission_weight(block_name: str, texture_name: Optional[str] =
     """Return transmission weight (1.0 for glass/water/ice dielectric transmission, 0.0 otherwise)."""
     return 1.0 if is_transmissive_block(block_name, texture_name=texture_name) else 0.0
 
+
+def get_block_sticker_threshold(block_name: str, texture_name: Optional[str] = None) -> float:
+    """Return alpha threshold above which pixels are treated as surface stickers/decals."""
+    clean_name = (block_name or "").lower().replace("minecraft:", "").strip()
+    clean_tex = (texture_name or "").lower().replace("minecraft:", "").replace("block/", "").strip()
+    if clean_tex.endswith(".png"):
+        clean_tex = clean_tex[:-4]
+
+    # Water, Ice, Slime, Honey have body alpha around 0.70-0.75, so their sticker threshold is 0.95
+    if any(kw in clean_name or (clean_tex and kw in clean_tex) for kw in ("water", "ice", "slime", "honey")):
+        return 0.95
+
+    # Glass and stained glass have body alpha 0.0-0.45 and border alpha 0.60+, so threshold is 0.55
+    return 0.55
+
+

@@ -8,18 +8,18 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 15
+LABPBR_TEMPLATE_VERSION = 16
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The graph contains functional nodes and effective links with Random Walk SSS,
 # boolean Thin Wall transmission support, hardcoded emission direct input,
 # Transmission Weight physical refraction decoding, clean albedo for clear glass,
-# dual-layer glass surface sticker decoding (Alpha >= 0.55 decal vs Alpha < 0.55 body),
+# dual-layer glass and water surface sticker decoding (configurable Sticker Threshold),
 # perceptual roughness fix, and non-negative SSS clamping.
 LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 92
-LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 132
+LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 133
 LABPBR_REFERENCE_NODE_COUNT = 60
-LABPBR_REFERENCE_LINK_COUNT = 98
+LABPBR_REFERENCE_LINK_COUNT = 99
 LABPBR_REFERENCE_FRAMES = frozenset({
     "Optional _n: DirectX normal, AO, height",
     "Optional _s: smoothness, F0, metal, porosity / SSS, emission",
@@ -41,7 +41,9 @@ LABPBR_INTERFACE = (
     ("Thin Wall", "INPUT", "NodeSocketBool"),
     ("Subsurface Scale", "INPUT", "NodeSocketFloat"),
     ("Transmission Weight", "INPUT", "NodeSocketFloat"),
+    ("Sticker Threshold", "INPUT", "NodeSocketFloat"),
 )
+
 
 
 def interface_signature(group: bpy.types.NodeTree) -> tuple[tuple[str, str, str], ...]:
@@ -156,6 +158,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         ("Thin Wall", "INPUT", "NodeSocketBool", False),
         ("Subsurface Scale", "INPUT", "NodeSocketFloat", 0.1, 0.0, 10.0),
         ("Transmission Weight", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Sticker Threshold", "INPUT", "NodeSocketFloat", 0.55, 0.0, 1.0),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1400, 200))
@@ -231,7 +234,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     final_emission = node(nodes, "ShaderNodeMix", "Select Emission Mode", location=(120, -1600), properties={"data_type": "FLOAT", "blend_type": "MIX"})
 
     # Dual-layer Glass Decal / Sticker & Refraction Separation
-    is_refractive_body = _math(nodes, "Is Refractive Body", "LESS_THAN", (500, 50), {"Value[1]": 0.55})
+    is_refractive_body = _math(nodes, "Is Refractive Body", "LESS_THAN", (500, 50))
     final_transmission = _math(nodes, "Final Transmission", "MULTIPLY", (700, 50))
 
     has_alpha = _math(nodes, "Alpha > 0", "GREATER_THAN", (500, 200), {"Value[1]": 0.001})
@@ -287,6 +290,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
 
     # Dual-layer Glass Decal / Sticker & Refraction Separation
     link(links, group_input, "Albedo Alpha", is_refractive_body, "Value[0]")
+    link(links, group_input, "Sticker Threshold", is_refractive_body, "Value[1]")
     link(links, group_input, "Transmission Weight", final_transmission, "Value[0]")
     link(links, is_refractive_body, "Value", final_transmission, "Value[1]")
 

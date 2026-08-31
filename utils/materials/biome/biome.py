@@ -293,6 +293,8 @@ BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
     # Water & Fluid
     "water": [("water", 1.0)],
     "flowing_water": [("water", 1.0)],
+    "water_still": [("water", 1.0)],
+    "water_flow": [("water", 1.0)],
     "water_cauldron": [("water", 1.0)],
     "bubble_column": [("water", 1.0)],
     # Hardcoded tints

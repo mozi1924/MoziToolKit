@@ -484,13 +484,19 @@ def rebuild_material(
     if "Enable PBR (0-1)" in decoder_node.inputs:
         decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
 
-    from ..catalog import get_block_emission_strength, is_thin_wall_block, get_block_transmission_weight
+    from ..catalog import (
+        get_block_emission_strength,
+        is_thin_wall_block,
+        get_block_transmission_weight,
+        get_block_sticker_threshold,
+    )
     tex_name = texture_info.get("texture_name", "") or texture_info.get("source_texture", "")
     mat_name = mat.name
 
     emission_val = get_block_emission_strength(mat_name, texture_name=tex_name)
     is_thin = is_thin_wall_block(mat_name, texture_name=tex_name)
     trans_val = get_block_transmission_weight(mat_name, texture_name=tex_name)
+    sticker_thresh = get_block_sticker_threshold(mat_name, texture_name=tex_name)
 
     if "Hardcoded Emission" in decoder_node.inputs:
         decoder_node.inputs["Hardcoded Emission"].default_value = float(emission_val)
@@ -498,6 +504,8 @@ def rebuild_material(
         decoder_node.inputs["Thin Wall"].default_value = bool(is_thin)
     if "Transmission Weight" in decoder_node.inputs:
         decoder_node.inputs["Transmission Weight"].default_value = float(trans_val)
+    if "Sticker Threshold" in decoder_node.inputs:
+        decoder_node.inputs["Sticker Threshold"].default_value = float(sticker_thresh)
 
     mat.use_fake_user = False
 
