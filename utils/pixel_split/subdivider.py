@@ -10,7 +10,7 @@ from .types import TargetGrid
 from ..mesh.subdivide import subdivide_quad_face as core_subdivide_quad_face
 
 
-def subdivide_quad_face(bm: bmesh.types.BMesh, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid) -> List[bmesh.types.BMFace]:
+def subdivide_pixel_grid_face(bm: bmesh.types.BMesh, face: bmesh.types.BMFace, uv_layer, grid: TargetGrid) -> List[bmesh.types.BMFace]:
     """Subdivide a single Quad face into a grid of (cols x rows) quad sub-faces with 1:1 pixel UV mapping
     and full attribute migration (Vertex Weights, Sharp Edges, UV Seams, Edge Creases, Vertex Colors).
 
@@ -28,3 +28,7 @@ def subdivide_quad_face(bm: bmesh.types.BMesh, face: bmesh.types.BMFace, uv_laye
         normalize_uvs=False,
         uv_layer=uv_layer,
     )
+
+
+# Backward compatibility alias
+subdivide_quad_face = subdivide_pixel_grid_face

@@ -20,11 +20,7 @@ except ImportError:
     Vector = None
 
 
-def is_orthogonal_angle(angle: float, tolerance: float = 1e-3) -> bool:
-    """Check if an angle (in radians) is a multiple of 90 degrees (pi / 2)."""
-    half_pi = math.pi / 2.0
-    rem = angle % half_pi
-    return abs(rem) < tolerance or abs(rem - half_pi) < tolerance
+from .uv_math import is_orthogonal_angle
 
 
 def detect_face_uv_rotation(polygon, uv_layer, tolerance: float = 1e-3) -> float:

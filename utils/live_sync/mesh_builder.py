@@ -169,7 +169,7 @@ def is_yefira_root_object(obj: Optional[bpy.types.Object]) -> bool:
     if obj.get("mtk:is_yefira_world"):
         if not obj.parent or not obj.parent.get("mtk:is_yefira_world"):
             return True
-    if obj.type == 'EMPTY' and (obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_World")):
+    if obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_World"):
         return True
     if obj.type == 'EMPTY' and any(c.get("mtk:section_pos") is not None or "_Section_" in c.name for c in obj.children):
         return True
@@ -182,7 +182,7 @@ def is_yefira_child_section(obj: Optional[bpy.types.Object]) -> bool:
         return False
     if obj.get("mtk:section_pos") is not None:
         return True
-    if "_Section_" in obj.name:
+    if "_Section_" in obj.name or obj.name.startswith("Yefira_Section_"):
         return True
     return False
 
@@ -191,7 +191,13 @@ def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
     """Identify whether a Blender object is either a root container or child section of Yefira."""
     if not obj:
         return False
-    return is_yefira_root_object(obj) or is_yefira_child_section(obj) or bool(obj.get("mtk:is_yefira_world"))
+    if obj.get("mtk:is_yefira_world") or obj.get("mtk:section_pos") is not None:
+        return True
+    if is_yefira_root_object(obj) or is_yefira_child_section(obj):
+        return True
+    if obj.parent and is_yefira_root_object(obj.parent):
+        return True
+    return False
 
 
 def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
