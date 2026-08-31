@@ -270,12 +270,14 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertIn(1, mat_indices)
 
     def test_air_blocks_generate_zero_mesh(self):
-        """All types of air blocks (air, cave_air, void_air, structure_void) must generate 0 faces."""
+        """All types of air blocks (air, cave_air, void_air, structure_void, bubble_column) must generate 0 faces."""
         storage = VoxelStorage()
         storage.set_block(0, 0, 0, "minecraft:air")
         storage.set_block(1, 0, 0, "minecraft:cave_air")
         storage.set_block(0, 1, 0, "minecraft:void_air")
         storage.set_block(0, 0, 1, "minecraft:structure_void")
+        storage.set_block(1, 1, 0, "minecraft:bubble_column[drag=true]")
+        storage.set_block(1, 1, 1, "minecraft:bubble_column[drag=false]")
 
         res = build_world_mesh(bpy.context, storage)
         self.assertIsNotNone(res.world_obj)

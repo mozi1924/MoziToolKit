@@ -57,10 +57,12 @@ AIR_BLOCKS = frozenset({
     "minecraft:cave_air",
     "minecraft:void_air",
     "minecraft:structure_void",
+    "minecraft:bubble_column",
     "air",
     "cave_air",
     "void_air",
     "structure_void",
+    "bubble_column",
 })
 
 FLUID_BLOCKS = frozenset({

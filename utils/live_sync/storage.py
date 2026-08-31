@@ -34,7 +34,11 @@ def _extract_canonical_state_str(raw_state: str) -> str:
                 res = str(data["state"])
         except Exception:
             pass
-    if res in ("minecraft:air", "minecraft:cave_air", "minecraft:void_air", "air", "cave_air", "void_air"):
+    if (
+        res in ("minecraft:air", "minecraft:cave_air", "minecraft:void_air", "air", "cave_air", "void_air", "structure_void", "minecraft:structure_void", "bubble_column", "minecraft:bubble_column")
+        or res.startswith("minecraft:bubble_column[")
+        or res.startswith("bubble_column[")
+    ):
         return "minecraft:air"
     return res
 
@@ -168,7 +172,10 @@ class VoxelStorage:
     def get_all_sections(self) -> Set[Tuple[int, int, int]]:
         """Return all section coordinates that contain at least one non-air voxel."""
         sections = set()
-        air_names = {"", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air", "minecraft:structure_void"}
+        air_names = {
+            "", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air",
+            "minecraft:structure_void", "structure_void", "minecraft:bubble_column", "bubble_column"
+        }
         for sec_key, sec_dict in list(self._section_map.items()):
             for s in sec_dict.values():
                 canonical = _extract_canonical_state_str(s)

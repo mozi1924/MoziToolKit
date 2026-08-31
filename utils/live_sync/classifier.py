@@ -70,8 +70,8 @@ BIOME_TINT_FOLIAGE = frozenset({
     "leaf_litter",
 })
 BIOME_TINT_WATER = frozenset({
-    "minecraft:water", "minecraft:flowing_water", "minecraft:water_cauldron", "minecraft:bubble_column",
-    "water", "flowing_water", "water_cauldron", "bubble_column",
+    "minecraft:water", "minecraft:flowing_water", "minecraft:water_cauldron",
+    "water", "flowing_water", "water_cauldron",
 })
 
 HARDCODED_TINTS = {

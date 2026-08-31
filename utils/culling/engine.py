@@ -42,7 +42,8 @@ FULL_6_DIRS_MASK = (
 # Known block name classification sets
 _AIR_NAMES = frozenset({
     "air", "minecraft:air", "cave_air", "minecraft:cave_air",
-    "void_air", "minecraft:void_air", "structure_void", "minecraft:structure_void"
+    "void_air", "minecraft:void_air", "structure_void", "minecraft:structure_void",
+    "bubble_column", "minecraft:bubble_column",
 })
 
 _FLUID_NAMES = frozenset({
@@ -101,7 +102,7 @@ _NON_OCCLUDING_NAMES = frozenset({
     "wither_rose", "sunflower", "lilac", "rose_bush", "peony", "dead_bush",
     "sapling", "wheat", "carrots", "potatoes", "beetroots", "sweet_berry_bush",
     "ladder", "lever", "tripwire_hook", "tripwire", "vine", "scaffolding",
-    "barrier", "light", "structure_void",
+    "barrier", "light", "structure_void", "bubble_column", "minecraft:bubble_column",
 })
 
 _PARTIAL_SHAPE_SUFFIXES = (
