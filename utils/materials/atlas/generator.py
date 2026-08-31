@@ -50,6 +50,13 @@ from .chunk_packer import (
     pack_grid_category_chunks,
     pack_animated_category_chunks,
 )
+from .definition import (
+    AtlasDefinition,
+    AtlasDefinitionParser,
+    BuiltinAtlasRegistry,
+    PalettedPermutationsAtlasSource,
+)
+from .palette_baker import PalettePermutationEngine
 
 __all__ = [
     "AtlasGenerator",
@@ -120,6 +127,8 @@ class AtlasGenerator:
         self.static_materials = []   # list of static material metadata
         self.animated_materials = [] # list of animated material metadata
         self.biome_resolver = BiomeResolver()
+        self.atlas_definitions: dict[str, AtlasDefinition] = {}
+        self.palette_baker = PalettePermutationEngine(image_finder_fn=self._find_static_image)
 
         self.baker: Optional[StateBaker] = None
         try:
@@ -134,6 +143,36 @@ class AtlasGenerator:
 
     def _includes_category(self, category: str) -> bool:
         return self.included_categories is None or category in self.included_categories
+
+    def classify_texture(self, path_or_key: str, namespace: str = "minecraft") -> tuple[str, str]:
+        """Classify a texture using loaded atlas definitions with fallback heuristics.
+
+        Returns:
+            (category_name, sprite_name) e.g. ('blocks', 'block/stone') or ('armor_trims', 'trims/...')
+        """
+        clean = (path_or_key or "").replace("\\", "/").strip("/").lower()
+        if ":" in clean:
+            ns_part, clean = clean.split(":", 1)
+            if not namespace or namespace == "minecraft":
+                namespace = ns_part
+        if "textures/" in clean:
+            clean = clean.split("textures/", 1)[1].strip("/")
+
+        # Check atlas definitions in priority order
+        if self.atlas_definitions:
+            for cat_key in ATLAS_CATEGORY_PRIORITY:
+                for atlas_id, atlas_def in self.atlas_definitions.items():
+                    if atlas_def.name == cat_key or atlas_def.atlas_id == cat_key or atlas_def.atlas_id == f"{namespace}:{cat_key}":
+                        matched = atlas_def.match_texture(clean, namespace)
+                        if matched is not None:
+                            return atlas_def.name, matched
+            for atlas_id, atlas_def in self.atlas_definitions.items():
+                matched = atlas_def.match_texture(clean, namespace)
+                if matched is not None:
+                    return atlas_def.name, matched
+
+        cat = classify_texture_category(clean)
+        return cat, clean
 
     @staticmethod
     def _texture_name(namespace: str, stem: str) -> str:
@@ -159,6 +198,9 @@ class AtlasGenerator:
             Image.init()
         if not self.pack_stack or not self.pack_stack.packs:
             return
+
+        # 0. Load or synthesize data-driven Atlas definitions across the pack stack
+        self.atlas_definitions = AtlasDefinitionParser.load_from_pack_stack(self.pack_stack)
 
         # 1. Load models from all packs in the stack (bottom to top, so top overrides bottom)
         for pack in reversed(self.pack_stack.packs):
@@ -190,7 +232,7 @@ class AtlasGenerator:
         composite_textures = self.pack_stack.get_all_composite_textures()
         for (ns, path_key), info in composite_textures.items():
             base_rel = path_key.strip("/")
-            category = classify_texture_category(base_rel)
+            category, sprite_name = self.classify_texture(base_rel, ns)
             if not self._includes_category(category):
                 continue
             if self.filter_scene_blacklist and is_scene_blacklisted(base_rel):
@@ -241,8 +283,43 @@ class AtlasGenerator:
                 except Exception as e:
                     logger.warning(f"Failed to load specular {specular_file}: {e}")
 
+        # 3. Bake paletted permutations (e.g. armor trims) if declared in any atlas definition
+        if HAS_PIL and self.atlas_definitions:
+            def _get_texture_for_bake(res_key: str):
+                res_ns = "minecraft"
+                clean_k = res_key
+                if ":" in res_key:
+                    res_ns, clean_k = res_key.split(":", 1)
+                clean_k = clean_k.strip("/")
+                # Search directly in static textures
+                img_found = self.static_by_namespace.get(res_ns, {}).get(clean_k)
+                if img_found is not None:
+                    return img_found
+                return self._find_static_image(clean_k, namespace=res_ns)
 
-        # 3. Setup biome resolver across all packs
+            for atlas_id, atlas_def in self.atlas_definitions.items():
+                for src in atlas_def.sources:
+                    if isinstance(src, PalettedPermutationsAtlasSource):
+                        baked_map = self.palette_baker.bake_source(
+                            src.palette_key,
+                            src.permutations,
+                            src.textures,
+                            get_texture_fn=_get_texture_for_bake,
+                        )
+                        for sprite_key, baked_img in baked_map.items():
+                            ns = "minecraft"
+                            rel_sprite = sprite_key
+                            if ":" in sprite_key:
+                                ns, rel_sprite = sprite_key.split(":", 1)
+                            cat = atlas_def.name
+                            if not self._includes_category(cat):
+                                continue
+                            clean_name = self._texture_name(ns, rel_sprite)
+                            self.static_textures[clean_name] = baked_img
+                            self.static_by_namespace.setdefault(ns, {})[rel_sprite] = baked_img
+                            self.static_by_ns_cat.setdefault(ns, {}).setdefault(cat, {})[rel_sprite] = baked_img
+
+        # 4. Setup biome resolver across all packs
         for p in self.pack_stack.packs:
             if p.extract_dir and Path(p.extract_dir).exists():
                 self.biome_resolver.load_from_pack_root(p.extract_dir)
