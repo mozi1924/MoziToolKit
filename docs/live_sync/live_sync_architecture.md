@@ -23,6 +23,19 @@ MoziToolKit 实时同步模块（Live Sync）基于高性能异步 WebSocket 二
 2. **用户着色器节点保护**：若用户已在着色器编辑器中调整了材质节点（例如添加法线贴图、修改粗糙度或连接自定义着色器），同步更新过程仅修改网格拓扑、面材质插槽索引（`material_index`）及原生面属性（如 `mtk_biome_tint_color`），**绝不强制覆写或重置用户的节点树**。
 3. **材质插槽严格按序对齐**：世界根物体与各 Section 网格物体的材质插槽严格按 `chunk_id` 升序排列（即第 $i$ 个材质槽对应 Chunk ID 为 $i$ 的图集材质）。
 
+### 1.3 材质生命周期分层与冷热隔离机制 (Phase 1 vs Phase 2 Lifecycle)
+为彻底杜绝高频微更新卡顿并确保工程跨版本复用的材质正确性，材质系统严格划分为**冷阶段**与**热阶段**：
+
+- **冷阶段 (Phase 1: Handshake & Rebuild)**：
+  - **触发时机**：用户点击“连接”(`op_sync_connect`)、“重建网格”(`op_sync_rebuild`)、或打开旧 `.blend` 工程时。
+  - **职责**：调用 `validate_and_sync_scene_materials(target_obj)`，计算当前偏好设置中激活的 `target_pack_hash`，并与场景内已有材质哈希比对。
+  - **行为**：若用户重新编译了材质包导致哈希不一致，自动触发材质槽全量升级与网格索引重绑；若哈希一致，保留现有材质快速进入热阶段。
+- **热阶段 (Phase 2: Live Stream & Delta Engine @ 66Hz)**：
+  - **触发时机**：连接建立后的方块放置/破坏、红石脉冲、流体扩散等微更新事件循环。
+  - **职责**：纯内存直通。`get_cached_atlas_params` 通过材质 C 内存指针（`mat.as_pointer()`）实现纳秒级（< 0.0001ms）缓存命中。
+  - **红线禁令**：**绝对禁止**在热阶段主线程调用 `get_configured_pack_stack()`、扫描磁盘 ZIP 文件、计算 SHA256 哈希或重置 `_GLOBAL_STATE_META_CACHE` 烘焙模型缓存。
+  - **UI 隔离**：高频更新仅对 `VIEW_3D` 视口标记 `tag_redraw`，抑制 `PROPERTIES` 属性面板重绘，杜绝 Blender 内部依赖图重算风暴。
+
 ---
 
 ## 2. 连接时场景已有物体读取与增量校验机制 (Handshake & Validation)
@@ -47,11 +60,11 @@ sequenceDiagram
         Note over Scene,Storage: 0ms 瞬间连接，0 额外网络流量，直接保持已有网格并进入 Delta 监听
     else 存在坏区块或局部差异 (部分 Section CRC 不一致或场景子网格丢失)
         Storage->>Client: 计算差异与坏区块 Section 坐标列表
-        Client->>Server: 发送 REPAIR_REQUEST (仅请求不匹配或损坏的区块)
+        Client->>Server: 发送 REPAIR_REQUEST (0x81 仅请求不匹配或损坏的区块)
         Server->>Client: 发送 SECTION_SNAPSHOT
-        Client->>Scene: 仅增量重构/修复发生变更的 Section 子网格及邻域
+        Client->>Scene: 仅增量重构/修复发生变更的 Section 子网格及邻域 (< 5ms)
     else 场景为空、子网格丢失或选区 Bounds 完全变更
-        Client->>Server: 发送 FULL_SYNC_REQUEST
+        Client->>Server: 发送 FULL_SYNC_REQUEST (0x80)
         Server->>Client: 流式发送 SECTION_SNAPSHOT
         Client->>Scene: 清理缓存并执行全量网格构建
     end

@@ -107,3 +107,74 @@ def rebind_mesh_material_indices(
                 chunk_attr.data[poly.index].value = chunk_id
         if chunk_id in mat_manager.chunk_materials:
             poly.material_index = mat_manager.get_slot_for_chunk(chunk_id)
+
+
+def validate_and_sync_scene_materials(
+    target_obj: Optional[bpy.types.Object],
+    pack_stack: Optional[Any] = None,
+) -> bool:
+    """
+    Phase 1 Handshake & Rebuild Material Validator.
+    Checks if the scene object's bound materials match the active ResourcePackStack hash.
+    If outdated (e.g. user re-compiled atlas in preferences or switched packs since .blend was saved),
+    re-instantiates the shared material manager and updates material slots & face indices cleanly.
+    Returns True if materials were refreshed/upgraded, False if already up-to-date.
+    """
+    if not target_obj:
+        return False
+
+    try:
+        from ..materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+        from ..materials.pack.pack_stack import get_configured_pack_stack
+    except (ImportError, ValueError):
+        from utils.materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+        from utils.materials.pack.pack_stack import get_configured_pack_stack
+
+    if pack_stack is None:
+        try:
+            pack_stack = get_configured_pack_stack()
+        except Exception:
+            pack_stack = None
+
+    target_pack_hash = get_effective_pack_hash(pack_stack) if pack_stack else ""
+
+    # Check slot 0 material or bound atlas material on target_obj
+    existing_mat = None
+    if getattr(target_obj, "data", None) and hasattr(target_obj.data, "materials") and target_obj.data.materials:
+        for slot_mat in target_obj.data.materials:
+            if slot_mat:
+                existing_mat = slot_mat
+                break
+
+    is_valid = True
+    if existing_mat:
+        mat_hash = get_effective_pack_hash(existing_mat)
+        if target_pack_hash and mat_hash and mat_hash != target_pack_hash:
+            is_valid = False
+        elif not is_material_hash_valid(existing_mat, target_pack_hash):
+            is_valid = False
+
+    if not is_valid or _GLOBAL_MAT_MANAGER is None:
+        clear_shared_material_manager()
+        try:
+            from ..mc_baker import refresh_shared_baker_sources
+            refresh_shared_baker_sources(force_precompile_if_missing=True)
+        except Exception:
+            pass
+
+        from ..materials.yefira.atlas_integration import extract_atlas_parameters
+        atlas_params = extract_atlas_parameters(mat=None, pack_stack=pack_stack)
+
+        mat_manager = get_shared_material_manager(world_obj=target_obj, atlas_params=atlas_params)
+        sync_section_material_slots(target_obj, mat_manager)
+
+        # Synchronize child sections if hierarchical mode
+        for child in getattr(target_obj, "children", []):
+            if child.data and isinstance(child.data, bpy.types.Mesh):
+                sync_section_material_slots(child, mat_manager)
+                rebind_mesh_material_indices(child.data, mat_manager)
+
+        return True
+
+    return False
+
