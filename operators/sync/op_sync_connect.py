@@ -439,7 +439,30 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
                     existing_mesh_coords = set(existing_sections.keys()) if existing_sections else None
 
-                    # Verify CRC mismatch against local voxel storage and scene mesh health
+                    if not session.is_initial_handshake:
+                        # Runtime heartbeat validation check:
+                        # If active deltas are queued or dirty sections are being processed, skip to avoid interrupting fast micro-deltas
+                        if not session.delta_queue.empty() or session.storage.get_dirty_sections():
+                            return
+
+                        mismatched_crc = session.storage.validate_manifest(sections, existing_section_meshes=existing_mesh_coords)
+                        if cur_props:
+                            cur_props.sync_verified = (len(mismatched_crc) == 0)
+                            if len(mismatched_crc) == 0 and cur_props.validation_info != "Verified (100% in sync)":
+                                cur_props.validation_info = "Verified (100% in sync)"
+
+                        if len(mismatched_crc) > 0 and not session.is_streaming and session.client_thread and session.client_thread.is_connected:
+                            logger.info(f"Live Sync ({session.target_object_name}): Background manifest detected {len(mismatched_crc)} out-of-sync sections. Requesting repair...")
+                            session.is_repairing_partial = True
+                            session.is_streaming = True
+                            session.stream_total_sections = len(mismatched_crc)
+                            session.stream_received_sections = 0
+                            if cur_props:
+                                cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                            session.client_thread.send_repair_request(mismatched_crc)
+                        return
+
+                    # Initial Handshake / Reconnect Validation
                     mismatched_crc = session.storage.validate_manifest(sections, existing_section_meshes=existing_mesh_coords)
                     if cur_props:
                         cur_props.sync_verified = (len(mismatched_crc) == 0)
@@ -452,8 +475,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                                 cur_props.validation_info = "Verified (100% in sync)"
                             if not cur_props.palette_list and session.storage.block_map:
                                 sync_palette_to_props(cur_props, session.storage)
-                        if session.is_initial_handshake:
-                            ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
+                        ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
                         session.is_initial_handshake = False
 
                     elif not session.storage.block_map or len(mismatched_crc) >= non_empty_manifest_count:
@@ -474,7 +496,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                             session.client_thread.send_full_sync_request()
 
                     else:
-                        # Existing local scene with partial differences: execute fast incremental section repair
+                        # Existing local scene with partial differences on reconnect
                         logger.info(f"Live Sync ({session.target_object_name}): Detected {len(mismatched_crc)} out-of-sync sections on reconnect. Requesting incremental repair...")
                         session.skip_next_full_snapshot = True
                         session.is_repairing_partial = True

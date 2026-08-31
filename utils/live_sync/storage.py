@@ -418,6 +418,7 @@ class VoxelStorage:
             return []
 
         applied: List[Tuple[int, int, int, str, str]] = []
+        affected_sections: Set[Tuple[int, int, int]] = set()
         for abs_x, abs_y, abs_z, state_str in changes:
             key = (abs_x, abs_y, abs_z)
             old_state = self.block_map.get(key)
@@ -434,10 +435,8 @@ class VoxelStorage:
                 self._section_map[sec_key] = {}
             self._section_map[sec_key][key] = state_str
             self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
-
-            sx, sy, sz = abs_x >> 4, abs_y >> 4, abs_z >> 4
-            self.section_crc_map.pop((sx, sy, sz), None)
-            self._dirty_sections.add((sx, sy, sz))
+            affected_sections.add((sx, sy, sz))
+            self._known_empty_sections.discard((sx, sy, sz))
 
             # Check boundary conditions and mark adjacent section dirty for face culling consistency
             if (abs_x & 15) == 0:
@@ -454,6 +453,10 @@ class VoxelStorage:
                 self._dirty_sections.add((sx, sy, sz + 1))
 
             applied.append((abs_x, abs_y, abs_z, old_state or "minecraft:air", state_str))
+
+        for (sx, sy, sz) in affected_sections:
+            self.calculate_and_store_section_crc(sx, sy, sz)
+            self._dirty_sections.add((sx, sy, sz))
 
         return applied
 
