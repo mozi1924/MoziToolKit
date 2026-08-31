@@ -44,13 +44,13 @@ $$z_{blender} = y_{mc} - \text{min\_y} + 0.5$$
 ## 2. 6向邻域遮挡剔除 (Neighbor Culling) 与拓扑焊接
 
 ### 2.1 统一面剔除系统 (`utils.culling.FaceCuller`)
-Direct Mesh 网格构建全面接入统一的面剔除引擎 [`FaceCuller`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/culling/engine.py)，对齐 Minecraft 1.21+ 原版 `Block.shouldRenderFace` 与 `BlockBehaviour.skipRendering` 规范：
+Direct Mesh 网格构建全面接入统一的面剔除引擎 [`FaceCuller`](../../utils/culling/engine.py)，对齐 Minecraft 1.21+ 原版 `Block.shouldRenderFace` 与 `BlockBehaviour.skipRendering` 规范：
 1. **实心不透明方块（Solid Opaque）**：相交接触面 100% 双向剔除；接触玻璃/树叶/流体/空气时正常保留渲染。
 2. **半透明与玻璃（Glass & Translucent）**：同类玻璃相互剔除内部接缝；接触实心方块时玻璃面剔除自身，实心方块正常渲染实体表面。
 3. **透空树叶（Cutout Leaves）**：支持 Fancy（双面透空）、Single-Face（单向消重）与 Fast（外壳剔除）模式；接触原木时叶片贴合面被剔除。
 4. **局部与非满方块（Partial Shapes）**：台阶、楼梯与接触面执行 2D 矩形投影几何遮挡计算（`Shapes.joinIsNotEmpty`）。
 
-> 详细规范与原版逆向机制请参见 [面剔除系统完整技术文档](file:///Users/jaxlocke/Desktop/MoziToolKit/docs/mesh/face_culling.md)。
+> 详细规范与原版逆向机制请参见 [面剔除系统完整技术文档](face_culling.md)。
 
 ### 2.2 拓扑微距焊接 (Weld Vertices)
 - **焊接距离**：默认 $dist = 1.0 \times 10^{-4}$（$0.1\text{mm}$）。

@@ -60,7 +60,7 @@ public static boolean shouldRenderFace(BlockState state, BlockState neighborStat
 
 ## 3. 核心方块分类与剔除规则
 
-系统将所有方块状态映射为 [`CullCategory`](file:///Users/jaxlocke/Desktop/MoziToolKit/utils/culling/types.py#L10-L18)：
+系统将所有方块状态映射为 [`CullCategory`](../../utils/culling/types.py)：
 
 ### 3.1 SOLID_OPAQUE (实心不透明方块)
 - **典型方块**：石头、泥土、木板、深层岩、圆石等。
