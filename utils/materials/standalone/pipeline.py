@@ -128,7 +128,7 @@ class StandaloneReplacementEngine:
 
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
             mat = bpy.data.materials.new(name=mat_name)
-            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash, biome_preset=biome_preset):
+            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash, biome_preset=biome_preset, pack_stack=pack_stack):
                 bpy.data.materials.remove(mat)
                 return None, False
 

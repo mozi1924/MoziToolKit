@@ -68,6 +68,7 @@ def build_atlas_material(
     mat_name: str = "MC_Atlas_Material",
     pack_textures: bool = True,
     uv_attribute: str | None = None,
+    pack_hash: str | None = None,
 ) -> bpy.types.Material:
     """
     Construct or update a Blender Material that uses the generated Atlas textures and mapping.
@@ -168,7 +169,30 @@ def build_atlas_material(
         biome_tint_node.name = "MC Biome Tint"
         biome_tint_node.location = (150, 200)
 
-        add_packed_biome_attribute_nodes(nodes, links, biome_tint_node)
+        # Collect active colormaps from cache or pack stack
+        colormaps = {}
+        colormaps_dir = atlas_path.parent / "colormaps"
+        if colormaps_dir.is_dir():
+            for cm_name in ("grass", "foliage", "dry_foliage"):
+                p = colormaps_dir / f"{cm_name}.png"
+                if p.is_file():
+                    colormaps[cm_name] = p
+        if not colormaps:
+            from ..pack.pack_stack import get_configured_pack_stack
+            stack = get_configured_pack_stack()
+            if stack:
+                colormaps = stack.get_all_colormaps()
+
+        add_packed_biome_attribute_nodes(
+            nodes=nodes,
+            links=links,
+            biome_tint_node=biome_tint_node,
+            location=(-300, 200),
+            templates=templates,
+            colormaps=colormaps,
+            pack_hash=pack_hash,
+            pack_textures=pack_textures,
+        )
 
         links.new(tex_albedo.outputs["Color"], biome_tint_node.inputs["Base Color"])
         links.new(tex_albedo.outputs["Alpha"], biome_tint_node.inputs["Base Alpha"])
@@ -231,13 +255,28 @@ def build_atlas_material(
     return mat
 
 
-def add_packed_biome_attribute_nodes(nodes, links, biome_tint_node, location=(-300, 200)):
-    """Connect two RGBA face attributes to the biome group (six legacy streams)."""
+def add_packed_biome_attribute_nodes(
+    nodes,
+    links,
+    biome_tint_node,
+    location=(-300, 200),
+    templates: dict = None,
+    colormaps: dict = None,
+    pack_hash: str = None,
+    pack_textures: bool = True,
+):
+    """
+    Connect packed mesh face attributes (weights, tint type, static color)
+    and dynamic ColorMap sampling pipeline (MC_Biome_Colormap_Sampler, Colormap textures, MC_Biome_Colormap_Decoder)
+    to the MC_Biome_Tint node.
+    """
+    # 1. Mesh Attribute: ATTR_BIOME_TINT_DATA (RGBA: base, overlay, tint, tint_type / use_hardcoded)
     data = nodes.new("ShaderNodeAttribute")
     data.name = "Attr Biome Tint Data"
     data.attribute_type = "GEOMETRY"
     data.attribute_name = ATTR_BIOME_TINT_DATA
     data.location = (location[0], location[1] + 160)
+
     split = nodes.new("ShaderNodeSeparateColor")
     split.name = "Split Biome Tint Data"
     split.location = (location[0] + 180, location[1] + 160)
@@ -247,16 +286,66 @@ def add_packed_biome_attribute_nodes(nodes, links, biome_tint_node, location=(-3
     links.new(split.outputs["Blue"], biome_tint_node.inputs["Tint Weight"])
     links.new(data.outputs["Alpha"], biome_tint_node.inputs["Use Hardcoded"])
 
+    # 2. Mesh Attribute: ATTR_BIOME_TINT_COLOR (Fallback / Static resolved tint color)
     color = nodes.new("ShaderNodeAttribute")
     color.name = "Attr Biome Tint Color"
     color.attribute_type = "GEOMETRY"
     color.attribute_name = ATTR_BIOME_TINT_COLOR
-    color.location = (location[0], location[1])
-    # The writer resolves the active colour up front, therefore feeding it to
-    # both sockets preserves the node group's legacy interface without a
-    # second colour attribute.
-    links.new(color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
+    color.location = (location[0], location[1] - 80)
     links.new(color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
+
+    # 3. Dynamic ColorMap Pipeline
+    if not templates:
+        templates = ensure_all_templates()
+
+    sampler_group = templates.get("MC_Biome_Colormap_Sampler")
+    decoder_group = templates.get("MC_Biome_Colormap_Decoder")
+
+    if sampler_group and decoder_group and colormaps:
+        # Sampler Node
+        sampler_node = nodes.new("ShaderNodeGroup")
+        sampler_node.node_tree = sampler_group
+        sampler_node.name = "MC Biome Colormap Sampler"
+        sampler_node.location = (location[0] - 650, location[1] + 320)
+        sampler_node.inputs["Temperature"].default_value = 0.8
+        sampler_node.inputs["Humidity"].default_value = 0.4
+
+        # Decoder Node
+        decoder_node = nodes.new("ShaderNodeGroup")
+        decoder_node.node_tree = decoder_group
+        decoder_node.name = "MC Biome Colormap Decoder"
+        decoder_node.location = (location[0] - 120, location[1] + 320)
+
+        # Wire Tint Type from Split Biome Tint Data Alpha
+        links.new(data.outputs["Alpha"], decoder_node.inputs["Tint Type"])
+        links.new(color.outputs["Color"], decoder_node.inputs["Hardcoded Color"])
+        links.new(color.outputs["Color"], decoder_node.inputs["Fallback Color"])
+
+        # Colormap Textures
+        cm_configs = [
+            ("grass", "Colormap Grass", (location[0] - 380, location[1] + 480), "Grass Color"),
+            ("foliage", "Colormap Foliage", (location[0] - 380, location[1] + 280), "Foliage Color"),
+            ("dry_foliage", "Colormap Dry Foliage", (location[0] - 380, location[1] + 80), "Dry Foliage Color"),
+        ]
+        for key, node_name, pos, target_socket in cm_configs:
+            cm_path = colormaps.get(key)
+            if cm_path and Path(cm_path).is_file():
+                cm_img = load_image_texture(cm_path, colorspace="sRGB", pack_textures=pack_textures, pack_hash=pack_hash)
+                if cm_img:
+                    tex_node = nodes.new("ShaderNodeTexImage")
+                    tex_node.name = node_name
+                    tex_node.image = cm_img
+                    tex_node.interpolation = "Closest"
+                    tex_node.extension = "CLIP"
+                    tex_node.location = pos
+                    links.new(sampler_node.outputs["Colormap UV"], tex_node.inputs["Vector"])
+                    links.new(tex_node.outputs["Color"], decoder_node.inputs[target_socket])
+
+        # Connect Decoder Output to Biome Tint
+        links.new(decoder_node.outputs["Color"], biome_tint_node.inputs["Tint Color"])
+    else:
+        # Fallback: connect color directly to Tint Color
+        links.new(color.outputs["Color"], biome_tint_node.inputs["Tint Color"])
 
 
 def add_packed_material_props_nodes(nodes, links, decoder_node, location=(-300, -200)):
@@ -337,6 +426,20 @@ def build_atlas_chunk_materials(
     compact_mapping_str = json.dumps(compact_mapping, separators=(",", ":"))
 
     templates = ensure_all_templates()
+    # Collect active colormaps from cache or pack stack
+    colormaps = {}
+    colormaps_dir = atlas_path.parent / "colormaps"
+    if colormaps_dir.is_dir():
+        for cm_name in ("grass", "foliage", "dry_foliage"):
+            p = colormaps_dir / f"{cm_name}.png"
+            if p.is_file():
+                colormaps[cm_name] = p
+    if not colormaps:
+        from ..pack.pack_stack import get_configured_pack_stack
+        stack = get_configured_pack_stack()
+        if stack:
+            colormaps = stack.get_all_colormaps()
+
     short_hash = pack_hash[:12] if pack_hash else ""
 
     materials = {}
@@ -461,7 +564,16 @@ def build_atlas_chunk_materials(
             biome_tint_node.name = "MC Biome Tint"
             biome_tint_node.location = (50, 200)
 
-            add_packed_biome_attribute_nodes(nodes, links, biome_tint_node)
+            add_packed_biome_attribute_nodes(
+                nodes=nodes,
+                links=links,
+                biome_tint_node=biome_tint_node,
+                location=(-300, 200),
+                templates=templates,
+                colormaps=colormaps,
+                pack_hash=pack_hash,
+                pack_textures=pack_textures,
+            )
 
             links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
             links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])

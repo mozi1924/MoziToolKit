@@ -231,6 +231,85 @@ class TestBiomeRefactor(unittest.TestCase):
         expected_grass = blend_biome_colors([("PLAINS", 0.5), ("FOREST", 0.5)], "grass")
         self.assertAlmostEqual(colors_tr[0][0], expected_grass[0], places=3)
 
+    def test_rebuild_material_with_colormap_sampler(self):
+        """Test that rebuild_material creates MC Biome Colormap Sampler and links to colormap texture."""
+        from utils.materials.nodes.builder import rebuild_material
+        import tempfile
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            # Create a mock grass colormap
+            col_dir = tmppath / "assets" / "minecraft" / "textures" / "colormap"
+            col_dir.mkdir(parents=True, exist_ok=True)
+            col_img = Image.new("RGB", (256, 256), color=(145, 189, 89))
+            col_img.save(col_dir / "grass.png")
+            
+            # Create mock grass albedo
+            tex_dir = tmppath / "assets" / "minecraft" / "textures" / "block"
+            tex_dir.mkdir(parents=True, exist_ok=True)
+            albedo_img = Image.new("RGBA", (16, 16), color=(100, 100, 100, 255))
+            albedo_file = tex_dir / "bush.png"
+            albedo_img.save(albedo_file)
+            
+            pack = ZipResourcePack(tmppath)
+            stack = ResourcePackStack([pack])
+            
+            mat = bpy.data.materials.new("test_bush_material")
+            tex_info = {
+                "namespace": "minecraft",
+                "texture_name": "bush",
+                "albedo": str(albedo_file),
+                "tint_info": {
+                    "tint_type": TINT_TYPE_GRASS,
+                    "tint_category": "grass",
+                    "tint_weight": 1.0,
+                    "base_tint_weight": 1.0,
+                    "overlay_tint_weight": 1.0,
+                    "has_overlay": False,
+                    "is_hardcoded": False,
+                }
+            }
+            
+            ok = rebuild_material(
+                mat=mat,
+                texture_info=tex_info,
+                pack_textures=False,
+                biome_preset="FOREST",
+                pack_stack=stack,
+            )
+            self.assertTrue(ok)
+            
+            # Verify nodes created in material node tree
+            node_names = [n.name for n in mat.node_tree.nodes]
+            self.assertIn("MC Biome Tint", node_names)
+            self.assertIn("MC Biome Colormap Sampler", node_names)
+            self.assertIn("Colormap Grass", node_names)
+            
+            sampler_node = mat.node_tree.nodes["MC Biome Colormap Sampler"]
+            self.assertAlmostEqual(sampler_node.inputs["Temperature"].default_value, 0.7, places=2)
+            self.assertAlmostEqual(sampler_node.inputs["Humidity"].default_value, 0.8, places=2)
+            
+            # Verify link: Sampler -> Colormap -> Biome Tint
+            colormap_node = mat.node_tree.nodes["Colormap Grass"]
+            self.assertIsNotNone(colormap_node.image)
+            self.assertTrue(any(l.from_node == sampler_node and l.to_node == colormap_node for l in mat.node_tree.links))
+            self.assertTrue(any(l.from_node == colormap_node and l.to_node.name == "MC Biome Tint" for l in mat.node_tree.links))
+
+    def test_colormap_decoder_node_group(self):
+        """Test generation and socket structure of MC_Biome_Colormap_Decoder node group."""
+        from utils.node_groups.biome import ensure_colormap_decoder
+        tree = ensure_colormap_decoder()
+        self.assertIsNotNone(tree)
+        inputs = [item.name for item in tree.interface.items_tree if getattr(item, "in_out", "") == "INPUT"] if hasattr(tree, "interface") else [s.name for s in tree.inputs]
+        outputs = [item.name for item in tree.interface.items_tree if getattr(item, "in_out", "") == "OUTPUT"] if hasattr(tree, "interface") else [s.name for s in tree.outputs]
+        self.assertIn("Tint Type", inputs)
+        self.assertIn("Grass Color", inputs)
+        self.assertIn("Foliage Color", inputs)
+        self.assertIn("Dry Foliage Color", inputs)
+        self.assertIn("Water Color", inputs)
+        self.assertIn("Hardcoded Color", inputs)
+        self.assertIn("Color", outputs)
+
 
 if __name__ == "__main__":
     unittest.main()

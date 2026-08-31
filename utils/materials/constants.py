@@ -448,6 +448,8 @@ ATTR_HARDCODED_COLOR = "mtk_hardcoded_color"
 ATTR_USE_HARDCODED = "mtk_use_hardcoded"
 ATTR_BIOME_TEMPERATURE = "mtk_biome_temperature"
 ATTR_BIOME_HUMIDITY = "mtk_biome_humidity"
+ATTR_COLORMAP_UV = "mtk_colormap_uv"
+ATTR_BIOME_COORDS = "mtk_biome_coords"
 
 # Biome & Overlay Custom Property Keys (Namespaced with mtk:)
 PROP_HAS_OVERLAY = "mtk:has_overlay"
