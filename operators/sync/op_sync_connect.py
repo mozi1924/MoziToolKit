@@ -634,6 +634,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         if props:
             props.validation_info = f"Finalize error: {e}"
     finally:
+        was_initial = session.is_initial_handshake
         session.is_streaming = False
         session.is_repairing_partial = False
         session.is_initial_handshake = False
@@ -641,7 +642,8 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         session.pending_full_sync_request = False
         session.stream_received_sections = 0
         session.stream_total_sections = 0
-        ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=0.8)
+        if was_initial or ProgressBar.is_active():
+            ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=0.8)
 
 
 def _pump_main_thread_events() -> Optional[float]:
@@ -1144,10 +1146,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         session.skip_next_full_snapshot = True
                         session.is_repairing_partial = False
                         if cur_props:
-                            cur_props.validation_info = "Verified (100% in sync)"
+                            if cur_props.validation_info != "Verified (100% in sync)":
+                                cur_props.validation_info = "Verified (100% in sync)"
                             if not cur_props.palette_list and session.storage.block_map:
                                 sync_palette_to_props(cur_props, session.storage)
-                        if session.is_initial_handshake or ProgressBar.is_active():
+                        if session.is_initial_handshake:
                             ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
                         session.is_initial_handshake = False
                     elif session.is_initial_handshake:
