@@ -10,14 +10,14 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-BIOME_TINT_VERSION = 2
+BIOME_TINT_VERSION = 3
 COLORMAP_SAMPLER_VERSION = 2
 
 
 def ensure_biome_tint() -> bpy.types.NodeTree:
     """
     Create or return the reusable MC_Biome_Tint node group.
-    Blends Base Albedo and Overlay Albedo with Biome Tint / Hardcoded Colors.
+    Blends Base Albedo and Overlay Albedo with the resolved Biome Tint Color.
     """
     tree = ensure_group("MC_Biome_Tint", BIOME_TINT_VERSION)
     if tree.nodes and tree.get("mozi_template_complete"):
@@ -32,8 +32,6 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
         ("Overlay Tint Weight", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Tint Weight", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Tint Color", "INPUT", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
-        ("Hardcoded Color", "INPUT", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
-        ("Use Hardcoded", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Enable Tint", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Color", "OUTPUT", "NodeSocketColor", None),
         ("Alpha", "OUTPUT", "NodeSocketFloat", None),
@@ -43,19 +41,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     group_in = node(nodes, "NodeGroupInput", "Group Input", location=(-1200, 0))
     group_out = node(nodes, "NodeGroupOutput", "Group Output", location=(1200, 0))
 
-    # 1. Active Tint Color: Mix(Tint Color, Hardcoded Color, Use Hardcoded)
-    mix_active_tint = node(
-        nodes,
-        "ShaderNodeMixRGB",
-        "Mix Active Tint",
-        location=(-900, -200),
-        properties={"blend_type": "MIX"},
-    )
-    link(links, group_in, "Use Hardcoded", mix_active_tint, "Factor")
-    link(links, group_in, "Tint Color", mix_active_tint, "Color1")
-    link(links, group_in, "Hardcoded Color", mix_active_tint, "Color2")
-
-    # 2. Global Enable Factor: Tint Weight * Enable Tint
+    # 1. Global Enable Factor: Tint Weight * Enable Tint
     mult_global = node(
         nodes,
         "ShaderNodeMath",
@@ -66,7 +52,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, group_in, "Tint Weight", mult_global, "Value[0]")
     link(links, group_in, "Enable Tint", mult_global, "Value[1]")
 
-    # 3. Base Factor = Base Tint Weight * Global Tint Factor
+    # 2. Base Factor = Base Tint Weight * Global Tint Factor
     mult_base_fac = node(
         nodes,
         "ShaderNodeMath",
@@ -77,7 +63,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, group_in, "Base Tint Weight", mult_base_fac, "Value[0]")
     link(links, mult_global, "Value", mult_base_fac, "Value[1]")
 
-    # 4. Overlay Factor = Overlay Tint Weight * Global Tint Factor
+    # 3. Overlay Factor = Overlay Tint Weight * Global Tint Factor
     mult_overlay_fac = node(
         nodes,
         "ShaderNodeMath",
@@ -88,7 +74,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, group_in, "Overlay Tint Weight", mult_overlay_fac, "Value[0]")
     link(links, mult_global, "Value", mult_overlay_fac, "Value[1]")
 
-    # 5. Effective Base Tint = Mix(White, Active Tint, Base Factor)
+    # 4. Effective Base Tint = Mix(White, Tint Color, Base Factor)
     mix_base_tint = node(
         nodes,
         "ShaderNodeMixRGB",
@@ -98,9 +84,9 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
         inputs={"Color1": (1.0, 1.0, 1.0, 1.0)},
     )
     link(links, mult_base_fac, "Value", mix_base_tint, "Factor")
-    link(links, mix_active_tint, "Color", mix_base_tint, "Color2")
+    link(links, group_in, "Tint Color", mix_base_tint, "Color2")
 
-    # 6. Effective Overlay Tint = Mix(White, Active Tint, Overlay Factor)
+    # 5. Effective Overlay Tint = Mix(White, Tint Color, Overlay Factor)
     mix_overlay_tint = node(
         nodes,
         "ShaderNodeMixRGB",
@@ -110,9 +96,9 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
         inputs={"Color1": (1.0, 1.0, 1.0, 1.0)},
     )
     link(links, mult_overlay_fac, "Value", mix_overlay_tint, "Factor")
-    link(links, mix_active_tint, "Color", mix_overlay_tint, "Color2")
+    link(links, group_in, "Tint Color", mix_overlay_tint, "Color2")
 
-    # 7. Tinted Base RGB = Base Color * Effective Base Tint
+    # 6. Tinted Base RGB = Base Color * Effective Base Tint
     mult_base_col = node(
         nodes,
         "ShaderNodeMixRGB",
@@ -124,7 +110,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, group_in, "Base Color", mult_base_col, "Color1")
     link(links, mix_base_tint, "Color", mult_base_col, "Color2")
 
-    # 8. Tinted Overlay RGB = Overlay Color * Effective Overlay Tint
+    # 7. Tinted Overlay RGB = Overlay Color * Effective Overlay Tint
     mult_overlay_col = node(
         nodes,
         "ShaderNodeMixRGB",
@@ -136,7 +122,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, group_in, "Overlay Color", mult_overlay_col, "Color1")
     link(links, mix_overlay_tint, "Color", mult_overlay_col, "Color2")
 
-    # 9. Composite Final Color = Mix(Tinted Base, Tinted Overlay, Overlay Alpha)
+    # 8. Composite Final Color = Mix(Tinted Base, Tinted Overlay, Overlay Alpha)
     comp_color = node(
         nodes,
         "ShaderNodeMixRGB",
@@ -149,7 +135,7 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, mult_overlay_col, "Color", comp_color, "Color2")
     link(links, comp_color, "Color", group_out, "Color")
 
-    # 10. Composite Final Alpha = Max(Base Alpha, Overlay Alpha)
+    # 9. Composite Final Alpha = Max(Base Alpha, Overlay Alpha)
     max_alpha = node(
         nodes,
         "ShaderNodeMath",

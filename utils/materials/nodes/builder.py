@@ -387,11 +387,9 @@ def rebuild_material(
         biome_tint_node.inputs["Base Tint Weight"].default_value = base_tw
         biome_tint_node.inputs["Overlay Tint Weight"].default_value = overlay_tw
         biome_tint_node.inputs["Tint Weight"].default_value = tw
-        biome_tint_node.inputs["Use Hardcoded"].default_value = 1.0 if is_hardcoded else 0.0
 
         if is_hardcoded:
             hc_col = tint_info.get("hardcoded_color") or (1.0, 1.0, 1.0, 1.0)
-            biome_tint_node.inputs["Hardcoded Color"].default_value = tuple(hc_col)
             biome_tint_node.inputs["Tint Color"].default_value = tuple(hc_col)
         else:
             effective_stack = pack_stack
@@ -416,7 +414,6 @@ def rebuild_material(
                 resolved_col = (1.0, 1.0, 1.0, 1.0)
 
             biome_tint_node.inputs["Tint Color"].default_value = tuple(resolved_col)
-            biome_tint_node.inputs["Hardcoded Color"].default_value = tuple(resolved_col)
 
             # Check if precompiled or pack stack colormap texture exists on disk
             colormap_path = effective_stack.get_colormap_path(colormap_name) if (effective_stack and colormap_name) else None

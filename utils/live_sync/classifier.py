@@ -382,30 +382,30 @@ def parse_and_classify(state_str: str) -> ParsedBlock:
     snowy = props.get("snowy") == "true"
     if name in HARDCODED_TINTS:
         tint_color = HARDCODED_TINTS[name]
-        tint_data = (1.0, 1.0, 1.0, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 4.0)
     elif name.endswith("_banner") or name.endswith("_wall_banner"):
         color = name.replace("_wall_banner", "").replace("_banner", "")
         tint_color = DYE_COLORS_RGB.get(color, (1.0, 1.0, 1.0, 1.0))
-        tint_data = (1.0, 1.0, 1.0, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 4.0)
     elif name == "redstone_wire":
         power = int(props.get("power", "0")) if "power" in props else 0
         t = power / 15.0
         r = 0.3 + 0.7 * t
         g = 0.0 if power == 0 else 0.15 * t
         tint_color = (r, g, 0.0, 1.0)
-        tint_data = (1.0, 1.0, 1.0, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 4.0)
     elif snowy and name in ("grass_block", "podzol", "mycelium"):
         tint_color = (1.0, 1.0, 1.0, 1.0)
         tint_data = (0.0, 0.0, 0.0, 0.0)
     elif block_id in BIOME_TINT_GRASS or name in BIOME_TINT_GRASS:
-        tint_color = (0.35, 0.72, 0.22, 1.0)
-        tint_data = (1.0, 1.0, 1.0, 0.0)
+        tint_color = (0.28, 0.50, 0.10, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 1.0)
     elif block_id in BIOME_TINT_FOLIAGE or name in BIOME_TINT_FOLIAGE or (name.endswith("_leaves") and not any(w in name for w in ("cherry", "azalea", "pale_oak", "spruce", "birch"))):
-        tint_color = (0.28, 0.65, 0.18, 1.0)
-        tint_data = (1.0, 1.0, 1.0, 0.0)
+        tint_color = (0.18, 0.41, 0.03, 1.0)
+        tint_data = (1.0, 1.0, 1.0, 2.0)
     elif block_id in BIOME_TINT_WATER or "water" in block_id or name in BIOME_TINT_WATER:
-        tint_color = (0.24, 0.45, 0.85, 0.8)
-        tint_data = (1.0, 1.0, 1.0, 0.0)
+        tint_color = (0.05, 0.17, 0.77, 0.8)
+        tint_data = (1.0, 1.0, 1.0, 3.0)
     else:
         tint_color = (1.0, 1.0, 1.0, 1.0)
         tint_data = (0.0, 0.0, 0.0, 0.0)

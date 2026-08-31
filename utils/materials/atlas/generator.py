@@ -204,7 +204,7 @@ class AtlasGenerator:
 
         # 1. Load models from all packs in the stack (bottom to top, so top overrides bottom)
         for pack in reversed(self.pack_stack.packs):
-            if pack.extract_dir:
+            if pack.extract_dir and pack.extract_dir.exists():
                 assets_dir = pack.extract_dir / "assets"
                 if assets_dir.exists():
                     for ns_dir in assets_dir.iterdir():
@@ -227,6 +227,29 @@ class AtlasGenerator:
                                                     self.models[model_key] = json.load(fp)
                                             except Exception:
                                                 pass
+            elif getattr(pack, "zip_path", None) and pack.zip_path.exists() and pack.zip_path.suffix.lower() in (".zip", ".jar"):
+                try:
+                    with zipfile.ZipFile(pack.zip_path, "r") as z:
+                        for name in z.namelist():
+                            if name.startswith("assets/") and "/models/" in name and name.endswith(".json"):
+                                parts = name.split("/")
+                                if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "models":
+                                    ns = parts[1].lower()
+                                    model_type = parts[3].lower()
+                                    if model_type in ("block", "item"):
+                                        rel_model = "/".join(parts[4:])[:-5].lower()
+                                        if ns == "minecraft":
+                                            model_key = rel_model if model_type == "block" else f"item/{rel_model}"
+                                        else:
+                                            model_key = f"{ns}:{model_type}/{rel_model}"
+                                        try:
+                                            data = json.loads(z.read(name))
+                                            if isinstance(data, dict):
+                                                self.models[model_key] = data
+                                        except Exception:
+                                            pass
+                except Exception:
+                    pass
 
         # 2. Load composite textures across the entire pack stack
         composite_textures = self.pack_stack.get_all_composite_textures()

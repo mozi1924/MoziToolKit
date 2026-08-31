@@ -122,16 +122,16 @@ class TestCustomModelBiomeTint(unittest.TestCase):
     def test_point_cloud_classifier_tints(self):
         # 1. Oak leaves -> Foliage tint data
         oak = parse_and_classify("minecraft:oak_leaves")
-        self.assertEqual(oak.tint_data, (1.0, 1.0, 1.0, 0.0))
+        self.assertEqual(oak.tint_data, (1.0, 1.0, 1.0, 2.0))
 
         # 2. Spruce leaves -> Hardcoded tint data
         spruce = parse_and_classify("minecraft:spruce_leaves")
-        self.assertEqual(spruce.tint_data, (1.0, 1.0, 1.0, 1.0))
+        self.assertEqual(spruce.tint_data, (1.0, 1.0, 1.0, 4.0))
         self.assertEqual(spruce.tint_color, (0.38039, 0.60000, 0.38039, 1.0))
 
         # 3. Water -> Water tint data
         water = parse_and_classify("minecraft:water")
-        self.assertEqual(water.tint_data, (1.0, 1.0, 1.0, 0.0))
+        self.assertEqual(water.tint_data, (1.0, 1.0, 1.0, 3.0))
 
         # 4. Cherry leaves -> Untinted
         cherry = parse_and_classify("minecraft:cherry_leaves")

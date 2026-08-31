@@ -211,7 +211,7 @@ class TestBiomeNodeGroups(unittest.TestCase):
         expected_inputs = [
             "Base Color", "Base Alpha", "Overlay Color", "Overlay Alpha",
             "Base Tint Weight", "Overlay Tint Weight", "Tint Weight",
-            "Tint Color", "Hardcoded Color", "Use Hardcoded", "Enable Tint"
+            "Tint Color", "Enable Tint"
         ]
         for name in expected_inputs:
             self.assertIn(name, input_names)

@@ -499,10 +499,10 @@ class AtlasReplacementEngine:
                 ):
                     ensure_face_attribute(mesh, attr_name, "FLOAT").data.foreach_set("value", data)
 
-                packed_tint_data, tint_colors = compute_biome_tint_attributes(
+                packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
                     len(mesh.polygons), poly_tint_map, biome_preset
                 )
-                apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
+                apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
 
                 for attr_name, data in (
                     (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),

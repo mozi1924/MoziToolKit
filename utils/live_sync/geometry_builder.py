@@ -22,6 +22,7 @@ from .constants import (
     MTK_UV_TILING_TRANSFORM,
     MTK_BIOME_TINT_DATA,
     MTK_BIOME_TINT_COLOR,
+    MTK_COLORMAP_UV,
     MTK_ATLAS_CHUNK_ID,
     MTK_SOURCE_TEXTURE_KEY,
     UV_MAP,
@@ -69,6 +70,7 @@ def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
         "tiling": bm.faces.layers.float_color.get(MTK_UV_TILING_TRANSFORM) or bm.faces.layers.float_color.new(MTK_UV_TILING_TRANSFORM),
         "tint_data": bm.faces.layers.float_color.get(MTK_BIOME_TINT_DATA) or bm.faces.layers.float_color.new(MTK_BIOME_TINT_DATA),
         "tint_color": bm.faces.layers.float_color.get(MTK_BIOME_TINT_COLOR) or bm.faces.layers.float_color.new(MTK_BIOME_TINT_COLOR),
+        "colormap_uv": bm.faces.layers.float_vector.get(MTK_COLORMAP_UV) or bm.faces.layers.float_vector.new(MTK_COLORMAP_UV),
         "block_x": bm.faces.layers.int.get(MTK_BLOCK_X) or bm.faces.layers.int.new(MTK_BLOCK_X),
         "block_y": bm.faces.layers.int.get(MTK_BLOCK_Y) or bm.faces.layers.int.new(MTK_BLOCK_Y),
         "block_z": bm.faces.layers.int.get(MTK_BLOCK_Z) or bm.faces.layers.int.new(MTK_BLOCK_Z),
@@ -107,6 +109,7 @@ def _emit_bmesh_face(
     bm_face[layers["tiling"]] = f_res.uv_tiling_transform
     bm_face[layers["tint_data"]] = f_res.biome_tint_data
     bm_face[layers["tint_color"]] = f_res.biome_tint_color
+    bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
     bm_face[layers["block_x"]] = block_pos[0]
     bm_face[layers["block_y"]] = block_pos[1]
     bm_face[layers["block_z"]] = block_pos[2]

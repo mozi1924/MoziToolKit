@@ -897,8 +897,8 @@ class TestDirectMeshSync(unittest.TestCase):
                 found_animated_water = True
                 self.assertEqual(tint_data[2], 1.0, "Water face must have Tint Weight == 1.0")
 
-            # Tinted grass face: Tint Weight == 1.0, green tint
-            if tint_data[2] == 1.0 and abs(tint_col[0] - 0.35) < 0.01:
+            # Tinted grass face: Tint Weight == 1.0
+            if tint_data[2] == 1.0 and timing[0] != 32.0:
                 found_tinted_grass = True
 
             # Untinted stone face: Tint Weight == 0.0, White tint color, Total Frames == 1.0
