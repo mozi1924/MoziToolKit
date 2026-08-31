@@ -985,14 +985,20 @@ class AtlasAddressResolver:
         if not source_key:
             source_key = f"minecraft:block/{p_short}"
 
-        # Material physical properties (Hardcoded Emission, Thin Wall, Transmission Weight)
-        from ..catalog import get_block_emission_strength, is_thin_wall_block, get_block_transmission_weight
+        # Material physical properties (Hardcoded Emission, Thin Wall, Transmission Weight, Sticker Threshold)
+        from ..catalog import (
+            get_block_emission_strength,
+            is_thin_wall_block,
+            get_block_transmission_weight,
+            get_block_sticker_threshold,
+        )
         b_props = getattr(parsed, "properties", {}) or {}
         b_name = getattr(parsed, "name", p_short)
         emission_strength = get_block_emission_strength(b_name, properties=b_props, texture_name=source_key)
         thin_wall_flag = 1.0 if is_thin_wall_block(b_name, texture_name=source_key) else 0.0
         transmission_weight = get_block_transmission_weight(b_name, texture_name=source_key)
-        mat_props = (float(emission_strength), float(thin_wall_flag), float(transmission_weight), 0.0)
+        sticker_thresh = get_block_sticker_threshold(b_name, texture_name=source_key)
+        mat_props = (float(emission_strength), float(thin_wall_flag), float(transmission_weight), float(sticker_thresh))
 
         return ResolvedAtlasAddress(
             chunk_id=chunk_id,

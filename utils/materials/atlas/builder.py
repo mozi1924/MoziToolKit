@@ -287,6 +287,17 @@ def add_packed_material_props_nodes(nodes, links, decoder_node, location=(-300, 
     # Blue: Transmission Weight
     links.new(split_props.outputs["Blue"], decoder_node.inputs["Transmission Weight"])
 
+    # Alpha: Sticker Threshold (Safe fallback to 0.55 if 0.0 / uninitialized)
+    if "Sticker Threshold" in decoder_node.inputs:
+        safe_thresh = nodes.new("ShaderNodeMath")
+        safe_thresh.name = "Safe Sticker Threshold"
+        safe_thresh.operation = 'MAXIMUM'
+        safe_thresh.inputs[1].default_value = 0.55
+        safe_thresh.location = (location[0] + 360, location[1] - 150)
+        links.new(attr_props.outputs["Alpha"], safe_thresh.inputs[0])
+        links.new(safe_thresh.outputs["Value"], decoder_node.inputs["Sticker Threshold"])
+
+
 
 def build_atlas_chunk_materials(
     atlas_dir: str | Path,

@@ -43,10 +43,10 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
                 bpy.data.node_groups.remove(ng)
 
     def test_labpbr_decoder_interface_and_sockets(self):
-        """Verify LabPBR 1.3 Decoder v15 public interface and socket configurations."""
+        """Verify LabPBR 1.3 Decoder v16 public interface and socket configurations."""
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(ng.get("mozi_template_version"), 15)
+        self.assertEqual(ng.get("mozi_template_version"), 16)
         self.assertEqual(reference_shape_errors(ng), ())
         assert_reference_shape(ng)
 
@@ -73,6 +73,14 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(trans_weight.default_value, 0.0)
         self.assertEqual(trans_weight.min_value, 0.0)
         self.assertEqual(trans_weight.max_value, 1.0)
+
+        # Verify Sticker Threshold is NodeSocketFloat with 0.0..1.0 range (default 0.55)
+        self.assertIn("Sticker Threshold", sockets)
+        sticker_thresh = sockets["Sticker Threshold"]
+        self.assertEqual(sticker_thresh.socket_type, "NodeSocketFloat")
+        self.assertAlmostEqual(sticker_thresh.default_value, 0.55, places=4)
+        self.assertEqual(sticker_thresh.min_value, 0.0)
+        self.assertEqual(sticker_thresh.max_value, 1.0)
 
     def test_labpbr_decoder_wiring(self):
         """Verify that Emission, Transmission, Alpha, Clean Albedo, and Roughness mix nodes are correctly wired."""
@@ -249,6 +257,17 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
             self.assertTrue(is_transmissive_block(name), f"{name} should be transmissive")
             self.assertEqual(get_block_transmission_weight(name), 1.0, f"{name} transmission weight should be 1.0")
 
+        # Test Sticker Thresholds: 0.55 for glass vs 0.95 for water/ice/slime/honey
+        from utils.materials.catalog import get_block_sticker_threshold
+        self.assertEqual(get_block_sticker_threshold("glass"), 0.55)
+        self.assertEqual(get_block_sticker_threshold("white_stained_glass"), 0.55)
+        self.assertEqual(get_block_sticker_threshold("tinted_glass"), 0.55)
+        self.assertEqual(get_block_sticker_threshold("water"), 0.95)
+        self.assertEqual(get_block_sticker_threshold("water_still"), 0.95)
+        self.assertEqual(get_block_sticker_threshold("ice"), 0.95)
+        self.assertEqual(get_block_sticker_threshold("slime_block"), 0.95)
+        self.assertEqual(get_block_sticker_threshold("honey_block"), 0.95)
+
         non_transmissives = [
             "stone",
             "oak_planks",
@@ -262,7 +281,7 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
             self.assertEqual(get_block_transmission_weight(name), 0.0, f"{name} transmission weight should be 0.0")
 
     def test_material_builder_applies_catalog_defaults(self):
-        """Verify that rebuild_material configures Hardcoded Emission, Thin Wall, and Transmission Weight."""
+        """Verify that rebuild_material configures Hardcoded Emission, Thin Wall, Transmission Weight, and Sticker Threshold."""
         mat = bpy.data.materials.new("minecraft_torch")
         tex_info = {
             "texture_name": "torch",
@@ -293,7 +312,7 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(decoder_leaves.inputs["Thin Wall"].default_value, True)
         self.assertEqual(decoder_leaves.inputs["Transmission Weight"].default_value, 0.0)
 
-        # Test uncolored glass (dual-layer dielectric refraction + surface sticker: transmission = 1.0)
+        # Test uncolored glass (dual-layer dielectric refraction + surface sticker: transmission = 1.0, sticker threshold = 0.55)
         mat_glass = bpy.data.materials.new("glass")
         tex_info_glass = {
             "texture_name": "glass",
@@ -307,8 +326,9 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(decoder_glass.inputs["Hardcoded Emission"].default_value, 0.0)
         self.assertEqual(decoder_glass.inputs["Thin Wall"].default_value, False)
         self.assertEqual(decoder_glass.inputs["Transmission Weight"].default_value, 1.0)
+        self.assertAlmostEqual(decoder_glass.inputs["Sticker Threshold"].default_value, 0.55, places=4)
 
-        # Test stained glass (translucent dielectric + surface sticker: transmission = 1.0)
+        # Test stained glass (translucent dielectric + surface sticker: transmission = 1.0, sticker threshold = 0.55)
         mat_stained = bpy.data.materials.new("white_stained_glass")
         tex_info_stained = {
             "texture_name": "white_stained_glass",
@@ -322,6 +342,23 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(decoder_stained.inputs["Hardcoded Emission"].default_value, 0.0)
         self.assertEqual(decoder_stained.inputs["Thin Wall"].default_value, False)
         self.assertEqual(decoder_stained.inputs["Transmission Weight"].default_value, 1.0)
+        self.assertAlmostEqual(decoder_stained.inputs["Sticker Threshold"].default_value, 0.55, places=4)
+
+        # Test water (translucent dielectric liquid + surface foam/ripple sticker: transmission = 1.0, sticker threshold = 0.95)
+        mat_water = bpy.data.materials.new("water_still")
+        tex_info_water = {
+            "texture_name": "water_still",
+            "source_texture": "minecraft:block/water_still",
+        }
+        success_water = rebuild_material(mat_water, tex_info_water)
+        self.assertTrue(success_water)
+
+        decoder_water = mat_water.node_tree.nodes.get("LabPBR 1.3 Decoder")
+        self.assertIsNotNone(decoder_water)
+        self.assertEqual(decoder_water.inputs["Hardcoded Emission"].default_value, 0.0)
+        self.assertEqual(decoder_water.inputs["Thin Wall"].default_value, False)
+        self.assertEqual(decoder_water.inputs["Transmission Weight"].default_value, 1.0)
+        self.assertAlmostEqual(decoder_water.inputs["Sticker Threshold"].default_value, 0.95, places=4)
 
     def test_atlas_material_builder_wires_material_props(self):
         """Verify that build_atlas_chunk_materials wires Attr Material Props (Emission, Thin Wall, Transmission)."""
@@ -363,6 +400,14 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         self.assertEqual(len(trans_link), 1)
         self.assertEqual(trans_link[0].from_node, split_node)
         self.assertEqual(trans_link[0].from_socket.name, "Blue")
+
+        thresh_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Sticker Threshold"]
+        self.assertEqual(len(thresh_link), 1)
+        safe_thresh_node = nodes.get("Safe Sticker Threshold")
+        self.assertIsNotNone(safe_thresh_node)
+        self.assertEqual(thresh_link[0].from_node, safe_thresh_node)
+        self.assertEqual(safe_thresh_node.operation, "MAXIMUM")
+        self.assertAlmostEqual(safe_thresh_node.inputs[1].default_value, 0.55, places=4)
 
     def test_livesync_bmesh_layers_include_material_props(self):
         """Verify that LiveSync geometry builder allocates and sets the material_props layer."""
