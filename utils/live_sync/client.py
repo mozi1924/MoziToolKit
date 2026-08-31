@@ -282,10 +282,42 @@ class SyncClientThread(threading.Thread):
             grid_indices_raw = data[offset:]
             if index_bytes_per_block == 1:
                 grid_indices = list(grid_indices_raw[:total_blocks])
+                offset += total_blocks
             else:
                 grid_indices = list(struct.unpack(f'<{total_blocks}H', grid_indices_raw[:total_blocks * 2]))
+                offset += total_blocks * 2
 
-            self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
+            biome_palette = []
+            biome_indices = []
+            if len(data) >= offset + 2:
+                b_count = struct.unpack('<H', data[offset:offset + 2])[0]
+                offset += 2
+                for _ in range(b_count):
+                    if len(data) < offset + 2:
+                        break
+                    b_str_len = struct.unpack('<H', data[offset:offset + 2])[0]
+                    offset += 2
+                    if len(data) < offset + b_str_len:
+                        break
+                    b_str = data[offset:offset + b_str_len].decode('utf-8', errors='replace')
+                    offset += b_str_len
+                    biome_palette.append(b_str)
+
+                if b_count == 1:
+                    biome_indices = [0] * total_blocks
+                elif b_count > 1 and len(data) >= offset + 1:
+                    b_idx_bytes = data[offset]
+                    offset += 1
+                    b_raw = data[offset:]
+                    if b_idx_bytes == 1:
+                        biome_indices = list(b_raw[:total_blocks])
+                    else:
+                        biome_indices = list(struct.unpack(f'<{total_blocks}H', b_raw[:total_blocks * 2]))
+
+            try:
+                self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices, biome_palette, biome_indices)
+            except TypeError:
+                self.on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
         elif packet_type == PacketType.DELTA_UPDATE:
             if len(data) < offset + DELTA_HEADER_SIZE:
@@ -354,11 +386,43 @@ class SyncClientThread(threading.Thread):
             grid_indices_raw = data[offset:]
             if index_bytes_per_block == 1:
                 grid_indices = list(grid_indices_raw[:total_blocks])
+                offset += total_blocks
             else:
                 grid_indices = list(struct.unpack(f'<{total_blocks}H', grid_indices_raw[:total_blocks * 2]))
+                offset += total_blocks * 2
+
+            biome_palette = []
+            biome_indices = []
+            if len(data) >= offset + 2:
+                b_count = struct.unpack('<H', data[offset:offset + 2])[0]
+                offset += 2
+                for _ in range(b_count):
+                    if len(data) < offset + 2:
+                        break
+                    b_str_len = struct.unpack('<H', data[offset:offset + 2])[0]
+                    offset += 2
+                    if len(data) < offset + b_str_len:
+                        break
+                    b_str = data[offset:offset + b_str_len].decode('utf-8', errors='replace')
+                    offset += b_str_len
+                    biome_palette.append(b_str)
+
+                if b_count == 1:
+                    biome_indices = [0] * total_blocks
+                elif b_count > 1 and len(data) >= offset + 1:
+                    b_idx_bytes = data[offset]
+                    offset += 1
+                    b_raw = data[offset:]
+                    if b_idx_bytes == 1:
+                        biome_indices = list(b_raw[:total_blocks])
+                    else:
+                        biome_indices = list(struct.unpack(f'<{total_blocks}H', b_raw[:total_blocks * 2]))
 
             if self.on_section_snapshot:
-                self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices)
+                try:
+                    self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices, biome_palette, biome_indices)
+                except TypeError:
+                    self.on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices)
 
         elif packet_type == PacketType.HANDSHAKE_INFO:
             if len(data) < offset + HANDSHAKE_INFO_HEADER_SIZE:

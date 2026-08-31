@@ -292,6 +292,7 @@ def _emit_fluid_face(
     uv_rot: float = 0.0,
     use_tint: bool = True,
     mat_manager: Optional[LiveSyncMaterialManager] = None,
+    voxel_storage: Optional[Any] = None,
 ) -> bool:
     """Helper to emit a single fluid polygon into BMesh."""
     face_bm_verts = [bm.verts.new(v) for v in verts_coords]
@@ -307,9 +308,19 @@ def _emit_fluid_face(
     bm_face[layers["frame_size"]] = f_res.anim_frame_size
     bm_face[layers["tiling"]] = f_res.uv_tiling_transform
     bm_face[layers["tint_data"]] = f_res.biome_tint_data
-    bm_face[layers["tint_color"]] = f_res.biome_tint_color
-    if "colormap_uv" in layers:
-        bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
+
+    # Biome Colormap UV & Tint Color Calculation
+    if voxel_storage is not None and hasattr(voxel_storage, "get_smoothed_biome_data"):
+        u_blend, v_blend, water_linear = voxel_storage.get_smoothed_biome_data(block_pos[0], block_pos[1], block_pos[2], radius=2)
+        if "colormap_uv" in layers:
+            bm_face[layers["colormap_uv"]] = (u_blend, v_blend, 0.0)
+        tint_col_val = water_linear
+    else:
+        if "colormap_uv" in layers:
+            bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
+        tint_col_val = f_res.biome_tint_color
+
+    bm_face[layers["tint_color"]] = tint_col_val
     bm_face[layers["block_x"]] = block_pos[0]
     bm_face[layers["block_y"]] = block_pos[1]
     bm_face[layers["block_z"]] = block_pos[2]
@@ -439,6 +450,7 @@ def generate_fluid_mesh_faces(
     min_x: int, min_y: int, min_z: int,
     half_x: float, half_z: float,
     mat_manager: LiveSyncMaterialManager,
+    voxel_storage: Optional[Any] = None,
 ) -> int:
     """
     Construct complete Minecraft fluid geometry (Top, Bottom, and 4 Slanted Sides) for (x, y, z).
@@ -462,15 +474,9 @@ def generate_fluid_mesh_faces(
         by = -float(z)
         bz = float(y)
 
-    # Subtle offset to avoid z-fighting with adjacent solid full blocks
-    top_NW = max(0.0, c_NW - FLUID_EPSILON)
-    top_NE = max(0.0, c_NE - FLUID_EPSILON)
-    top_SE = max(0.0, c_SE - FLUID_EPSILON)
-    top_SW = max(0.0, c_SW - FLUID_EPSILON)
-
     # 1. Flow Direction and UV Rotation
-    vx, vz, flow_angle = calculate_fluid_flow_vector(block_map, x, y, z, fluid_type, own_height)
-    is_flowing = is_fluid_flowing(state_str, block_map, x, y, z, fluid_type, vx, vz)
+    flow_vx, flow_vz, flow_angle = calculate_fluid_flow_vector(block_map, x, y, z, fluid_type, own_height)
+    is_flowing = is_fluid_flowing(state_str, block_map, x, y, z, fluid_type, flow_vx, flow_vz)
 
     # Resolve Still and Flowing Face Resources
     target_tex_still = f"minecraft:block/{fluid_type}_still"
@@ -497,22 +503,22 @@ def generate_fluid_mesh_faces(
     )
 
     top_res = res_flow if is_flowing else res_still
+
     faces_emitted = 0
+    top_NW = c_NW
+    top_NE = c_NE
+    top_SE = c_SE
+    top_SW = c_SW
 
     # -------------------------------------------------------------
     # 1. Top Face (UP)
     # -------------------------------------------------------------
-    # Cull if block directly above is the same fluid or an opaque solid block
     if not should_cull_fluid_face(block_map.get((x, y + 1, z)), fluid_type):
         v_nw = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_sw = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_ne = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
 
-        # In vanilla Minecraft, flowing fluids (water_flow / lava_flow) are 32x32 textures,
-        # but they only sample a 16x16 window (radius 0.25, span [0.25, 0.75]) centered at (0.5, 0.5).
-        # This keeps the on-screen pixel density strictly identical to 16x16 still water and solid blocks (16 texels/block)
-        # while preventing UV bleeding when rotated in the atlas by MC_Atlas_UV_Tiling.
         top_uvs_mc = get_fluid_top_uvs(is_flowing=is_flowing, rotation=flow_angle if is_flowing else 0.0)
 
         if _emit_fluid_face(
@@ -526,41 +532,41 @@ def generate_fluid_mesh_faces(
             uv_rot=0.0,
             use_tint=top_res.use_tint,
             mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
 
     # -------------------------------------------------------------
     # 2. Bottom Face (DOWN)
     # -------------------------------------------------------------
-    # Cull if block directly below is the same fluid or an opaque solid block
     if not should_cull_fluid_face(block_map.get((x, y - 1, z)), fluid_type):
         v_bot_sw = (bx - 0.5, by - 0.5, bz - 0.5)
         v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
         v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
         v_bot_se = (bx + 0.5, by - 0.5, bz - 0.5)
-        bot_uvs_mc = get_fluid_top_uvs(is_flowing=is_flowing, rotation=0.0)
+        bot_uvs_mc = get_fluid_top_uvs(is_flowing=False, rotation=0.0)
 
         if _emit_fluid_face(
             bm=bm,
             verts_coords=(v_bot_sw, v_bot_nw, v_bot_ne, v_bot_se),
             loop_uvs_mc=bot_uvs_mc,
-            f_res=res_flow if is_flowing else res_still,
+            f_res=res_still,
             layers=layers,
             block_pos=(x, y, z),
             face_dir_idx=DIR_TO_INDEX["down"],
             uv_rot=0.0,
             use_tint=res_still.use_tint,
             mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
 
     # -------------------------------------------------------------
-    # 3. Side Faces (North, South, West, East) - Mineways & Vanilla UV
+    # 3. Side Faces (North, South, West, East)
     # -------------------------------------------------------------
-    # In vanilla Minecraft FluidRenderer, side faces sample the [0.0, 0.5] quadrant of the 32x32 sprite,
-    # mapping a 1-block height to 16 pixels (0.5 * 32px) and scaling height proportionally.
+    side_res = res_flow
 
-    # A. North Face (facing Blender +Y / MC North -Z)
+    # A. North Face
     if not should_cull_fluid_face(block_map.get((x, y, z - 1)), fluid_type):
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
@@ -578,10 +584,11 @@ def generate_fluid_mesh_faces(
             uv_rot=0.0,
             use_tint=side_res.use_tint,
             mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
 
-    # B. South Face (facing Blender -Y / MC South +Z)
+    # B. South Face
     if not should_cull_fluid_face(block_map.get((x, y, z + 1)), fluid_type):
         v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
@@ -599,10 +606,11 @@ def generate_fluid_mesh_faces(
             uv_rot=0.0,
             use_tint=side_res.use_tint,
             mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
 
-    # C. West Face (facing Blender -X / MC West -X)
+    # C. West Face
     if not should_cull_fluid_face(block_map.get((x - 1, y, z)), fluid_type):
         v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
@@ -620,10 +628,11 @@ def generate_fluid_mesh_faces(
             uv_rot=0.0,
             use_tint=side_res.use_tint,
             mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
 
-    # D. East Face (facing Blender +X / MC East +X)
+    # D. East Face
     if not should_cull_fluid_face(block_map.get((x + 1, y, z)), fluid_type):
         v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
@@ -641,8 +650,8 @@ def generate_fluid_mesh_faces(
             uv_rot=0.0,
             use_tint=side_res.use_tint,
             mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
 
     return faces_emitted
-

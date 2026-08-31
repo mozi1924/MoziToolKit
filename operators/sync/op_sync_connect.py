@@ -334,7 +334,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     cur_props.total_blocks = size_x * size_y * size_z
             run_in_main_thread(update)
 
-        def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
+        def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices, biome_palette=None, biome_indices=None):
+            logger.info(f"Live Sync ({session.target_object_name}): Received full snapshot ({size_x}x{size_y}x{size_z}, {len(palette)} palette entries, {len(biome_palette or [])} biomes)")
             if session.skip_next_full_snapshot:
                 logger.info(f"Live Sync ({session.target_object_name}): Skipping unneeded full snapshot due to verified manifest.")
                 session.skip_next_full_snapshot = False
@@ -354,7 +355,10 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 run_in_main_thread(on_identical)
                 return
 
-            session.storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
+            session.storage.set_full_snapshot(
+                min_x, min_y, min_z, size_x, size_y, size_z,
+                palette, grid_indices, biome_palette=biome_palette, biome_indices=biome_indices
+            )
 
             def step1_update_props():
                 try:
@@ -406,12 +410,13 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
             session.delta_queue.put((min_x, min_y, min_z, changes, seq_id))
 
-        def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices):
+        def on_section_snapshot(sec_x, sec_y, sec_z, start_x, start_y, start_z, size_x, size_y, size_z, palette, grid_indices, biome_palette=None, biome_indices=None):
             session.is_streaming = True
             session.stream_last_drain_time = time.time()
             updated = session.storage.set_section_snapshot(
                 sec_x, sec_y, sec_z, start_x, start_y, start_z,
-                size_x, size_y, size_z, palette, grid_indices
+                size_x, size_y, size_z, palette, grid_indices,
+                biome_palette=biome_palette, biome_indices=biome_indices
             )
             if updated:
                 session.stream_section_queue.put((sec_x, sec_y, sec_z, palette))

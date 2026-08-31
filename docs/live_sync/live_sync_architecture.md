@@ -127,7 +127,7 @@ graph TD
 ```
 
 ### 4.1 内存运行时模型
-- **`VoxelStorage`**：纯 Python 堆内存哈希表，提供 $O(1)$ 的方块状态查询、快速 6 向邻居碰撞判定与区块 CRC32 实时哈希计算。
+- **`VoxelStorage`**：纯 Python 堆内存哈希表，提供 $O(1)$ 的方块状态查询、快速 6 向邻居碰撞判定、生物群系映射字典（`biome_map: Dict[Tuple[int, int, int], str]`）、基于 $5\times 5$ 邻域加权的群系混合算法（`get_smoothed_biome_data`）与区块 CRC32 实时哈希计算。
 - **`_delta_queue`**：线程安全的非阻塞事件队列，以 200Hz（5ms）的泵频在 Blender 主线程中排队消费，确保 UI 流畅无卡顿。
 
 ### 4.2 场景持久化模型
@@ -137,7 +137,8 @@ graph TD
 - **Mesh 面属性 (Loop & Face Attributes)**：
   - `mtk_block_x`, `mtk_block_y`, `mtk_block_z`：每个面对应的 Minecraft 绝对世界坐标。
   - `mtk_face_dir`：面的朝向索引（0: East, 1: West, 2: Up, 3: Down, 4: South, 5: North）。
-  - `mtk_biome_tint_color`, `mtk_biome_tint_data`：生物群系染色向量与权重数据。
+  - `mtk_colormap_uv`：生物群系平滑混合计算后的色图 UV 采样坐标向量 $(U_{\text{blend}}, V_{\text{blend}}, 0.0)$，连接至材质中的 `MC_Biome_Colormap_Decoder` 节点组。
+  - `mtk_biome_tint_color`, `mtk_biome_tint_data`：生物群系染色向量（Linear RGBA，支持水体平滑过渡）与类型权重数据。
 
 ---
 
