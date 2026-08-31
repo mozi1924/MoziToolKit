@@ -117,7 +117,7 @@ def is_face_uv_collapsed(
     return max_dist_sq < (calc_dist_threshold * calc_dist_threshold)
 
 
-def is_orthogonal_angle(angle: float, tolerance: float = 0.01) -> bool:
+def is_orthogonal_angle(angle: float, tolerance: float = 1e-3) -> bool:
     """Check if an angle in radians is close to a multiple of 90 degrees (pi/2)."""
     half_pi = math.pi / 2.0
     rem = abs(angle) % half_pi

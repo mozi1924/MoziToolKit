@@ -2,7 +2,7 @@ import bmesh
 from typing import Dict, List, Optional
 from .types import SplitConfig
 from .uv_analyzer import get_texture_resolution_for_face, calculate_face_target_grid
-from .subdivider import subdivide_quad_face
+from .subdivider import subdivide_pixel_grid_face
 from ..mesh import bmesh_context, get_target_faces, cleanup_mesh_topology
 
 
@@ -55,7 +55,7 @@ def process_adaptive_pixel_split(context, config: Optional[SplitConfig] = None, 
             )
 
             # Perform grid subdivision
-            created_sub_faces = subdivide_quad_face(bm, face, uv_layer, grid)
+            created_sub_faces = subdivide_pixel_grid_face(bm, face, uv_layer, grid)
             new_faces.extend(created_sub_faces)
 
         # Step 3: Clean up topology (weld boundary duplicate vertices, delete loose edges/verts, recalc normals)

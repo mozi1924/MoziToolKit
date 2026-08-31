@@ -22,8 +22,10 @@ from ...mc_baker import (
     EMISSIVE_BLOCKS,
     is_block_emissive as _mc_is_block_emissive,
 )
-from ...live_sync.constants import (
-    DEFAULT_WORLD_OBJECT_NAME,
+from ...live_sync.mesh_builder import (
+    is_yefira_object,
+    is_yefira_root_object,
+    is_yefira_child_section,
 )
 
 
@@ -61,26 +63,9 @@ def parse_block_state_str(state: str) -> tuple[str, dict[str, str]]:
     return block_name, props
 
 
-def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -> int:
-    """Return 1 if block/state is emissive (light emitting), else 0."""
-    return 1 if _mc_is_block_emissive(block_name, props) else 0
-
-
-def is_yefira_object(obj: Optional[bpy.types.Object]) -> bool:
-    """Identify whether a Blender object is a Yefira live sync world object (root Empty or child section)."""
-    if not obj:
-        return False
-    if obj.get("mtk:is_yefira_world") or obj.get("mtk:section_pos") is not None:
-        return True
-    if obj.name == DEFAULT_WORLD_OBJECT_NAME or obj.name.startswith("Yefira_World") or obj.name.startswith("Yefira_Section_"):
-        return True
-    if "_Section_" in obj.name:
-        return True
-    if obj.type == 'EMPTY' and any(c.get("mtk:section_pos") is not None or "_Section_" in c.name for c in obj.children):
-        return True
-    if obj.parent and (obj.parent.get("mtk:is_yefira_world") or obj.parent.name.startswith("Yefira_World") or obj.parent.name == DEFAULT_WORLD_OBJECT_NAME):
-        return True
-    return False
+def is_block_emissive(block_name: str, props: Optional[dict[str, str]] = None) -> bool:
+    """Return True if block/state is emissive (light emitting), else False."""
+    return _mc_is_block_emissive(block_name, props)
 
 
 def has_yefira_objects(objects: Iterable[Optional[bpy.types.Object]]) -> bool:
