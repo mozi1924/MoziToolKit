@@ -72,6 +72,11 @@ from .mesh_builder import (
     find_root_section_children,
     sync_child_section_names,
 )
+from .session_manager import (
+    SyncSession,
+    SyncSessionManager,
+    get_active_session_manager,
+)
 from .storage import VoxelStorage, block_key, voxel_storage
 
 __all__ = (
@@ -134,4 +139,7 @@ __all__ = (
     "VoxelStorage",
     "block_key",
     "voxel_storage",
+    "SyncSession",
+    "SyncSessionManager",
+    "get_active_session_manager",
 )

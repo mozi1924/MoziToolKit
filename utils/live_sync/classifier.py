@@ -18,75 +18,13 @@ class BlockTypeEnum:
     FLUID = 6         # Water and Lava surface planes
     AIR = 7           # Air (skipped)
 
-# Known Air blocks
-AIR_BLOCKS = frozenset({
-    "minecraft:air",
-    "minecraft:cave_air",
-    "minecraft:void_air",
-    "minecraft:structure_void",
-    "air",
-    "cave_air",
-    "void_air",
-    "structure_void",
-})
+from ..materials.constants import (
+    AIR_BLOCKS,
+    FLUID_BLOCKS,
+    TRANSPARENT_BLOCKS,
+    EMISSIVE_BLOCKS,
+)
 
-# Known Fluid blocks
-FLUID_BLOCKS = frozenset({
-    "minecraft:water",
-    "minecraft:flowing_water",
-    "minecraft:lava",
-    "minecraft:flowing_lava",
-    "water",
-    "flowing_water",
-    "lava",
-    "flowing_lava",
-})
-
-# Transparent and Translucent blocks (fallback classification when atlas mapping lacks per-texture alpha)
-TRANSPARENT_BLOCKS = frozenset({
-    "minecraft:glass",
-    "minecraft:tinted_glass",
-    "minecraft:white_stained_glass",
-    "minecraft:orange_stained_glass",
-    "minecraft:magenta_stained_glass",
-    "minecraft:light_blue_stained_glass",
-    "minecraft:yellow_stained_glass",
-    "minecraft:lime_stained_glass",
-    "minecraft:pink_stained_glass",
-    "minecraft:gray_stained_glass",
-    "minecraft:light_gray_stained_glass",
-    "minecraft:cyan_stained_glass",
-    "minecraft:purple_stained_glass",
-    "minecraft:blue_stained_glass",
-    "minecraft:brown_stained_glass",
-    "minecraft:green_stained_glass",
-    "minecraft:red_stained_glass",
-    "minecraft:black_stained_glass",
-    "minecraft:ice",
-    "minecraft:packed_ice",
-    "minecraft:blue_ice",
-    "minecraft:frosted_ice",
-    "minecraft:water",
-    "minecraft:flowing_water",
-    "minecraft:slime_block",
-    "minecraft:honey_block",
-    "minecraft:beacon",
-    "minecraft:barrier",
-    "minecraft:structure_void",
-    "minecraft:light",
-    "minecraft:oak_leaves",
-    "minecraft:spruce_leaves",
-    "minecraft:birch_leaves",
-    "minecraft:jungle_leaves",
-    "minecraft:acacia_leaves",
-    "minecraft:dark_oak_leaves",
-    "minecraft:mangrove_leaves",
-    "minecraft:cherry_leaves",
-    "minecraft:azalea_leaves",
-    "minecraft:flowering_azalea_leaves",
-    "glass", "tinted_glass", "ice", "packed_ice", "blue_ice", "frosted_ice",
-    "water", "flowing_water", "slime_block", "honey_block", "beacon",
-})
 
 # Cross Plant blocks (rendered with X-shaped quad)
 CROSS_PLANTS = frozenset({

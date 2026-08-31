@@ -460,11 +460,15 @@ class TestPipelineFramework(unittest.TestCase):
 
     def test_labpbr_decoder_template(self):
         from utils.node_groups import ensure_labpbr_decoder, LABPBR_TEMPLATE_VERSION
-        from utils.node_groups.labpbr import reference_shape_errors
+        from utils.node_groups.labpbr import (
+            reference_shape_errors,
+            LABPBR_REFERENCE_NODE_COUNT,
+            LABPBR_REFERENCE_LINK_COUNT,
+        )
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(len(ng.nodes), 53)
-        self.assertEqual(len(ng.links), 86)
+        self.assertEqual(len([n for n in ng.nodes if n.bl_idname != "NodeReroute"]), LABPBR_REFERENCE_NODE_COUNT)
+        self.assertEqual(len(ng.links), LABPBR_REFERENCE_LINK_COUNT)
         self.assertFalse(any(node.bl_idname == "NodeReroute" for node in ng.nodes))
         self.assertEqual(reference_shape_errors(ng), ())
         self.assertEqual(ng.get("mozi_template_version"), LABPBR_TEMPLATE_VERSION)
