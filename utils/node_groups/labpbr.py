@@ -226,9 +226,9 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     artist_emission = _math(nodes, "Artist Emission Multiplier", "MULTIPLY", (-500, -1740))
     final_emission = node(nodes, "ShaderNodeMix", "Select Emission Mode", location=(120, -1600), properties={"data_type": "FLOAT", "blend_type": "MIX"})
 
-    alpha_inverse = _math(nodes, "1 − Albedo Alpha", "SUBTRACT", (500, 50), {"Value[0]": 1.0})
     has_alpha = _math(nodes, "Alpha > 0", "GREATER_THAN", (500, 200), {"Value[1]": 0.001})
-    raw_transmission = _math(nodes, "Raw Transmission", "MULTIPLY", (700, 50))
+    is_not_border = _math(nodes, "Alpha < 1", "LESS_THAN", (500, 50), {"Value[1]": 0.999})
+    is_translucent_body = _math(nodes, "Translucent Body", "MULTIPLY", (700, 50))
     translucent_alpha = node(nodes, "ShaderNodeMix", "Translucent Alpha", location=(700, 200), properties={"data_type": "FLOAT", "blend_type": "MIX"}, inputs={"B[0]": 1.0})
     final_alpha = _math(nodes, "Final Alpha", "MULTIPLY", (900, 200))
     final_transmission = _math(nodes, "Final Transmission", "MULTIPLY", (900, 50))
@@ -276,18 +276,19 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, enable_labpbr, "Value", final_emission, "Factor[0]"); link(links, group_input, "Hardcoded Emission", final_emission, "A[0]"); link(links, artist_emission, "Value", final_emission, "B[0]")
     link(links, enable_labpbr, "Value", normal_map, "Strength")
 
-    # Transmission and Alpha decoding (Zero-alpha cutout protected)
+    # Transmission and Alpha decoding (Zero-alpha cutout protected & 100% clear dielectric transmission)
     link(links, group_input, "Albedo Alpha", has_alpha, "Value[0]")
+    link(links, group_input, "Albedo Alpha", is_not_border, "Value[0]")
+    link(links, has_alpha, "Value", is_translucent_body, "Value[0]")
+    link(links, is_not_border, "Value", is_translucent_body, "Value[1]")
+
     link(links, group_input, "Transmission Weight", translucent_alpha, "Factor[0]")
     link(links, group_input, "Albedo Alpha", translucent_alpha, "A[0]")
     link(links, translucent_alpha, "Result[0]", final_alpha, "Value[0]")
     link(links, has_alpha, "Value", final_alpha, "Value[1]")
 
-    link(links, group_input, "Albedo Alpha", alpha_inverse, "Value[1]")
-    link(links, alpha_inverse, "Value", raw_transmission, "Value[0]")
-    link(links, group_input, "Transmission Weight", raw_transmission, "Value[1]")
-    link(links, raw_transmission, "Value", final_transmission, "Value[0]")
-    link(links, has_alpha, "Value", final_transmission, "Value[1]")
+    link(links, group_input, "Transmission Weight", final_transmission, "Value[0]")
+    link(links, is_translucent_body, "Value", final_transmission, "Value[1]")
 
     link(links, enable_ao, "Result[2]", principled, "Base Color"); link(links, enable_roughness, "Result[0]", principled, "Roughness"); link(links, enable_metallic, "Value", principled, "Metallic"); link(links, enable_ior, "Result[0]", principled, "IOR")
     link(links, final_alpha, "Value", principled, "Alpha")
