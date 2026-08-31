@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List, Union
 
@@ -1086,6 +1087,7 @@ BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
     # Multi-layer Flora (Layer 0 = Petals/Blank, Layer 1 = Stem/Grass)
     "pink_petals": [("none", 0.0), ("grass", 1.0)],
     "wildflowers": [("none", 0.0), ("grass", 1.0)],
+    "bamboo": [("grass", 1.0)],
     # Foliage
     "oak_leaves": [("foliage", 1.0)],
     "jungle_leaves": [("foliage", 1.0)],
@@ -1093,9 +1095,10 @@ BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
     "dark_oak_leaves": [("foliage", 1.0)],
     "vine": [("foliage", 1.0)],
     "mangrove_leaves": [("foliage", 1.0)],
-    "leaf_litter": [("foliage", 1.0)],
     # Dry Foliage
+    "leaf_litter": [("dry_foliage", 1.0)],
     "pale_hanging_moss": [("dry_foliage", 1.0)],
+    "pale_hanging_moss_tip": [("dry_foliage", 1.0)],
     "pale_oak_leaves": [("none", 1.0)],
     # Water & Fluid
     "water": [("water", 1.0)],
@@ -1161,8 +1164,12 @@ KNOWN_GRASS_STEMS = frozenset({
     "large_fern",
     "sugar_cane",
     "potted_fern",
-    "pink_petals",
-    "wildflowers",
+    "bush",
+    "pink_petals_stem",
+    "wildflowers_stem",
+    "bamboo_large_leaves",
+    "bamboo_small_leaves",
+    "bamboo_stage0",
 })
 
 KNOWN_FOLIAGE_STEMS = frozenset({
@@ -1172,10 +1179,10 @@ KNOWN_FOLIAGE_STEMS = frozenset({
     "dark_oak_leaves",
     "vine",
     "mangrove_leaves",
-    "leaf_litter",
 })
 
 KNOWN_DRY_FOLIAGE_STEMS = frozenset({
+    "leaf_litter",
     "pale_hanging_moss",
     "pale_hanging_moss_tip",
 })
@@ -1202,7 +1209,7 @@ def classify_tint_category(
 
     # 1. Check explicit block-level registration if block_name is provided
     if block_name:
-        clean_block = block_name.lower().removeprefix("minecraft:").removeprefix("block/")
+        clean_block = block_name.lower().removeprefix("minecraft:").removeprefix("block/").removeprefix("models/block/").removeprefix("models/")
         if "[" in clean_block:
             clean_block = clean_block.split("[", 1)[0]
         if clean_block in BLOCK_TINT_REGISTRY:
@@ -1234,6 +1241,9 @@ def classify_tint_category(
         return "water"
 
     # 3. Heuristic fallback for custom models
+    if "seagrass" in stem_norm or "kelp" in stem_norm:
+        return "none"
+
     if "leaves" in stem_norm:
         if "spruce" in stem_norm:
             return "hardcoded"
@@ -1246,7 +1256,7 @@ def classify_tint_category(
     if "water" in stem_norm:
         return "water"
 
-    if any(stem_norm.endswith(w) for w in ("_grass", "_fern", "_vine")):
+    if any(stem_norm.endswith(w) for w in ("_grass", "_fern", "_vine", "_bush")) or stem_norm == "bush":
         return "grass"
 
     return "none"
@@ -1258,77 +1268,64 @@ def blend_biome_colors(
 ) -> tuple[float, float, float, float]:
     """
     Compute a smooth blended Linear RGBA color across multiple weighted biomes (群系过渡).
-    biome_weights is a list of (biome_preset_name_or_dict, weight).
+    biome_weights: List of tuples (biome_preset_or_dict, weight).
+    tint_type: 'grass', 'foliage', 'dry_foliage', or 'water'.
     """
     if not biome_weights:
         return (1.0, 1.0, 1.0, 1.0)
 
-    total_weight = sum(w for _, w in biome_weights if w > 0)
+    total_weight = sum(w for _, w in biome_weights)
     if total_weight <= 0.0:
-        b = biome_weights[0][0]
-        name = b if isinstance(b, str) else b.get("name", "PLAINS")
-        return get_biome_colors(name)[f"{tint_type}_linear"]
+        return (1.0, 1.0, 1.0, 1.0)
 
-    r_acc, g_acc, b_acc, a_acc = 0.0, 0.0, 0.0, 0.0
-    for b_item, weight in biome_weights:
-        if weight <= 0:
+    r_acc, g_acc, b_acc, a_acc = 0.0, 0.0, 0.0, 1.0
+    key_map = {
+        "grass": "grass_linear",
+        "foliage": "foliage_linear",
+        "dry_foliage": "dry_foliage_linear",
+        "water": "water_linear",
+    }
+    col_key = key_map.get(tint_type.lower(), "grass_linear")
+
+    for biome_entry, weight in biome_weights:
+        if weight <= 0.0:
             continue
         norm_w = weight / total_weight
-        if isinstance(b_item, str):
-            b_colors = get_biome_colors(b_item)
-            col = b_colors.get(f"{tint_type}_linear", (1.0, 1.0, 1.0, 1.0))
-        elif isinstance(b_item, dict):
-            col = b_item.get(f"{tint_type}_linear")
-            if not col:
-                hex_str = b_item.get(tint_type, "#FFFFFF")
-                col = hex_to_linear_rgba(hex_str)
+        if isinstance(biome_entry, dict):
+            # Dynamic dictionary with hex or rgba
+            hex_str = biome_entry.get(tint_type.lower()) or biome_entry.get("grass") or "#91BD59"
+            col = hex_to_linear_rgba(hex_str)
         else:
-            col = (1.0, 1.0, 1.0, 1.0)
+            colors = get_biome_colors(str(biome_entry))
+            col = colors.get(col_key, (1.0, 1.0, 1.0, 1.0))
 
         r_acc += col[0] * norm_w
         g_acc += col[1] * norm_w
         b_acc += col[2] * norm_w
-        a_acc += (col[3] if len(col) > 3 else 1.0) * norm_w
 
     return (r_acc, g_acc, b_acc, a_acc)
 
 
-def get_biome_colors(preset_name: str = "PLAINS", pack_stack: Any = None) -> dict[str, Any]:
+def get_biome_colors(biome_name: str, pack_stack: Any = None) -> dict[str, Any]:
     """
-    Return sRGB and Linear RGBA color dict for a given biome preset.
+    Look up biome color data by preset name or ID.
     If pack_stack is provided, checks for stack-level custom colormaps / biome overrides first.
-    Falls back to canonical 26.2 BIOME_PALETTES.
+    Returns dictionary with hex and linear RGBA values for grass, foliage, dry_foliage, and water.
     """
-    key = preset_name.upper().strip()
-    # Normalize key (e.g. 'MINECRAFT:PLAINS' -> 'PLAINS')
-    if ":" in key:
-        key = key.split(":", 1)[1]
-
-    # 1. Check pack stack for dynamic biome definition or colormap sampling if stack is passed
+    name_upper = (biome_name or "PLAINS").strip().upper().replace(" ", "_").replace("MINECRAFT:", "")
     if pack_stack is not None and hasattr(pack_stack, "get_biome_data"):
-        stack_data = pack_stack.get_biome_data(key)
+        stack_data = pack_stack.get_biome_data(name_upper)
         if stack_data:
             return stack_data
 
-    palette = BIOME_PALETTES.get(key)
+    palette = BIOME_PALETTES.get(name_upper)
     if not palette:
-        # Fuzzy case / spacing fallback
         for k, v in BIOME_PALETTES.items():
-            if k == key or v.get("name", "").upper() == key or v.get("id", "").upper() == key:
+            if v.get("id") == biome_name.lower().removeprefix("minecraft:"):
                 palette = v
                 break
     if not palette:
-        palette = BIOME_PALETTES.get("PLAINS", {
-            "id": "plains",
-            "name": "Plains",
-            "grass": "#91BD59",
-            "foliage": "#77AB2F",
-            "dry_foliage": "#A37546",
-            "water": "#3F76E4",
-            "temperature": 0.8,
-            "humidity": 0.4,
-            "modifier": "none",
-        })
+        palette = BIOME_PALETTES["PLAINS"]
 
     grass_hex = palette.get("grass", "#91BD59")
     foliage_hex = palette.get("foliage", "#77AB2F")
@@ -1336,15 +1333,15 @@ def get_biome_colors(preset_name: str = "PLAINS", pack_stack: Any = None) -> dic
     water_hex = palette.get("water", "#3F76E4")
 
     return {
-        "id": palette.get("id", key.lower()),
-        "name": palette.get("name", key.capitalize()),
+        "id": palette.get("id", name_upper.lower()),
+        "name": palette.get("name", name_upper.capitalize()),
         "grass_hex": grass_hex,
-        "grass_linear": hex_to_linear_rgba(grass_hex),
         "foliage_hex": foliage_hex,
-        "foliage_linear": hex_to_linear_rgba(foliage_hex),
         "dry_foliage_hex": dry_foliage_hex,
-        "dry_foliage_linear": hex_to_linear_rgba(dry_foliage_hex),
         "water_hex": water_hex,
+        "grass_linear": hex_to_linear_rgba(grass_hex),
+        "foliage_linear": hex_to_linear_rgba(foliage_hex),
+        "dry_foliage_linear": hex_to_linear_rgba(dry_foliage_hex),
         "water_linear": hex_to_linear_rgba(water_hex),
         "temperature": palette.get("temperature", 0.8),
         "humidity": palette.get("humidity", 0.4),
@@ -1354,19 +1351,35 @@ def get_biome_colors(preset_name: str = "PLAINS", pack_stack: Any = None) -> dic
 
 class BiomeResolver:
     """
-    Parses block model JSONs and texture names to classify tint types
-    and discover overlay layers for Minecraft blocks.
+    Parses block model JSONs (including parent inheritance chains) and texture names
+    to automatically classify tint types and discover overlay layers for Minecraft blocks.
     """
 
     def __init__(self, models: dict[str, dict] | None = None, pack_root: str | Path | None = None):
-        self.models = dict(models) if models else {}
+        self.models: dict[str, dict] = dict(models) if models else {}
+        self.models_by_stem: dict[str, dict] = {}
         self.overlay_pairs: dict[str, str] = dict(KNOWN_OVERLAY_PAIRS)
         self.texture_tint_categories: dict[str, str] = {}
         self.texture_hardcoded_colors: dict[str, str] = {}
+        self._update_models_index()
         if pack_root:
             self.load_from_pack_root(pack_root)
         elif self.models:
             self._analyze_models()
+
+    def _update_models_index(self):
+        """Build stem and clean lookup indexes for loaded models."""
+        self.models_by_stem.clear()
+        for k, v in self.models.items():
+            stem = k.split("/")[-1].replace(".json", "")
+            self.models_by_stem[stem] = v
+
+    def load_from_pack(self, pack: Any):
+        """Load models from a ZipResourcePack instance (directory or zip)."""
+        if getattr(pack, "extract_dir", None) and Path(pack.extract_dir).exists():
+            self.load_from_pack_root(pack.extract_dir)
+        elif getattr(pack, "zip_path", None) and Path(pack.zip_path).exists():
+            self.load_from_zip(pack.zip_path)
 
     def load_from_pack_root(self, pack_root: str | Path):
         """Scan and load models from an extracted resource pack root directory."""
@@ -1381,36 +1394,107 @@ class BiomeResolver:
                 with open(model_file, "r", encoding="utf-8") as fp:
                     data = json.load(fp)
                     if isinstance(data, dict):
+                        rel_key = model_file.as_posix().split("/models/", 1)[-1].replace(".json", "").lower()
+                        self.models[rel_key] = data
                         self.models[model_file.stem.lower()] = data
             except Exception:
                 pass
+        self._update_models_index()
+        self._analyze_models()
+
+    def load_from_zip(self, zip_path: str | Path):
+        """Scan and load models directly from a .zip or .jar file."""
+        zp = Path(zip_path)
+        if not zp.exists() or not zipfile.is_zipfile(zp):
+            return
+        try:
+            with zipfile.ZipFile(zp, "r") as z:
+                for name in z.namelist():
+                    if name.startswith("assets/") and "/models/" in name and name.endswith(".json"):
+                        rel_key = name.split("/models/", 1)[1].replace(".json", "").lower()
+                        try:
+                            data = json.loads(z.read(name))
+                            if isinstance(data, dict):
+                                self.models[rel_key] = data
+                                stem = rel_key.split("/")[-1]
+                                self.models[stem] = data
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        self._update_models_index()
         self._analyze_models()
 
     def set_models(self, models: dict[str, dict]):
         """Set or update loaded block models and re-analyze."""
-        self.models = models
+        self.models = dict(models)
         self.overlay_pairs = dict(KNOWN_OVERLAY_PAIRS)
         self.texture_tint_categories.clear()
         self.texture_hardcoded_colors.clear()
+        self._update_models_index()
         self._analyze_models()
+
+    def _resolve_model(self, model_key: str, depth: int = 0) -> dict:
+        """Recursively resolve parent model inheritance and merge textures/elements."""
+        if depth > 10:
+            return {}
+        clean_k = model_key.removeprefix("minecraft:").lower()
+        model_data = self.models.get(clean_k) or self.models_by_stem.get(clean_k.split("/")[-1])
+        if not model_data or not isinstance(model_data, dict):
+            return {}
+
+        resolved = dict(model_data)
+        parent = resolved.get("parent")
+        if parent and isinstance(parent, str):
+            parent_key = parent.removeprefix("minecraft:").lower()
+            parent_resolved = self._resolve_model(parent_key, depth + 1)
+            # Merge textures: child textures override parent
+            merged_tex = dict(parent_resolved.get("textures", {})) if isinstance(parent_resolved.get("textures"), dict) else {}
+            if isinstance(resolved.get("textures"), dict):
+                merged_tex.update(resolved["textures"])
+            resolved["textures"] = merged_tex
+            # Inherit elements if child does not explicitly define its own
+            if "elements" not in resolved and "elements" in parent_resolved:
+                resolved["elements"] = parent_resolved["elements"]
+        return resolved
+
+    def _resolve_texture_var(self, tex_ref: str, textures_dict: dict) -> str:
+        """Follow #variable reference chains in a model's textures dictionary."""
+        seen = set()
+        curr = tex_ref
+        while isinstance(curr, str) and curr.startswith("#") and isinstance(textures_dict, dict):
+            var_name = curr[1:]
+            if var_name in seen:
+                break
+            seen.add(var_name)
+            curr = textures_dict.get(var_name, "")
+        if isinstance(curr, str) and not curr.startswith("#"):
+            return curr.removeprefix("minecraft:block/").removeprefix("block/").removeprefix("minecraft:item/").removeprefix("item/").strip().lower()
+        return ""
 
     def _analyze_models(self):
         """Analyze loaded model JSONs to discover overlay pairs, tint indexes, and custom textures."""
-        for model_name, model_data in self.models.items():
-            if not isinstance(model_data, dict):
+        for model_name in sorted(self.models.keys()):
+            resolved_model = self._resolve_model(model_name)
+            if not isinstance(resolved_model, dict):
                 continue
 
-            textures = model_data.get("textures", {})
+            textures = resolved_model.get("textures", {})
             if isinstance(textures, dict):
-                side_tex = textures.get("side", "")
-                overlay_tex = textures.get("overlay", "")
-                if side_tex and overlay_tex and isinstance(side_tex, str) and isinstance(overlay_tex, str):
-                    clean_side = side_tex.replace("minecraft:block/", "").replace("block/", "").lower()
-                    clean_overlay = overlay_tex.replace("minecraft:block/", "").replace("block/", "").lower()
-                    if clean_side and clean_overlay and clean_side != clean_overlay:
-                        self.overlay_pairs[clean_side] = clean_overlay
+                # Discover overlay pairs
+                side_tex = self._resolve_texture_var(textures.get("side", ""), textures)
+                overlay_tex = self._resolve_texture_var(textures.get("overlay", ""), textures)
+                if side_tex and overlay_tex and side_tex != overlay_tex:
+                    self.overlay_pairs[side_tex] = overlay_tex
 
-            elements = model_data.get("elements")
+                cross_tex = self._resolve_texture_var(textures.get("cross", ""), textures)
+                cross_overlay = self._resolve_texture_var(textures.get("cross_overlay", ""), textures)
+                if cross_tex and cross_overlay and cross_tex != cross_overlay:
+                    self.overlay_pairs[cross_tex] = cross_overlay
+
+            elements = resolved_model.get("elements")
+            model_stem = model_name.lower().removeprefix("block/").removeprefix("models/block/").removeprefix("models/").split("/")[-1]
+
             if isinstance(elements, list):
                 for elem in elements:
                     if not isinstance(elem, dict):
@@ -1423,26 +1507,18 @@ class BiomeResolver:
                             continue
                         tint_idx = f_data.get("tintindex")
                         if tint_idx is not None and tint_idx >= 0:
-                            tex_ref = f_data.get("texture", "")
-                            while isinstance(tex_ref, str) and tex_ref.startswith("#") and isinstance(textures, dict):
-                                tex_ref = textures.get(tex_ref[1:], "")
-                            if isinstance(tex_ref, str) and tex_ref:
-                                clean_tex = tex_ref.replace("minecraft:block/", "").replace("block/", "").lower()
-                                if ":" in clean_tex:
-                                    clean_tex = clean_tex.split(":", 1)[1]
-                                model_stem = model_name.lower().removeprefix("block/").removeprefix("models/block/")
+                            raw_tex = f_data.get("texture", "")
+                            clean_tex = self._resolve_texture_var(raw_tex, textures) if isinstance(textures, dict) else ""
+                            if clean_tex:
                                 cat = classify_tint_category(clean_tex, block_name=model_stem, tint_index=tint_idx)
                                 if cat != "none":
                                     self.texture_tint_categories[clean_tex] = cat
             else:
-                model_stem = model_name.lower().removeprefix("block/").removeprefix("models/block/")
                 cat = classify_tint_category("", block_name=model_stem)
                 if cat == "foliage" and isinstance(textures, dict):
                     for tex_var, tex_path in textures.items():
-                        if isinstance(tex_path, str) and not tex_path.startswith("#"):
-                            clean_tex = tex_path.replace("minecraft:block/", "").replace("block/", "").lower()
-                            if ":" in clean_tex:
-                                clean_tex = clean_tex.split(":", 1)[1]
+                        clean_tex = self._resolve_texture_var(tex_path, textures)
+                        if clean_tex:
                             self.texture_tint_categories[clean_tex] = cat
 
     def get_overlay_texture(self, texture_stem: str) -> Optional[str]:

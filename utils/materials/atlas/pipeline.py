@@ -240,11 +240,12 @@ class AtlasReplacementEngine:
         )
 
         session_materials = {}
-        biome_resolver = BiomeResolver(pack_root=pack.extract_dir)
+        biome_resolver = BiomeResolver()
+        if pack:
+            biome_resolver.load_from_pack(pack)
         if pack_stack:
             for p in pack_stack.packs:
-                if p.extract_dir and p.extract_dir != pack.extract_dir:
-                    biome_resolver.load_from_pack_root(p.extract_dir)
+                biome_resolver.load_from_pack(p)
 
         def get_or_create_replacement_material(texture_info):
             texture_key = (texture_info["namespace"], texture_info["texture_name"])
