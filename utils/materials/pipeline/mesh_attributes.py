@@ -125,7 +125,8 @@ def compute_biome_tint_attributes(
         overlay_tint_weights[poly_idx] = float(tint_info.get("default_overlay_tint_weight", tint_info.get("overlay_tint_weight", 1.0)))
         tt = int(tint_info.get("tint_type", 0))
         is_hc = bool(tint_info.get("is_hardcoded", False))
-        use_hardcodeds[poly_idx] = 1.0 if is_hc else 0.0
+        tint_type_val = float(4 if is_hc else tt)
+        use_hardcodeds[poly_idx] = tint_type_val
         hc_c = tint_info.get("hardcoded_color")
         if hc_c:
             hardcoded_colors[poly_idx] = tuple(hc_c)
@@ -146,14 +147,24 @@ def compute_biome_tint_attributes(
     return packed_tint_data, tint_colors
 
 
-def apply_biome_tint_attributes(mesh: bpy.types.Mesh, packed_tint_data: list, tint_colors: list) -> None:
-    """Write computed biome tint data and color vectors to mesh face attributes."""
+def apply_biome_tint_attributes(
+    mesh: bpy.types.Mesh,
+    packed_tint_data: list,
+    tint_colors: list,
+    colormap_uvs: Optional[list] = None,
+) -> None:
+    """Write computed biome tint data, color vectors, and optional colormap UVs to mesh face attributes."""
     ensure_face_attribute(mesh, ATTR_BIOME_TINT_DATA, "FLOAT_COLOR").data.foreach_set(
         "color", [c for val in packed_tint_data for c in val]
     )
     ensure_face_attribute(mesh, ATTR_BIOME_TINT_COLOR, "FLOAT_COLOR").data.foreach_set(
         "color", [c for val in tint_colors for c in val]
     )
+    if colormap_uvs is not None:
+        from ..constants import ATTR_COLORMAP_UV
+        ensure_face_attribute(mesh, ATTR_COLORMAP_UV, "FLOAT_VECTOR").data.foreach_set(
+            "vector", [v for val in colormap_uvs for v in (val[0], val[1], val[2] if len(val) > 2 else 0.0)]
+        )
 
 
 def cleanup_legacy_mesh_attributes(mesh: bpy.types.Mesh) -> None:

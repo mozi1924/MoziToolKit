@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 from pathlib import Path
+from typing import Any, Optional, Union, Dict, Tuple
 import bpy
 
 from ...node_groups import ensure_all_templates
@@ -40,7 +41,10 @@ def load_image_texture(
     Names the image datablock as 'filename:pack_hash_short' to prevent collision
     (e.g., stone.png:dcddb12ac1c4) and reuses existing image datablocks when available.
     """
-    if not filepath or not filepath.exists():
+    if not filepath:
+        return None
+    filepath = Path(filepath)
+    if not filepath.exists():
         return None
 
     str_path = str(filepath.resolve())
@@ -308,6 +312,7 @@ def rebuild_material(
     pack_textures: bool = True,
     pack_hash: str = None,
     biome_preset: str = "PLAINS",
+    pack_stack: Any = None,
 ) -> bool:
     """
     Completely clear an existing material's node tree and reconstruct a LabPBR 1.3 PBR material
@@ -389,19 +394,57 @@ def rebuild_material(
             biome_tint_node.inputs["Hardcoded Color"].default_value = tuple(hc_col)
             biome_tint_node.inputs["Tint Color"].default_value = tuple(hc_col)
         else:
-            biome_colors = get_biome_colors(biome_preset)
+            effective_stack = pack_stack
+            if effective_stack is None:
+                from ..pack.pack_stack import get_configured_pack_stack
+                effective_stack = get_configured_pack_stack()
+
+            biome_colors = get_biome_colors(biome_preset, pack_stack=effective_stack)
+            colormap_name = None
             if tint_type == TINT_TYPE_GRASS:
                 resolved_col = biome_colors["grass_linear"]
+                colormap_name = "grass"
             elif tint_type == TINT_TYPE_FOLIAGE:
                 resolved_col = biome_colors["foliage_linear"]
+                colormap_name = "foliage"
             elif tint_type == TINT_TYPE_DRY_FOLIAGE:
                 resolved_col = biome_colors["dry_foliage_linear"]
+                colormap_name = "dry_foliage"
             elif tint_type == TINT_TYPE_WATER:
                 resolved_col = biome_colors["water_linear"]
             else:
                 resolved_col = (1.0, 1.0, 1.0, 1.0)
+
             biome_tint_node.inputs["Tint Color"].default_value = tuple(resolved_col)
             biome_tint_node.inputs["Hardcoded Color"].default_value = tuple(resolved_col)
+
+            # Check if precompiled or pack stack colormap texture exists on disk
+            colormap_path = effective_stack.get_colormap_path(colormap_name) if (effective_stack and colormap_name) else None
+            if colormap_path and Path(colormap_path).exists():
+                col_img = load_image_texture(
+                    colormap_path,
+                    colorspace="sRGB",
+                    pack_textures=pack_textures,
+                    pack_hash=pack_hash,
+                )
+                sampler_group = templates.get("MC_Biome_Colormap_Sampler")
+                if sampler_group and col_img:
+                    sampler_node = nt.nodes.new("ShaderNodeGroup")
+                    sampler_node.node_tree = sampler_group
+                    sampler_node.name = "MC Biome Colormap Sampler"
+                    sampler_node.location = (-480, 480)
+                    sampler_node.inputs["Temperature"].default_value = float(biome_colors.get("temperature", 0.8))
+                    sampler_node.inputs["Humidity"].default_value = float(biome_colors.get("humidity", 0.4))
+
+                    tex_colormap = nt.nodes.new("ShaderNodeTexImage")
+                    tex_colormap.name = f"Colormap {colormap_name.capitalize()}"
+                    tex_colormap.image = col_img
+                    tex_colormap.interpolation = "Closest"
+                    tex_colormap.extension = "CLIP"
+                    tex_colormap.location = (-240, 480)
+
+                    nt.links.new(sampler_node.outputs["Colormap UV"], tex_colormap.inputs["Vector"])
+                    nt.links.new(tex_colormap.outputs["Color"], biome_tint_node.inputs["Tint Color"])
 
         nt.links.new(biome_tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
         nt.links.new(biome_tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
