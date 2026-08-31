@@ -308,6 +308,8 @@ def _emit_fluid_face(
     bm_face[layers["tiling"]] = f_res.uv_tiling_transform
     bm_face[layers["tint_data"]] = f_res.biome_tint_data
     bm_face[layers["tint_color"]] = f_res.biome_tint_color
+    if "colormap_uv" in layers:
+        bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
     bm_face[layers["block_x"]] = block_pos[0]
     bm_face[layers["block_y"]] = block_pos[1]
     bm_face[layers["block_z"]] = block_pos[2]

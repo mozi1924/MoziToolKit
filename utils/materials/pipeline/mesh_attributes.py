@@ -26,6 +26,7 @@ from ..constants import (
 from ..biome import (
     get_biome_colors,
     blend_biome_colors,
+    get_colormap_uv,
     TINT_TYPE_GRASS,
     TINT_TYPE_FOLIAGE,
     TINT_TYPE_WATER,
@@ -90,11 +91,12 @@ def compute_biome_tint_attributes(
     num_polygons: int,
     poly_tint_map: dict[int, dict],
     biome_preset: Union[str, list[tuple[str, float]]] = "PLAINS",
-) -> tuple[list, list]:
+) -> tuple[list, list, list]:
     """
-    Compute packed tint weights and colors for all polygons based on tint data and biome.
+    Compute packed tint weights, colors, and colormap UV coordinates for all polygons based on tint data and biome.
     biome_preset can be a single biome preset name (e.g. 'PLAINS') or a list of weighted biomes
     for smooth biome transition interpolation (e.g. [('PLAINS', 0.6), ('FOREST', 0.4)]).
+    Returns (packed_tint_data, tint_colors, colormap_uvs).
     """
     tint_weights = [0.0] * num_polygons
     base_tint_weights = [1.0] * num_polygons
@@ -110,11 +112,29 @@ def compute_biome_tint_attributes(
         foliage_col = biome_colors["foliage_linear"]
         dry_foliage_col = biome_colors["dry_foliage_linear"]
         water_col = biome_colors["water_linear"]
+        temp = float(biome_colors.get("temperature", 0.8))
+        hum = float(biome_colors.get("humidity", 0.4))
+        u, v = get_colormap_uv(temp, hum)
+        colormap_uvs = [(u, v, 0.0)] * num_polygons
     else:
         grass_col = blend_biome_colors(biome_preset, "grass")
         foliage_col = blend_biome_colors(biome_preset, "foliage")
         dry_foliage_col = blend_biome_colors(biome_preset, "dry_foliage")
         water_col = blend_biome_colors(biome_preset, "water")
+        total_w = sum(w for _, w in biome_preset)
+        if total_w > 0:
+            avg_u = 0.0
+            avg_v = 0.0
+            for b_name, w in biome_preset:
+                b_info = get_biome_colors(b_name)
+                t = float(b_info.get("temperature", 0.8))
+                h = float(b_info.get("humidity", 0.4))
+                bu, bv = get_colormap_uv(t, h)
+                avg_u += bu * (w / total_w)
+                avg_v += bv * (w / total_w)
+            colormap_uvs = [(avg_u, avg_v, 0.0)] * num_polygons
+        else:
+            colormap_uvs = [(0.2, 0.32, 0.0)] * num_polygons
 
     for poly_idx, tint_info in poly_tint_map.items():
         if not tint_info:
@@ -125,7 +145,7 @@ def compute_biome_tint_attributes(
         overlay_tint_weights[poly_idx] = float(tint_info.get("default_overlay_tint_weight", tint_info.get("overlay_tint_weight", 1.0)))
         tt = int(tint_info.get("tint_type", 0))
         is_hc = bool(tint_info.get("is_hardcoded", False))
-        tint_type_val = float(4 if is_hc else tt)
+        tint_type_val = float(TINT_TYPE_HARDCODED if is_hc else tt)
         use_hardcodeds[poly_idx] = tint_type_val
         hc_c = tint_info.get("hardcoded_color")
         if hc_c:
@@ -138,13 +158,13 @@ def compute_biome_tint_attributes(
             tint_colors[poly_idx] = dry_foliage_col
         elif tt == TINT_TYPE_WATER:
             tint_colors[poly_idx] = water_col
-        elif tt == TINT_TYPE_HARDCODED:
+        elif tt == TINT_TYPE_HARDCODED or is_hc:
             tint_colors[poly_idx] = hardcoded_colors[poly_idx]
         else:
             tint_colors[poly_idx] = (1.0, 1.0, 1.0, 1.0)
 
     packed_tint_data = list(zip(base_tint_weights, overlay_tint_weights, tint_weights, use_hardcodeds))
-    return packed_tint_data, tint_colors
+    return packed_tint_data, tint_colors, colormap_uvs
 
 
 def apply_biome_tint_attributes(

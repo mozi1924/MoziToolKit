@@ -36,6 +36,7 @@ from ..constants import (
     ATTR_UV_TILING_TRANSFORM,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
+    ATTR_COLORMAP_UV,
 )
 
 
@@ -270,7 +271,7 @@ def add_packed_biome_attribute_nodes(
     and dynamic ColorMap sampling pipeline (MC_Biome_Colormap_Sampler, Colormap textures, MC_Biome_Colormap_Decoder)
     to the MC_Biome_Tint node.
     """
-    # 1. Mesh Attribute: ATTR_BIOME_TINT_DATA (RGBA: base, overlay, tint, tint_type / use_hardcoded)
+    # 1. Mesh Attribute: ATTR_BIOME_TINT_DATA (RGBA: base, overlay, tint, tint_type)
     data = nodes.new("ShaderNodeAttribute")
     data.name = "Attr Biome Tint Data"
     data.attribute_type = "GEOMETRY"
@@ -284,31 +285,27 @@ def add_packed_biome_attribute_nodes(
     links.new(split.outputs["Red"], biome_tint_node.inputs["Base Tint Weight"])
     links.new(split.outputs["Green"], biome_tint_node.inputs["Overlay Tint Weight"])
     links.new(split.outputs["Blue"], biome_tint_node.inputs["Tint Weight"])
-    links.new(data.outputs["Alpha"], biome_tint_node.inputs["Use Hardcoded"])
 
-    # 2. Mesh Attribute: ATTR_BIOME_TINT_COLOR (Fallback / Static resolved tint color)
+    # 2. Mesh Attribute: ATTR_BIOME_TINT_COLOR (Fallback / Static resolved tint color / Water color)
     color = nodes.new("ShaderNodeAttribute")
     color.name = "Attr Biome Tint Color"
     color.attribute_type = "GEOMETRY"
     color.attribute_name = ATTR_BIOME_TINT_COLOR
     color.location = (location[0], location[1] - 80)
-    links.new(color.outputs["Color"], biome_tint_node.inputs["Hardcoded Color"])
 
-    # 3. Dynamic ColorMap Pipeline
+    # 3. Dynamic ColorMap Pipeline with GPU Colormap UV attribute
     if not templates:
         templates = ensure_all_templates()
 
-    sampler_group = templates.get("MC_Biome_Colormap_Sampler")
     decoder_group = templates.get("MC_Biome_Colormap_Decoder")
 
-    if sampler_group and decoder_group and colormaps:
-        # Sampler Node
-        sampler_node = nodes.new("ShaderNodeGroup")
-        sampler_node.node_tree = sampler_group
-        sampler_node.name = "MC Biome Colormap Sampler"
-        sampler_node.location = (location[0] - 650, location[1] + 320)
-        sampler_node.inputs["Temperature"].default_value = 0.8
-        sampler_node.inputs["Humidity"].default_value = 0.4
+    if decoder_group and colormaps:
+        # Colormap UV mesh attribute
+        attr_uv = nodes.new("ShaderNodeAttribute")
+        attr_uv.name = "Attr Colormap UV"
+        attr_uv.attribute_type = "GEOMETRY"
+        attr_uv.attribute_name = ATTR_COLORMAP_UV
+        attr_uv.location = (location[0] - 650, location[1] + 320)
 
         # Decoder Node
         decoder_node = nodes.new("ShaderNodeGroup")
@@ -316,9 +313,10 @@ def add_packed_biome_attribute_nodes(
         decoder_node.name = "MC Biome Colormap Decoder"
         decoder_node.location = (location[0] - 120, location[1] + 320)
 
-        # Wire Tint Type from Split Biome Tint Data Alpha
+        # Wire Tint Type from Biome Tint Data Alpha
         links.new(data.outputs["Alpha"], decoder_node.inputs["Tint Type"])
         links.new(color.outputs["Color"], decoder_node.inputs["Hardcoded Color"])
+        links.new(color.outputs["Color"], decoder_node.inputs["Water Color"])
         links.new(color.outputs["Color"], decoder_node.inputs["Fallback Color"])
 
         # Colormap Textures
@@ -338,7 +336,7 @@ def add_packed_biome_attribute_nodes(
                     tex_node.interpolation = "Closest"
                     tex_node.extension = "CLIP"
                     tex_node.location = pos
-                    links.new(sampler_node.outputs["Colormap UV"], tex_node.inputs["Vector"])
+                    links.new(attr_uv.outputs["Vector"], tex_node.inputs["Vector"])
                     links.new(tex_node.outputs["Color"], decoder_node.inputs[target_socket])
 
         # Connect Decoder Output to Biome Tint

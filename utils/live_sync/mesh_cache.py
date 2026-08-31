@@ -165,10 +165,9 @@ class CachedStateMeta:
                 use_tint = True
                 needs_override = True
 
-            if needs_override:
                 tint_weight = 1.0 if use_tint else 0.0
-                hardcoded_weight = base_res.biome_tint_data[3]
-                b_tint_data = (base_res.biome_tint_data[0], base_res.biome_tint_data[1], tint_weight, hardcoded_weight)
+                tint_type = self.parsed.tint_data[3] if (use_tint and self.parsed.tint_data[3] > 0) else base_res.biome_tint_data[3]
+                b_tint_data = (base_res.biome_tint_data[0], base_res.biome_tint_data[1], tint_weight, tint_type)
                 b_tint_col = self.parsed.tint_color if use_tint else base_res.biome_tint_color
                 return ResolvedFaceTexture(
                     chunk_id=base_res.chunk_id,

@@ -209,7 +209,6 @@ class TestBiomeRefactor(unittest.TestCase):
         self.assertIn("Base Color", inputs)
         self.assertIn("Overlay Color", inputs)
         self.assertIn("Tint Color", inputs)
-        self.assertIn("Hardcoded Color", inputs)
         self.assertIn("Color", outputs)
         self.assertIn("Alpha", outputs)
 
@@ -221,13 +220,15 @@ class TestBiomeRefactor(unittest.TestCase):
             2: {"tint_type": TINT_TYPE_NONE, "tint_weight": 0.0},
         }
         # Single biome
-        packed, colors = compute_biome_tint_attributes(3, poly_map, biome_preset="PLAINS")
+        packed, colors, uvs = compute_biome_tint_attributes(3, poly_map, biome_preset="PLAINS")
         self.assertEqual(len(colors), 3)
+        self.assertEqual(len(uvs), 3)
         self.assertAlmostEqual(colors[0][0], get_biome_colors("PLAINS")["grass_linear"][0], places=3)
 
         # Transition biome
-        packed_tr, colors_tr = compute_biome_tint_attributes(3, poly_map, biome_preset=[("PLAINS", 0.5), ("FOREST", 0.5)])
+        packed_tr, colors_tr, uvs_tr = compute_biome_tint_attributes(3, poly_map, biome_preset=[("PLAINS", 0.5), ("FOREST", 0.5)])
         self.assertEqual(len(colors_tr), 3)
+        self.assertEqual(len(uvs_tr), 3)
         expected_grass = blend_biome_colors([("PLAINS", 0.5), ("FOREST", 0.5)], "grass")
         self.assertAlmostEqual(colors_tr[0][0], expected_grass[0], places=3)
 
@@ -309,6 +310,47 @@ class TestBiomeRefactor(unittest.TestCase):
         self.assertIn("Water Color", inputs)
         self.assertIn("Hardcoded Color", inputs)
         self.assertIn("Color", outputs)
+
+    def test_atlas_material_with_colormap_decoder(self):
+        """Test that atlas add_packed_biome_attribute_nodes connects ATTR_COLORMAP_UV and Colormap Decoder correctly."""
+        from utils.materials.atlas.builder import add_packed_biome_attribute_nodes
+        from utils.node_groups.biome import ensure_biome_tint
+        from utils.materials.constants import ATTR_COLORMAP_UV, ATTR_BIOME_TINT_DATA
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmppath = Path(tmpdir)
+            grass_cm = tmppath / "grass.png"
+            Image.new("RGB", (256, 256), color=(145, 189, 89)).save(grass_cm)
+
+            mat = bpy.data.materials.new("test_atlas_cm_material")
+            mat.use_nodes = True
+            nodes, links = mat.node_tree.nodes, mat.node_tree.links
+            nodes.clear()
+
+            tint_tree = ensure_biome_tint()
+            biome_node = nodes.new("ShaderNodeGroup")
+            biome_node.node_tree = tint_tree
+            biome_node.name = "MC Biome Tint"
+
+            colormaps = {"grass": str(grass_cm)}
+            add_packed_biome_attribute_nodes(nodes, links, biome_node, colormaps=colormaps)
+
+            node_names = [n.name for n in nodes]
+            self.assertIn("Attr Colormap UV", node_names)
+            self.assertIn("Attr Biome Tint Data", node_names)
+            self.assertIn("MC Biome Colormap Decoder", node_names)
+            self.assertIn("Colormap Grass", node_names)
+
+            attr_uv = nodes["Attr Colormap UV"]
+            self.assertEqual(attr_uv.attribute_name, ATTR_COLORMAP_UV)
+            tex_grass = nodes["Colormap Grass"]
+            decoder_node = nodes["MC Biome Colormap Decoder"]
+
+            # Verify UV -> TexImage -> Decoder -> Biome Tint
+            self.assertTrue(any(l.from_node == attr_uv and l.to_node == tex_grass for l in links))
+            self.assertTrue(any(l.from_node == tex_grass and l.to_node == decoder_node for l in links))
+            self.assertTrue(any(l.from_node == decoder_node and l.to_node == biome_node for l in links))
 
 
 if __name__ == "__main__":
