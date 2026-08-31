@@ -371,6 +371,102 @@ class TestMaterialSystemSpecification(unittest.TestCase):
             self.assertAlmostEqual(max(v_coords), 1.0, places=4)
             self.assertAlmostEqual(min(v_coords), 15.0 / 16.0, places=4)
 
+    def test_acceptance_material_writing_contract_standalone_vs_atlas(self):
+        """
+        Acceptance Matrix: Material Information Writing Contract.
+        - Standalone Mode: all material information (Biome Tint, Physical Props, Animation)
+          is written directly to node inputs default_value; NO ShaderNodeAttribute in shader;
+          NO atlas driving attributes on mesh faces.
+        - Atlas Mode: all variation across faces is driven by Mesh Face Attributes;
+          shader contains ShaderNodeAttribute to decode.
+        """
+        if not HAS_BPY:
+            return
+
+        from utils.materials.constants import (
+            ATTR_BIOME_TINT_DATA,
+            ATTR_BIOME_TINT_COLOR,
+            ATTR_MATERIAL_PROPS,
+            ATTR_ANIM_TIMING,
+            ATTR_ATLAS_CHUNK_ID,
+            ATTR_SOURCE_TEXTURE_KEY,
+        )
+
+        pack = self._create_mock_pack("spec_writing_contract_pack", {
+            "assets/minecraft/textures/block/grass_block_top.png": Image.new("RGBA", (16, 16), (100, 200, 100, 255)),
+            "assets/minecraft/textures/block/torch.png": Image.new("RGBA", (16, 16), (255, 200, 50, 255)),
+        })
+        stack = ResourcePackStack([pack])
+        stack.precompile(material_mode="STANDALONE")
+        stack.precompile(material_mode="ATLAS")
+
+        # 1. Test Standalone Mode
+        bpy.ops.mesh.primitive_cube_add()
+        cube_st = bpy.context.active_object
+        cube_st.name = "SpecTestCubeStandalone"
+        cube_st.data.materials.clear()
+        cube_st.data.materials.append(bpy.data.materials.new(name="grass_block_top"))
+
+        params_st = {
+            "pack_stack": stack,
+            "material_mode": "STANDALONE",
+            "biome_preset": "JUNGLE",
+            "pack_textures": True,
+            "use_cache": True,
+        }
+        res_st, ctx_st = run_preset_pipeline("replace_material", bpy.context, params=params_st, target_objects=[cube_st])
+        self.assertTrue(res_st.is_success, ctx_st.reports)
+
+        # In Standalone: mesh MUST NOT have atlas/tint/props attributes
+        mesh_st = cube_st.data
+        self.assertIsNone(mesh_st.attributes.get(ATTR_BIOME_TINT_DATA))
+        self.assertIsNone(mesh_st.attributes.get(ATTR_BIOME_TINT_COLOR))
+        self.assertIsNone(mesh_st.attributes.get(ATTR_MATERIAL_PROPS))
+        self.assertIsNone(mesh_st.attributes.get(ATTR_ANIM_TIMING))
+        self.assertIsNone(mesh_st.attributes.get(ATTR_ATLAS_CHUNK_ID))
+        # Provenance is retained
+        self.assertIsNotNone(mesh_st.attributes.get(ATTR_SOURCE_TEXTURE_KEY))
+
+        # In Standalone: material node tree MUST NOT contain ShaderNodeAttribute
+        mat_st = cube_st.data.materials[0]
+        attr_nodes = [n for n in mat_st.node_tree.nodes if n.bl_idname == "ShaderNodeAttribute"]
+        self.assertEqual(len(attr_nodes), 0)
+
+        # Biome Tint node inputs are configured directly
+        biome_tint_node = mat_st.node_tree.nodes.get("MC Biome Tint")
+        self.assertIsNotNone(biome_tint_node)
+        self.assertAlmostEqual(biome_tint_node.inputs["Tint Weight"].default_value, 1.0, places=2)
+
+        # 2. Test Atlas Mode
+        bpy.ops.mesh.primitive_cube_add()
+        cube_at = bpy.context.active_object
+        cube_at.name = "SpecTestCubeAtlas"
+        cube_at.data.materials.clear()
+        cube_at.data.materials.append(bpy.data.materials.new(name="grass_block_top"))
+
+        params_at = {
+            "pack_stack": stack,
+            "material_mode": "ATLAS",
+            "biome_preset": "JUNGLE",
+            "pack_textures": True,
+            "use_cache": True,
+        }
+        res_at, ctx_at = run_preset_pipeline("replace_material", bpy.context, params=params_at, target_objects=[cube_at])
+        self.assertTrue(res_at.is_success, ctx_at.reports)
+
+        # In Atlas: mesh MUST have atlas, tint, and props attributes
+        mesh_at = cube_at.data
+        self.assertIsNotNone(mesh_at.attributes.get(ATTR_BIOME_TINT_DATA))
+        self.assertIsNotNone(mesh_at.attributes.get(ATTR_BIOME_TINT_COLOR))
+        self.assertIsNotNone(mesh_at.attributes.get(ATTR_MATERIAL_PROPS))
+        self.assertIsNotNone(mesh_at.attributes.get(ATTR_ATLAS_CHUNK_ID))
+
+        # In Atlas: shader node tree contains ShaderNodeAttribute nodes
+        mat_at = cube_at.data.materials[0]
+        attr_nodes_at = [n for n in mat_at.node_tree.nodes if n.bl_idname == "ShaderNodeAttribute"]
+        self.assertGreater(len(attr_nodes_at), 0)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

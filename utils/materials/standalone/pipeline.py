@@ -39,9 +39,8 @@ from ..pipeline.mesh_attributes import (
     read_face_string_attribute,
     read_face_float_attribute,
     read_face_tiling,
-    compute_biome_tint_attributes,
-    apply_biome_tint_attributes,
     cleanup_legacy_mesh_attributes,
+    cleanup_all_atlas_attributes,
     cleanup_object_anim_properties,
 )
 
@@ -129,7 +128,7 @@ class StandaloneReplacementEngine:
 
             mat_name = f"mtk:{texture_info['namespace']}:{texture_info['texture_name']}"
             mat = bpy.data.materials.new(name=mat_name)
-            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash):
+            if not rebuild_material(mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash, biome_preset=biome_preset):
                 bpy.data.materials.remove(mat)
                 return None, False
 
@@ -409,15 +408,6 @@ class StandaloneReplacementEngine:
 
 
             if poly_modified:
-                poly_tint_map = {
-                    poly_idx: tex_info.get("tint_info") or biome_resolver.get_tint_info(tex_info["texture_name"])
-                    for poly_idx, tex_info, _, _, _, _ in resolved_faces
-                }
-                packed_tint_data, tint_colors = compute_biome_tint_attributes(
-                    len(mesh.polygons), poly_tint_map, biome_preset
-                )
-                apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
-                cleanup_legacy_mesh_attributes(mesh)
                 apply_mesh_face_materials_and_provenance(mesh, face_materials, source_keys, source_origins)
 
                 has_retained_atlas_face = any(
@@ -426,11 +416,10 @@ class StandaloneReplacementEngine:
                     for poly_idx in ([entry[0] for entry in unresolved_faces] + skipped_faces)
                 )
                 if not has_retained_atlas_face:
-                    for attr_name in ANIM_AND_ATLAS_ATTR_NAMES:
-                        attr = mesh.attributes.get(attr_name)
-                        if attr:
-                            mesh.attributes.remove(attr)
+                    cleanup_all_atlas_attributes(mesh)
                     cleanup_object_anim_properties(obj)
+                else:
+                    cleanup_legacy_mesh_attributes(mesh)
 
         if assigned_count == 0:
             cleanup_unused_mtk_datablocks()

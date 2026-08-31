@@ -521,6 +521,8 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
     ATTR_MATERIAL_PROPS,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
     "atlas_chunk_id",
     "atlas_texture_id",
     "material_id",
@@ -531,6 +533,8 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     "mtk_anim_frame_width",
     "mtk_anim_frame_height",
     "mtk_material_props",
+    "mtk_biome_tint_data",
+    "mtk_biome_tint_color",
 )
 
 # Obsolete / split stream attribute names cleaned up when compact attributes are written

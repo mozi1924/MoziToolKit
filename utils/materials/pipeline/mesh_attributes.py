@@ -144,6 +144,19 @@ def cleanup_legacy_mesh_attributes(mesh: bpy.types.Mesh) -> None:
             mesh.attributes.remove(attr)
 
 
+def cleanup_all_atlas_attributes(mesh: bpy.types.Mesh) -> None:
+    """Remove all Atlas-mode and animation driving attributes from the mesh (used in Standalone mode)."""
+    cleanup_legacy_mesh_attributes(mesh)
+    for attr_name in ANIM_AND_ATLAS_ATTR_NAMES:
+        attr = mesh.attributes.get(attr_name)
+        if attr:
+            mesh.attributes.remove(attr)
+    if "mtk:atlas_mapping" in mesh:
+        del mesh["mtk:atlas_mapping"]
+    if "mtk_atlas_mapping" in mesh:
+        del mesh["mtk_atlas_mapping"]
+
+
 def cleanup_object_anim_properties(obj: bpy.types.Object) -> None:
     """Remove legacy object-level animation properties."""
     for prop in (
