@@ -28,6 +28,7 @@ from .mesh_attributes import (
     compute_biome_tint_attributes,
     apply_biome_tint_attributes,
     cleanup_legacy_mesh_attributes,
+    cleanup_all_atlas_attributes,
     cleanup_object_anim_properties,
 )
 
@@ -72,6 +73,7 @@ __all__ = [
     "compute_biome_tint_attributes",
     "apply_biome_tint_attributes",
     "cleanup_legacy_mesh_attributes",
+    "cleanup_all_atlas_attributes",
     "cleanup_object_anim_properties",
     "remap_polygon_loop_uvs",
     "remap_face_uv_to_local",

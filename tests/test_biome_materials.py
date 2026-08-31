@@ -380,20 +380,27 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
         self.assertTrue(res.is_success, msg=res.message)
 
-        # Check mesh attributes
+        # Standalone mode contract: NO atlas or biome tint attributes on the mesh
         mesh = self.obj.data
         tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
         tint_color_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
-        self.assertIsNotNone(tint_data_attr)
-        self.assertIsNotNone(tint_color_attr)
+        self.assertIsNone(tint_data_attr)
+        self.assertIsNone(tint_color_attr)
+
+        # Standalone mode contract: parameters are written directly to material node inputs
+        mat = self.obj.data.materials[0]
+        self.assertIsNotNone(mat)
+        self.assertTrue(mat.use_nodes)
+        biome_tint_node = mat.node_tree.nodes.get("MC Biome Tint")
+        self.assertIsNotNone(biome_tint_node)
 
         # Grass block should have tint_weight == 1.0
-        self.assertAlmostEqual(tint_data_attr.data[0].color[2], 1.0, places=2)
+        self.assertAlmostEqual(biome_tint_node.inputs["Tint Weight"].default_value, 1.0, places=2)
 
         # Swamp grass color check (linear)
         swamp_colors = get_biome_colors("SWAMP")
         expected_r, expected_g, expected_b, _ = swamp_colors["grass_linear"]
-        actual_col = tint_color_attr.data[0].color
+        actual_col = biome_tint_node.inputs["Tint Color"].default_value
         self.assertAlmostEqual(actual_col[0], expected_r, places=2)
         self.assertAlmostEqual(actual_col[1], expected_g, places=2)
         self.assertAlmostEqual(actual_col[2], expected_b, places=2)
@@ -450,9 +457,17 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         res, ctx = run_preset_pipeline("replace_material", bpy.context, params=params, target_objects=[self.obj])
         self.assertTrue(res.is_success, msg=res.message)
 
+        # In standalone mode, mesh has no tint attributes; material node has overlay weights configured
         mesh = self.obj.data
         tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
-        self.assertIsNotNone(tint_data_attr)
+        self.assertIsNone(tint_data_attr)
+
+        mat = self.obj.data.materials[0]
+        self.assertIsNotNone(mat)
+        biome_tint_node = mat.node_tree.nodes.get("MC Biome Tint")
+        self.assertIsNotNone(biome_tint_node)
+        self.assertAlmostEqual(biome_tint_node.inputs["Base Tint Weight"].default_value, 0.0, places=2)
+        self.assertAlmostEqual(biome_tint_node.inputs["Overlay Tint Weight"].default_value, 1.0, places=2)
 
     def test_atlas_overlay_addressing_and_cleanup(self):
         """Verify overlay companion is mapped to base tile and cleanup releases memory."""
