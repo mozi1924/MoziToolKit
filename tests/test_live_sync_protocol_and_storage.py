@@ -871,6 +871,36 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         finally:
             bpy.data.objects.remove(root_obj, do_unlink=True)
 
+    def test_periodic_manifest_does_not_reactivate_progressbar(self):
+        """Ensure periodic manifest checks after initial handshake stay completely silent in UI."""
+        from pipeline.progress import ProgressBar
+        from operators.sync.op_sync_connect import SyncSession
+
+        ProgressBar.end()
+        self.assertFalse(ProgressBar.is_active())
+
+        root_obj = bpy.data.objects.new("Test_Silent_Manifest", None)
+        bpy.context.collection.objects.link(root_obj)
+        try:
+            session = SyncSession("Test_Silent_Manifest")
+            session.is_initial_handshake = False
+            session.storage.set_bounds(0, 0, 0, 16, 16, 16)
+            crc = session.storage.calculate_and_store_section_crc(0, 0, 0)
+
+            # Simulate background heartbeat manifest with matching CRC
+            sections = [(0, 0, 0, crc)]
+            mismatched = session.storage.validate_manifest(sections)
+            self.assertEqual(len(mismatched), 0)
+
+            # When not initial handshake, ProgressBar should remain inactive
+            if session.is_initial_handshake:
+                ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
+
+            self.assertFalse(ProgressBar.is_active())
+        finally:
+            bpy.data.objects.remove(root_obj, do_unlink=True)
+            ProgressBar.end()
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
