@@ -399,8 +399,9 @@ class FaceCuller:
         )
 
 
-        if len(self._meta_cache) < 8192:
-            self._meta_cache[state_str] = meta
+        if len(self._meta_cache) >= 8192:
+            self._meta_cache.pop(next(iter(self._meta_cache)), None)
+        self._meta_cache[state_str] = meta
 
         return meta
 

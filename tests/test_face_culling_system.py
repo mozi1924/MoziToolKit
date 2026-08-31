@@ -341,8 +341,23 @@ class TestFaceCullingSystem(unittest.TestCase):
         self.assertTrue(self.culler.should_render_face(meta_stone, meta_trapdoor, "up"))
         self.assertTrue(self.culler.should_render_face(meta_stone, meta_carpet, "up"))
 
+    def test_culler_cache_fifo_eviction(self):
+        """Rule 10: Verify FIFO eviction maintains bounded cache when exceeding limit."""
+        # Populate cache with dummy entries up to 8192
+        for i in range(8192):
+            self.culler._meta_cache[f"dummy:state_{i}"] = None  # type: ignore
+
+        self.assertEqual(len(self.culler._meta_cache), 8192)
+
+        # Getting a new state should evict oldest (dummy:state_0) and insert new
+        self.culler.get_meta("minecraft:emerald_block")
+        self.assertEqual(len(self.culler._meta_cache), 8192)
+        self.assertNotIn("dummy:state_0", self.culler._meta_cache)
+        self.assertIn("minecraft:emerald_block", self.culler._meta_cache)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
