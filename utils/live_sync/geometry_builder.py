@@ -92,6 +92,7 @@ def _emit_bmesh_face(
     use_tint: bool = False,
     model_uv_scale: tuple[float, float] = (1.0, 1.0),
     mat_manager: Optional[LiveSyncMaterialManager] = None,
+    voxel_storage: Optional[Any] = None,
 ) -> bool:
     """Helper to emit a single polygon face into BMesh with all shader attributes and UVs."""
     face_bm_verts = [bm.verts.new(v) for v in verts_coords]
@@ -108,8 +109,20 @@ def _emit_bmesh_face(
     bm_face[layers["material_props"]] = f_res.material_props
     bm_face[layers["tiling"]] = f_res.uv_tiling_transform
     bm_face[layers["tint_data"]] = f_res.biome_tint_data
-    bm_face[layers["tint_color"]] = f_res.biome_tint_color
-    bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
+
+    # Biome Colormap UV & Tint Color Calculation
+    if voxel_storage is not None and hasattr(voxel_storage, "get_smoothed_biome_data"):
+        u_blend, v_blend, water_linear = voxel_storage.get_smoothed_biome_data(block_pos[0], block_pos[1], block_pos[2], radius=2)
+        bm_face[layers["colormap_uv"]] = (u_blend, v_blend, 0.0)
+        if abs(f_res.biome_tint_data[3] - 3.0) < 0.1:  # Water tint
+            tint_color_val = water_linear
+        else:
+            tint_color_val = f_res.biome_tint_color
+    else:
+        bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
+        tint_color_val = f_res.biome_tint_color
+
+    bm_face[layers["tint_color"]] = tint_color_val
     bm_face[layers["block_x"]] = block_pos[0]
     bm_face[layers["block_y"]] = block_pos[1]
     bm_face[layers["block_z"]] = block_pos[2]
@@ -129,7 +142,7 @@ def _emit_bmesh_face(
         u_scaled = float(u_mc) * sx
         v_scaled = float(v_mc) * sy
         loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_scaled, 1.0 - v_scaled))
-        loop[color_layer] = f_res.biome_tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
+        loop[color_layer] = tint_color_val if use_tint else (1.0, 1.0, 1.0, 1.0)
 
     return True
 
@@ -146,6 +159,7 @@ def generate_single_block_faces(
     half_x: float, half_z: float,
     mat_manager: Optional[LiveSyncMaterialManager] = None,
     baker: Optional[StateBaker] = None,
+    voxel_storage: Optional[Any] = None,
 ) -> tuple[int, int, int]:
     """
     Generates faces for a single block at (x, y, z) into BMesh with full 6-face neighbor culling.
@@ -204,6 +218,7 @@ def generate_single_block_faces(
             min_x=min_x, min_y=min_y, min_z=min_z,
             half_x=half_x, half_z=half_z,
             mat_manager=eff_mat_mgr,
+            voxel_storage=voxel_storage,
         )
         is_fluid_cnt = 1 if fluid_faces > 0 else 0
 
@@ -260,6 +275,7 @@ def generate_single_block_faces(
                     use_tint=(bf.tint_index >= 0 or f_res.use_tint),
                     model_uv_scale=f_res.model_uv_scale,
                     mat_manager=mat_manager,
+                    voxel_storage=voxel_storage,
                 ):
                     if meta.is_cube:
                         rendered_cube_faces.add(f_dir)
@@ -296,6 +312,7 @@ def generate_single_block_faces(
                 uv_rot=0.0,
                 use_tint=f_res.use_tint,
                 mat_manager=mat_manager,
+                voxel_storage=voxel_storage,
             )
 
     # If block is waterlogged:
@@ -311,6 +328,7 @@ def generate_single_block_faces(
             min_x=min_x, min_y=min_y, min_z=min_z,
             half_x=half_x, half_z=half_z,
             mat_manager=eff_mat_mgr,
+            voxel_storage=voxel_storage,
         )
         if fluid_faces > 0:
             is_fluid_cnt = 1
@@ -330,6 +348,7 @@ def generate_voxel_geometry(
     half_x: float = 0.0, half_z: float = 0.0,
     mat_manager: Optional[LiveSyncMaterialManager] = None,
     baker: Optional[StateBaker] = None,
+    voxel_storage: Optional[Any] = None,
 ) -> tuple[int, int, int]:
     """
     Constructs BMesh geometry for a collection of voxels with 6-face culling,
@@ -355,6 +374,7 @@ def generate_voxel_geometry(
             half_x=half_x, half_z=half_z,
             mat_manager=mat_manager,
             baker=baker,
+            voxel_storage=voxel_storage,
         )
         cubes_count += c
         props_count += p

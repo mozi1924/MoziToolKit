@@ -86,6 +86,7 @@ class VoxelStorage:
         self.size_y: int = 0
         self.size_z: int = 0
         self.block_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> state_str
+        self.biome_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> biome_str
         self._section_map: Dict[Tuple[int, int, int], Dict[Tuple[int, int, int], str]] = {}  # sec_pos -> {abs_pos: state_str}
         self._state_counts: Dict[str, int] = {}
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
@@ -96,6 +97,7 @@ class VoxelStorage:
     def clear(self) -> None:
         """Clear all stored voxel and section data."""
         self.block_map.clear()
+        self.biome_map.clear()
         self._section_map.clear()
         self._state_counts.clear()
         self.section_crc_map.clear()
@@ -193,9 +195,11 @@ class VoxelStorage:
             return list(self._state_counts.keys())
         return list(set(list(self.block_map.values())))
 
-    def set_block(self, x: int, y: int, z: int, state_str: str) -> None:
+    def set_block(self, x: int, y: int, z: int, state_str: str, biome_str: Optional[str] = None) -> None:
         """Set blockstate string at (x, y, z), expanding storage bounds if needed and marking dirty sections."""
         old_state = self.block_map.get((x, y, z))
+        if biome_str:
+            self.biome_map[(x, y, z)] = biome_str
         if old_state == state_str:
             return
         if old_state:
@@ -247,11 +251,14 @@ class VoxelStorage:
         size_x: int, size_y: int, size_z: int,
         palette: List[str],
         grid_indices: List[int],
+        biome_palette: Optional[List[str]] = None,
+        biome_indices: Optional[List[int]] = None,
     ) -> int:
-        """Populate storage from a full snapshot binary packet."""
+        """Populate storage from a full snapshot binary packet with optional biome stream."""
         self.min_x, self.min_y, self.min_z = min_x, min_y, min_z
         self.size_x, self.size_y, self.size_z = size_x, size_y, size_z
         self.block_map.clear()
+        self.biome_map.clear()
         self._section_map.clear()
         self._state_counts.clear()
         self.section_crc_map.clear()
@@ -260,6 +267,9 @@ class VoxelStorage:
 
         total_blocks = size_x * size_y * size_z
         palette_len = len(palette)
+        has_biomes = bool(biome_palette and biome_indices and len(biome_indices) >= total_blocks)
+        b_len = len(biome_palette) if biome_palette else 0
+
         for idx in range(min(total_blocks, len(grid_indices))):
             palette_idx = grid_indices[idx]
             if 0 <= palette_idx < palette_len:
@@ -274,6 +284,12 @@ class VoxelStorage:
                 abs_z = min_z + z
                 pos = (abs_x, abs_y, abs_z)
                 self.block_map[pos] = state_str
+                
+                if has_biomes:
+                    b_idx = biome_indices[idx]
+                    if 0 <= b_idx < b_len:
+                        self.biome_map[pos] = biome_palette[b_idx]
+
                 sec_key = (abs_x >> 4, abs_y >> 4, abs_z >> 4)
                 if sec_key not in self._section_map:
                     self._section_map[sec_key] = {}
@@ -325,6 +341,8 @@ class VoxelStorage:
         size_x: int, size_y: int, size_z: int,
         palette: List[str],
         grid_indices: List[int],
+        biome_palette: Optional[List[str]] = None,
+        biome_indices: Optional[List[int]] = None,
     ) -> bool:
         """Update a specific 16x16x16 section from a section repair snapshot."""
         if size_x <= 0 or size_y <= 0 or size_z <= 0:
@@ -353,6 +371,9 @@ class VoxelStorage:
             logger.warning("Discarded malformed section snapshot for (%d, %d, %d)", sec_x, sec_y, sec_z)
             return False
 
+        has_biomes = bool(biome_palette and biome_indices and len(biome_indices) >= total_blocks)
+        b_len = len(biome_palette) if biome_palette else 0
+
         sec_key = (sec_x, sec_y, sec_z)
         for idx in range(total_blocks):
             palette_idx = grid_indices[idx]
@@ -366,6 +387,12 @@ class VoxelStorage:
             abs_y = start_y + y
             abs_z = start_z + z
             key = (abs_x, abs_y, abs_z)
+            
+            if has_biomes:
+                b_idx = biome_indices[idx]
+                if 0 <= b_idx < b_len:
+                    self.biome_map[key] = biome_palette[b_idx]
+
             old_state = self.block_map.get(key)
             if old_state != state_str:
                 if old_state:
@@ -378,17 +405,85 @@ class VoxelStorage:
                 self._section_map[sec_key][key] = state_str
                 self._state_counts[state_str] = self._state_counts.get(state_str, 0) + 1
 
-        # A repair snapshot replaces voxel data directly, so its section must
-        # be rebuilt.  Discarding it here made ``schedule_mesh_sync()`` a
-        # no-op: storage became correct while the old water/entity geometry
-        # stayed in the scene.  Fluids sample diagonal neighbours for their
-        # corner heights, hence invalidate the full 3x3x3 section halo.
+        # Invalidate 3x3x3 halo
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 for dz in (-1, 0, 1):
                     self._dirty_sections.add((sec_x + dx, sec_y + dy, sec_z + dz))
         self.calculate_and_store_section_crc(sec_x, sec_y, sec_z)
         return True
+
+    def get_biome(self, x: int, y: int, z: int) -> str:
+        """Return canonical biome registry ID at (x, y, z), defaulting to Plains."""
+        return self.biome_map.get((x, y, z)) or self.biome_map.get((x, self.min_y, z)) or "minecraft:plains"
+
+    def get_smoothed_biome_data(
+        self,
+        x: int, y: int, z: int,
+        radius: int = 2,
+    ) -> Tuple[float, float, Tuple[float, float, float, float]]:
+        """
+        Compute smooth Minecraft biome blending over (x ± radius, z ± radius) neighborhood.
+        Returns (smoothed_u, smoothed_v, smoothed_water_linear_rgba).
+        """
+        import math
+        from ..materials.biome import get_biome_colors, get_colormap_uv
+
+        if not self.biome_map:
+            u, v = get_colormap_uv(0.8, 0.4)
+            return (u, v, (0.05, 0.17, 0.77, 0.8))
+
+        center_biome = self.biome_map.get((x, y, z)) or self.biome_map.get((x, self.min_y, z)) or "minecraft:plains"
+        if radius <= 0:
+            bc = get_biome_colors(center_biome)
+            u, v = get_colormap_uv(float(bc.get("temperature", 0.8)), float(bc.get("humidity", 0.4)))
+            return (u, v, bc.get("water_linear", (0.05, 0.17, 0.77, 0.8)))
+
+        total_w = 0.0
+        sum_u = 0.0
+        sum_v = 0.0
+        sum_wr = 0.0
+        sum_wg = 0.0
+        sum_wb = 0.0
+        sum_wa = 0.0
+
+        cached_colors: Dict[str, Tuple[float, float, Tuple[float, float, float, float]]] = {}
+
+        for dx in range(-radius, radius + 1):
+            for dz in range(-radius, radius + 1):
+                bx, bz = x + dx, z + dz
+                b_name = self.biome_map.get((bx, y, bz))
+                if not b_name and self.size_y > 0:
+                    b_name = self.biome_map.get((bx, self.min_y, bz))
+                if not b_name:
+                    b_name = center_biome
+
+                dist_sq = dx * dx + dz * dz
+                weight = 1.0 / (1.0 + math.sqrt(dist_sq))
+
+                if b_name not in cached_colors:
+                    bc = get_biome_colors(b_name)
+                    t = float(bc.get("temperature", 0.8))
+                    h = float(bc.get("humidity", 0.4))
+                    bu, bv = get_colormap_uv(t, h)
+                    w_col = bc.get("water_linear", (0.05, 0.17, 0.77, 0.8))
+                    cached_colors[b_name] = (bu, bv, w_col)
+
+                bu, bv, w_col = cached_colors[b_name]
+                total_w += weight
+                sum_u += bu * weight
+                sum_v += bv * weight
+                sum_wr += w_col[0] * weight
+                sum_wg += w_col[1] * weight
+                sum_wb += w_col[2] * weight
+                sum_wa += w_col[3] * weight
+
+        inv_w = 1.0 / total_w if total_w > 0 else 1.0
+        return (
+            sum_u * inv_w,
+            sum_v * inv_w,
+            (sum_wr * inv_w, sum_wg * inv_w, sum_wb * inv_w, sum_wa * inv_w),
+        )
 
     def apply_delta_update(
         self,

@@ -969,6 +969,84 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
             bpy.data.materials.remove(old_mat, do_unlink=True)
             clear_shared_material_manager()
 
+    def test_full_snapshot_with_biome_stream_decoding(self):
+        """Verify binary packet parsing of FULL_SNAPSHOT with 2-biome palette and indices stream."""
+        from utils.live_sync.constants import PacketType
+        # 1. Construct binary FULL_SNAPSHOT with biomes
+        # Magic: 0x4D5A (MZ)
+        # Type: 0x02
+        # Min: (0, 0, 0), Size: (2, 1, 1) -> 2 blocks
+        # Block palette count: 1 ("minecraft:grass_block")
+        # Grid indices: [0, 0] (byte indices)
+        # Biome palette count: 2 ("minecraft:plains", "minecraft:desert")
+        # Biome indices: [0, 1] (byte indices)
+        bounds = struct.pack(SELECTION_INFO_FORMAT, 0, 0, 0, 2, 1, 1)
+        
+        # Block palette
+        b_str = b'{"Name":"minecraft:grass_block"}'
+        palette_data = struct.pack('<H', 1) + struct.pack('<H', len(b_str)) + b_str + b"\x01" + bytes([0, 0])
+
+        # Biome palette (2 biomes)
+        biome1 = b'minecraft:plains'
+        biome2 = b'minecraft:desert'
+        biome_data = (
+            struct.pack('<H', 2) +
+            struct.pack('<H', len(biome1)) + biome1 +
+            struct.pack('<H', len(biome2)) + biome2 +
+            b"\x01" + bytes([0, 1])
+        )
+
+        payload = bounds + palette_data + biome_data
+        packet = struct.pack(HEADER_FORMAT, PROTOCOL_MAGIC, PROTOCOL_VERSION, PacketType.FULL_SNAPSHOT) + payload
+
+        captured = {}
+        def on_full(min_x, min_y, min_z, sx, sy, sz, palette, indices, b_pal=None, b_ind=None):
+            captured['data'] = (min_x, min_y, min_z, sx, sy, sz, palette, indices, b_pal, b_ind)
+
+        client = SyncClientThread("ws://dummy", on_status_change=lambda s: None,
+                                  on_selection_info=lambda *a: None,
+                                  on_full_snapshot=on_full,
+                                  on_delta_update=lambda *a: None)
+        client._parse_binary_packet(packet)
+
+        self.assertIn('data', captured)
+        _, _, _, sx, sy, sz, pal, ind, b_pal, b_ind = captured['data']
+        self.assertEqual((sx, sy, sz), (2, 1, 1))
+        self.assertEqual(len(pal), 1)
+        self.assertEqual(b_pal, ["minecraft:plains", "minecraft:desert"])
+        self.assertEqual(b_ind, [0, 1])
+
+        # Test storage population
+        storage = VoxelStorage()
+        storage.set_full_snapshot(0, 0, 0, 2, 1, 1, pal, ind, biome_palette=b_pal, biome_indices=b_ind)
+        self.assertEqual(storage.get_biome(0, 0, 0), "minecraft:plains")
+        self.assertEqual(storage.get_biome(1, 0, 0), "minecraft:desert")
+
+    def test_voxel_storage_smoothed_biome_blending(self):
+        """Verify get_smoothed_biome_data computes smooth transition between plains and desert."""
+        storage = VoxelStorage()
+        # Set a 5x1x1 line of blocks where x <= 2 is plains and x >= 3 is desert
+        pal = ['{"Name":"minecraft:grass_block"}']
+        grid_ind = [0, 0, 0, 0, 0]
+        biome_pal = ["minecraft:plains", "minecraft:desert"]
+        biome_ind = [0, 0, 0, 1, 1]  # x=0..2 Plains, x=3..4 Desert
+        storage.set_full_snapshot(0, 0, 0, 5, 1, 1, pal, grid_ind, biome_palette=biome_pal, biome_indices=biome_ind)
+
+        # Pure Plains: x=0 (far from desert border)
+        u_plains, v_plains, _ = storage.get_smoothed_biome_data(0, 0, 0, radius=1)
+        # Pure Desert: x=4 (far from plains border)
+        u_desert, v_desert, _ = storage.get_smoothed_biome_data(4, 0, 0, radius=1)
+        # Transition Border: x=2
+        u_mid, v_mid, _ = storage.get_smoothed_biome_data(2, 0, 0, radius=2)
+
+        # In colormap math, U for plains != U for desert
+        self.assertNotEqual(u_plains, u_desert)
+        # The transition point must be intermediate between pure plains and desert
+        self.assertTrue(
+            min(u_plains, u_desert) <= u_mid <= max(u_plains, u_desert) or
+            abs(u_mid - (u_plains + u_desert) / 2.0) < abs(u_plains - u_desert)
+        )
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

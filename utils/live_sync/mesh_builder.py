@@ -130,6 +130,7 @@ def update_blocks_in_mesh(
                     half_x=half_x, half_z=half_z,
                     mat_manager=mat_manager,
                     baker=baker,
+                    voxel_storage=storage,
                 )
 
         # 3. Clean up any leftover orphan vertices
@@ -432,6 +433,7 @@ def build_world_mesh(
             half_x=half_x, half_z=half_z,
             mat_manager=mat_manager,
             baker=baker,
+            voxel_storage=storage,
         )
 
         # 5. Optional in-engine vertex welding for optimal topology
@@ -581,6 +583,7 @@ def sync_world_mesh(
                 half_x=half_x, half_z=half_z,
                 mat_manager=mat_manager,
                 baker=baker,
+                voxel_storage=storage,
             )
 
             if weld_vertices and len(bm.verts) > 0:

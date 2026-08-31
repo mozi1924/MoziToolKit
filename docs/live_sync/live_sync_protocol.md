@@ -61,7 +61,28 @@ Offset | Type   | Description
 24..27 | int32  | Size Z (选区深度)
 ```
 
-### 4.2 `0x05` SECTION_MANIFEST (区块校验清单)
+### 4.2 `0x02` FULL_SNAPSHOT (全量选区快照)
+```
+Offset | Type   | Description
+-------+--------+---------------------------------------
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x02)
+4..7   | int32  | Min X (世界绝对坐标)
+8..11  | int32  | Min Y
+12..15 | int32  | Min Z
+16..19 | int32  | Size X (选区宽度)
+20..23 | int32  | Size Y (选区高度)
+24..27 | int32  | Size Z (选区深度)
+28..29 | uint16 | Block Palette Count (方块调色板条目数 P)
+--     | List   | P 个 UTF-8 JSON 字符串 (uint16 length + string bytes)
+--     | uint8  | Block Index Format (1 = uint8 索引, 2 = uint16 索引)
+--     | Array  | (SizeX * SizeY * SizeZ) 个体素方块调色板索引
+--     | uint16 | Biome Palette Count (生物群系调色板条目数 B，可选扩展)
+--     | List   | B 个 UTF-8 群系 ID (uint16 length + string bytes，如 "minecraft:forest")
+--     | uint8  | Biome Index Format (若 B > 1: 1 = uint8 索引, 2 = uint16 索引)
+--     | Array  | (若 B > 1) (SizeX * SizeY * SizeZ) 个生物群系调色板索引 (若 B == 1 省略索引流，全量默认为 0)
+```
+
+### 4.3 `0x05` SECTION_MANIFEST (区块校验清单)
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
@@ -75,7 +96,7 @@ Offset | Type   | Description
        |   uint32 - Section CRC32 校验码
 ```
 
-### 4.3 `0x06` SECTION_SNAPSHOT (单区块调色板快照)
+### 4.4 `0x06` SECTION_SNAPSHOT (单区块调色板快照)
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
@@ -89,13 +110,17 @@ Offset | Type   | Description
 28..31 | int32  | Size X (通常为 16，边界处截断)
 32..35 | int32  | Size Y
 36..39 | int32  | Size Z
-40..41 | uint16 | Palette Count (调色板条目数 P)
+40..41 | uint16 | Block Palette Count (方块调色板条目数 P)
 --     | List   | P 个 UTF-8 字符串 (uint16 length + string bytes)
---     | uint8  | Index Format (1 = uint8 索引, 2 = uint16 索引)
---     | Array  | (SizeX * SizeY * SizeZ) 个体素调色板索引
+--     | uint8  | Block Index Format (1 = uint8 索引, 2 = uint16 索引)
+--     | Array  | (SizeX * SizeY * SizeZ) 个体素方块调色板索引
+--     | uint16 | Biome Palette Count (生物群系调色板条目数 B，可选扩展)
+--     | List   | B 个 UTF-8 群系 ID (uint16 length + string bytes)
+--     | uint8  | Biome Index Format (若 B > 1: 1 = uint8 索引, 2 = uint16 索引)
+--     | Array  | (若 B > 1) (SizeX * SizeY * SizeZ) 个生物群系调色板索引 (若 B == 1 省略索引流，全量默认为 0)
 ```
 
-### 4.4 `0x07` HANDSHAKE_INFO (握手与同步元信息)
+### 4.5 `0x07` HANDSHAKE_INFO (握手与同步元信息)
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
@@ -108,7 +133,7 @@ Offset | Type   | Description
 --     | uint16 | Flags (Bit 0: Streaming Mode, Bit 1: Compressed)
 ```
 
-### 4.5 `0x03` DELTA_UPDATE (增量变更包)
+### 4.6 `0x03` DELTA_UPDATE (增量变更包)
 ```
 Offset | Type   | Description
 -------+--------+---------------------------------------
@@ -125,6 +150,16 @@ Offset | Type   | Description
        |   uint16 - State String Length
        |   bytes  - UTF-8 BlockState String
 ```
+
+### 4.7 生物群系传输与平滑过渡协议规范 (Biome Blending Specification)
+1. **零冗余单群系压缩优化**：当快照区域完全处于单一生物群系时（$B = 1$），协议仅下发群系名称，省略体积庞大的索引流，实现极致压缩。
+2. **完全向后兼容（Backward Compatibility）**：若数据包尾部未附带群系数据（旧版本模组或测试 Mock），DCC 端自动安全截断并回退至默认群系 `"minecraft:plains"`。
+3. **DCC 端的平滑混合核（Biome Blending Kernel）**：
+   - 客户端在生成网格面时，以方块 $(x, z)$ 为中心采集 $5\times 5$（半径 $r=2$）邻域内各方块的生物群系；
+   - 提取各群系的温度 $T$ 与湿度 $H$，按高斯/距离反比权重 $\omega_i = \frac{1}{1 + d_i}$ 计算加权色图坐标：
+     $$U_{\text{blend}} = \sum \omega_i \cdot (1.0 - T_i), \quad V_{\text{blend}} = \sum \omega_i \cdot (H_i \cdot T_i)$$
+   - 将 $(U_{\text{blend}}, V_{\text{blend}}, 0.0)$ 写入面属性 `mtk_colormap_uv`，配合着色器 `MC_Biome_Colormap_Decoder` 实现原版一致的草地与树叶群系交界平滑过渡；
+   - 水体面通过邻域水色加权插值后写入 `mtk_biome_tint_color`，实现水体颜色的渐变过渡。
 
 ---
 
