@@ -963,8 +963,35 @@ class AtlasAddressResolver:
         base_weight = float(loc.get("default_base_tint_weight", 1.0)) if loc else 1.0
         overlay_weight = float(loc.get("default_overlay_tint_weight", 1.0)) if loc else 1.0
         tint_weight = 1.0 if use_tint else 0.0
-        hardcoded_weight = 1.0 if is_hardcoded else 0.0
-        biome_tint_data = (base_weight, overlay_weight, tint_weight, hardcoded_weight)
+
+        # Resolve authoritative tint_type (0=none, 1=grass, 2=foliage, 3=water, 4=hardcoded, 5=dry_foliage)
+        tint_type = 0.0
+        if loc and "tint_type" in loc and loc["tint_type"] is not None and float(loc["tint_type"]) > 0:
+            tint_type = float(loc["tint_type"])
+        elif hasattr(parsed, "tint_data") and parsed.tint_data and len(parsed.tint_data) > 3 and parsed.tint_data[3] > 0:
+            tint_type = float(parsed.tint_data[3])
+        elif is_hardcoded:
+            tint_type = 4.0
+        elif use_tint:
+            from ..biome import (
+                classify_tint_category,
+                TINT_TYPE_GRASS,
+                TINT_TYPE_FOLIAGE,
+                TINT_TYPE_WATER,
+                TINT_TYPE_HARDCODED,
+                TINT_TYPE_DRY_FOLIAGE,
+            )
+            cat = classify_tint_category(clean_stem=p_short, block_name=getattr(parsed, "name", p_short), tint_index=tint_idx)
+            cat_map = {
+                "grass": float(TINT_TYPE_GRASS),
+                "foliage": float(TINT_TYPE_FOLIAGE),
+                "water": float(TINT_TYPE_WATER),
+                "hardcoded": float(TINT_TYPE_HARDCODED),
+                "dry_foliage": float(TINT_TYPE_DRY_FOLIAGE),
+            }
+            tint_type = cat_map.get(cat, 0.0)
+
+        biome_tint_data = (base_weight, overlay_weight, tint_weight, tint_type)
 
         if is_hardcoded and loc and loc.get("hardcoded_color"):
             biome_tint_color = tuple(loc["hardcoded_color"])
