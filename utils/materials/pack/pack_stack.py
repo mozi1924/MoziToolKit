@@ -174,6 +174,18 @@ class ResourcePackStack:
 
         return composite_map
 
+    def get_all_models(self) -> dict[str, dict]:
+        """
+        Collect and merge all block and item model JSON definitions across the pack stack.
+        Cascades from bottom (lowest priority) to top (highest priority),
+        ensuring top-layer packs cleanly override lower-layer models.
+        """
+        merged_models: dict[str, dict] = {}
+        for pack in reversed(self.packs):
+            if hasattr(pack, "get_all_models"):
+                merged_models.update(pack.get_all_models())
+        return merged_models
+
     def get_baked_atlas_dir(self, yefira_only: bool = False) -> Path:
         """Get the persistent cache directory for this stack."""
         from .resource_pack import get_cache_dir

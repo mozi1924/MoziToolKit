@@ -99,8 +99,7 @@ class StandaloneGenerator:
 
         # 3. Setup Biome Resolver
         biome_resolver = BiomeResolver()
-        for pack in self.stack.packs:
-            biome_resolver.load_from_pack(pack)
+        biome_resolver.load_from_pack_stack(self.stack)
 
         stack_hash = self.stack.stack_hash
         short_hash = stack_hash[:8]

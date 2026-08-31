@@ -408,6 +408,7 @@ class ZipResourcePack:
         self.pack_hash = None
         self._texture_index = None
         self._texture_path_index = None
+        self._models_cache = None
         self._loaded = False
         self._load_pack_metadata()
         if not self.lazy:
@@ -757,4 +758,78 @@ class ZipResourcePack:
             except Exception:
                 pass
         return biomes
+
+    def get_all_models(self) -> dict[str, dict]:
+        """
+        Scan and load all model JSON definitions across all namespaces in this pack.
+        Supports both extracted directories and direct in-memory reads from ZIP/JAR archives.
+        Returns a dict mapping canonical model keys and aliases (e.g. 'stone', 'block/stone',
+        'minecraft:block/stone', 'item/diamond_sword', 'modid:block/machine') to parsed JSON dictionaries.
+        """
+        if self._models_cache is not None:
+            return dict(self._models_cache)
+
+        models: dict[str, dict] = {}
+
+        # 1. If pack is extracted or is a directory on disk
+        if self._extract_dir and self._extract_dir.exists():
+            assets_dir = self._extract_dir / "assets"
+            if assets_dir.exists():
+                for ns_dir in assets_dir.iterdir():
+                    if not ns_dir.is_dir():
+                        continue
+                    ns = ns_dir.name.lower().strip()
+                    models_dir = ns_dir / "models"
+                    if models_dir.is_dir():
+                        for root, _, files in os.walk(models_dir):
+                            for f in files:
+                                if f.endswith(".json"):
+                                    full_f = Path(root) / f
+                                    rel_path = full_f.relative_to(models_dir).with_suffix("").as_posix().lower()
+                                    stem = f[:-5].lower()
+                                    try:
+                                        with open(full_f, "r", encoding="utf-8") as fp:
+                                            data = json.load(fp)
+                                            if isinstance(data, dict):
+                                                self._index_model_entry(models, ns, rel_path, stem, data)
+                                    except Exception:
+                                        pass
+        # 2. If unextracted zip / jar archive
+        elif self.zip_path.exists() and (zipfile.is_zipfile(self.zip_path) or self.zip_path.suffix.lower() in (".zip", ".jar")):
+            try:
+                with zipfile.ZipFile(self.zip_path, "r") as z:
+                    for name in z.namelist():
+                        if name.startswith("assets/") and "/models/" in name and name.endswith(".json"):
+                            parts = name.split("/")
+                            if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "models":
+                                ns = parts[1].lower()
+                                rel_path = "/".join(parts[3:])[:-5].lower()
+                                stem = parts[-1][:-5].lower()
+                                try:
+                                    data = json.loads(z.read(name))
+                                    if isinstance(data, dict):
+                                        self._index_model_entry(models, ns, rel_path, stem, data)
+                                except Exception:
+                                    pass
+            except Exception:
+                pass
+
+        self._models_cache = models
+        return dict(self._models_cache)
+
+    @staticmethod
+    def _index_model_entry(models: dict[str, dict], ns: str, rel_path: str, stem: str, data: dict):
+        """Index model data under canonical keys matching Minecraft model identifiers."""
+        parts = rel_path.split("/", 1)
+        category = parts[0] if len(parts) > 1 else ""
+        sub_model = parts[1] if len(parts) > 1 else rel_path
+
+        if ns == "minecraft":
+            model_key = sub_model if category == "block" else (f"item/{sub_model}" if category == "item" else rel_path)
+            models[model_key] = data
+        else:
+            model_key = f"{ns}:{category}/{sub_model}" if category else f"{ns}:{sub_model}"
+            models[model_key] = data
+
+
 

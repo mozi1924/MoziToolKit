@@ -203,53 +203,7 @@ class AtlasGenerator:
         self.atlas_definitions = AtlasDefinitionParser.load_from_pack_stack(self.pack_stack)
 
         # 1. Load models from all packs in the stack (bottom to top, so top overrides bottom)
-        for pack in reversed(self.pack_stack.packs):
-            if pack.extract_dir and pack.extract_dir.exists():
-                assets_dir = pack.extract_dir / "assets"
-                if assets_dir.exists():
-                    for ns_dir in assets_dir.iterdir():
-                        if not ns_dir.is_dir():
-                            continue
-                        ns = ns_dir.name.lower().strip()
-                        for model_type in ("block", "item"):
-                            models_dir = ns_dir / "models" / model_type
-                            if models_dir.exists():
-                                for root, _, files in os.walk(models_dir):
-                                    for f in files:
-                                        if f.endswith(".json"):
-                                            rel_model = (Path(root) / f).relative_to(models_dir).with_suffix("").as_posix().lower()
-                                            if ns == "minecraft":
-                                                model_key = rel_model if model_type == "block" else f"item/{rel_model}"
-                                            else:
-                                                model_key = f"{ns}:{model_type}/{rel_model}"
-                                            try:
-                                                with open(Path(root) / f, "r", encoding="utf-8") as fp:
-                                                    self.models[model_key] = json.load(fp)
-                                            except Exception:
-                                                pass
-            elif getattr(pack, "zip_path", None) and pack.zip_path.exists() and pack.zip_path.suffix.lower() in (".zip", ".jar"):
-                try:
-                    with zipfile.ZipFile(pack.zip_path, "r") as z:
-                        for name in z.namelist():
-                            if name.startswith("assets/") and "/models/" in name and name.endswith(".json"):
-                                parts = name.split("/")
-                                if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "models":
-                                    ns = parts[1].lower()
-                                    model_type = parts[3].lower()
-                                    if model_type in ("block", "item"):
-                                        rel_model = "/".join(parts[4:])[:-5].lower()
-                                        if ns == "minecraft":
-                                            model_key = rel_model if model_type == "block" else f"item/{rel_model}"
-                                        else:
-                                            model_key = f"{ns}:{model_type}/{rel_model}"
-                                        try:
-                                            data = json.loads(z.read(name))
-                                            if isinstance(data, dict):
-                                                self.models[model_key] = data
-                                        except Exception:
-                                            pass
-                except Exception:
-                    pass
+        self.models = self.pack_stack.get_all_models()
 
         # 2. Load composite textures across the entire pack stack
         composite_textures = self.pack_stack.get_all_composite_textures()
@@ -343,9 +297,7 @@ class AtlasGenerator:
                             self.static_by_ns_cat.setdefault(ns, {}).setdefault(cat, {})[rel_sprite] = baked_img
 
         # 4. Setup biome resolver across all packs
-        for p in self.pack_stack.packs:
-            if p.extract_dir and Path(p.extract_dir).exists():
-                self.biome_resolver.load_from_pack_root(p.extract_dir)
+        self.biome_resolver.load_from_pack_stack(self.pack_stack)
         self.biome_resolver.set_models(self.models)
 
     def resolve_model_textures(self, model_name: str, depth: int = 0) -> dict:
