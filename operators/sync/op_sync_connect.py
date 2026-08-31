@@ -328,6 +328,25 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             run_in_main_thread(update)
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
+            if session.skip_next_full_snapshot:
+                logger.info(f"Live Sync ({session.target_object_name}): Skipping unneeded full snapshot due to verified manifest.")
+                session.skip_next_full_snapshot = False
+                return
+
+            if session.storage.is_snapshot_identical(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices):
+                logger.info(f"Live Sync ({session.target_object_name}): Snapshot is identical to current voxel storage. Skipping rebuild.")
+                session.skip_next_full_snapshot = False
+                session.is_streaming = False
+                def on_identical():
+                    cur_obj = bpy.data.objects.get(session.target_object_name)
+                    cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+                    if cur_props:
+                        cur_props.sync_verified = True
+                        cur_props.validation_info = "Verified (100% in sync)"
+                    ProgressBar.finish(message="Sync Verified (data identical)", auto_dismiss_delay=0.8)
+                run_in_main_thread(on_identical)
+                return
+
             session.storage.set_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices)
 
             def step1_update_props():
@@ -417,8 +436,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
                         return
 
-                    # Verify CRC mismatch against local voxel storage
-                    mismatched_crc = session.storage.validate_manifest(sections, existing_section_meshes=None)
+                    existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
+                    existing_mesh_coords = set(existing_sections.keys()) if existing_sections else None
+
+                    # Verify CRC mismatch against local voxel storage and scene mesh health
+                    mismatched_crc = session.storage.validate_manifest(sections, existing_section_meshes=existing_mesh_coords)
                     if cur_props:
                         cur_props.sync_verified = (len(mismatched_crc) == 0)
 
@@ -433,7 +455,9 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         if session.is_initial_handshake:
                             ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
                         session.is_initial_handshake = False
-                    elif session.is_initial_handshake:
+
+                    elif not session.storage.block_map or len(mismatched_crc) >= non_empty_manifest_count:
+                        # Full sync needed (unpopulated storage or complete mismatch)
                         session.skip_next_full_snapshot = False
                         session.is_repairing_partial = False
                         session.pending_full_sync_request = True
@@ -448,15 +472,21 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         if session.client_thread and session.client_thread.is_connected:
                             logger.info(f"Live Sync ({session.target_object_name}): Requesting full sync ({non_empty_manifest_count} sections)...")
                             session.client_thread.send_full_sync_request()
+
                     else:
-                        if len(mismatched_crc) > 0 and session.client_thread and session.client_thread.is_connected:
-                            logger.info(f"Live Sync ({session.target_object_name}): Detected {len(mismatched_crc)} CRC mismatches. Requesting repair...")
-                            session.is_repairing_partial = True
-                            session.is_streaming = True
-                            session.stream_total_sections = len(mismatched_crc)
-                            session.stream_received_sections = 0
-                            if cur_props:
-                                cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                        # Existing local scene with partial differences: execute fast incremental section repair
+                        logger.info(f"Live Sync ({session.target_object_name}): Detected {len(mismatched_crc)} out-of-sync sections on reconnect. Requesting incremental repair...")
+                        session.skip_next_full_snapshot = True
+                        session.is_repairing_partial = True
+                        session.is_initial_handshake = False
+                        session.is_streaming = True
+                        session.stream_total_sections = len(mismatched_crc)
+                        session.stream_received_sections = 0
+                        if cur_props:
+                            cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                        ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Repairing {len(mismatched_crc)} section(s)...")
+                        ProgressBar.update(current=30.0, total=100.0, message=f"Syncing {len(mismatched_crc)} modified chunks...")
+                        if session.client_thread and session.client_thread.is_connected:
                             session.client_thread.send_repair_request(mismatched_crc)
                 except Exception as e:
                     logger.error(f"Live Sync manifest error for {session.target_object_name}: {e}", exc_info=True)
