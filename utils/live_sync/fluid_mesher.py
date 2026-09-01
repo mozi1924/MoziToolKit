@@ -444,6 +444,81 @@ def should_cull_fluid_face(
 
 
 
+# Global cache for static fluid face resources to eliminate thousands of repeated dynamic lookups
+_FLUID_RESOURCE_CACHE: dict[tuple[int, str, float], ResolvedFaceTexture] = {}
+
+
+def get_cached_fluid_face_resource(
+    mat_manager: LiveSyncMaterialManager,
+    parsed: ParsedBlock,
+    target_tex: str,
+    face_name: str,
+    face_idx: int,
+    rot: float = 0.0,
+) -> ResolvedFaceTexture:
+    """Retrieve pre-resolved fluid face texture metadata with memoization."""
+    key = (id(mat_manager), target_tex, round(rot, 4))
+    res = _FLUID_RESOURCE_CACHE.get(key)
+    if res is None:
+        res = mat_manager.resolve_block_face(
+            parsed=parsed,
+            face_name=face_name,
+            face_index=face_idx,
+            json_face_info={"tex": target_tex, "rot": rot},
+        )
+        _FLUID_RESOURCE_CACHE[key] = res
+    return res
+
+
+def _emit_fluid_buffer_face(
+    buffer: Any,
+    verts_coords: Sequence[tuple[float, float, float]],
+    loop_uvs_mc: Sequence[tuple[float, float]],
+    f_res: ResolvedFaceTexture,
+    block_pos: tuple[int, int, int],
+    face_dir_idx: int,
+    uv_rot: float = 0.0,
+    use_tint: bool = True,
+    mat_manager: Optional[LiveSyncMaterialManager] = None,
+    voxel_storage: Optional[Any] = None,
+) -> None:
+    """Helper to emit a single fluid polygon into RawSectionGeometryBuffer."""
+    mat_slot = mat_manager.get_slot_for_chunk(f_res.chunk_id) if mat_manager else f_res.slot_index
+
+    # Biome Colormap UV & Tint Color Calculation
+    if voxel_storage is not None and hasattr(voxel_storage, "get_smoothed_biome_data"):
+        u_blend, v_blend, water_linear = voxel_storage.get_smoothed_biome_data(block_pos[0], block_pos[1], block_pos[2], radius=2)
+        colormap_uv = (u_blend, v_blend, 0.0)
+        tint_col_val = water_linear
+    else:
+        colormap_uv = (0.2, 0.32, 0.0)
+        tint_col_val = f_res.biome_tint_color
+
+    calc_uv = f_res.calc_uv_fn
+    transformed_uvs = [calc_uv(u_mc, 1.0 - v_mc) for u_mc, v_mc in loop_uvs_mc]
+    tint_color = f_res.biome_tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
+    loop_colors = [tint_color] * len(verts_coords)
+
+    buffer.add_face(
+        verts_coords=verts_coords,
+        loop_uvs=transformed_uvs,
+        loop_colors=loop_colors,
+        material_index=mat_slot,
+        block_pos=block_pos,
+        face_dir_idx=face_dir_idx,
+        atlas_chunk=f_res.chunk_id,
+        uv_rot=uv_rot,
+        timing=f_res.anim_timing,
+        frame_size=f_res.anim_frame_size,
+        material_props=(0.0, 0.0, 0.0, 0.0),
+        tiling=f_res.uv_tiling_transform,
+        tint_data=f_res.biome_tint_data,
+        tint_color=tint_col_val,
+        colormap_uv=colormap_uv,
+        source_key=f_res.source_texture_key or "",
+    )
+
+
 def generate_fluid_mesh_faces(
     bm: bmesh.types.BMesh,
     x: int, y: int, z: int,
@@ -457,7 +532,7 @@ def generate_fluid_mesh_faces(
     voxel_storage: Optional[Any] = None,
 ) -> int:
     """
-    Construct complete Minecraft fluid geometry (Top, Bottom, and 4 Slanted Sides) for (x, y, z).
+    Construct complete Minecraft fluid geometry (Top, Bottom, and 4 Slanted Sides) for (x, y, z) into BMesh.
     Applies Mineways-standard non-collapsed UVs on slanted sides and JMC2OBJ boundary preservation.
     Returns the number of faces generated.
     """
@@ -465,6 +540,24 @@ def generate_fluid_mesh_faces(
     fluid_type = parsed.name.replace("flowing_", "")
     if fluid_type not in ("water", "lava"):
         fluid_type = "water"
+
+    # Fast 6-face culling pre-pass: If fully enclosed by occluding blocks, short-circuit immediately
+    up_state = block_map.get((x, y + 1, z))
+    down_state = block_map.get((x, y - 1, z))
+    north_state = block_map.get((x, y, z - 1))
+    south_state = block_map.get((x, y, z + 1))
+    west_state = block_map.get((x - 1, y, z))
+    east_state = block_map.get((x + 1, y, z))
+
+    render_up = not should_cull_fluid_face(up_state, fluid_type, direction="up", own_state=state_str)
+    render_down = not should_cull_fluid_face(down_state, fluid_type, direction="down", own_state=state_str)
+    render_north = not should_cull_fluid_face(north_state, fluid_type, direction="north", own_state=state_str)
+    render_south = not should_cull_fluid_face(south_state, fluid_type, direction="south", own_state=state_str)
+    render_west = not should_cull_fluid_face(west_state, fluid_type, direction="west", own_state=state_str)
+    render_east = not should_cull_fluid_face(east_state, fluid_type, direction="east", own_state=state_str)
+
+    if not (render_up or render_down or render_north or render_south or render_west or render_east):
+        return 0
 
     own_height = get_fluid_base_height(state_str)
     c_NW, c_NE, c_SE, c_SW = calculate_fluid_corner_heights(block_map, x, y, z, fluid_type)
@@ -482,29 +575,44 @@ def generate_fluid_mesh_faces(
     flow_vx, flow_vz, flow_angle = calculate_fluid_flow_vector(block_map, x, y, z, fluid_type, own_height)
     is_flowing = is_fluid_flowing(state_str, block_map, x, y, z, fluid_type, flow_vx, flow_vz)
 
-    # Resolve Still and Flowing Face Resources
+    # Resolve Still and Flowing Face Resources with memoization
     target_tex_still = f"minecraft:block/{fluid_type}_still"
     target_tex_flow = f"minecraft:block/{fluid_type}_flow"
 
-    res_still = mat_manager.resolve_block_face(
+    res_still = get_cached_fluid_face_resource(
+        mat_manager=mat_manager,
         parsed=parsed,
+        target_tex=target_tex_still,
         face_name="top",
-        face_index=DIR_TO_INDEX["up"],
-        json_face_info={"tex": target_tex_still, "rot": 0.0},
+        face_idx=DIR_TO_INDEX["up"],
+        rot=0.0,
     )
-    res_flow = mat_manager.resolve_block_face(
+    side_res = get_cached_fluid_face_resource(
+        mat_manager=mat_manager,
         parsed=parsed,
-        face_name="top",
-        face_index=DIR_TO_INDEX["up"],
-        json_face_info={"tex": target_tex_flow, "rot": flow_angle if is_flowing else 0.0},
-    )
-    # Side faces always use the flowing material in Minecraft/Mineways
-    side_res = mat_manager.resolve_block_face(
-        parsed=parsed,
+        target_tex=target_tex_flow,
         face_name="north",
-        face_index=DIR_TO_INDEX["north"],
-        json_face_info={"tex": target_tex_flow, "rot": 0.0},
+        face_idx=DIR_TO_INDEX["north"],
+        rot=0.0,
     )
+    if is_flowing and abs(flow_angle) > 1e-4:
+        res_flow = get_cached_fluid_face_resource(
+            mat_manager=mat_manager,
+            parsed=parsed,
+            target_tex=target_tex_flow,
+            face_name="top",
+            face_idx=DIR_TO_INDEX["up"],
+            rot=flow_angle,
+        )
+    else:
+        res_flow = get_cached_fluid_face_resource(
+            mat_manager=mat_manager,
+            parsed=parsed,
+            target_tex=target_tex_flow,
+            face_name="top",
+            face_idx=DIR_TO_INDEX["up"],
+            rot=0.0,
+        )
 
     top_res = res_flow if is_flowing else res_still
 
@@ -514,10 +622,8 @@ def generate_fluid_mesh_faces(
     top_SE = c_SE
     top_SW = c_SW
 
-    # -------------------------------------------------------------
     # 1. Top Face (UP)
-    # -------------------------------------------------------------
-    if not should_cull_fluid_face(block_map.get((x, y + 1, z)), fluid_type, direction="up", own_state=state_str):
+    if render_up:
         v_nw = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_sw = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
@@ -540,10 +646,8 @@ def generate_fluid_mesh_faces(
         ):
             faces_emitted += 1
 
-    # -------------------------------------------------------------
     # 2. Bottom Face (DOWN)
-    # -------------------------------------------------------------
-    if not should_cull_fluid_face(block_map.get((x, y - 1, z)), fluid_type, direction="down", own_state=state_str):
+    if render_down:
         v_bot_sw = (bx - 0.5, by - 0.5, bz - 0.5)
         v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
         v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
@@ -565,13 +669,8 @@ def generate_fluid_mesh_faces(
         ):
             faces_emitted += 1
 
-    # -------------------------------------------------------------
     # 3. Side Faces (North, South, West, East)
-    # -------------------------------------------------------------
-    side_res = res_flow
-
-    # A. North Face
-    if not should_cull_fluid_face(block_map.get((x, y, z - 1)), fluid_type, direction="north", own_state=state_str):
+    if render_north:
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
@@ -592,8 +691,7 @@ def generate_fluid_mesh_faces(
         ):
             faces_emitted += 1
 
-    # B. South Face
-    if not should_cull_fluid_face(block_map.get((x, y, z + 1)), fluid_type, direction="south", own_state=state_str):
+    if render_south:
         v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
@@ -614,8 +712,7 @@ def generate_fluid_mesh_faces(
         ):
             faces_emitted += 1
 
-    # C. West Face
-    if not should_cull_fluid_face(block_map.get((x - 1, y, z)), fluid_type, direction="west", own_state=state_str):
+    if render_west:
         v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
@@ -636,8 +733,7 @@ def generate_fluid_mesh_faces(
         ):
             faces_emitted += 1
 
-    # D. East Face
-    if not should_cull_fluid_face(block_map.get((x + 1, y, z)), fluid_type, direction="east", own_state=state_str):
+    if render_east:
         v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
@@ -657,5 +753,229 @@ def generate_fluid_mesh_faces(
             voxel_storage=voxel_storage,
         ):
             faces_emitted += 1
+
+    return faces_emitted
+
+
+def generate_fluid_buffer_faces(
+    buffer: Any,
+    x: int, y: int, z: int,
+    state_str: str,
+    block_map: dict[tuple[int, int, int], str],
+    origin_centered: bool,
+    min_x: int, min_y: int, min_z: int,
+    half_x: float, half_z: float,
+    mat_manager: LiveSyncMaterialManager,
+    voxel_storage: Optional[Any] = None,
+) -> int:
+    """
+    Construct complete Minecraft fluid geometry for (x, y, z) into RawSectionGeometryBuffer.
+    100% pure Python/NumPy computation without any bpy/bmesh dependencies.
+    Returns the number of faces generated.
+    """
+    parsed = parse_and_classify(state_str)
+    fluid_type = parsed.name.replace("flowing_", "")
+    if fluid_type not in ("water", "lava"):
+        fluid_type = "water"
+
+    # Fast 6-face culling pre-pass
+    up_state = block_map.get((x, y + 1, z))
+    down_state = block_map.get((x, y - 1, z))
+    north_state = block_map.get((x, y, z - 1))
+    south_state = block_map.get((x, y, z + 1))
+    west_state = block_map.get((x - 1, y, z))
+    east_state = block_map.get((x + 1, y, z))
+
+    render_up = not should_cull_fluid_face(up_state, fluid_type, direction="up", own_state=state_str)
+    render_down = not should_cull_fluid_face(down_state, fluid_type, direction="down", own_state=state_str)
+    render_north = not should_cull_fluid_face(north_state, fluid_type, direction="north", own_state=state_str)
+    render_south = not should_cull_fluid_face(south_state, fluid_type, direction="south", own_state=state_str)
+    render_west = not should_cull_fluid_face(west_state, fluid_type, direction="west", own_state=state_str)
+    render_east = not should_cull_fluid_face(east_state, fluid_type, direction="east", own_state=state_str)
+
+    if not (render_up or render_down or render_north or render_south or render_west or render_east):
+        return 0
+
+    own_height = get_fluid_base_height(state_str)
+    c_NW, c_NE, c_SE, c_SW = calculate_fluid_corner_heights(block_map, x, y, z, fluid_type)
+
+    if origin_centered:
+        bx = (x - min_x) - half_x
+        by = -((z - min_z) - half_z)
+        bz = (y - min_y) + 0.5
+    else:
+        bx = float(x)
+        by = -float(z)
+        bz = float(y)
+
+    flow_vx, flow_vz, flow_angle = calculate_fluid_flow_vector(block_map, x, y, z, fluid_type, own_height)
+    is_flowing = is_fluid_flowing(state_str, block_map, x, y, z, fluid_type, flow_vx, flow_vz)
+
+    # Resolve Still and Flowing Face Resources with memoization
+    target_tex_still = f"minecraft:block/{fluid_type}_still"
+    target_tex_flow = f"minecraft:block/{fluid_type}_flow"
+
+    res_still = get_cached_fluid_face_resource(
+        mat_manager=mat_manager,
+        parsed=parsed,
+        target_tex=target_tex_still,
+        face_name="top",
+        face_idx=DIR_TO_INDEX["up"],
+        rot=0.0,
+    )
+    side_res = get_cached_fluid_face_resource(
+        mat_manager=mat_manager,
+        parsed=parsed,
+        target_tex=target_tex_flow,
+        face_name="north",
+        face_idx=DIR_TO_INDEX["north"],
+        rot=0.0,
+    )
+    if is_flowing and abs(flow_angle) > 1e-4:
+        res_flow = get_cached_fluid_face_resource(
+            mat_manager=mat_manager,
+            parsed=parsed,
+            target_tex=target_tex_flow,
+            face_name="top",
+            face_idx=DIR_TO_INDEX["up"],
+            rot=flow_angle,
+        )
+    else:
+        res_flow = get_cached_fluid_face_resource(
+            mat_manager=mat_manager,
+            parsed=parsed,
+            target_tex=target_tex_flow,
+            face_name="top",
+            face_idx=DIR_TO_INDEX["up"],
+            rot=0.0,
+        )
+
+    top_res = res_flow if is_flowing else res_still
+
+    faces_emitted = 0
+    top_NW, top_NE, top_SE, top_SW = c_NW, c_NE, c_SE, c_SW
+
+    # 1. Top Face
+    if render_up:
+        v_nw = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
+        v_sw = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
+        v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
+        v_ne = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
+        top_uvs_mc = get_fluid_top_uvs(is_flowing=is_flowing, rotation=flow_angle if is_flowing else 0.0)
+        _emit_fluid_buffer_face(
+            buffer=buffer,
+            verts_coords=(v_nw, v_sw, v_se, v_ne),
+            loop_uvs_mc=top_uvs_mc,
+            f_res=top_res,
+            block_pos=(x, y, z),
+            face_dir_idx=DIR_TO_INDEX["up"],
+            uv_rot=0.0,
+            use_tint=top_res.use_tint,
+            mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
+        )
+        faces_emitted += 1
+
+    # 2. Bottom Face
+    if render_down:
+        v_bot_sw = (bx - 0.5, by - 0.5, bz - 0.5)
+        v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
+        v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
+        v_bot_se = (bx + 0.5, by - 0.5, bz - 0.5)
+        bot_uvs_mc = get_fluid_top_uvs(is_flowing=False, rotation=0.0)
+        _emit_fluid_buffer_face(
+            buffer=buffer,
+            verts_coords=(v_bot_sw, v_bot_nw, v_bot_ne, v_bot_se),
+            loop_uvs_mc=bot_uvs_mc,
+            f_res=res_still,
+            block_pos=(x, y, z),
+            face_dir_idx=DIR_TO_INDEX["down"],
+            uv_rot=0.0,
+            use_tint=res_still.use_tint,
+            mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
+        )
+        faces_emitted += 1
+
+    # 3. Side Faces
+    if render_north:
+        v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
+        v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
+        v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
+        v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
+        north_uvs_mc = get_fluid_side_uvs(top_NE, top_NW)
+        _emit_fluid_buffer_face(
+            buffer=buffer,
+            verts_coords=(v_ne_top, v_ne_bot, v_nw_bot, v_nw_top),
+            loop_uvs_mc=north_uvs_mc,
+            f_res=side_res,
+            block_pos=(x, y, z),
+            face_dir_idx=DIR_TO_INDEX["north"],
+            uv_rot=0.0,
+            use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
+        )
+        faces_emitted += 1
+
+    if render_south:
+        v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
+        v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
+        v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
+        v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
+        south_uvs_mc = get_fluid_side_uvs(top_SW, top_SE)
+        _emit_fluid_buffer_face(
+            buffer=buffer,
+            verts_coords=(v_sw_top, v_sw_bot, v_se_bot, v_se_top),
+            loop_uvs_mc=south_uvs_mc,
+            f_res=side_res,
+            block_pos=(x, y, z),
+            face_dir_idx=DIR_TO_INDEX["south"],
+            uv_rot=0.0,
+            use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
+        )
+        faces_emitted += 1
+
+    if render_west:
+        v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
+        v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
+        v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
+        v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
+        west_uvs_mc = get_fluid_side_uvs(top_NW, top_SW)
+        _emit_fluid_buffer_face(
+            buffer=buffer,
+            verts_coords=(v_nw_top, v_nw_bot, v_sw_bot, v_sw_top),
+            loop_uvs_mc=west_uvs_mc,
+            f_res=side_res,
+            block_pos=(x, y, z),
+            face_dir_idx=DIR_TO_INDEX["west"],
+            uv_rot=0.0,
+            use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
+        )
+        faces_emitted += 1
+
+    if render_east:
+        v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
+        v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
+        v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
+        v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
+        east_uvs_mc = get_fluid_side_uvs(top_SE, top_NE)
+        _emit_fluid_buffer_face(
+            buffer=buffer,
+            verts_coords=(v_se_top, v_se_bot, v_ne_bot, v_ne_top),
+            loop_uvs_mc=east_uvs_mc,
+            f_res=side_res,
+            block_pos=(x, y, z),
+            face_dir_idx=DIR_TO_INDEX["east"],
+            uv_rot=0.0,
+            use_tint=side_res.use_tint,
+            mat_manager=mat_manager,
+            voxel_storage=voxel_storage,
+        )
+        faces_emitted += 1
 
     return faces_emitted
