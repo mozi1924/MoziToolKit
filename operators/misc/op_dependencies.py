@@ -27,8 +27,9 @@ class MOZI_OT_check_dependencies(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def execute(self, context):
-        from ...utils.system import get_all_dependency_statuses
+        from ...utils.system import get_all_dependency_statuses, ensure_sys_paths
         from ...utils.materials import get_cache_stats
+        ensure_sys_paths(force=True)
         get_all_dependency_statuses(force_refresh=True)
         get_cache_stats(force_refresh=True)
         refresh_ui_windows(context)

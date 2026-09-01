@@ -29,6 +29,8 @@ from . import ui
 
 
 def register():
+    from .utils.system import ensure_sys_paths
+    ensure_sys_paths()
     i18n.register()
     operators.register()
     pipeline.register()

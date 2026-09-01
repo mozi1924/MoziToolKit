@@ -359,7 +359,7 @@ def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
         whl for whl in wheels_dir.glob("*.whl")
         if not (whl.name.startswith("websockets") and "cp" in whl.name)
     ]
-    relative_wheels = sorted([f"wheels/{whl.name}" for whl in valid_wheels])
+    relative_wheels = sorted([f"./wheels/{whl.name}" for whl in valid_wheels])
     with open(manifest_path, "r", encoding="utf-8") as f:
         content = f.read()
 

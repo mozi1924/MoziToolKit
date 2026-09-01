@@ -185,12 +185,16 @@ translations_dict = {
         ("*", "Unavailable"): "不可用",
         ("*", "All required modules and dependencies are available."): "所有必需模块与依赖均已就绪。",
         ("*", "Optional dependency 'Pillow' is not installed (required for Atlas Material Mode)."): "可选依赖 'Pillow' 未安装（Atlas 材质图集模式需要此依赖）。",
+        ("*", "Optional dependency 'websockets' is not installed (required for Live Sync Panel & Operators)."): "可选依赖 'websockets' 未安装（Live Sync 实时同步功能需要此依赖）。",
+        ("*", "Optional dependencies 'Pillow', 'websockets' are not installed."): "可选依赖 'Pillow', 'websockets' 均未安装。",
         ("*", "Check Environment"): "查看运行环境",
         ("*", "Atlas mode requires 'Pillow' (PIL) module (Missing)!"): "Atlas 模式需要 Pillow (PIL) 模块（当前缺失）！",
         ("*", "Material replacement requires 'Pillow' (PIL) module (Missing)!"): "材质替换需要 Pillow (PIL) 模块（当前缺失）！",
         ("*", "Please ensure Pillow or extension wheels are available."): "请确保已安装 Pillow 或已包含扩展 wheels。",
         ("*", "Atlas mode requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."): "Atlas 模式需要 Pillow (PIL) 模块。请确保已安装 Pillow 或已包含扩展 wheels。",
         ("*", "Material replacement requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."): "材质替换需要 Pillow (PIL) 模块。请确保已安装 Pillow 或已包含扩展 wheels。",
+        ("*", "Live Sync requires 'websockets' module (Missing)!"): "Live Sync 实时同步需要 'websockets' 模块（当前缺失）！",
+        ("*", "Please ensure websockets or extension wheels are available."): "请确保已安装 websockets 或已包含扩展 wheels。",
 
         # Cache & Storage
         ("*", "Resource Pack Cache & Storage:"): "材质包缓存管理:",
