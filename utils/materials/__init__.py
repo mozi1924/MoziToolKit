@@ -119,6 +119,9 @@ from .biome import (
     BiomeResolver,
     get_biome_colors,
     classify_tint_category,
+    is_mtk_object,
+    detect_object_material_mode,
+    update_object_biome,
 )
 
 from .pack import (
