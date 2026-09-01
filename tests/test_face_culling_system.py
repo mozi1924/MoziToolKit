@@ -150,8 +150,23 @@ class TestFaceCullingSystem(unittest.TestCase):
 
         # Water touching Water: culled
         self.assertFalse(self.culler.should_render_face(water, water, "east"))
+        self.assertFalse(self.culler.should_render_face(water, water, "up"))
         # Water touching Lava: rendered (different fluid)
         self.assertTrue(self.culler.should_render_face(water, lava, "east"))
+
+        # Water under Stone ceiling: water UP face rendered because water height is < 1.0 (8/9)
+        self.assertTrue(self.culler.should_render_face(water, stone, "up"))
+        # Stone bottom face facing water: rendered
+        self.assertTrue(self.culler.should_render_face(stone, water, "down"))
+
+        # Water bottom face touching stone floor: culled
+        self.assertFalse(self.culler.should_render_face(water, stone, "down"))
+        # Water side face touching stone wall: culled
+        self.assertFalse(self.culler.should_render_face(water, stone, "east"))
+
+        # Water against waterlogged block above: culled
+        waterlogged_slab = self.culler.get_meta("minecraft:oak_slab[type=bottom,waterlogged=true]")
+        self.assertFalse(self.culler.should_render_face(water, waterlogged_slab, "up"))
     def test_quad_face_occlusion_rect_extraction(self):
         """Test extracting 2D occlusion rects directly from 3D quad vertices."""
         from utils.culling import extract_quad_face_occlusion_rect

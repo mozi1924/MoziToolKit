@@ -431,7 +431,13 @@ class FaceCuller:
 
         # 1. Neighbor full solid face check (neighborFaceShape == Shapes.block())
         if neighbor_meta.has_full_face(opp_dir):
-            return False
+            # Fluid top face (direction == 'up') is physically below the upper block boundary (< 1.0 height, e.g. 8/9 for source water).
+            # A solid ceiling above (at Y >= 1.0) does NOT touch or occlude the fluid top surface.
+            # Fluid top face is only skipped/culled if submerged by the same fluid or waterlogged block (handled in step 2).
+            if state_meta.category == CullCategory.FLUID and direction == "up":
+                pass
+            else:
+                return False
 
         # 2. Custom skipRendering check (glass, leaves, fluid, snow, roots)
         if should_skip_rendering(

@@ -279,10 +279,10 @@ class TestFluidLiveSync(unittest.TestCase):
 
     def test_fluid_culling(self):
         """Test fluid face culling against same fluid, solid blocks, air, and glass."""
-        # 1. Test top/bottom culling
+        # 1. Test top face retention under stone ceiling (height 8/9 < 1.0) and culling of bottom/sides
         block_map = {
             (0, 0, 0): "minecraft:water[level=0]",
-            (0, 1, 0): "minecraft:stone",          # Stone ceiling -> culls top of (0,0,0)
+            (0, 1, 0): "minecraft:stone",          # Stone ceiling -> water top face kept at 8/9
             (0, -1, 0): "minecraft:stone",         # Stone floor -> culls bottom of (0,0,0)
             (0, 0, -1): "minecraft:water[level=0]",# Water North -> culls North side
             (0, 0, 1): "minecraft:stone",          # Stone South -> culls South side
@@ -321,13 +321,51 @@ class TestFluidLiveSync(unittest.TestCase):
             mat_manager=mat_mgr,
         )
         face_dirs = [f[layers["face_dir"]] for f in bm.faces]
-        self.assertNotIn(2, face_dirs, "Top face (dir 2) must be culled under stone ceiling")
+        self.assertIn(2, face_dirs, "Top face (dir 2) must be retained under stone ceiling since water height is < 1.0")
         self.assertNotIn(3, face_dirs, "Bottom face (dir 3) must be culled above stone floor")
         self.assertNotIn(5, face_dirs, "North face (dir 5) must be culled against adjacent water")
         self.assertNotIn(4, face_dirs, "South face (dir 4) must be culled against solid stone wall")
         self.assertIn(0, face_dirs, "East face (dir 0) must be retained facing glass")
         self.assertIn(1, face_dirs, "West face (dir 1) must be retained facing air")
         bm.free()
+
+        # 2. Test top face culling when submerged under another water block
+        water_submerged_map = {
+            (0, 0, 0): "minecraft:water[level=0]",
+            (0, 1, 0): "minecraft:water[level=0]",  # Water above -> culls top face
+        }
+        bm_sub = bmesh.new()
+        uv_layer_sub = bm_sub.loops.layers.uv.new(UV_MAP)
+        color_layer_sub = bm_sub.loops.layers.color.new("Color")
+        layers_sub = {
+            "uv": uv_layer_sub,
+            "color": color_layer_sub,
+            "rot": bm_sub.faces.layers.float.new(MTK_UV_ROTATION),
+            "timing": bm_sub.faces.layers.float_color.new("mtk_anim_timing"),
+            "frame_size": bm_sub.faces.layers.float_color.new("mtk_anim_frame_size"),
+            "tiling": bm_sub.faces.layers.float_color.new("mtk_uv_tiling_transform"),
+            "tint_data": bm_sub.faces.layers.float_color.new("mtk_biome_tint_data"),
+            "tint_color": bm_sub.faces.layers.float_color.new(MTK_BIOME_TINT_COLOR),
+            "block_x": bm_sub.faces.layers.int.new("mtk_block_x"),
+            "block_y": bm_sub.faces.layers.int.new("mtk_block_y"),
+            "block_z": bm_sub.faces.layers.int.new("mtk_block_z"),
+            "face_dir": bm_sub.faces.layers.int.new("mtk_face_dir"),
+            "atlas_chunk": bm_sub.faces.layers.int.new(MTK_ATLAS_CHUNK_ID),
+        }
+        generate_fluid_mesh_faces(
+            bm=bm_sub,
+            x=0, y=0, z=0,
+            state_str="minecraft:water[level=0]",
+            block_map=water_submerged_map,
+            layers=layers_sub,
+            origin_centered=False,
+            min_x=0, min_y=0, min_z=0,
+            half_x=0.0, half_z=0.0,
+            mat_manager=mat_mgr,
+        )
+        face_dirs_sub = [f[layers_sub["face_dir"]] for f in bm_sub.faces]
+        self.assertNotIn(2, face_dirs_sub, "Top face (dir 2) must be culled when water block is directly above")
+        bm_sub.free()
 
     def test_flowing_top_face_uv_full_scale_and_shader_rotation(self):
         """
