@@ -201,6 +201,93 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         session.client_thread.join(timeout=3.0)
         self.assertFalse(session.client_thread.is_connected)
 
+    def test_selection_change_prunes_stale_section_objects(self):
+        """Verify changing selection bounds cleans up previous section objects without overlapping."""
+        root = get_or_create_world_root(bpy.context, root_name="Test_Prune_World")
+        storage = VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, ["minecraft:stone"], [0] * 4096)
+
+        sec0 = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=0, sy=0, sz=0,
+            root_obj=root,
+        )
+        self.assertIsNotNone(sec0)
+        self.assertIn("Test_Prune_World_Section_0_0_0", bpy.data.objects)
+
+        # Now change selection to a completely different region: (100, 0, 100) -> Section (6, 0, 6)
+        storage.set_bounds(100, 0, 100, 16, 16, 16)
+        storage.set_section_snapshot(6, 0, 6, 100, 0, 100, 16, 16, 16, ["minecraft:dirt"], [0] * 4096)
+
+        # Pruning helper must remove old section (0, 0, 0)
+        from utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+        removed = prune_out_of_bounds_section_objects(root, storage)
+        self.assertEqual(removed, 1)
+        self.assertNotIn("Test_Prune_World_Section_0_0_0", bpy.data.objects)
+
+        sec6 = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=6, sy=0, sz=6,
+            root_obj=root,
+        )
+        self.assertIsNotNone(sec6)
+        self.assertIn("Test_Prune_World_Section_6_0_6", bpy.data.objects)
+        self.assertNotIn("Test_Prune_World_Section_0_0_0", bpy.data.objects)
+
+    def test_mesh_geometry_bottom_centered_on_root_empty(self):
+        """Verify that reconstructed world mesh vertices are exactly centered in X/Y and bottom-aligned at Z=0."""
+        root = get_or_create_world_root(bpy.context, root_name="Test_Origin_World")
+        storage = VoxelStorage()
+        # 32 x 16 x 32 bounding box from Minecraft (10, 60, 20)
+        storage.set_bounds(10, 60, 20, 32, 16, 32)
+        # Place block at bottom-min corner (10, 60, 20) and top-max corner (41, 75, 51)
+        storage.set_block(10, 60, 20, "minecraft:stone")
+        storage.set_block(41, 75, 51, "minecraft:stone")
+
+        # Build sections
+        sec0 = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=0, sy=3, sz=1,
+            root_obj=root,
+            origin_centered=True,
+        )
+        sec1 = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=2, sy=4, sz=3,
+            root_obj=root,
+            origin_centered=True,
+        )
+
+        all_verts = []
+        for child in (sec0, sec1):
+            if child and child.data:
+                for v in child.data.vertices:
+                    all_verts.append(v.co)
+
+        self.assertGreater(len(all_verts), 0)
+        min_x = min(v.x for v in all_verts)
+        max_x = max(v.x for v in all_verts)
+        min_y = min(v.y for v in all_verts)
+        max_y = max(v.y for v in all_verts)
+        min_z = min(v.z for v in all_verts)
+        max_z = max(v.z for v in all_verts)
+
+        # Min corner block bottom face: Z must be 0.0
+        self.assertAlmostEqual(min_z, 0.0, places=3, msg="Lowest vertex Z must be 0.0 (bottom of Empty)")
+        # Max corner block top face: Z must be 16.0
+        self.assertAlmostEqual(max_z, 16.0, places=3, msg="Highest vertex Z must be height (16.0)")
+        # Symmetrical centering: min_x = -16.0, max_x = +16.0
+        self.assertAlmostEqual(min_x, -16.0, places=3, msg="Min X must be -half_width (-16.0)")
+        self.assertAlmostEqual(max_x, 16.0, places=3, msg="Max X must be +half_width (+16.0)")
+        # Symmetrical centering: min_y = -16.0, max_y = +16.0
+        self.assertAlmostEqual(min_y, -16.0, places=3, msg="Min Y must be -half_depth (-16.0)")
+        self.assertAlmostEqual(max_y, 16.0, places=3, msg="Max Y must be +half_depth (+16.0)")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

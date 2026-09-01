@@ -352,6 +352,33 @@ def _safe_remove_section_object(obj: Optional[bpy.types.Object], mesh: Optional[
         logger.debug(f"Safe remove section object error: {e}")
 
 
+def prune_out_of_bounds_section_objects(root_obj: Optional[bpy.types.Object], storage: Any) -> int:
+    """Remove any child section mesh objects of root_obj that fall outside the active selection storage bounds."""
+    if not root_obj:
+        return 0
+    all_sections = set(storage.get_all_sections()) if storage else set()
+    existing_sections = find_root_section_children(root_obj)
+    removed_count = 0
+    for coords, child in list(existing_sections.items()):
+        if coords not in all_sections:
+            _safe_remove_section_object(child, child.data)
+            existing_sections.pop(coords, None)
+            removed_count += 1
+    return removed_count
+
+
+def clear_all_section_objects(root_obj: Optional[bpy.types.Object]) -> int:
+    """Remove all child section mesh objects under root_obj."""
+    if not root_obj:
+        return 0
+    existing_sections = find_root_section_children(root_obj)
+    removed_count = 0
+    for coords, child in list(existing_sections.items()):
+        _safe_remove_section_object(child, child.data)
+        removed_count += 1
+    return removed_count
+
+
 def _get_mesh_vertex_and_face_count(mesh: Optional[bpy.types.Mesh]) -> tuple[int, int]:
     """Return (vertex_count, face_count) correctly in either Object Mode or active Edit Mode."""
     if not mesh:
@@ -535,8 +562,11 @@ def build_single_section_mesh(
     else:
         sec_mesh = bpy.data.meshes.new(sec_mesh_name)
         sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
-        sec_obj.location = (0.0, 0.0, 0.0)
         sec_obj.parent = root_obj
+        sec_obj.matrix_parent_inverse.identity()
+        sec_obj.location = (0.0, 0.0, 0.0)
+        sec_obj.rotation_euler = (0.0, 0.0, 0.0)
+        sec_obj.scale = (1.0, 1.0, 1.0)
         col = getattr(context, "collection", None) if context else None
         if col is None and hasattr(bpy, "context") and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
             col = bpy.context.scene.collection
@@ -830,8 +860,11 @@ def apply_block_delta_to_world(
                     continue
                 sec_mesh = bpy.data.meshes.new(sec_mesh_name)
                 sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
-                sec_obj.location = (0.0, 0.0, 0.0)
                 sec_obj.parent = root_obj
+                sec_obj.matrix_parent_inverse.identity()
+                sec_obj.location = (0.0, 0.0, 0.0)
+                sec_obj.rotation_euler = (0.0, 0.0, 0.0)
+                sec_obj.scale = (1.0, 1.0, 1.0)
                 context.collection.objects.link(sec_obj)
                 existing_sections[(sx, sy, sz)] = sec_obj
 

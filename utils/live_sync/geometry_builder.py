@@ -360,8 +360,14 @@ def generate_voxel_geometry(
     cubes_count = 0
     props_count = 0
     fluids_count = 0
+    AIR_STRINGS = (
+        "", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air",
+        "minecraft:structure_void", "structure_void"
+    )
 
     for (x, y, z), state_str in voxel_items:
+        if not state_str or state_str in AIR_STRINGS or state_str.startswith("minecraft:air"):
+            continue
         c, p, f = generate_single_block_faces(
             bm=bm,
             x=x, y=y, z=z,

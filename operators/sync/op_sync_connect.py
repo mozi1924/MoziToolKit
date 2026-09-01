@@ -301,9 +301,23 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             run_in_main_thread(update)
 
         def on_selection_info(min_x, min_y, min_z, size_x, size_y, size_z):
-            session.storage.set_bounds(min_x, min_y, min_z, size_x, size_y, size_z)
+            bounds_changed = session.storage.set_bounds(min_x, min_y, min_z, size_x, size_y, size_z)
+            if bounds_changed:
+                session.clear_caches()
+                session.skip_next_full_snapshot = False
+                session.pending_full_sync_request = True
+                session.is_initial_handshake = True
             def update():
                 cur_obj = bpy.data.objects.get(session.target_object_name)
+                if cur_obj:
+                    try:
+                        from ...utils.live_sync.mesh_builder import clear_all_section_objects, prune_out_of_bounds_section_objects
+                    except (ImportError, ValueError):
+                        from utils.live_sync.mesh_builder import clear_all_section_objects, prune_out_of_bounds_section_objects
+                    if bounds_changed:
+                        clear_all_section_objects(cur_obj)
+                    else:
+                        prune_out_of_bounds_section_objects(cur_obj, session.storage)
                 cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
                 if cur_props:
                     cur_props.has_selection = True
@@ -313,6 +327,9 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     cur_props.max_z = min_z + size_z - 1
                     cur_props.size_x, cur_props.size_y, cur_props.size_z = size_x, size_y, size_z
                     cur_props.total_blocks = size_x * size_y * size_z
+                    if bounds_changed:
+                        cur_props.sync_verified = False
+                        cur_props.validation_info = "New selection detected..."
             run_in_main_thread(update)
 
         def on_full_snapshot(min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices, biome_palette=None, biome_indices=None):
@@ -328,6 +345,12 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 session.is_streaming = False
                 def on_identical():
                     cur_obj = bpy.data.objects.get(session.target_object_name)
+                    if cur_obj:
+                        try:
+                            from ...utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+                        except (ImportError, ValueError):
+                            from utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+                        prune_out_of_bounds_section_objects(cur_obj, session.storage)
                     cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
                     if cur_props:
                         cur_props.sync_verified = True
@@ -363,6 +386,14 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     session.skip_next_full_snapshot = False
                     session.force_next_full_rebuild = False
                     session.clear_caches()
+
+                    # Prune any old child section meshes outside the new selection bounds
+                    if cur_obj:
+                        try:
+                            from ...utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+                        except (ImportError, ValueError):
+                            from utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+                        prune_out_of_bounds_section_objects(cur_obj, session.storage)
 
                     # Check existing child section meshes to identify which sections ACTUALLY changed or are missing
                     existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
@@ -441,7 +472,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         if non_empty_manifest_count == 0:
                             _finalize_stream_sync(session, cur_props, cur_obj, 0)
                         else:
+                            ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
                             ProgressBar.update(current=30.0, total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
+                            if session.client_thread and session.client_thread.is_connected:
+                                logger.info(f"Live Sync ({session.target_object_name}): Requesting full sync on manifest ({non_empty_manifest_count} sections)...")
+                                session.client_thread.send_full_sync_request()
                         return
 
                     if session.is_streaming:
@@ -536,6 +571,12 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             session.stream_last_drain_time = time.time()
             def update():
                 cur_obj = bpy.data.objects.get(session.target_object_name)
+                if cur_obj:
+                    try:
+                        from ...utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+                    except (ImportError, ValueError):
+                        from utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+                    prune_out_of_bounds_section_objects(cur_obj, session.storage)
                 cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
                 if cur_props:
                     cur_props.validation_info = f"Streaming {total_sections} chunks..."

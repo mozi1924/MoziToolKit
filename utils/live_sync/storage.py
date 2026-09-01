@@ -111,16 +111,16 @@ class VoxelStorage:
         self.size_x = self.size_y = self.size_z = 0
         self.generation += 1
 
-    def set_bounds(self, min_x: int, min_y: int, min_z: int, size_x: int, size_y: int, size_z: int) -> None:
-        """Initialize or update selection bounding box from selection info."""
-        if (self.min_x, self.min_y, self.min_z, self.size_x, self.size_y, self.size_z) != (min_x, min_y, min_z, size_x, size_y, size_z):
-            # If bounds changed completely, clear stale block data
-            if self.size_x > 0 and (self.min_x != min_x or self.min_y != min_y or self.min_z != min_z):
-                self.block_map.clear()
-                self._section_map.clear()
-                self._state_counts.clear()
-                self.section_crc_map.clear()
-                self._dirty_sections.clear()
+    def set_bounds(self, min_x: int, min_y: int, min_z: int, size_x: int, size_y: int, size_z: int) -> bool:
+        """Initialize or update selection bounding box from selection info.
+
+        Returns True if bounds changed (meaning all existing voxel data and section meshes are invalidated).
+        """
+        old_bounds = (self.min_x, self.min_y, self.min_z, self.size_x, self.size_y, self.size_z)
+        new_bounds = (min_x, min_y, min_z, size_x, size_y, size_z)
+        if old_bounds != new_bounds:
+            if self.size_x > 0:
+                self.clear()
             self.min_x = min_x
             self.min_y = min_y
             self.min_z = min_z
@@ -128,6 +128,8 @@ class VoxelStorage:
             self.size_y = size_y
             self.size_z = size_z
             self.generation += 1
+            return True
+        return False
 
     def matches_bounds(self, min_x: int, min_y: int, min_z: int) -> bool:
         """Check if an incoming packet matches active selection bounds origin."""
@@ -361,16 +363,6 @@ class VoxelStorage:
             self.size_x = size_x
             self.size_y = size_y
             self.size_z = size_z
-        else:
-            max_x = max(self.min_x + self.size_x - 1, start_x + size_x - 1)
-            max_y = max(self.min_y + self.size_y - 1, start_y + size_y - 1)
-            max_z = max(self.min_z + self.size_z - 1, start_z + size_z - 1)
-            self.min_x = min(self.min_x, start_x)
-            self.min_y = min(self.min_y, start_y)
-            self.min_z = min(self.min_z, start_z)
-            self.size_x = max_x - self.min_x + 1
-            self.size_y = max_y - self.min_y + 1
-            self.size_z = max_z - self.min_z + 1
 
         total_blocks = size_x * size_y * size_z
         palette_len = len(palette)
