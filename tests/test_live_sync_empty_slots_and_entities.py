@@ -21,7 +21,7 @@ import bpy
 import bmesh
 from mathutils import Vector
 
-from utils.live_sync.material_manager import LiveSyncMaterialManager, PROP_ATLAS_CHUNK_ID, PROP_PACK_HASH
+from utils.live_sync.material import LiveSyncMaterialManager, PROP_ATLAS_CHUNK_ID, PROP_PACK_HASH
 from utils.live_sync.classifier import parse_and_classify, atlas_lookup_keys, BlockTypeEnum
 from utils.mc_baker import StateBaker, get_shared_state_baker
 from utils.mc_baker.model_parser import ModelParser

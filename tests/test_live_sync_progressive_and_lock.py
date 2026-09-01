@@ -15,7 +15,7 @@ import bpy
 import time
 
 from utils.live_sync.storage import VoxelStorage
-from utils.live_sync.session_manager import (
+from utils.live_sync.session.session_manager import (
     SyncSession,
     SyncSessionManager,
     get_active_session_manager,
@@ -24,7 +24,7 @@ from utils.live_sync.session_manager import (
     _pump_main_thread_events,
     _finalize_stream_sync,
 )
-from utils.live_sync.mesh_builder import (
+from utils.live_sync.meshing import (
     build_single_section_mesh,
     get_or_create_world_root,
     find_root_section_children,
@@ -73,7 +73,7 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         session.storage.set_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, palette_1, grid_1)
         session.stream_section_queue.put((1, 0, 0, palette_1))
 
-        from utils.live_sync.session_manager import start_main_thread_pump
+        from utils.live_sync.session import start_main_thread_pump
         start_main_thread_pump()
 
         # Pump until queue and reconciliation are complete
@@ -222,7 +222,7 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         storage.set_section_snapshot(6, 0, 6, 100, 0, 100, 16, 16, 16, ["minecraft:dirt"], [0] * 4096)
 
         # Pruning helper must remove old section (0, 0, 0)
-        from utils.live_sync.mesh_builder import prune_out_of_bounds_section_objects
+        from utils.live_sync.meshing import prune_out_of_bounds_section_objects
         removed = prune_out_of_bounds_section_objects(root, storage)
         self.assertEqual(removed, 1)
         self.assertNotIn("Test_Prune_World_Section_0_0_0", bpy.data.objects)

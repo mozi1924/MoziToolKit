@@ -147,9 +147,9 @@ def _deferred_sync_renamed_roots():
         obj = bpy.data.objects.get(name)
         if obj and obj.type == 'EMPTY':
             try:
-                from ...utils.live_sync.mesh_builder import sync_child_section_names
+                from ...utils.live_sync.meshing import sync_child_section_names
             except (ImportError, ValueError):
-                from utils.live_sync.mesh_builder import sync_child_section_names
+                from utils.live_sync.meshing import sync_child_section_names
             sync_child_section_names(obj)
             obj["mtk:last_name"] = obj.name
     return None

@@ -39,7 +39,7 @@ from utils.live_sync.constants import (
     DEFAULT_ANIM_ATLAS_HEIGHT,
     DEFAULT_WORLD_OBJECT_NAME,
 )
-from utils.live_sync.client import SyncClientThread
+from utils.live_sync.protocol import SyncClientThread
 from utils.live_sync.constants import PROTOCOL_MAGIC, PROTOCOL_VERSION, PacketType
 
 

@@ -22,7 +22,7 @@ from ...mc_baker import (
     EMISSIVE_BLOCKS,
     is_block_emissive as _mc_is_block_emissive,
 )
-from ...live_sync.mesh_builder import (
+from ...live_sync.meshing import (
     is_yefira_object,
     is_yefira_root_object,
     is_yefira_child_section,

@@ -60,9 +60,9 @@ class MOZI_OT_sync_stream_runner(bpy.types.Operator):
 
     def modal(self, context, event):
         try:
-            from ...utils.live_sync.session_manager import get_active_session_manager, get_active_sync_props, get_target_world_object
+            from ...utils.live_sync.session import get_active_session_manager, get_active_sync_props, get_target_world_object
         except (ImportError, ValueError):
-            from utils.live_sync.session_manager import get_active_session_manager, get_active_sync_props, get_target_world_object
+            from utils.live_sync.session import get_active_session_manager, get_active_sync_props, get_target_world_object
 
         session_mgr = get_active_session_manager()
         target_obj = bpy.data.objects.get(self.target_container) if self.target_container else None

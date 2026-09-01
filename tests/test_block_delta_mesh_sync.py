@@ -288,7 +288,7 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
                 stop_main_thread_pump,
                 get_active_sync_props,
             )
-            from MoziToolKit.utils.live_sync.storage import voxel_storage
+            from utils.live_sync.storage import voxel_storage
         except ImportError:
             from operators.sync.op_sync_connect import (
                 _delta_queue,
@@ -333,7 +333,7 @@ class TestBlockDeltaMeshSync(unittest.TestCase):
 
     def test_preload_sync_world_data(self):
         """Verify that preload_sync_world_data warms up palette and common blockstates in RAM."""
-        from utils.live_sync.mesh_builder import (
+        from utils.live_sync.meshing import (
             preload_sync_world_data,
             _GLOBAL_STATE_META_CACHE,
         )

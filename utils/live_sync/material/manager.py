@@ -71,10 +71,10 @@ PROP_PACK_HASH_SHORT = "mtk:pack_hash_short"
 PROP_ATLAS_CHUNK_ID = "mtk:atlas_chunk_id"
 PROP_ATLAS_MAPPING = "mtk:atlas_mapping"
 
-from ..mc_baker import StateBaker, BakedModel, BakedFace
-from ..materials.atlas.addressing import AtlasAddressResolver, ResolvedAtlasAddress
-from ..materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
-from ..materials.constants import (
+from ...mc_baker import StateBaker, BakedModel, BakedFace
+from ...materials.atlas.addressing import AtlasAddressResolver, ResolvedAtlasAddress
+from ...materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+from ...materials.constants import (
     ATLAS_CATEGORY_BLOCKS,
     ATLAS_CATEGORY_CHEST,
     ATLAS_CATEGORY_SHULKER_BOXES,
@@ -82,7 +82,7 @@ from ..materials.constants import (
     ATLAS_CATEGORY_DECORATED_POT,
     ATLAS_CATEGORY_ENTITIES,
 )
-from .constants import (
+from ..constants import (
     DEFAULT_ATLAS_WIDTH,
     DEFAULT_ATLAS_HEIGHT,
     DEFAULT_TILE_SIZE,
@@ -93,7 +93,7 @@ from .constants import (
     DEFAULT_ANIM_FRAME_HEIGHT,
     FACES,
 )
-from .classifier import (
+from ..classifier import (
     ParsedBlock,
     atlas_lookup_keys,
     BlockTypeEnum,
@@ -190,9 +190,9 @@ class LiveSyncMaterialManager:
         atlas category a block model can reference. If existing materials in
         scene have outdated hash, they are completely rebuilt from the authoritative cache.
         """
-        from ..materials.atlas.builder import build_atlas_chunk_materials
-        from ..materials.pack.pack_stack import get_configured_pack_stack
-        from ..materials.pack.resource_pack import get_cache_dir
+        from ...materials.atlas.builder import build_atlas_chunk_materials
+        from ...materials.pack.pack_stack import get_configured_pack_stack
+        from ...materials.pack.resource_pack import get_cache_dir
 
         target_pack_hash = get_effective_pack_hash(self.atlas_params)
         if not target_pack_hash:
@@ -356,7 +356,7 @@ class LiveSyncMaterialManager:
             self.chunk_materials[chunk_id] = found_mat
         elif self._atlas_dir:
             try:
-                from ..materials.atlas.builder import build_atlas_chunk_materials
+                from ...materials.atlas.builder import build_atlas_chunk_materials
                 rebuilt_mats = build_atlas_chunk_materials(
                     atlas_dir=self._atlas_dir,
                     pack_hash=self._target_pack_hash,

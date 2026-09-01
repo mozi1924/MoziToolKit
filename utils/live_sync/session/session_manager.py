@@ -11,16 +11,16 @@ import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 import bpy
 
-from .client import SyncClientThread
-from .constants import (
+from ..protocol.client import SyncClientThread
+from ..constants import (
     DEFAULT_WORLD_OBJECT_NAME,
 )
-from ..mc_baker import (
+from ...mc_baker import (
     refresh_shared_baker_sources,
     clear_shared_baker_cache,
     get_shared_state_baker,
 )
-from .mesh_builder import (
+from ..meshing import (
     sync_world_mesh,
     apply_block_delta_to_world,
     clear_mesh_builder_caches,
@@ -30,15 +30,15 @@ from .mesh_builder import (
     is_yefira_root_object,
     is_yefira_object,
 )
-from .storage import VoxelStorage, voxel_storage
-from ...pipeline.progress import ProgressBar
+from ..storage.voxel_storage import VoxelStorage, voxel_storage
+from ....pipeline.progress import ProgressBar
 
 logger = logging.getLogger("MoziToolKit.LiveSync.Session")
 
 
 def _extract_atlas_params(mat: Optional[bpy.types.Material], pack_stack: Any = None) -> dict:
     try:
-        from ..materials.yefira import extract_atlas_parameters
+        from ...materials.yefira import extract_atlas_parameters
         return extract_atlas_parameters(mat, pack_stack=pack_stack)
     except (ImportError, ValueError):
         try:
@@ -50,7 +50,7 @@ def _extract_atlas_params(mat: Optional[bpy.types.Material], pack_stack: Any = N
 
 def _find_bound_atlas_material(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Material]:
     try:
-        from ..materials.yefira import find_bound_atlas_material
+        from ...materials.yefira import find_bound_atlas_material
         return find_bound_atlas_material(obj)
     except (ImportError, ValueError):
         try:
@@ -206,7 +206,7 @@ class SyncSession:
                     restored = True
 
             # Fallback 2: Always ensure section_crc_map is populated with existing child section mesh CRCs
-            from .mesh_builder import find_root_section_children
+            from ..meshing import find_root_section_children
             existing_sections = find_root_section_children(obj)
             if existing_sections:
                 for (sx, sy, sz), sec_obj in existing_sections.items():
@@ -268,7 +268,7 @@ class SyncSession:
         return True
 
     def handle_status_change(self, status: str) -> None:
-        """Handle client connection status transitions."""
+        """Handle connection lifecycle status changes."""
         def update():
             cur_obj = bpy.data.objects.get(self.target_object_name)
             cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
@@ -279,7 +279,7 @@ class SyncSession:
             if status == "CONNECTED":
                 ProgressBar.update(current=20.0, total=100.0, message="Handshake established...")
                 try:
-                    from .material_binding import validate_and_sync_scene_materials
+                    from ..material.binding import validate_and_sync_scene_materials
                     validate_and_sync_scene_materials(cur_obj)
                 except Exception as e:
                     logger.debug(f"Deferred material sync note: {e}")
@@ -331,7 +331,7 @@ class SyncSession:
         def update():
             cur_obj = bpy.data.objects.get(self.target_object_name)
             if cur_obj:
-                from .mesh_builder import prune_out_of_bounds_section_objects
+                from ..meshing import prune_out_of_bounds_section_objects
                 prune_out_of_bounds_section_objects(cur_obj, self.storage)
             cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
             if cur_props:
@@ -343,20 +343,31 @@ class SyncSession:
                 cur_props.size_x, cur_props.size_y, cur_props.size_z = size_x, size_y, size_z
                 cur_props.total_blocks = size_x * size_y * size_z
                 if bounds_changed:
-                    cur_props.sync_verified = False
-                    cur_props.validation_info = "Selection updated, syncing..."
+                    cur_props.update_counter += 1
+                    cur_props.last_update_info = f"Selection: {size_x}x{size_y}x{size_z} ({size_x*size_y*size_z:,} blocks)"
+                else:
+                    cur_props.last_update_info = f"Attached to selection ({size_x}x{size_y}x{size_z})"
+            if bounds_changed:
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type == 'PROPERTIES':
+                            area.tag_redraw()
         _run_in_main_thread(update)
 
     def handle_full_snapshot(
         self,
-        min_x: int, min_y: int, min_z: int,
-        size_x: int, size_y: int, size_z: int,
+        min_x: int,
+        min_y: int,
+        min_z: int,
+        size_x: int,
+        size_y: int,
+        size_z: int,
         palette: List[str],
         grid_indices: List[int],
         biome_palette: Optional[List[str]] = None,
         biome_indices: Optional[List[int]] = None,
     ) -> None:
-        """Handle full world snapshot payloads."""
+        """Handle full snapshot data arriving on background client thread."""
         if self.skip_next_full_snapshot:
             self.skip_next_full_snapshot = False
             return
@@ -367,7 +378,7 @@ class SyncSession:
             def on_identical():
                 cur_obj = bpy.data.objects.get(self.target_object_name)
                 if cur_obj:
-                    from .mesh_builder import prune_out_of_bounds_section_objects
+                    from ..meshing import prune_out_of_bounds_section_objects
                     prune_out_of_bounds_section_objects(cur_obj, self.storage)
                 cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
                 if cur_props:
@@ -406,7 +417,7 @@ class SyncSession:
                 self.clear_caches()
 
                 if cur_obj:
-                    from .mesh_builder import prune_out_of_bounds_section_objects, find_root_section_children
+                    from ..meshing import prune_out_of_bounds_section_objects, find_root_section_children
                     prune_out_of_bounds_section_objects(cur_obj, self.storage)
                     existing_sections = find_root_section_children(cur_obj)
                 else:
@@ -523,7 +534,7 @@ class SyncSession:
                     logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
                     return
 
-                from .mesh_builder import find_root_section_children
+                from ..meshing import find_root_section_children
                 existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
                 existing_mesh_coords = set(existing_sections.keys()) if existing_sections else None
 
@@ -613,7 +624,7 @@ class SyncSession:
         def update():
             cur_obj = bpy.data.objects.get(self.target_object_name)
             if cur_obj:
-                from .mesh_builder import prune_out_of_bounds_section_objects
+                from ..meshing import prune_out_of_bounds_section_objects
                 prune_out_of_bounds_section_objects(cur_obj, self.storage)
             cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
             if cur_props:
@@ -721,6 +732,15 @@ def get_active_session_manager() -> SyncSessionManager:
     return _session_manager
 
 
+def reset_active_session_manager() -> SyncSessionManager:
+    global _session_manager
+    if _session_manager is not None:
+        _session_manager.clear_all()
+    _session_manager = SyncSessionManager()
+    bpy.types._mozi_session_manager = _session_manager
+    return _session_manager
+
+
 # Backward compatibility properties & global references
 _client_thread: Optional[SyncClientThread] = None
 _last_seq_id: int = 0
@@ -801,8 +821,8 @@ def get_cached_atlas_params(mat: Optional[bpy.types.Material]) -> dict:
     """Retrieve atlas parameters authoritatively, invalidating when material or pack stack changes."""
     global _cached_atlas_params, _cached_mat_signature
     try:
-        from ..materials.pack import get_configured_pack_stack
-        from ..materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+        from ...materials.pack import get_configured_pack_stack
+        from ...materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
     except (ImportError, ValueError):
         from utils.materials.pack import get_configured_pack_stack
         from utils.materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
@@ -875,7 +895,7 @@ def trigger_mesh_sync(
     )
 
     try:
-        from ..materials.pipeline.session import cleanup_unused_mtk_datablocks
+        from ...materials.pipeline.session import cleanup_unused_mtk_datablocks
         cleanup_unused_mtk_datablocks()
     except Exception:
         pass
@@ -1045,10 +1065,10 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         # Reconcile any remaining dirty boundary sections to guarantee 100% boundary culling consistency
         dirty_remaining = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
         if dirty_remaining and target_obj:
-            from .mesh_builder import build_single_section_mesh, find_root_section_children
+            from ..meshing import build_single_section_mesh, find_root_section_children
             cur_mat = _find_bound_atlas_material(target_obj)
             cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-            from .material_binding import get_shared_material_manager
+            from ..material.binding import get_shared_material_manager
             mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
             baker = get_shared_state_baker()
             state_cache = getattr(session, "_stream_state_cache", None) or {}
@@ -1080,7 +1100,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
             # Update geometry totals from child section meshes
             try:
                 if target_obj:
-                    from .mesh_builder import _get_mesh_vertex_and_face_count
+                    from ..meshing import _get_mesh_vertex_and_face_count
                     total_verts = 0
                     for child in target_obj.children:
                         if child.data and isinstance(child.data, bpy.types.Mesh):
@@ -1146,7 +1166,7 @@ def _pump_main_thread_events() -> Optional[float]:
 
         if session.is_streaming and props and not props.is_locked:
             try:
-                from ...operators.sync.op_sync_connect import start_stream_modal_lock
+                from ....operators.sync.op_sync_connect import start_stream_modal_lock
             except (ImportError, ValueError):
                 try:
                     from operators.sync.op_sync_connect import start_stream_modal_lock
@@ -1168,18 +1188,18 @@ def _pump_main_thread_events() -> Optional[float]:
                 if mat_mgr is None:
                     cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
                     cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-                    from .material_binding import get_shared_material_manager
+                    from ..material.binding import get_shared_material_manager
                     mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
                     baker = get_shared_state_baker()
                     if not hasattr(session, "_stream_state_cache") or session._stream_state_cache is None:
                         session._stream_state_cache = {}
                     state_cache = session._stream_state_cache
                     if not hasattr(session, "_existing_sections_cache") or session._existing_sections_cache is None:
-                        from .mesh_builder import find_root_section_children
+                        from ..meshing import find_root_section_children
                         session._existing_sections_cache = find_root_section_children(target_obj)
                     existing_sections = session._existing_sections_cache
 
-                from .mesh_builder import build_single_section_mesh
+                from ..meshing import build_single_section_mesh
                 build_single_section_mesh(
                     context=bpy.context,
                     storage=session.storage,
@@ -1419,7 +1439,7 @@ def cleanup_sync_state() -> None:
     ProgressBar.end()
 
     try:
-        from .classifier import clear_parse_cache
+        from ..classifier import clear_parse_cache
         clear_parse_cache()
     except Exception:
         pass

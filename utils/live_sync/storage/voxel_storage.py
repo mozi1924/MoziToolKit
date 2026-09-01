@@ -447,7 +447,7 @@ class VoxelStorage:
         Returns (smoothed_u, smoothed_v, smoothed_water_linear_rgba).
         Uses precomputed weight kernels and session-level memoization for maximum throughput.
         """
-        from ..materials.biome import get_biome_colors, get_colormap_uv
+        from ...materials.biome import get_biome_colors, get_colormap_uv
 
         if not self.biome_map:
             u, v = get_colormap_uv(0.8, 0.4)

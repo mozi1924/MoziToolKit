@@ -412,7 +412,7 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
     def test_livesync_bmesh_layers_include_material_props(self):
         """Verify that LiveSync geometry builder allocates and sets the material_props layer."""
         import bmesh
-        from utils.live_sync.geometry_builder import _get_or_create_bmesh_layers
+        from utils.live_sync.meshing.geometry import _get_or_create_bmesh_layers
         from utils.live_sync.constants import MTK_MATERIAL_PROPS
         bm = bmesh.new()
         layers = _get_or_create_bmesh_layers(bm)

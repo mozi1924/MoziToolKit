@@ -264,7 +264,8 @@ class TestModelPrebakeAndTorchOrientation(unittest.TestCase):
         }
 
         # Pre-warm into cache with custom baker
-        from utils.live_sync.mesh_builder import _GLOBAL_STATE_META_CACHE, get_shared_material_manager, CachedStateMeta
+        from utils.live_sync.meshing import _GLOBAL_STATE_META_CACHE, CachedStateMeta
+        from utils.live_sync.material import get_shared_material_manager
         mat_mgr = get_shared_material_manager(world_obj=None, atlas_params=atlas_params)
         meta = CachedStateMeta("minecraft:wall_torch[facing=north]", mat_mgr, baker)
         _GLOBAL_STATE_META_CACHE["minecraft:wall_torch[facing=north]"] = meta
@@ -335,8 +336,8 @@ class TestModelPrebakeAndTorchOrientation(unittest.TestCase):
         Verify that HOT_PREWARM_STATES covers essential interactive blocks (doors, torches, stairs, etc.)
         and that preload_sync_world_data pre-warms them into _GLOBAL_STATE_META_CACHE.
         """
-        from utils.live_sync.hot_states import HOT_PREWARM_STATES
-        from utils.live_sync.mesh_builder import (
+        from utils.live_sync.classifier import HOT_PREWARM_STATES
+        from utils.live_sync.meshing.cache import (
             _GLOBAL_STATE_META_CACHE,
             preload_sync_world_data,
             _idle_prewarm_tick,

@@ -7,11 +7,11 @@ from __future__ import annotations
 from typing import Any, Optional
 import bpy
 
-from .constants import (
+from ..constants import (
     MTK_ATLAS_CHUNK_ID,
     MTK_SOURCE_TEXTURE_KEY,
 )
-from .material_manager import LiveSyncMaterialManager
+from .manager import LiveSyncMaterialManager
 
 _GLOBAL_MAT_MANAGER: Optional[LiveSyncMaterialManager] = None
 _GLOBAL_MAT_MANAGER_SIG: Optional[tuple] = None
@@ -124,8 +124,8 @@ def validate_and_sync_scene_materials(
         return False
 
     try:
-        from ..materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
-        from ..materials.pack.pack_stack import get_configured_pack_stack
+        from ...materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
+        from ...materials.pack.pack_stack import get_configured_pack_stack
     except (ImportError, ValueError):
         from utils.materials.pipeline.provenance import get_effective_pack_hash, is_material_hash_valid
         from utils.materials.pack.pack_stack import get_configured_pack_stack
@@ -157,12 +157,12 @@ def validate_and_sync_scene_materials(
     if not is_valid or _GLOBAL_MAT_MANAGER is None:
         clear_shared_material_manager()
         try:
-            from ..mc_baker import refresh_shared_baker_sources
+            from ...mc_baker import refresh_shared_baker_sources
             refresh_shared_baker_sources(force_precompile_if_missing=False)
         except Exception:
             pass
 
-        from ..materials.yefira.atlas_integration import extract_atlas_parameters
+        from ...materials.yefira.atlas_integration import extract_atlas_parameters
         atlas_params = extract_atlas_parameters(mat=None, pack_stack=pack_stack)
 
         mat_manager = get_shared_material_manager(world_obj=target_obj, atlas_params=atlas_params)

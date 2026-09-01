@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Callable, List, Optional, Tuple
 
-from .constants import (
+from ..constants import (
     PROTOCOL_MAGIC,
     PROTOCOL_VERSION,
     PacketType,
