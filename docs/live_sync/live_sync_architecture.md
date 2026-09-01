@@ -172,4 +172,8 @@ graph TD
 > 5. **操作职责严格隔离**：
 >    - “刷新 (Refresh)”：负责网络请求全量快照，必须带有 `_pending_full_sync_request` 守卫以防递归死循环；
 >    - “重建 (Rebuild)”：负责本地离线重新计算网格与面剔除，不发送任何网络请求。
+> 6. **服务端异常隔离与原子发送守卫（Server Fault-Isolation & Safe Sending）**：
+>    - Minecraft 服务端在 `WebSocketServerManager` 中重写 `onWebsocketPing` 与 `onWebsocketPong`，安全处理协议心跳应答，防止客户端并发断开导致 `WebsocketNotConnectedException` 击穿解码 Worker 线程；
+>    - 针对所有广播分发与 `END_SERVER_TICK` 队列刷新，采用 `sendSafe` 与 `List.copyOf(clients)` 迭代守卫，自动剔除死连接，杜绝网络层异常导致游戏服务端崩溃。
+
 
