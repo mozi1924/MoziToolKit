@@ -176,6 +176,7 @@ class TestPackStackAndFallback(unittest.TestCase):
         save_pack_stack_config([])
         prefs = get_prefs(bpy.context)
         if prefs is not None:
+            prefs.is_initialized = True
             prefs.resource_packs.clear()
 
             # Add pack

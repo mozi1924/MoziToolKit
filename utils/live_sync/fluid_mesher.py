@@ -152,32 +152,40 @@ def calculate_corner_average(
 ) -> float:
     """
     Calculates the averaged fluid height for one corner between center, two adjacent neighbors,
-    and the diagonal neighbor using Minecraft Vanilla / JMC2OBJ weighted formula.
+    and the diagonal neighbor using canonical Minecraft fluid mechanics.
+    Air (0.0), solid blocks (-1.0), and external boundaries are excluded so fluid borders do not sag.
     """
     # If any fluid has height 1.0 (submerged/water above), the corner is fully at height 1.0
     if h_center >= 1.0 or h_adj1 >= 1.0 or h_adj2 >= 1.0:
         return 1.0
 
-    samples = [h_center, h_adj1, h_adj2]
+    fluid_samples = [h_center]
+    if h_adj1 > 0.0:
+        fluid_samples.append(h_adj1)
+    if h_adj2 > 0.0:
+        fluid_samples.append(h_adj2)
     # Sample diagonal block if at least one adjacent neighbor is fluid
-    if h_adj1 > 0.0 or h_adj2 > 0.0:
+    if (h_adj1 > 0.0 or h_adj2 > 0.0) and h_diag > 0.0:
         if h_diag >= 1.0:
             return 1.0
-        samples.append(h_diag)
+        fluid_samples.append(h_diag)
+
+    # If all participating fluids are source blocks / near full (>= 0.8), keep exact MAX_FLUID_HEIGHT
+    if all(h >= 0.8 for h in fluid_samples):
+        return MAX_FLUID_HEIGHT
 
     weighted_sum = 0.0
     total_weight = 0.0
 
-    for h in samples:
+    for h in fluid_samples:
         if h >= 0.8:
             # Source blocks or near-full fluids have strong surface tension (weight 10.0)
             weighted_sum += h * 10.0
             total_weight += 10.0
-        elif h >= 0.0:
+        elif h > 0.0:
             # Flowing low fluid has weight 1.0
             weighted_sum += h * 1.0
             total_weight += 1.0
-        # Negative heights (-1.0 = solid blocks) are ignored! Solid boundaries do not drag water down.
 
     if total_weight > 0.0:
         return weighted_sum / total_weight
@@ -392,23 +400,19 @@ def is_fluid_flowing(
     # Check block directly below:
     # If below is air or a non-solid / lower fluid block, fluid falls downward
     below_state = block_map.get((x, y - 1, z))
-    if not below_state:
-        # Air below -> falling fluid
-        return True
-    else:
+    if below_state:
         p_below = parse_and_classify(below_state)
         if fluid_type == "water" and p_below.is_waterlogged:
             pass
-        elif p_below.block_type in (BlockTypeEnum.AIR, BlockTypeEnum.FLUID) and not p_below.is_opaque:
-            if p_below.block_type == BlockTypeEnum.FLUID:
-                b_level = 0
-                try:
-                    b_level = int(p_below.props.get("level", "0"))
-                except (ValueError, TypeError):
-                    pass
-                if b_level > 0:
-                    return True
-            else:
+        elif p_below.is_air:
+            return True
+        elif p_below.block_type == BlockTypeEnum.FLUID and not p_below.is_opaque:
+            b_level = 0
+            try:
+                b_level = int(p_below.props.get("level", "0"))
+            except (ValueError, TypeError):
+                pass
+            if b_level > 0:
                 return True
 
     return False
@@ -513,7 +517,7 @@ def generate_fluid_mesh_faces(
     # -------------------------------------------------------------
     # 1. Top Face (UP)
     # -------------------------------------------------------------
-    if not should_cull_fluid_face(block_map.get((x, y + 1, z)), fluid_type):
+    if not should_cull_fluid_face(block_map.get((x, y + 1, z)), fluid_type, direction="up", own_state=state_str):
         v_nw = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_sw = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_se = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
@@ -539,7 +543,7 @@ def generate_fluid_mesh_faces(
     # -------------------------------------------------------------
     # 2. Bottom Face (DOWN)
     # -------------------------------------------------------------
-    if not should_cull_fluid_face(block_map.get((x, y - 1, z)), fluid_type):
+    if not should_cull_fluid_face(block_map.get((x, y - 1, z)), fluid_type, direction="down", own_state=state_str):
         v_bot_sw = (bx - 0.5, by - 0.5, bz - 0.5)
         v_bot_nw = (bx - 0.5, by + 0.5, bz - 0.5)
         v_bot_ne = (bx + 0.5, by + 0.5, bz - 0.5)
@@ -567,7 +571,7 @@ def generate_fluid_mesh_faces(
     side_res = res_flow
 
     # A. North Face
-    if not should_cull_fluid_face(block_map.get((x, y, z - 1)), fluid_type):
+    if not should_cull_fluid_face(block_map.get((x, y, z - 1)), fluid_type, direction="north", own_state=state_str):
         v_ne_top = (bx + 0.5, by + 0.5, bz - 0.5 + top_NE)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
@@ -589,7 +593,7 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # B. South Face
-    if not should_cull_fluid_face(block_map.get((x, y, z + 1)), fluid_type):
+    if not should_cull_fluid_face(block_map.get((x, y, z + 1)), fluid_type, direction="south", own_state=state_str):
         v_sw_top = (bx - 0.5, by - 0.5, bz - 0.5 + top_SW)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
@@ -611,7 +615,7 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # C. West Face
-    if not should_cull_fluid_face(block_map.get((x - 1, y, z)), fluid_type):
+    if not should_cull_fluid_face(block_map.get((x - 1, y, z)), fluid_type, direction="west", own_state=state_str):
         v_nw_top = (bx - 0.5, by + 0.5, bz - 0.5 + top_NW)
         v_nw_bot = (bx - 0.5, by + 0.5, bz - 0.5)
         v_sw_bot = (bx - 0.5, by - 0.5, bz - 0.5)
@@ -633,7 +637,7 @@ def generate_fluid_mesh_faces(
             faces_emitted += 1
 
     # D. East Face
-    if not should_cull_fluid_face(block_map.get((x + 1, y, z)), fluid_type):
+    if not should_cull_fluid_face(block_map.get((x + 1, y, z)), fluid_type, direction="east", own_state=state_str):
         v_se_top = (bx + 0.5, by - 0.5, bz - 0.5 + top_SE)
         v_se_bot = (bx + 0.5, by - 0.5, bz - 0.5)
         v_ne_bot = (bx + 0.5, by + 0.5, bz - 0.5)

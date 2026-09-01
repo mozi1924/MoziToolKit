@@ -122,17 +122,15 @@ class TestFluidLiveSync(unittest.TestCase):
 
     def test_single_source_water_corner_heights(self):
         """
-        Test that an isolated still water source block calculates exact Vanilla Minecraft corner heights:
-        Center has weight 10.0 (8/9), while the two exposed air neighbors have weight 1.0 (0.0),
-        yielding exact surface tension curve (8/9 * 10) / 12 = 20/27 ~= 0.74074.
+        Test that an isolated still water source block calculates exact flat MAX_FLUID_HEIGHT corner heights
+        without drooping at boundary edges.
         """
         block_map = {(0, 0, 0): "minecraft:water[level=0]"}
         c_nw, c_ne, c_se, c_sw = calculate_fluid_corner_heights(block_map, 0, 0, 0, "water")
-        expected_tension_h = (MAX_FLUID_HEIGHT * 10.0) / 12.0  # 20/27
-        self.assertAlmostEqual(c_nw, expected_tension_h, places=4)
-        self.assertAlmostEqual(c_ne, expected_tension_h, places=4)
-        self.assertAlmostEqual(c_se, expected_tension_h, places=4)
-        self.assertAlmostEqual(c_sw, expected_tension_h, places=4)
+        self.assertAlmostEqual(c_nw, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(c_ne, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(c_se, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(c_sw, MAX_FLUID_HEIGHT, places=4)
 
     def test_solid_block_boundary_preservation_jmc2obj(self):
         """
@@ -533,10 +531,12 @@ class TestFluidLiveSync(unittest.TestCase):
         h_stair = sample_fluid_height(block_map, 0, 0, 0, "water")
         self.assertAlmostEqual(h_stair, MAX_FLUID_HEIGHT, places=4)
 
-        # 2. Adjacent water at (1, 0, 0) connects to stair at (0, 0, 0): West corners (NW, SW) higher than air corners (NE, SE)
+        # 2. Adjacent water at (1, 0, 0) connects to stair at (0, 0, 0): All corners maintain full MAX_FLUID_HEIGHT
         c_nw, c_ne, c_se, c_sw = calculate_fluid_corner_heights(block_map, 1, 0, 0, "water")
-        self.assertGreater(c_nw, c_ne, "West corners touching waterlogged block must be higher than air corners")
-        self.assertGreater(c_sw, c_se, "West corners touching waterlogged block must be higher than air corners")
+        self.assertAlmostEqual(c_nw, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(c_ne, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(c_sw, MAX_FLUID_HEIGHT, places=4)
+        self.assertAlmostEqual(c_se, MAX_FLUID_HEIGHT, places=4)
 
         # 3. Full 3x3 pool with waterlogged blocks in it produces full MAX_FLUID_HEIGHT flat surface
         pool_map = {
