@@ -108,6 +108,7 @@ from .biome import (
     linear_to_srgb,
     linear_rgba_to_hex,
     BIOME_PALETTES,
+    BIOME_ENUM_ITEMS,
     HARDCODED_BLOCK_TINTS,
     KNOWN_OVERLAY_PAIRS,
     TINT_TYPE_NONE,

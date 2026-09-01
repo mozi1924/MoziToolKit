@@ -399,24 +399,29 @@ def rebuild_material(
 
             biome_colors = get_biome_colors(biome_preset, pack_stack=effective_stack)
             colormap_name = None
+            has_custom = False
             if tint_type == TINT_TYPE_GRASS:
                 resolved_col = biome_colors["grass_linear"]
                 colormap_name = "grass"
+                has_custom = bool(biome_colors.get("has_custom_grass", False))
             elif tint_type == TINT_TYPE_FOLIAGE:
                 resolved_col = biome_colors["foliage_linear"]
                 colormap_name = "foliage"
+                has_custom = bool(biome_colors.get("has_custom_foliage", False))
             elif tint_type == TINT_TYPE_DRY_FOLIAGE:
                 resolved_col = biome_colors["dry_foliage_linear"]
                 colormap_name = "dry_foliage"
+                has_custom = bool(biome_colors.get("has_custom_dry_foliage", False))
             elif tint_type == TINT_TYPE_WATER:
                 resolved_col = biome_colors["water_linear"]
+                has_custom = True
             else:
                 resolved_col = (1.0, 1.0, 1.0, 1.0)
 
             biome_tint_node.inputs["Tint Color"].default_value = tuple(resolved_col)
 
-            # Check if precompiled or pack stack colormap texture exists on disk
-            colormap_path = effective_stack.get_colormap_path(colormap_name) if (effective_stack and colormap_name) else None
+            # Check if precompiled or pack stack colormap texture exists on disk (only for standard colormap biomes)
+            colormap_path = effective_stack.get_colormap_path(colormap_name) if (effective_stack and colormap_name and not has_custom) else None
             if colormap_path and Path(colormap_path).exists():
                 col_img = load_image_texture(
                     colormap_path,

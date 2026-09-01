@@ -1,6 +1,7 @@
 import bpy
+from bpy.props import EnumProperty
 from ...utils.system import register_menu_item, has_pillow, draw_pillow_warning, get_prefs
-from ...utils.materials import get_configured_pack_stack
+from ...utils.materials import get_configured_pack_stack, BIOME_ENUM_ITEMS
 
 
 @register_menu_item(views=["object"])
@@ -11,9 +12,20 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     bl_label = "Replace Material"
     bl_options = {"REGISTER", "UNDO"}
 
+    biome_preset: EnumProperty(
+        name="Biome",
+        description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
+        items=BIOME_ENUM_ITEMS,
+        default='PLAINS',
+    )
+
     @classmethod
     def poll(cls, context):
         return context.mode == "OBJECT" and bool(context.selected_objects)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "biome_preset", text="Biome")
 
     def execute(self, context):
         if not has_pillow():
@@ -33,7 +45,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
 
         prefs = get_prefs(context)
         material_mode = getattr(prefs, "material_mode", "ATLAS") if prefs else "ATLAS"
-        biome_preset = getattr(prefs, "biome_preset", "PLAINS") if prefs else "PLAINS"
+        biome_preset = self.biome_preset
         pack_textures = getattr(prefs, "pack_textures", True) if prefs else True
 
         if material_mode == "STANDALONE":
@@ -61,7 +73,8 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             "biome_preset": biome_preset,
         }
 
-        from ...pipeline import get_preset_pipeline, run_pipeline_modal
+        from ...pipeline import get_preset_pipeline
+        from ...pipeline.context import PipelineContext
         from ...pipeline.step import StepStatus
 
         pipeline = get_preset_pipeline("replace_material")
@@ -69,12 +82,13 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             self.report({'ERROR'}, "Preset pipeline 'replace_material' not found.")
             return {"CANCELLED"}
 
-        res, ctx = run_pipeline_modal(
-            pipeline,
-            context,
+        ctx = PipelineContext(
+            context=context,
             params=params,
-            title="Replace Material",
+            target_objects=list(context.selected_objects),
         )
+
+        res = pipeline.execute(ctx)
 
         for level, msg in ctx.reports:
             self.report({level}, msg)

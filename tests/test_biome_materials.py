@@ -525,6 +525,46 @@ class TestBiomePipelineIntegration(unittest.TestCase):
             # The pixel at (2, 3) relative to frame should be the base color (not stretched red)
             self.assertEqual(canvas.getpixel((2, y_base + 3)), (100, 100, 100, 255))
 
+    def test_biome_enum_items(self):
+        """Verify BIOME_ENUM_ITEMS export and structure."""
+        from MoziToolKit.utils.materials.biome import BIOME_ENUM_ITEMS
+        self.assertGreaterEqual(len(BIOME_ENUM_ITEMS), 66)
+        self.assertEqual(BIOME_ENUM_ITEMS[0][0], "PLAINS")
+        for item in BIOME_ENUM_ITEMS:
+            self.assertEqual(len(item), 3)
+            self.assertIsInstance(item[0], str)
+            self.assertIsInstance(item[1], str)
+            self.assertIsInstance(item[2], str)
+
+    def test_operator_replace_material_biome_prop(self):
+        """Verify MOZI_OT_replace_material exposes biome_preset property."""
+        from MoziToolKit.operators.object.op_replace_material import MOZI_OT_replace_material
+        self.assertTrue(
+            "biome_preset" in getattr(MOZI_OT_replace_material, "__annotations__", {})
+            or hasattr(MOZI_OT_replace_material, "biome_preset")
+        )
+
+    def test_custom_biome_tint_attributes_routing(self):
+        """Verify compute_biome_tint_attributes routes custom biomes to HARDCODED and standard biomes to GRASS."""
+        from MoziToolKit.utils.materials.pipeline.mesh_attributes import compute_biome_tint_attributes
+        poly_map = {
+            0: {"tint_type": TINT_TYPE_GRASS, "tint_weight": 1.0},
+            1: {"tint_type": TINT_TYPE_FOLIAGE, "tint_weight": 1.0},
+        }
+
+        # 1. Custom grass biome (SWAMP, BADLANDS, CHERRY_GROVE)
+        packed_swamp, colors_swamp, uvs_swamp = compute_biome_tint_attributes(2, poly_map, biome_preset="SWAMP")
+        # Swamp grass has custom color -> tint_type should be TINT_TYPE_HARDCODED (4.0)
+        self.assertEqual(packed_swamp[0][3], float(TINT_TYPE_HARDCODED))
+        swamp_colors = get_biome_colors("SWAMP")
+        self.assertEqual(colors_swamp[0], swamp_colors["grass_linear"])
+
+        # 2. Standard colormap biome (PLAINS, JUNGLE)
+        packed_plains, colors_plains, uvs_plains = compute_biome_tint_attributes(2, poly_map, biome_preset="PLAINS")
+        # Plains grass uses standard colormap -> tint_type should be TINT_TYPE_GRASS (1.0)
+        self.assertEqual(packed_plains[0][3], float(TINT_TYPE_GRASS))
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+

@@ -25,6 +25,7 @@ from .biome import (
     BiomeResolver,
     get_biome_colors,
     classify_tint_category,
+    BIOME_ENUM_ITEMS,
 )
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "sample_colormap_pixel",
     "blend_biome_colors",
     "BIOME_PALETTES",
+    "BIOME_ENUM_ITEMS",
     "HARDCODED_BLOCK_TINTS",
     "KNOWN_OVERLAY_PAIRS",
     "TINT_TYPE_NONE",
