@@ -76,11 +76,15 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         from utils.live_sync.session_manager import start_main_thread_pump
         start_main_thread_pump()
 
-        # Pump until queue and reconciliation are complete
-        for _ in range(10):
-            if not session.is_streaming and session.stream_section_queue.empty():
-                break
+        # Pump until queue, workers, and reconciliation are complete
+        import time
+        t_start = time.time()
+        while (session.is_streaming or not session.stream_section_queue.empty() or getattr(session, "active_geometry_futures", None)) and (time.time() - t_start < 5.0):
             _pump_main_thread_events()
+            time.sleep(0.01)
+
+        # Final drain
+        _pump_main_thread_events()
 
         children = find_root_section_children(root)
         self.assertIn((0, 0, 0), children)
@@ -144,11 +148,15 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
 
         start_main_thread_pump()
 
-        # Pump to finalize
-        for _ in range(10):
-            if not session.is_streaming and session.stream_section_queue.empty():
-                break
+        # Pump until queue, workers, and reconciliation are complete
+        import time
+        t_start = time.time()
+        while (session.is_streaming or not session.stream_section_queue.empty() or getattr(session, "active_geometry_futures", None)) and (time.time() - t_start < 5.0):
             _pump_main_thread_events()
+            time.sleep(0.01)
+
+        # Final drain
+        _pump_main_thread_events()
 
         # Finalized should release lock
         self.assertFalse(props.is_locked)

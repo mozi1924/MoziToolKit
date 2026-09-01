@@ -668,6 +668,113 @@ def build_single_section_mesh(
     sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
     sec_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
 
+def get_or_create_section_object(
+    context: Optional[bpy.types.Context],
+    root_obj: bpy.types.Object,
+    sx: int, sy: int, sz: int,
+    existing_sections: Optional[dict[tuple[int, int, int], bpy.types.Object]] = None,
+) -> tuple[bpy.types.Object, bpy.types.Mesh]:
+    """Retrieve or instantiate a child section Mesh object under the root container."""
+    root_prefix = root_obj.name
+    sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
+    sec_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
+
+    sec_obj = None
+    if existing_sections is not None:
+        sec_obj = existing_sections.get((sx, sy, sz))
+    if not _is_valid_bpy_obj(sec_obj):
+        sec_obj = bpy.data.objects.get(sec_obj_name)
+        if not _is_valid_bpy_obj(sec_obj):
+            sec_obj = None
+        if sec_obj and existing_sections is not None:
+            existing_sections[(sx, sy, sz)] = sec_obj
+
+    if sec_obj is not None:
+        try:
+            sec_mesh = sec_obj.data
+        except (ReferenceError, Exception):
+            sec_mesh = None
+        if sec_mesh is None:
+            _safe_remove_section_object(sec_obj)
+            sec_obj = None
+
+    if sec_obj is None:
+        sec_mesh = bpy.data.meshes.new(sec_mesh_name)
+        sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
+        sec_obj.parent = root_obj
+        sec_obj.matrix_parent_inverse.identity()
+        sec_obj.location = (0.0, 0.0, 0.0)
+        sec_obj.rotation_euler = (0.0, 0.0, 0.0)
+        sec_obj.scale = (1.0, 1.0, 1.0)
+        col = getattr(context, "collection", None) if context else None
+        if col is None and hasattr(bpy, "context") and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
+            col = bpy.context.scene.collection
+        if col:
+            col.objects.link(sec_obj)
+        if existing_sections is not None:
+            existing_sections[(sx, sy, sz)] = sec_obj
+
+    sec_obj["mtk:section_pos"] = [sx, sy, sz]
+    return sec_obj, sec_mesh
+
+
+def apply_section_geometry_to_mesh_object(
+    context: Optional[bpy.types.Context],
+    root_obj: bpy.types.Object,
+    sx: int, sy: int, sz: int,
+    buffer: RawSectionGeometryBuffer,
+    mat_manager: LiveSyncMaterialManager,
+    storage: Optional[VoxelStorage] = None,
+    existing_sections: Optional[dict[tuple[int, int, int], bpy.types.Object]] = None,
+) -> Optional[bpy.types.Object]:
+    """Applies a computed RawSectionGeometryBuffer to the corresponding child section mesh."""
+    sec_obj, sec_mesh = get_or_create_section_object(context, root_obj, sx, sy, sz, existing_sections)
+    if storage:
+        sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
+    sync_section_material_slots(sec_obj, mat_manager)
+    apply_geometry_buffer_to_mesh(sec_mesh, buffer)
+
+    if storage:
+        poly_count = len(sec_mesh.polygons) if not getattr(sec_mesh, "is_editmode", False) else len(buffer.faces)
+        if poly_count == 0:
+            storage._known_empty_sections.add((sx, sy, sz))
+        else:
+            storage._known_empty_sections.discard((sx, sy, sz))
+
+    return sec_obj
+
+
+def build_single_section_mesh(
+    context: bpy.types.Context,
+    storage: VoxelStorage,
+    sx: int, sy: int, sz: int,
+    root_obj: bpy.types.Object,
+    mat_manager: Optional[LiveSyncMaterialManager] = None,
+    baker: Optional[Any] = None,
+    state_cache: Optional[dict[str, CachedStateMeta]] = None,
+    existing_sections: Optional[dict[tuple[int, int, int], bpy.types.Object]] = None,
+    origin_centered: bool = True,
+    weld_vertices: bool = True,
+    atlas_params: Optional[dict[str, Any]] = None,
+) -> Optional[bpy.types.Object]:
+    """
+    Constructs or updates the mesh for a single 16x16x16 chunk section.
+    Uses ultra-fast decoupled RawSectionGeometryBuffer and batch C ingestion into Blender.
+    """
+    if mat_manager is None:
+        mat_manager = get_shared_material_manager(world_obj=root_obj, atlas_params=atlas_params)
+    if baker is None:
+        baker = get_shared_state_baker()
+
+    sec_blocks = storage.get_section_blocks(sx, sy, sz)
+    root_prefix = root_obj.name
+    sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
+
+    min_x, min_y, min_z = storage.min_x, storage.min_y, storage.min_z
+    size_x, size_y, size_z = storage.size_x, storage.size_y, storage.size_z
+    half_x = size_x / 2.0 - 0.5
+    half_z = size_z / 2.0 - 0.5
+
     if existing_sections is None:
         existing_sections = find_root_section_children(root_obj)
 
@@ -704,36 +811,6 @@ def build_single_section_mesh(
             existing_sections.pop((sx, sy, sz), None)
         return None
 
-    if sec_obj is not None:
-        try:
-            sec_mesh = sec_obj.data
-        except (ReferenceError, Exception):
-            sec_mesh = None
-        if sec_mesh is None:
-            _safe_remove_section_object(sec_obj)
-            sec_obj = None
-
-    if sec_obj is None:
-        sec_mesh = bpy.data.meshes.new(sec_mesh_name)
-        sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
-        sec_obj.parent = root_obj
-        sec_obj.matrix_parent_inverse.identity()
-        sec_obj.location = (0.0, 0.0, 0.0)
-        sec_obj.rotation_euler = (0.0, 0.0, 0.0)
-        sec_obj.scale = (1.0, 1.0, 1.0)
-        col = getattr(context, "collection", None) if context else None
-        if col is None and hasattr(bpy, "context") and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
-            col = bpy.context.scene.collection
-        if col:
-            col.objects.link(sec_obj)
-        existing_sections[(sx, sy, sz)] = sec_obj
-
-    sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
-    sec_obj["mtk:section_pos"] = [sx, sy, sz]
-
-    # Keep section slot indices identical to the root material manager.
-    sync_section_material_slots(sec_obj, mat_manager)
-
     # 1. Pure Python geometry computation
     buffer = generate_section_geometry_buffer(
         voxel_items=list(sec_blocks.items()),
@@ -749,16 +826,15 @@ def build_single_section_mesh(
     )
 
     # 2. Ultra-fast batch C ingestion
-    apply_geometry_buffer_to_mesh(sec_mesh, buffer)
-
-    # If after culling this section has 0 polygons, track in _known_empty_sections
-    poly_count = len(sec_mesh.polygons) if not getattr(sec_mesh, "is_editmode", False) else len(buffer.faces)
-    if poly_count == 0:
-        storage._known_empty_sections.add((sx, sy, sz))
-    else:
-        storage._known_empty_sections.discard((sx, sy, sz))
-
-    return sec_obj
+    return apply_section_geometry_to_mesh_object(
+        context=context,
+        root_obj=root_obj,
+        sx=sx, sy=sy, sz=sz,
+        buffer=buffer,
+        mat_manager=mat_manager,
+        storage=storage,
+        existing_sections=existing_sections,
+    )
 
 
 def sync_world_mesh(
@@ -821,19 +897,71 @@ def sync_world_mesh(
             existing_sections.pop(coords, None)
 
     # 5. Build/Update target sections
-    for (sx, sy, sz) in target_sections:
-        build_single_section_mesh(
-            context=context,
-            storage=storage,
-            sx=sx, sy=sy, sz=sz,
-            root_obj=root_obj,
-            mat_manager=mat_manager,
-            baker=baker,
-            state_cache=state_cache,
-            existing_sections=existing_sections,
-            origin_centered=origin_centered,
-            weld_vertices=weld_vertices,
-        )
+    if len(target_sections) > 1:
+        try:
+            from .worker_pool import get_shared_section_pool
+            pool = get_shared_section_pool()
+            futures = {}
+            for (sx, sy, sz) in target_sections:
+                sec_blocks = storage.get_section_blocks(sx, sy, sz)
+                if not sec_blocks or all(state_cache.get(s) and state_cache[s].is_air for s in sec_blocks.values()):
+                    storage._known_empty_sections.add((sx, sy, sz))
+                    sec_obj = existing_sections.get((sx, sy, sz))
+                    if sec_obj:
+                        _safe_remove_section_object(sec_obj)
+                        existing_sections.pop((sx, sy, sz), None)
+                    continue
+
+                f = pool.submit_section(
+                    storage=storage,
+                    sx=sx, sy=sy, sz=sz,
+                    atlas_params=atlas_params,
+                    chunk_to_slot=mat_manager.chunk_to_slot,
+                    origin_centered=origin_centered,
+                    weld_vertices=weld_vertices,
+                )
+                futures[f] = (sx, sy, sz)
+
+            for f, (sx, sy, sz) in futures.items():
+                _, buffer = f.result()
+                apply_section_geometry_to_mesh_object(
+                    context=context,
+                    root_obj=root_obj,
+                    sx=sx, sy=sy, sz=sz,
+                    buffer=buffer,
+                    mat_manager=mat_manager,
+                    storage=storage,
+                    existing_sections=existing_sections,
+                )
+        except Exception as e:
+            logger.warning(f"Parallel section meshing note: {e}, falling back to sequential.")
+            for (sx, sy, sz) in target_sections:
+                build_single_section_mesh(
+                    context=context,
+                    storage=storage,
+                    sx=sx, sy=sy, sz=sz,
+                    root_obj=root_obj,
+                    mat_manager=mat_manager,
+                    baker=baker,
+                    state_cache=state_cache,
+                    existing_sections=existing_sections,
+                    origin_centered=origin_centered,
+                    weld_vertices=weld_vertices,
+                )
+    else:
+        for (sx, sy, sz) in target_sections:
+            build_single_section_mesh(
+                context=context,
+                storage=storage,
+                sx=sx, sy=sy, sz=sz,
+                root_obj=root_obj,
+                mat_manager=mat_manager,
+                baker=baker,
+                state_cache=state_cache,
+                existing_sections=existing_sections,
+                origin_centered=origin_centered,
+                weld_vertices=weld_vertices,
+            )
 
     # Clear storage dirty set
     storage.clear_dirty_sections()

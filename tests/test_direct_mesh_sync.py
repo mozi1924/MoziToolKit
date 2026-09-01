@@ -1218,12 +1218,12 @@ class TestDirectMeshSync(unittest.TestCase):
 
     def test_chunk_to_chunk_streaming_order_reconciliation(self):
         """Verify that when Section 0 is streamed first and Section 1 later, Section 0 boundary faces are properly reconciled."""
-        from utils.live_sync.session_manager import _session_manager, _pump_main_thread_events
+        from utils.live_sync.session_manager import get_active_session_manager, _pump_main_thread_events
         from utils.live_sync.mesh_builder import get_or_create_world_root
         from utils.live_sync import session_manager
 
         root = get_or_create_world_root(bpy.context, root_name="Stream_Boundary_World")
-        session = _session_manager.get_or_create_session("Stream_Boundary_World")
+        session = get_active_session_manager().get_or_create_session("Stream_Boundary_World")
         session.is_streaming = True
         session.stream_total_sections = 2
 
@@ -1233,6 +1233,11 @@ class TestDirectMeshSync(unittest.TestCase):
         session.stream_section_queue.put((0, 0, 0, ["minecraft:stone"]))
 
         session_manager._pump_timer_registered = True
+        import time
+        t_start = time.time()
+        while (not session.stream_section_queue.empty() or getattr(session, "active_geometry_futures", None)) and (time.time() - t_start < 5.0):
+            _pump_main_thread_events()
+            time.sleep(0.01)
         _pump_main_thread_events()
 
         sec0 = next(c for c in root.children if "Section_0_0_0" in c.name)
@@ -1243,7 +1248,11 @@ class TestDirectMeshSync(unittest.TestCase):
         session.storage.set_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, ["minecraft:stone"], indices)
         session.stream_section_queue.put((1, 0, 0, ["minecraft:stone"]))
 
-        _pump_main_thread_events()
+        t_start = time.time()
+        while (not session.stream_section_queue.empty() or getattr(session, "active_geometry_futures", None)) and (time.time() - t_start < 5.0):
+            _pump_main_thread_events()
+            time.sleep(0.01)
+
         _pump_main_thread_events()
         session_manager._finalize_stream_sync(session, None, root, 2)
 

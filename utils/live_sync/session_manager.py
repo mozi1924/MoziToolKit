@@ -107,14 +107,19 @@ class SyncSession:
         self.skip_next_full_snapshot: bool = False
 
         self.rebuild_timer_registered: bool = False
-        self.pending_full_rebuild: bool = False
-
         self.cached_atlas_params: Optional[dict] = None
         self.cached_mat_signature: Optional[tuple] = None
+        self.active_geometry_futures: dict[Any, tuple[int, int, int]] = {}
 
     def clear_caches(self) -> None:
         self.cached_atlas_params = None
         self.cached_mat_signature = None
+        for f in list(self.active_geometry_futures.keys()):
+            try:
+                f.cancel()
+            except Exception:
+                pass
+        self.active_geometry_futures.clear()
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
 
@@ -272,10 +277,11 @@ _session_manager = SyncSessionManager()
 
 
 def get_active_session_manager() -> SyncSessionManager:
-    if hasattr(bpy.types, "_mozi_session_manager"):
-        return bpy.types._mozi_session_manager
-    bpy.types._mozi_session_manager = _session_manager
-    return _session_manager
+    if hasattr(bpy.types, "_mozi_session_manager") and getattr(bpy.types, "_mozi_session_manager") is not None:
+        return getattr(bpy.types, "_mozi_session_manager")
+    mgr = SyncSessionManager()
+    setattr(bpy.types, "_mozi_session_manager", mgr)
+    return mgr
 
 
 # Backward compatibility properties & global references
@@ -680,11 +686,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
 def _pump_main_thread_events() -> Optional[float]:
     """Continuous adaptive event pump executing on Blender's main thread across all sessions."""
     global _pump_timer_registered, _last_seq_id, _stream_received_sections, _stream_total_sections
-    global _is_repairing_partial, _stream_last_drain_time, _is_streaming
-    if not _pump_timer_registered:
-        return None
-
-    sessions = _session_manager.get_all_sessions()
+    sessions = get_active_session_manager().get_all_sessions()
     has_active_work = False
     any_connected = False
 
@@ -694,11 +696,9 @@ def _pump_main_thread_events() -> Optional[float]:
         target_obj = bpy.data.objects.get(session.target_object_name)
         props = get_active_sync_props(bpy.context, target_obj=target_obj) if target_obj else None
 
-        # 1. Drain streaming section queue (high throughput progressive build)
+        # 1. Drain streaming section queue (high throughput progressive build with Worker Pool)
         sections_drained = 0
         mat_mgr = None
-        baker = None
-        state_cache = None
         existing_sections = None
 
         if session.is_streaming and props and not props.is_locked:
@@ -712,60 +712,93 @@ def _pump_main_thread_events() -> Optional[float]:
             if start_stream_modal_lock:
                 start_stream_modal_lock(session.target_object_name)
 
+        if not hasattr(session, "active_geometry_futures"):
+            session.active_geometry_futures = {}
+
         t_drain_start = time.perf_counter()
-        max_batch = 32
-        while not session.stream_section_queue.empty() and sections_drained < max_batch:
+
+        # Step 1A: Dispatch pending queue items to worker pool
+        if not session.stream_section_queue.empty() and target_obj:
             try:
-                item = session.stream_section_queue.get_nowait()
-                sec_x, sec_y, sec_z, palette = item
-                session.stream_received_sections += 1
-                if palette:
-                    session.accumulated_stream_palettes.update(palette)
+                from .worker_pool import get_shared_section_pool
+                pool = get_shared_section_pool()
+                cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
+                cur_atlas_params = session.get_cached_atlas_params(cur_mat)
+                from .material_binding import get_shared_material_manager
+                mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
 
-                if mat_mgr is None:
-                    cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
-                    cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-                    from .material_binding import get_shared_material_manager
-                    mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
-                    baker = get_shared_state_baker()
-                    if not hasattr(session, "_stream_state_cache") or session._stream_state_cache is None:
-                        session._stream_state_cache = {}
-                    state_cache = session._stream_state_cache
-                    if not hasattr(session, "_existing_sections_cache") or session._existing_sections_cache is None:
-                        from .mesh_builder import find_root_section_children
-                        session._existing_sections_cache = find_root_section_children(target_obj)
-                    existing_sections = session._existing_sections_cache
+                max_inflight = max(16, pool.max_workers * 4)
+                while not session.stream_section_queue.empty() and len(session.active_geometry_futures) < max_inflight:
+                    item = session.stream_section_queue.get_nowait()
+                    sec_x, sec_y, sec_z, palette = item
+                    if palette:
+                        session.accumulated_stream_palettes.update(palette)
 
-                from .mesh_builder import build_single_section_mesh
-                build_single_section_mesh(
-                    context=bpy.context,
-                    storage=session.storage,
-                    sx=sec_x, sy=sec_y, sz=sec_z,
-                    root_obj=target_obj,
-                    mat_manager=mat_mgr,
-                    baker=baker,
-                    state_cache=state_cache,
-                    existing_sections=existing_sections,
-                    origin_centered=True,
-                    weld_vertices=True,
+                    f = pool.submit_section(
+                        storage=session.storage,
+                        sx=sec_x, sy=sec_y, sz=sec_z,
+                        atlas_params=cur_atlas_params,
+                        chunk_to_slot=mat_mgr.chunk_to_slot,
+                        origin_centered=True,
+                        weld_vertices=True,
+                    )
+                    session.active_geometry_futures[f] = (sec_x, sec_y, sec_z)
+            except Exception as e:
+                logger.error(f"Error submitting section to worker pool: {e}", exc_info=True)
+
+        # Step 1B: Consume completed futures on main thread within frame budget
+        if session.active_geometry_futures and target_obj:
+            if mat_mgr is None:
+                cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
+                cur_atlas_params = session.get_cached_atlas_params(cur_mat)
+                from .material_binding import get_shared_material_manager
+                mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
+            if existing_sections is None:
+                if not hasattr(session, "_existing_sections_cache") or session._existing_sections_cache is None:
+                    from .mesh_builder import find_root_section_children
+                    session._existing_sections_cache = find_root_section_children(target_obj)
+                existing_sections = session._existing_sections_cache
+
+            from .mesh_builder import apply_section_geometry_to_mesh_object
+            completed_futures = [f for f in session.active_geometry_futures if f.done()]
+            if not completed_futures and session.active_geometry_futures:
+                import concurrent.futures
+                done, _ = concurrent.futures.wait(
+                    session.active_geometry_futures.keys(),
+                    timeout=0.05,
+                    return_when=concurrent.futures.FIRST_COMPLETED,
                 )
+                completed_futures = list(done)
 
-                sections_drained += 1
-                has_active_work = True
+            for f in completed_futures:
+                sec_x, sec_y, sec_z = session.active_geometry_futures.pop(f)
+                try:
+                    _, buffer = f.result()
+                    apply_section_geometry_to_mesh_object(
+                        context=bpy.context,
+                        root_obj=target_obj,
+                        sx=sec_x, sy=sec_y, sz=sec_z,
+                        buffer=buffer,
+                        mat_manager=mat_mgr,
+                        storage=session.storage,
+                        existing_sections=existing_sections,
+                    )
+                    session.stream_received_sections += 1
+                    sections_drained += 1
+                    has_active_work = True
+                except Exception as e:
+                    logger.error(f"Error applying geometry buffer for section ({sec_x}, {sec_y}, {sec_z}): {e}", exc_info=True)
 
-                # Yield to OS if we spent more than 15ms in this frame to keep UI butter smooth
                 if (time.perf_counter() - t_drain_start) > 0.015:
                     break
-            except queue.Empty:
-                break
 
-        if sections_drained > 0:
+        if sections_drained > 0 or session.active_geometry_futures:
             session.stream_last_drain_time = time.time()
             total_target = max(1, session.stream_total_sections)
             frac = min(1.0, session.stream_received_sections / total_target)
             pct = int(20.0 + frac * 80.0)
 
-            if session.stream_section_queue.empty():
+            if session.stream_section_queue.empty() and not session.active_geometry_futures:
                 dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
                 if dirty_reconcile:
                     session.storage.clear_dirty_sections()
@@ -782,7 +815,7 @@ def _pump_main_thread_events() -> Optional[float]:
                 for area in window.screen.areas:
                     if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
                         area.tag_redraw()
-        elif session.is_streaming and session.stream_section_queue.empty():
+        elif session.is_streaming and session.stream_section_queue.empty() and not getattr(session, "active_geometry_futures", None):
             if session.server_stream_finished:
                 _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
             else:
