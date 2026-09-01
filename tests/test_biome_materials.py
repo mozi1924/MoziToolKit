@@ -564,7 +564,97 @@ class TestBiomePipelineIntegration(unittest.TestCase):
         # Plains grass uses standard colormap -> tint_type should be TINT_TYPE_GRASS (1.0)
         self.assertEqual(packed_plains[0][3], float(TINT_TYPE_GRASS))
 
+    def test_instant_biome_update_atlas(self):
+        """Verify update_object_biome updates Atlas mesh face attributes instantly."""
+        from MoziToolKit.utils.materials.biome.updater import update_object_biome, is_mtk_object
+        from MoziToolKit.utils.materials.pipeline.mesh_attributes import (
+            ATTR_BIOME_TINT_DATA,
+            ATTR_BIOME_TINT_COLOR,
+            ATTR_SOURCE_TEXTURE_KEY,
+            ATTR_ATLAS_CHUNK_ID,
+        )
+
+        mesh = bpy.data.meshes.new("test_atlas_obj_mesh")
+        obj = bpy.data.objects.new("test_atlas_obj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        import bmesh
+        bm = bmesh.new()
+        v1 = bm.verts.new((0, 0, 0))
+        v2 = bm.verts.new((1, 0, 0))
+        v3 = bm.verts.new((1, 1, 0))
+        v4 = bm.verts.new((0, 1, 0))
+        bm.faces.new((v1, v2, v3, v4))
+        bm.to_mesh(mesh)
+        bm.free()
+
+        attr_key = mesh.attributes.new(name=ATTR_SOURCE_TEXTURE_KEY, type='STRING', domain='FACE')
+        attr_key.data[0].value = b"minecraft:block/grass_block_top"
+        attr_chunk = mesh.attributes.new(name=ATTR_ATLAS_CHUNK_ID, type='INT', domain='FACE')
+        attr_chunk.data[0].value = 0
+
+        self.assertTrue(is_mtk_object(obj))
+
+        # Switch to SWAMP
+        success = update_object_biome(obj, "SWAMP")
+        self.assertTrue(success)
+        self.assertEqual(obj.get("mtk:biome_preset"), "SWAMP")
+
+        tint_data = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
+        tint_color = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+        self.assertIsNotNone(tint_data)
+        self.assertIsNotNone(tint_color)
+        self.assertEqual(tint_data.data[0].color[3], float(TINT_TYPE_HARDCODED))
+
+        # Switch to JUNGLE
+        success = update_object_biome(obj, "JUNGLE")
+        self.assertTrue(success)
+        self.assertEqual(obj.get("mtk:biome_preset"), "JUNGLE")
+        self.assertEqual(tint_data.data[0].color[3], float(TINT_TYPE_GRASS))
+
+        bpy.data.objects.remove(obj)
+
+    def test_instant_biome_update_standalone(self):
+        """Verify update_object_biome updates Standalone material nodes instantly."""
+        from MoziToolKit.utils.materials.biome.updater import update_object_biome
+        from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, ensure_colormap_sampler
+
+        mesh = bpy.data.meshes.new("test_standalone_obj_mesh")
+        obj = bpy.data.objects.new("test_standalone_obj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        mat = bpy.data.materials.new(name="mtk:minecraft:grass_block_top")
+        mat.use_nodes = True
+        obj.data.materials.append(mat)
+
+        nt = mat.node_tree
+        tint_group = ensure_biome_tint()
+        tint_node = nt.nodes.new("ShaderNodeGroup")
+        tint_node.name = "MC Biome Tint"
+        tint_node.node_tree = tint_group
+
+        sampler_group = ensure_colormap_sampler()
+        sampler_node = nt.nodes.new("ShaderNodeGroup")
+        sampler_node.name = "MC Biome Colormap Sampler"
+        sampler_node.node_tree = sampler_group
+
+        # Switch to SWAMP
+        success = update_object_biome(obj, "SWAMP")
+        self.assertTrue(success)
+        swamp_colors = get_biome_colors("SWAMP")
+        self.assertAlmostEqual(tint_node.inputs["Tint Color"].default_value[0], swamp_colors["grass_linear"][0], places=2)
+
+        # Switch to JUNGLE
+        success = update_object_biome(obj, "JUNGLE")
+        self.assertTrue(success)
+        jungle_colors = get_biome_colors("JUNGLE")
+        self.assertAlmostEqual(sampler_node.inputs["Temperature"].default_value, jungle_colors["temperature"], places=2)
+        self.assertAlmostEqual(sampler_node.inputs["Humidity"].default_value, jungle_colors["humidity"], places=2)
+
+        bpy.data.objects.remove(obj)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 

@@ -27,6 +27,11 @@ from .biome import (
     classify_tint_category,
     BIOME_ENUM_ITEMS,
 )
+from .updater import (
+    is_mtk_object,
+    detect_object_material_mode,
+    update_object_biome,
+)
 
 __all__ = [
     "hex_to_rgb",
@@ -52,4 +57,7 @@ __all__ = [
     "BiomeResolver",
     "get_biome_colors",
     "classify_tint_category",
+    "is_mtk_object",
+    "detect_object_material_mode",
+    "update_object_biome",
 ]

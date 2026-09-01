@@ -73,8 +73,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             "biome_preset": biome_preset,
         }
 
-        from ...pipeline import get_preset_pipeline
-        from ...pipeline.context import PipelineContext
+        from ...pipeline import get_preset_pipeline, run_pipeline_modal
         from ...pipeline.step import StepStatus
 
         pipeline = get_preset_pipeline("replace_material")
@@ -82,13 +81,20 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             self.report({'ERROR'}, "Preset pipeline 'replace_material' not found.")
             return {"CANCELLED"}
 
-        ctx = PipelineContext(
-            context=context,
+        def on_replacement_finished(result, ctx):
+            if result.is_success:
+                for obj in ctx.target_objects:
+                    if obj:
+                        obj["mtk:biome_preset"] = biome_preset
+
+        res, ctx = run_pipeline_modal(
+            pipeline,
+            context,
             params=params,
             target_objects=list(context.selected_objects),
+            on_finish=on_replacement_finished,
+            title="Replace Material",
         )
-
-        res = pipeline.execute(ctx)
 
         for level, msg in ctx.reports:
             self.report({level}, msg)

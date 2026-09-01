@@ -52,6 +52,11 @@ from .menu_uv import (
     unregister as unregister_menu_uv,
 )
 
+from .panel_biome import (
+    register as register_panel_biome,
+    unregister as unregister_panel_biome,
+)
+
 classes = (
     # PropertyGroups (must register before AddonPreferences and UI elements that reference them)
     MOZI_PG_resource_pack_entry,
@@ -94,6 +99,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
+    register_panel_biome()
     register_menu_mesh()
     register_menu_object()
     register_menu_select()
@@ -105,6 +111,7 @@ def unregister():
     unregister_menu_select()
     unregister_menu_object()
     unregister_menu_mesh()
+    unregister_panel_biome()
 
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
