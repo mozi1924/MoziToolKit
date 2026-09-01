@@ -63,7 +63,7 @@ def _find_bound_atlas_material(obj: Optional[bpy.types.Object]) -> Optional[bpy.
 REBUILD_DEBOUNCE_SECONDS: float = 0.05
 _PUMP_INTERVAL_ACTIVE: float = 0.015  # 15ms (~66 Hz when processing active deltas/chunks)
 _PUMP_INTERVAL_IDLE: float = 0.035    # 35ms (~28 Hz idle throttle to save CPU)
-_SETTLE_TIMEOUT_SECONDS: float = 3.0
+_SETTLE_TIMEOUT_SECONDS: float = 8.0
 MAX_DELTA_HISTORY: int = 100
 
 _pump_timer_registered: bool = False
@@ -96,6 +96,8 @@ class SyncSession:
         self.stream_total_sections: int = 0
         self.stream_received_sections: int = 0
         self.stream_last_drain_time: float = 0.0
+        self.server_stream_finished: bool = False
+        self.current_stream_id: int = 0
 
         self.is_streaming: bool = False
         self.is_initial_handshake: bool = True
@@ -643,6 +645,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         session.is_initial_handshake = False
         session.force_next_full_rebuild = False
         session.pending_full_sync_request = False
+        session.server_stream_finished = False
         session.stream_received_sections = 0
         session.stream_total_sections = 0
         if was_initial or ProgressBar.is_active():
@@ -660,47 +663,32 @@ def _pump_main_thread_events() -> Optional[float]:
     has_active_work = False
     any_connected = False
 
-    # 1. Pump active sessions in SessionManager
     for session in sessions:
-        target_obj = bpy.data.objects.get(session.target_object_name)
-        if target_obj is None:
-            continue
-
-        props = get_active_sync_props(bpy.context, target_obj=target_obj)
         if session.client_thread and session.client_thread.is_connected:
             any_connected = True
+        target_obj = bpy.data.objects.get(session.target_object_name)
+        props = get_active_sync_props(bpy.context, target_obj=target_obj) if target_obj else None
 
-        # Guard: Force back to Object Mode if Edit Mode is attempted
-        if props and props.is_connected:
-            active_obj = getattr(bpy.context, "active_object", None)
-            if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
-                try:
-                    bpy.ops.object.mode_set(mode='OBJECT')
-                    msg = bpy.app.translations.pgettext_iface("Edit Mode is not supported during Live Sync. Switched to Object Mode.")
-                    props.validation_info = msg
-                    props.last_update_info = msg
-                except Exception:
-                    pass
-
-        # 1. Progressive Stream Mesh Building (batch up to 4 chunks per tick in real-time)
+        # 1. Drain streaming section queue (high throughput progressive build)
         sections_drained = 0
         mat_mgr = None
         baker = None
         state_cache = None
         existing_sections = None
 
-        if session.is_streaming:
+        if session.is_streaming and props and not props.is_locked:
             try:
-                from ...operators.sync.op_sync_stream_modal import start_stream_modal_lock
+                from ...operators.sync.op_sync_connect import start_stream_modal_lock
             except (ImportError, ValueError):
                 try:
-                    from operators.sync.op_sync_stream_modal import start_stream_modal_lock
+                    from operators.sync.op_sync_connect import start_stream_modal_lock
                 except Exception:
                     start_stream_modal_lock = None
             if start_stream_modal_lock:
                 start_stream_modal_lock(session.target_object_name)
 
-        while not session.stream_section_queue.empty() and sections_drained < 4:
+        max_batch = 16 if session.stream_section_queue.qsize() > 32 else (8 if session.stream_section_queue.qsize() > 8 else 4)
+        while not session.stream_section_queue.empty() and sections_drained < max_batch:
             try:
                 item = session.stream_section_queue.get_nowait()
                 sec_x, sec_y, sec_z, palette = item
@@ -743,8 +731,8 @@ def _pump_main_thread_events() -> Optional[float]:
             frac = min(1.0, session.stream_received_sections / total_target)
             pct = int(30.0 + frac * 70.0)
 
-            if session.stream_received_sections >= total_target and session.stream_section_queue.empty():
-                _finalize_stream_sync(session, props, target_obj, total_target)
+            if (session.server_stream_finished or session.stream_received_sections >= total_target) and session.stream_section_queue.empty():
+                _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
             else:
                 ProgressBar.update(current=pct, total=100.0, message=f"Streaming chunk ({session.stream_received_sections}/{total_target})")
 
@@ -753,10 +741,14 @@ def _pump_main_thread_events() -> Optional[float]:
                     if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
                         area.tag_redraw()
         elif session.is_streaming and session.stream_section_queue.empty():
-            drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
-            if session.stream_last_drain_time > 0 and drain_elapsed > _SETTLE_TIMEOUT_SECONDS:
-                logger.info("Live Sync: Stream settle timeout reached for %s (%s sections processed). Finalizing.", session.target_object_name, session.stream_received_sections)
+            if session.server_stream_finished:
                 _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+            else:
+                drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
+                is_conn_dead = session.client_thread and not session.client_thread.is_connected
+                if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 45.0):
+                    logger.warning("Live Sync: Stream inactivity timeout or disconnection reached for %s (%s of %s sections processed). Finalizing.", session.target_object_name, session.stream_received_sections, session.stream_total_sections)
+                    _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
 
         # 2. Drain pending delta changes
         accumulated_changes: dict[tuple[int, int, int], str] = {}

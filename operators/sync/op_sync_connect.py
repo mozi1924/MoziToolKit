@@ -515,6 +515,28 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     ProgressBar.cancel(message=f"Manifest check error: {e}")
             run_in_main_thread(update)
 
+        def on_stream_begin(stream_id, total_sections, flags):
+            session.current_stream_id = stream_id
+            session.is_streaming = True
+            session.server_stream_finished = False
+            session.stream_total_sections = max(1, total_sections)
+            session.stream_received_sections = 0
+            session.stream_last_drain_time = time.time()
+            def update():
+                cur_obj = bpy.data.objects.get(session.target_object_name)
+                cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+                if cur_props:
+                    cur_props.validation_info = f"Streaming {total_sections} chunks..."
+                ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Streaming {total_sections} chunks...")
+                ProgressBar.update(current=30.0, total=100.0, message=f"Streaming chunk (0/{total_sections})")
+            run_in_main_thread(update)
+
+        def on_stream_end(stream_id, sent_sections, status):
+            session.server_stream_finished = True
+            session.stream_last_drain_time = time.time()
+            if status != 0:
+                logger.warning(f"Live Sync ({session.target_object_name}): Stream {stream_id} ended with status code {status}")
+
         # 3. Create client thread
         session.client_thread = SyncClientThread(
             url=url,
@@ -525,6 +547,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             on_section_manifest=on_section_manifest,
             on_section_snapshot=on_section_snapshot,
             on_handshake_info=on_handshake_info,
+            on_stream_begin=on_stream_begin,
+            on_stream_end=on_stream_end,
         )
 
         session.client_thread.start()

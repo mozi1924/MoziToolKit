@@ -1048,6 +1048,43 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         )
 
 
+    def test_stream_begin_and_end_packet_handling(self):
+        """Verify STREAM_BEGIN and STREAM_END packets trigger callbacks and drive session state."""
+        from utils.live_sync.constants import PacketType
+        from utils.live_sync.client import SyncClientThread
+        import struct
+
+        begin_events = []
+        end_events = []
+
+        client = SyncClientThread(
+            url="ws://127.0.0.1:59999",
+            on_status_change=lambda s: None,
+            on_selection_info=lambda *a: None,
+            on_full_snapshot=lambda *a: None,
+            on_delta_update=lambda *a: None,
+            on_stream_begin=lambda stream_id, total, flags: begin_events.append((stream_id, total, flags)),
+            on_stream_end=lambda stream_id, sent, status: end_events.append((stream_id, sent, status)),
+        )
+
+        # 1. Encode STREAM_BEGIN packet (0x08)
+        header = struct.pack("<2sBB", b"MC", 0x02, PacketType.STREAM_BEGIN)
+        payload = struct.pack("<IIH", 42, 100, 0)
+        client._parse_binary_packet(header + payload)
+
+        self.assertEqual(len(begin_events), 1)
+        self.assertEqual(begin_events[0], (42, 100, 0))
+
+        # 2. Encode STREAM_END packet (0x09)
+        header_end = struct.pack("<2sBB", b"MC", 0x02, PacketType.STREAM_END)
+        payload_end = struct.pack("<IIH", 42, 100, 0)
+        client._parse_binary_packet(header_end + payload_end)
+
+        self.assertEqual(len(end_events), 1)
+        self.assertEqual(end_events[0], (42, 100, 0))
+
+
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 

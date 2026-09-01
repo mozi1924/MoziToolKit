@@ -40,6 +40,8 @@ MoziToolKit 与 Yefira Minecraft Fabric Mod 之间通过高性能异步 WebSocke
 | **`0x05`** | `PACKET_SECTION_MANIFEST` | S $\rightarrow$ C | 选区内所有 16x16x16 区块（Section）的 CRC32 校验清单 |
 | **`0x06`** | `PACKET_SECTION_SNAPSHOT` | S $\rightarrow$ C | 单个 16x16x16 区块的压缩快照（用于局部修复或密集批量变更） |
 | **`0x07`** | `PACKET_HANDSHAKE_INFO` | S $\rightarrow$ C | 握手同步元信息包（总区块数、非空区块数、方块体积、维度名称及流式标识） |
+| **`0x08`** | `PACKET_STREAM_BEGIN` | S $\rightarrow$ C | 流式传输启动包（携带 Stream ID、待下发的有效区块总数与标志位） |
+| **`0x09`** | `PACKET_STREAM_END` | S $\rightarrow$ C | 流式传输完成包（携带 Stream ID、实际推送成功的区块总数与状态码） |
 | **`0x80`** | `PACKET_C2S_REQ_FULL_SYNC` | C $\rightarrow$ S | 客户端主动请求全量快照（Full Sync） |
 | **`0x81`** | `PACKET_C2S_REQ_SECTION_SYNC` | C $\rightarrow$ S | 客户端主动请求指定坐标的 Section 局部修复快照 |
 | **`0x82`** | `PACKET_C2S_SYNC_CONFIG` | C $\rightarrow$ S | 客户端同步配置更新（Throttle 模式、Target FPS 等） |
@@ -161,6 +163,26 @@ Offset | Type   | Description
    - 将 $(U_{\text{blend}}, V_{\text{blend}}, 0.0)$ 写入面属性 `mtk_colormap_uv`，配合着色器 `MC_Biome_Colormap_Decoder` 实现原版一致的草地与树叶群系交界平滑过渡；
    - 水体面通过邻域水色加权插值后写入 `mtk_biome_tint_color`，实现水体颜色的渐变过渡。
 
+### 4.8 `0x08` STREAM_BEGIN (流式传输开始)
+```
+Offset | Type   | Description
+-------+--------+---------------------------------------
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x08)
+4..7   | uint32 | Stream ID (当前流式会话全局递增 ID)
+8..11  | uint32 | Total Sections (本批次待下发的有效非空区块总数)
+12..13 | uint16 | Flags (预留标志位，默认 0)
+```
+
+### 4.9 `0x09` STREAM_END (流式传输结束)
+```
+Offset | Type   | Description
+-------+--------+---------------------------------------
+0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x09)
+4..7   | uint32 | Stream ID (与 STREAM_BEGIN 对应的流会话 ID)
+8..11  | uint32 | Sent Sections (服务端实际成功下发的区块总数)
+12..13 | uint16 | Status (状态码: 0 = SUCCESS, 1 = ABORTED/CANCELLED)
+```
+
 ---
 
 ## 5. 握手与生命周期时序图 (Handshake & Sync Sequence)
@@ -183,12 +205,20 @@ sequenceDiagram
         Note over DCC: 瞬间判定为 Verified (100% in sync with scene)！<br/>0ms 耗时，0 几何数据传输，直接进入监听
     else 存在局部差异 / 坏区块 / 网格丢失 (0 < K < N)
         DCC->>MC: 0x81 PACKET_C2S_REQ_SECTION_SYNC (仅请求 K 个差异 Section 坐标)
-        MC->>DCC: 0x06 SECTION_SNAPSHOT (仅发送这 K 个区块的压缩快照)
+        MC->>DCC: 0x08 STREAM_BEGIN (告知修复 K 个区块)
+        loop 逐个分块下发
+            MC->>DCC: 0x06 SECTION_SNAPSHOT (仅发送这 K 个区块的压缩快照)
+        end
+        MC->>DCC: 0x09 STREAM_END (确认 K 个区块全部下发完成)
         Note over DCC: 仅局部增量更新对应 Section 子网格与邻域 (<5ms)
     else 全新工程 / 无网格物体 / 选区边界完全改变 / 用户主动点击刷新
         DCC->>MC: 0x80 PACKET_C2S_REQ_FULL_SYNC
-        MC->>DCC: 0x02 FULL_SNAPSHOT 或流式分块发送 0x06 SECTION_SNAPSHOT
-        Note over DCC: 执行全量渐进式解析与 BMesh 网格生成
+        MC->>DCC: 0x08 STREAM_BEGIN (告知本批次下发全部非空区块数)
+        loop 逐个分块流式下发
+            MC->>DCC: 0x06 SECTION_SNAPSHOT
+        end
+        MC->>DCC: 0x09 STREAM_END (流式下发结束)
+        Note over DCC: 主线程事件泵排空并确定性触发 Finalize
     end
 
     Note over MC,DCC: 3. 运行中交互与微操作 (Live Session)
@@ -196,7 +226,7 @@ sequenceDiagram
         MC->>DCC: 0x03 DELTA_UPDATE
         Note over DCC: 极速局部 BMesh 拓扑微操作 (<1ms)
     else 批量填充 /fill 或密集变动 (> 64 方块)
-        MC->>DCC: 0x06 SECTION_SNAPSHOT (高密度区块快照)
+        MC->>DCC: 0x08 STREAM_BEGIN -> 0x06 SECTION_SNAPSHOT -> 0x09 STREAM_END
         Note over DCC: 按 Section 批量替换子网格 (<2ms)
     end
 ```
@@ -211,7 +241,11 @@ sequenceDiagram
    - **重连尝试上限为 5 次**。若连续重试超过 5 次仍无法建立连接，客户端立即终止重连，并将状态标记为 `DISCONNECTED (Failed after 5 attempts)`；
    - 在连接尝试或反复重连的过程中，UI 面板上的“Connect”按钮动态切换为“**Cancel Connection**”，允许用户随时一键手动中止连接与重试循环。
 4. **WebSocket 协议层心跳与异常隔离 (Ping/Pong & Send-Safe Invariant)**：
-   - **双向心跳安全响应**：DCC 端 `SyncClientThread` 维持标准 WebSocket Ping 心跳（`ping_interval=30s`）。服务端针对 Ping 帧进行原子 Pong 响应，并在底层重写 `onWebsocketPing` 与 `onWebsocketPong`，自动捕获处理客户端在重连或中断期间引发的 `WebsocketNotConnectedException`，彻底杜绝 Worker 线程解码异常外溢；
+   - **双向心跳安全响应**：DCC 端 `SyncClientThread` 维持标准 WebSocket Ping 心跳（`ping_interval=20s`）。服务端针对 Ping 帧进行原子 Pong 响应，并在底层重写 `onWebsocketPing` 与 `onWebsocketPong`，自动捕获处理客户端在重连或中断期间引发的 `WebsocketNotConnectedException`，彻底杜绝 Worker 线程解码异常外溢；
    - **原子发送安全守卫（`sendSafe`）**：服务端针对所有广播（Manifest, Section Snapshot, Delta Update）及 Tick 级队列刷写（`flushQueuedDeltaUpdates`）采用无锁副本快照遍历与 `sendSafe` 守卫，一旦检测到死连接立即执行上下文注销，确保服务端 Tick 主线程绝不因网络层断连发生崩服。
+5. **确定性流式生命周期与心跳守护状态机 (Deterministic Stream Lifecycle)**：
+   - **摒弃静默超时盲猜**：大选区同步与批量修复不再依靠纯静默超时（Settle Timeout）猜测传输终点，而是由服务端的 `0x08 STREAM_BEGIN` 与 `0x09 STREAM_END` 形成闭环；
+   - **双条件排空完成判定**：客户端仅在 `server_stream_finished == True` **且** `stream_section_queue` 积压全部消费构建完毕时才触发 `_finalize_stream_sync`，确保进度条与构网 100% 精确完成；
+   - **心跳守护级断线容灾**：在 `server_stream_finished == False` 的流式下发过程中，客户端绝不因中间数据包的时间间隔提前终止，仅当底层 WebSocket 发生物理断开或长达 45 秒没有任何网络数据/心跳时才触发超时容灾与模态锁释放。
 
 
