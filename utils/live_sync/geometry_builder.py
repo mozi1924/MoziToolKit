@@ -360,11 +360,18 @@ def generate_single_block_faces(
                     continue
 
                 cull_dir = bf.cullface or (f_dir if meta.is_cube else None)
+                quad_rect = None
+                if not cull_dir and f_dir in MC_DIR_OFFSETS:
+                    quad_rect = extract_quad_face_occlusion_rect(bf.vertices, f_dir)
+                    if quad_rect is not None:
+                        cull_dir = f_dir
+
                 if cull_dir and cull_dir in MC_DIR_OFFSETS:
                     dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
                     n_pos = (x + dx, y + dy, z + dz)
                     n_meta = _get_neighbor_meta(n_pos)
-                    quad_rect = extract_quad_face_occlusion_rect(bf.vertices, cull_dir) if not meta.is_cube else None
+                    if quad_rect is None and not meta.is_cube:
+                        quad_rect = extract_quad_face_occlusion_rect(bf.vertices, cull_dir)
                     quad_shape = (quad_rect,) if quad_rect else None
                     if not face_culler.should_render_face(
                         state_meta=meta.cull_meta,
@@ -604,11 +611,18 @@ def generate_single_block_buffer_faces(
                     continue
 
                 cull_dir = bf.cullface or (f_dir if meta.is_cube else None)
+                quad_rect = None
+                if not cull_dir and f_dir in MC_DIR_OFFSETS:
+                    quad_rect = extract_quad_face_occlusion_rect(bf.vertices, f_dir)
+                    if quad_rect is not None:
+                        cull_dir = f_dir
+
                 if cull_dir and cull_dir in MC_DIR_OFFSETS:
                     dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
                     n_pos = (x + dx, y + dy, z + dz)
                     n_meta = _get_neighbor_meta(n_pos)
-                    quad_rect = extract_quad_face_occlusion_rect(bf.vertices, cull_dir) if not meta.is_cube else None
+                    if quad_rect is None and not meta.is_cube:
+                        quad_rect = extract_quad_face_occlusion_rect(bf.vertices, cull_dir)
                     quad_shape = (quad_rect,) if quad_rect else None
                     if not face_culler.should_render_face(
                         state_meta=meta.cull_meta,

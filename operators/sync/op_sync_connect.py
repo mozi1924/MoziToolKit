@@ -398,7 +398,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     # Check existing child section meshes to identify which sections ACTUALLY changed or are missing
                     existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
                     all_sections = session.storage.get_all_sections()
-                    sections_to_rebuild = []
+                    sections_to_rebuild = set()
 
                     for (sx, sy, sz) in all_sections:
                         sec_blocks = session.storage.get_section_blocks(sx, sy, sz)
@@ -407,12 +407,28 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
                         sec_obj = existing_sections.get((sx, sy, sz))
                         if sec_obj is None:
-                            sections_to_rebuild.append((sx, sy, sz))
+                            sections_to_rebuild.add((sx, sy, sz))
                         else:
                             stored_crc = str(sec_obj.get("mtk:section_crc", ""))
                             expected_crc = str(session.storage.section_crc_map.get((sx, sy, sz), 0))
                             if stored_crc != expected_crc:
-                                sections_to_rebuild.append((sx, sy, sz))
+                                sections_to_rebuild.add((sx, sy, sz))
+
+                    # Include any dirty sections tracked in storage
+                    for s in session.storage.get_dirty_sections():
+                        if s in all_sections:
+                            sections_to_rebuild.add(s)
+
+                    # For every section being rebuilt, ensure adjacent existing neighbor sections are also reconciled
+                    boundary_neighbors = set()
+                    for (sx, sy, sz) in sections_to_rebuild:
+                        for dx in (-1, 0, 1):
+                            for dy in (-1, 0, 1):
+                                for dz in (-1, 0, 1):
+                                    neighbor = (sx + dx, sy + dy, sz + dz)
+                                    if neighbor in all_sections and neighbor in existing_sections:
+                                        boundary_neighbors.add(neighbor)
+                    sections_to_rebuild.update(boundary_neighbors)
 
                     if not sections_to_rebuild:
                         logger.info(f"Live Sync ({session.target_object_name}): All {len(existing_sections)} section meshes verified up to date. Skipping rebuild.")
@@ -425,7 +441,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     session.stream_last_drain_time = time.time()
 
                     # Put each section into the stream section queue so the pump builds them progressively
-                    for (sx, sy, sz) in sections_to_rebuild:
+                    for (sx, sy, sz) in sorted(sections_to_rebuild):
                         session.stream_section_queue.put((sx, sy, sz, palette))
 
                     ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Updating {len(sections_to_rebuild)} chunks...")

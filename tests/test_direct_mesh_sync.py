@@ -1191,6 +1191,69 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertEqual(sec1.parent, root)
         self.assertEqual(len(sec0.children), 0, "Child section must NOT have any nested child sub-objects")
 
+    def test_chunk_to_chunk_boundary_culling_solid_and_water(self):
+        """Verify that touching chunk sections completely cull mutual boundary faces for solid blocks and fluids."""
+        storage = VoxelStorage()
+        # Create two 16x16x16 chunks with solid stone below and water on top
+        for x in range(32):
+            for z in range(16):
+                for y in range(8):
+                    storage.set_block(x, y, z, "minecraft:stone")
+                for y in range(8, 16):
+                    storage.set_block(x, y, z, "minecraft:water[level=0]")
+
+        res = sync_world_mesh(bpy.context, storage, force_full_rebuild=True)
+        sec0 = next(c for c in res.world_obj.children if "Section_0_0_0" in c.name)
+        sec1 = next(c for c in res.world_obj.children if "Section_1_0_0" in c.name)
+
+        # Section 0's East faces (+X) facing Section 1 at x=15 must be 0 for stone and water
+        m0 = sec0.data
+        east_faces_sec0 = [p for p in m0.polygons if m0.attributes["mtk_face_dir"].data[p.index].value == 0]
+        self.assertEqual(len(east_faces_sec0), 0, "Section 0 must have 0 east faces (+X) facing Section 1")
+
+        # Section 1's West faces (-X) facing Section 0 at x=16 must be 0 for stone and water
+        m1 = sec1.data
+        west_faces_sec1 = [p for p in m1.polygons if m1.attributes["mtk_face_dir"].data[p.index].value == 1]
+        self.assertEqual(len(west_faces_sec1), 0, "Section 1 must have 0 west faces (-X) facing Section 0")
+
+    def test_chunk_to_chunk_streaming_order_reconciliation(self):
+        """Verify that when Section 0 is streamed first and Section 1 later, Section 0 boundary faces are properly reconciled."""
+        from utils.live_sync.session_manager import _session_manager, _pump_main_thread_events
+        from utils.live_sync.mesh_builder import get_or_create_world_root
+        from utils.live_sync import session_manager
+
+        root = get_or_create_world_root(bpy.context, root_name="Stream_Boundary_World")
+        session = _session_manager.get_or_create_session("Stream_Boundary_World")
+        session.is_streaming = True
+        session.stream_total_sections = 2
+
+        # 1. Section 0 arrives and is built first
+        indices = [0] * 4096
+        session.storage.set_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, ["minecraft:stone"], indices)
+        session.stream_section_queue.put((0, 0, 0, ["minecraft:stone"]))
+
+        session_manager._pump_timer_registered = True
+        _pump_main_thread_events()
+
+        sec0 = next(c for c in root.children if "Section_0_0_0" in c.name)
+        # At this stage, sec0 was built without neighbor, so it had 256 east faces
+        self.assertEqual(len(sec0.data.polygons), 1536)
+
+        # 2. Section 1 arrives later
+        session.storage.set_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, ["minecraft:stone"], indices)
+        session.stream_section_queue.put((1, 0, 0, ["minecraft:stone"]))
+
+        _pump_main_thread_events()
+        _pump_main_thread_events()
+        session_manager._finalize_stream_sync(session, None, root, 2)
+
+        sec0 = next(c for c in root.children if "Section_0_0_0" in c.name)
+        sec1 = next(c for c in root.children if "Section_1_0_0" in c.name)
+
+        m0 = sec0.data
+        east_faces_sec0 = [p for p in m0.polygons if m0.attributes["mtk_face_dir"].data[p.index].value == 0]
+        self.assertEqual(len(east_faces_sec0), 0, "Section 0 must reconcile and have 0 east faces (+X) after Section 1 arrives")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
