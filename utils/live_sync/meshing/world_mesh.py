@@ -560,7 +560,8 @@ def sync_world_mesh(
     if force_full_rebuild or not existing_sections:
         target_sections = all_sections
     else:
-        target_sections = storage.get_dirty_sections().intersection(all_sections)
+        missing_sections = set(all_sections) - set(existing_sections.keys())
+        target_sections = storage.get_dirty_sections().intersection(all_sections) | missing_sections
 
     # Prune any section objects whose sections no longer exist or contain only air
     for coords, child in list(existing_sections.items()):
