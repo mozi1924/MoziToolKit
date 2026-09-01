@@ -314,6 +314,8 @@ def _emit_fluid_face(
     bm_face[layers["rot"]] = uv_rot
     bm_face[layers["timing"]] = f_res.anim_timing
     bm_face[layers["frame_size"]] = f_res.anim_frame_size
+    if "material_props" in layers:
+        bm_face[layers["material_props"]] = f_res.material_props
     bm_face[layers["tiling"]] = f_res.uv_tiling_transform
     bm_face[layers["tint_data"]] = f_res.biome_tint_data
 
@@ -322,7 +324,10 @@ def _emit_fluid_face(
         u_blend, v_blend, water_linear = voxel_storage.get_smoothed_biome_data(block_pos[0], block_pos[1], block_pos[2], radius=2)
         if "colormap_uv" in layers:
             bm_face[layers["colormap_uv"]] = (u_blend, v_blend, 0.0)
-        tint_col_val = water_linear
+        if abs(f_res.biome_tint_data[3] - 3.0) < 0.1:  # Water tint
+            tint_col_val = water_linear
+        else:
+            tint_col_val = f_res.biome_tint_color
     else:
         if "colormap_uv" in layers:
             bm_face[layers["colormap_uv"]] = (0.2, 0.32, 0.0)
@@ -346,7 +351,7 @@ def _emit_fluid_face(
             u_mc, v_mc = (0.0, 0.0)
         # Blender V coordinate is 1.0 - v_mc
         loop[uv_layer].uv = Vector(f_res.calc_uv_fn(u_mc, 1.0 - v_mc))
-        loop[color_layer] = f_res.biome_tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
+        loop[color_layer] = tint_col_val if use_tint else (1.0, 1.0, 1.0, 1.0)
 
     return True
 
@@ -356,64 +361,55 @@ def is_fluid_flowing(
     block_map: dict[tuple[int, int, int], str],
     x: int, y: int, z: int,
     fluid_type: str,
-    vx: float, vz: float,
+    flow_vx: float,
+    flow_vz: float,
 ) -> bool:
     """
-    Determine whether a fluid block is in a flowing state (horizontally or vertically).
+    Determine if fluid at (x, y, z) is actively flowing and should use the flowing texture/animation.
     Returns True for flowing streams, waterfalls, and falling fluid columns.
-    Returns False only for completely stationary source pools.
     """
-    if not state_str:
-        return False
-
     parsed = parse_and_classify(state_str)
-
     # 1. State name check (e.g. minecraft:flowing_water, minecraft:flowing_lava)
-    if "flowing" in parsed.name:
+    if "flowing_" in parsed.name:
         return True
 
-    # 2. BlockState level property:
-    # level=0 is source block.
-    # level=1..7 is flowing downhill.
+    # 2. Level property check: level=0 is still source.
+    # level=1..7 is flowing fluid.
     # level=8..15 is falling fluid (bit 0x8 set, e.g. waterfalls).
-    raw_level = parsed.props.get("level", "0")
+    level_str = parsed.props.get("level", "0")
     try:
-        level_int = int(raw_level)
-    except (ValueError, TypeError):
+        level_int = int(level_str)
+    except ValueError:
         level_int = 0
 
     if level_int > 0 and not parsed.is_waterlogged:
         return True
 
-    # 3. Horizontal flow vector
-    if abs(vx) > 1e-4 or abs(vz) > 1e-4:
+    # 3. Dynamic flow vector velocity check
+    if abs(flow_vx) > 1e-4 or abs(flow_vz) > 1e-4:
         return True
 
-    # 4. Vertical flow check:
+    # 4. Vertical falling column check
     # Fluid directly above dropping down into this block (waterfall column)
     above_state = block_map.get((x, y + 1, z))
     if above_state:
         p_above = parse_and_classify(above_state)
         if p_above.name.replace("flowing_", "") == fluid_type or (fluid_type == "water" and p_above.is_waterlogged):
-            return True
+            a_level = int(p_above.props.get("level", "0")) if p_above.props.get("level", "0").isdigit() else 0
+            if a_level > 0 or "flowing_" in p_above.name:
+                return True
 
-    # Check block directly below:
-    # If below is air or a non-solid / lower fluid block, fluid falls downward
+    # Fluid directly below drawing downward flow
     below_state = block_map.get((x, y - 1, z))
     if below_state:
         p_below = parse_and_classify(below_state)
         if fluid_type == "water" and p_below.is_waterlogged:
             pass
-        elif p_below.is_air:
-            return True
-        elif p_below.block_type == BlockTypeEnum.FLUID and not p_below.is_opaque:
-            b_level = 0
-            try:
-                b_level = int(p_below.props.get("level", "0"))
-            except (ValueError, TypeError):
-                pass
-            if b_level > 0:
-                return True
+        elif below_state != state_str:
+            if p_below.name.replace("flowing_", "") == fluid_type:
+                b_level = int(p_below.props.get("level", "0")) if p_below.props.get("level", "0").isdigit() else 0
+                if b_level > 0:
+                    return True
 
     return False
 
@@ -489,14 +485,17 @@ def _emit_fluid_buffer_face(
     if voxel_storage is not None and hasattr(voxel_storage, "get_smoothed_biome_data"):
         u_blend, v_blend, water_linear = voxel_storage.get_smoothed_biome_data(block_pos[0], block_pos[1], block_pos[2], radius=2)
         colormap_uv = (u_blend, v_blend, 0.0)
-        tint_col_val = water_linear
+        if abs(f_res.biome_tint_data[3] - 3.0) < 0.1:  # Water tint
+            tint_col_val = water_linear
+        else:
+            tint_col_val = f_res.biome_tint_color
     else:
         colormap_uv = (0.2, 0.32, 0.0)
         tint_col_val = f_res.biome_tint_color
 
     calc_uv = f_res.calc_uv_fn
     transformed_uvs = [calc_uv(u_mc, 1.0 - v_mc) for u_mc, v_mc in loop_uvs_mc]
-    tint_color = f_res.biome_tint_color if use_tint else (1.0, 1.0, 1.0, 1.0)
+    tint_color = tint_col_val if use_tint else (1.0, 1.0, 1.0, 1.0)
     loop_colors = [tint_color] * len(verts_coords)
 
     buffer.add_face(
@@ -510,7 +509,7 @@ def _emit_fluid_buffer_face(
         uv_rot=uv_rot,
         timing=f_res.anim_timing,
         frame_size=f_res.anim_frame_size,
-        material_props=(0.0, 0.0, 0.0, 0.0),
+        material_props=f_res.material_props,
         tiling=f_res.uv_tiling_transform,
         tint_data=f_res.biome_tint_data,
         tint_color=tint_col_val,
