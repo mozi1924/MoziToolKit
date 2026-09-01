@@ -364,28 +364,40 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                     session.force_next_full_rebuild = False
                     session.clear_caches()
 
-                    # Find all non-empty sections to build progressively
+                    # Check existing child section meshes to identify which sections ACTUALLY changed or are missing
+                    existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
                     all_sections = session.storage.get_all_sections()
-                    non_empty_sections = []
+                    sections_to_rebuild = []
+
                     for (sx, sy, sz) in all_sections:
                         sec_blocks = session.storage.get_section_blocks(sx, sy, sz)
-                        if sec_blocks and not all(s.startswith("minecraft:air") or s == "air" for s in sec_blocks.values()):
-                            non_empty_sections.append((sx, sy, sz))
+                        if not sec_blocks or all(s.startswith("minecraft:air") or s == "air" for s in sec_blocks.values()):
+                            continue
 
-                    if not non_empty_sections:
+                        sec_obj = existing_sections.get((sx, sy, sz))
+                        if sec_obj is None:
+                            sections_to_rebuild.append((sx, sy, sz))
+                        else:
+                            stored_crc = str(sec_obj.get("mtk:section_crc", ""))
+                            expected_crc = str(session.storage.section_crc_map.get((sx, sy, sz), 0))
+                            if stored_crc != expected_crc:
+                                sections_to_rebuild.append((sx, sy, sz))
+
+                    if not sections_to_rebuild:
+                        logger.info(f"Live Sync ({session.target_object_name}): All {len(existing_sections)} section meshes verified up to date. Skipping rebuild.")
                         _finalize_stream_sync(session, cur_props, cur_obj, 0)
                         return None
 
                     session.is_streaming = True
-                    session.stream_total_sections = len(non_empty_sections)
+                    session.stream_total_sections = len(sections_to_rebuild)
                     session.stream_received_sections = 0
                     session.stream_last_drain_time = time.time()
 
                     # Put each section into the stream section queue so the pump builds them progressively
-                    for (sx, sy, sz) in non_empty_sections:
+                    for (sx, sy, sz) in sections_to_rebuild:
                         session.stream_section_queue.put((sx, sy, sz, palette))
 
-                    ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Building {len(non_empty_sections)} chunks...")
+                    ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Updating {len(sections_to_rebuild)} chunks...")
                 except Exception as e:
                     logger.error(f"Snapshot progressive streaming error: {e}", exc_info=True)
                     session.is_streaming = False
@@ -478,8 +490,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
                         session.is_initial_handshake = False
 
-                    elif not session.storage.block_map or len(mismatched_crc) >= non_empty_manifest_count:
-                        # Full sync needed (unpopulated storage or complete mismatch)
+                    elif (len(mismatched_crc) >= non_empty_manifest_count) or (not session.storage.section_crc_map and not existing_mesh_coords):
+                        # Full sync needed (no existing mesh/CRC or complete mismatch)
                         session.skip_next_full_snapshot = False
                         session.is_repairing_partial = False
                         session.pending_full_sync_request = True
