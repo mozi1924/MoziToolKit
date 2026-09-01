@@ -288,6 +288,98 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         self.assertAlmostEqual(min_y, -16.0, places=3, msg="Min Y must be -half_depth (-16.0)")
         self.assertAlmostEqual(max_y, 16.0, places=3, msg="Max Y must be +half_depth (+16.0)")
 
+    def test_reconnect_with_matching_crc_skips_rebuild(self):
+        """Verify that disconnecting and reconnecting with identical manifest CRC skips full rebuild."""
+        root = get_or_create_world_root(bpy.context, root_name="Test_Reconnect_World")
+        props = get_active_sync_props(bpy.context, target_obj=root)
+
+        # 1. Initial build: 1 section with stone
+        storage = VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, ["minecraft:stone"], [0] * 4096)
+        sec0 = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=0, sy=0, sz=0,
+            root_obj=root,
+            origin_centered=True,
+        )
+        self.assertIsNotNone(sec0)
+
+        # Persist sync manifest to root object (as done by live sync finalize)
+        session1 = self.session_mgr.get_or_create_session(root.name)
+        session1.storage = storage
+        session1.persist_sync_state_to_scene(root)
+
+        # 2. Simulate disconnect: remove session from session manager
+        self.session_mgr.remove_session(root.name)
+        self.assertIsNone(self.session_mgr.get_session(root.name))
+
+        # 3. Simulate reconnect: create session and restore state
+        session2 = self.session_mgr.get_or_create_session(root.name)
+        restored = session2.restore_sync_state_from_scene(root)
+        self.assertTrue(restored, "Must successfully restore sync state from scene object")
+        self.assertEqual(session2.storage.size_x, 16)
+        self.assertEqual(session2.storage.size_y, 16)
+        self.assertEqual(session2.storage.size_z, 16)
+        self.assertIn((0, 0, 0), session2.storage.section_crc_map)
+
+        # 4. Simulate SelectionInfo incoming with identical bounds
+        bounds_changed = session2.storage.set_bounds(0, 0, 0, 16, 16, 16)
+        self.assertFalse(bounds_changed, "set_bounds must return False for identical bounds on reconnect")
+        self.assertFalse(session2.pending_full_sync_request, "pending_full_sync_request must remain False")
+
+        # 5. Simulate SectionManifest arriving from server with identical CRC
+        server_crc = session2.storage.section_crc_map[(0, 0, 0)]
+        mismatched = session2.storage.validate_manifest([(0, 0, 0, server_crc)], existing_section_meshes={(0, 0, 0)})
+        self.assertEqual(len(mismatched), 0, "All sections must match manifest CRC on reconnect")
+
+    def test_disconnect_and_reconnect_operator_retains_meshes_without_clearing(self):
+        """Simulate real UI user clicking Disconnect then Connect: meshes must NEVER be wiped."""
+        # 1. Create a world container with an existing section mesh child
+        root = bpy.data.objects.new("Test_Reconn_World", None)
+        bpy.context.collection.objects.link(root)
+        root["mtk:is_yefira_world"] = True
+        root["mtk_block_bounds"] = [0, 0, 0, 16, 16, 16]
+
+        storage = VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_block(0, 0, 0, "minecraft:stone")
+        storage.calculate_and_store_section_crc(0, 0, 0)
+        expected_crc = storage.section_crc_map.get((0, 0, 0), 0)
+
+        sec0 = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=0, sy=0, sz=0,
+            root_obj=root,
+            origin_centered=True,
+        )
+        self.assertIsNotNone(sec0)
+        self.assertEqual(sec0.get("mtk:section_crc"), str(expected_crc))
+
+        # 2. Trigger disconnect operator
+        bpy.ops.mozi.sync_disconnect(target_container=root.name)
+        existing_before = find_root_section_children(root)
+        self.assertEqual(len(existing_before), 1, "Section mesh must survive disconnect")
+
+        # 3. Simulate new connection session
+        session = self.session_mgr.get_or_create_session(root.name)
+        self.assertEqual(session.storage.size_x, 16, "Must restore bounds from scene object")
+        self.assertIn((0, 0, 0), session.storage.section_crc_map, "Must restore CRC from child section mesh")
+
+        # 4. Ingest selection info from server
+        session.handle_selection_info(0, 0, 0, 16, 16, 16)
+        existing_after_sel = find_root_section_children(root)
+        self.assertEqual(len(existing_after_sel), 1, "Section mesh must NOT be cleared by selection info")
+
+        # 5. Ingest section manifest with matching CRC
+        session.handle_section_manifest(1, [(0, 0, 0, expected_crc)])
+        existing_after_manifest = find_root_section_children(root)
+        self.assertEqual(len(existing_after_manifest), 1, "Section mesh must NOT be deleted or cleared on manifest verification")
+        self.assertTrue(session.skip_next_full_snapshot, "Must skip full snapshot rebuild when CRC is identical")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
