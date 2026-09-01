@@ -707,7 +707,65 @@ class TestFluidLiveSync(unittest.TestCase):
         self.assertAlmostEqual(verts_at_corner[2], 1.5, places=4)
         self.assertAlmostEqual(verts_at_corner[3], 1.5 + top_corner_height, places=4)
 
+    def test_fluid_transmission_material_props_and_biome_tint(self):
+        """Verify that water has Transmission Weight = 1.0, Lava has Emission = 15.0, and biome tint applies to vertex colors."""
+        from utils.live_sync.constants import MTK_MATERIAL_PROPS, MTK_BIOME_TINT_COLOR
+        from utils.materials.biome import get_biome_colors
+
+        self.storage.set_bounds(0, 0, 0, 16, 16, 16)
+        self.storage.biome_map[(0, 0, 0)] = "minecraft:ocean"
+        self.storage.set_block(0, 0, 0, "minecraft:water[level=0]")
+        self.storage.set_block(2, 0, 0, "minecraft:lava[level=0]")
+
+        res = build_world_mesh(
+            context=bpy.context,
+            storage=self.storage,
+            atlas_params=self.atlas_params,
+            origin_centered=False,
+        )
+        self.assertIsNotNone(res.world_obj)
+        mesh = res.world_obj.data
+
+        props_attr = mesh.attributes.get(MTK_MATERIAL_PROPS)
+        self.assertIsNotNone(props_attr, "Mesh must contain mtk_material_props attribute layer")
+
+        block_x_attr = mesh.attributes.get("mtk_block_x")
+        self.assertIsNotNone(block_x_attr)
+
+        found_water = False
+        found_lava = False
+
+        for i, poly in enumerate(mesh.polygons):
+            bx = block_x_attr.data[i].value
+            mat_props = props_attr.data[i].color
+            emission = mat_props[0]
+            thin_wall = mat_props[1]
+            transmission = mat_props[2]
+
+            if bx == 0:  # Water block at (0, 0, 0)
+                found_water = True
+                self.assertAlmostEqual(transmission, 1.0, places=3, msg="Water must have Transmission Weight = 1.0 for refractive shader")
+                self.assertAlmostEqual(emission, 0.0, places=3, msg="Water emission must be 0.0")
+            elif bx == 2:  # Lava block at (2, 0, 0)
+                found_lava = True
+                self.assertAlmostEqual(transmission, 0.0, places=3, msg="Lava must have Transmission Weight = 0.0")
+                self.assertGreaterEqual(emission, 15.0, msg="Lava emission must be 15.0")
+
+        self.assertTrue(found_water, "Must have evaluated at least one water face")
+        self.assertTrue(found_lava, "Must have evaluated at least one lava face")
+
+        # Verify vertex color layer on water
+        color_attr = mesh.color_attributes.get("Color")
+        self.assertIsNotNone(color_attr, "Mesh must contain Color vertex attribute layer")
+        ocean_expected = get_biome_colors("minecraft:ocean").get("water_linear")
+        if ocean_expected:
+            tint_attr = mesh.attributes.get(MTK_BIOME_TINT_COLOR)
+            self.assertIsNotNone(tint_attr)
+            # Water face tint color should reflect ocean water tint
+            self.assertAlmostEqual(tint_attr.data[0].color[0], ocean_expected[0], delta=0.1)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 
