@@ -599,6 +599,30 @@ def append_delta_history(props: Any, applied_changes: List[Tuple[int, int, int, 
 def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.types.Object, total_target: int) -> None:
     """Finalize world mesh build for a session, clean up stream flags, and dismiss progress bar."""
     try:
+        # Reconcile any remaining dirty boundary sections to guarantee 100% boundary culling consistency
+        dirty_remaining = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
+        if dirty_remaining and target_obj:
+            from .mesh_builder import build_single_section_mesh, find_root_section_children
+            cur_mat = _find_bound_atlas_material(target_obj)
+            cur_atlas_params = session.get_cached_atlas_params(cur_mat)
+            from .material_binding import get_shared_material_manager
+            mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
+            baker = get_shared_state_baker()
+            state_cache = getattr(session, "_stream_state_cache", None) or {}
+            existing_sections = getattr(session, "_existing_sections_cache", None) or find_root_section_children(target_obj)
+            for (sx, sy, sz) in dirty_remaining:
+                build_single_section_mesh(
+                    context=bpy.context,
+                    storage=session.storage,
+                    sx=sx, sy=sy, sz=sz,
+                    root_obj=target_obj,
+                    mat_manager=mat_mgr,
+                    baker=baker,
+                    state_cache=state_cache,
+                    existing_sections=existing_sections,
+                    origin_centered=True,
+                    weld_vertices=True,
+                )
         session.storage.clear_dirty_sections()
         session.persist_sync_state_to_scene(target_obj)
 
@@ -743,15 +767,13 @@ def _pump_main_thread_events() -> Optional[float]:
 
             if session.stream_section_queue.empty():
                 dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
-                if dirty_reconcile and not getattr(session, "_reconciled_pass", False):
-                    session._reconciled_pass = True
+                if dirty_reconcile:
                     session.storage.clear_dirty_sections()
                     for (sx, sy, sz) in dirty_reconcile:
                         session.stream_section_queue.put((sx, sy, sz, []))
                     session.stream_total_sections += len(dirty_reconcile)
                     ProgressBar.update(current=pct, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
                 elif session.server_stream_finished or session.stream_received_sections >= total_target:
-                    session._reconciled_pass = False
                     _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
             else:
                 ProgressBar.update(current=pct, total=100.0, message=f"Building chunk ({session.stream_received_sections}/{total_target})")

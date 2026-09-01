@@ -587,7 +587,13 @@ def build_world_mesh(
 
     if obj_name in bpy.data.objects:
         obj = bpy.data.objects[obj_name]
-        mesh = obj.data
+        if getattr(obj, "type", None) == 'MESH' and getattr(obj, "data", None):
+            mesh = obj.data
+        else:
+            mesh = bpy.data.meshes.new(mesh_name)
+            obj = bpy.data.objects.new(f"{obj_name}_Mesh", mesh)
+            obj.location = (0.0, 0.0, 0.0)
+            context.collection.objects.link(obj)
     else:
         mesh = bpy.data.meshes.new(mesh_name)
         obj = bpy.data.objects.new(obj_name, mesh)
