@@ -333,21 +333,49 @@ def sync_child_section_names(root_obj: bpy.types.Object) -> None:
             child.data.name = target_mesh_name
 
 
+def _is_valid_bpy_obj(obj: Any) -> bool:
+    """Check if a Blender object reference is valid and still present in bpy.data.objects."""
+    if obj is None:
+        return False
+    try:
+        obj_name = obj.name
+        return bool(obj_name in bpy.data.objects and bpy.data.objects.get(obj_name) == obj)
+    except (ReferenceError, Exception):
+        return False
+
+
 def _safe_remove_section_object(obj: Optional[bpy.types.Object], mesh: Optional[bpy.types.Mesh] = None) -> None:
     """Safely remove a section object and its mesh datablock, handling Edit Mode if active."""
     if not obj:
         return
     try:
-        if getattr(obj, "mode", None) == 'EDIT':
-            if hasattr(bpy.context, "view_layer") and getattr(bpy.context.view_layer.objects, "active", None) == obj:
-                try:
-                    bpy.ops.object.mode_set(mode='OBJECT')
-                except Exception:
-                    pass
-        if obj.name in bpy.data.objects:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        if mesh and getattr(mesh, "name", None) in bpy.data.meshes:
-            bpy.data.meshes.remove(mesh, do_unlink=True)
+        if mesh is None:
+            try:
+                mesh = getattr(obj, "data", None)
+            except (ReferenceError, Exception):
+                mesh = None
+        try:
+            if getattr(obj, "mode", None) == 'EDIT':
+                if hasattr(bpy.context, "view_layer") and getattr(bpy.context.view_layer.objects, "active", None) == obj:
+                    try:
+                        bpy.ops.object.mode_set(mode='OBJECT')
+                    except Exception:
+                        pass
+        except (ReferenceError, Exception):
+            pass
+        try:
+            obj_name = getattr(obj, "name", None)
+            if obj_name and obj_name in bpy.data.objects:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        except (ReferenceError, Exception):
+            pass
+        try:
+            if mesh:
+                m_name = getattr(mesh, "name", None)
+                if m_name and m_name in bpy.data.meshes:
+                    bpy.data.meshes.remove(mesh, do_unlink=True)
+        except (ReferenceError, Exception):
+            pass
     except Exception as e:
         logger.debug(f"Safe remove section object error: {e}")
 
@@ -361,7 +389,7 @@ def prune_out_of_bounds_section_objects(root_obj: Optional[bpy.types.Object], st
     removed_count = 0
     for coords, child in list(existing_sections.items()):
         if coords not in all_sections:
-            _safe_remove_section_object(child, child.data)
+            _safe_remove_section_object(child)
             existing_sections.pop(coords, None)
             removed_count += 1
     return removed_count
@@ -374,7 +402,7 @@ def clear_all_section_objects(root_obj: Optional[bpy.types.Object]) -> int:
     existing_sections = find_root_section_children(root_obj)
     removed_count = 0
     for coords, child in list(existing_sections.items()):
-        _safe_remove_section_object(child, child.data)
+        _safe_remove_section_object(child)
         removed_count += 1
     return removed_count
 
@@ -528,12 +556,22 @@ def build_single_section_mesh(
     if existing_sections is None:
         existing_sections = find_root_section_children(root_obj)
 
+    # Resolve existing section object safely
+    sec_obj = existing_sections.get((sx, sy, sz))
+    if not _is_valid_bpy_obj(sec_obj):
+        sec_obj = bpy.data.objects.get(sec_obj_name)
+        if not _is_valid_bpy_obj(sec_obj):
+            sec_obj = None
+        if sec_obj:
+            existing_sections[(sx, sy, sz)] = sec_obj
+        else:
+            existing_sections.pop((sx, sy, sz), None)
+
     # If section is empty or only air, remove object if exists
     if not sec_blocks:
         storage._known_empty_sections.add((sx, sy, sz))
-        sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
         if sec_obj:
-            _safe_remove_section_object(sec_obj, sec_obj.data)
+            _safe_remove_section_object(sec_obj)
             existing_sections.pop((sx, sy, sz), None)
         return None
 
@@ -546,20 +584,21 @@ def build_single_section_mesh(
 
     if all(state_cache.get(s) and state_cache[s].is_air for s in sec_blocks.values()):
         storage._known_empty_sections.add((sx, sy, sz))
-        sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
         if sec_obj:
-            _safe_remove_section_object(sec_obj, sec_obj.data)
+            _safe_remove_section_object(sec_obj)
             existing_sections.pop((sx, sy, sz), None)
         return None
 
-    if (sx, sy, sz) in existing_sections:
-        sec_obj = existing_sections[(sx, sy, sz)]
-        sec_mesh = sec_obj.data
-    elif sec_obj_name in bpy.data.objects:
-        sec_obj = bpy.data.objects[sec_obj_name]
-        sec_mesh = sec_obj.data
-        existing_sections[(sx, sy, sz)] = sec_obj
-    else:
+    if sec_obj is not None:
+        try:
+            sec_mesh = sec_obj.data
+        except (ReferenceError, Exception):
+            sec_mesh = None
+        if sec_mesh is None:
+            _safe_remove_section_object(sec_obj)
+            sec_obj = None
+
+    if sec_obj is None:
         sec_mesh = bpy.data.meshes.new(sec_mesh_name)
         sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
         sec_obj.parent = root_obj
