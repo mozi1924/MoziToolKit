@@ -115,6 +115,8 @@ class SyncSession:
     def clear_caches(self) -> None:
         self.cached_atlas_params = None
         self.cached_mat_signature = None
+        self._stream_state_cache = None
+        self._existing_sections_cache = None
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
 
@@ -621,6 +623,8 @@ class SyncSession:
         self.stream_total_sections = max(1, total_sections)
         self.stream_received_sections = 0
         self.stream_last_drain_time = time.time()
+        self._stream_state_cache = None
+        self._existing_sections_cache = None
         def update():
             cur_obj = bpy.data.objects.get(self.target_object_name)
             if cur_obj:
