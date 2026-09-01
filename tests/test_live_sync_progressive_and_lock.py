@@ -76,8 +76,11 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         from utils.live_sync.session_manager import start_main_thread_pump
         start_main_thread_pump()
 
-        # Pump once - should drain and build both sections
-        _pump_main_thread_events()
+        # Pump until queue and reconciliation are complete
+        for _ in range(10):
+            if not session.is_streaming and session.stream_section_queue.empty():
+                break
+            _pump_main_thread_events()
 
         children = find_root_section_children(root)
         self.assertIn((0, 0, 0), children)
@@ -142,7 +145,10 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         start_main_thread_pump()
 
         # Pump to finalize
-        _pump_main_thread_events()
+        for _ in range(10):
+            if not session.is_streaming and session.stream_section_queue.empty():
+                break
+            _pump_main_thread_events()
 
         # Finalized should release lock
         self.assertFalse(props.is_locked)

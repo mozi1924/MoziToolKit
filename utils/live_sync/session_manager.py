@@ -599,31 +599,6 @@ def append_delta_history(props: Any, applied_changes: List[Tuple[int, int, int, 
 def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.types.Object, total_target: int) -> None:
     """Finalize world mesh build for a session, clean up stream flags, and dismiss progress bar."""
     try:
-        cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
-        cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-
-        # Final mesh optimization & boundary reconciliation pass:
-        # Re-check mesh face culling and weld vertices across all boundary sections with 100% complete voxel storage data
-        if target_obj and session.storage.block_map:
-            try:
-                from .mesh_builder import sync_world_mesh
-                all_sections_count = len(session.storage.get_all_sections())
-                force_full = (all_sections_count <= 128)
-                res = sync_world_mesh(
-                    context=bpy.context,
-                    storage=session.storage,
-                    atlas_params=cur_atlas_params,
-                    force_full_rebuild=force_full,
-                    target_obj=target_obj,
-                )
-                if props and res:
-                    props.point_count = res.vertex_count
-                    props.cubes_count = res.cubes_count
-                    props.props_count = res.props_count
-                    props.fluids_count = res.fluids_count
-            except Exception as e:
-                logger.error(f"Post-stream mesh reconciliation error: {e}", exc_info=True)
-
         session.storage.clear_dirty_sections()
         session.persist_sync_state_to_scene(target_obj)
 
@@ -635,9 +610,9 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
             props.validation_info = "Verified (100% in sync)"
             props.is_locked = False
 
-            # Update geometry totals from child section meshes if not already set
+            # Update geometry totals from child section meshes
             try:
-                if not props.point_count and target_obj:
+                if target_obj:
                     from .mesh_builder import _get_mesh_vertex_and_face_count
                     total_verts = 0
                     for child in target_obj.children:
@@ -671,6 +646,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         session.server_stream_finished = False
         session.stream_received_sections = 0
         session.stream_total_sections = 0
+        session._reconciled_pass = False
         if was_initial or ProgressBar.is_active():
             ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=0.8)
 
@@ -710,7 +686,7 @@ def _pump_main_thread_events() -> Optional[float]:
             if start_stream_modal_lock:
                 start_stream_modal_lock(session.target_object_name)
 
-        max_batch = 16 if session.stream_section_queue.qsize() > 32 else (8 if session.stream_section_queue.qsize() > 8 else 4)
+        max_batch = 8 if session.stream_section_queue.qsize() > 16 else (4 if session.stream_section_queue.qsize() > 4 else 2)
         while not session.stream_section_queue.empty() and sections_drained < max_batch:
             try:
                 item = session.stream_section_queue.get_nowait()
@@ -752,12 +728,22 @@ def _pump_main_thread_events() -> Optional[float]:
             session.stream_last_drain_time = time.time()
             total_target = max(1, session.stream_total_sections)
             frac = min(1.0, session.stream_received_sections / total_target)
-            pct = int(30.0 + frac * 70.0)
+            pct = int(20.0 + frac * 80.0)
 
-            if (session.server_stream_finished or session.stream_received_sections >= total_target) and session.stream_section_queue.empty():
-                _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+            if session.stream_section_queue.empty():
+                dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
+                if dirty_reconcile and not getattr(session, "_reconciled_pass", False):
+                    session._reconciled_pass = True
+                    session.storage.clear_dirty_sections()
+                    for (sx, sy, sz) in dirty_reconcile:
+                        session.stream_section_queue.put((sx, sy, sz, []))
+                    session.stream_total_sections += len(dirty_reconcile)
+                    ProgressBar.update(current=pct, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
+                elif session.server_stream_finished or session.stream_received_sections >= total_target:
+                    session._reconciled_pass = False
+                    _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
             else:
-                ProgressBar.update(current=pct, total=100.0, message=f"Streaming chunk ({session.stream_received_sections}/{total_target})")
+                ProgressBar.update(current=pct, total=100.0, message=f"Building chunk ({session.stream_received_sections}/{total_target})")
 
             for window in bpy.context.window_manager.windows:
                 for area in window.screen.areas:

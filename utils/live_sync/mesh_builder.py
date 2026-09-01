@@ -597,13 +597,6 @@ def build_single_section_mesh(
     else:
         storage._known_empty_sections.discard((sx, sy, sz))
 
-    slots_changed = sync_section_material_slots(sec_obj, mat_manager)
-    if slots_changed:
-        rebind_mesh_material_indices(sec_mesh, mat_manager)
-
-    if not is_edit:
-        sec_mesh.update()
-
     return sec_obj
 
 

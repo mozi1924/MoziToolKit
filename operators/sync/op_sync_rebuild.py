@@ -91,6 +91,41 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
         cur_palette = active_storage.get_unique_states()
         preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=atlas_params)
 
+        all_sections = [s for s in active_storage.get_all_sections() if active_storage.get_section_blocks(*s)]
+        if not all_sections:
+            all_sections = list(active_storage.get_all_sections())
+            trigger_mesh_sync(context, force_full_rebuild=True, target_obj=existing_world, storage=active_storage)
+            self.report({'INFO'}, "World is empty.")
+            return {'FINISHED'}
+
+        is_interactive = not getattr(bpy.app, "background", False) and getattr(context, "window", None) is not None
+        if session and is_interactive:
+            import time
+            from ...utils.live_sync.session_manager import start_main_thread_pump
+            from ...pipeline.progress import ProgressBar
+            try:
+                from ...operators.sync.op_sync_connect import start_stream_modal_lock
+            except (ImportError, ValueError):
+                try:
+                    from operators.sync.op_sync_connect import start_stream_modal_lock
+                except Exception:
+                    start_stream_modal_lock = None
+
+            session.is_streaming = True
+            session.stream_total_sections = len(all_sections)
+            session.stream_received_sections = 0
+            session.stream_last_drain_time = time.time()
+            session.clear_caches()
+            for (sx, sy, sz) in all_sections:
+                session.stream_section_queue.put((sx, sy, sz, cur_palette))
+
+            start_main_thread_pump()
+            if start_stream_modal_lock and existing_world:
+                start_stream_modal_lock(existing_world.name)
+            ProgressBar.begin(title=f"Rebuilding World ({existing_world.name})", total=100.0, message=f"Rebuilding {len(all_sections)} chunks...")
+            self.report({'INFO'}, f"Rebuilding {len(all_sections)} chunks progressively...")
+            return {'FINISHED'}
+
         trigger_mesh_sync(context, force_full_rebuild=True, target_obj=existing_world, storage=active_storage)
 
         for window in context.window_manager.windows:
