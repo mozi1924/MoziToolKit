@@ -190,7 +190,36 @@ class SyncSession:
                     if manifest_data and isinstance(manifest_data, dict):
                         _MANIFEST_DICT_CACHE[obj.name] = manifest_data
 
-            if manifest_data and self.storage.import_manifest_metadata(manifest_data):
+            restored = False
+            if manifest_data and isinstance(manifest_data, dict) and manifest_data.get("size_x", 0) > 0:
+                restored = self.storage.import_manifest_metadata(manifest_data)
+
+            # Fallback 1: Check mtk_block_bounds or container mozi_sync properties if manifest size was 0
+            if not restored or self.storage.size_x == 0:
+                bounds = obj.get("mtk_block_bounds")
+                if bounds and len(bounds) == 6 and bounds[3] > 0 and bounds[4] > 0 and bounds[5] > 0:
+                    self.storage.set_bounds(int(bounds[0]), int(bounds[1]), int(bounds[2]), int(bounds[3]), int(bounds[4]), int(bounds[5]))
+                    restored = True
+                elif hasattr(obj, "mozi_sync") and obj.mozi_sync.has_selection and obj.mozi_sync.size_x > 0:
+                    props = obj.mozi_sync
+                    self.storage.set_bounds(int(props.min_x), int(props.min_y), int(props.min_z), int(props.size_x), int(props.size_y), int(props.size_z))
+                    restored = True
+
+            # Fallback 2: Always ensure section_crc_map is populated with existing child section mesh CRCs
+            from .mesh_builder import find_root_section_children
+            existing_sections = find_root_section_children(obj)
+            if existing_sections:
+                for (sx, sy, sz), sec_obj in existing_sections.items():
+                    if (sx, sy, sz) not in self.storage.section_crc_map:
+                        stored_crc = sec_obj.get("mtk:section_crc")
+                        if stored_crc is not None:
+                            try:
+                                self.storage.section_crc_map[(sx, sy, sz)] = int(stored_crc) & 0xFFFFFFFF
+                            except Exception:
+                                pass
+                restored = True
+
+            if restored and self.storage.size_x > 0:
                 props = get_active_sync_props(bpy.context, target_obj=obj)
                 if props:
                     props.has_selection = True
@@ -202,11 +231,401 @@ class SyncSession:
                     props.total_blocks = self.storage.size_x * self.storage.size_y * self.storage.size_z
                     props.last_update_info = f"Restored from scene object ({props.total_blocks:,} blocks in bounds)"
                     sync_palette_to_props(props, self.storage)
-                logger.info(f"Restored Live Sync metadata for {self.target_object_name} ({self.storage.size_x}x{self.storage.size_y}x{self.storage.size_z})")
+                logger.info(f"Restored Live Sync metadata for {self.target_object_name} ({self.storage.size_x}x{self.storage.size_y}x{self.storage.size_z}, {len(self.storage.section_crc_map)} sections)")
                 return True
         except Exception as e:
             logger.warning(f"Failed to restore live sync state from {self.target_object_name}: {e}")
         return False
+
+    def start_connection(self, context: Optional[bpy.types.Context] = None) -> bool:
+        """Start the live sync client thread for this session with structured lifecycle callbacks."""
+        if self.client_thread and self.client_thread.is_alive():
+            return True
+
+        target_obj = bpy.data.objects.get(self.target_object_name)
+        if target_obj and (self.storage.size_x == 0 or not self.storage.section_crc_map):
+            self.restore_sync_state_from_scene(target_obj)
+
+        self.is_initial_handshake = True
+        self.skip_next_full_snapshot = False
+
+        ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message="Connecting to Minecraft...", context=context)
+
+        self.client_thread = SyncClientThread(
+            url=self.url,
+            on_status_change=self.handle_status_change,
+            on_selection_info=self.handle_selection_info,
+            on_full_snapshot=self.handle_full_snapshot,
+            on_delta_update=self.handle_delta_update,
+            on_section_manifest=self.handle_section_manifest,
+            on_section_snapshot=self.handle_section_snapshot,
+            on_handshake_info=self.handle_handshake_info,
+            on_stream_begin=self.handle_stream_begin,
+            on_stream_end=self.handle_stream_end,
+        )
+        self.client_thread.start()
+        start_main_thread_pump()
+        return True
+
+    def handle_status_change(self, status: str) -> None:
+        """Handle client connection status transitions."""
+        def update():
+            cur_obj = bpy.data.objects.get(self.target_object_name)
+            cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+            if cur_props:
+                cur_props.connection_status = status
+                cur_props.is_connected = (status == "CONNECTED")
+
+            if status == "CONNECTED":
+                ProgressBar.update(current=20.0, total=100.0, message="Handshake established...")
+                try:
+                    from .material_binding import validate_and_sync_scene_materials
+                    validate_and_sync_scene_materials(cur_obj)
+                except Exception as e:
+                    logger.debug(f"Deferred material sync note: {e}")
+
+                if self.storage.size_x == 0 or not self.storage.section_crc_map:
+                    self.restore_sync_state_from_scene(cur_obj)
+
+                if self.client_thread:
+                    self.client_thread.send_sync_config(throttle_mode=0, target_fps=60, is_active=True)
+                start_main_thread_pump()
+            else:
+                if status.startswith("ERROR") or "failed" in status.lower() or "refused" in status.lower():
+                    ProgressBar.cancel(message=status)
+                elif not any(s.client_thread and s.client_thread.is_connected for s in _session_manager.get_all_sessions()):
+                    stop_main_thread_pump()
+                    ProgressBar.end()
+
+            for window in bpy.context.window_manager.windows:
+                for area in window.screen.areas:
+                    if area.type in ('PROPERTIES', 'VIEW_3D'):
+                        area.tag_redraw()
+        _run_in_main_thread(update)
+
+    def handle_handshake_info(self, total_sections: int, non_empty_sections: int, total_volume: int, dimension: str, flags: int) -> None:
+        """Handle server handshake metadata packet."""
+        def update():
+            self.stream_total_sections = max(1, non_empty_sections)
+            self.stream_received_sections = 0
+            cur_obj = bpy.data.objects.get(self.target_object_name)
+            cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+            if cur_props:
+                cur_props.last_update_info = f"Handshake: {dimension} ({non_empty_sections} chunks, {total_volume:,} blocks)"
+            ProgressBar.update(current=25.0, total=100.0, message=f"Handshake: {dimension} ({non_empty_sections} chunks)")
+        _run_in_main_thread(update)
+
+    def handle_selection_info(self, min_x: int, min_y: int, min_z: int, size_x: int, size_y: int, size_z: int) -> None:
+        """Handle selection bounding box updates from server."""
+        if self.storage.size_x == 0 or not self.storage.section_crc_map:
+            cur_obj_check = bpy.data.objects.get(self.target_object_name)
+            if cur_obj_check:
+                self.restore_sync_state_from_scene(cur_obj_check)
+
+        bounds_changed = self.storage.set_bounds(min_x, min_y, min_z, size_x, size_y, size_z)
+        if bounds_changed:
+            self.clear_caches()
+            self.skip_next_full_snapshot = False
+            self.is_initial_handshake = True
+
+        def update():
+            cur_obj = bpy.data.objects.get(self.target_object_name)
+            if cur_obj:
+                from .mesh_builder import prune_out_of_bounds_section_objects
+                prune_out_of_bounds_section_objects(cur_obj, self.storage)
+            cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+            if cur_props:
+                cur_props.has_selection = True
+                cur_props.min_x, cur_props.min_y, cur_props.min_z = min_x, min_y, min_z
+                cur_props.max_x = min_x + size_x - 1
+                cur_props.max_y = min_y + size_y - 1
+                cur_props.max_z = min_z + size_z - 1
+                cur_props.size_x, cur_props.size_y, cur_props.size_z = size_x, size_y, size_z
+                cur_props.total_blocks = size_x * size_y * size_z
+                if bounds_changed:
+                    cur_props.sync_verified = False
+                    cur_props.validation_info = "Selection updated, syncing..."
+        _run_in_main_thread(update)
+
+    def handle_full_snapshot(
+        self,
+        min_x: int, min_y: int, min_z: int,
+        size_x: int, size_y: int, size_z: int,
+        palette: List[str],
+        grid_indices: List[int],
+        biome_palette: Optional[List[str]] = None,
+        biome_indices: Optional[List[int]] = None,
+    ) -> None:
+        """Handle full world snapshot payloads."""
+        if self.skip_next_full_snapshot:
+            self.skip_next_full_snapshot = False
+            return
+
+        if not self.force_next_full_rebuild and self.storage.is_snapshot_identical(
+            min_x, min_y, min_z, size_x, size_y, size_z, palette, grid_indices
+        ):
+            def on_identical():
+                cur_obj = bpy.data.objects.get(self.target_object_name)
+                if cur_obj:
+                    from .mesh_builder import prune_out_of_bounds_section_objects
+                    prune_out_of_bounds_section_objects(cur_obj, self.storage)
+                cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+                if cur_props:
+                    cur_props.sync_verified = True
+                    cur_props.validation_info = "Verified (100% in sync)"
+                ProgressBar.finish(message="Sync Verified (data identical)", auto_dismiss_delay=0.8)
+            _run_in_main_thread(on_identical)
+            return
+
+        self.storage.set_full_snapshot(
+            min_x, min_y, min_z, size_x, size_y, size_z,
+            palette, grid_indices, biome_palette=biome_palette, biome_indices=biome_indices
+        )
+
+        def step_progressive_stream():
+            cur_obj = bpy.data.objects.get(self.target_object_name)
+            cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+            try:
+                self.last_seq_id = 0
+                if cur_props:
+                    cur_props.has_selection = True
+                    cur_props.min_x, cur_props.min_y, cur_props.min_z = min_x, min_y, min_z
+                    cur_props.max_x = min_x + size_x - 1
+                    cur_props.max_y = min_y + size_y - 1
+                    cur_props.max_z = min_z + size_z - 1
+                    cur_props.size_x, cur_props.size_y, cur_props.size_z = size_x, size_y, size_z
+                    cur_props.palette_count = len(palette)
+                    cur_props.total_blocks = size_x * size_y * size_z
+                    cur_props.update_counter += 1
+                    cur_props.sync_verified = True
+                    cur_props.validation_info = "Verified (100% in sync)"
+                    sync_palette_to_props(cur_props, self.storage)
+
+                self.skip_next_full_snapshot = False
+                self.force_next_full_rebuild = False
+                self.clear_caches()
+
+                if cur_obj:
+                    from .mesh_builder import prune_out_of_bounds_section_objects, find_root_section_children
+                    prune_out_of_bounds_section_objects(cur_obj, self.storage)
+                    existing_sections = find_root_section_children(cur_obj)
+                else:
+                    existing_sections = {}
+
+                all_sections = self.storage.get_all_sections()
+                sections_to_rebuild = set()
+
+                for (sx, sy, sz) in all_sections:
+                    sec_blocks = self.storage.get_section_blocks(sx, sy, sz)
+                    if not sec_blocks or all(s.startswith("minecraft:air") or s == "air" for s in sec_blocks.values()):
+                        continue
+
+                    sec_obj = existing_sections.get((sx, sy, sz))
+                    if sec_obj is None:
+                        sections_to_rebuild.add((sx, sy, sz))
+                    else:
+                        stored_crc = str(sec_obj.get("mtk:section_crc", ""))
+                        expected_crc = str(self.storage.section_crc_map.get((sx, sy, sz), 0))
+                        if stored_crc != expected_crc:
+                            sections_to_rebuild.add((sx, sy, sz))
+
+                for s in self.storage.get_dirty_sections():
+                    if s in all_sections:
+                        sections_to_rebuild.add(s)
+
+                boundary_neighbors = set()
+                for (sx, sy, sz) in sections_to_rebuild:
+                    for dx in (-1, 0, 1):
+                        for dy in (-1, 0, 1):
+                            for dz in (-1, 0, 1):
+                                neighbor = (sx + dx, sy + dy, sz + dz)
+                                if neighbor in all_sections and neighbor in existing_sections:
+                                    boundary_neighbors.add(neighbor)
+                sections_to_rebuild.update(boundary_neighbors)
+
+                if not sections_to_rebuild:
+                    logger.info(f"Live Sync ({self.target_object_name}): All {len(existing_sections)} section meshes verified up to date. Skipping rebuild.")
+                    _finalize_stream_sync(self, cur_props, cur_obj, 0)
+                    return None
+
+                self.is_streaming = True
+                self.stream_total_sections = len(sections_to_rebuild)
+                self.stream_received_sections = 0
+                self.stream_last_drain_time = time.time()
+
+                for (sx, sy, sz) in sorted(sections_to_rebuild):
+                    self.stream_section_queue.put((sx, sy, sz, palette))
+
+                ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Updating {len(sections_to_rebuild)} chunks...")
+            except Exception as e:
+                logger.error(f"Snapshot progressive streaming error: {e}", exc_info=True)
+                self.is_streaming = False
+                if cur_props:
+                    cur_props.is_locked = False
+            return None
+
+        _run_in_main_thread(step_progressive_stream)
+
+    def handle_delta_update(self, min_x: int, min_y: int, min_z: int, changes: List[Tuple[int, int, int, str]], seq_id: int) -> None:
+        """Handle incremental block update stream."""
+        self.delta_queue.put((min_x, min_y, min_z, changes, seq_id))
+
+    def handle_section_snapshot(
+        self,
+        sec_x: int, sec_y: int, sec_z: int,
+        start_x: int, start_y: int, start_z: int,
+        size_x: int, size_y: int, size_z: int,
+        palette: List[str],
+        grid_indices: List[int],
+        biome_palette: Optional[List[str]] = None,
+        biome_indices: Optional[List[int]] = None,
+    ) -> None:
+        """Handle individual chunk section repair/stream snapshot."""
+        self.is_streaming = True
+        self.stream_last_drain_time = time.time()
+        updated = self.storage.set_section_snapshot(
+            sec_x, sec_y, sec_z, start_x, start_y, start_z,
+            size_x, size_y, size_z, palette, grid_indices,
+            biome_palette=biome_palette, biome_indices=biome_indices
+        )
+        if updated:
+            self.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
+
+    def handle_section_manifest(self, server_seq_id: int, sections: List[Tuple[int, int, int, int]]) -> None:
+        """Handle section CRC manifest check for deterministic verification and partial repair."""
+        def update():
+            try:
+                cur_obj = bpy.data.objects.get(self.target_object_name)
+                cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+                non_empty_manifest_count = sum(
+                    1 for _sx, _sy, _sz, _crc in sections if not self.storage.is_empty_section_crc(_sx, _sy, _sz, _crc)
+                )
+
+                if self.pending_full_sync_request or self.force_next_full_rebuild:
+                    self.pending_full_sync_request = False
+                    self.skip_next_full_snapshot = False
+                    self.is_streaming = True
+                    self.stream_total_sections = max(1, non_empty_manifest_count)
+                    self.stream_received_sections = 0
+                    if cur_props:
+                        cur_props.validation_info = f"Syncing ({non_empty_manifest_count} chunks)..."
+                    if non_empty_manifest_count == 0:
+                        _finalize_stream_sync(self, cur_props, cur_obj, 0)
+                    else:
+                        ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
+                        ProgressBar.update(current=30.0, total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
+                        if self.client_thread and self.client_thread.is_connected:
+                            logger.info(f"Live Sync ({self.target_object_name}): Requesting full sync on manifest ({non_empty_manifest_count} sections)...")
+                            self.client_thread.send_full_sync_request()
+                    return
+
+                if self.is_streaming:
+                    logger.debug("Live Sync: Ignoring periodic manifest check while streaming is in progress.")
+                    return
+
+                from .mesh_builder import find_root_section_children
+                existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
+                existing_mesh_coords = set(existing_sections.keys()) if existing_sections else None
+
+                if not self.is_initial_handshake:
+                    # Runtime heartbeat validation check:
+                    if not self.delta_queue.empty() or self.storage.get_dirty_sections():
+                        return
+
+                    mismatched_crc = self.storage.validate_manifest(sections, existing_section_meshes=existing_mesh_coords)
+                    if cur_props:
+                        cur_props.sync_verified = (len(mismatched_crc) == 0)
+                        if len(mismatched_crc) == 0 and cur_props.validation_info != "Verified (100% in sync)":
+                            cur_props.validation_info = "Verified (100% in sync)"
+
+                    if len(mismatched_crc) > 0 and not self.is_streaming and self.client_thread and self.client_thread.is_connected:
+                        logger.info(f"Live Sync ({self.target_object_name}): Background manifest detected {len(mismatched_crc)} out-of-sync sections. Requesting repair...")
+                        self.is_repairing_partial = True
+                        self.is_streaming = True
+                        self.stream_total_sections = len(mismatched_crc)
+                        self.stream_received_sections = 0
+                        if cur_props:
+                            cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                        self.client_thread.send_repair_request(mismatched_crc)
+                    return
+
+                # Initial Handshake / Reconnect Validation
+                mismatched_crc = self.storage.validate_manifest(sections, existing_section_meshes=existing_mesh_coords)
+                if cur_props:
+                    cur_props.sync_verified = (len(mismatched_crc) == 0)
+
+                if len(mismatched_crc) == 0:
+                    self.skip_next_full_snapshot = True
+                    self.is_repairing_partial = False
+                    if cur_props:
+                        if cur_props.validation_info != "Verified (100% in sync)":
+                            cur_props.validation_info = "Verified (100% in sync)"
+                        if not cur_props.palette_list and self.storage.block_map:
+                            sync_palette_to_props(cur_props, self.storage)
+                    ProgressBar.finish(message="Verified: 100% in sync with scene", auto_dismiss_delay=0.8)
+                    self.is_initial_handshake = False
+
+                elif (len(mismatched_crc) >= non_empty_manifest_count) or (not self.storage.section_crc_map and not existing_mesh_coords):
+                    # Full sync needed (no existing mesh/CRC or complete mismatch)
+                    self.skip_next_full_snapshot = False
+                    self.is_repairing_partial = False
+                    self.pending_full_sync_request = True
+                    self.is_initial_handshake = False
+                    self.is_streaming = True
+                    self.stream_total_sections = max(1, non_empty_manifest_count)
+                    self.stream_received_sections = 0
+                    if cur_props:
+                        cur_props.validation_info = f"Full sync ({non_empty_manifest_count} chunks)..."
+                    ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Full sync ({non_empty_manifest_count} chunks)...")
+                    ProgressBar.update(current=30.0, total=100.0, message="Requesting full world data...")
+                    if self.client_thread and self.client_thread.is_connected:
+                        logger.info(f"Live Sync ({self.target_object_name}): Requesting full sync ({non_empty_manifest_count} sections)...")
+                        self.client_thread.send_full_sync_request()
+
+                else:
+                    # Existing local scene with partial differences on reconnect
+                    logger.info(f"Live Sync ({self.target_object_name}): Detected {len(mismatched_crc)} out-of-sync sections on reconnect. Requesting incremental repair...")
+                    self.skip_next_full_snapshot = True
+                    self.is_repairing_partial = True
+                    self.is_initial_handshake = False
+                    self.is_streaming = True
+                    self.stream_total_sections = len(mismatched_crc)
+                    self.stream_received_sections = 0
+                    if cur_props:
+                        cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
+                    ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Repairing {len(mismatched_crc)} section(s)...")
+                    ProgressBar.update(current=30.0, total=100.0, message=f"Syncing {len(mismatched_crc)} modified chunks...")
+                    if self.client_thread and self.client_thread.is_connected:
+                        self.client_thread.send_repair_request(mismatched_crc)
+            except Exception as e:
+                logger.error(f"Live Sync manifest error for {self.target_object_name}: {e}", exc_info=True)
+                ProgressBar.cancel(message=f"Manifest check error: {e}")
+        _run_in_main_thread(update)
+
+    def handle_stream_begin(self, stream_id: int, total_sections: int, flags: int) -> None:
+        """Handle progressive stream beginning notice."""
+        self.current_stream_id = stream_id
+        self.is_streaming = True
+        self.server_stream_finished = False
+        self.stream_total_sections = max(1, total_sections)
+        self.stream_received_sections = 0
+        self.stream_last_drain_time = time.time()
+        def update():
+            cur_obj = bpy.data.objects.get(self.target_object_name)
+            if cur_obj:
+                from .mesh_builder import prune_out_of_bounds_section_objects
+                prune_out_of_bounds_section_objects(cur_obj, self.storage)
+            cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+            if cur_props:
+                cur_props.validation_info = f"Streaming {total_sections} chunks..."
+            ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Streaming {total_sections} chunks...")
+            ProgressBar.update(current=30.0, total=100.0, message=f"Streaming chunk (0/{total_sections})")
+        _run_in_main_thread(update)
+
+    def handle_stream_end(self, stream_id: int, sent_sections: int, status: int) -> None:
+        """Handle progressive stream end notice."""
+        self.server_stream_finished = True
+        self.stream_last_drain_time = time.time()
 
     def stop(self) -> None:
         if self.client_thread:
@@ -233,6 +652,26 @@ class SyncSession:
         self.accumulated_stream_palettes.clear()
 
 
+def _run_in_main_thread(func) -> None:
+    """Helper to schedule a callable on Blender's main thread timer pump safely."""
+    import threading
+    if getattr(bpy.app, "background", False) and threading.current_thread() is threading.main_thread():
+        try:
+            func()
+            return
+        except Exception as e:
+            logger.error(f"Main thread update error: {e}", exc_info=True)
+            return
+
+    def wrapper():
+        try:
+            func()
+        except Exception as e:
+            logger.error(f"Main thread update error: {e}", exc_info=True)
+        return None
+    bpy.app.timers.register(wrapper)
+
+
 class SyncSessionManager:
     """Manages all active sync sessions keyed by container object name."""
 
@@ -246,6 +685,10 @@ class SyncSessionManager:
         if obj_name not in self._sessions:
             session = SyncSession(target_object_name=obj_name, url=url)
             self._sessions[obj_name] = session
+            # Synchronously restore persistent state from the target scene object if present
+            target_obj = bpy.data.objects.get(obj_name)
+            if target_obj:
+                session.restore_sync_state_from_scene(target_obj)
         else:
             session = self._sessions[obj_name]
             if url:

@@ -24,7 +24,6 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             get_target_world_object,
             get_active_sync_props,
             get_active_session_manager,
-            _client_thread,
         )
         try:
             from ...utils.materials.pack import get_configured_pack_stack
@@ -58,10 +57,6 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             if session and session.client_thread and session.client_thread.is_connected:
                 self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")
                 bpy.ops.mozi.sync_refresh(target_container=target_obj.name if target_obj else "")
-                return {'FINISHED'}
-            elif _client_thread and _client_thread.is_connected:
-                self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")
-                bpy.ops.mozi.sync_refresh()
                 return {'FINISHED'}
             self.report({'WARNING'}, "No voxel data in memory. Connect to server or click Refresh first.")
             return {'CANCELLED'}

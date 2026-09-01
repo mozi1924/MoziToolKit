@@ -515,11 +515,21 @@ def prune_out_of_bounds_section_objects(root_obj: Optional[bpy.types.Object], st
     """Remove any child section mesh objects of root_obj that fall outside the active selection storage bounds."""
     if not root_obj:
         return 0
-    all_sections = set(storage.get_all_sections()) if storage else set()
+    if not storage or getattr(storage, "size_x", 0) <= 0 or getattr(storage, "size_y", 0) <= 0 or getattr(storage, "size_z", 0) <= 0:
+        return 0
+
+    min_sec_x = storage.min_x >> 4
+    max_sec_x = (storage.min_x + storage.size_x - 1) >> 4
+    min_sec_y = storage.min_y >> 4
+    max_sec_y = (storage.min_y + storage.size_y - 1) >> 4
+    min_sec_z = storage.min_z >> 4
+    max_sec_z = (storage.min_z + storage.size_z - 1) >> 4
+
     existing_sections = find_root_section_children(root_obj)
     removed_count = 0
     for coords, child in list(existing_sections.items()):
-        if coords not in all_sections:
+        sx, sy, sz = coords
+        if not (min_sec_x <= sx <= max_sec_x and min_sec_y <= sy <= max_sec_y and min_sec_z <= sz <= max_sec_z):
             _safe_remove_section_object(child)
             existing_sections.pop(coords, None)
             removed_count += 1
