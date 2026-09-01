@@ -130,6 +130,8 @@ from .pack import (
     get_temp_extraction_dir,
     clean_obsolete_stack_caches,
     get_cache_stats,
+    is_material_cache_ready,
+    invalidate_material_cache_ready,
     clear_temp_extraction_cache,
     clear_baked_stack_cache,
     clear_resource_pack_cache,

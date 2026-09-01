@@ -104,11 +104,47 @@ def clean_obsolete_stack_caches(current_stack_hash: Optional[str] = None) -> tup
             except Exception:
                 pass
     get_cache_stats(force_refresh=True)
+    is_material_cache_ready(force_refresh=True)
     return dirs_removed, bytes_freed
 
 
 _cached_stats = None
 _cached_stats_time = 0.0
+
+_cached_cache_ready = None
+
+
+def invalidate_material_cache_ready():
+    """Explicitly invalidate cached readiness state so next check re-evaluates."""
+    global _cached_cache_ready
+    _cached_cache_ready = None
+
+
+def is_material_cache_ready(force_refresh: bool = False) -> bool:
+    """
+    Lightweight check if the active resource pack stack has precompiled atlas materials.
+    Persistently cached in memory to guarantee 0ms UI redraw time.
+    Invalidated event-driven when packs, caches, or preferences change.
+    """
+    global _cached_cache_ready
+    if not force_refresh and _cached_cache_ready is not None:
+        return _cached_cache_ready
+
+    try:
+        from ...config import get_enabled_pack_entries
+        entries = get_enabled_pack_entries()
+        if not entries:
+            _cached_cache_ready = False
+            return False
+
+        from .pack_stack import get_configured_pack_stack
+        stack = get_configured_pack_stack()
+        is_ready = bool(stack and stack.packs and stack.is_stack_baked())
+    except Exception:
+        is_ready = False
+
+    _cached_cache_ready = is_ready
+    return _cached_cache_ready
 
 
 def get_cache_stats(force_refresh: bool = False) -> dict:
@@ -209,6 +245,7 @@ def clear_baked_stack_cache() -> tuple[int, int]:
             except Exception:
                 pass
     get_cache_stats(force_refresh=True)
+    is_material_cache_ready(force_refresh=True)
     return files_count, bytes_freed
 
 

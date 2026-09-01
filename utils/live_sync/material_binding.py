@@ -158,7 +158,7 @@ def validate_and_sync_scene_materials(
         clear_shared_material_manager()
         try:
             from ..mc_baker import refresh_shared_baker_sources
-            refresh_shared_baker_sources(force_precompile_if_missing=True)
+            refresh_shared_baker_sources(force_precompile_if_missing=False)
         except Exception:
             pass
 

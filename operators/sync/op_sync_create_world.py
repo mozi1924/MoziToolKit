@@ -9,6 +9,30 @@ from bpy.props import StringProperty
 from ...utils.live_sync.constants import DEFAULT_WORLD_OBJECT_NAME
 
 
+def switch_properties_tab_to_data(context=None):
+    """Switch any visible Properties editor window to the DATA tab."""
+    if context is None:
+        context = bpy.context
+    try:
+        wm = getattr(context, "window_manager", None) or getattr(bpy.context, "window_manager", None)
+        windows = getattr(wm, "windows", []) if wm else []
+        if not windows and getattr(context, "window", None):
+            windows = [context.window]
+
+        for win in windows:
+            screen = getattr(win, "screen", None)
+            if not screen:
+                continue
+            for area in screen.areas:
+                if area.type == 'PROPERTIES':
+                    for space in area.spaces:
+                        if space.type == 'PROPERTIES':
+                            space.context = 'DATA'
+                            area.tag_redraw()
+    except Exception:
+        pass
+
+
 class MOZI_OT_add_yefira_world(bpy.types.Operator):
     """Create a new Yefira World Empty container for Minecraft Live Sync."""
     bl_idname = "mozi.add_yefira_world"
@@ -53,6 +77,8 @@ class MOZI_OT_add_yefira_world(bpy.types.Operator):
         root_obj.select_set(True)
         context.view_layer.objects.active = root_obj
 
+        switch_properties_tab_to_data(context)
+
         self.report({'INFO'}, f"Created Yefira World Empty: {root_obj.name}")
         return {'FINISHED'}
 
@@ -77,5 +103,6 @@ class MOZI_OT_sync_select_root(bpy.types.Operator):
                 obj.select_set(False)
             target.select_set(True)
             context.view_layer.objects.active = target
+            switch_properties_tab_to_data(context)
             self.report({'INFO'}, f"Selected parent container: {target.name}")
         return {'FINISHED'}

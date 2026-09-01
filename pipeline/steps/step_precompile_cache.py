@@ -65,6 +65,11 @@ class StepPrecompileCache(PipelineStep):
 
         clean_obsolete_stack_caches(current_stack_hash=pack_stack.stack_hash)
         stats = get_cache_stats(force_refresh=True)
+        try:
+            from ...utils.materials import is_material_cache_ready
+            is_material_cache_ready(force_refresh=True)
+        except Exception:
+            pass
         res_data["cache_stats"] = stats
 
         num_chunks = len(res_data.get("atlas", {}).get("chunks", []))

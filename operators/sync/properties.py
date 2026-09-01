@@ -188,14 +188,16 @@ def _on_depsgraph_update_post(scene, depsgraph):
                 if not bpy.app.timers.is_registered(_deferred_enforce_object_mode):
                     bpy.app.timers.register(_deferred_enforce_object_mode, first_interval=0.0)
 
-        # 2. Check for renamed Yefira World objects
-        for obj in scene.objects:
-            if obj.type == 'EMPTY' and (obj.get("mtk:is_yefira_world") or any(c.get("mtk:section_pos") is not None for c in obj.children)):
-                last_name = obj.get("mtk:last_name")
-                if last_name and last_name != obj.name:
-                    _get_pending_rename_roots().add(obj.name)
-                    if not bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
-                        bpy.app.timers.register(_deferred_sync_renamed_roots, first_interval=0.0)
+        # 2. Check for renamed Yefira World objects via depsgraph updates
+        for update in depsgraph.updates:
+            if isinstance(update.id, bpy.types.Object):
+                obj = update.id
+                if obj.type == 'EMPTY' and obj.get("mtk:is_yefira_world"):
+                    last_name = obj.get("mtk:last_name")
+                    if last_name and last_name != obj.name:
+                        _get_pending_rename_roots().add(obj.name)
+                        if not bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
+                            bpy.app.timers.register(_deferred_sync_renamed_roots, first_interval=0.0)
     except Exception as e:
         logger.debug(f"Error in Live Sync depsgraph handler: {e}")
 
