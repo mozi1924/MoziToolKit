@@ -578,7 +578,7 @@ BIOME_PALETTES: dict[str, dict[str, Any]] = {
         "temperature": 0.8,
         "humidity": 0.9,
         "modifier": "swamp",
-        "has_custom_grass": False,
+        "has_custom_grass": True,
         "has_custom_foliage": True,
         "has_custom_dry_foliage": True
     },
@@ -914,7 +914,7 @@ BIOME_PALETTES: dict[str, dict[str, Any]] = {
         "temperature": 0.8,
         "humidity": 0.9,
         "modifier": "swamp",
-        "has_custom_grass": False,
+        "has_custom_grass": True,
         "has_custom_foliage": True,
         "has_custom_dry_foliage": True
     },
@@ -1346,7 +1346,20 @@ def get_biome_colors(biome_name: str, pack_stack: Any = None) -> dict[str, Any]:
         "temperature": palette.get("temperature", 0.8),
         "humidity": palette.get("humidity", 0.4),
         "modifier": palette.get("modifier", "none"),
+        "has_custom_grass": bool(palette.get("has_custom_grass", False)),
+        "has_custom_foliage": bool(palette.get("has_custom_foliage", False)),
+        "has_custom_dry_foliage": bool(palette.get("has_custom_dry_foliage", False)),
     }
+
+
+BIOME_ENUM_ITEMS: list[tuple[str, str, str]] = [
+    (
+        k,
+        v.get("name", k.replace("_", " ").title()),
+        f"Temperature: {v.get('temperature', 0.8)}, Downfall: {v.get('humidity', 0.4)}",
+    )
+    for k, v in sorted(BIOME_PALETTES.items(), key=lambda item: (item[0] != "PLAINS", item[0]))
+]
 
 
 class BiomeResolver:

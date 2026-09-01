@@ -136,6 +136,10 @@ def compute_biome_tint_attributes(
         else:
             colormap_uvs = [(0.2, 0.32, 0.0)] * num_polygons
 
+    has_custom_grass = bool(biome_colors.get("has_custom_grass", False)) if not is_multi_biome else False
+    has_custom_foliage = bool(biome_colors.get("has_custom_foliage", False)) if not is_multi_biome else False
+    has_custom_dry_foliage = bool(biome_colors.get("has_custom_dry_foliage", False)) if not is_multi_biome else False
+
     for poly_idx, tint_info in poly_tint_map.items():
         if not tint_info:
             continue
@@ -145,7 +149,17 @@ def compute_biome_tint_attributes(
         overlay_tint_weights[poly_idx] = float(tint_info.get("default_overlay_tint_weight", tint_info.get("overlay_tint_weight", 1.0)))
         tt = int(tint_info.get("tint_type", 0))
         is_hc = bool(tint_info.get("is_hardcoded", False))
-        tint_type_val = float(TINT_TYPE_HARDCODED if is_hc else tt)
+
+        has_custom = False
+        if not is_multi_biome:
+            if tt == TINT_TYPE_GRASS:
+                has_custom = has_custom_grass
+            elif tt == TINT_TYPE_FOLIAGE:
+                has_custom = has_custom_foliage
+            elif tt == TINT_TYPE_DRY_FOLIAGE:
+                has_custom = has_custom_dry_foliage
+
+        tint_type_val = float(TINT_TYPE_HARDCODED if (is_hc or has_custom) else tt)
         use_hardcodeds[poly_idx] = tint_type_val
         hc_c = tint_info.get("hardcoded_color")
         if hc_c:
