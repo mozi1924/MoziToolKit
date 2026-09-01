@@ -26,6 +26,9 @@ from MoziToolKit.utils.system import (
     get_python_executable,
     has_all_dependencies,
     has_pillow,
+    has_websockets,
+    draw_pillow_warning,
+    draw_websockets_warning,
     is_module_installed,
     get_prefs,
 )
@@ -47,11 +50,16 @@ class TestDependencyManager(unittest.TestCase):
         self.assertTrue(isinstance(exe, str) and len(exe) > 0)
 
     def test_dependencies_registry(self):
-        """Pillow should be registered in DEPENDENCIES."""
+        """Pillow and websockets should be registered in DEPENDENCIES."""
         self.assertIn("Pillow", DEPENDENCIES)
         pillow_dep = DEPENDENCIES["Pillow"]
         self.assertEqual(pillow_dep.module_name, "PIL")
         self.assertEqual(pillow_dep.name, "Pillow")
+
+        self.assertIn("websockets", DEPENDENCIES)
+        ws_dep = DEPENDENCIES["websockets"]
+        self.assertEqual(ws_dep.module_name, "websockets")
+        self.assertEqual(ws_dep.name, "websockets")
 
     def test_is_module_installed(self):
         """Built-in modules like 'sys' and 'os' must be detected as installed."""
@@ -68,12 +76,18 @@ class TestDependencyManager(unittest.TestCase):
     def test_get_all_dependency_statuses(self):
         """get_all_dependency_statuses should return non-empty list of statuses."""
         statuses = get_all_dependency_statuses()
-        self.assertGreaterEqual(len(statuses), 1)
-        self.assertEqual(statuses[0]["name"], "Pillow")
+        self.assertGreaterEqual(len(statuses), 2)
+        names = [s["name"] for s in statuses]
+        self.assertIn("Pillow", names)
+        self.assertIn("websockets", names)
 
     def test_has_pillow_helper(self):
         """has_pillow should return bool corresponding to is_module_installed('PIL')."""
         self.assertEqual(has_pillow(), is_module_installed("PIL"))
+
+    def test_has_websockets_helper(self):
+        """has_websockets should return bool corresponding to is_module_installed('websockets')."""
+        self.assertEqual(has_websockets(), is_module_installed("websockets"))
 
     def test_get_prefs_safe_access(self):
         """get_prefs should safely query preferences without raising exceptions."""

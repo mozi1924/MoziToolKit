@@ -496,11 +496,24 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Status Summary Banner
         status_box = layout.box()
         banner_row = status_box.row(align=True)
-        if all_ok:
+        missing = [item for item in statuses if not item.get("is_satisfied", False)]
+        if not missing:
             banner_row.label(text="All required modules and dependencies are available.", icon="CHECKMARK")
+        elif len(missing) == 1:
+            banner_row.alert = True
+            dep = missing[0]
+            dep_name = dep.get("name", "Unknown")
+            if dep_name == "Pillow":
+                banner_row.label(text="Optional dependency 'Pillow' is not installed (required for Atlas Material Mode).", icon="INFO")
+            elif dep_name == "websockets":
+                banner_row.label(text="Optional dependency 'websockets' is not installed (required for Live Sync Panel & Operators).", icon="INFO")
+            else:
+                req_text = f" (required for {dep['required_by']})" if dep.get("required_by") else ""
+                banner_row.label(text=f"Optional dependency '{dep_name}' is not installed{req_text}.", icon="INFO")
         else:
             banner_row.alert = True
-            banner_row.label(text="Optional dependency 'Pillow' is not installed (required for Atlas Material Mode).", icon="INFO")
+            dep_names = ", ".join(f"'{d.get('name', 'Unknown')}'" for d in missing)
+            banner_row.label(text=f"Optional dependencies {dep_names} are not installed.", icon="INFO")
 
         layout.separator()
 
