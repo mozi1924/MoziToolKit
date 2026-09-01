@@ -79,6 +79,25 @@ def get_empty_section_crc(block_count: int = 4096) -> int:
 EMPTY_SECTION_CRC = get_empty_section_crc(4096)
 
 
+# Precalculated inverse distance weights for fast biome blending
+_BIOME_WEIGHT_KERNELS: Dict[int, List[Tuple[int, int, float]]] = {}
+
+
+def _get_biome_weight_kernel(radius: int) -> List[Tuple[int, int, float]]:
+    """Return precomputed list of (dx, dz, inverse_distance_weight) for the given radius."""
+    import math
+    kernel = _BIOME_WEIGHT_KERNELS.get(radius)
+    if kernel is None:
+        kernel = []
+        for dx in range(-radius, radius + 1):
+            for dz in range(-radius, radius + 1):
+                dist = math.sqrt(dx * dx + dz * dz)
+                w = 1.0 / (1.0 + dist)
+                kernel.append((dx, dz, w))
+        _BIOME_WEIGHT_KERNELS[radius] = kernel
+    return kernel
+
+
 class VoxelStorage:
     """In-memory 3D sparse/dense voxel array with section-based CRC32 validation."""
 
@@ -96,6 +115,7 @@ class VoxelStorage:
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
         self._dirty_sections: Set[Tuple[int, int, int]] = set()
         self._known_empty_sections: Set[Tuple[int, int, int]] = set()
+        self._smoothed_biome_cache: Dict[Tuple[int, int, int, int], Tuple[float, float, Tuple[float, float, float, float]]] = {}
         self.generation: int = 0
 
     def clear(self) -> None:
@@ -107,6 +127,7 @@ class VoxelStorage:
         self.section_crc_map.clear()
         self._dirty_sections.clear()
         self._known_empty_sections.clear()
+        self._smoothed_biome_cache.clear()
         self.min_x = self.min_y = self.min_z = 0
         self.size_x = self.size_y = self.size_z = 0
         self.generation += 1
@@ -424,19 +445,29 @@ class VoxelStorage:
         """
         Compute smooth Minecraft biome blending over (x ± radius, z ± radius) neighborhood.
         Returns (smoothed_u, smoothed_v, smoothed_water_linear_rgba).
+        Uses precomputed weight kernels and session-level memoization for maximum throughput.
         """
-        import math
         from ..materials.biome import get_biome_colors, get_colormap_uv
 
         if not self.biome_map:
             u, v = get_colormap_uv(0.8, 0.4)
             return (u, v, (0.05, 0.17, 0.77, 0.8))
 
+        if not hasattr(self, "_smoothed_biome_cache"):
+            self._smoothed_biome_cache: Dict[Tuple[int, int, int, int], Tuple[float, float, Tuple[float, float, float, float]]] = {}
+
+        cache_key = (x, y, z, radius)
+        cached_result = self._smoothed_biome_cache.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+
         center_biome = self.biome_map.get((x, y, z)) or self.biome_map.get((x, self.min_y, z)) or "minecraft:plains"
         if radius <= 0:
             bc = get_biome_colors(center_biome)
             u, v = get_colormap_uv(float(bc.get("temperature", 0.8)), float(bc.get("humidity", 0.4)))
-            return (u, v, bc.get("water_linear", (0.05, 0.17, 0.77, 0.8)))
+            res = (u, v, bc.get("water_linear", (0.05, 0.17, 0.77, 0.8)))
+            self._smoothed_biome_cache[cache_key] = res
+            return res
 
         total_w = 0.0
         sum_u = 0.0
@@ -447,42 +478,41 @@ class VoxelStorage:
         sum_wa = 0.0
 
         cached_colors: Dict[str, Tuple[float, float, Tuple[float, float, float, float]]] = {}
+        kernel = _get_biome_weight_kernel(radius)
 
-        for dx in range(-radius, radius + 1):
-            for dz in range(-radius, radius + 1):
-                bx, bz = x + dx, z + dz
-                b_name = self.biome_map.get((bx, y, bz))
-                if not b_name and self.size_y > 0:
-                    b_name = self.biome_map.get((bx, self.min_y, bz))
-                if not b_name:
-                    b_name = center_biome
+        for dx, dz, weight in kernel:
+            bx, bz = x + dx, z + dz
+            b_name = self.biome_map.get((bx, y, bz))
+            if not b_name and self.size_y > 0:
+                b_name = self.biome_map.get((bx, self.min_y, bz))
+            if not b_name:
+                b_name = center_biome
 
-                dist_sq = dx * dx + dz * dz
-                weight = 1.0 / (1.0 + math.sqrt(dist_sq))
+            if b_name not in cached_colors:
+                bc = get_biome_colors(b_name)
+                t = float(bc.get("temperature", 0.8))
+                h = float(bc.get("humidity", 0.4))
+                bu, bv = get_colormap_uv(t, h)
+                w_col = bc.get("water_linear", (0.05, 0.17, 0.77, 0.8))
+                cached_colors[b_name] = (bu, bv, w_col)
 
-                if b_name not in cached_colors:
-                    bc = get_biome_colors(b_name)
-                    t = float(bc.get("temperature", 0.8))
-                    h = float(bc.get("humidity", 0.4))
-                    bu, bv = get_colormap_uv(t, h)
-                    w_col = bc.get("water_linear", (0.05, 0.17, 0.77, 0.8))
-                    cached_colors[b_name] = (bu, bv, w_col)
-
-                bu, bv, w_col = cached_colors[b_name]
-                total_w += weight
-                sum_u += bu * weight
-                sum_v += bv * weight
-                sum_wr += w_col[0] * weight
-                sum_wg += w_col[1] * weight
-                sum_wb += w_col[2] * weight
-                sum_wa += w_col[3] * weight
+            bu, bv, w_col = cached_colors[b_name]
+            total_w += weight
+            sum_u += bu * weight
+            sum_v += bv * weight
+            sum_wr += w_col[0] * weight
+            sum_wg += w_col[1] * weight
+            sum_wb += w_col[2] * weight
+            sum_wa += w_col[3] * weight
 
         inv_w = 1.0 / total_w if total_w > 0 else 1.0
-        return (
+        result = (
             sum_u * inv_w,
             sum_v * inv_w,
             (sum_wr * inv_w, sum_wg * inv_w, sum_wb * inv_w, sum_wa * inv_w),
         )
+        self._smoothed_biome_cache[cache_key] = result
+        return result
 
     def apply_delta_update(
         self,

@@ -17,12 +17,28 @@ import logging
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Set
 import bpy
 import bmesh
+from mathutils import Vector
 
 from .storage import VoxelStorage
 from .constants import (
     DEFAULT_WORLD_OBJECT_NAME,
     DEFAULT_WORLD_MESH_NAME,
     MC_DIR_OFFSETS,
+    MTK_BLOCK_X,
+    MTK_BLOCK_Y,
+    MTK_BLOCK_Z,
+    MTK_FACE_DIR,
+    MTK_ATLAS_CHUNK_ID,
+    MTK_UV_ROTATION,
+    MTK_ANIM_TIMING,
+    MTK_ANIM_FRAME_SIZE,
+    MTK_MATERIAL_PROPS,
+    MTK_UV_TILING_TRANSFORM,
+    MTK_BIOME_TINT_DATA,
+    MTK_BIOME_TINT_COLOR,
+    MTK_COLORMAP_UV,
+    MTK_SOURCE_TEXTURE_KEY,
+    UV_MAP,
 )
 from ..mc_baker import (
     get_shared_state_baker,
@@ -52,6 +68,8 @@ from .geometry_builder import (
     _emit_bmesh_face,
     generate_single_block_faces,
     generate_voxel_geometry,
+    RawSectionGeometryBuffer,
+    generate_section_geometry_buffer,
 )
 
 logger = logging.getLogger("MoziToolKit.MeshBuilder")
@@ -61,6 +79,119 @@ _sync_section_material_slots = sync_section_material_slots
 _rebind_mesh_material_indices = rebind_mesh_material_indices
 _generate_single_block_faces = generate_single_block_faces
 _generate_voxel_geometry = generate_voxel_geometry
+
+
+def apply_geometry_buffer_to_mesh(
+    mesh: bpy.types.Mesh,
+    buffer: RawSectionGeometryBuffer,
+) -> None:
+    """
+    Ultra-fast batch ingestion of RawSectionGeometryBuffer directly into a Blender Mesh datablock
+    using mesh.from_pydata and C-level foreach_set.
+    """
+    is_edit = getattr(mesh, "is_editmode", False)
+    if is_edit:
+        # Edit mode fallback to BMesh for safe interactive sync
+        bm = bmesh.from_edit_mesh(mesh)
+        bm.clear()
+        try:
+            layers = _get_or_create_bmesh_layers(bm)
+            uv_layer = layers["uv"]
+            color_layer = layers["color"]
+            bm_verts = [bm.verts.new(v) for v in buffer.vertices]
+            for face_idx, v_indices in enumerate(buffer.faces):
+                try:
+                    f = bm.faces.new([bm_verts[i] for i in v_indices])
+                except ValueError:
+                    continue
+                f.material_index = buffer.material_indices[face_idx]
+                f[layers["block_x"]] = buffer.block_x[face_idx]
+                f[layers["block_y"]] = buffer.block_y[face_idx]
+                f[layers["block_z"]] = buffer.block_z[face_idx]
+                f[layers["face_dir"]] = buffer.face_dir[face_idx]
+                f[layers["atlas_chunk"]] = buffer.atlas_chunk[face_idx]
+                f[layers["rot"]] = buffer.rot[face_idx]
+
+                t_idx = face_idx * 4
+                f[layers["timing"]] = tuple(buffer.timing[t_idx : t_idx + 4])
+                f[layers["frame_size"]] = tuple(buffer.frame_size[t_idx : t_idx + 4])
+                f[layers["material_props"]] = tuple(buffer.material_props[t_idx : t_idx + 4])
+                f[layers["tiling"]] = tuple(buffer.tiling[t_idx : t_idx + 4])
+                f[layers["tint_data"]] = tuple(buffer.tint_data[t_idx : t_idx + 4])
+                f[layers["tint_color"]] = tuple(buffer.tint_color[t_idx : t_idx + 4])
+
+                cm_idx = face_idx * 3
+                f[layers["colormap_uv"]] = tuple(buffer.colormap_uv[cm_idx : cm_idx + 3])
+                if layers.get("source_key") and face_idx < len(buffer.source_key) and buffer.source_key[face_idx]:
+                    f[layers["source_key"]] = buffer.source_key[face_idx].encode("utf-8")
+
+                for loop_idx, loop in enumerate(f.loops):
+                    l_idx = face_idx * 4 + loop_idx
+                    if l_idx < len(buffer.loop_uvs):
+                        loop[uv_layer].uv = Vector(buffer.loop_uvs[l_idx])
+                    if l_idx < len(buffer.loop_colors):
+                        loop[color_layer] = buffer.loop_colors[l_idx]
+            bmesh.update_edit_mesh(mesh, loop_triangles=True, destructive=True)
+        finally:
+            pass
+        return
+
+    # Standard Object Mode batch upload: pure C-speed
+    mesh.clear_geometry()
+    if not buffer.faces or not buffer.vertices:
+        mesh.update()
+        return
+
+    mesh.from_pydata(buffer.vertices, [], buffer.faces)
+
+    num_faces = len(buffer.faces)
+    num_loops = len(buffer.loop_uvs)
+
+    if buffer.material_indices and len(mesh.polygons) == num_faces:
+        mesh.polygons.foreach_set("material_index", buffer.material_indices)
+
+    uv_layer = mesh.uv_layers.get("UVMap") or mesh.uv_layers.new(name="UVMap")
+    if uv_layer and buffer.loop_uvs and len(uv_layer.data) == num_loops:
+        flat_uvs = [c for uv in buffer.loop_uvs for c in uv]
+        uv_layer.data.foreach_set("uv", flat_uvs)
+
+    col_attr = mesh.color_attributes.get("Color")
+    if col_attr is None:
+        col_attr = mesh.color_attributes.new(name="Color", type='FLOAT_COLOR', domain='CORNER')
+    if col_attr and buffer.loop_colors and len(col_attr.data) == num_loops:
+        flat_cols = [c for col in buffer.loop_colors for c in col]
+        col_attr.data.foreach_set("color", flat_cols)
+
+    def _ensure_face_attr(name: str, attr_type: str):
+        attr = mesh.attributes.get(name)
+        if attr is None:
+            attr = mesh.attributes.new(name=name, type=attr_type, domain='FACE')
+        return attr
+
+    if len(mesh.polygons) == num_faces:
+        _ensure_face_attr(MTK_BLOCK_X, "INT").data.foreach_set("value", buffer.block_x)
+        _ensure_face_attr(MTK_BLOCK_Y, "INT").data.foreach_set("value", buffer.block_y)
+        _ensure_face_attr(MTK_BLOCK_Z, "INT").data.foreach_set("value", buffer.block_z)
+        _ensure_face_attr(MTK_FACE_DIR, "INT").data.foreach_set("value", buffer.face_dir)
+        _ensure_face_attr(MTK_ATLAS_CHUNK_ID, "INT").data.foreach_set("value", buffer.atlas_chunk)
+        _ensure_face_attr(MTK_UV_ROTATION, "FLOAT").data.foreach_set("value", buffer.rot)
+        _ensure_face_attr(MTK_ANIM_TIMING, "FLOAT_COLOR").data.foreach_set("color", buffer.timing)
+        _ensure_face_attr(MTK_ANIM_FRAME_SIZE, "FLOAT_COLOR").data.foreach_set("color", buffer.frame_size)
+        _ensure_face_attr(MTK_MATERIAL_PROPS, "FLOAT_COLOR").data.foreach_set("color", buffer.material_props)
+        _ensure_face_attr(MTK_UV_TILING_TRANSFORM, "FLOAT_COLOR").data.foreach_set("color", buffer.tiling)
+        _ensure_face_attr(MTK_BIOME_TINT_DATA, "FLOAT_COLOR").data.foreach_set("color", buffer.tint_data)
+        _ensure_face_attr(MTK_BIOME_TINT_COLOR, "FLOAT_COLOR").data.foreach_set("color", buffer.tint_color)
+        _ensure_face_attr(MTK_COLORMAP_UV, "FLOAT_VECTOR").data.foreach_set("vector", buffer.colormap_uv)
+        if any(buffer.source_key):
+            try:
+                s_attr = _ensure_face_attr(MTK_SOURCE_TEXTURE_KEY, "STRING")
+                for i, k in enumerate(buffer.source_key):
+                    if k:
+                        s_attr.data[i].value = k.encode("utf-8") if isinstance(k, str) else k
+            except Exception:
+                pass
+
+    mesh.update()
 
 
 class WorldMeshBuildResult(NamedTuple):
@@ -430,6 +561,7 @@ def build_world_mesh(
 ) -> WorldMeshBuildResult:
     """
     Constructs the full native Blender polygon mesh directly on the world object.
+    Uses ultra-fast decoupled RawSectionGeometryBuffer computation and batch C ingestion.
     Maintains 100% backward compatibility for single-mesh queries and unit tests.
     Supports both Object Mode and Edit Mode seamlessly.
     """
@@ -471,57 +603,33 @@ def build_world_mesh(
         s: get_cached_state_meta(s, mat_manager, baker) for s in unique_states
     }
 
-    is_edit = getattr(mesh, "is_editmode", False)
-    if is_edit:
-        bm = bmesh.from_edit_mesh(mesh)
-        bm.clear()
-    else:
-        bm = bmesh.new()
+    # 5. Pure-data decoupled geometry generation
+    buffer = generate_section_geometry_buffer(
+        voxel_items=list(block_map.items()),
+        block_map=block_map,
+        state_cache=state_cache,
+        origin_centered=origin_centered,
+        min_x=min_x, min_y=min_y, min_z=min_z,
+        half_x=half_x, half_z=half_z,
+        mat_manager=mat_manager,
+        baker=baker,
+        voxel_storage=storage,
+        weld_vertices=weld_vertices,
+    )
 
-    try:
-        uv_layer = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
-        color_layer = bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color")
+    # 6. Ultra-fast batch C ingestion
+    apply_geometry_buffer_to_mesh(mesh, buffer)
 
-        cubes_count, props_count, fluids_count = generate_voxel_geometry(
-            bm=bm,
-            voxel_items=list(block_map.items()),
-            block_map=block_map,
-            state_cache=state_cache,
-            uv_layer=uv_layer,
-            color_layer=color_layer,
-            origin_centered=origin_centered,
-            min_x=min_x, min_y=min_y, min_z=min_z,
-            half_x=half_x, half_z=half_z,
-            mat_manager=mat_manager,
-            baker=baker,
-            voxel_storage=storage,
-        )
-
-        # 5. Optional in-engine vertex welding for optimal topology
-        if weld_vertices and len(bm.verts) > 0:
-            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
-
-        # 6. Push BMesh data back to Blender Mesh
-        if is_edit:
-            bmesh.update_edit_mesh(mesh, loop_triangles=True, destructive=True)
-        else:
-            mesh.clear_geometry()
-            bm.to_mesh(mesh)
-            mesh.update()
-    finally:
-        if not is_edit:
-            bm.free()
-
-    vertex_count = len(mesh.vertices) if not is_edit else len(bm.verts)
-    face_count = len(mesh.polygons) if not is_edit else len(bm.faces)
+    vertex_count = len(mesh.vertices) if not getattr(mesh, "is_editmode", False) else len(buffer.vertices)
+    face_count = len(mesh.polygons) if not getattr(mesh, "is_editmode", False) else len(buffer.faces)
 
     return WorldMeshBuildResult(
         world_obj=obj,
         vertex_count=vertex_count,
         face_count=face_count,
-        cubes_count=cubes_count,
-        props_count=props_count,
-        fluids_count=fluids_count,
+        cubes_count=buffer.cubes_count,
+        props_count=buffer.props_count,
+        fluids_count=buffer.fluids_count,
     )
 
 
@@ -540,6 +648,7 @@ def build_single_section_mesh(
     """
     Constructs or updates the 3D polygon mesh for a single 16x16x16 chunk section.
     Efficiently mounts under root_obj, syncs material slots, and writes geometry.
+    Uses ultra-fast decoupled RawSectionGeometryBuffer computation and batch C ingestion.
     """
     baker = baker or get_shared_state_baker()
     mat_manager = mat_manager or get_shared_material_manager(world_obj=root_obj, atlas_params=None)
@@ -619,48 +728,25 @@ def build_single_section_mesh(
     # Keep section slot indices identical to the root material manager.
     sync_section_material_slots(sec_obj, mat_manager)
 
-    # Construct section BMesh (handles active Edit Mode or Object Mode)
-    is_edit = getattr(sec_mesh, "is_editmode", False)
-    if is_edit:
-        bm = bmesh.from_edit_mesh(sec_mesh)
-        bm.clear()
-    else:
-        bm = bmesh.new()
+    # 1. Pure Python geometry computation
+    buffer = generate_section_geometry_buffer(
+        voxel_items=list(sec_blocks.items()),
+        block_map=storage.block_map,
+        state_cache=state_cache,
+        origin_centered=origin_centered,
+        min_x=min_x, min_y=min_y, min_z=min_z,
+        half_x=half_x, half_z=half_z,
+        mat_manager=mat_manager,
+        baker=baker,
+        voxel_storage=storage,
+        weld_vertices=weld_vertices,
+    )
 
-    try:
-        uv_layer = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
-        color_layer = bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color")
-
-        generate_voxel_geometry(
-            bm=bm,
-            voxel_items=list(sec_blocks.items()),
-            block_map=storage.block_map,
-            state_cache=state_cache,
-            uv_layer=uv_layer,
-            color_layer=color_layer,
-            origin_centered=origin_centered,
-            min_x=min_x, min_y=min_y, min_z=min_z,
-            half_x=half_x, half_z=half_z,
-            mat_manager=mat_manager,
-            baker=baker,
-            voxel_storage=storage,
-        )
-
-        if weld_vertices and len(bm.verts) > 0:
-            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
-
-        if is_edit:
-            bmesh.update_edit_mesh(sec_mesh, loop_triangles=True, destructive=True)
-        else:
-            sec_mesh.clear_geometry()
-            bm.to_mesh(sec_mesh)
-            sec_mesh.update()
-    finally:
-        if not is_edit:
-            bm.free()
+    # 2. Ultra-fast batch C ingestion
+    apply_geometry_buffer_to_mesh(sec_mesh, buffer)
 
     # If after culling this section has 0 polygons, track in _known_empty_sections
-    poly_count = len(sec_mesh.polygons) if not is_edit else len(bm.faces)
+    poly_count = len(sec_mesh.polygons) if not getattr(sec_mesh, "is_editmode", False) else len(buffer.faces)
     if poly_count == 0:
         storage._known_empty_sections.add((sx, sy, sz))
     else:
