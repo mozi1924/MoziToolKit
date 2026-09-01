@@ -18,7 +18,7 @@ class BlockTypeEnum:
     FLUID = 6         # Water and Lava surface planes
     AIR = 7           # Air (skipped)
 
-from ..materials.constants import (
+from ...materials.constants import (
     AIR_BLOCKS,
     FLUID_BLOCKS,
     TRANSPARENT_BLOCKS,
@@ -103,7 +103,7 @@ DYE_COLORS_RGB: dict[str, tuple[float, float, float, float]] = {
     "black": (0.114, 0.114, 0.129, 1.0),
 }
 
-from ..mc_baker.state_baker import EMISSIVE_BLOCKS, is_block_emissive
+from ...mc_baker.state_baker import EMISSIVE_BLOCKS, is_block_emissive
 
 
 class ParsedBlock:

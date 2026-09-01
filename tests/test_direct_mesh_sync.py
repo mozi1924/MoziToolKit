@@ -687,7 +687,7 @@ class TestDirectMeshSync(unittest.TestCase):
 
     def test_material_category_lazy_loading(self):
         """Verify that UI/items chunks are NOT loaded into scene by default, and loaded on-demand when needed."""
-        from utils.live_sync.material_manager import LiveSyncMaterialManager
+        from utils.live_sync.material import LiveSyncMaterialManager
         from utils.live_sync.classifier import parse_and_classify
 
         mapping = {
@@ -751,7 +751,7 @@ class TestDirectMeshSync(unittest.TestCase):
 
     def test_animated_materials_frame_0_addressing(self):
         """Verify that animated textures (water, lava, sea_lantern, fire, etc.) address Frame 0 in animation chunk."""
-        from utils.live_sync.material_manager import LiveSyncMaterialManager
+        from utils.live_sync.material import LiveSyncMaterialManager
         from utils.live_sync.classifier import parse_and_classify
 
         mapping = {
@@ -1218,9 +1218,9 @@ class TestDirectMeshSync(unittest.TestCase):
 
     def test_chunk_to_chunk_streaming_order_reconciliation(self):
         """Verify that when Section 0 is streamed first and Section 1 later, Section 0 boundary faces are properly reconciled."""
-        from utils.live_sync.session_manager import _session_manager, _pump_main_thread_events
-        from utils.live_sync.mesh_builder import get_or_create_world_root
-        from utils.live_sync import session_manager
+        from utils.live_sync.session.session_manager import _session_manager, _pump_main_thread_events
+        from utils.live_sync.meshing import get_or_create_world_root
+        from utils.live_sync.session import session_manager
 
         root = get_or_create_world_root(bpy.context, root_name="Stream_Boundary_World")
         session = _session_manager.get_or_create_session("Stream_Boundary_World")

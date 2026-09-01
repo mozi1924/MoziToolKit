@@ -19,7 +19,7 @@ import bpy
 import bmesh
 from mathutils import Vector
 
-from .classifier import (
+from ..classifier import (
     parse_and_classify,
     BlockTypeEnum,
     ParsedBlock,
@@ -27,7 +27,7 @@ from .classifier import (
     AIR_BLOCKS,
     TRANSPARENT_BLOCKS,
 )
-from .constants import (
+from ..constants import (
     DIR_TO_INDEX,
     UV_MAP,
     MTK_UV_ROTATION,
@@ -43,9 +43,9 @@ from .constants import (
     MTK_FACE_DIR,
     MTK_SOURCE_TEXTURE_KEY,
 )
-from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
-from ..culling import get_shared_face_culler
-from ..mesh.fluid_uv import get_fluid_top_uvs, get_fluid_side_uvs
+from ..material.manager import LiveSyncMaterialManager, ResolvedFaceTexture
+from ...culling import get_shared_face_culler
+from ...mesh.fluid_uv import get_fluid_top_uvs, get_fluid_side_uvs
 
 
 

@@ -27,10 +27,10 @@ import bmesh
 from mathutils import Vector
 
 from utils.live_sync.storage import VoxelStorage
-from utils.live_sync.material_manager import LiveSyncMaterialManager
-from utils.live_sync.mesh_builder import build_world_mesh, apply_block_delta_to_world
+from utils.live_sync.material import LiveSyncMaterialManager
+from utils.live_sync.meshing import build_world_mesh, apply_block_delta_to_world
 from utils.live_sync.classifier import parse_and_classify
-from utils.live_sync.fluid_mesher import (
+from utils.live_sync.meshing.fluid import (
     get_fluid_base_height,
     sample_fluid_height,
     calculate_corner_average,

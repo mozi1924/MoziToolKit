@@ -9,7 +9,7 @@ import logging
 from typing import Any, Dict, List, Optional, Set, Tuple
 import bpy
 
-from ...utils.live_sync.client import SyncClientThread
+from ...utils.live_sync.protocol import SyncClientThread
 from ...utils.live_sync.constants import (
     DEFAULT_WORLD_OBJECT_NAME,
 )
@@ -17,7 +17,7 @@ from ...utils.mc_baker import (
     refresh_shared_baker_sources,
     clear_shared_baker_cache,
 )
-from ...utils.live_sync.mesh_builder import (
+from ...utils.live_sync.meshing import (
     sync_world_mesh,
     build_world_mesh,
     apply_block_delta_to_world,
@@ -32,7 +32,7 @@ from ...utils.live_sync.mesh_builder import (
     is_yefira_object,
 )
 from ...utils.live_sync.storage import VoxelStorage, voxel_storage, EMPTY_SECTION_CRC
-from ...utils.live_sync.session_manager import (
+from ...utils.live_sync.session import (
     SyncSession,
     SyncSessionManager,
     get_active_session_manager,

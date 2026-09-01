@@ -1,7 +1,7 @@
 """
 MoziToolKit Live Sync Module.
-Provides real-time Minecraft WebSocket communication, VoxelStorage, Block Classification,
-and Direct Mesh Generation.
+Modular subsystem package providing real-time Minecraft WebSocket communication,
+VoxelStorage, Block Classification, Material Management, and Direct Mesh Generation.
 """
 
 from .constants import (
@@ -43,24 +43,27 @@ from .classifier import (
     atlas_lookup_keys,
     classify_block_type_and_orientation,
     parse_and_classify,
-)
-from .client import SyncClientThread
-from .material_manager import (
-    LiveSyncMaterialManager,
-    ResolvedFaceTexture,
-)
-from .hot_states import (
     HOT_PREWARM_STATES,
     generate_hot_prewarm_states,
 )
-from .mesh_builder import (
+from .protocol import SyncClientThread
+from .material import (
+    LiveSyncMaterialManager,
+    ResolvedFaceTexture,
+    get_shared_material_manager,
+    sync_section_material_slots,
+    rebind_mesh_material_indices,
+    validate_and_sync_scene_materials,
+    clear_shared_material_manager,
+)
+from .meshing import (
     WorldMeshBuildResult,
     CachedStateMeta,
     apply_block_delta_to_world,
     build_world_mesh,
+    build_single_section_mesh,
     clear_mesh_builder_caches,
     get_cached_state_meta,
-    get_shared_material_manager,
     preload_sync_world_data,
     sync_world_mesh,
     update_blocks_in_mesh,
@@ -71,13 +74,29 @@ from .mesh_builder import (
     get_or_create_world_root,
     find_root_section_children,
     sync_child_section_names,
+    prune_out_of_bounds_section_objects,
+    clear_all_section_objects,
+    generate_fluid_buffer_faces,
+    generate_fluid_mesh_faces,
+    generate_section_geometry_buffer,
+    generate_single_block_faces,
+    generate_voxel_geometry,
+    is_fluid_block,
+    mc_local_to_blender,
 )
-from .session_manager import (
+from .session import (
     SyncSession,
     SyncSessionManager,
     get_active_session_manager,
+    reset_active_session_manager,
+    trigger_mesh_sync,
+    clear_sync_caches,
 )
-from .storage import VoxelStorage, block_key, voxel_storage
+from .storage import (
+    VoxelStorage,
+    block_key,
+    voxel_storage,
+)
 
 __all__ = (
     "CONTRACT_VERSION",
@@ -116,16 +135,23 @@ __all__ = (
     "atlas_lookup_keys",
     "classify_block_type_and_orientation",
     "parse_and_classify",
+    "HOT_PREWARM_STATES",
+    "generate_hot_prewarm_states",
     "SyncClientThread",
     "LiveSyncMaterialManager",
     "ResolvedFaceTexture",
-    "HOT_PREWARM_STATES",
-    "generate_hot_prewarm_states",
+    "get_shared_material_manager",
+    "sync_section_material_slots",
+    "rebind_mesh_material_indices",
+    "validate_and_sync_scene_materials",
+    "clear_shared_material_manager",
     "WorldMeshBuildResult",
+    "CachedStateMeta",
     "apply_block_delta_to_world",
     "build_world_mesh",
+    "build_single_section_mesh",
     "clear_mesh_builder_caches",
-    "get_shared_material_manager",
+    "get_cached_state_meta",
     "preload_sync_world_data",
     "sync_world_mesh",
     "update_blocks_in_mesh",
@@ -136,10 +162,22 @@ __all__ = (
     "get_or_create_world_root",
     "find_root_section_children",
     "sync_child_section_names",
-    "VoxelStorage",
-    "block_key",
-    "voxel_storage",
+    "prune_out_of_bounds_section_objects",
+    "clear_all_section_objects",
+    "generate_fluid_buffer_faces",
+    "generate_fluid_mesh_faces",
+    "generate_section_geometry_buffer",
+    "generate_single_block_faces",
+    "generate_voxel_geometry",
+    "is_fluid_block",
+    "mc_local_to_blender",
     "SyncSession",
     "SyncSessionManager",
     "get_active_session_manager",
+    "reset_active_session_manager",
+    "trigger_mesh_sync",
+    "clear_sync_caches",
+    "VoxelStorage",
+    "block_key",
+    "voxel_storage",
 )

@@ -9,7 +9,7 @@ import logging
 from typing import Any, Dict, Optional, Set
 import bpy
 
-from .classifier import (
+from ..classifier import (
     parse_and_classify,
     BlockTypeEnum,
     ParsedBlock,
@@ -17,28 +17,28 @@ from .classifier import (
     TRANSPARENT_BLOCKS,
     FLUID_BLOCKS,
 )
-from .constants import (
+from ..constants import (
     DIR_TO_INDEX,
     FACES,
 )
-from ..mc_baker import (
+from ...mc_baker import (
     StateBaker,
     BakedModel,
     BakedFace,
     get_shared_state_baker,
     refresh_shared_baker_sources,
 )
-from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
-from ..culling import (
+from ..material.manager import LiveSyncMaterialManager, ResolvedFaceTexture
+from ...culling import (
     get_shared_face_culler,
     BlockCullMeta,
 )
-from .material_binding import (
+from ..material.binding import (
     get_shared_material_manager,
     clear_shared_material_manager,
     _GLOBAL_MAT_MANAGER,
 )
-from .hot_states import HOT_PREWARM_STATES
+from ..classifier.hot_states import HOT_PREWARM_STATES
 
 logger = logging.getLogger("MoziToolKit.MeshCache")
 
@@ -268,7 +268,7 @@ def clear_mesh_builder_caches() -> None:
     clear_shared_material_manager()
     _GLOBAL_STATE_META_CACHE.clear()
     try:
-        from ..culling import get_shared_face_culler
+        from ...culling import get_shared_face_culler
         get_shared_face_culler().clear_cache()
     except Exception:
         pass

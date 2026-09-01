@@ -22,7 +22,7 @@ import bpy
 from tests._bootstrap import bootstrap_environment  # noqa: E402
 bootstrap_environment()
 
-from utils.live_sync.client import SyncClientThread
+from utils.live_sync.protocol import SyncClientThread
 from utils.live_sync.constants import (
     PROTOCOL_MAGIC,
     PROTOCOL_VERSION,
@@ -516,7 +516,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
     def test_material_reuse_convention(self):
         """Test that LiveSyncMaterialManager strictly reuses existing scene materials and avoids duplicate '.001' proliferation."""
-        from utils.live_sync.material_manager import LiveSyncMaterialManager, PROP_ATLAS_CHUNK_ID, PROP_PACK_HASH
+        from utils.live_sync.material import LiveSyncMaterialManager, PROP_ATLAS_CHUNK_ID, PROP_PACK_HASH
 
         for m in list(bpy.data.materials):
             if m.name.startswith("MC_Atlas_Chunk_"):
@@ -589,7 +589,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
     def test_material_manager_standalone_slot_mapping(self):
         """Verify LiveSyncMaterialManager initializes non-empty slots and assigns proper slot indices to entity blocks."""
-        from utils.live_sync.material_manager import LiveSyncMaterialManager
+        from utils.live_sync.material import LiveSyncMaterialManager
         from utils.live_sync.classifier import parse_and_classify
         for cid in [0, 1, 17]:
             m = bpy.data.materials.new(name=f"MC_Atlas_Chunk_{cid}")
@@ -765,7 +765,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         from operators.sync.properties import _on_blend_file_pre_load, _on_blend_file_loaded
         import operators.sync.op_sync_connect as sync_op
         from utils.live_sync.storage import voxel_storage
-        from utils.live_sync.mesh_cache import _GLOBAL_STATE_META_CACHE
+        from utils.live_sync.meshing import _GLOBAL_STATE_META_CACHE
 
         # 1. Simulate active connection state & preloaded cache
         mock_client = SyncClientThread("ws://dummy", lambda *a: None, lambda *a: None, lambda *a: None, lambda *a: None)
@@ -937,7 +937,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
     def test_validate_and_sync_scene_materials_hash_upgrade(self):
         """Verify validate_and_sync_scene_materials detects outdated material hash in scene and upgrades it."""
-        from utils.live_sync.material_binding import validate_and_sync_scene_materials, get_shared_material_manager, clear_shared_material_manager
+        from utils.live_sync.material import validate_and_sync_scene_materials, get_shared_material_manager, clear_shared_material_manager
         
         mesh = bpy.data.meshes.new("Test_Mat_Sync_Mesh")
         obj = bpy.data.objects.new("Test_Mat_Sync_Obj", mesh)
@@ -1051,7 +1051,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
     def test_stream_begin_and_end_packet_handling(self):
         """Verify STREAM_BEGIN and STREAM_END packets trigger callbacks and drive session state."""
         from utils.live_sync.constants import PacketType
-        from utils.live_sync.client import SyncClientThread
+        from utils.live_sync.protocol import SyncClientThread
         import struct
 
         begin_events = []

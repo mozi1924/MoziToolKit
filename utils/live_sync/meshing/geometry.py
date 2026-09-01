@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import bmesh
 from mathutils import Vector
 
-from .constants import (
+from ..constants import (
     DIR_TO_INDEX,
     MC_DIR_OFFSETS,
     MTK_BLOCK_X,
@@ -27,7 +27,7 @@ from .constants import (
     MTK_SOURCE_TEXTURE_KEY,
     UV_MAP,
 )
-from ..culling import (
+from ...culling import (
     get_shared_face_culler,
     CUBE_FACE_MC_VERTICES,
     CUBE_FACE_CANONICAL_UVS,
@@ -37,19 +37,19 @@ from ..culling import (
     extract_quad_face_occlusion_rect,
 )
 
-from ..mc_baker import StateBaker
-from .material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
-from .fluid_mesher import generate_fluid_mesh_faces, generate_fluid_buffer_faces
-from .mesh_cache import (
+from ...mc_baker import StateBaker
+from ..material.manager import LiveSyncMaterialManager, ResolvedFaceTexture
+from .fluid import generate_fluid_mesh_faces, generate_fluid_buffer_faces
+from .cache import (
     CachedStateMeta,
     get_cached_state_meta,
     _GLOBAL_STATE_META_CACHE,
 )
-from .material_binding import (
+from ..material.binding import (
     get_shared_material_manager,
     _GLOBAL_MAT_MANAGER,
 )
-from ..materials.biome.biome import KNOWN_OVERLAY_PAIRS
+from ...materials.biome.biome import KNOWN_OVERLAY_PAIRS
 
 OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
 

@@ -23,7 +23,7 @@ from utils.materials.atlas.addressing import (
     ResolvedAtlasAddress,
 )
 from utils.live_sync.classifier import parse_and_classify
-from utils.live_sync.material_manager import LiveSyncMaterialManager, ResolvedFaceTexture
+from utils.live_sync.material import LiveSyncMaterialManager, ResolvedFaceTexture
 from utils.mc_baker.model_parser import ModelParser
 from utils.mc_baker.atlas_bridge import AtlasBridge, ResolvedAtlasFace
 from utils.mc_baker.types import BakedFace, BakedModel
@@ -484,7 +484,7 @@ class TestCustomModelBakerConvention(unittest.TestCase):
         self.assertAlmostEqual(v1, 1.0, places=5)
 
         # 2. Dynamic face resolution for an unknown block
-        from MoziToolKit.utils.live_sync.classifier import parse_and_classify
+        from utils.live_sync.classifier import parse_and_classify
         parsed = parse_and_classify("unknown_mod:alien_crystal")
         res = resolver.resolve_dynamic_face(parsed, "north", 0)
         self.assertEqual(res.chunk_id, 0)

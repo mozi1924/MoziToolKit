@@ -23,7 +23,7 @@ import bpy
 from MoziToolKit.pipeline.presets import run_preset_pipeline
 from MoziToolKit.utils.materials.pack import ResourcePackStack
 from MoziToolKit.utils.system.menu_config import save_pack_stack_config
-from MoziToolKit.utils.live_sync.material_manager import LiveSyncMaterialManager
+from utils.live_sync.material import LiveSyncMaterialManager
 
 
 class TestUnbakedMaterialGuard(unittest.TestCase):

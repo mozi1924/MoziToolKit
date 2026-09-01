@@ -25,7 +25,7 @@ from utils.materials.yefira.atlas_integration import (
     extract_atlas_parameters,
     find_all_atlas_chunk_materials,
 )
-from utils.live_sync.material_manager import LiveSyncMaterialManager
+from utils.live_sync.material import LiveSyncMaterialManager
 
 
 class TestMaterialHashRebuildAndDedup(unittest.TestCase):

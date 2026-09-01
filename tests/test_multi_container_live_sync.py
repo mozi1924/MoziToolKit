@@ -17,7 +17,7 @@ import bpy
 from tests._bootstrap import bootstrap_environment
 bootstrap_environment()
 
-from utils.live_sync.mesh_builder import (
+from utils.live_sync.meshing import (
     is_yefira_root_object,
     is_yefira_child_section,
     is_yefira_object,

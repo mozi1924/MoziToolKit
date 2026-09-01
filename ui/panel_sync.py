@@ -52,14 +52,14 @@ def _draw_live_sync_content(layout, context):
         return
 
     try:
-        from ..utils.live_sync.mesh_builder import (
+        from ..utils.live_sync.meshing import (
             resolve_world_root_object,
             is_yefira_root_object,
             is_yefira_child_section,
             find_root_section_children,
         )
     except (ImportError, ValueError):
-        from utils.live_sync.mesh_builder import (
+        from utils.live_sync.meshing import (
             resolve_world_root_object,
             is_yefira_root_object,
             is_yefira_child_section,

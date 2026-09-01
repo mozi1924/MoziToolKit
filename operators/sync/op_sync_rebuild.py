@@ -65,9 +65,9 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
 
         existing_world = target_obj or get_target_world_object(context)
         try:
-            from ...utils.live_sync.material_binding import validate_and_sync_scene_materials
+            from ...utils.live_sync.material import validate_and_sync_scene_materials
         except (ImportError, ValueError):
-            from utils.live_sync.material_binding import validate_and_sync_scene_materials
+            from utils.live_sync.material import validate_and_sync_scene_materials
         validate_and_sync_scene_materials(existing_world, pack_stack=pack_stack)
 
         mat = find_bound_atlas_material(existing_world) if existing_world else None
@@ -85,7 +85,7 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
         is_interactive = not getattr(bpy.app, "background", False) and getattr(context, "window", None) is not None
         if session and is_interactive:
             import time
-            from ...utils.live_sync.session_manager import start_main_thread_pump
+            from ...utils.live_sync.session import start_main_thread_pump
             from ...pipeline.progress import ProgressBar
             try:
                 from ...operators.sync.op_sync_connect import start_stream_modal_lock
