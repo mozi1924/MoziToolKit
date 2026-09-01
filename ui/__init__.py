@@ -26,6 +26,7 @@ from .panel_sync import (
     MOZI_UL_sync_palette_list,
     MOZI_UL_sync_delta_list,
     MOZI_PT_live_sync,
+    MOZI_PT_live_sync_data,
 )
 from .menu_mesh import (
     MOZI_MT_mesh_menu,
@@ -92,6 +93,7 @@ classes = (
     # Panels
     MOZI_PT_auto_extrude_repair_settings,
     MOZI_PT_live_sync,
+    MOZI_PT_live_sync_data,
 )
 
 

@@ -10,14 +10,20 @@ import unittest
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+PARENT_DIR = _REPO_ROOT.parent
+if str(PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(PARENT_DIR))
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from tests._bootstrap import bootstrap_environment  # noqa: E402
+bootstrap_environment()
+
 import bpy
-from pipeline.presets import run_preset_pipeline
-from utils.materials.pack import ResourcePackStack
-from utils.system.menu_config import save_pack_stack_config
-from utils.live_sync.material_manager import LiveSyncMaterialManager
+from MoziToolKit.pipeline.presets import run_preset_pipeline
+from MoziToolKit.utils.materials.pack import ResourcePackStack
+from MoziToolKit.utils.system.menu_config import save_pack_stack_config
+from MoziToolKit.utils.live_sync.material_manager import LiveSyncMaterialManager
 
 
 class TestUnbakedMaterialGuard(unittest.TestCase):
@@ -81,23 +87,30 @@ class TestUnbakedMaterialGuard(unittest.TestCase):
             self.assertFalse(res.is_success)
             self.assertIn("Precompile / Rebuild Stack Atlas Cache", res.message)
 
-    def test_live_sync_operator_fails_when_unbaked(self):
-        """MOZI_OT_sync_rebuild_world must fail when unbaked."""
+    def test_live_sync_operator_succeeds_without_precompiled_materials(self):
+        """MOZI_OT_sync_rebuild_world should not fail due to unbaked materials, allowing untextured sync."""
         import tempfile
         from PIL import Image
+        from utils.materials import is_material_cache_ready
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             p_dir = Path(tmp_dir)
             tex_dir = p_dir / "assets/minecraft/textures/block"
             tex_dir.mkdir(parents=True, exist_ok=True)
-            from utils.system.menu_config import save_pack_stack_config
-            from utils.materials.pack import clear_resource_pack_cache
+            from MoziToolKit.utils.system.menu_config import save_pack_stack_config
+            from MoziToolKit.utils.materials.pack import clear_resource_pack_cache
+            from MoziToolKit.utils.materials import is_material_cache_ready
             save_pack_stack_config([{"name": "TestPack", "path": str(p_dir), "enabled": True, "pack_type": "RESOURCE_PACK"}])
             clear_resource_pack_cache()
 
-            with self.assertRaises(RuntimeError) as ctx:
+            # Material cache is not ready
+            self.assertFalse(is_material_cache_ready(force_refresh=True))
+
+            # sync_rebuild_world should not raise unbaked error
+            try:
                 bpy.ops.mozi.sync_rebuild_world()
-            self.assertIn("Precompile / Rebuild Stack Atlas Cache", str(ctx.exception))
+            except RuntimeError as e:
+                self.assertNotIn("Precompile / Rebuild Stack Atlas Cache", str(e))
 
     def test_live_sync_material_manager_never_creates_dummy_placeholder_materials(self):
         """LiveSyncMaterialManager must not synthesize placeholder Principled BSDF materials when unbaked."""
@@ -114,4 +127,4 @@ class TestUnbakedMaterialGuard(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

@@ -73,7 +73,13 @@ def load_pack_stack_config() -> List[Dict[str, Any]]:
 
 def save_pack_stack_config(pack_entries: List[Union[Dict[str, Any], PackEntry]]) -> bool:
     """Save Resource Pack and Base JAR stack list with 3-tier normalization."""
-    return get_config_manager().set_resource_packs(pack_entries, save=True)
+    res = get_config_manager().set_resource_packs(pack_entries, save=True)
+    try:
+        from ..materials.pack import invalidate_material_cache_ready
+        invalidate_material_cache_ready()
+    except Exception:
+        pass
+    return res
 
 
 def get_enabled_pack_entries() -> List[Dict[str, Any]]:

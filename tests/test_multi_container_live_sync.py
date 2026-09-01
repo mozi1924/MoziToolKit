@@ -198,6 +198,30 @@ class TestMultiContainerLiveSync(unittest.TestCase):
         self.assertEqual(sec_1.parent, root_1)
         self.assertEqual(sec_2.parent, root_2)
 
+    def test_live_sync_panel_context_tabs(self):
+        """Verify MOZI_PT_live_sync_data polls only for Empty objects and MOZI_PT_live_sync for Mesh objects."""
+        from ui.panel_sync import MOZI_PT_live_sync, MOZI_PT_live_sync_data
+
+        root_empty = bpy.data.objects.new("Tab_Container", None)
+        root_empty["mtk:is_yefira_world"] = True
+        bpy.context.scene.collection.objects.link(root_empty)
+
+        sec_mesh = bpy.data.meshes.new("Mesh_Tab_Section")
+        sec_obj = bpy.data.objects.new("Tab_Section_0_0_0", sec_mesh)
+        sec_obj["mtk:section_pos"] = (0, 0, 0)
+        sec_obj.parent = root_empty
+        bpy.context.scene.collection.objects.link(sec_obj)
+
+        # Context with Empty active
+        bpy.context.view_layer.objects.active = root_empty
+        self.assertTrue(MOZI_PT_live_sync_data.poll(bpy.context))
+        self.assertFalse(MOZI_PT_live_sync.poll(bpy.context))
+
+        # Context with Mesh child section active
+        bpy.context.view_layer.objects.active = sec_obj
+        self.assertFalse(MOZI_PT_live_sync_data.poll(bpy.context))
+        self.assertTrue(MOZI_PT_live_sync.poll(bpy.context))
+
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(argv=[sys.argv[0]])

@@ -329,5 +329,9 @@ translations_dict = {
         ("*", "Network Access Disabled"): "网络访问已被禁用",
         ("*", "Enable in Preferences > System > Network to use Live Sync."): "请在“偏好设置 > 系统 > 网络”中启用网络连接以使用实时同步。",
         ("*", "Open System Preferences"): "打开系统偏好设置",
+        ("*", "Materials Not Precompiled"): "材质未预编译",
+        ("*", "Atlas textures missing. Sync will create untextured meshes."): "缺少 Atlas 材质贴图，同步将生成无材质网格。",
+        ("*", "Precompile Materials"): "预编译材质",
+        ("*", "Configure Packs"): "配置材质包",
     }
 }
