@@ -74,6 +74,12 @@ class MoziSyncSceneProperties(bpy.types.PropertyGroup):
     sync_verified: BoolProperty(name="Sync Verified", default=False, options={'SKIP_SAVE'})
     validation_info: StringProperty(name="Validation Status", default="Pending validation...", options={'SKIP_SAVE'})
     last_update_info: StringProperty(name="Last Update", default="No updates received yet.", options={'SKIP_SAVE'})
+    is_locked: BoolProperty(
+        name="Is Locked",
+        description="Whether full sync streaming is actively building in the scene",
+        default=False,
+        options={'SKIP_SAVE'},
+    )
 
     # Lists
     palette_list: CollectionProperty(type=MoziSyncPaletteItem)

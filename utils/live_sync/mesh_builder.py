@@ -470,6 +470,143 @@ def build_world_mesh(
     )
 
 
+def build_single_section_mesh(
+    context: bpy.types.Context,
+    storage: VoxelStorage,
+    sx: int, sy: int, sz: int,
+    root_obj: bpy.types.Object,
+    mat_manager: Optional[LiveSyncMaterialManager] = None,
+    baker: Optional[Any] = None,
+    state_cache: Optional[dict[str, CachedStateMeta]] = None,
+    existing_sections: Optional[dict[tuple[int, int, int], bpy.types.Object]] = None,
+    origin_centered: bool = True,
+    weld_vertices: bool = True,
+) -> Optional[bpy.types.Object]:
+    """
+    Constructs or updates the 3D polygon mesh for a single 16x16x16 chunk section.
+    Efficiently mounts under root_obj, syncs material slots, and writes geometry.
+    """
+    baker = baker or get_shared_state_baker()
+    mat_manager = mat_manager or get_shared_material_manager(world_obj=root_obj, atlas_params=None)
+    root_prefix = root_obj.name
+    min_x, min_y, min_z = storage.min_x, storage.min_y, storage.min_z
+    size_x, size_y, size_z = storage.size_x, storage.size_y, storage.size_z
+    half_x = size_x / 2.0 - 0.5
+    half_z = size_z / 2.0 - 0.5
+
+    sec_blocks = storage.get_section_blocks(sx, sy, sz)
+    sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
+    sec_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
+
+    if existing_sections is None:
+        existing_sections = find_root_section_children(root_obj)
+
+    # If section is empty or only air, remove object if exists
+    if not sec_blocks:
+        storage._known_empty_sections.add((sx, sy, sz))
+        sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
+        if sec_obj:
+            _safe_remove_section_object(sec_obj, sec_obj.data)
+            existing_sections.pop((sx, sy, sz), None)
+        return None
+
+    if state_cache is None:
+        state_cache = {}
+
+    for s in sec_blocks.values():
+        if s not in state_cache:
+            state_cache[s] = get_cached_state_meta(s, mat_manager, baker)
+
+    if all(state_cache.get(s) and state_cache[s].is_air for s in sec_blocks.values()):
+        storage._known_empty_sections.add((sx, sy, sz))
+        sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
+        if sec_obj:
+            _safe_remove_section_object(sec_obj, sec_obj.data)
+            existing_sections.pop((sx, sy, sz), None)
+        return None
+
+    if (sx, sy, sz) in existing_sections:
+        sec_obj = existing_sections[(sx, sy, sz)]
+        sec_mesh = sec_obj.data
+    elif sec_obj_name in bpy.data.objects:
+        sec_obj = bpy.data.objects[sec_obj_name]
+        sec_mesh = sec_obj.data
+        existing_sections[(sx, sy, sz)] = sec_obj
+    else:
+        sec_mesh = bpy.data.meshes.new(sec_mesh_name)
+        sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
+        sec_obj.location = (0.0, 0.0, 0.0)
+        sec_obj.parent = root_obj
+        col = getattr(context, "collection", None) if context else None
+        if col is None and hasattr(bpy, "context") and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
+            col = bpy.context.scene.collection
+        if col:
+            col.objects.link(sec_obj)
+        existing_sections[(sx, sy, sz)] = sec_obj
+
+    sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
+    sec_obj["mtk:section_pos"] = [sx, sy, sz]
+
+    # Keep section slot indices identical to the root material manager.
+    sync_section_material_slots(sec_obj, mat_manager)
+
+    # Construct section BMesh (handles active Edit Mode or Object Mode)
+    is_edit = getattr(sec_mesh, "is_editmode", False)
+    if is_edit:
+        bm = bmesh.from_edit_mesh(sec_mesh)
+        bm.clear()
+    else:
+        bm = bmesh.new()
+
+    try:
+        uv_layer = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
+        color_layer = bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color")
+
+        generate_voxel_geometry(
+            bm=bm,
+            voxel_items=list(sec_blocks.items()),
+            block_map=storage.block_map,
+            state_cache=state_cache,
+            uv_layer=uv_layer,
+            color_layer=color_layer,
+            origin_centered=origin_centered,
+            min_x=min_x, min_y=min_y, min_z=min_z,
+            half_x=half_x, half_z=half_z,
+            mat_manager=mat_manager,
+            baker=baker,
+            voxel_storage=storage,
+        )
+
+        if weld_vertices and len(bm.verts) > 0:
+            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+
+        if is_edit:
+            bmesh.update_edit_mesh(sec_mesh, loop_triangles=True, destructive=True)
+        else:
+            sec_mesh.clear_geometry()
+            bm.to_mesh(sec_mesh)
+            sec_mesh.update()
+    finally:
+        if not is_edit:
+            bm.free()
+
+    # If after culling this section has 0 polygons, track in _known_empty_sections
+    poly_count = len(sec_mesh.polygons) if not is_edit else len(bm.faces)
+    if poly_count == 0:
+        storage._known_empty_sections.add((sx, sy, sz))
+    else:
+        storage._known_empty_sections.discard((sx, sy, sz))
+
+    slots_changed = sync_section_material_slots(sec_obj, mat_manager)
+    if slots_changed:
+        rebind_mesh_material_indices(sec_mesh, mat_manager)
+
+    if not is_edit:
+        sec_mesh.update()
+
+    return sec_obj
+
+
 def sync_world_mesh(
     context: bpy.types.Context,
     storage: VoxelStorage,
@@ -531,93 +668,18 @@ def sync_world_mesh(
 
     # 5. Build/Update target sections
     for (sx, sy, sz) in target_sections:
-        sec_blocks = storage.get_section_blocks(sx, sy, sz)
-        sec_obj_name = get_section_object_name(root_prefix, sx, sy, sz)
-        sec_mesh_name = get_section_mesh_name(root_prefix, sx, sy, sz)
-
-        # If section is empty or only air, remove
-        if not sec_blocks or all(state_cache.get(s) and state_cache[s].is_air for s in sec_blocks.values()):
-            storage._known_empty_sections.add((sx, sy, sz))
-            sec_obj = existing_sections.get((sx, sy, sz)) or bpy.data.objects.get(sec_obj_name)
-            if sec_obj:
-                _safe_remove_section_object(sec_obj, sec_obj.data)
-                existing_sections.pop((sx, sy, sz), None)
-            continue
-
-        if (sx, sy, sz) in existing_sections:
-            sec_obj = existing_sections[(sx, sy, sz)]
-            sec_mesh = sec_obj.data
-        elif sec_obj_name in bpy.data.objects:
-            sec_obj = bpy.data.objects[sec_obj_name]
-            sec_mesh = sec_obj.data
-            existing_sections[(sx, sy, sz)] = sec_obj
-        else:
-            sec_mesh = bpy.data.meshes.new(sec_mesh_name)
-            sec_obj = bpy.data.objects.new(sec_obj_name, sec_mesh)
-            sec_obj.location = (0.0, 0.0, 0.0)
-            sec_obj.parent = root_obj
-            context.collection.objects.link(sec_obj)
-            existing_sections[(sx, sy, sz)] = sec_obj
-
-        sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
-        sec_obj["mtk:section_pos"] = [sx, sy, sz]
-
-        # Keep section slot indices identical to the root material manager.
-        sync_section_material_slots(sec_obj, mat_manager)
-
-        # Construct section BMesh (handles active Edit Mode or Object Mode)
-        is_edit = getattr(sec_mesh, "is_editmode", False)
-        if is_edit:
-            bm = bmesh.from_edit_mesh(sec_mesh)
-            bm.clear()
-        else:
-            bm = bmesh.new()
-
-        try:
-            uv_layer = bm.loops.layers.uv.get("UVMap") or bm.loops.layers.uv.new("UVMap")
-            color_layer = bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color")
-
-            generate_voxel_geometry(
-                bm=bm,
-                voxel_items=list(sec_blocks.items()),
-                block_map=block_map,
-                state_cache=state_cache,
-                uv_layer=uv_layer,
-                color_layer=color_layer,
-                origin_centered=origin_centered,
-                min_x=min_x, min_y=min_y, min_z=min_z,
-                half_x=half_x, half_z=half_z,
-                mat_manager=mat_manager,
-                baker=baker,
-                voxel_storage=storage,
-            )
-
-            if weld_vertices and len(bm.verts) > 0:
-                bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
-
-            if is_edit:
-                bmesh.update_edit_mesh(sec_mesh, loop_triangles=True, destructive=True)
-            else:
-                sec_mesh.clear_geometry()
-                bm.to_mesh(sec_mesh)
-                sec_mesh.update()
-        finally:
-            if not is_edit:
-                bm.free()
-
-        # If after culling this section has 0 polygons, track in _known_empty_sections
-        poly_count = len(sec_mesh.polygons) if not is_edit else len(bm.faces)
-        if poly_count == 0:
-            storage._known_empty_sections.add((sx, sy, sz))
-        else:
-            storage._known_empty_sections.discard((sx, sy, sz))
-
-        # Face resolution may have loaded an additional chunk while building.
-        sync_section_material_slots(sec_obj, mat_manager)
-        rebind_mesh_material_indices(sec_mesh, mat_manager)
-
-        if not is_edit:
-            sec_mesh.update()
+        build_single_section_mesh(
+            context=context,
+            storage=storage,
+            sx=sx, sy=sy, sz=sz,
+            root_obj=root_obj,
+            mat_manager=mat_manager,
+            baker=baker,
+            state_cache=state_cache,
+            existing_sections=existing_sections,
+            origin_centered=origin_centered,
+            weld_vertices=weld_vertices,
+        )
 
     # Clear storage dirty set
     storage.clear_dirty_sections()
