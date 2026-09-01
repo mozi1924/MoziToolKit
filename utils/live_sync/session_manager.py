@@ -647,6 +647,8 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         session.stream_received_sections = 0
         session.stream_total_sections = 0
         session._reconciled_pass = False
+        session._stream_state_cache = None
+        session._existing_sections_cache = None
         if was_initial or ProgressBar.is_active():
             ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=0.8)
 
@@ -686,7 +688,8 @@ def _pump_main_thread_events() -> Optional[float]:
             if start_stream_modal_lock:
                 start_stream_modal_lock(session.target_object_name)
 
-        max_batch = 8 if session.stream_section_queue.qsize() > 16 else (4 if session.stream_section_queue.qsize() > 4 else 2)
+        t_drain_start = time.perf_counter()
+        max_batch = 32
         while not session.stream_section_queue.empty() and sections_drained < max_batch:
             try:
                 item = session.stream_section_queue.get_nowait()
@@ -701,9 +704,13 @@ def _pump_main_thread_events() -> Optional[float]:
                     from .material_binding import get_shared_material_manager
                     mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
                     baker = get_shared_state_baker()
-                    state_cache = {}
-                    from .mesh_builder import find_root_section_children
-                    existing_sections = find_root_section_children(target_obj)
+                    if not hasattr(session, "_stream_state_cache") or session._stream_state_cache is None:
+                        session._stream_state_cache = {}
+                    state_cache = session._stream_state_cache
+                    if not hasattr(session, "_existing_sections_cache") or session._existing_sections_cache is None:
+                        from .mesh_builder import find_root_section_children
+                        session._existing_sections_cache = find_root_section_children(target_obj)
+                    existing_sections = session._existing_sections_cache
 
                 from .mesh_builder import build_single_section_mesh
                 build_single_section_mesh(
@@ -721,6 +728,10 @@ def _pump_main_thread_events() -> Optional[float]:
 
                 sections_drained += 1
                 has_active_work = True
+
+                # Yield to OS if we spent more than 15ms in this frame to keep UI butter smooth
+                if (time.perf_counter() - t_drain_start) > 0.015:
+                    break
             except queue.Empty:
                 break
 
