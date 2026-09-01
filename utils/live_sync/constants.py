@@ -85,6 +85,8 @@ class PacketType:
     SECTION_MANIFEST: Final = 0x05
     SECTION_SNAPSHOT: Final = 0x06
     HANDSHAKE_INFO: Final = 0x07
+    STREAM_BEGIN: Final = 0x08
+    STREAM_END: Final = 0x09
     FULL_SYNC_REQUEST: Final = 0x80
     REPAIR_REQUEST: Final = 0x81
     SYNC_CONFIG: Final = 0x82
@@ -113,6 +115,12 @@ MANIFEST_ENTRY_SIZE: Final = 16
 
 SECTION_SNAPSHOT_HEADER_FORMAT: Final = "<iiiiiiiiiH"
 SECTION_SNAPSHOT_HEADER_SIZE: Final = 38
+
+STREAM_BEGIN_FORMAT: Final = "<IIH"
+STREAM_BEGIN_SIZE: Final = 10
+
+STREAM_END_FORMAT: Final = "<IIH"
+STREAM_END_SIZE: Final = 10
 
 CONTRACT_ATTRIBUTE_KEY: Final = "yefira:attribute_contract"
 

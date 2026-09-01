@@ -32,6 +32,10 @@ from .constants import (
     SECTION_SNAPSHOT_HEADER_SIZE,
     HANDSHAKE_INFO_HEADER_FORMAT,
     HANDSHAKE_INFO_HEADER_SIZE,
+    STREAM_BEGIN_FORMAT,
+    STREAM_BEGIN_SIZE,
+    STREAM_END_FORMAT,
+    STREAM_END_SIZE,
 )
 
 logger = logging.getLogger("MoziToolKit.LiveSync")
@@ -50,6 +54,8 @@ class SyncClientThread(threading.Thread):
         on_section_manifest: Optional[Callable[[int, List[Tuple[int, int, int, int]]], None]] = None,
         on_section_snapshot: Optional[Callable[[int, int, int, int, int, int, int, int, int, List[str], List[int]], None]] = None,
         on_handshake_info: Optional[Callable[[int, int, int, str, int], None]] = None,
+        on_stream_begin: Optional[Callable[[int, int, int], None]] = None,
+        on_stream_end: Optional[Callable[[int, int, int], None]] = None,
         auto_reconnect: bool = True,
         max_reconnect_attempts: int = 5,
         timeout: float = 10.0,
@@ -63,6 +69,8 @@ class SyncClientThread(threading.Thread):
         self.on_section_manifest = on_section_manifest
         self.on_section_snapshot = on_section_snapshot
         self.on_handshake_info = on_handshake_info
+        self.on_stream_begin = on_stream_begin
+        self.on_stream_end = on_stream_end
         self.auto_reconnect = auto_reconnect
         self.max_reconnect_attempts = max_reconnect_attempts
         self.timeout: float = max(1.0, float(timeout)) if timeout else 10.0
@@ -110,16 +118,16 @@ class SyncClientThread(threading.Thread):
             logger.info(f"Connecting to Minecraft Live Sync WebSocket at: {self.url}")
 
             try:
-                # Fast timeout (max 4.0s for open_timeout) so empty ports or dead connections fail rapidly
-                connect_timeout = min(self.timeout, 4.0)
+                # Use user timeout for connection handshake with sensible bounds
+                connect_timeout = max(10.0, float(self.timeout))
                 async with websockets.connect(
                     self.url,
                     max_size=None,  # No artificial limit on frame size for high-res voxel sync
-                    max_queue=2048,
+                    max_queue=None,  # Unlimited queue to prevent buffer drops during massive section streams
                     open_timeout=connect_timeout,
                     close_timeout=connect_timeout,
-                    ping_interval=30,
-                    ping_timeout=max(10.0, self.timeout),
+                    ping_interval=None,  # Rely on continuous binary frame stream and TCP transport
+                    ping_timeout=None,
                 ) as websocket:
                     self.websocket = websocket
                     self.is_connected = True
@@ -450,3 +458,17 @@ class SyncClientThread(threading.Thread):
 
             if self.on_handshake_info:
                 self.on_handshake_info(total_sections, non_empty_sections, total_volume, dimension, flags)
+
+        elif packet_type == PacketType.STREAM_BEGIN:
+            if len(data) < offset + STREAM_BEGIN_SIZE:
+                return
+            stream_id, total_sections, flags = struct.unpack(STREAM_BEGIN_FORMAT, data[offset:offset + STREAM_BEGIN_SIZE])
+            if self.on_stream_begin:
+                self.on_stream_begin(stream_id, total_sections, flags)
+
+        elif packet_type == PacketType.STREAM_END:
+            if len(data) < offset + STREAM_END_SIZE:
+                return
+            stream_id, sent_sections, status = struct.unpack(STREAM_END_FORMAT, data[offset:offset + STREAM_END_SIZE])
+            if self.on_stream_end:
+                self.on_stream_end(stream_id, sent_sections, status)
