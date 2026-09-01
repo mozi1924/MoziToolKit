@@ -148,6 +148,10 @@ class ParsedBlock:
         self.is_emissive = is_emissive
         self.emissive_level = emissive_level
 
+    @property
+    def is_air(self) -> bool:
+        return self.block_type == BlockTypeEnum.AIR
+
 
 # In-memory parsing cache to avoid re-parsing identical state strings (bounded to avoid unbounded memory growth)
 MAX_STATE_PARSE_CACHE_SIZE = 4096

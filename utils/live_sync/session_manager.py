@@ -601,6 +601,29 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
     try:
         cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
         cur_atlas_params = session.get_cached_atlas_params(cur_mat)
+
+        # Final mesh optimization & boundary reconciliation pass:
+        # Re-check mesh face culling and weld vertices across all boundary sections with 100% complete voxel storage data
+        if target_obj and session.storage.block_map:
+            try:
+                from .mesh_builder import sync_world_mesh
+                all_sections_count = len(session.storage.get_all_sections())
+                force_full = (all_sections_count <= 128)
+                res = sync_world_mesh(
+                    context=bpy.context,
+                    storage=session.storage,
+                    atlas_params=cur_atlas_params,
+                    force_full_rebuild=force_full,
+                    target_obj=target_obj,
+                )
+                if props and res:
+                    props.point_count = res.vertex_count
+                    props.cubes_count = res.cubes_count
+                    props.props_count = res.props_count
+                    props.fluids_count = res.fluids_count
+            except Exception as e:
+                logger.error(f"Post-stream mesh reconciliation error: {e}", exc_info=True)
+
         session.storage.clear_dirty_sections()
         session.persist_sync_state_to_scene(target_obj)
 
@@ -612,16 +635,16 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
             props.validation_info = "Verified (100% in sync)"
             props.is_locked = False
 
-            # Update geometry totals from child section meshes
+            # Update geometry totals from child section meshes if not already set
             try:
-                from .mesh_builder import _get_mesh_vertex_and_face_count
-                total_verts = 0
-                if target_obj:
+                if not props.point_count and target_obj:
+                    from .mesh_builder import _get_mesh_vertex_and_face_count
+                    total_verts = 0
                     for child in target_obj.children:
                         if child.data and isinstance(child.data, bpy.types.Mesh):
                             v_cnt, _ = _get_mesh_vertex_and_face_count(child.data)
                             total_verts += v_cnt
-                props.point_count = total_verts
+                    props.point_count = total_verts
             except Exception:
                 pass
 
