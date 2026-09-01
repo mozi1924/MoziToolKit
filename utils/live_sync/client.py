@@ -110,12 +110,14 @@ class SyncClientThread(threading.Thread):
             logger.info(f"Connecting to Minecraft Live Sync WebSocket at: {self.url}")
 
             try:
+                # Fast timeout (max 4.0s for open_timeout) so empty ports or dead connections fail rapidly
+                connect_timeout = min(self.timeout, 4.0)
                 async with websockets.connect(
                     self.url,
                     max_size=None,  # No artificial limit on frame size for high-res voxel sync
                     max_queue=2048,
-                    open_timeout=self.timeout,
-                    close_timeout=self.timeout,
+                    open_timeout=connect_timeout,
+                    close_timeout=connect_timeout,
                     ping_interval=30,
                     ping_timeout=max(10.0, self.timeout),
                 ) as websocket:
@@ -142,6 +144,15 @@ class SyncClientThread(threading.Thread):
                             break
             except asyncio.CancelledError:
                 break
+            except (ConnectionRefusedError, OSError) as e:
+                if not self.running:
+                    break
+                logger.warning(f"Live Sync connection failed ({self.url}): {e}")
+                self.reconnect_attempts += 1
+                if not self.auto_reconnect or self.reconnect_attempts > self.max_reconnect_attempts:
+                    self.on_status_change(f"DISCONNECTED (Connection failed: {e})")
+                    break
+                self.on_status_change(f"RECONNECTING... ({self.reconnect_attempts}/{self.max_reconnect_attempts})")
             except Exception as e:
                 if not self.running:
                     break
@@ -158,7 +169,7 @@ class SyncClientThread(threading.Thread):
 
             if self.running and self.auto_reconnect and self.reconnect_attempts <= self.max_reconnect_attempts:
                 try:
-                    await asyncio.sleep(2.0)
+                    await asyncio.sleep(1.5)
                 except asyncio.CancelledError:
                     break
             else:

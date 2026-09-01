@@ -18,6 +18,7 @@ from .constants import (
 from ..mc_baker import (
     refresh_shared_baker_sources,
     clear_shared_baker_cache,
+    get_shared_state_baker,
 )
 from .mesh_builder import (
     sync_world_mesh,
@@ -598,13 +599,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
     try:
         cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
         cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-        target_palette = session.accumulated_stream_palettes if session.accumulated_stream_palettes else session.storage.get_unique_states()
-        if target_palette:
-            preload_sync_world_data(palette=target_palette, world_obj=target_obj, atlas_params=cur_atlas_params)
-            session.accumulated_stream_palettes.clear()
-
-        rebuild_full = not session.is_repairing_partial
-        session.schedule_mesh_sync(force_full_rebuild=rebuild_full)
+        session.storage.clear_dirty_sections()
         session.persist_sync_state_to_scene(target_obj)
 
         if props:
@@ -613,6 +608,20 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
             props.last_update_info = f"Repaired {total_target} sections" if session.is_repairing_partial else f"Streamed {total_target} sections"
             props.sync_verified = True
             props.validation_info = "Verified (100% in sync)"
+            props.is_locked = False
+
+            # Update geometry totals from child section meshes
+            try:
+                from .mesh_builder import _get_mesh_vertex_and_face_count
+                total_verts = 0
+                if target_obj:
+                    for child in target_obj.children:
+                        if child.data and isinstance(child.data, bpy.types.Mesh):
+                            v_cnt, _ = _get_mesh_vertex_and_face_count(child.data)
+                            total_verts += v_cnt
+                props.point_count = total_verts
+            except Exception:
+                pass
 
             # Record completion in delta history log
             item = props.delta_history.add()
@@ -626,6 +635,7 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
         logger.error(f"Finalize stream sync error for {session.target_object_name}: {e}", exc_info=True)
         if props:
             props.validation_info = f"Finalize error: {e}"
+            props.is_locked = False
     finally:
         was_initial = session.is_initial_handshake
         session.is_streaming = False
@@ -672,15 +682,56 @@ def _pump_main_thread_events() -> Optional[float]:
                 except Exception:
                     pass
 
-        # 1. Drain pending streamed section snapshots (batch up to 16 chunks per tick)
+        # 1. Progressive Stream Mesh Building (batch up to 4 chunks per tick in real-time)
         sections_drained = 0
-        while not session.stream_section_queue.empty() and sections_drained < 16:
+        mat_mgr = None
+        baker = None
+        state_cache = None
+        existing_sections = None
+
+        if session.is_streaming:
+            try:
+                from ...operators.sync.op_sync_stream_modal import start_stream_modal_lock
+            except (ImportError, ValueError):
+                try:
+                    from operators.sync.op_sync_stream_modal import start_stream_modal_lock
+                except Exception:
+                    start_stream_modal_lock = None
+            if start_stream_modal_lock:
+                start_stream_modal_lock(session.target_object_name)
+
+        while not session.stream_section_queue.empty() and sections_drained < 4:
             try:
                 item = session.stream_section_queue.get_nowait()
                 sec_x, sec_y, sec_z, palette = item
                 session.stream_received_sections += 1
                 if palette:
                     session.accumulated_stream_palettes.update(palette)
+
+                if mat_mgr is None:
+                    cur_mat = _find_bound_atlas_material(target_obj) if target_obj else None
+                    cur_atlas_params = session.get_cached_atlas_params(cur_mat)
+                    from .material_binding import get_shared_material_manager
+                    mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
+                    baker = get_shared_state_baker()
+                    state_cache = {}
+                    from .mesh_builder import find_root_section_children
+                    existing_sections = find_root_section_children(target_obj)
+
+                from .mesh_builder import build_single_section_mesh
+                build_single_section_mesh(
+                    context=bpy.context,
+                    storage=session.storage,
+                    sx=sec_x, sy=sec_y, sz=sec_z,
+                    root_obj=target_obj,
+                    mat_manager=mat_mgr,
+                    baker=baker,
+                    state_cache=state_cache,
+                    existing_sections=existing_sections,
+                    origin_centered=True,
+                    weld_vertices=True,
+                )
+
                 sections_drained += 1
                 has_active_work = True
             except queue.Empty:

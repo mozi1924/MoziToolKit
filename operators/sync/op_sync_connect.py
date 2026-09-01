@@ -199,27 +199,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             self.report({'WARNING'}, "Missing 'websockets' library! Check bundled extension wheels.")
             return {'CANCELLED'}
 
-        try:
-            from ...utils.materials.pack import get_configured_pack_stack
-        except (ImportError, ValueError):
-            from utils.materials.pack import get_configured_pack_stack
 
-        pack_stack = get_configured_pack_stack()
-        if not pack_stack or not pack_stack.packs:
-            self.report(
-                {'ERROR'},
-                "No active resource packs or Minecraft JARs configured. "
-                "Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
-            )
-            return {'CANCELLED'}
-
-        if not pack_stack.is_stack_baked():
-            self.report(
-                {'ERROR'},
-                "The configured Resource Pack Stack has not been precompiled. "
-                "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache' before using Live Sync."
-            )
-            return {'CANCELLED'}
 
         # 1. Resolve target container object
         target_obj = None
@@ -252,24 +232,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 return {'CANCELLED'}
 
         url = props.url if props.url else "ws://localhost:8765"
-        session = _session_manager.get_or_create_session(target_obj.name, url=url)
+        session_mgr = get_active_session_manager()
+        session = session_mgr.get_or_create_session(target_obj.name, url=url)
 
         if session.client_thread and session.client_thread.is_alive():
             self.report({'INFO'}, f"Already connected or connecting: {target_obj.name}")
             return {'FINISHED'}
 
-        # Phase 1: Material Hash & Precompiled Cache Verification on Cold Start / Reconnect
-        try:
-            from ...utils.live_sync.material_binding import validate_and_sync_scene_materials
-        except (ImportError, ValueError):
-            from utils.live_sync.material_binding import validate_and_sync_scene_materials
-        validate_and_sync_scene_materials(target_obj, pack_stack=pack_stack)
-
         session.is_initial_handshake = True
         session.skip_next_full_snapshot = False
-
-        if session.storage.size_x == 0 or not session.storage.section_crc_map:
-            session.restore_sync_state_from_scene(target_obj)
 
         ProgressBar.begin(title=f"Live Sync ({target_obj.name})", total=100.0, message="Connecting to Minecraft...", context=context)
 
@@ -292,11 +263,21 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
                 if status == "CONNECTED":
                     ProgressBar.update(current=20.0, total=100.0, message="Handshake established...")
+                    # Phase 1: Material Hash & Precompiled Cache Verification deferred until network connection is live
+                    try:
+                        from ...utils.live_sync.material_binding import validate_and_sync_scene_materials
+                        validate_and_sync_scene_materials(cur_obj)
+                    except Exception as e:
+                        logger.debug(f"Deferred material sync note: {e}")
+
+                    if session.storage.size_x == 0 or not session.storage.section_crc_map:
+                        session.restore_sync_state_from_scene(cur_obj)
+
                     if session.client_thread:
                         session.client_thread.send_sync_config(throttle_mode=0, target_fps=60, is_active=True)
                     start_main_thread_pump()
                 else:
-                    if status.startswith("ERROR"):
+                    if status.startswith("ERROR") or "failed" in status.lower() or "refused" in status.lower():
                         ProgressBar.cancel(message=status)
                     elif not any(s.client_thread and s.client_thread.is_connected for s in _session_manager.get_all_sessions()):
                         stop_main_thread_pump()
@@ -360,11 +341,11 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 palette, grid_indices, biome_palette=biome_palette, biome_indices=biome_indices
             )
 
-            def step1_update_props():
+            def step_progressive_stream():
+                cur_obj = bpy.data.objects.get(session.target_object_name)
+                cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
                 try:
                     session.last_seq_id = 0
-                    cur_obj = bpy.data.objects.get(session.target_object_name)
-                    cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
                     if cur_props:
                         cur_props.has_selection = True
                         cur_props.min_x, cur_props.min_y, cur_props.min_z = min_x, min_y, min_z
@@ -377,35 +358,42 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                         cur_props.update_counter += 1
                         cur_props.sync_verified = True
                         cur_props.validation_info = "Verified (100% in sync)"
-
                         sync_palette_to_props(cur_props, session.storage)
 
                     session.skip_next_full_snapshot = False
                     session.force_next_full_rebuild = False
                     session.clear_caches()
-                    ProgressBar.update(current=50.0, total=100.0, message="Preloading block assets...")
+
+                    # Find all non-empty sections to build progressively
+                    all_sections = session.storage.get_all_sections()
+                    non_empty_sections = []
+                    for (sx, sy, sz) in all_sections:
+                        sec_blocks = session.storage.get_section_blocks(sx, sy, sz)
+                        if sec_blocks and not all(s.startswith("minecraft:air") or s == "air" for s in sec_blocks.values()):
+                            non_empty_sections.append((sx, sy, sz))
+
+                    if not non_empty_sections:
+                        _finalize_stream_sync(session, cur_props, cur_obj, 0)
+                        return None
+
+                    session.is_streaming = True
+                    session.stream_total_sections = len(non_empty_sections)
+                    session.stream_received_sections = 0
+                    session.stream_last_drain_time = time.time()
+
+                    # Put each section into the stream section queue so the pump builds them progressively
+                    for (sx, sy, sz) in non_empty_sections:
+                        session.stream_section_queue.put((sx, sy, sz, palette))
+
+                    ProgressBar.begin(title=f"Live Sync ({session.target_object_name})", total=100.0, message=f"Building {len(non_empty_sections)} chunks...")
                 except Exception as e:
-                    logger.error(f"Snapshot props update error: {e}")
+                    logger.error(f"Snapshot progressive streaming error: {e}", exc_info=True)
+                    session.is_streaming = False
+                    if cur_props:
+                        cur_props.is_locked = False
                 return None
 
-            def step2_preload_and_sync():
-                try:
-                    cur_obj = bpy.data.objects.get(session.target_object_name)
-                    cur_mat = find_bound_atlas_material(cur_obj) if cur_obj else None
-                    cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-                    preload_sync_world_data(palette=palette, world_obj=cur_obj, atlas_params=cur_atlas_params)
-
-                    ProgressBar.update(current=75.0, total=100.0, message="Building world geometry...")
-                    session.schedule_mesh_sync(force_full_rebuild=True)
-                    session.persist_sync_state_to_scene(cur_obj)
-                except Exception as e:
-                    logger.error(f"Snapshot geometry build error: {e}")
-                finally:
-                    ProgressBar.finish(message=f"Live Sync Active ({len(palette)} block types)", auto_dismiss_delay=1.0)
-                return None
-
-            bpy.app.timers.register(step1_update_props)
-            bpy.app.timers.register(step2_preload_and_sync, first_interval=0.01)
+            bpy.app.timers.register(step_progressive_stream)
 
         def on_delta_update(min_x, min_y, min_z, changes, seq_id):
             session.delta_queue.put((min_x, min_y, min_z, changes, seq_id))
