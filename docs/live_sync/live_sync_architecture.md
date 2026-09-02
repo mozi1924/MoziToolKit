@@ -144,15 +144,35 @@ graph TD
 
 ## 6. 代码模块化与子系统划分 (Modular Architecture)
 
-为保持代码清晰与易维护性，实时同步几何与材质构建子系统解耦为如下独立职责模块：
+为保持代码清晰与易维护性，实时同步几何与材质构建子系统解耦为如下独立职责模块与包结构：
 
-- **`utils/live_sync/storage.py`**：内存体素存储、包围盒管理与 16x16x16 Section 脏区块追踪。
-- **`utils/live_sync/classifier.py`**：方块分类器与方向解析（Cube, Prop, Fluid, Translucent, Air）。
-- **`utils/live_sync/mesh_cache.py`**：方块状态元数据缓存（`CachedStateMeta`）、L1/L2 预热机制与闲时空闲帧预计算调度。
-- **`utils/live_sync/geometry_builder.py`**：BMesh 几何生成、6 面遮挡剔除、顶点微距焊接与着色器面属性写入。
-- **`utils/live_sync/material_binding.py`**：材质槽位管理单例、Section 插槽同步与材质索引重新绑定。
-- **`utils/live_sync/fluid_mesher.py`**：流体（水/岩浆）表面张力与相邻高度差网格生成器。
-- **`utils/live_sync/mesh_builder.py`**：顶层编排器，提供 `build_world_mesh`、`sync_world_mesh` 和 `apply_block_delta_to_world`。
+### 6.1 核心包结构划分
+- **存储与会话 (`utils/live_sync/storage/` & `session/`)**：
+  - **`storage/voxel_storage.py`**：内存体素堆存储、包围盒管理、5x5 邻域加权平滑群系查询（`get_smoothed_biome_data`）与 16x16x16 Section 脏区块追踪。
+  - **`session/session_manager.py`**：连接生命周期管理单例、握手 CRC 校验、场景持久化状态读取与主线程事件泵（Main-Thread Event Pump）。
+- **分类与状态解析 (`utils/live_sync/classifier/`)**：
+  - **`classifier/classifier.py`**：方块状态解析、模型朝向转换与语义分类（`BlockTypeEnum`: Cube, Prop, Fluid, Translucent, Air）。
+  - **`classifier/hot_states.py`**：高频红石、火把、门窗等热点方块状态预提取与极速分类字典。
+- **网格构建与缓存 (`utils/live_sync/meshing/`)**：
+  - **`meshing/cache.py`**：方块状态元数据缓存（`CachedStateMeta`）、L1/L2 预热机制与闲时空闲帧预计算调度。
+  - **`meshing/geometry.py`**：BMesh 几何生成、6 面遮挡剔除、顶点微距焊接与着色器面属性写入。
+  - **`meshing/fluid.py`**：流体动力学网格生成器（水/岩浆表面张力、4 角高度插值、流动方向向量与斜坡 UV 旋转）。
+  - **`meshing/hierarchy.py`**：场景物体层级组织器（管理 `MTK_LiveSync_World` 根容器 Empty、`Section` 集合以及孤立区块修剪）。
+  - **`meshing/world_mesh.py`**：顶层编排器，提供 `build_world_mesh`、`sync_world_mesh` 和 `apply_block_delta_to_world`。
+- **材质管理与协议 (`utils/live_sync/material/` & `protocol/`)**：
+  - **`material/manager.py`** 与 **`binding.py`**：`LiveSyncMaterialManager` 材质槽位管理单例、Section 插槽同步与材质索引动态重新绑定。
+  - **`protocol/client.py`**：异步 WebSocket 二进制客户端线程（`SyncClientThread`），处理 VarInt 解码与心跳应答。
+
+### 6.2 实时同步操作符全景 (Operators Reference)
+- **`mozi.sync_connect`**：建立 WebSocket 连接并执行 Manifest 握手增量校验。
+- **`mozi.sync_disconnect`**：断开当前实时同步会话，重置网络线程。
+- **`mozi.sync_refresh`**：发起全量数据同步请求（`0x80 FULL_SYNC_REQUEST`），重新拉取体素。
+- **`mozi.sync_rebuild_world`**：完全离线重建视口几何、拓扑焊接与材质插槽。
+- **`mozi.sync_clear_history`**：清空增量变更历史记录（Delta History）。
+- **`mozi.add_yefira_world`**：在场景中新建指定的 Yefira 容器根节点。
+- **`mozi.sync_select_root`**：在 3D 视口中快速选定当前活动的世界根节点。
+- **`mozi.sync_stream_runner`**：模态定时器流式接收器（`op_sync_stream_modal.py`），驱动视口 Header 进度条平滑更新。
+
 
 ---
 

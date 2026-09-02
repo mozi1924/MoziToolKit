@@ -89,11 +89,13 @@ classDiagram
 ## 2. 非阻塞 Modal Timer 交互与响应式 UI (`modal.py`)
 
 - **设计痛点**：大型材质栈烘焙（解压 500MB+ 材质包、生成 4K 图集）或海量多边形细分会阻塞 Blender 主线程，导致操作系统判定界面无响应（Spinning Wheel）。
-- **Modal Timer 驱动机制**：
-  1. 通过 `bpy.ops.wm.modal_timer_operator` 在主线程注册高频 Timer 回调（如 50ms）；
-  2. 每一帧 Timer 触发时，Pipeline 执行一个迭代步进（`step.execute` 的一段子任务）；
-  3. 在 3D View 顶部绘制半透明进度条（Progress Bar）、当前步骤名称与百分比；
-  4. 支持监听用户 `ESC` 键盘事件，在两个 Step 的边界安全释放临时资源并优雅退出。
+- **Modal Timer 驱动机制 (`pipeline/modal.py`)**：
+  1. 通过通用模态调度算子 `mozi.modal_pipeline_runner`（`MOZI_OT_modal_pipeline_runner`）在 Blender 主线程注册高频 Timer 回调（如 20ms~50ms）；
+  2. 每一帧 Timer 触发时，Pipeline 推进一个生成器子迭代（`ProgressUpdate`）或执行下一个 Step；
+  3. 协同式取消支持：监听用户 `ESC` 键盘事件，当捕获取消请求时优雅退出并返回 `StepStatus.CANCELLED`；
+  4. **视口与状态栏双通道进度展示 (`pipeline/progress.py`)**：
+     - **3D Viewport Header 进度指示**：动态挂载 `draw_progress_header`，实时在顶部栏渲染高亮进度条与百分比；
+     - **Window Status Bar 状态栏提示**：调用 Blender 原生 `wm.progress_begin` / `wm.progress_update`，输出当前阶段子任务文案。
 
 ---
 
@@ -111,8 +113,10 @@ MoziToolKit 在 [`pipeline/presets/presets.py`](../../pipeline/presets/presets.p
 | **`scale_uv`** | `ScaleUVStep` | Per-face 独立 UV 几何中心向心微距缩放抗渗色 |
 | **`select_transparent_faces`**| `SelectTransparentFacesStep` | Alpha 贴图像素智能透光选面 |
 | **`replace_material`** | `StepReplaceMaterial` | 资源包分层解析、图集烘焙与场景材质无损替换 |
+| **`precompile_cache`** | `StepPrecompileCache` | 纯后台预编译材质栈图集与独立模型缓存 |
 | **`repair_fluid_uv`** | `RepairFluidUVStep` | 斜坡流体 UV 旋转与流动方向几何校正 |
 | **`set_texture_interpolation_closest`** | `TextureInterpolationStep` | 一键切换材质节点图为 Closest 锐利像素模式 |
+
 
 ---
 

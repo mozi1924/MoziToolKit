@@ -196,13 +196,14 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 | **预编译机制** | 预编译输出 Atlas Chunks 与 `atlas_mapping.json` | 预编译输出融合贴图库、对齐伴生图与 `standalone_mapping.json` |
 
 ### 3.5 面级身份契约与节点树自愈恢复 (Mesh Face Provenance & Auto-Recovery)
-- **核心契约（`mtk_source_texture_key`）**：
-  无论是静态模型导入、材质替换管线还是实时同步 Direct Mesh 生成，系统均向网格写入标准的面域字符串属性 `mtk_source_texture_key`（例如 `"minecraft:block/stone"`）。
-- **节点树删除无损自愈能力**：
-  当用户或脚本将物体的材质槽完全清空、或者在 Shader Editor 中删除了全部节点时，系统能够纯粹依据网格面属性中固化的 `mtk_source_texture_key` 与 `mtk_atlas_chunk_id`，调用 `reconstruct_materials_from_mesh_provenance` 算子：
-  1. 瞬间重新分配所有材质槽并对齐多边形面的 `material_index`；
-  2. 自动重新生成 Principled BSDF / 图集着色器节点树并绑定贴图；
-  3. 实现 100% 离线、零数据损失的原地自愈。
+- **核心契约（`mtk_source_texture_key` & `mtk_atlas_chunk_id`）**：
+  无论是静态模型导入、材质替换管线还是实时同步 Direct Mesh 生成，系统均向网格写入标准的面域字符串属性 `mtk_source_texture_key`（例如 `"minecraft:block/stone"`）与整数属性 `mtk_atlas_chunk_id`。
+- **节点树删除无损自愈算子 (`mozi.restore_materials_from_provenance`)**：
+  当用户或脚本将物体的材质槽完全清空、或者在 Shader Editor 中误删了全部节点时，系统通过 [`provenance.py`](../../utils/materials/pipeline/provenance.py) 中的 `restore_materials_from_provenance` 核心算法：
+  1. 扫描网格面属性，提取所有唯一的 `mtk_source_texture_key` 与 Chunk ID 映射表；
+  2. 根据图集映射表或独立材质库，瞬间重新分配所有材质槽并对齐多边形面的 `material_index`；
+  3. 自动重新生成 Principled BSDF / 图集着色器节点树并绑定贴图；
+  4. 实现 100% 离线、零数据损失的原地自愈。
 
 ---
 
@@ -221,13 +222,29 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 
 ---
 
-## 5. 生物群系高精度染色系统 (Biome Palettes & Colormap Tinting)
-- **设计方向**：
-  - 内置 14+ 种官方生物群系预设（平原、森林、桦木林、针叶林、丛林、热带草原、恶地、沼泽、黑森林、红树林沼泽、樱花树林、雪原、沙漠、温带海洋等）。
-  - **双线性插值采样**：基于生物群系的温度（Temperature）与湿度（Humidity），在高分辨率 `grass.png` / `foliage.png` 色图（Colormap）中进行双线性插值采样计算目标颜色。
-  - **硬编码方块颜色**：对不受生物群系色图影响的特殊方块（如云杉树叶 `#619961`、桦木树叶 `#80A755`、睡莲 `#208030`、水体 `#3F76E4`、红石线 `#9E0101`）配置精确的 sRGB/Linear RGB 映射。
-  - **Block Model JSON Tintindex 精准感知**：
-    自动读取方块模型 JSON 中的 `tintindex`。例如对于草方块（Grass Block），侧面基底贴图为 `tintindex: -1`（不染色），侧面覆盖层与顶面为 `tintindex: 0`（染色）。着色器仅对带有染色标记的层进行乘法染色，防止泥土底色被错误染绿。
+## 5. 生物群系高精度染色与 UI 面板系统 (Biome Palettes & Colormap Tinting)
+
+MoziToolKit 提供了从底层色彩插值到交互式 UI 的全套生物群系调色板解决方案：
+
+### 5.1 交互式群系控制面板 (`ui/panel_biome.py`)
+- **面板入口**：位于 3D Viewport 侧边栏 `MoziToolKit -> Biome Palette`（`MOZI_PT_biome_panel`）。
+- **群系属性绑定 (`mtk_biome`)**：
+  - 支持场景全局默认群系（`scene.mtk_biome`）与物体独立群系覆盖（`object.mtk_biome`）。
+  - 内置快速群系应用算子 `mozi.set_object_biome`（`MOZI_OT_set_object_biome`），一键将选定生物群系的草地/树叶/水体颜色刷新至材质与顶点色层。
+- **内置群系预设库**：
+  涵盖 **65+ 种 Minecraft 原生生物群系**（包括 Plains, Sunflower Plains, Forest, Birch Forest, Dark Forest, Jungle, Bamboo Jungle, Taiga, Old Growth Pine Taiga, Swamp, Mangrove Swamp, Savanna, Badlands, Desert, Cherry Grove, Snowy Plains, Warm Ocean, Deep Lukewarm Ocean, Nether Wastes, Crimson Forest, Warped Forest, The End 等）。
+
+### 5.2 双线性色彩插值与硬编码染色引擎 (`biome.py`)
+- **温度-降水三角坐标映射**：
+  根据群系的温度（$T$）与湿度（$H$），计算色图三角坐标：
+  $$u = \text{clamp}(T, 0.0, 1.0),\quad v = \text{clamp}(H \times u, 0.0, 1.0)$$
+  并在标准 $256 \times 256$ 色图（`grass.png` / `foliage.png`）中执行高质量双线性插值采样。
+- **色彩空间与 Gamma 校正**：
+  提供 `hex_to_linear_rgba()`，自动将 sRGB 空间十六进制色值转换为 Blender 原生 Linear 色彩空间，杜绝渲染偏色。
+- **硬编码方块颜色表 (`HARDCODED_BLOCK_TINTS`)**：
+  对不受群系色图影响的特殊方块（如云杉树叶 `#619961`、桦木树叶 `#80A755`、睡莲 `#208030`、水体 `#3F76E4`、红石线 `#9E0101`、附着瓜茎 `#E0C71C`）配置严格的权威颜色表。
+- **Block Model JSON Tintindex 精准感知**：
+  自动读取模型中的 `tintindex`。着色器仅对带有染色标记的层进行乘法染色，防止泥土底色被错误染绿。
 
 ---
 
@@ -287,6 +304,15 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 - **`mineways_atlas.py`**：Mineways 图集识别、面多边形 UV 反向解算与局部 UV 还原逻辑。
 - **`jmc2obj.py`**：jmc2obj 材质与 UV 坐标系匹配。
 
-### 8.3 Yefira 图集着色器集成 (`utils/materials/yefira/`)
-- **`face_lut.py`**：Minecraft 方块状态 6 面查找表（Face LUT）、染色映射表、动画查找表及 UV 旋转映射表生成器。
-- **`atlas_integration.py`**：Yefira Master 图集着色器节点树构建、材质插槽分配与图集元数据提取。
+### 8.3 节点组库 (`utils/node_groups/`)
+- **`atlas_uv_decoder.py`**：图集 UV 解码器节点组，解析多边形面属性驱动的 UV 归一化与逐帧动画。
+- **`atlas_uv_tiling.py`**：防溢色平铺映射节点组（Anti-Bleed UV Tiling）。
+- **`animated.py`**：逐帧动态材质时间轴驱动器节点组。
+- **`biome.py`**：生物群系平滑混合色图解码器（`MC_Biome_Colormap_Decoder`）。
+- **`labpbr.py`**：LabPBR 1.3 格式（法线、粗糙度、金属性、自发光、次表面散射）解析着色器节点组。
+- **`parallax.py`**：POM（Parallax Occlusion Mapping）视差遮挡贴图 UV 位移节点组。
+
+### 8.4 材质替换与逆向恢复管线 (`utils/materials/pipeline/`)
+- **`provenance.py`**：面属性来源追踪（`mtk_source_texture_key`）与材质槽一键原地自愈重构器。
+- **`material_pipeline.py`**：顶层材质替换流水线协调器。
+
