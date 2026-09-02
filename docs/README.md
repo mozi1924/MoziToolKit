@@ -17,7 +17,10 @@
   - 三层物理资源包优先级栈（`RESOURCE_PACK` → `MOD_JAR` → `VANILLA`）与通道级独立级联回退。
   - 多导入器（`jmc2obj`, `Mineways`, `Ice-Cube`, `Generic`）自适应匹配。
   - 双材质构建体系：图集模式（Atlas Mode）与预编译全栈融合独立模式（Standalone Mode）。
-  - 图集防溢色数学模型（Padding & Safe Clamp）、生物群系高精度双线性染色、逐帧动态动画（MCMETA）驱动及验收矩阵。
+  - 图集防溢色数学模型（Padding & Safe Clamp）、逐帧动态动画（MCMETA）驱动及验收矩阵。
+  - **面属性来源追踪与材质自愈 (`mozi.restore_materials_from_provenance`)**：基于 `mtk_source_texture_key` 与 `mtk_atlas_chunk_id` 的一键材质原地无损复原。
+  - **生物群系高精度染色与 UI 控制面板 (`ui/panel_biome.py`)**：65+ 种原生群系预设库、双线性三角坐标采样、Linear RGBA 转换及 `mtk_biome` 物体覆盖。
+  - **着色器节点组模板库 (`utils/node_groups/`)**：`atlas_uv_decoder`, `atlas_uv_tiling`, `animated`, `biome`, `labpbr`, `parallax` 节点组。
 - **[MC 方块模型烘焙引擎 (MC Baker)](materials/mc_baker.md)**：
   - Blockstate 变体与 Multipart 复合条件解析。
   - Block Model JSON 继承树展开、`#texture` 变量解析、Cullface 标记、UV 旋转与 Atlas Bridge 桥接。
@@ -29,7 +32,7 @@
   - 材质约定体系与自定义属性规范（`mtk:atlas_chunk_id`, `mtk:pack_hash`）。
   - 连接握手 CRC32 差异校验与已有场景物体智能免重刷机制。
   - “刷新数据 (Refresh Data)” 与 “重建网格 (Rebuild Mesh)” 行为边界划分。
-  - 内存体素模型（`VoxelStorage`）与 Blender 场景持久化数据生命周期。
+  - 内存体素模型（`VoxelStorage`）、场景持久化层级容器（`hierarchy.py`）与操作符全景。
 - **[实时同步网络传输协议规范 (Live Sync Protocol)](live_sync/live_sync_protocol.md)**：
   - Minecraft <-> DCC 完整的二进制帧头、数据包类型清单（S2C/C2S）。
   - 选区拖拽释放时提交（Commit-on-Release）与握手时序。
@@ -55,13 +58,14 @@
 ### 4. 调度与流水线系统 (Modular Step Pipeline)
 - **[模块化流水线系统 (Step Pipeline)](pipeline/step_pipeline.md)**：
   - `Step ↔ Context ↔ Pipeline` 契约模型与结构化 `StepResult`。
-  - 非阻塞 Modal Timer 交互与进度条报告。
-  - 预设流水线编排（Presets）。
+  - 通用模态调度算子（`mozi.modal_pipeline_runner`）、3D 视口 Header 进度条与状态栏双通道反馈。
+  - 预设流水线编排（Presets，含预编译缓存 `StepPrecompileCache`）。
 
 ---
 
 ### 5. 偏好设置、生态与工程规范 (System & Ecosystem)
 - **[偏好设置、右键菜单与工程规范](system/preferences_and_ecosystem.md)**：
-  - 右键上下文菜单动态注册与自由重排。
-  - JSON 偏好配置防丢失与原子序列化。
-  - Blender 4.2+ Extensions / Python Wheels 隔离管理、i18n 国际化字典、自动化构建与 CI 测试套件。
+  - 右键上下文动态菜单注册与自由重排（支持添加/移除/移动/导入/导出/重置）。
+  - 多存储后端配置引擎（`JsonBackend`, `MemoryBackend`, `BlenderBackend`）与原子持久化。
+  - Blender 4.2+ Extensions / Python Wheels 隔离管理、i18n 国际化字典、自动化构建与 54 个全量 CI 测试套件。
+

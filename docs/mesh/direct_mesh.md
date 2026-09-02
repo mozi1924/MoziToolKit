@@ -1,6 +1,8 @@
 # 模块三：原生网格实时同步构建体系 (Direct Mesh Generation)
 
-`utils/live_sync/mesh_builder.py` 构成了 MoziToolKit 实时同步的核心几何生成引擎。它彻底摒弃了依赖几何节点（Geometry Nodes）实例化点云的传统瓶颈，采用底层 BMesh 原生多边形构建技术，直接生成拓扑水密、法线平滑、带多图集插槽与原生面属性的 Blender 真实网格。
+`utils/live_sync/meshing/world_mesh.py` 构成了 MoziToolKit 实时同步的核心几何生成引擎。它彻底摒弃了依赖几何节点（Geometry Nodes）实例化点云的传统瓶颈，采用底层 BMesh 原生多边形构建技术，直接生成拓扑水密、法线平滑、带多图集插槽与原生面属性的 Blender 真实网格。
+
+
 
 ```mermaid
 graph TD
@@ -59,7 +61,8 @@ Direct Mesh 网格构建全面接入统一的面剔除引擎 [`FaceCuller`](../.
 
 ---
 
-## 3. 流体动力学曲面重构 (`fluid_mesher.py`)
+## 3. 流体动力学曲面重构 (`utils/live_sync/meshing/fluid.py`)
+
 
 ### 3.1 4角流体高度插值与斜坡重建
 - **高度计算**：根据 `level` 属性计算方块基础高度：
