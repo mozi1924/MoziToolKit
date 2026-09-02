@@ -267,12 +267,8 @@ def build_baked_model_from_obj(
 # Dedicated Shulker Box, Conduit & Portal Model Builders (Authoritative geometry)
 # ---------------------------------------------------------------------------
 
-def rotate_shulker_vertex(v: Vec3, facing: str) -> Vec3:
-    """Compatibility wrapper for vertex rotation by facing."""
-    return rotate_point_by_facing(v, facing)
-
-
 def build_shulker_box_model(block_state: str, short_name: str, props: dict[str, str]) -> BakedModel:
+
     """
     Construct a pixel-perfect Shulker Box model (Lid & Base) from authoritative OBJ geometry
     with 1:1 64x64 entity texture UVs.

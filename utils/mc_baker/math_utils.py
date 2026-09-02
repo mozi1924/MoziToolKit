@@ -155,14 +155,8 @@ def rotate_y(v: Vec3, deg: float) -> Vec3:
     return (x * c + z * s, y, -x * s + z * c)
 
 
-def rotate_z(v: Vec3, deg: float) -> Vec3:
-    rad = -math.radians(deg)
-    c, s = math.cos(rad), math.sin(rad)
-    x, y, z = v
-    return (x * c - y * s, x * s + y * c, z)
-
-
 def rotate_point(p: Vec3, rot_x: float, rot_y: float, origin: Vec3 = (0.5, 0.5, 0.5)) -> Vec3:
+
     """Apply BlockModelRotation (X rotation first, then Y rotation around origin)."""
     px = p[0] - origin[0]
     py = p[1] - origin[1]
