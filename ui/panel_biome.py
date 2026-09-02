@@ -161,7 +161,15 @@ def register():
 
 def unregister():
     if hasattr(bpy.types.Object, "mtk_biome"):
-        del bpy.types.Object.mtk_biome
+        try:
+            del bpy.types.Object.mtk_biome
+        except Exception:
+            pass
 
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+

@@ -3,11 +3,15 @@ Object operators package registration.
 """
 
 import bpy
-from .op_replace_material import MOZI_OT_replace_material
+from .op_replace_material import (
+    MOZI_OT_replace_material,
+    MOZI_OT_restore_materials_from_provenance,
+)
 from .op_texture_interpolation import MOZI_OT_set_texture_interpolation_closest
 
 classes = (
     MOZI_OT_replace_material,
+    MOZI_OT_restore_materials_from_provenance,
     MOZI_OT_set_texture_interpolation_closest,
 )
 
@@ -19,4 +23,10 @@ def register():
 
 def unregister():
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+
+
