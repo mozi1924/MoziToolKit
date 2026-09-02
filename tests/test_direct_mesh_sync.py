@@ -961,12 +961,12 @@ class TestDirectMeshSync(unittest.TestCase):
         r4 = build_world_mesh(bpy.context, s4)
         self.assertEqual(len(r4.world_obj.data.polygons), 10, "Adjacent same translucent blocks must cull internal faces")
 
-        # 5. Two adjacent leaves blocks (6 + 6 - 2 = 10 faces)
+        # 5. Two adjacent leaves blocks (6 + 6 - 1 = 11 faces, single-face culling preserves one internal face)
         s5 = VoxelStorage()
         s5.set_block(0, 0, 0, "minecraft:oak_leaves")
         s5.set_block(0, 1, 0, "minecraft:oak_leaves")
         r5 = build_world_mesh(bpy.context, s5)
-        self.assertEqual(len(r5.world_obj.data.polygons), 10, "Adjacent same leaves must cull internal faces")
+        self.assertEqual(len(r5.world_obj.data.polygons), 11, "Adjacent same leaves must keep single internal face")
 
         # 6. Two adjacent water blocks (6 + 6 - 2 = 10 faces)
         s6 = VoxelStorage()

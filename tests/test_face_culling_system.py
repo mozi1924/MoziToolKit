@@ -94,8 +94,9 @@ class TestFaceCullingSystem(unittest.TestCase):
         oak_log = self.culler.get_meta("minecraft:oak_log")
 
         self.assertEqual(oak_leaves.category, CullCategory.CUTOUT_LEAVES)
+        self.assertEqual(self.culler.leaves_cull_mode, LeavesCullMode.SINGLE_FACE)
 
-        # 1. Fancy Mode (default): both leaves faces rendered (internal volume visible)
+        # 1. Fancy Mode: both leaves faces rendered (internal volume visible)
         self.culler.leaves_cull_mode = LeavesCullMode.FANCY
         self.assertTrue(self.culler.should_render_face(oak_leaves, birch_leaves, "east"))
         self.assertTrue(self.culler.should_render_face(birch_leaves, oak_leaves, "west"))

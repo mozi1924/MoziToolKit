@@ -81,8 +81,8 @@ public static boolean shouldRenderFace(BlockState state, BlockState neighborStat
 ### 3.3 CUTOUT_LEAVES (透空树叶方块)
 - **典型方块**：橡树树叶、白桦树叶、丛林树叶、金合欢树叶、红树林树叶、杜鹃树叶等。
 - **规则**：
-  - **Fancy 模式 (`LeavesCullMode.FANCY`，默认)**：同类树叶接触 `skipRendering = False`，保留内部叶片多边形，保持树冠内部体积感与光影通透。
-  - **Single-Face 模式 (`LeavesCullMode.SINGLE_FACE`)**：同类树叶接触时，根据世界坐标确定性仅保留一面，消除 Z-fighting 与双重面显存开销，同时维持体积。
+  - **Single-Face 模式 (`LeavesCullMode.SINGLE_FACE`，默认)**：同类树叶接触时，根据世界坐标确定性仅保留一面，消除 Z-fighting 与双重面开销，同时保持树叶内部充实不空洞。
+  - **Fancy 模式 (`LeavesCullMode.FANCY`)**：同类树叶接触 `skipRendering = False`，保留内部双向叶片多边形。
   - **Fast 模式 (`LeavesCullMode.FAST`)**：同类树叶接触时完全互相剔除，表现为不透明外壳。
   - **接触实心方块（原木/石头）**：叶片贴合面被实心方块完全剔除。
 

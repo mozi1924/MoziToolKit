@@ -21,7 +21,7 @@ def should_skip_rendering(
     state_meta: BlockCullMeta,
     neighbor_meta: BlockCullMeta,
     direction: str,
-    leaves_mode: LeavesCullMode = LeavesCullMode.FAST,
+    leaves_mode: LeavesCullMode = LeavesCullMode.SINGLE_FACE,
     glass_mode: GlassCullMode = GlassCullMode.GROUP,
     block_pos: Optional[Tuple[int, int, int]] = None,
     neighbor_pos: Optional[Tuple[int, int, int]] = None,

@@ -183,7 +183,7 @@ class FaceCuller:
 
     def __init__(
         self,
-        leaves_cull_mode: LeavesCullMode = LeavesCullMode.FAST,
+        leaves_cull_mode: LeavesCullMode = LeavesCullMode.SINGLE_FACE,
         glass_cull_mode: GlassCullMode = GlassCullMode.GROUP,
     ):
         self.leaves_cull_mode = leaves_cull_mode
@@ -478,7 +478,7 @@ _GLOBAL_FACE_CULLER: Optional[FaceCuller] = None
 
 
 def get_shared_face_culler(
-    leaves_cull_mode: LeavesCullMode = LeavesCullMode.FAST,
+    leaves_cull_mode: LeavesCullMode = LeavesCullMode.SINGLE_FACE,
     glass_cull_mode: GlassCullMode = GlassCullMode.GROUP,
 ) -> FaceCuller:
     """Retrieve global singleton FaceCuller instance."""
