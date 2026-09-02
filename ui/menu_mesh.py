@@ -5,6 +5,8 @@ from ..operators.mesh.op_random_extrude import MOZI_OT_random_extrude
 from ..operators.uv.op_select_transparent_faces import MOZI_OT_select_transparent_faces
 from ..operators.uv.op_repair_fluid_uv import MOZI_OT_repair_fluid_uv
 from ..operators.mesh.op_clear_custom_normals import MOZI_OT_clear_custom_normals
+from ..utils.system import draw_dynamic_menu
+
 
 
 class MOZI_MT_mesh_menu(bpy.types.Menu):
@@ -57,30 +59,12 @@ def draw_face_workspace_menu_func(self, context):
     self.layout.menu("MOZI_MT_mesh_face_menu", text="MoziToolKit", icon="TOOL_SETTINGS")
 
 
-from ..utils.system import draw_dynamic_menu
-
-
 def draw_mesh_menu_func(self, context):
     draw_dynamic_menu(self.layout, "mesh")
 
 
-
-def draw_edge_menu_func(self, context):
-    self.layout.separator()
-    self.layout.label(text="MoziToolKit")
-    self.layout.operator(MOZI_OT_select_hard_edges.bl_idname)
-
-
-def draw_face_menu_func(self, context):
-    self.layout.separator()
-    self.layout.label(text="MoziToolKit")
-    self.layout.operator(MOZI_OT_random_extrude.bl_idname)
-    self.layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
-    self.layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
-    self.layout.operator(MOZI_OT_repair_fluid_uv.bl_idname)
-
-
 class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
+
     bl_label = "Auto Extrude Repair Options"
     bl_idname = "MOZI_PT_auto_extrude_repair_settings"
     bl_space_type = "VIEW_3D"
