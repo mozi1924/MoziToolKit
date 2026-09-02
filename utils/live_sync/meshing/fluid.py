@@ -91,22 +91,8 @@ def is_fluid_block(state_str: Optional[str]) -> bool:
     return parsed.block_type == BlockTypeEnum.FLUID or parsed.name in FLUID_BLOCKS or parsed.is_waterlogged
 
 
-def is_same_fluid(state_a: Optional[str], state_b: Optional[str]) -> bool:
-    """Check if two states belong to the same fluid type (e.g. water vs water, lava vs lava)."""
-    if not state_a or not state_b:
-        return False
-    pa = parse_and_classify(state_a)
-    pb = parse_and_classify(state_b)
-    name_a = pa.name.replace("flowing_", "")
-    name_b = pb.name.replace("flowing_", "")
-    if name_a == "water" and pb.is_waterlogged:
-        return True
-    if name_b == "water" and pa.is_waterlogged:
-        return True
-    return name_a == name_b and name_a in ("water", "lava")
-
-
 def sample_fluid_height(
+
     block_map: dict[tuple[int, int, int], str],
     x: int, y: int, z: int,
     fluid_type: str,

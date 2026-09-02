@@ -1118,24 +1118,8 @@ BLOCK_TINT_REGISTRY: dict[str, list[tuple[str, Any]]] = {
 }
 
 
-def get_hardcoded_block_tint_rgba(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
-    """Return sRGB RGBA tuple for a hardcoded block name."""
-    clean = name.removeprefix("minecraft:").removeprefix("block/")
-    hex_col = HARDCODED_BLOCK_TINTS.get(clean)
-    if hex_col:
-        return hex_to_rgba(hex_col)
-    return default
-
-
-def get_hardcoded_block_tint_linear(name: str, default: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)) -> tuple[float, float, float, float]:
-    """Return Linear RGBA tuple for a hardcoded block name."""
-    clean = name.removeprefix("minecraft:").removeprefix("block/")
-    hex_col = HARDCODED_BLOCK_TINTS.get(clean)
-    if hex_col:
-        return hex_to_linear_rgba(hex_col)
-    return default
-
 # Known paired overlay textures (base -> overlay)
+
 KNOWN_OVERLAY_PAIRS: dict[str, str] = {
     "grass_block_side": "grass_block_side_overlay",
     "dirt_path_side": "dirt_path_side_overlay",

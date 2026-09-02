@@ -275,16 +275,8 @@ def clear_resource_pack_cache() -> tuple[int, int]:
     return f1 + f2, b1 + b2
 
 
-def get_file_hash(filepath: str) -> str:
-    """Compute MD5 hash of a file for cache key generation."""
-    hasher = hashlib.md5()
-    with open(filepath, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def _is_ignored_path(rel_path: str) -> bool:
+
     """Check if a relative path should be excluded from resource pack hash calculation."""
     parts = rel_path.replace("\\", "/").strip("/").split("/")
     for part in parts:
