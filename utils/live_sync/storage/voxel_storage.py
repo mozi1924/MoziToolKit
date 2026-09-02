@@ -135,11 +135,22 @@ class VoxelStorage:
     def set_bounds(self, min_x: int, min_y: int, min_z: int, size_x: int, size_y: int, size_z: int) -> bool:
         """Initialize or update selection bounding box from selection info.
 
-        Returns True if bounds changed (meaning all existing voxel data and section meshes are invalidated).
+        Supports incremental resizing and shifting: retains overlapping voxels and section CRCs,
+        prunes out-of-bounds voxels, and marks seam/boundary sections dirty for face culling re-evaluation.
+        Returns True if bounds changed.
         """
         old_bounds = (self.min_x, self.min_y, self.min_z, self.size_x, self.size_y, self.size_z)
         new_bounds = (min_x, min_y, min_z, size_x, size_y, size_z)
-        if old_bounds != new_bounds:
+        if old_bounds == new_bounds:
+            return False
+
+        old_min_x, old_min_y, old_min_z, old_size_x, old_size_y, old_size_z = old_bounds
+        has_old_data = (
+            old_size_x > 0 and old_size_y > 0 and old_size_z > 0
+            and bool(self.block_map or self.section_crc_map)
+        )
+
+        if not has_old_data or size_x <= 0 or size_y <= 0 or size_z <= 0:
             if self.size_x > 0:
                 self.clear()
             self.min_x = min_x
@@ -150,7 +161,98 @@ class VoxelStorage:
             self.size_z = size_z
             self.generation += 1
             return True
-        return False
+
+        # Calculate 3D intersection between old and new bounds
+        inter_min_x = max(old_min_x, min_x)
+        inter_max_x = min(old_min_x + old_size_x - 1, min_x + size_x - 1)
+        inter_min_y = max(old_min_y, min_y)
+        inter_max_y = min(old_min_y + old_size_y - 1, min_y + size_y - 1)
+        inter_min_z = max(old_min_z, min_z)
+        inter_max_z = min(old_min_z + old_size_z - 1, min_z + size_z - 1)
+
+        has_overlap = (inter_min_x <= inter_max_x and inter_min_y <= inter_max_y and inter_min_z <= inter_max_z)
+
+        if not has_overlap:
+            # Complete shift with zero overlap: clean clear
+            self.clear()
+            self.min_x = min_x
+            self.min_y = min_y
+            self.min_z = min_z
+            self.size_x = size_x
+            self.size_y = size_y
+            self.size_z = size_z
+            self.generation += 1
+            return True
+
+        # Overlapping resize/shift: perform incremental pruning and seam dirtying
+        new_max_x = min_x + size_x - 1
+        new_max_y = min_y + size_y - 1
+        new_max_z = min_z + size_z - 1
+
+        new_min_sec_x, new_max_sec_x = min_x >> 4, new_max_x >> 4
+        new_min_sec_y, new_max_sec_y = min_y >> 4, new_max_y >> 4
+        new_min_sec_z, new_max_sec_z = min_z >> 4, new_max_z >> 4
+
+        # 1. Prune block_map and biome_map outside new_bounds
+        blocks_to_remove = [
+            pos for pos in list(self.block_map.keys())
+            if not (min_x <= pos[0] <= new_max_x and min_y <= pos[1] <= new_max_y and min_z <= pos[2] <= new_max_z)
+        ]
+        for pos in blocks_to_remove:
+            old_st = self.block_map.pop(pos, None)
+            if old_st:
+                if old_st in self._state_counts:
+                    self._state_counts[old_st] -= 1
+                    if self._state_counts[old_st] <= 0:
+                        self._state_counts.pop(old_st, None)
+            self.biome_map.pop(pos, None)
+
+        # 2. Prune _section_map outside new bounds
+        for sec_key in list(self._section_map.keys()):
+            sx, sy, sz = sec_key
+            if not (new_min_sec_x <= sx <= new_max_sec_x and new_min_sec_y <= sy <= new_max_sec_y and new_min_sec_z <= sz <= new_max_sec_z):
+                self._section_map.pop(sec_key, None)
+                self.section_crc_map.pop(sec_key, None)
+                self._dirty_sections.discard(sec_key)
+                self._known_empty_sections.discard(sec_key)
+            else:
+                sec_dict = self._section_map[sec_key]
+                sec_blocks_to_remove = [
+                    p for p in list(sec_dict.keys())
+                    if not (min_x <= p[0] <= new_max_x and min_y <= p[1] <= new_max_y and min_z <= p[2] <= new_max_z)
+                ]
+                for p in sec_blocks_to_remove:
+                    sec_dict.pop(p, None)
+
+        # 3. Prune section_crc_map outside new bounds
+        for sec_key in list(self.section_crc_map.keys()):
+            sx, sy, sz = sec_key
+            if not (new_min_sec_x <= sx <= new_max_sec_x and new_min_sec_y <= sy <= new_max_sec_y and new_min_sec_z <= sz <= new_max_sec_z):
+                self.section_crc_map.pop(sec_key, None)
+
+        # 4. Update bounds
+        self.min_x = min_x
+        self.min_y = min_y
+        self.min_z = min_z
+        self.size_x = size_x
+        self.size_y = size_y
+        self.size_z = size_z
+        self.generation += 1
+        self._smoothed_biome_cache.clear()
+
+        # 5. Identify seam/boundary sections that need CRC recalculation and face culling re-evaluation
+        surviving_sections = set(self._section_map.keys()) | set(self.section_crc_map.keys())
+        for (sx, sy, sz) in surviving_sections:
+            is_boundary = (
+                sx == new_min_sec_x or sx == new_max_sec_x
+                or sy == new_min_sec_y or sy == new_max_sec_y
+                or sz == new_min_sec_z or sz == new_max_sec_z
+            )
+            if is_boundary:
+                self.calculate_and_store_section_crc(sx, sy, sz)
+                self._dirty_sections.add((sx, sy, sz))
+
+        return True
 
     def matches_bounds(self, min_x: int, min_y: int, min_z: int) -> bool:
         """Check if an incoming packet matches active selection bounds origin."""

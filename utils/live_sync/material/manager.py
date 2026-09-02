@@ -379,10 +379,13 @@ class LiveSyncMaterialManager:
 
     def _sync_object_material_slots(self) -> None:
         """Synchronize the root object's compact, stable chunk-to-slot layout."""
-        if self.world_obj and getattr(self.world_obj, "data", None) is not None and hasattr(self.world_obj.data, "materials"):
-            self.sync_material_slots(self.world_obj)
-        else:
-            self._refresh_flat_slot_mapping()
+        try:
+            if self.world_obj and getattr(self.world_obj, "name", None) in bpy.data.objects and getattr(self.world_obj, "data", None) is not None and hasattr(self.world_obj.data, "materials"):
+                self.sync_material_slots(self.world_obj)
+                return
+        except (ReferenceError, Exception):
+            pass
+        self._refresh_flat_slot_mapping()
 
     def _refresh_flat_slot_mapping(self) -> None:
         """Maintain a compact mapping without treating sparse chunk IDs as slots."""
