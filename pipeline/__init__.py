@@ -31,7 +31,12 @@ def register():
 def unregister():
     unregister_progress_header()
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+
 
 
 __all__ = [

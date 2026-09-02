@@ -33,4 +33,9 @@ def register():
 def unregister():
     unregister_auto_extrude_repair()
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+

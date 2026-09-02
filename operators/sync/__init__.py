@@ -46,4 +46,9 @@ def unregister():
     unregister_sync_connect()
     unregister_sync_props()
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+
