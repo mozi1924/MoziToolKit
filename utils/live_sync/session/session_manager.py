@@ -1108,7 +1108,8 @@ def _finalize_stream_sync(session: SyncSession, props: Any, target_obj: bpy.type
             mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
             baker = get_shared_state_baker()
             state_cache = getattr(session, "_stream_state_cache", None) or {}
-            existing_sections = getattr(session, "_existing_sections_cache", None) or find_root_section_children(target_obj)
+            existing_sections = find_root_section_children(target_obj)
+            session._existing_sections_cache = existing_sections
             for (sx, sy, sz) in dirty_remaining:
                 build_single_section_mesh(
                     context=bpy.context,
@@ -1265,15 +1266,19 @@ def _pump_main_thread_events() -> Optional[float]:
             pct = int(20.0 + frac * 80.0)
 
             if session.stream_section_queue.empty():
-                dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
-                if dirty_reconcile:
-                    session.storage.clear_dirty_sections()
-                    for (sx, sy, sz) in dirty_reconcile:
-                        session.stream_section_queue.put((sx, sy, sz, []))
-                    session.stream_total_sections += len(dirty_reconcile)
-                    ProgressBar.update(current=pct, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
-                elif session.server_stream_finished or session.stream_received_sections >= total_target:
-                    _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+                is_batch_complete = session.server_stream_finished or (session.stream_received_sections >= total_target)
+                if is_batch_complete:
+                    dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
+                    if dirty_reconcile:
+                        session.storage.clear_dirty_sections()
+                        for (sx, sy, sz) in dirty_reconcile:
+                            session.stream_section_queue.put((sx, sy, sz, []))
+                        session.stream_total_sections += len(dirty_reconcile)
+                        ProgressBar.update(current=pct, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
+                    else:
+                        _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+                else:
+                    ProgressBar.update(current=pct, total=100.0, message=f"Streaming chunk ({session.stream_received_sections}/{total_target})")
             else:
                 ProgressBar.update(current=pct, total=100.0, message=f"Building chunk ({session.stream_received_sections}/{total_target})")
 
@@ -1282,8 +1287,18 @@ def _pump_main_thread_events() -> Optional[float]:
                     if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
                         area.tag_redraw()
         elif session.is_streaming and session.stream_section_queue.empty():
-            if session.server_stream_finished:
-                _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+            total_target = max(1, session.stream_total_sections)
+            is_batch_complete = session.server_stream_finished or (session.stream_received_sections >= total_target)
+            if is_batch_complete:
+                dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
+                if dirty_reconcile:
+                    session.storage.clear_dirty_sections()
+                    for (sx, sy, sz) in dirty_reconcile:
+                        session.stream_section_queue.put((sx, sy, sz, []))
+                    session.stream_total_sections += len(dirty_reconcile)
+                    ProgressBar.update(current=95.0, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
+                else:
+                    _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
             else:
                 drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
                 is_conn_dead = session.client_thread and not session.client_thread.is_connected
