@@ -181,7 +181,7 @@ graph TD
 > [!IMPORTANT]
 > 1. **非空区块与流式目标基数对齐（Non-Empty Stream Alignment）**：
 >    - 游戏服务端在流式传输时（`streamNonEmptySectionSnapshots`）仅发送包含实体方块的非空区块（`server_crc != EMPTY_SECTION_CRC`），纯空气区块跳过不发；
->    - 客户端设置 `_stream_total_sections` 时，必须以 `non_empty_manifest_count = sum(1 for crc in sections if crc != EMPTY_SECTION_CRC)` 为准，并在事件泵中配置静默超时（Settle Timeout）双重保障，绝不允许进度条卡在 91% 等中间状态。
+>    - 客户端设置 `_stream_total_sections` 时，必须以 `non_empty_manifest_count = sum(1 for crc in sections if crc != EMPTY_SECTION_CRC)` 为准，并在事件泵中配置双条件排空机制，绝不允许进度条卡在 91% 等中间状态。
 > 2. **跨线程字典快照安全（Thread-Safe Snapshotting）**：
 >    - 客户端后台网络线程（`SyncClientThread`）高频写入 `VoxelStorage.block_map` 与 `_section_map`；
 >    - Blender 主线程在执行网格生成（`sync_world_mesh`）与状态统计时，必须调用 `storage.get_unique_states()`、`get_all_sections()`、`get_section_blocks()` 等返回浅拷贝快照的方法，严禁在迭代中直接遍历动态变化的字典视图，彻底规避 `RuntimeError: dictionary changed size during iteration`。
@@ -195,5 +195,40 @@ graph TD
 > 6. **服务端异常隔离与原子发送守卫（Server Fault-Isolation & Safe Sending）**：
 >    - Minecraft 服务端在 `WebSocketServerManager` 中重写 `onWebsocketPing` 与 `onWebsocketPong`，安全处理协议心跳应答，防止客户端并发断开导致 `WebsocketNotConnectedException` 击穿解码 Worker 线程；
 >    - 针对所有广播分发与 `END_SERVER_TICK` 队列刷新，采用 `sendSafe` 与 `List.copyOf(clients)` 迭代守卫，自动剔除死连接，杜绝网络层异常导致游戏服务端崩溃。
+> 7. **选区变更原子熔断与队列即时排空（Preemptive Stream Cancellation Invariant）**：
+>    - 当用户在构建中途再次移动/缩放选区时，服务端必须通过 `activeBroadcastStreamId` 与 `activeBroadcastFuture.cancel(true)` 原子中断前序任务循环；
+>    - 客户端收到新选区时必须在主线程执行前瞬间清空 `stream_section_queue`，丢弃所有失效任务，杜绝多选区并发计算导致的 CPU 飙升与掉帧。
+> 8. **流式结束终极接缝面自愈闭环（Final Stream Boundary Pass Invariant）**：
+>    - 在流式传输中途，队列因网络微小间隔暂时变空时，严禁提前清空 `_dirty_sections`；
+>    - 必须在服务端全部流发送完毕后，对所有跨区块接触的接缝 Section 统一执行闭合自愈，确保首次同步完成瞬间接缝面 100% 精确剔除。
+
+---
+
+## 8. 选区动态增量重构与自愈架构 (Dynamic Resizing & Seam Healing Architecture)
+
+```
++----------------------------------------------------------------------------------------------------+
+|                                    选区变动 (Selection Moved / Resized)                            |
++----------------------------------------------------------------------------------------------------+
+                                                  |
+                    +-----------------------------+-----------------------------+
+                    |                                                           |
+           [3D 重叠空间交集 > 0]                                       [完全无重叠远距离跳转]
+                    |                                                           |
+  +---------------------------------------+                   +-----------------------------------+
+  | 1. 保留重叠区 block_map / CRC 数据   |                   | 退化为 storage.clear() 全量重构  |
+  | 2. 剪枝超出新边界的体素与 Section     |                   +-----------------------------------+
+  | 3. prune 销毁移出边界的场景 Mesh 物体 |
+  | 4. 重新计算新边界接缝处 Section CRC  |
+  | 5. 标记接缝 Section 到 _dirty_sections|
+  +---------------------------------------+
+                    |
++----------------------------------------------------------------------------------------------------+
+| 边界接缝面剔除自愈 (Face Restoring & Culling)                                                      |
+| - 选区缩小: 失去相邻区块的方块，自动将内部遮挡面补全恢复为暴露外表面 (Face Restored)               |
+| - 选区扩大: 接入新区块相邻方块后，自动将原有暴露外表面剔除 (Face Culled)                          |
+| - 流式结束: 终极 Reconcile Pass 确保跨 Section 接触面 100% 闭合，无需手动 Rebuild Mesh             |
++----------------------------------------------------------------------------------------------------+
+```
 
 
