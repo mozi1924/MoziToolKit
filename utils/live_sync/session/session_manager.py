@@ -326,6 +326,14 @@ class SyncSession:
 
         bounds_changed = self.storage.set_bounds(min_x, min_y, min_z, size_x, size_y, size_z)
         if bounds_changed:
+            while not self.stream_section_queue.empty():
+                try:
+                    self.stream_section_queue.get_nowait()
+                except queue.Empty:
+                    break
+            self.accumulated_stream_palettes.clear()
+            self.stream_received_sections = 0
+            self.is_streaming = False
             self.clear_caches()
             self.skip_next_full_snapshot = False
             self.is_initial_handshake = True
@@ -494,6 +502,13 @@ class SyncSession:
         biome_indices: Optional[List[int]] = None,
     ) -> None:
         """Handle individual chunk section repair/stream snapshot."""
+        # Fencing guard: verify if the section is within current active selection bounds.
+        # If it was sent by a stale/cancelled stream for an old selection, drop it immediately.
+        if self.storage.size_x > 0 and self.storage.size_y > 0 and self.storage.size_z > 0:
+            if not (self.storage.contains(start_x, start_y, start_z) or self.storage.contains(start_x + size_x - 1, start_y + size_y - 1, start_z + size_z - 1)):
+                logger.debug("Live Sync: Dropped out-of-bounds section snapshot for (%d, %d, %d)", sec_x, sec_y, sec_z)
+                return
+
         self.is_streaming = True
         self.stream_last_drain_time = time.time()
         updated = self.storage.set_section_snapshot(
@@ -625,6 +640,14 @@ class SyncSession:
         self.stream_last_drain_time = time.time()
         self._stream_state_cache = None
         self._existing_sections_cache = None
+
+        # Purge any lingering section items from previous streams instantly
+        while not self.stream_section_queue.empty():
+            try:
+                self.stream_section_queue.get_nowait()
+            except queue.Empty:
+                break
+
         def update():
             cur_obj = bpy.data.objects.get(self.target_object_name)
             if cur_obj:
@@ -639,6 +662,15 @@ class SyncSession:
 
     def handle_stream_end(self, stream_id: int, sent_sections: int, status: int) -> None:
         """Handle progressive stream end notice."""
+        from ..constants import StreamStatus
+        if stream_id != self.current_stream_id:
+            logger.debug("Live Sync: Ignoring stream_end for stale stream %d (current: %d)", stream_id, self.current_stream_id)
+            return
+        if status == StreamStatus.CANCELLED:
+            logger.info("Live Sync (%s): Server confirmed stream %d was cancelled.", self.target_object_name, stream_id)
+            self.is_streaming = False
+            self.server_stream_finished = False
+            return
         self.server_stream_finished = True
         self.stream_last_drain_time = time.time()
 
