@@ -170,6 +170,67 @@ class TestDynamicSelectionResizingAndShifting(unittest.TestCase):
         _, faces_after_expand = _get_mesh_vertex_and_face_count(sec_obj_0_after_expand.data)
         self.assertEqual(faces_after_expand, 5, "East face of (15,0,0) must be culled when adjacent neighbor is added")
 
+    def test_stream_preemption_purges_queue_on_selection_change(self):
+        """When selection changes while streaming is in progress, lingering queue items are purged instantly."""
+        from utils.live_sync.session.session_manager import SyncSession
+        session = SyncSession(target_object_name=self.world_root.name)
+
+        # Simulate stream 1 running with 10 sections queued
+        session.storage.set_bounds(0, 0, 0, 16, 16, 16)
+        session.handle_stream_begin(stream_id=1, total_sections=10, flags=0)
+        for i in range(10):
+            session.stream_section_queue.put((i, 0, 0, ["minecraft:stone"]))
+        self.assertEqual(session.stream_section_queue.qsize(), 10)
+        self.assertTrue(session.is_streaming)
+
+        # User moves selection before stream 1 finishes -> stream 2 begins
+        session.handle_selection_info(16, 0, 0, 16, 16, 16)
+        session.handle_stream_begin(stream_id=2, total_sections=5, flags=0)
+
+        # Stream 1 queue items must have been purged
+        self.assertEqual(session.stream_section_queue.qsize(), 0)
+        self.assertEqual(session.current_stream_id, 2)
+        self.assertEqual(session.stream_total_sections, 5)
+        self.assertEqual(session.stream_received_sections, 0)
+        session.stop()
+
+    def test_stale_section_snapshot_fencing_drops_out_of_bounds(self):
+        """Out-of-bounds section snapshot from a cancelled stream is dropped and not enqueued."""
+        from utils.live_sync.session.session_manager import SyncSession
+        session = SyncSession(target_object_name=self.world_root.name)
+
+        # Active selection is [100, 0, 0, size=(16, 16, 16)]
+        session.storage.set_bounds(100, 0, 0, 16, 16, 16)
+
+        # A late arriving snapshot for old section (0, 0, 0) arrives: start_x = 0
+        session.handle_section_snapshot(
+            sec_x=0, sec_y=0, sec_z=0,
+            start_x=0, start_y=0, start_z=0,
+            size_x=16, size_y=16, size_z=16,
+            palette=["minecraft:stone"],
+            grid_indices=[0] * 4096,
+        )
+
+        # Should be dropped: queue remains empty, storage untouched
+        self.assertTrue(session.stream_section_queue.empty())
+        self.assertIsNone(session.storage.get_block(0, 0, 0))
+        session.stop()
+
+    def test_stream_cancelled_status_stops_streaming_without_finalize(self):
+        """STREAM_END with status CANCELLED stops streaming cleanly without finalizing stale progress."""
+        from utils.live_sync.session.session_manager import SyncSession
+        from utils.live_sync.constants import StreamStatus
+        session = SyncSession(target_object_name=self.world_root.name)
+        session.handle_stream_begin(stream_id=1, total_sections=10, flags=0)
+        self.assertTrue(session.is_streaming)
+
+        # Receive STREAM_END with CANCELLED status
+        session.handle_stream_end(stream_id=1, sent_sections=3, status=StreamStatus.CANCELLED)
+
+        self.assertFalse(session.is_streaming)
+        self.assertFalse(session.server_stream_finished)
+        session.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

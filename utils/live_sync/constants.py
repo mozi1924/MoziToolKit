@@ -92,6 +92,12 @@ class PacketType:
     SYNC_CONFIG: Final = 0x82
 
 
+class StreamStatus:
+    SUCCESS: Final = 0
+    CANCELLED: Final = 1
+    ERROR: Final = 2
+
+
 HEADER_FORMAT: Final = "<2sBB"
 HEADER_SIZE: Final = 4
 
