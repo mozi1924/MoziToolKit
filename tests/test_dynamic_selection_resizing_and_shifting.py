@@ -231,6 +231,63 @@ class TestDynamicSelectionResizingAndShifting(unittest.TestCase):
         self.assertFalse(session.server_stream_finished)
         session.stop()
 
+    def test_stream_boundary_seam_face_culling_healing_on_initial_sync(self):
+        """
+        CRITICAL TEST FOR INITIAL SYNC:
+        When scene is completely empty, Section 0 arrives first and builds (with seam face un-culled because Section 1 is not yet in storage).
+        Then Section 1 arrives and builds.
+        When streaming finishes, the boundary reconcile pass MUST automatically heal Section 0's mesh,
+        culling the internal contact face so that both sections have only 5 faces each without manual rebuild!
+        """
+        from utils.live_sync.session.session_manager import SyncSession, _finalize_stream_sync
+        session = SyncSession(target_object_name=self.world_root.name)
+        session.storage.set_bounds(0, 0, 0, 32, 16, 16)
+        mat_mgr = get_shared_material_manager(world_obj=self.world_root, atlas_params=None)
+        baker = get_shared_state_baker()
+
+        # 1. Stream begins
+        session.handle_stream_begin(stream_id=1, total_sections=2, flags=0)
+
+        # 2. Section 0 arrives first with block at (15, 0, 0)
+        grid_0 = [0] * 4096
+        # index for (15, 0, 0) within 16x16x16: x=15, y=0, z=0 -> 15 * 256 + 0 + 0 = 3840
+        grid_0[3840] = 0
+        session.storage.set_block(15, 0, 0, "minecraft:stone")
+        session.storage.calculate_and_store_section_crc(0, 0, 0)
+
+        # Build Section 0 immediately as it would happen during streaming
+        sec_obj_0 = build_single_section_mesh(bpy.context, session.storage, 0, 0, 0, self.world_root, mat_mgr, baker)
+        _, faces_sec0_initial = _get_mesh_vertex_and_face_count(sec_obj_0.data)
+        # Because Section 1 is not yet in storage, (15,0,0) has no east neighbor -> 6 faces
+        self.assertEqual(faces_sec0_initial, 6, "Section 0 must initially have 6 faces because Section 1 has not arrived yet")
+
+        # 3. Section 1 arrives later with block at (16, 0, 0)
+        session.handle_section_snapshot(
+            sec_x=1, sec_y=0, sec_z=0,
+            start_x=16, start_y=0, start_z=0,
+            size_x=16, size_y=16, size_z=16,
+            palette=["minecraft:stone", "minecraft:air"],
+            grid_indices=[1] * 4096, # air
+        )
+        session.storage.set_block(16, 0, 0, "minecraft:stone")
+        session.storage._dirty_sections.add((0, 0, 0)) # Section 0 marked dirty by Section 1 arrival
+        session.storage._dirty_sections.add((1, 0, 0))
+
+        # Build Section 1
+        sec_obj_1 = build_single_section_mesh(bpy.context, session.storage, 1, 0, 0, self.world_root, mat_mgr, baker)
+        _, faces_sec1_initial = _get_mesh_vertex_and_face_count(sec_obj_1.data)
+        self.assertEqual(faces_sec1_initial, 5, "Section 1 sees Section 0 and culls its west face")
+
+        # 4. Stream finishes -> trigger finalize / reconcile pass
+        session.server_stream_finished = True
+        _finalize_stream_sync(session, None, self.world_root, 2)
+
+        # 5. Verify Section 0 has been automatically healed! (now 5 faces, internal face culled)
+        _, faces_sec0_healed = _get_mesh_vertex_and_face_count(sec_obj_0.data)
+        self.assertEqual(faces_sec0_healed, 5, "Section 0 must be automatically healed during stream finalization to cull the seam face!")
+
+        session.stop()
+
 
 if __name__ == "__main__":
     unittest.main()
