@@ -180,7 +180,7 @@ Offset | Type   | Description
 0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x09)
 4..7   | uint32 | Stream ID (与 STREAM_BEGIN 对应的流会话 ID)
 8..11  | uint32 | Sent Sections (服务端实际成功下发的区块总数)
-12..13 | uint16 | Status (状态码: 0 = SUCCESS, 1 = ABORTED/CANCELLED)
+12..13 | uint16 | Status (状态码: 0 = SUCCESS 正常完成, 1 = CANCELLED 主动抢占取消, 2 = ERROR 异常中断)
 ```
 
 ---
@@ -233,7 +233,78 @@ sequenceDiagram
 
 ---
 
-## 6. 异常处理与自愈机制 (Resilience & Self-Healing)
+## 6. 选区动态变更抢占式原子中断与代数栅栏协议 (Preemptive Stream Cancellation & Generation Fencing)
+
+在用户频繁或连续拖拽调整游戏内选区时，为防止多次流式构建并发造成服务端与客户端算力风暴与视口掉帧，协议制定了双向原子抢占与代数栅栏契约：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Player as 玩家移动/缩放选区
+    participant MC as Minecraft 模组 (WebSocketServerManager)
+    participant Worker as 服务端 Worker 线程池
+    participant Net as WebSocket 通道
+    participant Session as Blender 会话引擎 (SyncSession)
+    participant Pump as Blender 主线程事件泵 (Event Pump)
+
+    Player->>MC: 选区变动 A (Seq=101)
+    MC->>Worker: 启动流式任务 A (StreamId=101)
+    Worker->>Net: 发送 STREAM_BEGIN(101, total=64)
+    Worker->>Net: 发送 SECTION_SNAPSHOT(101, sec#1)...
+    Net->>Session: 接收 Snapshot，排队入 stream_section_queue
+    Session->>Pump: 主线程开始 BMesh 构建
+
+    Note over Player,Pump: 【构建中途，玩家再次调整选区 B】
+    Player->>MC: 选区变动 B (Seq=102)
+    
+    rect rgb(255, 235, 235)
+    Note over MC,Worker: 契约 1：服务端原子中断熔断 (Atomic Interruption)
+    MC->>MC: activeBroadcastStreamId 原子升级为 102
+    MC->>Worker: 立即 interrupt 并 cancel 前序任务 A
+    Worker->>Worker: 区块发送循环检测到代数过期，1 区块内瞬间退出
+    Worker->>Net: (可选) 发送 STREAM_END(101, status=1 CANCELLED)
+    end
+
+    rect rgb(235, 255, 235)
+    Note over Session,Pump: 契约 2：客户端即时排空与代数栅栏 (Drain & Fencing)
+    MC->>Net: 发送 SELECTION_INFO(B), MANIFEST(102), STREAM_BEGIN(102)
+    Net->>Session: handle_selection_info / handle_stream_begin
+    Session->>Session: 1. 瞬间排空 stream_section_queue (丢弃未消费的 A 任务)
+    Session->>Session: 2. 重置 stream_received_sections = 0 与进度条
+    Session->>Session: 3. prune 移出选区的 Mesh 物体
+    Session->>Session: 4. 包围盒栅栏守卫：任何在途到达的 A 残包直接 DROP 丢弃
+    end
+
+    MC->>Worker: 启动流式任务 B (StreamId=102)
+    Worker->>Net: 发送 SECTION_SNAPSHOT(102)...
+    Session->>Pump: 主线程 100% 算力直接投入 B 选区构建！
+```
+
+### 核心契约要点：
+1. **服务端原子循环熔断**：在 `streamNonEmptySectionSnapshots` 每次发送区块前，检查 `activeBroadcastStreamId.get() != streamId` 与 `Thread.currentThread().isInterrupted()`。若发现已存在更新的选区，立即发送 `STREAM_STATUS_CANCELLED` 并提前退出循环，杜绝后台 CPU 与网络浪费。
+2. **客户端瞬时队列排空**：收到新选区包围盒或新 `STREAM_BEGIN` 时，DCC 端在事件泵主线程执行前立即排空积压队列（`stream_section_queue`），瞬间抛弃所有已失效的旧区块任务。
+3. **包围盒有效性拦截守卫**：在 `handle_section_snapshot` 接收时，严格比对区块坐标是否处于当前最新的 `VoxelStorage.bounds` 范围内。过期的在途残留包直接在网络层丢弃，绝不写入内存存储，亦不入队。
+
+---
+
+## 7. 选区平移/缩放增量重构与边界接缝面剔除自愈 (Incremental Resizing & Seam Healing)
+
+当用户移动选区位置或调整选区大小时，系统避免全量销毁已有模型，而是采用**空间重叠区数据复用**与**边界接缝面剔除自愈机制**：
+
+1. **3D 重叠区数据复用与精准裁剪**：
+   - 当新旧选区存在 3D 空间交集时，`VoxelStorage.set_bounds` 仅移除超出新选区边界的体素、`_section_map` 与 CRC 数据，交集内部的方块数据与 Section 网格 **100% 保留并零开销复用**；
+   - 通过 `prune_out_of_bounds_section_objects` 瞬间销毁移出新边界的场景 Mesh 物体；
+   - 仅当选区发生无交集的远距离瞬间跳转时，才安全退化为全量清空。
+2. **边界接缝面剔除与补面自愈 (Face Culling & Restoring)**：
+   - **选区缩小/平移**：原先内部方块暴露为新边界时，相邻方块离开 `block_map`，面剔除引擎 `should_render_face` 自动将**之前被剔除的内表面补全渲染为外表面**；
+   - **选区扩大**：新方块接入后，原先暴露在外边界的面在接缝重新评估时被**精确遮挡剔除**。
+3. **流式结束确定性接缝闭合 (Final Stream Boundary Pass)**：
+   - 在流式接收期间，脏标记 `_dirty_sections` 在内存中安全累积，避免中途因网络微小间隔假空而过早 clear；
+   - 当服务端全部流数据发送完毕（`is_batch_complete == True`）时，事件泵自动收集所有受跨区块邻居影响的 Section，统一推入队列执行接缝面剔除闭合重建，彻底解决首次同步时区块接缝面剔除失效的问题。
+
+---
+
+## 8. 异常处理与自愈机制 (Resilience & Self-Healing)
 1. **网络重连数据幂等**：重连时客户端自动执行 `is_snapshot_identical` 校验，未发生实质改变的 Snapshot 绝不触发任何网格拓扑计算。
 2. **场景网格丢失恢复**：若内存数据存在但视口物体被用户意外删除，点击 **Rebuild Mesh (`mozi.sync_rebuild_world`)** 可在完全离线状态下瞬时从内存 `VoxelStorage` 重新生成全部多边形。
 3. **断线重试次数约束与手动取消**：
