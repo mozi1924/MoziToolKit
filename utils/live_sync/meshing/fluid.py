@@ -135,42 +135,71 @@ def calculate_corner_average(
     h_adj1: float,
     h_adj2: float,
     h_diag: float,
+    is_source: bool = False,
 ) -> float:
     """
     Calculates the averaged fluid height for one corner between center, two adjacent neighbors,
     and the diagonal neighbor using canonical Minecraft fluid mechanics.
-    Air (0.0), solid blocks (-1.0), and external boundaries are excluded so fluid borders do not sag.
+
+    - Submerged corners (fluid above, h >= 1.0) stay at 1.0.
+    - Solid blocks (h == -1.0) are completely excluded (JMC2OBJ solid boundary preservation).
+    - Still source blocks (is_source == True): surface tension keeps flat MAX_FLUID_HEIGHT (8/9)
+      against air and chunk/selection boundaries, preventing boundary drooping.
+    - Flowing fluids (is_source == False): open air (h == 0.0) contributes with weight 1.0,
+      pulling downstream corners down to naturally generate trapezoidal side faces and sloped surfaces.
     """
     # If any fluid has height 1.0 (submerged/water above), the corner is fully at height 1.0
     if h_center >= 1.0 or h_adj1 >= 1.0 or h_adj2 >= 1.0:
         return 1.0
 
-    fluid_samples = [h_center]
-    if h_adj1 > 0.0:
-        fluid_samples.append(h_adj1)
-    if h_adj2 > 0.0:
-        fluid_samples.append(h_adj2)
-    # Sample diagonal block if at least one adjacent neighbor is fluid
-    if (h_adj1 > 0.0 or h_adj2 > 0.0) and h_diag > 0.0:
-        if h_diag >= 1.0:
-            return 1.0
-        fluid_samples.append(h_diag)
+    # Still water source block protection (prevents selection boundary drooping):
+    # A still source block maintains flat MAX_FLUID_HEIGHT unless it borders
+    # lower flowing fluid actively drawing the water level down.
+    if is_source:
+        fluid_samples = [h for h in (h_adj1, h_adj2, h_diag) if h > 0.0]
+        if not fluid_samples or all(h >= 0.8 for h in fluid_samples):
+            return MAX_FLUID_HEIGHT
 
-    # If all participating fluids are source blocks / near full (>= 0.8), keep exact MAX_FLUID_HEIGHT
-    if all(h >= 0.8 for h in fluid_samples):
-        return MAX_FLUID_HEIGHT
-
+    # Flowing fluid (level 1..7, falling spills, or source bordering lower fluid):
+    # Canonical Minecraft weighted averaging:
+    # Source blocks (>= 0.8) have weight 10.0; flowing fluids and air (0.0 <= h < 0.8) have weight 1.0.
+    # Solid blocks (-1.0) are skipped.
     weighted_sum = 0.0
     total_weight = 0.0
 
-    for h in fluid_samples:
-        if h >= 0.8:
-            # Source blocks or near-full fluids have strong surface tension (weight 10.0)
-            weighted_sum += h * 10.0
+    # 1. Center fluid
+    if h_center >= 0.8:
+        weighted_sum += h_center * 10.0
+        total_weight += 10.0
+    elif h_center >= 0.0:
+        weighted_sum += h_center * 1.0
+        total_weight += 1.0
+
+    # 2. Adjacent 1
+    if h_adj1 >= 0.8:
+        weighted_sum += h_adj1 * 10.0
+        total_weight += 10.0
+    elif h_adj1 >= 0.0:
+        weighted_sum += h_adj1 * 1.0
+        total_weight += 1.0
+
+    # 3. Adjacent 2
+    if h_adj2 >= 0.8:
+        weighted_sum += h_adj2 * 10.0
+        total_weight += 10.0
+    elif h_adj2 >= 0.0:
+        weighted_sum += h_adj2 * 1.0
+        total_weight += 1.0
+
+    # 4. Diagonal (only if at least one adjacent neighbor is fluid)
+    if (h_adj1 > 0.0 or h_adj2 > 0.0) and h_diag >= 0.0:
+        if h_diag >= 1.0:
+            return 1.0
+        if h_diag >= 0.8:
+            weighted_sum += h_diag * 10.0
             total_weight += 10.0
-        elif h > 0.0:
-            # Flowing low fluid has weight 1.0
-            weighted_sum += h * 1.0
+        else:
+            weighted_sum += h_diag * 1.0
             total_weight += 1.0
 
     if total_weight > 0.0:
@@ -198,6 +227,16 @@ def calculate_fluid_corner_heights(
         if p_above.name.replace("flowing_", "") == fluid_type or (fluid_type == "water" and p_above.is_waterlogged):
             return (1.0, 1.0, 1.0, 1.0)
 
+    state_str = block_map.get((x, y, z))
+    is_source = False
+    if state_str:
+        parsed = parse_and_classify(state_str)
+        if parsed.is_waterlogged:
+            is_source = True
+        elif "flowing_" not in parsed.name:
+            level_str = parsed.props.get("level", "0")
+            is_source = (level_str == "0")
+
     h_center = sample_fluid_height(block_map, x, y, z, fluid_type)
     h_N = sample_fluid_height(block_map, x, y, z - 1, fluid_type)
     h_S = sample_fluid_height(block_map, x, y, z + 1, fluid_type)
@@ -209,10 +248,10 @@ def calculate_fluid_corner_heights(
     h_SE = sample_fluid_height(block_map, x + 1, y, z + 1, fluid_type)
     h_SW = sample_fluid_height(block_map, x - 1, y, z + 1, fluid_type)
 
-    c_NW = calculate_corner_average(h_center, h_N, h_W, h_NW)
-    c_NE = calculate_corner_average(h_center, h_N, h_E, h_NE)
-    c_SE = calculate_corner_average(h_center, h_S, h_E, h_SE)
-    c_SW = calculate_corner_average(h_center, h_S, h_W, h_SW)
+    c_NW = calculate_corner_average(h_center, h_N, h_W, h_NW, is_source=is_source)
+    c_NE = calculate_corner_average(h_center, h_N, h_E, h_NE, is_source=is_source)
+    c_SE = calculate_corner_average(h_center, h_S, h_E, h_SE, is_source=is_source)
+    c_SW = calculate_corner_average(h_center, h_S, h_W, h_SW, is_source=is_source)
 
     return (c_NW, c_NE, c_SE, c_SW)
 

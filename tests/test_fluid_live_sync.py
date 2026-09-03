@@ -700,7 +700,7 @@ class TestFluidLiveSync(unittest.TestCase):
 
         # Expect exactly 4 continuous vertical height points: Y=0 bottom (-0.5), Y=1 boundary (0.5), Y=2 boundary (1.5), Y=3 top (1.5 + corner_avg)
         # No duplicate or split vertices separated by epsilon gaps!
-        top_corner_height = calculate_corner_average(MAX_FLUID_HEIGHT, 0.0, 0.0, 0.0)
+        top_corner_height = calculate_corner_average(MAX_FLUID_HEIGHT, 0.0, 0.0, 0.0, is_source=True)
         self.assertEqual(len(verts_at_corner), 4, f"Expected 4 welded vertices along vertical edge, got {len(verts_at_corner)}: {verts_at_corner}")
         self.assertAlmostEqual(verts_at_corner[0], -0.5, places=4)
         self.assertAlmostEqual(verts_at_corner[1], 0.5, places=4)
@@ -763,6 +763,69 @@ class TestFluidLiveSync(unittest.TestCase):
             self.assertIsNotNone(tint_attr)
             # Water face tint color should reflect ocean water tint
             self.assertAlmostEqual(tint_attr.data[0].color[0], ocean_expected[0], delta=0.1)
+
+    def test_flowing_water_trapezoid_mesh_generation(self):
+        """
+        Verify that flowing fluid (e.g. well overflow or stream) correctly generates
+        trapezoidal side faces and sloped top faces instead of flat vertical blocks.
+        """
+        from utils.live_sync.meshing.geometry import RawSectionGeometryBuffer
+        from utils.live_sync.meshing.fluid import generate_fluid_buffer_faces
+
+        # Water source at (0, 1, 0), flowing water at (1, 1, 0)
+        block_map = {
+            (0, 1, 0): "minecraft:water[level=0]",
+            (1, 1, 0): "minecraft:water[level=1]",
+        }
+
+        # 1. Corner heights verification
+        c_nw, c_ne, c_se, c_sw = calculate_fluid_corner_heights(block_map, 1, 1, 0, "water")
+        # Corners facing source (West) must be substantially higher than corners facing air (East)
+        self.assertGreater(c_nw, 0.65, "NW corner near source should remain elevated")
+        self.assertGreater(c_sw, 0.65, "SW corner near source should remain elevated")
+        self.assertLess(c_ne, 0.40, "NE corner facing open air must be pulled down to create slope")
+        self.assertLess(c_se, 0.40, "SE corner facing open air must be pulled down to create slope")
+        self.assertGreater(c_nw - c_ne, 0.40, "Slope difference across block must exceed 0.4 for distinct trapezoid")
+
+        # 2. Buffer mesh face geometry verification
+        buf = RawSectionGeometryBuffer()
+        mat_mgr = LiveSyncMaterialManager(world_obj=None, atlas_params=self.atlas_params)
+        generate_fluid_buffer_faces(
+            buffer=buf,
+            x=1, y=1, z=0,
+            state_str="minecraft:water[level=1]",
+            block_map=block_map,
+            origin_centered=False,
+            min_x=0, min_y=0, min_z=0,
+            half_x=0.0, half_z=0.0,
+            mat_manager=mat_mgr,
+        )
+
+        # North face (facing Blender +Y, face_dir_idx == 5):
+        # Vertices order: v_ne_top, v_ne_bot, v_nw_bot, v_nw_top
+        north_faces = [buf.faces[i] for i, d in enumerate(buf.face_dir) if d == 5]
+        self.assertTrue(len(north_faces) > 0, "North side face must be emitted")
+        face_verts = [buf.vertices[vi] for vi in north_faces[0]]
+        z_ne_top = face_verts[0][2]
+        z_nw_top = face_verts[3][2]
+        # In Blender coords: bz = 1.0, top is bz - 0.5 + h = 0.5 + h
+        self.assertAlmostEqual(z_nw_top, 0.5 + c_nw, places=4)
+        self.assertAlmostEqual(z_ne_top, 0.5 + c_ne, places=4)
+        self.assertGreater(z_nw_top - z_ne_top, 0.40, "North side face must be a trapezoid (NW higher than NE by >0.4)")
+
+    def test_selection_boundary_source_water_no_droop(self):
+        """
+        Verify that a still water source block on a selection/chunk boundary (where
+        neighbors are None/air outside the selection) does not droop and maintains 8/9 flat height.
+        """
+        boundary_map = {
+            (10, 64, 10): "minecraft:water[level=0]",
+        }
+        c_nw, c_ne, c_se, c_sw = calculate_fluid_corner_heights(boundary_map, 10, 64, 10, "water")
+        self.assertAlmostEqual(c_nw, MAX_FLUID_HEIGHT, places=4, msg="Boundary NW corner must not droop")
+        self.assertAlmostEqual(c_ne, MAX_FLUID_HEIGHT, places=4, msg="Boundary NE corner must not droop")
+        self.assertAlmostEqual(c_se, MAX_FLUID_HEIGHT, places=4, msg="Boundary SE corner must not droop")
+        self.assertAlmostEqual(c_sw, MAX_FLUID_HEIGHT, places=4, msg="Boundary SW corner must not droop")
 
 
 if __name__ == "__main__":
