@@ -43,14 +43,20 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
                 bpy.data.node_groups.remove(ng)
 
     def test_labpbr_decoder_interface_and_sockets(self):
-        """Verify LabPBR 1.3 Decoder v16 public interface and socket configurations."""
+        """Verify LabPBR 1.3 Decoder v17 public interface and socket configurations."""
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(ng.get("mozi_template_version"), 16)
+        self.assertEqual(ng.get("mozi_template_version"), 17)
         self.assertEqual(reference_shape_errors(ng), ())
         assert_reference_shape(ng)
 
         sockets = {s.name: s for s in ng.interface.items_tree if s.item_type == "SOCKET"}
+
+        # Verify Disable Subsurface is NodeSocketBool with default True
+        self.assertIn("Disable Subsurface", sockets)
+        disable_sss = sockets["Disable Subsurface"]
+        self.assertEqual(disable_sss.socket_type, "NodeSocketBool")
+        self.assertEqual(disable_sss.default_value, True)
 
         # Verify Thin Wall is NodeSocketBool with default False
         self.assertIn("Thin Wall", sockets)
@@ -92,6 +98,17 @@ class TestLabPBRIssuesAndCatalog(unittest.TestCase):
         thin_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Thin Wall"]
         self.assertEqual(len(thin_links), 1)
         self.assertEqual(thin_links[0].from_socket.name, "Thin Wall")
+
+        # Check Disable Subsurface wiring
+        sss_mix = ng.nodes.get("Filter Subsurface Weight")
+        self.assertIsNotNone(sss_mix)
+        self.assertEqual(sss_mix.data_type, "FLOAT")
+        sss_links = [l for l in ng.links if l.to_node == principled and l.to_socket.name == "Subsurface Weight"]
+        self.assertEqual(len(sss_links), 1)
+        self.assertEqual(sss_links[0].from_node, sss_mix)
+        filter_factor_links = [l for l in ng.links if l.to_node == sss_mix and l.to_socket.name == "Factor"]
+        self.assertEqual(len(filter_factor_links), 1)
+        self.assertEqual(filter_factor_links[0].from_socket.name, "Disable Subsurface")
 
         # Check Emission mix node
         mix_node = ng.nodes.get("Select Emission Mode")
