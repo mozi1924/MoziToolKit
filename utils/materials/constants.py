@@ -459,8 +459,8 @@ PROP_OVERLAY_TEXTURE = "mtk:overlay_texture"
 PROP_TINT_CATEGORY = "mtk:tint_category"
 
 # Animation Mesh Attribute Names (Atlas Dynamic Animation)
-ATTR_ANIM_TIMING = "mtk_anim_timing"               # RGBA: frames, frametime, interpolate, frame width
-ATTR_ANIM_FRAME_SIZE = "mtk_anim_frame_size"       # RG: frame width, frame height
+ATTR_ANIM_TIMING = "mtk_anim_timing"               # FLOAT_VECTOR: frames (X), frametime (Y), interpolate (Z)
+ATTR_ANIM_FRAME_SIZE = "mtk_anim_frame_size"       # FLOAT_VECTOR: frame width (X), frame height (Y), reserved (Z)
 ATTR_ANIM_TOTAL_FRAMES = "mtk_anim_total_frames"
 ATTR_ANIM_FRAMETIME = "mtk_anim_frametime"
 ATTR_ANIM_INTERPOLATE = "mtk_anim_interpolate"

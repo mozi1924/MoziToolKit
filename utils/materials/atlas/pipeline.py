@@ -509,11 +509,11 @@ class AtlasReplacementEngine:
                 apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
 
                 for attr_name, data in (
-                    (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps, anim_widths)),
-                    (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0, 1.0) for width, height in zip(anim_widths, anim_heights))),
+                    (ATTR_ANIM_TIMING, zip(anim_frames, anim_frametimes, anim_interps)),
+                    (ATTR_ANIM_FRAME_SIZE, ((width, height, 0.0) for width, height in zip(anim_widths, anim_heights))),
                 ):
-                    ensure_face_attribute(mesh, attr_name, "FLOAT_COLOR").data.foreach_set(
-                        "color", [component for value in data for component in value]
+                    ensure_face_attribute(mesh, attr_name, "FLOAT_VECTOR").data.foreach_set(
+                        "vector", [component for value in data for component in value]
                     )
 
                 from ..catalog import (

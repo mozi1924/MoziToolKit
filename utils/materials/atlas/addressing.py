@@ -210,8 +210,8 @@ class ResolvedAtlasAddress(NamedTuple):
     calc_uv_fn: Callable[[float, float], tuple[float, float]]
     source_texture_key: str
     is_animated: bool
-    anim_timing: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 1.0)
-    anim_frame_size: tuple[float, float, float, float] = (16.0, 16.0, 0.0, 0.0)
+    anim_timing: tuple[float, float, float] = (1.0, 1.0, 0.0)
+    anim_frame_size: tuple[float, float, float] = (16.0, 16.0, 0.0)
     biome_tint_data: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     uv_rot: float = 0.0
@@ -934,14 +934,14 @@ class AtlasAddressResolver:
             total_frames = float(loc.get("frame_count", 1))
             frametime = float(loc.get("frametime", 2))
             interpolate = 1.0 if loc.get("interpolate") else 0.0
-            anim_timing = (total_frames, frametime, interpolate, 1.0)
+            anim_timing = (total_frames, frametime, interpolate)
             fw = float(loc.get("frame_width") or target_chunk.get("tile_size", 16))
             fh = float(loc.get("frame_height") or target_chunk.get("tile_size", 16))
-            anim_frame_size = (fw, fh, 0.0, 0.0)
+            anim_frame_size = (fw, fh, 0.0)
         else:
-            anim_timing = (1.0, 1.0, 0.0, 1.0)
+            anim_timing = (1.0, 1.0, 0.0)
             ts = float(target_chunk.get("tile_size", 16))
-            anim_frame_size = (ts, ts, 0.0, 0.0)
+            anim_frame_size = (ts, ts, 0.0)
 
         # Biome Tint calculation
         p_short = p_name.split(":", 1)[-1].removeprefix("block/")
