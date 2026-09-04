@@ -10,7 +10,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
 
     bl_idname = "mozi.replace_material"
     bl_label = "Replace Material"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     biome_preset: EnumProperty(
         name="Biome",
