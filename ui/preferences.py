@@ -292,14 +292,15 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             self.draw_misc(layout, context)
 
     def draw_resource_packs(self, layout, context):
+        from ..i18n import tr
         # Information Banner
         info_box = layout.box()
         banner_row = info_box.row(align=True)
-        banner_row.label(text="Resource Pack & Base JAR Stack (Prioritized Resolution):", icon="PACKAGE")
+        banner_row.label(text=tr("Resource Pack & Base JAR Stack (Prioritized Resolution):"), icon="PACKAGE")
         info_col = info_box.column(align=True)
         info_col.scale_y = 0.85
-        info_col.label(text="Packs are checked from top to bottom. Higher entries override lower entries.")
-        info_col.label(text="Add custom/PBR packs at top, Mod JARs in middle, and Vanilla Minecraft JAR at bottom as base fallback.")
+        info_col.label(text=tr("Packs are checked from top to bottom. Higher entries override lower entries."))
+        info_col.label(text=tr("Add custom/PBR packs at top, Mod JARs in middle, and Vanilla Minecraft JAR at bottom as base fallback."))
 
         layout.separator()
 
@@ -350,46 +351,47 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             item = self.resource_packs[idx]
             detail_box = layout.box()
             d_header = detail_box.row(align=True)
-            d_header.label(text=f"Pack Details: {item.name}", icon="PREFERENCES")
-            d_header.prop(item, "enabled", text="Enabled")
+            d_header.label(text=f"{tr('Pack Details')}: {item.name}", icon="PREFERENCES")
+            d_header.prop(item, "enabled", text=tr("Enabled"))
 
             d_col = detail_box.column(align=False)
             row1 = d_col.row(align=True)
-            row1.prop(item, "name", text="Name")
-            row1.prop(item, "pack_type", text="Type")
+            row1.prop(item, "name", text=tr("Name"))
+            row1.prop(item, "pack_type", text=tr("Type"))
 
             row2 = d_col.row(align=True)
-            row2.prop(item, "path", text="Path")
+            row2.prop(item, "path", text=tr("Path"))
 
             p_val = item.path.strip()
             if not p_val:
                 st_row = d_col.row(align=True)
                 st_row.alert = True
-                st_row.label(text="Path is empty. Please select a .zip, .jar, or assets folder.", icon="INFO")
+                st_row.label(text=tr("Path is empty. Please select a .zip, .jar, or assets folder."), icon="INFO")
             elif not Path(p_val).exists():
                 st_row = d_col.row(align=True)
                 st_row.alert = True
-                st_row.label(text=f"File not found: '{p_val}'", icon="ERROR")
+                st_row.label(text=f"{tr('File not found')}: '{p_val}'", icon="ERROR")
             else:
                 st_row = d_col.row(align=True)
-                st_row.label(text=f"File Valid: {Path(p_val).name}", icon="CHECKMARK")
+                st_row.label(text=f"{tr('File Valid')}: {Path(p_val).name}", icon="CHECKMARK")
 
         # Material Replacement & Atlas Options Box
         layout.separator()
         mat_box = layout.box()
         m_head = mat_box.row(align=True)
-        m_head.label(text="Default Material Replacement Settings:", icon="MATERIAL")
+        m_head.label(text=tr("Default Material Replacement Settings:"), icon="MATERIAL")
 
         m_col = mat_box.column(align=False)
         row_mode = m_col.row(align=True)
-        row_mode.prop(self, "material_mode", text="Mode")
+        row_mode.prop(self, "material_mode", text=tr("Mode"))
         row_mode.prop(self, "pack_textures")
 
         row_precompile = mat_box.row(align=True)
-        row_precompile.operator("mozi.precompile_cache", text="Precompile / Rebuild Stack Atlas Cache", icon="FILE_REFRESH")
-        row_precompile.operator("mozi.open_cache_folder", text="Open Cache Folder", icon="FOLDER_REDIRECT")
+        row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Atlas Cache"), icon="FILE_REFRESH")
+        row_precompile.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
 
     def draw_context_menus(self, layout, context):
+        from ..i18n import tr
         # Secondary Context Menu Sub-Tabs
         sub_row = layout.row(align=True)
         sub_row.prop(self, "context_menu_tab", expand=True)
@@ -399,9 +401,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Top Bar (Header Actions for Menu tabs)
         top_box = layout.box()
         top_row = top_box.row(align=True)
-        top_row.operator(MOZI_OT_menu_reset_config.bl_idname, text="Reset Default Presets", icon="FILE_REFRESH")
-        top_row.operator(MOZI_OT_menu_import_config.bl_idname, text="Import Presets JSON...", icon="IMPORT")
-        top_row.operator(MOZI_OT_menu_export_config.bl_idname, text="Export Presets JSON...", icon="EXPORT")
+        top_row.operator(MOZI_OT_menu_reset_config.bl_idname, text=tr("Reset to Default Presets"), icon="FILE_REFRESH")
+        top_row.operator(MOZI_OT_menu_import_config.bl_idname, text=tr("Import Presets JSON..."), icon="IMPORT")
+        top_row.operator(MOZI_OT_menu_export_config.bl_idname, text=tr("Export Presets JSON..."), icon="EXPORT")
 
         layout.separator()
 
@@ -422,7 +424,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Left Column: Added Right-Click Menu Items
         left_col = main_row.column(align=False)
         left_box = left_col.box()
-        left_box.label(text="Added Right-Click Menu Items:", icon="CHECKBOX_HLT")
+        left_box.label(text=tr("Added Right-Click Menu Items:"), icon="CHECKBOX_HLT")
         left_box.template_list(
             "MOZI_UL_added_items_list",
             "",
@@ -437,8 +439,8 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         if 0 <= added_idx < len(added_coll):
             item = added_coll[added_idx]
             edit_box = left_col.box()
-            edit_box.label(text="Edit Menu Item Label:", icon="EDITMODE_HLT")
-            edit_box.prop(item, "label", text="Label")
+            edit_box.label(text=tr("Edit Menu Item Label:"), icon="EDITMODE_HLT")
+            edit_box.prop(item, "label", text=tr("Label"))
 
         # Middle Column: Action Buttons (Icon-Only Compact Column)
         mid_col = main_row.column(align=True)
@@ -472,7 +474,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Right Column: Available / Unadded Options
         right_col = main_row.column(align=False)
         right_box = right_col.box()
-        right_box.label(text="Available Unadded Options:", icon="ADD")
+        right_box.label(text=tr("Available Unadded Options:"), icon="ADD")
         right_box.template_list(
             "MOZI_UL_unadded_items_list",
             "",
@@ -484,10 +486,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         )
 
     def draw_misc(self, layout, context):
+        from ..i18n import tr
         # Configuration Backend Selector Box
         backend_box = layout.box()
         b_header = backend_box.row(align=True)
-        b_header.label(text="Configuration Storage Backend:", icon="PREFERENCES")
+        b_header.label(text=tr("Configuration Storage Backend:"), icon="PREFERENCES")
         backend_row = backend_box.row(align=True)
         backend_row.prop(self, "backend_type", expand=True)
 
@@ -497,10 +500,10 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             mgr = get_config_manager()
             from ..utils.config.backends.json_backend import JsonConfigBackend
             path_str = mgr.get_backend().get_config_path() if isinstance(mgr.get_backend(), JsonConfigBackend) else "context_menus.json"
-            b_desc.label(text=f"Active File: {path_str}")
-            b_desc.label(text="Changes are atomically written to external JSON file with automatic backup.")
+            b_desc.label(text=f"{tr('Active File')}: {path_str}")
+            b_desc.label(text=tr("Changes are atomically written to external JSON file with automatic backup."))
         else:
-            b_desc.label(text="Saved directly inside Blender's default user preferences (userpref.blend).")
+            b_desc.label(text=tr("Saved directly inside Blender's default user preferences (userpref.blend)."))
 
         layout.separator()
 
@@ -512,30 +515,30 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         banner_row = status_box.row(align=True)
         missing = [item for item in statuses if not item.get("is_satisfied", False)]
         if not missing:
-            banner_row.label(text="All required modules and dependencies are available.", icon="CHECKMARK")
+            banner_row.label(text=tr("All required modules and dependencies are available."), icon="CHECKMARK")
         elif len(missing) == 1:
             banner_row.alert = True
             dep = missing[0]
             dep_name = dep.get("name", "Unknown")
             if dep_name == "Pillow":
-                banner_row.label(text="Optional dependency 'Pillow' is not installed (required for Atlas Material Mode).", icon="INFO")
+                banner_row.label(text=tr("Optional dependency 'Pillow' is not installed (required for Atlas Material Mode)."), icon="INFO")
             elif dep_name == "websockets":
-                banner_row.label(text="Optional dependency 'websockets' is not installed (required for Live Sync Panel & Operators).", icon="INFO")
+                banner_row.label(text=tr("Optional dependency 'websockets' is not installed (required for Live Sync Panel & Operators)."), icon="INFO")
             else:
-                req_text = f" (required for {dep['required_by']})" if dep.get("required_by") else ""
-                banner_row.label(text=f"Optional dependency '{dep_name}' is not installed{req_text}.", icon="INFO")
+                req_text = f" ({tr('required for')} {dep['required_by']})" if dep.get("required_by") else ""
+                banner_row.label(text=f"{tr('Optional dependency')} '{dep_name}' {tr('is not installed')}{req_text}.", icon="INFO")
         else:
             banner_row.alert = True
             dep_names = ", ".join(f"'{d.get('name', 'Unknown')}'" for d in missing)
-            banner_row.label(text=f"Optional dependencies {dep_names} are not installed.", icon="INFO")
+            banner_row.label(text=f"{tr('Optional dependencies')} {dep_names} {tr('are not installed')}.", icon="INFO")
 
         layout.separator()
 
         # Dependencies List Box
         list_box = layout.box()
         header_row = list_box.row(align=True)
-        header_row.label(text="Extension Dependencies:", icon="PACKAGE")
-        header_row.operator("mozi.check_dependencies", text="Refresh Status", icon="FILE_REFRESH")
+        header_row.label(text=tr("Extension Dependencies:"), icon="PACKAGE")
+        header_row.operator("mozi.check_dependencies", text=tr("Refresh Status"), icon="FILE_REFRESH")
 
         col = list_box.column(align=False)
         for item in statuses:
@@ -544,29 +547,29 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
             info_col = row.column(align=False)
             title_row = info_col.row(align=True)
-            title_row.label(text=item["display_name"], icon="SCRIPT")
+            title_row.label(text=tr(item["display_name"]), icon="SCRIPT")
             if item["installed"]:
                 title_row.label(text=f"(v{item['version'] or 'unknown'})", icon="NONE")
             else:
-                title_row.label(text="(Not Installed / Missing)", icon="NONE")
+                title_row.label(text=f"({tr('Not Installed / Missing')})", icon="NONE")
 
             desc_row = info_col.row(align=True)
             desc_row.scale_y = 0.85
-            desc_row.label(text=item["description"] or "")
+            desc_row.label(text=tr(item["description"]) or "")
 
             if item["required_by"]:
                 req_row = info_col.row(align=True)
                 req_row.scale_y = 0.85
-                req_row.label(text=f"Used by: {item['required_by']}")
+                req_row.label(text=f"{tr('Used by')}: {item['required_by']}")
 
             action_col = row.column(align=True)
             action_col.alignment = "RIGHT"
             if item["installed"]:
                 tag_row = action_col.row(align=True)
-                tag_row.label(text="Ready", icon="CHECKMARK")
+                tag_row.label(text=tr("Ready"), icon="CHECKMARK")
             else:
                 tag_row = action_col.row(align=True)
-                tag_row.label(text="Unavailable", icon="CANCEL")
+                tag_row.label(text=tr("Unavailable"), icon="CANCEL")
 
         layout.separator()
 
@@ -576,17 +579,17 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         cache_box = layout.box()
         cache_header = cache_box.row(align=True)
-        cache_header.label(text="Persistent Cache & Storage:", icon="DISK_DRIVE")
-        cache_header.label(text=f"Total: {stats['size_formatted']} ({stats['files_count']} files)", icon="INFO")
+        cache_header.label(text=tr("Persistent Cache & Storage:"), icon="DISK_DRIVE")
+        cache_header.label(text=f"{tr('Total')}: {stats['size_formatted']} ({stats['files_count']} {tr('files')})", icon="INFO")
 
         cache_col = cache_box.column(align=True)
         cache_col.scale_y = 0.85
-        cache_col.label(text=f"Location: {stats['path']}")
-        cache_col.label(text="Extracted packs, compiled multi-layer atlases, and JSON indices persist here across restarts.")
+        cache_col.label(text=f"{tr('Location')}: {stats['path']}")
+        cache_col.label(text=tr("Extracted packs, compiled multi-layer atlases, and JSON indices persist here across restarts."))
 
         cache_row = cache_box.row(align=True)
-        cache_row.operator("mozi.open_cache_folder", text="Open Cache Folder", icon="FILE_FOLDER")
-        cache_row.operator("mozi.clear_cache", text="Clear Resource Pack Cache", icon="TRASH")
+        cache_row.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FILE_FOLDER")
+        cache_row.operator("mozi.clear_cache", text=tr("Clear Resource Pack Cache"), icon="TRASH")
 
         layout.separator()
 

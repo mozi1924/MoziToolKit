@@ -83,7 +83,7 @@ def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     row_top.label(text=f"{_tr('Material Mode')}: {mode_translated}", icon="MATERIAL")
 
     row_preset = box.row(align=True)
-    row_preset.prop(obj, "mtk_biome", text="Biome")
+    row_preset.prop(obj, "mtk_biome", text=_tr("Biome"))
 
     # Preview Info
     col_info = box.column(align=True)

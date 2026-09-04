@@ -77,26 +77,36 @@ class MOZI_PG_available_menu_item(bpy.types.PropertyGroup):
 
 class MOZI_UL_added_items_list(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        from ..i18n import tr
+        display_label = tr(item.label, "Operator")
+        if display_label == item.label:
+            display_label = tr(item.label)
+
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
-            row.label(text=item.label, icon="CHECKBOX_HLT")
+            row.label(text=display_label, icon="CHECKBOX_HLT")
             op_short = item.operator_id.split(".")[-1]
             row.label(text=f"({op_short})", icon="NONE")
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
-            layout.label(text=item.label, icon="CHECKBOX_HLT")
+            layout.label(text=display_label, icon="CHECKBOX_HLT")
 
 
 class MOZI_UL_unadded_items_list(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        from ..i18n import tr
+        display_label = tr(item.label, "Operator")
+        if display_label == item.label:
+            display_label = tr(item.label)
+
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
-            row.label(text=item.label, icon="ADD")
+            row.label(text=display_label, icon="ADD")
             op_short = item.operator_id.split(".")[-1]
             row.label(text=f"({op_short})", icon="NONE")
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
-            layout.label(text=item.label, icon="ADD")
+            layout.label(text=display_label, icon="ADD")
 
 
 
