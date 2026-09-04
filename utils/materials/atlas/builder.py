@@ -333,8 +333,8 @@ def add_packed_biome_attribute_nodes(
                     tex_node = nodes.new("ShaderNodeTexImage")
                     tex_node.name = node_name
                     tex_node.image = cm_img
-                    tex_node.interpolation = "Closest"
-                    tex_node.extension = "CLIP"
+                    tex_node.interpolation = "Linear"
+                    tex_node.extension = "EXTEND"
                     tex_node.location = pos
                     links.new(attr_uv.outputs["Vector"], tex_node.inputs["Vector"])
                     links.new(tex_node.outputs["Color"], decoder_node.inputs[target_socket])
