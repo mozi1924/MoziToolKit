@@ -74,10 +74,13 @@ def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     mode = detect_object_material_mode(obj)
     current_biome = obj.get("mtk:biome_preset", "PLAINS")
     biome_info = get_biome_colors(current_biome)
+    from ..i18n import tr
+    _tr = tr
 
     box = layout.box()
     row_top = box.row(align=True)
-    row_top.label(text=f"Material Mode: {mode}", icon="MATERIAL")
+    mode_translated = _tr(mode.title()) if mode else mode
+    row_top.label(text=f"{_tr('Material Mode')}: {mode_translated}", icon="MATERIAL")
 
     row_preset = box.row(align=True)
     row_preset.prop(obj, "mtk_biome", text="Biome")
@@ -85,22 +88,23 @@ def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     # Preview Info
     col_info = box.column(align=True)
     row_temp = col_info.row(align=True)
-    row_temp.label(text=f"Temp: {biome_info.get('temperature', 0.8):.2f}")
-    row_temp.label(text=f"Downfall: {biome_info.get('humidity', 0.4):.2f}")
+    row_temp.label(text=f"{_tr('Temperature')}: {biome_info.get('temperature', 0.8):.2f}")
+    row_temp.label(text=f"{_tr('Downfall')}: {biome_info.get('humidity', 0.4):.2f}")
 
     # Color previews
     row_cols = box.row(align=True)
     row_cols.scale_y = 0.8
     grass_hex = biome_info.get("grass_hex", "#91BD59")
     foliage_hex = biome_info.get("foliage_hex", "#77AB2F")
-    row_cols.label(text=f"Grass: {grass_hex}")
-    row_cols.label(text=f"Foliage: {foliage_hex}")
+    row_cols.label(text=f"{_tr('Grass')}: {grass_hex}")
+    row_cols.label(text=f"{_tr('Foliage')}: {foliage_hex}")
 
     # Batch button if multiple objects selected
     sel_mtk = [o for o in context.selected_objects if is_mtk_object(o)]
     if len(sel_mtk) > 1:
         row_batch = box.row(align=True)
-        op = row_batch.operator("mozi.set_object_biome", text=f"Apply '{current_biome}' to All Selected ({len(sel_mtk)})", icon="COPYDOWN")
+        biome_display = _tr(current_biome.replace('_', ' ').title())
+        op = row_batch.operator("mozi.set_object_biome", text=f"{_tr('Apply to All Selected')} ({len(sel_mtk)})", icon="COPYDOWN")
         op.biome_preset = current_biome
         op.apply_to_selected = True
 

@@ -291,11 +291,13 @@ class TestAtlasUVTiling(unittest.TestCase):
             self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
             self.assertEqual(tex_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
 
-            # 3. Verify Safe Frame Size nodes exist and MAXIMUM nodes are NOT used
-            self.assertIn("Safe Frame Width", nodes_anim)
-            self.assertIn("Safe Frame Height", nodes_anim)
-            self.assertIn("Is Frame Width Non-Zero", nodes_anim)
-            self.assertIn("Is Frame Height Non-Zero", nodes_anim)
+            # 3. Verify streamlined Vector attribute wiring (SeparateXYZ directly to uv_mapper and scheduler)
+            self.assertIn("Attr Animation Frame Size", nodes_anim)
+            self.assertIn("Split Animation Frame Size", nodes_anim)
+            self.assertIn("Attr Animation Timing", nodes_anim)
+            self.assertIn("Split Animation Timing", nodes_anim)
+            self.assertNotIn("Safe Frame Width", nodes_anim)
+            self.assertNotIn("Safe Frame Height", nodes_anim)
             self.assertNotIn("Max Frame Width", nodes_anim)
             self.assertNotIn("Max Frame Height", nodes_anim)
 

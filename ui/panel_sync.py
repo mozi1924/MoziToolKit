@@ -108,28 +108,30 @@ def _draw_live_sync_content(layout, context):
         op_p.tab = "RESOURCE_PACKS"
 
     # 1. Hierarchy & Container Context
+    from ..i18n import tr
+    _tr = tr
     box_hierarchy = layout.box()
     is_child = is_yefira_child_section(active_obj) and active_obj != root_obj
     if is_child:
         row = box_hierarchy.row(align=True)
-        row.label(text=f"Child Section: {active_obj.name}", icon='MESH_DATA')
+        row.label(text=f"{_tr('Child Section')}: {active_obj.name}", icon='MESH_DATA')
         sec_pos = active_obj.get("mtk:section_pos")
         if sec_pos is not None and len(sec_pos) == 3:
-            row.label(text=f"Chunk: ({sec_pos[0]}, {sec_pos[1]}, {sec_pos[2]})")
+            row.label(text=f"{_tr('Chunk')}: ({sec_pos[0]}, {sec_pos[1]}, {sec_pos[2]})")
 
         row_parent = box_hierarchy.row(align=True)
-        row_parent.label(text=f"Parent Container: {root_obj.name}", icon='EMPTY_AXIS')
+        row_parent.label(text=f"{_tr('Parent Container')}: {root_obj.name}", icon='EMPTY_AXIS')
         op = row_parent.operator("mozi.sync_select_root", text="Select Parent", icon='RESTRICT_SELECT_OFF')
         op.container_name = root_obj.name
     else:
         row = box_hierarchy.row(align=True)
-        row.label(text=f"Container Root: {root_obj.name}", icon='EMPTY_AXIS')
+        row.label(text=f"{_tr('Container Root')}: {root_obj.name}", icon='EMPTY_AXIS')
         children_map = find_root_section_children(root_obj)
-        row.label(text=f"Sections: {len(children_map)} chunks")
+        row.label(text=f"{_tr('Sections')}: {len(children_map)} {_tr('chunks')}")
 
     # 2. Connection Section (bound to root_obj)
     box_conn = layout.box()
-    box_conn.label(text=f"Connection ({root_obj.name})", icon='URL')
+    box_conn.label(text=f"{_tr('Connection')} ({root_obj.name})", icon='URL')
     row = box_conn.row(align=True)
     row.prop(props, "url", text="")
 
@@ -169,15 +171,15 @@ def _draw_live_sync_content(layout, context):
         box_sel = layout.box()
         box_sel.label(text="Selection Bounds", icon='SHADING_BBOX')
         col = box_sel.column(align=True)
-        col.label(text=f"Min: ({props.min_x}, {props.min_y}, {props.min_z})")
-        col.label(text=f"Max: ({props.max_x}, {props.max_y}, {props.max_z})")
-        col.label(text=f"Size: {props.size_x} x {props.size_y} x {props.size_z} ({props.total_blocks:,} blocks)")
+        col.label(text=f"{_tr('Min')}: ({props.min_x}, {props.min_y}, {props.min_z})")
+        col.label(text=f"{_tr('Max')}: ({props.max_x}, {props.max_y}, {props.max_z})")
+        col.label(text=f"{_tr('Size')}: {props.size_x} x {props.size_y} x {props.size_z} ({props.total_blocks:,} {_tr('blocks')})")
 
         box_geo = layout.box()
         box_geo.label(text="Live World Mesh", icon='MESH_CUBE')
         col_geo = box_geo.column(align=True)
-        col_geo.label(text=f"Vertices: {props.point_count:,}")
-        col_geo.label(text=f"Cubes: {props.cubes_count:,} | Props: {props.props_count:,} | Fluids: {props.fluids_count:,}")
+        col_geo.label(text=f"{_tr('Vertices')}: {props.point_count:,}")
+        col_geo.label(text=f"{_tr('Cubes')}: {props.cubes_count:,} | {_tr('Props')}: {props.props_count:,} | {_tr('Fluids')}: {props.fluids_count:,}")
 
         if props.last_update_info:
             col_geo.label(text=props.last_update_info, icon='INFO')
@@ -194,7 +196,7 @@ def _draw_live_sync_content(layout, context):
         # 4. Block Palette
         box_pal = layout.box()
         row_pal = box_pal.row(align=True)
-        row_pal.label(text=f"Palette ({props.palette_count})", icon='COLOR')
+        row_pal.label(text=f"{_tr('Palette')} ({props.palette_count})", icon='COLOR')
         box_pal.template_list(
             "MOZI_UL_sync_palette_list",
             "",
@@ -208,7 +210,7 @@ def _draw_live_sync_content(layout, context):
         # 5. Delta History
         box_delta = layout.box()
         row_hist = box_delta.row(align=True)
-        row_hist.label(text=f"Delta Log ({len(props.delta_history)})", icon='LONGDISPLAY')
+        row_hist.label(text=f"{_tr('Delta Log')} ({len(props.delta_history)})", icon='LONGDISPLAY')
         op_clr = row_hist.operator("mozi.sync_clear_history", text="", icon='TRASH')
         op_clr.target_container = root_obj.name
         box_delta.template_list(

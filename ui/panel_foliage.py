@@ -164,9 +164,11 @@ def _draw_foliage_ui(layout, context, obj: bpy.types.Object):
     if len(sel_meshes) > 1:
         box.separator()
         row_batch = box.row(align=True)
+        from ..i18n import tr
+        _tr = tr
         op = row_batch.operator(
             "mozi.sync_foliage_settings",
-            text=f"Apply to Selected Objects ({len(sel_meshes) - 1})",
+            text=f"{_tr('Apply to Selected Objects')} ({len(sel_meshes) - 1})",
             icon="COPYDOWN"
         )
 
