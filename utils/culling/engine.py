@@ -509,13 +509,25 @@ class FaceCuller:
         opp_dir = OPPOSITE_DIR.get(direction, direction)
 
         # 1. Solid / glass blocks must never have their external faces culled by adjacent non-full / partial blocks
-        # (fences, panes, walls, carpets, snow, trapdoors, doors, etc. must never cull adjacent solid/glass),
-        # UNLESS the neighbor is a slab or stairs with an authoritative full solid face.
-        if state_meta.category in (CullCategory.SOLID_OPAQUE, CullCategory.GLASS_TRANSLUCENT) and (
-            neighbor_meta.category == CullCategory.NON_OCCLUDING
-            or (
-                neighbor_meta.category == CullCategory.PARTIAL_SHAPE
-                and not (neighbor_meta.block_name.endswith("_slab") or neighbor_meta.block_name.endswith("_stairs"))
+        # (fences, panes, walls, carpets, trapdoors, doors, etc. must never cull adjacent solid/glass),
+        # UNLESS:
+        #   (a) The neighbor is a slab or stairs with an authoritative full solid face.
+        #   (b) The block is directly underneath snow (direction == 'up'), where snow completely covers the top face
+        #       and both faces are culled to allow seamless vertex welding and eliminate SSS contact dark seams.
+        is_snow_cover = (
+            direction == "up"
+            and (neighbor_meta.block_name in ("snow", "minecraft:snow") or neighbor_meta.block_name.endswith(":snow"))
+            and neighbor_meta.has_full_face("down")
+        )
+        if (
+            state_meta.category in (CullCategory.SOLID_OPAQUE, CullCategory.GLASS_TRANSLUCENT)
+            and not is_snow_cover
+            and (
+                neighbor_meta.category == CullCategory.NON_OCCLUDING
+                or (
+                    neighbor_meta.category == CullCategory.PARTIAL_SHAPE
+                    and not (neighbor_meta.block_name.endswith("_slab") or neighbor_meta.block_name.endswith("_stairs"))
+                )
             )
         ):
             return True
