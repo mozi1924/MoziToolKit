@@ -347,6 +347,15 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertEqual(len(res_two.world_obj.data.vertices), 12)
         self.assertEqual(len(res_two.world_obj.data.polygons), 10)
 
+        # 4. Grass block topped with snow layer: grass top face is culled, snow bottom face is culled,
+        # and contact perimeter vertices weld seamlessly (12 vertices, 10 faces).
+        storage_snow = VoxelStorage()
+        storage_snow.set_block(0, 0, 0, "minecraft:grass_block")
+        storage_snow.set_block(0, 1, 0, "minecraft:snow[layers=2]")
+        res_snow = build_world_mesh(bpy.context, storage_snow, weld_vertices=True)
+        self.assertEqual(len(res_snow.world_obj.data.vertices), 12)
+        self.assertEqual(len(res_snow.world_obj.data.polygons), 10)
+
     def test_live_sync_material_manager_resolution(self):
         """Verify LiveSyncMaterialManager dynamic material loading and texture addressing."""
         from utils.live_sync import LiveSyncMaterialManager, parse_and_classify

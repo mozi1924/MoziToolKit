@@ -388,8 +388,8 @@ class TestFaceCullingSystem(unittest.TestCase):
 
         # Snow placed on stone: Snow bottom face is culled by stone's full top face
         self.assertFalse(self.culler.should_render_face(snow_a, stone, "down"))
-        # Stone underlying snow retains full top face for physical material volume
-        self.assertTrue(self.culler.should_render_face(stone, snow_a, "up"))
+        # Underlying stone/grass top face is also culled to allow seamless manifold welding and eliminate SSS contact dark seams
+        self.assertFalse(self.culler.should_render_face(stone, snow_a, "up"))
 
     def test_snow_layers_different_heights(self):
         """Rule 12: Shorter snow layer facing taller snow layer is fully occluded and culled."""
