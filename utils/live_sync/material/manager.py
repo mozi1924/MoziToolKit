@@ -127,8 +127,8 @@ class ResolvedFaceTexture(NamedTuple):
     # Function to calculate Atlas UV from local (u, v) in [0..1]
     calc_uv_fn: Any
     # Shader node attributes
-    anim_timing: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 1.0)
-    anim_frame_size: tuple[float, float, float, float] = (16.0, 16.0, 0.0, 0.0)
+    anim_timing: tuple[float, float, float] = (1.0, 1.0, 0.0)
+    anim_frame_size: tuple[float, float, float] = (16.0, 16.0, 0.0)
     uv_tiling_transform: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_data: tuple[float, float, float, float] = (1.0, 1.0, 0.0, 0.0)
     biome_tint_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)

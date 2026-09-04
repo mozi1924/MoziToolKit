@@ -128,13 +128,14 @@ def apply_geometry_buffer_to_mesh(
                 f[layers["atlas_chunk"]] = buffer.atlas_chunk[face_idx]
                 f[layers["rot"]] = buffer.rot[face_idx]
 
-                t_idx = face_idx * 4
-                f[layers["timing"]] = tuple(buffer.timing[t_idx : t_idx + 4])
-                f[layers["frame_size"]] = tuple(buffer.frame_size[t_idx : t_idx + 4])
-                f[layers["material_props"]] = tuple(buffer.material_props[t_idx : t_idx + 4])
-                f[layers["tiling"]] = tuple(buffer.tiling[t_idx : t_idx + 4])
-                f[layers["tint_data"]] = tuple(buffer.tint_data[t_idx : t_idx + 4])
-                f[layers["tint_color"]] = tuple(buffer.tint_color[t_idx : t_idx + 4])
+                t_idx = face_idx * 3
+                f[layers["timing"]] = tuple(buffer.timing[t_idx : t_idx + 3])
+                f[layers["frame_size"]] = tuple(buffer.frame_size[t_idx : t_idx + 3])
+                p_idx = face_idx * 4
+                f[layers["material_props"]] = tuple(buffer.material_props[p_idx : p_idx + 4])
+                f[layers["tiling"]] = tuple(buffer.tiling[p_idx : p_idx + 4])
+                f[layers["tint_data"]] = tuple(buffer.tint_data[p_idx : p_idx + 4])
+                f[layers["tint_color"]] = tuple(buffer.tint_color[p_idx : p_idx + 4])
 
                 cm_idx = face_idx * 3
                 f[layers["colormap_uv"]] = tuple(buffer.colormap_uv[cm_idx : cm_idx + 3])
@@ -191,8 +192,8 @@ def apply_geometry_buffer_to_mesh(
         _ensure_face_attr(MTK_FACE_DIR, "INT").data.foreach_set("value", buffer.face_dir)
         _ensure_face_attr(MTK_ATLAS_CHUNK_ID, "INT").data.foreach_set("value", buffer.atlas_chunk)
         _ensure_face_attr(MTK_UV_ROTATION, "FLOAT").data.foreach_set("value", buffer.rot)
-        _ensure_face_attr(MTK_ANIM_TIMING, "FLOAT_COLOR").data.foreach_set("color", buffer.timing)
-        _ensure_face_attr(MTK_ANIM_FRAME_SIZE, "FLOAT_COLOR").data.foreach_set("color", buffer.frame_size)
+        _ensure_face_attr(MTK_ANIM_TIMING, "FLOAT_VECTOR").data.foreach_set("vector", buffer.timing)
+        _ensure_face_attr(MTK_ANIM_FRAME_SIZE, "FLOAT_VECTOR").data.foreach_set("vector", buffer.frame_size)
         _ensure_face_attr(MTK_MATERIAL_PROPS, "FLOAT_COLOR").data.foreach_set("color", buffer.material_props)
         _ensure_face_attr(MTK_UV_TILING_TRANSFORM, "FLOAT_COLOR").data.foreach_set("color", buffer.tiling)
         _ensure_face_attr(MTK_BIOME_TINT_DATA, "FLOAT_COLOR").data.foreach_set("color", buffer.tint_data)

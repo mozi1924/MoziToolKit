@@ -876,8 +876,8 @@ class TestDirectMeshSync(unittest.TestCase):
         # 1. Assert all 6 face attributes exist on the mesh
         expected_attrs = [
             ("mtk_uv_rotation", "FLOAT"),
-            ("mtk_anim_timing", "FLOAT_COLOR"),
-            ("mtk_anim_frame_size", "FLOAT_COLOR"),
+            ("mtk_anim_timing", "FLOAT_VECTOR"),
+            ("mtk_anim_frame_size", "FLOAT_VECTOR"),
             ("mtk_uv_tiling_transform", "FLOAT_COLOR"),
             ("mtk_biome_tint_data", "FLOAT_COLOR"),
             ("mtk_biome_tint_color", "FLOAT_COLOR"),
@@ -899,7 +899,7 @@ class TestDirectMeshSync(unittest.TestCase):
         found_untinted_stone = False
 
         for poly_idx in range(len(mesh.polygons)):
-            timing = list(timing_attr.data[poly_idx].color)
+            timing = list(timing_attr.data[poly_idx].vector)
             tint_data = list(tint_data_attr.data[poly_idx].color)
             tint_col = list(tint_color_attr.data[poly_idx].color)
 

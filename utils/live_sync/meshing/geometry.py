@@ -105,8 +105,8 @@ class RawSectionGeometryBuffer:
         self.atlas_chunk: list[int] = []
         self.rot: list[float] = []
 
-        self.timing: list[float] = []          # 4 floats per face
-        self.frame_size: list[float] = []      # 4 floats per face
+        self.timing: list[float] = []          # 3 floats per face (FLOAT_VECTOR)
+        self.frame_size: list[float] = []      # 3 floats per face (FLOAT_VECTOR)
         self.material_props: list[float] = []  # 4 floats per face
         self.tiling: list[float] = []          # 4 floats per face
         self.tint_data: list[float] = []       # 4 floats per face
@@ -129,8 +129,8 @@ class RawSectionGeometryBuffer:
         face_dir_idx: int,
         atlas_chunk: int,
         uv_rot: float,
-        timing: tuple[float, float, float, float],
-        frame_size: tuple[float, float, float, float],
+        timing: tuple[float, float, float],
+        frame_size: tuple[float, float, float],
         material_props: tuple[float, float, float, float],
         tiling: tuple[float, float, float, float],
         tint_data: tuple[float, float, float, float],
@@ -182,8 +182,8 @@ def _get_or_create_bmesh_layers(bm: bmesh.types.BMesh) -> dict[str, Any]:
         "uv": bm.loops.layers.uv.get(UV_MAP) or bm.loops.layers.uv.new(UV_MAP),
         "color": bm.loops.layers.color.get("Color") or bm.loops.layers.color.new("Color"),
         "rot": bm.faces.layers.float.get(MTK_UV_ROTATION) or bm.faces.layers.float.new(MTK_UV_ROTATION),
-        "timing": bm.faces.layers.float_color.get(MTK_ANIM_TIMING) or bm.faces.layers.float_color.new(MTK_ANIM_TIMING),
-        "frame_size": bm.faces.layers.float_color.get(MTK_ANIM_FRAME_SIZE) or bm.faces.layers.float_color.new(MTK_ANIM_FRAME_SIZE),
+        "timing": bm.faces.layers.float_vector.get(MTK_ANIM_TIMING) or bm.faces.layers.float_vector.new(MTK_ANIM_TIMING),
+        "frame_size": bm.faces.layers.float_vector.get(MTK_ANIM_FRAME_SIZE) or bm.faces.layers.float_vector.new(MTK_ANIM_FRAME_SIZE),
         "material_props": bm.faces.layers.float_color.get(MTK_MATERIAL_PROPS) or bm.faces.layers.float_color.new(MTK_MATERIAL_PROPS),
         "tiling": bm.faces.layers.float_color.get(MTK_UV_TILING_TRANSFORM) or bm.faces.layers.float_color.new(MTK_UV_TILING_TRANSFORM),
         "tint_data": bm.faces.layers.float_color.get(MTK_BIOME_TINT_DATA) or bm.faces.layers.float_color.new(MTK_BIOME_TINT_DATA),

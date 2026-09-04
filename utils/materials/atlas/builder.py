@@ -648,43 +648,43 @@ def build_atlas_chunk_materials(
             links.new(attr_tiling.outputs["Alpha"], comb_loc.inputs[1])
 
         if is_animated:
-            # Two RGBA streams replace five scalar attributes.  This is
-            # essential for EEVEE's per-material attribute budget.
+            # Two 3D Vector streams replace multiple scalar attributes.
+            # Using Vector (SeparateXYZ) avoids any color space transformation or precision drift.
             attr_timing = nodes.new("ShaderNodeAttribute")
             attr_timing.name = "Attr Animation Timing"
             attr_timing.attribute_type = "GEOMETRY"
             attr_timing.attribute_name = ATTR_ANIM_TIMING
             attr_timing.location = (-1500, 300)
-            split_timing = nodes.new("ShaderNodeSeparateColor")
+            split_timing = nodes.new("ShaderNodeSeparateXYZ")
             split_timing.name = "Split Animation Timing"
             split_timing.location = (-1330, 300)
-            links.new(attr_timing.outputs["Color"], split_timing.inputs["Color"])
+            links.new(attr_timing.outputs["Vector"], split_timing.inputs["Vector"])
 
             max_frames = nodes.new("ShaderNodeMath")
             max_frames.name = "Max Total Frames"
             max_frames.operation = "MAXIMUM"
             max_frames.inputs[1].default_value = 1.0
             max_frames.location = (-1300, 300)
-            links.new(split_timing.outputs["Red"], max_frames.inputs[0])
+            links.new(split_timing.outputs["X"], max_frames.inputs[0])
 
             max_time = nodes.new("ShaderNodeMath")
             max_time.name = "Max Frametime"
             max_time.operation = "MAXIMUM"
             max_time.inputs[1].default_value = 1.0
             max_time.location = (-1300, 100)
-            links.new(split_timing.outputs["Green"], max_time.inputs[0])
+            links.new(split_timing.outputs["Y"], max_time.inputs[0])
 
             attr_size = nodes.new("ShaderNodeAttribute")
             attr_size.name = "Attr Animation Frame Size"
             attr_size.attribute_type = "GEOMETRY"
             attr_size.attribute_name = ATTR_ANIM_FRAME_SIZE
             attr_size.location = (-1500, -300)
-            split_size = nodes.new("ShaderNodeSeparateColor")
+            split_size = nodes.new("ShaderNodeSeparateXYZ")
             split_size.name = "Split Animation Frame Size"
             split_size.location = (-1330, -300)
-            links.new(attr_size.outputs["Color"], split_size.inputs["Color"])
+            links.new(attr_size.outputs["Vector"], split_size.inputs["Vector"])
 
-            # Safe Frame Size fallback: if Red / Green <= 0.0001 (e.g. missing/zero attribute), default to tile_size (16)
+            # Safe Frame Size fallback: if X / Y <= 0.0001 (e.g. missing/zero attribute), default to tile_size (16)
             default_tile_size = float(chunk.get("tile_size", 16))
 
             cmp_width = nodes.new("ShaderNodeMath")
@@ -692,7 +692,7 @@ def build_atlas_chunk_materials(
             cmp_width.operation = "GREATER_THAN"
             cmp_width.inputs[1].default_value = 0.0001
             cmp_width.location = (-1160, -300)
-            links.new(split_size.outputs["Red"], cmp_width.inputs[0])
+            links.new(split_size.outputs["X"], cmp_width.inputs[0])
 
             mix_width = nodes.new("ShaderNodeMix")
             mix_width.name = "Safe Frame Width"
@@ -700,14 +700,14 @@ def build_atlas_chunk_materials(
             mix_width.inputs[2].default_value = default_tile_size
             mix_width.location = (-1000, -300)
             links.new(cmp_width.outputs["Value"], mix_width.inputs[0])
-            links.new(split_size.outputs["Red"], mix_width.inputs[3])
+            links.new(split_size.outputs["X"], mix_width.inputs[3])
 
             cmp_height = nodes.new("ShaderNodeMath")
             cmp_height.name = "Is Frame Height Non-Zero"
             cmp_height.operation = "GREATER_THAN"
             cmp_height.inputs[1].default_value = 0.0001
             cmp_height.location = (-1160, -420)
-            links.new(split_size.outputs["Green"], cmp_height.inputs[0])
+            links.new(split_size.outputs["Y"], cmp_height.inputs[0])
 
             mix_height = nodes.new("ShaderNodeMix")
             mix_height.name = "Safe Frame Height"
@@ -715,7 +715,7 @@ def build_atlas_chunk_materials(
             mix_height.inputs[2].default_value = default_tile_size
             mix_height.location = (-1000, -420)
             links.new(cmp_height.outputs["Value"], mix_height.inputs[0])
-            links.new(split_size.outputs["Green"], mix_height.inputs[3])
+            links.new(split_size.outputs["Y"], mix_height.inputs[3])
 
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
                 fname = chunk_files.get(channel_key)
@@ -736,7 +736,7 @@ def build_atlas_chunk_materials(
                 scheduler.location = (-1050, base_y - 250)
                 links.new(max_frames.outputs["Value"], scheduler.inputs["Total Frames"])
                 links.new(max_time.outputs["Value"], scheduler.inputs["Frametime"])
-                links.new(split_timing.outputs["Blue"], scheduler.inputs["Interpolate"])
+                links.new(split_timing.outputs["Z"], scheduler.inputs["Interpolate"])
 
                 if enable_uv_tiling:
                     # Tiling on Frame 0 before animation stepping

@@ -99,7 +99,8 @@ Direct Mesh 直接向 Blender 原生数据层写入渲染元数据，无需任�
 | **`mtk_block_x/y/z`** | Face | 3x Float | 方块世界绝对整数坐标，供程序化噪声或着色器位移使用。 |
 | **`mtk_face_dir`** | Face | Float | 面 6 向法线方向枚举索引（0=East, 1=West, 2=Up, 3=Down, 4=South, 5=North）。 |
 | **`mtk_biome_tint_color`** | Face / Loop | Color (RGBA) | 生物群系双线性插值烘焙的漫反射染色（草地绿、树叶绿、水体蓝）。 |
-| **`mtk_anim_timing`** | Face | 2D Float | 动画帧率与总帧数元数据（驱动着色器逐帧跳跃）。 |
+| **`mtk_anim_timing`** | Face | 3D Float Vector | 动画总帧数、帧时长与插值元数据（纯矢量直通驱动着色器逐帧跳跃，杜绝色彩空间精度偏差）。 |
+| **`mtk_anim_frame_size`** | Face | 3D Float Vector | 动画单帧宽高尺寸元数据（X=帧宽, Y=帧高）。 |
 | **`mtk_source_texture_key`** | Face | String | 来源贴图键（如 `minecraft:block/stone`），支持无损材质替换与逆向材质恢复。 |
 
 ---
