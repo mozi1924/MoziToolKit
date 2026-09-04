@@ -168,26 +168,28 @@ class MOZI_UL_resource_packs_list(bpy.types.UIList):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
             row.prop(item, "enabled", text="", emboss=False)
+            from ..i18n import tr
+            _tr = tr
 
             if item.pack_type == "VANILLA":
                 icon_type = "WORLD_DATA"
-                tier_badge = "Vanilla Base"
+                tier_badge = _tr("Vanilla Base")
             elif item.pack_type == "MOD_JAR":
                 icon_type = "MODIFIER"
                 mod_idx = sum(1 for i, elem in enumerate(data.resource_packs) if elem.pack_type == "MOD_JAR" and i <= index)
-                tier_badge = f"Mod #{mod_idx}"
+                tier_badge = f"{_tr('Mod')} #{mod_idx}"
             else:
                 icon_type = "PACKAGE"
                 rp_idx = sum(1 for i, elem in enumerate(data.resource_packs) if elem.pack_type == "RESOURCE_PACK" and i <= index)
-                tier_badge = f"RP #{rp_idx}"
+                tier_badge = f"{_tr('RP')} #{rp_idx}"
 
             is_valid = bool(item.path and Path(item.path).exists())
             name_text = item.name or (Path(item.path).stem if item.path else "Unnamed Pack")
 
             if not is_valid and item.path:
-                row.label(text=f"{name_text} (Missing File)", icon="ERROR")
+                row.label(text=f"{name_text} {_tr('(Missing File)')}", icon="ERROR")
             elif not item.path:
-                row.label(text=f"{name_text} (No Path)", icon="QUESTION")
+                row.label(text=f"{name_text} {_tr('(No Path)')}", icon="QUESTION")
             else:
                 row.label(text=name_text, icon=icon_type)
 
