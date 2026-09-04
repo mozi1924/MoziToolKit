@@ -27,6 +27,7 @@ from .types import (
 from .shapes import (
     is_face_completely_occluded,
     extract_face_occlusion_from_elements,
+    extract_quad_face_occlusion_rect,
 )
 from .rules import should_skip_rendering
 
@@ -178,6 +179,110 @@ def _parse_block_name_and_props(state_str: str) -> tuple[str, dict[str, str]]:
     return (name, {})
 
 
+def _derive_parametric_face_shapes(
+    name_low: str,
+    props: dict[str, str],
+) -> dict[str, tuple[FaceOcclusionRect, ...]]:
+    """
+    Derive canonical 2D face occlusion shapes for known partial / non-full blocks
+    based on block state properties when explicit detailed model elements are absent.
+    """
+    face_shapes: dict[str, tuple[FaceOcclusionRect, ...]] = {d: () for d in ALL_6_DIRS}
+
+    # 1. Slabs
+    if name_low.endswith("_slab"):
+        slab_type = props.get("type", "bottom")
+        if slab_type == "double":
+            return {d: (FULL_FACE_RECT,) for d in ALL_6_DIRS}
+        elif slab_type == "top":
+            return {
+                "up": (FULL_FACE_RECT,),
+                "down": (),
+                "north": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
+                "south": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
+                "east": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
+                "west": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
+            }
+        else:  # bottom
+            return {
+                "up": (),
+                "down": (FULL_FACE_RECT,),
+                "north": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
+                "south": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
+                "east": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
+                "west": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
+            }
+
+    # 2. Snow layers (minecraft:snow)
+    if name_low == "snow" or name_low.endswith(":snow"):
+        try:
+            layers = int(props.get("layers", "1"))
+        except Exception:
+            layers = 1
+        layers = max(1, min(8, layers))
+        h = layers / 8.0  # 1 layer = 2/16 = 0.125, 8 layers = 1.0
+        side_rect = FaceOcclusionRect(0.0, 0.0, 1.0, h)
+        return {
+            "down": (FULL_FACE_RECT,),
+            "up": (FULL_FACE_RECT,) if layers == 8 else (),
+            "north": (side_rect,),
+            "south": (side_rect,),
+            "east": (side_rect,),
+            "west": (side_rect,),
+        }
+
+    # 3. Carpets (minecraft:white_carpet, etc.)
+    if name_low.endswith("_carpet") or name_low == "carpet":
+        h = 1.0 / 16.0
+        side_rect = FaceOcclusionRect(0.0, 0.0, 1.0, h)
+        return {
+            "down": (FULL_FACE_RECT,),
+            "up": (),
+            "north": (side_rect,),
+            "south": (side_rect,),
+            "east": (side_rect,),
+            "west": (side_rect,),
+        }
+
+    # 4. Iron bars & Glass Panes
+    if name_low.endswith(("_bars", "_pane")) or name_low in ("iron_bars", "glass_pane"):
+        w0, w1 = 7.0 / 16.0, 9.0 / 16.0
+        post_cap = FaceOcclusionRect(w0, w0, w1, w1)
+        side_cap = FaceOcclusionRect(w0, 0.0, w1, 1.0)
+        return {
+            "down": (post_cap,),
+            "up": (post_cap,),
+            "east": (side_cap,) if props.get("east") == "true" else (),
+            "west": (side_cap,) if props.get("west") == "true" else (),
+            "north": (side_cap,) if props.get("north") == "true" else (),
+            "south": (side_cap,) if props.get("south") == "true" else (),
+        }
+
+    # 5. Wooden & Nether Brick Fences
+    if name_low.endswith("_fence") or name_low == "fence":
+        w0, w1 = 7.0 / 16.0, 9.0 / 16.0
+        post_cap = FaceOcclusionRect(6.0 / 16.0, 6.0 / 16.0, 10.0 / 16.0, 10.0 / 16.0)
+        top_bar = FaceOcclusionRect(w0, 12.0 / 16.0, w1, 15.0 / 16.0)
+        bot_bar = FaceOcclusionRect(w0, 6.0 / 16.0, w1, 9.0 / 16.0)
+        side_bars = (bot_bar, top_bar)
+        return {
+            "down": (post_cap,),
+            "up": (post_cap,),
+            "east": side_bars if props.get("east") == "true" else (),
+            "west": side_bars if props.get("west") == "true" else (),
+            "north": side_bars if props.get("north") == "true" else (),
+            "south": side_bars if props.get("south") == "true" else (),
+        }
+
+    # 6. Stairs
+    if name_low.endswith("_stairs"):
+        half = props.get("half", "bottom")
+        full_mask = DIR_MASK_UP if half == "top" else DIR_MASK_DOWN
+        return {d: (FULL_FACE_RECT,) if (DIR_TO_MASK[d] & full_mask) else () for d in ALL_6_DIRS}
+
+    return face_shapes
+
+
 class FaceCuller:
     """Central face culling engine with pre-computed metadata caching."""
 
@@ -223,7 +328,8 @@ class FaceCuller:
         is_pane = name_low.endswith(("_pane", "_bars")) or name_low in ("glass_pane", "iron_bars")
         is_glass = not is_air and not is_pane and (name_low in _GLASS_NAMES or ("stained_glass" in name_low and not is_pane) or (name_low.endswith("glass") and not is_pane) or name_low.endswith("ice"))
         is_non_occluding = not is_air and (name_low in _NON_OCCLUDING_NAMES or name_low.endswith(("_flower", "_sapling", "_torch", "_lantern", "_plant", "_bush")))
-        is_non_full = not is_air and (is_pane or is_non_full_or_partial_block(name_low))
+        is_double_slab = name_low.endswith("_slab") and props.get("type") == "double"
+        is_non_full = not is_air and not is_double_slab and (is_pane or name_low.endswith(("_slab", "_stairs")) or is_non_full_or_partial_block(name_low))
 
         # Determine Category
         if is_air:
@@ -283,18 +389,14 @@ class FaceCuller:
                 face_shapes = {d: (FULL_FACE_RECT,) for d in ALL_6_DIRS}
                 full_face_mask = FULL_6_DIRS_MASK
                 empty_face_mask = 0
-            elif is_non_full and not (name_low.endswith("_slab") or name_low.endswith("_stairs")):
-                category = CullCategory.PARTIAL_SHAPE
-                cull_group = "partial"
-                face_shapes = {d: () for d in ALL_6_DIRS}
-                full_face_mask = 0
-                empty_face_mask = FULL_6_DIRS_MASK
             else:
                 category = CullCategory.PARTIAL_SHAPE
                 cull_group = "partial"
-                # Derive face occlusion from element bounding boxes
-                elem_boxes = []
-                for elem in getattr(baked_model, "elements", ()):
+
+                elems = getattr(baked_model, "elements", ())
+                is_dummy_fallback = False
+                if is_non_full and len(elems) == 1:
+                    elem = elems[0]
                     verts = [v for f in elem.faces.values() for v in f.vertices]
                     if verts:
                         x0 = min(v[0] for v in verts)
@@ -303,74 +405,52 @@ class FaceCuller:
                         x1 = max(v[0] for v in verts)
                         y1 = max(v[1] for v in verts)
                         z1 = max(v[2] for v in verts)
-                        elem_boxes.append(((x0, y0, z0), (x1, y1, z1)))
+                        if (
+                            abs(x0) <= 1e-4 and abs(y0) <= 1e-4 and abs(z0) <= 1e-4
+                            and abs(x1 - 1.0) <= 1e-4 and abs(y1 - 1.0) <= 1e-4 and abs(z1 - 1.0) <= 1e-4
+                        ):
+                            is_dummy_fallback = True
 
-                face_shapes = {}
+                if is_dummy_fallback:
+                    face_shapes = _derive_parametric_face_shapes(name_low, props)
+                else:
+                    face_shapes = {}
+                    for d in ALL_6_DIRS:
+                        shapes: list[FaceOcclusionRect] = []
+                        for elem in elems:
+                            bf = elem.faces.get(d)
+                            if bf and bf.vertices:
+                                rect = extract_quad_face_occlusion_rect(bf.vertices, d)
+                                if rect and not rect.is_empty:
+                                    shapes.append(rect)
+                        face_shapes[d] = tuple(shapes)
+
                 full_face_mask = 0
                 empty_face_mask = 0
                 for d in ALL_6_DIRS:
-                    shapes = extract_face_occlusion_from_elements(elem_boxes, d)
-                    face_shapes[d] = shapes
+                    shapes_dir = face_shapes[d]
                     mask = DIR_TO_MASK.get(d, 0)
-                    if any(s.is_full for s in shapes):
+                    if any(s.is_full for s in shapes_dir):
                         full_face_mask |= mask
-                    elif not shapes:
+                    elif not shapes_dir:
                         empty_face_mask |= mask
         else:
-            # Fallback default: classify common block types
-            if name_low.endswith("_slab"):
-                category = CullCategory.PARTIAL_SHAPE
-                is_full_cube = False
-                is_opaque = True
-                cull_group = "slab"
-                slab_type = props.get("type", "bottom")
-                if slab_type == "double":
-                    category = CullCategory.SOLID_OPAQUE
-                    is_full_cube = True
-                    face_shapes = {d: (FULL_FACE_RECT,) for d in ALL_6_DIRS}
-                    full_face_mask = FULL_6_DIRS_MASK
-                    empty_face_mask = 0
-                elif slab_type == "top":
-                    face_shapes = {
-                        "up": (FULL_FACE_RECT,),
-                        "down": (),
-                        "north": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
-                        "south": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
-                        "east": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
-                        "west": (FaceOcclusionRect(0.0, 0.5, 1.0, 1.0),),
-                    }
-                    full_face_mask = DIR_MASK_UP
-                    empty_face_mask = DIR_MASK_DOWN
-                else:  # bottom
-                    face_shapes = {
-                        "up": (),
-                        "down": (FULL_FACE_RECT,),
-                        "north": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
-                        "south": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
-                        "east": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
-                        "west": (FaceOcclusionRect(0.0, 0.0, 1.0, 0.5),),
-                    }
-                    full_face_mask = DIR_MASK_DOWN
-                    empty_face_mask = DIR_MASK_UP
-            elif name_low.endswith("_stairs"):
-                category = CullCategory.PARTIAL_SHAPE
-                is_full_cube = False
-                is_opaque = True
-                cull_group = "stairs"
-                half = props.get("half", "bottom")
-                full_mask = DIR_MASK_UP if half == "top" else DIR_MASK_DOWN
-                face_shapes = {d: (FULL_FACE_RECT,) if (DIR_TO_MASK[d] & full_mask) else () for d in ALL_6_DIRS}
-                full_face_mask = full_mask
-                empty_face_mask = 0
-            elif is_non_full or is_pane:
-                # Non-full blocks (fences, walls, panes, bars, trapdoors, doors, carpets, chests, pots, etc.)
+            # Fallback default: classify common block types when baked_model is None
+            if is_non_full:
                 category = CullCategory.PARTIAL_SHAPE
                 is_full_cube = False
                 is_opaque = False
                 cull_group = "partial"
-                face_shapes = {d: () for d in ALL_6_DIRS}
+                face_shapes = _derive_parametric_face_shapes(name_low, props)
                 full_face_mask = 0
-                empty_face_mask = FULL_6_DIRS_MASK
+                empty_face_mask = 0
+                for d in ALL_6_DIRS:
+                    shapes_dir = face_shapes[d]
+                    mask = DIR_TO_MASK.get(d, 0)
+                    if any(s.is_full for s in shapes_dir):
+                        full_face_mask |= mask
+                    elif not shapes_dir:
+                        empty_face_mask |= mask
             else:
                 # Standard full solid cube
                 category = CullCategory.SOLID_OPAQUE
@@ -397,7 +477,6 @@ class FaceCuller:
             is_waterlogged=is_waterlogged,
             has_baked_model=bool(baked_model is not None),
         )
-
 
         if len(self._meta_cache) >= 8192:
             self._meta_cache.pop(next(iter(self._meta_cache)), None)
@@ -429,7 +508,19 @@ class FaceCuller:
 
         opp_dir = OPPOSITE_DIR.get(direction, direction)
 
-        # 1. Neighbor full solid face check (neighborFaceShape == Shapes.block())
+        # 1. Solid / glass blocks must never have their external faces culled by adjacent non-full / partial blocks
+        # (fences, panes, walls, carpets, snow, trapdoors, doors, etc. must never cull adjacent solid/glass),
+        # UNLESS the neighbor is a slab or stairs with an authoritative full solid face.
+        if state_meta.category in (CullCategory.SOLID_OPAQUE, CullCategory.GLASS_TRANSLUCENT) and (
+            neighbor_meta.category == CullCategory.NON_OCCLUDING
+            or (
+                neighbor_meta.category == CullCategory.PARTIAL_SHAPE
+                and not (neighbor_meta.block_name.endswith("_slab") or neighbor_meta.block_name.endswith("_stairs"))
+            )
+        ):
+            return True
+
+        # 2. Neighbor full solid face check (neighborFaceShape == Shapes.block())
         if neighbor_meta.has_full_face(opp_dir):
             # Fluid top face (direction == 'up') is physically below the upper block boundary (< 1.0 height, e.g. 8/9 for source water).
             # A solid ceiling above (at Y >= 1.0) does NOT touch or occlude the fluid top surface.
@@ -439,7 +530,7 @@ class FaceCuller:
             else:
                 return False
 
-        # 2. Custom skipRendering check (glass, leaves, fluid, snow, roots)
+        # 3. Custom skipRendering check (glass, leaves, fluid, snow, roots)
         if should_skip_rendering(
             state_meta=state_meta,
             neighbor_meta=neighbor_meta,
@@ -451,15 +542,15 @@ class FaceCuller:
         ):
             return False
 
-        # 3. Neighbor empty face check (neighborFaceShape == Shapes.empty())
+        # 4. Neighbor empty face check (neighborFaceShape == Shapes.empty())
         if neighbor_meta.has_empty_face(opp_dir):
             return True
 
-        # 4. State empty face check (stateFaceShape == Shapes.empty())
-        if state_meta.has_empty_face(direction):
+        # 5. State empty face check (stateFaceShape == Shapes.empty())
+        if quad_face_shape is None and state_meta.has_empty_face(direction):
             return True
 
-        # 5. 2D Boolean shape occlusion check (Shapes.joinIsNotEmpty BooleanOp.ONLY_FIRST)
+        # 6. 2D Boolean shape occlusion check (Shapes.joinIsNotEmpty BooleanOp.ONLY_FIRST)
         target_shapes = (
             quad_face_shape
             if quad_face_shape is not None
