@@ -291,6 +291,65 @@ class TestAtlasUVTiling(unittest.TestCase):
             self.assertEqual(tex_next.inputs["Vector"].links[0].from_node, uv_mapper)
             self.assertEqual(tex_next.inputs["Vector"].links[0].from_socket.name, "Next UV")
 
+            # 3. Verify Safe Frame Size nodes exist and MAXIMUM nodes are NOT used
+            self.assertIn("Safe Frame Width", nodes_anim)
+            self.assertIn("Safe Frame Height", nodes_anim)
+            self.assertIn("Is Frame Width Non-Zero", nodes_anim)
+            self.assertIn("Is Frame Height Non-Zero", nodes_anim)
+            self.assertNotIn("Max Frame Width", nodes_anim)
+            self.assertNotIn("Max Frame Height", nodes_anim)
+
+    def test_atlas_uv_tiling_bypass_and_clamping_nodes(self):
+        """Verify MC_Atlas_UV_Tiling has identity bypass and boundary clamping nodes."""
+        group = ensure_atlas_uv_tiling()
+        node_names = {n.name: n for n in group.nodes}
+
+        # Check boundary clamping
+        self.assertIn("Col Index Max Clamp", node_names)
+        self.assertIn("Row Index Max Clamp", node_names)
+        self.assertIn("Clamp Atlas U Min", node_names)
+        self.assertIn("Final Atlas U", node_names)
+        self.assertIn("Clamp Atlas V Min", node_names)
+        self.assertIn("Final Atlas V", node_names)
+
+        # Check continuous local UV calculation
+        self.assertIn("U - Cell Min U", node_names)
+        self.assertIn("V - Cell Min V", node_names)
+
+        # Check identity bypass logic
+        self.assertIn("Is Transform Active", node_names)
+        self.assertIn("Bypass Mix", node_names)
+        bypass = node_names["Bypass Mix"]
+        self.assertEqual(bypass.data_type, "VECTOR")
+
+        # Group output Atlas UV must be fed from Bypass Mix
+        group_out = node_names["Group Output"]
+        atlas_uv_in = group_out.inputs["Atlas UV"]
+        self.assertTrue(atlas_uv_in.is_linked)
+        self.assertEqual(atlas_uv_in.links[0].from_node, bypass)
+
+    def test_animation_scheduler_timeline_frame_driver_target(self):
+        """Verify MC_Animation_Scheduler_Default Timeline Frame driver explicitly targets SCENE.frame_current."""
+        from utils.node_groups.animated import ensure_animation_scheduler, SCHEDULER_TEMPLATE_VERSION
+
+        scheduler = ensure_animation_scheduler()
+        self.assertEqual(scheduler.get("mozi_template_version"), SCHEDULER_TEMPLATE_VERSION)
+
+        self.assertIsNotNone(scheduler.animation_data)
+        timeline_driver = None
+        for d in scheduler.animation_data.drivers:
+            if 'Timeline Frame' in d.data_path:
+                timeline_driver = d
+                break
+        self.assertIsNotNone(timeline_driver)
+        driver = timeline_driver.driver
+        self.assertEqual(driver.expression, "frame")
+        self.assertGreaterEqual(len(driver.variables), 1)
+        var = driver.variables[0]
+        self.assertEqual(var.name, "frame")
+        self.assertEqual(var.targets[0].id_type, "SCENE")
+        self.assertEqual(var.targets[0].data_path, "frame_current")
+
     def test_pipeline_origin_tiling_decision(self):
         """Verify the pipeline's detection of whether UV tiling is required based on object/material origin."""
         from utils.materials.matching import material_source_origin

@@ -129,26 +129,40 @@ def _safe_get_prefs(self_or_context=None):
     return None
 
 
+_is_switching_backend = False
+_is_updating_material_settings = False
+
+
 def on_backend_type_changed(self, context):
     """Callback when storage backend type is switched in preferences UI."""
-    if get_config_manager().is_syncing():
+    global _is_switching_backend
+    if _is_switching_backend or get_config_manager().is_syncing():
         return
-    prefs = _safe_get_prefs(self)
-    if prefs and hasattr(prefs, "backend_type"):
-        mgr = get_config_manager()
-        mgr.switch_backend_by_name(prefs.backend_type, migrate_data=True)
-        mgr.sync_to_preferences(prefs)
-        refresh_ui_and_menus(context)
+    _is_switching_backend = True
+    try:
+        prefs = _safe_get_prefs(self)
+        if prefs and hasattr(prefs, "backend_type"):
+            mgr = get_config_manager()
+            mgr.switch_backend_by_name(prefs.backend_type, migrate_data=True)
+            mgr.sync_to_preferences(prefs)
+            refresh_ui_and_menus(context)
+    finally:
+        _is_switching_backend = False
 
 
 def on_material_setting_changed(self, context):
     """Callback when global material replacement preferences are edited."""
-    if get_config_manager().is_syncing():
+    global _is_updating_material_settings
+    if _is_updating_material_settings or get_config_manager().is_syncing():
         return
-    prefs = _safe_get_prefs(self)
-    if prefs:
-        get_config_manager().sync_from_preferences(prefs)
-        refresh_ui_and_menus(context)
+    _is_updating_material_settings = True
+    try:
+        prefs = _safe_get_prefs(self)
+        if prefs:
+            get_config_manager().sync_from_preferences(prefs)
+            refresh_ui_and_menus(context)
+    finally:
+        _is_updating_material_settings = False
 
 
 def sync_prefs_from_json(prefs):

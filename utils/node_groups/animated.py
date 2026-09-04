@@ -15,10 +15,9 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 # In both modes, Current Frame and Next Frame subtract vertical frame steps
 # from the base Frame 0 coordinate.
 UV_TEMPLATE_VERSION = 9
-# Version 5 fixes Blender's WRAP input ordering (Value, Max, Min).  The old
-# graph supplied the bounds in reverse, so time zero evaluated as the last
-# frame and the wrap could step through invalid atlas space.
-SCHEDULER_TEMPLATE_VERSION = 6
+# Version 7 adds an explicit Scene frame_current driver variable so Blender's
+# dependency graph reliably evaluates animation time during scrubbing and renders.
+SCHEDULER_TEMPLATE_VERSION = 7
 FRAME_BLEND_TEMPLATE_VERSION = 4
 
 
@@ -114,7 +113,14 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-700, 0)); group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(700, 0))
-    frame = node(nodes, "ShaderNodeValue", "Timeline Frame", location=(-700, 160)); frame.outputs["Value"].driver_add("default_value").driver.expression = "frame"
+    frame = node(nodes, "ShaderNodeValue", "Timeline Frame", location=(-700, 160))
+    driver = frame.outputs["Value"].driver_add("default_value").driver
+    driver.expression = "frame"
+    variable = driver.variables.new()
+    variable.name = "frame"
+    variable.targets[0].id_type = "SCENE"
+    variable.targets[0].id = bpy.context.scene
+    variable.targets[0].data_path = "frame_current"
     start = node(nodes, "ShaderNodeValue", "Timeline Start", location=(-700, 80)); driver = start.outputs["Value"].driver_add("default_value").driver; driver.expression = "start"; variable = driver.variables.new(); variable.name = "start"; variable.targets[0].id_type = "SCENE"; variable.targets[0].id = bpy.context.scene; variable.targets[0].data_path = "frame_start"
     fps = node(nodes, "ShaderNodeValue", "Effective FPS", location=(-700, -20)); driver = fps.outputs["Value"].driver_add("default_value").driver; driver.expression = "fps / fps_base"
     for variable_name, data_path in (("fps", "render.fps"), ("fps_base", "render.fps_base")):
