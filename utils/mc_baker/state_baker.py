@@ -424,13 +424,15 @@ class StateBaker:
         for match, resolved_model in resolved_models:
             raw_elements = resolved_model.get("elements", [])
 
-            if not raw_elements:
-                if not has_json_elements:
-                    raw_elements = self._resolve_base_face_elements(
-                        short_name, props, fallback_texture, resolved_model.get("textures", {})
-                    )
-                else:
-                    raw_elements = []
+            if raw_elements:
+                from ..materials.specialized import sanitize_firefly_bush_elements
+                raw_elements = sanitize_firefly_bush_elements(short_name, raw_elements)
+            elif not has_json_elements:
+                raw_elements = self._resolve_base_face_elements(
+                    short_name, props, fallback_texture, resolved_model.get("textures", {})
+                )
+            else:
+                raw_elements = []
 
             for elem in raw_elements:
                 from_pos = tuple(elem.get("from", [0, 0, 0]))
