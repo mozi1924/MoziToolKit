@@ -57,6 +57,10 @@ from .panel_biome import (
     register as register_panel_biome,
     unregister as unregister_panel_biome,
 )
+from .panel_foliage import (
+    register as register_panel_foliage,
+    unregister as unregister_panel_foliage,
+)
 
 classes = (
     # PropertyGroups (must register before AddonPreferences and UI elements that reference them)
@@ -102,6 +106,7 @@ def register():
         bpy.utils.register_class(cls)
 
     register_panel_biome()
+    register_panel_foliage()
     register_menu_mesh()
     register_menu_object()
     register_menu_select()
@@ -113,6 +118,7 @@ def unregister():
     unregister_menu_select()
     unregister_menu_object()
     unregister_menu_mesh()
+    unregister_panel_foliage()
     unregister_panel_biome()
 
     for cls in reversed(classes):

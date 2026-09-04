@@ -8,11 +8,17 @@ from .op_replace_material import (
     MOZI_OT_restore_materials_from_provenance,
 )
 from .op_texture_interpolation import MOZI_OT_set_texture_interpolation_closest
+from .op_foliage_waving import (
+    MOZI_OT_apply_foliage_waving,
+    MOZI_OT_sync_foliage_settings,
+)
 
 classes = (
     MOZI_OT_replace_material,
     MOZI_OT_restore_materials_from_provenance,
     MOZI_OT_set_texture_interpolation_closest,
+    MOZI_OT_apply_foliage_waving,
+    MOZI_OT_sync_foliage_settings,
 )
 
 
