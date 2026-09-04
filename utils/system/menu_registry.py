@@ -273,9 +273,14 @@ def draw_dynamic_menu(layout, view_name: str):
         return
 
     layout.separator()
-    layout.label(text="MoziToolKit")
+    from ...i18n import tr
+    layout.label(text=tr("MoziToolKit"))
     for op_id, label in valid_items:
         if label:
-            layout.operator(op_id, text=label)
+            # First check if the user-specified or default label has a translation in Operator or general context
+            trans_label = tr(label, "Operator")
+            if trans_label == label:
+                trans_label = tr(label)
+            layout.operator(op_id, text=trans_label)
         else:
             layout.operator(op_id)

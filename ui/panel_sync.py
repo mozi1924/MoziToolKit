@@ -46,9 +46,12 @@ class MOZI_UL_sync_delta_list(bpy.types.UIList):
 
 def _draw_live_sync_content(layout, context):
     """Internal shared drawing implementation for Live Sync panels."""
+    from ..i18n import tr
+    _tr = tr
+
     active_obj = context.object
     if not active_obj:
-        layout.label(text="No active object", icon='ERROR')
+        layout.label(text=_tr("No active object"), icon='ERROR')
         return
 
     try:
@@ -69,7 +72,7 @@ def _draw_live_sync_content(layout, context):
     root_obj = resolve_world_root_object(active_obj) or active_obj
     props = getattr(root_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)
     if not props:
-        layout.label(text="Properties unavailable", icon='ERROR')
+        layout.label(text=_tr("Properties unavailable"), icon='ERROR')
         return
 
     # Check websockets dependency
@@ -81,10 +84,10 @@ def _draw_live_sync_content(layout, context):
     if hasattr(bpy.app, "online_access") and not bpy.app.online_access:
         box_online = layout.box()
         box_online.alert = True
-        box_online.label(text="Network Access Disabled", icon='ERROR')
-        box_online.label(text="Enable in Preferences > System > Network to use Live Sync.")
+        box_online.label(text=_tr("Network Access Disabled"), icon='ERROR')
+        box_online.label(text=_tr("Enable in Preferences > System > Network to use Live Sync."))
         row_pref = box_online.row()
-        op_pref = row_pref.operator("screen.userpref_show", text="Open System Preferences", icon='PREFERENCES')
+        op_pref = row_pref.operator("screen.userpref_show", text=_tr("Open System Preferences"), icon='PREFERENCES')
         op_pref.section = 'SYSTEM'
         return
 
@@ -98,13 +101,13 @@ def _draw_live_sync_content(layout, context):
         box_mat = layout.box()
         box_mat.alert = True
         row_m = box_mat.row(align=True)
-        row_m.label(text="Materials Not Precompiled", icon='INFO')
+        row_m.label(text=_tr("Materials Not Precompiled"), icon='INFO')
         row_m2 = box_mat.row(align=True)
         row_m2.scale_y = 0.85
-        row_m2.label(text="Atlas textures missing. Sync will create untextured meshes.")
+        row_m2.label(text=_tr("Atlas textures missing. Sync will create untextured meshes."))
         row_btn_m = box_mat.row(align=True)
-        row_btn_m.operator("mozi.precompile_cache", text="Precompile Materials", icon='MATERIAL')
-        op_p = row_btn_m.operator("mozi.open_preferences", text="Configure Packs", icon='PREFERENCES')
+        row_btn_m.operator("mozi.precompile_cache", text=_tr("Precompile Materials"), icon='MATERIAL')
+        op_p = row_btn_m.operator("mozi.open_preferences", text=_tr("Configure Packs"), icon='PREFERENCES')
         op_p.tab = "RESOURCE_PACKS"
 
     # 1. Hierarchy & Container Context
@@ -121,7 +124,7 @@ def _draw_live_sync_content(layout, context):
 
         row_parent = box_hierarchy.row(align=True)
         row_parent.label(text=f"{_tr('Parent Container')}: {root_obj.name}", icon='EMPTY_AXIS')
-        op = row_parent.operator("mozi.sync_select_root", text="Select Parent", icon='RESTRICT_SELECT_OFF')
+        op = row_parent.operator("mozi.sync_select_root", text=_tr("Select Parent"), icon='RESTRICT_SELECT_OFF')
         op.container_name = root_obj.name
     else:
         row = box_hierarchy.row(align=True)
@@ -145,15 +148,15 @@ def _draw_live_sync_content(layout, context):
     )
 
     if is_busy_connecting:
-        op = row_btn.operator("mozi.sync_disconnect", text="Cancel Connection", icon='CANCEL')
+        op = row_btn.operator("mozi.sync_disconnect", text=_tr("Cancel Connection"), icon='CANCEL')
         op.target_container = root_obj.name
     elif not props.is_connected:
-        op = row_btn.operator("mozi.sync_connect", text="Connect", icon='PLAY')
+        op = row_btn.operator("mozi.sync_connect", text=_tr("Connect"), icon='PLAY')
         op.target_container = root_obj.name
     else:
-        op_disc = row_btn.operator("mozi.sync_disconnect", text="Disconnect", icon='CANCEL')
+        op_disc = row_btn.operator("mozi.sync_disconnect", text=_tr("Disconnect"), icon='CANCEL')
         op_disc.target_container = root_obj.name
-        op_ref = row_btn.operator("mozi.sync_refresh", text="Refresh Data", icon='FILE_REFRESH')
+        op_ref = row_btn.operator("mozi.sync_refresh", text=_tr("Refresh Data"), icon='FILE_REFRESH')
         op_ref.target_container = root_obj.name
 
     # Status badge
@@ -164,19 +167,19 @@ def _draw_live_sync_content(layout, context):
         status_icon = 'SORTTIME'
     else:
         status_icon = 'RADIOBUT_OFF'
-    row_status.label(text=f"Status: {props.connection_status}", icon=status_icon)
+    row_status.label(text=f"{_tr('Status')}: {props.connection_status}", icon=status_icon)
 
     # 3. World Selection & Metrics
     if props.has_selection:
         box_sel = layout.box()
-        box_sel.label(text="Selection Bounds", icon='SHADING_BBOX')
+        box_sel.label(text=_tr("Selection Bounds"), icon='SHADING_BBOX')
         col = box_sel.column(align=True)
         col.label(text=f"{_tr('Min')}: ({props.min_x}, {props.min_y}, {props.min_z})")
         col.label(text=f"{_tr('Max')}: ({props.max_x}, {props.max_y}, {props.max_z})")
         col.label(text=f"{_tr('Size')}: {props.size_x} x {props.size_y} x {props.size_z} ({props.total_blocks:,} {_tr('blocks')})")
 
         box_geo = layout.box()
-        box_geo.label(text="Live World Mesh", icon='MESH_CUBE')
+        box_geo.label(text=_tr("Live World Mesh"), icon='MESH_CUBE')
         col_geo = box_geo.column(align=True)
         col_geo.label(text=f"{_tr('Vertices')}: {props.point_count:,}")
         col_geo.label(text=f"{_tr('Cubes')}: {props.cubes_count:,} | {_tr('Props')}: {props.props_count:,} | {_tr('Fluids')}: {props.fluids_count:,}")
@@ -189,8 +192,8 @@ def _draw_live_sync_content(layout, context):
         col_geo.label(text=props.validation_info, icon=v_icon)
 
         row_actions = box_geo.row(align=True)
-        row_actions.prop(props, "filter_air", text="Filter Air")
-        op_reb = row_actions.operator("mozi.sync_rebuild_world", text="Rebuild Mesh", icon='FILE_REFRESH')
+        row_actions.prop(props, "filter_air", text=_tr("Filter Air"))
+        op_reb = row_actions.operator("mozi.sync_rebuild_world", text=_tr("Rebuild Mesh"), icon='FILE_REFRESH')
         op_reb.target_container = root_obj.name
 
         # 4. Block Palette

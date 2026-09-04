@@ -139,25 +139,28 @@ def _set_noise_scale(self, value: float):
 def _draw_foliage_ui(layout, context, obj: bpy.types.Object):
     mod = _get_foliage_modifier(obj)
 
+    from ..i18n import tr
+    _tr = tr
+
     box = layout.box()
     row_top = box.row(align=True)
-    row_top.label(text="Foliage Wind Wiggle", icon="FORCE_WIND")
+    row_top.label(text=_tr("Foliage Wind Wiggle"), icon="FORCE_WIND")
 
     if not mod:
         col = box.column(align=True)
-        col.label(text="No foliage wind modifier applied.")
-        col.operator("mozi.apply_foliage_waving", text="Apply Foliage Wind", icon="MOD_PHYSICS")
+        col.label(text=_tr("No foliage wind modifier applied."))
+        col.operator("mozi.apply_foliage_waving", text=_tr("Apply Foliage Wind"), icon="MOD_PHYSICS")
         return
 
     # Scope selection dropdown
     col = box.column(align=True)
-    col.prop(obj, "mtk_foliage_scope", text="Target Scope")
+    col.prop(obj, "mtk_foliage_scope", text=_tr("Target Scope"))
 
     # Parameters
-    col.prop(obj, "mtk_wind_direction", text="Wind Direction", slider=True)
-    col.prop(obj, "mtk_wiggle_amplitude", text="Wiggle Amplitude", slider=True)
-    col.prop(obj, "mtk_wiggle_speed", text="Wiggle Speed", slider=True)
-    col.prop(obj, "mtk_noise_scale", text="Noise Scale", slider=True)
+    col.prop(obj, "mtk_wind_direction", text=_tr("Wind Direction"), slider=True)
+    col.prop(obj, "mtk_wiggle_amplitude", text=_tr("Wiggle Amplitude"), slider=True)
+    col.prop(obj, "mtk_wiggle_speed", text=_tr("Wiggle Speed"), slider=True)
+    col.prop(obj, "mtk_noise_scale", text=_tr("Noise Scale"), slider=True)
 
     # Batch operation button if multiple mesh objects selected
     sel_meshes = [o for o in context.selected_objects if o.type == 'MESH']

@@ -68,10 +68,13 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
             if self.tab in {"dependencies", "MISC", "misc", "environment"}:
                 if hasattr(prefs, "category_tab"):
                     prefs.category_tab = "MISC"
-            elif self.tab in {"mesh", "object", "uv"}:
+            elif self.tab in {"RESOURCE_PACKS", "packs", "resource_packs"}:
+                if hasattr(prefs, "category_tab"):
+                    prefs.category_tab = "RESOURCE_PACKS"
+            elif self.tab in {"mesh", "object", "uv", "context_menu", "CONTEXT_MENU"}:
                 if hasattr(prefs, "category_tab"):
                     prefs.category_tab = "CONTEXT_MENU"
-                if hasattr(prefs, "context_menu_tab"):
+                if hasattr(prefs, "context_menu_tab") and self.tab in {"mesh", "object", "uv"}:
                     prefs.context_menu_tab = self.tab
 
         refresh_ui_windows(context)
