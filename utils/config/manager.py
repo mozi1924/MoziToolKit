@@ -30,11 +30,22 @@ class ConfigManager:
         self._lock = threading.RLock()
         self._backend: ConfigBackend = backend or JsonConfigBackend()
         self._cache: Optional[ConfigData] = None
-        self._is_syncing: bool = False
+        self._sync_depth: int = 0
+
+    @property
+    def _is_syncing(self) -> bool:
+        return self._sync_depth > 0
+
+    @_is_syncing.setter
+    def _is_syncing(self, value: bool) -> None:
+        if value:
+            self._sync_depth += 1
+        else:
+            self._sync_depth = max(0, self._sync_depth - 1)
 
     def is_syncing(self) -> bool:
         """Check if synchronization between storage and Blender UI preferences is currently active."""
-        return self._is_syncing
+        return self._sync_depth > 0
 
     @classmethod
     def get_instance(cls) -> ConfigManager:
@@ -365,62 +376,64 @@ class ConfigManager:
         with self._lock:
             if self._is_syncing:
                 return False
+            self._is_syncing = True
+            try:
+                is_init = getattr(prefs, "is_initialized", False)
 
-            is_init = getattr(prefs, "is_initialized", False)
+                data = self.get_data()
 
-            data = self.get_data()
+                # Anti-wipe check: If prefs is not initialized and has 0 resource packs but storage has packs, abort!
+                if not is_init and hasattr(prefs, "resource_packs") and len(prefs.resource_packs) == 0 and len(data.resource_packs) > 0:
+                    logger.warning("Anti-Wipe Guard prevented uninitialized AddonPreferences from overwriting configuration.")
+                    self.sync_to_preferences(prefs)
+                    return False
 
-            # Anti-wipe check: If prefs is not initialized and has 0 resource packs but storage has packs, abort!
-            if not is_init and hasattr(prefs, "resource_packs") and len(prefs.resource_packs) == 0 and len(data.resource_packs) > 0:
-                logger.warning("Anti-Wipe Guard prevented uninitialized AddonPreferences from overwriting configuration.")
-                self.sync_to_preferences(prefs)
-                return False
+                # Extract views
+                views_data = {}
+                for view in ["mesh", "object", "uv"]:
+                    added_coll = getattr(prefs, f"added_{view}", None)
+                    if added_coll is not None:
+                        items_list = []
+                        for elem in added_coll:
+                            items_list.append(
+                                MenuItem(
+                                    operator=normalize_operator_id(getattr(elem, "operator_id", "")),
+                                    label=getattr(elem, "label", ""),
+                                    enabled=getattr(elem, "enabled", True),
+                                )
+                            )
+                        views_data[view] = items_list
 
-
-            # Extract views
-            views_data = {}
-            for view in ["mesh", "object", "uv"]:
-                added_coll = getattr(prefs, f"added_{view}", None)
-                if added_coll is not None:
-                    items_list = []
-                    for elem in added_coll:
-                        items_list.append(
-                            MenuItem(
-                                operator=normalize_operator_id(getattr(elem, "operator_id", "")),
-                                label=getattr(elem, "label", ""),
-                                enabled=getattr(elem, "enabled", True),
+                # Extract resource packs
+                packs_list = []
+                if hasattr(prefs, "resource_packs"):
+                    for p_elem in prefs.resource_packs:
+                        packs_list.append(
+                            PackEntry(
+                                name=getattr(p_elem, "name", "Resource Pack"),
+                                path=getattr(p_elem, "path", ""),
+                                enabled=getattr(p_elem, "enabled", True),
+                                pack_type=getattr(p_elem, "pack_type", "RESOURCE_PACK"),
                             )
                         )
-                    views_data[view] = items_list
 
-            # Extract resource packs
-            packs_list = []
-            if hasattr(prefs, "resource_packs"):
-                for p_elem in prefs.resource_packs:
-                    packs_list.append(
-                        PackEntry(
-                            name=getattr(p_elem, "name", "Resource Pack"),
-                            path=getattr(p_elem, "path", ""),
-                            enabled=getattr(p_elem, "enabled", True),
-                            pack_type=getattr(p_elem, "pack_type", "RESOURCE_PACK"),
-                        )
-                    )
+                # Extract material settings
+                mat_settings = MaterialSettings(
+                    material_mode=getattr(prefs, "material_mode", "ATLAS"),
+                    biome_preset=getattr(prefs, "biome_preset", "PLAINS"),
+                    pack_textures=getattr(prefs, "pack_textures", True),
+                )
 
-            # Extract material settings
-            mat_settings = MaterialSettings(
-                material_mode=getattr(prefs, "material_mode", "ATLAS"),
-                biome_preset=getattr(prefs, "biome_preset", "PLAINS"),
-                pack_textures=getattr(prefs, "pack_textures", True),
-            )
+                # Update cache
+                if views_data:
+                    data.views = views_data
+                if packs_list or is_init:
+                    data.resource_packs = packs_list
+                data.material_settings = mat_settings
+                data.normalize()
 
-            # Update cache
-            if views_data:
-                data.views = views_data
-            if packs_list or is_init:
-                data.resource_packs = packs_list
-            data.material_settings = mat_settings
-            data.normalize()
-
-            if save:
-                return self.save()
-            return True
+                if save:
+                    return self.save()
+                return True
+            finally:
+                self._is_syncing = False

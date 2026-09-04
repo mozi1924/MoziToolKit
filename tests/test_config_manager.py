@@ -233,6 +233,40 @@ class TestConfigManager(unittest.TestCase):
         self.assertEqual(self.mgr.get_resource_packs()[0]["name"], "Export Pack")
         self.assertEqual(self.mgr.get_material_settings()["biome_preset"], "DESERT")
 
+    def test_sync_from_preferences_prevents_recursion(self):
+        """Verify sync_from_preferences and on_material_setting_changed do not enter infinite recursion."""
+        from ui.preferences import on_material_setting_changed
+
+        recursion_counter = 0
+
+        class RecursiveMockPrefs:
+            def __init__(self, mgr):
+                self._mgr = mgr
+                self.is_initialized = True
+                self.resource_packs = []
+                self._material_mode = "ATLAS"
+                self.biome_preset = "PLAINS"
+                self.pack_textures = True
+
+            @property
+            def material_mode(self):
+                return self._material_mode
+
+            @material_mode.setter
+            def material_mode(self, val):
+                nonlocal recursion_counter
+                recursion_counter += 1
+                self._material_mode = val
+                # Simulate Blender's property update callback firing synchronously
+                if recursion_counter < 100:
+                    on_material_setting_changed(self, None)
+
+        rec_prefs = RecursiveMockPrefs(self.mgr)
+        # Trigger change - must NOT throw RecursionError
+        on_material_setting_changed(rec_prefs, None)
+        # Verify it terminated safely in at most 2 calls instead of recursing to max recursion limit (1000)
+        self.assertLess(recursion_counter, 5)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

@@ -684,19 +684,38 @@ def build_atlas_chunk_materials(
             split_size.location = (-1330, -300)
             links.new(attr_size.outputs["Color"], split_size.inputs["Color"])
 
-            max_width = nodes.new("ShaderNodeMath")
-            max_width.name = "Max Frame Width"
-            max_width.operation = "MAXIMUM"
-            max_width.inputs[1].default_value = float(chunk.get("tile_size", 16))
-            max_width.location = (-1300, -300)
-            links.new(split_size.outputs["Red"], max_width.inputs[0])
+            # Safe Frame Size fallback: if Red / Green <= 0.0001 (e.g. missing/zero attribute), default to tile_size (16)
+            default_tile_size = float(chunk.get("tile_size", 16))
 
-            max_height = nodes.new("ShaderNodeMath")
-            max_height.name = "Max Frame Height"
-            max_height.operation = "MAXIMUM"
-            max_height.inputs[1].default_value = float(chunk.get("tile_size", 16))
-            max_height.location = (-1300, -500)
-            links.new(split_size.outputs["Green"], max_height.inputs[0])
+            cmp_width = nodes.new("ShaderNodeMath")
+            cmp_width.name = "Is Frame Width Non-Zero"
+            cmp_width.operation = "GREATER_THAN"
+            cmp_width.inputs[1].default_value = 0.0001
+            cmp_width.location = (-1160, -300)
+            links.new(split_size.outputs["Red"], cmp_width.inputs[0])
+
+            mix_width = nodes.new("ShaderNodeMix")
+            mix_width.name = "Safe Frame Width"
+            mix_width.data_type = 'FLOAT'
+            mix_width.inputs[2].default_value = default_tile_size
+            mix_width.location = (-1000, -300)
+            links.new(cmp_width.outputs["Value"], mix_width.inputs[0])
+            links.new(split_size.outputs["Red"], mix_width.inputs[3])
+
+            cmp_height = nodes.new("ShaderNodeMath")
+            cmp_height.name = "Is Frame Height Non-Zero"
+            cmp_height.operation = "GREATER_THAN"
+            cmp_height.inputs[1].default_value = 0.0001
+            cmp_height.location = (-1160, -420)
+            links.new(split_size.outputs["Green"], cmp_height.inputs[0])
+
+            mix_height = nodes.new("ShaderNodeMix")
+            mix_height.name = "Safe Frame Height"
+            mix_height.data_type = 'FLOAT'
+            mix_height.inputs[2].default_value = default_tile_size
+            mix_height.location = (-1000, -420)
+            links.new(cmp_height.outputs["Value"], mix_height.inputs[0])
+            links.new(split_size.outputs["Green"], mix_height.inputs[3])
 
             for channel_key, channel_name, colorspace, col_socket, alpha_socket, base_y in channels_info:
                 fname = chunk_files.get(channel_key)
@@ -727,8 +746,8 @@ def build_atlas_chunk_materials(
                     tiling_frame0.location = (-1050, base_y)
                     tiling_frame0.inputs["Atlas Width"].default_value = float(chunk.get("width", 16))
                     tiling_frame0.inputs["Atlas Height"].default_value = float(chunk.get("height", 16))
-                    links.new(max_width.outputs["Value"], tiling_frame0.inputs["Tile Width"])
-                    links.new(max_height.outputs["Value"], tiling_frame0.inputs["Tile Height"])
+                    links.new(mix_width.outputs[0], tiling_frame0.inputs["Tile Width"])
+                    links.new(mix_height.outputs[0], tiling_frame0.inputs["Tile Height"])
                     links.new(uv_socket, tiling_frame0.inputs["Vector"])
                     links.new(comb_scale.outputs["Vector"], tiling_frame0.inputs["Scale"])
                     links.new(comb_loc.outputs["Vector"], tiling_frame0.inputs["Location"])
@@ -741,8 +760,8 @@ def build_atlas_chunk_materials(
                 uv_node.node_tree = templates["MC_Animated_UV_Mapping"]
                 uv_node.name = f"MC UV Mapping ({channel_name})"
                 uv_node.location = (-800, base_y)
-                links.new(max_width.outputs["Value"], uv_node.inputs["Frame Width"])
-                links.new(max_height.outputs["Value"], uv_node.inputs["Frame Height"])
+                links.new(mix_width.outputs[0], uv_node.inputs["Frame Width"])
+                links.new(mix_height.outputs[0], uv_node.inputs["Frame Height"])
                 uv_node.inputs["Image Width"].default_value = float(chunk["width"])
                 uv_node.inputs["Image Height"].default_value = float(chunk["height"])
                 if "Atlas Mode" in uv_node.inputs:

@@ -147,12 +147,12 @@ class BlenderPreferencesConfigBackend(ConfigBackend):
             except Exception:
                 pass
 
-            # Sync material settings
-            if hasattr(prefs, "material_mode"):
+            # Sync material settings (avoid redundant writes that fire update callbacks)
+            if hasattr(prefs, "material_mode") and getattr(prefs, "material_mode", None) != data.material_settings.material_mode:
                 prefs.material_mode = data.material_settings.material_mode
-            if hasattr(prefs, "biome_preset"):
+            if hasattr(prefs, "biome_preset") and getattr(prefs, "biome_preset", None) != data.material_settings.biome_preset:
                 prefs.biome_preset = data.material_settings.biome_preset
-            if hasattr(prefs, "pack_textures"):
+            if hasattr(prefs, "pack_textures") and getattr(prefs, "pack_textures", None) != data.material_settings.pack_textures:
                 prefs.pack_textures = data.material_settings.pack_textures
 
             # Auto-save Blender user preferences if supported
