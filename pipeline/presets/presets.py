@@ -21,6 +21,8 @@ from ..steps import (
     StepReplaceMaterial,
     RepairFluidUVStep,
     StepPrecompileCache,
+    FoliageVertexGroupsStep,
+    FoliageGeoNodesStep,
 )
 
 
@@ -81,6 +83,11 @@ def create_preset_pipelines() -> Dict[str, Pipeline]:
             name="Precompile Cache Preset",
             description="Pipeline for precompiling Atlas, Models, and Standalone caches",
             steps=[StepPrecompileCache()],
+        ),
+        "foliage_waving": Pipeline(
+            name="Foliage Waving Preset",
+            description="Pipeline for scanning foliage metadata, creating vertex groups, and applying wind wiggle geometry nodes",
+            steps=[FoliageVertexGroupsStep(), FoliageGeoNodesStep()],
         ),
     }
 

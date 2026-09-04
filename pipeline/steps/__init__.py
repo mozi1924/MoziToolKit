@@ -13,6 +13,8 @@ from .step_texture_interpolation import TextureInterpolationStep
 from .step_replace_material import StepReplaceMaterial
 from .step_repair_fluid_uv import RepairFluidUVStep
 from .step_precompile_cache import StepPrecompileCache
+from .step_foliage_vertex_groups import FoliageVertexGroupsStep
+from .step_foliage_geo_nodes import FoliageGeoNodesStep
 
 __all__ = [
     "AdaptivePixelSplitStep",
@@ -26,4 +28,6 @@ __all__ = [
     "StepReplaceMaterial",
     "RepairFluidUVStep",
     "StepPrecompileCache",
+    "FoliageVertexGroupsStep",
+    "FoliageGeoNodesStep",
 ]
