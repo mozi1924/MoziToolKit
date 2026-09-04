@@ -441,8 +441,8 @@ def rebuild_material(
                     tex_colormap = nt.nodes.new("ShaderNodeTexImage")
                     tex_colormap.name = f"Colormap {colormap_name.capitalize()}"
                     tex_colormap.image = col_img
-                    tex_colormap.interpolation = "Closest"
-                    tex_colormap.extension = "CLIP"
+                    tex_colormap.interpolation = "Linear"
+                    tex_colormap.extension = "EXTEND"
                     tex_colormap.location = (-240, 480)
 
                     nt.links.new(sampler_node.outputs["Colormap UV"], tex_colormap.inputs["Vector"])
