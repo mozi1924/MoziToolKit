@@ -371,6 +371,57 @@ class TestFaceCullingSystem(unittest.TestCase):
         self.assertNotIn("dummy:state_0", self.culler._meta_cache)
         self.assertIn("minecraft:emerald_block", self.culler._meta_cache)
 
+    def test_snow_layers_mutual_culling_at_same_height(self):
+        """Rule 11: Touching snow layers of identical height must mutually cull touching side faces, and cull bottom face against stone."""
+        snow_a = self.culler.get_meta("minecraft:snow[layers=2]")
+        snow_b = self.culler.get_meta("minecraft:snow[layers=2]")
+        stone = self.culler.get_meta("minecraft:stone")
+
+        # Snow A is at (0, 0, 0), Snow B is at (1, 0, 0).
+        # A's East face touches B's West face. Both have height = 2/8 (0.25).
+        # Touching side faces MUST be culled to eliminate internal double faces and SSS dark seams.
+        self.assertFalse(self.culler.should_render_face(snow_a, snow_b, "east"))
+        self.assertFalse(self.culler.should_render_face(snow_b, snow_a, "west"))
+
+        # Snow top face towards air MUST render
+        self.assertTrue(self.culler.should_render_face(snow_a, None, "up"))
+
+        # Snow placed on stone: Snow bottom face is culled by stone's full top face
+        self.assertFalse(self.culler.should_render_face(snow_a, stone, "down"))
+        # Stone underlying snow retains full top face for physical material volume
+        self.assertTrue(self.culler.should_render_face(stone, snow_a, "up"))
+
+    def test_snow_layers_different_heights(self):
+        """Rule 12: Shorter snow layer facing taller snow layer is fully occluded and culled."""
+        snow_short = self.culler.get_meta("minecraft:snow[layers=2]")
+        snow_tall = self.culler.get_meta("minecraft:snow[layers=5]")
+
+        # Short snow touching tall snow: short snow's side (height 0.25) is 100% covered by tall snow (0.625) -> CULLED
+        self.assertFalse(self.culler.should_render_face(snow_short, snow_tall, "east"))
+        # Tall snow facing short snow: remaining upper portion (0.25 to 0.625) is not occluded -> RENDERS
+        self.assertTrue(self.culler.should_render_face(snow_tall, snow_short, "west"))
+
+    def test_iron_bars_cross_section_culling(self):
+        """Rule 13: Touching connected iron bars must cull cross-section end cap faces."""
+        bar_west = self.culler.get_meta("minecraft:iron_bars[east=true,west=false,north=false,south=false]")
+        bar_east = self.culler.get_meta("minecraft:iron_bars[east=false,west=true,north=false,south=false]")
+
+        # Touching cross-sections on X boundary (bar_west East vs bar_east West) must be culled
+        self.assertFalse(self.culler.should_render_face(bar_west, bar_east, "east"))
+        self.assertFalse(self.culler.should_render_face(bar_east, bar_west, "west"))
+
+        # Unconnected direction retains render state against air
+        self.assertTrue(self.culler.should_render_face(bar_west, None, "north"))
+
+    def test_fence_cross_section_culling(self):
+        """Rule 14: Touching connected fence bars must cull horizontal beam end cap faces."""
+        fence_west = self.culler.get_meta("minecraft:oak_fence[east=true,west=false,north=false,south=false]")
+        fence_east = self.culler.get_meta("minecraft:oak_fence[east=false,west=true,north=false,south=false]")
+
+        # Touching cross-sections on X boundary (fence_west East vs fence_east West) must be culled
+        self.assertFalse(self.culler.should_render_face(fence_west, fence_east, "east"))
+        self.assertFalse(self.culler.should_render_face(fence_east, fence_west, "west"))
+
 
 if __name__ == "__main__":
     unittest.main()
