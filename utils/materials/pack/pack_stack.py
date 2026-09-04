@@ -109,6 +109,11 @@ class ResourcePackStack:
                 break
 
         if composite["albedo"] is not None or composite["normal"] is not None or composite["specular"] is not None:
+            from ..specialized import is_firefly_bush, handle_firefly_bush_texture_info
+            if is_firefly_bush(base_name):
+                syn = handle_firefly_bush_texture_info(self, composite, namespace=namespace)
+                if syn:
+                    return syn
             return composite
 
         return None
@@ -171,6 +176,9 @@ class ResourcePackStack:
 
             if entry["albedo"] is not None or entry["normal"] is not None or entry["specular"] is not None:
                 composite_map[(ns, path_key)] = entry
+
+        from ..specialized import handle_firefly_bush_composite_map
+        handle_firefly_bush_composite_map(self, composite_map)
 
         return composite_map
 

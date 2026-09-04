@@ -1191,6 +1191,10 @@ def classify_tint_category(
     if not clean_stem and not block_name:
         return "none"
 
+    from ..specialized import is_firefly_bush_tint_exempt
+    if is_firefly_bush_tint_exempt(clean_stem) or (block_name and is_firefly_bush_tint_exempt(block_name)):
+        return "none"
+
     # 1. Check explicit block-level registration if block_name is provided
     if block_name:
         clean_block = block_name.lower().removeprefix("minecraft:").removeprefix("block/").removeprefix("models/block/").removeprefix("models/")
@@ -1237,10 +1241,11 @@ def classify_tint_category(
             return "none"
         return "foliage"
 
-    if "water" in stem_norm:
-        return "water"
+    from ..specialized import is_firefly_bush_tint_exempt
+    if is_firefly_bush_tint_exempt(stem_norm):
+        return "none"
 
-    if any(stem_norm.endswith(w) for w in ("_grass", "_fern", "_vine", "_bush")) or stem_norm == "bush":
+    if any(stem_norm.endswith(w) for w in ("_grass", "_fern", "_vine")) or stem_norm in ("bush", "potted_bush"):
         return "grass"
 
     return "none"
