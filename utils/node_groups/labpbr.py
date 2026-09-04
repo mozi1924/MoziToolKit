@@ -8,18 +8,18 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 16
+LABPBR_TEMPLATE_VERSION = 17
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The graph contains functional nodes and effective links with Random Walk SSS,
 # boolean Thin Wall transmission support, hardcoded emission direct input,
 # Transmission Weight physical refraction decoding, clean albedo for clear glass,
 # dual-layer glass and water surface sticker decoding (configurable Sticker Threshold),
-# perceptual roughness fix, and non-negative SSS clamping.
-LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 92
-LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 133
-LABPBR_REFERENCE_NODE_COUNT = 60
-LABPBR_REFERENCE_LINK_COUNT = 99
+# perceptual roughness fix, non-negative SSS clamping, and Disable Subsurface toggle.
+LABPBR_REFERENCE_LAYOUT_NODE_COUNT = 94
+LABPBR_REFERENCE_LAYOUT_LINK_COUNT = 136
+LABPBR_REFERENCE_NODE_COUNT = 61
+LABPBR_REFERENCE_LINK_COUNT = 101
 LABPBR_REFERENCE_FRAMES = frozenset({
     "Optional _n: DirectX normal, AO, height",
     "Optional _s: smoothness, F0, metal, porosity / SSS, emission",
@@ -42,6 +42,7 @@ LABPBR_INTERFACE = (
     ("Subsurface Scale", "INPUT", "NodeSocketFloat"),
     ("Transmission Weight", "INPUT", "NodeSocketFloat"),
     ("Sticker Threshold", "INPUT", "NodeSocketFloat"),
+    ("Disable Subsurface", "INPUT", "NodeSocketBool"),
 )
 
 
@@ -159,6 +160,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         ("Subsurface Scale", "INPUT", "NodeSocketFloat", 0.1, 0.0, 10.0),
         ("Transmission Weight", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Sticker Threshold", "INPUT", "NodeSocketFloat", 0.55, 0.0, 1.0),
+        ("Disable Subsurface", "INPUT", "NodeSocketBool", True),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1400, 200))
@@ -228,6 +230,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     enable_metallic = _math(nodes, "Enable Metallic", "MULTIPLY", (-200, -650))
     enable_ior = node(nodes, "ShaderNodeMix", "Enable F0 / IOR", location=(120, -820), properties={"data_type": "FLOAT", "blend_type": "MIX"}, inputs={"A[0]": 1.5})
     enable_sss = _math(nodes, "Enable SSS", "MULTIPLY", (-200, -1020))
+    final_sss_weight = node(nodes, "ShaderNodeMix", "Filter Subsurface Weight", location=(0, -1020), properties={"data_type": "FLOAT", "blend_type": "MIX"}, inputs={"B[0]": 0.0})
     enable_displacement = _math(nodes, "Enable Displacement", "MULTIPLY", (120, 120))
     enable_porosity = _math(nodes, "Enable Porosity", "MULTIPLY", (-200, -1420))
     artist_emission = _math(nodes, "Artist Emission Multiplier", "MULTIPLY", (-500, -1740))
@@ -282,6 +285,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, metal_preset, "Value", enable_metallic, "Value[0]"); link(links, enable_labpbr, "Value", enable_metallic, "Value[1]")
     link(links, enable_labpbr, "Value", enable_ior, "Factor[0]"); link(links, ior_from_f0, "Value", enable_ior, "B[0]")
     link(links, subsurface_weight, "Value", enable_sss, "Value[0]"); link(links, enable_labpbr, "Value", enable_sss, "Value[1]")
+    link(links, group_input, "Disable Subsurface", final_sss_weight, "Factor[0]")
+    link(links, enable_sss, "Value", final_sss_weight, "A[0]")
     link(links, effective_displacement, "Value", enable_displacement, "Value[0]"); link(links, enable_labpbr, "Value", enable_displacement, "Value[1]")
     link(links, porosity, "Value", enable_porosity, "Value[0]"); link(links, enable_labpbr, "Value", enable_porosity, "Value[1]")
     link(links, emission_strength, "Value", artist_emission, "Value[0]"); link(links, group_input, "Emission Strength", artist_emission, "Value[1]")
@@ -304,7 +309,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, final_alpha, "Result[0]", principled, "Alpha")
     link(links, final_transmission, "Value", principled, "Transmission Weight")
     link(links, normal_map, "Normal", height_bump, "Normal"); link(links, enable_displacement, "Value", height_bump, "Height"); link(links, height_bump, "Normal", principled, "Normal")
-    link(links, enable_sss, "Value", principled, "Subsurface Weight"); link(links, clean_albedo, "Result[2]", principled, "Emission Color"); link(links, final_emission, "Result[0]", principled, "Emission Strength")
+    link(links, final_sss_weight, "Result[0]", principled, "Subsurface Weight"); link(links, clean_albedo, "Result[2]", principled, "Emission Color"); link(links, final_emission, "Result[0]", principled, "Emission Strength")
     link(links, group_input, "Thin Wall", principled, "Thin Wall")
     link(links, group_input, "Subsurface Scale", principled, "Subsurface Scale")
     link(links, principled, "BSDF", group_output, "BSDF"); link(links, enable_displacement, "Value", displacement, "Height"); link(links, displacement, "Displacement", group_output, "Displacement"); link(links, enable_porosity, "Value", group_output, "Porosity (0-1)")
