@@ -145,6 +145,25 @@ class TestDependencyManager(unittest.TestCase):
                 ZipResourcePack(malicious_zip, use_cache=False)
             self.assertIn("zip-slip", str(ctx.exception).lower())
 
+    def test_wheel_zip_slip_security_prevention(self):
+        """dependencies._safe_extract must reject wheel archives containing path traversal entries."""
+        from utils.system.dependencies import _safe_extract
+        import tempfile
+        import zipfile
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            malicious_whl = Path(tmp_dir) / "malicious.whl"
+            extract_dir = Path(tmp_dir) / "extracted"
+            extract_dir.mkdir()
+            with zipfile.ZipFile(malicious_whl, "w") as zf:
+                zf.writestr("../evil.py", "import os; os.system('echo pwned')")
+                zf.writestr("valid.py", "print('hello')")
+
+            with zipfile.ZipFile(malicious_whl, "r") as zf:
+                with self.assertRaises(ValueError) as ctx:
+                    _safe_extract(zf, extract_dir)
+                self.assertIn("zip-slip", str(ctx.exception).lower())
+
     def test_zip_bomb_member_count_limit(self):
         """ZipResourcePack._safe_extract must reject archives exceeding MAX_ZIP_MEMBER_COUNT."""
         from utils.materials.pack.resource_pack import ZipResourcePack, MAX_ZIP_MEMBER_COUNT

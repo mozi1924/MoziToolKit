@@ -87,6 +87,20 @@ def _match_wheel_for_platform(whl_name: str) -> bool:
     return False
 
 
+def _safe_extract(zf, target_dir: Path) -> None:
+    """Safely extract members from a zip archive, preventing zip-slip path traversal."""
+    resolved_target = target_dir.resolve()
+    for member in zf.infolist():
+        member_path = (target_dir / member.filename).resolve()
+        try:
+            member_path.relative_to(resolved_target)
+        except ValueError:
+            raise ValueError(
+                f"Malicious zip archive entry detected (zip-slip path traversal): '{member.filename}'"
+            )
+    zf.extractall(target_dir)
+
+
 def _get_wheels_cache_dir() -> Path:
     """Resolve an isolated, persistent cache directory to unpack extension wheels if needed."""
     env_dir = os.environ.get("MOZI_CACHE_DIR")
@@ -203,7 +217,7 @@ def ensure_sys_paths(force: bool = False) -> List[str]:
                 if needs_unpack:
                     try:
                         with zipfile.ZipFile(whl, "r") as zf:
-                            zf.extractall(unpack_dir)
+                            _safe_extract(zf, unpack_dir)
                         stamp_file.touch()
                     except Exception:
                         pass
