@@ -24,14 +24,25 @@ from .layout import (
 
 from .generator import AtlasGenerator
 
-from .builder import (
-    build_atlas_material,
-    build_atlas_chunk_materials,
-)
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
 
-from .pipeline import (
-    AtlasReplacementEngine,
-)
+if HAS_BPY:
+    from .builder import (
+        build_atlas_material,
+        build_atlas_chunk_materials,
+    )
+    from .pipeline import (
+        AtlasReplacementEngine,
+    )
+else:
+    build_atlas_material = None
+    build_atlas_chunk_materials = None
+    AtlasReplacementEngine = None
 
 from .addressing import (
     AtlasAddressResolver,

@@ -27,11 +27,23 @@ from .biome import (
     classify_tint_category,
     BIOME_ENUM_ITEMS,
 )
-from .updater import (
-    is_mtk_object,
-    detect_object_material_mode,
-    update_object_biome,
-)
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
+
+if HAS_BPY:
+    from .updater import (
+        is_mtk_object,
+        detect_object_material_mode,
+        update_object_biome,
+    )
+else:
+    is_mtk_object = None
+    detect_object_material_mode = None
+    update_object_biome = None
 
 __all__ = [
     "hex_to_rgb",

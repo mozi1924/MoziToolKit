@@ -15,6 +15,7 @@ logger = logging.getLogger("MoziToolKit.Materials.Nodes")
 
 from ..matching import extract_material_texture_keys
 from ..pipeline.provenance import detect_material_mode
+from ..models import StandaloneMaterialDescriptor, ChannelDescriptor
 from ..constants import (
     PROP_PACK_HASH,
     PROP_PACK_HASH_SHORT,
@@ -306,9 +307,31 @@ def build_channel_nodes(
         return scheduler_node, shared_uv_node
 
 
+def build_material_from_descriptor(
+    mat: bpy.types.Material,
+    descriptor: StandaloneMaterialDescriptor,
+    pack_textures: bool = True,
+    pack_hash: str = None,
+    biome_preset: str = "PLAINS",
+    pack_stack: Any = None,
+) -> bool:
+    """
+    Reconstruct a material node tree strictly from a declarative StandaloneMaterialDescriptor.
+    Guarantees no runtime PIL image alignment calls inside node construction.
+    """
+    return rebuild_material(
+        mat=mat,
+        texture_info=descriptor,
+        pack_textures=pack_textures,
+        pack_hash=pack_hash,
+        biome_preset=biome_preset,
+        pack_stack=pack_stack,
+    )
+
+
 def rebuild_material(
     mat: bpy.types.Material,
-    texture_info: dict,
+    texture_info: Union[dict, StandaloneMaterialDescriptor],
     pack_textures: bool = True,
     pack_hash: str = None,
     biome_preset: str = "PLAINS",
@@ -318,9 +341,17 @@ def rebuild_material(
     Completely clear an existing material's node tree and reconstruct a LabPBR 1.3 PBR material
     supporting mixed static/animated texture channels with full texture alignment.
     In Standalone mode, all material parameters are written directly to the shader node inputs.
+    Accepts either a legacy texture_info dict or a StandaloneMaterialDescriptor.
     """
     if not mat:
         return False
+
+    # Convert descriptor to texture_info dict if needed
+    if isinstance(texture_info, StandaloneMaterialDescriptor):
+        desc = texture_info
+        texture_info = desc.to_texture_info()
+    else:
+        desc = None
 
     mat.use_nodes = True
     mat.use_fake_user = False
