@@ -13,6 +13,9 @@ from . import materials
 from . import mesh
 from . import system
 from . import culling
+from . import mc_baker
+from . import foliage
+from . import live_sync
 
 try:
     import bpy
@@ -38,5 +41,8 @@ __all__ = [
     "extrude_repair",
     "system",
     "culling",
+    "mc_baker",
+    "foliage",
+    "live_sync",
 ]
 

@@ -6,8 +6,10 @@ Precomputes ParsedBlock, BakedModel, cull metadata, and resolved face textures i
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional, Set
-import bpy
+from typing import TYPE_CHECKING, Any, Dict, Optional, Set
+
+if TYPE_CHECKING:
+    import bpy
 
 from ..classifier import (
     parse_and_classify,

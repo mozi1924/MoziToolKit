@@ -6,7 +6,6 @@ and creates MTK_Foliage_All, MTK_Foliage_Leaves, MTK_Foliage_Plants vertex group
 """
 
 from typing import Iterator, Union
-import bpy
 
 from ..context import PipelineContext
 from ..progress import ProgressUpdate

@@ -1,8 +1,4 @@
-"""
-Utilities for setting and traversing image texture interpolation across materials.
-"""
-
-import bpy
+from __future__ import annotations
 
 
 def process_node_tree_interpolation(node_tree, target_interpolation="Closest", visited_trees=None):

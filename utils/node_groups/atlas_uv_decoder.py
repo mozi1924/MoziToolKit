@@ -7,7 +7,10 @@ Minecraft's Y axis is Blender's Z axis, hence the face-order conversion below.
 
 from __future__ import annotations
 
-import bpy
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import bpy
 
 from .core import add_sockets, ensure_group, finalize_group, link, node
 

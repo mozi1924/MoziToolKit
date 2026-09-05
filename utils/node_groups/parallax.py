@@ -1,8 +1,9 @@
-"""Tangent-space Parallax / POM UV offset node group with cell boundary clamping."""
-
 from __future__ import annotations
 
-import bpy
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import bpy
 
 from .core import add_sockets, ensure_group, finalize_group, link, node
 

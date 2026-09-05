@@ -7,10 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+
 
 from ..config.models import normalize_operator_id, is_valid_operator_id
 from ..config import load_config

@@ -9,8 +9,10 @@ vertex groups while protecting rigid structures (logs, terrain) from distortion.
 from __future__ import annotations
 
 import re
-from typing import Dict, Optional, Set, Tuple
-import bpy
+from typing import TYPE_CHECKING, Dict, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    import bpy
 
 LEAF_KEYWORDS = [
     "leaves", "leaf", "azalea_leaves", "cherry_leaves", "mangrove_leaves"

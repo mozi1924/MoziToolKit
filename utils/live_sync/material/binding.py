@@ -4,8 +4,14 @@ Live Sync Material Manager singleton and Section Material Slot binding utilities
 
 from __future__ import annotations
 
-from typing import Any, Optional
-import bpy
+from typing import TYPE_CHECKING, Any, Optional
+
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
 
 from ..constants import (
     MTK_ATLAS_CHUNK_ID,
