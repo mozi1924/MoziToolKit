@@ -107,39 +107,20 @@ for mod_name, mod in list(sys.modules.items()):
         if short_name not in sys.modules:
             sys.modules[short_name] = mod
 
-# Modules classified as fast unit tests (pure math, conversions, parsers, resolvers)
-FAST_UNIT_MODULES = {
-    "test_atlas_material_metadata",
-    "test_atlas_uv_rotation",
-    "test_atlas_uv_tiling",
-    "test_biome_materials",
-    "test_config_manager",
-    "test_dependencies",
-    "test_directional_block_orientations",
-    "test_jmc2obj_matching",
-    "test_live_sync_empty_slots_and_entities",
-    "test_live_sync_protocol_and_storage",
-    "test_material_hash_rebuild_and_dedup",
-    "test_mc_model_baker",
-    "test_mineways_atlas_unpack",
-    "test_mineways_matching",
-    "test_pack_stack_and_fallback",
-    "test_pbr_pack_stack",
-    "test_precompile_pipeline",
-    "test_rect_packer",
-    "test_repair_fluid_uv",
-    "test_sandbox_isolation",
-    "test_yefira_multiface_states",
-}
-
-
 def discover_test_modules():
-    """Discover all test_*.py modules in the tests directory."""
+    """Discover all test_*.py modules recursively in the tests directory."""
     modules = []
-    for file in sorted(TESTS_DIR.glob("test_*.py")):
-        mod_name = file.stem
+    for file in sorted(TESTS_DIR.rglob("test_*.py")):
+        # e.g. tests/unit/atlas/test_rect_packer.py -> tests.unit.atlas.test_rect_packer
+        rel_path = file.relative_to(PROJECT_DIR)
+        mod_name = ".".join(rel_path.with_suffix("").parts)
         modules.append(mod_name)
     return modules
+
+
+def is_fast_module(mod_name):
+    """Check if a module is considered a fast unit test."""
+    return ".unit." in mod_name or mod_name.startswith("tests.unit.")
 
 
 def load_suite_for_modules(module_names, filter_pattern=None):
@@ -150,7 +131,7 @@ def load_suite_for_modules(module_names, filter_pattern=None):
 
     for mod_name in module_names:
         try:
-            mod = importlib.import_module(f"tests.{mod_name}")
+            mod = importlib.import_module(mod_name)
             mod_suite = loader.loadTestsFromModule(mod)
 
             if filter_pattern:
@@ -187,10 +168,10 @@ def list_tests(module_names):
     print("=" * 70)
     total_tests = 0
     for mod_name in module_names:
-        is_fast = mod_name in FAST_UNIT_MODULES
+        is_fast = is_fast_module(mod_name)
         tag = "[FAST]" if is_fast else "[INTEGRATION]"
         try:
-            mod = importlib.import_module(f"tests.{mod_name}")
+            mod = importlib.import_module(mod_name)
             mod_suite = unittest.TestLoader().loadTestsFromModule(mod)
             tests = list(_flatten_suite(mod_suite))
             print(f"  {tag:<15} {mod_name} ({len(tests)} tests)")
@@ -214,7 +195,7 @@ def main():
         description="MoziToolKit Automated Test Runner",
         prog="blender -b --python tests/run_tests.py --"
     )
-    parser.add_argument("-f", "--fast", action="store_true", help="Run fast unit tests only (<3s)")
+    parser.add_argument("-f", "--fast", action="store_true", help="Run fast unit tests only (tests/unit/)")
     parser.add_argument("-a", "--all", action="store_true", help="Run all tests (default)")
     parser.add_argument("-k", "--filter", type=str, default=None, help="Filter tests by substring pattern")
     parser.add_argument("-l", "--list", action="store_true", help="List discovered tests")
@@ -229,7 +210,7 @@ def main():
         return 0
 
     if args.fast and not args.filter:
-        target_modules = [m for m in all_modules if m in FAST_UNIT_MODULES]
+        target_modules = [m for m in all_modules if is_fast_module(m)]
         mode_label = f"FAST UNIT TESTS ({len(target_modules)} modules)"
     else:
         target_modules = all_modules
