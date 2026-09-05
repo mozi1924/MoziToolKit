@@ -12,6 +12,16 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     bl_label = "Replace Material"
     bl_options = {"REGISTER"}
 
+    material_mode: EnumProperty(
+        name="Material Mode",
+        description="Choose whether to bind unified Atlas materials or Standalone per-texture materials",
+        items=[
+            ("ATLAS", "Atlas (Recommended)", "Unified texture atlas with UDIM/chunk UV mapping. High performance and live-sync compatible."),
+            ("STANDALONE", "Standalone", "Individual textures and separate materials per block face for granular shading."),
+        ],
+        default='ATLAS',
+    )
+
     biome_preset: EnumProperty(
         name="Biome",
         description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
@@ -23,9 +33,25 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     def poll(cls, context):
         return context.mode == "OBJECT" and bool(context.selected_objects)
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=360)
+
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "biome_preset", text="Biome")
+        box_mode = layout.box()
+        box_mode.label(text="Material Pipeline Mode:", icon="MATERIAL")
+        row = box_mode.row(align=True)
+        row.prop(self, "material_mode", expand=True)
+
+        if self.material_mode == "ATLAS":
+            box_mode.label(text="* High performance chunk atlas, synchronized with Live Sync.", icon="INFO")
+        else:
+            box_mode.label(text="* Individual per-face shader materials and textures.", icon="INFO")
+
+        layout.separator()
+        box_biome = layout.box()
+        box_biome.label(text="Biome Color Tinting:", icon="WORLD")
+        box_biome.prop(self, "biome_preset", text="Preset")
 
     def execute(self, context):
         if not has_pillow():
@@ -39,12 +65,12 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         if not pack_stack.packs:
             self.report(
                 {'ERROR'},
-                "No active resource packs or Minecraft JARs found! Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                "No active resource packs or Minecraft JARs found! Please configure your Resource Pack Stack in Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Caches'."
             )
             return {"CANCELLED"}
 
         prefs = get_prefs(context)
-        material_mode = getattr(prefs, "material_mode", "ATLAS") if prefs else "ATLAS"
+        material_mode = self.material_mode
         biome_preset = self.biome_preset
         pack_textures = getattr(prefs, "pack_textures", True) if prefs else True
 
@@ -53,7 +79,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                 self.report(
                     {'ERROR'},
                     "The configured Resource Pack Stack has not been precompiled for Standalone mode. "
-                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Caches'."
                 )
                 return {"CANCELLED"}
         else:
@@ -61,7 +87,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                 self.report(
                     {'ERROR'},
                     "The configured Resource Pack Stack has not been precompiled. "
-                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Atlas Cache'."
+                    "Please go to Edit > Preferences > Add-ons > MoziToolKit and click 'Precompile / Rebuild Stack Caches'."
                 )
                 return {"CANCELLED"}
 

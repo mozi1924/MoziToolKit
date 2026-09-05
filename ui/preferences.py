@@ -382,12 +382,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         m_head.label(text=tr("Default Material Replacement Settings:"), icon="MATERIAL")
 
         m_col = mat_box.column(align=False)
-        row_mode = m_col.row(align=True)
-        row_mode.prop(self, "material_mode", text=tr("Mode"))
-        row_mode.prop(self, "pack_textures")
+        row_opts = m_col.row(align=True)
+        row_opts.prop(self, "pack_textures")
 
         row_precompile = mat_box.row(align=True)
-        row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Atlas Cache"), icon="FILE_REFRESH")
+        row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")
         row_precompile.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
 
     def draw_context_menus(self, layout, context):
@@ -636,15 +635,8 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             return {'CANCELLED'}
 
         try:
-            prefs = _safe_get_prefs(context)
-            if prefs and hasattr(prefs, "material_mode"):
-                material_mode = prefs.material_mode
-            else:
-                material_mode = load_material_settings_config().get("material_mode", "ATLAS")
-
             params = {
                 "pack_stack": stack,
-                "material_mode": material_mode,
             }
 
             try:

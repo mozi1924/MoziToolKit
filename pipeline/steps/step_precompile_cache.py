@@ -38,7 +38,7 @@ class StepPrecompileCache(PipelineStep):
             yield StepResult.failed("No enabled resource packs or JARs found in stack to precompile.")
             return
 
-        material_mode = pipeline_context.get_param("material_mode", "ATLAS")
+        material_mode = pipeline_context.get_param("material_mode", None)
         yefira_only = pipeline_context.get_param("yefira_only", False)
 
         clear_shared_baker_cache()
@@ -77,7 +77,7 @@ class StepPrecompileCache(PipelineStep):
         num_cms = res_data.get("colormaps", {}).get("colormaps_count", 0)
 
         cm_str = f"Colormaps: {num_cms}; " if num_cms > 0 else ""
-        if material_mode == "STANDALONE":
+        if num_st > 0:
             success_msg = (
                 f"Successfully precompiled caches for pack stack "
                 f"({cm_str}Atlas: {num_chunks} chunks; Models: {num_models} models; Standalone: {num_st} textures)."
