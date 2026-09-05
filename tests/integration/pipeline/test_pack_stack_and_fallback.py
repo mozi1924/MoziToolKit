@@ -348,8 +348,8 @@ class TestPackStackAndFallback(unittest.TestCase):
         # Clean up
         bpy.data.objects.remove(cube, do_unlink=True)
 
-    def test_precompile_cache_operator_atlas_mode(self):
-        """Test that MOZI_OT_precompile_cache in ATLAS mode compiles Atlas cache only."""
+    def test_precompile_pipeline_explicit_atlas_mode(self):
+        """Test that passing material_mode='ATLAS' directly to stack compiles only Atlas cache (for compatibility)."""
         from utils.system import has_pillow
         from utils.materials.pack.pack_stack import get_configured_pack_stack
         from ui.preferences import populate_resource_packs
@@ -365,22 +365,43 @@ class TestPackStackAndFallback(unittest.TestCase):
             {"name": "Precompile Atlas Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
         ]
         save_pack_stack_config(pack_entries)
-        save_material_settings_config({"material_mode": "ATLAS"})
+
+        stack = get_configured_pack_stack()
+        stack.precompile(material_mode="ATLAS")
+        self.assertTrue(stack.is_stack_baked(yefira_only=False))
+        self.assertFalse(stack.is_standalone_baked())
+
+    def test_precompile_cache_operator_unified_bake(self):
+        """Test that MOZI_OT_precompile_cache compiles BOTH Atlas and Standalone caches simultaneously."""
+        from utils.system import has_pillow
+        from utils.materials.pack.pack_stack import get_configured_pack_stack
+        from ui.preferences import populate_resource_packs
+        if not has_pillow():
+            self.skipTest("Pillow not installed")
+
+        pack_path = self._create_temp_pack("PrecompileAtlasPack", {
+            ("minecraft", "dirt"): (16, 16, (100, 70, 30, 255)),
+            ("minecraft", "stone"): (16, 16, (128, 128, 128, 255)),
+        })
+
+        pack_entries = [
+            {"name": "Precompile Atlas Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
+        ]
+        save_pack_stack_config(pack_entries)
 
         prefs = get_prefs(bpy.context)
         if prefs:
             populate_resource_packs(prefs, pack_entries)
-            prefs.material_mode = "ATLAS"
 
         res = bpy.ops.mozi.precompile_cache()
         self.assertEqual(res, {'FINISHED'})
 
         stack = get_configured_pack_stack()
         self.assertTrue(stack.is_stack_baked(yefira_only=False))
-        self.assertFalse(stack.is_standalone_baked())
+        self.assertTrue(stack.is_standalone_baked())
 
     def test_precompile_cache_operator_standalone_mode(self):
-        """Test that MOZI_OT_precompile_cache in STANDALONE mode compiles BOTH Atlas and Standalone caches."""
+        """Test that MOZI_OT_precompile_cache compiles BOTH Atlas and Standalone caches."""
         from utils.system import has_pillow
         from utils.materials.pack.pack_stack import get_configured_pack_stack
         from ui.preferences import populate_resource_packs
@@ -396,12 +417,10 @@ class TestPackStackAndFallback(unittest.TestCase):
             {"name": "Precompile Standalone Pack", "path": str(pack_path), "enabled": True, "pack_type": "RESOURCE_PACK"}
         ]
         save_pack_stack_config(pack_entries)
-        save_material_settings_config({"material_mode": "STANDALONE"})
 
         prefs = get_prefs(bpy.context)
         if prefs:
             populate_resource_packs(prefs, pack_entries)
-            prefs.material_mode = "STANDALONE"
 
         res = bpy.ops.mozi.precompile_cache()
         self.assertEqual(res, {'FINISHED'})
