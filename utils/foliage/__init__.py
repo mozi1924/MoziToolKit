@@ -14,12 +14,25 @@ from .foliage_classifier import (
     TARGET_SCOPE_ITEMS,
     SCOPE_TO_GROUP,
 )
-from .geo_node_builder import (
-    NODE_GROUP_NAME,
-    MODIFIER_NAME,
-    get_or_create_foliage_node_group,
-    apply_foliage_modifier,
-)
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
+
+if HAS_BPY:
+    from .geo_node_builder import (
+        NODE_GROUP_NAME,
+        MODIFIER_NAME,
+        get_or_create_foliage_node_group,
+        apply_foliage_modifier,
+    )
+else:
+    NODE_GROUP_NAME = "MTK_Foliage_Wiggle"
+    MODIFIER_NAME = "MTK_Foliage_Wiggle"
+    get_or_create_foliage_node_group = None
+    apply_foliage_modifier = None
 
 __all__ = [
     "classify_texture_key",

@@ -5,7 +5,6 @@ Face effective texture resolution and adaptive grid analyzer.
 from __future__ import annotations
 
 from typing import Tuple, Optional
-import bpy
 
 from .types import TargetGrid, FacePixelInfo
 from ..mesh.uv import get_face_uv_bounds

@@ -1,6 +1,5 @@
 import math
 import mathutils
-import bpy
 from .types import ExtrudeRepairConfig
 from .uv_analyzer import is_face_uv_collapsed, get_face_pixel_step
 from ..mesh.uv import get_face_uv_bounds

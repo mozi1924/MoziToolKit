@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Iterator, Union
-import bpy
 
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult

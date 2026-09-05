@@ -8,7 +8,6 @@ with non-blocking progress streaming and cooperative cancellation.
 from __future__ import annotations
 
 from typing import Iterator, Union
-import bpy
 
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult

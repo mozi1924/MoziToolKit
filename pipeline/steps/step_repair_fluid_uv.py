@@ -1,5 +1,4 @@
 from typing import Iterator, Union
-import bpy
 from ..context import PipelineContext
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult

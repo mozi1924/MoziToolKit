@@ -3,7 +3,6 @@ Select Hard & Sharp Edges Pipeline Step
 """
 
 import math
-import bpy
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 

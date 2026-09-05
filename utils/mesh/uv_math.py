@@ -10,10 +10,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 try:
-    import bpy
     from mathutils import Vector
 except ImportError:
-    bpy = None
     Vector = None
 
 

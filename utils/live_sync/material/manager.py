@@ -11,10 +11,17 @@ Responsible for:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Set
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Set
 from pathlib import Path
-import bpy
-from mathutils import Vector
+
+try:
+    import bpy
+    from mathutils import Vector
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    Vector = None
+    HAS_BPY = False
 
 def _canonical_texture_key(namespace: str, texture_name: str) -> str:
     namespace = (namespace or "minecraft").strip().lower()

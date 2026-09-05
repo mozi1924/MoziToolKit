@@ -9,7 +9,10 @@ achieving zero runtime shader overhead and saving mesh attribute slots under EEV
 
 from __future__ import annotations
 
-import bpy
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import bpy
 
 from .core import add_sockets, ensure_group, finalize_group, link, node
 

@@ -2,7 +2,6 @@
 Select Transparent Faces Pipeline Step
 """
 
-import bpy
 import numpy as np
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult

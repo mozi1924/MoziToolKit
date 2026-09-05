@@ -56,42 +56,86 @@ from .material import (
     validate_and_sync_scene_materials,
     clear_shared_material_manager,
 )
-from .meshing import (
-    WorldMeshBuildResult,
-    CachedStateMeta,
-    apply_block_delta_to_world,
-    build_world_mesh,
-    build_single_section_mesh,
-    clear_mesh_builder_caches,
-    get_cached_state_meta,
-    preload_sync_world_data,
-    sync_world_mesh,
-    update_blocks_in_mesh,
-    is_yefira_root_object,
-    is_yefira_child_section,
-    is_yefira_object,
-    resolve_world_root_object,
-    get_or_create_world_root,
-    find_root_section_children,
-    sync_child_section_names,
-    prune_out_of_bounds_section_objects,
-    clear_all_section_objects,
-    generate_fluid_buffer_faces,
-    generate_fluid_mesh_faces,
-    generate_section_geometry_buffer,
-    generate_single_block_faces,
-    generate_voxel_geometry,
-    is_fluid_block,
-    mc_local_to_blender,
-)
-from .session import (
-    SyncSession,
-    SyncSessionManager,
-    get_active_session_manager,
-    reset_active_session_manager,
-    trigger_mesh_sync,
-    clear_sync_caches,
-)
+try:
+    import bpy
+    import bmesh
+    HAS_MESHING = True
+except ImportError:
+    bpy = None
+    bmesh = None
+    HAS_MESHING = False
+
+if HAS_MESHING:
+    from .meshing import (
+        WorldMeshBuildResult,
+        CachedStateMeta,
+        apply_block_delta_to_world,
+        build_world_mesh,
+        build_single_section_mesh,
+        clear_mesh_builder_caches,
+        get_cached_state_meta,
+        preload_sync_world_data,
+        sync_world_mesh,
+        update_blocks_in_mesh,
+        is_yefira_root_object,
+        is_yefira_child_section,
+        is_yefira_object,
+        resolve_world_root_object,
+        get_or_create_world_root,
+        find_root_section_children,
+        sync_child_section_names,
+        prune_out_of_bounds_section_objects,
+        clear_all_section_objects,
+        generate_fluid_buffer_faces,
+        generate_fluid_mesh_faces,
+        generate_section_geometry_buffer,
+        generate_single_block_faces,
+        generate_voxel_geometry,
+        is_fluid_block,
+        mc_local_to_blender,
+    )
+    from .session import (
+        SyncSession,
+        SyncSessionManager,
+        get_active_session_manager,
+        reset_active_session_manager,
+        trigger_mesh_sync,
+        clear_sync_caches,
+    )
+else:
+    WorldMeshBuildResult = None
+    CachedStateMeta = None
+    apply_block_delta_to_world = None
+    build_world_mesh = None
+    build_single_section_mesh = None
+    clear_mesh_builder_caches = None
+    get_cached_state_meta = None
+    preload_sync_world_data = None
+    sync_world_mesh = None
+    update_blocks_in_mesh = None
+    is_yefira_root_object = None
+    is_yefira_child_section = None
+    is_yefira_object = None
+    resolve_world_root_object = None
+    get_or_create_world_root = None
+    find_root_section_children = None
+    sync_child_section_names = None
+    prune_out_of_bounds_section_objects = None
+    clear_all_section_objects = None
+    generate_fluid_buffer_faces = None
+    generate_fluid_mesh_faces = None
+    generate_section_geometry_buffer = None
+    generate_single_block_faces = None
+    generate_voxel_geometry = None
+    is_fluid_block = None
+    mc_local_to_blender = None
+    SyncSession = None
+    SyncSessionManager = None
+    get_active_session_manager = None
+    reset_active_session_manager = None
+    trigger_mesh_sync = None
+    clear_sync_caches = None
+
 from .storage import (
     VoxelStorage,
     block_key,

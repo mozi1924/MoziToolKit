@@ -2,7 +2,6 @@
 Scale UV Faces Pipeline Step
 """
 
-import bpy
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 

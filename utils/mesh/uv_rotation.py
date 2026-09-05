@@ -13,10 +13,8 @@ import math
 from typing import Optional, Tuple, List
 
 try:
-    import bpy
     from mathutils import Vector
 except ImportError:
-    bpy = None
     Vector = None
 
 

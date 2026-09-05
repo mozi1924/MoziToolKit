@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
-import bpy
 import bmesh
 from mathutils import Vector
 

@@ -6,7 +6,6 @@ to selected objects with configured wind and scope parameters.
 """
 
 from typing import Iterator, Union
-import bpy
 
 from ..context import PipelineContext
 from ..progress import ProgressUpdate
