@@ -49,71 +49,6 @@ DEPENDENCIES: Dict[str, Dependency] = {
 }
 
 
-def _match_wheel_for_platform(whl_name: str) -> bool:
-    """Check if a .whl file matches the current OS platform, CPU architecture, and Python version."""
-    name = whl_name.lower()
-    py_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
-
-    # 1. Pure Python wheel
-    if "py3-none-any" in name or "py2.py3-none-any" in name:
-        return True
-
-    # 2. Check Python version tag
-    if "cp" in name and py_tag not in name and "abi3" not in name:
-        return False
-
-    # 3. Platform & Architecture
-    import platform
-    machine = platform.machine().lower()
-    is_arm = "arm" in machine or "aarch64" in machine
-
-    if sys.platform == "darwin":
-        if "macosx" in name:
-            if is_arm and ("arm64" in name or "universal2" in name):
-                return True
-            elif not is_arm and ("x86_64" in name or "universal2" in name):
-                return True
-    elif sys.platform == "win32":
-        if is_arm and ("win_arm64" in name):
-            return True
-        elif not is_arm and ("win_amd64" in name or "win32" in name):
-            return True
-    elif sys.platform.startswith("linux"):
-        if is_arm and ("aarch64" in name or "arm64" in name):
-            return True
-        elif not is_arm and ("x86_64" in name):
-            return True
-
-    return False
-
-
-def _get_wheels_cache_dir() -> Path:
-    """Resolve an isolated, persistent cache directory to unpack extension wheels if needed."""
-    env_dir = os.environ.get("MOZI_CACHE_DIR")
-    if env_dir:
-        cache_dir = Path(env_dir) / "wheels_cache"
-    else:
-        cache_dir = None
-        try:
-            import bpy
-            if hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
-                cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache" / "wheels_cache"
-        except Exception:
-            cache_dir = None
-
-        if not cache_dir:
-            import tempfile
-            cache_dir = Path(tempfile.gettempdir()) / "mozitoolkit_wheels_cache"
-
-    py_ver = f"py{sys.version_info.major}{sys.version_info.minor}"
-    target_dir = cache_dir / py_ver
-    try:
-        target_dir.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
-    return target_dir
-
-
 @lru_cache(maxsize=1)
 def get_blender_site_packages() -> List[str]:
     """
@@ -122,17 +57,13 @@ def get_blender_site_packages() -> List[str]:
     """
     discovered = []
 
-    # 1. Extension's own directory (site-packages / wheels_cache if unpacked)
+    # 1. Extension's own site-packages if present
     addon_dir = Path(__file__).parent.parent.parent.resolve()
-    ext_site_packages = [
-        addon_dir / "site-packages",
-        _get_wheels_cache_dir(),
-    ]
-    for esp in ext_site_packages:
-        if esp.exists():
-            resolved = str(esp.resolve())
-            if resolved not in discovered:
-                discovered.append(resolved)
+    ext_sp = addon_dir / "site-packages"
+    if ext_sp.exists():
+        resolved = str(ext_sp.resolve())
+        if resolved not in discovered:
+            discovered.append(resolved)
 
     # 2. Standard Blender Python site-packages
     try:
@@ -166,52 +97,21 @@ _installed_modules_cache = {}
 
 def ensure_sys_paths(force: bool = False) -> List[str]:
     """
-    Ensure bundled site-packages and platform-matching wheels are unpacked and added to sys.path.
-    Guarantees seamless local execution across developer environments, VS Code debugging,
-    unzipped extensions, and headless test runners.
+    Ensure local addon site-packages directory (if bundled) is added to sys.path.
+    Blender 4.2+ handles declared wheels automatically at the extension layer,
+    so this function avoids unpacking archives or mutating external environments.
     Returns list of paths successfully added to sys.path.
     """
     added_paths = []
     addon_dir = Path(__file__).parent.parent.parent.resolve()
 
-    # 1. Mount addon's own site-packages if present
+    # Mount addon's own site-packages if present (e.g. for local developer testing)
     ext_site_packages = addon_dir / "site-packages"
     if ext_site_packages.exists() and ext_site_packages.is_dir():
         resolved = str(ext_site_packages.resolve())
         if resolved not in sys.path:
             sys.path.insert(0, resolved)
             added_paths.append(resolved)
-
-    # 2. Extract and mount platform-matched wheels from wheels/
-    wheels_dir = addon_dir / "wheels"
-    if wheels_dir.exists() and wheels_dir.is_dir():
-        matched_wheels = [
-            whl for whl in sorted(wheels_dir.glob("*.whl"))
-            if _match_wheel_for_platform(whl.name)
-        ]
-        if matched_wheels:
-            unpack_dir = _get_wheels_cache_dir()
-            import zipfile
-            for whl in matched_wheels:
-                stamp_file = unpack_dir / f".unpacked_{whl.name}"
-                try:
-                    whl_mtime = whl.stat().st_mtime
-                    needs_unpack = force or not stamp_file.exists() or stamp_file.stat().st_mtime < whl_mtime
-                except Exception:
-                    needs_unpack = True
-
-                if needs_unpack:
-                    try:
-                        with zipfile.ZipFile(whl, "r") as zf:
-                            zf.extractall(unpack_dir)
-                        stamp_file.touch()
-                    except Exception:
-                        pass
-
-            resolved_unpack = str(unpack_dir.resolve())
-            if resolved_unpack not in sys.path:
-                sys.path.insert(0, resolved_unpack)
-                added_paths.append(resolved_unpack)
 
     if added_paths or force:
         importlib.invalidate_caches()
@@ -224,7 +124,7 @@ def ensure_sys_paths(force: bool = False) -> List[str]:
     return added_paths
 
 
-# Automatically ensure bundled sys.paths are available upon module load
+# Ensure bundled sys.paths are available upon module load
 ensure_sys_paths()
 
 
@@ -274,7 +174,7 @@ def is_module_installed(module_name: str) -> bool:
         found = False
 
     if not found:
-        # Fallback: ensure bundled paths/wheels are mounted in case not yet unpacked
+        # Fallback: ensure bundled paths are mounted
         ensure_sys_paths()
         try:
             found = importlib.util.find_spec(module_name) is not None
