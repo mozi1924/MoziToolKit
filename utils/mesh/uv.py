@@ -13,7 +13,10 @@ except ImportError:
     bpy = None
     Vector = None
 
-from ..materials.matching.texture_finder import find_face_image
+if bpy is not None:
+    from ..materials.matching.texture_finder import find_face_image
+else:
+    find_face_image = None
 from .uv_rotation import (
     is_orthogonal_angle,
     detect_face_uv_rotation,

@@ -36,11 +36,23 @@ from .obj_loader import (
     resolve_obj_model_for_state,
     build_baked_model_from_obj,
 )
-from .mesh_generator import (
-    mc_pos_to_blender,
-    build_blender_mesh_from_baked_model,
-    create_block_object,
-)
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
+
+if HAS_BPY:
+    from .mesh_generator import (
+        mc_pos_to_blender,
+        build_blender_mesh_from_baked_model,
+        create_block_object,
+    )
+else:
+    mc_pos_to_blender = None
+    build_blender_mesh_from_baked_model = None
+    create_block_object = None
 
 __all__ = [
     "MC_DIRECTIONS",

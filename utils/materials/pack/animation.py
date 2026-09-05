@@ -5,10 +5,17 @@ Unified animation frame dimension and timing analyzer for materials and texture 
 from __future__ import annotations
 
 from pathlib import Path
-import bpy
+from typing import Any
+
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
 
 
-def get_material_animation_info(mat: bpy.types.Material | None) -> dict | None:
+def get_material_animation_info(mat: Any | None) -> dict | None:
     """Return animation frame dimensions if mat is an animated material, else None.
 
     Returns a dictionary with keys:
