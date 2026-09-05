@@ -32,6 +32,7 @@ from utils.live_sync import (
     WorldMeshBuildResult,
     clear_mesh_builder_caches,
 )
+from tests.helpers.sync_helpers import make_dummy_atlas_params
 
 
 class TestDirectMeshSync(unittest.TestCase):
@@ -48,22 +49,7 @@ class TestDirectMeshSync(unittest.TestCase):
         storage = VoxelStorage()
         storage.set_block(0, 0, 0, "minecraft:stone")
 
-        atlas_params = {
-            "width": 1024,
-            "height": 512,
-            "tile_size": 16,
-            "tiles_per_row": 64,
-            "mapping": {
-                "textures": {
-                    "minecraft:block/stone": {
-                        "chunk_id": 0,
-                        "tile_column": 2,
-                        "tile_row": 1,
-                    }
-                }
-            }
-        }
-
+        atlas_params = make_dummy_atlas_params()
         res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params)
         self.assertIsNotNone(res.world_obj)
         mesh = res.world_obj.data
