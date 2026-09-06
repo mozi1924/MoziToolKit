@@ -484,6 +484,7 @@ def _emit_buffer_face(
     model_uv_scale: tuple[float, float] = (1.0, 1.0),
     mat_manager: Optional[LiveSyncMaterialManager] = None,
     voxel_storage: Optional[Any] = None,
+    allow_precomputed_uvs: bool = True,
 ) -> None:
     """Helper to emit a single polygon face into RawSectionGeometryBuffer with all attributes and UVs."""
     mat_slot = mat_manager.get_slot_for_chunk(f_res.chunk_id) if mat_manager else f_res.slot_index
@@ -502,7 +503,7 @@ def _emit_buffer_face(
         tint_color_val = f_res.biome_tint_color
 
     sx, sy = model_uv_scale
-    if f_res.precomputed_uvs is not None and len(f_res.precomputed_uvs) == len(loop_uvs_mc):
+    if allow_precomputed_uvs and f_res.precomputed_uvs is not None and len(f_res.precomputed_uvs) == len(loop_uvs_mc):
         transformed_uvs = f_res.precomputed_uvs
     else:
         calc_uv = f_res.calc_uv_fn
@@ -681,6 +682,7 @@ def generate_single_block_buffer_faces(
                     model_uv_scale=f_res.model_uv_scale,
                     mat_manager=mat_manager,
                     voxel_storage=voxel_storage,
+                    allow_precomputed_uvs=False,
                 )
                 if meta.is_cube:
                     rendered_cube_faces.add(f_dir)
