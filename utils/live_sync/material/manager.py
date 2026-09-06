@@ -263,7 +263,7 @@ class LiveSyncMaterialManager:
                     cid_int = int(cid)
                 except (ValueError, TypeError):
                     continue
-                if default_chunk_ids and cid_int in default_chunk_ids:
+                if (not default_chunk_ids and mapping is None) or (default_chunk_ids and cid_int in default_chunk_ids):
                     mat_hash = get_effective_pack_hash(mat)
                     if not target_pack_hash or not mat_hash or mat_hash == target_pack_hash:
                         candidate_mats.setdefault(cid_int, []).append(mat)

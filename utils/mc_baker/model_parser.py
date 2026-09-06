@@ -8,6 +8,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Optional, Union
 
+from .obj.mod_obj_loader import ModOBJLoader
+
 
 BUILTIN_MODELS: dict[str, dict[str, Any]] = {
     "minecraft:block/bell_floor": {
@@ -208,6 +210,52 @@ class ModelParser:
                 ambientocclusion = m["ambientocclusion"]
 
         resolved_textures = self._resolve_texture_map(merged_textures)
+
+        # Check if this model is backed by an OBJ mesh (direct .obj or Forge/NeoForge OBJ loader)
+        raw_obj = None
+        for m in hierarchy:
+            if m.get("_is_obj"):
+                raw_obj = m.get("_raw_obj")
+                break
+            elif m.get("loader") in ("forge:obj", "neoforge:obj"):
+                obj_ref = m.get("model", "")
+                if obj_ref:
+                    raw_model_data = self.load_raw_model(obj_ref)
+                    if raw_model_data and raw_model_data.get("_raw_obj"):
+                        raw_obj = raw_model_data.get("_raw_obj")
+                        break
+
+        if raw_obj:
+            fallback_tex = resolved_textures.get("particle") or next(iter(resolved_textures.values()), "minecraft:block/dirt")
+            baked_obj = ModOBJLoader.bake_from_text(
+                raw_obj,
+                textures_map=resolved_textures,
+                fallback_texture=fallback_tex,
+            )
+            if baked_obj and baked_obj.elements:
+                resolved_elements = []
+                for elem in baked_obj.elements:
+                    elem_faces_dict = {}
+                    for d, bf in elem.faces.items():
+                        elem_faces_dict[d] = {
+                            "texture": bf.texture,
+                            "uv": [bf.uv_bounds[0] * 16, bf.uv_bounds[1] * 16, bf.uv_bounds[2] * 16, bf.uv_bounds[3] * 16],
+                            "cullface": bf.cullface,
+                            "tintindex": bf.tint_index,
+                            "_baked_face": bf,
+                        }
+                    resolved_elements.append({
+                        "from": list(elem.from_pos),
+                        "to": list(elem.to_pos),
+                        "faces": elem_faces_dict,
+                        "_is_obj_element": True,
+                    })
+                return {
+                    "model_id": self._normalize_id(model_id),
+                    "textures": resolved_textures,
+                    "elements": resolved_elements,
+                    "ambientocclusion": ambientocclusion,
+                }
 
         resolved_elements = []
         if elements:

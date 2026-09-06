@@ -49,9 +49,10 @@ class JarResourceLoader:
             self._zip_file = zipfile.ZipFile(self.pack_path, 'r')
             self._file_index = set(self._zip_file.namelist())
         elif self.pack_path.is_dir():
-            for p in self.pack_path.rglob("*.json"):
-                rel = p.relative_to(self.pack_path).as_posix()
-                self._file_index.add(rel)
+            for p in self.pack_path.rglob("*"):
+                if p.is_file():
+                    rel = p.relative_to(self.pack_path).as_posix()
+                    self._file_index.add(rel)
 
     def load_blockstate(self, block_id: str) -> Optional[dict[str, Any]]:
         """
@@ -77,7 +78,7 @@ class JarResourceLoader:
 
     def load_model(self, model_id: str) -> Optional[dict[str, Any]]:
         """
-        Load model JSON by identifier, e.g. 'minecraft:block/oak_stairs' or 'block/stairs'.
+        Load model JSON or OBJ by identifier, e.g. 'minecraft:block/oak_stairs' or 'create:block/cogwheel'.
         """
         if ":" in model_id:
             namespace, path = model_id.split(":", 1)
@@ -88,19 +89,45 @@ class JarResourceLoader:
         if cache_key in self._model_cache:
             return self._model_cache[cache_key]
 
-        # Normalise path: block/stairs -> assets/minecraft/models/block/stairs.json
-        if not path.startswith("models/"):
-            rel_path = f"assets/{namespace}/models/{path}.json"
-        else:
-            rel_path = f"assets/{namespace}/{path}.json"
+        is_obj_request = path.endswith(".obj")
+        clean_path = path.removesuffix(".json").removesuffix(".obj")
 
-        data = self._read_json(rel_path)
+        # 1. Try JSON model first
+        data = None
+        if not is_obj_request:
+            if not clean_path.startswith("models/"):
+                rel_json = f"assets/{namespace}/models/{clean_path}.json"
+            else:
+                rel_json = f"assets/{namespace}/{clean_path}.json"
+            data = self._read_json(rel_json)
+
+        # 2. If no JSON model, try OBJ model directly (conforming to MiEx)
+        if data is None:
+            if not clean_path.startswith("models/"):
+                rel_obj = f"assets/{namespace}/models/{clean_path}.obj"
+            else:
+                rel_obj = f"assets/{namespace}/{clean_path}.obj"
+            raw_obj = self._read_text(rel_obj)
+            if raw_obj is not None:
+                data = {
+                    "_is_obj": True,
+                    "_raw_obj": raw_obj,
+                    "model_id": cache_key,
+                }
+
         if data is None and self.fallback_loader is not None:
             data = self.fallback_loader.load_model(model_id)
 
         if data is not None:
             self._model_cache[cache_key] = data
         return data
+
+    def load_raw_text(self, rel_path: str) -> Optional[str]:
+        """Read raw text file (e.g. .obj, .mtl) by relative path, cascading to fallback loader."""
+        content = self._read_text(rel_path)
+        if content is None and self.fallback_loader is not None:
+            content = self.fallback_loader.load_raw_text(rel_path)
+        return content
 
     def list_all_blockstates(self) -> list[str]:
         """List all available blockstate identifiers in the resource pack and fallback."""
@@ -116,24 +143,29 @@ class JarResourceLoader:
         return sorted(states)
 
     def list_all_models(self) -> list[str]:
-        """List all available model identifiers in the resource pack and fallback."""
+        """List all available model identifiers (.json and .obj) in the resource pack and fallback."""
         models = set()
         for path in self._file_index:
             parts = Path(path).parts
-            if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "models" and path.endswith(".json"):
-                ns = parts[1]
-                subpath = "/".join(parts[3:])[:-5]
-                models.add(f"{ns}:{subpath}")
+            if len(parts) >= 4 and parts[0] == "assets" and parts[2] == "models":
+                if path.endswith(".json") or path.endswith(".obj"):
+                    ns = parts[1]
+                    subpath = "/".join(parts[3:])
+                    if subpath.endswith(".json"):
+                        subpath = subpath[:-5]
+                    elif subpath.endswith(".obj"):
+                        subpath = subpath[:-4]
+                    models.add(f"{ns}:{subpath}")
         if self.fallback_loader:
             models.update(self.fallback_loader.list_all_models())
         return sorted(models)
 
-    def _read_json(self, rel_path: str) -> Optional[dict[str, Any]]:
+    def _read_text(self, rel_path: str) -> Optional[str]:
         if self._zip_file:
             if rel_path in self._file_index:
                 try:
                     raw_bytes = self._zip_file.read(rel_path)
-                    return json.loads(raw_bytes.decode('utf-8'))
+                    return raw_bytes.decode('utf-8', errors='replace')
                 except Exception:
                     return None
             return None
@@ -141,10 +173,18 @@ class JarResourceLoader:
             full_path = self.pack_path / rel_path
             if full_path.exists() and full_path.is_file():
                 try:
-                    with open(full_path, 'r', encoding='utf-8') as f:
-                        return json.load(f)
+                    return full_path.read_text(encoding='utf-8', errors='replace')
                 except Exception:
                     return None
+        return None
+
+    def _read_json(self, rel_path: str) -> Optional[dict[str, Any]]:
+        txt = self._read_text(rel_path)
+        if txt is not None:
+            try:
+                return json.loads(txt)
+            except Exception:
+                return None
         return None
 
     def close(self):
