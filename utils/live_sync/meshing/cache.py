@@ -122,14 +122,15 @@ class CachedStateMeta:
                     baked_face=baked_face,
                     json_face_info=j_face,
                 )
-                # Precompute Atlas UVs for standard canonical cube face UVs
-                from ...culling.primitives import CUBE_FACE_CANONICAL_UVS
-                c_uvs = CUBE_FACE_CANONICAL_UVS.get(f_name)
-                if c_uvs and resolved.calc_uv_fn:
-                    sx, sy = resolved.model_uv_scale
-                    calc = resolved.calc_uv_fn
-                    pre_uvs = tuple(calc(float(u) * sx, 1.0 - float(v) * sy) for u, v in c_uvs)
-                    resolved = resolved._replace(precomputed_uvs=pre_uvs)
+                # Precompute Atlas UVs for standard canonical cube face UVs only if this is a standard full cube
+                if self.is_cube:
+                    from ...culling.primitives import CUBE_FACE_CANONICAL_UVS
+                    c_uvs = CUBE_FACE_CANONICAL_UVS.get(f_name)
+                    if c_uvs and resolved.calc_uv_fn:
+                        sx, sy = resolved.model_uv_scale
+                        calc = resolved.calc_uv_fn
+                        pre_uvs = tuple(calc(float(u) * sx, 1.0 - float(v) * sy) for u, v in c_uvs)
+                        resolved = resolved._replace(precomputed_uvs=pre_uvs)
 
                 self.faces_info[f_name] = resolved
                 if f_name == "top":
@@ -140,7 +141,9 @@ class CachedStateMeta:
                 if baked_face and baked_face.texture:
                     j_tex = j_face.get("tex") if j_face else None
                     if not j_tex or j_tex == baked_face.texture or baked_face.texture not in self.tex_to_res:
-                        self.tex_to_res[baked_face.texture] = resolved
+                        # Never store face-specific precomputed_uvs on generic texture metadata
+                        res_tex = resolved._replace(precomputed_uvs=None) if resolved.precomputed_uvs is not None else resolved
+                        self.tex_to_res[baked_face.texture] = res_tex
 
             # Also resolve any element-specific textures if present
             if self.baked_model and self.baked_model.elements:
@@ -158,11 +161,8 @@ class CachedStateMeta:
                                 face_index=f_idx,
                                 baked_face=bf,
                             )
-                            if bf.uvs and res.calc_uv_fn:
-                                sx, sy = res.model_uv_scale
-                                calc = res.calc_uv_fn
-                                pre_uvs = tuple(calc(float(u) * sx, 1.0 - float(v) * sy) for u, v in bf.uvs)
-                                res = res._replace(precomputed_uvs=pre_uvs)
+                            if res.precomputed_uvs is not None:
+                                res = res._replace(precomputed_uvs=None)
                             self.tex_to_res[bf.texture] = res
 
     def get_face_res(self, baked_face: Optional[BakedFace], direction: str) -> ResolvedFaceTexture:
@@ -175,6 +175,10 @@ class CachedStateMeta:
 
         if not base_res:
             return base_res
+
+        # Element faces specify custom UV bounds; clear canonical cube precomputed_uvs
+        if base_res.precomputed_uvs is not None:
+            base_res = base_res._replace(precomputed_uvs=None)
 
         if baked_face:
             needs_override = False
@@ -206,7 +210,7 @@ class CachedStateMeta:
                     biome_tint_color=b_tint_col,
                     source_texture_key=base_res.source_texture_key,
                     model_uv_scale=base_res.model_uv_scale,
-                    precomputed_uvs=base_res.precomputed_uvs,
+                    precomputed_uvs=None,
                 )
 
         return base_res

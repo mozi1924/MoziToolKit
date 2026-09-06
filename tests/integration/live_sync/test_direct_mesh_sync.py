@@ -1296,6 +1296,70 @@ class TestDirectMeshSync(unittest.TestCase):
         self.assertNotIn((2, 0, 0), children)
         self.assertFalse(session.is_streaming, "Streaming should be finalized once queue is drained")
 
+    def test_non_cube_torch_element_model_exact_uvs(self):
+        """Verify non-cube element models (like torch) retain partial UV bounds and are not stretched to full tile."""
+        from utils.mc_baker import ModelParser, BlockStateResolver, StateBaker
+        from utils.live_sync.meshing.cache import _GLOBAL_STATE_META_CACHE, CachedStateMeta
+        from utils.live_sync.material import get_shared_material_manager
+
+        parser = ModelParser()
+        resolver = BlockStateResolver()
+        torch_model = {
+            "ambientocclusion": False,
+            "textures": {"torch": "minecraft:block/torch"},
+            "elements": [
+                {
+                    "from": [7.0, 0.0, 7.0],
+                    "to": [9.0, 10.0, 9.0],
+                    "faces": {
+                        "down": {"uv": [7, 13, 9, 15], "texture": "#torch"},
+                        "up": {"uv": [7, 6, 9, 8], "texture": "#torch"},
+                        "north": {"uv": [7, 6, 9, 16], "texture": "#torch"},
+                        "south": {"uv": [7, 6, 9, 16], "texture": "#torch"},
+                        "west": {"uv": [7, 6, 9, 16], "texture": "#torch"},
+                        "east": {"uv": [7, 6, 9, 16], "texture": "#torch"}
+                    }
+                }
+            ]
+        }
+        parser.register_model("minecraft:block/torch", torch_model)
+        resolver.register_blockstate("minecraft:torch", {
+            "variants": {"": {"model": "minecraft:block/torch"}}
+        })
+        baker = StateBaker(model_parser=parser, state_resolver=resolver)
+
+        storage = VoxelStorage()
+        storage.set_block(0, 0, 0, "minecraft:torch")
+
+        extra_textures = {
+            "minecraft:block/torch": {"chunk_id": 0, "tile_column": 5, "tile_row": 1}
+        }
+        atlas_params = make_dummy_atlas_params(extra_textures=extra_textures)
+        mat_mgr = get_shared_material_manager(world_obj=None, atlas_params=atlas_params)
+
+        meta = CachedStateMeta("minecraft:torch", mat_mgr, baker)
+        _GLOBAL_STATE_META_CACHE["minecraft:torch"] = meta
+
+        res = build_world_mesh(bpy.context, storage, atlas_params=atlas_params, weld_vertices=False)
+        mesh = res.world_obj.data
+        self.assertGreater(len(mesh.polygons), 0)
+
+        uv_layer = mesh.uv_layers["UVMap"]
+
+        # Tile 5, 1:
+        # Full tile U bounds: [5*16/1024, 6*16/1024] -> [80/1024, 96/1024]
+        # Torch stick side face U in MC model space is [7/16, 9/16], not [0, 1].
+        # In atlas coordinates, the U width should be 2/16 of tile width = 2/1024, NOT 16/1024.
+        side_polys = [p for p in mesh.polygons if abs(p.normal.z) < 0.1]
+        self.assertGreater(len(side_polys), 0)
+        for p in side_polys:
+            u_coords = [uv_layer.data[l_idx].uv.x for l_idx in p.loop_indices]
+            u_width = max(u_coords) - min(u_coords)
+            self.assertAlmostEqual(
+                u_width, 2.0 / 1024.0, delta=1e-4,
+                msg=f"Torch UV width was {u_width}, expected ~{2.0/1024.0} (full tile UV regression!)"
+            )
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
