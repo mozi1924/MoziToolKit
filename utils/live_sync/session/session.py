@@ -140,6 +140,13 @@ class SyncSession:
         self.discard_pending_section_links()
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
+        try:
+            from ..material.binding import clear_shared_material_manager
+            cur_obj = bpy.data.objects.get(self.target_object_name)
+            if cur_obj:
+                clear_shared_material_manager(cur_obj)
+        except Exception:
+            pass
 
     def get_cached_atlas_params(self, mat: Optional[bpy.types.Material] = None) -> dict:
         mat_id = mat.as_pointer() if mat and hasattr(mat, "as_pointer") else (id(mat) if mat else 0)

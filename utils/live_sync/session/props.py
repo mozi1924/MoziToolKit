@@ -61,19 +61,40 @@ def get_target_world_object(context: Optional[bpy.types.Context] = None, obj_nam
         if root:
             return root
 
+    # Context selected objects
     if ctx and hasattr(ctx, "selected_objects"):
         for sel in ctx.selected_objects:
             root = resolve_world_root_object(sel)
             if root:
                 return root
 
+    # Check active sessions in session manager
+    try:
+        from .registry import get_active_session_manager
+        mgr = get_active_session_manager()
+        active_sess = [s for s in mgr.get_all_sessions() if s.client_thread and s.client_thread.is_connected]
+        if active_sess:
+            first_active = bpy.data.objects.get(active_sess[0].target_object_name)
+            if first_active:
+                return resolve_world_root_object(first_active) or first_active
+    except Exception:
+        pass
+
+    # Collect all existing Yefira root objects in scene
+    yefira_roots = [obj for obj in bpy.data.objects if is_yefira_root_object(obj)]
+    if len(yefira_roots) == 1:
+        return yefira_roots[0]
+    elif len(yefira_roots) > 1:
+        # If there are multiple containers, check if one of them is the default name
+        world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
+        if world_obj is not None and is_yefira_root_object(world_obj):
+            return world_obj
+        return yefira_roots[0]
+
     world_obj = bpy.data.objects.get(DEFAULT_WORLD_OBJECT_NAME)
     if world_obj is not None:
         return resolve_world_root_object(world_obj) or world_obj
 
-    for obj in bpy.data.objects:
-        if is_yefira_root_object(obj):
-            return obj
     return None
 
 

@@ -90,6 +90,12 @@ def clear_sync_caches() -> None:
     clear_mesh_builder_caches()
     clear_shared_baker_cache()
 
+    try:
+        from ..material.binding import clear_shared_material_manager
+        clear_shared_material_manager()
+    except Exception:
+        pass
+
     from .registry import get_active_session_manager
     mgr = get_active_session_manager()
     if mgr:

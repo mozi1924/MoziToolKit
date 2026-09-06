@@ -249,6 +249,8 @@ class LiveSyncMaterialManager:
         ] if chunks else []
         if not default_chunk_ids and chunks:
             default_chunk_ids = [int(chunks[0].get("chunk_id", 0))]
+        elif not default_chunk_ids and not chunks and atlas_dir:
+            default_chunk_ids = [0]
 
         self.chunk_materials.clear()
 
@@ -261,7 +263,7 @@ class LiveSyncMaterialManager:
                     cid_int = int(cid)
                 except (ValueError, TypeError):
                     continue
-                if not default_chunk_ids or cid_int in default_chunk_ids:
+                if default_chunk_ids and cid_int in default_chunk_ids:
                     mat_hash = get_effective_pack_hash(mat)
                     if not target_pack_hash or not mat_hash or mat_hash == target_pack_hash:
                         candidate_mats.setdefault(cid_int, []).append(mat)
@@ -276,7 +278,13 @@ class LiveSyncMaterialManager:
             elif not m_hash:
                 score += 100
             if self.world_obj:
-                world_mat_names = {slot.material.name for slot in self.world_obj.material_slots if slot.material}
+                world_mat_names = set()
+                if hasattr(self.world_obj, "material_slots"):
+                    world_mat_names.update(slot.material.name for slot in self.world_obj.material_slots if slot.material)
+                if hasattr(self.world_obj, "children"):
+                    for child in self.world_obj.children:
+                        if hasattr(child, "material_slots"):
+                            world_mat_names.update(slot.material.name for slot in child.material_slots if slot.material)
                 if m.name in world_mat_names:
                     score += 200
             if m.name == f"MC_Atlas_Chunk_{c_id}":
@@ -349,7 +357,13 @@ class LiveSyncMaterialManager:
                 elif not m_hash:
                     score += 100
                 if self.world_obj:
-                    world_mat_names = {slot.material.name for slot in self.world_obj.material_slots if slot.material}
+                    world_mat_names = set()
+                    if hasattr(self.world_obj, "material_slots"):
+                        world_mat_names.update(slot.material.name for slot in self.world_obj.material_slots if slot.material)
+                    if hasattr(self.world_obj, "children"):
+                        for child in self.world_obj.children:
+                            if hasattr(child, "material_slots"):
+                                world_mat_names.update(slot.material.name for slot in child.material_slots if slot.material)
                     if m.name in world_mat_names:
                         score += 200
                 if m.name == f"MC_Atlas_Chunk_{chunk_id}":

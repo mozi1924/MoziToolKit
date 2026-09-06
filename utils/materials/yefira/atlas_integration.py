@@ -99,26 +99,47 @@ def find_active_atlas_material() -> Optional[bpy.types.Material]:
 
 
 def find_bound_atlas_material(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Material]:
-    """Return the Atlas material deliberately assigned to a Yefira object.
+    """Return the Atlas material deliberately assigned to a Yefira object or its container.
 
     ``bpy.data.materials`` is global and iteration order is not a material
-    selection policy.  Looking there during every live update could replace a
+    selection policy. Looking there during every live update could replace a
     freshly applied MoziToolKit atlas with an unrelated chunk from another
-    scene/object.  Slot zero is the primary chunk and the authoritative
+    scene/object. Slot zero is the primary chunk and the authoritative
     source for this world object's dimensions.
+    If obj is an Empty container root, checks its child section meshes to find
+    the container's bound atlas material.
     """
-    if not obj or not getattr(obj, "data", None):
+    if not obj:
         return None
-    for mat in obj.data.materials:
-        if not mat:
-            continue
-        if (
-            "mtk:atlas_mapping" in mat
-            or "mtk_atlas_mapping" in mat
-            or "mtk:atlas_chunk_id" in mat
-            or "mtk_atlas_chunk_id" in mat
-        ):
-            return mat
+
+    # 1. Direct mesh object material slots
+    if getattr(obj, "data", None) and hasattr(obj.data, "materials"):
+        for mat in obj.data.materials:
+            if not mat:
+                continue
+            if (
+                "mtk:atlas_mapping" in mat
+                or "mtk_atlas_mapping" in mat
+                or "mtk:atlas_chunk_id" in mat
+                or "mtk_atlas_chunk_id" in mat
+            ):
+                return mat
+
+    # 2. If object is an Empty container, inspect child section meshes
+    if getattr(obj, "children", None):
+        for child in obj.children:
+            if child and getattr(child, "data", None) and hasattr(child.data, "materials"):
+                for mat in child.data.materials:
+                    if not mat:
+                        continue
+                    if (
+                        "mtk:atlas_mapping" in mat
+                        or "mtk_atlas_mapping" in mat
+                        or "mtk:atlas_chunk_id" in mat
+                        or "mtk_atlas_chunk_id" in mat
+                    ):
+                        return mat
+
     return None
 
 
