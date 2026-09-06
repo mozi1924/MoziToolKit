@@ -96,8 +96,12 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                     start_stream_modal_lock = None
 
             session.is_streaming = True
+            session.stream_phase = "BUILD"
+            session.stream_pending_sections.clear()
+            session.server_stream_finished = True
             session.stream_total_sections = len(all_sections)
-            session.stream_received_sections = 0
+            session.stream_received_sections = len(all_sections)
+            session.stream_built_sections = 0
             session.stream_last_drain_time = time.time()
             session.clear_caches()
             for (sx, sy, sz) in all_sections:
