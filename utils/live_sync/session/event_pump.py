@@ -574,25 +574,45 @@ def stop_main_thread_pump():
 
 
 def cleanup_sync_state() -> None:
-    """Clean up all live sync module globals, background threads, timers, and storage."""
+    """Clean up all live sync module globals, background threads, timers, caches, and storage."""
     global _last_seq_id, _rebuild_timer_registered, _pending_full_rebuild
-    from .registry import get_active_session_manager
+    import gc
+    from .registry import get_active_session_manager, reset_active_session_manager
+    from .persistence import clear_manifest_dict_cache
 
     stop_main_thread_pump()
-    mgr = get_active_session_manager()
-    if mgr:
-        mgr.clear_all()
+
+    # Stop all sessions and reset active session manager instance
+    reset_active_session_manager()
 
     _last_seq_id = 0
     _rebuild_timer_registered = False
     _pending_full_rebuild = False
 
     voxel_storage.clear()
+    clear_manifest_dict_cache()
     clear_sync_caches()
     ProgressBar.end()
 
     try:
         from ..classifier import clear_parse_cache
         clear_parse_cache()
+    except Exception:
+        pass
+
+    try:
+        from ...mc_baker import clear_shared_baker_cache
+        clear_shared_baker_cache()
+    except Exception:
+        pass
+
+    try:
+        from ...materials.pipeline.session import cleanup_unused_mtk_datablocks
+        cleanup_unused_mtk_datablocks()
+    except Exception:
+        pass
+
+    try:
+        gc.collect()
     except Exception:
         pass

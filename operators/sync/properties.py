@@ -103,7 +103,7 @@ def _on_blend_file_pre_load(dummy=None):
 
 @bpy.app.handlers.persistent
 def _on_blend_file_loaded(dummy=None):
-    """Ensure runtime connection properties and background sync states are strictly reset upon loading any .blend file."""
+    """Ensure runtime connection properties, caches, and sync states are strictly reset upon loading any .blend file."""
     try:
         try:
             from .op_sync_connect import cleanup_sync_state
@@ -113,21 +113,33 @@ def _on_blend_file_loaded(dummy=None):
     except Exception as e:
         logger.debug(f"Error in Live Sync post-load cleanup: {e}")
 
-    for scene in bpy.data.scenes:
-        if hasattr(scene, "mozi_sync"):
-            props = scene.mozi_sync
-            props.is_connected = False
-            props.connection_status = "DISCONNECTED"
-            props.sync_verified = False
-            props.validation_info = "Ready to connect"
+    try:
+        for scene in bpy.data.scenes:
+            if hasattr(scene, "mozi_sync"):
+                props = scene.mozi_sync
+                props.is_connected = False
+                props.is_locked = False
+                props.connection_status = "DISCONNECTED"
+                props.sync_verified = False
+                props.validation_info = "Ready to connect"
 
-    for obj in bpy.data.objects:
-        if hasattr(obj, "mozi_sync"):
-            props = obj.mozi_sync
-            props.is_connected = False
-            props.connection_status = "DISCONNECTED"
-            props.sync_verified = False
-            props.validation_info = "Ready to connect"
+        for obj in bpy.data.objects:
+            if hasattr(obj, "mozi_sync"):
+                props = obj.mozi_sync
+                props.is_connected = False
+                props.is_locked = False
+                props.connection_status = "DISCONNECTED"
+                props.sync_verified = False
+                props.validation_info = "Ready to connect"
+    except Exception as e:
+        logger.debug(f"Error resetting properties on file load: {e}")
+
+    # Deep garbage collection for clean project switch
+    try:
+        import gc
+        gc.collect()
+    except Exception:
+        pass
 
 
 def _get_pending_rename_roots() -> set[str]:

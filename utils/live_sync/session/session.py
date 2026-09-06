@@ -96,6 +96,8 @@ class SyncSession:
         self._stream_state_cache = None
         self._existing_sections_cache = None
         self.storage.clear_dirty_sections()
+        if reason in ("cancelled by user", "project unloaded", "session reset"):
+            self.storage.clear()
 
         cur_obj = bpy.data.objects.get(self.target_object_name)
         props = get_active_sync_props(bpy.context, target_obj=cur_obj)
@@ -789,3 +791,4 @@ class SyncSession:
                 self.delta_queue.get_nowait()
             except queue.Empty:
                 break
+        self.storage.clear()
