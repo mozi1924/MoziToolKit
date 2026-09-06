@@ -9,7 +9,7 @@ import sys
 import unittest
 from pathlib import Path
 
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
+PROJECT_DIR = Path(__file__).resolve().parents[3]
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
@@ -222,6 +222,181 @@ class TestMultiContainerLiveSync(unittest.TestCase):
         self.assertFalse(MOZI_PT_live_sync_data.poll(bpy.context))
         self.assertTrue(MOZI_PT_live_sync.poll(bpy.context))
 
+    def test_concurrent_multi_container_connection_and_disconnect(self):
+        """Verify multiple containers can independently connect and disconnect without affecting each other."""
+        from operators.sync.op_sync_connect import get_active_session_manager
+        session_mgr = get_active_session_manager()
+
+        # Create Container 1 and Container 2
+        bpy.ops.mozi.add_yefira_world(name="Container_Alpha")
+        alpha = bpy.data.objects["Container_Alpha"]
+        alpha.mozi_sync.url = "ws://127.0.0.1:8765"
+
+        bpy.ops.mozi.add_yefira_world(name="Container_Beta")
+        beta = bpy.data.objects["Container_Beta"]
+        beta.mozi_sync.url = "ws://127.0.0.1:8766"
+
+        # Mock thread on session
+        sess_a = session_mgr.get_or_create_session(alpha.name, url=alpha.mozi_sync.url)
+        sess_b = session_mgr.get_or_create_session(beta.name, url=beta.mozi_sync.url)
+
+        class DummyThread:
+            def __init__(self):
+                self.is_connected = True
+            def is_alive(self):
+                return True
+            def stop(self):
+                self.is_connected = False
+
+        sess_a.client_thread = DummyThread()
+        alpha.mozi_sync.is_connected = True
+        alpha.mozi_sync.connection_status = "CONNECTED"
+
+        sess_b.client_thread = DummyThread()
+        beta.mozi_sync.is_connected = True
+        beta.mozi_sync.connection_status = "CONNECTED"
+
+        self.assertEqual(len(session_mgr.get_all_sessions()), 2)
+
+        # Disconnect only Container_Alpha
+        res = bpy.ops.mozi.sync_disconnect(target_container="Container_Alpha")
+        self.assertEqual(res, {'FINISHED'})
+
+        # Alpha must be disconnected and removed from sessions
+        self.assertIsNone(session_mgr.get_session("Container_Alpha"))
+        self.assertFalse(alpha.mozi_sync.is_connected)
+
+        # Beta must still be connected and present in sessions!
+        self.assertIsNotNone(session_mgr.get_session("Container_Beta"))
+        self.assertTrue(beta.mozi_sync.is_connected)
+        self.assertTrue(sess_b.client_thread.is_connected)
+
+        # Disconnect Container_Beta
+        bpy.ops.mozi.sync_disconnect(target_container="Container_Beta")
+        self.assertIsNone(session_mgr.get_session("Container_Beta"))
+        self.assertFalse(beta.mozi_sync.is_connected)
+
+    def test_multi_container_chunk_streaming_isolation(self):
+        """Verify chunk streaming ingestion and mesh creation target only the designated container."""
+        from operators.sync.op_sync_connect import get_active_session_manager
+        from utils.live_sync.session.event_pump import _pump_main_thread_events
+        session_mgr = get_active_session_manager()
+
+        root_a = bpy.data.objects.new("Container_Stream_A", None)
+        root_a["mtk:is_yefira_world"] = True
+        bpy.context.scene.collection.objects.link(root_a)
+
+        root_b = bpy.data.objects.new("Container_Stream_B", None)
+        root_b["mtk:is_yefira_world"] = True
+        bpy.context.scene.collection.objects.link(root_b)
+
+        # Make root_b active to ensure selection does NOT hijack stream
+        bpy.context.view_layer.objects.active = root_b
+
+        sess_a = session_mgr.get_or_create_session("Container_Stream_A")
+        sess_a.storage.set_bounds(0, 0, 0, 16, 16, 16)
+        sess_a.is_streaming = True
+        sess_a.stream_phase = "BUILD"
+        sess_a.server_stream_finished = True
+        sess_a.stream_total_sections = 1
+        sess_a.storage.set_full_snapshot(0, 0, 0, 16, 16, 16, ["minecraft:air", "minecraft:stone"], [1]*4096)
+        sess_a.stream_section_queue.put((0, 0, 0, ["minecraft:air", "minecraft:stone"]))
+
+        # Run event pump step
+        from utils.live_sync.session.event_pump import start_main_thread_pump
+        start_main_thread_pump()
+        _pump_main_thread_events()
+
+        # Section mesh must be under Container_Stream_A, NOT Container_Stream_B
+        children_a = find_root_section_children(root_a)
+        children_b = find_root_section_children(root_b)
+
+        self.assertEqual(len(children_a), 1)
+        self.assertEqual(len(children_b), 0)
+
+        sec_obj = list(children_a.values())[0]
+        self.assertEqual(sec_obj.parent, root_a)
+        self.assertTrue(sec_obj.name.startswith("Container_Stream_A_Section_"))
+
+    def test_multi_container_material_addressing_isolation(self):
+        """Verify material addressing and slot mapping are strictly isolated across containers."""
+        from utils.live_sync.material.binding import (
+            get_shared_material_manager,
+            clear_shared_material_manager,
+            sync_section_material_slots,
+        )
+        from utils.materials.yefira.atlas_integration import find_bound_atlas_material
+
+        clear_shared_material_manager()
+
+        root_1 = bpy.data.objects.new("World_City", None)
+        root_1["mtk:is_yefira_world"] = True
+        bpy.context.scene.collection.objects.link(root_1)
+
+        root_2 = bpy.data.objects.new("World_Nether", None)
+        root_2["mtk:is_yefira_world"] = True
+        bpy.context.scene.collection.objects.link(root_2)
+
+        # Create two distinct atlas chunk materials in scene
+        mat_chunk_0 = bpy.data.materials.new("MC_Atlas_Chunk_0")
+        mat_chunk_0["mtk:atlas_chunk_id"] = 0
+        mat_chunk_0["mtk:atlas_mapping"] = "{}"
+
+        mat_chunk_1 = bpy.data.materials.new("MC_Atlas_Chunk_1")
+        mat_chunk_1["mtk:atlas_chunk_id"] = 1
+        mat_chunk_1["mtk:atlas_mapping"] = "{}"
+
+        # Create child section for root_1 and assign mat_chunk_0
+        mesh_1 = bpy.data.meshes.new("Mesh_City_Sec")
+        sec_1 = bpy.data.objects.new("World_City_Section_0_0_0", mesh_1)
+        sec_1["mtk:section_pos"] = [0, 0, 0]
+        sec_1.parent = root_1
+        mesh_1.materials.append(mat_chunk_0)
+        bpy.context.scene.collection.objects.link(sec_1)
+
+        # Create child section for root_2 and assign mat_chunk_1
+        mesh_2 = bpy.data.meshes.new("Mesh_Nether_Sec")
+        sec_2 = bpy.data.objects.new("World_Nether_Section_0_0_0", mesh_2)
+        sec_2["mtk:section_pos"] = [0, 0, 0]
+        sec_2.parent = root_2
+        mesh_2.materials.append(mat_chunk_1)
+        bpy.context.scene.collection.objects.link(sec_2)
+
+        # Verify find_bound_atlas_material correctly resolves bound material via Empty root container
+        found_mat_1 = find_bound_atlas_material(root_1)
+        found_mat_2 = find_bound_atlas_material(root_2)
+        self.assertEqual(found_mat_1, mat_chunk_0)
+        self.assertEqual(found_mat_2, mat_chunk_1)
+        self.assertNotEqual(found_mat_1, found_mat_2)
+
+        # Verify get_shared_material_manager returns independent isolated instances
+        mgr_1 = get_shared_material_manager(world_obj=root_1, atlas_params={"mapping": {}})
+        mgr_2 = get_shared_material_manager(world_obj=root_2, atlas_params={"mapping": {}})
+
+        self.assertIsNot(mgr_1, mgr_2)
+        self.assertEqual(mgr_1.world_obj, root_1)
+        self.assertEqual(mgr_2.world_obj, root_2)
+
+        # Assign chunk 0 on manager 1 and chunk 1 on manager 2
+        mgr_1.chunk_materials[0] = mat_chunk_0
+        mgr_2.chunk_materials[1] = mat_chunk_1
+
+        # Synchronize slots on root_1's section vs root_2's section
+        sync_section_material_slots(sec_1, mgr_1)
+        sync_section_material_slots(sec_2, mgr_2)
+
+        # Assert slots are completely independent and not cross-polluted
+        self.assertEqual(list(sec_1.data.materials), [mat_chunk_0])
+        self.assertEqual(list(sec_2.data.materials), [mat_chunk_1])
+
+        # Clearing manager for root_1 leaves manager for root_2 intact
+        clear_shared_material_manager(world_obj=root_1)
+        from utils.live_sync.material.binding import _CONTAINER_MAT_MANAGERS
+        self.assertNotIn(root_1.as_pointer(), _CONTAINER_MAT_MANAGERS)
+        self.assertIn(root_2.as_pointer(), _CONTAINER_MAT_MANAGERS)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
+

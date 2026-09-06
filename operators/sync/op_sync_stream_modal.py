@@ -26,14 +26,36 @@ class MOZI_OT_sync_stream_runner(bpy.types.Operator):
     target_container: bpy.props.StringProperty(name="Target Container", default="")
 
     _active_modal: Optional[MOZI_OT_sync_stream_runner] = None
+    _active_containers: set[str] = set()
 
     @classmethod
     def is_running(cls) -> bool:
         return cls._active_modal is not None
 
     def invoke(self, context, event):
+        # Register this container as active streaming
+        target_name = self.target_container
+        if not target_name:
+            target_obj_guess = None
+            try:
+                from ...utils.live_sync.session import get_target_world_object
+                target_obj_guess = get_target_world_object(context)
+            except Exception:
+                pass
+            if target_obj_guess:
+                target_name = target_obj_guess.name
+                self.target_container = target_name
+
+        if target_name:
+            MOZI_OT_sync_stream_runner._active_containers.add(target_name)
+            target_obj = bpy.data.objects.get(target_name)
+            if target_obj and hasattr(target_obj, "mozi_sync"):
+                target_obj.mozi_sync.is_locked = True
+        elif hasattr(context.scene, "mozi_sync"):
+            context.scene.mozi_sync.is_locked = True
+
         if MOZI_OT_sync_stream_runner._active_modal is not None:
-            # Already running modal lock
+            # Already running modal lock, container registered
             return {"RUNNING_MODAL"}
 
         # In headless / background mode, do not invoke modal window events
@@ -50,12 +72,6 @@ class MOZI_OT_sync_stream_runner(bpy.types.Operator):
         except Exception:
             pass
 
-        target_obj = bpy.data.objects.get(self.target_container) if self.target_container else None
-        if target_obj and hasattr(target_obj, "mozi_sync"):
-            target_obj.mozi_sync.is_locked = True
-        elif hasattr(context.scene, "mozi_sync"):
-            context.scene.mozi_sync.is_locked = True
-
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
@@ -65,41 +81,45 @@ class MOZI_OT_sync_stream_runner(bpy.types.Operator):
             from utils.live_sync.session import get_active_session_manager, get_active_sync_props, get_target_world_object
 
         session_mgr = get_active_session_manager()
-        target_obj = bpy.data.objects.get(self.target_container) if self.target_container else None
-        if not target_obj:
-            target_obj = get_target_world_object(context)
-        session = session_mgr.get_session(target_obj.name) if target_obj else None
-        props = get_active_sync_props(context, target_obj=target_obj)
 
-        # If streaming finished or session is invalid, immediately unlock and finish
-        if not session or not session.is_streaming:
+        # Check all tracked streaming containers
+        still_active = set()
+        for name in list(MOZI_OT_sync_stream_runner._active_containers):
+            s = session_mgr.get_session(name)
+            if s and s.is_streaming:
+                still_active.add(name)
+            else:
+                # Unset lock for this finished container
+                c_obj = bpy.data.objects.get(name)
+                if c_obj and hasattr(c_obj, "mozi_sync"):
+                    c_obj.mozi_sync.is_locked = False
+
+        # Also check any other session that might have started streaming
+        for s in session_mgr.get_all_sessions():
+            if s.is_streaming:
+                still_active.add(s.target_object_name)
+
+        MOZI_OT_sync_stream_runner._active_containers = still_active
+
+        # If no session is streaming anymore, immediately unlock and finish modal
+        if not still_active:
             self._cleanup(context)
-            if props:
-                props.is_locked = False
             return {"FINISHED"}
 
         # 1. User cooperative cancellation on ESC
         if event.type == "ESC":
-            if session:
-                session.cancel_streaming(reason="Cancelled by user")
-            elif session_mgr:
-                for s in session_mgr.get_all_sessions():
-                    if s.is_streaming:
-                        s.cancel_streaming(reason="Cancelled by user")
+            for s in session_mgr.get_all_sessions():
+                if s.is_streaming:
+                    s.cancel_streaming(reason="Cancelled by user")
             self._cleanup(context)
-            if props:
-                props.is_locked = False
-                props.validation_info = "Streaming cancelled by user."
             ProgressBar.cancel("Sync cancelled by user.", context=context)
-            self.report({'WARNING'}, "Live Sync full build cancelled by user.")
+            self.report({'WARNING'}, "Live Sync build cancelled by user.")
             return {"CANCELLED"}
 
         # 2. Timer Tick: Monitor streaming status
         if event.type == "TIMER":
-            if not session or not session.is_streaming:
+            if not MOZI_OT_sync_stream_runner._active_containers:
                 self._cleanup(context)
-                if props:
-                    props.is_locked = False
                 return {"FINISHED"}
 
             # Keep forcing Object Mode if user attempts mode switch
@@ -136,17 +156,18 @@ class MOZI_OT_sync_stream_runner(bpy.types.Operator):
             except Exception:
                 pass
 
-        target_obj = bpy.data.objects.get(self.target_container) if self.target_container else None
-        if target_obj and hasattr(target_obj, "mozi_sync"):
-            target_obj.mozi_sync.is_locked = False
-        elif hasattr(context, "scene") and hasattr(context.scene, "mozi_sync"):
+        for name in list(MOZI_OT_sync_stream_runner._active_containers):
+            target_obj = bpy.data.objects.get(name)
+            if target_obj and hasattr(target_obj, "mozi_sync"):
+                target_obj.mozi_sync.is_locked = False
+        MOZI_OT_sync_stream_runner._active_containers.clear()
+
+        if hasattr(context, "scene") and hasattr(context.scene, "mozi_sync"):
             context.scene.mozi_sync.is_locked = False
 
 
 def start_stream_modal_lock(target_container_name: str = "") -> None:
     """Helper to initiate modal user interaction lock if not already running."""
-    if MOZI_OT_sync_stream_runner.is_running():
-        return
     is_headless = getattr(bpy.app, "background", False) or not getattr(bpy.context, "window", None)
     if is_headless:
         return

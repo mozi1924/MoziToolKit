@@ -143,12 +143,14 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             self.report({'ERROR'}, "Container properties not initialized.")
             return {'CANCELLED'}
 
+        session_mgr = get_active_session_manager()
+
         # 2. Check Blender system network connection limit
         sys_pref = getattr(context.preferences, "system", None)
         conn_limit = getattr(sys_pref, "network_connection_limit", 0) if sys_pref else 0
         if conn_limit > 0:
             active_sessions = [
-                s for s in _session_manager.get_all_sessions()
+                s for s in session_mgr.get_all_sessions()
                 if s.target_object_name != target_obj.name and s.client_thread and s.client_thread.is_alive()
             ]
             if len(active_sessions) >= conn_limit:
@@ -160,7 +162,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 return {'CANCELLED'}
 
         url = props.url if props.url else "ws://localhost:8765"
-        session_mgr = get_active_session_manager()
         session = session_mgr.get_or_create_session(target_obj.name, url=url)
 
         if session.client_thread and session.client_thread.is_alive():
@@ -189,17 +190,17 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             target_obj = get_target_world_object(context)
 
         session_mgr = get_active_session_manager()
-        if target_obj and target_obj.name in session_mgr._sessions:
+        if target_obj:
             session = session_mgr.get_session(target_obj.name)
             if session:
                 session.persist_sync_state_to_scene(target_obj)
-            session_mgr.remove_session(target_obj.name)
+                session_mgr.remove_session(target_obj.name)
             props = get_active_sync_props(context, target_obj=target_obj)
             if props:
                 props.is_connected = False
                 props.connection_status = "DISCONNECTED"
         else:
-            # Disconnect all active sessions
+            # Only disconnect all active sessions if no specific container is in context
             for s in session_mgr.get_all_sessions():
                 s_obj = bpy.data.objects.get(s.target_object_name)
                 if s_obj:
@@ -214,7 +215,7 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             stop_main_thread_pump()
             ProgressBar.end(context=context)
 
-        self.report({'INFO'}, "Disconnected from Live Sync server.")
+        self.report({'INFO'}, f"Disconnected {target_obj.name if target_obj else 'all sessions'} from Live Sync.")
         return {'FINISHED'}
 
 

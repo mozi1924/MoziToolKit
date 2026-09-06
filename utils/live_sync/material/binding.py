@@ -19,35 +19,41 @@ from ..constants import (
 )
 from .manager import LiveSyncMaterialManager
 
+_CONTAINER_MAT_MANAGERS: dict[int, tuple[tuple, LiveSyncMaterialManager]] = {}
 _GLOBAL_MAT_MANAGER: Optional[LiveSyncMaterialManager] = None
-_GLOBAL_MAT_MANAGER_SIG: Optional[tuple] = None
 
 
 def get_shared_material_manager(
     world_obj: Optional[bpy.types.Object],
     atlas_params: Optional[dict[str, Any]],
 ) -> LiveSyncMaterialManager:
-    """Retrieve or reuse shared LiveSyncMaterialManager instance to avoid re-indexing."""
-    global _GLOBAL_MAT_MANAGER, _GLOBAL_MAT_MANAGER_SIG
+    """Retrieve or reuse per-container LiveSyncMaterialManager instance to avoid cross-contamination."""
+    global _CONTAINER_MAT_MANAGERS
     obj_ptr = world_obj.as_pointer() if world_obj and hasattr(world_obj, "as_pointer") else (id(world_obj) if world_obj else 0)
     mapping_obj = atlas_params.get("mapping") if atlas_params else None
     mapping_id = id(mapping_obj) if mapping_obj else 0
     pack_hash = str(atlas_params.get("pack_hash", "")) if atlas_params else ""
     current_sig = (obj_ptr, mapping_id, pack_hash)
 
-    if _GLOBAL_MAT_MANAGER is not None and _GLOBAL_MAT_MANAGER_SIG == current_sig:
-        return _GLOBAL_MAT_MANAGER
+    cached_entry = _CONTAINER_MAT_MANAGERS.get(obj_ptr)
+    if cached_entry is not None:
+        cached_sig, mgr = cached_entry
+        if cached_sig == current_sig:
+            return mgr
 
-    _GLOBAL_MAT_MANAGER_SIG = current_sig
-    _GLOBAL_MAT_MANAGER = LiveSyncMaterialManager(world_obj=world_obj, atlas_params=atlas_params)
-    return _GLOBAL_MAT_MANAGER
+    mgr = LiveSyncMaterialManager(world_obj=world_obj, atlas_params=atlas_params)
+    _CONTAINER_MAT_MANAGERS[obj_ptr] = (current_sig, mgr)
+    return mgr
 
 
-def clear_shared_material_manager() -> None:
-    """Reset shared material manager singleton."""
-    global _GLOBAL_MAT_MANAGER, _GLOBAL_MAT_MANAGER_SIG
-    _GLOBAL_MAT_MANAGER = None
-    _GLOBAL_MAT_MANAGER_SIG = None
+def clear_shared_material_manager(world_obj: Optional[bpy.types.Object] = None) -> None:
+    """Reset shared material manager for a specific container or all containers."""
+    global _CONTAINER_MAT_MANAGERS
+    if world_obj is not None:
+        obj_ptr = world_obj.as_pointer() if hasattr(world_obj, "as_pointer") else id(world_obj)
+        _CONTAINER_MAT_MANAGERS.pop(obj_ptr, None)
+    else:
+        _CONTAINER_MAT_MANAGERS.clear()
 
 
 def sync_section_material_slots(
@@ -145,8 +151,9 @@ def validate_and_sync_scene_materials(
     target_pack_hash = get_effective_pack_hash(pack_stack) if pack_stack else ""
 
     # Check slot 0 material or bound atlas material on target_obj
-    existing_mat = None
-    if getattr(target_obj, "data", None) and hasattr(target_obj.data, "materials") and target_obj.data.materials:
+    from ...materials.yefira.atlas_integration import find_bound_atlas_material
+    existing_mat = find_bound_atlas_material(target_obj)
+    if not existing_mat and getattr(target_obj, "data", None) and hasattr(target_obj.data, "materials") and target_obj.data.materials:
         for slot_mat in target_obj.data.materials:
             if slot_mat:
                 existing_mat = slot_mat
@@ -160,8 +167,11 @@ def validate_and_sync_scene_materials(
         elif not is_material_hash_valid(existing_mat, target_pack_hash):
             is_valid = False
 
-    if not is_valid or _GLOBAL_MAT_MANAGER is None:
-        clear_shared_material_manager()
+    obj_ptr = target_obj.as_pointer() if hasattr(target_obj, "as_pointer") else id(target_obj)
+    is_cached = obj_ptr in _CONTAINER_MAT_MANAGERS
+
+    if not is_valid or not is_cached:
+        clear_shared_material_manager(world_obj=target_obj)
         try:
             from ...mc_baker import refresh_shared_baker_sources
             refresh_shared_baker_sources(force_precompile_if_missing=False)
@@ -169,7 +179,7 @@ def validate_and_sync_scene_materials(
             pass
 
         from ...materials.yefira.atlas_integration import extract_atlas_parameters
-        atlas_params = extract_atlas_parameters(mat=None, pack_stack=pack_stack)
+        atlas_params = extract_atlas_parameters(mat=existing_mat, pack_stack=pack_stack)
 
         mat_manager = get_shared_material_manager(world_obj=target_obj, atlas_params=atlas_params)
         sync_section_material_slots(target_obj, mat_manager)
