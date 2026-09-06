@@ -1157,8 +1157,48 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         bpy.data.objects.remove(root)
         bpy.data.meshes.remove(mesh)
 
+    def test_project_switch_deep_cleanup(self):
+        """Verify that loading a new blend file / project switch purges all sessions, storage, and manifest caches."""
+        from operators.sync.properties import _on_blend_file_pre_load, _on_blend_file_loaded
+        from utils.live_sync.session import (
+            get_active_session_manager,
+            persist_sync_state_to_scene,
+            _MANIFEST_DICT_CACHE,
+        )
+
+        # 1. Setup Project A data
+        root_a = bpy.data.objects.new("Project_A_World", None)
+        bpy.context.collection.objects.link(root_a)
+        root_a["mtk:is_yefira_world"] = True
+        root_a.mozi_sync.is_connected = True
+        root_a.mozi_sync.validation_info = "Connected to Project A"
+
+        session_mgr = get_active_session_manager()
+        session_a = session_mgr.get_or_create_session(root_a.name)
+        session_a.storage.set_bounds(0, 0, 0, 16, 16, 16)
+        session_a.storage.set_block(0, 0, 0, "minecraft:emerald_block")
+        session_a.persist_sync_state_to_scene(root_a)
+
+        self.assertEqual(len(session_a.storage.block_map), 1)
+        self.assertIn("Project_A_World", _MANIFEST_DICT_CACHE)
+        self.assertIn("Project_A_World", session_mgr._sessions)
+
+        # 2. Trigger project switch events
+        _on_blend_file_pre_load()
+        _on_blend_file_loaded()
+
+        # 3. Verify Project A session was destroyed and all caches cleared
+        new_mgr = get_active_session_manager()
+        self.assertEqual(len(new_mgr._sessions), 0, "All sessions must be wiped on project switch")
+        self.assertEqual(len(_MANIFEST_DICT_CACHE), 0, "Manifest dict cache must be wiped on project switch")
+        self.assertEqual(len(session_a.storage.block_map), 0, "Old session storage must be cleared")
+
+        # 4. Cleanup test object
+        bpy.data.objects.remove(root_a, do_unlink=True)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 
 

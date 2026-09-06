@@ -16,6 +16,7 @@ from .material_cache import (
 )
 
 from .persistence import (
+    _MANIFEST_DICT_CACHE,
     persist_sync_state_to_scene,
     restore_sync_state_from_scene,
     clear_manifest_dict_cache,
