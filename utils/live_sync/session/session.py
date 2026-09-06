@@ -51,6 +51,8 @@ class SyncSession:
         self.stream_last_drain_time: float = 0.0
         self.server_stream_finished: bool = False
         self.current_stream_id: int = 0
+        self.cancelled_stream_id: int = 0
+        self._stream_cancelled: bool = False
 
         self.is_streaming: bool = False
         self.is_initial_handshake: bool = True
@@ -67,6 +69,41 @@ class SyncSession:
 
         self._stream_state_cache: Optional[dict] = None
         self._existing_sections_cache: Optional[dict] = None
+
+    def cancel_streaming(self, reason: str = "cancelled by user") -> None:
+        """Cancel active progressive stream ingestion and mesh building immediately."""
+        self.is_streaming = False
+        self.stream_phase = "IDLE"
+        self.is_repairing_partial = False
+        self.pending_full_sync_request = False
+        self.server_stream_finished = False
+        self._stream_cancelled = True
+        self.cancelled_stream_id = max(getattr(self, "cancelled_stream_id", 0), self.current_stream_id)
+        # Advance current_stream_id so any in-flight network packets for this stream become stale
+        self.current_stream_id += 1
+
+        self.stream_pending_sections.clear()
+        while not self.stream_section_queue.empty():
+            try:
+                self.stream_section_queue.get_nowait()
+            except queue.Empty:
+                break
+        self._queued_stream_sections.clear()
+        self.accumulated_stream_palettes.clear()
+        self.stream_received_sections = 0
+        self.stream_built_sections = 0
+        self.stream_total_sections = 0
+        self._stream_state_cache = None
+        self._existing_sections_cache = None
+        self.storage.clear_dirty_sections()
+
+        cur_obj = bpy.data.objects.get(self.target_object_name)
+        props = get_active_sync_props(bpy.context, target_obj=cur_obj)
+        if props:
+            props.is_locked = False
+            props.validation_info = f"Stream cancelled: {reason}"
+
+        logger.info("Live Sync (%s): Streaming cancelled (%s).", self.target_object_name, reason)
 
     def clear_caches(self) -> None:
         self.cached_atlas_params = None
@@ -473,12 +510,22 @@ class SyncSession:
         biome_indices: Optional[List[int]] = None,
     ) -> None:
         """Handle individual chunk section repair/stream snapshot."""
+        # If streaming is cancelled or not in progress, only update raw storage without waking stream builder
+        if not self.is_streaming or self.stream_phase not in ("INGEST", "BUILD"):
+            if self.storage.size_x > 0 and self.storage.size_y > 0 and self.storage.size_z > 0:
+                if self.storage.contains(start_x, start_y, start_z) or self.storage.contains(start_x + size_x - 1, start_y + size_y - 1, start_z + size_z - 1):
+                    self.storage.set_section_snapshot(
+                        sec_x, sec_y, sec_z, start_x, start_y, start_z,
+                        size_x, size_y, size_z, palette, grid_indices,
+                        biome_palette=biome_palette, biome_indices=biome_indices
+                    )
+            return
+
         if self.storage.size_x > 0 and self.storage.size_y > 0 and self.storage.size_z > 0:
             if not (self.storage.contains(start_x, start_y, start_z) or self.storage.contains(start_x + size_x - 1, start_y + size_y - 1, start_z + size_z - 1)):
                 logger.debug("Live Sync: Dropped out-of-bounds section snapshot for (%d, %d, %d)", sec_x, sec_y, sec_z)
                 return
 
-        self.is_streaming = True
         self.stream_last_drain_time = time.time()
         updated = self.storage.set_section_snapshot(
             sec_x, sec_y, sec_z, start_x, start_y, start_z,
@@ -491,7 +538,7 @@ class SyncSession:
             self.stream_received_sections += 1
             if self.stream_phase == "INGEST":
                 self.stream_pending_sections.append((sec_x, sec_y, sec_z))
-            else:
+            elif self.stream_phase == "BUILD":
                 # Direct repair or immediate build mode
                 sec_coord = (sec_x, sec_y, sec_z)
                 if sec_coord not in self._queued_stream_sections:
@@ -631,7 +678,12 @@ class SyncSession:
         """Handle progressive stream beginning notice."""
         from .event_pump import _run_in_main_thread
 
+        if stream_id <= getattr(self, "cancelled_stream_id", 0):
+            logger.debug("Live Sync: Dropped stream_begin for cancelled stream %d (cancelled_stream_id: %d)", stream_id, self.cancelled_stream_id)
+            return
+
         self.current_stream_id = stream_id
+        self._stream_cancelled = False
         self.is_streaming = True
         self.stream_phase = "INGEST"
         self.stream_pending_sections.clear()
@@ -665,7 +717,7 @@ class SyncSession:
 
     def start_building_mesh(self) -> None:
         """Immediately transition from INGEST to BUILD phase once voxel data is ready."""
-        if self.stream_phase != "INGEST":
+        if not self.is_streaming or self.stream_phase != "INGEST":
             return
         self.stream_phase = "BUILD"
 
@@ -705,15 +757,15 @@ class SyncSession:
         """Handle progressive stream end notice."""
         from ..constants import StreamStatus
         from .event_pump import _run_in_main_thread
-        if stream_id != self.current_stream_id:
-            logger.debug("Live Sync: Ignoring stream_end for stale stream %d (current: %d)", stream_id, self.current_stream_id)
+        if stream_id != self.current_stream_id or stream_id <= getattr(self, "cancelled_stream_id", 0):
+            logger.debug("Live Sync: Ignoring stream_end for stale/cancelled stream %d (current: %d)", stream_id, self.current_stream_id)
+            return
+        if not self.is_streaming or self.stream_phase != "INGEST":
+            logger.debug("Live Sync: Ignoring stream_end because streaming is not in INGEST phase (%s)", self.stream_phase)
             return
         if status == StreamStatus.CANCELLED:
             logger.info("Live Sync (%s): Server confirmed stream %d was cancelled.", self.target_object_name, stream_id)
-            self.is_streaming = False
-            self.stream_phase = "IDLE"
-            self.server_stream_finished = False
-            self.stream_pending_sections.clear()
+            self.cancel_streaming(reason="Server cancelled stream")
             return
 
         self.server_stream_finished = True
@@ -729,23 +781,11 @@ class SyncSession:
             except Exception:
                 pass
             self.client_thread = None
-        self.is_streaming = False
-        self.stream_phase = "IDLE"
-        self.is_repairing_partial = False
-        self.pending_full_sync_request = False
+        self.cancel_streaming(reason="Session stopped")
         self.rebuild_timer_registered = False
         self.pending_full_rebuild = False
-        self.stream_pending_sections.clear()
-        self.stream_built_sections = 0
         while not self.delta_queue.empty():
             try:
                 self.delta_queue.get_nowait()
             except queue.Empty:
                 break
-        while not self.stream_section_queue.empty():
-            try:
-                self.stream_section_queue.get_nowait()
-            except queue.Empty:
-                break
-        self._queued_stream_sections.clear()
-        self.accumulated_stream_palettes.clear()

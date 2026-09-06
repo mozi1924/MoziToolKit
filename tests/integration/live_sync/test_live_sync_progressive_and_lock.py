@@ -379,7 +379,96 @@ class TestLiveSyncProgressiveAndLock(unittest.TestCase):
         self.assertEqual(len(existing_after_manifest), 1, "Section mesh must NOT be deleted or cleared on manifest verification")
         self.assertTrue(session.skip_next_full_snapshot, "Must skip full snapshot rebuild when CRC is identical")
 
+    def test_cancel_streaming_during_preprocessing_ingest(self):
+        """Verify cancelling stream during INGEST phase halts data ingestion and prevents mesh building."""
+        root = get_or_create_world_root(bpy.context, root_name="Test_Cancel_Ingest_World")
+        props = get_active_sync_props(bpy.context, target_obj=root)
+        props.is_locked = True
+        session = self.session_mgr.get_or_create_session(root.name)
+        session.storage.set_bounds(0, 0, 0, 32, 16, 16)
+
+        # 1. Start streaming (stream_id = 10, total 2 sections)
+        session.handle_stream_begin(10, 2, 0)
+        self.assertTrue(session.is_streaming)
+        self.assertEqual(session.stream_phase, "INGEST")
+
+        # 2. Ingest 1st section
+        palette_0 = ["minecraft:stone"]
+        grid_0 = [0] * (16 * 16 * 16)
+        session.handle_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, palette_0, grid_0)
+        self.assertEqual(len(session.stream_pending_sections), 1)
+
+        # 3. User cancels operation (e.g. presses ESC)
+        session.cancel_streaming(reason="User pressed ESC")
+        self.assertFalse(session.is_streaming)
+        self.assertEqual(session.stream_phase, "IDLE")
+        self.assertEqual(len(session.stream_pending_sections), 0)
+        self.assertTrue(session.stream_section_queue.empty())
+        self.assertFalse(props.is_locked)
+
+        # 4. Subsequent section arrives from server for the cancelled stream (stream_id 10)
+        palette_1 = ["minecraft:dirt"]
+        grid_1 = [0] * (16 * 16 * 16)
+        session.handle_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, palette_1, grid_1)
+        self.assertFalse(session.is_streaming, "handle_section_snapshot must NOT resurrect is_streaming")
+        self.assertEqual(len(session.stream_pending_sections), 0)
+        self.assertTrue(session.stream_section_queue.empty())
+
+        # 5. Server sends STREAM_END for stream_id 10
+        session.handle_stream_end(10, 2, 0)
+        self.assertFalse(session.is_streaming)
+        self.assertEqual(session.stream_phase, "IDLE")
+        self.assertTrue(session.stream_section_queue.empty())
+
+        # 6. Pump event loop: no mesh objects should have been created
+        start_main_thread_pump()
+        for _ in range(5):
+            _pump_main_thread_events()
+
+        children = find_root_section_children(root)
+        self.assertEqual(len(children), 0, "No meshes should be built after stream was cancelled")
+
+    def test_cancel_streaming_during_mesh_building(self):
+        """Verify cancelling stream during BUILD phase clears pending section queue immediately."""
+        root = get_or_create_world_root(bpy.context, root_name="Test_Cancel_Build_World")
+        props = get_active_sync_props(bpy.context, target_obj=root)
+        props.is_locked = True
+        session = self.session_mgr.get_or_create_session(root.name)
+        session.storage.set_bounds(0, 0, 0, 32, 16, 16)
+
+        # Populate storage
+        palette = ["minecraft:stone"]
+        grid = [0] * (16 * 16 * 16)
+        session.storage.set_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, palette, grid)
+        session.storage.set_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, palette, grid)
+
+        # Start build phase with 2 sections in queue
+        session.is_streaming = True
+        session.stream_phase = "BUILD"
+        session.stream_total_sections = 2
+        session.stream_section_queue.put((0, 0, 0, palette))
+        session.stream_section_queue.put((1, 0, 0, palette))
+        session._queued_stream_sections.add((0, 0, 0))
+        session._queued_stream_sections.add((1, 0, 0))
+
+        # Cancel while queue has items
+        session.cancel_streaming(reason="User pressed ESC during build")
+        self.assertFalse(session.is_streaming)
+        self.assertEqual(session.stream_phase, "IDLE")
+        self.assertTrue(session.stream_section_queue.empty())
+        self.assertEqual(len(session._queued_stream_sections), 0)
+        self.assertFalse(props.is_locked)
+
+        # Pump event loop: no meshes should be built
+        start_main_thread_pump()
+        for _ in range(5):
+            _pump_main_thread_events()
+
+        children = find_root_section_children(root)
+        self.assertEqual(len(children), 0, "No meshes should be built from cancelled queue")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
 

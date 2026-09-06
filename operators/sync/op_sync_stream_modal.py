@@ -81,8 +81,11 @@ class MOZI_OT_sync_stream_runner(bpy.types.Operator):
         # 1. User cooperative cancellation on ESC
         if event.type == "ESC":
             if session:
-                session.is_streaming = False
-                session.pending_full_sync_request = False
+                session.cancel_streaming(reason="Cancelled by user")
+            elif session_mgr:
+                for s in session_mgr.get_all_sessions():
+                    if s.is_streaming:
+                        s.cancel_streaming(reason="Cancelled by user")
             self._cleanup(context)
             if props:
                 props.is_locked = False

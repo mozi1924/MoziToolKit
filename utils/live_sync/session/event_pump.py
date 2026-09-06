@@ -151,6 +151,9 @@ def schedule_mesh_sync(force_full_rebuild: bool = False, target_obj: Optional[bp
 
 def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Object], total_target: int) -> None:
     """Finalize world mesh build for a session, clean up stream flags, and dismiss progress bar."""
+    if getattr(session, "_stream_cancelled", False):
+        # Stream was cancelled, skip finalization
+        return
     try:
         ProgressBar.update(current=95.0, total=100.0, message="Finalizing world mesh...")
 
@@ -224,6 +227,7 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
         was_initial = session.is_initial_handshake
         session.is_streaming = False
         session.stream_phase = "IDLE"
+        session._stream_cancelled = False
         session.is_repairing_partial = False
         session.is_initial_handshake = False
         session.force_next_full_rebuild = False
