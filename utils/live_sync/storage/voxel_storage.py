@@ -134,6 +134,10 @@ class VoxelStorage:
         self.size_x = self.size_y = self.size_z = 0
         self.generation += 1
 
+    def clear_smoothed_biome_cache(self) -> None:
+        """Discard build-only biome blends after their values reach a mesh."""
+        self._smoothed_biome_cache.clear()
+
     def set_bounds(self, min_x: int, min_y: int, min_z: int, size_x: int, size_y: int, size_z: int) -> bool:
         """Initialize or update selection bounding box from selection info.
 

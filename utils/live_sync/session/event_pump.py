@@ -38,6 +38,13 @@ from .props import (
 
 logger = logging.getLogger("MoziToolKit.LiveSync.EventPump")
 
+# A collection link is substantially more expensive than filling an
+# unlinked mesh datablock because Blender evaluates the visible scene after a
+# timer callback.  Commit enough sections at once to amortize that work, but
+# never hold them long enough to make progressive construction feel stalled.
+_STREAM_LINK_BATCH_SIZE = 16
+_STREAM_LINK_FLUSH_SECONDS = 0.25
+
 _pump_timer_registered: bool = False
 _rebuild_timer_registered: bool = False
 _pending_full_rebuild: bool = False
@@ -47,6 +54,34 @@ _last_seq_id: int = 0
 _delta_queue: queue.Queue = queue.Queue()
 _stream_section_queue: queue.Queue = queue.Queue()
 _accumulated_stream_palettes: set[str] = set()
+
+
+def _flush_pending_stream_section_links(session, force: bool = False) -> int:
+    """Link detached streamed sections in one dependency-graph transaction."""
+    pending = getattr(session, "_pending_stream_section_links", None)
+    if not pending:
+        return 0
+
+    now = time.monotonic()
+    last_flush = getattr(session, "_last_stream_link_flush_time", 0.0)
+    if not force and len(pending) < _STREAM_LINK_BATCH_SIZE and now - last_flush < _STREAM_LINK_FLUSH_SECONDS:
+        return 0
+
+    session._pending_stream_section_links = []
+    session._last_stream_link_flush_time = now
+    linked = 0
+    for obj, collection in pending:
+        try:
+            if not obj or getattr(obj, "users_collection", ()):
+                continue
+            if collection:
+                collection.objects.link(obj)
+                linked += 1
+        except (ReferenceError, RuntimeError):
+            # A cancellation or an empty-section cleanup may have discarded
+            # this detached object before the batch was committed.
+            continue
+    return linked
 
 
 def _run_in_main_thread(func) -> None:
@@ -242,6 +277,7 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
         session._reconciled_pass = False
         session._stream_state_cache = None
         session._existing_sections_cache = None
+        _flush_pending_stream_section_links(session, force=True)
         if was_initial or ProgressBar.is_active():
             ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=0.8)
 
@@ -356,6 +392,8 @@ def _pump_main_thread_events() -> Optional[float]:
                         existing_sections=existing_sections,
                         origin_centered=True,
                         weld_vertices=True,
+                        defer_collection_link=True,
+                        pending_collection_links=session._pending_stream_section_links,
                     )
 
                     sections_drained += 1
@@ -377,6 +415,11 @@ def _pump_main_thread_events() -> Optional[float]:
                 is_complete = session.stream_section_queue.empty() and (
                     session.server_stream_finished or session.stream_built_sections >= total_target
                 )
+
+                # Keep mesh creation cheap while streaming, then make the
+                # finished batch visible together.  The final batch is forced
+                # before finalization so no completed section remains hidden.
+                _flush_pending_stream_section_links(session, force=is_complete)
 
                 if is_complete:
                     ProgressBar.update(
@@ -404,6 +447,7 @@ def _pump_main_thread_events() -> Optional[float]:
             elif session.stream_section_queue.empty():
                 total_target = max(1, session.stream_total_sections)
                 if session.server_stream_finished or (session.stream_built_sections >= total_target):
+                    _flush_pending_stream_section_links(session, force=True)
                     _finalize_stream_sync(session, props, target_obj, total_target)
                 else:
                     drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0

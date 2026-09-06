@@ -399,6 +399,8 @@ def build_single_section_mesh(
     existing_sections: Optional[dict[tuple[int, int, int], bpy.types.Object]] = None,
     origin_centered: bool = True,
     weld_vertices: bool = True,
+    defer_collection_link: bool = False,
+    pending_collection_links: Optional[list[tuple[bpy.types.Object, bpy.types.Collection]]] = None,
 ) -> Optional[bpy.types.Object]:
     """
     Constructs or updates the 3D polygon mesh for a single 16x16x16 chunk section.
@@ -474,7 +476,16 @@ def build_single_section_mesh(
         if col is None and hasattr(bpy, "context") and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
             col = bpy.context.scene.collection
         if col:
-            col.objects.link(sec_obj)
+            # Linking an object to a visible collection forces Blender to
+            # update its dependency graph.  During a large streamed build,
+            # doing that once per 16^3 section makes the cost of every later
+            # section grow with the number already in the scene.  The stream
+            # runner can therefore construct the mesh datablocks first and
+            # commit their collection links in small batches.
+            if defer_collection_link and pending_collection_links is not None:
+                pending_collection_links.append((sec_obj, col))
+            else:
+                col.objects.link(sec_obj)
         existing_sections[(sx, sy, sz)] = sec_obj
     else:
         if sec_obj.parent != root_obj:
@@ -493,23 +504,29 @@ def build_single_section_mesh(
     # Keep section slot indices identical to the root material manager.
     sync_section_material_slots(sec_obj, mat_manager)
 
-    # 1. Pure Python geometry computation
-    buffer = generate_section_geometry_buffer(
-        voxel_items=list(sec_blocks.items()),
-        block_map=storage.block_map,
-        state_cache=state_cache,
-        origin_centered=origin_centered,
-        min_x=min_x, min_y=min_y, min_z=min_z,
-        half_x=half_x, half_z=half_z,
-        mat_manager=mat_manager,
-        baker=baker,
-        voxel_storage=storage,
-        weld_vertices=weld_vertices,
-        sec_coord=(sx, sy, sz),
-    )
+    # 1. Pure Python geometry computation and batch C ingestion.  Biome
+    # blends are only useful while faces for this section are being emitted:
+    # their final values are written into mesh attributes below.  Do not keep
+    # one cached entry per world block after that point.
+    try:
+        buffer = generate_section_geometry_buffer(
+            voxel_items=list(sec_blocks.items()),
+            block_map=storage.block_map,
+            state_cache=state_cache,
+            origin_centered=origin_centered,
+            min_x=min_x, min_y=min_y, min_z=min_z,
+            half_x=half_x, half_z=half_z,
+            mat_manager=mat_manager,
+            baker=baker,
+            voxel_storage=storage,
+            weld_vertices=weld_vertices,
+            sec_coord=(sx, sy, sz),
+        )
 
-    # 2. Ultra-fast batch C ingestion
-    apply_geometry_buffer_to_mesh(sec_mesh, buffer)
+        # 2. Ultra-fast batch C ingestion
+        apply_geometry_buffer_to_mesh(sec_mesh, buffer)
+    finally:
+        storage.clear_smoothed_biome_cache()
 
     # If after culling this section has 0 polygons, track in _known_empty_sections
     poly_count = len(sec_mesh.polygons) if not getattr(sec_mesh, "is_editmode", False) else len(buffer.faces)

@@ -69,6 +69,30 @@ class SyncSession:
 
         self._stream_state_cache: Optional[dict] = None
         self._existing_sections_cache: Optional[dict] = None
+        # Newly built section objects can remain unlinked briefly while their
+        # mesh data is populated.  This keeps individual section builds from
+        # repeatedly forcing an ever-larger dependency-graph update.
+        self._pending_stream_section_links: List[Tuple[Any, Any]] = []
+        self._last_stream_link_flush_time: float = 0.0
+
+    def discard_pending_section_links(self) -> None:
+        """Remove unlinked section objects left by an interrupted stream."""
+        pending = self._pending_stream_section_links
+        self._pending_stream_section_links = []
+        self._last_stream_link_flush_time = 0.0
+        for obj, _collection in pending:
+            try:
+                # Linked objects are owned by the scene and must survive; the
+                # pending list normally contains only detached objects.
+                if getattr(obj, "users_collection", ()):
+                    continue
+                mesh = getattr(obj, "data", None)
+                if obj.name in bpy.data.objects:
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                if mesh and mesh.name in bpy.data.meshes:
+                    bpy.data.meshes.remove(mesh, do_unlink=True)
+            except (ReferenceError, Exception):
+                pass
 
     def cancel_streaming(self, reason: str = "cancelled by user") -> None:
         """Cancel active progressive stream ingestion and mesh building immediately."""
@@ -95,6 +119,7 @@ class SyncSession:
         self.stream_total_sections = 0
         self._stream_state_cache = None
         self._existing_sections_cache = None
+        self.discard_pending_section_links()
         self.storage.clear_dirty_sections()
         if reason in ("cancelled by user", "project unloaded", "session reset"):
             self.storage.clear()
@@ -112,6 +137,7 @@ class SyncSession:
         self.cached_mat_signature = None
         self._stream_state_cache = None
         self._existing_sections_cache = None
+        self.discard_pending_section_links()
         clear_mesh_builder_caches()
         clear_shared_baker_cache()
 
@@ -696,6 +722,7 @@ class SyncSession:
         self.stream_last_drain_time = time.time()
         self._stream_state_cache = None
         self._existing_sections_cache = None
+        self.discard_pending_section_links()
 
         # Purge any lingering section items from previous streams instantly
         while not self.stream_section_queue.empty():
