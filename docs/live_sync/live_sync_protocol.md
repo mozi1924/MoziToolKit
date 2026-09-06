@@ -90,8 +90,8 @@ Offset | Type   | Description
 -------+--------+---------------------------------------
 0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x05)
 4..7   | uint32 | Server Sequence ID (服务程序序列号)
-8..9   | uint16 | Section Count (区块总数 N)
-10..   | Array  | N 个 Section 校验条目:
+8..11  | uint32 | Section Count (区块总数 N)
+12..   | Array  | N 个 Section 校验条目:
        |   int32  - Section X (sec_x = x >> 4)
        |   int32  - Section Y (sec_y = y >> 4)
        |   int32  - Section Z (sec_z = z >> 4)
@@ -127,11 +127,11 @@ Offset | Type   | Description
 Offset | Type   | Description
 -------+--------+---------------------------------------
 0..3   | Header | Magic (0x4D, 0x43), Version (0x01), Type (0x07)
-4..5   | uint16 | Total Section Count (选区覆盖区块总数)
-6..7   | uint16 | Non-Empty Section Count (含有效方块待流式传输的区块数)
-8..11  | uint32 | Total Volume (方块总体积)
-12..13 | uint16 | Dimension String Length (D)
-14..   | bytes  | UTF-8 Dimension Name (如 "minecraft:overworld")
+4..7   | uint32 | Total Section Count (选区覆盖区块总数)
+8..11  | uint32 | Non-Empty Section Count (含有效方块待流式传输的区块数)
+12..15 | uint32 | Total Volume (方块总体积)
+16..17 | uint16 | Dimension String Length (D)
+18..   | bytes  | UTF-8 Dimension Name (如 "minecraft:overworld")
 --     | uint16 | Flags (Bit 0: Streaming Mode, Bit 1: Compressed)
 ```
 

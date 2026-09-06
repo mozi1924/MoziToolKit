@@ -81,7 +81,7 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
                                   on_handshake_info=on_handshake_info)
 
         dim_str = b"minecraft:the_nether"
-        header_payload = struct.pack(HANDSHAKE_INFO_HEADER_FORMAT, 16, 12, 65536, len(dim_str))
+        header_payload = struct.pack(HANDSHAKE_INFO_HEADER_FORMAT, 100000, 80000, 65536, len(dim_str))
         packet = (
             struct.pack(HEADER_FORMAT, PROTOCOL_MAGIC, PROTOCOL_VERSION, PacketType.HANDSHAKE_INFO)
             + header_payload
@@ -91,8 +91,8 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
 
         client._parse_binary_packet(packet)
 
-        self.assertEqual(received["total_sections"], 16)
-        self.assertEqual(received["non_empty_sections"], 12)
+        self.assertEqual(received["total_sections"], 100000)
+        self.assertEqual(received["non_empty_sections"], 80000)
         self.assertEqual(received["volume"], 65536)
         self.assertEqual(received["dimension"], "minecraft:the_nether")
         self.assertEqual(received["flags"], 1)
