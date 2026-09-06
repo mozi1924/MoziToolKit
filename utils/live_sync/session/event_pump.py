@@ -214,13 +214,16 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
     finally:
         was_initial = session.is_initial_handshake
         session.is_streaming = False
+        session.stream_phase = "IDLE"
         session.is_repairing_partial = False
         session.is_initial_handshake = False
         session.force_next_full_rebuild = False
         session.pending_full_sync_request = False
         session.server_stream_finished = False
         session.stream_received_sections = 0
+        session.stream_built_sections = 0
         session.stream_total_sections = 0
+        session.stream_pending_sections.clear()
         session._reconciled_pass = False
         session._stream_state_cache = None
         session._existing_sections_cache = None
@@ -264,98 +267,107 @@ def _pump_main_thread_events() -> Optional[float]:
             if start_stream_modal_lock:
                 start_stream_modal_lock(session.target_object_name)
 
-        t_drain_start = time.perf_counter()
-        max_batch = 32
-        while not session.stream_section_queue.empty() and sections_drained < max_batch:
-            try:
-                item = session.stream_section_queue.get_nowait()
-                sec_x, sec_y, sec_z, palette = item
-                session.stream_received_sections += 1
-                if palette:
-                    session.accumulated_stream_palettes.update(palette)
+        if session.is_streaming and session.stream_phase == "INGEST":
+            # Phase 1: Ingesting data into storage memory (background network thread writes to storage)
+            total_target = max(1, session.stream_total_sections)
+            recv_clamped = min(total_target, session.stream_received_sections)
+            frac = recv_clamped / total_target
+            pct = int(10.0 + frac * 20.0)  # 10% to 30% during preprocessing
+            ProgressBar.update(
+                current=pct, total=100.0,
+                message=f"Preprocessing data ({recv_clamped}/{total_target})"
+            )
 
-                if mat_mgr is None:
-                    cur_mat = find_bound_atlas_material(target_obj) if target_obj else None
-                    cur_atlas_params = session.get_cached_atlas_params(cur_mat)
-                    from ..material.binding import get_shared_material_manager
-                    mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
-                    baker = get_shared_state_baker()
-                    if not hasattr(session, "_stream_state_cache") or session._stream_state_cache is None:
-                        session._stream_state_cache = {}
-                    state_cache = session._stream_state_cache
-                    if not hasattr(session, "_existing_sections_cache") or session._existing_sections_cache is None:
-                        from ..meshing import find_root_section_children
-                        session._existing_sections_cache = find_root_section_children(target_obj)
-                    existing_sections = session._existing_sections_cache
-
-                from ..meshing import build_single_section_mesh
-                build_single_section_mesh(
-                    context=bpy.context,
-                    storage=session.storage,
-                    sx=sec_x, sy=sec_y, sz=sec_z,
-                    root_obj=target_obj,
-                    mat_manager=mat_mgr,
-                    baker=baker,
-                    state_cache=state_cache,
-                    existing_sections=existing_sections,
-                    origin_centered=True,
-                    weld_vertices=True,
+            # Inactivity watchdog during ingestion:
+            drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
+            is_conn_dead = session.client_thread and not session.client_thread.is_connected
+            if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 45.0):
+                logger.warning(
+                    "Live Sync: Stream inactivity timeout or disconnection reached during INGEST for %s (%s of %s received). Transitioning to BUILD.",
+                    session.target_object_name, session.stream_received_sections, session.stream_total_sections
                 )
+                session.handle_stream_end(session.current_stream_id, session.stream_received_sections, 0)
 
-                sections_drained += 1
-                has_active_work = True
+        elif session.is_streaming and session.stream_phase in ("BUILD", "IDLE"):
+            # Phase 2: Deterministic mesh building (all chunk voxel data is already complete in storage)
+            t_drain_start = time.perf_counter()
+            max_batch = 32
+            while not session.stream_section_queue.empty() and sections_drained < max_batch:
+                try:
+                    item = session.stream_section_queue.get_nowait()
+                    sec_x, sec_y, sec_z, palette = item
+                    session.stream_built_sections += 1
+                    if palette:
+                        session.accumulated_stream_palettes.update(palette)
 
-                if (time.perf_counter() - t_drain_start) > 0.015:
+                    if mat_mgr is None:
+                        cur_mat = find_bound_atlas_material(target_obj) if target_obj else None
+                        cur_atlas_params = session.get_cached_atlas_params(cur_mat)
+                        from ..material.binding import get_shared_material_manager
+                        mat_mgr = get_shared_material_manager(world_obj=target_obj, atlas_params=cur_atlas_params)
+                        baker = get_shared_state_baker()
+                        if not hasattr(session, "_stream_state_cache") or session._stream_state_cache is None:
+                            session._stream_state_cache = {}
+                        state_cache = session._stream_state_cache
+                        if not hasattr(session, "_existing_sections_cache") or session._existing_sections_cache is None:
+                            from ..meshing import find_root_section_children
+                            session._existing_sections_cache = find_root_section_children(target_obj)
+                        existing_sections = session._existing_sections_cache
+
+                    from ..meshing import build_single_section_mesh
+                    build_single_section_mesh(
+                        context=bpy.context,
+                        storage=session.storage,
+                        sx=sec_x, sy=sec_y, sz=sec_z,
+                        root_obj=target_obj,
+                        mat_manager=mat_mgr,
+                        baker=baker,
+                        state_cache=state_cache,
+                        existing_sections=existing_sections,
+                        origin_centered=True,
+                        weld_vertices=True,
+                    )
+
+                    sections_drained += 1
+                    has_active_work = True
+
+                    if (time.perf_counter() - t_drain_start) > 0.015:
+                        break
+                except queue.Empty:
                     break
-            except queue.Empty:
-                break
 
-        if sections_drained > 0:
-            session.stream_last_drain_time = time.time()
-            total_target = max(1, session.stream_total_sections)
-            frac = min(1.0, session.stream_received_sections / total_target)
-            pct = int(20.0 + frac * 80.0)
+            if sections_drained > 0:
+                session.stream_last_drain_time = time.time()
+                total_target = max(1, session.stream_total_sections)
+                built_clamped = min(total_target, session.stream_built_sections)
+                frac = built_clamped / total_target
+                pct = int(30.0 + frac * 70.0)  # 30% to 100% during mesh building
 
-            if session.stream_section_queue.empty():
-                is_batch_complete = session.server_stream_finished or (session.stream_received_sections >= total_target)
-                if is_batch_complete:
-                    dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
-                    if dirty_reconcile:
-                        session.storage.clear_dirty_sections()
-                        for (sx, sy, sz) in dirty_reconcile:
-                            session.stream_section_queue.put((sx, sy, sz, []))
-                        session.stream_total_sections += len(dirty_reconcile)
-                        ProgressBar.update(current=pct, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
-                    else:
-                        _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+                if session.stream_section_queue.empty():
+                    _finalize_stream_sync(session, props, target_obj, total_target)
                 else:
-                    ProgressBar.update(current=pct, total=100.0, message=f"Streaming chunk ({session.stream_received_sections}/{total_target})")
-            else:
-                ProgressBar.update(current=pct, total=100.0, message=f"Building chunk ({session.stream_received_sections}/{total_target})")
+                    ProgressBar.update(
+                        current=pct, total=100.0,
+                        message=f"Building chunk ({built_clamped}/{total_target})"
+                    )
 
-            for window in bpy.context.window_manager.windows:
-                for area in window.screen.areas:
-                    if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
-                        area.tag_redraw()
-        elif session.is_streaming and session.stream_section_queue.empty():
-            total_target = max(1, session.stream_total_sections)
-            is_batch_complete = session.server_stream_finished or (session.stream_received_sections >= total_target)
-            if is_batch_complete:
-                dirty_reconcile = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
-                if dirty_reconcile:
-                    session.storage.clear_dirty_sections()
-                    for (sx, sy, sz) in dirty_reconcile:
-                        session.stream_section_queue.put((sx, sy, sz, []))
-                    session.stream_total_sections += len(dirty_reconcile)
-                    ProgressBar.update(current=95.0, total=100.0, message=f"Reconciling boundary chunks ({len(dirty_reconcile)})...")
+                for window in bpy.context.window_manager.windows:
+                    for area in window.screen.areas:
+                        if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
+                            area.tag_redraw()
+            elif session.stream_section_queue.empty():
+                total_target = max(1, session.stream_total_sections)
+                if session.server_stream_finished or (session.stream_built_sections >= total_target):
+                    _finalize_stream_sync(session, props, target_obj, total_target)
                 else:
-                    _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
-            else:
-                drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
-                is_conn_dead = session.client_thread and not session.client_thread.is_connected
-                if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 45.0):
-                    logger.warning("Live Sync: Stream inactivity timeout or disconnection reached for %s (%s of %s sections processed). Finalizing.", session.target_object_name, session.stream_received_sections, session.stream_total_sections)
-                    _finalize_stream_sync(session, props, target_obj, session.stream_received_sections)
+                    drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
+                    is_conn_dead = session.client_thread and not session.client_thread.is_connected
+                    if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 45.0):
+                        logger.warning(
+                            "Live Sync: Stream inactivity timeout or disconnection reached for %s (%s of %s sections built). Finalizing.",
+                            session.target_object_name, session.stream_built_sections, session.stream_total_sections
+                        )
+                        _finalize_stream_sync(session, props, target_obj, total_target)
 
         # 2. Drain pending delta changes
         accumulated_changes: dict[tuple[int, int, int], str] = {}

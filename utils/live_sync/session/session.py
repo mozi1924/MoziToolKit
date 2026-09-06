@@ -44,6 +44,9 @@ class SyncSession:
         self.last_seq_id: int = 0
         self.stream_total_sections: int = 0
         self.stream_received_sections: int = 0
+        self.stream_built_sections: int = 0
+        self.stream_phase: str = "IDLE"  # "IDLE", "INGEST", "BUILD"
+        self.stream_pending_sections: List[Tuple[int, int, int]] = []
         self.stream_last_drain_time: float = 0.0
         self.server_stream_finished: bool = False
         self.current_stream_id: int = 0
@@ -478,7 +481,14 @@ class SyncSession:
             biome_palette=biome_palette, biome_indices=biome_indices
         )
         if updated:
-            self.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
+            if palette:
+                self.accumulated_stream_palettes.update(palette)
+            self.stream_received_sections += 1
+            if self.stream_phase == "INGEST":
+                self.stream_pending_sections.append((sec_x, sec_y, sec_z))
+            else:
+                # Direct repair or immediate build mode
+                self.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
 
     def handle_section_manifest(self, server_seq_id: int, sections: List[Tuple[int, int, int, int]]) -> None:
         """Handle section CRC manifest check for deterministic verification and partial repair."""
@@ -496,15 +506,18 @@ class SyncSession:
                     self.pending_full_sync_request = False
                     self.skip_next_full_snapshot = False
                     self.is_streaming = True
+                    self.stream_phase = "INGEST"
+                    self.stream_pending_sections.clear()
                     self.stream_total_sections = max(1, non_empty_manifest_count)
                     self.stream_received_sections = 0
+                    self.stream_built_sections = 0
                     if cur_props:
                         cur_props.validation_info = f"Syncing ({non_empty_manifest_count} chunks)..."
                     if non_empty_manifest_count == 0:
                         _finalize_stream_sync(self, cur_props, cur_obj, 0)
                     else:
-                        ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
-                        ProgressBar.update(current=30.0, total=100.0, message=f"Receiving {non_empty_manifest_count} chunks...")
+                        ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Preprocessing {non_empty_manifest_count} chunks...")
+                        ProgressBar.update(current=10.0, total=100.0, message=f"Preprocessing (0/{non_empty_manifest_count})")
                         if self.client_thread and self.client_thread.is_connected:
                             logger.info(f"Live Sync ({self.target_object_name}): Requesting full sync on manifest ({non_empty_manifest_count} sections)...")
                             self.client_thread.send_full_sync_request()
@@ -533,8 +546,11 @@ class SyncSession:
                         logger.info(f"Live Sync ({self.target_object_name}): Background manifest detected {len(mismatched_crc)} out-of-sync sections. Requesting repair...")
                         self.is_repairing_partial = True
                         self.is_streaming = True
+                        self.stream_phase = "INGEST"
+                        self.stream_pending_sections.clear()
                         self.stream_total_sections = len(mismatched_crc)
                         self.stream_received_sections = 0
+                        self.stream_built_sections = 0
                         if cur_props:
                             cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
                         self.client_thread.send_repair_request(mismatched_crc)
@@ -563,12 +579,15 @@ class SyncSession:
                     self.pending_full_sync_request = True
                     self.is_initial_handshake = False
                     self.is_streaming = True
+                    self.stream_phase = "INGEST"
+                    self.stream_pending_sections.clear()
                     self.stream_total_sections = max(1, non_empty_manifest_count)
                     self.stream_received_sections = 0
+                    self.stream_built_sections = 0
                     if cur_props:
                         cur_props.validation_info = f"Full sync ({non_empty_manifest_count} chunks)..."
-                    ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Full sync ({non_empty_manifest_count} chunks)...")
-                    ProgressBar.update(current=30.0, total=100.0, message="Requesting full world data...")
+                    ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Preprocessing {non_empty_manifest_count} chunks...")
+                    ProgressBar.update(current=10.0, total=100.0, message="Requesting full world data...")
                     if self.client_thread and self.client_thread.is_connected:
                         logger.info(f"Live Sync ({self.target_object_name}): Requesting full sync ({non_empty_manifest_count} sections)...")
                         self.client_thread.send_full_sync_request()
@@ -580,12 +599,15 @@ class SyncSession:
                     self.is_repairing_partial = True
                     self.is_initial_handshake = False
                     self.is_streaming = True
+                    self.stream_phase = "INGEST"
+                    self.stream_pending_sections.clear()
                     self.stream_total_sections = len(mismatched_crc)
                     self.stream_received_sections = 0
+                    self.stream_built_sections = 0
                     if cur_props:
                         cur_props.validation_info = f"Repairing {len(mismatched_crc)} section(s)..."
                     ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Repairing {len(mismatched_crc)} section(s)...")
-                    ProgressBar.update(current=30.0, total=100.0, message=f"Syncing {len(mismatched_crc)} modified chunks...")
+                    ProgressBar.update(current=10.0, total=100.0, message=f"Syncing {len(mismatched_crc)} modified chunks...")
                     if self.client_thread and self.client_thread.is_connected:
                         self.client_thread.send_repair_request(mismatched_crc)
             except Exception as e:
@@ -599,9 +621,12 @@ class SyncSession:
 
         self.current_stream_id = stream_id
         self.is_streaming = True
+        self.stream_phase = "INGEST"
+        self.stream_pending_sections.clear()
         self.server_stream_finished = False
         self.stream_total_sections = max(1, total_sections)
         self.stream_received_sections = 0
+        self.stream_built_sections = 0
         self.stream_last_drain_time = time.time()
         self._stream_state_cache = None
         self._existing_sections_cache = None
@@ -620,24 +645,53 @@ class SyncSession:
                 prune_out_of_bounds_section_objects(cur_obj, self.storage)
             cur_props = get_active_sync_props(bpy.context, target_obj=cur_obj)
             if cur_props:
-                cur_props.validation_info = f"Streaming {total_sections} chunks..."
-            ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Streaming {total_sections} chunks...")
-            ProgressBar.update(current=30.0, total=100.0, message=f"Streaming chunk (0/{total_sections})")
+                cur_props.validation_info = f"Preprocessing {total_sections} chunks..."
+            ProgressBar.begin(title=f"Live Sync ({self.target_object_name})", total=100.0, message=f"Preprocessing {total_sections} chunks...")
+            ProgressBar.update(current=10.0, total=100.0, message=f"Preprocessing data (0/{total_sections})")
         _run_in_main_thread(update)
 
     def handle_stream_end(self, stream_id: int, sent_sections: int, status: int) -> None:
         """Handle progressive stream end notice."""
         from ..constants import StreamStatus
+        from .event_pump import _run_in_main_thread
         if stream_id != self.current_stream_id:
             logger.debug("Live Sync: Ignoring stream_end for stale stream %d (current: %d)", stream_id, self.current_stream_id)
             return
         if status == StreamStatus.CANCELLED:
             logger.info("Live Sync (%s): Server confirmed stream %d was cancelled.", self.target_object_name, stream_id)
             self.is_streaming = False
+            self.stream_phase = "IDLE"
             self.server_stream_finished = False
+            self.stream_pending_sections.clear()
             return
+
         self.server_stream_finished = True
         self.stream_last_drain_time = time.time()
+
+        # Transition from INGEST to BUILD: all chunk data is now in memory!
+        def start_building():
+            if self.stream_phase == "INGEST":
+                self.stream_phase = "BUILD"
+                # Determine sections to build
+                sections_to_build = list(self.stream_pending_sections)
+                self.stream_pending_sections.clear()
+                if not sections_to_build:
+                    # Fallback to all sections in storage if pending was empty
+                    sections_to_build = list(self.storage.get_all_sections())
+
+                self.stream_total_sections = max(1, len(sections_to_build))
+                self.stream_built_sections = 0
+
+                # Enqueue all sections into stream_section_queue for deterministic mesh building
+                for (sx, sy, sz) in sections_to_build:
+                    self.stream_section_queue.put((sx, sy, sz, []))
+
+                ProgressBar.update(
+                    current=30.0, total=100.0,
+                    message=f"Building chunk (0/{self.stream_total_sections})"
+                )
+
+        _run_in_main_thread(start_building)
 
     def stop(self) -> None:
         if self.client_thread:
@@ -647,10 +701,13 @@ class SyncSession:
                 pass
             self.client_thread = None
         self.is_streaming = False
+        self.stream_phase = "IDLE"
         self.is_repairing_partial = False
         self.pending_full_sync_request = False
         self.rebuild_timer_registered = False
         self.pending_full_rebuild = False
+        self.stream_pending_sections.clear()
+        self.stream_built_sections = 0
         while not self.delta_queue.empty():
             try:
                 self.delta_queue.get_nowait()
