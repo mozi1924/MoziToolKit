@@ -39,6 +39,7 @@ class SyncSession:
 
         self.delta_queue: queue.Queue = queue.Queue()
         self.stream_section_queue: queue.Queue = queue.Queue()
+        self._queued_stream_sections: Set[Tuple[int, int, int]] = set()
         self.accumulated_stream_palettes: Set[str] = set()
 
         self.last_seq_id: int = 0
@@ -295,6 +296,7 @@ class SyncSession:
                     self.stream_section_queue.get_nowait()
                 except queue.Empty:
                     break
+            self._queued_stream_sections.clear()
             self.accumulated_stream_palettes.clear()
             self.stream_received_sections = 0
             self.is_streaming = False
@@ -491,7 +493,14 @@ class SyncSession:
                 self.stream_pending_sections.append((sec_x, sec_y, sec_z))
             else:
                 # Direct repair or immediate build mode
-                self.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
+                sec_coord = (sec_x, sec_y, sec_z)
+                if sec_coord not in self._queued_stream_sections:
+                    self._queued_stream_sections.add(sec_coord)
+                    self.stream_section_queue.put((sec_x, sec_y, sec_z, palette))
+                    self.stream_total_sections = max(
+                        self.stream_total_sections,
+                        self.stream_built_sections + self.stream_section_queue.qsize()
+                    )
 
     def handle_section_manifest(self, server_seq_id: int, sections: List[Tuple[int, int, int, int]]) -> None:
         """Handle section CRC manifest check for deterministic verification and partial repair."""
@@ -640,6 +649,7 @@ class SyncSession:
                 self.stream_section_queue.get_nowait()
             except queue.Empty:
                 break
+        self._queued_stream_sections.clear()
 
         def update():
             cur_obj = bpy.data.objects.get(self.target_object_name)
@@ -677,12 +687,14 @@ class SyncSession:
             if (s in non_empty_sections or s in existing_sections)
         ]
 
-        self.stream_total_sections = max(1, len(sections_to_build))
+        self.stream_total_sections = max(self.stream_total_sections, len(sections_to_build))
         self.stream_built_sections = 0
 
         # Enqueue all valid sections into stream_section_queue for deterministic mesh building
         for (sx, sy, sz) in sorted(sections_to_build):
-            self.stream_section_queue.put((sx, sy, sz, []))
+            if (sx, sy, sz) not in self._queued_stream_sections:
+                self._queued_stream_sections.add((sx, sy, sz))
+                self.stream_section_queue.put((sx, sy, sz, []))
 
         ProgressBar.update(
             current=30.0, total=100.0,
@@ -735,4 +747,5 @@ class SyncSession:
                 self.stream_section_queue.get_nowait()
             except queue.Empty:
                 break
+        self._queued_stream_sections.clear()
         self.accumulated_stream_palettes.clear()
