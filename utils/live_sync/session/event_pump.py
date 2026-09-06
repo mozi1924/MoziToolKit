@@ -152,6 +152,9 @@ def schedule_mesh_sync(force_full_rebuild: bool = False, target_obj: Optional[bp
 def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Object], total_target: int) -> None:
     """Finalize world mesh build for a session, clean up stream flags, and dismiss progress bar."""
     try:
+        ProgressBar.update(current=95.0, total=100.0, message="Finalizing world mesh...")
+
+        # Clear any remaining dirty sections in storage
         dirty_remaining = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
         if dirty_remaining and target_obj:
             from ..meshing import build_single_section_mesh, find_root_section_children
@@ -187,15 +190,21 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
             props.validation_info = "Verified (100% in sync)"
             props.is_locked = False
 
+            # Fast approximate point count from storage rather than traversing thousands of bpy mesh objects
             try:
                 if target_obj:
-                    from ..meshing import _get_mesh_vertex_and_face_count
-                    total_verts = 0
-                    for child in target_obj.children:
-                        if child.data and isinstance(child.data, bpy.types.Mesh):
-                            v_cnt, _ = _get_mesh_vertex_and_face_count(child.data)
-                            total_verts += v_cnt
-                    props.point_count = total_verts
+                    # Only do a full child vertex tally for small worlds (<= 128 sections) to avoid blocking main thread
+                    if total_target <= 128:
+                        from ..meshing import _get_mesh_vertex_and_face_count
+                        total_verts = 0
+                        for child in target_obj.children:
+                            if child.data and isinstance(child.data, bpy.types.Mesh):
+                                v_cnt, _ = _get_mesh_vertex_and_face_count(child.data)
+                                total_verts += v_cnt
+                        props.point_count = total_verts
+                    else:
+                        # For large scenes, estimate from cubes/props to maintain 60fps responsiveness
+                        props.point_count = max(props.point_count, props.cubes_count * 24)
             except Exception:
                 pass
 
@@ -348,6 +357,10 @@ def _pump_main_thread_events() -> Optional[float]:
                 pct = int(30.0 + frac * 70.0)  # 30% to 100% during mesh building
 
                 if session.stream_section_queue.empty():
+                    ProgressBar.update(
+                        current=100.0, total=100.0,
+                        message=f"Building chunk ({total_target}/{total_target})"
+                    )
                     _finalize_stream_sync(session, props, target_obj, total_target)
                 else:
                     ProgressBar.update(
@@ -366,9 +379,9 @@ def _pump_main_thread_events() -> Optional[float]:
                 else:
                     drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
                     is_conn_dead = session.client_thread and not session.client_thread.is_connected
-                    if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 45.0):
+                    if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 1.5):
                         logger.warning(
-                            "Live Sync: Stream inactivity timeout or disconnection reached for %s (%s of %s sections built). Finalizing.",
+                            "Live Sync: Stream inactivity timeout or disconnection reached for %s (%s of %s sections built). Finalizing immediately.",
                             session.target_object_name, session.stream_built_sections, session.stream_total_sections
                         )
                         _finalize_stream_sync(session, props, target_obj, total_target)
