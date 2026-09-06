@@ -197,12 +197,12 @@ def sync_child_section_names(root_obj: bpy.types.Object) -> None:
 
 
 def _is_valid_bpy_obj(obj: Any) -> bool:
-    """Check if a Blender object reference is valid and still present in bpy.data.objects."""
+    """Check if a Blender object reference is valid and not freed."""
     if obj is None:
         return False
     try:
-        obj_name = obj.name
-        return bool(obj_name in bpy.data.objects and bpy.data.objects.get(obj_name) == obj)
+        _ = obj.name
+        return True
     except (ReferenceError, Exception):
         return False
 
