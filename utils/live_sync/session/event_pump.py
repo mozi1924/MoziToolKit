@@ -278,13 +278,17 @@ def _pump_main_thread_events() -> Optional[float]:
                 message=f"Preprocessing data ({recv_clamped}/{total_target})"
             )
 
-            # Inactivity watchdog during ingestion:
             drain_elapsed = time.time() - session.stream_last_drain_time if session.stream_last_drain_time > 0 else 0
             is_conn_dead = session.client_thread and not session.client_thread.is_connected
-            if is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 45.0):
+
+            # Immediate trigger: server stream has finished, or expected sections have arrived
+            if session.server_stream_finished or (session.stream_total_sections > 0 and session.stream_received_sections >= session.stream_total_sections):
+                session.start_building_mesh()
+            elif is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 1.5):
+                # Fallback watchdog (1.5s of no network data received): transition to BUILD without idle wait
                 logger.warning(
-                    "Live Sync: Stream inactivity timeout or disconnection reached during INGEST for %s (%s of %s received). Transitioning to BUILD.",
-                    session.target_object_name, session.stream_received_sections, session.stream_total_sections
+                    "Live Sync: Stream ingestion completed/timed out for %s (%s of %s received, elapsed %.2fs). Transitioning to BUILD immediately.",
+                    session.target_object_name, session.stream_received_sections, session.stream_total_sections, drain_elapsed
                 )
                 session.handle_stream_end(session.current_stream_id, session.stream_received_sections, 0)
 
