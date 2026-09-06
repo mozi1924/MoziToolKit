@@ -561,11 +561,12 @@ class ResourcePackStack:
 
     def precompile_iter(
         self,
-        material_mode: str = "ATLAS",
+        material_mode: Optional[str] = None,
         yefira_only: bool = False,
     ) -> Iterator[Tuple[float, str, Optional[dict]]]:
         """
-        Iteratively precompile all caches according to material mode with progress streaming.
+        Iteratively precompile all caches (Colormaps, Atlas, Models, and Standalone)
+        with progress streaming.
         Yields (fraction: float, message: str, outputs: Optional[dict]).
         """
         results = {}
@@ -575,7 +576,19 @@ class ResourcePackStack:
                 results["colormaps"] = out
             yield (0.05 * frac, f"Colormaps: {msg}", None)
 
-        if material_mode == "STANDALONE":
+        if material_mode == "ATLAS":
+            # Backward-compatibility branch if explicitly requested only ATLAS
+            for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
+                if out:
+                    results["atlas"] = out
+                yield (0.05 + 0.55 * frac, f"Atlas: {msg}", None)
+
+            for frac, msg, out in self.precompile_models_iter():
+                if out:
+                    results["models"] = out
+                yield (0.60 + 0.40 * frac, f"Models: {msg}", None)
+        else:
+            # Default unified bake: Both Atlas and Standalone caches (Colormaps -> Atlas -> Models -> Standalone)
             # 1. Atlas Cache (0.05 -> 0.40)
             for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
                 if out:
@@ -593,31 +606,18 @@ class ResourcePackStack:
                 if out:
                     results["standalone"] = out
                 yield (0.70 + 0.30 * frac, f"Standalone: {msg}", None)
-        else:
-            # 1. Atlas Cache (0.05 -> 0.60)
-            for frac, msg, out in self.precompile_atlas_iter(yefira_only=yefira_only):
-                if out:
-                    results["atlas"] = out
-                yield (0.05 + 0.55 * frac, f"Atlas: {msg}", None)
-
-            # 2. Models Cache (0.60 -> 1.00)
-            for frac, msg, out in self.precompile_models_iter():
-                if out:
-                    results["models"] = out
-                yield (0.60 + 0.40 * frac, f"Models: {msg}", None)
 
         yield (1.0, "Precompilation completed.", results)
 
     def precompile(
         self,
-        material_mode: str = "ATLAS",
+        material_mode: Optional[str] = None,
         yefira_only: bool = False,
         progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> dict:
         """
-        Precompile caches according to material mode:
-        - If material_mode is "STANDALONE": precompiles Atlas, Standalone, and Models caches.
-        - If material_mode is "ATLAS": precompiles Atlas and Models cache.
+        Precompile caches:
+        By default (or if material_mode is not 'ATLAS'), precompiles both Atlas, Standalone, and Models caches.
         """
         final_results = {}
         for frac, msg, out in self.precompile_iter(material_mode=material_mode, yefira_only=yefira_only):
