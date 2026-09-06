@@ -463,6 +463,34 @@ class StateBaker:
                     raw_faces_items = [(d, fd) for d, fd in raw_faces_items if d != "down"]
 
                 for orig_dir, face_data in raw_faces_items:
+                    if "_baked_face" in face_data:
+                        bf = face_data["_baked_face"]
+                        texture = face_data.get("texture", bf.texture)
+                        tint_index = int(face_data.get("tintindex", bf.tint_index))
+                        cullface = face_data.get("cullface", bf.cullface)
+                        rot_verts = bf.vertices
+                        rot_dir = bf.direction
+                        if match.rot_x != 0.0 or match.rot_y != 0.0:
+                            from .obj.mod_obj_loader import ModOBJLoader
+                            rot_verts = tuple(ModOBJLoader._rotate_point(v, match.rot_x, match.rot_y, 0.0) for v in bf.vertices)
+                            rot_dir = rotate_direction(bf.direction, match.rot_x, match.rot_y)
+
+                        baked_face = BakedFace(
+                            direction=rot_dir,
+                            texture=texture,
+                            uv_rot=bf.uv_rot,
+                            uv_bounds=bf.uv_bounds,
+                            tint_index=tint_index,
+                            cullface=rotate_direction(cullface, match.rot_x, match.rot_y) if cullface else None,
+                            vertices=rot_verts,
+                            uvs=bf.uvs,
+                        )
+                        elem_faces[orig_dir] = baked_face
+                        face_idx = DIR_TO_INDEX.get(rot_dir)
+                        if face_idx is not None and six_faces[face_idx] is None:
+                            six_faces[face_idx] = baked_face
+                        continue
+
                     texture = face_data.get("texture", fallback_texture)
                     cullface = face_data.get("cullface")
                     if not cullface and is_full_cuboid:
