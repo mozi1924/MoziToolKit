@@ -140,13 +140,15 @@ class RawSectionGeometryBuffer:
     ) -> None:
         face_vert_indices: list[int] = []
         if self.weld_vertices:
+            coord_map = self._coord_to_idx
+            verts_list = self.vertices
             for vx, vy, vz in verts_coords:
-                key = (int(round(vx * 10000)), int(round(vy * 10000)), int(round(vz * 10000)))
-                idx = self._coord_to_idx.get(key)
+                key = (int(vx * 1000.0), int(vy * 1000.0), int(vz * 1000.0))
+                idx = coord_map.get(key)
                 if idx is None:
-                    idx = len(self.vertices)
-                    self._coord_to_idx[key] = idx
-                    self.vertices.append((vx, vy, vz))
+                    idx = len(verts_list)
+                    coord_map[key] = idx
+                    verts_list.append((vx, vy, vz))
                 face_vert_indices.append(idx)
         else:
             base_idx = len(self.vertices)
@@ -478,7 +480,8 @@ def _emit_buffer_face(
     mat_slot = mat_manager.get_slot_for_chunk(f_res.chunk_id) if mat_manager else f_res.slot_index
 
     # Biome Colormap UV & Tint Color Calculation
-    if voxel_storage is not None and hasattr(voxel_storage, "get_smoothed_biome_data"):
+    has_biome_tint = use_tint or (f_res.biome_tint_data[3] > 0.05) or (abs(f_res.biome_tint_data[3] - 3.0) < 0.1)
+    if has_biome_tint and voxel_storage is not None and hasattr(voxel_storage, "get_smoothed_biome_data"):
         u_blend, v_blend, water_linear = voxel_storage.get_smoothed_biome_data(block_pos[0], block_pos[1], block_pos[2], radius=2)
         colormap_uv = (u_blend, v_blend, 0.0)
         if abs(f_res.biome_tint_data[3] - 3.0) < 0.1:  # Water tint
@@ -490,12 +493,14 @@ def _emit_buffer_face(
         tint_color_val = f_res.biome_tint_color
 
     sx, sy = model_uv_scale
-    calc_uv = f_res.calc_uv_fn
-    transformed_uvs = []
-    for u_mc, v_mc in loop_uvs_mc:
-        u_scaled = float(u_mc) * sx
-        v_scaled = float(v_mc) * sy
-        transformed_uvs.append(calc_uv(u_scaled, 1.0 - v_scaled))
+    if f_res.precomputed_uvs is not None and len(f_res.precomputed_uvs) == len(loop_uvs_mc):
+        transformed_uvs = f_res.precomputed_uvs
+    else:
+        calc_uv = f_res.calc_uv_fn
+        transformed_uvs = [
+            calc_uv(float(u_mc) * sx, 1.0 - float(v_mc) * sy)
+            for u_mc, v_mc in loop_uvs_mc
+        ]
 
     tint_col = tint_color_val if use_tint else (1.0, 1.0, 1.0, 1.0)
     loop_colors = [tint_col] * len(verts_coords)
@@ -532,6 +537,7 @@ def generate_single_block_buffer_faces(
     mat_manager: Optional[LiveSyncMaterialManager] = None,
     baker: Optional[StateBaker] = None,
     voxel_storage: Optional[Any] = None,
+    face_culler: Optional[Any] = None,
 ) -> tuple[int, int, int]:
     """
     Generates faces for a single block at (x, y, z) into RawSectionGeometryBuffer with full 6-face neighbor culling.
@@ -577,7 +583,8 @@ def generate_single_block_buffer_faces(
     is_prop_cnt = 0
     is_fluid_cnt = 0
 
-    face_culler = get_shared_face_culler()
+    if face_culler is None:
+        face_culler = get_shared_face_culler()
 
     if meta.is_fluid:
         eff_mat_mgr = mat_manager or _GLOBAL_MAT_MANAGER or get_shared_material_manager(world_obj=None, atlas_params=None)
@@ -729,6 +736,7 @@ def generate_section_geometry_buffer(
         "", "minecraft:air", "air", "minecraft:cave_air", "minecraft:void_air",
         "minecraft:structure_void", "structure_void"
     )
+    face_culler = get_shared_face_culler()
 
     for (x, y, z), state_str in voxel_items:
         if not state_str or state_str in AIR_STRINGS or state_str.startswith("minecraft:air"):
@@ -745,6 +753,7 @@ def generate_section_geometry_buffer(
             mat_manager=mat_manager,
             baker=baker,
             voxel_storage=voxel_storage,
+            face_culler=face_culler,
         )
         buffer.cubes_count += c
         buffer.props_count += p

@@ -130,7 +130,21 @@ def _draw_live_sync_content(layout, context):
         row = box_hierarchy.row(align=True)
         row.label(text=f"{_tr('Container Root')}: {root_obj.name}", icon='EMPTY_AXIS')
         children_map = find_root_section_children(root_obj)
-        row.label(text=f"{_tr('Sections')}: {len(children_map)} {_tr('chunks')}")
+        try:
+            from ..utils.live_sync.session.registry import get_active_session_manager
+            _mgr = get_active_session_manager()
+            _sess = _mgr.get_session(root_obj.name) if _mgr else None
+        except Exception:
+            _sess = None
+
+        if _sess and _sess.is_streaming:
+            _tot = max(1, _sess.stream_total_sections)
+            if _sess.stream_phase == "INGEST":
+                row.label(text=f"{_tr('Sections')}: {_sess.stream_received_sections}/{_tot} (Ingesting)", icon='TIME')
+            else:
+                row.label(text=f"{_tr('Sections')}: {_sess.stream_built_sections}/{_tot} {_tr('chunks')}", icon='TIME')
+        else:
+            row.label(text=f"{_tr('Sections')}: {len(children_map)} {_tr('chunks')}")
 
     # 2. Connection Section (bound to root_obj)
     box_conn = layout.box()

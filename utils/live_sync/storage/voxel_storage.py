@@ -549,19 +549,15 @@ class VoxelStorage:
         Returns (smoothed_u, smoothed_v, smoothed_water_linear_rgba).
         Uses precomputed weight kernels and session-level memoization for maximum throughput.
         """
-        from ...materials.biome import get_biome_colors, get_colormap_uv
-
         if not self.biome_map:
-            u, v = get_colormap_uv(0.8, 0.4)
-            return (u, v, (0.05, 0.17, 0.77, 0.8))
-
-        if not hasattr(self, "_smoothed_biome_cache"):
-            self._smoothed_biome_cache: Dict[Tuple[int, int, int, int], Tuple[float, float, Tuple[float, float, float, float]]] = {}
+            return (0.8, 0.4, (0.05, 0.17, 0.77, 0.8))
 
         cache_key = (x, y, z, radius)
         cached_result = self._smoothed_biome_cache.get(cache_key)
         if cached_result is not None:
             return cached_result
+
+        from ...materials.biome import get_biome_colors, get_colormap_uv
 
         center_biome = self.biome_map.get((x, y, z)) or self.biome_map.get((x, self.min_y, z)) or "minecraft:plains"
         if radius <= 0:

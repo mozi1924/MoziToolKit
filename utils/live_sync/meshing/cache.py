@@ -119,6 +119,15 @@ class CachedStateMeta:
                     baked_face=baked_face,
                     json_face_info=j_face,
                 )
+                # Precompute Atlas UVs for standard canonical cube face UVs
+                from ...culling.primitives import CUBE_FACE_CANONICAL_UVS
+                c_uvs = CUBE_FACE_CANONICAL_UVS.get(f_name)
+                if c_uvs and resolved.calc_uv_fn:
+                    sx, sy = resolved.model_uv_scale
+                    calc = resolved.calc_uv_fn
+                    pre_uvs = tuple(calc(float(u) * sx, 1.0 - float(v) * sy) for u, v in c_uvs)
+                    resolved = resolved._replace(precomputed_uvs=pre_uvs)
+
                 self.faces_info[f_name] = resolved
                 if f_name == "top":
                     self.faces_info["up"] = resolved
@@ -142,6 +151,11 @@ class CachedStateMeta:
                                 face_index=f_idx,
                                 baked_face=bf,
                             )
+                            if bf.uvs and res.calc_uv_fn:
+                                sx, sy = res.model_uv_scale
+                                calc = res.calc_uv_fn
+                                pre_uvs = tuple(calc(float(u) * sx, 1.0 - float(v) * sy) for u, v in bf.uvs)
+                                res = res._replace(precomputed_uvs=pre_uvs)
                             self.tex_to_res[bf.texture] = res
 
     def get_face_res(self, baked_face: Optional[BakedFace], direction: str) -> ResolvedFaceTexture:
@@ -185,6 +199,7 @@ class CachedStateMeta:
                     biome_tint_color=b_tint_col,
                     source_texture_key=base_res.source_texture_key,
                     model_uv_scale=base_res.model_uv_scale,
+                    precomputed_uvs=base_res.precomputed_uvs,
                 )
 
         return base_res

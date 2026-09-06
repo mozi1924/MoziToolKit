@@ -658,18 +658,30 @@ class SyncSession:
         if self.stream_phase != "INGEST":
             return
         self.stream_phase = "BUILD"
-        # Determine sections to build
-        sections_to_build = list(self.stream_pending_sections)
+
+        cur_obj = bpy.data.objects.get(self.target_object_name)
+        from ..meshing import find_root_section_children
+        existing_sections = find_root_section_children(cur_obj) if cur_obj else {}
+        non_empty_sections = self.storage.get_all_sections()
+
+        # Deduplicate pending sections while preserving order
+        candidate_sections = list(dict.fromkeys(self.stream_pending_sections))
         self.stream_pending_sections.clear()
-        if not sections_to_build:
-            # Fallback to all sections in storage if pending was empty
-            sections_to_build = list(self.storage.get_all_sections())
+
+        if not candidate_sections:
+            candidate_sections = list(non_empty_sections)
+
+        # Only queue sections that contain non-air blocks, OR existing section meshes that need to be cleared/deleted
+        sections_to_build = [
+            s for s in candidate_sections
+            if (s in non_empty_sections or s in existing_sections)
+        ]
 
         self.stream_total_sections = max(1, len(sections_to_build))
         self.stream_built_sections = 0
 
-        # Enqueue all sections into stream_section_queue for deterministic mesh building
-        for (sx, sy, sz) in sections_to_build:
+        # Enqueue all valid sections into stream_section_queue for deterministic mesh building
+        for (sx, sy, sz) in sorted(sections_to_build):
             self.stream_section_queue.put((sx, sy, sz, []))
 
         ProgressBar.update(
