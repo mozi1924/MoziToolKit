@@ -241,6 +241,11 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
         if was_initial or ProgressBar.is_active():
             ProgressBar.finish(message=f"Sync Ready ({total_target} chunks processed)", auto_dismiss_delay=0.8)
 
+        for window in bpy.context.window_manager.windows:
+            for area in window.screen.areas:
+                if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
+                    area.tag_redraw()
+
 
 def _pump_main_thread_events() -> Optional[float]:
     """Continuous adaptive event pump executing on Blender's main thread across all sessions."""
@@ -381,9 +386,16 @@ def _pump_main_thread_events() -> Optional[float]:
                         message=f"Building chunk ({built_clamped}/{total_target})"
                     )
 
+                now = time.time()
+                need_viewport_redraw = is_complete or (now - getattr(session, "_last_viewport_redraw_time", 0.0) >= 0.5)
+                if need_viewport_redraw:
+                    session._last_viewport_redraw_time = now
+
                 for window in bpy.context.window_manager.windows:
                     for area in window.screen.areas:
-                        if area.type in ('STATUSBAR', 'VIEW_3D', 'PROPERTIES'):
+                        if area.type in ('STATUSBAR', 'PROPERTIES'):
+                            area.tag_redraw()
+                        elif area.type == 'VIEW_3D' and need_viewport_redraw:
                             area.tag_redraw()
             elif session.stream_section_queue.empty():
                 total_target = max(1, session.stream_total_sections)

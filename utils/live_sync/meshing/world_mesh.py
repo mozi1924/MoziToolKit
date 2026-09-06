@@ -505,6 +505,7 @@ def build_single_section_mesh(
         baker=baker,
         voxel_storage=storage,
         weld_vertices=weld_vertices,
+        sec_coord=(sx, sy, sz),
     )
 
     # 2. Ultra-fast batch C ingestion

@@ -41,6 +41,9 @@ from ..material.binding import (
     _GLOBAL_MAT_MANAGER,
 )
 from ..classifier.hot_states import HOT_PREWARM_STATES
+from ...materials.biome.biome import KNOWN_OVERLAY_PAIRS
+
+_OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
 
 logger = logging.getLogger("MoziToolKit.MeshCache")
 
@@ -143,6 +146,10 @@ class CachedStateMeta:
             if self.baked_model and self.baked_model.elements:
                 for elem in self.baked_model.elements:
                     for f_dir, bf in elem.faces.items():
+                        if bf.texture:
+                            clean_tex = bf.texture.split(":", 1)[-1].removeprefix("block/")
+                            if clean_tex in _OVERLAY_TO_BASE_MAP:
+                                bf.is_overlay = True
                         if bf.texture and bf.texture not in self.tex_to_res:
                             f_idx = DIR_TO_INDEX.get(f_dir, 0)
                             res = mat_manager.resolve_block_face(

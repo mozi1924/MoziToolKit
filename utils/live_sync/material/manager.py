@@ -384,6 +384,9 @@ class LiveSyncMaterialManager:
         else:
             self._refresh_flat_slot_mapping()
 
+        if chunk_id not in self.chunk_to_slot:
+            self.chunk_to_slot[chunk_id] = 0
+
         return self.chunk_to_slot.get(chunk_id, 0)
 
     def _sync_object_material_slots(self) -> None:
@@ -433,8 +436,9 @@ class LiveSyncMaterialManager:
 
     def get_slot_for_chunk(self, chunk_id: int) -> int:
         """Return the material slot index for a given Chunk ID, loading it on-demand if necessary."""
-        if chunk_id in self.chunk_to_slot and chunk_id in self.chunk_materials:
-            return self.chunk_to_slot[chunk_id]
+        slot = self.chunk_to_slot.get(chunk_id)
+        if slot is not None:
+            return slot
         return self.ensure_chunk_loaded(chunk_id)
 
     def resolve_block_face(

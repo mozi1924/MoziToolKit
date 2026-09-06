@@ -45,6 +45,7 @@ class BakedFace:
     vertices: tuple[tuple[float, float, float], ...] = field(default_factory=tuple)
     # 4 quad UV coordinates in texture space [0..1]
     uvs: tuple[tuple[float, float], ...] = field(default_factory=tuple)
+    is_overlay: bool = False
 
 
 @dataclass

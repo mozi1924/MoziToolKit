@@ -35,6 +35,7 @@ from ...culling import (
     DIR_TO_INDEX,
     mc_local_to_blender,
     extract_quad_face_occlusion_rect,
+    CullCategory,
 )
 
 from ...mc_baker import StateBaker
@@ -52,6 +53,15 @@ from ..material.binding import (
 from ...materials.biome.biome import KNOWN_OVERLAY_PAIRS
 
 OVERLAY_TO_BASE_MAP: dict[str, str] = {v: k for k, v in KNOWN_OVERLAY_PAIRS.items()}
+
+DIR_STRIDES: dict[str, int] = {
+    "east": 324,
+    "west": -324,
+    "up": 18,
+    "down": -18,
+    "south": 1,
+    "north": -1,
+}
 
 # Backward-compatibility aliases
 _mc_local_to_blender = mc_local_to_blender
@@ -357,8 +367,7 @@ def generate_single_block_faces(
                 # If this block is a standard cube and this face direction was already rendered
                 # by a base element (e.g. grass_block Element 0 provides grass_block_side with
                 # integrated atlas overlay composite), skip the duplicate overlay quad.
-                clean_tex = (bf.texture or "").split(":", 1)[-1].removeprefix("block/")
-                if meta.is_cube and f_dir in rendered_cube_faces and clean_tex in OVERLAY_TO_BASE_MAP:
+                if meta.is_cube and f_dir in rendered_cube_faces and getattr(bf, "is_overlay", False):
                     continue
 
                 cull_dir = bf.cullface or (f_dir if meta.is_cube else None)
@@ -538,10 +547,13 @@ def generate_single_block_buffer_faces(
     baker: Optional[StateBaker] = None,
     voxel_storage: Optional[Any] = None,
     face_culler: Optional[Any] = None,
+    grid: Optional[Sequence[Optional[CachedStateMeta]]] = None,
+    g_idx: int = -1,
 ) -> tuple[int, int, int]:
     """
     Generates faces for a single block at (x, y, z) into RawSectionGeometryBuffer with full 6-face neighbor culling.
     100% pure Python/NumPy computation without any bpy/bmesh dependencies.
+    Supports ultra-fast O(1) neighbor culling via 18x18x18 Local Stride Grid.
     Returns (is_cube, is_prop, is_fluid).
     """
     meta = state_cache.get(state_str)
@@ -608,13 +620,15 @@ def generate_single_block_buffer_faces(
             is_prop_cnt = 1
 
         rendered_cube_faces: set[str] = set()
+        is_leaves = (meta.cull_meta.category == CullCategory.CUTOUT_LEAVES)
+        b_pos = (x, y, z) if is_leaves else None
+
         for elem in meta.baked_model.elements:
             for f_dir, bf in elem.faces.items():
                 if not bf.vertices or len(bf.vertices) < 3:
                     continue
 
-                clean_tex = (bf.texture or "").split(":", 1)[-1].removeprefix("block/")
-                if meta.is_cube and f_dir in rendered_cube_faces and clean_tex in OVERLAY_TO_BASE_MAP:
+                if meta.is_cube and f_dir in rendered_cube_faces and getattr(bf, "is_overlay", False):
                     continue
 
                 cull_dir = bf.cullface or (f_dir if meta.is_cube else None)
@@ -625,19 +639,29 @@ def generate_single_block_buffer_faces(
                         cull_dir = f_dir
 
                 if cull_dir and cull_dir in MC_DIR_OFFSETS:
-                    dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
-                    n_pos = (x + dx, y + dy, z + dz)
-                    n_meta = _get_neighbor_meta(n_pos)
+                    target_idx = (g_idx + DIR_STRIDES[cull_dir]) if (grid is not None and g_idx >= 0) else -1
+                    if 0 <= target_idx < 5832:
+                        n_meta = grid[target_idx]
+                    else:
+                        dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
+                        n_meta = _get_neighbor_meta((x + dx, y + dy, z + dz))
+
                     if quad_rect is None and not meta.is_cube:
                         quad_rect = extract_quad_face_occlusion_rect(bf.vertices, cull_dir)
                     quad_shape = (quad_rect,) if quad_rect else None
+                    if is_leaves:
+                        dx, dy, dz = MC_DIR_OFFSETS[cull_dir]
+                        nb_pos = (x + dx, y + dy, z + dz)
+                    else:
+                        nb_pos = None
+
                     if not face_culler.should_render_face(
                         state_meta=meta.cull_meta,
                         neighbor_meta=n_meta.cull_meta if n_meta else None,
                         direction=cull_dir,
                         quad_face_shape=quad_shape,
-                        block_pos=(x, y, z),
-                        neighbor_pos=n_pos,
+                        block_pos=b_pos,
+                        neighbor_pos=nb_pos,
                     ):
                         continue
 
@@ -663,16 +687,30 @@ def generate_single_block_buffer_faces(
 
     else:
         is_cube_cnt = 1
+        is_leaves = (meta.cull_meta.category == CullCategory.CUTOUT_LEAVES)
+        b_pos = (x, y, z) if is_leaves else None
+
         for f_name in ("east", "west", "up", "down", "south", "north"):
-            dx, dy, dz = MC_DIR_OFFSETS[f_name]
-            neighbor_pos = (x + dx, y + dy, z + dz)
-            n_meta = _get_neighbor_meta(neighbor_pos)
+            target_idx = (g_idx + DIR_STRIDES[f_name]) if (grid is not None and g_idx >= 0) else -1
+            if 0 <= target_idx < 5832:
+                n_meta = grid[target_idx]
+            else:
+                dx, dy, dz = MC_DIR_OFFSETS[f_name]
+                neighbor_pos = (x + dx, y + dy, z + dz)
+                n_meta = _get_neighbor_meta(neighbor_pos)
+
+            if is_leaves:
+                dx, dy, dz = MC_DIR_OFFSETS[f_name]
+                nb_pos = (x + dx, y + dy, z + dz)
+            else:
+                nb_pos = None
+
             if not face_culler.should_render_face(
                 state_meta=meta.cull_meta,
                 neighbor_meta=n_meta.cull_meta if n_meta else None,
                 direction=f_name,
-                block_pos=(x, y, z),
-                neighbor_pos=neighbor_pos,
+                block_pos=b_pos,
+                neighbor_pos=nb_pos,
             ):
                 continue
 
@@ -726,10 +764,12 @@ def generate_section_geometry_buffer(
     baker: Optional[StateBaker] = None,
     voxel_storage: Optional[Any] = None,
     weld_vertices: bool = True,
+    sec_coord: Optional[tuple[int, int, int]] = None,
 ) -> RawSectionGeometryBuffer:
     """
     Pure Python/NumPy geometry buffer generator for a section or world selection.
     100% decoupled from bpy/bmesh, suitable for parallel execution across CPU worker processes.
+    Leverages 18x18x18 Local Stride Grid for section-level O(1) face culling without hash map lookups.
     """
     buffer = RawSectionGeometryBuffer(weld_vertices=weld_vertices)
     AIR_STRINGS = (
@@ -738,9 +778,183 @@ def generate_section_geometry_buffer(
     )
     face_culler = get_shared_face_culler()
 
+    if not voxel_items:
+        return buffer
+
+    # Check if blocks can fit inside an 18x18x18 local stride grid
+    min_bx = min(pos[0] for pos, _ in voxel_items)
+    max_bx = max(pos[0] for pos, _ in voxel_items)
+    min_by = min(pos[1] for pos, _ in voxel_items)
+    max_by = max(pos[1] for pos, _ in voxel_items)
+    min_bz = min(pos[2] for pos, _ in voxel_items)
+    max_bz = max(pos[2] for pos, _ in voxel_items)
+
+    can_use_grid = (max_bx - min_bx <= 15 and max_by - min_by <= 15 and max_bz - min_bz <= 15)
+
+    grid: Optional[list[Optional[CachedStateMeta]]] = None
+    base_x = 0
+    base_y = 0
+    base_z = 0
+    is_standard_sec = False
+
+    if can_use_grid:
+        if sec_coord is not None:
+            cand_base_x = sec_coord[0] << 4
+            cand_base_y = sec_coord[1] << 4
+            cand_base_z = sec_coord[2] << 4
+            if (cand_base_x <= min_bx and max_bx <= cand_base_x + 15 and
+                cand_base_y <= min_by and max_by <= cand_base_y + 15 and
+                cand_base_z <= min_bz and max_bz <= cand_base_z + 15):
+                base_x, base_y, base_z = cand_base_x, cand_base_y, cand_base_z
+                is_standard_sec = True
+            else:
+                base_x, base_y, base_z = min_bx, min_by, min_bz
+        else:
+            base_x, base_y, base_z = min_bx, min_by, min_bz
+
+        grid = [None] * 5832
+
+        def _resolve_meta(st: str) -> Optional[CachedStateMeta]:
+            if not st or st in AIR_STRINGS or st.startswith("minecraft:air"):
+                return None
+            m = state_cache.get(st)
+            if not m:
+                if st in _GLOBAL_STATE_META_CACHE:
+                    m = _GLOBAL_STATE_META_CACHE[st]
+                elif mat_manager is not None and baker is not None:
+                    m = get_cached_state_meta(st, mat_manager, baker)
+                if m:
+                    state_cache[st] = m
+            return m
+
+        # 1. Populate interior 16x16x16
+        for (x, y, z), state_str in voxel_items:
+            m = _resolve_meta(state_str)
+            if m is not None:
+                lx = x - base_x + 1
+                ly = y - base_y + 1
+                lz = z - base_z + 1
+                if 1 <= lx <= 16 and 1 <= ly <= 16 and 1 <= lz <= 16:
+                    grid[lx * 324 + ly * 18 + lz] = m
+
+        # 2. Populate 6 boundary planes from _section_map or block_map
+        sec_map = getattr(voxel_storage, "_section_map", None)
+        if is_standard_sec and sec_map is not None and sec_coord is not None:
+            sx, sy, sz = sec_coord
+            # East: sx + 1 (adjacent plane nx == base_x + 16 -> lx = 17)
+            sec_e = sec_map.get((sx + 1, sy, sz))
+            if sec_e:
+                for (nx, ny, nz), n_st in sec_e.items():
+                    if nx == base_x + 16:
+                        m = _resolve_meta(n_st)
+                        if m is not None:
+                            grid[17 * 324 + (ny - base_y + 1) * 18 + (nz - base_z + 1)] = m
+
+            # West: sx - 1 (adjacent plane nx == base_x - 1 -> lx = 0)
+            sec_w = sec_map.get((sx - 1, sy, sz))
+            if sec_w:
+                for (nx, ny, nz), n_st in sec_w.items():
+                    if nx == base_x - 1:
+                        m = _resolve_meta(n_st)
+                        if m is not None:
+                            grid[0 * 324 + (ny - base_y + 1) * 18 + (nz - base_z + 1)] = m
+
+            # Up: sy + 1 (adjacent plane ny == base_y + 16 -> ly = 17)
+            sec_u = sec_map.get((sx, sy + 1, sz))
+            if sec_u:
+                for (nx, ny, nz), n_st in sec_u.items():
+                    if ny == base_y + 16:
+                        m = _resolve_meta(n_st)
+                        if m is not None:
+                            grid[(nx - base_x + 1) * 324 + 17 * 18 + (nz - base_z + 1)] = m
+
+            # Down: sy - 1 (adjacent plane ny == base_y - 1 -> ly = 0)
+            sec_d = sec_map.get((sx, sy - 1, sz))
+            if sec_d:
+                for (nx, ny, nz), n_st in sec_d.items():
+                    if ny == base_y - 1:
+                        m = _resolve_meta(n_st)
+                        if m is not None:
+                            grid[(nx - base_x + 1) * 324 + 0 * 18 + (nz - base_z + 1)] = m
+
+            # South: sz + 1 (adjacent plane nz == base_z + 16 -> lz = 17)
+            sec_s = sec_map.get((sx, sy, sz + 1))
+            if sec_s:
+                for (nx, ny, nz), n_st in sec_s.items():
+                    if nz == base_z + 16:
+                        m = _resolve_meta(n_st)
+                        if m is not None:
+                            grid[(nx - base_x + 1) * 324 + (ny - base_y + 1) * 18 + 17] = m
+
+            # North: sz - 1 (adjacent plane nz == base_z - 1 -> lz = 0)
+            sec_n = sec_map.get((sx, sy, sz - 1))
+            if sec_n:
+                for (nx, ny, nz), n_st in sec_n.items():
+                    if nz == base_z - 1:
+                        m = _resolve_meta(n_st)
+                        if m is not None:
+                            grid[(nx - base_x + 1) * 324 + (ny - base_y + 1) * 18 + 0] = m
+        elif block_map:
+            # Fallback direct coordinate lookups for the 6 boundary planes
+            for ly_idx in range(16):
+                cy = base_y + ly_idx
+                for lz_idx in range(16):
+                    cz = base_z + lz_idx
+                    st_w = block_map.get((base_x - 1, cy, cz))
+                    if st_w:
+                        m = _resolve_meta(st_w)
+                        if m is not None:
+                            grid[0 * 324 + (ly_idx + 1) * 18 + (lz_idx + 1)] = m
+                    st_e = block_map.get((base_x + 16, cy, cz))
+                    if st_e:
+                        m = _resolve_meta(st_e)
+                        if m is not None:
+                            grid[17 * 324 + (ly_idx + 1) * 18 + (lz_idx + 1)] = m
+
+            for lx_idx in range(16):
+                cx = base_x + lx_idx
+                for lz_idx in range(16):
+                    cz = base_z + lz_idx
+                    st_d = block_map.get((cx, base_y - 1, cz))
+                    if st_d:
+                        m = _resolve_meta(st_d)
+                        if m is not None:
+                            grid[(lx_idx + 1) * 324 + 0 * 18 + (lz_idx + 1)] = m
+                    st_u = block_map.get((cx, base_y + 16, cz))
+                    if st_u:
+                        m = _resolve_meta(st_u)
+                        if m is not None:
+                            grid[(lx_idx + 1) * 324 + 17 * 18 + (lz_idx + 1)] = m
+
+            for lx_idx in range(16):
+                cx = base_x + lx_idx
+                for ly_idx in range(16):
+                    cy = base_y + ly_idx
+                    st_n = block_map.get((cx, cy, base_z - 1))
+                    if st_n:
+                        m = _resolve_meta(st_n)
+                        if m is not None:
+                            grid[(lx_idx + 1) * 324 + (ly_idx + 1) * 18 + 0] = m
+                    st_s = block_map.get((cx, cy, base_z + 16))
+                    if st_s:
+                        m = _resolve_meta(st_s)
+                        if m is not None:
+                            grid[(lx_idx + 1) * 324 + (ly_idx + 1) * 18 + 17] = m
+
     for (x, y, z), state_str in voxel_items:
         if not state_str or state_str in AIR_STRINGS or state_str.startswith("minecraft:air"):
             continue
+        if grid is not None:
+            lx = x - base_x + 1
+            ly = y - base_y + 1
+            lz = z - base_z + 1
+            if 1 <= lx <= 16 and 1 <= ly <= 16 and 1 <= lz <= 16:
+                g_idx = lx * 324 + ly * 18 + lz
+            else:
+                g_idx = -1
+        else:
+            g_idx = -1
+
         c, p, f = generate_single_block_buffer_faces(
             buffer=buffer,
             x=x, y=y, z=z,
@@ -754,6 +968,8 @@ def generate_section_geometry_buffer(
             baker=baker,
             voxel_storage=voxel_storage,
             face_culler=face_culler,
+            grid=grid,
+            g_idx=g_idx,
         )
         buffer.cubes_count += c
         buffer.props_count += p
