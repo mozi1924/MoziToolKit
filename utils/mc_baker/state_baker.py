@@ -211,8 +211,13 @@ class StateBaker:
             pass
 
     @staticmethod
-    def _resolve_base_face_textures(short_name: str, props: dict[str, str], fallback: str) -> dict[str, str]:
+    def _resolve_base_face_textures(
+        short_name: str, props: dict[str, str], fallback: str, namespace: str = "minecraft"
+    ) -> dict[str, str]:
         """Resolve unrotated base 6-face texture stems in local model space."""
+        if namespace != "minecraft":
+            return {d: fallback for d in MC_DIRECTIONS}
+
         is_lit = props.get("lit") == "true"
 
         # 1. Furnace, Blast Furnace, Smoker
@@ -332,7 +337,7 @@ class StateBaker:
         # 15. Smart Derivative Fallbacks
         resolved_stem = _resolve_derivative_stem(short_name)
         if resolved_stem != short_name:
-            fallback = f"minecraft:block/{resolved_stem}"
+            fallback = f"{namespace}:block/{resolved_stem}"
 
         return {d: fallback for d in MC_DIRECTIONS}
 
@@ -341,22 +346,23 @@ class StateBaker:
         short_name: str,
         props: dict[str, str],
         fallback_texture: str,
-        resolved_textures: dict[str, str]
+        resolved_textures: dict[str, str],
+        namespace: str = "minecraft",
     ) -> list[dict]:
         """Construct fallback 1x1x1 cuboid elements with canonical face rotations matching official model templates."""
-        base_face_textures = self._resolve_base_face_textures(short_name, props, fallback_texture)
+        base_face_textures = self._resolve_base_face_textures(short_name, props, fallback_texture, namespace=namespace)
 
         rotations = {d: 0.0 for d in MC_DIRECTIONS}
-        if "command_block" in short_name or short_name in ("piston", "sticky_piston"):
+        if namespace == "minecraft" and ("command_block" in short_name or short_name in ("piston", "sticky_piston")):
             rotations["down"] = 180.0
             rotations["east"] = 90.0
             rotations["west"] = 270.0
-        elif "glazed_terracotta" in short_name:
+        elif namespace == "minecraft" and "glazed_terracotta" in short_name:
             rotations["north"] = 90.0
             rotations["south"] = 270.0
             rotations["east"] = 180.0
             rotations["west"] = 0.0
-        elif short_name == "observer":
+        elif namespace == "minecraft" and short_name == "observer":
             rotations["up"] = 180.0
         elif props.get("axis") in ("x", "z") or short_name.endswith(("_log", "_wood", "_stem", "_hyphae", "basalt", "hay_block", "bone_block")):
             if props.get("axis") in ("x", "z"):
@@ -384,8 +390,9 @@ class StateBaker:
             return self._bake_cache[state_str_clean]
 
         block_id, props = parse_block_state_string(state_str_clean)
+        namespace = block_id.split(":", 1)[0] if ":" in block_id else "minecraft"
         short_name = block_id.split(":", 1)[-1]
-        fallback_texture = f"minecraft:block/{short_name}"
+        fallback_texture = f"{namespace}:block/{short_name}"
         is_emissive = is_block_emissive(short_name, props)
 
         # 1. Resolve JSON blockstate variants and models first
@@ -429,7 +436,7 @@ class StateBaker:
                 raw_elements = sanitize_firefly_bush_elements(short_name, raw_elements)
             elif not has_json_elements:
                 raw_elements = self._resolve_base_face_elements(
-                    short_name, props, fallback_texture, resolved_model.get("textures", {})
+                    short_name, props, fallback_texture, resolved_model.get("textures", {}), namespace=namespace
                 )
             else:
                 raw_elements = []
@@ -514,7 +521,7 @@ class StateBaker:
                     if f and f.texture:
                         fallback_texture = f.texture
                         break
-                if fallback_texture != f"minecraft:block/{short_name}":
+                if fallback_texture != f"{namespace}:block/{short_name}":
                     break
 
         final_six_faces: list[BakedFace] = []

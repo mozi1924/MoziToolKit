@@ -155,7 +155,7 @@ class ModelParser:
             namespace, path = model_id.split(":", 1)
         else:
             namespace, path = "minecraft", model_id
-        if not path.startswith("block/") and not path.startswith("item/"):
+        if "/" not in path:
             path = f"block/{path}"
         return f"{namespace}:{path}"
 
