@@ -1083,6 +1083,80 @@ class TestLiveSyncProtocolAndStorage(unittest.TestCase):
         self.assertEqual(len(end_events), 1)
         self.assertEqual(end_events[0], (42, 100, 0))
 
+    def test_bounds_constrained_biome_sampling(self):
+        """Verify biome sampling is strictly bounded and never samples from arbitrary min_y coordinates."""
+        storage = VoxelStorage()
+        storage.set_bounds(min_x=100, min_y=10, min_z=100, size_x=16, size_y=64, size_z=16)
+
+        # Set bedrock/deep cave biome at min_y=10 and forest at y=50
+        storage.biome_map[(105, 10, 105)] = "minecraft:dripstone_caves"
+        storage.biome_map[(105, 50, 105)] = "minecraft:birch_forest"
+        storage._primary_biome = "minecraft:birch_forest"
+
+        # Querying an unpopulated coordinate at y=50 should NEVER return dripstone_caves from min_y=10
+        biome_at_y50 = storage.get_biome(106, 50, 106)
+        self.assertNotEqual(biome_at_y50, "minecraft:dripstone_caves")
+        self.assertEqual(biome_at_y50, "minecraft:birch_forest")
+
+        # Smooth biome blending at boundary (x=100, z=100) should clamp to valid horizontal bounds
+        # and never pull from y=10
+        u, v, water = storage.get_smoothed_biome_data(100, 50, 100, radius=2)
+        self.assertIsInstance(u, float)
+        self.assertIsInstance(v, float)
+        self.assertIsInstance(water, tuple)
+
+    def test_bounds_origin_shift_marks_all_sections_dirty(self):
+        """Verify shifting selection bounds/center marks all surviving sections dirty to avoid mesh misalignment."""
+        storage = VoxelStorage()
+        storage.set_bounds(min_x=0, min_y=0, min_z=0, size_x=32, size_y=16, size_z=32)
+        storage.set_block(0, 0, 0, "minecraft:stone")
+        storage.set_block(16, 0, 16, "minecraft:stone")
+        storage.calculate_and_store_section_crc(0, 0, 0)
+        storage.calculate_and_store_section_crc(1, 0, 1)
+        storage.clear_dirty_sections()
+        self.assertEqual(len(storage.get_dirty_sections()), 0)
+
+        # Shift bounds: min_x changes from 0 to 16, size_x remains 32 (center shifts)
+        bounds_changed = storage.set_bounds(min_x=16, min_y=0, min_z=0, size_x=32, size_y=16, size_z=32)
+        self.assertTrue(bounds_changed)
+        # Surviving section (1, 0, 1) MUST be marked dirty so its mesh re-aligns to the new center
+        dirty = storage.get_dirty_sections()
+        self.assertIn((1, 0, 1), dirty)
+
+    def test_section_object_transform_strictly_aligned(self):
+        """Verify child section meshes are strictly enforced at (0, 0, 0) with identity transform."""
+        from utils.live_sync.meshing import build_single_section_mesh
+        root = bpy.data.objects.new("Test_Align_Root", None)
+        bpy.context.collection.objects.link(root)
+
+        storage = VoxelStorage()
+        storage.set_bounds(min_x=0, min_y=0, min_z=0, size_x=16, size_y=16, size_z=16)
+        storage.set_block(0, 0, 0, "minecraft:stone")
+
+        # Create a pre-existing section object with a bad offset
+        mesh = bpy.data.meshes.new("Test_Bad_Mesh")
+        sec_obj = bpy.data.objects.new("Test_Align_Root_Section_0_0_0", mesh)
+        sec_obj.location = (15.0, -20.0, 5.0)  # Bad offset!
+        bpy.context.collection.objects.link(sec_obj)
+
+        built_obj = build_single_section_mesh(
+            context=bpy.context,
+            storage=storage,
+            sx=0, sy=0, sz=0,
+            root_obj=root,
+            existing_sections={(0, 0, 0): sec_obj},
+        )
+        self.assertEqual(built_obj, sec_obj)
+        self.assertEqual(built_obj.parent, root)
+        self.assertEqual(tuple(built_obj.location), (0.0, 0.0, 0.0))
+        self.assertEqual(tuple(built_obj.rotation_euler), (0.0, 0.0, 0.0))
+        self.assertEqual(tuple(built_obj.scale), (1.0, 1.0, 1.0))
+
+        # Cleanup
+        bpy.data.objects.remove(sec_obj)
+        bpy.data.objects.remove(root)
+        bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])

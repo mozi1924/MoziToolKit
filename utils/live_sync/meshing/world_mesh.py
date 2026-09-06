@@ -476,6 +476,16 @@ def build_single_section_mesh(
         if col:
             col.objects.link(sec_obj)
         existing_sections[(sx, sy, sz)] = sec_obj
+    else:
+        if sec_obj.parent != root_obj:
+            sec_obj.parent = root_obj
+        sec_obj.matrix_parent_inverse.identity()
+        if tuple(sec_obj.location) != (0.0, 0.0, 0.0):
+            sec_obj.location = (0.0, 0.0, 0.0)
+        if tuple(sec_obj.rotation_euler) != (0.0, 0.0, 0.0):
+            sec_obj.rotation_euler = (0.0, 0.0, 0.0)
+        if tuple(sec_obj.scale) != (1.0, 1.0, 1.0):
+            sec_obj.scale = (1.0, 1.0, 1.0)
 
     sec_obj["mtk:section_crc"] = str(storage.section_crc_map.get((sx, sy, sz), 0))
     sec_obj["mtk:section_pos"] = [sx, sy, sz]
@@ -506,6 +516,8 @@ def build_single_section_mesh(
         storage._known_empty_sections.add((sx, sy, sz))
     else:
         storage._known_empty_sections.discard((sx, sy, sz))
+
+    storage._dirty_sections.discard((sx, sy, sz))
 
     return sec_obj
 
@@ -748,6 +760,16 @@ def apply_block_delta_to_world(
                 sec_obj.scale = (1.0, 1.0, 1.0)
                 context.collection.objects.link(sec_obj)
                 existing_sections[(sx, sy, sz)] = sec_obj
+            else:
+                if sec_obj.parent != root_obj:
+                    sec_obj.parent = root_obj
+                sec_obj.matrix_parent_inverse.identity()
+                if tuple(sec_obj.location) != (0.0, 0.0, 0.0):
+                    sec_obj.location = (0.0, 0.0, 0.0)
+                if tuple(sec_obj.rotation_euler) != (0.0, 0.0, 0.0):
+                    sec_obj.rotation_euler = (0.0, 0.0, 0.0)
+                if tuple(sec_obj.scale) != (1.0, 1.0, 1.0):
+                    sec_obj.scale = (1.0, 1.0, 1.0)
 
             sec_obj["mtk:section_pos"] = [sx, sy, sz]
 

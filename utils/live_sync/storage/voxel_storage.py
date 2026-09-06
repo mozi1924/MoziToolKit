@@ -110,6 +110,7 @@ class VoxelStorage:
         self.size_z: int = 0
         self.block_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> state_str
         self.biome_map: Dict[Tuple[int, int, int], str] = {}  # (abs_x, abs_y, abs_z) -> biome_str
+        self._primary_biome: Optional[str] = None
         self._section_map: Dict[Tuple[int, int, int], Dict[Tuple[int, int, int], str]] = {}  # sec_pos -> {abs_pos: state_str}
         self._state_counts: Dict[str, int] = {}
         self.section_crc_map: Dict[Tuple[int, int, int], int] = {}  # (sec_x, sec_y, sec_z) -> uint32 crc
@@ -122,6 +123,7 @@ class VoxelStorage:
         """Clear all stored voxel and section data."""
         self.block_map.clear()
         self.biome_map.clear()
+        self._primary_biome = None
         self._section_map.clear()
         self._state_counts.clear()
         self.section_crc_map.clear()
@@ -240,7 +242,14 @@ class VoxelStorage:
         self.generation += 1
         self._smoothed_biome_cache.clear()
 
-        # 5. Identify seam/boundary sections that need CRC recalculation and face culling re-evaluation
+        # 5. Check if mesh reference origin / centering changed.
+        # If the coordinate center shifts, all surviving sections must be rebuilt to stay aligned.
+        old_origin = (old_min_x + old_size_x / 2.0, old_min_y, old_min_z + old_size_z / 2.0)
+        new_origin = (min_x + size_x / 2.0, min_y, min_z + size_z / 2.0)
+        if old_origin != new_origin:
+            self.mark_all_sections_dirty()
+
+        # Identify seam/boundary sections that need CRC recalculation and face culling re-evaluation
         surviving_sections = set(self._section_map.keys()) | set(self.section_crc_map.keys())
         for (sx, sy, sz) in surviving_sections:
             is_boundary = (
@@ -401,6 +410,8 @@ class VoxelStorage:
         palette_len = len(palette)
         has_biomes = bool(biome_palette and biome_indices and len(biome_indices) >= total_blocks)
         b_len = len(biome_palette) if biome_palette else 0
+        if biome_palette and not self._primary_biome:
+            self._primary_biome = biome_palette[0]
 
         for idx in range(min(total_blocks, len(grid_indices))):
             palette_idx = grid_indices[idx]
@@ -495,6 +506,8 @@ class VoxelStorage:
 
         has_biomes = bool(biome_palette and biome_indices and len(biome_indices) >= total_blocks)
         b_len = len(biome_palette) if biome_palette else 0
+        if biome_palette and not self._primary_biome:
+            self._primary_biome = biome_palette[0]
 
         sec_key = (sec_x, sec_y, sec_z)
         for idx in range(total_blocks):
@@ -536,8 +549,26 @@ class VoxelStorage:
         return True
 
     def get_biome(self, x: int, y: int, z: int) -> str:
-        """Return canonical biome registry ID at (x, y, z), defaulting to Plains."""
-        return self.biome_map.get((x, y, z)) or self.biome_map.get((x, self.min_y, z)) or "minecraft:plains"
+        """Return canonical biome registry ID at (x, y, z), strictly bounds-constrained."""
+        b = self.biome_map.get((x, y, z))
+        if b:
+            return b
+        # Fallback 1: Clamp horizontally to active selection at the exact same elevation y
+        if self.size_x > 0 and self.size_z > 0:
+            cx = min(max(x, self.min_x), self.min_x + self.size_x - 1)
+            cz = min(max(z, self.min_z), self.min_z + self.size_z - 1)
+            b = self.biome_map.get((cx, y, cz))
+            if b:
+                return b
+            # Fallback 2: Clamp fully in 3D
+            if self.size_y > 0:
+                cy = min(max(y, self.min_y), self.min_y + self.size_y - 1)
+                b = self.biome_map.get((cx, cy, cz))
+                if b:
+                    return b
+        if self._primary_biome:
+            return self._primary_biome
+        return "minecraft:plains"
 
     def get_smoothed_biome_data(
         self,
@@ -548,8 +579,9 @@ class VoxelStorage:
         Compute smooth Minecraft biome blending over (x ± radius, z ± radius) neighborhood.
         Returns (smoothed_u, smoothed_v, smoothed_water_linear_rgba).
         Uses precomputed weight kernels and session-level memoization for maximum throughput.
+        Neighbor sampling is strictly confined to the horizontal plane at height y within bounds.
         """
-        if not self.biome_map:
+        if not self.biome_map and not self._primary_biome:
             return (0.8, 0.4, (0.05, 0.17, 0.77, 0.8))
 
         cache_key = (x, y, z, radius)
@@ -559,7 +591,7 @@ class VoxelStorage:
 
         from ...materials.biome import get_biome_colors, get_colormap_uv
 
-        center_biome = self.biome_map.get((x, y, z)) or self.biome_map.get((x, self.min_y, z)) or "minecraft:plains"
+        center_biome = self.get_biome(x, y, z)
         if radius <= 0:
             bc = get_biome_colors(center_biome)
             u, v = get_colormap_uv(float(bc.get("temperature", 0.8)), float(bc.get("humidity", 0.4)))
@@ -578,13 +610,21 @@ class VoxelStorage:
         cached_colors: Dict[str, Tuple[float, float, Tuple[float, float, float, float]]] = {}
         kernel = _get_biome_weight_kernel(radius)
 
+        min_bound_x = self.min_x
+        max_bound_x = self.min_x + self.size_x - 1 if self.size_x > 0 else x
+        min_bound_z = self.min_z
+        max_bound_z = self.min_z + self.size_z - 1 if self.size_z > 0 else z
+
         for dx, dz, weight in kernel:
             bx, bz = x + dx, z + dz
-            b_name = self.biome_map.get((bx, y, bz))
-            if not b_name and self.size_y > 0:
-                b_name = self.biome_map.get((bx, self.min_y, bz))
-            if not b_name:
-                b_name = center_biome
+            # Strictly constrain sampling to valid selection coordinates at the same y height
+            if self.size_x > 0 and self.size_z > 0:
+                cbx = min(max(bx, min_bound_x), max_bound_x)
+                cbz = min(max(bz, min_bound_z), max_bound_z)
+            else:
+                cbx, cbz = bx, bz
+
+            b_name = self.biome_map.get((cbx, y, cbz)) or center_biome
 
             if b_name not in cached_colors:
                 bc = get_biome_colors(b_name)

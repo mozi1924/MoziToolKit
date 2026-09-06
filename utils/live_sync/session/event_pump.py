@@ -154,9 +154,9 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
     try:
         ProgressBar.update(current=95.0, total=100.0, message="Finalizing world mesh...")
 
-        # Clear any remaining dirty sections in storage
+        # Clear any remaining dirty sections in storage without freezing UI
         dirty_remaining = [s for s in session.storage.get_dirty_sections() if s in session.storage._section_map]
-        if dirty_remaining and target_obj:
+        if dirty_remaining and target_obj and len(dirty_remaining) <= 8:
             from ..meshing import build_single_section_mesh, find_root_section_children
             cur_mat = find_bound_atlas_material(target_obj)
             cur_atlas_params = session.get_cached_atlas_params(cur_mat)
