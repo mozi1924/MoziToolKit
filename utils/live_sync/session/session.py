@@ -436,8 +436,11 @@ class SyncSession:
                     return None
 
                 self.is_streaming = True
+                self.stream_phase = "BUILD"
+                self.server_stream_finished = True
                 self.stream_total_sections = len(sections_to_rebuild)
                 self.stream_received_sections = 0
+                self.stream_built_sections = 0
                 self.stream_last_drain_time = time.time()
 
                 for (sx, sy, sz) in sorted(sections_to_rebuild):
@@ -650,6 +653,30 @@ class SyncSession:
             ProgressBar.update(current=10.0, total=100.0, message=f"Preprocessing data (0/{total_sections})")
         _run_in_main_thread(update)
 
+    def start_building_mesh(self) -> None:
+        """Immediately transition from INGEST to BUILD phase once voxel data is ready."""
+        if self.stream_phase != "INGEST":
+            return
+        self.stream_phase = "BUILD"
+        # Determine sections to build
+        sections_to_build = list(self.stream_pending_sections)
+        self.stream_pending_sections.clear()
+        if not sections_to_build:
+            # Fallback to all sections in storage if pending was empty
+            sections_to_build = list(self.storage.get_all_sections())
+
+        self.stream_total_sections = max(1, len(sections_to_build))
+        self.stream_built_sections = 0
+
+        # Enqueue all sections into stream_section_queue for deterministic mesh building
+        for (sx, sy, sz) in sections_to_build:
+            self.stream_section_queue.put((sx, sy, sz, []))
+
+        ProgressBar.update(
+            current=30.0, total=100.0,
+            message=f"Building chunk (0/{self.stream_total_sections})"
+        )
+
     def handle_stream_end(self, stream_id: int, sent_sections: int, status: int) -> None:
         """Handle progressive stream end notice."""
         from ..constants import StreamStatus
@@ -669,29 +696,7 @@ class SyncSession:
         self.stream_last_drain_time = time.time()
 
         # Transition from INGEST to BUILD: all chunk data is now in memory!
-        def start_building():
-            if self.stream_phase == "INGEST":
-                self.stream_phase = "BUILD"
-                # Determine sections to build
-                sections_to_build = list(self.stream_pending_sections)
-                self.stream_pending_sections.clear()
-                if not sections_to_build:
-                    # Fallback to all sections in storage if pending was empty
-                    sections_to_build = list(self.storage.get_all_sections())
-
-                self.stream_total_sections = max(1, len(sections_to_build))
-                self.stream_built_sections = 0
-
-                # Enqueue all sections into stream_section_queue for deterministic mesh building
-                for (sx, sy, sz) in sections_to_build:
-                    self.stream_section_queue.put((sx, sy, sz, []))
-
-                ProgressBar.update(
-                    current=30.0, total=100.0,
-                    message=f"Building chunk (0/{self.stream_total_sections})"
-                )
-
-        _run_in_main_thread(start_building)
+        _run_in_main_thread(self.start_building_mesh)
 
     def stop(self) -> None:
         if self.client_thread:
