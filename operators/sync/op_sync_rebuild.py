@@ -104,7 +104,11 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             session.stream_built_sections = 0
             session.stream_last_drain_time = time.time()
             session.clear_caches()
+            if hasattr(session, "_queued_stream_sections"):
+                session._queued_stream_sections.clear()
             for (sx, sy, sz) in all_sections:
+                if hasattr(session, "_queued_stream_sections"):
+                    session._queued_stream_sections.add((sx, sy, sz))
                 session.stream_section_queue.put((sx, sy, sz, cur_palette))
 
             start_main_thread_pump()
