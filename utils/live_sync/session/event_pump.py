@@ -233,6 +233,8 @@ def _finalize_stream_sync(session, props: Any, target_obj: Optional[bpy.types.Ob
         session.stream_built_sections = 0
         session.stream_total_sections = 0
         session.stream_pending_sections.clear()
+        if hasattr(session, "_queued_stream_sections"):
+            session._queued_stream_sections.clear()
         session._reconciled_pass = False
         session._stream_state_cache = None
         session._existing_sections_cache = None
@@ -293,8 +295,8 @@ def _pump_main_thread_events() -> Optional[float]:
             # Immediate trigger: server stream has finished, or expected sections have arrived
             if session.server_stream_finished or (session.stream_total_sections > 0 and session.stream_received_sections >= session.stream_total_sections):
                 session.start_building_mesh()
-            elif is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 1.5):
-                # Fallback watchdog (1.5s of no network data received): transition to BUILD without idle wait
+            elif is_conn_dead or (session.stream_last_drain_time > 0 and drain_elapsed > 30.0):
+                # Fallback watchdog (30s of no network data received): transition to BUILD without idle wait
                 logger.warning(
                     "Live Sync: Stream ingestion completed/timed out for %s (%s of %s received, elapsed %.2fs). Transitioning to BUILD immediately.",
                     session.target_object_name, session.stream_received_sections, session.stream_total_sections, drain_elapsed
@@ -313,6 +315,8 @@ def _pump_main_thread_events() -> Optional[float]:
                 try:
                     item = session.stream_section_queue.get_nowait()
                     sec_x, sec_y, sec_z, palette = item
+                    if hasattr(session, "_queued_stream_sections"):
+                        session._queued_stream_sections.discard((sec_x, sec_y, sec_z))
                     session.stream_built_sections += 1
                     if palette:
                         session.accumulated_stream_palettes.update(palette)
@@ -355,7 +359,8 @@ def _pump_main_thread_events() -> Optional[float]:
 
             if sections_drained > 0:
                 session.stream_last_drain_time = time.time()
-                total_target = max(1, session.stream_total_sections)
+                total_target = max(1, session.stream_total_sections, session.stream_built_sections + session.stream_section_queue.qsize())
+                session.stream_total_sections = total_target
                 built_clamped = min(total_target, session.stream_built_sections)
                 frac = built_clamped / total_target
                 pct = int(30.0 + frac * 70.0)  # 30% to 100% during mesh building
