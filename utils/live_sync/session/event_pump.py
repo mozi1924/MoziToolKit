@@ -304,7 +304,11 @@ def _pump_main_thread_events() -> Optional[float]:
         elif session.is_streaming and session.stream_phase in ("BUILD", "IDLE"):
             # Phase 2: Deterministic mesh building (all chunk voxel data is already complete in storage)
             t_drain_start = time.perf_counter()
-            max_batch = 32
+            # If modal lock is active, grant a larger time budget (35ms) to process chunks rapidly while maintaining viewport responsiveness
+            is_modal_locked = bool(props and props.is_locked)
+            time_budget = 0.035 if is_modal_locked else 0.015
+            max_batch = 64 if is_modal_locked else 32
+
             while not session.stream_section_queue.empty() and sections_drained < max_batch:
                 try:
                     item = session.stream_section_queue.get_nowait()
@@ -344,7 +348,7 @@ def _pump_main_thread_events() -> Optional[float]:
                     sections_drained += 1
                     has_active_work = True
 
-                    if (time.perf_counter() - t_drain_start) > 0.015:
+                    if (time.perf_counter() - t_drain_start) > time_budget:
                         break
                 except queue.Empty:
                     break
@@ -356,7 +360,11 @@ def _pump_main_thread_events() -> Optional[float]:
                 frac = built_clamped / total_target
                 pct = int(30.0 + frac * 70.0)  # 30% to 100% during mesh building
 
-                if session.stream_section_queue.empty():
+                is_complete = session.stream_section_queue.empty() and (
+                    session.server_stream_finished or session.stream_built_sections >= total_target
+                )
+
+                if is_complete:
                     ProgressBar.update(
                         current=100.0, total=100.0,
                         message=f"Building chunk ({total_target}/{total_target})"
@@ -364,7 +372,7 @@ def _pump_main_thread_events() -> Optional[float]:
                     _finalize_stream_sync(session, props, target_obj, total_target)
                 else:
                     ProgressBar.update(
-                        current=pct, total=100.0,
+                        current=min(99.0, float(pct)), total=100.0,
                         message=f"Building chunk ({built_clamped}/{total_target})"
                     )
 

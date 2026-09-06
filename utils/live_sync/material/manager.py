@@ -146,6 +146,8 @@ class ResolvedFaceTexture(NamedTuple):
     # are often 64x64, so they need an additional local-space scale before
     # atlas projection.
     model_uv_scale: tuple[float, float] = (1.0, 1.0)
+    # Precomputed atlas UV coordinates tuple for the baked face loops
+    precomputed_uvs: Optional[tuple[tuple[float, float], ...]] = None
 
 
 class LiveSyncMaterialManager:

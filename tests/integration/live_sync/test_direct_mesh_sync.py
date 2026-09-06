@@ -1249,6 +1249,53 @@ class TestDirectMeshSync(unittest.TestCase):
         east_faces_sec0 = [p for p in m0.polygons if m0.attributes["mtk_face_dir"].data[p.index].value == 0]
         self.assertEqual(len(east_faces_sec0), 0, "Section 0 must reconcile and have 0 east faces (+X) after Section 1 arrives")
 
+    def test_stream_section_count_matches_scene_meshes(self):
+        """Verify stream_total_sections and stream_built_sections strictly match scene meshes, skipping air chunks and deduping."""
+        from utils.live_sync.session.session_manager import _session_manager, _pump_main_thread_events
+        from utils.live_sync.meshing import get_or_create_world_root, find_root_section_children
+        from utils.live_sync.session import session_manager
+
+        root = get_or_create_world_root(bpy.context, root_name="Stream_Count_Match_World")
+        session = _session_manager.get_or_create_session("Stream_Count_Match_World")
+        session.storage.set_bounds(0, 0, 0, 48, 16, 16)
+        session.is_streaming = True
+        session.stream_phase = "INGEST"
+        session.stream_pending_sections.clear()
+
+        indices_solid = [0] * 4096
+        indices_air = [0] * 4096
+
+        # 1. Section (0, 0, 0): solid stone
+        session.handle_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, ["minecraft:stone"], indices_solid)
+        # 2. Duplicate snapshot for Section (0, 0, 0)
+        session.handle_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, ["minecraft:stone"], indices_solid)
+        # 3. Section (1, 0, 0): solid dirt
+        session.handle_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, ["minecraft:dirt"], indices_solid)
+        # 4. Section (2, 0, 0): all-air
+        session.handle_section_snapshot(2, 0, 0, 32, 0, 0, 16, 16, 16, ["minecraft:air"], indices_air)
+
+        # Transition to BUILD
+        session.start_building_mesh()
+
+        # Should only queue the 2 non-empty sections (0, 0, 0) and (1, 0, 0)
+        self.assertEqual(session.stream_total_sections, 2)
+        self.assertEqual(session.stream_built_sections, 0)
+
+        # Run event pump to drain
+        session_manager._pump_timer_registered = True
+        for _ in range(10):
+            _pump_main_thread_events()
+            if not session.is_streaming:
+                break
+
+        # Verification:
+        children = find_root_section_children(root)
+        self.assertEqual(len(children), 2, "Scene should contain exactly 2 section meshes")
+        self.assertIn((0, 0, 0), children)
+        self.assertIn((1, 0, 0), children)
+        self.assertNotIn((2, 0, 0), children)
+        self.assertFalse(session.is_streaming, "Streaming should be finalized once queue is drained")
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
