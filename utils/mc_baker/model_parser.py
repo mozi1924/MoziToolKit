@@ -150,19 +150,19 @@ class ModelParser:
     def register_model(self, model_id: str, data: dict[str, Any]):
         self._model_cache[self._normalize_id(model_id)] = data
 
-    def _normalize_id(self, model_id: str) -> str:
+    def _normalize_id(self, model_id: str, default_namespace: str = "minecraft") -> str:
         if not model_id:
             return ""
         if ":" in model_id:
             namespace, path = model_id.split(":", 1)
         else:
-            namespace, path = "minecraft", model_id
+            namespace, path = default_namespace, model_id
         if "/" not in path:
             path = f"block/{path}"
         return f"{namespace}:{path}"
 
-    def load_raw_model(self, model_id: str) -> Optional[dict[str, Any]]:
-        norm_id = self._normalize_id(model_id)
+    def load_raw_model(self, model_id: str, default_namespace: str = "minecraft") -> Optional[dict[str, Any]]:
+        norm_id = self._normalize_id(model_id, default_namespace=default_namespace)
         if norm_id in self._model_cache:
             return copy.deepcopy(self._model_cache[norm_id])
 
@@ -177,27 +177,48 @@ class ModelParser:
 
         return None
 
-    def resolve_model(self, model_id: str) -> dict[str, Any]:
+    def resolve_model(
+        self,
+        model_or_id: Union[str, dict[str, Any]],
+        extra_textures: Optional[dict[str, Any]] = None,
+        visited_models: Optional[set[str]] = None,
+    ) -> dict[str, Any]:
         hierarchy: list[dict[str, Any]] = []
-        visited = set()
-        current_id = self._normalize_id(model_id)
+        visited = set(visited_models) if visited_models else set()
+
+        if isinstance(model_or_id, dict):
+            hierarchy.append(copy.deepcopy(model_or_id))
+            parent = model_or_id.get("parent")
+            root_model_id = model_or_id.get("model_id", "")
+            default_namespace = root_model_id.split(":", 1)[0] if ":" in root_model_id else "minecraft"
+            current_id = self._normalize_id(parent, default_namespace=default_namespace) if parent else None
+            synth_id = root_model_id or f"dict_{id(model_or_id)}"
+            if synth_id in visited:
+                raise ValueError(f"Circular parent reference in model {synth_id}")
+            visited.add(synth_id)
+        else:
+            root_model_id = self._normalize_id(model_or_id)
+            default_namespace = root_model_id.split(":", 1)[0] if ":" in root_model_id else "minecraft"
+            current_id = root_model_id
 
         while current_id:
             if current_id in visited:
                 raise ValueError(f"Circular parent reference in model {current_id}")
             visited.add(current_id)
 
-            raw = self.load_raw_model(current_id)
+            raw = self.load_raw_model(current_id, default_namespace=default_namespace)
             if not raw:
                 break
             hierarchy.append(raw)
             parent = raw.get("parent")
             if parent:
-                current_id = self._normalize_id(parent)
+                current_id = self._normalize_id(parent, default_namespace=default_namespace)
             else:
                 current_id = None
 
         merged_textures: dict[str, Any] = {}
+        if extra_textures:
+            merged_textures.update(extra_textures)
         elements: Optional[list[dict[str, Any]]] = None
         ambientocclusion = True
 
@@ -211,16 +232,48 @@ class ModelParser:
 
         resolved_textures = self._resolve_texture_map(merged_textures)
 
-        # Check if this model is backed by an OBJ mesh (direct .obj or Forge/NeoForge OBJ loader)
+        # 1. Check for separate-transforms loader (e.g. "loader": "forge:separate-transforms")
+        for m in hierarchy:
+            if m.get("loader") in ("forge:separate-transforms", "neoforge:separate-transforms") and "base" in m:
+                base_spec = m["base"]
+                if isinstance(base_spec, str):
+                    base_id = self._normalize_id(base_spec, default_namespace=default_namespace)
+                    res = self.resolve_model(base_id, extra_textures=resolved_textures, visited_models=visited)
+                elif isinstance(base_spec, dict):
+                    res = self.resolve_model(base_spec, extra_textures=resolved_textures, visited_models=visited)
+                else:
+                    break
+                res["model_id"] = root_model_id or res.get("model_id", "")
+                return res
+
+        # 2. Check for composite loader (e.g. "loader": "forge:composite" / "neoforge:composite" or "children" present)
+        is_composite = any(
+            m.get("loader") in ("forge:composite", "neoforge:composite") or "children" in m
+            for m in hierarchy
+        )
+        if is_composite:
+            return self._resolve_composite_model(
+                hierarchy=hierarchy,
+                root_model_id=root_model_id,
+                default_namespace=default_namespace,
+                resolved_textures=resolved_textures,
+                ambientocclusion=ambientocclusion,
+                visited=visited,
+            )
+
+        # 3. Check if this model is backed by an OBJ mesh (direct .obj or Forge/NeoForge OBJ loader)
         raw_obj = None
         for m in hierarchy:
             if m.get("_is_obj"):
                 raw_obj = m.get("_raw_obj")
                 break
-            elif m.get("loader") in ("forge:obj", "neoforge:obj"):
+            elif m.get("loader") in ("forge:obj", "neoforge:obj") or (isinstance(m.get("model"), str) and m.get("model", "").endswith(".obj")):
+                if "_raw_obj" in m:
+                    raw_obj = m["_raw_obj"]
+                    break
                 obj_ref = m.get("model", "")
                 if obj_ref:
-                    raw_model_data = self.load_raw_model(obj_ref)
+                    raw_model_data = self.load_raw_model(obj_ref, default_namespace=default_namespace)
                     if raw_model_data and raw_model_data.get("_raw_obj"):
                         raw_obj = raw_model_data.get("_raw_obj")
                         break
@@ -251,7 +304,7 @@ class ModelParser:
                         "_is_obj_element": True,
                     })
                 return {
-                    "model_id": self._normalize_id(model_id),
+                    "model_id": root_model_id or self._normalize_id(model_or_id if isinstance(model_or_id, str) else ""),
                     "textures": resolved_textures,
                     "elements": resolved_elements,
                     "ambientocclusion": ambientocclusion,
@@ -276,11 +329,98 @@ class ModelParser:
                 resolved_elements.append(elem_copy)
 
         return {
-            "model_id": self._normalize_id(model_id),
+            "model_id": root_model_id or (self._normalize_id(model_or_id) if isinstance(model_or_id, str) else ""),
             "textures": resolved_textures,
             "elements": resolved_elements,
             "ambientocclusion": ambientocclusion,
         }
+
+    def _resolve_composite_model(
+        self,
+        hierarchy: list[dict[str, Any]],
+        root_model_id: str,
+        default_namespace: str,
+        resolved_textures: dict[str, Any],
+        ambientocclusion: bool,
+        visited: set[str],
+    ) -> dict[str, Any]:
+        merged_visibility: dict[str, bool] = {}
+        for m in reversed(hierarchy):
+            if "visibility" in m and isinstance(m["visibility"], dict):
+                for k, v in m["visibility"].items():
+                    if isinstance(v, str):
+                        merged_visibility[k] = v.lower() not in ("false", "0")
+                    else:
+                        merged_visibility[k] = bool(v)
+
+        merged_children: dict[str, Any] = {}
+        for m in reversed(hierarchy):
+            if "children" in m:
+                raw_ch = m["children"]
+                if isinstance(raw_ch, dict):
+                    merged_children.update(raw_ch)
+                elif isinstance(raw_ch, list):
+                    for idx, item in enumerate(raw_ch):
+                        merged_children[f"part_{idx}"] = item
+
+        parts_order: Optional[list[str]] = None
+        for m in reversed(hierarchy):
+            if "parts" in m and isinstance(m["parts"], list):
+                parts_order = [p for p in m["parts"] if isinstance(p, str)]
+
+        if parts_order:
+            ordered_keys = [k for k in parts_order if k in merged_children]
+            ordered_keys.extend([k for k in merged_children if k not in ordered_keys])
+        else:
+            ordered_keys = list(merged_children.keys())
+
+        composite_elements: list[dict[str, Any]] = []
+        composite_textures: dict[str, str] = dict(resolved_textures)
+
+        for part_name in ordered_keys:
+            if not merged_visibility.get(part_name, True):
+                continue
+            child_spec = merged_children[part_name]
+            child_res = self._resolve_composite_child(
+                child_spec,
+                default_namespace=default_namespace,
+                extra_textures=resolved_textures,
+                visited_models=visited,
+            )
+            if child_res:
+                if "textures" in child_res and isinstance(child_res["textures"], dict):
+                    composite_textures.update(child_res["textures"])
+                if "elements" in child_res and isinstance(child_res["elements"], list):
+                    composite_elements.extend(child_res["elements"])
+
+        return {
+            "model_id": root_model_id,
+            "textures": composite_textures,
+            "elements": composite_elements,
+            "ambientocclusion": ambientocclusion,
+        }
+
+    def _resolve_composite_child(
+        self,
+        child_spec: Union[str, dict[str, Any]],
+        default_namespace: str = "minecraft",
+        extra_textures: Optional[dict[str, Any]] = None,
+        visited_models: Optional[set[str]] = None,
+    ) -> Optional[dict[str, Any]]:
+        if isinstance(child_spec, str):
+            child_id = self._normalize_id(child_spec, default_namespace=default_namespace)
+            return self.resolve_model(child_id, extra_textures=extra_textures, visited_models=visited_models)
+
+        if not isinstance(child_spec, dict):
+            return None
+
+        child_copy = copy.deepcopy(child_spec)
+        if "parent" in child_copy and isinstance(child_copy["parent"], str):
+            parent_ref = child_copy["parent"]
+            if ":" not in parent_ref:
+                child_copy["parent"] = f"{default_namespace}:{parent_ref}"
+
+        return self.resolve_model(child_copy, extra_textures=extra_textures, visited_models=visited_models)
 
     def _resolve_texture_map(self, raw_textures: dict[str, Any]) -> dict[str, str]:
         resolved: dict[str, str] = {}
