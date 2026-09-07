@@ -83,51 +83,58 @@ class MOZI_OT_modal_pipeline_runner(bpy.types.Operator):
                 self.report({level}, msg)
             return {"CANCELLED"}
 
-        # 2. Timer tick: advance pipeline execution by one chunk
+        # 2. Timer tick: advance pipeline execution with time budget chunking
         if event.type == "TIMER":
-            try:
-                item = next(generator)
+            import time
+            start_tick = time.perf_counter()
+            time_budget = 0.020  # 20ms per modal tick to maintain 50 FPS UI responsiveness without latency starvation
 
-                if isinstance(item, ProgressUpdate):
-                    pct = int(item.fraction * 100.0)
-                    ProgressBar.update(current=pct, total=100.0, message=item.message, context=context)
-                    return {"RUNNING_MODAL"}
+            while True:
+                try:
+                    item = next(generator)
 
-                elif isinstance(item, StepResult):
-                    # ``Pipeline.execute_iter`` yields its final result before
-                    # returning. Exhaust it before dropping the last runner
-                    # reference, otherwise Python closes the suspended
-                    # generator at ``yield last_result`` and a debugger shows
-                    # a misleading GeneratorExit.
-                    self._drain_generator(generator)
-                    ProgressBar.finish(item.message if item.is_success else "Failed", context=context)
+                    if isinstance(item, ProgressUpdate):
+                        pct = int(item.fraction * 100.0)
+                        ProgressBar.update(current=pct, total=100.0, message=item.message, context=context)
+                        # If time budget exhausted, yield back to Blender's event loop
+                        if (time.perf_counter() - start_tick) >= time_budget:
+                            return {"RUNNING_MODAL"}
+
+                    elif isinstance(item, StepResult):
+                        # ``Pipeline.execute_iter`` yields its final result before
+                        # returning. Exhaust it before dropping the last runner
+                        # reference, otherwise Python closes the suspended
+                        # generator at ``yield last_result`` and a debugger shows
+                        # a misleading GeneratorExit.
+                        self._drain_generator(generator)
+                        ProgressBar.finish(item.message if item.is_success else "Failed", context=context)
+                        self._cleanup(context)
+                        if on_finish:
+                            on_finish(item, ctx)
+                        for level, msg in ctx.reports:
+                            self.report({level}, msg)
+                        return {"FINISHED"} if item.is_success else {"CANCELLED"}
+
+                except StopIteration:
+                    ProgressBar.finish("Finished", context=context)
                     self._cleanup(context)
+                    res = StepResult.success("Pipeline finished.")
                     if on_finish:
-                        on_finish(item, ctx)
+                        on_finish(res, ctx)
                     for level, msg in ctx.reports:
                         self.report({level}, msg)
-                    return {"FINISHED"} if item.is_success else {"CANCELLED"}
+                    return {"FINISHED"}
 
-            except StopIteration:
-                ProgressBar.finish("Finished", context=context)
-                self._cleanup(context)
-                res = StepResult.success("Pipeline finished.")
-                if on_finish:
-                    on_finish(res, ctx)
-                for level, msg in ctx.reports:
-                    self.report({level}, msg)
-                return {"FINISHED"}
-
-            except Exception as e:
-                ProgressBar.cancel(f"Error: {e}", context=context)
-                self._cleanup(context)
-                err_res = StepResult.failed(f"Pipeline error: {e}")
-                ctx.report("ERROR", err_res.message)
-                if on_finish:
-                    on_finish(err_res, ctx)
-                for level, msg in ctx.reports:
-                    self.report({level}, msg)
-                return {"CANCELLED"}
+                except Exception as e:
+                    ProgressBar.cancel(f"Error: {e}", context=context)
+                    self._cleanup(context)
+                    err_res = StepResult.failed(f"Pipeline error: {e}")
+                    ctx.report("ERROR", err_res.message)
+                    if on_finish:
+                        on_finish(err_res, ctx)
+                    for level, msg in ctx.reports:
+                        self.report({level}, msg)
+                    return {"CANCELLED"}
 
         # 3. Lock user interaction: consume all clicks/keys so scene isn't altered during execution
         return {"RUNNING_MODAL"}

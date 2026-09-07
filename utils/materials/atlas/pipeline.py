@@ -17,6 +17,7 @@ from ..constants import (
     ATTR_ATLAS_TEXTURE_ID,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
+    ATTR_UV_TILING_SCALE,
     ATTR_UV_TILING_TRANSFORM,
     ATTR_MATERIAL_PROPS,
     ATTR_SOURCE_TEXTURE_KEY,
@@ -66,6 +67,7 @@ from ..pipeline.session import (
     cached_face_texture_info,
     get_polygon_material_indices,
     name_replaced_material,
+    build_existing_replacement_index,
     find_existing_replacement,
     apply_mesh_face_materials_and_provenance,
     apply_generic_procedural_atlas_material,
@@ -175,6 +177,8 @@ class AtlasReplacementEngine:
             slot_materials, material_cache = build_material_face_cache(obj, mesh)
             source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
             material_indices = get_polygon_material_indices(mesh)
+            slot_chunk_cache: dict[int, Optional[int]] = {}
+
             for poly_idx, material_index in enumerate(material_indices):
                 scanned_faces += 1
                 if scanned_faces % 10_000 == 0:
@@ -191,12 +195,28 @@ class AtlasReplacementEngine:
                 state = material_cache[slot_mat]
                 if state["is_internal"]:
                     continue
+
+                source_key = source_keys[poly_idx] if poly_idx < len(source_keys) else ""
+                orig_mode = state["mode"]
+                can_use_slot_cache = (not source_key) and (orig_mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS"))
+
+                if can_use_slot_cache and material_index in slot_chunk_cache:
+                    cached_cid = slot_chunk_cache[material_index]
+                    if cached_cid is not None:
+                        required_chunk_ids.add(cached_cid)
+                    continue
+
                 namespace, candidates, _old_loc = cached_face_texture_info(
-                    mesh, poly_idx, slot_mat, state, source_keys[poly_idx]
+                    mesh, poly_idx, slot_mat, state, source_key
                 )
                 loc = resolver.lookup_texture(candidates, namespace=namespace)
                 if loc is not None:
-                    required_chunk_ids.add(int(loc["chunk_id"]))
+                    cid = int(loc["chunk_id"])
+                    required_chunk_ids.add(cid)
+                    if can_use_slot_cache:
+                        slot_chunk_cache[material_index] = cid
+                elif can_use_slot_cache:
+                    slot_chunk_cache[material_index] = None
 
         if generic_procedural_objects or not required_chunk_ids:
             static_chunks = [int(c["chunk_id"]) for c in mapping_data.get("chunks", []) if c.get("kind") == "static"]
@@ -240,6 +260,7 @@ class AtlasReplacementEngine:
         )
 
         session_materials = {}
+        existing_materials_index = build_existing_replacement_index()
         biome_resolver = BiomeResolver()
         if pack_stack:
             biome_resolver.load_from_pack_stack(pack_stack)
@@ -251,10 +272,8 @@ class AtlasReplacementEngine:
             if texture_key in session_materials:
                 return session_materials[texture_key], False
 
-            canonical_mat = find_existing_replacement(texture_info, effective_pack_hash)
+            canonical_mat = find_existing_replacement(texture_info, effective_pack_hash, existing_materials_index)
             if canonical_mat:
-                rebuild_material(canonical_mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash, biome_preset=biome_preset, pack_stack=pack_stack)
-                name_replaced_material(canonical_mat, texture_info, effective_pack_hash)
                 session_materials[texture_key] = canonical_mat
                 return canonical_mat, False
 
@@ -266,6 +285,10 @@ class AtlasReplacementEngine:
 
             name_replaced_material(mat, texture_info, effective_pack_hash)
             session_materials[texture_key] = mat
+            idx_key = (texture_info["namespace"], texture_info["texture_name"])
+            if idx_key not in existing_materials_index:
+                existing_materials_index[idx_key] = []
+            existing_materials_index[idx_key].append(mat)
             return mat, True
 
         replaced_objects = 0
@@ -317,6 +340,9 @@ class AtlasReplacementEngine:
             ]
             poly_updated = False
 
+            # Slot fast path for faces that don't depend on per-face attributes
+            slot_atlas_cache: dict[int, Any] = {}
+
             total_polys = max(1, len(mesh.polygons))
             for poly_idx, material_index in enumerate(material_indices):
                 if poly_idx > 0 and poly_idx % 2000 == 0:
@@ -357,6 +383,33 @@ class AtlasReplacementEngine:
 
                     old_mapping = state["mapping"]
                     orig_mode = state["mode"]
+
+                    can_use_slot_cache = (not source_key) and (orig_mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS"))
+                    if can_use_slot_cache and material_index in slot_atlas_cache:
+                        cached_entry = slot_atlas_cache[material_index]
+                        if cached_entry["type"] == "atlas":
+                            new_location = cached_entry["location"]
+                            chunk_ids[poly_idx] = cached_entry["chunk_id"]
+                            texture_ids[poly_idx] = cached_entry["texture_id"]
+                            anim_frames[poly_idx] = cached_entry["anim_frames"]
+                            anim_frametimes[poly_idx] = cached_entry["anim_frametimes"]
+                            anim_interps[poly_idx] = cached_entry["anim_interps"]
+                            anim_widths[poly_idx] = cached_entry["anim_widths"]
+                            anim_heights[poly_idx] = cached_entry["anim_heights"]
+                            poly_tint_map[poly_idx] = new_location
+                            resolved_locations[poly_idx] = (new_location, None, orig_mode, old_mapping)
+                            source_keys[poly_idx] = cached_entry["source_key"]
+                            source_origins[poly_idx] = source_origins[poly_idx] or state["origin"]
+                            poly_updated = True
+                            continue
+                        elif cached_entry["type"] == "standalone":
+                            resolved_standalone[poly_idx] = (cached_entry["mat"], None, orig_mode, old_mapping)
+                            source_keys[poly_idx] = cached_entry["source_key"]
+                            source_origins[poly_idx] = source_origins[poly_idx] or state["origin"]
+                            poly_tint_map[poly_idx] = cached_entry["tint"]
+                            poly_updated = True
+                            continue
+
                     namespace, candidates, old_loc = cached_face_texture_info(
                         mesh, poly_idx, orig_mat, state, source_key
                     )
@@ -364,29 +417,52 @@ class AtlasReplacementEngine:
                 new_location = resolver.lookup_texture(candidates, namespace=namespace)
 
                 if new_location is not None:
-                    chunk_ids[poly_idx] = float(new_location["chunk_id"])
-                    texture_ids[poly_idx] = float(new_location["texture_id"])
+                    cid = float(new_location["chunk_id"])
+                    tid = float(new_location["texture_id"])
+                    chunk_ids[poly_idx] = cid
+                    texture_ids[poly_idx] = tid
                     if new_location.get("kind") == "animation":
-                        anim_frames[poly_idx] = float(new_location.get("frame_count", 1))
-                        anim_frametimes[poly_idx] = float(new_location.get("frametime", 1))
-                        anim_interps[poly_idx] = 1.0 if new_location.get("interpolate", False) else 0.0
-                        anim_widths[poly_idx] = float(new_location.get("frame_width", 16))
-                        anim_heights[poly_idx] = float(new_location.get("frame_height", 16))
+                        a_frames = float(new_location.get("frame_count", 1))
+                        a_frametimes = float(new_location.get("frametime", 1))
+                        a_interps = 1.0 if new_location.get("interpolate", False) else 0.0
+                        a_widths = float(new_location.get("frame_width", 16))
+                        a_heights = float(new_location.get("frame_height", 16))
                     else:
-                        anim_frames[poly_idx] = 1.0
-                        anim_frametimes[poly_idx] = 1.0
-                        anim_interps[poly_idx] = 0.0
-                        anim_widths[poly_idx] = float(new_location.get("frame_width", 16))
-                        anim_heights[poly_idx] = float(new_location.get("frame_height", 16))
+                        a_frames = 1.0
+                        a_frametimes = 1.0
+                        a_interps = 0.0
+                        a_widths = float(new_location.get("frame_width", 16))
+                        a_heights = float(new_location.get("frame_height", 16))
+
+                    anim_frames[poly_idx] = a_frames
+                    anim_frametimes[poly_idx] = a_frametimes
+                    anim_interps[poly_idx] = a_interps
+                    anim_widths[poly_idx] = a_widths
+                    anim_heights[poly_idx] = a_heights
 
                     poly_tint_map[poly_idx] = new_location
                     resolved_locations[poly_idx] = (new_location, old_loc, orig_mode, old_mapping)
                     target_namespace, target_texture = split_texture_key(
                         new_location.get("texture_key", candidates[0])
                     )
-                    source_keys[poly_idx] = canonical_texture_key(target_namespace, target_texture)
-                    source_origins[poly_idx] = source_origins[poly_idx] or state["origin"]
+                    s_key = canonical_texture_key(target_namespace, target_texture)
+                    source_keys[poly_idx] = s_key
+                    source_origins[poly_idx] = source_origins[poly_idx] or (state["origin"] if state else "")
                     poly_updated = True
+
+                    if orig_mat and (not source_key) and (orig_mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS")):
+                        slot_atlas_cache[material_index] = {
+                            "type": "atlas",
+                            "location": new_location,
+                            "chunk_id": cid,
+                            "texture_id": tid,
+                            "anim_frames": a_frames,
+                            "anim_frametimes": a_frametimes,
+                            "anim_interps": a_interps,
+                            "anim_widths": a_widths,
+                            "anim_heights": a_heights,
+                            "source_key": s_key,
+                        }
                 else:
                     # Non-atlas texture fallback
                     fallback_tex_info = None
@@ -408,13 +484,23 @@ class AtlasReplacementEngine:
                         mat, _is_new = get_or_create_replacement_material(fallback_tex_info)
                         if mat:
                             resolved_standalone[poly_idx] = (mat, old_loc, orig_mode, old_mapping)
-                            source_keys[poly_idx] = canonical_texture_key(
+                            s_key = canonical_texture_key(
                                 fallback_tex_info["namespace"],
                                 fallback_tex_info.get("texture_key", fallback_tex_info["texture_name"]),
                             )
-                            source_origins[poly_idx] = source_origins[poly_idx] or state["origin"]
-                            poly_tint_map[poly_idx] = fallback_tex_info.get("tint_info") or biome_resolver.get_tint_info(fallback_tex_info["texture_name"])
+                            source_keys[poly_idx] = s_key
+                            source_origins[poly_idx] = source_origins[poly_idx] or (state["origin"] if state else "")
+                            t_info = fallback_tex_info.get("tint_info") or biome_resolver.get_tint_info(fallback_tex_info["texture_name"])
+                            poly_tint_map[poly_idx] = t_info
                             poly_updated = True
+
+                            if orig_mat and (not source_key) and (orig_mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS")):
+                                slot_atlas_cache[material_index] = {
+                                    "type": "standalone",
+                                    "mat": mat,
+                                    "source_key": s_key,
+                                    "tint": t_info,
+                                }
                             continue
 
                     # Retain the source identity, but render the stable atlas
@@ -427,7 +513,7 @@ class AtlasReplacementEngine:
                     resolved_locations[poly_idx] = (new_location, old_loc, orig_mode, old_mapping)
                     if not source_keys[poly_idx] and candidates:
                         source_keys[poly_idx] = canonical_texture_key(namespace, candidates[0])
-                    source_origins[poly_idx] = source_origins[poly_idx] or state["origin"]
+                    source_origins[poly_idx] = source_origins[poly_idx] or (state["origin"] if state else "")
                     poly_updated = True
                     unresolved_faces.append(poly_idx)
 
@@ -441,8 +527,22 @@ class AtlasReplacementEngine:
 
             if poly_updated:
                 if uv_layer is not None:
+                    has_packed_tiling = (
+                        ATTR_UV_TILING_TRANSFORM in mesh.attributes
+                        and mesh.attributes[ATTR_UV_TILING_TRANSFORM].domain == "FACE"
+                        and mesh.attributes[ATTR_UV_TILING_TRANSFORM].data_type == "FLOAT_COLOR"
+                    )
+                    has_uv_rot_attr = (
+                        "mtk_uv_rotation" in mesh.attributes
+                        and mesh.attributes["mtk_uv_rotation"].domain == "FACE"
+                        and mesh.attributes["mtk_uv_rotation"].data_type == "FLOAT"
+                    )
+                    has_any_tiling = has_packed_tiling or (ATTR_UV_TILING_SCALE in mesh.attributes)
+                    is_yefira_obj = _object_is_yefira(obj)
+                    polygons = mesh.polygons
+
                     for poly_idx, resolved in enumerate(resolved_locations):
-                        if poly_idx > 0 and poly_idx % 2000 == 0:
+                        if poly_idx > 0 and poly_idx % 5000 == 0:
                             if pipeline_context.is_cancelled:
                                 yield StepResult.cancelled("Material replacement cancelled by user.")
                                 return
@@ -452,7 +552,7 @@ class AtlasReplacementEngine:
                         if resolved is None:
                             continue
                         new_location, old_loc, orig_mode, old_mapping = resolved
-                        polygon = mesh.polygons[poly_idx]
+                        polygon = polygons[poly_idx]
                         target_chunk = chunks_by_id[int(new_location["chunk_id"])]
 
                         old_chunk = None
@@ -474,8 +574,12 @@ class AtlasReplacementEngine:
                         remap_face_uv_to_local(polygon, uv_layer, orig_mode, old_loc, old_chunk, old_anim_info)
 
                         if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-                            old_tiling_scale, old_tiling_location = read_face_tiling(mesh, poly_idx)
-                            old_tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx)
+                            if has_any_tiling:
+                                old_tiling_scale, old_tiling_location = read_face_tiling(mesh, poly_idx)
+                            else:
+                                old_tiling_scale, old_tiling_location = (1.0, 1.0, 1.0), (0.0, 0.0, 0.0)
+
+                            old_tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx) if has_uv_rot_attr else 0.0
                             restore_face_atlas_tiling(polygon, uv_layer, old_tiling_scale, old_tiling_location, old_tiling_rotation)
 
                         if obj_needs_tiling and face_uv_requires_atlas_tiling(polygon, uv_layer):
@@ -484,10 +588,8 @@ class AtlasReplacementEngine:
                             uv_tiling_locations[poly_idx] = location
 
                         tex_name = new_location.get("texture_name") or new_location.get("texture_key") or (source_keys[poly_idx] if poly_idx < len(source_keys) else "")
-                        if is_fluid_texture_name(tex_name) and orig_mode == "GENERIC" and not _object_is_yefira(obj):
+                        if is_fluid_texture_name(tex_name) and orig_mode == "GENERIC" and not is_yefira_obj:
                             normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_name)
-
-
 
                         remap_polygon_loop_uvs(
                             polygon=polygon,

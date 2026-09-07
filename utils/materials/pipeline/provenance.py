@@ -113,12 +113,21 @@ def write_face_source_provenance(
         return attr or mesh.attributes.new(name=name, type="STRING", domain="FACE")
 
     key_attr = string_face_attribute(ATTR_SOURCE_TEXTURE_KEY)
+    encoded_cache: dict[str, bytes] = {}
     for item, key in zip(key_attr.data, texture_keys):
-        item.value = key.encode("utf-8")
+        b = encoded_cache.get(key)
+        if b is None:
+            b = key.encode("utf-8")
+            encoded_cache[key] = b
+        item.value = b
     if origins is not None:
         origin_attr = string_face_attribute(ATTR_SOURCE_ORIGIN)
         for item, origin in zip(origin_attr.data, origins):
-            item.value = origin.encode("utf-8")
+            b = encoded_cache.get(origin)
+            if b is None:
+                b = origin.encode("utf-8")
+                encoded_cache[origin] = b
+            item.value = b
 
 
 def get_face_source_origin(mesh: bpy.types.Mesh, poly_idx: int) -> str:

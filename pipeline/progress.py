@@ -180,6 +180,8 @@ class ProgressBar:
 
         cls._tag_redraw(ctx)
 
+    _last_redraw_time: float = 0.0
+
     @classmethod
     def _cancel_pending_dismiss(cls) -> None:
         cls._dismiss_timer_registered = False
@@ -202,7 +204,14 @@ class ProgressBar:
         cls._tag_redraw(ctx)
 
     @classmethod
-    def _tag_redraw(cls, context: Optional[bpy.types.Context] = None) -> None:
+    def _tag_redraw(cls, context: Optional[bpy.types.Context] = None, force: bool = False) -> None:
+        import time
+        now = time.time()
+        # Throttle redraws to at most 10 FPS (0.1s) during active progress unless forced
+        if not force and cls._is_active and (now - cls._last_redraw_time < 0.1):
+            return
+        cls._last_redraw_time = now
+
         ctx = context or getattr(bpy, "context", None)
         if not ctx:
             return
