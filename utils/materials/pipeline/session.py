@@ -61,15 +61,31 @@ def name_replaced_material(
     write_provenance_schema(mat)
 
 
+def build_existing_replacement_index() -> dict[tuple[str, str], list[bpy.types.Material]]:
+    """Index existing materials by (namespace, texture_name) to avoid O(N) linear scans."""
+    index: dict[tuple[str, str], list[bpy.types.Material]] = {}
+    for material in bpy.data.materials:
+        ns = material.get("mtk:source_namespace")
+        tex = material.get("mtk:source_texture")
+        if ns and tex:
+            key = (ns, tex)
+            if key not in index:
+                index[key] = []
+            index[key].append(material)
+    return index
+
+
 def find_existing_replacement(
     texture_info: dict,
     pack_or_hash: Union[str, Any],
+    existing_materials_index: Optional[dict[tuple[str, str], list[bpy.types.Material]]] = None,
 ) -> Optional[bpy.types.Material]:
     """Find an existing valid material datablock matching the exact pack hash and texture key."""
     namespace = texture_info["namespace"]
     texture_name = texture_info["texture_name"]
     full_hash = get_effective_pack_hash(pack_or_hash) or getattr(pack_or_hash, "pack_hash", str(pack_or_hash))
-    for material in bpy.data.materials:
+    candidates = existing_materials_index.get((namespace, texture_name), []) if existing_materials_index is not None else bpy.data.materials
+    for material in candidates:
         if (
             material.get("mtk:source_namespace") == namespace
             and material.get("mtk:source_texture") == texture_name

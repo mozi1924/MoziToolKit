@@ -15,6 +15,8 @@ from ..constants import (
     ATLAS_FORMAT_VERSION,
     ANIM_AND_ATLAS_ATTR_NAMES,
     ATTR_UV_ROTATION,
+    ATTR_UV_TILING_SCALE,
+    ATTR_UV_TILING_TRANSFORM,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_ORIGIN,
     FALLBACK_TEXTURE_KEY,
@@ -50,6 +52,7 @@ from ..pipeline.session import (
     cached_face_texture_info,
     get_polygon_material_indices,
     name_replaced_material,
+    build_existing_replacement_index,
     find_existing_replacement,
     apply_mesh_face_materials_and_provenance,
     cleanup_unused_mtk_datablocks,
@@ -84,6 +87,9 @@ class StandaloneReplacementEngine:
         assigned_count = 0
         session_materials = {}
         texture_info_cache = {}
+        existing_materials_index = build_existing_replacement_index()
+        global_replacement_by_texture = {}
+        global_target_animation_by_texture = {}
 
         effective_pack_hash = pack_stack.stack_hash if (pack_stack and pack_stack.packs) else pack.pack_hash
         cache_root = get_cache_dir()
@@ -124,10 +130,8 @@ class StandaloneReplacementEngine:
             if texture_key in session_materials:
                 return session_materials[texture_key], False
 
-            canonical_mat = find_existing_replacement(texture_info, effective_pack_hash)
+            canonical_mat = find_existing_replacement(texture_info, effective_pack_hash, existing_materials_index)
             if canonical_mat:
-                rebuild_material(canonical_mat, texture_info, pack_textures=pack_textures, pack_hash=effective_pack_hash, biome_preset=biome_preset, pack_stack=pack_stack)
-                name_replaced_material(canonical_mat, texture_info, effective_pack_hash)
                 session_materials[texture_key] = canonical_mat
                 return canonical_mat, False
 
@@ -139,6 +143,10 @@ class StandaloneReplacementEngine:
 
             name_replaced_material(mat, texture_info, effective_pack_hash)
             session_materials[texture_key] = mat
+            idx_key = (texture_info["namespace"], texture_info["texture_name"])
+            if idx_key not in existing_materials_index:
+                existing_materials_index[idx_key] = []
+            existing_materials_index[idx_key].append(mat)
             return mat, True
 
         def resolve_texture_info(namespace, candidates):
@@ -222,6 +230,9 @@ class StandaloneReplacementEngine:
                 for material_index in material_indices
             ]
 
+            # Fast path cache for materials that don't depend on per-face attributes (e.g. non-atlas, or no source_key override)
+            slot_resolution_cache: dict[int, Any] = {}
+
             total_polys = max(1, len(mesh.polygons))
             for poly_idx, material_index in enumerate(material_indices):
                 if poly_idx > 0 and poly_idx % 2000 == 0:
@@ -235,7 +246,11 @@ class StandaloneReplacementEngine:
                 source_key = existing_source_keys[poly_idx] if poly_idx < len(existing_source_keys) else ""
 
                 if not orig_mat:
-                    if source_key:
+                    if not source_key:
+                        unresolved_faces.append((poly_idx, None, None, "minecraft", [], None, None))
+                        continue
+                    cached_res = slot_resolution_cache.get((material_index, source_key))
+                    if cached_res is None:
                         namespace, texture_key = split_texture_key(source_key)
                         candidates = [texture_key] if texture_key else []
                         if "/" in texture_key:
@@ -243,15 +258,16 @@ class StandaloneReplacementEngine:
                             if basename and basename != texture_key:
                                 candidates.append(basename)
                         tex_info = resolve_texture_info(namespace, candidates) if candidates else None
-                        if tex_info:
-                            resolved_faces.append((poly_idx, tex_info, None, "GENERIC", None, None))
-                            continue
-                        else:
-                            unresolved_faces.append((poly_idx, None, None, namespace, candidates, None, None))
-                            continue
+                        cached_res = (tex_info, namespace, candidates)
+                        slot_resolution_cache[(material_index, source_key)] = cached_res
                     else:
-                        unresolved_faces.append((poly_idx, None, None, "minecraft", [], None, None))
-                        continue
+                        tex_info, namespace, candidates = cached_res
+
+                    if tex_info:
+                        resolved_faces.append((poly_idx, tex_info, None, "GENERIC", None, None))
+                    else:
+                        unresolved_faces.append((poly_idx, None, None, namespace, candidates, None, None))
+                    continue
 
                 state = material_cache[orig_mat]
                 if state["is_internal"]:
@@ -260,11 +276,30 @@ class StandaloneReplacementEngine:
 
                 old_mapping = state["mapping"]
                 orig_mode = state["mode"]
+
+                # If face has no individual source_key and mode is not per-face atlas, use slot_resolution_cache
+                can_use_slot_cache = (not source_key) and (orig_mode not in ("ATLAS_CHUNK", "ATLAS_UNIFIED", "MINEWAYS_ATLAS"))
+                if can_use_slot_cache and material_index in slot_resolution_cache:
+                    cached_res = slot_resolution_cache[material_index]
+                    if cached_res["resolved"]:
+                        resolved_faces.append((poly_idx, cached_res["tex_info"], orig_mat, orig_mode, None, old_mapping))
+                    else:
+                        unresolved_faces.append((poly_idx, orig_mat, state, cached_res["namespace"], cached_res["candidates"], None, old_mapping))
+                    continue
+
                 namespace, candidates, old_loc = cached_face_texture_info(
                     mesh, poly_idx, orig_mat, state, source_key
                 )
 
                 tex_info = resolve_texture_info(namespace, candidates)
+
+                if can_use_slot_cache:
+                    slot_resolution_cache[material_index] = {
+                        "resolved": bool(tex_info),
+                        "tex_info": tex_info,
+                        "namespace": namespace,
+                        "candidates": candidates,
+                    }
 
                 if not tex_info:
                     unresolved_faces.append((poly_idx, orig_mat, state, namespace, candidates, old_loc, old_mapping))
@@ -280,9 +315,6 @@ class StandaloneReplacementEngine:
             source_keys = existing_source_keys
             source_origins = existing_source_origins
             poly_modified = False
-            replacement_by_texture = {}
-            texture_infos_by_key = {}
-            target_animation_by_texture = {}
             material_build_failed = False
 
             # The generated procedural tile is a real standalone material, so
@@ -299,27 +331,23 @@ class StandaloneReplacementEngine:
 
             for poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping in resolved_faces:
                 texture_key = (tex_info["namespace"], tex_info["texture_name"])
-                if texture_key in replacement_by_texture:
+                if texture_key in global_replacement_by_texture:
                     continue
                 mat, is_new = get_or_create_replacement_material(tex_info)
                 if not mat:
                     material_build_failed = True
                     break
-                replacement_by_texture[texture_key] = (mat, is_new)
-                texture_infos_by_key[texture_key] = tex_info
-                target_animation_by_texture[texture_key] = (
+                global_replacement_by_texture[texture_key] = (mat, is_new)
+                if is_new:
+                    replaced_count += 1
+                    pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
+                global_target_animation_by_texture[texture_key] = (
                     get_texture_info_animation_info(tex_info) or get_material_animation_info(mat)
                 )
 
             if material_build_failed:
                 pipeline_context.report("ERROR", f"'{obj.name}' material construction failed; no conversion was applied.")
                 continue
-
-            for texture_key, (mat, is_new) in replacement_by_texture.items():
-                if is_new:
-                    replaced_count += 1
-                    tex_info = texture_infos_by_key[texture_key]
-                    pipeline_context.report("INFO", f"Built standalone material '{mat.name}' for '{tex_info['texture_name']}'")
 
             for poly_idx, original_material, state, namespace, candidates, _old_loc, _old_mapping in unresolved_faces:
                 face_materials[poly_idx] = fallback_material
@@ -334,26 +362,58 @@ class StandaloneReplacementEngine:
             if unresolved_faces:
                 pipeline_context.report("WARNING", f"'{obj.name}': {len(unresolved_faces)} unsupported face(s) assigned the procedural fallback.")
 
+            # Precompute canonical keys and material datablocks for all resolved texture infos
+            canonical_key_by_texture = {}
+            for _poly_idx, t_info, _mat, _mode, _loc, _map in resolved_faces:
+                tk = (t_info["namespace"], t_info["texture_name"])
+                if tk not in canonical_key_by_texture:
+                    canonical_key_by_texture[tk] = canonical_texture_key(
+                        t_info["namespace"], t_info.get("texture_key", t_info["texture_name"])
+                    )
+
+            # Pre-check mesh tiling attributes to avoid repeated mesh.attributes lookup
+            has_packed_tiling = (
+                ATTR_UV_TILING_TRANSFORM in mesh.attributes
+                and mesh.attributes[ATTR_UV_TILING_TRANSFORM].domain == "FACE"
+                and mesh.attributes[ATTR_UV_TILING_TRANSFORM].data_type == "FLOAT_COLOR"
+            )
+            has_uv_rot_attr = (
+                "mtk_uv_rotation" in mesh.attributes
+                and mesh.attributes["mtk_uv_rotation"].domain == "FACE"
+                and mesh.attributes["mtk_uv_rotation"].data_type == "FLOAT"
+            )
+            has_any_tiling = has_packed_tiling or (ATTR_UV_TILING_SCALE in mesh.attributes)
+
+            # Precalculate material origins
+            orig_origin_cache: dict[Any, str] = {}
+            for _poly_idx, _t_info, orig_m, _mode, _loc, _map in resolved_faces:
+                if orig_m and orig_m not in orig_origin_cache:
+                    orig_origin_cache[orig_m] = (
+                        material_cache.get(orig_m, {}).get("origin")
+                        or material_source_origin(orig_m)
+                        or ""
+                    )
+
+            is_yefira = bool(obj.get("mtk:is_yefira_world") or obj.get("mtk:section_pos") is not None or obj.name.startswith("Yefira_"))
+            polygons = mesh.polygons
+
             total_prep = max(1, len(resolved_faces))
             for prep_idx, (poly_idx, tex_info, original_material, orig_mode, old_loc, old_mapping) in enumerate(resolved_faces):
-                if prep_idx > 0 and prep_idx % 2000 == 0:
+                if prep_idx > 0 and prep_idx % 5000 == 0:
                     if pipeline_context.is_cancelled:
                         yield StepResult.cancelled("Material replacement cancelled by user.")
                         return
                     sub_prog = obj_progress + 0.35 + 0.45 * (prep_idx / total_prep)
                     yield ProgressUpdate(sub_prog, 1.0, f"Reconstructing materials: {obj.name} ({prep_idx:,}/{total_prep:,})")
 
-                mat, _is_new = replacement_by_texture[(tex_info["namespace"], tex_info["texture_name"])]
+                texture_key = (tex_info["namespace"], tex_info["texture_name"])
+                mat, _is_new = global_replacement_by_texture[texture_key]
 
                 face_materials[poly_idx] = mat
-                source_keys[poly_idx] = canonical_texture_key(
-                    tex_info["namespace"], tex_info.get("texture_key", tex_info["texture_name"])
-                )
-                source_origins[poly_idx] = (
-                    source_origins[poly_idx]
-                    or (material_cache.get(original_material, {}).get("origin") if original_material else None)
-                    or (material_source_origin(original_material) if original_material else "")
-                )
+                source_keys[poly_idx] = canonical_key_by_texture[texture_key]
+                if not source_origins[poly_idx] and original_material:
+                    source_origins[poly_idx] = orig_origin_cache.get(original_material, "")
+
                 poly_modified = True
                 assigned_count += 1
 
@@ -371,8 +431,7 @@ class StandaloneReplacementEngine:
                                 state["animation_loaded"] = True
                             old_anim_info = state["animation"] if state else get_material_animation_info(original_material)
 
-                    texture_key = (tex_info["namespace"], tex_info["texture_name"])
-                    target_anim_info = target_animation_by_texture[texture_key]
+                    target_anim_info = global_target_animation_by_texture[texture_key]
 
                     if (
                         orig_mode in ("GENERIC", "STANDALONE")
@@ -381,16 +440,20 @@ class StandaloneReplacementEngine:
                     ):
                         continue
 
-                    polygon = mesh.polygons[poly_idx]
-                    is_yefira = bool(obj.get("mtk:is_yefira_world") or obj.get("mtk:section_pos") is not None or obj.name.startswith("Yefira_"))
+                    polygon = polygons[poly_idx]
                     if is_fluid_texture_name(tex_info["texture_name"]) and orig_mode == "GENERIC" and not is_yefira:
                         normalize_static_fluid_face_uv(polygon, mesh, uv_layer, texture_name=tex_info["texture_name"])
 
                     if orig_mode in ("ATLAS_CHUNK", "ATLAS_UNIFIED") and old_loc and old_chunk:
-                        tiling_scale, tiling_location = read_face_tiling(mesh, poly_idx)
-                        tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx)
+                        if has_any_tiling:
+                            tiling_scale, tiling_location = read_face_tiling(mesh, poly_idx)
+                        else:
+                            tiling_scale, tiling_location = (1.0, 1.0, 1.0), (0.0, 0.0, 0.0)
+
+                        tiling_rotation = read_face_float_attribute(mesh, "mtk_uv_rotation", poly_idx) if has_uv_rot_attr else 0.0
+                        uv_data = uv_layer.data
                         for loop_index in polygon.loop_indices:
-                            uv = uv_layer.data[loop_index].uv
+                            uv = uv_data[loop_index].uv
                             local_u, local_v = remap_uv_to_local(
                                 uv.x, uv.y, orig_mode, old_loc, old_chunk, old_anim_info
                             )
