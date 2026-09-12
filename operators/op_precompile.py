@@ -98,10 +98,27 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MOZI_OT_refresh_cache_stats(bpy.types.Operator):
+    """Scan and refresh asset cache storage statistics."""
+
+    bl_idname = "mozi.refresh_cache_stats"
+    bl_label = "Refresh Cache Stats"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        from ..bridge import get_cache_stats
+        prefs = get_prefs(context)
+        stats = get_cache_stats(prefs, force_refresh=True)
+        self.report({'INFO'}, f"Cache stats updated: {stats['size_formatted']} ({stats['files_count']} files)")
+        return {'FINISHED'}
+
+
 OPERATORS_CLASSES = (
     MOZI_OT_precompile_cache,
     MOZI_OT_open_cache_folder,
     MOZI_OT_clear_cache,
+    MOZI_OT_refresh_cache_stats,
     MOZI_OT_check_dependencies,
     MOZI_OT_open_preferences,
 )
+

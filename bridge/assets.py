@@ -29,17 +29,26 @@ def get_cache_dir(prefs=None) -> Path:
     """
     Returns the persistent cache directory for compiled assets.
     Delegates path resolution to the host (Blender/Python):
-    1. User-customized path in AddonPreferences (prefs.cache_dir)
-    2. Blender standard extension user cache (bpy.utils.user_resource('CACHE'))
-    3. Addon-local cache directory fallback
+    1. Environment override (`MOZI_CACHE_DIR`) for test sandboxing / isolation.
+    2. User-customized path in AddonPreferences (`prefs.cache_dir`).
+    3. Blender standard plugin user data directory:
+       `bpy.utils.user_resource("DATAFILES") / "MoziToolKit" / "cache"`
+    4. Fallback to `~/.config/blender/MoziToolKit/cache`.
     """
+    # 1. Environment sandbox override
+    env_dir = os.environ.get("MOZI_CACHE_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    # 2. Custom preference path if configured by user
     if prefs is None:
         try:
             prefs = get_prefs()
         except Exception:
             prefs = None
 
-    # 1. Custom preference path if configured by user
     if prefs is not None and hasattr(prefs, "cache_dir"):
         custom_path = getattr(prefs, "cache_dir", "").strip()
         if custom_path:
@@ -52,28 +61,20 @@ def get_cache_dir(prefs=None) -> Path:
             p.mkdir(parents=True, exist_ok=True)
             return p
 
-    # 2. Blender environment standard resource cache
+    # 3. Blender standard plugin user data directory
+    cache_dir = None
     try:
         import bpy
-        if hasattr(bpy.utils, "user_resource"):
-            base = bpy.utils.user_resource('CACHE', 'MoziToolKit', create=True)
-            if base:
-                p = Path(base)
-                p.mkdir(parents=True, exist_ok=True)
-                return p
+        if hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
+            cache_dir = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "cache"
     except Exception:
-        pass
+        cache_dir = None
 
-    # 3. Addon package local cache or environment fallback
-    custom_env = os.environ.get("MOZI_CACHE_DIR")
-    if custom_env:
-        p = Path(custom_env)
-    else:
-        addon_dir = Path(__file__).parent.parent.resolve()
-        p = addon_dir / "cache"
+    if not cache_dir:
+        cache_dir = Path.home() / ".config" / "blender" / "MoziToolKit" / "cache"
 
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 def get_configured_pack_stack(prefs=None) -> Optional[Any]:
@@ -138,19 +139,34 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     standalone_dir.mkdir(parents=True, exist_ok=True)
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Atlas Baking via libmtk
+    # 1. Atlas Baking via libmtk (Pure In-Memory -> Host Disk Persistence)
     atlas_builder = libmtk_py.AtlasBuilder(4096, 4096, 0, 0)
     baked_atlas = atlas_builder.build(stack, "blocks")
-    baked_atlas.save_all_to_dir(str(atlas_dir.resolve()))
     chunk_count = baked_atlas.get_chunk_count()
+
+    # Save mapping JSON
+    (atlas_dir / "atlas_mapping.json").write_text(baked_atlas.to_mapping_json(), encoding="utf-8")
+
+    # Save Atlas chunk images
+    for i in range(chunk_count):
+        _, _, _, _, stem = baked_atlas.get_chunk_meta(i)
+        albedo_bytes = baked_atlas.get_chunk_albedo_png_bytes(i)
+        (atlas_dir / f"{stem}.png").write_bytes(albedo_bytes)
+
+        normal_bytes = baked_atlas.get_chunk_normal_png_bytes(i)
+        if normal_bytes is not None:
+            (atlas_dir / f"{stem}_n.png").write_bytes(normal_bytes)
+
+        specular_bytes = baked_atlas.get_chunk_specular_png_bytes(i)
+        if specular_bytes is not None:
+            (atlas_dir / f"{stem}_s.png").write_bytes(specular_bytes)
 
     # 2. Standalone Baking via libmtk
     sa_builder = libmtk_py.StandaloneBuilder()
     sa_res = sa_builder.build(stack, str(standalone_dir.resolve()))
 
-    # 3. Model Baking via libmtk
+    # 3. Model Baking via libmtk (Pure In-Memory ModelBaker)
     baker = libmtk_py.ModelBaker()
-    # Representative core blockstates for rapid access
     core_states = [
         "minecraft:stone",
         "minecraft:oak_planks",
@@ -163,7 +179,17 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
         "minecraft:torch",
         "minecraft:lantern[hanging=false,waterlogged=false]",
     ]
-    baked_models_count = baker.bake_states_to_dir(stack, core_states, str(models_dir.resolve()), True)
+    baked_models_count = 0
+    for state_str in core_states:
+        try:
+            mesh_data, textures = baker.bake_blockstate(stack, state_str, True)
+            if mesh_data and mesh_data.vertex_count > 0:
+                baked_models_count += 1
+        except Exception:
+            pass
+
+    # Refresh cached statistics once after precompilation
+    get_cache_stats(prefs, force_refresh=True)
 
     return {
         "success": True,
@@ -175,9 +201,27 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     }
 
 
-def get_cache_stats(prefs=None) -> Dict[str, Any]:
-    """Computes total storage footprint and file count for the asset cache."""
+_cached_cache_stats: Optional[Dict[str, Any]] = None
+_cached_cache_stats_path: Optional[str] = None
+
+
+def get_cache_stats(prefs=None, force_refresh: bool = False) -> Dict[str, Any]:
+    """
+    Computes total storage footprint and file count for the asset cache.
+    Results are cached in-memory to prevent UI redraw stutter during continuous render loops.
+    Scans only on-demand when explicitly requested or after cache mutations.
+    """
+    global _cached_cache_stats, _cached_cache_stats_path
     cache_path = get_cache_dir(prefs)
+    path_str = str(cache_path)
+
+    if (
+        not force_refresh
+        and _cached_cache_stats is not None
+        and _cached_cache_stats_path == path_str
+    ):
+        return _cached_cache_stats
+
     total_size = 0
     file_count = 0
 
@@ -201,16 +245,19 @@ def get_cache_stats(prefs=None) -> Dict[str, Any]:
     else:
         size_str = f"{total_size / (1024 * 1024 * 1024):.2f} GB"
 
-    return {
-        "path": str(cache_path),
+    _cached_cache_stats = {
+        "path": path_str,
         "size_bytes": total_size,
         "size_formatted": size_str,
         "files_count": file_count,
     }
+    _cached_cache_stats_path = path_str
+    return _cached_cache_stats
 
 
 def clear_cache(prefs=None) -> None:
     """Empties all compiled caches in the cache directory."""
+    global _cached_cache_stats, _cached_cache_stats_path
     cache_path = get_cache_dir(prefs)
     if cache_path.exists():
         for item in cache_path.iterdir():
@@ -221,6 +268,14 @@ def clear_cache(prefs=None) -> None:
                     item.unlink()
             except Exception:
                 pass
+
+    _cached_cache_stats = {
+        "path": str(cache_path),
+        "size_bytes": 0,
+        "size_formatted": "0 B",
+        "files_count": 0,
+    }
+    _cached_cache_stats_path = str(cache_path)
 
 
 def open_cache_folder(prefs=None) -> None:
