@@ -10,21 +10,38 @@ from typing import Iterator, Union
 
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
-from ...utils.materials.pack import (
-    ZipResourcePack,
-    ResourcePackStack,
-    get_configured_pack_stack,
-)
-from ...utils.materials.pipeline import (
-    detect_material_mode,
-)
-from ...utils.materials.constants import (
-    ATTR_ATLAS_CHUNK_ID,
-    ATTR_ATLAS_TEXTURE_ID,
-    ATTR_SOURCE_TEXTURE_KEY,
-)
-from ...utils.materials.atlas import AtlasReplacementEngine
-from ...utils.materials.standalone import StandaloneReplacementEngine
+try:
+    from ...utils.materials.pack import (
+        ZipResourcePack,
+        ResourcePackStack,
+        get_configured_pack_stack,
+    )
+    from ...utils.materials.pipeline import (
+        detect_material_mode,
+    )
+    from ...utils.materials.constants import (
+        ATTR_ATLAS_CHUNK_ID,
+        ATTR_ATLAS_TEXTURE_ID,
+        ATTR_SOURCE_TEXTURE_KEY,
+    )
+    from ...utils.materials.atlas import AtlasReplacementEngine
+    from ...utils.materials.standalone import StandaloneReplacementEngine
+except (ImportError, ValueError):
+    from utils.materials.pack import (
+        ZipResourcePack,
+        ResourcePackStack,
+        get_configured_pack_stack,
+    )
+    from utils.materials.pipeline import (
+        detect_material_mode,
+    )
+    from utils.materials.constants import (
+        ATTR_ATLAS_CHUNK_ID,
+        ATTR_ATLAS_TEXTURE_ID,
+        ATTR_SOURCE_TEXTURE_KEY,
+    )
+    from utils.materials.atlas import AtlasReplacementEngine
+    from utils.materials.standalone import StandaloneReplacementEngine
 
 
 class StepReplaceMaterial(PipelineStep):

@@ -13,10 +13,17 @@ except ImportError:
     bpy = None
     Vector = None
 
-if bpy is not None:
-    from ..materials.matching.texture_finder import find_face_image
-else:
-    find_face_image = None
+def find_face_image(face, obj, context=None) -> bpy.types.Image | None:
+    if not obj or not getattr(obj, "material_slots", None):
+        return None
+    mat_idx = getattr(face, "material_index", 0)
+    if mat_idx < len(obj.material_slots):
+        mat = obj.material_slots[mat_idx].material
+        if mat and getattr(mat, "use_nodes", False) and mat.node_tree:
+            for n in mat.node_tree.nodes:
+                if n.type == 'TEX_IMAGE' and getattr(n, "image", None):
+                    return n.image
+    return None
 from .uv_rotation import (
     is_orthogonal_angle,
     detect_face_uv_rotation,

@@ -148,9 +148,6 @@ from .pack import (
 )
 
 from .atlas import (
-    PackedRect,
-    MaxRectsBinPack,
-    pack_category_textures,
     face_index_from_normal,
     static_cell,
     chunk_cell,
@@ -171,10 +168,7 @@ from .atlas import (
 )
 
 from .standalone import (
-    StandaloneGenerator,
     STANDALONE_FORMAT_VERSION,
-    align_standalone_textures,
-    is_channel_animated,
     StandaloneReplacementEngine,
 )
 
@@ -203,50 +197,6 @@ if HAS_BPY:
         set_materials_texture_interpolation_closest,
         process_node_tree_interpolation,
     )
-
-    from .matching import (
-        ImporterAdapter,
-        MaterialMatchPreset,
-        ICE_CUBE_ADAPTER,
-        JMC2OBJ_ADAPTER,
-        MINEWAYS_ADAPTER,
-        GENERIC_ADAPTER,
-        ADAPTERS,
-        ICE_CUBE_PRESET,
-        JMC2OBJ_PRESET,
-        MINEWAYS_PRESET,
-        GENERIC_PRESET,
-        MATCH_PRESETS,
-        get_importer_adapter,
-        get_material_match_preset,
-        material_source_origin,
-        extract_material_texture_keys,
-        extract_face_texture_info,
-        is_ice_cube_material,
-        is_ice_cube_internal_face_material,
-        ice_cube_texture_candidates,
-        ice_cube_name_aliases,
-        ice_cube_legacy_aliases,
-        is_jmc2obj_material,
-        jmc2obj_texture_candidates,
-        is_mineways_material,
-        mineways_texture_candidates,
-        generic_texture_candidates,
-        base_texture_candidates,
-        normalized_image_key,
-        extract_texture_provenance_from_image,
-        ICE_CUBE_STATIC_ASSET_UUID_ALIASES,
-        MINEWAYS_TILES_TABLE,
-        is_mineways_atlas_image,
-        find_mineways_atlas_image,
-        is_mineways_atlas_material,
-        decode_mineways_face_uv,
-        remap_mineways_atlas_uv_to_local,
-        find_albedo_image_from_material,
-        find_face_image,
-        get_material_pixel_step,
-    )
-
     from .pipeline import (
         without_blender_suffix,
         canonical_texture_key,
@@ -313,47 +263,6 @@ else:
     repair_material_nodes = None
     set_materials_texture_interpolation_closest = None
     process_node_tree_interpolation = None
-
-    ImporterAdapter = None
-    MaterialMatchPreset = None
-    ICE_CUBE_ADAPTER = None
-    JMC2OBJ_ADAPTER = None
-    MINEWAYS_ADAPTER = None
-    GENERIC_ADAPTER = None
-    ADAPTERS = []
-    ICE_CUBE_PRESET = None
-    JMC2OBJ_PRESET = None
-    MINEWAYS_PRESET = None
-    GENERIC_PRESET = None
-    MATCH_PRESETS = []
-    get_importer_adapter = None
-    get_material_match_preset = None
-    material_source_origin = None
-    extract_material_texture_keys = None
-    extract_face_texture_info = None
-    is_ice_cube_material = None
-    is_ice_cube_internal_face_material = None
-    ice_cube_texture_candidates = None
-    ice_cube_name_aliases = {}
-    ice_cube_legacy_aliases = {}
-    is_jmc2obj_material = None
-    jmc2obj_texture_candidates = None
-    is_mineways_material = None
-    mineways_texture_candidates = None
-    generic_texture_candidates = None
-    base_texture_candidates = None
-    normalized_image_key = None
-    extract_texture_provenance_from_image = None
-    ICE_CUBE_STATIC_ASSET_UUID_ALIASES = {}
-    MINEWAYS_TILES_TABLE = {}
-    is_mineways_atlas_image = None
-    find_mineways_atlas_image = None
-    is_mineways_atlas_material = None
-    decode_mineways_face_uv = None
-    remap_mineways_atlas_uv_to_local = None
-    find_albedo_image_from_material = None
-    find_face_image = None
-    get_material_pixel_step = None
 
     # Pipeline pure python functions can be directly imported from .pipeline.provenance
     from .pipeline.provenance import (

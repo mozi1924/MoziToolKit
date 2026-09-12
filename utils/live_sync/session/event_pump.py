@@ -19,7 +19,13 @@ from ..meshing import (
     apply_block_delta_to_world,
 )
 from ..storage.voxel_storage import VoxelStorage, voxel_storage
-from ....pipeline.progress import ProgressBar
+try:
+    from ....pipeline.progress import ProgressBar
+except (ImportError, ValueError):
+    try:
+        from pipeline.progress import ProgressBar
+    except (ImportError, ValueError):
+        from MoziToolKit.pipeline.progress import ProgressBar
 from .material_cache import (
     find_bound_atlas_material,
     get_cached_atlas_params,

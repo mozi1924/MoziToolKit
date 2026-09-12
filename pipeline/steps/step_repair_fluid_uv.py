@@ -3,12 +3,20 @@ from ..context import PipelineContext
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
-from ...utils.mesh import (
-    bmesh_context,
-    poll_edit_mesh,
-    repair_face_fluid_uv,
-    process_mesh_fluid_uv_repairs,
-)
+try:
+    from ...utils.mesh import (
+        bmesh_context,
+        poll_edit_mesh,
+        repair_face_fluid_uv,
+        process_mesh_fluid_uv_repairs,
+    )
+except (ImportError, ValueError):
+    from utils.mesh import (
+        bmesh_context,
+        poll_edit_mesh,
+        repair_face_fluid_uv,
+        process_mesh_fluid_uv_repairs,
+    )
 
 
 class RepairFluidUVStep(PipelineStep):

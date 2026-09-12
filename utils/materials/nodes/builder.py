@@ -11,9 +11,12 @@ import bpy
 
 from ...node_groups import ensure_all_templates
 
-logger = logging.getLogger("MoziToolKit.Materials.Nodes")
+def extract_material_texture_keys(mat: Optional[bpy.types.Material]) -> tuple[str, list[str]]:
+    if not mat:
+        return ("minecraft", ["stone"])
+    clean = mat.name.split(".")[0].strip().lower()
+    return ("minecraft", [clean, f"block/{clean}"])
 
-from ..matching import extract_material_texture_keys
 from ..pipeline.provenance import detect_material_mode
 from ..models import StandaloneMaterialDescriptor, ChannelDescriptor
 from ..constants import (
@@ -398,7 +401,9 @@ def rebuild_material(
 
     has_overlay_path = bool(texture_info.get("overlay") and Path(texture_info["overlay"]).exists())
     has_overlay = has_overlay_path or bool(tint_info.get("has_overlay"))
-    tint_type = int(tint_info.get("tint_type", 0))
+    tint_type_map = {"none": 0, "grass": 1, "foliage": 2, "water": 3, "hardcoded": 4, "dry_foliage": 5, 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+    raw_tt = tint_info.get("tint_type", 0)
+    tint_type = tint_type_map.get(raw_tt, tint_type_map.get(str(raw_tt).lower(), 0))
     is_hardcoded = bool(tint_info.get("is_hardcoded", False))
     needs_biome_tint = (tint_type != 0) or is_hardcoded or has_overlay
 

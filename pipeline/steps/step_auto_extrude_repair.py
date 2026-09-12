@@ -4,8 +4,12 @@ from ..context import PipelineContext
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
 
-from ...utils.mesh import poll_edit_mesh
-from ...utils.extrude_repair import repair_extruded_side_faces
+try:
+    from ...utils.mesh import poll_edit_mesh
+    from ...utils.extrude_repair import repair_extruded_side_faces
+except (ImportError, ValueError):
+    from utils.mesh import poll_edit_mesh
+    from utils.extrude_repair import repair_extruded_side_faces
 
 
 class AutoExtrudeRepairStep(PipelineStep):

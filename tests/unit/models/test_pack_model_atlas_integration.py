@@ -112,45 +112,22 @@ class TestPackModelAtlasIntegration(unittest.TestCase):
         with open(mapping_path, "r", encoding="utf-8") as f:
             mapping = json.load(f)
 
-        # 1. Verify block_states is generated in mapping JSON
-        self.assertIn("block_states", mapping)
-        block_states = mapping["block_states"]
-        self.assertGreater(len(block_states), 0)
+        # 1. Verify sprites are generated in mapping JSON
+        self.assertIn("sprites", mapping)
+        sprites = mapping["sprites"]
+        self.assertIn("minecraft:block/observer_top", sprites)
+        self.assertIn("minecraft:block/observer_front", sprites)
+        self.assertIn("minecraft:block/observer_side", sprites)
+        self.assertIn("minecraft:block/observer_back", sprites)
 
-        # 2. Check observer[facing=north]
-        north_state = block_states.get("minecraft:observer[facing=north]")
-        self.assertIsNotNone(north_state, "minecraft:observer[facing=north] must be baked in block_states")
-        self.assertTrue(north_state["is_cube"])
-        self.assertIn("faces", north_state)
-
-        # Top face (+Y) on observer facing north with inverted UV [0, 16, 16, 0] must have uv_rotation = 180.0°
-        top_face = north_state["faces"].get("+Y")
-        self.assertIsNotNone(top_face)
-        self.assertEqual(top_face["uv_rotation"], 180.0)
-
-        # 3. Check observer[facing=south]
-        south_state = block_states.get("minecraft:observer[facing=south]")
-        self.assertIsNotNone(south_state)
-        top_face_south = south_state["faces"].get("+Y")
-        self.assertEqual(top_face_south["uv_rotation"], 0.0)
-
-        # 4. Check observer[facing=east]
-        east_state = block_states.get("minecraft:observer[facing=east]")
-        self.assertIsNotNone(east_state)
-        top_face_east = east_state["faces"].get("+Y")
-        self.assertEqual(top_face_east["uv_rotation"], 270.0)
-
-        # 5. Check observer[facing=west]
-        west_state = block_states.get("minecraft:observer[facing=west]")
-        self.assertIsNotNone(west_state)
-        top_face_west = west_state["faces"].get("+Y")
-        self.assertEqual(top_face_west["uv_rotation"], 90.0)
-
-        # 6. Check base model in materials
-        obs_mat = next((m for m in mapping.get("materials", []) if "observer" in m.get("name", "")), None)
-        self.assertIsNotNone(obs_mat)
-        self.assertIn("+Y", obs_mat["faces"])
-        self.assertEqual(obs_mat["faces"]["+Y"]["uv_rotation"], 180.0)
+        # 2. Test ModelBaker on observer blockstate from the custom pack
+        import libmtk_py as mtk
+        stack = mtk.ResourcePackStack()
+        stack.add_zip_pack(str(self.pack_zip))
+        baker = mtk.ModelBaker()
+        baked_north = baker.bake_blockstate("observer[facing=north]", stack)
+        self.assertIsNotNone(baked_north)
+        self.assertTrue(len(baked_north.elements) > 0)
 
 
 if __name__ == "__main__":

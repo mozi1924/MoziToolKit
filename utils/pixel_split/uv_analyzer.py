@@ -9,7 +9,22 @@ from typing import Tuple, Optional
 from .types import TargetGrid, FacePixelInfo
 from ..mesh.uv import get_face_uv_bounds
 from ..materials.pipeline import detect_material_mode
-from ..materials.matching import find_albedo_image_from_material, find_face_image
+def find_albedo_image_from_material(mat) -> Optional[bpy.types.Image]:
+    if not mat or not getattr(mat, "use_nodes", False) or not mat.node_tree:
+        return None
+    for n in mat.node_tree.nodes:
+        if n.type == 'TEX_IMAGE' and getattr(n, "image", None):
+            return n.image
+    return None
+
+def find_face_image(face, obj, context=None) -> Optional[bpy.types.Image]:
+    if not obj or not getattr(obj, "material_slots", None):
+        return None
+    mat_idx = getattr(face, "material_index", 0)
+    if mat_idx < len(obj.material_slots):
+        return find_albedo_image_from_material(obj.material_slots[mat_idx].material)
+    return None
+
 from ..materials.pack import get_material_animation_info
 
 
