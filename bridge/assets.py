@@ -120,7 +120,8 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     Executes end-to-end asset precompilation via libmtk:
     1. Compiles blocks Atlas and saves all chunk PNGs + atlas_mapping.json
     2. Precompiles Standalone PBR textures + standalone_mapping.json
-    3. Bakes representative/custom block models
+    3. Bakes all block models into compact binary models.bin
+    4. Writes cache_manifest.json with resource pack stack fingerprint
     Returns a summary dictionary of compiled assets.
     """
     if not HAS_LIBMTK:
@@ -130,75 +131,99 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     if stack is None or stack.get_pack_count() == 0:
         raise ValueError("No valid enabled resource packs or JARs found in the active stack.")
 
-    base_cache = get_cache_dir()
+    base_cache = get_cache_dir(prefs)
+
+    # Use unified high-performance Rust engine
+    if hasattr(libmtk_py, "precompile_all_assets"):
+        res = libmtk_py.precompile_all_assets(
+            stack,
+            str(base_cache.resolve()),
+            atlas_category="blocks",
+            max_atlas_width=4096,
+            max_atlas_height=4096,
+            compile_atlas=True,
+            compile_standalone=True,
+            compile_models=True,
+        )
+        get_cache_stats(prefs, force_refresh=True)
+        return {
+            "success": res.success,
+            "pack_count": res.pack_count,
+            "atlas_chunks": res.atlas_chunks,
+            "standalone_textures": res.standalone_textures,
+            "baked_models": res.baked_models,
+            "fingerprint": res.fingerprint,
+            "cache_dir": res.cache_dir,
+        }
+
+    # Fallback to individual builders if unified binding is not available
     atlas_dir = base_cache / "atlas"
     standalone_dir = base_cache / "standalone"
     models_dir = base_cache / "models"
-
     atlas_dir.mkdir(parents=True, exist_ok=True)
     standalone_dir.mkdir(parents=True, exist_ok=True)
     models_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Atlas Baking via libmtk (Pure In-Memory -> Host Disk Persistence)
     atlas_builder = libmtk_py.AtlasBuilder(4096, 4096, 0, 0)
     baked_atlas = atlas_builder.build(stack, "blocks")
     chunk_count = baked_atlas.get_chunk_count()
-
-    # Save mapping JSON
     (atlas_dir / "atlas_mapping.json").write_text(baked_atlas.to_mapping_json(), encoding="utf-8")
 
-    # Save Atlas chunk images
     for i in range(chunk_count):
         _, _, _, _, stem = baked_atlas.get_chunk_meta(i)
-        albedo_bytes = baked_atlas.get_chunk_albedo_png_bytes(i)
-        (atlas_dir / f"{stem}.png").write_bytes(albedo_bytes)
-
+        (atlas_dir / f"{stem}.png").write_bytes(baked_atlas.get_chunk_albedo_png_bytes(i))
         normal_bytes = baked_atlas.get_chunk_normal_png_bytes(i)
         if normal_bytes is not None:
             (atlas_dir / f"{stem}_n.png").write_bytes(normal_bytes)
-
         specular_bytes = baked_atlas.get_chunk_specular_png_bytes(i)
         if specular_bytes is not None:
             (atlas_dir / f"{stem}_s.png").write_bytes(specular_bytes)
 
-    # 2. Standalone Baking via libmtk
     sa_builder = libmtk_py.StandaloneBuilder()
     sa_res = sa_builder.build(stack, str(standalone_dir.resolve()))
 
-    # 3. Full-Scale Model Baking via libmtk (Pure In-Memory Multi-threaded Prebaking)
     baker = libmtk_py.ModelBaker()
     model_db = baker.bake_all(stack)
-    baked_models_count = len(model_db)
+    (models_dir / "models.bin").write_bytes(model_db.to_bincode_bytes())
 
-    # Save compact binary model database to disk
-    models_bin_bytes = model_db.to_bincode_bytes()
-    (models_dir / "models.bin").write_bytes(models_bin_bytes)
-
-    # Refresh cached statistics once after precompilation
     get_cache_stats(prefs, force_refresh=True)
-
     return {
         "success": True,
         "pack_count": stack.get_pack_count(),
         "atlas_chunks": chunk_count,
         "standalone_textures": sa_res.texture_count,
-        "baked_models": baked_models_count,
+        "baked_models": len(model_db),
         "cache_dir": str(base_cache),
     }
 
 
-def load_baked_model_database(prefs=None) -> Optional[Any]:
+def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Optional[Any]:
     """
     Loads the precompiled binary model database from cache into memory.
-    Returns None if cache does not exist or libmtk is unavailable.
+    Optionally verifies that cache_manifest.json matches the active resource pack stack fingerprint.
+    Returns None if cache does not exist, is stale, or libmtk is unavailable.
     """
     if not HAS_LIBMTK:
         return None
 
     cache_dir = get_cache_dir(prefs)
+    manifest_file = cache_dir / "cache_manifest.json"
     models_bin = cache_dir / "models" / "models.bin"
     if not models_bin.exists():
         return None
+
+    if verify_fingerprint and manifest_file.exists():
+        try:
+            import json
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+            stack = get_configured_pack_stack(prefs)
+            if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
+                current_fp = stack.compute_stack_fingerprint()
+                if manifest.get("fingerprint") != current_fp:
+                    # Stale cache detected: resource pack stack changed
+                    return None
+        except Exception:
+            pass
 
     try:
         raw_bytes = models_bin.read_bytes()
