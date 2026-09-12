@@ -35,7 +35,22 @@ from ..utils.system import (
     has_all_dependencies,
     get_prefs,
 )
-from ..utils.materials import BIOME_ENUM_ITEMS
+
+BIOME_ENUM_ITEMS = [
+    ('PLAINS', "Plains", "Standard plains biome tint"),
+    ('DESERT', "Desert", "Desert warm foliage and dry tint"),
+    ('FOREST', "Forest", "Standard forest green foliage tint"),
+    ('TAIGA', "Taiga", "Taiga cool green foliage tint"),
+    ('SWAMP', "Swamp", "Swamp muddy dark green foliage tint"),
+    ('JUNGLE', "Jungle", "Jungle vibrant lush green foliage tint"),
+    ('SAVANNA', "Savanna", "Savanna brownish dry foliage tint"),
+    ('BADLANDS', "Badlands", "Badlands warm terracotta tint"),
+    ('SNOWY_PLAINS', "Snowy Plains", "Snowy cold plains foliage tint"),
+    ('DARK_FOREST', "Dark Forest", "Dark forest deep dark green foliage tint"),
+    ('BIRCH_FOREST', "Birch Forest", "Birch forest light green foliage tint"),
+    ('MANGROVE_SWAMP', "Mangrove Swamp", "Mangrove swamp deep olive foliage tint"),
+    ('CHERRY_GROVE', "Cherry Grove", "Cherry grove pastel tint"),
+]
 from .preferences_packs import (
     MOZI_PG_resource_pack_entry,
     MOZI_UL_resource_packs_list,
@@ -236,6 +251,14 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         name="Pack Textures into Blend File",
         description="Embed imported textures directly into the Blender file. When unchecked and the .blend file is saved, textures will be saved externally to '//textures/block/' in your project directory",
         default=True,
+        update=on_material_setting_changed,
+    )
+
+    cache_dir: StringProperty(
+        name="Cache Directory",
+        description="Directory used to store precompiled texture atlases, standalone materials, and model caches. Leave empty to use Blender's default user cache folder",
+        subtype='DIR_PATH',
+        default="",
         update=on_material_setting_changed,
     )
 
@@ -566,8 +589,8 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         layout.separator()
 
         # Cache & Storage Management
-        from ..utils.materials import get_cache_stats
-        stats = get_cache_stats()
+        from ..bridge import get_cache_stats
+        stats = get_cache_stats(self)
 
         cache_box = layout.box()
         cache_header = cache_box.row(align=True)
@@ -575,8 +598,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         cache_header.label(text=f"{tr('Total')}: {stats['size_formatted']} ({stats['files_count']} {tr('files')})", icon="INFO")
 
         cache_col = cache_box.column(align=True)
+        cache_col.prop(self, "cache_dir", text=tr("Cache Location"))
         cache_col.scale_y = 0.85
-        cache_col.label(text=f"{tr('Location')}: {stats['path']}")
+        cache_col.label(text=f"{tr('Resolved Path')}: {stats['path']}")
         cache_col.label(text=tr("Extracted packs, compiled multi-layer atlases, and JSON indices persist here across restarts."))
 
         cache_row = cache_box.row(align=True)
@@ -599,69 +623,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
                 env_col.label(text=f"  + {extra_site}")
 
 
-class MOZI_OT_precompile_cache(bpy.types.Operator):
-    """Precompile and rebuild the complete Atlas and Standalone caches for the current Resource Pack Stack."""
-
-    bl_idname = "mozi.precompile_cache"
-    bl_label = "Precompile Stack Caches"
-    bl_options = {"REGISTER"}
-
-    def execute(self, context):
-        try:
-            from ..utils.materials.pack import get_configured_pack_stack
-        except (ImportError, ValueError):
-            from utils.materials.pack import get_configured_pack_stack
-
-        stack = get_configured_pack_stack()
-        if not stack.packs:
-            self.report({'WARNING'}, "No enabled resource packs or JARs found in stack to compile.")
-            return {'CANCELLED'}
-
-        try:
-            params = {
-                "pack_stack": stack,
-            }
-
-            try:
-                from ..pipeline import get_preset_pipeline, run_pipeline_modal
-                from ..pipeline.step import StepStatus
-            except (ImportError, ValueError):
-                from pipeline import get_preset_pipeline, run_pipeline_modal
-                from pipeline.step import StepStatus
-
-            pipeline = get_preset_pipeline("precompile_cache")
-            if not pipeline:
-                self.report({'ERROR'}, "Preset pipeline 'precompile_cache' not found.")
-                return {'CANCELLED'}
-
-            def _on_finish(result, ctx):
-                try:
-                    refresh_ui_and_menus(context)
-                except Exception:
-                    pass
-
-            res, ctx = run_pipeline_modal(
-                pipeline,
-                context,
-                params=params,
-                title="Precompile Cache",
-                on_finish=_on_finish,
-            )
-
-            for level, msg in ctx.reports:
-                self.report({level}, msg)
-
-            if not res.is_success and res.status != StepStatus.CANCELLED:
-                return {'CANCELLED'}
-
-            return {'FINISHED'}
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to precompile stack cache: {e}")
-            return {'CANCELLED'}
-
 PREFERENCES_CLASSES = (
     *PACKS_CLASSES,
     *MENUS_CLASSES,
     MOZI_AddonPreferences,
-    MOZI_OT_precompile_cache,
 )
+

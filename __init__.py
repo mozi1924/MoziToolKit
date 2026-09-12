@@ -27,7 +27,6 @@ ensure_sys_paths()
 
 from . import i18n
 from . import operators
-from . import pipeline
 from . import ui
 
 
@@ -35,12 +34,11 @@ def register():
     ensure_sys_paths()
     i18n.register()
     operators.register()
-    pipeline.register()
     ui.register()
 
 
 def unregister():
     ui.unregister()
-    pipeline.unregister()
     operators.unregister()
     i18n.unregister()
+
