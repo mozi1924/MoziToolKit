@@ -75,11 +75,6 @@ def _draw_live_sync_content(layout, context):
         layout.label(text=_tr("Properties unavailable"), icon='ERROR')
         return
 
-    # Check websockets dependency
-    if not has_websockets():
-        draw_websockets_warning(layout)
-        return
-
     # Check Blender online access permission
     if hasattr(bpy.app, "online_access") and not bpy.app.online_access:
         box_online = layout.box()

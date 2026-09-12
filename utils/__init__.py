@@ -9,9 +9,9 @@ Organized into functional domains:
 - system: Python dependency management and right-click menu registry
 """
 
+from . import system
 from . import materials
 from . import mesh
-from . import system
 from . import culling
 from . import mc_baker
 from . import foliage

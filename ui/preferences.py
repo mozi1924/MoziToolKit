@@ -517,19 +517,12 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             banner_row.label(text=tr("All required modules and dependencies are available."), icon="CHECKMARK")
         elif len(missing) == 1:
             banner_row.alert = True
-            dep = missing[0]
-            dep_name = dep.get("name", "Unknown")
-            if dep_name == "Pillow":
-                banner_row.label(text=tr("Optional dependency 'Pillow' is not installed (required for Atlas Material Mode)."), icon="INFO")
-            elif dep_name == "websockets":
-                banner_row.label(text=tr("Optional dependency 'websockets' is not installed (required for Live Sync Panel & Operators)."), icon="INFO")
-            else:
-                req_text = f" ({tr('required for')} {dep['required_by']})" if dep.get("required_by") else ""
-                banner_row.label(text=f"{tr('Optional dependency')} '{dep_name}' {tr('is not installed')}{req_text}.", icon="INFO")
+            req_text = f" ({tr('required for')} {dep['required_by']})" if dep.get("required_by") else ""
+            banner_row.label(text=f"{tr('Required dependency')} '{dep.get('display_name', dep_name)}' {tr('is not installed')}{req_text}.", icon="INFO")
         else:
             banner_row.alert = True
-            dep_names = ", ".join(f"'{d.get('name', 'Unknown')}'" for d in missing)
-            banner_row.label(text=f"{tr('Optional dependencies')} {dep_names} {tr('are not installed')}.", icon="INFO")
+            dep_names = ", ".join(f"'{d.get('display_name', d.get('name', 'Unknown'))}'" for d in missing)
+            banner_row.label(text=f"{tr('Dependencies')} {dep_names} {tr('are not installed')}.", icon="INFO")
 
         layout.separator()
 
@@ -615,19 +608,9 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
 
     def execute(self, context):
         try:
-            from ..utils.system import has_pillow
-            from ..utils.materials.pack import get_configured_pack_stack, get_cache_dir, clean_obsolete_stack_caches
-            from ..utils.materials.atlas import AtlasGenerator
-            from ..utils.materials.standalone import StandaloneGenerator
+            from ..utils.materials.pack import get_configured_pack_stack
         except (ImportError, ValueError):
-            from utils.system import has_pillow
-            from utils.materials.pack import get_configured_pack_stack, get_cache_dir, clean_obsolete_stack_caches
-            from utils.materials.atlas import AtlasGenerator
-            from utils.materials.standalone import StandaloneGenerator
-
-        if not has_pillow():
-            self.report({'ERROR'}, "Cache precompilation requires 'Pillow' (PIL) module.")
-            return {'CANCELLED'}
+            from utils.materials.pack import get_configured_pack_stack
 
         stack = get_configured_pack_stack()
         if not stack.packs:

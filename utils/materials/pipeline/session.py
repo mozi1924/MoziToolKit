@@ -166,7 +166,8 @@ def build_material_face_cache(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> tu
         mapping = get_atlas_mapping_from_material(material) or mesh_mapping
         locations = {}
         if mapping:
-            for texture_name, location in mapping.get("textures", {}).items():
+            raw_tex = mapping.get("textures") or mapping.get("sprites", {})
+            for texture_name, location in raw_tex.items():
                 if location is None:
                     continue
                 try:
@@ -243,7 +244,8 @@ def cached_face_texture_info(
             chunk_id, texture_id = -1, -1
         location = state["locations"].get((chunk_id, texture_id))
         if not location and state.get("mapping"):
-            textures_map = state["mapping"].get("textures", {})
+            mapping_dict = state["mapping"]
+            textures_map = mapping_dict.get("textures") or mapping_dict.get("sprites", {})
             if source_key and source_key in textures_map:
                 location = textures_map[source_key]
             elif provenance:

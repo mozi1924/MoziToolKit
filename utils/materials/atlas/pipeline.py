@@ -80,16 +80,23 @@ from ..pipeline.session import (
 
 def _atlas_cache_is_complete(mapping: dict, atlas_dir: Path) -> bool:
     """Verify that mapping structure and all referenced chunk images exist on disk."""
-    if (
-        mapping.get("format_version") != ATLAS_FORMAT_VERSION
-        or not mapping.get("chunks")
-        or not mapping.get("textures")
-    ):
+    if not isinstance(mapping, dict):
+        return False
+    if not mapping.get("chunks"):
+        return False
+    if not (mapping.get("textures") or mapping.get("sprites")):
         return False
     for chunk in mapping["chunks"]:
-        files = chunk.get("files") if isinstance(chunk, dict) else None
-        albedo = files.get("albedo") if isinstance(files, dict) else None
-        if not isinstance(albedo, str) or not (atlas_dir / albedo).is_file():
+        if not isinstance(chunk, dict):
+            continue
+        chunk_cat = chunk.get("category", "blocks")
+        idx = chunk.get("category_chunk_index", chunk.get("chunk_id", 0))
+        is_anim = bool(chunk.get("is_animated") or chunk.get("kind") == "animation")
+        anim_str = "_anim" if is_anim else ""
+
+        files = chunk.get("files") if isinstance(chunk.get("files"), dict) else {}
+        albedo = files.get("albedo") or f"{chunk_cat}{anim_str}_chunk_{int(idx):03d}.png"
+        if not (atlas_dir / albedo).is_file():
             return False
         for channel in ("normal", "specular", "overlay"):
             filename = files.get(channel)
@@ -155,12 +162,12 @@ class AtlasReplacementEngine:
         with open(mapping_path, "r", encoding="utf-8") as fp:
             mapping_data = json.load(fp)
 
-        if not mapping_data.get("chunks") or not mapping_data.get("textures"):
+        if not mapping_data.get("chunks") or not (mapping_data.get("textures") or mapping_data.get("sprites")):
             yield StepResult.failed("Atlas generation produced no usable texture chunks.")
             return
 
         resolver = AtlasAddressResolver(mapping_data)
-        fallback_location = resolver.lookup_texture(FALLBACK_TEXTURE_KEY) or resolver._locations.get(FALLBACK_TEXTURE_KEY)
+        fallback_location = resolver.lookup_texture(FALLBACK_TEXTURE_KEY) or resolver._locations.get(FALLBACK_TEXTURE_KEY) or resolver.get_fallback_location()
         if fallback_location is None:
             yield StepResult.failed("Atlas mapping is missing its required fallback tile (chunk 0, slot 0).")
             return

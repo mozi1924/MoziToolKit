@@ -30,21 +30,13 @@ class Dependency:
 
 # Registry of external dependencies used by MoziToolKit
 DEPENDENCIES: Dict[str, Dependency] = {
-    "Pillow": Dependency(
-        name="Pillow",
-        module_name="PIL",
-        display_name="Pillow (PIL)",
-        min_version="9.0.0",
-        description="Required for Minecraft Texture Atlas generation & image processing",
-        required_by="Atlas Material Mode (Replace Material -> Atlas Mode)",
-    ),
-    "websockets": Dependency(
-        name="websockets",
-        module_name="websockets",
-        display_name="websockets",
-        min_version="13.0",
-        description="Required for Minecraft Live Sync with Fabric Mod (Yefira)",
-        required_by="Live Sync Panel & Operators",
+    "libmtk_py": Dependency(
+        name="libmtk_py",
+        module_name="libmtk_py",
+        display_name="LibMTK Core (Rust)",
+        min_version="0.1.0",
+        description="High-performance native Rust core for Atlas baking, Live Sync, CTM, and Voxel Meshing",
+        required_by="Core Geometry, Atlas, Material & Sync Pipeline",
     ),
 }
 
@@ -97,7 +89,7 @@ _installed_modules_cache = {}
 
 def ensure_sys_paths(force: bool = False) -> List[str]:
     """
-    Ensure local addon site-packages directory (if bundled) is added to sys.path.
+    Ensure local addon site-packages directory and LibMTK Rust backend bindings are added to sys.path.
     Blender 4.2+ handles declared wheels automatically at the extension layer,
     so this function avoids unpacking archives or mutating external environments.
     Returns list of paths successfully added to sys.path.
@@ -105,13 +97,19 @@ def ensure_sys_paths(force: bool = False) -> List[str]:
     added_paths = []
     addon_dir = Path(__file__).parent.parent.parent.resolve()
 
-    # Mount addon's own site-packages if present (e.g. for local developer testing)
-    ext_site_packages = addon_dir / "site-packages"
-    if ext_site_packages.exists() and ext_site_packages.is_dir():
-        resolved = str(ext_site_packages.resolve())
-        if resolved not in sys.path:
-            sys.path.insert(0, resolved)
-            added_paths.append(resolved)
+    # Candidate paths to discover LibMTK and bundled packages
+    candidate_paths = [
+        addon_dir / "site-packages",
+        addon_dir.parent / "libmozitoolkit" / "bindings" / "mtk-py" / "python",
+        Path.home() / "libmozitoolkit" / "bindings" / "mtk-py" / "python",
+    ]
+
+    for p in candidate_paths:
+        if p.exists() and p.is_dir():
+            resolved = str(p.resolve())
+            if resolved not in sys.path:
+                sys.path.insert(0, resolved)
+                added_paths.append(resolved)
 
     if added_paths or force:
         importlib.invalidate_caches()
@@ -194,10 +192,13 @@ def get_installed_version(module_name: str, package_name: Optional[str] = None) 
     except Exception:
         pass
 
-    # Fallback to importing module and inspecting __version__
+    # Fallback to importing module and inspecting __version__ or version()
     try:
         mod = importlib.import_module(module_name)
-        return getattr(mod, "__version__", None)
+        ver = getattr(mod, "__version__", None)
+        if ver is None and hasattr(mod, "version") and callable(mod.version):
+            ver = mod.version()
+        return ver
     except Exception:
         return None
 
@@ -254,23 +255,30 @@ def has_all_dependencies() -> bool:
     return all(get_dependency_status(dep)["is_satisfied"] for dep in DEPENDENCIES.values())
 
 
+def has_libmtk() -> bool:
+    """Check if LibMTK Rust core (libmtk_py) is available."""
+    return is_module_installed("libmtk_py")
+
+
 def has_pillow() -> bool:
-    """Convenience helper to check if Pillow (PIL) is available."""
-    return is_module_installed("PIL")
+    """Convenience helper to check if Pillow or LibMTK native image processing is available."""
+    return has_libmtk() or is_module_installed("PIL")
 
 
 def has_websockets() -> bool:
-    """Convenience helper to check if websockets module is available."""
-    return is_module_installed("websockets")
+    """Convenience helper to check if websockets or LibMTK native Live Sync session is available."""
+    return has_libmtk() or is_module_installed("websockets")
 
 
 def draw_pillow_warning(
     layout,
-    title: str = "Material replacement requires 'Pillow' (PIL) module (Missing)!",
-    subtitle: str = "Please ensure Pillow or extension wheels are available.",
+    title: str = "Material replacement requires LibMTK / Pillow module (Missing)!",
+    subtitle: str = "Please ensure LibMTK native core or extension wheels are available.",
     tab: str = "MISC"
 ):
-    """Draw a standardized alert box warning the user that Pillow is missing with a button to check environment."""
+    """Draw an alert box warning only if LibMTK/Pillow is genuinely missing."""
+    if has_pillow():
+        return
     alert_box = layout.box()
     alert_box.alert = True
     alert_box.label(text=title, icon='ERROR')
@@ -282,11 +290,13 @@ def draw_pillow_warning(
 
 def draw_websockets_warning(
     layout,
-    title: str = "Live Sync requires 'websockets' module (Missing)!",
-    subtitle: str = "Please ensure websockets or extension wheels are available.",
+    title: str = "Live Sync requires LibMTK / websockets module (Missing)!",
+    subtitle: str = "Please ensure LibMTK native core or extension wheels are available.",
     tab: str = "SYNC"
 ):
-    """Draw a standardized alert box warning the user that websockets is missing with a button to check environment."""
+    """Draw an alert box warning only if LibMTK/websockets is genuinely missing."""
+    if has_websockets():
+        return
     alert_box = layout.box()
     alert_box.alert = True
     alert_box.label(text=title, icon='ERROR')

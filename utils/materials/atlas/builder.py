@@ -446,22 +446,34 @@ def build_atlas_chunk_materials(
         if chunk_ids is not None and chunk_id not in chunk_ids:
             continue
 
-        chunk_files = chunk.get("files", {})
+        chunk_files = dict(chunk.get("files", {})) if isinstance(chunk.get("files"), dict) else {}
+        chunk_cat = chunk.get("category", "blocks")
+        idx = chunk.get("category_chunk_index", chunk.get("chunk_id", 0))
+        is_anim = bool(chunk.get("is_animated") or chunk.get("kind") == "animation")
+        anim_str = "_anim" if is_anim else ""
+
+        if "albedo" not in chunk_files:
+            chunk_files["albedo"] = f"{chunk_cat}{anim_str}_chunk_{int(idx):03d}.png"
+        if "normal" not in chunk_files and chunk.get("has_normal"):
+            chunk_files["normal"] = f"{chunk_cat}{anim_str}_chunk_{int(idx):03d}_n.png"
+        if "specular" not in chunk_files and chunk.get("has_specular"):
+            chunk_files["specular"] = f"{chunk_cat}{anim_str}_chunk_{int(idx):03d}_s.png"
+
         albedo_name = chunk_files.get("albedo")
         if not albedo_name:
             continue
 
         albedo_path = atlas_path / albedo_name
         if not albedo_path.exists():
-            raise FileNotFoundError(f"Missing atlas chunk image: {albedo_path}")
-        chunk_cat = chunk.get("category", "blocks")
+            continue
+
         if "category_chunk_index" in chunk:
             cat_chunk_idx = int(chunk["category_chunk_index"])
-            chunk_texture_name = f"{chunk_cat}_chunk_{cat_chunk_idx:03d}"
+            chunk_texture_name = f"{chunk_cat}{anim_str}_chunk_{cat_chunk_idx:03d}"
         elif albedo_name.endswith("_albedo.png"):
             chunk_texture_name = albedo_name[:-11]
         else:
-            chunk_texture_name = f"{chunk_cat}_chunk_{chunk_id:03d}"
+            chunk_texture_name = f"{chunk_cat}{anim_str}_chunk_{chunk_id:03d}"
         chunk_namespace = chunk.get("namespace", namespace or DEFAULT_NAMESPACE)
 
         # Determine material name & lookup existing material by durable metadata contract
@@ -521,7 +533,7 @@ def build_atlas_chunk_materials(
             mat.node_tree[PROP_PACK_HASH] = pack_hash
             mat.node_tree[PROP_PACK_HASH_SHORT] = short_hash
         mat[PROP_ATLAS_CHUNK_ID] = chunk_id
-        mat[PROP_ATLAS_CHUNK_KIND] = chunk["kind"]
+        mat[PROP_ATLAS_CHUNK_KIND] = chunk.get("kind", "animation" if is_anim else "static")
         mat[PROP_ATLAS_CHUNK_CATEGORY] = chunk.get("category", "blocks")
         if "category_chunk_index" in chunk:
             mat["mtk:atlas_category_chunk_index"] = int(chunk["category_chunk_index"])

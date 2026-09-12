@@ -15,10 +15,13 @@ if HAS_BPY:
     from .pipeline import (
         StandaloneReplacementEngine,
     )
+    StandaloneGenerator = StandaloneReplacementEngine
 else:
     StandaloneReplacementEngine = None
+    StandaloneGenerator = None
 
 __all__ = [
     "STANDALONE_FORMAT_VERSION",
     "StandaloneReplacementEngine",
+    "StandaloneGenerator",
 ]
