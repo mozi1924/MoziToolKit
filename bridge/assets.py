@@ -165,28 +165,14 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     sa_builder = libmtk_py.StandaloneBuilder()
     sa_res = sa_builder.build(stack, str(standalone_dir.resolve()))
 
-    # 3. Model Baking via libmtk (Pure In-Memory ModelBaker)
+    # 3. Full-Scale Model Baking via libmtk (Pure In-Memory Multi-threaded Prebaking)
     baker = libmtk_py.ModelBaker()
-    core_states = [
-        "minecraft:stone",
-        "minecraft:oak_planks",
-        "minecraft:glass",
-        "minecraft:furnace[facing=north,lit=false]",
-        "minecraft:furnace[facing=east,lit=true]",
-        "minecraft:observer[facing=up,powered=false]",
-        "minecraft:oak_stairs[facing=east,half=bottom,shape=straight]",
-        "minecraft:oak_trapdoor[facing=north,half=bottom,open=false,powered=false,waterlogged=false]",
-        "minecraft:torch",
-        "minecraft:lantern[hanging=false,waterlogged=false]",
-    ]
-    baked_models_count = 0
-    for state_str in core_states:
-        try:
-            mesh_data, textures = baker.bake_blockstate(stack, state_str, True)
-            if mesh_data and mesh_data.vertex_count > 0:
-                baked_models_count += 1
-        except Exception:
-            pass
+    model_db = baker.bake_all(stack)
+    baked_models_count = len(model_db)
+
+    # Save compact binary model database to disk
+    models_bin_bytes = model_db.to_bincode_bytes()
+    (models_dir / "models.bin").write_bytes(models_bin_bytes)
 
     # Refresh cached statistics once after precompilation
     get_cache_stats(prefs, force_refresh=True)
@@ -199,6 +185,26 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
         "baked_models": baked_models_count,
         "cache_dir": str(base_cache),
     }
+
+
+def load_baked_model_database(prefs=None) -> Optional[Any]:
+    """
+    Loads the precompiled binary model database from cache into memory.
+    Returns None if cache does not exist or libmtk is unavailable.
+    """
+    if not HAS_LIBMTK:
+        return None
+
+    cache_dir = get_cache_dir(prefs)
+    models_bin = cache_dir / "models" / "models.bin"
+    if not models_bin.exists():
+        return None
+
+    try:
+        raw_bytes = models_bin.read_bytes()
+        return libmtk_py.BakedModelDatabase.from_bincode_bytes(raw_bytes)
+    except Exception:
+        return None
 
 
 _cached_cache_stats: Optional[Dict[str, Any]] = None
