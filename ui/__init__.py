@@ -2,6 +2,8 @@
 MoziToolKit UI Package Registration
 """
 
+from __future__ import annotations
+
 import bpy
 from .preferences import (
     MOZI_PG_resource_pack_entry,
@@ -21,8 +23,29 @@ from .preferences import (
     MOZI_OT_menu_import_config,
     MOZI_AddonPreferences,
 )
-
-from . import menus
+from .menu_mesh import (
+    MOZI_MT_mesh_menu,
+    MOZI_MT_mesh_edge_menu,
+    MOZI_MT_mesh_face_menu,
+    register as register_menu_mesh,
+    unregister as unregister_menu_mesh,
+)
+from .menu_object import (
+    MOZI_MT_object_menu,
+    register as register_menu_object,
+    unregister as unregister_menu_object,
+)
+from .menu_select import (
+    MOZI_MT_select_mesh_menu,
+    MOZI_MT_select_uv_menu,
+    register as register_menu_select,
+    unregister as unregister_menu_select,
+)
+from .menu_uv import (
+    MOZI_MT_uv_menu,
+    register as register_menu_uv,
+    unregister as unregister_menu_uv,
+)
 
 classes = (
     # PropertyGroups
@@ -45,23 +68,35 @@ classes = (
     MOZI_OT_menu_import_config,
     # Preferences
     MOZI_AddonPreferences,
+    # Menus
+    MOZI_MT_mesh_menu,
+    MOZI_MT_mesh_edge_menu,
+    MOZI_MT_mesh_face_menu,
+    MOZI_MT_object_menu,
+    MOZI_MT_select_mesh_menu,
+    MOZI_MT_select_uv_menu,
+    MOZI_MT_uv_menu,
 )
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    menus.register()
+
+    register_menu_mesh()
+    register_menu_object()
+    register_menu_select()
+    register_menu_uv()
 
 
 def unregister():
-    menus.unregister()
+    unregister_menu_uv()
+    unregister_menu_select()
+    unregister_menu_object()
+    unregister_menu_mesh()
+
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
-
-
-
-

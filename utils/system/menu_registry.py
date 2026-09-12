@@ -7,15 +7,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
-
-
 from ..config.models import normalize_operator_id, is_valid_operator_id
 from ..config import load_config
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
-        {"operator": "mozi.replace_materials", "label": "Replace Materials (libmtk)", "enabled": True},
-        {"operator": "mozi.restore_materials_from_provenance", "label": "Restore Materials From Mesh", "enabled": True},
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
@@ -25,9 +23,8 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
     ],
     "object": [
-        {"operator": "mozi.replace_materials", "label": "Replace Materials (libmtk)", "enabled": True},
-        {"operator": "mozi.restore_materials_from_provenance", "label": "Restore Materials From Mesh", "enabled": True},
-        {"operator": "mozi.precompile_cache", "label": "Precompile Stack Caches", "enabled": True},
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
@@ -41,18 +38,18 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
 }
 
 CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
-    "mozi.replace_materials": {
-        "canonical_id": "mozi.replace_materials",
-        "label": "Replace Materials (libmtk)",
-        "default_label": "Replace Materials (libmtk)",
+    "mozi.replace_material": {
+        "canonical_id": "mozi.replace_material",
+        "label": "Replace Material",
+        "default_label": "Replace Material",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.restore_materials_from_provenance": {
-        "canonical_id": "mozi.restore_materials_from_provenance",
-        "label": "Restore Materials From Mesh",
-        "default_label": "Restore Materials From Mesh",
+    "mozi.restore_materials_from_attributes": {
+        "canonical_id": "mozi.restore_materials_from_attributes",
+        "label": "Restore Materials from Attributes",
+        "default_label": "Restore Materials from Attributes",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -105,14 +102,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.replace_material": {
-        "canonical_id": "mozi.replace_materials",
-        "label": "Replace Materials (libmtk)",
-        "default_label": "Replace Materials (libmtk)",
-        "views": ["object", "mesh"],
-        "enabled": True,
-        "is_legacy": True,
-    },
     "mozi.set_texture_interpolation_closest": {
         "canonical_id": "mozi.set_texture_interpolation_closest",
         "label": "Set Image Interpolation to Closest",
@@ -145,8 +134,24 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
+    # Backwards compatibility legacy aliases
+    "mozi.replace_materials": {
+        "canonical_id": "mozi.replace_material",
+        "label": "Replace Material",
+        "default_label": "Replace Material",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": True,
+    },
+    "mozi.restore_materials_from_provenance": {
+        "canonical_id": "mozi.restore_materials_from_attributes",
+        "label": "Restore Materials from Attributes",
+        "default_label": "Restore Materials from Attributes",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": True,
+    },
 }
-
 
 # Central Registry Dictionary for Registered Menu Items initialized with Canonical Operators
 _REGISTERED_MENU_ITEMS: Dict[str, Dict[str, Any]] = {k: dict(v) for k, v in CANONICAL_OPERATORS.items()}
@@ -298,6 +303,8 @@ def draw_dynamic_menu(layout, view_name: str):
     if not valid_items:
         return
 
+    layout.separator()
+    layout.operator_context = "INVOKE_DEFAULT"
     try:
         from ...i18n import tr
     except (ImportError, ValueError):
@@ -309,7 +316,6 @@ def draw_dynamic_menu(layout, view_name: str):
 
     layout.label(text=tr("MoziToolKit"))
     for op_id, label in valid_items:
-
         if label:
             # First check if the user-specified or default label has a translation in Operator or general context
             trans_label = tr(label, "Operator")
