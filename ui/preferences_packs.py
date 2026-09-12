@@ -6,23 +6,27 @@ import bpy
 from pathlib import Path
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 
-from ..utils.config import get_config_manager
+try:
+    from ..utils.config import get_config_manager
+    from ..utils.system import get_prefs
+except (ImportError, ValueError):
+    from utils.config import get_config_manager
+    from utils.system import get_prefs
 
 
 def _safe_get_prefs(self_or_context=None):
     if hasattr(self_or_context, "resource_packs"):
         return self_or_context
     if isinstance(self_or_context, bpy.types.Context):
-        from ..utils.system import get_prefs
         prefs = get_prefs(self_or_context)
         if prefs:
             return prefs
     if hasattr(self_or_context, "id_data") and hasattr(self_or_context.id_data, "resource_packs"):
         return self_or_context.id_data
-    from ..utils.system import get_prefs
     prefs = get_prefs(bpy.context)
     if prefs:
         return prefs
+
     try:
         for addon in bpy.context.preferences.addons.values():
             if hasattr(addon, "preferences") and hasattr(addon.preferences, "resource_packs"):

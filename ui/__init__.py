@@ -22,6 +22,8 @@ from .preferences import (
     MOZI_AddonPreferences,
 )
 
+from . import menus
+
 classes = (
     # PropertyGroups
     MOZI_PG_resource_pack_entry,
@@ -49,14 +51,17 @@ classes = (
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    menus.register()
 
 
 def unregister():
+    menus.unregister()
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
+
 
 
 

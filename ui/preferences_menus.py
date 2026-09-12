@@ -6,30 +6,39 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from ..utils.config import (
-    get_config_manager,
-    export_config,
-    import_config,
-    normalize_operator_id,
-)
-from ..utils.system import ALL_OPERATORS
-from ..utils.system.menu_registry import sort_unadded_items
+try:
+    from ..utils.config import (
+        get_config_manager,
+        export_config,
+        import_config,
+        normalize_operator_id,
+    )
+    from ..utils.system import ALL_OPERATORS, get_prefs
+    from ..utils.system.menu_registry import sort_unadded_items
+except (ImportError, ValueError):
+    from utils.config import (
+        get_config_manager,
+        export_config,
+        import_config,
+        normalize_operator_id,
+    )
+    from utils.system import ALL_OPERATORS, get_prefs
+    from utils.system.menu_registry import sort_unadded_items
 
 
 def _safe_get_prefs(self_or_context=None):
     if hasattr(self_or_context, "resource_packs"):
         return self_or_context
     if isinstance(self_or_context, bpy.types.Context):
-        from ..utils.system import get_prefs
         prefs = get_prefs(self_or_context)
         if prefs:
             return prefs
     if hasattr(self_or_context, "id_data") and hasattr(self_or_context.id_data, "resource_packs"):
         return self_or_context.id_data
-    from ..utils.system import get_prefs
     prefs = get_prefs(bpy.context)
     if prefs:
         return prefs
+
     try:
         for addon in bpy.context.preferences.addons.values():
             if hasattr(addon, "preferences") and hasattr(addon.preferences, "resource_packs"):
