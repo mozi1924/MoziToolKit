@@ -11,14 +11,13 @@ from ..utils.materials.pipeline import replace_materials, restore_materials_from
 from ..utils.system import get_prefs, register_menu_item
 
 
-@register_menu_item(views=["object", "mesh"], label="Replace Materials (libmtk)")
-class MOZI_OT_replace_materials(bpy.types.Operator):
-    """Replace and upgrade Minecraft materials using pure Rust libmtk backend."""
+@register_menu_item(views=["object", "mesh"], label="Replace Material")
+class MOZI_OT_replace_material(bpy.types.Operator):
+    """Replace and upgrade Minecraft materials using native material pipeline."""
 
-    bl_idname = "mozi.replace_materials"
-    bl_label = "Replace Materials (libmtk)"
+    bl_idname = "mozi.replace_material"
+    bl_label = "Replace Material"
     bl_options = {"REGISTER", "UNDO"}
-
 
     mode: EnumProperty(
         name="Material Mode",
@@ -70,14 +69,13 @@ class MOZI_OT_replace_materials(bpy.types.Operator):
             return {'CANCELLED'}
 
 
-@register_menu_item(views=["object", "mesh"], label="Restore Materials From Mesh")
-class MOZI_OT_restore_materials_from_provenance(bpy.types.Operator):
+@register_menu_item(views=["object", "mesh"], label="Restore Materials from Attributes")
+class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
     """Restore and reconstruct material slots and shader trees from mesh provenance attributes."""
 
-    bl_idname = "mozi.restore_materials_from_provenance"
-    bl_label = "Restore Materials From Mesh"
+    bl_idname = "mozi.restore_materials_from_attributes"
+    bl_label = "Restore Materials from Attributes"
     bl_options = {"REGISTER", "UNDO"}
-
 
     mode: EnumProperty(
         name="Material Mode",
@@ -116,7 +114,11 @@ class MOZI_OT_restore_materials_from_provenance(bpy.types.Operator):
             return {'CANCELLED'}
 
 
+# Backwards compatibility aliases
+MOZI_OT_replace_materials = MOZI_OT_replace_material
+MOZI_OT_restore_materials_from_provenance = MOZI_OT_restore_materials_from_attributes
+
 OPERATORS_CLASSES = (
-    MOZI_OT_replace_materials,
-    MOZI_OT_restore_materials_from_provenance,
+    MOZI_OT_replace_material,
+    MOZI_OT_restore_materials_from_attributes,
 )

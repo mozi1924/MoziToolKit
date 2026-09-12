@@ -15,6 +15,10 @@ def normalize_operator_id(op_id: str) -> str:
     """
     if not op_id or not isinstance(op_id, str):
         return ""
+    if op_id == "mozi.replace_materials":
+        return "mozi.replace_material"
+    if op_id == "mozi.restore_materials_from_provenance":
+        return "mozi.restore_materials_from_attributes"
     if op_id.startswith("mozi."):
         return op_id
     if "." in op_id:
@@ -136,6 +140,8 @@ class MenuItem:
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
@@ -146,6 +152,7 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "object": [
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
