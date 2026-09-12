@@ -13,7 +13,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..utils.system import ensure_sys_paths, get_prefs
+try:
+    from ..utils.system import ensure_sys_paths, get_prefs
+except (ImportError, ValueError):
+    from utils.system import ensure_sys_paths, get_prefs
 
 ensure_sys_paths()
 
