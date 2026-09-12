@@ -266,8 +266,15 @@ class AtlasAddressResolver:
             if isinstance(chunk, dict) and "chunk_id" in chunk:
                 self._chunks_by_id[int(chunk["chunk_id"])] = chunk
 
-        # 2. Index raw textures from mapping
-        raw_textures = self.mapping.get("textures", {})
+        # 2. Index raw textures and sprites from mapping
+        raw_textures = {}
+        if isinstance(self.mapping.get("textures"), dict):
+            raw_textures.update(self.mapping["textures"])
+        if isinstance(self.mapping.get("sprites"), dict):
+            raw_textures.update(self.mapping["sprites"])
+        if isinstance(self.mapping.get("anim_sprites"), dict):
+            raw_textures.update(self.mapping["anim_sprites"])
+
         if isinstance(raw_textures, dict):
             for name, location in raw_textures.items():
                 if not isinstance(location, dict):
@@ -485,6 +492,9 @@ class AtlasAddressResolver:
         block_states = self.mapping.get("block_states", {})
         if isinstance(block_states, dict):
             self._block_states.update(block_states)
+
+        # 7. Register procedural fallback tile
+        self._locations.setdefault(FALLBACK_TEXTURE_KEY, self.get_fallback_location())
 
     def is_blacklisted(self, texture_key_or_path: str) -> bool:
         """Check if a candidate texture is rejected by the scene object blacklist."""
@@ -763,24 +773,21 @@ class AtlasAddressResolver:
 
         # 2. Mineways Atlas UV decoding
         if mat_mode == "MINEWAYS_ATLAS" and mesh and slot_mat:
-            from ..matching.mineways_atlas import find_mineways_atlas_image, decode_mineways_face_uv
-            from ..matching.mineways import MINEWAYS_BLOCK_NAME_ALIASES
-            from ..matching.jmc2obj import _expand_semantic_candidates
+            import libmtk_py as mtk
             uv_layer = mesh.uv_layers.active_render or mesh.uv_layers.active
             if uv_layer and poly_idx < len(mesh.polygons):
                 poly = mesh.polygons[poly_idx]
-                img = find_mineways_atlas_image(slot_mat)
-                tex_name, alt_name, _ = decode_mineways_face_uv(poly, uv_layer, image=img)
+                loop_idx = poly.loop_indices[0] if poly.loop_indices else 0
+                u = uv_layer.data[loop_idx].uv[0]
+                v = uv_layer.data[loop_idx].uv[1]
+                tex_name, alt_name, _ = mtk.MaterialResolver.decode_mineways_uv(u, v, 1024, 1024)
                 if tex_name:
                     mw_cands = []
                     for name in (tex_name, alt_name):
                         if name:
                             clean_n = name.strip().lower()
-                            if clean_n in MINEWAYS_BLOCK_NAME_ALIASES:
-                                mw_cands.extend(MINEWAYS_BLOCK_NAME_ALIASES[clean_n])
                             mw_cands.append(f"block/{clean_n}")
                             mw_cands.append(clean_n)
-                            mw_cands.extend(_expand_semantic_candidates(clean_n))
                     clean_cands = [c for c in mw_cands if not self.is_blacklisted(c)]
                     loc = self.lookup_texture(clean_cands)
                     return (*provenance, loc) if provenance else (DEFAULT_NAMESPACE, clean_cands, loc)

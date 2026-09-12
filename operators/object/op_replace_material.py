@@ -54,13 +54,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         box_biome.prop(self, "biome_preset", text="Preset")
 
     def execute(self, context):
-        if not has_pillow():
-            self.report(
-                {'ERROR'},
-                "Material replacement requires 'Pillow' (PIL) module. Please ensure Pillow or extension wheels are installed."
-            )
-            return {"CANCELLED"}
-
         pack_stack = get_configured_pack_stack()
         if not pack_stack.packs:
             self.report(

@@ -125,10 +125,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             )
             return {'CANCELLED'}
 
-        if not has_websockets():
-            self.report({'WARNING'}, "Missing 'websockets' library! Check bundled extension wheels.")
-            return {'CANCELLED'}
-
         # 1. Resolve target container object
         target_obj = None
         if self.target_container:

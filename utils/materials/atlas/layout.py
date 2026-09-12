@@ -194,10 +194,11 @@ def remap_uv_to_local(
                 atlas_height=float(old_chunk.get("height", 16)),
             )
     elif orig_mode == "MINEWAYS_ATLAS" and old_loc:
-        from ..matching.mineways_atlas import remap_mineways_atlas_uv_to_local
+        import libmtk_py as mtk
         img_w = int(old_loc.get("width", 1024))
         img_h = int(old_loc.get("height", 1024))
-        return remap_mineways_atlas_uv_to_local(u, v, image_width=img_w, image_height=img_h)
+        _pri, _alt, local = mtk.MaterialResolver.decode_mineways_uv(u, v, img_w, img_h)
+        return local
     elif old_anim_info:
         return local_uv_from_rect(
             u, v,

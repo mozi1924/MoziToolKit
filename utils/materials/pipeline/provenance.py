@@ -4,6 +4,7 @@ Material provenance, mode detection, and face source attribute tracking.
 
 from __future__ import annotations
 
+from typing import Any
 import json
 from pathlib import Path
 try:
@@ -12,6 +13,8 @@ try:
 except ImportError:
     bpy = None
     HAS_BPY = False
+
+import libmtk_py as mtk
 
 from ..constants import (
     ATTR_SOURCE_ORIGIN,
@@ -78,8 +81,12 @@ def canonical_texture_key(namespace: str, texture_name: str) -> str:
     The key intentionally does not contain a resource-pack hash: a later
     replacement pack is allowed to provide the same Minecraft resource.
     """
-    namespace = (namespace or DEFAULT_NAMESPACE).strip().lower()
     texture_name = (texture_name or "").strip().lower().removesuffix(".png")
+    if ":" in texture_name:
+        ns, texture_name = texture_name.split(":", 1)
+        namespace = ns or namespace or DEFAULT_NAMESPACE
+    else:
+        namespace = (namespace or DEFAULT_NAMESPACE).strip().lower()
     return f"{namespace}:{texture_name}" if texture_name else ""
 
 
@@ -178,8 +185,7 @@ def detect_material_mode(mat: bpy.types.Material | None) -> str:
             return "ATLAS_CHUNK"
         return "STANDALONE"
 
-    from ..matching.mineways_atlas import is_mineways_atlas_material
-    if is_mineways_atlas_material(mat):
+    if mtk.MaterialResolver.is_mineways_atlas(getattr(mat, "name", "")):
         return "MINEWAYS_ATLAS"
 
     return "GENERIC"

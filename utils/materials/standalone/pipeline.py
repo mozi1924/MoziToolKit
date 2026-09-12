@@ -107,7 +107,7 @@ class StandaloneReplacementEngine:
             try:
                 with open(mapping_path, "r", encoding="utf-8") as fp:
                     data = json.load(fp)
-                    if data.get("format_version") == STANDALONE_FORMAT_VERSION and data.get("stack_hash") == effective_pack_hash:
+                    if bool(data.get("textures") or data.get("sprites")):
                         standalone_mapping = data
             except Exception:
                 standalone_mapping = None
