@@ -39,11 +39,12 @@ from .menu_config import (
     load_material_settings_config,
     save_material_settings_config,
     get_enabled_pack_entries,
-    reset_config,
     export_config,
     import_config,
     draw_dynamic_menu,
+    sort_unadded_items,
 )
+
 
 __all__ = [
     "Dependency",
@@ -83,4 +84,6 @@ __all__ = [
     "export_config",
     "import_config",
     "draw_dynamic_menu",
+    "sort_unadded_items",
 ]
+

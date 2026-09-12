@@ -17,13 +17,19 @@ except ImportError:
     HAS_NUMPY = False
 
 try:
-    import mtk_py
+    import libmtk_py as mtk_py
     MeshData = mtk_py.MeshData
     AttributeDomain = mtk_py.AttributeDomain
 except ImportError:
-    # Graceful fallback for type annotations or documentation builds
-    MeshData = Any  # type: ignore
-    AttributeDomain = Any  # type: ignore
+    try:
+        import mtk_py
+        MeshData = mtk_py.MeshData
+        AttributeDomain = mtk_py.AttributeDomain
+    except ImportError:
+        # Graceful fallback for type annotations or documentation builds
+        mtk_py = None
+        MeshData = Any  # type: ignore
+        AttributeDomain = Any  # type: ignore
 
 
 # Mapping from Blender Attribute Domain to libmtk Domain
@@ -58,6 +64,18 @@ BLENDER_TO_MTK_TYPE: Dict[str, Tuple[str, int, str, str]] = {
 
 # Mapping from libmtk DataType name to (blender_data_type, value_attr, array_typecode)
 MTK_TO_BLENDER_TYPE: Dict[str, Tuple[str, str, str]] = {
+    "float": ("FLOAT", "value", "f"),
+    "float2": ("FLOAT_VECTOR2", "vector", "f"),
+    "float3": ("FLOAT_VECTOR", "vector", "f"),
+    "float4": ("FLOAT_COLOR", "color", "f"),
+    "int8": ("INT8", "value", "b"),
+    "int16": ("INT", "value", "h"),
+    "int32": ("INT", "value", "i"),
+    "uint8": ("INT", "value", "B"),
+    "uint16": ("INT", "value", "H"),
+    "uint32": ("INT", "value", "I"),
+    "bool": ("BOOLEAN", "value", "b"),
+    "string": ("STRING", "value", ""),
     "Float": ("FLOAT", "value", "f"),
     "Float2": ("FLOAT_VECTOR2", "vector", "f"),
     "Float3": ("FLOAT_VECTOR", "vector", "f"),

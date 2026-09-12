@@ -9,32 +9,64 @@ import sys
 from pathlib import Path
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 
-from ..utils.config import (
-    get_config_manager,
-    load_config,
-    load_full_config,
-    save_config,
-    save_full_config,
-    load_pack_stack_config,
-    save_pack_stack_config,
-    load_material_settings_config,
-    save_material_settings_config,
-    get_enabled_pack_entries,
-    reset_config,
-    reset_views_config,
-    export_config,
-    import_config,
-    normalize_operator_id,
-)
-from ..utils.system import (
-    ALL_OPERATORS,
-    DEPENDENCIES,
-    get_all_dependency_statuses,
-    get_blender_site_packages,
-    get_python_executable,
-    has_all_dependencies,
-    get_prefs,
-)
+try:
+    from ..utils.config import (
+        get_config_manager,
+        load_config,
+        load_full_config,
+        save_config,
+        save_full_config,
+        load_pack_stack_config,
+        save_pack_stack_config,
+        load_material_settings_config,
+        save_material_settings_config,
+        get_enabled_pack_entries,
+        reset_config,
+        reset_views_config,
+        export_config,
+        import_config,
+        normalize_operator_id,
+    )
+    from ..utils.system import (
+        ALL_OPERATORS,
+        DEPENDENCIES,
+        DEFAULT_PRESETS,
+        get_all_dependency_statuses,
+        get_blender_site_packages,
+        get_python_executable,
+        has_all_dependencies,
+        get_prefs,
+        sort_unadded_items,
+    )
+except (ImportError, ValueError):
+    from utils.config import (
+        get_config_manager,
+        load_config,
+        load_full_config,
+        save_config,
+        save_full_config,
+        load_pack_stack_config,
+        save_pack_stack_config,
+        load_material_settings_config,
+        save_material_settings_config,
+        get_enabled_pack_entries,
+        reset_config,
+        reset_views_config,
+        export_config,
+        import_config,
+        normalize_operator_id,
+    )
+    from utils.system import (
+        ALL_OPERATORS,
+        DEPENDENCIES,
+        DEFAULT_PRESETS,
+        get_all_dependency_statuses,
+        get_blender_site_packages,
+        get_python_executable,
+        has_all_dependencies,
+        get_prefs,
+        sort_unadded_items,
+    )
 
 BIOME_ENUM_ITEMS = [
     ('PLAINS', "Plains", "Standard plains biome tint"),
