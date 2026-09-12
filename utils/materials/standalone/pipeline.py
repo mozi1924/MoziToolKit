@@ -26,14 +26,15 @@ from ..pipeline.provenance import (
     detect_material_mode,
     split_texture_key,
 )
-from ..matching import material_source_origin
-from ..pack.pack_stack import ResourcePackStack
+import libmtk_py as mtk
+
+def material_source_origin(mat) -> str:
+    return mtk.MaterialResolver.detect_origin(mat.name) if mat else "generic"
 from ..pack.resource_pack import ZipResourcePack, get_cache_dir, clean_obsolete_stack_caches
 from ..biome import BiomeResolver
 from ..nodes.builder import rebuild_material
 from ..pack.animation import get_material_animation_info, get_texture_info_animation_info
-from ..atlas.generator import AtlasGenerator
-from .generator import StandaloneGenerator, STANDALONE_FORMAT_VERSION
+STANDALONE_FORMAT_VERSION = 1
 from ..atlas.layout import remap_uv_to_local, remap_local_to_target_uv
 from ...mesh import restore_atlas_tiling_uv
 from ...mesh.fluid_uv import is_fluid_texture_name, normalize_static_fluid_face_uv

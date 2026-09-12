@@ -5,7 +5,10 @@ Scale UV Faces Pipeline Step
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
-from ...utils.mesh import bmesh_context, poll_edit_mesh, get_face_uv_center
+try:
+    from ...utils.mesh import bmesh_context, poll_edit_mesh, get_face_uv_center
+except (ImportError, ValueError):
+    from utils.mesh import bmesh_context, poll_edit_mesh, get_face_uv_center
 
 
 class ScaleUVStep(PipelineStep):

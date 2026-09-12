@@ -69,3 +69,19 @@
   - 多存储后端配置引擎（`JsonBackend`, `MemoryBackend`, `BlenderBackend`）与原子持久化。
   - Blender 4.2+ Extensions / Python Wheels 隔离管理、i18n 国际化字典、自动化构建与 54 个全量 CI 测试套件。
 
+---
+
+### 6. 底层几何与网络内核 API (libmozitoolkit / libmtk_py)
+- **`libmozitoolkit/docs/API_REFERENCE.md`**：高性能体素/网格/纹理 Rust 内核与 Python 绑定 API 体系：
+  - **[API 总览与零拷贝规范](../../libmozitoolkit/docs/api/index.md)**
+  - **[网格与几何缓冲 (PyMeshData)](../../libmozitoolkit/docs/api/mesh.md)**
+  - **[体素存储与配置 (PyVoxelStorage)](../../libmozitoolkit/docs/api/voxel.md)**
+  - **[网格生成与增量重构 (PySectionMesher)](../../libmozitoolkit/docs/api/mesher.md)**
+  - **[模型解析与烘焙 (PyModelBaker)](../../libmozitoolkit/docs/api/model.md)**
+  - **[纹理图集与独立材质预编译 (PyAtlasBuilder, PyBakedAtlas)](../../libmozitoolkit/docs/api/texture.md)**
+  - **[资源包栈 (PyResourcePackStack)](../../libmozitoolkit/docs/api/resource.md)**
+  - **[材质匹配与 UV 重映射 (PyMaterialResolver)](../../libmozitoolkit/docs/api/material.md)**
+  - **[实时同步与协议编解码 (PyLiveSyncSession)](../../libmozitoolkit/docs/api/sync_and_protocol.md)**
+  - **[面剔除引擎 (PyFaceCuller)](../../libmozitoolkit/docs/api/cull.md)**
+
+

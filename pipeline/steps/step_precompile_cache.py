@@ -11,13 +11,22 @@ from typing import Iterator, Union
 
 from ..progress import ProgressUpdate
 from ..step import PipelineStep, StepResult
-from ...utils.materials.pack import (
-    ResourcePackStack,
-    get_configured_pack_stack,
-    get_cache_stats,
-)
-from ...utils.materials.pack.resource_pack import clean_obsolete_stack_caches
-from ...utils.mc_baker import clear_shared_baker_cache
+try:
+    from ...utils.materials.pack import (
+        ResourcePackStack,
+        get_configured_pack_stack,
+        get_cache_stats,
+    )
+    from ...utils.materials.pack.resource_pack import clean_obsolete_stack_caches
+    from ...utils.mc_baker import clear_shared_baker_cache
+except (ImportError, ValueError):
+    from utils.materials.pack import (
+        ResourcePackStack,
+        get_configured_pack_stack,
+        get_cache_stats,
+    )
+    from utils.materials.pack.resource_pack import clean_obsolete_stack_caches
+    from utils.mc_baker import clear_shared_baker_cache
 
 
 class StepPrecompileCache(PipelineStep):

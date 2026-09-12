@@ -29,8 +29,11 @@ from ..pipeline.provenance import (
     split_texture_key,
     write_provenance_schema,
 )
-from ..matching import material_source_origin
 from ..pack.pack_stack import ResourcePackStack
+import libmtk_py as mtk
+
+def material_source_origin(mat) -> str:
+    return mtk.MaterialResolver.detect_origin(mat.name) if mat else "generic"
 from ..pack.resource_pack import ZipResourcePack, get_cache_dir, clean_obsolete_stack_caches
 from ..biome import BiomeResolver
 from ..nodes.builder import rebuild_material

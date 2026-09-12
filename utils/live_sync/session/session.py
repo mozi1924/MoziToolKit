@@ -15,7 +15,13 @@ from ..protocol.client import SyncClientThread
 from ...mc_baker import clear_shared_baker_cache
 from ..meshing import clear_mesh_builder_caches
 from ..storage.voxel_storage import VoxelStorage
-from ....pipeline.progress import ProgressBar
+try:
+    from ....pipeline.progress import ProgressBar
+except (ImportError, ValueError):
+    try:
+        from pipeline.progress import ProgressBar
+    except (ImportError, ValueError):
+        from MoziToolKit.pipeline.progress import ProgressBar
 from .material_cache import extract_atlas_params
 from .persistence import _MANIFEST_DICT_CACHE
 from .props import (

@@ -154,11 +154,7 @@ def build_material_face_cache(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> tu
     only tens or hundreds of source materials. Adapter detection walks node
     trees and atlas mappings, so precomputing it avoids heavy per-polygon RNA calls.
     """
-    from ..matching import (
-        extract_material_texture_keys,
-        material_source_origin,
-        is_ice_cube_internal_face_material,
-    )
+    import libmtk_py as mtk
     mesh_mapping = get_atlas_mapping_from_mesh(mesh)
     chunk_attr = mesh.attributes.get(ATTR_ATLAS_CHUNK_ID) or mesh.attributes.get("atlas_chunk_id")
     texture_attr = mesh.attributes.get(ATTR_ATLAS_TEXTURE_ID) or mesh.attributes.get("atlas_texture_id")
@@ -177,15 +173,29 @@ def build_material_face_cache(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> tu
                     locations[(int(location.get("chunk_id", -1)), int(location.get("texture_id", -1)))] = location
                 except (TypeError, ValueError):
                     continue
+
+        mat_name = material.name
+        origin = mtk.MaterialResolver.detect_origin(mat_name)
+        is_internal = "internal" in mat_name.lower() or "inside" in mat_name.lower() or mat_name.lower().startswith("ice_cube_in")
+        if origin == "ice_cube":
+            clean = mtk.MaterialResolver.clean_icecube(mat_name)
+            candidates = ("minecraft", [clean, f"block/{clean}"])
+        elif origin == "jmc2obj":
+            clean = mtk.MaterialResolver.clean_jmc2obj(mat_name)
+            candidates = ("minecraft", [clean, f"block/{clean}"])
+        else:
+            clean = mat_name.split(".")[0].strip().lower()
+            candidates = ("minecraft", [clean, f"block/{clean}"])
+
         cache[material] = {
             "mapping": mapping,
             "mode": detect_material_mode(material),
-            "is_internal": is_ice_cube_internal_face_material(material),
-            "origin": material_source_origin(material),
+            "is_internal": is_internal,
+            "origin": origin,
             "locations": locations,
             "chunk_attr": chunk_attr,
             "texture_attr": texture_attr,
-            "candidates": extract_material_texture_keys(material),
+            "candidates": candidates,
             "chunks": {
                 int(chunk["chunk_id"]): chunk
                 for chunk in (mapping or {}).get("chunks", [])
@@ -252,8 +262,8 @@ def cached_face_texture_info(
             if texture_name:
                 return namespace, [texture_name], location
 
-    from ..matching import extract_face_texture_info
-    return extract_face_texture_info(mesh, poly_idx, material, state["mapping"])
+    namespace, candidates = state["candidates"]
+    return namespace, candidates, None
 
 
 def apply_generic_procedural_atlas_material(

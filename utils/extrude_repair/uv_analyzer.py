@@ -8,7 +8,16 @@ from typing import Tuple, Optional
 import bpy
 
 from ..pixel_split.uv_analyzer import get_face_effective_texture_info
-from ..materials.matching import get_material_pixel_step
+
+def get_material_pixel_step(material: Optional[bpy.types.Material], default_size: int = 64) -> float:
+    if not material or not getattr(material, "use_nodes", False) or not material.node_tree:
+        return 1.0 / float(max(1, default_size))
+    for n in material.node_tree.nodes:
+        if n.type == 'TEX_IMAGE' and getattr(n, "image", None):
+            size = max(n.image.size[0], n.image.size[1])
+            if size > 0:
+                return 1.0 / float(size)
+    return 1.0 / float(max(1, default_size))
 
 
 from ..mesh.uv_math import (

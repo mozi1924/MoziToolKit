@@ -6,7 +6,10 @@ import math
 from ..context import PipelineContext
 from ..step import PipelineStep, StepResult
 
-from ...utils.mesh import bmesh_context, is_hard_edge, poll_edit_mesh, set_select_mode
+try:
+    from ...utils.mesh import bmesh_context, is_hard_edge, poll_edit_mesh, set_select_mode
+except (ImportError, ValueError):
+    from utils.mesh import bmesh_context, is_hard_edge, poll_edit_mesh, set_select_mode
 
 
 class SelectHardEdgesStep(PipelineStep):

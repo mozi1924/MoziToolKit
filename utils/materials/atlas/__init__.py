@@ -2,12 +2,6 @@
 Texture Atlas packing, layout math, generation, and chunk node tree building.
 """
 
-from .packer import (
-    PackedRect,
-    MaxRectsBinPack,
-    pack_category_textures,
-)
-
 from .layout import (
     face_index_from_normal,
     static_cell,
@@ -50,9 +44,6 @@ from .addressing import (
 )
 
 __all__ = [
-    "PackedRect",
-    "MaxRectsBinPack",
-    "pack_category_textures",
     "face_index_from_normal",
     "static_cell",
     "chunk_cell",

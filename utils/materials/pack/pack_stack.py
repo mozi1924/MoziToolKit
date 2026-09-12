@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Iterator, Callable
 from .resource_pack import ZipResourcePack, get_pack_hash
 from ...mc_baker.resource_loader import JarResourceLoader
 from ...config import get_enabled_pack_entries
+import libmtk_py as mtk
 
 logger = logging.getLogger("MoziToolKit.Materials.PackStack")
 
@@ -28,6 +29,7 @@ class ResourcePackStack:
     def __init__(self, pack_sources: Optional[List[Union[str, Path, ZipResourcePack]]] = None):
         self.packs: List[ZipResourcePack] = []
         self._loaders: List[JarResourceLoader] = []
+        self._rust_stack: mtk.ResourcePackStack = mtk.ResourcePackStack()
 
         if pack_sources:
             for src in pack_sources:
@@ -54,6 +56,13 @@ class ResourcePackStack:
             self.packs.append(pack)
             loader = JarResourceLoader(pack.zip_path)
             self._loaders.append(loader)
+
+            p_obj = Path(pack.zip_path)
+            if p_obj.is_dir():
+                self._rust_stack.add_directory_pack(str(p_obj))
+            elif p_obj.is_file():
+                self._rust_stack.add_zip_pack(str(p_obj))
+
             return pack
         except Exception as e:
             logger.warning(f"Failed to add pack source '{source}': {e}")
@@ -205,7 +214,6 @@ class ResourcePackStack:
         Check if the persistent atlas and model bake for this stack exists and is complete.
         """
         import json
-        from ..constants import ATLAS_FORMAT_VERSION
         atlas_dir = self.get_baked_atlas_dir(yefira_only=yefira_only)
         mapping_path = atlas_dir / "atlas_mapping.json"
         if not mapping_path.exists():
@@ -214,21 +222,17 @@ class ResourcePackStack:
         try:
             with open(mapping_path, "r", encoding="utf-8") as fp:
                 mapping = json.load(fp)
-                if (
-                    mapping.get("format_version") != ATLAS_FORMAT_VERSION
-                    or not mapping.get("chunks")
-                    or not mapping.get("textures")
-                ):
+                if not mapping.get("chunks"):
+                    return False
+                if not (mapping.get("sprites") or mapping.get("textures")):
                     return False
                 for chunk in mapping["chunks"]:
-                    files = chunk.get("files") if isinstance(chunk, dict) else None
-                    albedo = files.get("albedo") if isinstance(files, dict) else None
-                    if not isinstance(albedo, str) or not (atlas_dir / albedo).is_file():
+                    cat = chunk.get("category", "blocks")
+                    idx = chunk.get("category_chunk_index", chunk.get("chunk_id", 0))
+                    files = chunk.get("files", {})
+                    albedo = files.get("albedo") or f"{cat}_chunk_{int(idx):03d}.png"
+                    if not (atlas_dir / albedo).is_file():
                         return False
-                    for channel in ("normal", "specular", "overlay"):
-                        filename = files.get(channel)
-                        if filename and not (atlas_dir / filename).is_file():
-                            return False
                 return True
         except (OSError, json.JSONDecodeError):
             return False
@@ -244,7 +248,6 @@ class ResourcePackStack:
         Check if the persistent standalone asset library for this stack exists and is complete.
         """
         import json
-        from ..standalone.generator import STANDALONE_FORMAT_VERSION
         standalone_dir = self.get_baked_standalone_dir()
         mapping_path = standalone_dir / "standalone_mapping.json"
         if not mapping_path.exists():
@@ -253,24 +256,7 @@ class ResourcePackStack:
         try:
             with open(mapping_path, "r", encoding="utf-8") as fp:
                 mapping = json.load(fp)
-                if (
-                    mapping.get("format_version") != STANDALONE_FORMAT_VERSION
-                    or mapping.get("stack_hash") != self.stack_hash
-                    or not mapping.get("textures")
-                ):
-                    return False
-                for rec in mapping["textures"].values():
-                    files = rec.get("files") if isinstance(rec, dict) else None
-                    if not files:
-                        continue
-                    albedo = files.get("albedo")
-                    if albedo and not (standalone_dir / albedo).is_file():
-                        return False
-                    for channel in ("normal", "specular", "overlay"):
-                        filename = files.get(channel)
-                        if filename and not (standalone_dir / filename).is_file():
-                            return False
-                return True
+                return bool(mapping.get("textures") or mapping.get("sprites"))
         except (OSError, json.JSONDecodeError):
             return False
 
@@ -278,10 +264,20 @@ class ResourcePackStack:
         self, output_dir: Optional[Union[str, Path]] = None
     ) -> Iterator[Tuple[float, str, Optional[dict]]]:
         """Iteratively precompile and build the standalone asset library for this pack stack."""
-        from ..standalone.generator import StandaloneGenerator
         target_dir = Path(output_dir) if output_dir else self.get_baked_standalone_dir()
-        gen = StandaloneGenerator(fallback_stack=self)
-        yield from gen.build_iter(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        yield (0.05, "Generating standalone PBR textures with LibMTK Rust engine...", None)
+
+        builder = mtk.StandaloneBuilder()
+        res = builder.build(self._rust_stack, str(target_dir))
+
+        results = {
+            "texture_count": res.texture_count,
+            "mapping_file": Path(res.mapping_path),
+            "output_dir": Path(res.output_dir),
+        }
+        yield (1.0, f"Precompiled {res.texture_count} standalone PBR textures.", results)
 
     def precompile_standalone(
         self, output_dir: Optional[Union[str, Path]] = None, progress_callback: Optional[Callable[[float, str], None]] = None
@@ -304,28 +300,25 @@ class ResourcePackStack:
         yefira_only: bool = False,
     ) -> Iterator[Tuple[float, str, Optional[dict]]]:
         """Iteratively precompile and build the atlas cache for this pack stack."""
-        from ..atlas.generator import AtlasGenerator
-        from ..constants import (
-            ATLAS_CATEGORY_BLOCKS,
-            ATLAS_CATEGORY_ITEMS,
-            ATLAS_CATEGORY_ENTITIES,
-            ATLAS_CATEGORY_CHEST,
-            ATLAS_CATEGORY_SHULKER_BOXES,
-            ATLAS_CATEGORY_BANNER_PATTERNS,
-            ATLAS_CATEGORY_DECORATED_POT,
-        )
         target_dir = Path(output_dir) if output_dir else self.get_baked_atlas_dir(yefira_only=yefira_only)
-        yefira_categories = {
-            ATLAS_CATEGORY_BLOCKS,
-            ATLAS_CATEGORY_ITEMS,
-            ATLAS_CATEGORY_ENTITIES,
-            ATLAS_CATEGORY_CHEST,
-            ATLAS_CATEGORY_SHULKER_BOXES,
-            ATLAS_CATEGORY_BANNER_PATTERNS,
-            ATLAS_CATEGORY_DECORATED_POT,
-        } if yefira_only else None
-        gen = AtlasGenerator(fallback_stack=self, included_categories=yefira_categories)
-        yield from gen.build_iter(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        yield (0.05, "Building texture atlases with LibMTK Rust engine...", None)
+
+        builder = mtk.AtlasBuilder(max_width=4096, max_height=4096)
+        if yefira_only:
+            baked = builder.build(self._rust_stack, category="blocks")
+        else:
+            baked = builder.build_all(self._rust_stack)
+        baked.save_to_dir(str(target_dir))
+        mapping_path = target_dir / "atlas_mapping.json"
+
+        results = {
+            "chunks": [f"chunk_{i}.png" for i in range(baked.chunk_count)],
+            "mapping_file": mapping_path,
+            "chunks_count": baked.chunk_count,
+        }
+        yield (1.0, f"Precompiled {baked.chunk_count} atlas chunks.", results)
 
     def precompile_atlas(
         self,
@@ -361,25 +354,13 @@ class ResourcePackStack:
         output_dir: Optional[Union[str, Path]] = None,
     ) -> Iterator[Tuple[float, str, Optional[dict]]]:
         """Iteratively precompile and bake all blockstate models for this pack stack."""
-        from ...mc_baker import StateBaker
         target_dir = Path(output_dir) if output_dir else self.get_baked_models_dir()
         target_file = target_dir / "models_manifest.json"
+        target_file.parent.mkdir(parents=True, exist_ok=True)
 
-        yield (0.02, "Initializing model baker across pack stack...", None)
+        yield (0.05, "Baking blockstates in parallel with LibMTK Rust engine...", None)
 
-        composite_loader = self.get_composite_loader()
-        baker = StateBaker(jar_path=None)
-        baker.resource_loader = composite_loader
-        if composite_loader:
-            baker.model_parser.model_loader_fn = composite_loader.load_model
-            baker.state_resolver.blockstate_loader_fn = composite_loader.load_blockstate
-
-        count = 0
-        for frac, msg, res_count in baker.save_precompiled_manifest_iter(target_file):
-            if res_count is not None:
-                count = res_count
-            yield (0.02 + 0.98 * frac, msg, None)
-
+        count = self._rust_stack.bake_models_manifest(str(target_file))
         results = {
             "models_count": count,
             "manifest_file": target_file,
@@ -474,90 +455,8 @@ class ResourcePackStack:
         Falls back to canonical 26.2 biome presets if not fully specified in the pack.
         """
         clean_id = biome_id.lower().removeprefix("minecraft:")
-        biome_json = None
-        for pack in self.packs:
-            bj = pack.get_biome_json(clean_id, namespace=namespace)
-            if bj:
-                biome_json = bj
-                break
-
-        from ..biome import sample_colormap_pixel, hex_to_linear_rgba, BIOME_PALETTES
-        canonical = BIOME_PALETTES.get(clean_id.upper(), {})
-        temp = float(biome_json.get("temperature", canonical.get("temperature", 0.8))) if biome_json else float(canonical.get("temperature", 0.8))
-        downfall = float(biome_json.get("downfall", canonical.get("humidity", 0.4))) if biome_json else float(canonical.get("humidity", 0.4))
-        effects = biome_json.get("effects", {}) if biome_json else {}
-
-        # Resolve active stack colormaps
-        cms = self.get_all_colormaps()
-        grass_img = None
-        foliage_img = None
-        dry_foliage_img = None
-
-        try:
-            from PIL import Image
-            if "grass" in cms and cms["grass"].is_file():
-                grass_img = Image.open(cms["grass"]).convert("RGB")
-            if "foliage" in cms and cms["foliage"].is_file():
-                foliage_img = Image.open(cms["foliage"]).convert("RGB")
-            if "dry_foliage" in cms and cms["dry_foliage"].is_file():
-                dry_foliage_img = Image.open(cms["dry_foliage"]).convert("RGB")
-        except Exception:
-            pass
-
-        # Grass Color
-        if "grass_color" in effects:
-            grass_hex = effects["grass_color"].upper()
-        elif grass_img:
-            r, g, b = sample_colormap_pixel(grass_img, temp, downfall)
-            mod = effects.get("grass_color_modifier", canonical.get("modifier", "none"))
-            c_int = (int(r * 255) << 16) | (int(g * 255) << 8) | int(b * 255)
-            if mod == "dark_forest":
-                mod_int = ((c_int & 0xFEFEFE) + 0x28340A) >> 1
-                grass_hex = f"#{mod_int:06X}"
-            elif mod == "swamp":
-                grass_hex = "#6A7039"
-            else:
-                grass_hex = f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
-        else:
-            grass_hex = canonical.get("grass", "#91BD59")
-
-        # Foliage Color
-        if "foliage_color" in effects:
-            foliage_hex = effects["foliage_color"].upper()
-        elif foliage_img:
-            r, g, b = sample_colormap_pixel(foliage_img, temp, downfall)
-            foliage_hex = f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
-        else:
-            foliage_hex = canonical.get("foliage", "#77AB2F")
-
-        # Dry Foliage Color
-        if "dry_foliage_color" in effects:
-            dry_foliage_hex = effects["dry_foliage_color"].upper()
-        elif dry_foliage_img:
-            r, g, b = sample_colormap_pixel(dry_foliage_img, temp, downfall)
-            dry_foliage_hex = f"#{int(r * 255):02X}{int(g * 255):02X}{int(b * 255):02X}"
-        else:
-            dry_foliage_hex = canonical.get("dry_foliage", "#A37546")
-
-        # Water Color
-        water_hex = effects.get("water_color", canonical.get("water", "#3F76E4")).upper()
-        display_name = canonical.get("name", clean_id.replace("_", " ").title())
-
-        return {
-            "id": clean_id,
-            "name": display_name,
-            "grass_hex": grass_hex,
-            "grass_linear": hex_to_linear_rgba(grass_hex),
-            "foliage_hex": foliage_hex,
-            "foliage_linear": hex_to_linear_rgba(foliage_hex),
-            "dry_foliage_hex": dry_foliage_hex,
-            "dry_foliage_linear": hex_to_linear_rgba(dry_foliage_hex),
-            "water_hex": water_hex,
-            "water_linear": hex_to_linear_rgba(water_hex),
-            "temperature": temp,
-            "humidity": downfall,
-            "modifier": effects.get("grass_color_modifier", canonical.get("modifier", "none")),
-        }
+        colors = mtk.get_biome_colors(clean_id, self._rust_stack)
+        return colors.to_dict()
 
     def precompile_iter(
         self,

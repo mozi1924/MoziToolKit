@@ -147,7 +147,9 @@ def compute_biome_tint_attributes(
         tint_weights[poly_idx] = tw
         base_tint_weights[poly_idx] = float(tint_info.get("default_base_tint_weight", tint_info.get("base_tint_weight", 1.0)))
         overlay_tint_weights[poly_idx] = float(tint_info.get("default_overlay_tint_weight", tint_info.get("overlay_tint_weight", 1.0)))
-        tt = int(tint_info.get("tint_type", 0))
+        tint_type_map = {"none": 0, "grass": 1, "foliage": 2, "water": 3, "hardcoded": 4, "dry_foliage": 5, 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+        raw_tt = tint_info.get("tint_type", 0)
+        tt = tint_type_map.get(raw_tt, tint_type_map.get(str(raw_tt).lower(), 0))
         is_hc = bool(tint_info.get("is_hardcoded", False))
 
         has_custom = False

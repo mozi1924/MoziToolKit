@@ -791,11 +791,19 @@ class AtlasAddressResolver:
 
         # 3. Format adapter extraction fallback
         if slot_mat:
-            from ..matching import extract_material_texture_keys
-            adapter_ns, adapter_candidates = extract_material_texture_keys(slot_mat)
-            clean_cands = [c for c in adapter_candidates if not self.is_blacklisted(c)]
-            loc = self.lookup_texture(clean_cands, namespace=adapter_ns)
-            return adapter_ns, clean_cands, loc
+            import libmtk_py as mtk
+            mat_name = slot_mat.name
+            origin = mtk.MaterialResolver.detect_origin(mat_name)
+            if origin == "ice_cube":
+                clean = mtk.MaterialResolver.clean_icecube(mat_name)
+            elif origin == "jmc2obj":
+                clean = mtk.MaterialResolver.clean_jmc2obj(mat_name)
+            else:
+                clean = mat_name.split(".")[0].strip().lower()
+            clean_cands = [clean, f"block/{clean}"]
+            clean_cands = [c for c in clean_cands if not self.is_blacklisted(c)]
+            loc = self.lookup_texture(clean_cands, namespace="minecraft")
+            return "minecraft", clean_cands, loc
 
         return DEFAULT_NAMESPACE, [], None
 
