@@ -596,6 +596,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         cache_header = cache_box.row(align=True)
         cache_header.label(text=tr("Persistent Cache & Storage:"), icon="DISK_DRIVE")
         cache_header.label(text=f"{tr('Total')}: {stats['size_formatted']} ({stats['files_count']} {tr('files')})", icon="INFO")
+        cache_header.operator("mozi.refresh_cache_stats", text=tr("Refresh"), icon="FILE_REFRESH")
 
         cache_col = cache_box.column(align=True)
         cache_col.prop(self, "cache_dir", text=tr("Cache Location"))
