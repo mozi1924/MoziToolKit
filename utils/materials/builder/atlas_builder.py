@@ -33,6 +33,10 @@ def build_atlas_chunk_material(
     albedo_path: str | Path,
     normal_path: Optional[str | Path] = None,
     specular_path: Optional[str | Path] = None,
+    category: str = "blocks",
+    category_chunk_index: int = 1,
+    is_animated: bool = False,
+    stack_fingerprint: Optional[str] = None,
     material_name: Optional[str] = None,
     use_attribute_node: bool = True,
     use_labpbr: bool = True,
@@ -55,7 +59,11 @@ def build_atlas_chunk_material(
         albedo_path: Path to Chunk Albedo PNG image.
         normal_path: Optional path to Chunk Normal (_n) PNG image.
         specular_path: Optional path to Chunk Specular (_s) PNG image.
-        material_name: Custom name for the material datablock. Defaults to MTK_Atlas_Chunk_<id>.
+        category: Atlas category name (e.g. "blocks", "chests", "items").
+        category_chunk_index: 1-based index within the category.
+        is_animated: Whether this chunk is an animated strip chunk.
+        stack_fingerprint: Optional cache fingerprint for provenance tracking.
+        material_name: Custom name for the material datablock. Defaults to MTK:Atlas:<cat>:<idx:03>.
         use_attribute_node: If True, adds ShaderNodeAttribute for reading mesh attributes & tiling.
         use_labpbr: Whether to insert the LabPBR 1.3 decoder node group.
         atlas_width: Width of the atlas image in pixels.
@@ -69,11 +77,25 @@ def build_atlas_chunk_material(
     if not HAS_BPY:
         return None
 
-    mat_name = material_name or f"MTK_Atlas_Chunk_{chunk_id}"
+    if material_name:
+        mat_name = material_name
+    elif is_animated:
+        mat_name = f"MTK:Atlas:{category}:anim:{category_chunk_index:03}"
+    else:
+        mat_name = f"MTK:Atlas:{category}:{category_chunk_index:03}"
 
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
+
+    # Set authoritative lightweight custom properties
+    mat["mtk_material_mode"] = "ATLAS"
+    mat["mtk_atlas_category"] = category
+    mat["mtk_atlas_chunk_id"] = chunk_id
+    mat["mtk_atlas_chunk_index"] = category_chunk_index
+    mat["mtk_is_animated"] = is_animated
+    if stack_fingerprint:
+        mat["mtk_stack_fingerprint"] = stack_fingerprint
 
     mat.use_nodes = True
     nodes = mat.node_tree.nodes

@@ -52,12 +52,16 @@ class TestMaterialPipeline(unittest.TestCase):
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=spec_file,
-                material_name="Test_MTK_Stone",
+                stack_fingerprint="test_fp_123",
                 use_labpbr=True,
             )
 
             self.assertIsNotNone(mat)
-            self.assertEqual(mat.name, "Test_MTK_Stone")
+            self.assertEqual(mat.name, "MTK:minecraft:block/stone")
+            self.assertEqual(mat["mtk_material_mode"], "STANDALONE")
+            self.assertEqual(mat["mtk_source_texture_key"], "minecraft:block/stone")
+            self.assertEqual(mat["mtk_stack_fingerprint"], "test_fp_123")
+            self.assertFalse(mat["mtk_is_animated"])
             self.assertTrue(mat.use_nodes)
 
             # Check nodes
@@ -78,13 +82,22 @@ class TestMaterialPipeline(unittest.TestCase):
             mat = build_atlas_chunk_material(
                 chunk_id=0,
                 albedo_path=albedo_file,
-                material_name="Test_MTK_Atlas_Chunk_0",
+                category="blocks",
+                category_chunk_index=1,
+                stack_fingerprint="test_fp_456",
                 use_attribute_node=True,
                 use_labpbr=True,
             )
 
             self.assertIsNotNone(mat)
-            self.assertEqual(mat.name, "Test_MTK_Atlas_Chunk_0")
+            self.assertEqual(mat.name, "MTK:Atlas:blocks:001")
+            self.assertEqual(mat["mtk_material_mode"], "ATLAS")
+            self.assertEqual(mat["mtk_atlas_category"], "blocks")
+            self.assertEqual(mat["mtk_atlas_chunk_id"], 0)
+            self.assertEqual(mat["mtk_atlas_chunk_index"], 1)
+            self.assertEqual(mat["mtk_stack_fingerprint"], "test_fp_456")
+            self.assertFalse(mat["mtk_is_animated"])
+
             node_names = [n.name for n in mat.node_tree.nodes]
             self.assertIn("Atlas Albedo Texture", node_names)
             self.assertIn("MTK UV Transform", node_names)
@@ -112,8 +125,15 @@ class TestMaterialPipeline(unittest.TestCase):
             standalone_dir.mkdir(parents=True, exist_ok=True)
 
             _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
-            (standalone_dir / "textures").mkdir(parents=True, exist_ok=True)
-            _write_dummy_png(standalone_dir / "textures" / "stone.png")
+            (standalone_dir / "assets" / "minecraft" / "textures" / "block").mkdir(parents=True, exist_ok=True)
+            _write_dummy_png(standalone_dir / "assets" / "minecraft" / "textures" / "block" / "stone.png")
+
+            # Write cache_manifest.json
+            manifest = {
+                "fingerprint": "abc123stackfp",
+                "packs": []
+            }
+            (cache_dir / "cache_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
             # Write atlas_mapping.json
             atlas_mapping = {
@@ -150,10 +170,10 @@ class TestMaterialPipeline(unittest.TestCase):
 
             # Write standalone_mapping.json
             sa_mapping = {
-                "format_version": 2,
+                "format_version": 3,
                 "textures": {
                     "minecraft:block/stone": {
-                        "files": {"albedo": "textures/stone.png"},
+                        "files": {"albedo": "assets/minecraft/textures/block/stone.png"},
                         "is_animated": False
                     }
                 }
@@ -169,7 +189,8 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn("mtk_source_texture_key", mesh.attributes)
                 self.assertIn("mtk_atlas_chunk_id", mesh.attributes)
                 self.assertIn("mtk_uv_transform", mesh.attributes)
-                self.assertEqual(mesh.materials[0].name, "MTK_Atlas_Chunk_0")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
 
                 # 2. Clear materials and restore from provenance
                 mesh.materials.clear()
@@ -178,12 +199,14 @@ class TestMaterialPipeline(unittest.TestCase):
                 restore_res = restore_materials_from_provenance(obj, mode="ATLAS")
                 self.assertTrue(restore_res["success"])
                 self.assertEqual(len(mesh.materials), 1)
-                self.assertEqual(mesh.materials[0].name, "MTK_Atlas_Chunk_0")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
 
                 # 3. Replace Materials (Standalone Mode)
                 res_sa = replace_materials(obj, mode="STANDALONE", origin="AUTO")
                 self.assertTrue(res_sa["success"])
-                self.assertEqual(mesh.materials[0].name, "MTK_minecraft_block_stone")
+                self.assertEqual(mesh.materials[0].name, "MTK:minecraft:block/stone")
+                self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
 
 
 if __name__ == "__main__":
