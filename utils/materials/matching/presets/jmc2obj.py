@@ -75,6 +75,7 @@ WOOD_TYPES = (
 
 EXPLICIT_MATERIAL_ALIASES = {
     # Special block names
+    "bedrock": ["block/bedrock", "bedrock"],
     "magma_block": ["block/magma", "block/magma_block", "magma"],
     "smooth_quartz": ["block/quartz_block_top", "block/quartz_block_side", "block/quartz_block_bottom"],
     "smooth_sandstone": ["block/sandstone_top", "block/sandstone_bottom"],
@@ -207,10 +208,13 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
     if clean in EXPLICIT_MATERIAL_ALIASES:
         cands.extend(EXPLICIT_MATERIAL_ALIASES[clean])
 
+    clean_tokens = set(re.split(r"[/_\-\.]+", clean))
+
     # 3. Beds (all 16 colors)
-    if "bed" in clean:
+    is_bed = "bed" in clean_tokens or "beds" in clean_tokens
+    if is_bed:
         for color in MINECRAFT_COLORS:
-            if color in clean:
+            if color in clean_tokens or f"{color}_bed" in clean or f"bed_{color}" in clean:
                 cands.extend([
                     f"entity/bed/{color}",
                     f"block/{color}_bed",
@@ -240,20 +244,21 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
             ])
 
     # 4. Chests
-    if "chest" in clean:
-        if "ender" in clean:
+    is_chest = "chest" in clean_tokens or "chests" in clean_tokens
+    if is_chest:
+        if "ender" in clean_tokens or "ender_chest" in clean:
             cands.extend(["entity/chest/ender", "entity/chest/ender_chest", "block/ender_chest"])
-        elif "trapped" in clean:
-            if "left" in clean:
+        elif "trapped" in clean_tokens or "trapped_chest" in clean:
+            if "left" in clean_tokens:
                 cands.extend(["entity/chest/trapped_left", "entity/chest/trapped"])
-            elif "right" in clean:
+            elif "right" in clean_tokens:
                 cands.extend(["entity/chest/trapped_right", "entity/chest/trapped"])
             else:
                 cands.extend(["entity/chest/trapped", "block/trapped_chest"])
         else:
-            if "left" in clean:
+            if "left" in clean_tokens:
                 cands.extend(["entity/chest/normal_left", "entity/chest/normal"])
-            elif "right" in clean:
+            elif "right" in clean_tokens:
                 cands.extend(["entity/chest/normal_right", "entity/chest/normal"])
             else:
                 cands.extend(["entity/chest/normal", "entity/chest/chest", "block/chest_front", "block/chest_top", "block/chest_side"])
@@ -268,10 +273,11 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
         ])
 
     # 6. Signs & Hanging Signs (all wood types)
-    if "sign" in clean:
-        is_hanging = "hanging" in clean
+    is_sign = "sign" in clean_tokens or "signs" in clean_tokens
+    if is_sign:
+        is_hanging = "hanging" in clean_tokens
         for wood in WOOD_TYPES:
-            if wood in clean:
+            if wood in clean_tokens or f"{wood}_" in clean:
                 if is_hanging:
                     cands.extend([
                         f"entity/signs/hanging/{wood}",
@@ -289,9 +295,10 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
                 break
 
     # 7. Shulker Boxes (all 16 colors)
-    if "shulker" in clean:
+    is_shulker = ("shulker" in clean_tokens or "shulkers" in clean_tokens) and "bullet" not in clean_tokens
+    if is_shulker:
         for color in MINECRAFT_COLORS:
-            if color in clean:
+            if color in clean_tokens or f"{color}_shulker" in clean:
                 cands.extend([
                     f"entity/shulker/shulker_{color}",
                     f"block/{color}_shulker_box",
