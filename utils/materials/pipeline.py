@@ -94,6 +94,15 @@ def replace_materials(
     atlas_data = json.loads(atlas_json_str)
     baked_atlas = libmtk_py.BakedAtlas.from_mapping_json(atlas_json_str)
 
+    manifest_path = base_cache / "cache_manifest.json"
+    manifest_fingerprint = None
+    if manifest_path.exists():
+        try:
+            manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest_fingerprint = manifest_data.get("fingerprint")
+        except Exception:
+            pass
+
     # 1. Extract Face Materials & UVs
     num_polys = len(mesh.polygons)
     num_loops = len(mesh.loops)
@@ -127,7 +136,13 @@ def replace_materials(
             if mat_slot:
                 mat_name = mat_slot.name
 
-        if (mat_name.startswith("MTK_Atlas_Chunk_") or mat_name == "default") and existing_prov_keys:
+        if (
+            mat_name.startswith("MTK:Atlas:")
+            or mat_name.startswith("MTK_Atlas_Chunk_")
+            or mat_name.startswith("MTK:")
+            or mat_name.startswith("MTK_")
+            or mat_name == "default"
+        ) and existing_prov_keys:
             candidate = existing_prov_keys[idx]
             if candidate and candidate != "mozi:fallback":
                 mat_name = candidate
@@ -207,6 +222,10 @@ def replace_materials(
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=specular_file,
+                category=cat,
+                category_chunk_index=c_idx,
+                is_animated=is_anim,
+                stack_fingerprint=manifest_fingerprint,
                 atlas_width=chunk_width,
                 atlas_height=chunk_height,
                 tile_width=16.0,
@@ -240,16 +259,20 @@ def replace_materials(
                 albedo_p = standalone_dir / files.get("albedo", "textures/mtk_fallback.png")
                 normal_p = (standalone_dir / files["normal"]) if "normal" in files else None
                 specular_p = (standalone_dir / files["specular"]) if "specular" in files else None
+                is_anim = tex_entry.get("is_animated", False)
             else:
                 albedo_p = standalone_dir / "textures" / "mtk_fallback.png"
                 normal_p = None
                 specular_p = None
+                is_anim = False
 
             mat = build_standalone_material(
                 texture_key=key,
                 albedo_path=albedo_p,
                 normal_path=normal_p,
                 specular_path=specular_p,
+                is_animated=is_anim,
+                stack_fingerprint=manifest_fingerprint,
             )
             mesh.materials.append(mat)
             key_to_slot[key] = slot_idx
@@ -322,6 +345,15 @@ def restore_materials_from_provenance(
     atlas_dir = base_cache / "atlas"
     standalone_dir = base_cache / "standalone"
 
+    manifest_path = base_cache / "cache_manifest.json"
+    manifest_fingerprint = None
+    if manifest_path.exists():
+        try:
+            manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest_fingerprint = manifest_data.get("fingerprint")
+        except Exception:
+            pass
+
     num_polys = len(mesh.polygons)
     face_source_keys = [
         elem.value.decode("utf-8") if isinstance(elem.value, (bytes, bytearray)) else str(elem.value)
@@ -361,6 +393,10 @@ def restore_materials_from_provenance(
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=specular_file,
+                category=cat,
+                category_chunk_index=c_idx,
+                is_animated=is_anim,
+                stack_fingerprint=manifest_fingerprint,
                 atlas_width=chunk_width,
                 atlas_height=chunk_height,
                 tile_width=16.0,
@@ -387,16 +423,20 @@ def restore_materials_from_provenance(
                 albedo_p = standalone_dir / files.get("albedo", "textures/mtk_fallback.png")
                 normal_p = (standalone_dir / files["normal"]) if "normal" in files else None
                 specular_p = (standalone_dir / files["specular"]) if "specular" in files else None
+                is_anim = tex_entry.get("is_animated", False)
             else:
                 albedo_p = standalone_dir / "textures" / "mtk_fallback.png"
                 normal_p = None
                 specular_p = None
+                is_anim = False
 
             mat = build_standalone_material(
                 texture_key=key,
                 albedo_path=albedo_p,
                 normal_path=normal_p,
                 specular_path=specular_p,
+                is_animated=is_anim,
+                stack_fingerprint=manifest_fingerprint,
             )
             mesh.materials.append(mat)
             key_to_slot[key] = slot_idx

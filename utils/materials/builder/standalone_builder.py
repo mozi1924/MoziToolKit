@@ -62,6 +62,8 @@ def build_standalone_material(
     normal_path: Optional[str | Path] = None,
     specular_path: Optional[str | Path] = None,
     material_name: Optional[str] = None,
+    is_animated: bool = False,
+    stack_fingerprint: Optional[str] = None,
     use_labpbr: bool = True,
 ) -> Optional[Any]:
     """
@@ -78,7 +80,9 @@ def build_standalone_material(
         albedo_path: Path to Albedo PNG image.
         normal_path: Optional path to Normal (_n) PNG image.
         specular_path: Optional path to Specular/LabPBR (_s) PNG image.
-        material_name: Custom name for the material datablock. Defaults to MTK_<clean_key>.
+        material_name: Custom name for the material datablock. Defaults to MTK:<texture_key>.
+        is_animated: Whether this texture is animated.
+        stack_fingerprint: Optional cache fingerprint for provenance tracking.
         use_labpbr: Whether to insert the LabPBR 1.3 decoder node group.
         
     Returns:
@@ -87,12 +91,18 @@ def build_standalone_material(
     if not HAS_BPY:
         return None
 
-    clean_name = texture_key.replace(":", "_").replace("/", "_")
-    mat_name = material_name or f"MTK_{clean_name}"
+    mat_name = material_name or f"MTK:{texture_key}"
 
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
+
+    # Set authoritative lightweight custom properties
+    mat["mtk_material_mode"] = "STANDALONE"
+    mat["mtk_source_texture_key"] = texture_key
+    mat["mtk_is_animated"] = is_animated
+    if stack_fingerprint:
+        mat["mtk_stack_fingerprint"] = stack_fingerprint
 
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
