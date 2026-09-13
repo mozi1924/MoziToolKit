@@ -87,7 +87,9 @@ class TestMaterialPipeline(unittest.TestCase):
             self.assertEqual(mat.name, "Test_MTK_Atlas_Chunk_0")
             node_names = [n.name for n in mat.node_tree.nodes]
             self.assertIn("Atlas Albedo Texture", node_names)
-            self.assertIn("MTK Mesh Attributes", node_names)
+            self.assertIn("MTK UV Transform", node_names)
+            self.assertIn("MTK UV Rotation", node_names)
+            self.assertIn("Atlas UV Tiling", node_names)
             self.assertIn("LabPBR Decoder", node_names)
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
