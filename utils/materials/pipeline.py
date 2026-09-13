@@ -199,12 +199,18 @@ def replace_materials(
             albedo_file = atlas_dir / f"{stem}.png"
             normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
             specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+            chunk_width = float(cm.get("width", 1024))
+            chunk_height = float(cm.get("height", 512))
 
             mat = build_atlas_chunk_material(
                 chunk_id=chunk_id,
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=specular_file,
+                atlas_width=chunk_width,
+                atlas_height=chunk_height,
+                tile_width=16.0,
+                tile_height=16.0,
             )
             mesh.materials.append(mat)
             chunk_to_slot[chunk_id] = slot_idx
@@ -270,7 +276,11 @@ def replace_materials(
     flat_transforms: List[float] = []
     for tf in face_uv_transforms:
         flat_transforms.extend(tf)
+    _inject_face_attribute_float4(mesh, "mtk_uv_tiling_transform", flat_transforms)
     _inject_face_attribute_float4(mesh, "mtk_uv_transform", flat_transforms)
+
+    face_uv_rotations: List[float] = remap_result.get("face_uv_rotations", [0.0] * num_polys)
+    _inject_face_attribute_float(mesh, "mtk_uv_rotation", face_uv_rotations)
 
     mesh.update()
 
@@ -343,12 +353,18 @@ def restore_materials_from_provenance(
             albedo_file = atlas_dir / f"{stem}.png"
             normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
             specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+            chunk_width = float(cm.get("width", 1024))
+            chunk_height = float(cm.get("height", 512))
 
             mat = build_atlas_chunk_material(
                 chunk_id=chunk_id,
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=specular_file,
+                atlas_width=chunk_width,
+                atlas_height=chunk_height,
+                tile_width=16.0,
+                tile_height=16.0,
             )
             mesh.materials.append(mat)
             chunk_to_slot[chunk_id] = slot_idx
@@ -421,7 +437,6 @@ def _inject_face_attribute_string(mesh: Any, name: str, values: List[str]) -> No
                     pass
 
 
-
 def _inject_face_attribute_int(mesh: Any, name: str, values: List[int]) -> None:
     """Helper to inject a Face-domain Int attribute."""
     if not hasattr(mesh, "attributes"):
@@ -434,6 +449,20 @@ def _inject_face_attribute_int(mesh: Any, name: str, values: List[int]) -> None:
             return
     if len(attr.data) == len(values):
         attr.data.foreach_set("value", array.array("i", values))
+
+
+def _inject_face_attribute_float(mesh: Any, name: str, values: List[float]) -> None:
+    """Helper to inject a Face-domain Float attribute."""
+    if not hasattr(mesh, "attributes"):
+        return
+    attr = mesh.attributes.get(name)
+    if attr is None:
+        try:
+            attr = mesh.attributes.new(name=name, type="FLOAT", domain="FACE")
+        except Exception:
+            return
+    if len(attr.data) == len(values):
+        attr.data.foreach_set("value", array.array("f", values))
 
 
 def _inject_face_attribute_float4(mesh: Any, name: str, flat_values: List[float]) -> None:
