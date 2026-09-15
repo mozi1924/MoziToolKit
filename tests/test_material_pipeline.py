@@ -106,6 +106,36 @@ class TestMaterialPipeline(unittest.TestCase):
             self.assertIn("LabPBR Decoder", node_names)
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_atlas_chunk_material_with_overlay_in_blender(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            albedo_file = tmp_path / "blocks_chunk_001.png"
+            overlay_file = tmp_path / "blocks_chunk_001_overlay.png"
+            _write_dummy_png(albedo_file)
+            _write_dummy_png(overlay_file)
+
+            mat = build_atlas_chunk_material(
+                chunk_id=0,
+                albedo_path=albedo_file,
+                overlay_path=overlay_file,
+                category="blocks",
+                category_chunk_index=1,
+                stack_fingerprint="test_fp_overlay",
+                use_attribute_node=True,
+                use_labpbr=True,
+            )
+
+            self.assertIsNotNone(mat)
+            self.assertEqual(mat.name, "MTK:Atlas:blocks:001")
+            self.assertTrue(mat["mtk_has_overlay"])
+
+            node_names = [n.name for n in mat.node_tree.nodes]
+            self.assertIn("Atlas Albedo Texture", node_names)
+            self.assertIn("Atlas Overlay Texture", node_names)
+            self.assertIn("Biome Tint", node_names)
+            self.assertIn("LabPBR Decoder", node_names)
+
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_end_to_end_material_replacement_and_provenance(self):
         # Create a test cube in Blender
         bpy.ops.mesh.primitive_cube_add(size=2.0)

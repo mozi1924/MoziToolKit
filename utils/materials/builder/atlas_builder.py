@@ -20,10 +20,12 @@ except ImportError:
 try:
     from ...node_groups.labpbr import ensure_labpbr_decoder
     from ...node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
+    from ...node_groups.biome import ensure_biome_tint
     from .standalone_builder import get_or_create_image
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
     from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
+    from utils.node_groups.biome import ensure_biome_tint
     from utils.materials.builder.standalone_builder import get_or_create_image
 
 
@@ -33,6 +35,7 @@ def build_atlas_chunk_material(
     albedo_path: str | Path,
     normal_path: Optional[str | Path] = None,
     specular_path: Optional[str | Path] = None,
+    overlay_path: Optional[str | Path] = None,
     category: str = "blocks",
     category_chunk_index: int = 1,
     is_animated: bool = False,
@@ -49,7 +52,9 @@ def build_atlas_chunk_material(
     Builds or updates an Atlas Chunk Minecraft material in Blender.
     
     Node Tree Structure:
-        - UV Map (UVMap) + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Albedo) [sRGB] -> LabPBR Decoder
+        - UV Map (UVMap) + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Albedo) [sRGB]
+        - UV Map + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Overlay) [sRGB] (if present) -> MC_Biome_Tint
+        - MC_Biome_Tint / Albedo -> LabPBR Decoder (Albedo Color & Alpha)
         - UV Map + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Normal) [Non-Color] (if present) -> LabPBR Decoder
         - UV Map + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Specular) [Non-Color] (if present) -> LabPBR Decoder
         - LabPBR Decoder -> Material Output Surface
@@ -59,6 +64,7 @@ def build_atlas_chunk_material(
         albedo_path: Path to Chunk Albedo PNG image.
         normal_path: Optional path to Chunk Normal (_n) PNG image.
         specular_path: Optional path to Chunk Specular (_s) PNG image.
+        overlay_path: Optional path to Chunk Overlay (_overlay) PNG image.
         category: Atlas category name (e.g. "blocks", "chests", "items").
         category_chunk_index: 1-based index within the category.
         is_animated: Whether this chunk is an animated strip chunk.
@@ -94,6 +100,7 @@ def build_atlas_chunk_material(
     mat["mtk_atlas_chunk_id"] = chunk_id
     mat["mtk_atlas_chunk_index"] = category_chunk_index
     mat["mtk_is_animated"] = is_animated
+    mat["mtk_has_overlay"] = bool(overlay_path and os.path.exists(str(overlay_path)))
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
 
@@ -191,18 +198,21 @@ def build_atlas_chunk_material(
         decoder_node = nodes.new("ShaderNodeGroup")
         decoder_node.name = "LabPBR Decoder"
         decoder_node.node_tree = decoder_group
-        decoder_node.location = (300, 0)
+        decoder_node.location = (350, 0)
         # Link Decoder -> Output
         links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
     else:
         # Fallback standard Principled BSDF
         bsdf_node = nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf_node.location = (300, 0)
+        bsdf_node.location = (350, 0)
         links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
         decoder_node = bsdf_node
 
     # 4. Chunk Albedo Texture Node
     albedo_img = get_or_create_image(albedo_path, colorspace="sRGB")
+    final_color_out = None
+    final_alpha_out = None
+
     if albedo_img:
         albedo_node = nodes.new("ShaderNodeTexImage")
         albedo_node.name = "Atlas Albedo Texture"
@@ -211,12 +221,43 @@ def build_atlas_chunk_material(
         albedo_node.location = (-350, 200)
         links.new(target_uv_output, albedo_node.inputs["Vector"])
 
+        final_color_out = albedo_node.outputs["Color"]
+        final_alpha_out = albedo_node.outputs["Alpha"]
+
+    # 4b. Chunk Overlay Texture Node & Biome Tint Blending (Optional)
+    if overlay_path and os.path.exists(str(overlay_path)):
+        overlay_img = get_or_create_image(overlay_path, colorspace="sRGB")
+        if overlay_img and albedo_img:
+            overlay_node = nodes.new("ShaderNodeTexImage")
+            overlay_node.name = "Atlas Overlay Texture"
+            overlay_node.image = overlay_img
+            overlay_node.interpolation = "Closest"
+            overlay_node.location = (-350, 480)
+            links.new(target_uv_output, overlay_node.inputs["Vector"])
+
+            biome_tint_group = ensure_biome_tint()
+            if biome_tint_group:
+                tint_node = nodes.new("ShaderNodeGroup")
+                tint_node.name = "Biome Tint"
+                tint_node.node_tree = biome_tint_group
+                tint_node.location = (50, 250)
+
+                links.new(albedo_node.outputs["Color"], tint_node.inputs["Base Color"])
+                links.new(albedo_node.outputs["Alpha"], tint_node.inputs["Base Alpha"])
+                links.new(overlay_node.outputs["Color"], tint_node.inputs["Overlay Color"])
+                links.new(overlay_node.outputs["Alpha"], tint_node.inputs["Overlay Alpha"])
+
+                final_color_out = tint_node.outputs["Color"]
+                final_alpha_out = tint_node.outputs["Alpha"]
+
+    # Link resolved Albedo Color / Alpha to Decoder
+    if final_color_out and final_alpha_out:
         if decoder_group:
-            links.new(albedo_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
-            links.new(albedo_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
+            links.new(final_color_out, decoder_node.inputs["Albedo Color"])
+            links.new(final_alpha_out, decoder_node.inputs["Albedo Alpha"])
         else:
-            links.new(albedo_node.outputs["Color"], decoder_node.inputs["Base Color"])
-            links.new(albedo_node.outputs["Alpha"], decoder_node.inputs["Alpha"])
+            links.new(final_color_out, decoder_node.inputs["Base Color"])
+            links.new(final_alpha_out, decoder_node.inputs["Alpha"])
 
     # 5. Chunk Normal Texture Node (Optional)
     if normal_path and os.path.exists(str(normal_path)):
