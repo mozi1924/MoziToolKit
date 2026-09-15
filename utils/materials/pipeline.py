@@ -214,6 +214,7 @@ def replace_materials(
             albedo_file = atlas_dir / f"{stem}.png"
             normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
             specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+            overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
             chunk_width = float(cm.get("width", 1024))
             chunk_height = float(cm.get("height", 512))
 
@@ -222,6 +223,7 @@ def replace_materials(
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=specular_file,
+                overlay_path=overlay_file,
                 category=cat,
                 category_chunk_index=c_idx,
                 is_animated=is_anim,
@@ -385,6 +387,7 @@ def restore_materials_from_provenance(
             albedo_file = atlas_dir / f"{stem}.png"
             normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
             specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+            overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
             chunk_width = float(cm.get("width", 1024))
             chunk_height = float(cm.get("height", 512))
 
@@ -393,6 +396,7 @@ def restore_materials_from_provenance(
                 albedo_path=albedo_file,
                 normal_path=normal_file,
                 specular_path=specular_file,
+                overlay_path=overlay_file,
                 category=cat,
                 category_chunk_index=c_idx,
                 is_animated=is_anim,
