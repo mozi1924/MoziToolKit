@@ -372,18 +372,12 @@ def replace_materials(
     # 6. Compute & Inject Biome Tint Attributes (Rust parallel Rayon)
     biome_resolver = BiomeResolver()
     try:
-        from ...pack.pack_stack import get_configured_pack_stack
-        effective_stack = get_configured_pack_stack()
+        from bridge.assets import get_configured_pack_stack
+        effective_stack = get_configured_pack_stack(prefs)
         if effective_stack:
             biome_resolver.load_from_pack_stack(effective_stack)
     except Exception:
-        try:
-            from utils.pack.pack_stack import get_configured_pack_stack
-            effective_stack = get_configured_pack_stack()
-            if effective_stack:
-                biome_resolver.load_from_pack_stack(effective_stack)
-        except Exception:
-            pass
+        pass
 
     packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
         face_source_keys, biome_preset=biome, resolver=biome_resolver

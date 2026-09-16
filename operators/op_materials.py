@@ -7,6 +7,7 @@ from __future__ import annotations
 import bpy
 from bpy.props import EnumProperty
 
+from ..utils.materials.biome import BIOME_ENUM_ITEMS
 from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
 from ..utils.system import get_prefs, register_menu_item
 
@@ -27,6 +28,13 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             ("STANDALONE", "Standalone Mode", "Generate individual Principled BSDF / LabPBR materials for each block"),
         ],
         default="ATLAS",
+    )
+
+    biome_preset: EnumProperty(
+        name="Biome",
+        description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
+        items=BIOME_ENUM_ITEMS,
+        default="PLAINS",
     )
 
     origin: EnumProperty(
@@ -51,11 +59,17 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         prefs = get_prefs(context)
 
         try:
-            res = replace_materials(obj, mode=self.mode, origin=self.origin, prefs=prefs)
+            res = replace_materials(
+                obj,
+                mode=self.mode,
+                origin=self.origin,
+                biome=self.biome_preset,
+                prefs=prefs,
+            )
             if res.get("success"):
                 msg = (
                     f"Replaced materials for {res['face_count']} faces "
-                    f"({res['materials_count']} {self.mode.lower()} materials assigned)."
+                    f"({res['materials_count']} {self.mode.lower()} materials assigned, biome: {res.get('biome', self.biome_preset)})."
                 )
                 if res.get("unmapped_faces", 0) > 0:
                     msg += f" [{res['unmapped_faces']} faces unmapped/fallback]"
@@ -87,6 +101,13 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
         default="ATLAS",
     )
 
+    biome_preset: EnumProperty(
+        name="Biome",
+        description="Optional biome preset override (defaults to current object biome or PLAINS)",
+        items=BIOME_ENUM_ITEMS,
+        default="PLAINS",
+    )
+
     @classmethod
     def poll(cls, context):
         if not context.active_object or context.active_object.type != "MESH":
@@ -99,11 +120,16 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
         prefs = get_prefs(context)
 
         try:
-            res = restore_materials_from_provenance(obj, mode=self.mode, prefs=prefs)
+            res = restore_materials_from_provenance(
+                obj,
+                mode=self.mode,
+                biome=self.biome_preset,
+                prefs=prefs,
+            )
             if res.get("success"):
                 self.report(
                     {'INFO'},
-                    f"Successfully restored {res['materials_count']} materials for {res['restored_faces']} faces."
+                    f"Successfully restored {res['materials_count']} materials for {res['restored_faces']} faces (biome: {res.get('biome', self.biome_preset)})."
                 )
                 return {'FINISHED'}
             else:
