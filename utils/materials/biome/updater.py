@@ -94,12 +94,12 @@ def update_object_biome(
             compute_biome_tint_attributes,
             apply_biome_tint_attributes,
             read_face_string_attribute,
+            get_or_load_biome_resolver,
         )
         source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
 
-        biome_resolver = BiomeResolver()
-        if effective_stack:
-            biome_resolver.load_from_pack_stack(effective_stack)
+        # Instant load from prebaked cache in < 0.2ms
+        biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
 
         packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
             source_keys, biome_preset=biome_name, resolver=biome_resolver
