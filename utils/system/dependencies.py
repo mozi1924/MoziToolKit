@@ -98,14 +98,21 @@ def ensure_sys_paths(force: bool = False) -> List[str]:
     addon_dir = Path(__file__).parent.parent.parent.resolve()
 
     # Candidate paths to discover LibMTK and bundled packages
+    user_sp = None
+    try:
+        user_sp = site.getusersitepackages()
+    except Exception:
+        pass
+
     candidate_paths = [
         addon_dir / "site-packages",
+        Path(user_sp) if user_sp else None,
         addon_dir.parent / "libmozitoolkit" / "bindings" / "mtk-py" / "python",
         Path.home() / "libmozitoolkit" / "bindings" / "mtk-py" / "python",
     ]
 
     for p in candidate_paths:
-        if p.exists() and p.is_dir():
+        if p and p.exists() and p.is_dir():
             resolved = str(p.resolve())
             if resolved not in sys.path:
                 sys.path.insert(0, resolved)

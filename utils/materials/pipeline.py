@@ -20,6 +20,16 @@ except ImportError:
     HAS_BPY = False
 
 try:
+    from ...utils.system.dependencies import ensure_sys_paths
+    ensure_sys_paths()
+except (ImportError, ValueError):
+    try:
+        from utils.system.dependencies import ensure_sys_paths
+        ensure_sys_paths()
+    except Exception:
+        pass
+
+try:
     import libmtk_py
     HAS_LIBMTK = True
 except ImportError:
@@ -32,12 +42,51 @@ try:
     from .builder.atlas_builder import build_atlas_chunk_material
     from .builder.standalone_builder import build_standalone_material
     from .matching.presets.registry import build_matching_context
+    from .biome import (
+        BiomeResolver,
+        compute_biome_tint_attributes,
+        apply_biome_tint_attributes,
+    )
+    from .constants import (
+        ATTR_SOURCE_TEXTURE_KEY,
+        ATTR_MATERIAL_SLOT,
+        ATTR_ATLAS_CHUNK_ID,
+        ATTR_ATLAS_TEXTURE_ID,
+        ATTR_UV_MODE,
+        ATTR_UV_TILING_TRANSFORM,
+        ATTR_UV_TRANSFORM,
+        ATTR_UV_ROTATION,
+        ATTR_BIOME_TINT_DATA,
+        ATTR_BIOME_TINT_COLOR,
+        ATTR_COLORMAP_UV,
+    )
 except (ImportError, ValueError):
     from bridge.assets import get_cache_dir, precompile_stack
     from bridge.mesh import _get_mesh
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
     from utils.materials.builder.standalone_builder import build_standalone_material
     from utils.materials.matching.presets.registry import build_matching_context
+    try:
+        from utils.materials.biome import (
+            BiomeResolver,
+            compute_biome_tint_attributes,
+            apply_biome_tint_attributes,
+        )
+        from utils.materials.constants import (
+            ATTR_SOURCE_TEXTURE_KEY,
+            ATTR_MATERIAL_SLOT,
+            ATTR_ATLAS_CHUNK_ID,
+            ATTR_ATLAS_TEXTURE_ID,
+            ATTR_UV_MODE,
+            ATTR_UV_TILING_TRANSFORM,
+            ATTR_UV_TRANSFORM,
+            ATTR_UV_ROTATION,
+            ATTR_BIOME_TINT_DATA,
+            ATTR_BIOME_TINT_COLOR,
+            ATTR_COLORMAP_UV,
+        )
+    except Exception:
+        pass
 
 
 
@@ -57,6 +106,7 @@ def replace_materials(
     mesh_or_obj: Any,
     mode: str = "ATLAS",
     origin: str = "AUTO",
+    biome: str = "PLAINS",
     prefs: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
@@ -66,6 +116,7 @@ def replace_materials(
         mesh_or_obj: A `bpy.types.Object` (type MESH) or `bpy.types.Mesh`.
         mode: Material mode - "ATLAS" or "STANDALONE".
         origin: Format heuristic - "AUTO", "MINEWAYS", "JMC2OBJ", "ICE_CUBE", "GENERIC".
+        biome: Biome preset name (e.g. "PLAINS", "BADLANDS", "DESERT").
         prefs: Add-on preferences reference.
 
     Returns:
@@ -83,6 +134,7 @@ def replace_materials(
     base_cache = ensure_stack_precompiled(prefs)
     atlas_dir = base_cache / "atlas"
     standalone_dir = base_cache / "standalone"
+    colormaps_dir = base_cache / "colormaps"
 
     atlas_mapping_path = atlas_dir / "atlas_mapping.json"
     standalone_mapping_path = standalone_dir / "standalone_mapping.json"
@@ -93,6 +145,14 @@ def replace_materials(
     atlas_json_str = atlas_mapping_path.read_text(encoding="utf-8")
     atlas_data = json.loads(atlas_json_str)
     baked_atlas = libmtk_py.BakedAtlas.from_mapping_json(atlas_json_str)
+
+    # Discover Colormaps
+    colormaps: Dict[str, Path] = {}
+    if colormaps_dir.exists():
+        for cm_name in ("grass", "foliage", "dry_foliage"):
+            p = colormaps_dir / f"{cm_name}.png"
+            if p.exists():
+                colormaps[cm_name] = p
 
     manifest_path = base_cache / "cache_manifest.json"
     manifest_fingerprint = None
@@ -128,7 +188,6 @@ def replace_materials(
     face_loop_ranges: List[Tuple[int, int]] = []
 
     for idx, poly in enumerate(mesh.polygons):
-
         mat_name = "default"
         # If the material slot is an MTK chunk or missing, and provenance key exists, use provenance key
         if poly.material_index < len(mesh.materials):
@@ -172,7 +231,6 @@ def replace_materials(
     unmapped_count: int = remap_result["unmapped_faces"]
 
     # Build reverse lookup for source texture key
-    # In AtlasAddressMap sprites, lookup texture_id or lookup via resolver
     sprites_dict = atlas_data.get("sprites", {})
     id_to_key: Dict[int, str] = {}
     for key, sp in sprites_dict.items():
@@ -186,7 +244,6 @@ def replace_materials(
         if not resolved_key and existing_prov_keys and existing_prov_keys[i] and existing_prov_keys[i] != "mozi:fallback":
             resolved_key = existing_prov_keys[i]
         face_source_keys.append(resolved_key or "mozi:fallback")
-
 
     # 4. Assign Materials & Update Slots
     mode_upper = mode.strip().upper()
@@ -224,6 +281,7 @@ def replace_materials(
                 normal_path=normal_file,
                 specular_path=specular_file,
                 overlay_path=overlay_file,
+                colormaps=colormaps,
                 category=cat,
                 category_chunk_index=c_idx,
                 is_animated=is_anim,
@@ -261,11 +319,13 @@ def replace_materials(
                 albedo_p = standalone_dir / files.get("albedo", "textures/mtk_fallback.png")
                 normal_p = (standalone_dir / files["normal"]) if "normal" in files else None
                 specular_p = (standalone_dir / files["specular"]) if "specular" in files else None
+                overlay_p = (standalone_dir / files["overlay"]) if "overlay" in files else None
                 is_anim = tex_entry.get("is_animated", False)
             else:
                 albedo_p = standalone_dir / "textures" / "mtk_fallback.png"
                 normal_p = None
                 specular_p = None
+                overlay_p = None
                 is_anim = False
 
             mat = build_standalone_material(
@@ -273,6 +333,8 @@ def replace_materials(
                 albedo_path=albedo_p,
                 normal_path=normal_p,
                 specular_path=specular_p,
+                overlay_path=overlay_p,
+                colormaps=colormaps,
                 is_animated=is_anim,
                 stack_fingerprint=manifest_fingerprint,
             )
@@ -307,11 +369,39 @@ def replace_materials(
     face_uv_rotations: List[float] = remap_result.get("face_uv_rotations", [0.0] * num_polys)
     _inject_face_attribute_float(mesh, "mtk_uv_rotation", face_uv_rotations)
 
+    # 6. Compute & Inject Biome Tint Attributes (Rust parallel Rayon)
+    biome_resolver = BiomeResolver()
+    try:
+        from ...pack.pack_stack import get_configured_pack_stack
+        effective_stack = get_configured_pack_stack()
+        if effective_stack:
+            biome_resolver.load_from_pack_stack(effective_stack)
+    except Exception:
+        try:
+            from utils.pack.pack_stack import get_configured_pack_stack
+            effective_stack = get_configured_pack_stack()
+            if effective_stack:
+                biome_resolver.load_from_pack_stack(effective_stack)
+        except Exception:
+            pass
+
+    packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+        face_source_keys, biome_preset=biome, resolver=biome_resolver
+    )
+    apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
+
+    if hasattr(mesh_or_obj, "__setitem__"):
+        try:
+            mesh_or_obj["mtk:biome_preset"] = biome
+        except Exception:
+            pass
+
     mesh.update()
 
     return {
         "success": True,
         "mode": mode_upper,
+        "biome": biome,
         "face_count": num_polys,
         "materials_count": len(mesh.materials),
         "unmapped_faces": unmapped_count,
@@ -321,6 +411,7 @@ def replace_materials(
 def restore_materials_from_provenance(
     mesh_or_obj: Any,
     mode: str = "ATLAS",
+    biome: Optional[str] = None,
     prefs: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
@@ -330,6 +421,7 @@ def restore_materials_from_provenance(
     Args:
         mesh_or_obj: Blender mesh or object with mtk_source_texture_key attributes.
         mode: Target reconstruction mode ("ATLAS" or "STANDALONE").
+        biome: Optional biome preset to restore. Defaults to object property or "PLAINS".
         prefs: Add-on preferences reference.
     """
     if not HAS_BPY:
@@ -346,6 +438,14 @@ def restore_materials_from_provenance(
     base_cache = ensure_stack_precompiled(prefs)
     atlas_dir = base_cache / "atlas"
     standalone_dir = base_cache / "standalone"
+    colormaps_dir = base_cache / "colormaps"
+
+    colormaps: Dict[str, Path] = {}
+    if colormaps_dir.exists():
+        for cm_name in ("grass", "foliage", "dry_foliage"):
+            p = colormaps_dir / f"{cm_name}.png"
+            if p.exists():
+                colormaps[cm_name] = p
 
     manifest_path = base_cache / "cache_manifest.json"
     manifest_fingerprint = None
@@ -362,9 +462,14 @@ def restore_materials_from_provenance(
         for elem in src_attr.data
     ]
 
-
     chunk_attr = mesh.attributes.get("mtk_atlas_chunk_id")
     face_chunk_ids = [elem.value for elem in chunk_attr.data] if chunk_attr else [0] * num_polys
+
+    effective_biome = biome
+    if not effective_biome and hasattr(mesh_or_obj, "get"):
+        effective_biome = mesh_or_obj.get("mtk:biome_preset", "PLAINS")
+    if not effective_biome:
+        effective_biome = "PLAINS"
 
     mode_upper = mode.strip().upper()
     poly_mat_indices = array.array("H", [0]) * num_polys
@@ -397,6 +502,7 @@ def restore_materials_from_provenance(
                 normal_path=normal_file,
                 specular_path=specular_file,
                 overlay_path=overlay_file,
+                colormaps=colormaps,
                 category=cat,
                 category_chunk_index=c_idx,
                 is_animated=is_anim,
@@ -427,11 +533,13 @@ def restore_materials_from_provenance(
                 albedo_p = standalone_dir / files.get("albedo", "textures/mtk_fallback.png")
                 normal_p = (standalone_dir / files["normal"]) if "normal" in files else None
                 specular_p = (standalone_dir / files["specular"]) if "specular" in files else None
+                overlay_p = (standalone_dir / files["overlay"]) if "overlay" in files else None
                 is_anim = tex_entry.get("is_animated", False)
             else:
                 albedo_p = standalone_dir / "textures" / "mtk_fallback.png"
                 normal_p = None
                 specular_p = None
+                overlay_p = None
                 is_anim = False
 
             mat = build_standalone_material(
@@ -439,6 +547,8 @@ def restore_materials_from_provenance(
                 albedo_path=albedo_p,
                 normal_path=normal_p,
                 specular_path=specular_p,
+                overlay_path=overlay_p,
+                colormaps=colormaps,
                 is_animated=is_anim,
                 stack_fingerprint=manifest_fingerprint,
             )
@@ -450,11 +560,26 @@ def restore_materials_from_provenance(
 
     mesh.polygons.foreach_set("material_index", poly_mat_indices)
     _inject_face_attribute_int(mesh, "mtk_material_slot", list(poly_mat_indices))
+
+    # Re-apply or verify biome attributes (Rust parallel Rayon)
+    biome_resolver = BiomeResolver()
+    packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+        face_source_keys, biome_preset=effective_biome, resolver=biome_resolver
+    )
+    apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
+
+    if hasattr(mesh_or_obj, "__setitem__"):
+        try:
+            mesh_or_obj["mtk:biome_preset"] = effective_biome
+        except Exception:
+            pass
+
     mesh.update()
 
     return {
         "success": True,
         "restored_faces": num_polys,
+        "biome": effective_biome,
         "materials_count": len(mesh.materials),
     }
 
