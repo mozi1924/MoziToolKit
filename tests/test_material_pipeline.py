@@ -20,6 +20,12 @@ except ImportError:
 from utils.materials.builder.standalone_builder import build_standalone_material
 from utils.materials.builder.atlas_builder import build_atlas_chunk_material
 from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+from utils.materials.biome.updater import update_object_biome
+from utils.materials.constants import (
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
+    ATTR_COLORMAP_UV,
+)
 
 
 def _write_dummy_png(path: Path):
@@ -69,8 +75,50 @@ class TestMaterialPipeline(unittest.TestCase):
             self.assertIn("Albedo Texture", node_names)
             self.assertIn("Normal Texture", node_names)
             self.assertIn("Specular Texture", node_names)
+            self.assertIn("MC Biome Tint", node_names)
             self.assertIn("LabPBR Decoder", node_names)
             self.assertIn("Material Output", node_names)
+
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_standalone_material_with_colormaps_and_overlay(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            albedo_file = tmp_path / "grass_block_side.png"
+            overlay_file = tmp_path / "grass_block_side_overlay.png"
+            grass_cm = tmp_path / "grass.png"
+            foliage_cm = tmp_path / "foliage.png"
+
+            _write_dummy_png(albedo_file)
+            _write_dummy_png(overlay_file)
+            _write_dummy_png(grass_cm)
+            _write_dummy_png(foliage_cm)
+
+            colormaps = {"grass": grass_cm, "foliage": foliage_cm}
+
+            mat = build_standalone_material(
+                texture_key="minecraft:block/grass_block_side",
+                albedo_path=albedo_file,
+                overlay_path=overlay_file,
+                colormaps=colormaps,
+                stack_fingerprint="test_fp_grass",
+                use_labpbr=True,
+            )
+
+            self.assertIsNotNone(mat)
+            self.assertTrue(mat["mtk_has_overlay"])
+
+            node_names = [n.name for n in mat.node_tree.nodes]
+            self.assertIn("Albedo Texture", node_names)
+            self.assertIn("Overlay Texture", node_names)
+            self.assertIn("MC Biome Tint", node_names)
+            self.assertIn("MC Biome Colormap Decoder", node_names)
+            self.assertIn("Colormap Grass", node_names)
+            self.assertIn("Colormap Foliage", node_names)
+
+            # Verify Colormap nodes use Linear interpolation and EXTEND extension
+            cm_grass_node = mat.node_tree.nodes["Colormap Grass"]
+            self.assertEqual(cm_grass_node.interpolation, "Linear")
+            self.assertEqual(cm_grass_node.extension, "EXTEND")
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_construction_in_blender(self):
@@ -111,13 +159,16 @@ class TestMaterialPipeline(unittest.TestCase):
             tmp_path = Path(tmpdir)
             albedo_file = tmp_path / "blocks_chunk_001.png"
             overlay_file = tmp_path / "blocks_chunk_001_overlay.png"
+            grass_cm = tmp_path / "grass.png"
             _write_dummy_png(albedo_file)
             _write_dummy_png(overlay_file)
+            _write_dummy_png(grass_cm)
 
             mat = build_atlas_chunk_material(
                 chunk_id=0,
                 albedo_path=albedo_file,
                 overlay_path=overlay_file,
+                colormaps={"grass": grass_cm},
                 category="blocks",
                 category_chunk_index=1,
                 stack_fingerprint="test_fp_overlay",
@@ -133,7 +184,13 @@ class TestMaterialPipeline(unittest.TestCase):
             self.assertIn("Atlas Albedo Texture", node_names)
             self.assertIn("Atlas Overlay Texture", node_names)
             self.assertIn("Biome Tint", node_names)
+            self.assertIn("MC Biome Colormap Decoder", node_names)
+            self.assertIn("Colormap Grass", node_names)
             self.assertIn("LabPBR Decoder", node_names)
+
+            cm_grass_node = mat.node_tree.nodes["Colormap Grass"]
+            self.assertEqual(cm_grass_node.interpolation, "Linear")
+            self.assertEqual(cm_grass_node.extension, "EXTEND")
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_end_to_end_material_replacement_and_provenance(self):
@@ -143,20 +200,24 @@ class TestMaterialPipeline(unittest.TestCase):
         self.assertIsNotNone(obj)
         mesh = obj.data
 
-        # Give it a material slot named "stone"
-        src_mat = bpy.data.materials.new(name="minecraft:block/stone")
+        # Give it a material slot named "grass_block_top"
+        src_mat = bpy.data.materials.new(name="minecraft:block/grass_block_top")
         mesh.materials.append(src_mat)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
             atlas_dir = cache_dir / "atlas"
             standalone_dir = cache_dir / "standalone"
+            colormaps_dir = cache_dir / "colormaps"
             atlas_dir.mkdir(parents=True, exist_ok=True)
             standalone_dir.mkdir(parents=True, exist_ok=True)
+            colormaps_dir.mkdir(parents=True, exist_ok=True)
 
             _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
+            _write_dummy_png(colormaps_dir / "grass.png")
+            _write_dummy_png(colormaps_dir / "foliage.png")
             (standalone_dir / "assets" / "minecraft" / "textures" / "block").mkdir(parents=True, exist_ok=True)
-            _write_dummy_png(standalone_dir / "assets" / "minecraft" / "textures" / "block" / "stone.png")
+            _write_dummy_png(standalone_dir / "assets" / "minecraft" / "textures" / "block" / "grass_block_top.png")
 
             # Write cache_manifest.json
             manifest = {
@@ -180,7 +241,7 @@ class TestMaterialPipeline(unittest.TestCase):
                     }
                 ],
                 "sprites": {
-                    "minecraft:block/stone": {
+                    "minecraft:block/grass_block_top": {
                         "chunk_id": 0,
                         "category": "blocks",
                         "is_animated": False,
@@ -202,8 +263,8 @@ class TestMaterialPipeline(unittest.TestCase):
             sa_mapping = {
                 "format_version": 3,
                 "textures": {
-                    "minecraft:block/stone": {
-                        "files": {"albedo": "assets/minecraft/textures/block/stone.png"},
+                    "minecraft:block/grass_block_top": {
+                        "files": {"albedo": "assets/minecraft/textures/block/grass_block_top.png"},
                         "is_animated": False
                     }
                 }
@@ -213,16 +274,28 @@ class TestMaterialPipeline(unittest.TestCase):
             # Mock get_cache_dir to return our temporary test cache
             with patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
                 # 1. Replace Materials (Atlas Mode)
-                res = replace_materials(obj, mode="ATLAS", origin="AUTO")
+                res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="BADLANDS")
                 self.assertTrue(res["success"])
                 self.assertEqual(res["face_count"], len(mesh.polygons))
                 self.assertIn("mtk_source_texture_key", mesh.attributes)
                 self.assertIn("mtk_atlas_chunk_id", mesh.attributes)
                 self.assertIn("mtk_uv_transform", mesh.attributes)
+                self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
+                self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
+                self.assertIn(ATTR_COLORMAP_UV, mesh.attributes)
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
 
-                # 2. Clear materials and restore from provenance
+                # Verify Badlands Biome attributes
+                tint_data_attr = mesh.attributes[ATTR_BIOME_TINT_DATA]
+                self.assertEqual(len(tint_data_attr.data), len(mesh.polygons))
+
+                # 2. Test Instant Biome Switching (<1ms)
+                updated = update_object_biome(obj, "DESERT")
+                self.assertTrue(updated)
+                self.assertEqual(obj["mtk:biome_preset"], "DESERT")
+
+                # 3. Clear materials and restore from provenance
                 mesh.materials.clear()
                 self.assertEqual(len(mesh.materials), 0)
 
@@ -231,13 +304,16 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertEqual(len(mesh.materials), 1)
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
+                self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
 
-                # 3. Replace Materials (Standalone Mode)
-                res_sa = replace_materials(obj, mode="STANDALONE", origin="AUTO")
+                # 4. Replace Materials (Standalone Mode)
+                res_sa = replace_materials(obj, mode="STANDALONE", origin="AUTO", biome="PLAINS")
                 self.assertTrue(res_sa["success"])
-                self.assertEqual(mesh.materials[0].name, "MTK:minecraft:block/stone")
+                self.assertEqual(mesh.materials[0].name, "MTK:minecraft:block/grass_block_top")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
+                self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
 
 
 if __name__ == "__main__":
     unittest.main()
+
