@@ -46,6 +46,10 @@ from .menu_uv import (
     register as register_menu_uv,
     unregister as unregister_menu_uv,
 )
+from .panel_biome import (
+    register as register_panel_biome,
+    unregister as unregister_panel_biome,
+)
 
 classes = (
     # PropertyGroups
@@ -87,9 +91,11 @@ def register():
     register_menu_object()
     register_menu_select()
     register_menu_uv()
+    register_panel_biome()
 
 
 def unregister():
+    unregister_panel_biome()
     unregister_menu_uv()
     unregister_menu_select()
     unregister_menu_object()
