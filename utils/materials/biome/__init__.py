@@ -10,6 +10,7 @@ from .biome import (
     TINT_TYPE_HARDCODED,
     TINT_TYPE_DRY_FOLIAGE,
     BiomeResolver,
+    get_or_load_biome_resolver,
     get_biome_colors,
     compute_biome_tint_attributes,
     apply_biome_tint_attributes,

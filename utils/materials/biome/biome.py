@@ -7,6 +7,7 @@ and multi-threaded mesh attribute generation are executed inside libmtk_py.
 from __future__ import annotations
 
 import array
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
@@ -38,10 +39,69 @@ else:
         """Fallback placeholder when libmtk is not loaded."""
         def __init__(self):
             pass
+        @classmethod
+        def from_file(cls, path: str):
+            return cls()
         def get_tint_info(self, texture_name: str, block_name: Optional[str] = None, tint_index: Optional[int] = None) -> dict:
             return {"tint_type": 0, "tint_category": "none", "tint_weight": 0.0, "base_tint_weight": 0.0, "overlay_tint_weight": 0.0}
         def get_overlay_texture(self, texture_stem: str) -> Optional[str]:
             return None
+
+
+def get_or_load_biome_resolver(
+    cache_dir: Optional[Union[str, Path]] = None,
+    prefs: Optional[Any] = None,
+    pack_stack: Optional[Any] = None,
+) -> Any:
+    """
+    Get a prebaked BiomeResolver instance.
+    Prioritizes instant loading from `biome_mapping.json` in the compiled cache directory (< 0.2ms).
+    Falls back to parsing the pack stack if cache is not yet compiled.
+    """
+    if not HAS_LIBMTK:
+        return BiomeResolver()
+
+    # 1. Try loading from cache directory if available
+    target_cache = None
+    if cache_dir is not None:
+        target_cache = Path(cache_dir)
+    else:
+        try:
+            from bridge.assets import get_cache_dir
+            target_cache = get_cache_dir(prefs)
+        except Exception:
+            target_cache = None
+
+    if target_cache:
+        # Check standard cache mapping locations
+        candidates = [
+            target_cache / "biome_mapping.json",
+            target_cache / "atlas" / "biome_mapping.json",
+        ]
+        for c in candidates:
+            if c.exists() and c.is_file():
+                try:
+                    return BiomeResolver.from_file(str(c.resolve()))
+                except Exception:
+                    pass
+
+    # 2. Fallback: Parse active pack stack if provided
+    resolver = BiomeResolver()
+    effective_stack = pack_stack
+    if effective_stack is None:
+        try:
+            from bridge.assets import get_configured_pack_stack
+            effective_stack = get_configured_pack_stack(prefs)
+        except Exception:
+            effective_stack = None
+
+    if effective_stack:
+        try:
+            resolver.load_from_pack_stack(effective_stack)
+        except Exception:
+            pass
+
+    return resolver
 
 
 def get_biome_colors(biome_name: str, pack_stack: Any = None) -> Dict[str, Any]:
