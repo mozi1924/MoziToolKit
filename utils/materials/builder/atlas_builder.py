@@ -1,7 +1,8 @@
 """
 Atlas Chunk Material Builder.
 Constructs Principled BSDF / LabPBR 1.3 shader node trees for Atlas Chunk materials,
-with Mesh Attribute and UV decoding node integration, overlay blending, and dynamic Biome Tinting.
+with structured Frame organization, neat node layout coordinates, overlay blending,
+and dynamic Biome Tinting integration.
 """
 
 from __future__ import annotations
@@ -66,6 +67,22 @@ def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
             pass
 
 
+def _create_frame(
+    nodes: Any,
+    name: str,
+    label: str,
+    color: tuple[float, float, float] | None = None,
+) -> Any:
+    """Helper to create and style a layout frame node."""
+    frame = nodes.new("NodeFrame")
+    frame.name = name
+    frame.label = label
+    if color is not None and hasattr(frame, "use_custom_color"):
+        frame.use_custom_color = True
+        frame.color = color
+    return frame
+
+
 def build_atlas_chunk_material(
     chunk_id: int,
     albedo_path: str | Path,
@@ -86,38 +103,7 @@ def build_atlas_chunk_material(
     tile_height: float = 16.0,
 ) -> Optional[Any]:
     """
-    Builds or updates an Atlas Chunk Minecraft material in Blender.
-
-    Node Tree Structure:
-        - UV Map (UVMap) + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Albedo) [sRGB]
-        - UV Map + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Overlay) [sRGB] (if present)
-        - Mesh Attributes (mtk_biome_tint_data, mtk_biome_tint_color, mtk_colormap_uv) + Colormaps -> MC_Biome_Tint
-        - MC_Biome_Tint (Color & Alpha) -> LabPBR Decoder (Albedo Color & Alpha)
-        - UV Map + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Normal) [Non-Color] (if present) -> LabPBR Decoder
-        - UV Map + Mesh Attributes -> MC_Atlas_UV_Tiling -> Image Texture (Chunk Specular) [Non-Color] (if present) -> LabPBR Decoder
-        - LabPBR Decoder -> Material Output (Surface & Displacement)
-
-    Args:
-        chunk_id: Atlas chunk index (e.g. 0, 1, 2).
-        albedo_path: Path to Chunk Albedo PNG image.
-        normal_path: Optional path to Chunk Normal (_n) PNG image.
-        specular_path: Optional path to Chunk Specular (_s) PNG image.
-        overlay_path: Optional path to Chunk Overlay (_overlay) PNG image.
-        colormaps: Optional dict mapping 'grass', 'foliage', 'dry_foliage' to colormap image paths.
-        category: Atlas category name (e.g. "blocks", "chests", "items").
-        category_chunk_index: 1-based index within the category.
-        is_animated: Whether this chunk is an animated strip chunk.
-        stack_fingerprint: Optional cache fingerprint for provenance tracking.
-        material_name: Custom name for the material datablock. Defaults to MTK:Atlas:<cat>:<idx:03>.
-        use_attribute_node: If True, adds ShaderNodeAttribute for reading mesh attributes & tiling.
-        use_labpbr: Whether to insert the LabPBR 1.3 decoder node group.
-        atlas_width: Width of the atlas image in pixels.
-        atlas_height: Height of the atlas image in pixels.
-        tile_width: Width of a single sprite tile in pixels (typically 16.0).
-        tile_height: Height of a single sprite tile in pixels (typically 16.0).
-
-    Returns:
-        bpy.types.Material instance.
+    Builds or updates an Atlas Chunk Minecraft material in Blender with structured Frames.
     """
     if not HAS_BPY:
         return None
@@ -151,41 +137,58 @@ def build_atlas_chunk_material(
     links = mat.node_tree.links
     nodes.clear()
 
-    # 1. Output Node
+    # -------------------------------------------------------------------------
+    # 0. Layout Frames (Logical Responsibility Subgraphs)
+    # -------------------------------------------------------------------------
+    frame_uv = _create_frame(nodes, "Frame_UV", "UV Coordinates & Tiling", (0.15, 0.25, 0.40))
+    frame_tex = _create_frame(nodes, "Frame_Textures", "Texture Maps Input", (0.15, 0.35, 0.25))
+    frame_biome = _create_frame(nodes, "Frame_Biome", "Biome Tint & Colormap Decoding", (0.35, 0.25, 0.15))
+    frame_shading = _create_frame(nodes, "Frame_Shading", "LabPBR 1.3 Material Shading", (0.30, 0.20, 0.35))
+    frame_output = _create_frame(nodes, "Frame_Output", "Material Output", (0.20, 0.20, 0.20))
+
+    # -------------------------------------------------------------------------
+    # 1. Output Node (X: 1400)
+    # -------------------------------------------------------------------------
     output_node = nodes.new("ShaderNodeOutputMaterial")
     output_node.name = "Material Output"
-    output_node.location = (850, 0)
+    output_node.location = (1400, 0)
+    output_node.parent = frame_output
 
-    # 2. UV Map Node
+    # -------------------------------------------------------------------------
+    # 2. UV & Coordinate Pipeline (X: -2200 to -1400)
+    # -------------------------------------------------------------------------
     uv_node = nodes.new("ShaderNodeUVMap")
     uv_node.name = "UV Map"
-    uv_node.location = (-1450, 100)
+    uv_node.location = (-2200, 150)
     uv_node.uv_map = "UVMap"
+    uv_node.parent = frame_uv
 
     target_uv_output = uv_node.outputs["UV"]
 
-    # 2b. Attribute Nodes & UV Tiling Group Integration
     if use_attribute_node:
         tiling_group = ensure_atlas_uv_tiling()
         if tiling_group:
             # Attribute for UV transform: [scale_u, scale_v, loc_u, loc_v]
             attr_transform = nodes.new("ShaderNodeAttribute")
             attr_transform.name = "MTK UV Transform"
-            attr_transform.location = (-1450, -100)
+            attr_transform.location = (-2200, -50)
             attr_transform.attribute_name = ATTR_UV_TILING_TRANSFORM
             attr_transform.attribute_type = "GEOMETRY"
+            attr_transform.parent = frame_uv
 
             # Attribute for UV rotation: float angle in radians
             attr_rotation = nodes.new("ShaderNodeAttribute")
             attr_rotation.name = "MTK UV Rotation"
-            attr_rotation.location = (-1450, -350)
+            attr_rotation.location = (-2200, -280)
             attr_rotation.attribute_name = ATTR_UV_ROTATION
             attr_rotation.attribute_type = "GEOMETRY"
+            attr_rotation.parent = frame_uv
 
             # Separate Transform Color (R=scale_u, G=scale_v, B=loc_u, A=loc_v)
             sep_tf = nodes.new("ShaderNodeSeparateColor")
             sep_tf.name = "Separate UV Transform"
-            sep_tf.location = (-1200, -100)
+            sep_tf.location = (-1950, -50)
+            sep_tf.parent = frame_uv
             links.new(attr_transform.outputs["Color"], sep_tf.inputs["Color"])
 
             red_sock = sep_tf.outputs.get("Red") or sep_tf.outputs[0]
@@ -195,25 +198,28 @@ def build_atlas_chunk_material(
             # Scale CombineXYZ: (scale_u, scale_v, 1.0)
             scale_comb = nodes.new("ShaderNodeCombineXYZ")
             scale_comb.name = "Combine Scale"
-            scale_comb.location = (-980, -50)
+            scale_comb.location = (-1720, 100)
             scale_comb.inputs["Z"].default_value = 1.0
+            scale_comb.parent = frame_uv
             links.new(red_sock, scale_comb.inputs["X"])
             links.new(green_sock, scale_comb.inputs["Y"])
 
             # Location CombineXYZ: (loc_u, loc_v, 0.0)
             loc_comb = nodes.new("ShaderNodeCombineXYZ")
             loc_comb.name = "Combine Location"
-            loc_comb.location = (-980, -220)
+            loc_comb.location = (-1720, -70)
             loc_comb.inputs["Z"].default_value = 0.0
+            loc_comb.parent = frame_uv
             links.new(blue_sock, loc_comb.inputs["X"])
             links.new(attr_transform.outputs["Alpha"], loc_comb.inputs["Y"])
 
             # Rotation CombineXYZ: (0.0, 0.0, rotation)
             rot_comb = nodes.new("ShaderNodeCombineXYZ")
             rot_comb.name = "Combine Rotation"
-            rot_comb.location = (-980, -390)
+            rot_comb.location = (-1720, -240)
             rot_comb.inputs["X"].default_value = 0.0
             rot_comb.inputs["Y"].default_value = 0.0
+            rot_comb.parent = frame_uv
             rot_factor = attr_rotation.outputs.get("Factor") or attr_rotation.outputs.get("Fac") or attr_rotation.outputs[2]
             links.new(rot_factor, rot_comb.inputs["Z"])
 
@@ -221,11 +227,12 @@ def build_atlas_chunk_material(
             tiling_node = nodes.new("ShaderNodeGroup")
             tiling_node.name = "Atlas UV Tiling"
             tiling_node.node_tree = tiling_group
-            tiling_node.location = (-750, 0)
+            tiling_node.location = (-1450, 0)
             tiling_node.inputs["Atlas Width"].default_value = float(atlas_width)
             tiling_node.inputs["Atlas Height"].default_value = float(atlas_height)
             tiling_node.inputs["Tile Width"].default_value = float(tile_width)
             tiling_node.inputs["Tile Height"].default_value = float(tile_height)
+            tiling_node.parent = frame_uv
 
             links.new(uv_node.outputs["UV"], tiling_node.inputs["Vector"])
             links.new(scale_comb.outputs["Vector"], tiling_node.inputs["Scale"])
@@ -234,25 +241,9 @@ def build_atlas_chunk_material(
 
             target_uv_output = tiling_node.outputs["Atlas UV"]
 
-    # 3. LabPBR Decoder Group
-    decoder_group = ensure_labpbr_decoder() if use_labpbr else None
-    if decoder_group:
-        decoder_node = nodes.new("ShaderNodeGroup")
-        decoder_node.name = "LabPBR Decoder"
-        decoder_node.node_tree = decoder_group
-        decoder_node.location = (500, 0)
-        # Link Decoder -> Output
-        links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
-        if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
-            links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
-    else:
-        # Fallback standard Principled BSDF
-        bsdf_node = nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf_node.location = (500, 0)
-        links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
-        decoder_node = bsdf_node
-
-    # 4. Chunk Albedo Texture Node
+    # -------------------------------------------------------------------------
+    # 3. Texture Maps Input (X: -1150)
+    # -------------------------------------------------------------------------
     albedo_img = get_or_create_image(albedo_path, colorspace="sRGB")
     albedo_node = None
     if albedo_img:
@@ -261,10 +252,10 @@ def build_atlas_chunk_material(
         albedo_node.image = albedo_img
         albedo_node.interpolation = "Closest"
         albedo_node.extension = "CLIP"
-        albedo_node.location = (-450, 200)
+        albedo_node.location = (-1150, 300)
+        albedo_node.parent = frame_tex
         links.new(target_uv_output, albedo_node.inputs["Vector"])
 
-    # 4b. Chunk Overlay Texture Node (Optional)
     overlay_node = None
     if overlay_path and os.path.exists(str(overlay_path)):
         overlay_img = get_or_create_image(overlay_path, colorspace="sRGB")
@@ -274,17 +265,47 @@ def build_atlas_chunk_material(
             overlay_node.image = overlay_img
             overlay_node.interpolation = "Closest"
             overlay_node.extension = "CLIP"
-            overlay_node.location = (-450, 480)
+            overlay_node.location = (-1150, 580)
+            overlay_node.parent = frame_tex
             links.new(target_uv_output, overlay_node.inputs["Vector"])
 
-    # 4c. Biome Tinting & Colormap Decoding Integration
+    normal_node = None
+    if normal_path and os.path.exists(str(normal_path)):
+        normal_img = get_or_create_image(normal_path, colorspace="Non-Color")
+        if normal_img:
+            normal_node = nodes.new("ShaderNodeTexImage")
+            normal_node.name = "Atlas Normal Texture"
+            normal_node.image = normal_img
+            normal_node.interpolation = "Closest"
+            normal_node.extension = "CLIP"
+            normal_node.location = (-1150, 20)
+            normal_node.parent = frame_tex
+            links.new(target_uv_output, normal_node.inputs["Vector"])
+
+    spec_node = None
+    if specular_path and os.path.exists(str(specular_path)):
+        spec_img = get_or_create_image(specular_path, colorspace="Non-Color")
+        if spec_img:
+            spec_node = nodes.new("ShaderNodeTexImage")
+            spec_node.name = "Atlas Specular Texture"
+            spec_node.image = spec_img
+            spec_node.interpolation = "Closest"
+            spec_node.extension = "CLIP"
+            spec_node.location = (-1150, -260)
+            spec_node.parent = frame_tex
+            links.new(target_uv_output, spec_node.inputs["Vector"])
+
+    # -------------------------------------------------------------------------
+    # 4. Biome Tint & Colormap Decoding Integration (X: -700 to 200)
+    # -------------------------------------------------------------------------
     biome_tint_group = ensure_biome_tint()
     tint_node = None
     if biome_tint_group and albedo_node:
         tint_node = nodes.new("ShaderNodeGroup")
         tint_node.name = "Biome Tint"
         tint_node.node_tree = biome_tint_group
-        tint_node.location = (200, 250)
+        tint_node.location = (200, 350)
+        tint_node.parent = frame_biome
 
         # Base Color & Alpha
         links.new(albedo_node.outputs["Color"], tint_node.inputs["Base Color"])
@@ -300,14 +321,15 @@ def build_atlas_chunk_material(
         attr_tint_data.name = "Attr Biome Tint Data"
         attr_tint_data.attribute_name = ATTR_BIOME_TINT_DATA
         attr_tint_data.attribute_type = "GEOMETRY"
-        attr_tint_data.location = (-450, 750)
+        attr_tint_data.location = (-700, 350)
+        attr_tint_data.parent = frame_biome
 
         sep_tint_data = nodes.new("ShaderNodeSeparateColor")
         sep_tint_data.name = "Separate Biome Tint Data"
-        sep_tint_data.location = (-200, 750)
+        sep_tint_data.location = (-450, 350)
+        sep_tint_data.parent = frame_biome
         links.new(attr_tint_data.outputs["Color"], sep_tint_data.inputs["Color"])
 
-        # Wire Tint Weights
         red_w = sep_tint_data.outputs.get("Red") or sep_tint_data.outputs[0]
         green_w = sep_tint_data.outputs.get("Green") or sep_tint_data.outputs[1]
         blue_w = sep_tint_data.outputs.get("Blue") or sep_tint_data.outputs[2]
@@ -321,7 +343,8 @@ def build_atlas_chunk_material(
         attr_tint_col.name = "Attr Biome Tint Color"
         attr_tint_col.attribute_name = ATTR_BIOME_TINT_COLOR
         attr_tint_col.attribute_type = "GEOMETRY"
-        attr_tint_col.location = (-200, 50)
+        attr_tint_col.location = (-450, 100)
+        attr_tint_col.parent = frame_biome
 
         # Colormap Dynamic Decoding Pipeline
         decoder_group_tree = ensure_colormap_decoder()
@@ -337,23 +360,24 @@ def build_atlas_chunk_material(
             attr_cm_uv.name = "Attr Colormap UV"
             attr_cm_uv.attribute_name = ATTR_COLORMAP_UV
             attr_cm_uv.attribute_type = "GEOMETRY"
-            attr_cm_uv.location = (-750, 1100)
+            attr_cm_uv.location = (-700, 800)
+            attr_cm_uv.parent = frame_biome
 
             colormap_decoder = nodes.new("ShaderNodeGroup")
             colormap_decoder.name = "MC Biome Colormap Decoder"
             colormap_decoder.node_tree = decoder_group_tree
-            colormap_decoder.location = (-100, 1050)
+            colormap_decoder.location = (-100, 750)
+            colormap_decoder.parent = frame_biome
 
-            # Tint Type from Biome Tint Data Alpha
             links.new(attr_tint_data.outputs["Alpha"], colormap_decoder.inputs["Tint Type"])
             links.new(attr_tint_col.outputs["Color"], colormap_decoder.inputs["Hardcoded Color"])
             links.new(attr_tint_col.outputs["Color"], colormap_decoder.inputs["Water Color"])
             links.new(attr_tint_col.outputs["Color"], colormap_decoder.inputs["Fallback Color"])
 
             cm_configs = [
-                ("grass", "Colormap Grass", (-450, 1250), "Grass Color"),
-                ("foliage", "Colormap Foliage", (-450, 1050), "Foliage Color"),
-                ("dry_foliage", "Colormap Dry Foliage", (-450, 850), "Dry Foliage Color"),
+                ("grass", "Colormap Grass", (-450, 950), "Grass Color"),
+                ("foliage", "Colormap Foliage", (-450, 750), "Foliage Color"),
+                ("dry_foliage", "Colormap Dry Foliage", (-450, 550), "Dry Foliage Color"),
             ]
             for key, node_name, pos, target_sock in cm_configs:
                 cm_file = active_colormaps.get(key)
@@ -363,19 +387,41 @@ def build_atlas_chunk_material(
                         tex_cm = nodes.new("ShaderNodeTexImage")
                         tex_cm.name = node_name
                         tex_cm.image = cm_img
-                        # Colormaps MUST use Linear interpolation and EXTEND clamping!
                         tex_cm.interpolation = "Linear"
                         tex_cm.extension = "EXTEND"
                         tex_cm.location = pos
+                        tex_cm.parent = frame_biome
                         links.new(attr_cm_uv.outputs["Vector"], tex_cm.inputs["Vector"])
                         links.new(tex_cm.outputs["Color"], colormap_decoder.inputs[target_sock])
 
             links.new(colormap_decoder.outputs["Color"], tint_node.inputs["Tint Color"])
         else:
-            # Direct static color fallback
             links.new(attr_tint_col.outputs["Color"], tint_node.inputs["Tint Color"])
 
-        # Link Biome Tint Output -> Decoder / BSDF
+    # -------------------------------------------------------------------------
+    # 5. LabPBR 1.3 Material Shading (X: 650)
+    # -------------------------------------------------------------------------
+    decoder_group = ensure_labpbr_decoder() if use_labpbr else None
+    if decoder_group:
+        decoder_node = nodes.new("ShaderNodeGroup")
+        decoder_node.name = "LabPBR Decoder"
+        decoder_node.node_tree = decoder_group
+        decoder_node.location = (650, 0)
+        decoder_node.parent = frame_shading
+
+        # Link Decoder -> Output
+        links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
+        if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
+            links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
+    else:
+        bsdf_node = nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf_node.location = (650, 0)
+        bsdf_node.parent = frame_shading
+        links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
+        decoder_node = bsdf_node
+
+    # Link Albedo / Tint -> Decoder / BSDF
+    if tint_node:
         if decoder_group:
             links.new(tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
             links.new(tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
@@ -390,37 +436,15 @@ def build_atlas_chunk_material(
             links.new(albedo_node.outputs["Color"], decoder_node.inputs["Base Color"])
             links.new(albedo_node.outputs["Alpha"], decoder_node.inputs["Alpha"])
 
-    # 5. Chunk Normal Texture Node (Optional)
-    if normal_path and os.path.exists(str(normal_path)):
-        normal_img = get_or_create_image(normal_path, colorspace="Non-Color")
-        if normal_img:
-            normal_node = nodes.new("ShaderNodeTexImage")
-            normal_node.name = "Atlas Normal Texture"
-            normal_node.image = normal_img
-            normal_node.interpolation = "Closest"
-            normal_node.extension = "CLIP"
-            normal_node.location = (-450, -100)
-            links.new(target_uv_output, normal_node.inputs["Vector"])
+    # Link Normal -> Decoder
+    if normal_node and decoder_group:
+        links.new(normal_node.outputs["Color"], decoder_node.inputs["Normal (_n) Color"])
+        links.new(normal_node.outputs["Alpha"], decoder_node.inputs["Normal (_n) Alpha (Height)"])
 
-            if decoder_group:
-                links.new(normal_node.outputs["Color"], decoder_node.inputs["Normal (_n) Color"])
-                links.new(normal_node.outputs["Alpha"], decoder_node.inputs["Normal (_n) Alpha (Height)"])
-
-    # 6. Chunk Specular Texture Node (Optional)
-    if specular_path and os.path.exists(str(specular_path)):
-        spec_img = get_or_create_image(specular_path, colorspace="Non-Color")
-        if spec_img:
-            spec_node = nodes.new("ShaderNodeTexImage")
-            spec_node.name = "Atlas Specular Texture"
-            spec_node.image = spec_img
-            spec_node.interpolation = "Closest"
-            spec_node.extension = "CLIP"
-            spec_node.location = (-450, -350)
-            links.new(target_uv_output, spec_node.inputs["Vector"])
-
-            if decoder_group:
-                links.new(spec_node.outputs["Color"], decoder_node.inputs["Specular (_s) Color"])
-                links.new(spec_node.outputs["Alpha"], decoder_node.inputs["Specular (_s) Alpha (Emission)"])
+    # Link Specular -> Decoder
+    if spec_node and decoder_group:
+        links.new(spec_node.outputs["Color"], decoder_node.inputs["Specular (_s) Color"])
+        links.new(spec_node.outputs["Alpha"], decoder_node.inputs["Specular (_s) Alpha (Emission)"])
 
     # Ensure Albedo image texture node is active and selected for Solid Viewport mode
     if albedo_node:
@@ -442,4 +466,3 @@ def build_atlas_chunk_material(
             pass
 
     return mat
-
