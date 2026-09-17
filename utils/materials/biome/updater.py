@@ -79,7 +79,43 @@ def update_object_biome(
 
     mesh = obj.data
     mode = detect_object_material_mode(obj)
-    biome_colors = get_biome_colors(biome_name, pack_stack=pack_stack)
+
+    # Read custom biome parameters if configured on the object
+    is_custom = biome_name.upper() == "CUSTOM"
+    if is_custom:
+        custom_temp = float(getattr(obj, "mtk_biome_temp", obj.get("mtk_biome_temp", 0.8) if hasattr(obj, "get") else 0.8))
+        custom_humidity = float(getattr(obj, "mtk_biome_humidity", obj.get("mtk_biome_humidity", 0.4) if hasattr(obj, "get") else 0.4))
+        has_custom_grass = bool(getattr(obj, "mtk_biome_use_custom_grass", obj.get("mtk_biome_use_custom_grass", False) if hasattr(obj, "get") else False))
+        has_custom_foliage = bool(getattr(obj, "mtk_biome_use_custom_foliage", obj.get("mtk_biome_use_custom_foliage", False) if hasattr(obj, "get") else False))
+        has_custom_dry_foliage = bool(getattr(obj, "mtk_biome_use_custom_dry_foliage", obj.get("mtk_biome_use_custom_dry_foliage", False) if hasattr(obj, "get") else False))
+        custom_grass = list(getattr(obj, "mtk_biome_grass_color", obj.get("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)) if hasattr(obj, "get") else (0.28, 0.51, 0.10, 1.0)))
+        custom_foliage = list(getattr(obj, "mtk_biome_foliage_color", obj.get("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)) if hasattr(obj, "get") else (0.18, 0.41, 0.03, 1.0)))
+        custom_dry_foliage = list(getattr(obj, "mtk_biome_dry_foliage_color", obj.get("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)) if hasattr(obj, "get") else (0.37, 0.18, 0.06, 1.0)))
+        custom_water = list(getattr(obj, "mtk_biome_water_color", obj.get("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)) if hasattr(obj, "get") else (0.05, 0.18, 0.78, 1.0)))
+    else:
+        custom_temp = None
+        custom_humidity = None
+        has_custom_grass = False
+        has_custom_foliage = False
+        has_custom_dry_foliage = False
+        custom_grass = None
+        custom_foliage = None
+        custom_dry_foliage = None
+        custom_water = None
+
+    biome_colors = get_biome_colors(
+        biome_name,
+        pack_stack=pack_stack,
+        custom_temp=custom_temp,
+        custom_humidity=custom_humidity,
+        custom_grass=custom_grass,
+        custom_foliage=custom_foliage,
+        custom_dry_foliage=custom_dry_foliage,
+        custom_water=custom_water,
+        has_custom_grass=has_custom_grass,
+        has_custom_foliage=has_custom_foliage,
+        has_custom_dry_foliage=has_custom_dry_foliage,
+    )
     effective_stack = pack_stack
     if effective_stack is None:
         try:
@@ -102,7 +138,18 @@ def update_object_biome(
         biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
 
         packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
-            source_keys, biome_preset=biome_name, resolver=biome_resolver
+            source_keys,
+            biome_preset=biome_name,
+            resolver=biome_resolver,
+            custom_temp=custom_temp,
+            custom_humidity=custom_humidity,
+            custom_grass=custom_grass,
+            custom_foliage=custom_foliage,
+            custom_dry_foliage=custom_dry_foliage,
+            custom_water=custom_water,
+            has_custom_grass=has_custom_grass,
+            has_custom_foliage=has_custom_foliage,
+            has_custom_dry_foliage=has_custom_dry_foliage,
         )
         apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
 

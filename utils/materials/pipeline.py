@@ -374,8 +374,41 @@ def replace_materials(
     # 6. Compute & Inject Biome Tint Attributes (Instant load from prebaked cache in < 0.2ms)
     biome_resolver = get_or_load_biome_resolver(cache_dir=base_cache, prefs=prefs)
 
+    is_custom = biome.upper() == "CUSTOM"
+    if is_custom:
+        custom_temp = float(getattr(mesh_or_obj, "mtk_biome_temp", mesh_or_obj.get("mtk_biome_temp", 0.8) if hasattr(mesh_or_obj, "get") else 0.8))
+        custom_humidity = float(getattr(mesh_or_obj, "mtk_biome_humidity", mesh_or_obj.get("mtk_biome_humidity", 0.4) if hasattr(mesh_or_obj, "get") else 0.4))
+        has_custom_grass = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_grass", mesh_or_obj.get("mtk_biome_use_custom_grass", False) if hasattr(mesh_or_obj, "get") else False))
+        has_custom_foliage = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_foliage", mesh_or_obj.get("mtk_biome_use_custom_foliage", False) if hasattr(mesh_or_obj, "get") else False))
+        has_custom_dry_foliage = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_dry_foliage", mesh_or_obj.get("mtk_biome_use_custom_dry_foliage", False) if hasattr(mesh_or_obj, "get") else False))
+        custom_grass = list(getattr(mesh_or_obj, "mtk_biome_grass_color", mesh_or_obj.get("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)) if hasattr(mesh_or_obj, "get") else (0.28, 0.51, 0.10, 1.0)))
+        custom_foliage = list(getattr(mesh_or_obj, "mtk_biome_foliage_color", mesh_or_obj.get("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)) if hasattr(mesh_or_obj, "get") else (0.18, 0.41, 0.03, 1.0)))
+        custom_dry_foliage = list(getattr(mesh_or_obj, "mtk_biome_dry_foliage_color", mesh_or_obj.get("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)) if hasattr(mesh_or_obj, "get") else (0.37, 0.18, 0.06, 1.0)))
+        custom_water = list(getattr(mesh_or_obj, "mtk_biome_water_color", mesh_or_obj.get("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)) if hasattr(mesh_or_obj, "get") else (0.05, 0.18, 0.78, 1.0)))
+    else:
+        custom_temp = None
+        custom_humidity = None
+        has_custom_grass = False
+        has_custom_foliage = False
+        has_custom_dry_foliage = False
+        custom_grass = None
+        custom_foliage = None
+        custom_dry_foliage = None
+        custom_water = None
+
     packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
-        face_source_keys, biome_preset=biome, resolver=biome_resolver
+        face_source_keys,
+        biome_preset=biome,
+        resolver=biome_resolver,
+        custom_temp=custom_temp,
+        custom_humidity=custom_humidity,
+        custom_grass=custom_grass,
+        custom_foliage=custom_foliage,
+        custom_dry_foliage=custom_dry_foliage,
+        custom_water=custom_water,
+        has_custom_grass=has_custom_grass,
+        has_custom_foliage=has_custom_foliage,
+        has_custom_dry_foliage=has_custom_dry_foliage,
     )
     apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
 
@@ -558,8 +591,42 @@ def restore_materials_from_provenance(
 
     # Re-apply or verify biome attributes (Instant load from prebaked cache in < 0.2ms)
     biome_resolver = get_or_load_biome_resolver(cache_dir=base_cache, prefs=prefs)
+
+    is_custom = effective_biome.upper() == "CUSTOM"
+    if is_custom:
+        custom_temp = float(getattr(mesh_or_obj, "mtk_biome_temp", mesh_or_obj.get("mtk_biome_temp", 0.8) if hasattr(mesh_or_obj, "get") else 0.8))
+        custom_humidity = float(getattr(mesh_or_obj, "mtk_biome_humidity", mesh_or_obj.get("mtk_biome_humidity", 0.4) if hasattr(mesh_or_obj, "get") else 0.4))
+        has_custom_grass = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_grass", mesh_or_obj.get("mtk_biome_use_custom_grass", False) if hasattr(mesh_or_obj, "get") else False))
+        has_custom_foliage = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_foliage", mesh_or_obj.get("mtk_biome_use_custom_foliage", False) if hasattr(mesh_or_obj, "get") else False))
+        has_custom_dry_foliage = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_dry_foliage", mesh_or_obj.get("mtk_biome_use_custom_dry_foliage", False) if hasattr(mesh_or_obj, "get") else False))
+        custom_grass = list(getattr(mesh_or_obj, "mtk_biome_grass_color", mesh_or_obj.get("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)) if hasattr(mesh_or_obj, "get") else (0.28, 0.51, 0.10, 1.0)))
+        custom_foliage = list(getattr(mesh_or_obj, "mtk_biome_foliage_color", mesh_or_obj.get("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)) if hasattr(mesh_or_obj, "get") else (0.18, 0.41, 0.03, 1.0)))
+        custom_dry_foliage = list(getattr(mesh_or_obj, "mtk_biome_dry_foliage_color", mesh_or_obj.get("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)) if hasattr(mesh_or_obj, "get") else (0.37, 0.18, 0.06, 1.0)))
+        custom_water = list(getattr(mesh_or_obj, "mtk_biome_water_color", mesh_or_obj.get("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)) if hasattr(mesh_or_obj, "get") else (0.05, 0.18, 0.78, 1.0)))
+    else:
+        custom_temp = None
+        custom_humidity = None
+        has_custom_grass = False
+        has_custom_foliage = False
+        has_custom_dry_foliage = False
+        custom_grass = None
+        custom_foliage = None
+        custom_dry_foliage = None
+        custom_water = None
+
     packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
-        face_source_keys, biome_preset=effective_biome, resolver=biome_resolver
+        face_source_keys,
+        biome_preset=effective_biome,
+        resolver=biome_resolver,
+        custom_temp=custom_temp,
+        custom_humidity=custom_humidity,
+        custom_grass=custom_grass,
+        custom_foliage=custom_foliage,
+        custom_dry_foliage=custom_dry_foliage,
+        custom_water=custom_water,
+        has_custom_grass=has_custom_grass,
+        has_custom_foliage=has_custom_foliage,
+        has_custom_dry_foliage=has_custom_dry_foliage,
     )
     apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
 

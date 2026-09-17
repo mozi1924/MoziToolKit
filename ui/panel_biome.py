@@ -47,6 +47,12 @@ def _set_object_biome(self, value: int):
         update_object_biome(self, biome_name)
 
 
+def _on_custom_param_changed(self, context):
+    """Real-time update callback when custom biome temperature, humidity, or colors change."""
+    if self.get("mtk:biome_preset", "PLAINS") == "CUSTOM":
+        update_object_biome(self, "CUSTOM")
+
+
 class MOZI_OT_set_object_biome(bpy.types.Operator):
     """Apply selected biome palette to the active or all selected Minecraft objects."""
 
@@ -76,8 +82,21 @@ class MOZI_OT_set_object_biome(bpy.types.Operator):
             self.report({'WARNING'}, "No Minecraft mesh objects found in selection.")
             return {'CANCELLED'}
 
+        src = context.object
         count = 0
         for obj in target_objs:
+            if self.biome_preset == "CUSTOM" and src and src != obj:
+                # Copy custom biome attributes to target objects
+                obj.mtk_biome_temp = src.mtk_biome_temp
+                obj.mtk_biome_humidity = src.mtk_biome_humidity
+                obj.mtk_biome_use_custom_grass = src.mtk_biome_use_custom_grass
+                obj.mtk_biome_grass_color = src.mtk_biome_grass_color
+                obj.mtk_biome_use_custom_foliage = src.mtk_biome_use_custom_foliage
+                obj.mtk_biome_foliage_color = src.mtk_biome_foliage_color
+                obj.mtk_biome_use_custom_dry_foliage = src.mtk_biome_use_custom_dry_foliage
+                obj.mtk_biome_dry_foliage_color = src.mtk_biome_dry_foliage_color
+                obj.mtk_biome_water_color = src.mtk_biome_water_color
+
             if update_object_biome(obj, self.biome_preset):
                 count += 1
 
@@ -88,7 +107,7 @@ class MOZI_OT_set_object_biome(bpy.types.Operator):
 def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     mode = detect_object_material_mode(obj)
     current_biome = obj.get("mtk:biome_preset", "PLAINS")
-    biome_info = get_biome_colors(current_biome)
+    is_custom = current_biome == "CUSTOM"
 
     box = layout.box()
     row_top = box.row(align=True)
@@ -98,19 +117,59 @@ def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     row_preset = box.row(align=True)
     row_preset.prop(obj, "mtk_biome", text=tr("Biome"))
 
-    # Preview Info
-    col_info = box.column(align=True)
-    row_temp = col_info.row(align=True)
-    row_temp.label(text=f"{tr('Temperature')}: {biome_info.get('temperature', 0.8):.2f}")
-    row_temp.label(text=f"{tr('Downfall')}: {biome_info.get('humidity', 0.4):.2f}")
+    if is_custom:
+        # Custom Biome Configuration Controls
+        col_custom = box.column(align=True)
+        col_custom.use_property_split = True
+        col_custom.use_property_decorate = False
 
-    # Color previews
-    row_cols = box.row(align=True)
-    row_cols.scale_y = 0.8
-    grass_hex = biome_info.get("grass_hex", "#91BD59")
-    foliage_hex = biome_info.get("foliage_hex", "#77AB2F")
-    row_cols.label(text=f"{tr('Grass')}: {grass_hex}")
-    row_cols.label(text=f"{tr('Foliage')}: {foliage_hex}")
+        # Climate & Colormap Sampling
+        box_climate = col_custom.box()
+        box_climate.label(text=tr("Colormap Sampling (Climate)"), icon="RESTRICT_COLOR_OFF")
+        col_clim_props = box_climate.column(align=True)
+        col_clim_props.prop(obj, "mtk_biome_temp", text=tr("Temperature"), slider=True)
+        col_clim_props.prop(obj, "mtk_biome_humidity", text=tr("Downfall"), slider=True)
+
+        # Color Overrides
+        box_colors = col_custom.box()
+        box_colors.label(text=tr("Color Overrides"), icon="COLOR")
+
+        # Grass Color
+        row_g = box_colors.row(align=True)
+        row_g.prop(obj, "mtk_biome_use_custom_grass", text=tr("Override Grass"))
+        if obj.mtk_biome_use_custom_grass:
+            row_g.prop(obj, "mtk_biome_grass_color", text="")
+
+        # Foliage Color
+        row_f = box_colors.row(align=True)
+        row_f.prop(obj, "mtk_biome_use_custom_foliage", text=tr("Override Foliage"))
+        if obj.mtk_biome_use_custom_foliage:
+            row_f.prop(obj, "mtk_biome_foliage_color", text="")
+
+        # Dry Foliage Color
+        row_df = box_colors.row(align=True)
+        row_df.prop(obj, "mtk_biome_use_custom_dry_foliage", text=tr("Override Dry Foliage"))
+        if obj.mtk_biome_use_custom_dry_foliage:
+            row_df.prop(obj, "mtk_biome_dry_foliage_color", text="")
+
+        # Water Color
+        row_w = box_colors.row(align=True)
+        row_w.label(text=tr("Water Color"))
+        row_w.prop(obj, "mtk_biome_water_color", text="")
+    else:
+        # Standard Biome Preset Info
+        biome_info = get_biome_colors(current_biome)
+        col_info = box.column(align=True)
+        row_temp = col_info.row(align=True)
+        row_temp.label(text=f"{tr('Temperature')}: {biome_info.get('temperature', 0.8):.2f}")
+        row_temp.label(text=f"{tr('Downfall')}: {biome_info.get('humidity', 0.4):.2f}")
+
+        row_cols = box.row(align=True)
+        row_cols.scale_y = 0.8
+        grass_hex = biome_info.get("grass_hex", "#91BD59")
+        foliage_hex = biome_info.get("foliage_hex", "#77AB2F")
+        row_cols.label(text=f"{tr('Grass')}: {grass_hex}")
+        row_cols.label(text=f"{tr('Foliage')}: {foliage_hex}")
 
     # Batch button if multiple objects selected
     sel_mtk = [o for o in context.selected_objects if is_mtk_object(o)]
@@ -173,14 +232,104 @@ def register():
         get=_get_object_biome,
         set=_set_object_biome,
     )
+    bpy.types.Object.mtk_biome_temp = bpy.props.FloatProperty(
+        name="Temperature",
+        description="Custom temperature for colormap sampling (-1.0 to 2.0)",
+        default=0.8,
+        min=-1.0,
+        max=2.0,
+        step=1,
+        precision=2,
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_humidity = bpy.props.FloatProperty(
+        name="Downfall",
+        description="Custom humidity / rainfall for colormap sampling (0.0 to 1.0)",
+        default=0.4,
+        min=0.0,
+        max=1.0,
+        step=1,
+        precision=2,
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_use_custom_grass = bpy.props.BoolProperty(
+        name="Override Grass Color",
+        description="Override grass color directly instead of colormap sampling",
+        default=False,
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_grass_color = bpy.props.FloatVectorProperty(
+        name="Grass Color",
+        description="Custom grass tint color",
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.28, 0.51, 0.10, 1.0),
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_use_custom_foliage = bpy.props.BoolProperty(
+        name="Override Foliage Color",
+        description="Override foliage color directly instead of colormap sampling",
+        default=False,
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_foliage_color = bpy.props.FloatVectorProperty(
+        name="Foliage Color",
+        description="Custom foliage tint color",
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.18, 0.41, 0.03, 1.0),
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_use_custom_dry_foliage = bpy.props.BoolProperty(
+        name="Override Dry Foliage Color",
+        description="Override dry foliage color directly instead of colormap sampling",
+        default=False,
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_dry_foliage_color = bpy.props.FloatVectorProperty(
+        name="Dry Foliage Color",
+        description="Custom dry foliage tint color",
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.37, 0.18, 0.06, 1.0),
+        update=_on_custom_param_changed,
+    )
+    bpy.types.Object.mtk_biome_water_color = bpy.props.FloatVectorProperty(
+        name="Water Color",
+        description="Custom water color",
+        subtype='COLOR',
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.05, 0.18, 0.78, 1.0),
+        update=_on_custom_param_changed,
+    )
 
 
 def unregister():
-    if hasattr(bpy.types.Object, "mtk_biome"):
-        try:
-            del bpy.types.Object.mtk_biome
-        except Exception:
-            pass
+    for prop in (
+        "mtk_biome",
+        "mtk_biome_temp",
+        "mtk_biome_humidity",
+        "mtk_biome_use_custom_grass",
+        "mtk_biome_grass_color",
+        "mtk_biome_use_custom_foliage",
+        "mtk_biome_foliage_color",
+        "mtk_biome_use_custom_dry_foliage",
+        "mtk_biome_dry_foliage_color",
+        "mtk_biome_water_color",
+    ):
+        if hasattr(bpy.types.Object, prop):
+            try:
+                delattr(bpy.types.Object, prop)
+            except Exception:
+                pass
 
     for cls in reversed(classes):
         try:
