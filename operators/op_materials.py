@@ -7,9 +7,14 @@ from __future__ import annotations
 import bpy
 from bpy.props import EnumProperty
 
-from ..utils.materials.biome import BIOME_ENUM_ITEMS
-from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
-from ..utils.system import get_prefs, register_menu_item
+try:
+    from ..utils.materials.biome import BIOME_ENUM_ITEMS
+    from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from ..utils.system import get_prefs, register_menu_item
+except (ImportError, ValueError):
+    from utils.materials.biome import BIOME_ENUM_ITEMS
+    from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from utils.system import get_prefs, register_menu_item
 
 
 @register_menu_item(views=["object", "mesh"], label="Replace Material")

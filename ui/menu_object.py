@@ -20,6 +20,8 @@ class MOZI_MT_object_menu(bpy.types.Menu):
         layout = self.layout
         layout.operator("mozi.replace_material")
         layout.operator("mozi.restore_materials_from_attributes")
+        layout.operator("mozi.set_texture_interpolation_closest")
+        layout.operator("mozi.clear_custom_normals")
 
 
 def draw_object_workspace_menu_func(self, context):

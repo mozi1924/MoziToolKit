@@ -18,6 +18,7 @@ class MOZI_MT_uv_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
+        layout.operator("mozi.scale_uv")
 
 
 def draw_uv_workspace_menu_func(self, context):

@@ -13,6 +13,7 @@ class MOZI_MT_select_mesh_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
+        layout.operator("mozi.select_hard_edges")
 
 
 class MOZI_MT_select_uv_menu(bpy.types.Menu):

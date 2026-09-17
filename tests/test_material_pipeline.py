@@ -41,6 +41,21 @@ def _write_dummy_png(path: Path):
 
 
 class TestMaterialPipeline(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if HAS_BPY:
+            import ui.panel_biome
+            ui.panel_biome.register()
+
+    @classmethod
+    def tearDownClass(cls):
+        if HAS_BPY:
+            import ui.panel_biome
+            try:
+                ui.panel_biome.unregister()
+            except Exception:
+                pass
+
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_standalone_material_construction_in_blender(self):
         with tempfile.TemporaryDirectory() as tmpdir:
