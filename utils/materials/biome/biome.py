@@ -104,30 +104,82 @@ def get_or_load_biome_resolver(
     return resolver
 
 
-def get_biome_colors(biome_name: str, pack_stack: Any = None) -> Dict[str, Any]:
+def get_biome_colors(
+    biome_name: str,
+    pack_stack: Any = None,
+    custom_temp: Optional[float] = None,
+    custom_humidity: Optional[float] = None,
+    custom_grass: Optional[List[float]] = None,
+    custom_foliage: Optional[List[float]] = None,
+    custom_dry_foliage: Optional[List[float]] = None,
+    custom_water: Optional[List[float]] = None,
+    has_custom_grass: bool = False,
+    has_custom_foliage: bool = False,
+    has_custom_dry_foliage: bool = False,
+) -> Dict[str, Any]:
     """Retrieve canonical metadata, temperature, humidity, and Linear RGBA colors from Rust core."""
     if not HAS_LIBMTK:
+        temp = custom_temp if custom_temp is not None else 0.8
+        hum = custom_humidity if custom_humidity is not None else 0.4
         return {
             "id": biome_name.lower(),
             "name": biome_name,
-            "temperature": 0.8,
-            "humidity": 0.4,
-            "grass_linear": [0.27, 0.50, 0.09, 1.0],
-            "foliage_linear": [0.18, 0.40, 0.03, 1.0],
-            "dry_foliage_linear": [0.36, 0.22, 0.06, 1.0],
-            "water_linear": [0.05, 0.18, 0.78, 1.0],
-            "colormap_uv": [0.2, 0.32],
-            "has_custom_grass": False,
-            "has_custom_foliage": False,
-            "has_custom_dry_foliage": False,
+            "temperature": temp,
+            "humidity": hum,
+            "grass_hex": "#91BD59",
+            "foliage_hex": "#77AB2F",
+            "dry_foliage_hex": "#A37546",
+            "water_hex": "#3F76E4",
+            "grass_linear": custom_grass or [0.27, 0.50, 0.09, 1.0],
+            "foliage_linear": custom_foliage or [0.18, 0.40, 0.03, 1.0],
+            "dry_foliage_linear": custom_dry_foliage or [0.36, 0.22, 0.06, 1.0],
+            "water_linear": custom_water or [0.05, 0.18, 0.78, 1.0],
+            "colormap_uv": [1.0 - max(0.0, min(1.0, temp)), max(0.0, min(1.0, hum)) * max(0.0, min(1.0, temp))],
+            "has_custom_grass": has_custom_grass,
+            "has_custom_foliage": has_custom_foliage,
+            "has_custom_dry_foliage": has_custom_dry_foliage,
         }
-    return libmtk_py.get_biome_meta(biome_name)
+
+    meta = libmtk_py.get_biome_meta(biome_name)
+    if biome_name.upper() == "CUSTOM":
+        temp = custom_temp if custom_temp is not None else meta.get("temperature", 0.8)
+        hum = custom_humidity if custom_humidity is not None else meta.get("humidity", 0.4)
+        meta["temperature"] = temp
+        meta["humidity"] = hum
+        if hasattr(libmtk_py, "get_colormap_uv"):
+            meta["colormap_uv"] = libmtk_py.get_colormap_uv(temp, hum)
+        else:
+            meta["colormap_uv"] = [1.0 - max(0.0, min(1.0, temp)), max(0.0, min(1.0, hum)) * max(0.0, min(1.0, temp))]
+
+        if custom_grass is not None:
+            meta["grass_linear"] = list(custom_grass)
+        if custom_foliage is not None:
+            meta["foliage_linear"] = list(custom_foliage)
+        if custom_dry_foliage is not None:
+            meta["dry_foliage_linear"] = list(custom_dry_foliage)
+        if custom_water is not None:
+            meta["water_linear"] = list(custom_water)
+
+        meta["has_custom_grass"] = has_custom_grass
+        meta["has_custom_foliage"] = has_custom_foliage
+        meta["has_custom_dry_foliage"] = has_custom_dry_foliage
+
+    return meta
 
 
 def compute_biome_tint_attributes(
     face_texture_keys: List[str],
     biome_preset: Union[str, List[Tuple[str, float]]] = "PLAINS",
     resolver: Optional[Any] = None,
+    custom_temp: Optional[float] = None,
+    custom_humidity: Optional[float] = None,
+    custom_grass: Optional[List[float]] = None,
+    custom_foliage: Optional[List[float]] = None,
+    custom_dry_foliage: Optional[List[float]] = None,
+    custom_water: Optional[List[float]] = None,
+    has_custom_grass: bool = False,
+    has_custom_foliage: bool = False,
+    has_custom_dry_foliage: bool = False,
 ) -> Tuple[List[List[float]], List[List[float]], List[List[float]]]:
     """
     Compute packed tint weights, colors, and colormap UV coordinates for mesh faces using Rust core.
@@ -135,10 +187,14 @@ def compute_biome_tint_attributes(
     """
     if not HAS_LIBMTK:
         n = len(face_texture_keys)
+        temp = custom_temp if custom_temp is not None else 0.8
+        hum = custom_humidity if custom_humidity is not None else 0.4
+        u = 1.0 - max(0.0, min(1.0, temp))
+        v = max(0.0, min(1.0, hum)) * max(0.0, min(1.0, temp))
         return (
             [[0.0, 0.0, 0.0, 0.0]] * n,
             [[1.0, 1.0, 1.0, 1.0]] * n,
-            [[0.2, 0.32, 0.0]] * n,
+            [[u, v, 0.0]] * n,
         )
 
     if isinstance(biome_preset, list):
@@ -154,6 +210,15 @@ def compute_biome_tint_attributes(
             str(biome_preset),
             multi_biomes=None,
             resolver=resolver,
+            custom_temp=custom_temp,
+            custom_humidity=custom_humidity,
+            custom_grass=custom_grass,
+            custom_foliage=custom_foliage,
+            custom_dry_foliage=custom_dry_foliage,
+            custom_water=custom_water,
+            has_custom_grass=has_custom_grass,
+            has_custom_foliage=has_custom_foliage,
+            has_custom_dry_foliage=has_custom_dry_foliage,
         )
 
     return res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"]
@@ -224,9 +289,10 @@ def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
 
 # Canonical list of UI dropdown enum items generated from libmtk
 def _get_biome_enum_items():
+    items = [("CUSTOM", "Custom", "Custom Biome (Temperature / Humidity & Color Overrides)")]
     if not HAS_LIBMTK:
-        return [("PLAINS", "Plains", "Plains Biome")]
+        return items + [("PLAINS", "Plains", "Plains Biome")]
     biomes = libmtk_py.get_all_biomes()
-    return [(b["id"].upper(), b["name"], f"{b['name']} Biome ({b['temperature']} / {b['humidity']})") for b in biomes]
+    return items + [(b["id"].upper(), b["name"], f"{b['name']} Biome ({b['temperature']} / {b['humidity']})") for b in biomes]
 
 BIOME_ENUM_ITEMS = _get_biome_enum_items()

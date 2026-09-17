@@ -313,6 +313,21 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
 
+                # 5. Test Custom Biome with Temperature/Humidity & Direct Color Overrides
+                obj.mtk_biome_temp = 0.5
+                obj.mtk_biome_humidity = 0.9
+                obj.mtk_biome_use_custom_grass = True
+                obj.mtk_biome_grass_color = (1.0, 0.0, 0.0, 1.0)
+                custom_updated = update_object_biome(obj, "CUSTOM")
+                self.assertTrue(custom_updated)
+                self.assertEqual(obj["mtk:biome_preset"], "CUSTOM")
+
+                # Verify Standalone mode custom color applied directly to MC Biome Tint node
+                mat = mesh.materials[0]
+                biome_node = mat.node_tree.nodes.get("MC Biome Tint")
+                self.assertIsNotNone(biome_node)
+                self.assertEqual(tuple(biome_node.inputs["Tint Color"].default_value), (1.0, 0.0, 0.0, 1.0))
+
 
 if __name__ == "__main__":
     unittest.main()
