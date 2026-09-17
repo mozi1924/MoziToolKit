@@ -20,6 +20,7 @@ class MOZI_MT_mesh_menu(bpy.types.Menu):
         layout = self.layout
         layout.operator("mozi.replace_material")
         layout.operator("mozi.restore_materials_from_attributes")
+        layout.operator("mozi.clear_custom_normals")
 
 
 class MOZI_MT_mesh_edge_menu(bpy.types.Menu):
@@ -28,7 +29,7 @@ class MOZI_MT_mesh_edge_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        # Optional edge operators placeholder
+        layout.operator("mozi.select_hard_edges")
 
 
 class MOZI_MT_mesh_face_menu(bpy.types.Menu):
