@@ -128,3 +128,35 @@ def is_hard_edge(edge, sharp_angle_rad: float = math.radians(30.0)) -> bool:
         except Exception:
             pass
     return False
+
+
+def get_connected_faces(bm, seed_faces):
+    """Find all connected faces (linked mesh island) starting from seed_faces."""
+    visited = set()
+    stack = list(seed_faces)
+    while stack:
+        face = stack.pop()
+        if face in visited or not face.is_valid:
+            continue
+        visited.add(face)
+        for edge in face.edges:
+            for linked_face in edge.link_faces:
+                if linked_face not in visited and linked_face.is_valid:
+                    stack.append(linked_face)
+    return visited
+
+
+def get_target_faces(bm, scope: str = "ALL"):
+    """Get faces from BMesh according to selection scope ('ALL', 'SELECTED', or 'LINKED')."""
+    if scope == "SELECTED":
+        selected = [f for f in bm.faces if f.select and f.is_valid]
+        if selected:
+            return selected
+        return [f for f in bm.faces if f.is_valid]
+    elif scope == "LINKED":
+        selected = [f for f in bm.faces if f.select and f.is_valid]
+        if selected:
+            return list(get_connected_faces(bm, selected))
+        return [f for f in bm.faces if f.is_valid]
+    else:  # "ALL"
+        return [f for f in bm.faces if f.is_valid]
