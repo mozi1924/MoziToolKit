@@ -103,6 +103,12 @@ translations_dict = {
         ("*", "All Similar Faces"): "全部类似面",
         ("*", "Scan and repair all inverted fluid faces in mesh"): "扫描并修复网格中所有倒置的流体面",
         ("*", "Only repair currently selected faces"): "仅修复当前选中的面",
+        ("*", "Repair selected faces if any, otherwise all faces in mesh"): "优先修复选中面；若无选区则扫描修复全网格面",
+        ("*", "Force Repair Slopes"): "强制修复斜面",
+        ("*", "Force swap top UV heights on slanted faces even if not strictly detected as inverted"): "对倾斜面强制交换顶部 UV 高度（即使未严格检测为反转）",
+        ("*", "Min Slope Threshold"): "最小倾斜阈值",
+        ("*", "Minimum height difference between top two vertices to consider face as slanted"): "判断面为倾斜面的顶部两顶点最小高度差",
+
         ("*", "Repair Fluid UV Preset"): "修复流体 UV 预设",
         ("*", "Pipeline for repairing inverted UV height mapping on sloped fluid side faces"): "修复流体斜切面倒置 UV 高度映射的处理管线",
         ("*", "Replace selected objects' materials using a Minecraft Java Edition Resource Pack (ZIP)"): "使用 Minecraft Java 版材质包 (ZIP) 批量替换/重构选中物体的材质",

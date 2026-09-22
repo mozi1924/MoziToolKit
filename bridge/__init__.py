@@ -20,24 +20,26 @@ from .mesh import (
     inject_mesh_data,
 )
 from .texture import (
-    HAS_LIBMTK_ALPHA,
     batch_analyze_transparent_faces,
     is_face_transparent,
     sample_uv_alpha,
 )
 from .uv import (
-    HAS_LIBMTK_UV,
+    batch_repair_fluid_uv,
     calculate_uv_area,
+    detect_uv_rotation,
+    get_fluid_side_uvs,
+    get_fluid_top_uvs,
     get_uv_bounds,
     get_uv_center,
-    is_uv_collapsed,
     is_orthogonal_angle,
-    detect_uv_rotation,
-    straighten_uv,
-    scale_uv,
+    is_uv_collapsed,
     normalize_uv_for_atlas_tiling,
-    uv_requires_atlas_tiling,
+    repair_quad_fluid_uv,
     restore_atlas_tiling_uv,
+    scale_uv,
+    straighten_uv,
+    uv_requires_atlas_tiling,
 )
 
 __all__ = [
@@ -53,7 +55,6 @@ __all__ = [
     "BLENDER_TO_MTK_TYPE",
     "MTK_TO_BLENDER_DOMAIN",
     "MTK_TO_BLENDER_TYPE",
-    "HAS_LIBMTK_UV",
     "calculate_uv_area",
     "get_uv_bounds",
     "get_uv_center",
@@ -65,9 +66,11 @@ __all__ = [
     "normalize_uv_for_atlas_tiling",
     "uv_requires_atlas_tiling",
     "restore_atlas_tiling_uv",
-    "HAS_LIBMTK_ALPHA",
+    "repair_quad_fluid_uv",
+    "batch_repair_fluid_uv",
+    "get_fluid_top_uvs",
+    "get_fluid_side_uvs",
     "batch_analyze_transparent_faces",
     "is_face_transparent",
     "sample_uv_alpha",
 ]
-

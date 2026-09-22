@@ -2,8 +2,18 @@
 Tests for Context Menu Registration and Dynamic Rendering.
 """
 
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
+
+PROJECT_DIR = Path(__file__).parent.parent.resolve()
+PARENT_DIR = PROJECT_DIR.parent
+libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
+
+for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 try:
     import bpy
@@ -20,6 +30,7 @@ from utils.system.menu_registry import (
     ALL_OPERATORS,
     DEFAULT_PRESETS,
 )
+
 
 
 class TestMenuRegistration(unittest.TestCase):
@@ -60,4 +71,9 @@ class TestMenuRegistration(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--" in sys.argv:
+        argv = [sys.argv[0]] + sys.argv[sys.argv.index("--") + 1:]
+    else:
+        argv = [sys.argv[0]]
+    unittest.main(argv=argv)
+
