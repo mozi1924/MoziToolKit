@@ -25,6 +25,14 @@ from .texture import (
     find_albedo_image_from_material,
     find_face_image,
 )
+from .fluid_uv import (
+    is_fluid_texture_name,
+    is_flowing_fluid_texture,
+    repair_face_fluid_uv,
+    repair_polygon_fluid_uv,
+    normalize_static_fluid_face_uv,
+    process_mesh_fluid_uv_repairs,
+)
 
 __all__ = [
     "SELECTION_ACTION_ITEMS",
@@ -44,4 +52,11 @@ __all__ = [
     "get_face_uv_center",
     "find_albedo_image_from_material",
     "find_face_image",
+    "is_fluid_texture_name",
+    "is_flowing_fluid_texture",
+    "repair_face_fluid_uv",
+    "repair_polygon_fluid_uv",
+    "normalize_static_fluid_face_uv",
+    "process_mesh_fluid_uv_repairs",
 ]
+

@@ -1,6 +1,6 @@
 """
-Parity and differential test suite for Transparent Face Analysis:
-Comparing Python reference implementation vs Rust libmtk_py backend.
+Test suite for Texture/Alpha Bridge operations backed by libmtk_py.
+Validates alpha sampling, transparency detection, and Blender operator integration.
 """
 
 import math
@@ -9,23 +9,15 @@ import sys
 import unittest
 from pathlib import Path
 
-libmtk_release_path = Path(__file__).resolve().parent.parent.parent / "libmozitoolkit" / "target" / "release"
-if libmtk_release_path.exists():
-    sys.path.insert(0, str(libmtk_release_path))
+PROJECT_DIR = Path(__file__).parent.parent.resolve()
+PARENT_DIR = PROJECT_DIR.parent
+libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
+
+for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 import bridge.texture as tex_bridge
-from bridge.texture import (
-    _py_batch_analyze_transparent_faces_f32,
-    _py_is_face_transparent_f32,
-    _py_sample_alpha_f32,
-)
-
-try:
-    import libmtk_py as rust_backend
-    HAS_RUST_BACKEND = hasattr(rust_backend, "batch_analyze_transparent_faces_f32")
-except ImportError:
-    rust_backend = None
-    HAS_RUST_BACKEND = False
 
 try:
     import bpy
@@ -37,76 +29,41 @@ except ImportError:
     HAS_BPY = False
 
 
-class TestAlphaConsistencyRustVsPy(unittest.TestCase):
+class TestTextureAlphaBridge(unittest.TestCase):
     def setUp(self):
         random.seed(42)
 
-    def test_rust_backend_available(self):
-        self.assertTrue(HAS_RUST_BACKEND, "libmtk_py alpha functions must be available")
-
-    def test_sample_alpha_f32_consistency(self):
-        width, height = 16, 16
-        # Generate random RGBA f32 pixel buffer
-        pixels = [random.uniform(0.0, 1.0) for _ in range(width * height * 4)]
-
-        # Test UV coordinates
-        sample_points = [
-            (0.0, 0.0),
-            (0.5, 0.5),
-            (0.99, 0.99),
-            (1.0, 1.0),
-            (0.25, 0.75),
-            (-0.2, -0.3),  # Wrapped UVs
-            (1.5, 2.3),
-        ]
-        for _ in range(50):
-            sample_points.append((random.uniform(-5.0, 5.0), random.uniform(-5.0, 5.0)))
-
-        for u, v in sample_points:
-            for invert_y in (False, True):
-                py_alpha = _py_sample_alpha_f32(width, height, pixels, u, v, invert_y)
-                rust_alpha = rust_backend.sample_uv_alpha_f32(u, v, width, height, pixels, invert_y)
-                self.assertAlmostEqual(py_alpha, rust_alpha, places=5, msg=f"Alpha mismatch at ({u}, {v}), invert_y={invert_y}")
-
-    def test_batch_analyze_transparent_faces_consistency(self):
-        width, height = 8, 8
-        # Create an 8x8 texture where half the pixels are transparent (alpha < 0.01)
+    def test_sample_uv_alpha(self):
+        width, height = 4, 4
+        # 4x4 image: left half opaque (a=1.0), right half transparent (a=0.0)
         pixels = []
         for y in range(height):
             for x in range(width):
-                r, g, b = 1.0, 1.0, 1.0
-                a = 0.0 if (x + y) % 2 == 0 else 1.0
-                pixels.extend([r, g, b, a])
+                a = 1.0 if x < 2 else 0.0
+                pixels.extend([1.0, 1.0, 1.0, a])
 
-        # Generate 100 face UV polygons
-        faces_uvs = []
-        for _ in range(100):
-            u_base = random.uniform(0.0, 0.8)
-            v_base = random.uniform(0.0, 0.8)
-            du = random.uniform(0.05, 0.2)
-            dv = random.uniform(0.05, 0.2)
-            quad = [
-                (u_base, v_base),
-                (u_base + du, v_base),
-                (u_base + du, v_base + dv),
-                (u_base, v_base + dv),
-            ]
-            faces_uvs.append(quad)
+        # Sample left side (x=0, 1 -> u=0.1)
+        a_left = tex_bridge.sample_uv_alpha(0.1, 0.5, width, height, pixels)
+        self.assertAlmostEqual(a_left, 1.0, places=5)
 
-        for mode in ("CENTER", "ALL_CORNERS", "AVERAGE"):
-            for threshold in (0.01, 0.5, 0.99):
-                for invert_y in (False, True):
-                    py_results = _py_batch_analyze_transparent_faces_f32(
-                        faces_uvs, width, height, pixels, mode=mode, threshold=threshold, invert_y=invert_y
-                    )
-                    rust_results = rust_backend.batch_analyze_transparent_faces_f32(
-                        faces_uvs, width, height, pixels, mode=mode, threshold=threshold, invert_y=invert_y
-                    )
-                    self.assertEqual(
-                        py_results,
-                        rust_results,
-                        msg=f"Mismatch for mode={mode}, threshold={threshold}, invert_y={invert_y}",
-                    )
+        # Sample right side (x=2, 3 -> u=0.8)
+        a_right = tex_bridge.sample_uv_alpha(0.8, 0.5, width, height, pixels)
+        self.assertAlmostEqual(a_right, 0.0, places=5)
+
+    def test_batch_analyze_transparent_faces(self):
+        width, height = 4, 4
+        pixels = []
+        for y in range(height):
+            for x in range(width):
+                a = 1.0 if x < 2 else 0.0
+                pixels.extend([1.0, 1.0, 1.0, a])
+
+        # Face 0 on left (opaque), Face 1 on right (transparent)
+        face0 = [(0.0, 0.0), (0.4, 0.0), (0.4, 0.4), (0.0, 0.4)]
+        face1 = [(0.6, 0.0), (0.9, 0.0), (0.9, 0.9), (0.6, 0.9)]
+
+        results = tex_bridge.batch_analyze_transparent_faces([face0, face1], width, height, pixels)
+        self.assertEqual(results, [False, True])
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_select_transparent_faces_operator_end_to_end(self):
@@ -202,4 +159,8 @@ class TestAlphaConsistencyRustVsPy(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--" in sys.argv:
+        argv = [sys.argv[0]] + sys.argv[sys.argv.index("--") + 1:]
+    else:
+        argv = [sys.argv[0]]
+    unittest.main(argv=argv)

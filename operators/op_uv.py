@@ -5,7 +5,7 @@ UV Editing and Utility Operators for MoziToolKit.
 from __future__ import annotations
 
 import bpy
-from bpy.props import FloatProperty, EnumProperty
+from bpy.props import FloatProperty, EnumProperty, BoolProperty
 
 try:
     from ..bridge import batch_analyze_transparent_faces
@@ -19,6 +19,7 @@ try:
         get_target_faces,
         poll_edit_mesh,
         set_select_mode,
+        process_mesh_fluid_uv_repairs,
     )
     from ..utils.system import register_menu_item
 except (ImportError, ValueError):
@@ -33,8 +34,10 @@ except (ImportError, ValueError):
         get_target_faces,
         poll_edit_mesh,
         set_select_mode,
+        process_mesh_fluid_uv_repairs,
     )
     from utils.system import register_menu_item
+
 
 
 @register_menu_item(views=["uv", "mesh"], label="Scale UV Faces")
@@ -194,7 +197,75 @@ class MOZI_OT_select_transparent_faces(bpy.types.Operator):
         return {"FINISHED"}
 
 
+@register_menu_item(views=["mesh", "uv"], label="Repair Fluid UV")
+class MOZI_OT_repair_fluid_uv(bpy.types.Operator):
+    """Repair inverted UV mapping on sloped fluid side faces"""
+
+    bl_idname = "mozi.repair_fluid_uv"
+    bl_label = "Repair Fluid UV"
+    bl_options = {"REGISTER", "UNDO"}
+
+    selection_scope: EnumProperty(
+        name="Selection Scope",
+        description="Faces to repair fluid UV on",
+        items=[
+            ("AUTO", "Auto (Selected or All)", "Repair selected faces if any, otherwise all faces in mesh"),
+            ("SELECTED", "Selected Faces", "Only repair currently selected faces"),
+            ("ALL", "All Faces", "Scan and repair all inverted fluid faces in mesh"),
+        ],
+        default="AUTO",
+    )
+
+    force: BoolProperty(
+        name="Force Repair Slopes",
+        description="Force swap top UV heights on slanted faces even if not strictly detected as inverted",
+        default=False,
+    )
+
+    min_slope_threshold: FloatProperty(
+        name="Min Slope Threshold",
+        description="Minimum height difference between top two vertices to consider face as slanted",
+        default=0.005,
+        min=0.0,
+        max=1.0,
+        precision=4,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return poll_edit_mesh(context)
+
+    def execute(self, context):
+        with bmesh_context(context) as (obj, bm):
+            uv_layer = bm.loops.layers.uv.verify()
+            selected_faces = [f for f in bm.faces if f.select]
+
+            if self.selection_scope == "SELECTED":
+                target_faces = selected_faces
+            elif self.selection_scope == "ALL":
+                target_faces = list(bm.faces)
+            else:  # AUTO
+                target_faces = selected_faces if selected_faces else list(bm.faces)
+
+            if not target_faces:
+                self.report({"WARNING"}, "No faces available to repair fluid UV.")
+                return {"CANCELLED"}
+
+            repaired_count = process_mesh_fluid_uv_repairs(
+                bm,
+                uv_layer=uv_layer,
+                target_faces=target_faces,
+                force=self.force,
+                min_slope_threshold=self.min_slope_threshold,
+            )
+
+        self.report({"INFO"}, f"Repaired fluid UV for {repaired_count} face(s)")
+        return {"FINISHED"}
+
+
 OPERATORS_CLASSES = (
     MOZI_OT_scale_uv,
     MOZI_OT_select_transparent_faces,
+    MOZI_OT_repair_fluid_uv,
 )
+

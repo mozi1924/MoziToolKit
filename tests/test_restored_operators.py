@@ -7,8 +7,18 @@ Unit tests for restored lightweight utility operators:
 """
 
 import math
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
+
+PROJECT_DIR = Path(__file__).parent.parent.resolve()
+PARENT_DIR = PROJECT_DIR.parent
+libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
+
+for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 try:
     import bpy
@@ -21,6 +31,7 @@ except ImportError:
 
 import operators
 import ui
+
 from utils.system.menu_registry import (
     draw_dynamic_menu,
     get_all_operators,
@@ -156,6 +167,61 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_repair_fluid_uv(self):
+        mesh = bpy.data.meshes.new("TestFluidMesh")
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.verify()
+
+        v0 = bm.verts.new((0.0, 0.0, 1.0))
+        v1 = bm.verts.new((0.0, 0.0, 0.0))
+        v2 = bm.verts.new((0.0, 0.2, 0.0))
+        v3 = bm.verts.new((0.0, 0.8, 1.0))
+        face = bm.faces.new([v0, v1, v2, v3])
+        face.select = True
+
+        loops = list(face.loops)
+        loops[0][uv_layer].uv = (1.0, 0.0)
+        loops[1][uv_layer].uv = (0.0, 0.0)
+        loops[2][uv_layer].uv = (0.0, 0.8)  # Inverted
+        loops[3][uv_layer].uv = (1.0, 0.2)  # Inverted
+
+        bm.to_mesh(mesh)
+        bm.free()
+
+        obj = bpy.data.objects.new("TestFluidObj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+
+        bpy.ops.object.mode_set(mode="EDIT")
+        res = bpy.ops.mozi.repair_fluid_uv(selection_scope="ALL")
+        self.assertEqual(res, {"FINISHED"})
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        # Read back UVs
+        bm_check = bmesh.new()
+        bm_check.from_mesh(mesh)
+        bm_check.faces.ensure_lookup_table()
+        uv_check = bm_check.loops.layers.uv.verify()
+        f = bm_check.faces[0]
+        self.assertAlmostEqual(f.loops[2][uv_check].uv.y, 0.2, places=4)
+        self.assertAlmostEqual(f.loops[3][uv_check].uv.y, 0.8, places=4)
+        bm_check.free()
+
+
+        # Cleanup
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
-    unittest.main()
+    import sys
+    if "--" in sys.argv:
+        argv = [sys.argv[0]] + sys.argv[sys.argv.index("--") + 1:]
+    else:
+        argv = [sys.argv[0]]
+    unittest.main(argv=argv)
+
+
