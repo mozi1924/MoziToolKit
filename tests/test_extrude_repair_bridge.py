@@ -46,6 +46,99 @@ class TestExtrudeRepairBridge(unittest.TestCase):
             seed=42,
         )
         self.assertEqual(len(heights), 3)
+
+    def test_process_mesh_extrude_repair_data_in_data_out(self):
+        import libmtk_py as mtk_py
+
+        # Setup an extruded cube:
+        # Base verts 0..3 at z=0, Top verts 4..7 at z=1
+        positions = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ]
+        face_vertices = [
+            [4, 5, 6, 7],  # Top face (selected)
+            [0, 1, 5, 4],  # Side face 0
+            [1, 2, 6, 5],  # Side face 1
+            [2, 3, 7, 6],  # Side face 2
+            [3, 0, 4, 7],  # Side face 3
+        ]
+        face_uvs = [
+            [[0.0, 0.0], [0.5, 0.0], [0.5, 0.5], [0.0, 0.5]],  # Top UV
+            [[0.0, 0.0], [0.5, 0.0], [0.5, 0.0], [0.0, 0.0]],  # Collapsed side UVs
+            [[0.0, 0.0], [0.5, 0.0], [0.5, 0.0], [0.0, 0.0]],
+            [[0.0, 0.0], [0.5, 0.0], [0.5, 0.0], [0.0, 0.0]],
+            [[0.0, 0.0], [0.5, 0.0], [0.5, 0.0], [0.0, 0.0]],
+        ]
+        face_materials = [0, 0, 0, 0, 0]
+        selected_faces = [0]
+        pixel_steps = [[1.0 / 16.0, 1.0 / 16.0] for _ in range(5)]
+
+        modified_uvs, modified_mats, modified_creases, count = mtk_py.process_mesh_extrude_repair(
+            positions=positions,
+            face_vertices=face_vertices,
+            face_uvs=face_uvs,
+            face_materials=face_materials,
+            selected_faces=selected_faces,
+            pixel_steps=pixel_steps,
+            uv_mode="SMART",
+            repair_uv=True,
+            add_crease=True,
+            crease_val=1.0,
+            only_collapsed=False,
+        )
+
+        self.assertEqual(count, 4)
+        self.assertEqual(len(modified_uvs), 4)
+        self.assertTrue(len(modified_creases) > 0)
+        for face_idx, new_uv in modified_uvs:
+            self.assertEqual(len(new_uv), 4)
+            for u, v in new_uv:
+                self.assertTrue(0.0 <= u <= 0.6)
+                self.assertTrue(0.0 <= v <= 0.6)
+
+    def test_process_random_extrude_mesh_data_in_data_out(self):
+        import libmtk_py as mtk_py
+
+        positions = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]
+        face_vertices = [[0, 1, 2, 3]]
+        face_uvs = [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
+        face_materials = [0]
+        selected_faces = [0]
+        pixel_steps = [[1.0 / 16.0, 1.0 / 16.0]]
+
+        new_pos, new_faces, new_uvs, new_mats, extruded_indices, rep_count = mtk_py.process_random_extrude_mesh(
+            positions=positions,
+            face_vertices=face_vertices,
+            face_uvs=face_uvs,
+            face_materials=face_materials,
+            selected_faces=selected_faces,
+            pixel_steps=pixel_steps,
+            min_height=0.1,
+            max_height=0.2,
+            seed=123,
+            noise_type="RANDOM",
+            noise_scale=1.0,
+            repair_uv=True,
+            uv_mode="SMART",
+            add_crease=True,
+            crease_val=1.0,
+        )
+        self.assertEqual(len(extruded_indices), 1)
+        self.assertEqual(rep_count, 4)
+        self.assertEqual(len(new_pos), 8)
+        self.assertEqual(len(new_faces), 5)
     def test_uv_editing_and_extrude_progress_guards(self):
         import importlib.util
         op_path = PROJECT_DIR / "operators" / "op_extrude.py"
