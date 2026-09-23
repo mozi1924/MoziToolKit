@@ -18,8 +18,11 @@ class MOZI_MT_mesh_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("mozi.replace_material")
-        layout.operator("mozi.restore_materials_from_attributes")
+        layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.auto_extrude_repair")
+        layout.operator("mozi.random_extrude")
+        layout.operator("mozi.cull_mesh_faces")
+        layout.separator()
         layout.operator("mozi.clear_custom_normals")
 
 
@@ -38,8 +41,11 @@ class MOZI_MT_mesh_face_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("mozi.replace_material")
-        layout.operator("mozi.restore_materials_from_attributes")
+        layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.auto_extrude_repair")
+        layout.operator("mozi.random_extrude")
+        layout.operator("mozi.cull_mesh_faces")
+
 
 
 def draw_mesh_workspace_menu_func(self, context):

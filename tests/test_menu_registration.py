@@ -22,7 +22,11 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-import ui
+if HAS_BPY:
+    import ui
+else:
+    ui = None
+
 from utils.system.menu_registry import (
     draw_dynamic_menu,
     get_all_operators,
@@ -33,21 +37,33 @@ from utils.system.menu_registry import (
 
 
 
+
 class TestMenuRegistration(unittest.TestCase):
     def test_canonical_operators_and_presets(self):
         all_ops = get_all_operators()
         self.assertIn("mozi.replace_material", all_ops)
         self.assertIn("mozi.restore_materials_from_attributes", all_ops)
         self.assertIn("mozi.precompile_cache", all_ops)
+        self.assertIn("mozi.repair_fluid_uv", all_ops)
+        self.assertIn("mozi.auto_extrude_repair", all_ops)
+        self.assertIn("mozi.adaptive_pixel_split", all_ops)
+        self.assertIn("mozi.cull_mesh_faces", all_ops)
 
         presets = get_default_presets()
         self.assertIn("object", presets)
         self.assertIn("mesh", presets)
         self.assertIn("uv", presets)
 
-        obj_op_ids = [item["operator"] for item in presets["object"]]
-        self.assertIn("mozi.replace_material", obj_op_ids)
-        self.assertIn("mozi.restore_materials_from_attributes", obj_op_ids)
+        mesh_op_ids = [item["operator"] for item in presets["mesh"]]
+        self.assertIn("mozi.repair_fluid_uv", mesh_op_ids)
+        self.assertIn("mozi.auto_extrude_repair", mesh_op_ids)
+        self.assertIn("mozi.adaptive_pixel_split", mesh_op_ids)
+        self.assertIn("mozi.cull_mesh_faces", mesh_op_ids)
+
+        uv_op_ids = [item["operator"] for item in presets["uv"]]
+        self.assertIn("mozi.repair_fluid_uv", uv_op_ids)
+        self.assertIn("mozi.scale_uv", uv_op_ids)
+
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_menu_hooks_registration(self):
