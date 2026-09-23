@@ -17,9 +17,44 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
 
 try:
     import bpy
+    import bpy_extras
     HAS_BPY = True
 except ImportError:
-    bpy = None
+    bpy = MagicMock()
+    bpy_extras = MagicMock()
+
+    class _MockOperator: pass
+    class _MockPanel: pass
+    class _MockMenu: pass
+    class _MockPropertyGroup: pass
+    class _MockUIList: pass
+    class _MockAddonPreferences: pass
+    class _MockExportHelper: pass
+    class _MockImportHelper: pass
+
+    class _MockTypes:
+        Operator = _MockOperator
+        Panel = _MockPanel
+        Menu = _MockMenu
+        PropertyGroup = _MockPropertyGroup
+        UIList = _MockUIList
+        AddonPreferences = _MockAddonPreferences
+
+    class _MockIoUtils:
+        ExportHelper = _MockExportHelper
+        ImportHelper = _MockImportHelper
+
+    bpy.types = _MockTypes
+    bpy.app = MagicMock()
+    bpy.props = MagicMock()
+    bpy_extras.io_utils = _MockIoUtils
+
+    sys.modules["bpy"] = bpy
+    sys.modules["bpy.props"] = bpy.props
+    sys.modules["bpy.types"] = _MockTypes
+    sys.modules["bpy.app"] = bpy.app
+    sys.modules["bpy_extras"] = bpy_extras
+    sys.modules["bpy_extras.io_utils"] = _MockIoUtils
     HAS_BPY = False
 
 if HAS_BPY:

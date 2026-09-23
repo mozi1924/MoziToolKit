@@ -31,6 +31,41 @@ except (ImportError, ValueError):
     from utils.system.menu_registry import register_menu_item
 
 
+def _get_material_active_image_size(material: Any) -> Optional[Tuple[int, int]]:
+    """Resolves active/primary image texture size from a Material node tree."""
+    if not material or not getattr(material, "use_nodes", False) or not material.node_tree:
+        return None
+
+    nodes = material.node_tree.nodes
+
+    # 1. Active node in node editor (Blender's default active image texture)
+    if nodes.active and nodes.active.type == "TEX_IMAGE" and nodes.active.image:
+        img = nodes.active.image
+        if img.size[0] > 0 and img.size[1] > 0:
+            return (img.size[0], img.size[1])
+
+    # 2. Principled BSDF Base Color connection
+    for node in nodes:
+        if node.type == "BSDF_PRINCIPLED":
+            base_col_input = node.inputs.get("Base Color")
+            if base_col_input and base_col_input.is_linked:
+                for link in base_col_input.links:
+                    from_node = link.from_node
+                    if from_node.type == "TEX_IMAGE" and from_node.image:
+                        img = from_node.image
+                        if img.size[0] > 0 and img.size[1] > 0:
+                            return (img.size[0], img.size[1])
+
+    # 3. Any image texture node with valid image
+    for node in nodes:
+        if node.type == "TEX_IMAGE" and node.image:
+            img = node.image
+            if img.size[0] > 0 and img.size[1] > 0:
+                return (img.size[0], img.size[1])
+
+    return None
+
+
 @register_menu_item(views=["mesh"], label="Adaptive Pixel Split")
 class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
     """Subdivide mesh quad faces according to texture pixel density backed by Rust libmtk"""
@@ -57,7 +92,7 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
 
     auto_resolution: BoolProperty(
         name="Auto Texture Resolution",
-        description="Automatically inspect material image texture sizes",
+        description="Automatically inspect material active image texture sizes",
         default=True,
     )
 
@@ -107,6 +142,9 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         try:
             for obj in target_objs:
                 mesh_data = extract_mesh_data(obj)
+                if mesh_data.face_count == 0:
+                    continue
+
                 total_in_faces += mesh_data.face_count
 
                 # Collect texture resolutions per face if auto_resolution is enabled
@@ -114,17 +152,13 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
                 def_res = (self.manual_resolution[0], self.manual_resolution[1])
 
                 if self.auto_resolution and obj.material_slots:
-                    for slot_idx in mesh_data.face_materials:
+                    for slot_idx in mesh_data.get_face_materials():
                         res = def_res
                         if slot_idx < len(obj.material_slots):
                             slot = obj.material_slots[slot_idx]
-                            if slot.material and slot.material.use_nodes:
-                                for node in slot.material.node_tree.nodes:
-                                    if node.type == "TEX_IMAGE" and node.image:
-                                        img = node.image
-                                        if img.size[0] > 0 and img.size[1] > 0:
-                                            res = (img.size[0], img.size[1])
-                                            break
+                            mat_size = _get_material_active_image_size(slot.material)
+                            if mat_size is not None:
+                                res = mat_size
                         face_resolutions.append(res)
                 else:
                     face_resolutions = None
@@ -139,8 +173,8 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
                     weld_dist=self.weld_dist,
                 )
 
-                inject_mesh_data(obj, subdivided)
-                total_out_faces += subdivided.face_count
+                inject_mesh_data(subdivided, obj, update_topology=True)
+                total_out_faces += getattr(subdivided, "quad_count", subdivided.face_count)
         finally:
             if saved_mode != "OBJECT":
                 try:

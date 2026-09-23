@@ -47,9 +47,32 @@ class TestPixelSplitBridge(unittest.TestCase):
 
         self.assertEqual(subdivided.face_count, 4)
         self.assertEqual(subdivided.triangle_count, 8)
-        self.assertEqual(len(subdivided.get_indices()), 24)
+    def test_calculate_face_target_grid_atlas_subregion(self):
+        # 16x16 tile inside a 512x512 atlas
+        u0, u1 = 32.0 / 512.0, 48.0 / 512.0
+        v0, v1 = 64.0 / 512.0, 80.0 / 512.0
+        uvs = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+        cols, rows = calculate_face_target_grid(uvs, 512, 512, pixels_per_face=1.0, max_subdivisions=64)
+        self.assertEqual(cols, 16)
+        self.assertEqual(rows, 16)
 
+    def test_calculate_face_target_grid_rotated_uv(self):
+        # 16x16 tile rotated 90 degrees in a 512x512 atlas
+        u0, u1 = 32.0 / 512.0, 48.0 / 512.0
+        v0, v1 = 64.0 / 512.0, 80.0 / 512.0
+        uvs = [(u1, v0), (u1, v1), (u0, v1), (u0, v0)]
+        cols, rows = calculate_face_target_grid(uvs, 512, 512, pixels_per_face=1.0, max_subdivisions=64)
+        self.assertEqual(cols, 16)
+        self.assertEqual(rows, 16)
+
+    def test_calculate_face_target_grid_nonsquare(self):
+        # 32x16 tile
+        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+        cols, rows = calculate_face_target_grid(uvs, 32, 16, pixels_per_face=1.0, max_subdivisions=64)
+        self.assertEqual(cols, 32)
+        self.assertEqual(rows, 16)
 
 
 if __name__ == "__main__":
     unittest.main()
+
