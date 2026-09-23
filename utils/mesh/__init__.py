@@ -34,6 +34,10 @@ from .fluid_uv import (
     process_mesh_fluid_uv_repairs,
 )
 
+from .random_extrude import (
+    process_random_extrude,
+)
+
 __all__ = [
     "SELECTION_ACTION_ITEMS",
     "SELECTION_SCOPE_ITEMS",
@@ -58,5 +62,6 @@ __all__ = [
     "repair_polygon_fluid_uv",
     "normalize_static_fluid_face_uv",
     "process_mesh_fluid_uv_repairs",
+    "process_random_extrude",
 ]
 
