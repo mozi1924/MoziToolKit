@@ -27,6 +27,7 @@ from .menu_mesh import (
     MOZI_MT_mesh_menu,
     MOZI_MT_mesh_edge_menu,
     MOZI_MT_mesh_face_menu,
+    MOZI_PT_auto_extrude_repair_settings,
     register as register_menu_mesh,
     unregister as unregister_menu_mesh,
 )
@@ -80,6 +81,8 @@ classes = (
     MOZI_MT_select_mesh_menu,
     MOZI_MT_select_uv_menu,
     MOZI_MT_uv_menu,
+    # Panels
+    MOZI_PT_auto_extrude_repair_settings,
 )
 
 
