@@ -2,7 +2,10 @@
 MoziToolKit Operators Root.
 """
 
-import bpy
+try:
+    import bpy
+except ImportError:
+    bpy = None
 from .op_cull import OPERATOR_CLASSES as CULL_CLASSES
 from .op_extrude import OPERATOR_CLASSES as EXTRUDE_CLASSES
 from .op_materials import OPERATORS_CLASSES as MATERIAL_CLASSES
