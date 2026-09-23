@@ -102,18 +102,18 @@ def extract_mesh_data(
     mesh_or_obj: Any,
     uv_layer_name: Optional[str] = None,
     include_attributes: bool = True,
-    triangulate_if_needed: bool = True,
+    triangulate_if_needed: bool = False,
 ) -> Any:
     """
     Extracts contiguous geometry and custom attributes from a Blender Mesh into PyMeshData.
 
-    Uses zero-copy `foreach_get` memory buffer extraction for ultra-fast performance.
+    Preserves Quad face topology and per-corner Loop UVs without destroying UV seams.
 
     Args:
         mesh_or_obj: A `bpy.types.Mesh` or `bpy.types.Object` of type 'MESH'.
         uv_layer_name: Optional UV layer name. Defaults to active UV layer.
         include_attributes: If True, extracts custom attributes into PyMeshData.
-        triangulate_if_needed: If True, calculates loop triangles for non-triangulated meshes.
+        triangulate_if_needed: If True and mesh is not quads/tris, triangulates polygons.
 
     Returns:
         PyMeshData: A populated libmtk MeshData buffer ready for SIMD/Rust processing.
@@ -122,21 +122,11 @@ def extract_mesh_data(
         raise RuntimeError("mtk_py is not installed or available.")
 
     mesh = _get_mesh(mesh_or_obj)
+    num_polys = len(mesh.polygons)
     num_verts = len(mesh.vertices)
-    if num_verts == 0:
+    if num_polys == 0 or num_verts == 0:
         return mtk_py.MeshData()
 
-    # 1. Extract Vertex Positions
-    pos_arr = array.array("f", [0.0]) * (num_verts * 3)
-    mesh.vertices.foreach_get("co", pos_arr)
-
-    # 2. Extract Vertex Normals
-    norm_arr = array.array("f", [0.0]) * (num_verts * 3)
-    mesh.vertices.foreach_get("normal", norm_arr)
-
-    # 3. Extract Triangle Indices & UVs
-    num_loops = len(mesh.loops)
-    
     # Check UV layer
     uv_layer = None
     if hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
@@ -145,87 +135,167 @@ def extract_mesh_data(
         if uv_layer is None:
             uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
 
-    # Extract polygon triangle indices
-    # Blender 2.80+ provides loop_triangles
-    if hasattr(mesh, "calc_loop_triangles") and triangulate_if_needed:
-        mesh.calc_loop_triangles()
+    # Check if mesh consists primarily of Quads
+    is_all_quads = all(p.loop_total == 4 for p in mesh.polygons)
 
-    if hasattr(mesh, "loop_triangles") and len(mesh.loop_triangles) > 0:
-        num_tris = len(mesh.loop_triangles)
-        tri_indices = array.array("I", [0]) * (num_tris * 3)
-        mesh.loop_triangles.foreach_get("vertices", tri_indices)
+    if is_all_quads and not triangulate_if_needed:
+        # Extract Quad Mesh data with dedicated 4-vertex corners per face
+        # to ensure 100% preservation of UV seams and corner attributes
+        positions: List[float] = []
+        normals: List[float] = []
+        uvs: List[float] = []
+        indices: List[int] = []
+        face_mats: List[int] = []
 
-        face_mats = array.array("H", [0]) * num_tris
-        mesh.loop_triangles.foreach_get("material_index", face_mats)
-    else:
-        # Fallback to polygons
-        num_polys = len(mesh.polygons)
-        poly_mat_arr = array.array("H", [0]) * num_polys
-        mesh.polygons.foreach_get("material_index", poly_mat_arr)
-        
-        # Triangulate simple polygons
-        tri_indices_list: List[int] = []
-        face_mats_list: List[int] = []
+        # Read base mesh vertices & normals
+        raw_pos = array.array("f", [0.0]) * (num_verts * 3)
+        mesh.vertices.foreach_get("co", raw_pos)
+
+        raw_norms = array.array("f", [0.0]) * (num_verts * 3)
+        mesh.vertices.foreach_get("normal", raw_norms)
+
+        num_loops = len(mesh.loops)
+        raw_loop_uvs = array.array("f", [0.0]) * (num_loops * 2) if uv_layer else None
+        if raw_loop_uvs and uv_layer:
+            uv_layer.data.foreach_get("uv", raw_loop_uvs)
+
+        raw_loop_v_indices = array.array("I", [0]) * num_loops
+        mesh.loops.foreach_get("vertex_index", raw_loop_v_indices)
+
+        poly_mats = array.array("H", [0]) * num_polys
+        mesh.polygons.foreach_get("material_index", poly_mats)
+
         for poly_idx, poly in enumerate(mesh.polygons):
-            vs = poly.vertices
-            mat_idx = poly_mat_arr[poly_idx]
-            for i in range(1, len(vs) - 1):
-                tri_indices_list.extend([vs[0], vs[i], vs[i + 1]])
-                face_mats_list.append(mat_idx)
-        tri_indices = array.array("I", tri_indices_list)
-        face_mats = array.array("H", face_mats_list)
+            base_v = len(positions) // 3
+            mat_idx = poly_mats[poly_idx]
+            l_start = poly.loop_start
 
-    # Extract UVs
-    # In libmtk, UVs are per-vertex coordinates (v_count * 2) or corner mapped.
-    # When vertex-shared UVs are needed, we extract per-vertex or corner UVs.
-    uv_arr = array.array("f", [0.0]) * (num_verts * 2)
-    if uv_layer is not None and num_loops > 0:
-        loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
-        uv_layer.data.foreach_get("uv", loop_uvs)
-        
-        loop_vert_indices = array.array("I", [0]) * num_loops
-        mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-        
-        # Map loop UVs to vertex UV buffer
-        for loop_idx, v_idx in enumerate(loop_vert_indices):
-            uv_arr[v_idx * 2] = loop_uvs[loop_idx * 2]
-            uv_arr[v_idx * 2 + 1] = loop_uvs[loop_idx * 2 + 1]
+            for k in range(4):
+                l_idx = l_start + k
+                v_idx = raw_loop_v_indices[l_idx]
 
-    # Construct PyMeshData
-    mesh_data = mtk_py.MeshData.from_raw_buffers(
-        positions=list(pos_arr),
-        uvs=list(uv_arr),
-        indices=list(tri_indices),
-        normals=list(norm_arr),
-        face_materials=list(face_mats),
-    )
+                positions.extend([
+                    raw_pos[v_idx * 3],
+                    raw_pos[v_idx * 3 + 1],
+                    raw_pos[v_idx * 3 + 2],
+                ])
+                normals.extend([
+                    raw_norms[v_idx * 3],
+                    raw_norms[v_idx * 3 + 1],
+                    raw_norms[v_idx * 3 + 2],
+                ])
 
-    # 4. Extract Custom Attributes
+                if raw_loop_uvs:
+                    uvs.extend([
+                        raw_loop_uvs[l_idx * 2],
+                        raw_loop_uvs[l_idx * 2 + 1],
+                    ])
+                else:
+                    uvs.extend([0.0, 0.0])
+
+            # Two triangles for the quad (0, 1, 2) and (0, 2, 3)
+            indices.extend([
+                base_v, base_v + 1, base_v + 2,
+                base_v, base_v + 2, base_v + 3,
+            ])
+            face_mats.append(mat_idx)
+
+        mesh_data = mtk_py.MeshData.from_raw_buffers(
+            positions=positions,
+            uvs=uvs,
+            indices=indices,
+            normals=normals,
+            face_materials=face_mats,
+        )
+    else:
+        # Triangulated / arbitrary polygon extraction
+        if hasattr(mesh, "calc_loop_triangles") and triangulate_if_needed:
+            mesh.calc_loop_triangles()
+
+        if hasattr(mesh, "loop_triangles") and len(mesh.loop_triangles) > 0:
+            num_tris = len(mesh.loop_triangles)
+            tri_indices = array.array("I", [0]) * (num_tris * 3)
+            mesh.loop_triangles.foreach_get("vertices", tri_indices)
+
+            face_mats_arr = array.array("H", [0]) * num_tris
+            mesh.loop_triangles.foreach_get("material_index", face_mats_arr)
+        else:
+            tri_indices_list: List[int] = []
+            face_mats_list: List[int] = []
+            poly_mats = array.array("H", [0]) * num_polys
+            mesh.polygons.foreach_get("material_index", poly_mats)
+            for poly_idx, poly in enumerate(mesh.polygons):
+                vs = poly.vertices
+                mat_idx = poly_mats[poly_idx]
+                for i in range(1, len(vs) - 1):
+                    tri_indices_list.extend([vs[0], vs[i], vs[i + 1]])
+                    face_mats_list.append(mat_idx)
+            tri_indices = array.array("I", tri_indices_list)
+            face_mats_arr = array.array("H", face_mats_list)
+
+        pos_arr = array.array("f", [0.0]) * (num_verts * 3)
+        mesh.vertices.foreach_get("co", pos_arr)
+
+        norm_arr = array.array("f", [0.0]) * (num_verts * 3)
+        mesh.vertices.foreach_get("normal", norm_arr)
+
+        uv_arr = array.array("f", [0.0]) * (num_verts * 2)
+        if uv_layer is not None and len(mesh.loops) > 0:
+            num_loops = len(mesh.loops)
+            loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
+            uv_layer.data.foreach_get("uv", loop_uvs)
+            loop_vert_indices = array.array("I", [0]) * num_loops
+            mesh.loops.foreach_get("vertex_index", loop_vert_indices)
+            for loop_idx, v_idx in enumerate(loop_vert_indices):
+                uv_arr[v_idx * 2] = loop_uvs[loop_idx * 2]
+                uv_arr[v_idx * 2 + 1] = loop_uvs[loop_idx * 2 + 1]
+
+        mesh_data = mtk_py.MeshData.from_raw_buffers(
+            positions=list(pos_arr),
+            uvs=list(uv_arr),
+            indices=list(tri_indices),
+            normals=list(norm_arr),
+            face_materials=list(face_mats_arr),
+        )
+
+    # 4. Safely Extract Custom Attributes with error suppression
     if include_attributes and hasattr(mesh, "attributes"):
         for attr in mesh.attributes:
-            attr_name = attr.name
-            # Skip built-in coordinate/normal attributes already processed
-            if attr_name in ("position", "normal") or attr_name.startswith("."):
+            try:
+                attr_name = attr.name
+                if attr_name in ("position", "normal") or attr_name.startswith("."):
+                    continue
+
+                domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "point")
+                type_info = BLENDER_TO_MTK_TYPE.get(attr.data_type)
+                if type_info is None:
+                    continue
+
+                mtk_dtype, num_comp, typecode, value_key = type_info
+
+                if attr.data_type == "STRING":
+                    str_vals = [elem.value for elem in attr.data]
+                    mesh_data.add_string_attribute(attr_name, domain_str, str_vals)
+                else:
+                    elem_count = len(attr.data)
+                    if elem_count == 0:
+                        continue
+                    if attr.data_type in ("FLOAT_COLOR", "BYTE_COLOR"):
+                        buf = array.array("f", [0.0] * (elem_count * 4))
+                        attr.data.foreach_get("color", buf)
+                        mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", buf)
+                    elif attr.data_type in ("BOOLEAN", "INT8", "INT", "INT32"):
+                        buf = array.array("i", [0] * elem_count)
+                        attr.data.foreach_get("value", buf)
+                        mesh_data.add_attribute_from_buffer(attr_name, domain_str, "int32", buf)
+                    else:
+                        total_vals = elem_count * num_comp
+                        buf = array.array(typecode, [0.0] * total_vals if typecode == "f" else [0] * total_vals)
+                        attr.data.foreach_get(value_key, buf)
+                        mesh_data.add_attribute_from_buffer(attr_name, domain_str, mtk_dtype, buf)
+            except Exception:
+                # Silently skip attributes that do not support RNA foreach_get
                 continue
-
-            domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "point")
-            type_info = BLENDER_TO_MTK_TYPE.get(attr.data_type)
-
-            if type_info is None:
-                continue
-
-            mtk_dtype, num_comp, typecode, value_key = type_info
-
-            if attr.data_type == "STRING":
-                # String attributes are non-buffer
-                str_vals = [elem.value for elem in attr.data]
-                mesh_data.add_string_attribute(attr_name, domain_str, str_vals)
-            else:
-                elem_count = len(attr.data)
-                total_vals = elem_count * num_comp
-                buf = array.array(typecode, [0] * total_vals if typecode in ("b", "i", "B", "h", "H", "I") else [0.0] * total_vals)
-                attr.data.foreach_get(value_key, buf)
-                mesh_data.add_attribute_from_buffer(attr_name, domain_str, mtk_dtype, buf)
 
     return mesh_data
 
@@ -241,7 +311,7 @@ def inject_mesh_data(
     """
     Injects processed geometry and custom attributes from PyMeshData back into a Blender Mesh.
 
-    Utilizes zero-copy MemoryView buffers and `foreach_set` for ultra-fast updates.
+    Preserves Quad face topology when available.
 
     Args:
         mesh_data: The libmtk `PyMeshData` containing modified vertices/UVs/attributes.
@@ -259,27 +329,43 @@ def inject_mesh_data(
 
     # 1. Update Topology if requested
     if update_topology or len(mesh.vertices) != v_count:
-        mesh.clear_geometry()
-        # Flat indices for triangles
-        tri_indices = mesh_data.get_indices()
-        tris = [
-            (tri_indices[i], tri_indices[i + 1], tri_indices[i + 2])
-            for i in range(0, len(tri_indices), 3)
-        ]
-        # Rebuild vertices from flat positions
         pos_list = mesh_data.get_flat_positions()
         verts = [
             (pos_list[i * 3], pos_list[i * 3 + 1], pos_list[i * 3 + 2])
             for i in range(v_count)
         ]
-        mesh.from_pydata(verts, [], tris)
+
+        # Use Quad faces if available
+        quad_count = getattr(mesh_data, "quad_count", 0)
+        if quad_count > 0:
+            quad_indices = mesh_data.get_quad_indices()
+            quads = [
+                (
+                    quad_indices[q * 4],
+                    quad_indices[q * 4 + 1],
+                    quad_indices[q * 4 + 2],
+                    quad_indices[q * 4 + 3],
+                )
+                for q in range(quad_count)
+            ]
+            mesh.clear_geometry()
+            mesh.from_pydata(verts, [], quads)
+        else:
+            tri_indices = mesh_data.get_indices()
+            tris = [
+                (tri_indices[i], tri_indices[i + 1], tri_indices[i + 2])
+                for i in range(0, len(tri_indices), 3)
+            ]
+            mesh.clear_geometry()
+            mesh.from_pydata(verts, [], tris)
+
+        mesh.update(calc_edges=True)
 
     # 2. Fast Vertex Positions Injection via MemoryView
     try:
         pos_mv = mesh_data.positions_memoryview()
         mesh.vertices.foreach_set("co", pos_mv)
     except Exception:
-        # Fallback to flat list
         mesh.vertices.foreach_set("co", mesh_data.get_flat_positions())
 
     # 3. Vertex Normals Injection
@@ -337,7 +423,6 @@ def inject_mesh_data(
 
             b_type, value_key, typecode = type_tuple
 
-            # Check or create attribute in Blender mesh
             b_attr = mesh.attributes.get(attr_name)
             if b_attr is None:
                 try:

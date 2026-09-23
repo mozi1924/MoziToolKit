@@ -24,7 +24,11 @@ try:
     import bpy
     HAS_BPY = True
 except ImportError:
-    bpy = None
+    bpy = MagicMock()
+    sys.modules["bpy"] = bpy
+    sys.modules["bpy.props"] = MagicMock()
+    sys.modules["bpy.types"] = MagicMock()
+    sys.modules["bpy.app"] = MagicMock()
     HAS_BPY = False
 
 from utils.materials.builder.standalone_builder import build_standalone_material

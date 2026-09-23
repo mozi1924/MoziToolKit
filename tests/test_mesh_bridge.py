@@ -16,6 +16,11 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+if "bpy" not in sys.modules:
+    sys.modules["bpy"] = MagicMock()
+if "mathutils" not in sys.modules:
+    sys.modules["mathutils"] = MagicMock()
+
 
 from bridge.mesh import (
     BLENDER_TO_MTK_DOMAIN,
