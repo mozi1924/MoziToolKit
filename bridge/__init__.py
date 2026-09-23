@@ -19,6 +19,9 @@ from .mesh import (
     extract_mesh_data,
     inject_mesh_data,
 )
+from .cull import cull_mesh_faces
+from .extrude import generate_random_extrude_heights, repair_extruded_side_uv
+from .subdivide import adaptive_pixel_split_mesh, calculate_face_target_grid
 from .texture import (
     batch_analyze_transparent_faces,
     is_face_transparent,
@@ -73,4 +76,10 @@ __all__ = [
     "batch_analyze_transparent_faces",
     "is_face_transparent",
     "sample_uv_alpha",
+    "calculate_face_target_grid",
+    "adaptive_pixel_split_mesh",
+    "repair_extruded_side_uv",
+    "generate_random_extrude_heights",
+    "cull_mesh_faces",
 ]
+

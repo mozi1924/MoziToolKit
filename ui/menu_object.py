@@ -18,10 +18,11 @@ class MOZI_MT_object_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("mozi.replace_material")
-        layout.operator("mozi.restore_materials_from_attributes")
-        layout.operator("mozi.set_texture_interpolation_closest")
+        layout.operator("mozi.cull_mesh_faces")
+        layout.operator("mozi.adaptive_pixel_split")
+        layout.separator()
         layout.operator("mozi.clear_custom_normals")
+
 
 
 def draw_object_workspace_menu_func(self, context):

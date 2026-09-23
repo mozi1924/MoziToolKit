@@ -20,11 +20,13 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
         {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
         {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
+        {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
     ],
     "object": [
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
         {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
+        {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
@@ -36,6 +38,7 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
     ],
 }
+
 
 CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
     "mozi.replace_material": {
@@ -134,6 +137,15 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
+    "mozi.cull_mesh_faces": {
+        "canonical_id": "mozi.cull_mesh_faces",
+        "label": "Cull Occluded Faces",
+        "default_label": "Cull Occluded Faces",
+        "views": ["mesh", "object"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+
     # Backwards compatibility legacy aliases
     "mozi.replace_materials": {
         "canonical_id": "mozi.replace_material",
