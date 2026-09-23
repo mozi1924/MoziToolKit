@@ -55,6 +55,8 @@ try:
         bmesh_context,
         poll_edit_mesh,
     )
+    from ..utils.mesh.random_extrude import process_random_extrude
+    from ..utils.extrude_repair import repair_extruded_side_faces
     from ..utils.system.menu_registry import register_menu_item
 except (ImportError, ValueError):
     from bridge.extrude import generate_random_extrude_heights, repair_extruded_side_uv
@@ -63,6 +65,8 @@ except (ImportError, ValueError):
         bmesh_context,
         poll_edit_mesh,
     )
+    from utils.mesh.random_extrude import process_random_extrude
+    from utils.extrude_repair import repair_extruded_side_faces
     from utils.system.menu_registry import register_menu_item
 
 logger = logging.getLogger("MoziToolKit.AutoExtrudeRepair")
@@ -117,118 +121,6 @@ class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
         max=1.0,
     )
 
-
-def repair_extruded_side_faces(
-    bm: bmesh.types.BMesh,
-    obj=None,
-    context=None,
-    repair_uv: bool = True,
-    add_crease: bool = False,
-    crease_val: float = 1.0,
-    only_collapsed: bool = True,
-    uv_mode: str = "SMART",
-    smart_side_face_indices: Optional[Set[int]] = None,
-) -> int:
-    """Core BMesh walker that detects collapsed side faces and reconstructs UVs via Rust core."""
-    if not repair_uv and not add_crease:
-        return 0
-
-    uv_layer = bm.loops.layers.uv.verify() if repair_uv else None
-    crease_layer = bm.edges.layers.crease.verify() if add_crease else None
-
-    selected_faces = [f for f in bm.faces if f.select and f.is_valid]
-    selected_faces_set = set(selected_faces)
-    repaired_count = 0
-
-    step_u = 1.0 / 16.0
-    step_v = 1.0 / 16.0
-
-    for top_face in selected_faces:
-        if not top_face.is_valid:
-            continue
-
-        for edge in top_face.edges:
-            # Find linked side faces
-            for side_face in edge.link_faces:
-                if side_face == top_face or not side_face.is_valid:
-                    continue
-                if len(side_face.verts) != 4:
-                    continue
-
-                if only_collapsed and uv_layer:
-                    side_uvs = [tuple(l[uv_layer].uv) for l in side_face.loops]
-                    if not is_uv_collapsed(side_uvs, pixel_step=(step_u, step_v)):
-                        continue
-
-                # Identify vertices
-                edge_verts = set(edge.verts)
-                top_verts = [v for v in side_face.verts if v in edge_verts]
-                base_verts = [v for v in side_face.verts if v not in edge_verts]
-                if len(top_verts) != 2 or len(base_verts) != 2:
-                    continue
-
-                v_top_a, v_top_b = top_verts[0], top_verts[1]
-                v_base_a, v_base_b = base_verts[0], base_verts[1]
-
-                uv_repaired = False
-                if repair_uv and uv_layer:
-                    uv_a = None
-                    uv_b = None
-                    for l in top_face.loops:
-                        if l.vert == v_top_a:
-                            uv_a = (l[uv_layer].uv.x, l[uv_layer].uv.y)
-                        elif l.vert == v_top_b:
-                            uv_b = (l[uv_layer].uv.x, l[uv_layer].uv.y)
-
-                    if uv_a and uv_b:
-                        top_uvs = [tuple(l[uv_layer].uv) for l in top_face.loops]
-                        bounds = get_uv_bounds(top_uvs)
-                        top_norm = (top_face.normal.x, top_face.normal.y, top_face.normal.z)
-                        ext_vec = (
-                            (v_top_a.co.x - v_base_a.co.x),
-                            (v_top_a.co.y - v_base_a.co.y),
-                            (v_top_a.co.z - v_base_a.co.z),
-                        )
-
-                        new_uvs = repair_extruded_side_uv(
-                            uv_base_a=uv_a,
-                            uv_base_b=uv_b,
-                            top_normal=top_norm,
-                            extrude_vec=ext_vec,
-                            mode=uv_mode,
-                            step_u=step_u,
-                            step_v=step_v,
-                            top_uv_bounds=(bounds[0], bounds[1], bounds[2], bounds[3]),
-                        )
-
-                        # Match vertices of side face
-                        vert_uv_map = {
-                            v_base_a: new_uvs[0],
-                            v_base_b: new_uvs[1],
-                            v_top_b: new_uvs[2],
-                            v_top_a: new_uvs[3],
-                        }
-                        for loop in side_face.loops:
-                            if loop.vert in vert_uv_map:
-                                loop[uv_layer].uv.x = vert_uv_map[loop.vert][0]
-                                loop[uv_layer].uv.y = vert_uv_map[loop.vert][1]
-                        uv_repaired = True
-
-                crease_repaired = False
-                if add_crease and crease_layer:
-                    for e in side_face.edges:
-                        if abs(e[crease_layer] - crease_val) > 1e-6:
-                            e[crease_layer] = crease_val
-                            crease_repaired = True
-                    for e in top_face.edges:
-                        if abs(e[crease_layer] - crease_val) > 1e-6:
-                            e[crease_layer] = crease_val
-                            crease_repaired = True
-
-                if uv_repaired or crease_repaired:
-                    repaired_count += 1
-
-    return repaired_count
 
 
 # =========================================================================
@@ -663,53 +555,28 @@ class MOZI_OT_random_extrude(bpy.types.Operator):
 
     def execute(self, context):
         with bmesh_context(context, auto_update=True, flush_selection=True) as (obj, bm):
-            selected_faces = [f for f in bm.faces if f.select and f.is_valid]
-            if not selected_faces:
-                self.report({"WARNING"}, "No faces selected.")
-                return {"CANCELLED"}
-
-            centers = [(f.calc_center_median().x, f.calc_center_median().y, f.calc_center_median().z) for f in selected_faces]
-
-            # Generate noise heights via Rust core
-            heights = generate_random_extrude_heights(
-                centers,
-                noise_type=self.noise_mode,
+            extruded_count, repaired_count = process_random_extrude(
+                bm=bm,
                 min_height=self.min_height,
                 max_height=self.max_height,
-                noise_scale=self.noise_scale,
                 seed=self.seed,
+                noise_mode=self.noise_mode,
+                noise_scale=self.noise_scale,
+                repair_uv=self.repair_uv,
+                uv_mode=self.uv_mode,
+                add_crease=self.add_mean_crease,
+                crease_val=self.crease_value,
+                obj=obj,
+                context=context,
             )
 
-            # Extrude each face individually
-            new_top_faces = []
-            for f, h in zip(selected_faces, heights):
-                if h <= 1e-6:
-                    continue
-                res = bmesh.ops.extrude_discrete_faces(bm, faces=[f])
-                new_f = res.get("faces", [])
-                for top_f in new_f:
-                    norm = top_f.normal.normalized()
-                    for v in top_f.verts:
-                        v.co += norm * h
-                    new_top_faces.append(top_f)
-
-            # Crucial: Seamlessly execute UV repair & crease on newly extruded faces
-            repaired_count = 0
-            if new_top_faces and (self.repair_uv or self.add_mean_crease):
-                repaired_count = repair_extruded_side_faces(
-                    bm,
-                    obj=obj,
-                    context=context,
-                    repair_uv=self.repair_uv,
-                    add_crease=self.add_mean_crease,
-                    crease_val=self.crease_value,
-                    only_collapsed=True,
-                    uv_mode=self.uv_mode,
-                )
+        if extruded_count == 0:
+            self.report({"WARNING"}, "No faces selected or extruded.")
+            return {"CANCELLED"}
 
         self.report(
             {"INFO"},
-            f"Randomly extruded {len(selected_faces)} face(s); repaired {repaired_count} side UVs.",
+            f"Randomly extruded {extruded_count} face(s); repaired {repaired_count} side UVs.",
         )
         return {"FINISHED"}
 
