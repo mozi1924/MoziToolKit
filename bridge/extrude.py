@@ -128,6 +128,7 @@ def repair_mesh_extruded_side_faces_batch(
             pixel_steps.append([1.0 / 64.0, 1.0 / 64.0])
 
     # 2. Call Rust backend in single FFI batch
+    smart_faces_list = list(smart_side_face_indices) if smart_side_face_indices else None
     modified_uvs, modified_mats, modified_creases, repaired_count = mtk_py.process_mesh_extrude_repair(
         positions=positions,
         face_vertices=face_vertices,
@@ -140,6 +141,7 @@ def repair_mesh_extruded_side_faces_batch(
         add_crease=add_crease,
         crease_val=crease_val,
         only_collapsed=only_collapsed,
+        smart_side_faces=smart_faces_list,
     )
 
     # 3. Apply Data Out updates back to BMesh

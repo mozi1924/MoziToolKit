@@ -184,42 +184,21 @@ def _is_extrude_in_progress(context) -> bool:
         return False
 
     window = getattr(context, "window", None)
-    window_manager = getattr(context, "window_manager", None)
-    if not window or not window_manager:
+    if not window:
         return False
 
     modal_ops = getattr(window, "modal_operators", [])
     if not modal_ops:
         return False
 
-    has_modal_extrude = False
-    has_modal_transform = False
-
     for op in modal_ops:
         identifier = getattr(op, "bl_idname", "")
         if not identifier:
             bl_rna = getattr(op, "bl_rna", None)
             identifier = getattr(bl_rna, "identifier", "")
-        if _is_extrude_operator_identifier(identifier):
-            has_modal_extrude = True
-            break
-        if identifier.upper().startswith("TRANSFORM_OT_"):
-            has_modal_transform = True
-
-    if has_modal_extrude:
-        return True
-
-    # If there is an active modal transform, check if it was triggered by an extrusion operator
-    if has_modal_transform:
-        recent_ops = getattr(window_manager, "operators", [])
-        if recent_ops:
-            for op in list(recent_ops)[-3:]:
-                identifier = getattr(op, "bl_idname", "")
-                if not identifier:
-                    bl_rna = getattr(op, "bl_rna", None)
-                    identifier = getattr(bl_rna, "identifier", "")
-                if _is_extrude_operator_identifier(identifier):
-                    return True
+        id_upper = identifier.upper()
+        if _is_extrude_operator_identifier(id_upper) or id_upper.startswith("TRANSFORM_OT_"):
+            return True
 
     return False
 
@@ -231,7 +210,7 @@ def _has_recent_extrude_operator(context) -> bool:
         return False
     recent_ops = getattr(window_manager, "operators", [])
     if recent_ops:
-        for op in list(recent_ops)[-2:]:
+        for op in list(recent_ops)[-5:]:
             identifier = getattr(op, "bl_idname", "")
             if not identifier:
                 bl_rna = getattr(op, "bl_rna", None)
@@ -311,13 +290,12 @@ def _deferred_extrude_repair_tick():
 
     _pending_repairs.discard(obj.as_pointer())
 
-    if repaired_count > 0:
+    # Keep polling continuously while extrusion/transform is in progress
+    if _is_extrude_in_progress(context):
         _idle_ticks = 0
-    else:
+        return _SMART_EXTRUDE_POLL_INTERVAL
+    elif _idle_ticks < _MAX_IDLE_TICKS:
         _idle_ticks += 1
-
-    # Keep polling only while an extrusion is actively in progress in 3D view
-    if _is_extrude_in_progress(context) and _idle_ticks < _MAX_IDLE_TICKS:
         return _SMART_EXTRUDE_POLL_INTERVAL
 
     # Finished and idle: clean up and return None to automatically stop the timer
