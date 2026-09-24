@@ -6,27 +6,37 @@ High-performance pixel-density aware polygon subdivision backed strictly by Rust
 
 from __future__ import annotations
 
+from typing import Any, List, Optional, Tuple
+
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, IntVectorProperty
 
 try:
-    from ..bridge.mesh import extract_mesh_data, inject_mesh_data
-    from ..bridge.subdivide import adaptive_pixel_split_mesh, calculate_face_target_grid
+    from ..bridge.subdivide import calculate_face_target_grid, calculate_pixel_grid_cut_factors
     from ..utils.mesh.core import (
         SELECTION_SCOPE_ITEMS,
         bmesh_context,
         poll_edit_mesh,
         poll_mesh_object,
     )
+    from ..utils.mesh.subdivide import (
+        cleanup_mesh_topology,
+        slice_polygon_face_by_pixel_grid,
+        subdivide_quad_face,
+    )
     from ..utils.system.menu_registry import register_menu_item
 except (ImportError, ValueError):
-    from bridge.mesh import extract_mesh_data, inject_mesh_data
-    from bridge.subdivide import adaptive_pixel_split_mesh, calculate_face_target_grid
+    from bridge.subdivide import calculate_face_target_grid, calculate_pixel_grid_cut_factors
     from utils.mesh.core import (
         SELECTION_SCOPE_ITEMS,
         bmesh_context,
         poll_edit_mesh,
         poll_mesh_object,
+    )
+    from utils.mesh.subdivide import (
+        cleanup_mesh_topology,
+        slice_polygon_face_by_pixel_grid,
+        subdivide_quad_face,
     )
     from utils.system.menu_registry import register_menu_item
 
@@ -64,6 +74,34 @@ def _get_material_active_image_size(material: Any) -> Optional[Tuple[int, int]]:
                 return (img.size[0], img.size[1])
 
     return None
+
+
+def _get_target_faces(bm, selection_scope: str, is_edit_mode: bool) -> List[Any]:
+    """Filter target faces based on selection scope and mode."""
+    if not is_edit_mode or selection_scope == "ALL":
+        return list(bm.faces)
+
+    selected = [f for f in bm.faces if f.select]
+    if selection_scope == "SELECTED":
+        return selected if selected else list(bm.faces)
+    elif selection_scope == "LINKED":
+        if not selected:
+            return list(bm.faces)
+        # Find connected island faces
+        visited = set()
+        queue = list(selected)
+        while queue:
+            f = queue.pop()
+            if f in visited:
+                continue
+            visited.add(f)
+            for edge in f.edges:
+                for neighbor in edge.link_faces:
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+        return list(visited)
+
+    return list(bm.faces)
 
 
 @register_menu_item(views=["mesh"], label="Adaptive Pixel Split")
@@ -132,61 +170,73 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
             self.report({"WARNING"}, "No mesh objects selected.")
             return {"CANCELLED"}
 
-        saved_mode = context.mode
-        if saved_mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-
+        is_edit_mode = (context.mode == "EDIT_MESH")
         total_in_faces = 0
         total_out_faces = 0
 
-        try:
-            for obj in target_objs:
-                mesh_data = extract_mesh_data(obj)
-                if mesh_data.face_count == 0:
-                    continue
-
-                total_in_faces += mesh_data.face_count
-
-                # Collect texture resolutions per face if auto_resolution is enabled
-                face_resolutions = []
-                def_res = (self.manual_resolution[0], self.manual_resolution[1])
-
-                if self.auto_resolution and obj.material_slots:
-                    for slot_idx in mesh_data.get_face_materials():
-                        res = def_res
-                        if slot_idx < len(obj.material_slots):
-                            slot = obj.material_slots[slot_idx]
-                            mat_size = _get_material_active_image_size(slot.material)
-                            if mat_size is not None:
-                                res = mat_size
-                        face_resolutions.append(res)
-                else:
-                    face_resolutions = None
-
-                # Subdivide via Rust core
-                subdivided = adaptive_pixel_split_mesh(
-                    mesh_data,
-                    face_resolutions=face_resolutions,
-                    default_resolution=def_res,
-                    pixels_per_face=self.pixels_per_face,
-                    max_subdivisions=self.max_subdivisions,
-                    weld_dist=self.weld_dist,
+        for obj in target_objs:
+            with bmesh_context(context, target_obj=obj, auto_update=True, flush_selection=True) as (target_obj, bm):
+                # Ensure active UV layer exists
+                uv_layer = bm.loops.layers.uv.active or (
+                    bm.loops.layers.uv[0] if len(bm.loops.layers.uv) > 0 else bm.loops.layers.uv.verify()
                 )
 
-                inject_mesh_data(subdivided, obj, update_topology=True)
-                total_out_faces += getattr(subdivided, "quad_count", subdivided.face_count)
-        finally:
-            if saved_mode != "OBJECT":
-                try:
-                    bpy.ops.object.mode_set(mode=saved_mode)
-                except Exception:
-                    pass
+                # Ensure deform weights layer exists if object has vertex groups
+                if len(target_obj.vertex_groups) > 0:
+                    bm.verts.layers.deform.verify()
+
+                target_faces = _get_target_faces(bm, self.selection_scope, is_edit_mode)
+                if not target_faces:
+                    continue
+
+                total_in_faces += len(target_faces)
+                def_res = (self.manual_resolution[0], self.manual_resolution[1])
+                new_faces: List[Any] = []
+
+                for face in target_faces:
+                    if not face.is_valid or len(face.verts) != 4:
+                        continue
+
+                    # Extract face UV corner coordinates
+                    uvs = [(loop[uv_layer].uv.x, loop[uv_layer].uv.y) for loop in face.loops]
+
+                    # Resolve texture resolution
+                    tex_w, tex_h = def_res
+                    if self.auto_resolution and face.material_index < len(target_obj.material_slots):
+                        slot = target_obj.material_slots[face.material_index]
+                        mat_size = _get_material_active_image_size(slot.material)
+                        if mat_size is not None:
+                            tex_w, tex_h = mat_size
+
+                    # Slices strictly along the 2D texture pixel grid lines (X = 1, 2... and Y = 1, 2...).
+                    # For rotated/slanted UVs, the cuts on the 3D mesh naturally match the slanted orientation of the texture!
+                    sub_quads = slice_polygon_face_by_pixel_grid(
+                        bm,
+                        face,
+                        tex_w=tex_w,
+                        tex_h=tex_h,
+                        pixels_per_face=self.pixels_per_face,
+                        max_subdivisions=self.max_subdivisions,
+                        uv_layer=uv_layer,
+                    )
+                    new_faces.extend(sub_quads)
+
+                # Clean up topology
+                sub_verts = list(set(v for f in new_faces if f.is_valid for v in f.verts if v.is_valid))
+                cleanup_mesh_topology(
+                    bm,
+                    verts=sub_verts if sub_verts else None,
+                    weld_dist=self.weld_dist,
+                    recalc_normals=True,
+                )
+                total_out_faces += len(new_faces)
 
         self.report(
             {"INFO"},
-            f"Adaptive Pixel Split: {total_in_faces} -> {total_out_faces} faces across {len(target_objs)} object(s).",
+            f"Adaptive Pixel Split: {total_in_faces} target face(s) -> {total_out_faces} subdivided face(s) across {len(target_objs)} object(s).",
         )
         return {"FINISHED"}
 
 
 OPERATOR_CLASSES = (MOZI_OT_adaptive_pixel_split,)
+
