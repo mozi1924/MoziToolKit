@@ -124,59 +124,6 @@ def repair_polygon_fluid_uv(
     return False
 
 
-def normalize_static_fluid_face_uv(
-    polygon,
-    mesh,
-    uv_layer,
-    texture_name: Optional[str] = None,
-) -> bool:
-    """
-    Normalize static mesh fluid face UV to canonical Minecraft 16x16 sampling window.
-    
-    - For flowing top faces: fits UV to [0.25, 0.75] window centered at (0.5, 0.5)
-      while preserving geometric rotation.
-    - For side faces: repairs inverted top height V coordinates and fits to [0.0, 0.5] x [0.5, 1.0] quadrant.
-    """
-    if polygon is None or uv_layer is None or not polygon.loop_indices:
-        return False
-
-    is_flowing = is_flowing_fluid_texture(texture_name)
-    normal = polygon.normal
-
-    # Horizontal (Top / Bottom) Face
-    if abs(normal.z) >= 0.7 or abs(normal.y) >= 0.7:
-        if is_flowing:
-            uvs = [uv_layer.data[li].uv for li in polygon.loop_indices]
-            center_u = sum(uv.x for uv in uvs) / len(uvs)
-            center_v = sum(uv.y for uv in uvs) / len(uvs)
-            # Scale coordinates relative to center into [0.25, 0.75] (scale factor 0.5)
-            for uv in uvs:
-                uv.x = 0.5 + (uv.x - center_u) * 0.5
-                uv.y = 0.5 + (uv.y - center_v) * 0.5
-            return True
-    else:
-        # Vertical Side Face
-        if len(polygon.loop_indices) == 4:
-            repair_polygon_fluid_uv(polygon, mesh, uv_layer)
-        if is_flowing:
-            uvs = [uv_layer.data[li].uv for li in polygon.loop_indices]
-            min_u = min(uv.x for uv in uvs)
-            max_u = max(uv.x for uv in uvs)
-            span_u = max_u - min_u
-            if span_u > 0.6:  # Spans full [0, 1], compress to [0.0, 0.5]
-                for uv in uvs:
-                    uv.x = (uv.x - min_u) * 0.5
-            min_v = min(uv.y for uv in uvs)
-            max_v = max(uv.y for uv in uvs)
-            span_v = max_v - min_v
-            if span_v > 0.6:  # Spans full [0, 1], compress to [0.5, 1.0] (top quadrant)
-                for uv in uvs:
-                    uv.y = 0.5 + (uv.y - min_v) * 0.5
-            return True
-
-    return False
-
-
 def process_mesh_fluid_uv_repairs(
     bm,
     uv_layer=None,

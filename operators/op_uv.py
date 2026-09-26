@@ -9,13 +9,13 @@ from bpy.props import FloatProperty, EnumProperty, BoolProperty
 
 try:
     from ..bridge import batch_analyze_transparent_faces
+    from ..bridge.uv import scale_uv as rust_scale_uv
     from ..utils.mesh import (
         SELECTION_ACTION_ITEMS,
         SELECTION_SCOPE_ITEMS,
         apply_selection,
         bmesh_context,
         find_face_image,
-        get_face_uv_center,
         get_target_faces,
         poll_edit_mesh,
         set_select_mode,
@@ -24,13 +24,13 @@ try:
     from ..utils.system import register_menu_item
 except (ImportError, ValueError):
     from bridge import batch_analyze_transparent_faces
+    from bridge.uv import scale_uv as rust_scale_uv
     from utils.mesh import (
         SELECTION_ACTION_ITEMS,
         SELECTION_SCOPE_ITEMS,
         apply_selection,
         bmesh_context,
         find_face_image,
-        get_face_uv_center,
         get_target_faces,
         poll_edit_mesh,
         set_select_mode,
@@ -91,10 +91,13 @@ class MOZI_OT_scale_uv(bpy.types.Operator):
                 return {"CANCELLED"}
 
             for face in target_faces:
-                uv_center = get_face_uv_center(face, uv_layer)
-                for loop in face.loops:
-                    uv = loop[uv_layer].uv
-                    loop[uv_layer].uv = uv_center + (uv - uv_center) * self.scale_factor
+                if not face.loops:
+                    continue
+                uvs = [(loop[uv_layer].uv.x, loop[uv_layer].uv.y) for loop in face.loops]
+                scaled_uvs = rust_scale_uv(uvs, self.scale_factor)
+                for loop, (u, v) in zip(face.loops, scaled_uvs):
+                    loop[uv_layer].uv.x = u
+                    loop[uv_layer].uv.y = v
                 scaled_faces_count += 1
 
         self.report({"INFO"}, f"Scaled UV for {scaled_faces_count} face(s) by factor {self.scale_factor:.3f}")

@@ -306,3 +306,8 @@ def process_random_extrude_mesh_batch(
     )
 
     return len(extruded_faces), repaired_count
+
+
+# Canonical aliases
+repair_extruded_side_faces = repair_mesh_extruded_side_faces_batch
+process_random_extrude = process_random_extrude_mesh_batch

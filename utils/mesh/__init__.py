@@ -30,7 +30,6 @@ from .fluid_uv import (
     is_flowing_fluid_texture,
     repair_face_fluid_uv,
     repair_polygon_fluid_uv,
-    normalize_static_fluid_face_uv,
     process_mesh_fluid_uv_repairs,
 )
 
@@ -60,7 +59,6 @@ __all__ = [
     "is_flowing_fluid_texture",
     "repair_face_fluid_uv",
     "repair_polygon_fluid_uv",
-    "normalize_static_fluid_face_uv",
     "process_mesh_fluid_uv_repairs",
     "process_random_extrude",
 ]

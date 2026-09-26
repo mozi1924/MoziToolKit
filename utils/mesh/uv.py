@@ -31,44 +31,43 @@ class UVBounds:
         return self.max_v - self.min_v
 
 
+try:
+    from ...bridge.uv import (
+        calculate_uv_area as _rust_calculate_uv_area,
+        get_uv_bounds as _rust_get_uv_bounds,
+        get_uv_center as _rust_get_uv_center,
+    )
+except (ImportError, ValueError):
+    from bridge.uv import (
+        calculate_uv_area as _rust_calculate_uv_area,
+        get_uv_bounds as _rust_get_uv_bounds,
+        get_uv_center as _rust_get_uv_center,
+    )
+
+
 def get_face_uv_bounds(face, uv_layer) -> UVBounds:
-    """Calculate min/max UV coordinates for a face."""
+    """Calculate min/max UV coordinates for a face using Rust accelerated bounds."""
     if not face.loops:
         return UVBounds(0.0, 0.0, 0.0, 0.0)
 
-    u_coords = [loop[uv_layer].uv.x for loop in face.loops]
-    v_coords = [loop[uv_layer].uv.y for loop in face.loops]
-
+    uvs = [(loop[uv_layer].uv.x, loop[uv_layer].uv.y) for loop in face.loops]
+    min_u, min_v, max_u, max_v, _span_u, _span_v = _rust_get_uv_bounds(uvs)
     return UVBounds(
-        min_u=min(u_coords),
-        max_u=max(u_coords),
-        min_v=min(v_coords),
-        max_v=max(v_coords),
+        min_u=min_u,
+        max_u=max_u,
+        min_v=min_v,
+        max_v=max_v,
     )
 
 
 def get_face_uv_center(face, uv_layer):
-    """Calculate geometric center vector of a face's UV loop coordinates."""
+    """Calculate geometric center vector of a face's UV loop coordinates using Rust."""
     if not face.loops:
         return Vector((0.0, 0.0)) if Vector else (0.0, 0.0)
 
-    if Vector:
-        uv_center = Vector((0.0, 0.0))
-        for loop in face.loops:
-            uv_center += loop[uv_layer].uv
-        uv_center /= len(face.loops)
-        return uv_center
-    else:
-        tot_u = sum(loop[uv_layer].uv.x for loop in face.loops)
-        tot_v = sum(loop[uv_layer].uv.y for loop in face.loops)
-        n = float(len(face.loops))
-        return (tot_u / n, tot_v / n)
-
-
-try:
-    from ...bridge.uv import calculate_uv_area as _rust_calculate_uv_area
-except (ImportError, ValueError):
-    from bridge.uv import calculate_uv_area as _rust_calculate_uv_area
+    uvs = [(loop[uv_layer].uv.x, loop[uv_layer].uv.y) for loop in face.loops]
+    cu, cv = _rust_get_uv_center(uvs)
+    return Vector((cu, cv)) if Vector else (cu, cv)
 
 
 def calculate_face_uv_area(face, uv_layer) -> float:

@@ -49,24 +49,30 @@ if bpy is None:
     bpy = _DummyBpy()
 
 try:
-    from ..bridge.extrude import generate_random_extrude_heights, repair_extruded_side_uv
+    from ..bridge.extrude import (
+        generate_random_extrude_heights,
+        process_random_extrude,
+        repair_extruded_side_faces,
+        repair_extruded_side_uv,
+    )
     from ..bridge.uv import get_uv_bounds, is_uv_collapsed
     from ..utils.mesh.core import (
         bmesh_context,
         poll_edit_mesh,
     )
-    from ..utils.mesh.random_extrude import process_random_extrude
-    from ..utils.extrude_repair import repair_extruded_side_faces
     from ..utils.system.menu_registry import register_menu_item
 except (ImportError, ValueError):
-    from bridge.extrude import generate_random_extrude_heights, repair_extruded_side_uv
+    from bridge.extrude import (
+        generate_random_extrude_heights,
+        process_random_extrude,
+        repair_extruded_side_faces,
+        repair_extruded_side_uv,
+    )
     from bridge.uv import get_uv_bounds, is_uv_collapsed
     from utils.mesh.core import (
         bmesh_context,
         poll_edit_mesh,
     )
-    from utils.mesh.random_extrude import process_random_extrude
-    from utils.extrude_repair import repair_extruded_side_faces
     from utils.system.menu_registry import register_menu_item
 
 logger = logging.getLogger("MoziToolKit.AutoExtrudeRepair")
