@@ -22,7 +22,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
 
 try:
     import bpy
-    HAS_BPY = True
+    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
 except ImportError:
     bpy = MagicMock()
     sys.modules["bpy"] = bpy
