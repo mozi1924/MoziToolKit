@@ -19,6 +19,12 @@ from .mesh import (
     extract_mesh_data,
     inject_mesh_data,
 )
+from .sync import (
+    SyncBridgeSession,
+    get_sync_bridge_session,
+    is_sync_available,
+    load_model_database_from_cache,
+)
 from .cull import cull_mesh_faces
 from .extrude import (
     generate_random_extrude_heights,

@@ -18,10 +18,12 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
 try:
     import bpy
     import bpy_extras
-    HAS_BPY = True
+    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
 except ImportError:
     bpy = MagicMock()
-    bpy_extras = MagicMock()
+    import types
+    bpy_extras = types.ModuleType("bpy_extras")
+    bpy_extras.__path__ = []
 
     class _MockOperator: pass
     class _MockPanel: pass
@@ -44,17 +46,21 @@ except ImportError:
         ExportHelper = _MockExportHelper
         ImportHelper = _MockImportHelper
 
+    io_utils_mod = types.ModuleType("bpy_extras.io_utils")
+    io_utils_mod.ExportHelper = _MockExportHelper
+    io_utils_mod.ImportHelper = _MockImportHelper
+
     bpy.types = _MockTypes
     bpy.app = MagicMock()
     bpy.props = MagicMock()
-    bpy_extras.io_utils = _MockIoUtils
+    bpy_extras.io_utils = io_utils_mod
 
     sys.modules["bpy"] = bpy
     sys.modules["bpy.props"] = bpy.props
     sys.modules["bpy.types"] = _MockTypes
     sys.modules["bpy.app"] = bpy.app
     sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = _MockIoUtils
+    sys.modules["bpy_extras.io_utils"] = io_utils_mod
     HAS_BPY = False
 
 if HAS_BPY:

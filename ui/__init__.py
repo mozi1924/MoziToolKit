@@ -51,6 +51,10 @@ from .panel_biome import (
     register as register_panel_biome,
     unregister as unregister_panel_biome,
 )
+from .panel_sync import (
+    register as register_panel_sync,
+    unregister as unregister_panel_sync,
+)
 
 classes = (
     # PropertyGroups
@@ -95,9 +99,11 @@ def register():
     register_menu_select()
     register_menu_uv()
     register_panel_biome()
+    register_panel_sync()
 
 
 def unregister():
+    unregister_panel_sync()
     unregister_panel_biome()
     unregister_menu_uv()
     unregister_menu_select()
