@@ -381,6 +381,8 @@ def inject_mesh_data(
     # 2. Fast Vertex Positions Injection via MemoryView
     try:
         pos_mv = mesh_data.positions_memoryview()
+        if hasattr(pos_mv, "cast") and pos_mv.format == "B":
+            pos_mv = pos_mv.cast("f")
         mesh.vertices.foreach_set("co", pos_mv)
     except Exception:
         mesh.vertices.foreach_set("co", mesh_data.get_flat_positions())
@@ -389,6 +391,8 @@ def inject_mesh_data(
     if update_normals:
         try:
             norm_mv = mesh_data.normals_memoryview()
+            if hasattr(norm_mv, "cast") and norm_mv.format == "B":
+                norm_mv = norm_mv.cast("f")
             mesh.vertices.foreach_set("normal", norm_mv)
         except Exception:
             mesh.vertices.foreach_set("normal", mesh_data.get_flat_normals())
@@ -417,7 +421,25 @@ def inject_mesh_data(
 
             uv_layer.data.foreach_set("uv", loop_uv_arr)
 
-    # 5. Material Indices Injection
+    # 5. Vertex Colors Injection (AO / Tint)
+    if hasattr(mesh, "color_attributes"):
+        try:
+            col_mv = mesh_data.colors_memoryview() if hasattr(mesh_data, "colors_memoryview") else None
+            if col_mv is not None:
+                if hasattr(col_mv, "cast") and col_mv.format == "B":
+                    col_mv = col_mv.cast("f")
+                color_attr = mesh.color_attributes.get("color")
+                if color_attr is None:
+                    color_attr = mesh.color_attributes.new(
+                        name="color",
+                        type="FLOAT_COLOR",
+                        domain="POINT",
+                    )
+                color_attr.data.foreach_set("color", col_mv)
+        except Exception:
+            pass
+
+    # 6. Material Indices Injection
     if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
         face_mats = mesh_data.get_face_materials()
         if len(face_mats) == len(mesh.polygons):
