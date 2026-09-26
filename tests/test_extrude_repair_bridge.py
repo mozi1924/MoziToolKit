@@ -103,6 +103,64 @@ class TestExtrudeRepairBridge(unittest.TestCase):
                 self.assertTrue(0.0 <= u <= 0.6)
                 self.assertTrue(0.0 <= v <= 0.6)
 
+    def test_process_flat_mesh_extrude_repair_data_in_data_out(self):
+        import libmtk_py as mtk_py
+
+        positions_flat = [
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            1.0, 1.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0,
+            1.0, 0.0, 1.0,
+            1.0, 1.0, 1.0,
+            0.0, 1.0, 1.0,
+        ]
+        loop_vertices = [
+            4, 5, 6, 7,  # Top face (selected)
+            0, 1, 5, 4,  # Side face 0
+            1, 2, 6, 5,  # Side face 1
+            2, 3, 7, 6,  # Side face 2
+            3, 0, 4, 7,  # Side face 3
+        ]
+        loop_uvs_flat = [
+            0.0, 0.0,  0.5, 0.0,  0.5, 0.5,  0.0, 0.5,
+            0.0, 0.0,  0.5, 0.0,  0.5, 0.0,  0.0, 0.0,
+            0.0, 0.0,  0.5, 0.0,  0.5, 0.0,  0.0, 0.0,
+            0.0, 0.0,  0.5, 0.0,  0.5, 0.0,  0.0, 0.0,
+            0.0, 0.0,  0.5, 0.0,  0.5, 0.0,  0.0, 0.0,
+        ]
+        face_loop_starts = [0, 4, 8, 12, 16]
+        face_loop_totals = [4, 4, 4, 4, 4]
+        face_materials = [0, 0, 0, 0, 0]
+        selected_faces = [0]
+        pixel_steps = [[1.0 / 16.0, 1.0 / 16.0] for _ in range(5)]
+
+        modified_uvs, modified_mats, modified_creases, count = mtk_py.process_flat_mesh_extrude_repair(
+            positions=positions_flat,
+            loop_vertices=loop_vertices,
+            loop_uvs=loop_uvs_flat,
+            face_loop_starts=face_loop_starts,
+            face_loop_totals=face_loop_totals,
+            face_materials=face_materials,
+            selected_faces=selected_faces,
+            pixel_steps=pixel_steps,
+            uv_mode="SMART",
+            repair_uv=True,
+            add_crease=True,
+            crease_val=1.0,
+            only_collapsed=False,
+        )
+
+        self.assertEqual(count, 4)
+        self.assertEqual(len(modified_uvs), 4)
+        self.assertTrue(len(modified_creases) > 0)
+        for face_idx, new_uv in modified_uvs:
+            self.assertEqual(len(new_uv), 4)
+            for u, v in new_uv:
+                self.assertTrue(0.0 <= u <= 0.6)
+                self.assertTrue(0.0 <= v <= 0.6)
+
     def test_process_random_extrude_mesh_data_in_data_out(self):
         import libmtk_py as mtk_py
 

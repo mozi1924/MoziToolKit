@@ -1,15 +1,28 @@
-import bpy
+try:
+    import bpy
+except ImportError:
+    bpy = None
+
 from .dictionary import translations_dict
 
 
 def tr(msgid: str, msgctxt: str | None = None) -> str:
-    """Translate string using Blender i18n registry, falling back to msgid if untranslated."""
+    """Translate string using Blender i18n registry, falling back to dictionary/msgid if untranslated."""
     if not msgid:
         return ""
-    try:
-        return bpy.app.translations.pgettext(msgid, msgctxt)
-    except Exception:
-        return msgid
+    if bpy is not None and hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
+        try:
+            return bpy.app.translations.pgettext(msgid, msgctxt)
+        except Exception:
+            pass
+
+    # Direct dictionary fallback for testing or non-Blender environments
+    hans = translations_dict.get("zh_HANS", {})
+    if msgctxt and (msgctxt, msgid) in hans:
+        return hans[(msgctxt, msgid)]
+    if ("*", msgid) in hans:
+        return hans[("*", msgid)]
+    return msgid
 
 
 def _get_expanded_translations_dict() -> dict:
@@ -25,6 +38,11 @@ def _get_expanded_translations_dict() -> dict:
                 if op_key not in entries:
                     lang_dict[op_key] = trans
         expanded[lang] = lang_dict
+
+    # Mirror zh_HANS to zh_CN for cross-version compatibility
+    if "zh_HANS" in expanded and "zh_CN" not in expanded:
+        expanded["zh_CN"] = expanded["zh_HANS"].copy()
+
     return expanded
 
 

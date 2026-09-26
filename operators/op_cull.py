@@ -86,9 +86,11 @@ class MOZI_OT_cull_mesh_faces(bpy.types.Operator):
                     cull_duplicates=self.cull_duplicates,
                 )
 
-                inject_mesh_data(obj, culled_mesh)
+                culled_count = stats.get("culled_faces", 0)
+                if culled_count > 0:
+                    inject_mesh_data(culled_mesh, obj, update_topology=True)
                 total_in += stats.get("initial_faces", 0)
-                total_culled += stats.get("culled_faces", 0)
+                total_culled += culled_count
                 total_out += stats.get("remaining_faces", 0)
         finally:
             if saved_mode != "OBJECT":
