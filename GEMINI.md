@@ -35,12 +35,17 @@
 - 在 Blender 中读写网格几何时，优先使用 `b_mesh.vertices.foreach_set`、`b_mesh.loops.foreach_set`、NumPy 数组或 BMesh 批量操作。
 - 严禁在 Python 中对成千上万个顶点或面进行逐元素循环（如 `for v in mesh.vertices:` 修改坐标），避免造成 Blender 界面卡顿。
 
-### 规则 4：轮子依赖与同步规范 (Wheel Dependency Policy)
-- 插件依赖的底层二进制扩展存放于 `wheels/` 目录（如 `wheels/libmtk_py-0.1.0-cp311-...whl`）。
-- 当 `../libmozitoolkit` 的核心 API 或实现发生变更时，必须在 Rust 工作区编译出新 Release 轮子，同步拷贝覆盖至 `wheels/`，并在当前工作区运行测试验证。
+### 规则 4：Blender 4.2+ 扩展轮子规范与严禁全局 bpy 污染 (Extension Wheels & No Global bpy Pollution)
+- **严格遵循 Blender 4.2+ 扩展轮子规范**：插件依赖的底层二进制扩展（如 `libmtk_py`）必须打包存放在插件根目录下的 `wheels/` 目录中（如 `wheels/libmtk_py-0.1.0-cp311-...whl`），并通过 `blender_manifest.toml` 的 `wheels = [...]` 字段进行显式声明。
+- **严禁安装在全局 bpy / Python 环境中**：
+  - 严禁通过 `pip install`、脚本或任何外部手段将编译出的轮子直接安装到宿主 Blender 的全局 `bpy` 或系统全局 Python 环境中。
+  - 依赖的装配与解压必须完全交由 Blender 4.2+ Extensions 平台的本地隔离机制（Local Environment Isolation）管理，确保插件是纯净自包含（Self-Contained）的。
+  - 严禁在代码、操作符或测试脚本中假设存在全局安装的 `libmtk_py`。
+- **轮子同步与验证**：当 `../libmozitoolkit` 的核心 API 或实现发生变更时，必须在 Rust 工作区虚拟环境中编译出新 Release 轮子，同步拷贝覆盖至 `wheels/`，并在当前工作区运行测试验证。
 
 ### 规则 5：Blender 4.2+ 扩展清单规范 (Manifest Integrity)
 - 本插件遵循 Blender 4.2+ Extension 标准。版本号、权限、依赖项与元数据必须同步维护在 `blender_manifest.toml` 中。
+- 每次新增、更新或调整 `wheels/` 目录下的轮子文件名/版本时，必须同步更新 `blender_manifest.toml` 中的 `wheels` 列表，确保平台打包与发布的一致性。
 
 ---
 
