@@ -321,6 +321,10 @@ def inject_mesh_data(
         update_normals: If True, updates vertex normals.
         inject_attributes: If True, synchronizes custom attributes into `mesh.attributes`.
     """
+    # Defensive swap detection if caller accidentally passed (obj, mesh_data)
+    if hasattr(mesh_or_obj, "vertex_count") and not hasattr(mesh_data, "vertex_count"):
+        mesh_data, mesh_or_obj = mesh_or_obj, mesh_data
+
     mesh = _get_mesh(mesh_or_obj)
     v_count = mesh_data.vertex_count
 
@@ -335,9 +339,22 @@ def inject_mesh_data(
             for i in range(v_count)
         ]
 
-        # Use Quad faces if available
-        quad_count = getattr(mesh_data, "quad_count", 0)
-        if quad_count > 0:
+        # Use Quad faces if available (in libmtk, 6 indices per quad and 1 face_material per quad)
+        face_mats = (
+            mesh_data.get_face_materials()
+            if hasattr(mesh_data, "get_face_materials")
+            else []
+        )
+        tri_count = getattr(mesh_data, "triangle_count", 0)
+        total_indices = tri_count * 3
+        is_quad = (
+            total_indices > 0
+            and total_indices % 6 == 0
+            and len(face_mats) == total_indices // 6
+        )
+
+        if is_quad:
+            quad_count = total_indices // 6
             quad_indices = mesh_data.get_quad_indices()
             quads = [
                 (

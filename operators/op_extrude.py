@@ -197,7 +197,9 @@ def _is_extrude_in_progress(context) -> bool:
             bl_rna = getattr(op, "bl_rna", None)
             identifier = getattr(bl_rna, "identifier", "")
         id_upper = identifier.upper()
-        if _is_extrude_operator_identifier(id_upper) or id_upper.startswith("TRANSFORM_OT_"):
+        if _is_extrude_operator_identifier(id_upper) or (
+            id_upper.startswith("TRANSFORM_OT_") and _has_recent_extrude_operator(context)
+        ):
             return True
 
     return False

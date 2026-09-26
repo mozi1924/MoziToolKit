@@ -109,40 +109,83 @@ def repair_mesh_extruded_side_faces_batch(
 
     uv_layer = bm.loops.layers.uv.verify() if repair_uv else None
 
-    # 1. Extract Data In buffers
-    positions = [[v.co.x, v.co.y, v.co.z] for v in bm.verts]
-    face_vertices = [[v.index for v in f.verts] for f in bm.faces]
-    
-    face_uvs = []
-    pixel_steps = []
-    face_materials = []
-
-    for f in bm.faces:
-        face_materials.append(f.material_index)
-        if uv_layer:
-            face_uvs.append([[l[uv_layer].uv.x, l[uv_layer].uv.y] for l in f.loops])
-            step_u, step_v = get_face_pixel_step(f, obj=obj, context=context, uv_layer=uv_layer)
-            pixel_steps.append([step_u, step_v])
-        else:
-            face_uvs.append([[0.0, 0.0] for _ in f.verts])
-            pixel_steps.append([1.0 / 64.0, 1.0 / 64.0])
-
-    # 2. Call Rust backend in single FFI batch
+    # 1. Extract Data In buffers & Call Rust backend
     smart_faces_list = list(smart_side_face_indices) if smart_side_face_indices else None
-    modified_uvs, modified_mats, modified_creases, repaired_count = mtk_py.process_mesh_extrude_repair(
-        positions=positions,
-        face_vertices=face_vertices,
-        face_uvs=face_uvs,
-        face_materials=face_materials,
-        selected_faces=selected_faces,
-        pixel_steps=pixel_steps,
-        uv_mode=uv_mode,
-        repair_uv=repair_uv,
-        add_crease=add_crease,
-        crease_val=crease_val,
-        only_collapsed=only_collapsed,
-        smart_side_faces=smart_faces_list,
-    )
+
+    if hasattr(mtk_py, "process_flat_mesh_extrude_repair"):
+        positions_flat = [coord for v in bm.verts for coord in (v.co.x, v.co.y, v.co.z)]
+        loop_vertices = [v.index for f in bm.faces for v in f.verts]
+        loop_uvs = []
+        face_loop_starts = []
+        face_loop_totals = []
+        face_materials = []
+        pixel_steps = []
+        offset = 0
+
+        for f in bm.faces:
+            tot = len(f.verts)
+            face_loop_starts.append(offset)
+            face_loop_totals.append(tot)
+            offset += tot
+            face_materials.append(f.material_index)
+            if uv_layer:
+                for l in f.loops:
+                    uv = l[uv_layer].uv
+                    loop_uvs.extend((uv.x, uv.y))
+                step_u, step_v = get_face_pixel_step(f, obj=obj, context=context, uv_layer=uv_layer)
+                pixel_steps.append([step_u, step_v])
+            else:
+                loop_uvs.extend([0.0, 0.0] * tot)
+                pixel_steps.append([1.0 / 64.0, 1.0 / 64.0])
+
+        modified_uvs, modified_mats, modified_creases, repaired_count = mtk_py.process_flat_mesh_extrude_repair(
+            positions=positions_flat,
+            loop_vertices=loop_vertices,
+            loop_uvs=loop_uvs,
+            face_loop_starts=face_loop_starts,
+            face_loop_totals=face_loop_totals,
+            face_materials=face_materials,
+            selected_faces=selected_faces,
+            pixel_steps=pixel_steps,
+            uv_mode=uv_mode,
+            repair_uv=repair_uv,
+            add_crease=add_crease,
+            crease_val=crease_val,
+            only_collapsed=only_collapsed,
+            smart_side_faces=smart_faces_list,
+        )
+    else:
+        # Fallback to nested list interface
+        positions = [[v.co.x, v.co.y, v.co.z] for v in bm.verts]
+        face_vertices = [[v.index for v in f.verts] for f in bm.faces]
+        face_uvs = []
+        pixel_steps = []
+        face_materials = []
+
+        for f in bm.faces:
+            face_materials.append(f.material_index)
+            if uv_layer:
+                face_uvs.append([[l[uv_layer].uv.x, l[uv_layer].uv.y] for l in f.loops])
+                step_u, step_v = get_face_pixel_step(f, obj=obj, context=context, uv_layer=uv_layer)
+                pixel_steps.append([step_u, step_v])
+            else:
+                face_uvs.append([[0.0, 0.0] for _ in f.verts])
+                pixel_steps.append([1.0 / 64.0, 1.0 / 64.0])
+
+        modified_uvs, modified_mats, modified_creases, repaired_count = mtk_py.process_mesh_extrude_repair(
+            positions=positions,
+            face_vertices=face_vertices,
+            face_uvs=face_uvs,
+            face_materials=face_materials,
+            selected_faces=selected_faces,
+            pixel_steps=pixel_steps,
+            uv_mode=uv_mode,
+            repair_uv=repair_uv,
+            add_crease=add_crease,
+            crease_val=crease_val,
+            only_collapsed=only_collapsed,
+            smart_side_faces=smart_faces_list,
+        )
 
     # 3. Apply Data Out updates back to BMesh
     if uv_layer and modified_uvs:
