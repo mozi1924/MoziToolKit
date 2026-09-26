@@ -23,11 +23,13 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
         try:
             self.report({'INFO'}, "Precompiling assets via libmtk (Rust backend)...")
             res = precompile_stack(prefs)
+            models_cnt = res.get("models", res.get("baked_models", 0))
+            duration = res.get("duration_seconds", 0.0)
             summary_msg = (
-                f"Compiled {res['pack_count']} packs: "
-                f"{res['atlas_chunks']} atlas chunks, "
-                f"{res['standalone_textures']} standalone textures, "
-                f"{res['models']} models in {res['duration_seconds']:.2f}s"
+                f"Compiled {res.get('pack_count', 0)} packs: "
+                f"{res.get('atlas_chunks', 0)} atlas chunks, "
+                f"{res.get('standalone_textures', 0)} standalone textures, "
+                f"{models_cnt} models in {duration:.2f}s"
             )
             self.report({'INFO'}, summary_msg)
             return {'FINISHED'}
@@ -46,7 +48,7 @@ class MOZI_OT_clear_cache(bpy.types.Operator):
     def execute(self, context):
         prefs = get_prefs(context)
         try:
-            cleared_bytes = clear_cache(prefs)
+            cleared_bytes = clear_cache(prefs) or 0
             mb = cleared_bytes / (1024 * 1024)
             self.report({'INFO'}, f"Cleared {mb:.2f} MB of precompiled caches.")
             return {'FINISHED'}

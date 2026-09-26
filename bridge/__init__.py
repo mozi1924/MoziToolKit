@@ -8,6 +8,7 @@ from .assets import (
     get_cache_dir,
     get_cache_stats,
     get_configured_pack_stack,
+    load_baked_atlas_from_cache,
     open_cache_folder,
     precompile_stack,
 )
@@ -23,6 +24,7 @@ from .sync import (
     SyncBridgeSession,
     get_sync_bridge_session,
     is_sync_available,
+    load_atlas_from_cache,
     load_model_database_from_cache,
 )
 from .cull import cull_mesh_faces

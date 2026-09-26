@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -134,6 +135,7 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     if stack is None or stack.get_pack_count() == 0:
         raise ValueError("No valid enabled resource packs or JARs found in the active stack.")
 
+    start_time = time.time()
     base_cache = get_cache_dir(prefs)
 
     # Use unified high-performance Rust engine
@@ -149,12 +151,15 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
             compile_models=True,
         )
         get_cache_stats(prefs, force_refresh=True)
+        duration = time.time() - start_time
         return {
             "success": res.success,
             "pack_count": res.pack_count,
             "atlas_chunks": res.atlas_chunks,
             "standalone_textures": res.standalone_textures,
             "baked_models": res.baked_models,
+            "models": res.baked_models,
+            "duration_seconds": duration,
             "fingerprint": res.fingerprint,
             "cache_dir": res.cache_dir,
         }
@@ -190,12 +195,15 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     (models_dir / "models.bin").write_bytes(model_db.to_bincode_bytes())
 
     get_cache_stats(prefs, force_refresh=True)
+    duration = time.time() - start_time
     return {
         "success": True,
         "pack_count": stack.get_pack_count(),
         "atlas_chunks": chunk_count,
         "standalone_textures": sa_res.texture_count,
         "baked_models": len(model_db),
+        "models": len(model_db),
+        "duration_seconds": duration,
         "cache_dir": str(base_cache),
     }
 
@@ -231,6 +239,26 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Op
     try:
         raw_bytes = models_bin.read_bytes()
         return libmtk_py.BakedModelDatabase.from_bincode_bytes(raw_bytes)
+    except Exception:
+        return None
+
+
+def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
+    """
+    Loads precompiled BakedAtlas from cache into memory.
+    Returns None if cache does not exist or libmtk is unavailable.
+    """
+    if not HAS_LIBMTK:
+        return None
+
+    cache_dir = get_cache_dir(prefs)
+    mapping_file = cache_dir / "atlas" / "atlas_mapping.json"
+    if not mapping_file.exists():
+        return None
+
+    try:
+        json_str = mapping_file.read_text(encoding="utf-8")
+        return libmtk_py.BakedAtlas.from_mapping_json(json_str)
     except Exception:
         return None
 
@@ -289,11 +317,18 @@ def get_cache_stats(prefs=None, force_refresh: bool = False) -> Dict[str, Any]:
     return _cached_cache_stats
 
 
-def clear_cache(prefs=None) -> None:
-    """Empties all compiled caches in the cache directory."""
+def clear_cache(prefs=None) -> int:
+    """Empties all compiled caches in the cache directory and returns the total bytes freed."""
     global _cached_cache_stats, _cached_cache_stats_path
     cache_path = get_cache_dir(prefs)
+    freed_bytes = 0
     if cache_path.exists():
+        for root, _, files in os.walk(cache_path):
+            for f in files:
+                try:
+                    freed_bytes += (Path(root) / f).stat().st_size
+                except Exception:
+                    pass
         for item in cache_path.iterdir():
             try:
                 if item.is_dir():
@@ -310,6 +345,7 @@ def clear_cache(prefs=None) -> None:
         "files_count": 0,
     }
     _cached_cache_stats_path = str(cache_path)
+    return freed_bytes
 
 
 def open_cache_folder(prefs=None) -> None:

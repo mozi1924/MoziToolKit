@@ -25,6 +25,19 @@ except (ImportError, AttributeError):
         mtk_py = None
         HAS_LIBMTK = False
 
+try:
+    from .assets import (
+        get_cache_dir,
+        load_baked_model_database,
+        load_baked_atlas_from_cache,
+    )
+except (ImportError, ValueError):
+    from bridge.assets import (
+        get_cache_dir,
+        load_baked_model_database,
+        load_baked_atlas_from_cache,
+    )
+
 
 def is_sync_available() -> bool:
     """Checks whether the native libmtk Live Sync backend is loaded and ready."""
@@ -189,37 +202,21 @@ def get_sync_bridge_session() -> SyncBridgeSession:
     return _global_sync_session
 
 
-def load_model_database_from_cache(cache_dir_or_file: Optional[Path | str] = None) -> Optional[Any]:
+def load_model_database_from_cache(prefs=None) -> Optional[Any]:
     """
     Attempts to deserialize prebaked BakedModelDatabase from compact binary bytes (bincode).
     Returns None if cache is missing or corrupt.
     """
-    if not is_sync_available() or not hasattr(mtk_py, "BakedModelDatabase"):
+    if not is_sync_available():
         return None
+    return load_baked_model_database(prefs)
 
-    target_path = None
-    if cache_dir_or_file is not None:
-        p = Path(cache_dir_or_file)
-        if p.is_file():
-            target_path = p
-        elif p.is_dir():
-            cand = p / "models.bin"
-            if cand.exists():
-                target_path = cand
 
-    if target_path is None or not target_path.exists():
-        # Default fallback location in user home or addon folder
-        home_cand = Path.home() / ".cache" / "mozitoolkit" / "models.bin"
-        if home_cand.exists():
-            target_path = home_cand
-
-    if target_path and target_path.exists():
-        try:
-            data = target_path.read_bytes()
-            db = mtk_py.BakedModelDatabase.from_bincode_bytes(data)
-            logger.info(f"Loaded {len(db)} prebaked models from {target_path}")
-            return db
-        except Exception as e:
-            logger.warning(f"Failed to load binary model cache from {target_path}: {e}")
-
-    return None
+def load_atlas_from_cache(prefs=None) -> Optional[Any]:
+    """
+    Loads precompiled BakedAtlas from cache into memory.
+    Returns None if cache is missing or libmtk is unavailable.
+    """
+    if not is_sync_available():
+        return None
+    return load_baked_atlas_from_cache(prefs)
