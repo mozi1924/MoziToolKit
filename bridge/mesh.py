@@ -18,14 +18,14 @@ except ImportError:
 
 try:
     import libmtk_py as mtk_py
-    MeshData = mtk_py.MeshData
-    AttributeDomain = mtk_py.AttributeDomain
-except ImportError:
+    MeshData = getattr(mtk_py, "MeshData", Any)
+    AttributeDomain = getattr(mtk_py, "AttributeDomain", Any)
+except (ImportError, AttributeError):
     try:
         import mtk_py
-        MeshData = mtk_py.MeshData
-        AttributeDomain = mtk_py.AttributeDomain
-    except ImportError:
+        MeshData = getattr(mtk_py, "MeshData", Any)
+        AttributeDomain = getattr(mtk_py, "AttributeDomain", Any)
+    except (ImportError, AttributeError):
         # Graceful fallback for type annotations or documentation builds
         mtk_py = None
         MeshData = Any  # type: ignore
