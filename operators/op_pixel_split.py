@@ -22,7 +22,6 @@ try:
     from ..utils.mesh.subdivide import (
         cleanup_mesh_topology,
         slice_polygon_face_by_pixel_grid,
-        subdivide_quad_face,
     )
     from ..utils.system.menu_registry import register_menu_item
 except (ImportError, ValueError):
@@ -36,7 +35,6 @@ except (ImportError, ValueError):
     from utils.mesh.subdivide import (
         cleanup_mesh_topology,
         slice_polygon_face_by_pixel_grid,
-        subdivide_quad_face,
     )
     from utils.system.menu_registry import register_menu_item
 

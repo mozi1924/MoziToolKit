@@ -10,18 +10,6 @@ try:
 except ImportError:
     bpy = None
 
-try:
-    from ..mesh.uv_math import (
-        calculate_face_uv_area,
-        is_face_uv_collapsed,
-        get_face_uv_bounds,
-    )
-except (ImportError, ValueError):
-    from utils.mesh.uv_math import (
-        calculate_face_uv_area,
-        is_face_uv_collapsed,
-        get_face_uv_bounds,
-    )
 
 
 def get_face_pixel_step(
