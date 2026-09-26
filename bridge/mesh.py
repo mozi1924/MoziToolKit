@@ -321,12 +321,12 @@ def inject_mesh_data(
         update_normals: If True, updates vertex normals.
         inject_attributes: If True, synchronizes custom attributes into `mesh.attributes`.
     """
-    # Defensive swap detection if caller accidentally passed (obj, mesh_data)
+    # Defensive guard: automatically handle inverted (mesh_or_obj, mesh_data) argument order
     if hasattr(mesh_or_obj, "vertex_count") and not hasattr(mesh_data, "vertex_count"):
         mesh_data, mesh_or_obj = mesh_or_obj, mesh_data
 
     mesh = _get_mesh(mesh_or_obj)
-    v_count = mesh_data.vertex_count
+    v_count = getattr(mesh_data, "vertex_count", 0)
 
     if v_count == 0:
         return

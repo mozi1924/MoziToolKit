@@ -56,6 +56,7 @@ paths_exclude_pattern = [
   "/*.zip",
   "tests/",
   "dist/",
+  "site-packages/",
   "*.blend",
   "*.blend1",
   ".DS_Store",

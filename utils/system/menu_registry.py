@@ -57,14 +57,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.precompile_cache": {
-        "canonical_id": "mozi.precompile_cache",
-        "label": "Precompile Stack Caches",
-        "default_label": "Precompile Stack Caches",
-        "views": ["object"],
-        "enabled": True,
-        "is_legacy": False,
-    },
     "mozi.adaptive_pixel_split": {
         "canonical_id": "mozi.adaptive_pixel_split",
         "label": "Adaptive Pixel Split",

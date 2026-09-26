@@ -78,7 +78,7 @@ class TestMenuRegistration(unittest.TestCase):
         all_ops = get_all_operators()
         self.assertIn("mozi.replace_material", all_ops)
         self.assertIn("mozi.restore_materials_from_attributes", all_ops)
-        self.assertIn("mozi.precompile_cache", all_ops)
+        self.assertNotIn("mozi.precompile_cache", all_ops)
         self.assertIn("mozi.repair_fluid_uv", all_ops)
         self.assertIn("mozi.auto_extrude_repair", all_ops)
         self.assertIn("mozi.adaptive_pixel_split", all_ops)

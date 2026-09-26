@@ -270,6 +270,10 @@ def process_random_extrude_mesh_batch(
 
     for f, h in zip(extruded_faces, heights):
         f.select = True
+        for v in f.verts:
+            v.select = True
+        for e in f.edges:
+            e.select = True
         f.normal_update()
         N = f.normal.copy()
         if N.length_squared < 1e-12:

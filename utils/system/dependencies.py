@@ -97,26 +97,25 @@ def ensure_sys_paths(force: bool = False) -> List[str]:
     added_paths = []
     addon_dir = Path(__file__).parent.parent.parent.resolve()
 
-    # Candidate paths to discover LibMTK and bundled packages
-    user_sp = None
-    try:
-        user_sp = site.getusersitepackages()
-    except Exception:
-        pass
+    # Candidate paths to discover LibMTK in development environments
+    candidate_paths = []
+    
+    # 1. Explicit environment override for testing or external builds
+    if "LIBMTK_PYTHON_PATH" in os.environ:
+        candidate_paths.append(Path(os.environ["LIBMTK_PYTHON_PATH"]))
 
-    candidate_paths = [
-        addon_dir / "site-packages",
-        Path(user_sp) if user_sp else None,
-        addon_dir.parent / "libmozitoolkit" / "bindings" / "mtk-py" / "python",
-        Path.home() / "libmozitoolkit" / "bindings" / "mtk-py" / "python",
-    ]
+    # 2. Extension's own site-packages (for local unpacks / developer symlinks)
+    local_sp = addon_dir / "site-packages"
+    if local_sp.exists():
+        candidate_paths.append(local_sp)
 
-    for p in candidate_paths:
+    for p in reversed(candidate_paths):
         if p and p.exists() and p.is_dir():
             resolved = str(p.resolve())
-            if resolved not in sys.path:
-                sys.path.insert(0, resolved)
-                added_paths.append(resolved)
+            if resolved in sys.path:
+                sys.path.remove(resolved)
+            sys.path.insert(0, resolved)
+            added_paths.append(resolved)
 
     if added_paths or force:
         importlib.invalidate_caches()
@@ -268,23 +267,23 @@ def has_libmtk() -> bool:
 
 
 def has_pillow() -> bool:
-    """Convenience helper to check if Pillow or LibMTK native image processing is available."""
-    return has_libmtk() or is_module_installed("PIL")
+    """Compatibility alias: checks if native LibMTK image backend is available."""
+    return has_libmtk()
 
 
 def has_websockets() -> bool:
-    """Convenience helper to check if websockets or LibMTK native Live Sync session is available."""
-    return has_libmtk() or is_module_installed("websockets")
+    """Compatibility alias: checks if native LibMTK Live Sync session backend is available."""
+    return has_libmtk()
 
 
-def draw_pillow_warning(
+def draw_libmtk_warning(
     layout,
-    title: str = "Material replacement requires LibMTK / Pillow module (Missing)!",
-    subtitle: str = "Please ensure LibMTK native core or extension wheels are available.",
-    tab: str = "MISC"
+    title: str = "Feature requires LibMTK native core (Missing)!",
+    subtitle: str = "Please ensure the compiled libmtk_py extension wheel is present.",
+    tab: str = "MISC",
 ):
-    """Draw an alert box warning only if LibMTK/Pillow is genuinely missing."""
-    if has_pillow():
+    """Draw an alert box warning only if LibMTK native core is missing."""
+    if has_libmtk():
         return
     alert_box = layout.box()
     alert_box.alert = True
@@ -295,22 +294,14 @@ def draw_pillow_warning(
     op.tab = tab
 
 
-def draw_websockets_warning(
-    layout,
-    title: str = "Live Sync requires LibMTK / websockets module (Missing)!",
-    subtitle: str = "Please ensure LibMTK native core or extension wheels are available.",
-    tab: str = "SYNC"
-):
-    """Draw an alert box warning only if LibMTK/websockets is genuinely missing."""
-    if has_websockets():
-        return
-    alert_box = layout.box()
-    alert_box.alert = True
-    alert_box.label(text=title, icon='ERROR')
-    if subtitle:
-        alert_box.label(text=subtitle)
-    op = alert_box.operator("mozi.open_preferences", text="Check Environment", icon='PREFERENCES')
-    op.tab = tab
+def draw_pillow_warning(layout, **kwargs):
+    """Compatibility alias for draw_libmtk_warning."""
+    draw_libmtk_warning(layout, **kwargs)
+
+
+def draw_websockets_warning(layout, **kwargs):
+    """Compatibility alias for draw_libmtk_warning."""
+    draw_libmtk_warning(layout, **kwargs)
 
 
 def get_prefs(context=None):

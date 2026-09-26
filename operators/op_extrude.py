@@ -506,9 +506,6 @@ class MOZI_OT_random_extrude(bpy.types.Operator):
     def poll(cls, context):
         return poll_edit_mesh(context)
 
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=320)
-
     def draw(self, context):
         layout = self.layout
         box_ext = layout.box()

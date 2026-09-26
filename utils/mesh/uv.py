@@ -65,15 +65,16 @@ def get_face_uv_center(face, uv_layer):
         return (tot_u / n, tot_v / n)
 
 
+try:
+    from ...bridge.uv import calculate_uv_area as _rust_calculate_uv_area
+except (ImportError, ValueError):
+    from bridge.uv import calculate_uv_area as _rust_calculate_uv_area
+
+
 def calculate_face_uv_area(face, uv_layer) -> float:
-    """Calculate 2D signed area of a face in UV space using the Shoelace formula."""
-    loops = face.loops
-    if len(loops) < 3:
+    """Calculate 2D signed area of a face in UV space using Rust accelerated Shoelace formula."""
+    if not face.loops or len(face.loops) < 3:
         return 0.0
-    area = 0.0
-    n = len(loops)
-    for i in range(n):
-        uv1 = loops[i][uv_layer].uv
-        uv2 = loops[(i + 1) % n][uv_layer].uv
-        area += (uv1.x * uv2.y - uv2.x * uv1.y)
-    return 0.5 * abs(area)
+    uvs = [(loop[uv_layer].uv.x, loop[uv_layer].uv.y) for loop in face.loops]
+    return _rust_calculate_uv_area(uvs)
+
