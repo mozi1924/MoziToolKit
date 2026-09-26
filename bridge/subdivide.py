@@ -17,10 +17,11 @@ except ImportError:
     except ImportError:
         mtk_py = None
 
-if mtk_py is None:
-    raise ImportError(
-        "libmtk_py native extension is missing. Please install the compiled extension wheel."
-    )
+def _ensure_mtk():
+    if mtk_py is None:
+        raise RuntimeError(
+            "libmtk_py native extension is missing. Please install or compile the extension wheel."
+        )
 
 
 def calculate_face_target_grid(
@@ -31,6 +32,7 @@ def calculate_face_target_grid(
     max_subdivisions: int = 64,
 ) -> Tuple[int, int]:
     """Calculate target (cols, rows) subdivisions based on UV span and texture pixel density."""
+    _ensure_mtk()
     uv_list = [tuple(p) for p in uvs]
     return mtk_py.calculate_face_target_grid(
         uv_list, tex_w, tex_h, pixels_per_face, max_subdivisions
@@ -45,6 +47,7 @@ def calculate_pixel_grid_cut_factors(
     max_subdivisions: int = 64,
 ) -> Tuple[List[float], List[float]]:
     """Calculate non-uniform cut factors [0, 1] snapping strictly to integer pixel grid lines."""
+    _ensure_mtk()
     uv_list = [tuple(p) for p in uvs]
     return mtk_py.calculate_pixel_grid_cut_factors(
         uv_list, tex_w, tex_h, pixels_per_face, max_subdivisions
@@ -60,6 +63,7 @@ def slice_face_by_pixel_grid(
     max_subdivisions: int = 64,
 ) -> Tuple[List[Tuple[float, float, float]], List[Tuple[float, float]], List[List[int]], List[Tuple[float, float]]]:
     """Slice a 3D/2D polygon strictly along the 2D texture pixel grid lines (X = 1, 2... and Y = 1, 2...)."""
+    _ensure_mtk()
     pos_list = [list(p) for p in positions]
     uv_list = [list(u) for u in uvs]
     return mtk_py.slice_face_by_pixel_grid(
@@ -68,14 +72,15 @@ def slice_face_by_pixel_grid(
 
 
 def adaptive_pixel_split_mesh(
-    mesh_data: mtk_py.MeshData,
+    mesh_data: Any,
     face_resolutions: Optional[List[Optional[Tuple[int, int]]]] = None,
     default_resolution: Tuple[int, int] = (16, 16),
     pixels_per_face: float = 1.0,
     max_subdivisions: int = 64,
     weld_dist: float = 1e-4,
-) -> mtk_py.MeshData:
+) -> Any:
     """Subdivide quad faces in MeshData according to texture pixel density with full attribute interpolation."""
+    _ensure_mtk()
     return mtk_py.adaptive_pixel_split_mesh(
         mesh_data,
         face_resolutions,

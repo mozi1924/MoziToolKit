@@ -24,10 +24,12 @@ except ImportError:
     except ImportError:
         mtk_py = None
 
-if mtk_py is None:
-    raise ImportError(
-        "libmtk_py native extension is missing. Please install the compiled extension wheel."
-    )
+def _ensure_mtk():
+    if mtk_py is None:
+        raise RuntimeError(
+            "libmtk_py native extension is missing. Please install or compile the extension wheel."
+        )
+
 
 try:
     from ..utils.extrude_repair.uv_analyzer import get_face_pixel_step
@@ -51,6 +53,7 @@ def repair_extruded_side_uv(
     adjacent_uv_strip: Optional[Sequence[Tuple[float, float]]] = None,
 ) -> List[Tuple[float, float]]:
     """Reconstruct 4 UV corner coordinates for an extruded side quad polygon."""
+    _ensure_mtk()
     adj = list(adjacent_uv_strip) if adjacent_uv_strip is not None else None
     return mtk_py.repair_extruded_side_uv(
         tuple(uv_base_a),
@@ -75,6 +78,7 @@ def generate_random_extrude_heights(
     discrete_steps: Optional[int] = None,
 ) -> List[float]:
     """Generate 3D noise-based random extrusion displacement heights."""
+    _ensure_mtk()
     pts = [tuple(c) for c in centers]
     return mtk_py.generate_random_extrude_heights(
         pts, noise_type, min_height, max_height, noise_scale, seed, discrete_steps
@@ -95,6 +99,8 @@ def repair_mesh_extruded_side_faces_batch(
     """Batch Data In, Data Out pipeline for extrude side UV repair and crease assignment."""
     if not repair_uv and not add_crease:
         return 0
+
+    _ensure_mtk()
 
     bm.faces.ensure_lookup_table()
     bm.faces.index_update()

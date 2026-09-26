@@ -342,6 +342,7 @@ def download_dependencies(
 def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
     """
     Ensure blender_manifest.toml has an up-to-date `wheels = [...]` array matching all wheels in `wheels/`.
+    Preserves multi-platform wheel declarations across cross-development environments (e.g. Linux and macOS).
     """
     manifest_path = project_dir / "blender_manifest.toml"
     if not manifest_path.exists():
@@ -351,14 +352,22 @@ def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
     for whl in wheels_dir.glob("websockets*cp*.whl"):
         whl.unlink()
 
-    valid_wheels = [
-        whl for whl in wheels_dir.glob("*.whl")
-        if not (whl.name.startswith("websockets") and "cp" in whl.name)
-    ]
-    relative_wheels = sorted([f"./wheels/{whl.name}" for whl in valid_wheels])
     with open(manifest_path, "r", encoding="utf-8") as f:
         content = f.read()
 
+    # Extract existing wheels from manifest to preserve cross-platform entries
+    existing_wheels = set()
+    match = re.search(r"wheels\s*=\s*\[(.*?)\]", content, flags=re.DOTALL)
+    if match:
+        for item in re.findall(r'"([^"]+)"', match.group(1)):
+            existing_wheels.add(item.strip())
+
+    # Add wheels currently present on disk in wheels/
+    for whl in wheels_dir.glob("*.whl"):
+        if not (whl.name.startswith("websockets") and "cp" in whl.name):
+            existing_wheels.add(f"./wheels/{whl.name}")
+
+    relative_wheels = sorted(list(existing_wheels))
     wheels_toml_block = "wheels = [\n" + "".join(f'  "{w}",\n' for w in relative_wheels) + "]"
 
     if "wheels = [" in content:

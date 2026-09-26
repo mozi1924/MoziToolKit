@@ -16,10 +16,11 @@ except ImportError:
     except ImportError:
         mtk_py = None
 
-if mtk_py is None:
-    raise ImportError(
-        "libmtk_py native extension is missing. Please install the compiled extension wheel."
-    )
+def _ensure_mtk():
+    if mtk_py is None:
+        raise RuntimeError(
+            "libmtk_py native extension is missing. Please install or compile the extension wheel."
+        )
 
 
 def sample_uv_alpha(
@@ -31,6 +32,7 @@ def sample_uv_alpha(
     invert_y: bool = False,
 ) -> float:
     """Sample alpha value [0.0, 1.0] at normalized UV coordinate."""
+    _ensure_mtk()
     pix_list = list(pixels) if not isinstance(pixels, list) else pixels
     return mtk_py.sample_uv_alpha_f32(u, v, width, height, pix_list, invert_y)
 
@@ -45,6 +47,7 @@ def is_face_transparent(
     invert_y: bool = False,
 ) -> bool:
     """Check if a single face is transparent against texture pixels."""
+    _ensure_mtk()
     pix_list = list(pixels) if not isinstance(pixels, list) else pixels
     uv_list = [tuple(p) for p in face_uvs]
     return mtk_py.is_face_transparent_f32(uv_list, width, height, pix_list, mode, threshold, invert_y)
@@ -62,6 +65,7 @@ def batch_analyze_transparent_faces(
     """Batch evaluate transparency for multiple faces against an RGBA pixel buffer."""
     if not faces_uvs:
         return []
+    _ensure_mtk()
     pix_list = list(pixels) if not isinstance(pixels, list) else pixels
     uvs_nested = [[tuple(p) for p in face] for face in faces_uvs]
     return mtk_py.batch_analyze_transparent_faces_f32(
