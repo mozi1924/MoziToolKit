@@ -410,17 +410,35 @@ def inject_mesh_data(
 
         if uv_layer is not None and len(mesh.loops) > 0:
             num_loops = len(mesh.loops)
-            loop_vert_indices = array.array("I", [0]) * num_loops
-            mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-
-            uv_flat = mesh_data.get_flat_uvs()
-            loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
-            for loop_idx, v_idx in enumerate(loop_vert_indices):
-                if v_idx * 2 + 1 < len(uv_flat):
-                    loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
-                    loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
-
-            uv_layer.data.foreach_set("uv", loop_uv_arr)
+            uv_mv = mesh_data.uvs_memoryview() if hasattr(mesh_data, "uvs_memoryview") else None
+            if uv_mv is not None:
+                if hasattr(uv_mv, "cast") and uv_mv.format == "B":
+                    uv_mv = uv_mv.cast("f")
+                if len(uv_mv) == num_loops * 2:
+                    uv_layer.data.foreach_set("uv", uv_mv)
+                else:
+                    uv_flat = list(uv_mv)
+                    loop_vert_indices = array.array("I", [0]) * num_loops
+                    mesh.loops.foreach_get("vertex_index", loop_vert_indices)
+                    loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
+                    for loop_idx, v_idx in enumerate(loop_vert_indices):
+                        if v_idx * 2 + 1 < len(uv_flat):
+                            loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
+                            loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
+                    uv_layer.data.foreach_set("uv", loop_uv_arr)
+            else:
+                uv_flat = mesh_data.get_flat_uvs()
+                if len(uv_flat) == num_loops * 2:
+                    uv_layer.data.foreach_set("uv", uv_flat)
+                else:
+                    loop_vert_indices = array.array("I", [0]) * num_loops
+                    mesh.loops.foreach_get("vertex_index", loop_vert_indices)
+                    loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
+                    for loop_idx, v_idx in enumerate(loop_vert_indices):
+                        if v_idx * 2 + 1 < len(uv_flat):
+                            loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
+                            loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
+                    uv_layer.data.foreach_set("uv", loop_uv_arr)
 
     # 5. Vertex Colors Injection (AO / Tint)
     if hasattr(mesh, "color_attributes"):
@@ -429,12 +447,16 @@ def inject_mesh_data(
             if col_mv is not None:
                 if hasattr(col_mv, "cast") and col_mv.format == "B":
                     col_mv = col_mv.cast("f")
+                num_color_elems = len(col_mv) // 4
+                domain = "CORNER" if num_color_elems == len(mesh.loops) else "POINT"
                 color_attr = mesh.color_attributes.get("color")
-                if color_attr is None:
+                if color_attr is None or color_attr.domain != domain:
+                    if color_attr is not None:
+                        mesh.color_attributes.remove(color_attr)
                     color_attr = mesh.color_attributes.new(
                         name="color",
                         type="FLOAT_COLOR",
-                        domain="POINT",
+                        domain=domain,
                     )
                 color_attr.data.foreach_set("color", col_mv)
         except Exception:
