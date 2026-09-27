@@ -106,24 +106,36 @@ class SyncBridgeSession:
         self._current_url = url
 
         try:
-            # Construct MesherConfig with target Z-up coordinates for Blender
+            # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
             try:
                 config = mtk_py.MesherConfig(
                     enable_ao=enable_ao,
                     mesh_fluids=mesh_fluids,
                     z_up_coordinates=True,
+                    origin_centered=True,
+                    weld_vertices=True,
                     atlas=atlas,
                     biome_resolver=biome_resolver,
                     custom_aliases=custom_aliases,
                 )
             except (TypeError, AttributeError):
                 # Backwards-compatible fallback for older wheel binaries
-                config = mtk_py.MesherConfig(
-                    enable_ao=enable_ao,
-                    mesh_fluids=mesh_fluids,
-                    z_up_coordinates=True,
-                    atlas=atlas,
-                )
+                try:
+                    config = mtk_py.MesherConfig(
+                        enable_ao=enable_ao,
+                        mesh_fluids=mesh_fluids,
+                        z_up_coordinates=True,
+                        atlas=atlas,
+                        biome_resolver=biome_resolver,
+                        custom_aliases=custom_aliases,
+                    )
+                except (TypeError, AttributeError):
+                    config = mtk_py.MesherConfig(
+                        enable_ao=enable_ao,
+                        mesh_fluids=mesh_fluids,
+                        z_up_coordinates=True,
+                        atlas=atlas,
+                    )
                 if biome_resolver is not None and hasattr(config, "set_biome_resolver"):
                     try:
                         config.set_biome_resolver(biome_resolver)
