@@ -309,10 +309,13 @@ def get_prefs(context=None):
     Retrieve MoziToolKit AddonPreferences safely across legacy add-on
     and Blender 4.2+ extensions packaging environments.
     """
-    import bpy
+    try:
+        import bpy
+    except ImportError:
+        return None
 
     if context is None:
-        context = bpy.context
+        context = getattr(bpy, "context", None)
 
     if not hasattr(context, "preferences") or not context.preferences:
         return None

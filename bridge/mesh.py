@@ -53,6 +53,7 @@ BLENDER_TO_MTK_TYPE: Dict[str, Tuple[str, int, str, str]] = {
     "FLOAT": ("float", 1, "f", "value"),
     "FLOAT_VECTOR": ("float3", 3, "f", "vector"),
     "FLOAT_VECTOR2": ("float2", 2, "f", "vector"),
+    "FLOAT2": ("float2", 2, "f", "vector"),
     "FLOAT_COLOR": ("float4", 4, "f", "color"),
     "BYTE_COLOR": ("uint8", 4, "B", "color"),
     "INT": ("int32", 1, "i", "value"),
@@ -65,7 +66,7 @@ BLENDER_TO_MTK_TYPE: Dict[str, Tuple[str, int, str, str]] = {
 # Mapping from libmtk DataType name to (blender_data_type, value_attr, array_typecode)
 MTK_TO_BLENDER_TYPE: Dict[str, Tuple[str, str, str]] = {
     "float": ("FLOAT", "value", "f"),
-    "float2": ("FLOAT_VECTOR2", "vector", "f"),
+    "float2": ("FLOAT2", "vector", "f"),
     "float3": ("FLOAT_VECTOR", "vector", "f"),
     "float4": ("FLOAT_COLOR", "color", "f"),
     "int8": ("INT8", "value", "b"),
@@ -74,10 +75,10 @@ MTK_TO_BLENDER_TYPE: Dict[str, Tuple[str, str, str]] = {
     "uint8": ("INT", "value", "B"),
     "uint16": ("INT", "value", "H"),
     "uint32": ("INT", "value", "I"),
-    "bool": ("BOOLEAN", "value", "b"),
+    "bool": ("BOOLEAN", "value", "?"),
     "string": ("STRING", "value", ""),
     "Float": ("FLOAT", "value", "f"),
-    "Float2": ("FLOAT_VECTOR2", "vector", "f"),
+    "Float2": ("FLOAT2", "vector", "f"),
     "Float3": ("FLOAT_VECTOR", "vector", "f"),
     "Float4": ("FLOAT_COLOR", "color", "f"),
     "Int8": ("INT8", "value", "b"),
@@ -86,7 +87,7 @@ MTK_TO_BLENDER_TYPE: Dict[str, Tuple[str, str, str]] = {
     "UInt8": ("INT", "value", "B"),
     "UInt16": ("INT", "value", "H"),
     "UInt32": ("INT", "value", "I"),
-    "Bool": ("BOOLEAN", "value", "b"),
+    "Bool": ("BOOLEAN", "value", "?"),
     "String": ("STRING", "value", ""),
 }
 
@@ -441,45 +442,62 @@ def inject_mesh_data(
 
     # 6. Material Indices Injection
     if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
-        face_mats = mesh_data.get_face_materials()
-        if len(face_mats) == len(mesh.polygons):
-            mat_arr = array.array("H", face_mats)
-            mesh.polygons.foreach_set("material_index", mat_arr)
+        try:
+            face_mats = mesh_data.get_face_materials()
+            if len(face_mats) == len(mesh.polygons):
+                mat_arr = array.array("H", face_mats)
+                mesh.polygons.foreach_set("material_index", mat_arr)
+        except Exception as e:
+            logger.debug("Failed setting material indices: %s", e)
 
-    # 6. Generic Custom Attribute Injection
+    # 7. Generic Custom Attribute Injection
     if inject_attributes and hasattr(mesh, "attributes"):
         for attr_name in mesh_data.attribute_names():
-            info = mesh_data.attribute_info(attr_name)
-            if info is None:
-                continue
-
-            domain_str, dtype_name, elem_count = info
-            b_domain = MTK_TO_BLENDER_DOMAIN.get(domain_str.lower(), "POINT")
-            type_tuple = MTK_TO_BLENDER_TYPE.get(dtype_name)
-
-            if type_tuple is None:
-                continue
-
-            b_type, value_key, typecode = type_tuple
-
-            b_attr = mesh.attributes.get(attr_name)
-            if b_attr is None:
-                try:
-                    b_attr = mesh.attributes.new(name=attr_name, type=b_type, domain=b_domain)
-                except Exception:
+            try:
+                info = mesh_data.attribute_info(attr_name)
+                if info is None:
                     continue
 
-            if dtype_name == "String":
-                str_vals = mesh_data.get_string_attribute(attr_name)
-                if str_vals and len(str_vals) == len(b_attr.data):
-                    for i, val in enumerate(str_vals):
-                        b_attr.data[i].value = val
-            else:
-                mv = mesh_data.attribute_memoryview(attr_name)
-                if mv is not None:
+                domain_str, dtype_name, elem_count = info
+                b_domain = MTK_TO_BLENDER_DOMAIN.get(domain_str.lower(), "POINT")
+                type_tuple = MTK_TO_BLENDER_TYPE.get(dtype_name)
+
+                if type_tuple is None:
+                    continue
+
+                b_type, value_key, typecode = type_tuple
+
+                b_attr = mesh.attributes.get(attr_name)
+                if b_attr is not None and (b_attr.data_type != b_type or b_attr.domain != b_domain):
+                    mesh.attributes.remove(b_attr)
+                    b_attr = None
+
+                if b_attr is None:
                     try:
-                        b_attr.data.foreach_set(value_key, mv)
+                        b_attr = mesh.attributes.new(name=attr_name, type=b_type, domain=b_domain)
                     except Exception:
-                        pass
+                        continue
+
+                if dtype_name.lower() == "string":
+                    str_vals = mesh_data.get_string_attribute(attr_name)
+                    if str_vals and len(str_vals) == len(b_attr.data):
+                        for i, val in enumerate(str_vals):
+                            if isinstance(val, str):
+                                val = val.encode("utf-8")
+                            try:
+                                b_attr.data[i].value = val
+                            except Exception:
+                                pass
+                else:
+                    mv = mesh_data.attribute_memoryview(attr_name)
+                    if mv is not None:
+                        try:
+                            if hasattr(mv, "cast") and mv.format == "B" and typecode:
+                                mv = mv.cast(typecode)
+                            b_attr.data.foreach_set(value_key, mv)
+                        except Exception as e:
+                            logger.debug("Failed setting attribute %s: %s", attr_name, e)
+            except Exception as e:
+                logger.debug("Error injecting attribute %s: %s", attr_name, e)
 
     mesh.update()

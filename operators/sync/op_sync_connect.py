@@ -14,6 +14,7 @@ try:
         is_sync_available,
         load_atlas_from_cache,
         load_model_database_from_cache,
+        load_biome_resolver_from_cache,
     )
 except (ImportError, ValueError):
     from bridge.sync import (
@@ -21,6 +22,7 @@ except (ImportError, ValueError):
         is_sync_available,
         load_atlas_from_cache,
         load_model_database_from_cache,
+        load_biome_resolver_from_cache,
     )
 from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
@@ -150,11 +152,15 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         props = _get_active_props(context)
         url = props.url if props else "ws://127.0.0.1:8765"
 
-        # Attempt to load prebaked model database and texture atlas
-        prefs = getattr(context.preferences, "addons", {}).get("MoziToolKit", None)
-        prefs = getattr(prefs, "preferences", None)
+        # Attempt to load prebaked model database, texture atlas, and biome resolver
+        try:
+            from ...utils.system import get_prefs
+        except (ImportError, ValueError):
+            from utils.system import get_prefs
+        prefs = get_prefs(context)
         model_db = load_model_database_from_cache(prefs)
         atlas = load_atlas_from_cache(prefs)
+        biome_resolver = load_biome_resolver_from_cache(prefs)
 
         session = get_sync_bridge_session()
         success = session.start(
@@ -163,11 +169,13 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             max_reconnect_attempts=5,
             model_db=model_db,
             atlas=atlas,
+            biome_resolver=biome_resolver,
             unified_mesh=True,
         )
 
         if not success:
-            self.report({'ERROR'}, f"Failed to initiate connection to {url}")
+            err = session.last_error or "Check system console for details"
+            self.report({'ERROR'}, f"Failed to initiate connection to {url}: {err}")
             return {'CANCELLED'}
 
         if props:

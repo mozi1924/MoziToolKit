@@ -41,6 +41,16 @@ def ensure_world_materials(world_obj: bpy.types.Object, prefs=None) -> None:
     if not world_obj or world_obj.type != "MESH":
         return
 
+    if prefs is None:
+        try:
+            from ...utils.system import get_prefs
+        except (ImportError, ValueError):
+            try:
+                from utils.system import get_prefs
+            except (ImportError, ValueError):
+                get_prefs = lambda ctx=None: None
+        prefs = get_prefs()
+
     mesh = world_obj.data
     cache_dir = get_cache_dir(prefs)
     atlas_dir = cache_dir / "atlas"
@@ -51,7 +61,7 @@ def ensure_world_materials(world_obj: bpy.types.Object, prefs=None) -> None:
         try:
             import json
             atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
-            chunk_meta_list = atlas_data.get("chunks", [])
+            chunk_meta_list = sorted(atlas_data.get("chunks", []), key=lambda c: c.get("chunk_id", 0))
 
             colormaps_dir = cache_dir / "colormaps"
             colormaps = {}
@@ -68,6 +78,10 @@ def ensure_world_materials(world_obj: bpy.types.Object, prefs=None) -> None:
                     manifest_fp = json.loads(manifest_path.read_text(encoding="utf-8")).get("fingerprint")
                 except Exception:
                     pass
+
+            # If the mesh previously only had the fallback default material, clear it first
+            if len(mesh.materials) == 1 and mesh.materials[0] and mesh.materials[0].name.startswith("MTK:LiveSync:Default"):
+                mesh.materials.clear()
 
             for idx, cm in enumerate(chunk_meta_list):
                 chunk_id = cm.get("chunk_id", idx)
@@ -94,6 +108,7 @@ def ensure_world_materials(world_obj: bpy.types.Object, prefs=None) -> None:
                     category_chunk_index=c_idx,
                     is_animated=is_anim,
                     stack_fingerprint=manifest_fp,
+                    use_attribute_node=False,
                     atlas_width=chunk_width,
                     atlas_height=chunk_height,
                     tile_width=16.0,
