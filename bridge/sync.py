@@ -30,12 +30,14 @@ try:
         get_cache_dir,
         load_baked_model_database,
         load_baked_atlas_from_cache,
+        load_biome_resolver_from_cache,
     )
 except (ImportError, ValueError):
     from bridge.assets import (
         get_cache_dir,
         load_baked_model_database,
         load_baked_atlas_from_cache,
+        load_biome_resolver_from_cache,
     )
 
 
@@ -57,6 +59,7 @@ class SyncBridgeSession:
         self._model_db: Optional[Any] = None
         self._atlas: Optional[Any] = None
         self._unified_mesh: bool = True
+        self._last_error: str = ""
 
     @property
     def is_active(self) -> bool:
@@ -68,25 +71,34 @@ class SyncBridgeSession:
         """Currently connected or target WebSocket URL."""
         return self._current_url
 
+    @property
+    def last_error(self) -> str:
+        """Last error message recorded during session operations."""
+        return self._last_error
+
     def start(
         self,
         url: str = "ws://127.0.0.1:8765",
         auto_reconnect: bool = True,
-        max_reconnect_attempts: usize = 5,
+        max_reconnect_attempts: int = 5,
         model_db: Optional[Any] = None,
         atlas: Optional[Any] = None,
         unified_mesh: bool = True,
         enable_ao: bool = True,
         mesh_fluids: bool = True,
+        biome_resolver: Optional[Any] = None,
+        custom_aliases: Optional[Any] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
         """
         if not is_sync_available():
+            self._last_error = "Native libmtk_py core is not available."
             logger.error("Cannot start Live Sync: native libmtk_py core is not available.")
             return False
 
         self.stop()
+        self._last_error = ""
 
         self._model_db = model_db
         self._atlas = atlas
@@ -95,12 +107,33 @@ class SyncBridgeSession:
 
         try:
             # Construct MesherConfig with target Z-up coordinates for Blender
-            config = mtk_py.MesherConfig(
-                enable_ao=enable_ao,
-                mesh_fluids=mesh_fluids,
-                z_up_coordinates=True,
-                atlas=atlas,
-            )
+            try:
+                config = mtk_py.MesherConfig(
+                    enable_ao=enable_ao,
+                    mesh_fluids=mesh_fluids,
+                    z_up_coordinates=True,
+                    atlas=atlas,
+                    biome_resolver=biome_resolver,
+                    custom_aliases=custom_aliases,
+                )
+            except (TypeError, AttributeError):
+                # Backwards-compatible fallback for older wheel binaries
+                config = mtk_py.MesherConfig(
+                    enable_ao=enable_ao,
+                    mesh_fluids=mesh_fluids,
+                    z_up_coordinates=True,
+                    atlas=atlas,
+                )
+                if biome_resolver is not None and hasattr(config, "set_biome_resolver"):
+                    try:
+                        config.set_biome_resolver(biome_resolver)
+                    except Exception:
+                        pass
+                if custom_aliases is not None and hasattr(config, "set_custom_aliases"):
+                    try:
+                        config.set_custom_aliases(custom_aliases)
+                    except Exception:
+                        pass
 
             # Face culler instance
             culler = mtk_py.FaceCuller() if hasattr(mtk_py, "FaceCuller") else None
@@ -118,6 +151,7 @@ class SyncBridgeSession:
             logger.info(f"LiveSyncSession started connecting to {url} (unified_mesh={unified_mesh})")
             return True
         except Exception as e:
+            self._last_error = str(e)
             logger.error(f"Failed to start LiveSyncSession: {e}")
             self._session = None
             self._is_active = False
@@ -220,3 +254,15 @@ def load_atlas_from_cache(prefs=None) -> Optional[Any]:
     if not is_sync_available():
         return None
     return load_baked_atlas_from_cache(prefs)
+
+
+def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
+    """
+    Loads precompiled BiomeResolver from cache into memory.
+    Returns None if cache is missing or libmtk is unavailable.
+    """
+    if not is_sync_available():
+        return None
+    from .assets import load_biome_resolver_from_cache as _load
+    return _load(prefs)
+

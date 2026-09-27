@@ -263,6 +263,29 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
         return None
 
 
+def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
+    """
+    Loads precompiled BiomeResolver from cache into memory.
+    Returns None if cache does not exist or libmtk is unavailable.
+    """
+    if not HAS_LIBMTK:
+        return None
+
+    cache_dir = get_cache_dir(prefs)
+    candidates = [
+        cache_dir / "biome_mapping.json",
+        cache_dir / "atlas" / "biome_mapping.json",
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            try:
+                return libmtk_py.BiomeResolver.from_file(str(c.resolve()))
+            except Exception:
+                pass
+    return None
+
+
+
 _cached_cache_stats: Optional[Dict[str, Any]] = None
 _cached_cache_stats_path: Optional[str] = None
 
