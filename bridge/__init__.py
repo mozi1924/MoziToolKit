@@ -57,6 +57,22 @@ from .uv import (
     straighten_uv,
     uv_requires_atlas_tiling,
 )
+from .material import (
+    BakedAtlas,
+    BiomeResolver,
+    GridAtlasSpec,
+    MaterialResolver,
+    clean_material_name,
+    compute_biome_tint_attributes,
+    get_all_biomes,
+    get_biome_meta,
+    get_colormap_uv,
+    is_material_bridge_available,
+    load_baked_atlas_from_json,
+    load_biome_resolver_from_file,
+    remap_mesh_multi_uvs,
+    require_material_bridge,
+)
 
 __all__ = [
     "clear_cache",
@@ -96,5 +112,19 @@ __all__ = [
     "process_random_extrude",
     "generate_random_extrude_heights",
     "cull_mesh_faces",
+    "is_material_bridge_available",
+    "require_material_bridge",
+    "BiomeResolver",
+    "load_biome_resolver_from_file",
+    "get_biome_meta",
+    "get_colormap_uv",
+    "get_all_biomes",
+    "compute_biome_tint_attributes",
+    "MaterialResolver",
+    "clean_material_name",
+    "remap_mesh_multi_uvs",
+    "GridAtlasSpec",
+    "BakedAtlas",
+    "load_baked_atlas_from_json",
 ]
 

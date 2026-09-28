@@ -30,11 +30,21 @@ except (ImportError, ValueError):
         pass
 
 try:
-    import libmtk_py
-    HAS_LIBMTK = True
-except ImportError:
-    libmtk_py = None
-    HAS_LIBMTK = False
+    from ...bridge.material import (
+        is_material_bridge_available,
+        load_baked_atlas_from_json,
+        remap_mesh_multi_uvs,
+        BiomeResolver,
+    )
+    HAS_LIBMTK = is_material_bridge_available()
+except (ImportError, ValueError):
+    from bridge.material import (
+        is_material_bridge_available,
+        load_baked_atlas_from_json,
+        remap_mesh_multi_uvs,
+        BiomeResolver,
+    )
+    HAS_LIBMTK = is_material_bridge_available()
 
 try:
     from ...bridge.assets import get_cache_dir, precompile_stack
@@ -127,7 +137,7 @@ def replace_materials(
     if not HAS_BPY:
         raise RuntimeError("Blender (bpy) is required to execute replace_materials.")
     if not HAS_LIBMTK:
-        raise RuntimeError("libmtk_py (Rust backend) is not installed or available.")
+        raise RuntimeError("libmtk material bridge is not installed or available.")
 
     mesh = _get_mesh(mesh_or_obj)
     if mesh is None or len(mesh.polygons) == 0:
@@ -146,7 +156,7 @@ def replace_materials(
 
     atlas_json_str = atlas_mapping_path.read_text(encoding="utf-8")
     atlas_data = json.loads(atlas_json_str)
-    baked_atlas = libmtk_py.BakedAtlas.from_mapping_json(atlas_json_str)
+    baked_atlas = load_baked_atlas_from_json(atlas_json_str)
 
     # Discover Colormaps
     colormaps: Dict[str, Path] = {}
@@ -216,13 +226,13 @@ def replace_materials(
     alias_map, grid_spec = build_matching_context(unique_names, origin=origin)
 
     # 3. Fast Parallel Rust Remapping
-    remap_result = libmtk_py.MaterialResolver.remap_mesh_multi_uvs(
-        list(loop_uvs),
-        face_materials,
-        face_loop_ranges,
-        baked_atlas,
-        alias_map,
-        grid_spec,
+    remap_result = remap_mesh_multi_uvs(
+        loop_uvs=list(loop_uvs),
+        face_materials=face_materials,
+        face_loop_ranges=face_loop_ranges,
+        atlas=baked_atlas,
+        alias_map=alias_map,
+        grid_spec=grid_spec,
     )
 
     face_chunk_ids: List[int] = remap_result["face_chunk_ids"]
@@ -449,7 +459,7 @@ def restore_materials_from_provenance(
     if not HAS_BPY:
         raise RuntimeError("Blender (bpy) is required to execute restore_materials_from_provenance.")
     if not HAS_LIBMTK:
-        raise RuntimeError("libmtk_py (Rust backend) is not installed or available.")
+        raise RuntimeError("libmtk material bridge is not installed or available.")
 
     mesh = _get_mesh(mesh_or_obj)
     if mesh is None or len(mesh.polygons) == 0:

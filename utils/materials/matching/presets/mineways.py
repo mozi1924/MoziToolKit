@@ -130,18 +130,27 @@ def build_mineways_grid_spec(image_width: int = 1024, image_height: int = 1024):
     from .mineways_table import MINEWAYS_ATLAS_NAME_PATTERNS, MINEWAYS_ATLAS_SUFFIX_PATTERNS
 
     try:
-        from libmtk_py import GridAtlasSpec
-        return GridAtlasSpec(
-            swatch_size=18.0,
-            tile_size=16.0,
-            border=1.0,
-            image_width=image_width,
-            image_height=image_height,
-            atlas_name_patterns=list(MINEWAYS_ATLAS_NAME_PATTERNS),
-            atlas_suffix_patterns=list(MINEWAYS_ATLAS_SUFFIX_PATTERNS),
-            swatch_to_candidates=build_mineways_swatch_candidates_map(),
-        )
-    except ImportError:
+        from .....bridge.material import GridAtlasSpec
+    except (ImportError, ValueError):
+        try:
+            from bridge.material import GridAtlasSpec
+        except Exception:
+            GridAtlasSpec = None
+
+    if GridAtlasSpec is not None:
+        try:
+            return GridAtlasSpec(
+                swatch_size=18.0,
+                tile_size=16.0,
+                border=1.0,
+                image_width=image_width,
+                image_height=image_height,
+                atlas_name_patterns=list(MINEWAYS_ATLAS_NAME_PATTERNS),
+                atlas_suffix_patterns=list(MINEWAYS_ATLAS_SUFFIX_PATTERNS),
+                swatch_to_candidates=build_mineways_swatch_candidates_map(),
+            )
+        except Exception:
+            pass
         return {
             "swatch_size": 18.0,
             "tile_size": 16.0,
