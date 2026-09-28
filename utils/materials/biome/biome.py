@@ -11,11 +11,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
-    import libmtk_py
-    HAS_LIBMTK = True
-except ImportError:
-    libmtk_py = None
-    HAS_LIBMTK = False
+    from ....bridge.material import (
+        HAS_LIBMTK,
+        BiomeResolver,
+        get_biome_meta,
+        get_colormap_uv,
+        get_all_biomes,
+        compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
+    )
+except (ImportError, ValueError):
+    from bridge.material import (
+        HAS_LIBMTK,
+        BiomeResolver,
+        get_biome_meta,
+        get_colormap_uv,
+        get_all_biomes,
+        compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
+    )
 
 from ..constants import (
     ATTR_BIOME_TINT_DATA,
@@ -30,22 +42,6 @@ TINT_TYPE_FOLIAGE = 2
 TINT_TYPE_WATER = 3
 TINT_TYPE_HARDCODED = 4
 TINT_TYPE_DRY_FOLIAGE = 5
-
-# BiomeResolver class directly backed by Rust
-if HAS_LIBMTK and hasattr(libmtk_py, "BiomeResolver"):
-    BiomeResolver = libmtk_py.BiomeResolver
-else:
-    class BiomeResolver:
-        """Fallback placeholder when libmtk is not loaded."""
-        def __init__(self):
-            pass
-        @classmethod
-        def from_file(cls, path: str):
-            return cls()
-        def get_tint_info(self, texture_name: str, block_name: Optional[str] = None, tint_index: Optional[int] = None) -> dict:
-            return {"tint_type": 0, "tint_category": "none", "tint_weight": 0.0, "base_tint_weight": 0.0, "overlay_tint_weight": 0.0}
-        def get_overlay_texture(self, texture_stem: str) -> Optional[str]:
-            return None
 
 
 def get_or_load_biome_resolver(
@@ -67,8 +63,14 @@ def get_or_load_biome_resolver(
         target_cache = Path(cache_dir)
     else:
         try:
-            from bridge.assets import get_cache_dir
+            from ....bridge.assets import get_cache_dir
             target_cache = get_cache_dir(prefs)
+        except (ImportError, ValueError):
+            try:
+                from bridge.assets import get_cache_dir
+                target_cache = get_cache_dir(prefs)
+            except Exception:
+                target_cache = None
         except Exception:
             target_cache = None
 
@@ -90,8 +92,14 @@ def get_or_load_biome_resolver(
     effective_stack = pack_stack
     if effective_stack is None:
         try:
-            from bridge.assets import get_configured_pack_stack
+            from ....bridge.assets import get_configured_pack_stack
             effective_stack = get_configured_pack_stack(prefs)
+        except (ImportError, ValueError):
+            try:
+                from bridge.assets import get_configured_pack_stack
+                effective_stack = get_configured_pack_stack(prefs)
+            except Exception:
+                effective_stack = None
         except Exception:
             effective_stack = None
 
@@ -140,16 +148,13 @@ def get_biome_colors(
             "has_custom_dry_foliage": has_custom_dry_foliage,
         }
 
-    meta = libmtk_py.get_biome_meta(biome_name)
+    meta = get_biome_meta(biome_name)
     if biome_name.upper() == "CUSTOM":
         temp = custom_temp if custom_temp is not None else meta.get("temperature", 0.8)
         hum = custom_humidity if custom_humidity is not None else meta.get("humidity", 0.4)
         meta["temperature"] = temp
         meta["humidity"] = hum
-        if hasattr(libmtk_py, "get_colormap_uv"):
-            meta["colormap_uv"] = libmtk_py.get_colormap_uv(temp, hum)
-        else:
-            meta["colormap_uv"] = [1.0 - max(0.0, min(1.0, temp)), max(0.0, min(1.0, hum)) * max(0.0, min(1.0, temp))]
+        meta["colormap_uv"] = get_colormap_uv(temp, hum)
 
         if custom_grass is not None:
             meta["grass_linear"] = list(custom_grass)
@@ -185,41 +190,20 @@ def compute_biome_tint_attributes(
     Compute packed tint weights, colors, and colormap UV coordinates for mesh faces using Rust core.
     Returns (packed_tint_data, tint_colors, colormap_uvs).
     """
-    if not HAS_LIBMTK:
-        n = len(face_texture_keys)
-        temp = custom_temp if custom_temp is not None else 0.8
-        hum = custom_humidity if custom_humidity is not None else 0.4
-        u = 1.0 - max(0.0, min(1.0, temp))
-        v = max(0.0, min(1.0, hum)) * max(0.0, min(1.0, temp))
-        return (
-            [[0.0, 0.0, 0.0, 0.0]] * n,
-            [[1.0, 1.0, 1.0, 1.0]] * n,
-            [[u, v, 0.0]] * n,
-        )
-
-    if isinstance(biome_preset, list):
-        res = libmtk_py.compute_biome_tint_attributes(
-            face_texture_keys,
-            "PLAINS",
-            multi_biomes=biome_preset,
-            resolver=resolver,
-        )
-    else:
-        res = libmtk_py.compute_biome_tint_attributes(
-            face_texture_keys,
-            str(biome_preset),
-            multi_biomes=None,
-            resolver=resolver,
-            custom_temp=custom_temp,
-            custom_humidity=custom_humidity,
-            custom_grass=custom_grass,
-            custom_foliage=custom_foliage,
-            custom_dry_foliage=custom_dry_foliage,
-            custom_water=custom_water,
-            has_custom_grass=has_custom_grass,
-            has_custom_foliage=has_custom_foliage,
-            has_custom_dry_foliage=has_custom_dry_foliage,
-        )
+    res = bridge_compute_biome_tint_attributes(
+        face_texture_keys=face_texture_keys,
+        biome_preset=biome_preset,
+        resolver=resolver,
+        custom_temp=custom_temp,
+        custom_humidity=custom_humidity,
+        custom_grass=custom_grass,
+        custom_foliage=custom_foliage,
+        custom_dry_foliage=custom_dry_foliage,
+        custom_water=custom_water,
+        has_custom_grass=has_custom_grass,
+        has_custom_foliage=has_custom_foliage,
+        has_custom_dry_foliage=has_custom_dry_foliage,
+    )
 
     return res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"]
 
@@ -292,7 +276,7 @@ def _get_biome_enum_items():
     items = [("CUSTOM", "Custom", "Custom Biome (Temperature / Humidity & Color Overrides)")]
     if not HAS_LIBMTK:
         return items + [("PLAINS", "Plains", "Plains Biome")]
-    biomes = libmtk_py.get_all_biomes()
+    biomes = get_all_biomes()
     return items + [(b["id"].upper(), b["name"], f"{b['name']} Biome ({b['temperature']} / {b['humidity']})") for b in biomes]
 
 BIOME_ENUM_ITEMS = _get_biome_enum_items()
