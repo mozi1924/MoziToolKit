@@ -24,13 +24,21 @@ if str(libmtk_release_path) not in sys.path:
 
 
 try:
+    from unittest.mock import MagicMock
     import bpy
     import bmesh
     from mathutils import Vector
+    HAS_REAL_BPY = (
+        bpy is not None
+        and not isinstance(bpy, MagicMock)
+        and hasattr(bpy, "data")
+        and hasattr(bpy.data, "meshes")
+    )
 except ImportError:
     bpy = None
     bmesh = None
     Vector = None
+    HAS_REAL_BPY = False
 
 from bridge.uv import (
     repair_quad_fluid_uv,
@@ -156,7 +164,7 @@ class TestFluidUVBridge(unittest.TestCase):
         self.assertEqual(len(out_uvs), len(uvs_flat))
 
 
-@unittest.skipIf(bpy is None, "Blender environment not available")
+@unittest.skipIf(not HAS_REAL_BPY, "Blender environment not available")
 class TestFluidUVBlenderBMesh(unittest.TestCase):
     def setUp(self):
         self.mesh = bpy.data.meshes.new("TestFluidBMesh")
