@@ -192,6 +192,8 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
 
     baker = libmtk_py.ModelBaker()
     model_db = baker.bake_all(stack)
+    if hasattr(model_db, "deduplicate_all"):
+        model_db.deduplicate_all()
     (models_dir / "models.bin").write_bytes(model_db.to_bincode_bytes())
 
     get_cache_stats(prefs, force_refresh=True)
@@ -238,7 +240,15 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Op
 
     try:
         raw_bytes = models_bin.read_bytes()
-        return libmtk_py.BakedModelDatabase.from_bincode_bytes(raw_bytes)
+        model_db = libmtk_py.BakedModelDatabase.from_bincode_bytes(raw_bytes)
+        if hasattr(model_db, "deduplicate_all"):
+            culled = model_db.deduplicate_all()
+            if culled > 0:
+                try:
+                    models_bin.write_bytes(model_db.to_bincode_bytes())
+                except Exception:
+                    pass
+        return model_db
     except Exception:
         return None
 
