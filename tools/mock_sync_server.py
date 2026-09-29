@@ -587,7 +587,10 @@ class MockLiveSyncServer:
             asyncio.create_task(self._delta_worker())
 
         async with server:
-            await server.serve_forever()
+            try:
+                await server.serve_forever()
+            except asyncio.CancelledError:
+                pass
 
     async def _handle_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Performs WebSocket HTTP upgrade handshake then starts packet loop."""
