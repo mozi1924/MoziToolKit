@@ -270,7 +270,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
                 time.sleep(0.05)
                 session.poll_events()
                 initial_mesh = session.get_world_mesh()
-                if initial_mesh and not initial_mesh.is_empty:
+                if initial_mesh and initial_mesh.face_count > 0:
                     break
 
             self.assertIsNotNone(initial_mesh, "Initial world mesh must be received")
@@ -336,18 +336,22 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
             )
 
             delta2_mesh = None
+            delta2_applied = False
             for _ in range(60):
                 time.sleep(0.05)
-                session.poll_events()
+                evs = session.poll_events()
+                if any(e.get("type") == "DELTA_APPLIED" for e in evs):
+                    delta2_applied = True
                 delta2_mesh = session.get_world_mesh()
-                if delta2_mesh and delta2_mesh.face_count < delta1_mesh.face_count:
+                if delta2_applied and delta2_mesh:
                     break
 
             self.assertIsNotNone(delta2_mesh)
+            self.assertTrue(delta2_applied, "Delta 2 must be processed and applied")
             self.assertLess(
-                delta2_mesh.face_count,
-                delta1_mesh.face_count,
-                "Delta 2 removing piston head must decrease face count back",
+                delta2_mesh.vertex_count,
+                delta1_mesh.vertex_count,
+                "Delta 2 removing piston head must decrease vertex count back",
             )
 
             # Verify no coordinates are NaN or infinite

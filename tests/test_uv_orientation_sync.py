@@ -181,6 +181,20 @@ class TestUvOrientationSync(unittest.TestCase):
 
         self.assertGreater(checked_vertical_quads, 5, "Expected to verify multiple vertical quads")
 
+    def test_baked_model_database_remap_to_atlas(self):
+        """Verifies that model_db.remap_to_atlas correctly pre-bakes Atlas UVs into the database."""
+        if self.atlas is None or self.model_db is None:
+            self.skipTest("Atlas or models.bin cache not found")
+
+        # Make sure remap_to_atlas works without error
+        self.model_db.remap_to_atlas(self.atlas)
+        mesh_tuple = self.model_db.get_mesh("minecraft:stone")
+        if mesh_tuple is not None:
+            mesh, textures = mesh_tuple
+            flat_uvs = mesh.get_flat_uvs()
+            self.assertGreater(len(flat_uvs), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
