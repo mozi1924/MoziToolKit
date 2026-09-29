@@ -239,7 +239,7 @@ def _deferred_extrude_repair_tick():
         return _SMART_EXTRUDE_POLL_INTERVAL
 
     context = bpy.context
-    if not context or context.mode != "EDIT_MESH" or _is_uv_editing_active(context):
+    if not context or getattr(context, "mode", None) != "EDIT_MESH" or _is_uv_editing_active(context):
         _pending_repairs.clear()
         _smart_extrude_sessions.clear()
         _idle_ticks = 0

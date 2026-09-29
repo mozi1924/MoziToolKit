@@ -8,7 +8,10 @@ Blender Mesh (bpy.types.Mesh) and libmtk (Rust PyMeshData).
 from __future__ import annotations
 
 import array
+import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+logger = logging.getLogger("MoziToolKit.Bridge.Mesh")
 
 try:
     import numpy as np
