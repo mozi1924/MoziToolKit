@@ -39,7 +39,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 # ---------------------------------------------------------------------------
 
 PROTOCOL_MAGIC = b"MC"
-PROTOCOL_VERSION = 0x01
+PROTOCOL_VERSION = 0x02
+MIN_SUPPORTED_PROTOCOL_VERSION = 0x01
+MAX_SUPPORTED_PROTOCOL_VERSION = 0x02
 
 # S -> C Packet IDs
 PKT_SELECTION_INFO = 0x01
@@ -246,7 +248,7 @@ def decode_client_packet(data: bytes) -> Optional[Dict[str, Any]]:
     """Decodes incoming client binary frame into an event dict."""
     if len(data) < 4:
         return None
-    if data[0:2] != PROTOCOL_MAGIC or data[2] != PROTOCOL_VERSION:
+    if data[0:2] != PROTOCOL_MAGIC or not (MIN_SUPPORTED_PROTOCOL_VERSION <= data[2] <= MAX_SUPPORTED_PROTOCOL_VERSION):
         return None
 
     pkt_type = data[3]

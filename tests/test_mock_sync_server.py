@@ -49,19 +49,29 @@ class TestMockSyncServer(unittest.TestCase):
             self.assertEqual(len(grid.indices), 16 * 16 * 16)
 
     def test_decode_client_packet(self):
-        # 0x80 Full Sync
+        # 0x80 Full Sync (v2)
         pkt_full = PROTOCOL_MAGIC + bytes([PROTOCOL_VERSION, 0x80])
         decoded = decode_client_packet(pkt_full)
         self.assertIsNotNone(decoded)
         self.assertEqual(decoded["type"], "REQ_FULL_SYNC")
 
-        # 0x82 Sync Config
+        # 0x80 Full Sync (v1 backward compatibility)
+        pkt_full_v1 = PROTOCOL_MAGIC + bytes([0x01, 0x80])
+        decoded_v1 = decode_client_packet(pkt_full_v1)
+        self.assertIsNotNone(decoded_v1)
+        self.assertEqual(decoded_v1["type"], "REQ_FULL_SYNC")
+
+        # 0x82 Sync Config (v2)
         pkt_cfg = PROTOCOL_MAGIC + bytes([PROTOCOL_VERSION, 0x82, 0x01, 0x3C, 0x01])
         decoded_cfg = decode_client_packet(pkt_cfg)
         self.assertIsNotNone(decoded_cfg)
         self.assertEqual(decoded_cfg["throttle_mode"], 1)
         self.assertEqual(decoded_cfg["target_fps"], 60)
         self.assertTrue(decoded_cfg["is_active"])
+
+        # Unsupported version (v3)
+        pkt_unsupported = PROTOCOL_MAGIC + bytes([0x03, 0x80])
+        self.assertIsNone(decode_client_packet(pkt_unsupported))
 
 
 if __name__ == "__main__":
