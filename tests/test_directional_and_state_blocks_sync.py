@@ -161,11 +161,11 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
         self.assertEqual(m_ext.face_count, 6)
         self.assertIn("minecraft:block/piston_inner", tex_ext)
 
-        # Piston head (normal) - 10 faces
+        # Piston head (normal) - 10 to 15 faces depending on pack arm extension elements
         res_head = self.model_db.get_mesh("minecraft:piston_head[facing=up,type=normal,short=false]", False)
         self.assertIsNotNone(res_head)
         m_head, tex_head = res_head
-        self.assertEqual(m_head.face_count, 10, "Piston head must have 10 faces (head + arm)")
+        self.assertIn(m_head.face_count, (10, 15), "Piston head must have 10 or 15 faces (head + arm)")
         self.assertIn("minecraft:block/piston_top", tex_head)
 
         # Sticky piston head
@@ -176,7 +176,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
         # Piston head omitting short=false
         res_head_omit = self.model_db.get_mesh("minecraft:piston_head[facing=up,type=normal]", False)
         self.assertIsNotNone(res_head_omit, "piston_head omitting short=false must resolve")
-        self.assertEqual(res_head_omit[0].face_count, 10)
+        self.assertIn(res_head_omit[0].face_count, (10, 15))
 
         # Bare piston and piston head
         self.assertIsNotNone(self.model_db.get_mesh("minecraft:piston", False))

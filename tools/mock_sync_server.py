@@ -471,6 +471,84 @@ def generate_terrain(
                 grid.set_block(x, h - 1, z, "minecraft:dirt")
                 grid.set_block(x, h, z, "minecraft:grass_block[snowy=false]")
 
+    elif preset in {"issues", "regression"}:
+        # Showcase arena for directional and complex models
+        for x in range(sx):
+            for z in range(sz):
+                grid.set_block(x, 0, z, "minecraft:bedrock")
+                grid.set_block(x, 1, z, "minecraft:polished_andesite")
+
+        # Row 1 (z=3): Chest orientations (North, South, East, West, single, left, right, trapped, ender)
+        grid.set_block(2, 2, 3, "minecraft:chest[facing=north,type=single,waterlogged=false]")
+        grid.set_block(4, 2, 3, "minecraft:chest[facing=south,type=single,waterlogged=false]")
+        grid.set_block(6, 2, 3, "minecraft:chest[facing=east,type=single,waterlogged=false]")
+        grid.set_block(8, 2, 3, "minecraft:chest[facing=west,type=single,waterlogged=false]")
+        grid.set_block(10, 2, 3, "minecraft:chest[facing=north,type=left,waterlogged=false]")
+        grid.set_block(11, 2, 3, "minecraft:chest[facing=north,type=right,waterlogged=false]")
+        grid.set_block(13, 2, 3, "minecraft:trapped_chest[facing=south,type=single,waterlogged=false]")
+        grid.set_block(15, 2, 3, "minecraft:ender_chest[facing=north,waterlogged=false]")
+
+        # Row 2 (z=6): Chiseled bookshelves with different occupied states
+        grid.set_block(2, 2, 6, "minecraft:chiseled_bookshelf[facing=north,slot_0_occupied=false,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]")
+        grid.set_block(4, 2, 6, "minecraft:chiseled_bookshelf[facing=north,slot_0_occupied=true,slot_1_occupied=false,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]")
+        grid.set_block(6, 2, 6, "minecraft:chiseled_bookshelf[facing=north,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=false,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]")
+        grid.set_block(8, 2, 6, "minecraft:chiseled_bookshelf[facing=north,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=false,slot_4_occupied=false,slot_5_occupied=false]")
+        grid.set_block(10, 2, 6, "minecraft:chiseled_bookshelf[facing=south,slot_0_occupied=true,slot_1_occupied=true,slot_2_occupied=true,slot_3_occupied=true,slot_4_occupied=true,slot_5_occupied=true]")
+        grid.set_block(12, 2, 6, "minecraft:chiseled_bookshelf[facing=east,slot_0_occupied=false,slot_1_occupied=true,slot_2_occupied=false,slot_3_occupied=true,slot_4_occupied=false,slot_5_occupied=true]")
+
+        # Row 3 (z=9): Skulls and Heads (Floor with various rotations)
+        grid.set_block(2, 2, 9, "minecraft:player_head[rotation=0]")
+        grid.set_block(4, 2, 9, "minecraft:player_head[rotation=4]")
+        grid.set_block(6, 2, 9, "minecraft:player_head[rotation=8]")
+        grid.set_block(8, 2, 9, "minecraft:player_head[rotation=12]")
+        grid.set_block(10, 2, 9, "minecraft:skeleton_skull[rotation=0]")
+        grid.set_block(12, 2, 9, "minecraft:wither_skeleton_skull[rotation=4]")
+        grid.set_block(14, 2, 9, "minecraft:zombie_head[rotation=8]")
+        grid.set_block(16, 2, 9, "minecraft:creeper_head[rotation=12]")
+        grid.set_block(18, 2, 9, "minecraft:piglin_head[rotation=0]")
+        grid.set_block(20, 2, 9, "minecraft:piglin_head[rotation=8]")
+        grid.set_block(22, 2, 9, "minecraft:dragon_head[rotation=0]")
+        grid.set_block(24, 2, 9, "minecraft:dragon_head[rotation=8]")
+
+        # Row 4 (z=12): Wall Skulls and Heads (against a wall at z=13)
+        for x in range(2, 26):
+            grid.set_block(x, 2, 13, "minecraft:stone_bricks")
+        grid.set_block(2, 2, 12, "minecraft:player_wall_head[facing=north]")
+        grid.set_block(4, 2, 12, "minecraft:skeleton_wall_skull[facing=north]")
+        grid.set_block(6, 2, 12, "minecraft:wither_skeleton_wall_skull[facing=north]")
+        grid.set_block(8, 2, 12, "minecraft:zombie_wall_head[facing=north]")
+        grid.set_block(10, 2, 12, "minecraft:creeper_wall_head[facing=north]")
+        grid.set_block(12, 2, 12, "minecraft:piglin_wall_head[facing=north]")
+        grid.set_block(14, 2, 12, "minecraft:dragon_wall_head[facing=north]")
+
+        # Row 5 (z=16): Pink Petals and Wildflowers (amounts 1, 2, 3, 4)
+        grid.set_block(2, 2, 16, "minecraft:pink_petals[facing=north,flower_amount=1]")
+        grid.set_block(4, 2, 16, "minecraft:pink_petals[facing=north,flower_amount=2]")
+        grid.set_block(6, 2, 16, "minecraft:pink_petals[facing=north,flower_amount=3]")
+        grid.set_block(8, 2, 16, "minecraft:pink_petals[facing=north,flower_amount=4]")
+        grid.set_block(10, 2, 16, "minecraft:pink_petals[facing=east,flower_amount=1]")
+        grid.set_block(12, 2, 16, "minecraft:pink_petals[facing=south,flower_amount=2]")
+        grid.set_block(14, 2, 16, "minecraft:pink_petals[facing=west,flower_amount=3]")
+
+        # Row 6 (z=19): Chains (axis=y, axis=x, axis=z)
+        grid.set_block(2, 2, 19, "minecraft:iron_chain[axis=y,waterlogged=false]")
+        grid.set_block(4, 2, 19, "minecraft:iron_chain[axis=x,waterlogged=false]")
+        grid.set_block(6, 2, 19, "minecraft:iron_chain[axis=z,waterlogged=false]")
+        grid.set_block(8, 2, 19, "minecraft:chain[axis=y,waterlogged=false]")
+        grid.set_block(10, 2, 19, "minecraft:chain[axis=x,waterlogged=false]")
+        grid.set_block(12, 2, 19, "minecraft:chain[axis=z,waterlogged=false]")
+        grid.set_block(14, 2, 19, "minecraft:copper_chain[axis=y,waterlogged=false]")
+
+        # Row 7 (z=22): Bells and Beds
+        grid.set_block(2, 2, 22, "minecraft:bell[attachment=floor,facing=north]")
+        grid.set_block(4, 2, 22, "minecraft:bell[attachment=ceiling,facing=south]")
+        grid.set_block(6, 2, 22, "minecraft:bell[attachment=single_wall,facing=east]")
+        grid.set_block(8, 2, 22, "minecraft:bell[attachment=double_wall,facing=west]")
+        grid.set_block(10, 2, 22, "minecraft:red_bed[facing=north,occupied=false,part=foot]")
+        grid.set_block(10, 2, 23, "minecraft:red_bed[facing=north,occupied=false,part=head]")
+        grid.set_block(12, 2, 22, "minecraft:blue_bed[facing=east,occupied=false,part=foot]")
+        grid.set_block(13, 2, 22, "minecraft:blue_bed[facing=east,occupied=false,part=head]")
+
     return grid
 
 
@@ -893,7 +971,7 @@ def parse_args():
     parser.add_argument("--port", type=int, default=8765, help="WebSocket bind port (default: 8765)")
     parser.add_argument(
         "--preset",
-        choices=["flat", "hills", "complex", "fluids", "benchmark"],
+        choices=["flat", "hills", "complex", "fluids", "benchmark", "issues", "regression"],
         default="complex",
         help="Terrain & block test preset (default: complex)",
     )

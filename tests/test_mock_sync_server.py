@@ -43,7 +43,7 @@ class TestMockSyncServer(unittest.TestCase):
         self.assertEqual(dim, "minecraft:overworld")
 
     def test_procedural_generation_presets(self):
-        for preset in ["flat", "hills", "complex", "fluids", "benchmark"]:
+        for preset in ["flat", "hills", "complex", "fluids", "benchmark", "issues", "regression"]:
             grid = generate_terrain(preset, (0, 64, 0), (16, 16, 16))
             self.assertGreater(len(grid.palette), 1)
             self.assertEqual(len(grid.indices), 16 * 16 * 16)
