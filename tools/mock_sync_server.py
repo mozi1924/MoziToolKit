@@ -571,6 +571,7 @@ class MockLiveSyncServer:
     async def start(self) -> None:
         """Starts TCP listener."""
         server = await asyncio.start_server(self._handle_connection, self.host, self.port)
+        self._server_obj = server
         addr = f"ws://{self.host}:{self.port}"
         print("=" * 65)
         print(f"🚀 [MockSyncServer] Live Sync WebSocket Server Started at: {addr}")
@@ -832,6 +833,49 @@ class MockLiveSyncServer:
                 changes.append(((rx, ry, rz), new_state))
 
             await self.broadcast_delta(changes)
+
+    async def broadcast_full_snapshot(self, preset: Optional[str] = None) -> None:
+        """Regenerates terrain (if preset provided) and broadcasts FullSnapshot to all connected clients."""
+        if preset is not None:
+            self.preset = preset
+            self.grid = generate_terrain(self.preset, self.origin, self.size)
+        self.seq_id += 1
+        for client in list(self.clients):
+            try:
+                await self._send_full_snapshot(client)
+            except Exception:
+                pass
+
+    async def broadcast_selection_resize(
+        self,
+        new_origin: Tuple[int, int, int],
+        new_size: Tuple[int, int, int],
+        preset: Optional[str] = None,
+    ) -> None:
+        """Resizes the selection bounding box, broadcasts SelectionInfo, regenerates terrain, and broadcasts FullSnapshot."""
+        self.origin = new_origin
+        self.size = new_size
+        if preset is not None:
+            self.preset = preset
+        self.grid = generate_terrain(self.preset, self.origin, self.size)
+        self.seq_id += 1
+        for client in list(self.clients):
+            try:
+                await self._send_initial_packets(client)
+                await self._send_full_snapshot(client)
+            except Exception:
+                pass
+
+    def stop(self) -> None:
+        """Stops the mock server and disconnects clients."""
+        self.is_running = False
+        if hasattr(self, "_server_obj") and self._server_obj:
+            self._server_obj.close()
+        for client in list(self.clients):
+            try:
+                client.writer.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
