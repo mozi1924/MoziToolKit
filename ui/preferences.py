@@ -294,6 +294,15 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         update=on_material_setting_changed,
     )
 
+    thread_count: IntProperty(
+        name="Worker Threads",
+        description="Number of worker threads for parallel asset precompilation and mesh operations (0 for auto / all logical CPU cores)",
+        default=0,
+        min=0,
+        max=128,
+        update=on_material_setting_changed,
+    )
+
     context_menu_tab: EnumProperty(
         name="Context Menu View",
         description="Select view context to configure right-click menu",
@@ -617,6 +626,25 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             else:
                 tag_row = action_col.row(align=True)
                 tag_row.label(text=tr("Unavailable"), icon="CANCEL")
+
+        layout.separator()
+
+        # Performance & Multi-Threading
+        import os
+        perf_box = layout.box()
+        perf_header = perf_box.row(align=True)
+        perf_header.label(text=tr("Performance & Multi-Threading:"), icon="MOD_DATA_TRANSFER")
+        cpu_cnt = os.cpu_count() or 1
+        perf_header.label(text=f"{tr('Detected')}: {cpu_cnt} {tr('cores')}", icon="INFO")
+
+        perf_col = perf_box.column(align=True)
+        perf_col.prop(self, "thread_count", text=tr("Worker Threads"))
+        perf_col.scale_y = 0.85
+        if self.thread_count == 0:
+            perf_col.label(text=f"{tr('Active mode')}: Auto ({cpu_cnt} threads)")
+        else:
+            perf_col.label(text=f"{tr('Active mode')}: Fixed ({self.thread_count} threads)")
+        perf_col.label(text=tr("Controls Rayon thread pool concurrency for asset precompilation, atlas encoding, and mesh construction."))
 
         layout.separator()
 

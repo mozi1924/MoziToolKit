@@ -77,21 +77,50 @@ class MOZI_OT_cull_mesh_faces(bpy.types.Operator):
         total_out = 0
 
         try:
-            for obj in target_objs:
-                mesh_data = extract_mesh_data(obj)
-                culled_mesh, stats = cull_mesh_faces(
-                    mesh_data,
-                    tolerance=self.tolerance,
-                    cull_coplanar_opposite=self.cull_coplanar_opposite,
-                    cull_duplicates=self.cull_duplicates,
-                )
+            if len(target_objs) > 1:
+                import concurrent.futures
+                from ..utils.system import get_prefs
+                prefs = get_prefs(context)
+                threads = getattr(prefs, "thread_count", 0) or None
 
-                culled_count = stats.get("culled_faces", 0)
-                if culled_count > 0:
-                    inject_mesh_data(culled_mesh, obj, update_topology=True)
-                total_in += stats.get("initial_faces", 0)
-                total_culled += culled_count
-                total_out += stats.get("remaining_faces", 0)
+                extracted = [(obj, extract_mesh_data(obj)) for obj in target_objs]
+
+                def _cull_task(item):
+                    obj, m_data = item
+                    c_mesh, stats = cull_mesh_faces(
+                        m_data,
+                        tolerance=self.tolerance,
+                        cull_coplanar_opposite=self.cull_coplanar_opposite,
+                        cull_duplicates=self.cull_duplicates,
+                    )
+                    return obj, c_mesh, stats
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+                    results = list(executor.map(_cull_task, extracted))
+
+                for obj, culled_mesh, stats in results:
+                    culled_count = stats.get("culled_faces", 0)
+                    if culled_count > 0:
+                        inject_mesh_data(culled_mesh, obj, update_topology=True)
+                    total_in += stats.get("initial_faces", 0)
+                    total_culled += culled_count
+                    total_out += stats.get("remaining_faces", 0)
+            else:
+                for obj in target_objs:
+                    mesh_data = extract_mesh_data(obj)
+                    culled_mesh, stats = cull_mesh_faces(
+                        mesh_data,
+                        tolerance=self.tolerance,
+                        cull_coplanar_opposite=self.cull_coplanar_opposite,
+                        cull_duplicates=self.cull_duplicates,
+                    )
+
+                    culled_count = stats.get("culled_faces", 0)
+                    if culled_count > 0:
+                        inject_mesh_data(culled_mesh, obj, update_topology=True)
+                    total_in += stats.get("initial_faces", 0)
+                    total_culled += culled_count
+                    total_out += stats.get("remaining_faces", 0)
         finally:
             if saved_mode != "OBJECT":
                 try:
