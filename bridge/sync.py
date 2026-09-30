@@ -88,6 +88,7 @@ class SyncBridgeSession:
         mesh_fluids: bool = True,
         biome_resolver: Optional[Any] = None,
         custom_aliases: Optional[Any] = None,
+        num_threads: Optional[int] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -105,6 +106,14 @@ class SyncBridgeSession:
         self._unified_mesh = unified_mesh
         self._current_url = url
 
+        if num_threads is None:
+            try:
+                from ..utils.system import get_prefs
+                prefs = get_prefs()
+                num_threads = getattr(prefs, "thread_count", 0) or None
+            except Exception:
+                num_threads = None
+
         try:
             # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
             try:
@@ -114,6 +123,7 @@ class SyncBridgeSession:
                     z_up_coordinates=True,
                     origin_centered=True,
                     weld_vertices=True,
+                    num_threads=num_threads,
                     atlas=atlas,
                     biome_resolver=biome_resolver,
                     custom_aliases=custom_aliases,
@@ -125,6 +135,8 @@ class SyncBridgeSession:
                         enable_ao=enable_ao,
                         mesh_fluids=mesh_fluids,
                         z_up_coordinates=True,
+                        origin_centered=True,
+                        weld_vertices=True,
                         atlas=atlas,
                         biome_resolver=biome_resolver,
                         custom_aliases=custom_aliases,

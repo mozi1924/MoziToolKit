@@ -119,7 +119,7 @@ def get_configured_pack_stack(prefs=None) -> Optional[Any]:
     return stack
 
 
-def precompile_stack(prefs=None) -> Dict[str, Any]:
+def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str, Any]:
     """
     Executes end-to-end asset precompilation via libmtk:
     1. Compiles blocks Atlas and saves all chunk PNGs + atlas_mapping.json
@@ -135,21 +135,40 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
     if stack is None or stack.get_pack_count() == 0:
         raise ValueError("No valid enabled resource packs or JARs found in the active stack.")
 
+    if num_threads is None and prefs is not None:
+        num_threads = getattr(prefs, "thread_count", 0)
+    if num_threads == 0:
+        num_threads = None
+
     start_time = time.time()
     base_cache = get_cache_dir(prefs)
 
-    # Use unified high-performance Rust engine
+    # Use unified high-performance Rust engine with thread pool control
     if hasattr(libmtk_py, "precompile_all_assets"):
-        res = libmtk_py.precompile_all_assets(
-            stack,
-            str(base_cache.resolve()),
-            atlas_category="blocks",
-            max_atlas_width=4096,
-            max_atlas_height=4096,
-            compile_atlas=True,
-            compile_standalone=True,
-            compile_models=True,
-        )
+        try:
+            res = libmtk_py.precompile_all_assets(
+                stack,
+                str(base_cache.resolve()),
+                atlas_category="blocks",
+                max_atlas_width=4096,
+                max_atlas_height=4096,
+                compile_atlas=True,
+                compile_standalone=True,
+                compile_models=True,
+                num_threads=num_threads,
+            )
+        except TypeError:
+            # Fallback for older bindings without num_threads keyword
+            res = libmtk_py.precompile_all_assets(
+                stack,
+                str(base_cache.resolve()),
+                atlas_category="blocks",
+                max_atlas_width=4096,
+                max_atlas_height=4096,
+                compile_atlas=True,
+                compile_standalone=True,
+                compile_models=True,
+            )
         get_cache_stats(prefs, force_refresh=True)
         duration = time.time() - start_time
         return {
@@ -163,6 +182,36 @@ def precompile_stack(prefs=None) -> Dict[str, Any]:
             "fingerprint": res.fingerprint,
             "cache_dir": res.cache_dir,
         }
+
+
+def precompile_stack_async(
+    prefs=None,
+    num_threads: Optional[int] = None,
+    on_complete=None,
+    on_error=None,
+):
+    """
+    Executes precompile_stack asynchronously in a background worker thread.
+    Takes advantage of libmtk_py releasing the Python GIL to prevent freezing Blender UI.
+    """
+    import concurrent.futures
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+    def worker():
+        try:
+            res = precompile_stack(prefs, num_threads=num_threads)
+            if on_complete:
+                on_complete(res)
+            return res
+        except Exception as e:
+            if on_error:
+                on_error(e)
+            raise
+
+    future = executor.submit(worker)
+    executor.shutdown(wait=False)
+    return future
 
     # Fallback to individual builders if unified binding is not available
     atlas_dir = base_cache / "atlas"
@@ -276,7 +325,8 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
 def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
     """
     Loads precompiled BiomeResolver from cache into memory.
-    Returns None if cache does not exist or libmtk is unavailable.
+    Falls back to a default Vanilla 1.21+ BiomeResolver if cache file is missing.
+    Returns None only if libmtk is unavailable.
     """
     if not HAS_LIBMTK:
         return None
@@ -292,6 +342,12 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
                 return libmtk_py.BiomeResolver.from_file(str(c.resolve()))
             except Exception:
                 pass
+
+    if hasattr(libmtk_py, "BiomeResolver"):
+        try:
+            return libmtk_py.BiomeResolver()
+        except Exception:
+            pass
     return None
 
 

@@ -11,6 +11,7 @@ from .assets import (
     load_baked_atlas_from_cache,
     open_cache_folder,
     precompile_stack,
+    precompile_stack_async,
 )
 from .mesh import (
     BLENDER_TO_MTK_DOMAIN,

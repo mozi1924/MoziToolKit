@@ -311,6 +311,7 @@ def inject_mesh_data(
     update_topology: bool = False,
     update_normals: bool = False,
     inject_attributes: bool = True,
+    shade_smooth: bool = False,
 ) -> None:
     """
     Injects processed geometry and custom attributes from PyMeshData back into a Blender Mesh.
@@ -324,6 +325,7 @@ def inject_mesh_data(
         update_topology: If True, resets and rebuilds topology from mesh_data indices.
         update_normals: If True, updates vertex normals.
         inject_attributes: If True, synchronizes custom attributes into `mesh.attributes`.
+        shade_smooth: If True, enables smooth shading on polygons; defaults to False (flat shaded).
     """
     # Defensive guard: automatically handle inverted (mesh_or_obj, mesh_data) argument order
     if hasattr(mesh_or_obj, "vertex_count") and not hasattr(mesh_data, "vertex_count"):
@@ -337,12 +339,6 @@ def inject_mesh_data(
 
     # 1. Update Topology if requested
     if update_topology or len(mesh.vertices) != v_count:
-        pos_list = mesh_data.get_flat_positions()
-        verts = [
-            (pos_list[i * 3], pos_list[i * 3 + 1], pos_list[i * 3 + 2])
-            for i in range(v_count)
-        ]
-
         # Use Quad faces if available (in libmtk, 6 indices per quad and 1 face_material per quad)
         face_mats = (
             mesh_data.get_face_materials()
@@ -357,39 +353,117 @@ def inject_mesh_data(
             and len(face_mats) == total_indices // 6
         )
 
-        if is_quad:
-            quad_count = total_indices // 6
-            quad_indices = mesh_data.get_quad_indices()
-            quads = [
-                (
-                    quad_indices[q * 4],
-                    quad_indices[q * 4 + 1],
-                    quad_indices[q * 4 + 2],
-                    quad_indices[q * 4 + 3],
-                )
-                for q in range(quad_count)
-            ]
+        # High-performance native Blender C API path via vertices.add, loops.add, and polygons.add
+        if hasattr(mesh.vertices, "add") and hasattr(mesh.loops, "add") and hasattr(mesh.polygons, "add"):
             mesh.clear_geometry()
-            mesh.from_pydata(verts, [], quads)
-        else:
-            tri_indices = mesh_data.get_indices()
-            tris = [
-                (tri_indices[i], tri_indices[i + 1], tri_indices[i + 2])
-                for i in range(0, len(tri_indices), 3)
+            mesh.vertices.add(v_count)
+
+            pos_mv = mesh_data.positions_memoryview() if hasattr(mesh_data, "positions_memoryview") else None
+            if pos_mv is not None:
+                if hasattr(pos_mv, "cast") and pos_mv.format == "B":
+                    pos_mv = pos_mv.cast("f")
+                mesh.vertices.foreach_set("co", pos_mv)
+            else:
+                mesh.vertices.foreach_set("co", mesh_data.get_flat_positions())
+
+            if is_quad:
+                quad_count = total_indices // 6
+                total_loops = quad_count * 4
+                mesh.loops.add(total_loops)
+
+                quad_mv = mesh_data.quad_indices_memoryview() if hasattr(mesh_data, "quad_indices_memoryview") else None
+                if quad_mv is not None:
+                    if hasattr(quad_mv, "cast") and quad_mv.format == "B":
+                        quad_mv = quad_mv.cast("i")
+                    mesh.loops.foreach_set("vertex_index", quad_mv)
+                else:
+                    mesh.loops.foreach_set("vertex_index", mesh_data.get_quad_indices())
+
+                mesh.polygons.add(quad_count)
+                if not shade_smooth:
+                    mesh.polygons.foreach_set("use_smooth", b"\x00" * quad_count)
+
+                if hasattr(mesh_data, "loop_starts_memoryview"):
+                    starts_mv = mesh_data.loop_starts_memoryview().cast("i")
+                    totals_mv = mesh_data.loop_totals_memoryview().cast("i")
+                    mesh.polygons.foreach_set("loop_start", starts_mv)
+                    mesh.polygons.foreach_set("loop_total", totals_mv)
+                else:
+                    loop_starts = array.array("i", range(0, total_loops, 4))
+                    loop_totals = array.array("i", [4] * quad_count)
+                    mesh.polygons.foreach_set("loop_start", loop_starts)
+                    mesh.polygons.foreach_set("loop_total", loop_totals)
+            else:
+                total_loops = total_indices
+                num_tris = total_indices // 3
+                mesh.loops.add(total_loops)
+
+                indices_mv = mesh_data.indices_memoryview() if hasattr(mesh_data, "indices_memoryview") else None
+                if indices_mv is not None:
+                    if hasattr(indices_mv, "cast") and indices_mv.format == "B":
+                        indices_mv = indices_mv.cast("i")
+                    mesh.loops.foreach_set("vertex_index", indices_mv)
+                else:
+                    mesh.loops.foreach_set("vertex_index", mesh_data.get_indices())
+
+                mesh.polygons.add(num_tris)
+                if not shade_smooth:
+                    mesh.polygons.foreach_set("use_smooth", b"\x00" * num_tris)
+
+                if hasattr(mesh_data, "loop_starts_memoryview"):
+                    starts_mv = mesh_data.loop_starts_memoryview().cast("i")
+                    totals_mv = mesh_data.loop_totals_memoryview().cast("i")
+                    mesh.polygons.foreach_set("loop_start", starts_mv)
+                    mesh.polygons.foreach_set("loop_total", totals_mv)
+                else:
+                    loop_starts = array.array("i", range(0, total_loops, 3))
+                    loop_totals = array.array("i", [3] * num_tris)
+                    mesh.polygons.foreach_set("loop_start", loop_starts)
+                    mesh.polygons.foreach_set("loop_total", loop_totals)
+
+            topology_updated = True
+        elif hasattr(mesh, "from_pydata"):
+            # Fallback path for mock test environments
+            pos_list = mesh_data.get_flat_positions()
+            verts = [
+                (pos_list[i * 3], pos_list[i * 3 + 1], pos_list[i * 3 + 2])
+                for i in range(v_count)
             ]
-            mesh.clear_geometry()
-            mesh.from_pydata(verts, [], tris)
+            if is_quad:
+                quad_count = total_indices // 6
+                quad_indices = mesh_data.get_quad_indices()
+                quads = [
+                    (
+                        quad_indices[q * 4],
+                        quad_indices[q * 4 + 1],
+                        quad_indices[q * 4 + 2],
+                        quad_indices[q * 4 + 3],
+                    )
+                    for q in range(quad_count)
+                ]
+                mesh.clear_geometry()
+                mesh.from_pydata(verts, [], quads)
+            else:
+                tri_indices = mesh_data.get_indices()
+                tris = [
+                    (tri_indices[i], tri_indices[i + 1], tri_indices[i + 2])
+                    for i in range(0, len(tri_indices), 3)
+                ]
+                mesh.clear_geometry()
+                mesh.from_pydata(verts, [], tris)
+            topology_updated = True
+    else:
+        topology_updated = False
 
-        mesh.update(calc_edges=True)
-
-    # 2. Fast Vertex Positions Injection via MemoryView
-    try:
-        pos_mv = mesh_data.positions_memoryview()
-        if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-            pos_mv = pos_mv.cast("f")
-        mesh.vertices.foreach_set("co", pos_mv)
-    except Exception:
-        mesh.vertices.foreach_set("co", mesh_data.get_flat_positions())
+    # 2. Fast Vertex Positions Injection via MemoryView (only if topology was not just rebuilt)
+    if not topology_updated:
+        try:
+            pos_mv = mesh_data.positions_memoryview()
+            if hasattr(pos_mv, "cast") and pos_mv.format == "B":
+                pos_mv = pos_mv.cast("f")
+            mesh.vertices.foreach_set("co", pos_mv)
+        except Exception:
+            mesh.vertices.foreach_set("co", mesh_data.get_flat_positions())
 
     # 3. Vertex Normals Injection
     if update_normals:
@@ -413,35 +487,48 @@ def inject_mesh_data(
 
         if uv_layer is not None and len(mesh.loops) > 0:
             num_loops = len(mesh.loops)
-            uv_mv = mesh_data.uvs_memoryview() if hasattr(mesh_data, "uvs_memoryview") else None
-            if uv_mv is not None:
-                if hasattr(uv_mv, "cast") and uv_mv.format == "B":
-                    uv_mv = uv_mv.cast("f")
-                if len(uv_mv) == num_loops * 2:
-                    uv_layer.data.foreach_set("uv", uv_mv)
+            uv_injected = False
+            if hasattr(mesh_data, "loop_uvs_memoryview"):
+                try:
+                    loop_uv_mv = mesh_data.loop_uvs_memoryview()
+                    if hasattr(loop_uv_mv, "cast") and loop_uv_mv.format == "B":
+                        loop_uv_mv = loop_uv_mv.cast("f")
+                    if len(loop_uv_mv) == num_loops * 2:
+                        uv_layer.data.foreach_set("uv", loop_uv_mv)
+                        uv_injected = True
+                except Exception as e:
+                    logger.debug("Fast loop UV injection fallback: %s", e)
+
+            if not uv_injected:
+                uv_mv = mesh_data.uvs_memoryview() if hasattr(mesh_data, "uvs_memoryview") else None
+                if uv_mv is not None:
+                    if hasattr(uv_mv, "cast") and uv_mv.format == "B":
+                        uv_mv = uv_mv.cast("f")
+                    if len(uv_mv) == num_loops * 2:
+                        uv_layer.data.foreach_set("uv", uv_mv)
+                    else:
+                        uv_flat = list(uv_mv)
+                        loop_vert_indices = array.array("I", [0]) * num_loops
+                        mesh.loops.foreach_get("vertex_index", loop_vert_indices)
+                        loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
+                        for loop_idx, v_idx in enumerate(loop_vert_indices):
+                            if v_idx * 2 + 1 < len(uv_flat):
+                                loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
+                                loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
+                        uv_layer.data.foreach_set("uv", loop_uv_arr)
                 else:
-                    uv_flat = list(uv_mv)
-                    loop_vert_indices = array.array("I", [0]) * num_loops
-                    mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-                    loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
-                    for loop_idx, v_idx in enumerate(loop_vert_indices):
-                        if v_idx * 2 + 1 < len(uv_flat):
-                            loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
-                            loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
-                    uv_layer.data.foreach_set("uv", loop_uv_arr)
-            else:
-                uv_flat = mesh_data.get_flat_uvs()
-                if len(uv_flat) == num_loops * 2:
-                    uv_layer.data.foreach_set("uv", uv_flat)
-                else:
-                    loop_vert_indices = array.array("I", [0]) * num_loops
-                    mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-                    loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
-                    for loop_idx, v_idx in enumerate(loop_vert_indices):
-                        if v_idx * 2 + 1 < len(uv_flat):
-                            loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
-                            loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
-                    uv_layer.data.foreach_set("uv", loop_uv_arr)
+                    uv_flat = mesh_data.get_flat_uvs()
+                    if len(uv_flat) == num_loops * 2:
+                        uv_layer.data.foreach_set("uv", uv_flat)
+                    else:
+                        loop_vert_indices = array.array("I", [0]) * num_loops
+                        mesh.loops.foreach_get("vertex_index", loop_vert_indices)
+                        loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
+                        for loop_idx, v_idx in enumerate(loop_vert_indices):
+                            if v_idx * 2 + 1 < len(uv_flat):
+                                loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
+                                loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
+                        uv_layer.data.foreach_set("uv", loop_uv_arr)
 
     # 5. Vertex Colors Injection (AO / Tint)
     if hasattr(mesh, "color_attributes"):
@@ -468,10 +555,17 @@ def inject_mesh_data(
     # 6. Material Indices Injection
     if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
         try:
-            face_mats = mesh_data.get_face_materials()
-            if len(face_mats) == len(mesh.polygons):
-                mat_arr = array.array("H", face_mats)
-                mesh.polygons.foreach_set("material_index", mat_arr)
+            mats_mv = mesh_data.face_materials_memoryview() if hasattr(mesh_data, "face_materials_memoryview") else None
+            if mats_mv is not None:
+                if hasattr(mats_mv, "cast") and mats_mv.format == "B":
+                    mats_mv = mats_mv.cast("H")
+                if len(mats_mv) == len(mesh.polygons):
+                    mesh.polygons.foreach_set("material_index", mats_mv)
+            else:
+                face_mats = mesh_data.get_face_materials()
+                if len(face_mats) == len(mesh.polygons):
+                    mat_arr = array.array("H", face_mats)
+                    mesh.polygons.foreach_set("material_index", mat_arr)
         except Exception as e:
             logger.debug("Failed setting material indices: %s", e)
 
@@ -525,4 +619,4 @@ def inject_mesh_data(
             except Exception as e:
                 logger.debug("Error injecting attribute %s: %s", attr_name, e)
 
-    mesh.update()
+    mesh.update(calc_edges=topology_updated)

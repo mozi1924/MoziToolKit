@@ -2,12 +2,13 @@
 Operators for Asset Precompilation, Cache Management, and Environment checks.
 """
 
+import time
 import bpy
 try:
-    from ..bridge import clear_cache, open_cache_folder, precompile_stack
+    from ..bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
     from ..utils.system import get_all_dependency_statuses, get_prefs
 except (ImportError, ValueError):
-    from bridge import clear_cache, open_cache_folder, precompile_stack
+    from bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
     from utils.system import get_all_dependency_statuses, get_prefs
 
 
@@ -17,6 +18,56 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
     bl_idname = "mozi.precompile_cache"
     bl_label = "Precompile Stack Caches"
     bl_options = {"REGISTER"}
+
+    _timer = None
+    _future = None
+    _start_time = 0.0
+
+    def invoke(self, context, event):
+        # In background or headless mode, execute synchronously
+        if getattr(bpy.app, "background", False):
+            return self.execute(context)
+
+        prefs = get_prefs(context)
+        try:
+            self.report({'INFO'}, "Starting background asset precompilation via libmtk...")
+            self._start_time = time.time()
+            self._future = precompile_stack_async(prefs)
+
+            wm = context.window_manager
+            self._timer = wm.event_timer_add(0.1, window=context.window)
+            wm.modal_handler_add(self)
+            return {'RUNNING_MODAL'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Failed to start precompilation: {e}")
+            return {'CANCELLED'}
+
+    def modal(self, context, event):
+        if event.type != 'TIMER':
+            return {'PASS_THROUGH'}
+
+        if self._future is not None and self._future.done():
+            if self._timer:
+                context.window_manager.event_timer_remove(self._timer)
+                self._timer = None
+
+            try:
+                res = self._future.result()
+                models_cnt = res.get("models", res.get("baked_models", 0))
+                duration = res.get("duration_seconds", time.time() - self._start_time)
+                summary_msg = (
+                    f"Compiled {res.get('pack_count', 0)} packs: "
+                    f"{res.get('atlas_chunks', 0)} atlas chunks, "
+                    f"{res.get('standalone_textures', 0)} standalone textures, "
+                    f"{models_cnt} models in {duration:.2f}s"
+                )
+                self.report({'INFO'}, summary_msg)
+                return {'FINISHED'}
+            except Exception as e:
+                self.report({'ERROR'}, f"Failed to precompile asset caches: {e}")
+                return {'CANCELLED'}
+
+        return {'PASS_THROUGH'}
 
     def execute(self, context):
         prefs = get_prefs(context)
