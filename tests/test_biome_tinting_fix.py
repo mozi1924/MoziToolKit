@@ -8,7 +8,8 @@ Integration and regression test suite for Biome Tinting fixes:
 - MC_Biome_Colormap_Decoder socket default value for Tint Type must be 0.0 (None / Fallback white).
 """
 
-import pytest
+import unittest
+import struct
 
 try:
     import bpy
@@ -32,8 +33,11 @@ except ImportError:
     HAS_LIBMTK = False
 
 
-@pytest.mark.skipif(not HAS_BPY or not HAS_LIBMTK, reason="Requires bpy and native libmtk_py")
-class TestBiomeTintingFix:
+class TestBiomeTintingFix(unittest.TestCase):
+
+    def setUp(self):
+        if not HAS_BPY or not HAS_LIBMTK:
+            self.skipTest("Requires bpy and native libmtk_py")
 
     def test_colormap_decoder_default_tint_type(self):
         """Verifies that MC_Biome_Colormap_Decoder default Tint Type is 0.0 (white fallback)."""
@@ -140,5 +144,58 @@ class TestBiomeTintingFix:
         assert 0.0 in tint_types_no_res, "Fallback dead_bush tint_type 0.0 must be present"
         assert 5.0 in tint_types_no_res, "Fallback leaf_litter dry_foliage tint_type 5.0 must be present"
         assert 1.0 in tint_types_no_res, "Fallback short_grass grass tint_type 1.0 must be present"
+
+    def test_grass_block_side_overlay_tinting(self):
+        """Verifies grass_block_side has overlay tinted while dirt base and bottom dirt are untinted."""
+        resolver = libmtk_py.BiomeResolver()
+
+        # 1. grass_block_side (overlay companion)
+        side_info = resolver.get_tint_info("grass_block_side", "grass_block", -1)
+        self.assertEqual(side_info["tint_type"], 1, "grass_block_side tint_type must be 1 (GRASS)")
+        self.assertEqual(side_info["tint_weight"], 1.0, "grass_block_side tint_weight must be 1.0")
+        self.assertEqual(side_info["base_tint_weight"], 0.0, "dirt base on side face must be 0.0 (untinted)")
+        self.assertEqual(side_info["overlay_tint_weight"], 1.0, "overlay on side face must be 1.0 (tinted)")
+        self.assertTrue(side_info["has_overlay"], "grass_block_side must have overlay companion")
+
+        # 2. dirt (bottom face of grass block)
+        dirt_info = resolver.get_tint_info("dirt", "grass_block", -1)
+        self.assertEqual(dirt_info["tint_weight"], 0.0, "dirt face must have tint_weight 0.0 (untinted dirt)")
+        self.assertFalse(dirt_info["has_overlay"], "dirt must not have overlay companion")
+
+        # 3. grass_block_top
+        top_info = resolver.get_tint_info("grass_block_top", "grass_block", 0)
+        self.assertEqual(top_info["tint_type"], 1, "top face must be grass")
+        self.assertEqual(top_info["tint_weight"], 1.0, "top face must be tinted")
+
+    def test_live_sync_biome_transition_smoothing(self):
+        """Verifies voxel mesher across a biome boundary outputs smoothly blended colormap UV and tint color."""
+        storage = libmtk_py.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        for x in range(16):
+            for z in range(16):
+                biome = "minecraft:plains" if x < 8 else "minecraft:desert"
+                storage.set_block(x, 0, z, "minecraft:grass_block", biome)
+
+        config = libmtk_py.MesherConfig()
+        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, None)
+        self.assertIsNotNone(mesh)
+        self.assertTrue(mesh.has_attribute("mtk_colormap_uv"))
+        self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
+
+        # Unpack mtk_colormap_uv
+        mv_uv = mesh.attribute_memoryview("mtk_colormap_uv")
+        raw_uv = struct.unpack(f"{len(mv_uv)//4}f", bytes(mv_uv))
+        uvs = [raw_uv[i*3:(i+1)*3] for i in range(len(raw_uv)//3)]
+
+        # Verify continuous intermediate gradient values exist across the 5x5 kernel transition
+        distinct_u = set()
+        for u, v, _ in uvs:
+            distinct_u.add(round(u * 100))
+
+        self.assertGreater(len(distinct_u), 2, "Transition zone must produce continuous blended gradient values!")
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 

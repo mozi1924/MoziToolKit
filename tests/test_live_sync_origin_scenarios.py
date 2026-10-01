@@ -329,7 +329,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
 
             # In Blender, create world mesh object and inject
             world_obj = get_or_create_world_mesh_object(bpy.context)
-            self.assertEqual(world_obj.location, (0.0, 0.0, 0.0))
+            self.assertEqual(tuple(world_obj.location), (0.0, 0.0, 0.0))
             v_cnt, f_cnt = update_world_mesh(world_obj, initial_mesh)
             self.assertGreater(v_cnt, 0)
 
@@ -372,7 +372,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
 
             # Update world mesh in Blender
             v_cnt2, f_cnt2 = update_world_mesh(world_obj, delta_mesh)
-            self.assertEqual(world_obj.location, (0.0, 0.0, 0.0), "Scenario 2: Object location should remain (0,0,0)")
+            self.assertEqual(tuple(world_obj.location), (0.0, 0.0, 0.0), "Scenario 2: Object location should remain (0,0,0)")
 
             pos2 = delta_mesh.get_flat_positions()
             xs2 = [pos2[i * 3] for i in range(delta_mesh.vertex_count)]
