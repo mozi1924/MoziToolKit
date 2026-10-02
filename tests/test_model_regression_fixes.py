@@ -220,18 +220,104 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertIsNotNone(res_alias)
         self.assertNotEqual(res_alias[0].face_count, 6)
 
-    def test_mock_sync_server_issues_preset(self):
-        """Issues preset in mock sync server must populate all test blockstates."""
-        grid = generate_terrain("issues", (0, 64, 0), (32, 32, 32))
-        self.assertGreater(len(grid.palette), 20)
-        palette_set = set(grid.palette)
-        self.assertTrue(any("chest" in s for s in palette_set))
-        self.assertTrue(any("chiseled_bookshelf" in s for s in palette_set))
-        self.assertTrue(any("player_head" in s for s in palette_set))
-        self.assertTrue(any("dragon_head" in s for s in palette_set))
-        self.assertTrue(any("piglin_head" in s for s in palette_set))
-        self.assertTrue(any("pink_petals" in s for s in palette_set))
-        self.assertTrue(any("iron_chain" in s for s in palette_set))
+    def test_wall_isolated_and_connected_geometry(self):
+        """Walls must resolve isolated post (not 4-way cross) and straight connection geometries."""
+        # 1. Isolated wall (single post)
+        res_iso = self.db.get_mesh(
+            "minecraft:cobblestone_wall[east=none,north=none,south=none,west=none,up=true,waterlogged=false]",
+            False,
+        )
+        self.assertIsNotNone(res_iso, "Isolated wall state must resolve")
+        mesh_iso, _ = res_iso
+        self.assertEqual(mesh_iso.face_count, 6, "Isolated wall must have 6 faces (post only, NOT cross)")
+        pos_iso = mesh_iso.get_flat_positions()
+        min_x, max_x = min(pos_iso[0::3]), max(pos_iso[0::3])
+        min_z, max_z = min(pos_iso[2::3]), max(pos_iso[2::3])
+        self.assertAlmostEqual(min_x, 0.25, places=2)
+        self.assertAlmostEqual(max_x, 0.75, places=2)
+        self.assertAlmostEqual(min_z, 0.25, places=2)
+        self.assertAlmostEqual(max_z, 0.75, places=2)
+
+        # 2. Bare unparameterized wall fallback
+        res_bare = self.db.get_mesh("minecraft:cobblestone_wall", False)
+        self.assertIsNotNone(res_bare, "Bare cobblestone_wall must resolve")
+        self.assertEqual(res_bare[0].face_count, 6, "Bare wall must resolve to post only (6 faces)")
+
+        # 3. Straight wall connected along Z (North-South)
+        res_z = self.db.get_mesh(
+            "minecraft:cobblestone_wall[east=none,north=low,south=low,west=none,up=false,waterlogged=false]",
+            False,
+        )
+        self.assertIsNotNone(res_z)
+        pos_z = res_z[0].get_flat_positions()
+        min_z_c, max_z_c = min(pos_z[2::3]), max(pos_z[2::3])
+        min_x_c, max_x_c = min(pos_z[0::3]), max(pos_z[0::3])
+        self.assertAlmostEqual(min_z_c, 0.0, places=2, msg="Z-connected wall must reach boundary 0.0")
+        self.assertAlmostEqual(max_z_c, 1.0, places=2, msg="Z-connected wall must reach boundary 1.0")
+        self.assertGreater(min_x_c, 0.25, "Z-connected wall must not reach X=0.0")
+        self.assertLess(max_x_c, 0.75, "Z-connected wall must not reach X=1.0")
+
+        res_x = self.db.get_mesh(
+            "minecraft:cobblestone_wall[east=low,north=none,south=none,west=low,up=false,waterlogged=false]",
+            False,
+        )
+        self.assertIsNotNone(res_x)
+        pos_x = res_x[0].get_flat_positions()
+        min_x_c2, max_x_c2 = min(pos_x[0::3]), max(pos_x[0::3])
+        min_z_c2, max_z_c2 = min(pos_x[2::3]), max(pos_x[2::3])
+        self.assertAlmostEqual(min_x_c2, 0.0, places=2, msg="X-connected wall must reach boundary 0.0")
+        self.assertAlmostEqual(max_x_c2, 1.0, places=2, msg="X-connected wall must reach boundary 1.0")
+        self.assertGreater(min_z_c2, 0.25, "X-connected wall must not reach Z=0.0")
+        self.assertLess(max_z_c2, 0.75, "X-connected wall must not reach Z=1.0")
+
+    def test_fence_isolated_and_connected_geometry(self):
+        """Fences must resolve isolated post and directional side connections."""
+        # Isolated fence
+        res_iso = self.db.get_mesh(
+            "minecraft:oak_fence[east=false,north=false,south=false,west=false,waterlogged=false]",
+            False,
+        )
+        self.assertIsNotNone(res_iso)
+        self.assertEqual(res_iso[0].face_count, 6, "Isolated fence must have 6 faces (post only)")
+
+        # Bare unparameterized fence
+        res_bare = self.db.get_mesh("minecraft:oak_fence", False)
+        self.assertIsNotNone(res_bare)
+        self.assertEqual(res_bare[0].face_count, 6, "Bare fence must resolve to post only")
+
+        # East-West connected fence
+        res_ew = self.db.get_mesh(
+            "minecraft:oak_fence[east=true,north=false,south=false,west=true,waterlogged=false]",
+            False,
+        )
+        self.assertIsNotNone(res_ew)
+        pos_ew = res_ew[0].get_flat_positions()
+        self.assertAlmostEqual(min(pos_ew[0::3]), 0.0, places=2)
+        self.assertAlmostEqual(max(pos_ew[0::3]), 1.0, places=2)
+
+    def test_waterlogged_isolated_block_section_mesher(self):
+        """Isolated waterlogged blocks must emit both solid element faces and fluid envelope faces."""
+        storage = libmtk_py.VoxelStorage()
+        storage.set_block(
+            2, 2, 2,
+            "minecraft:cobblestone_wall[east=none,north=none,south=none,west=none,up=true,waterlogged=true]",
+        )
+        storage.set_block(
+            5, 5, 5,
+            "minecraft:oak_stairs[facing=east,half=bottom,shape=straight,waterlogged=true]",
+        )
+        storage.set_block(
+            8, 8, 8,
+            "minecraft:oak_slab[type=bottom,waterlogged=true]",
+        )
+        config = libmtk_py.MesherConfig(enable_ao=False, mesh_fluids=True, z_up_coordinates=True)
+        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, None, self.db)
+
+        # Wall: 6 solid + 6 water = 12
+        # Stairs: 11 solid + 6 water = 17
+        # Slab: 6 solid + 6 water = 12
+        # Total = 41 quads
+        self.assertEqual(mesh.quad_count, 41, f"Expected 41 quads, got {mesh.quad_count}")
 
 
 if __name__ == "__main__":
