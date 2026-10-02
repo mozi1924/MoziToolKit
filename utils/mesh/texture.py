@@ -14,7 +14,7 @@ except ImportError:
 
 def find_albedo_image_from_material(mat) -> Optional[bpy.types.Image]:
     """Search for the primary Albedo / Base Color Image datablock in a material node tree."""
-    if not mat or not getattr(mat, "use_nodes", False) or not mat.node_tree:
+    if not mat or not getattr(mat, "node_tree", None):
         return None
 
     nodes = mat.node_tree.nodes

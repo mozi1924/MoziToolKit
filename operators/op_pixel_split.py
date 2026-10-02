@@ -41,7 +41,7 @@ except (ImportError, ValueError):
 
 def _get_material_active_image_size(material: Any) -> Optional[Tuple[int, int]]:
     """Resolves active/primary image texture size from a Material node tree."""
-    if not material or not getattr(material, "use_nodes", False) or not material.node_tree:
+    if not material or not getattr(material, "node_tree", None):
         return None
 
     nodes = material.node_tree.nodes

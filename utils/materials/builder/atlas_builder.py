@@ -129,7 +129,11 @@ def build_atlas_chunk_material(
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
 
-    mat.use_nodes = True
+    if getattr(mat, "node_tree", None) is None:
+        try:
+            mat.use_nodes = True
+        except Exception:
+            pass
     mat.use_fake_user = False
     set_material_displacement_method(mat, "BOTH")
 
@@ -453,15 +457,26 @@ def build_atlas_chunk_material(
         nodes.active = albedo_node
         albedo_node.select = True
 
-    # Material settings for transparency
-    if hasattr(mat, "blend_method"):
+    # Material settings for transparency (Blender 5.0+ surface_render_method)
+    if hasattr(mat, "surface_render_method"):
+        try:
+            mat.surface_render_method = "DITHERED"
+        except Exception:
+            pass
+    elif hasattr(mat, "blend_method"):
         try:
             mat.blend_method = "CLIP"
         except Exception:
             pass
-    if hasattr(mat, "shadow_method"):
+
+    if hasattr(mat, "use_transparency_overlap"):
         try:
-            mat.shadow_method = "CLIP"
+            mat.use_transparency_overlap = True
+        except Exception:
+            pass
+    if hasattr(mat, "use_raytrace_refraction"):
+        try:
+            mat.use_raytrace_refraction = True
         except Exception:
             pass
 

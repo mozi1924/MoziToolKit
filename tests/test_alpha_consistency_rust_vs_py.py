@@ -113,7 +113,8 @@ class TestTextureAlphaBridge(unittest.TestCase):
 
             # Create material with image
             mat = bpy.data.materials.new("TestAlphaMat")
-            mat.use_nodes = True
+            if mat.node_tree is None:
+                mat.use_nodes = True
             tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
             tex_node.name = "Albedo Texture"
             tex_node.image = img

@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import array
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+logger = logging.getLogger("MoziToolKit.Material.Pipeline")
 
 try:
     import bpy
@@ -227,7 +230,7 @@ def replace_materials(
 
     # 3. Fast Parallel Rust Remapping
     remap_result = remap_mesh_multi_uvs(
-        loop_uvs=list(loop_uvs),
+        loop_uvs=loop_uvs,
         face_materials=face_materials,
         face_loop_ranges=face_loop_ranges,
         atlas=baked_atlas,
@@ -366,7 +369,7 @@ def replace_materials(
 
     # 5. Inject Custom Attributes for Provenance & Shader Nodes
     _inject_face_attribute_string(mesh, "mtk_source_texture_key", face_source_keys)
-    _inject_face_attribute_int(mesh, "mtk_material_slot", list(poly_mat_indices))
+    _inject_face_attribute_int(mesh, "mtk_material_slot", poly_mat_indices)
     _inject_face_attribute_int(mesh, "mtk_atlas_chunk_id", face_chunk_ids)
     _inject_face_attribute_int(mesh, "mtk_atlas_texture_id", [int(x) for x in face_texture_ids])
     _inject_face_attribute_int(mesh, "mtk_uv_mode", [0 if mode_upper == "ATLAS" else 1] * num_polys)
@@ -597,7 +600,7 @@ def restore_materials_from_provenance(
             poly_mat_indices[i] = tex_to_slot.get(t_key, 0)
 
     mesh.polygons.foreach_set("material_index", poly_mat_indices)
-    _inject_face_attribute_int(mesh, "mtk_material_slot", list(poly_mat_indices))
+    _inject_face_attribute_int(mesh, "mtk_material_slot", poly_mat_indices)
 
     # Re-apply or verify biome attributes (Instant load from prebaked cache in < 0.2ms)
     biome_resolver = get_or_load_biome_resolver(cache_dir=base_cache, prefs=prefs)
@@ -678,7 +681,7 @@ def _inject_face_attribute_string(mesh: Any, name: str, values: List[str]) -> No
                     pass
 
 
-def _inject_face_attribute_int(mesh: Any, name: str, values: List[int]) -> None:
+def _inject_face_attribute_int(mesh: Any, name: str, values: Any) -> None:
     """Helper to inject a Face-domain Int attribute."""
     if not hasattr(mesh, "attributes"):
         return
@@ -689,10 +692,11 @@ def _inject_face_attribute_int(mesh: Any, name: str, values: List[int]) -> None:
         except Exception:
             return
     if len(attr.data) == len(values):
-        attr.data.foreach_set("value", array.array("i", values))
+        arr = values if isinstance(values, array.array) and values.typecode == "i" else array.array("i", values)
+        attr.data.foreach_set("value", arr)
 
 
-def _inject_face_attribute_float(mesh: Any, name: str, values: List[float]) -> None:
+def _inject_face_attribute_float(mesh: Any, name: str, values: Any) -> None:
     """Helper to inject a Face-domain Float attribute."""
     if not hasattr(mesh, "attributes"):
         return
@@ -703,10 +707,11 @@ def _inject_face_attribute_float(mesh: Any, name: str, values: List[float]) -> N
         except Exception:
             return
     if len(attr.data) == len(values):
-        attr.data.foreach_set("value", array.array("f", values))
+        arr = values if isinstance(values, array.array) and values.typecode == "f" else array.array("f", values)
+        attr.data.foreach_set("value", arr)
 
 
-def _inject_face_attribute_float4(mesh: Any, name: str, flat_values: List[float]) -> None:
+def _inject_face_attribute_float4(mesh: Any, name: str, flat_values: Any) -> None:
     """Helper to inject a Face-domain Float4/Color attribute."""
     if not hasattr(mesh, "attributes"):
         return
@@ -717,4 +722,5 @@ def _inject_face_attribute_float4(mesh: Any, name: str, flat_values: List[float]
         except Exception:
             return
     if len(attr.data) * 4 == len(flat_values):
-        attr.data.foreach_set("color", array.array("f", flat_values))
+        arr = flat_values if isinstance(flat_values, array.array) and flat_values.typecode == "f" else array.array("f", flat_values)
+        attr.data.foreach_set("color", arr)

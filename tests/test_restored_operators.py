@@ -141,7 +141,8 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.context.collection.objects.link(obj)
 
         mat = bpy.data.materials.new("TestTexMat")
-        mat.use_nodes = True
+        if mat.node_tree is None:
+            mat.use_nodes = True
         tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
         tex_node.interpolation = "Linear"
         obj.data.materials.append(mat)
