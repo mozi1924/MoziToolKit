@@ -47,6 +47,15 @@
 - 本插件遵循 Blender 4.2+ Extension 标准。版本号、权限、依赖项与元数据必须同步维护在 `blender_manifest.toml` 中。
 - 每次新增、更新或调整 `wheels/` 目录下的轮子文件名/版本时，必须同步更新 `blender_manifest.toml` 中的 `wheels` 列表，确保平台打包与发布的一致性。
 
+### 规则 6：操作符与业务逻辑模块化规范 (Operator Modularity)
+- **严禁创建单文件巨石操作符**：当操作符逻辑涉及“属性定义 (Properties)”、“后台定时器/Depsgraph 监听 (Watcher/Handler)”与“多个用户算子 (Operators)”时，**严禁堆叠在同一个大文件中**。
+- **强制采用子包架构**：必须参照 `operators/extrude/` 与 `operators/sync/` 架构建立专属子目录包（包含 `__init__.py`, `properties.py`, `watcher.py`, `op_xxx.py`）。
+- **文件行数软约束**：除纯静态查找表（如预设表 `mineways_table.py`）外，业务逻辑代码单文件原则上控制在 500 行以内。
+
+### 规则 7：Blender 5.x / 6.0 API 前瞻兼容规范 (Forward Compatibility)
+- **严禁使用即将废弃的属性**：严禁直接在代码中编写 `mat.use_nodes = True`（在 Blender 5.2 中已标记废弃，Blender 6.0 彻底移除）。
+- **统一使用兼容封装**：必须统一使用 `utils/materials/builder/` 中封装的安全兼容方法，或在材质创建后直接操作/判断 `mat.node_tree`，彻底杜绝 DeprecationWarning。
+
 ---
 
 ## 3. 插件目录架构
@@ -56,16 +65,21 @@ MoziToolKit/
 ├── blender_manifest.toml -> Blender 4.2+ 扩展清单元数据
 ├── __init__.py           -> 插件入口，注册/注销生命周期
 ├── bridge/               -> 核心胶水桥梁，封装 libmtk_py 调用
-│   ├── mesh.py           -> 基础网格拓扑转换与 Quad 保留
+│   ├── mesh.py           -> 几何网格拓扑转换、NumPy 批量提取与 Quad 保留
 │   ├── extrude.py        -> 批量 Data In Data Out 挤出修复桥接
 │   ├── subdivide.py      -> 自适应像素切分桥接
 │   ├── cull.py           -> 遮挡剔除桥接
 │   ├── texture.py        -> 贴图与图集桥接
+│   ├── material.py       -> 材质与 BiomeResolver 桥接
 │   ├── assets.py         -> 预编译资产与缓存加载
+│   ├── sync.py           -> 原生 Live Sync 会话生命周期桥接
 │   └── uv.py             -> UV 重映射与清洗
 ├── operators/            -> Blender 操作符 (UI 事件响应)
+│   ├── extrude/          -> 智能挤出与实时修复模块包 (Watcher, Properties, Ops)
+│   ├── sync/             -> 原生 Live Sync 实时协同模块包
+│   └── ...               -> 独立单算子文件 (op_cull, op_mesh, op_uv 等)
 ├── ui/                   -> 3D 视图侧边栏面板与菜单
-├── utils/                -> 节点树生成、BMesh 辅助、日志工具
+├── utils/                -> 节点树生成、BMesh 辅助、材质管线、日志工具
 ├── wheels/               -> libmtk_py 动态轮子二进制
 ├── docs/                 -> 详细的架构与功能设计手册
 └── tests/                -> 自动化测试用例
@@ -75,9 +89,16 @@ MoziToolKit/
 
 ## 4. 开发与测试流程
 
-1. **运行测试**：
-   ```bash
-   pytest tests/
-   ```
-2. **多工作区联动验证**：
-   涉及 Rust 核心调整时，首先在 `../libmozitoolkit` 完成 `cargo test` 与 `maturin build`，更新 `wheels/` 后再在 `MoziToolKit` 运行集成测试。
+### 1. 运行测试
+- **纯 Python / Mock 单元测试 (快速验证 Bridge 与数据逻辑)**：
+  ```bash
+  /home/mozi/libmozitoolkit/.venv/bin/pytest tests/
+  ```
+- **完整 Blender 宿主环境测试 (验证原生 bpy 对象与着色器节点树)**：
+  ```bash
+  blender --background --python-expr "import sys; sys.path.insert(0, '/home/mozi/libmozitoolkit/.venv/lib/python3.14/site-packages'); import pytest; pytest.main(['tests'])"
+  ```
+
+### 2. 多工作区联动验证
+涉及 Rust 核心调整时，首先在 `../libmozitoolkit` 完成 `cargo test` 与 `maturin build`，更新 `wheels/` 后再在 `MoziToolKit` 运行上述双端测试验证。
+
