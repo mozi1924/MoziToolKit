@@ -46,6 +46,7 @@ ATTR_UV_MODE = "mtk_uv_mode"
 ATTR_UV_TRANSFORM = "mtk_uv_transform"
 ATTR_IS_OPAQUE = "mtk_is_opaque"
 ATTR_ALPHA_MODE = "mtk_alpha_mode"
+ATTR_EMISSION = "mtk_emission"
 
 # Canonical source provenance attributes
 ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
