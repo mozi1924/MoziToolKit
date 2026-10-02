@@ -953,7 +953,10 @@ class MockLiveSyncServer:
         """Stops the mock server and disconnects clients."""
         self.is_running = False
         if hasattr(self, "_server_obj") and self._server_obj:
-            self._server_obj.close()
+            try:
+                self._server_obj.close()
+            except Exception:
+                pass
         for client in list(self.clients):
             try:
                 client.writer.close()

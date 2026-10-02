@@ -110,9 +110,11 @@ class MockMeshVertex:
 
 
 class MockMeshPolygon:
-    def __init__(self, vertices, material_index=0):
+    def __init__(self, vertices, material_index=0, loop_start=0):
         self.vertices = vertices
         self.material_index = material_index
+        self.loop_total = len(vertices)
+        self.loop_start = loop_start
 
 
 class MockMeshLoopTriangle:
@@ -243,6 +245,17 @@ class TestMeshBridge(unittest.TestCase):
         self.assertEqual(len(mock_mesh.loop_triangles), 2)
         mock_mesh.update()
         self.assertTrue(mock_mesh.updated)
+
+    def test_extract_mesh_data_quads(self):
+        mock_mesh = MockMesh()
+        mesh_data = extract_mesh_data(mock_mesh)
+        self.assertEqual(mesh_data.vertex_count, 4)
+        self.assertEqual(mesh_data.triangle_count, 2)
+        indices = mesh_data.get_indices()
+        self.assertEqual(len(indices), 6)
+        face_mats = mesh_data.get_face_materials()
+        self.assertEqual(len(face_mats), 1)
+        self.assertEqual(face_mats[0], 1)
 
 
 if __name__ == "__main__":
