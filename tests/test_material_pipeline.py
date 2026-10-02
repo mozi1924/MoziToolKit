@@ -97,7 +97,7 @@ class TestMaterialPipeline(unittest.TestCase):
             self.assertEqual(mat["mtk_source_texture_key"], "minecraft:block/stone")
             self.assertEqual(mat["mtk_stack_fingerprint"], "test_fp_123")
             self.assertFalse(mat["mtk_is_animated"])
-            self.assertTrue(mat.use_nodes)
+            self.assertIsNotNone(mat.node_tree)
 
             # Check nodes
             node_names = [n.name for n in mat.node_tree.nodes]

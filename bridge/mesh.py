@@ -144,12 +144,12 @@ def extract_mesh_data(
 
     if is_all_quads and not triangulate_if_needed:
         # Extract Quad Mesh data with dedicated 4-vertex corners per face
-        # to ensure 100% preservation of UV seams and corner attributes
-        positions: List[float] = []
-        normals: List[float] = []
-        uvs: List[float] = []
-        indices: List[int] = []
-        face_mats: List[int] = []
+        total_corners = num_polys * 4
+        positions = array.array("f", [0.0]) * (total_corners * 3)
+        normals = array.array("f", [0.0]) * (total_corners * 3)
+        uvs = array.array("f", [0.0]) * (total_corners * 2)
+        indices = array.array("I", [0]) * (num_polys * 6)
+        face_mats = array.array("H", [0]) * num_polys
 
         # Read base mesh vertices & normals
         raw_pos = array.array("f", [0.0]) * (num_verts * 3)
@@ -169,40 +169,43 @@ def extract_mesh_data(
         poly_mats = array.array("H", [0]) * num_polys
         mesh.polygons.foreach_get("material_index", poly_mats)
 
-        for poly_idx, poly in enumerate(mesh.polygons):
-            base_v = len(positions) // 3
+        poly_loop_starts = array.array("i", [0]) * num_polys
+        mesh.polygons.foreach_get("loop_start", poly_loop_starts)
+
+        for poly_idx in range(num_polys):
+            base_v = poly_idx * 4
             mat_idx = poly_mats[poly_idx]
-            l_start = poly.loop_start
+            l_start = poly_loop_starts[poly_idx]
+
+            face_mats[poly_idx] = mat_idx
+            idx_offset = poly_idx * 6
+            indices[idx_offset] = base_v
+            indices[idx_offset + 1] = base_v + 1
+            indices[idx_offset + 2] = base_v + 2
+            indices[idx_offset + 3] = base_v
+            indices[idx_offset + 4] = base_v + 2
+            indices[idx_offset + 5] = base_v + 3
 
             for k in range(4):
                 l_idx = l_start + k
                 v_idx = raw_loop_v_indices[l_idx]
+                corner_idx = base_v + k
 
-                positions.extend([
-                    raw_pos[v_idx * 3],
-                    raw_pos[v_idx * 3 + 1],
-                    raw_pos[v_idx * 3 + 2],
-                ])
-                normals.extend([
-                    raw_norms[v_idx * 3],
-                    raw_norms[v_idx * 3 + 1],
-                    raw_norms[v_idx * 3 + 2],
-                ])
+                p_off = corner_idx * 3
+                v_off = v_idx * 3
+                positions[p_off] = raw_pos[v_off]
+                positions[p_off + 1] = raw_pos[v_off + 1]
+                positions[p_off + 2] = raw_pos[v_off + 2]
+
+                normals[p_off] = raw_norms[v_off]
+                normals[p_off + 1] = raw_norms[v_off + 1]
+                normals[p_off + 2] = raw_norms[v_off + 2]
 
                 if raw_loop_uvs:
-                    uvs.extend([
-                        raw_loop_uvs[l_idx * 2],
-                        raw_loop_uvs[l_idx * 2 + 1],
-                    ])
-                else:
-                    uvs.extend([0.0, 0.0])
-
-            # Two triangles for the quad (0, 1, 2) and (0, 2, 3)
-            indices.extend([
-                base_v, base_v + 1, base_v + 2,
-                base_v, base_v + 2, base_v + 3,
-            ])
-            face_mats.append(mat_idx)
+                    lu_off = l_idx * 2
+                    u_off = corner_idx * 2
+                    uvs[u_off] = raw_loop_uvs[lu_off]
+                    uvs[u_off + 1] = raw_loop_uvs[lu_off + 1]
 
         mesh_data = mtk_py.MeshData.from_raw_buffers(
             positions=positions,
@@ -340,17 +343,15 @@ def inject_mesh_data(
     # 1. Update Topology if requested
     if update_topology or len(mesh.vertices) != v_count:
         # Use Quad faces if available (in libmtk, 6 indices per quad and 1 face_material per quad)
-        face_mats = (
-            mesh_data.get_face_materials()
-            if hasattr(mesh_data, "get_face_materials")
-            else []
-        )
+        face_count = getattr(mesh_data, "face_count", None)
+        if face_count is None:
+            face_count = len(mesh_data.get_face_materials()) if hasattr(mesh_data, "get_face_materials") else 0
         tri_count = getattr(mesh_data, "triangle_count", 0)
         total_indices = tri_count * 3
         is_quad = (
             total_indices > 0
             and total_indices % 6 == 0
-            and len(face_mats) == total_indices // 6
+            and face_count == total_indices // 6
         )
 
         # High-performance native Blender C API path via vertices.add, loops.add, and polygons.add
@@ -507,14 +508,16 @@ def inject_mesh_data(
                     if len(uv_mv) == num_loops * 2:
                         uv_layer.data.foreach_set("uv", uv_mv)
                     else:
-                        uv_flat = list(uv_mv)
+                        uv_cast = uv_mv.cast("f") if hasattr(uv_mv, "cast") else uv_mv
                         loop_vert_indices = array.array("I", [0]) * num_loops
                         mesh.loops.foreach_get("vertex_index", loop_vert_indices)
                         loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
+                        uv_len = len(uv_cast)
                         for loop_idx, v_idx in enumerate(loop_vert_indices):
-                            if v_idx * 2 + 1 < len(uv_flat):
-                                loop_uv_arr[loop_idx * 2] = uv_flat[v_idx * 2]
-                                loop_uv_arr[loop_idx * 2 + 1] = uv_flat[v_idx * 2 + 1]
+                            v2 = v_idx * 2
+                            if v2 + 1 < uv_len:
+                                loop_uv_arr[loop_idx * 2] = uv_cast[v2]
+                                loop_uv_arr[loop_idx * 2 + 1] = uv_cast[v2 + 1]
                         uv_layer.data.foreach_set("uv", loop_uv_arr)
                 else:
                     uv_flat = mesh_data.get_flat_uvs()

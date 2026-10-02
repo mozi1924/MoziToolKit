@@ -33,7 +33,7 @@ def get_face_pixel_step(
         try:
             if hasattr(face, "material_index") and face.material_index < len(active_obj.material_slots):
                 mat = active_obj.material_slots[face.material_index].material
-                if mat and mat.use_nodes and mat.node_tree:
+                if mat and getattr(mat, "node_tree", None):
                     decoder_node = next(
                         (
                             n for n in mat.node_tree.nodes

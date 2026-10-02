@@ -6,6 +6,7 @@ UV remapping, atlas metadata, and Biome color/tint generation.
 
 from __future__ import annotations
 
+import array
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -232,9 +233,9 @@ def remap_mesh_multi_uvs(
     """
     require_material_bridge()
     return libmtk_py.MaterialResolver.remap_mesh_multi_uvs(
-        list(loop_uvs),
-        list(face_materials),
-        list(face_loop_ranges),
+        loop_uvs if isinstance(loop_uvs, (list, array.array)) else list(loop_uvs),
+        face_materials if isinstance(face_materials, list) else list(face_materials),
+        face_loop_ranges if isinstance(face_loop_ranges, list) else list(face_loop_ranges),
         atlas,
         alias_map,
         grid_spec,

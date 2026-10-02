@@ -47,7 +47,7 @@ class MOZI_OT_set_texture_interpolation_closest(bpy.types.Operator):
                 continue
             for slot in obj.material_slots:
                 mat = slot.material
-                if not mat or not mat.use_nodes or not mat.node_tree:
+                if not mat or not getattr(mat, "node_tree", None):
                     continue
                 if mat.name in processed_materials:
                     continue

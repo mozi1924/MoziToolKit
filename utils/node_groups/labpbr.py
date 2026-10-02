@@ -99,8 +99,13 @@ def reference_shape_errors(group: bpy.types.NodeTree) -> tuple[str, ...]:
     if len(functional_nodes) != LABPBR_REFERENCE_NODE_COUNT:
         errors.append(f"functional nodes: expected {LABPBR_REFERENCE_NODE_COUNT}, got {len(functional_nodes)}")
     effective_links = effective_link_signature(group)
-    if len(effective_links) != LABPBR_REFERENCE_LINK_COUNT:
-        errors.append(f"effective links: expected {LABPBR_REFERENCE_LINK_COUNT}, got {len(effective_links)}")
+    expected_links = (
+        LABPBR_REFERENCE_LINK_COUNT
+        if (hasattr(bpy.app, "version") and bpy.app.version >= (5, 2, 0))
+        else (LABPBR_REFERENCE_LINK_COUNT - 1)
+    )
+    if len(effective_links) != expected_links:
+        errors.append(f"effective links: expected {expected_links}, got {len(effective_links)}")
     frames = {node.name for node in group.nodes if node.bl_idname == "NodeFrame"}
     if frames != LABPBR_REFERENCE_FRAMES:
         errors.append(f"frames: expected {sorted(LABPBR_REFERENCE_FRAMES)}, got {sorted(frames)}")
@@ -165,10 +170,9 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1400, 200))
     group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(1400, 200))
-    principled = node(nodes, "ShaderNodeBsdfPrincipled", "LabPBR Principled BSDF", label="LabPBR 1.3 Material", location=(1120, 300), properties={
-        "subsurface_method": "RANDOM_WALK",
-    }, inputs={
-        "Thin Wall": False, "Weight": 0.0, "Diffuse Roughness": 0.0,
+    has_thin_wall = bool(hasattr(bpy.app, "version") and bpy.app.version >= (5, 2, 0))
+    principled_inputs = {
+        "Weight": 0.0, "Diffuse Roughness": 0.0,
         "Subsurface Radius": (1.0, 1.0, 1.0), "Subsurface Scale": 0.1,
         "Subsurface IOR": 1.4, "Subsurface Anisotropy": 0.5,
         "Specular IOR Level": 0.5, "Specular Tint": (1, 1, 1, 1),
@@ -177,7 +181,13 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         "Coat IOR": 1.5, "Coat Tint": (1, 1, 1, 1), "Coat Normal": (0, 0, 0),
         "Sheen Weight": 0.0, "Sheen Roughness": 0.5, "Sheen Tint": (1, 1, 1, 1),
         "Thin Film Thickness": 0.0, "Thin Film IOR": 1.33,
-    })
+    }
+    if has_thin_wall:
+        principled_inputs["Thin Wall"] = False
+
+    principled = node(nodes, "ShaderNodeBsdfPrincipled", "LabPBR Principled BSDF", label="LabPBR 1.3 Material", location=(1120, 300), properties={
+        "subsurface_method": "RANDOM_WALK",
+    }, inputs=principled_inputs)
     displacement = node(nodes, "ShaderNodeDisplacement", "LabPBR Height Displacement", location=(800, -350), inputs={"Midlevel": 0.0, "Scale": 1.0, "Normal": (0, 0, 0)})
 
     normal_frame = node(nodes, "NodeFrame", "Optional _n: DirectX normal, AO, height")
@@ -310,7 +320,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, final_transmission, "Value", principled, "Transmission Weight")
     link(links, normal_map, "Normal", height_bump, "Normal"); link(links, enable_displacement, "Value", height_bump, "Height"); link(links, height_bump, "Normal", principled, "Normal")
     link(links, final_sss_weight, "Result[0]", principled, "Subsurface Weight"); link(links, clean_albedo, "Result[2]", principled, "Emission Color"); link(links, final_emission, "Result[0]", principled, "Emission Strength")
-    link(links, group_input, "Thin Wall", principled, "Thin Wall")
+    if has_thin_wall and "Thin Wall" in principled.inputs:
+        link(links, group_input, "Thin Wall", principled, "Thin Wall")
     link(links, group_input, "Subsurface Scale", principled, "Subsurface Scale")
     link(links, principled, "BSDF", group_output, "BSDF"); link(links, enable_displacement, "Value", displacement, "Height"); link(links, displacement, "Displacement", group_output, "Displacement"); link(links, enable_porosity, "Value", group_output, "Porosity (0-1)")
     return finalize_group(group)

@@ -133,7 +133,8 @@ def ensure_world_materials(world_obj: bpy.types.Object, prefs=None) -> None:
     mat = bpy.data.materials.get(default_mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=default_mat_name)
-        mat.use_nodes = True
+        if getattr(mat, "node_tree", None) is None:
+            mat.use_nodes = True
         nodes = mat.node_tree.nodes
         nodes.clear()
         bsdf = nodes.new("ShaderNodeBsdfPrincipled")
