@@ -28,6 +28,7 @@ ALL_OPERATORS = (
 
 
 
+from . import extrude
 from . import op_extrude
 from . import sync
 
@@ -35,13 +36,13 @@ from . import sync
 def register():
     for cls in ALL_OPERATORS:
         bpy.utils.register_class(cls)
-    op_extrude.register()
+    extrude.register()
     sync.register()
 
 
 def unregister():
     sync.unregister()
-    op_extrude.unregister()
+    extrude.unregister()
     for cls in reversed(ALL_OPERATORS):
         try:
             bpy.utils.unregister_class(cls)

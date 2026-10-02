@@ -273,6 +273,36 @@ class TestExtrudeRepairBridge(unittest.TestCase):
         res = _deferred_extrude_repair_tick()
         self.assertIsNone(res)
 
+    def test_extrude_subpackage_modular_structure(self):
+        """Verify the modular separation of operators/extrude subpackage."""
+        from operators.extrude import properties, watcher, op_auto_extrude_repair, op_random_extrude
+        from operators import extrude
+        from operators import op_extrude
+
+        # Verify properties isolation
+        self.assertTrue(hasattr(properties, "MOZI_PG_auto_extrude_repair"))
+        self.assertTrue(hasattr(properties, "UV_MODE_ITEMS"))
+        self.assertTrue(hasattr(properties, "NOISE_TYPE_ITEMS"))
+
+        # Verify watcher isolation
+        self.assertTrue(callable(watcher._is_uv_editing_active))
+        self.assertTrue(callable(watcher._is_extrude_operator_identifier))
+        self.assertTrue(callable(watcher._deferred_extrude_repair_tick))
+
+        # Verify operator isolation
+        self.assertTrue(hasattr(op_auto_extrude_repair, "MOZI_OT_auto_extrude_repair"))
+        self.assertTrue(hasattr(op_random_extrude, "MOZI_OT_random_extrude"))
+
+        # Verify subpackage aggregation
+        self.assertTrue(len(extrude.OPERATOR_CLASSES) >= 3)
+        self.assertTrue(callable(extrude.register))
+        self.assertTrue(callable(extrude.unregister))
+
+        # Verify op_extrude facade backward compatibility
+        self.assertEqual(op_extrude.UV_MODE_ITEMS, properties.UV_MODE_ITEMS)
+        self.assertIs(op_extrude.MOZI_OT_auto_extrude_repair, op_auto_extrude_repair.MOZI_OT_auto_extrude_repair)
+        self.assertIs(op_extrude.MOZI_OT_random_extrude, op_random_extrude.MOZI_OT_random_extrude)
+
 
 if __name__ == "__main__":
     unittest.main()
