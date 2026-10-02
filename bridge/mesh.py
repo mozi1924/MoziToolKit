@@ -140,16 +140,12 @@ def extract_mesh_data(
             uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
 
     # Check if mesh consists primarily of Quads
-    is_all_quads = all(p.loop_total == 4 for p in mesh.polygons)
+    is_all_quads = all(getattr(p, "loop_total", len(getattr(p, "vertices", []))) == 4 for p in mesh.polygons)
 
     if is_all_quads and not triangulate_if_needed:
         # Extract Quad Mesh data with dedicated 4-vertex corners per face
         total_corners = num_polys * 4
-        positions = array.array("f", [0.0]) * (total_corners * 3)
-        normals = array.array("f", [0.0]) * (total_corners * 3)
-        uvs = array.array("f", [0.0]) * (total_corners * 2)
-        indices = array.array("I", [0]) * (num_polys * 6)
-        face_mats = array.array("H", [0]) * num_polys
+        num_loops = len(mesh.loops)
 
         # Read base mesh vertices & normals
         raw_pos = array.array("f", [0.0]) * (num_verts * 3)
@@ -158,40 +154,51 @@ def extract_mesh_data(
         raw_norms = array.array("f", [0.0]) * (num_verts * 3)
         mesh.vertices.foreach_get("normal", raw_norms)
 
-        num_loops = len(mesh.loops)
-        raw_loop_uvs = array.array("f", [0.0]) * (num_loops * 2) if uv_layer else None
-        if raw_loop_uvs and uv_layer:
-            uv_layer.data.foreach_get("uv", raw_loop_uvs)
-
         raw_loop_v_indices = array.array("I", [0]) * num_loops
         mesh.loops.foreach_get("vertex_index", raw_loop_v_indices)
 
-        poly_mats = array.array("H", [0]) * num_polys
-        mesh.polygons.foreach_get("material_index", poly_mats)
+        face_mats = array.array("H", [0]) * num_polys
+        mesh.polygons.foreach_get("material_index", face_mats)
 
-        poly_loop_starts = array.array("i", [0]) * num_polys
-        mesh.polygons.foreach_get("loop_start", poly_loop_starts)
+        if HAS_NUMPY:
+            np_pos = np.frombuffer(raw_pos, dtype=np.float32).reshape((num_verts, 3))
+            np_norms = np.frombuffer(raw_norms, dtype=np.float32).reshape((num_verts, 3))
+            np_loop_v = np.frombuffer(raw_loop_v_indices, dtype=np.uint32)
 
-        for poly_idx in range(num_polys):
-            base_v = poly_idx * 4
-            mat_idx = poly_mats[poly_idx]
-            l_start = poly_loop_starts[poly_idx]
+            # Vectorized fancy indexing in C/SIMD (eliminating interpreter loops)
+            np_corner_pos = np_pos[np_loop_v].ravel()
+            np_corner_norms = np_norms[np_loop_v].ravel()
 
-            face_mats[poly_idx] = mat_idx
-            idx_offset = poly_idx * 6
-            indices[idx_offset] = base_v
-            indices[idx_offset + 1] = base_v + 1
-            indices[idx_offset + 2] = base_v + 2
-            indices[idx_offset + 3] = base_v
-            indices[idx_offset + 4] = base_v + 2
-            indices[idx_offset + 5] = base_v + 3
+            positions = array.array("f")
+            positions.frombytes(np_corner_pos.tobytes())
 
-            for k in range(4):
-                l_idx = l_start + k
-                v_idx = raw_loop_v_indices[l_idx]
-                corner_idx = base_v + k
+            normals = array.array("f")
+            normals.frombytes(np_corner_norms.tobytes())
 
-                p_off = corner_idx * 3
+            if uv_layer:
+                uvs = array.array("f", [0.0]) * (num_loops * 2)
+                uv_layer.data.foreach_get("uv", uvs)
+            else:
+                uvs = array.array("f", [0.0]) * (total_corners * 2)
+
+            base_v = (np.arange(num_polys, dtype=np.uint32) * 4)[:, None]
+            quad_pattern = np.array([0, 1, 2, 0, 2, 3], dtype=np.uint32)[None, :]
+            np_indices = (base_v + quad_pattern).ravel()
+
+            indices = array.array("I")
+            indices.frombytes(np_indices.tobytes())
+        else:
+            positions = array.array("f", [0.0]) * (total_corners * 3)
+            normals = array.array("f", [0.0]) * (total_corners * 3)
+            uvs = array.array("f", [0.0]) * (total_corners * 2)
+            indices = array.array("I", [0]) * (num_polys * 6)
+
+            raw_loop_uvs = array.array("f", [0.0]) * (num_loops * 2) if uv_layer else None
+            if raw_loop_uvs and uv_layer:
+                uv_layer.data.foreach_get("uv", raw_loop_uvs)
+
+            for l_idx, v_idx in enumerate(raw_loop_v_indices):
+                p_off = l_idx * 3
                 v_off = v_idx * 3
                 positions[p_off] = raw_pos[v_off]
                 positions[p_off + 1] = raw_pos[v_off + 1]
@@ -203,9 +210,18 @@ def extract_mesh_data(
 
                 if raw_loop_uvs:
                     lu_off = l_idx * 2
-                    u_off = corner_idx * 2
-                    uvs[u_off] = raw_loop_uvs[lu_off]
-                    uvs[u_off + 1] = raw_loop_uvs[lu_off + 1]
+                    uvs[lu_off] = raw_loop_uvs[lu_off]
+                    uvs[lu_off + 1] = raw_loop_uvs[lu_off + 1]
+
+            for poly_idx in range(num_polys):
+                base_v = poly_idx * 4
+                idx_offset = poly_idx * 6
+                indices[idx_offset] = base_v
+                indices[idx_offset + 1] = base_v + 1
+                indices[idx_offset + 2] = base_v + 2
+                indices[idx_offset + 3] = base_v
+                indices[idx_offset + 4] = base_v + 2
+                indices[idx_offset + 5] = base_v + 3
 
         mesh_data = mtk_py.MeshData.from_raw_buffers(
             positions=positions,
@@ -253,16 +269,24 @@ def extract_mesh_data(
             uv_layer.data.foreach_get("uv", loop_uvs)
             loop_vert_indices = array.array("I", [0]) * num_loops
             mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-            for loop_idx, v_idx in enumerate(loop_vert_indices):
-                uv_arr[v_idx * 2] = loop_uvs[loop_idx * 2]
-                uv_arr[v_idx * 2 + 1] = loop_uvs[loop_idx * 2 + 1]
+            if HAS_NUMPY:
+                np_loop_uvs = np.frombuffer(loop_uvs, dtype=np.float32).reshape(-1, 2)
+                np_loop_v_idx = np.frombuffer(loop_vert_indices, dtype=np.uint32)
+                np_uv_arr = np.zeros((num_verts, 2), dtype=np.float32)
+                np_uv_arr[np_loop_v_idx] = np_loop_uvs
+                uv_arr = array.array("f")
+                uv_arr.frombytes(np_uv_arr.tobytes())
+            else:
+                for loop_idx, v_idx in enumerate(loop_vert_indices):
+                    uv_arr[v_idx * 2] = loop_uvs[loop_idx * 2]
+                    uv_arr[v_idx * 2 + 1] = loop_uvs[loop_idx * 2 + 1]
 
         mesh_data = mtk_py.MeshData.from_raw_buffers(
-            positions=list(pos_arr),
-            uvs=list(uv_arr),
-            indices=list(tri_indices),
-            normals=list(norm_arr),
-            face_materials=list(face_mats_arr),
+            positions=pos_arr,
+            uvs=uv_arr,
+            indices=tri_indices,
+            normals=norm_arr,
+            face_materials=face_mats_arr,
         )
 
     # 4. Safely Extract Custom Attributes with error suppression
