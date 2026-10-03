@@ -15,11 +15,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 try:
-    from ..utils.system import ensure_sys_paths, get_prefs
+    from ..utils.system import get_prefs
 except (ImportError, ValueError):
-    from utils.system import ensure_sys_paths, get_prefs
-
-ensure_sys_paths()
+    from utils.system import get_prefs
 
 try:
     import libmtk_py

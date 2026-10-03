@@ -13,15 +13,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
-try:
-    from ..utils.system.dependencies import ensure_sys_paths
-    ensure_sys_paths()
-except (ImportError, ValueError):
-    try:
-        from utils.system.dependencies import ensure_sys_paths
-        ensure_sys_paths()
-    except Exception:
-        pass
+
 
 try:
     import libmtk_py

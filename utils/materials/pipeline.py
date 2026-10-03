@@ -22,15 +22,7 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-try:
-    from ...utils.system.dependencies import ensure_sys_paths
-    ensure_sys_paths()
-except (ImportError, ValueError):
-    try:
-        from utils.system.dependencies import ensure_sys_paths
-        ensure_sys_paths()
-    except Exception:
-        pass
+
 
 try:
     from ...bridge.material import (

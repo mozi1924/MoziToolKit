@@ -6,10 +6,10 @@ import time
 import bpy
 try:
     from ..bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
-    from ..utils.system import get_all_dependency_statuses, get_prefs
+    from ..utils.system import get_prefs
 except (ImportError, ValueError):
     from bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
-    from utils.system import get_all_dependency_statuses, get_prefs
+    from utils.system import get_prefs
 
 
 class MOZI_OT_precompile_cache(bpy.types.Operator):
@@ -173,34 +173,10 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class MOZI_OT_check_dependencies(bpy.types.Operator):
-    """Check availability of optional and required dependencies."""
-
-    bl_idname = "mozi.check_dependencies"
-    bl_label = "Check Dependencies"
-    bl_options = {"REGISTER"}
-
-    def execute(self, context):
-        statuses = get_all_dependency_statuses(force_refresh=True)
-        for info in statuses:
-            name = info.get("display_name", info.get("name", "Unknown"))
-            installed = info.get("installed", False)
-            ver = info.get("version", "unknown")
-            location = info.get("location", "")
-            level = "INFO" if installed else "WARNING"
-            if installed:
-                loc_short = f" (at {location})" if location else ""
-                self.report({level}, f"{name}: Ready v{ver}{loc_short}")
-            else:
-                self.report({level}, f"{name}: Not installed / missing wheel")
-        return {"FINISHED"}
-
-
 OPERATORS_CLASSES = (
     MOZI_OT_precompile_cache,
     MOZI_OT_clear_cache,
     MOZI_OT_open_cache_folder,
     MOZI_OT_open_url,
     MOZI_OT_open_preferences,
-    MOZI_OT_check_dependencies,
 )
