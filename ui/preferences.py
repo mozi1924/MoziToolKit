@@ -29,12 +29,7 @@ try:
     )
     from ..utils.system import (
         ALL_OPERATORS,
-        DEPENDENCIES,
         DEFAULT_PRESETS,
-        get_all_dependency_statuses,
-        get_blender_site_packages,
-        get_python_executable,
-        has_all_dependencies,
         get_prefs,
         sort_unadded_items,
     )
@@ -58,12 +53,7 @@ except (ImportError, ValueError):
     )
     from utils.system import (
         ALL_OPERATORS,
-        DEPENDENCIES,
         DEFAULT_PRESETS,
-        get_all_dependency_statuses,
-        get_blender_site_packages,
-        get_python_executable,
-        has_all_dependencies,
         get_prefs,
         sort_unadded_items,
     )
@@ -241,7 +231,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         items=[
             ("RESOURCE_PACKS", "Resource Packs & Base JARs", "Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking"),
             ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
-            ("MISC", "Environment & Storage", "Storage backend, extension environment status, dependencies, and cache settings"),
+            ("MISC", "Performance & Storage", "Storage backend, worker thread concurrency, and persistent cache settings"),
         ],
         default="RESOURCE_PACKS",
     )
@@ -570,73 +560,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         layout.separator()
 
-        statuses = get_all_dependency_statuses()
-        all_ok = has_all_dependencies()
-
-        # Status Summary Banner
-        status_box = layout.box()
-        banner_row = status_box.row(align=True)
-        missing = [item for item in statuses if not item.get("is_satisfied", False)]
-        if not missing:
-            banner_row.label(text=tr("All required modules and dependencies are available."), icon="CHECKMARK")
-        elif len(missing) == 1:
-            banner_row.alert = True
-            dep = missing[0]
-            dep_name = dep.get("display_name", dep.get("name", "Unknown"))
-            req_text = f" ({tr('required for')} {dep['required_by']})" if dep.get("required_by") else ""
-            banner_row.label(text=f"{tr('Required dependency')} '{dep_name}' {tr('is not installed')}{req_text}.", icon="INFO")
-        else:
-            banner_row.alert = True
-            dep_names = ", ".join(f"'{d.get('display_name', d.get('name', 'Unknown'))}'" for d in missing)
-            banner_row.label(text=f"{tr('Dependencies')} {dep_names} {tr('are not installed')}.", icon="INFO")
-
-        layout.separator()
-
-        # Dependencies List Box
-        list_box = layout.box()
-        header_row = list_box.row(align=True)
-        header_row.label(text=tr("Extension Dependencies:"), icon="PACKAGE")
-        header_row.operator("mozi.check_dependencies", text=tr("Refresh Status"), icon="FILE_REFRESH")
-
-        col = list_box.column(align=False)
-        for item in statuses:
-            dep_box = col.box()
-            row = dep_box.row(align=False)
-
-            info_col = row.column(align=False)
-            title_row = info_col.row(align=True)
-            title_row.label(text=tr(item["display_name"]), icon="SCRIPT")
-            if item["installed"]:
-                title_row.label(text=f"(v{item['version'] or 'unknown'})", icon="NONE")
-            else:
-                title_row.label(text=f"({tr('Not Installed / Missing')})", icon="NONE")
-
-            desc_row = info_col.row(align=True)
-            desc_row.scale_y = 0.85
-            desc_row.label(text=tr(item["description"]) or "")
-
-            if item.get("location"):
-                loc_row = info_col.row(align=True)
-                loc_row.scale_y = 0.85
-                loc_row.label(text=f"{tr('Location')}: {item['location']}", icon="FILE_SCRIPT")
-
-            if item["required_by"]:
-                req_row = info_col.row(align=True)
-                req_row.scale_y = 0.85
-                req_row.label(text=f"{tr('Used by')}: {item['required_by']}")
-
-            action_col = row.column(align=True)
-            action_col.alignment = "RIGHT"
-            if item["installed"]:
-                tag_row = action_col.row(align=True)
-                tag_row.label(text=tr("Ready"), icon="CHECKMARK")
-                origin_row = action_col.row(align=True)
-                origin_row.scale_y = 0.8
-                origin_row.label(text=item.get("origin_type", "Ready"))
-            else:
-                tag_row = action_col.row(align=True)
-                tag_row.label(text=tr("Unavailable"), icon="CANCEL")
-
         layout.separator()
 
         # Performance & Multi-Threading
@@ -677,35 +600,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         cache_row = cache_box.row(align=True)
         cache_row.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FILE_FOLDER")
         cache_row.operator("mozi.clear_cache", text=tr("Clear Resource Pack Cache"), icon="TRASH")
-
-        layout.separator()
-
-        # Python Environment Info Box
-        from ..utils.system.dependencies import get_extension_environment_info
-        ext_info = get_extension_environment_info()
-
-        env_box = layout.box()
-        env_box.label(text=tr("Python & Extension Environment:"), icon="INFO")
-        env_col = env_box.column(align=True)
-        env_col.scale_y = 0.85
-        env_col.label(text=f"{tr('Python Version')}: {sys.version.split()[0]}")
-        env_col.label(text=f"{tr('Python Executable')}: {get_python_executable()}")
-        env_col.label(text=f"{tr('Add-on Directory')}: {ext_info['addon_dir']}")
-
-        if ext_info.get("discovered_wheels"):
-            wheels_str = ", ".join(ext_info["discovered_wheels"])
-            env_col.label(text=f"{tr('Bundled Wheels')}: {wheels_str}")
-
-        if ext_info.get("extension_site_packages"):
-            env_col.label(text=f"{tr('Extension Local Site-Packages')}: {ext_info['extension_site_packages'][0]}")
-            for extra in ext_info["extension_site_packages"][1:]:
-                env_col.label(text=f"  + {extra}")
-
-        blender_sites = get_blender_site_packages()
-        if blender_sites:
-            env_col.label(text=f"{tr('Active Package Search Path')}: {blender_sites[0]}")
-            for extra_site in blender_sites[1:]:
-                env_col.label(text=f"  + {extra_site}")
 
 
 PREFERENCES_CLASSES = (

@@ -22,16 +22,12 @@ bl_info = {
     "category": "3D View",
 }
 
-from .utils.system import ensure_sys_paths
-ensure_sys_paths()
-
 from . import i18n
 from . import operators
 from . import ui
 
 
 def register():
-    ensure_sys_paths()
     i18n.register()
     operators.register()
     ui.register()
