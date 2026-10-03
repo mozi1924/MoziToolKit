@@ -185,24 +185,25 @@ class TestModelRegressionFixes(unittest.TestCase):
             "rotation=0 and rotation=8 must produce rotated skull vertices",
         )
 
-        # Dragon head (Blockbench standard JSON model: base + snout + jaw = 18 faces)
+        # Dragon head (4 internal contact faces between horns/nostrils and base are deduplicated: 42 - 4 = 38)
         dragon = self.db.get_mesh("minecraft:dragon_head[rotation=0]", False)
         self.assertIsNotNone(dragon)
         mesh_d, tex_d = dragon
-        self.assertEqual(mesh_d.face_count, 18, "Dragon head model has 18 faces in Blockbench JSON model")
+        self.assertEqual(mesh_d.face_count, 38, "Dragon head model has 38 faces after deduplicating 4 internal contact faces")
         self.assertIn("minecraft:entity/enderdragon/dragon", tex_d)
 
-        # Piglin head (Blockbench standard JSON model: head + snout = 11 faces after deduplicating contact face)
+        # Piglin head (7 internal contact faces between ears/tusks/snout and head are deduplicated: 36 - 7 = 29)
         piglin = self.db.get_mesh("minecraft:piglin_head[rotation=0]", False)
         self.assertIsNotNone(piglin)
         mesh_p, tex_p = piglin
-        self.assertEqual(mesh_p.face_count, 11, "Piglin head model has 11 faces in Blockbench JSON model")
+        self.assertEqual(mesh_p.face_count, 29, "Piglin head model has 29 faces after deduplicating 7 internal contact faces")
         self.assertIn("minecraft:entity/piglin/piglin", tex_p)
 
         # Wall skull
         wall_dragon = self.db.get_mesh("minecraft:dragon_wall_head[facing=north]", False)
         self.assertIsNotNone(wall_dragon)
-        self.assertEqual(wall_dragon[0].face_count, 18)
+        self.assertEqual(wall_dragon[0].face_count, 38)
+
 
     def test_pink_petals_geometry(self):
         """Pink petals / wildflowers must not fall back to 6-sided solid cubes."""
