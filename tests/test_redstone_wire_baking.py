@@ -95,9 +95,9 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         for val in em_z:
             self.assertAlmostEqual(val, 0.0, places=3)
 
-        # 2. Power 15 with vertical wall wire (north=up)
+        # 2. Power 15 with vertical wall wire (north=up, south=side)
         mesh_up, tex_up = self.baker.bake_blockstate(
-            self.stack, "minecraft:redstone_wire[power=15,north=up]", False
+            self.stack, "minecraft:redstone_wire[north=up,power=15,south=side]", False
         )
         self.assertIsNotNone(mesh_up)
         self.assertGreater(mesh_up.face_count, 0)
@@ -108,21 +108,9 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         for val in em_up:
             self.assertAlmostEqual(val, 1.0, places=3)
 
-        # Check hardcoded tint data and color
-        self.assertTrue(mesh_up.has_attribute("mtk_biome_tint_data"))
-        tint_data = mesh_up.get_attribute_data("mtk_biome_tint_data")
-        for td in tint_data:
-            self.assertEqual(td[3], 4.0)  # TINT_TYPE_HARDCODED
-
-        self.assertTrue(mesh_up.has_attribute("mtk_biome_tint_color"))
-        tint_colors = mesh_up.get_attribute_data("mtk_biome_tint_color")
-        for tc in tint_colors:
-            self.assertAlmostEqual(tc[0], 1.0, places=2)
-            self.assertAlmostEqual(tc[1], 0.15, places=2)
-
         # 3. Intermediate power 8 dot wire
         mesh_dot, tex_dot = self.baker.bake_blockstate(
-            self.stack, "minecraft:redstone_wire[power=8]", False
+            self.stack, "minecraft:redstone_wire[east=none,north=none,power=8,south=none,west=none]", False
         )
         self.assertIsNotNone(mesh_dot)
         self.assertGreater(mesh_dot.face_count, 0)

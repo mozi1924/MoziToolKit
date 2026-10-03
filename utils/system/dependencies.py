@@ -87,25 +87,102 @@ def get_blender_site_packages() -> List[str]:
 _installed_modules_cache = {}
 
 
+import platform
+import zipfile
+
+
+def find_matching_wheel(wheels_dir: Path) -> Optional[Path]:
+    """Find a platform-compatible wheel file from the wheels directory."""
+    if not wheels_dir.exists() or not wheels_dir.is_dir():
+        return None
+
+    system = sys.platform
+    machine = platform.machine().lower()
+
+    # Candidate platform tags for current runtime
+    tags = []
+    if system == "linux":
+        if machine in ("x86_64", "amd64"):
+            tags.extend(["linux_x86_64", "manylinux", "musllinux"])
+        elif machine in ("aarch64", "arm64"):
+            tags.extend(["linux_aarch64", "manylinux", "musllinux"])
+    elif system == "darwin":
+        if machine in ("arm64", "aarch64"):
+            tags.extend(["macosx_11_0_arm64", "macosx_12_0_arm64", "macosx_arm64", "macosx_universal2"])
+        else:
+            tags.extend(["macosx_10_9_x86_64", "macosx_x86_64", "macosx_universal2"])
+    elif system == "win32":
+        if machine in ("amd64", "x86_64"):
+            tags.extend(["win_amd64", "windows_x64"])
+        elif machine in ("arm64", "aarch64"):
+            tags.extend(["win_arm64", "windows_arm64"])
+
+    for whl in wheels_dir.glob("*.whl"):
+        whl_name = whl.name.lower()
+        if not whl_name.startswith("libmtk_py"):
+            continue
+        for tag in tags:
+            if tag.lower() in whl_name:
+                return whl
+
+    # Fallback to any libmtk_py wheel if only one is present
+    all_wheels = list(wheels_dir.glob("libmtk_py*.whl"))
+    if len(all_wheels) == 1:
+        return all_wheels[0]
+
+    return None
+
+
+def unpack_wheel(whl_path: Path, target_dir: Path) -> bool:
+    """Unpack a wheel archive into the target directory cleanly."""
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(whl_path, "r") as zf:
+            zf.extractall(target_dir)
+        return True
+    except Exception:
+        return False
+
+
 def ensure_sys_paths(force: bool = False) -> List[str]:
     """
     Ensure local addon site-packages directory and LibMTK Rust backend bindings are added to sys.path.
-    Blender 4.2+ handles declared wheels automatically at the extension layer,
-    so this function avoids unpacking archives or mutating external environments.
+    If LibMTK binary is missing from active environment (e.g. developer symlink or fresh install),
+    automatically unpacks the bundled platform wheel into local site-packages.
     Returns list of paths successfully added to sys.path.
     """
     added_paths = []
     addon_dir = Path(__file__).parent.parent.parent.resolve()
+    local_sp = addon_dir / "site-packages"
+
+    # 1. Check if local site-packages needs wheel extraction
+    wheels_dir = addon_dir / "wheels"
+    matching_whl = find_matching_wheel(wheels_dir)
+    libmtk_module_dir = local_sp / "libmtk_py"
+
+    should_unpack = False
+    if matching_whl and matching_whl.exists():
+        if not libmtk_module_dir.exists():
+            should_unpack = True
+        else:
+            # Re-unpack if wheel is newer than installed module
+            whl_mtime = matching_whl.stat().st_mtime
+            mod_mtime = libmtk_module_dir.stat().st_mtime
+            if whl_mtime > mod_mtime:
+                should_unpack = True
+
+    if should_unpack and matching_whl:
+        unpack_wheel(matching_whl, local_sp)
+        force = True
 
     # Candidate paths to discover LibMTK in development environments
     candidate_paths = []
-    
-    # 1. Explicit environment override for testing or external builds
+
+    # Explicit environment override for testing or external builds
     if "LIBMTK_PYTHON_PATH" in os.environ:
         candidate_paths.append(Path(os.environ["LIBMTK_PYTHON_PATH"]))
 
-    # 2. Extension's own site-packages (for local unpacks / developer symlinks)
-    local_sp = addon_dir / "site-packages"
+    # Extension's own site-packages (for local unpacks / developer symlinks)
     if local_sp.exists():
         candidate_paths.append(local_sp)
 
@@ -209,13 +286,68 @@ def get_installed_version(module_name: str, package_name: Optional[str] = None) 
         return None
 
 
+def get_module_location(module_name: str) -> Optional[str]:
+    """Retrieve the physical file or directory path where the module is loaded/installed from."""
+    if module_name in sys.modules:
+        mod = sys.modules[module_name]
+        if hasattr(mod, "__file__") and mod.__file__:
+            return str(Path(mod.__file__).resolve())
+    try:
+        spec = importlib.util.find_spec(module_name)
+        if spec and spec.origin:
+            return str(Path(spec.origin).resolve())
+        if spec and spec.submodule_search_locations:
+            for loc in spec.submodule_search_locations:
+                return str(Path(loc).resolve())
+    except Exception:
+        pass
+    return None
+
+
+def get_extension_environment_info() -> dict:
+    """
+    Inspect Blender 4.2+ extension isolation environment, discovered wheels,
+    and active runtime module locations.
+    """
+    addon_dir = Path(__file__).parent.parent.parent.resolve()
+    wheels_dir = addon_dir / "wheels"
+    discovered_wheels = []
+    if wheels_dir.exists():
+        for whl in wheels_dir.glob("*.whl"):
+            discovered_wheels.append(whl.name)
+
+    ext_site_packages = []
+    for p in sys.path:
+        if "extensions" in p and ("site-packages" in p or "dist-packages" in p):
+            resolved = str(Path(p).resolve())
+            if resolved not in ext_site_packages and Path(p).exists():
+                ext_site_packages.append(resolved)
+
+    return {
+        "addon_dir": str(addon_dir),
+        "wheels_dir": str(wheels_dir) if wheels_dir.exists() else None,
+        "discovered_wheels": discovered_wheels,
+        "extension_site_packages": ext_site_packages,
+    }
+
+
 def get_dependency_status(dep: Dependency) -> dict:
-    """Get the live installation status and version info for a Dependency."""
+    """Get the live installation status, real location, and version info for a Dependency."""
     installed = is_module_installed(dep.module_name)
     version = get_installed_version(dep.module_name, dep.name) if installed else None
+    location = get_module_location(dep.module_name) if installed else None
+
+    origin_type = "Not Installed"
+    if installed and location:
+        addon_dir = str(Path(__file__).parent.parent.parent.resolve())
+        if "extensions" in location and ".local" in location:
+            origin_type = "Blender Extension Isolated"
+        elif location.startswith(addon_dir):
+            origin_type = "Add-on Local Bundled"
+        else:
+            origin_type = "Environment / sys.path"
 
     is_satisfied = installed
-    # If a minimum version is specified, check compatibility
     if installed and version and dep.min_version:
         try:
             from packaging import version as pkg_version
@@ -232,6 +364,8 @@ def get_dependency_status(dep: Dependency) -> dict:
         "min_version": dep.min_version,
         "description": dep.description,
         "required_by": dep.required_by,
+        "location": location,
+        "origin_type": origin_type,
         "is_satisfied": is_satisfied,
     }
 

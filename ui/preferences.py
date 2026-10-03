@@ -581,8 +581,10 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             banner_row.label(text=tr("All required modules and dependencies are available."), icon="CHECKMARK")
         elif len(missing) == 1:
             banner_row.alert = True
+            dep = missing[0]
+            dep_name = dep.get("display_name", dep.get("name", "Unknown"))
             req_text = f" ({tr('required for')} {dep['required_by']})" if dep.get("required_by") else ""
-            banner_row.label(text=f"{tr('Required dependency')} '{dep.get('display_name', dep_name)}' {tr('is not installed')}{req_text}.", icon="INFO")
+            banner_row.label(text=f"{tr('Required dependency')} '{dep_name}' {tr('is not installed')}{req_text}.", icon="INFO")
         else:
             banner_row.alert = True
             dep_names = ", ".join(f"'{d.get('display_name', d.get('name', 'Unknown'))}'" for d in missing)
@@ -613,6 +615,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             desc_row.scale_y = 0.85
             desc_row.label(text=tr(item["description"]) or "")
 
+            if item.get("location"):
+                loc_row = info_col.row(align=True)
+                loc_row.scale_y = 0.85
+                loc_row.label(text=f"{tr('Location')}: {item['location']}", icon="FILE_SCRIPT")
+
             if item["required_by"]:
                 req_row = info_col.row(align=True)
                 req_row.scale_y = 0.85
@@ -623,6 +630,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             if item["installed"]:
                 tag_row = action_col.row(align=True)
                 tag_row.label(text=tr("Ready"), icon="CHECKMARK")
+                origin_row = action_col.row(align=True)
+                origin_row.scale_y = 0.8
+                origin_row.label(text=item.get("origin_type", "Ready"))
             else:
                 tag_row = action_col.row(align=True)
                 tag_row.label(text=tr("Unavailable"), icon="CANCEL")
@@ -671,15 +681,29 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         layout.separator()
 
         # Python Environment Info Box
+        from ..utils.system.dependencies import get_extension_environment_info
+        ext_info = get_extension_environment_info()
+
         env_box = layout.box()
-        env_box.label(text="Python & Extension Environment:", icon="INFO")
+        env_box.label(text=tr("Python & Extension Environment:"), icon="INFO")
         env_col = env_box.column(align=True)
         env_col.scale_y = 0.85
-        env_col.label(text=f"Python Version: {sys.version.split()[0]}")
-        env_col.label(text=f"Python Executable: {get_python_executable()}")
+        env_col.label(text=f"{tr('Python Version')}: {sys.version.split()[0]}")
+        env_col.label(text=f"{tr('Python Executable')}: {get_python_executable()}")
+        env_col.label(text=f"{tr('Add-on Directory')}: {ext_info['addon_dir']}")
+
+        if ext_info.get("discovered_wheels"):
+            wheels_str = ", ".join(ext_info["discovered_wheels"])
+            env_col.label(text=f"{tr('Bundled Wheels')}: {wheels_str}")
+
+        if ext_info.get("extension_site_packages"):
+            env_col.label(text=f"{tr('Extension Local Site-Packages')}: {ext_info['extension_site_packages'][0]}")
+            for extra in ext_info["extension_site_packages"][1:]:
+                env_col.label(text=f"  + {extra}")
+
         blender_sites = get_blender_site_packages()
         if blender_sites:
-            env_col.label(text=f"Package Search Path: {blender_sites[0]}")
+            env_col.label(text=f"{tr('Active Package Search Path')}: {blender_sites[0]}")
             for extra_site in blender_sites[1:]:
                 env_col.label(text=f"  + {extra_site}")
 

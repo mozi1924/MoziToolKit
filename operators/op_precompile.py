@@ -149,6 +149,30 @@ class MOZI_OT_open_url(bpy.types.Operator):
             return {'CANCELLED'}
 
 
+class MOZI_OT_open_preferences(bpy.types.Operator):
+    """Open MoziToolKit Add-on Preferences."""
+
+    bl_idname = "mozi.open_preferences"
+    bl_label = "Open Preferences"
+    bl_options = {"REGISTER"}
+
+    tab: bpy.props.StringProperty(
+        name="Tab",
+        description="Preferences tab to open",
+        default="MISC",
+    )
+
+    def execute(self, context):
+        try:
+            bpy.ops.screen.userpref_show("INVOKE_DEFAULT")
+        except Exception:
+            pass
+        prefs = get_prefs(context)
+        if prefs and hasattr(prefs, "active_tab"):
+            prefs.active_tab = self.tab
+        return {"FINISHED"}
+
+
 class MOZI_OT_check_dependencies(bpy.types.Operator):
     """Check availability of optional and required dependencies."""
 
@@ -157,11 +181,19 @@ class MOZI_OT_check_dependencies(bpy.types.Operator):
     bl_options = {"REGISTER"}
 
     def execute(self, context):
-        statuses = get_all_dependency_statuses()
-        for name, info in statuses.items():
-            level = 'INFO' if info.get('installed', False) else 'WARNING'
-            self.report({level}, f"{name}: {info.get('status', 'Unknown')}")
-        return {'FINISHED'}
+        statuses = get_all_dependency_statuses(force_refresh=True)
+        for info in statuses:
+            name = info.get("display_name", info.get("name", "Unknown"))
+            installed = info.get("installed", False)
+            ver = info.get("version", "unknown")
+            location = info.get("location", "")
+            level = "INFO" if installed else "WARNING"
+            if installed:
+                loc_short = f" (at {location})" if location else ""
+                self.report({level}, f"{name}: Ready v{ver}{loc_short}")
+            else:
+                self.report({level}, f"{name}: Not installed / missing wheel")
+        return {"FINISHED"}
 
 
 OPERATORS_CLASSES = (
@@ -169,5 +201,6 @@ OPERATORS_CLASSES = (
     MOZI_OT_clear_cache,
     MOZI_OT_open_cache_folder,
     MOZI_OT_open_url,
+    MOZI_OT_open_preferences,
     MOZI_OT_check_dependencies,
 )
