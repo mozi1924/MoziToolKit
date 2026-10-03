@@ -52,6 +52,32 @@ class TestBakerVoxelFixes(unittest.TestCase):
         self.assertGreaterEqual(wb_mesh.face_count, 10)
         self.assertIn("minecraft:entity/banner/banner_base", wb_tex)
 
+    def test_cauldron_with_liquids_meshing(self):
+        # 1. Baking level-specific models
+        for lvl in [1, 2, 3]:
+            wc_mesh, wc_tex = self.baker.bake_blockstate(self.stack, f"minecraft:water_cauldron[level={lvl}]")
+            self.assertEqual(wc_mesh.face_count, 59, f"Water cauldron level {lvl} must have 59 faces (body + water surface)")
+            self.assertIn("minecraft:block/water_still", wc_tex)
+
+        lc_mesh, lc_tex = self.baker.bake_blockstate(self.stack, "minecraft:lava_cauldron")
+        self.assertEqual(lc_mesh.face_count, 59, "Lava cauldron must have 59 faces (body + lava surface)")
+        self.assertIn("minecraft:block/lava_still", lc_tex)
+
+        # 2. Voxel SectionMesher construction
+        atlas = libmtk_py.AtlasBuilder().build(self.stack, "blocks")
+        db = self.baker.bake_all(self.stack, atlas)
+        culler = libmtk_py.FaceCuller()
+        config = libmtk_py.MesherConfig(enable_ao=True, mesh_fluids=True, z_up_coordinates=True)
+
+        storage = libmtk_py.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_block(1, 1, 1, "minecraft:water_cauldron[level=3]")
+        storage.set_block(4, 1, 1, "minecraft:lava_cauldron")
+
+        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, culler, db)
+        self.assertEqual(mesh.quad_count, 59 * 2, "SectionMesher must construct both cauldrons without omitting liquid content")
+
 
 if __name__ == "__main__":
     unittest.main()
+
