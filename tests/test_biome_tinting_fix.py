@@ -11,9 +11,11 @@ Integration and regression test suite for Biome Tinting fixes:
 import unittest
 import struct
 
+from unittest.mock import MagicMock
+
 try:
     import bpy
-    HAS_BPY = True
+    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
 except ImportError:
     bpy = None
     HAS_BPY = False
