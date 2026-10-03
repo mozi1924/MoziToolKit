@@ -263,6 +263,16 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
             else:
                 cands.extend(["entity/chest/normal", "entity/chest/chest", "block/chest_front", "block/chest_top", "block/chest_side"])
 
+    # 4.5. Fluids (water and lava)
+    if clean in ("water", "stationary_water", "water_still"):
+        cands.extend(["block/water_still", "block/water_flow"])
+    elif clean in ("flowing_water", "water_flow"):
+        cands.extend(["block/water_flow", "block/water_still"])
+    elif clean in ("lava", "stationary_lava", "lava_still"):
+        cands.extend(["block/lava_still", "block/lava_flow"])
+    elif clean in ("flowing_lava", "lava_flow"):
+        cands.extend(["block/lava_flow", "block/lava_still"])
+
     # 5. Redstone dust/wire
     if "redstone_dust" in clean or "redstone_wire" in clean:
         cands.extend([

@@ -263,6 +263,16 @@ def expand_ice_cube_candidates(raw_name: str) -> list[str]:
         else:
             candidates.extend(["block/fire_0", "fire_0"])
 
+    # 3.5. Fluid aliases
+    if clean in ("water", "stationary_water", "water_still"):
+        candidates.extend(["block/water_still", "block/water_flow"])
+    elif clean in ("flowing_water", "water_flow"):
+        candidates.extend(["block/water_flow", "block/water_still"])
+    elif clean in ("lava", "stationary_lava", "lava_still"):
+        candidates.extend(["block/lava_still", "block/lava_flow"])
+    elif clean in ("flowing_lava", "lava_flow"):
+        candidates.extend(["block/lava_flow", "block/lava_still"])
+
     # 4. Suffix stripping
     stem = clean
     for suffix in ("_cross", "_wool", "_all", "_side", "_top", "_bottom", "_front", "_back",

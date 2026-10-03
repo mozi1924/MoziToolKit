@@ -13,14 +13,10 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
-libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
-
 if str(PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(PARENT_DIR))
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
-if str(libmtk_release_path) not in sys.path:
-    sys.path.insert(0, str(libmtk_release_path))
 
 
 try:
