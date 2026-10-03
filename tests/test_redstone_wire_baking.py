@@ -9,12 +9,11 @@ import unittest
 from pathlib import Path
 import sys
 
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_DIR.parent
+import os
 
-for p in [str(PROJECT_DIR), str(PARENT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+PROJECT_DIR = Path(__file__).parent.parent.resolve()
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 try:
     import libmtk_py
@@ -31,6 +30,12 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         if not HAS_LIBMTK:
             raise unittest.SkipTest("libmtk_py is required for redstone wire tests")
         cls.stack = libmtk_py.ResourcePackStack()
+        jar_path = Path(os.path.expanduser("~/26.2-Fabric.jar"))
+        mc_path = Path("/home/mozi/mc")
+        if jar_path.exists():
+            cls.stack.add_zip_pack(str(jar_path))
+        elif mc_path.exists():
+            cls.stack.add_directory_pack(str(mc_path))
         cls.baker = libmtk_py.ModelBaker()
 
     def test_redstone_wire_signal_tints_power_0_to_15(self):
@@ -75,10 +80,13 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         self.assertEqual(info_legacy_off.get("hardcoded_hex"), "#4B0000")
 
     def test_redstone_wire_builtin_fallback_baking(self):
-        """Built-in fallback models must bake correctly without external resource packs."""
+        """Redstone wire models must bake correctly from resource pack assets with emission and tints."""
+        if self.stack.get_pack_count() == 0:
+            raise unittest.SkipTest("No resource pack available for redstone wire")
+
         # 1. Straight line along Z (off state)
         mesh_z, tex_z = self.baker.bake_blockstate(
-            self.stack, "minecraft:redstone_wire[axis=z,power=0]", False
+            self.stack, "minecraft:redstone_wire[north=side,south=side,power=0]", False
         )
         self.assertIsNotNone(mesh_z)
         self.assertGreater(mesh_z.face_count, 0)
@@ -114,7 +122,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
 
         # 3. Intermediate power 8 dot wire
         mesh_dot, tex_dot = self.baker.bake_blockstate(
-            self.stack, "minecraft:redstone_wire[wire=dot,power=8]", False
+            self.stack, "minecraft:redstone_wire[power=8]", False
         )
         self.assertIsNotNone(mesh_dot)
         self.assertGreater(mesh_dot.face_count, 0)

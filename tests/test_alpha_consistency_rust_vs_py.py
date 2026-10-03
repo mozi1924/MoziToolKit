@@ -19,10 +19,12 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
 
 import bridge.texture as tex_bridge
 
+from unittest.mock import MagicMock
+
 try:
     import bpy
     import bmesh
-    HAS_BPY = True
+    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
 except ImportError:
     bpy = None
     bmesh = None
