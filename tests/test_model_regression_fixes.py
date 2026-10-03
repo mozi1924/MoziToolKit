@@ -316,8 +316,80 @@ class TestModelRegressionFixes(unittest.TestCase):
         # Wall: 6 solid + 6 water = 12
         # Stairs: 11 solid + 6 water = 17
         # Slab: 6 solid + 6 water = 12
+        # Wall: 6 solid + 6 water = 12
+        # Stairs: 11 solid + 6 water = 17
+        # Slab: 6 solid + 6 water = 12
         # Total = 41 quads
         self.assertEqual(mesh.quad_count, 41, f"Expected 41 quads, got {mesh.quad_count}")
+
+    def test_bell_body_elements_and_texture(self):
+        """Bell must include both support frame and golden bell body (27 quads clipped, 28 unclipped)."""
+        res = self.db.get_mesh("minecraft:bell[attachment=floor,facing=north]", False)
+        self.assertIsNotNone(res, "bell[attachment=floor,facing=north] must resolve")
+        mesh, textures = res
+        self.assertIn(mesh.quad_count, (27, 28), f"Expected 27 or 28 quads for bell, got {mesh.quad_count}")
+        self.assertIn("minecraft:entity/bell/bell_body", textures)
+        self.assertIn("minecraft:block/dark_oak_planks", textures)
+        self.assertIn("minecraft:block/stone", textures)
+
+    def test_chest_uv_mapping_and_double_chest(self):
+        """Single and double chest UV mappings must correctly align front, top, bottom, and side faces."""
+        # Single chest
+        res_single = self.db.get_mesh("minecraft:chest[facing=north,type=single,waterlogged=false]", False)
+        self.assertIsNotNone(res_single)
+        mesh_s, tex_s = res_single
+        self.assertEqual(mesh_s.quad_count, 18)
+        self.assertIn("minecraft:entity/chest/normal", tex_s)
+
+        # Left double chest
+        res_left = self.db.get_mesh("minecraft:chest[facing=north,type=left,waterlogged=false]", False)
+        self.assertIsNotNone(res_left)
+        mesh_l, tex_l = res_left
+        self.assertEqual(mesh_l.quad_count, 18)
+        self.assertIn("minecraft:entity/chest/normal_left", tex_l)
+        # Left chest outer wall is West (min_x) and must be solid (U: ~0.45..0.67 in UV)
+        uvs_l = mesh_l.get_flat_uvs()
+        pos_l = mesh_l.get_flat_positions()
+        idxs_l = mesh_l.get_quad_indices()
+        west_quad_found = False
+        for q in range(len(idxs_l) // 4):
+            q_idxs = idxs_l[q*4 : (q+1)*4]
+            q_pos = [pos_l[i*3 : (i+1)*3] for i in q_idxs]
+            q_uvs = [uvs_l[i*2 : (i+1)*2] for i in q_idxs]
+            min_x = min(p[0] for p in q_pos)
+            max_x = max(p[0] for p in q_pos)
+            min_y = min(p[1] for p in q_pos)
+            max_y = max(p[1] for p in q_pos)
+            if min_x == max_x and min_x < 0.1 and max_y < 0.7:  # West face of bottom
+                min_u = min(u[0] for u in q_uvs)
+                self.assertGreater(min_u, 0.4, "Left chest outer West face must be solid texture, not transparent 0..14")
+                west_quad_found = True
+        self.assertTrue(west_quad_found, "Left chest must have a West face")
+
+        # Right double chest
+        res_right = self.db.get_mesh("minecraft:chest[facing=north,type=right,waterlogged=false]", False)
+        self.assertIsNotNone(res_right)
+        mesh_r, tex_r = res_right
+        self.assertEqual(mesh_r.quad_count, 18)
+        self.assertIn("minecraft:entity/chest/normal_right", tex_r)
+        # Right chest outer wall is East (max_x) and must be solid (U: 0.0..0.22 in UV)
+        uvs_r = mesh_r.get_flat_uvs()
+        pos_r = mesh_r.get_flat_positions()
+        idxs_r = mesh_r.get_quad_indices()
+        east_quad_found = False
+        for q in range(len(idxs_r) // 4):
+            q_idxs = idxs_r[q*4 : (q+1)*4]
+            q_pos = [pos_r[i*3 : (i+1)*3] for i in q_idxs]
+            q_uvs = [uvs_r[i*2 : (i+1)*2] for i in q_idxs]
+            min_x = min(p[0] for p in q_pos)
+            max_x = max(p[0] for p in q_pos)
+            min_y = min(p[1] for p in q_pos)
+            max_y = max(p[1] for p in q_pos)
+            if min_x == max_x and max_x > 0.9 and max_y < 0.7:  # East face of bottom
+                min_u = min(u[0] for u in q_uvs)
+                self.assertLess(min_u, 0.05, "Right chest outer East face must be solid texture (U: 0..14)")
+                east_quad_found = True
+        self.assertTrue(east_quad_found, "Right chest must have an East face")
 
 
 if __name__ == "__main__":
