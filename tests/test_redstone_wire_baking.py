@@ -89,7 +89,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
             self.stack, "minecraft:redstone_wire[north=side,south=side,power=0]", False
         )
         self.assertIsNotNone(mesh_z)
-        self.assertGreater(mesh_z.face_count, 0)
+        self.assertEqual(mesh_z.face_count, 2, "Straight line must have 2 faces (north arm + south arm)")
         em_z = mesh_z.get_attribute_data("mtk_emission")
         self.assertIsNotNone(em_z)
         for val in em_z:
@@ -113,7 +113,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
             self.stack, "minecraft:redstone_wire[east=none,north=none,power=8,south=none,west=none]", False
         )
         self.assertIsNotNone(mesh_dot)
-        self.assertGreater(mesh_dot.face_count, 0)
+        self.assertEqual(mesh_dot.face_count, 1, "Isolated dot wire must have 1 face")
         em_dot = mesh_dot.get_attribute_data("mtk_emission")
         expected_em = 8.0 / 15.0
         for val in em_dot:
@@ -121,21 +121,26 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
 
     def test_redstone_wire_directional_geometry(self):
         """Corner and cross wires must generate appropriate geometry faces."""
-        # Corner wire (north=side, east=side)
-        mesh_corner, _ = self.baker.bake_blockstate(
+        if self.stack.get_pack_count() == 0:
+            raise unittest.SkipTest("No resource pack available for redstone wire")
+
+        # Corner wire (north=side, east=side): dot + north arm + east arm
+        mesh_corner, tex_corner = self.baker.bake_blockstate(
             self.stack, "minecraft:redstone_wire[north=side,east=side,power=15]", False
         )
         self.assertIsNotNone(mesh_corner)
-        self.assertGreater(mesh_corner.face_count, 0)
+        self.assertEqual(mesh_corner.face_count, 3, "Corner wire must have 3 faces (dot + 2 arms)")
+        self.assertTrue(any("redstone_dust_dot" in t for t in tex_corner))
 
-        # Four-way cross wire
-        mesh_cross, _ = self.baker.bake_blockstate(
+        # Four-way cross wire: dot + all 4 arms
+        mesh_cross, tex_cross = self.baker.bake_blockstate(
             self.stack,
             "minecraft:redstone_wire[north=side,south=side,east=side,west=side,power=15]",
             False,
         )
         self.assertIsNotNone(mesh_cross)
-        self.assertGreater(mesh_cross.face_count, 0)
+        self.assertEqual(mesh_cross.face_count, 5, "Cross wire must have 5 faces (dot + 4 arms)")
+        self.assertTrue(any("redstone_dust_dot" in t for t in tex_cross))
 
 
 if __name__ == "__main__":
