@@ -192,11 +192,11 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertEqual(mesh_d.face_count, 38, "Dragon head model has 38 faces after deduplicating 4 internal contact faces")
         self.assertIn("minecraft:entity/enderdragon/dragon", tex_d)
 
-        # Piglin head (7 internal contact faces between ears/tusks/snout and head are deduplicated: 36 - 7 = 29)
+        # Piglin head (5 internal contact faces between tusks/snout and head are deduplicated; rotated ears preserve all faces: 36 - 5 = 31)
         piglin = self.db.get_mesh("minecraft:piglin_head[rotation=0]", False)
         self.assertIsNotNone(piglin)
         mesh_p, tex_p = piglin
-        self.assertEqual(mesh_p.face_count, 29, "Piglin head model has 29 faces after deduplicating 7 internal contact faces")
+        self.assertEqual(mesh_p.face_count, 31, "Piglin head model has 31 faces with rotated ears")
         self.assertIn("minecraft:entity/piglin/piglin", tex_p)
 
         # Wall skull
