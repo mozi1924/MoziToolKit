@@ -101,7 +101,7 @@ def update_world_mesh(
     # Synchronize unculled voxel storage point cloud if storage is provided
     if storage is not None:
         try:
-            sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=False, initial_hidden=True)
+            sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=True, initial_hidden=True)
         except Exception as e:
             logger.warning("Failed syncing voxel point cloud during live sync mesh update: %s", e)
 
