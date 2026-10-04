@@ -49,11 +49,17 @@ def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any],
     return model_db, atlas, biome_resolver
 
 
-def ensure_world_materials(world_obj: Any, prefs=None) -> None:
+def ensure_world_materials(
+    world_obj: Any,
+    prefs=None,
+    atlas: Optional[Any] = None,
+    used_chunk_ids: Optional[Any] = None,
+) -> None:
     """
-    Ensures that the unified world mesh object has all corresponding Atlas Chunk materials
-    and shaders assigned, hooking up albedo, normals, specular, emission, animated sprites,
-    and biome tinting.
+    Ensures that the unified world mesh object has corresponding Atlas Chunk materials
+    and shaders assigned for chunks actually present in the world geometry, hooking up
+    albedo, normals, specular, emission, animated sprites, and biome tinting.
+    Avoids loading textures or instantiating materials for unused atlas chunks.
     """
     try:
         import bpy
@@ -79,73 +85,114 @@ def ensure_world_materials(world_obj: Any, prefs=None) -> None:
     atlas_dir = cache_dir / "atlas"
     atlas_mapping_path = atlas_dir / "atlas_mapping.json"
 
-    # 1. Bind Precompiled Atlas Chunk Materials
-    if atlas_mapping_path.exists() and build_atlas_chunk_material is not None:
-        try:
-            atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
-            chunk_meta_list = sorted(atlas_data.get("chunks", []), key=lambda c: c.get("chunk_id", 0))
-
-            colormaps_dir = cache_dir / "colormaps"
-            colormaps = {}
-            if colormaps_dir.exists():
-                for cm in ("grass", "foliage", "dry_foliage"):
-                    p = colormaps_dir / f"{cm}.png"
-                    if p.exists():
-                        colormaps[cm] = p
-
-            manifest_path = cache_dir / "cache_manifest.json"
-            manifest_fp = None
-            if manifest_path.exists():
+    # 1. Resolve which Chunk IDs are actually present in the mesh geometry
+    target_chunk_ids: Optional[set[int]] = None
+    if used_chunk_ids is not None:
+        target_chunk_ids = {int(c) for c in used_chunk_ids}
+    elif hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
+        if hasattr(mesh.polygons, "foreach_get"):
+            try:
+                import numpy as np
+                poly_mats = np.empty(len(mesh.polygons), dtype=np.int32)
+                mesh.polygons.foreach_get("material_index", poly_mats)
+                target_chunk_ids = {int(x) for x in np.unique(poly_mats).tolist()}
+            except Exception:
                 try:
-                    manifest_fp = json.loads(manifest_path.read_text(encoding="utf-8")).get("fingerprint")
+                    poly_mats = [0] * len(mesh.polygons)
+                    mesh.polygons.foreach_get("material_index", poly_mats)
+                    target_chunk_ids = {int(x) for x in poly_mats}
                 except Exception:
-                    pass
+                    target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
+        else:
+            target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
 
-            if len(mesh.materials) == 1 and mesh.materials[0] and mesh.materials[0].name.startswith("MTK:Default"):
-                mesh.materials.clear()
+    # 2. Bind Precompiled Atlas Chunk Materials for used chunks only
+    if (atlas is not None or atlas_mapping_path.exists()) and build_atlas_chunk_material is not None:
+        try:
+            # Query chunk metadata from BakedAtlas (Rust SSOT) or fallback to mapping JSON
+            chunk_meta_map: dict[int, dict[str, Any]] = {}
+            if atlas is not None and hasattr(atlas, "get_chunk_info"):
+                if target_chunk_ids is not None:
+                    for cid in sorted(target_chunk_ids):
+                        cm = atlas.get_chunk_info(cid)
+                        if cm is not None:
+                            chunk_meta_map[cid] = cm
+                else:
+                    all_chunks = atlas.get_all_chunks_info() if hasattr(atlas, "get_all_chunks_info") else []
+                    for cm in all_chunks:
+                        chunk_meta_map[cm["chunk_id"]] = cm
+            elif atlas_mapping_path.exists():
+                atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
+                for idx, cm in enumerate(atlas_data.get("chunks", [])):
+                    cid = cm.get("chunk_id", idx)
+                    if target_chunk_ids is None or cid in target_chunk_ids:
+                        chunk_meta_map[cid] = cm
 
-            for idx, cm in enumerate(chunk_meta_list):
-                chunk_id = cm.get("chunk_id", idx)
-                cat = cm.get("category", "blocks")
-                c_idx = cm.get("category_chunk_index", chunk_id + 1)
-                is_anim = cm.get("is_animated", False)
-                stem = f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}"
+            if chunk_meta_map:
+                colormaps_dir = cache_dir / "colormaps"
+                colormaps = {}
+                if colormaps_dir.exists():
+                    for cm_name in ("grass", "foliage", "dry_foliage"):
+                        p = colormaps_dir / f"{cm_name}.png"
+                        if p.exists():
+                            colormaps[cm_name] = p
 
-                albedo_file = atlas_dir / f"{stem}.png"
-                normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
-                specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
-                overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
-                chunk_width = float(cm.get("width", 4096))
-                chunk_height = float(cm.get("height", 4096))
+                manifest_path = cache_dir / "cache_manifest.json"
+                manifest_fp = None
+                if manifest_path.exists():
+                    try:
+                        manifest_fp = json.loads(manifest_path.read_text(encoding="utf-8")).get("fingerprint")
+                    except Exception:
+                        pass
 
-                mat = build_atlas_chunk_material(
-                    chunk_id=chunk_id,
-                    albedo_path=albedo_file,
-                    normal_path=normal_file,
-                    specular_path=specular_file,
-                    overlay_path=overlay_file,
-                    colormaps=colormaps,
-                    category=cat,
-                    category_chunk_index=c_idx,
-                    is_animated=is_anim,
-                    stack_fingerprint=manifest_fp,
-                    use_attribute_node=False,
-                    atlas_width=chunk_width,
-                    atlas_height=chunk_height,
-                    tile_width=16.0,
-                    tile_height=16.0,
-                )
+                if len(mesh.materials) == 1 and mesh.materials[0] and mesh.materials[0].name.startswith("MTK:Default"):
+                    mesh.materials.clear()
 
-                if chunk_id < len(mesh.materials):
+                max_chunk_id = max(chunk_meta_map.keys())
+                while len(mesh.materials) <= max_chunk_id:
+                    mesh.materials.append(None)
+
+                for chunk_id, cm in chunk_meta_map.items():
+                    cat = cm.get("category", "blocks")
+                    c_idx = cm.get("category_chunk_index", chunk_id + 1)
+                    is_anim = cm.get("is_animated", False)
+                    stem = cm.get("file_stem") or (f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}")
+
+                    albedo_file = atlas_dir / f"{stem}.png"
+                    normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
+                    specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+                    overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
+                    chunk_width = float(cm.get("width", 4096))
+                    chunk_height = float(cm.get("height", 4096))
+
+                    mat = build_atlas_chunk_material(
+                        chunk_id=chunk_id,
+                        albedo_path=albedo_file,
+                        normal_path=normal_file,
+                        specular_path=specular_file,
+                        overlay_path=overlay_file,
+                        colormaps=colormaps,
+                        category=cat,
+                        category_chunk_index=c_idx,
+                        is_animated=is_anim,
+                        stack_fingerprint=manifest_fp,
+                        use_attribute_node=False,
+                        atlas_width=chunk_width,
+                        atlas_height=chunk_height,
+                        tile_width=16.0,
+                        tile_height=16.0,
+                    )
+
                     if mesh.materials[chunk_id] != mat:
                         mesh.materials[chunk_id] = mat
-                else:
-                    while len(mesh.materials) < chunk_id:
-                        mesh.materials.append(None)
-                    mesh.materials.append(mat)
 
-            if len(mesh.materials) > 0:
-                return
+                # Clear unused material slots that are not present in chunk_meta_map
+                for idx in range(len(mesh.materials)):
+                    if idx not in chunk_meta_map and mesh.materials[idx] is not None:
+                        mesh.materials[idx] = None
+
+                if len(mesh.materials) > 0:
+                    return
         except Exception as e:
             logger.warning(f"Failed binding Atlas chunk materials: {e}")
 
@@ -217,7 +264,17 @@ def mesh_voxel_storage(
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
     t0 = time.perf_counter()
-    mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, model_db)
+    if hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
+        world = mtk.VoxelWorld.from_storage(
+            storage=storage,
+            config=config,
+            culler=culler,
+            model_db=model_db,
+            unified_mesh=True,
+        )
+        mesh_data = world.rebuild_all()
+    else:
+        mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, model_db)
     t1 = time.perf_counter()
 
     elapsed_ms = (t1 - t0) * 1000.0
@@ -289,8 +346,9 @@ def ingest_voxel_world(
         update_normals=True,
     )
 
-    # 4. Bind full Atlas chunk materials & shaders
-    ensure_world_materials(obj, prefs=prefs)
+    # 4. Bind only used Atlas chunk materials & shaders
+    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+    ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
     # 5. Set active in viewport
     if context and hasattr(context, "view_layer"):
