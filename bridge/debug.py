@@ -45,6 +45,7 @@ def generate_debug_world_mesh(
     atlas=None,
     biome_resolver=None,
     prefs=None,
+    num_threads: Optional[int] = None,
     with_models: bool = True,
 ) -> Tuple[Any, float]:
     """
@@ -63,6 +64,7 @@ def generate_debug_world_mesh(
             atlas=atlas,
             biome_resolver=biome_resolver,
             prefs=prefs,
+            num_threads=num_threads,
         )
     else:
         import time
@@ -73,7 +75,10 @@ def generate_debug_world_mesh(
                 mesh_fluids=True,
                 z_up_coordinates=True,
                 origin_centered=True,
+                num_threads=num_threads,
             )
+        elif num_threads is not None and hasattr(config, "num_threads"):
+            config.num_threads = num_threads
         t0 = time.perf_counter()
         mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, None)
         t1 = time.perf_counter()

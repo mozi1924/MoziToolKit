@@ -248,6 +248,17 @@ def mesh_voxel_storage(
         atlas = atlas or cached_atlas
         biome_resolver = biome_resolver or cached_biome_resolver
 
+    # Auto-resolve thread count from preferences if not explicitly set
+    if num_threads is None:
+        if prefs is None:
+            try:
+                from ..utils.system.dependencies import get_prefs
+                prefs = get_prefs()
+            except Exception:
+                pass
+        if prefs is not None:
+            num_threads = getattr(prefs, "thread_count", 0) or None
+
     if config is None:
         config = mtk.MesherConfig(
             enable_ao=enable_ao,
@@ -255,23 +266,34 @@ def mesh_voxel_storage(
             z_up_coordinates=True,
             origin_centered=origin_centered,
             weld_vertices=weld_vertices,
+            num_threads=num_threads,
             atlas=atlas,
             biome_resolver=biome_resolver,
         )
-        if num_threads is not None and hasattr(config, "num_threads"):
-            config.num_threads = num_threads
+    elif num_threads is not None and hasattr(config, "num_threads"):
+        config.num_threads = num_threads
 
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
     t0 = time.perf_counter()
     if hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
-        world = mtk.VoxelWorld.from_storage(
-            storage=storage,
-            config=config,
-            culler=culler,
-            model_db=model_db,
-            unified_mesh=True,
-        )
+        try:
+            world = mtk.VoxelWorld.from_storage(
+                storage=storage,
+                config=config,
+                culler=culler,
+                model_db=model_db,
+                unified_mesh=True,
+                num_threads=num_threads,
+            )
+        except TypeError:
+            world = mtk.VoxelWorld.from_storage(
+                storage=storage,
+                config=config,
+                culler=culler,
+                model_db=model_db,
+                unified_mesh=True,
+            )
         mesh_data = world.rebuild_all()
     else:
         mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, model_db)
