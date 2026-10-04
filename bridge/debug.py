@@ -2,9 +2,11 @@
 MoziToolKit Debug World Bridge Module.
 Provides high-performance geometry generation and scene injection for the
 embedded Minecraft debug world snapshot.
+Uses the unified, network-free Voxel World Pipeline (bridge.world) to generate
+fully modeled, textured, and shaded objects with Atlas PBR materials.
 """
 
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Dict
 import logging
 
 from .mesh import inject_mesh_data
@@ -46,71 +48,87 @@ def generate_debug_world_mesh(
     config=None,
     culler=None,
     model_db=None,
-):
+    atlas=None,
+    biome_resolver=None,
+    prefs=None,
+    with_models: bool = True,
+) -> Tuple[Any, float]:
     """
     Meshes the debug world using SectionMesher and returns (MeshData, elapsed_time_ms).
+    When with_models is True (default), resolves baked models, atlas UVs, and biome tinting.
     """
-    import time
-
     if storage is None:
         storage = load_debug_world_storage()
 
-    if config is None:
-        config = libmtk_py.MesherConfig(
-            enable_ao=True,
-            mesh_fluids=True,
-            z_up_coordinates=True,
-            origin_centered=True,
+    if with_models:
+        from .world import mesh_voxel_storage
+        return mesh_voxel_storage(
+            storage=storage,
+            config=config,
+            model_db=model_db,
+            atlas=atlas,
+            biome_resolver=biome_resolver,
+            prefs=prefs,
         )
-
-    t0 = time.perf_counter()
-    mesh_data = libmtk_py.SectionMesher.mesh_world(storage, config, culler, model_db)
-    t1 = time.perf_counter()
-
-    elapsed_ms = (t1 - t0) * 1000.0
-    return mesh_data, elapsed_ms
+    else:
+        import time
+        mtk = _get_libmtk()
+        if mtk is None:
+            raise RuntimeError("libmtk_py is not available.")
+        if config is None:
+            config = mtk.MesherConfig(
+                enable_ao=True,
+                mesh_fluids=True,
+                z_up_coordinates=True,
+                origin_centered=True,
+            )
+        t0 = time.perf_counter()
+        mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, None)
+        t1 = time.perf_counter()
+        return mesh_data, (t1 - t0) * 1000.0
 
 
 def create_debug_world_object(
     context=None,
     name: str = "MTK_Debug_World",
+    prefs=None,
+    model_db=None,
+    atlas=None,
+    biome_resolver=None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    reuse_existing: bool = True,
     config=None,
     culler=None,
-    model_db=None,
-) -> Tuple[Any, dict]:
+) -> Tuple[Any, Dict[str, Any]]:
     """
-    Meshes the embedded debug world and creates/updates a Blender Mesh Object in the active scene.
+    Meshes the embedded debug world and creates/updates a Blender Mesh Object in the active scene,
+    binding all precompiled Atlas chunk PBR materials and shaders.
     Returns (bpy_object, stats_dict).
     """
-    try:
-        import bpy
-    except ImportError:
-        raise RuntimeError("bpy is not available in headless non-Blender environment")
+    from .world import ingest_voxel_world
 
-    if context is None:
-        context = bpy.context
+    storage = load_debug_world_storage()
 
-    mesh_data, elapsed_ms = generate_debug_world_mesh(config=config, culler=culler, model_db=model_db)
+    obj, stats = ingest_voxel_world(
+        storage=storage,
+        context=context,
+        name=name,
+        prefs=prefs,
+        model_db=model_db,
+        atlas=atlas,
+        biome_resolver=biome_resolver,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+        reuse_existing=reuse_existing,
+    )
 
-    # Create new mesh datablock
-    b_mesh = bpy.data.meshes.new(name=name)
-    inject_mesh_data(b_mesh, mesh_data)
-
-    # Link to active collection
-    obj = bpy.data.objects.new(name=name, object_data=b_mesh)
-    target_coll = context.collection if context and context.collection else bpy.context.scene.collection
-    target_coll.objects.link(obj)
-
-    # Select object
-    if context and hasattr(context, "view_layer"):
-        obj.select_set(True)
-        context.view_layer.objects.active = obj
-
-    stats = {
-        "vertex_count": mesh_data.vertex_count,
-        "quad_count": mesh_data.quad_count,
-        "elapsed_ms": elapsed_ms,
-        "object_name": obj.name,
-    }
+    # Ensure backwards compatibility for dict keys
+    if "elapsed_ms" not in stats and "meshing_time_ms" in stats:
+        stats["elapsed_ms"] = stats["meshing_time_ms"]
 
     return obj, stats

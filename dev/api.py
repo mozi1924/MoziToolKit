@@ -30,34 +30,32 @@ def load_debug_world(
     enable_ao: bool = True,
     mesh_fluids: bool = True,
     weld_vertices: bool = True,
+    origin_centered: bool = True,
+    reuse_existing: bool = True,
+    prefs=None,
 ) -> Any:
     """
     Instantly meshes and loads the embedded Minecraft debug world (32,539 blocks)
-    into the active Blender scene. Returns the created bpy.types.Object.
+    into the active Blender scene with full model resolution, atlas UV remapping,
+    and Atlas chunk PBR materials. Returns the created/updated bpy.types.Object.
     """
-    try:
-        import libmtk_py
-        config = libmtk_py.MesherConfig(
-            enable_ao=enable_ao,
-            mesh_fluids=mesh_fluids,
-            origin_centered=True,
-            weld_vertices=weld_vertices,
-            z_up_coordinates=True,
-        )
-    except Exception:
-        config = None
-
     obj, stats = bridge.create_debug_world_object(
         context=context,
         name=name,
-        config=config,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+        reuse_existing=reuse_existing,
+        prefs=prefs,
     )
     return obj
 
 
-def run_mesher_benchmark(iterations: int = 3) -> Dict[str, Any]:
+def run_mesher_benchmark(iterations: int = 3, with_models: bool = True) -> Dict[str, Any]:
     """
     Benchmarks raw meshing throughput for the 32k-block debug world.
+    When with_models is True (default), runs full block model baking + atlas UV remapping.
     Returns timing statistics and polygon generation rate.
     """
     if not bridge.is_debug_world_available():
@@ -68,7 +66,10 @@ def run_mesher_benchmark(iterations: int = 3) -> Dict[str, Any]:
     durations = []
     mesh_data = None
     for _ in range(iterations):
-        m, elapsed_ms = bridge.generate_debug_world_mesh(storage=storage)
+        m, elapsed_ms = bridge.generate_debug_world_mesh(
+            storage=storage,
+            with_models=with_models,
+        )
         durations.append(elapsed_ms)
         mesh_data = m
 
@@ -80,6 +81,7 @@ def run_mesher_benchmark(iterations: int = 3) -> Dict[str, Any]:
 
     return {
         "iterations": iterations,
+        "with_models": with_models,
         "avg_ms": round(avg_ms, 2),
         "min_ms": round(min(durations), 2),
         "max_ms": round(max(durations), 2),

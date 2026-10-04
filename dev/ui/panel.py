@@ -59,8 +59,9 @@ class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):
         try:
             stats = bridge.get_cache_stats()
             c_col = cache_box.column(align=True)
-            c_col.label(text=f"Files: {stats.get('total_files', 0)} ({stats.get('total_size_mb', 0):.1f} MB)")
-            c_col.label(text=f"Models: {stats.get('model_count', 0)} | Atlases: {stats.get('atlas_count', 0)}")
+            files = stats.get('files_count', stats.get('total_files', 0))
+            size = stats.get('size_formatted', '0 B')
+            c_col.label(text=f"Files: {files} ({size})")
         except Exception:
             cache_box.label(text="Cache unavailable")
 
