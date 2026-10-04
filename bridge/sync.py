@@ -219,6 +219,18 @@ class SyncBridgeSession:
             logger.error(f"Error querying get_world_mesh: {e}")
             return None
 
+    def get_storage(self) -> Optional[Any]:
+        """
+        Returns a copy of the underlying PyVoxelStorage from the active live sync session.
+        """
+        if self._session is None:
+            return None
+        try:
+            return self._session.get_storage()
+        except Exception as e:
+            logger.error(f"Error querying get_storage: {e}")
+            return None
+
     def send_full_sync_request(self) -> bool:
         """Requests server to resend the entire active selection snapshot (0x80)."""
         if self._session is None:

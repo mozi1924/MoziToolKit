@@ -54,6 +54,8 @@ def _sync_timer_tick() -> Optional[float]:
 
     latest_world_mesh = None
 
+    needs_voxel_sync = False
+
     for ev in events:
         ev_type = ev.get("type")
         if not ev_type:
@@ -90,6 +92,7 @@ def _sync_timer_tick() -> Optional[float]:
                 props.validation_info = f"Sync Handshake: {tot} chunks ({vol:,} blocks)"
 
         elif ev_type == "DELTA_APPLIED":
+            needs_voxel_sync = True
             if props:
                 cnt = ev.get("change_count", 0)
                 props.last_update_info = f"Delta Applied: {cnt} block modification(s)"
@@ -111,6 +114,7 @@ def _sync_timer_tick() -> Optional[float]:
                 props.stream_message = ev.get("message", "")
 
         elif ev_type == "STREAM_FINISHED":
+            needs_voxel_sync = True
             if props:
                 built = ev.get("built_sections", 0)
                 props.last_update_info = f"Stream Complete ({built} chunks received)"
@@ -131,13 +135,31 @@ def _sync_timer_tick() -> Optional[float]:
     if latest_world_mesh is not None:
         try:
             world_obj = get_or_create_world_mesh_object(bpy.context)
-            v_count, f_count = update_world_mesh(world_obj, latest_world_mesh, skip_string_attributes=True)
+            storage = session.get_storage()
+            v_count, f_count = update_world_mesh(
+                world_obj,
+                latest_world_mesh,
+                skip_string_attributes=True,
+                storage=storage,
+            )
             if props:
                 props.point_count = v_count
                 props.faces_count = f_count
                 props.last_update_info = f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces"
         except Exception as e:
             logger.error(f"Failed to inject WorldMesh into Blender: {e}")
+    elif needs_voxel_sync:
+        try:
+            storage = session.get_storage()
+            if storage is not None:
+                world_obj = get_or_create_world_mesh_object(bpy.context)
+                try:
+                    from ...bridge.point_cloud import sync_voxel_point_cloud_for_world
+                except (ImportError, ValueError):
+                    from bridge.point_cloud import sync_voxel_point_cloud_for_world
+                sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=False, initial_hidden=True)
+        except Exception as e:
+            logger.debug(f"Failed syncing voxel cloud on event: {e}")
 
     return 0.016  # ~60 fps poll interval
 

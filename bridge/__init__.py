@@ -76,6 +76,15 @@ from .uv import (
     straighten_uv,
     uv_requires_atlas_tiling,
 )
+from .point_cloud import (
+    extract_voxel_point_cloud,
+    get_associated_voxel_cloud,
+    inject_voxel_point_cloud,
+    is_voxel_cloud_visible,
+    set_voxel_cloud_visibility,
+    set_voxel_mask_threshold,
+    setup_voxel_mask_modifier,
+)
 from .material import (
     BakedAtlas,
     BiomeResolver,
