@@ -20,6 +20,8 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from utils.materials.builder import ensure_material_node_tree
+
 try:
     import bpy
     import bmesh
@@ -141,8 +143,7 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.context.collection.objects.link(obj)
 
         mat = bpy.data.materials.new("TestTexMat")
-        if mat.node_tree is None:
-            mat.use_nodes = True
+        ensure_material_node_tree(mat)
         tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
         tex_node.interpolation = "Linear"
         obj.data.materials.append(mat)

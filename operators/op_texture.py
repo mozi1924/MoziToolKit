@@ -70,6 +70,7 @@ class MOZI_OT_set_texture_interpolation_closest(bpy.types.Operator):
         return {"FINISHED"}
 
 
-OPERATORS_CLASSES = (
+OPERATOR_CLASSES = (
     MOZI_OT_set_texture_interpolation_closest,
 )
+OPERATORS_CLASSES = OPERATOR_CLASSES

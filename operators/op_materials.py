@@ -149,7 +149,8 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
 MOZI_OT_replace_materials = MOZI_OT_replace_material
 MOZI_OT_restore_materials_from_provenance = MOZI_OT_restore_materials_from_attributes
 
-OPERATORS_CLASSES = (
+OPERATOR_CLASSES = (
     MOZI_OT_replace_material,
     MOZI_OT_restore_materials_from_attributes,
 )
+OPERATORS_CLASSES = OPERATOR_CLASSES

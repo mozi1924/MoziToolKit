@@ -266,9 +266,10 @@ class MOZI_OT_repair_fluid_uv(bpy.types.Operator):
         return {"FINISHED"}
 
 
-OPERATORS_CLASSES = (
+OPERATOR_CLASSES = (
     MOZI_OT_scale_uv,
     MOZI_OT_select_transparent_faces,
     MOZI_OT_repair_fluid_uv,
 )
+OPERATORS_CLASSES = OPERATOR_CLASSES
 

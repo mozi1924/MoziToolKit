@@ -126,7 +126,6 @@ __all__ = [
     "MOZI_OT_menu_reset_config",
     "MOZI_OT_menu_export_config",
     "MOZI_OT_menu_import_config",
-    "MOZI_OT_precompile_cache",
     "MOZI_AddonPreferences",
     "PREFERENCES_CLASSES",
 ]

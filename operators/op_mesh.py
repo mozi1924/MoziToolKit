@@ -144,7 +144,8 @@ class MOZI_OT_clear_custom_normals(bpy.types.Operator):
         return {"FINISHED"}
 
 
-OPERATORS_CLASSES = (
+OPERATOR_CLASSES = (
     MOZI_OT_select_hard_edges,
     MOZI_OT_clear_custom_normals,
 )
+OPERATORS_CLASSES = OPERATOR_CLASSES

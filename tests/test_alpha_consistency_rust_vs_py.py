@@ -18,6 +18,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
         sys.path.insert(0, p)
 
 import bridge.texture as tex_bridge
+from utils.materials.builder import ensure_material_node_tree
 
 from unittest.mock import MagicMock
 
@@ -115,8 +116,7 @@ class TestTextureAlphaBridge(unittest.TestCase):
 
             # Create material with image
             mat = bpy.data.materials.new("TestAlphaMat")
-            if mat.node_tree is None:
-                mat.use_nodes = True
+            ensure_material_node_tree(mat)
             tex_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
             tex_node.name = "Albedo Texture"
             tex_node.image = img

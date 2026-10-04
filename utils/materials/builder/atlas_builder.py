@@ -29,7 +29,7 @@ try:
         ATTR_BIOME_TINT_COLOR,
         ATTR_COLORMAP_UV,
     )
-    from .standalone_builder import get_or_create_image
+    from .standalone_builder import get_or_create_image, ensure_material_node_tree
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
     from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
@@ -48,7 +48,7 @@ except (ImportError, ValueError):
         ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
-    from utils.materials.builder.standalone_builder import get_or_create_image
+    from utils.materials.builder.standalone_builder import get_or_create_image, ensure_material_node_tree
 
 
 def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
@@ -129,11 +129,7 @@ def build_atlas_chunk_material(
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
 
-    if getattr(mat, "node_tree", None) is None:
-        try:
-            mat.use_nodes = True
-        except Exception:
-            pass
+    ensure_material_node_tree(mat)
     mat.use_fake_user = False
     set_material_displacement_method(mat, "BOTH")
 
