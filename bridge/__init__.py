@@ -35,6 +35,12 @@ from .debug import (
     is_debug_world_available,
     load_debug_world_storage,
 )
+from .world import (
+    ensure_world_materials,
+    get_world_pipeline_assets,
+    ingest_voxel_world,
+    mesh_voxel_storage,
+)
 from .extrude import (
     generate_random_extrude_heights,
     process_random_extrude,
@@ -137,5 +143,9 @@ __all__ = [
     "load_debug_world_storage",
     "generate_debug_world_mesh",
     "create_debug_world_object",
+    "ingest_voxel_world",
+    "mesh_voxel_storage",
+    "ensure_world_materials",
+    "get_world_pipeline_assets",
 ]
 

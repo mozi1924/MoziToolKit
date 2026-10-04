@@ -27,6 +27,21 @@ except ImportError:
     HAS_LIBMTK = False
 
 
+def _get_libmtk():
+    global libmtk_py, HAS_LIBMTK
+    if libmtk_py is None:
+        try:
+            import libmtk_py
+            HAS_LIBMTK = True
+        except ImportError:
+            pass
+    return libmtk_py
+
+
+def _has_libmtk() -> bool:
+    return _get_libmtk() is not None
+
+
 def get_cache_dir(prefs=None) -> Path:
     """
     Returns the persistent cache directory for compiled assets.
@@ -84,13 +99,14 @@ def get_configured_pack_stack(prefs=None) -> Optional[Any]:
     Builds a libmtk ResourcePackStack from the Blender preferences configuration.
     Traverses enabled entries in order and pushes them to Rust.
     """
-    if not HAS_LIBMTK:
+    mtk = _get_libmtk()
+    if mtk is None:
         return None
 
     if prefs is None:
         prefs = get_prefs()
 
-    stack = libmtk_py.ResourcePackStack()
+    stack = mtk.ResourcePackStack()
 
     if prefs is None or not hasattr(prefs, "resource_packs"):
         return stack
@@ -126,7 +142,8 @@ def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str,
     4. Writes cache_manifest.json with resource pack stack fingerprint
     Returns a summary dictionary of compiled assets.
     """
-    if not HAS_LIBMTK:
+    mtk = _get_libmtk()
+    if mtk is None:
         raise RuntimeError("libmtk_py (Rust backend) is not installed or available.")
 
     stack = get_configured_pack_stack(prefs)
@@ -263,7 +280,8 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Op
     Optionally verifies that cache_manifest.json matches the active resource pack stack fingerprint.
     Returns None if cache does not exist, is stale, or libmtk is unavailable.
     """
-    if not HAS_LIBMTK:
+    mtk = _get_libmtk()
+    if mtk is None:
         return None
 
     cache_dir = get_cache_dir(prefs)
@@ -287,7 +305,7 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Op
 
     try:
         raw_bytes = models_bin.read_bytes()
-        model_db = libmtk_py.BakedModelDatabase.from_bincode_bytes(raw_bytes)
+        model_db = mtk.BakedModelDatabase.from_bincode_bytes(raw_bytes)
         if hasattr(model_db, "deduplicate_all"):
             culled = model_db.deduplicate_all()
             if culled > 0:
@@ -305,7 +323,8 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
     Loads precompiled BakedAtlas from cache into memory.
     Returns None if cache does not exist or libmtk is unavailable.
     """
-    if not HAS_LIBMTK:
+    mtk = _get_libmtk()
+    if mtk is None:
         return None
 
     cache_dir = get_cache_dir(prefs)
@@ -315,7 +334,7 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
 
     try:
         json_str = mapping_file.read_text(encoding="utf-8")
-        return libmtk_py.BakedAtlas.from_mapping_json(json_str)
+        return mtk.BakedAtlas.from_mapping_json(json_str)
     except Exception:
         return None
 
@@ -326,7 +345,8 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
     Falls back to a default Vanilla 1.21+ BiomeResolver if cache file is missing.
     Returns None only if libmtk is unavailable.
     """
-    if not HAS_LIBMTK:
+    mtk = _get_libmtk()
+    if mtk is None:
         return None
 
     cache_dir = get_cache_dir(prefs)
@@ -337,13 +357,13 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
     for c in candidates:
         if c.exists() and c.is_file():
             try:
-                return libmtk_py.BiomeResolver.from_file(str(c.resolve()))
+                return mtk.BiomeResolver.from_file(str(c.resolve()))
             except Exception:
                 pass
 
-    if hasattr(libmtk_py, "BiomeResolver"):
+    if hasattr(mtk, "BiomeResolver"):
         try:
-            return libmtk_py.BiomeResolver()
+            return mtk.BiomeResolver()
         except Exception:
             pass
     return None

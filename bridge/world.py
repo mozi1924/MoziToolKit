@@ -1,0 +1,314 @@
+"""
+MoziToolKit Unified Voxel World Bridge Module.
+
+Authoritative offline pipeline for converting any VoxelStorage (embedded debug world,
+future Anvil save files, schematics, or sync streams) into fully modeled, textured,
+and shaded Blender objects with Atlas PBR materials and Biome tinting.
+Completely host-agnostic and decoupled from WebSocket network synchronization.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple
+
+from .mesh import inject_mesh_data
+from .assets import (
+    get_cache_dir,
+    load_baked_atlas_from_cache,
+    load_baked_model_database,
+    load_biome_resolver_from_cache,
+)
+
+logger = logging.getLogger("MoziToolKit.Bridge.World")
+
+try:
+    import libmtk_py
+except ImportError:
+    libmtk_py = None
+
+
+def _get_libmtk():
+    global libmtk_py
+    if libmtk_py is None:
+        try:
+            import libmtk_py
+        except ImportError:
+            pass
+    return libmtk_py
+
+
+def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
+    """
+    Acquires precompiled assets required for high-fidelity world meshing:
+    Returns (model_db, atlas, biome_resolver).
+    """
+    model_db = load_baked_model_database(prefs)
+    atlas = load_baked_atlas_from_cache(prefs)
+    biome_resolver = load_biome_resolver_from_cache(prefs)
+    return model_db, atlas, biome_resolver
+
+
+def ensure_world_materials(world_obj: Any, prefs=None) -> None:
+    """
+    Ensures that the unified world mesh object has all corresponding Atlas Chunk materials
+    and shaders assigned, hooking up albedo, normals, specular, emission, animated sprites,
+    and biome tinting.
+    """
+    try:
+        import bpy
+    except ImportError:
+        return
+
+    if not world_obj or world_obj.type != "MESH":
+        return
+
+    try:
+        from ..utils.materials.builder.atlas_builder import build_atlas_chunk_material
+        from ..utils.materials.builder import ensure_material_node_tree
+    except (ImportError, ValueError):
+        try:
+            from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+            from utils.materials.builder import ensure_material_node_tree
+        except (ImportError, ValueError):
+            build_atlas_chunk_material = None
+            ensure_material_node_tree = lambda m: getattr(m, "node_tree", None)
+
+    mesh = world_obj.data
+    cache_dir = get_cache_dir(prefs)
+    atlas_dir = cache_dir / "atlas"
+    atlas_mapping_path = atlas_dir / "atlas_mapping.json"
+
+    # 1. Bind Precompiled Atlas Chunk Materials
+    if atlas_mapping_path.exists() and build_atlas_chunk_material is not None:
+        try:
+            atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
+            chunk_meta_list = sorted(atlas_data.get("chunks", []), key=lambda c: c.get("chunk_id", 0))
+
+            colormaps_dir = cache_dir / "colormaps"
+            colormaps = {}
+            if colormaps_dir.exists():
+                for cm in ("grass", "foliage", "dry_foliage"):
+                    p = colormaps_dir / f"{cm}.png"
+                    if p.exists():
+                        colormaps[cm] = p
+
+            manifest_path = cache_dir / "cache_manifest.json"
+            manifest_fp = None
+            if manifest_path.exists():
+                try:
+                    manifest_fp = json.loads(manifest_path.read_text(encoding="utf-8")).get("fingerprint")
+                except Exception:
+                    pass
+
+            if len(mesh.materials) == 1 and mesh.materials[0] and mesh.materials[0].name.startswith("MTK:Default"):
+                mesh.materials.clear()
+
+            for idx, cm in enumerate(chunk_meta_list):
+                chunk_id = cm.get("chunk_id", idx)
+                cat = cm.get("category", "blocks")
+                c_idx = cm.get("category_chunk_index", chunk_id + 1)
+                is_anim = cm.get("is_animated", False)
+                stem = f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}"
+
+                albedo_file = atlas_dir / f"{stem}.png"
+                normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
+                specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+                overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
+                chunk_width = float(cm.get("width", 4096))
+                chunk_height = float(cm.get("height", 4096))
+
+                mat = build_atlas_chunk_material(
+                    chunk_id=chunk_id,
+                    albedo_path=albedo_file,
+                    normal_path=normal_file,
+                    specular_path=specular_file,
+                    overlay_path=overlay_file,
+                    colormaps=colormaps,
+                    category=cat,
+                    category_chunk_index=c_idx,
+                    is_animated=is_anim,
+                    stack_fingerprint=manifest_fp,
+                    use_attribute_node=False,
+                    atlas_width=chunk_width,
+                    atlas_height=chunk_height,
+                    tile_width=16.0,
+                    tile_height=16.0,
+                )
+
+                if chunk_id < len(mesh.materials):
+                    if mesh.materials[chunk_id] != mat:
+                        mesh.materials[chunk_id] = mat
+                else:
+                    while len(mesh.materials) < chunk_id:
+                        mesh.materials.append(None)
+                    mesh.materials.append(mat)
+
+            if len(mesh.materials) > 0:
+                return
+        except Exception as e:
+            logger.warning(f"Failed binding Atlas chunk materials: {e}")
+
+    # 2. Fallback: Default shaded material with vertex colors / AO
+    default_mat_name = "MTK:Default:AO"
+    mat = bpy.data.materials.get(default_mat_name)
+    if mat is None:
+        mat = bpy.data.materials.new(name=default_mat_name)
+        ensure_material_node_tree(mat)
+        nodes = mat.node_tree.nodes
+        nodes.clear()
+        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.location = (200, 0)
+        output = nodes.new("ShaderNodeOutputMaterial")
+        output.location = (500, 0)
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
+
+        attr_node = nodes.new("ShaderNodeAttribute")
+        attr_node.location = (-150, 0)
+        attr_node.attribute_name = "color"
+        mat.node_tree.links.new(attr_node.outputs["Color"], bsdf.inputs["Base Color"])
+
+    if len(mesh.materials) == 0:
+        mesh.materials.append(mat)
+    elif mesh.materials[0] is None:
+        mesh.materials[0] = mat
+
+
+def mesh_voxel_storage(
+    storage: Any,
+    config: Optional[Any] = None,
+    model_db: Optional[Any] = None,
+    atlas: Optional[Any] = None,
+    biome_resolver: Optional[Any] = None,
+    prefs=None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    num_threads: Optional[int] = None,
+) -> Tuple[Any, float]:
+    """
+    Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
+    culling, and biome tinting.
+    Returns (mesh_data, elapsed_ms).
+    """
+    mtk = _get_libmtk()
+    if mtk is None:
+        raise RuntimeError("libmtk_py is not available.")
+
+    # Auto-load cached assets if not explicitly passed
+    if model_db is None or atlas is None or biome_resolver is None:
+        cached_model_db, cached_atlas, cached_biome_resolver = get_world_pipeline_assets(prefs)
+        model_db = model_db or cached_model_db
+        atlas = atlas or cached_atlas
+        biome_resolver = biome_resolver or cached_biome_resolver
+
+    if config is None:
+        config = mtk.MesherConfig(
+            enable_ao=enable_ao,
+            mesh_fluids=mesh_fluids,
+            z_up_coordinates=True,
+            origin_centered=origin_centered,
+            weld_vertices=weld_vertices,
+            atlas=atlas,
+            biome_resolver=biome_resolver,
+        )
+        if num_threads is not None and hasattr(config, "num_threads"):
+            config.num_threads = num_threads
+
+    culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
+
+    t0 = time.perf_counter()
+    mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, model_db)
+    t1 = time.perf_counter()
+
+    elapsed_ms = (t1 - t0) * 1000.0
+    return mesh_data, elapsed_ms
+
+
+def ingest_voxel_world(
+    storage: Any,
+    context: Optional[Any] = None,
+    name: str = "MTK_World",
+    prefs=None,
+    model_db: Optional[Any] = None,
+    atlas: Optional[Any] = None,
+    biome_resolver: Optional[Any] = None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    reuse_existing: bool = True,
+) -> Tuple[Any, Dict[str, Any]]:
+    """
+    Complete end-to-end Voxel World Ingestion Pipeline:
+    1. Meshes VoxelStorage using cached Model Database, Atlas, and Biome Resolver
+    2. Injects high-throughput geometry into a Blender Mesh object
+    3. Builds and binds full Atlas Chunk PBR Materials and Shaders
+    Returns (bpy_object, stats_dict).
+    """
+    try:
+        import bpy
+    except ImportError:
+        raise RuntimeError("bpy is not available.")
+
+    if context is None:
+        context = bpy.context
+
+    # 1. Mesh the voxel volume
+    mesh_data, elapsed_ms = mesh_voxel_storage(
+        storage=storage,
+        model_db=model_db,
+        atlas=atlas,
+        biome_resolver=biome_resolver,
+        prefs=prefs,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+    )
+
+    # 2. Acquire or create Blender object
+    obj = None
+    if reuse_existing and name in bpy.data.objects:
+        cand = bpy.data.objects[name]
+        if cand.type == "MESH":
+            obj = cand
+
+    if obj is None:
+        b_mesh = bpy.data.meshes.new(name)
+        obj = bpy.data.objects.new(name, b_mesh)
+        target_coll = context.collection if context and context.collection else bpy.context.scene.collection
+        target_coll.objects.link(obj)
+    else:
+        b_mesh = obj.data
+
+    # 3. Inject topology, positions, UVs, normals, materials
+    inject_mesh_data(
+        b_mesh,
+        mesh_data,
+        update_topology=True,
+        update_normals=True,
+    )
+
+    # 4. Bind full Atlas chunk materials & shaders
+    ensure_world_materials(obj, prefs=prefs)
+
+    # 5. Set active in viewport
+    if context and hasattr(context, "view_layer"):
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+
+    stats = {
+        "object_name": obj.name,
+        "vertex_count": len(b_mesh.vertices),
+        "quad_count": mesh_data.quad_count,
+        "polygon_count": len(b_mesh.polygons),
+        "materials_count": len(b_mesh.materials),
+        "meshing_time_ms": round(elapsed_ms, 2),
+    }
+
+    return obj, stats
