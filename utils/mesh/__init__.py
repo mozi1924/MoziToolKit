@@ -31,6 +31,8 @@ from .fluid_uv import (
     repair_face_fluid_uv,
     repair_polygon_fluid_uv,
     process_mesh_fluid_uv_repairs,
+    process_bmesh_fluid_uv_repairs,
+    process_raw_mesh_fluid_uv_repairs,
 )
 
 from .random_extrude import (
@@ -60,6 +62,8 @@ __all__ = [
     "repair_face_fluid_uv",
     "repair_polygon_fluid_uv",
     "process_mesh_fluid_uv_repairs",
+    "process_bmesh_fluid_uv_repairs",
+    "process_raw_mesh_fluid_uv_repairs",
     "process_random_extrude",
 ]
 

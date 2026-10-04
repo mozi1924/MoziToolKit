@@ -107,12 +107,16 @@ def repair_quad_fluid_uv(
 
 
 def batch_repair_fluid_uv(
-    verts_flat: List[float],
-    uvs_flat: List[float],
-    normals_flat: Optional[List[float]] = None,
+    verts_flat: Any,
+    uvs_flat: Any,
+    normals_flat: Optional[Any] = None,
     force: bool = False,
     min_slope_threshold: float = 0.005,
-) -> Tuple[int, List[float]]:
+) -> Tuple[int, Any]:
+    """
+    Batch repair inverted fluid UVs across quad vertices and UVs.
+    Supports zero-copy mutable buffers (numpy ndarray, array.array) and standard Python lists.
+    """
     _ensure_mtk()
     return mtk_py.batch_repair_fluid_uv(verts_flat, uvs_flat, normals_flat, force, min_slope_threshold)
 
