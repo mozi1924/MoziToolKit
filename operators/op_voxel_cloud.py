@@ -100,6 +100,9 @@ class MOZI_OT_toggle_voxel_cloud(bpy.types.Operator):
                     world_obj.select_set(False)
                 try:
                     bpy.ops.object.mode_set(mode="EDIT")
+                    # Enable X-Ray in 3D viewport so interior block points are easily selectable
+                    if hasattr(context, "space_data") and hasattr(context.space_data, "shading"):
+                        context.space_data.shading.show_xray = True
                 except Exception:
                     pass
             self.report({"INFO"}, f"Voxel Cloud '{cloud_obj.name}' is now visible (Mask unmasked).")
@@ -113,6 +116,8 @@ class MOZI_OT_toggle_voxel_cloud(bpy.types.Operator):
             if world_obj:
                 context.view_layer.objects.active = world_obj
                 world_obj.select_set(True)
+                if cloud_obj:
+                    cloud_obj.select_set(False)
             self.report({"INFO"}, f"Voxel Cloud '{cloud_obj.name}' is now masked and hidden.")
 
         return {"FINISHED"}

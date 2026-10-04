@@ -24,7 +24,6 @@ except ImportError:
 from .engine import get_libmtk, has_libmtk, require_libmtk
 
 MASK_MODIFIER_NAME = "MTK_Voxel_Mask"
-VOXEL_STORAGE_COLLECTION_NAME = "MTK_Voxel_Storage"
 VOXEL_VERTEX_GROUP = "MTK_Voxel_Storage"
 ATTR_BLOCK_X = "mtk_block_x"
 ATTR_BLOCK_Y = "mtk_block_y"
@@ -256,9 +255,11 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
 
     mtk = require_libmtk("extract_voxel_point_cloud")
 
-    if hasattr(cloud_obj_or_mesh, "data") and cloud_obj_or_mesh.type == "MESH":
+    if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") == "MESH":
+        obj = cloud_obj_or_mesh
         mesh = cloud_obj_or_mesh.data
     else:
+        obj = None
         mesh = cloud_obj_or_mesh
 
     v_count = len(mesh.vertices)
@@ -313,6 +314,16 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
                 b_list.append(str(val))
         biomes = b_list
 
+    # Extract bounds if stored on object
+    bounds = None
+    if obj is not None and "mtk_bounds" in obj:
+        try:
+            raw_b = obj["mtk_bounds"]
+            if len(raw_b) == 6:
+                bounds = [int(x) for x in raw_b]
+        except Exception:
+            pass
+
     return mtk.VoxelPointCloud.from_arrays(
         list(pos_arr),
         list(bx_arr),
@@ -321,6 +332,7 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
         block_states,
         biomes,
         None,
+        bounds,
     )
 
 
@@ -359,85 +371,87 @@ def get_associated_voxel_cloud(mesh_or_obj: Any) -> Optional[Any]:
     return None
 
 
-def get_or_create_voxel_storage_collection(scene: Optional[Any] = None) -> Optional[Any]:
-    """
-    Acquires or creates the dedicated Blender Collection for storing unculled
-    Voxel Point Clouds, keeping the main scene Outliner clean.
-    """
-    if not HAS_BPY:
-        return None
-
-    coll = bpy.data.collections.get(VOXEL_STORAGE_COLLECTION_NAME)
-    if coll is None:
-        coll = bpy.data.collections.new(VOXEL_STORAGE_COLLECTION_NAME)
-        target_scene = scene or getattr(bpy.context, "scene", None)
-        if target_scene and hasattr(target_scene, "collection"):
-            target_scene.collection.children.link(coll)
-        else:
-            for sc in bpy.data.scenes:
-                sc.collection.children.link(coll)
-                break
-    return coll
-
-
 def sync_voxel_point_cloud_for_world(
     world_obj: Any,
-    storage: Any,
-    origin_centered: bool = False,
+    storage: Optional[Any] = None,
+    cloud_data: Optional[Any] = None,
+    origin_centered: bool = True,
     initial_hidden: bool = True,
 ) -> Optional[Any]:
+    """Synchronizes or creates a companion Voxel Point Cloud object for a given world mesh.
+
+    The point cloud is parented directly to `world_obj` with (0,0,0) local transform
+    and placed in the exact same collection as `world_obj` (no separate collection),
+    allowing 1:1 spatial alignment between world mesh blocks and voxel points.
+    Accepts either an unmeshed `storage` (from which cloud points are extracted) or
+    a pre-extracted `cloud_data` (VoxelPointCloud).
     """
-    Synchronizes the persistent VoxelPointCloud from a VoxelStorage source into
-    the companion point cloud object for the given world mesh object.
-    Ensures the point cloud is properly grouped in the MTK_Voxel_Storage collection,
-    parented to world_obj, has attributes set, and has the Mask modifier configured.
-    """
-    if not HAS_BPY or world_obj is None or world_obj.type != "MESH" or storage is None:
+    if not HAS_BPY or world_obj is None or getattr(world_obj, "type", "") != "MESH":
         return None
 
     mtk = get_libmtk()
-    if mtk is None or not hasattr(storage, "to_point_cloud"):
-        return None
-
-    # 1. Build MesherConfig matching coordinates
-    cfg = mtk.MesherConfig(
-        z_up_coordinates=True,
-        origin_centered=origin_centered,
-    ) if hasattr(mtk, "MesherConfig") else None
-
-    try:
-        cloud_data = storage.to_point_cloud(cfg)
-    except Exception as e:
-        logger.warning("Failed extracting voxel point cloud from storage: %s", e)
-        return None
+    if cloud_data is None:
+        if storage is None or mtk is None or not hasattr(storage, "to_point_cloud"):
+            return None
+        cfg = mtk.MesherConfig(
+            z_up_coordinates=True,
+            origin_centered=origin_centered,
+        ) if hasattr(mtk, "MesherConfig") else None
+        try:
+            cloud_data = storage.to_point_cloud(cfg)
+        except Exception as e:
+            logger.warning("Failed extracting voxel point cloud from storage: %s", e)
+            return None
 
     if cloud_data is None:
         return None
 
-    # 2. Acquire or create dedicated Collection
-    voxel_coll = get_or_create_voxel_storage_collection()
+    # 2. Acquire target collection from parent world_obj
+    target_coll = world_obj.users_collection[0] if world_obj.users_collection else (
+        bpy.context.scene.collection if hasattr(bpy.context, "scene") else None
+    )
 
-    # 3. Acquire or create companion point cloud object
+    # 3. Acquire or create companion point cloud object in parent's collection
     cloud_name = f"{world_obj.name}_VoxelCloud"
     cloud_obj = bpy.data.objects.get(cloud_name)
     if cloud_obj is None or cloud_obj.type != "MESH":
         cloud_mesh = bpy.data.meshes.new(cloud_name)
         cloud_obj = bpy.data.objects.new(cloud_name, cloud_mesh)
-        if voxel_coll is not None:
-            voxel_coll.objects.link(cloud_obj)
+        if target_coll is not None:
+            target_coll.objects.link(cloud_obj)
         elif hasattr(bpy.context.scene, "collection"):
             bpy.context.scene.collection.objects.link(cloud_obj)
     else:
-        # Ensure it is linked to voxel collection
-        if voxel_coll is not None and cloud_obj.name not in voxel_coll.objects:
-            voxel_coll.objects.link(cloud_obj)
+        # Ensure it is linked to target_coll
+        if target_coll is not None and cloud_obj.name not in target_coll.objects:
+            target_coll.objects.link(cloud_obj)
 
-    # 4. Set hierarchy and metadata links
+    # Clean up legacy separate collection if present and empty
+    legacy_coll = bpy.data.collections.get("MTK_Voxel_Storage")
+    if legacy_coll is not None:
+        try:
+            for o in list(legacy_coll.objects):
+                legacy_coll.objects.unlink(o)
+            bpy.data.collections.remove(legacy_coll)
+        except Exception:
+            pass
+
+    # 4. Set hierarchy and 1:1 absolute transform alignment
     if cloud_obj.parent != world_obj:
         cloud_obj.parent = world_obj
+        if hasattr(cloud_obj, "matrix_parent_inverse"):
+            cloud_obj.matrix_parent_inverse.identity()
+    cloud_obj.location = (0.0, 0.0, 0.0)
+    cloud_obj.rotation_euler = (0.0, 0.0, 0.0)
+    cloud_obj.scale = (1.0, 1.0, 1.0)
+
     cloud_obj["mtk_is_voxel_cloud"] = True
     cloud_obj["mtk_world_mesh"] = world_obj.name
     world_obj["mtk_voxel_cloud"] = cloud_obj.name
+
+    # Record bounds to lock origin alignment during future user carving & remeshing
+    if hasattr(cloud_data, "bounds") and cloud_data.bounds is not None:
+        cloud_obj["mtk_bounds"] = list(cloud_data.bounds)
 
     # 5. Inject points and configure Mask modifier
     inject_voxel_point_cloud(cloud_obj, cloud_data, update_mask=True, initial_hidden=initial_hidden)

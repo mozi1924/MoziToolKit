@@ -144,6 +144,18 @@ class TestVoxelPointCloudBridge:
             initial_polys = len(obj.data.polygons)
             assert initial_polys == 54
 
+            # Verify 1:1 hierarchy and alignment
+            assert cloud_obj.parent == obj
+            assert cloud_obj.location.x == 0.0 and cloud_obj.location.y == 0.0 and cloud_obj.location.z == 0.0
+            obj_min = [min(v.co[i] for v in obj.data.vertices) for i in range(3)]
+            obj_max = [max(v.co[i] for v in obj.data.vertices) for i in range(3)]
+            # Verify no separate collection is created and cloud_obj is in obj's collection
+            assert bpy.data.collections.get("MTK_Voxel_Storage") is None
+            assert cloud_obj.users_collection == obj.users_collection
+            for v in cloud_obj.data.vertices:
+                for i in range(3):
+                    assert obj_min[i] <= v.co[i] <= obj_max[i], f"Voxel vertex {v.co} must be within mesh bounds {obj_min}..{obj_max}"
+
             # 2. Simulate user deleting the center block (1, 1, 1) in Blender
             extracted_cloud = extract_voxel_point_cloud(cloud_obj)
             assert len(extracted_cloud) == 27
@@ -172,6 +184,14 @@ class TestVoxelPointCloudBridge:
             inject_voxel_point_cloud(cloud_obj, carved_cloud)
 
             # 3. Execute Remesh Operator
+            if not hasattr(bpy.types, "MOZI_OT_remesh_from_voxel_cloud"):
+                try:
+                    import MoziToolKit.operators as ops_mod
+                    ops_mod.register()
+                except Exception:
+                    import operators as ops_mod
+                    ops_mod.register()
+
             bpy.context.view_layer.objects.active = obj
             obj.select_set(True)
             res = bpy.ops.mozi.remesh_from_voxel_cloud()

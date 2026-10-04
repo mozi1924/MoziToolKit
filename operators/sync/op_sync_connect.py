@@ -157,7 +157,7 @@ def _sync_timer_tick() -> Optional[float]:
                     from ...bridge.point_cloud import sync_voxel_point_cloud_for_world
                 except (ImportError, ValueError):
                     from bridge.point_cloud import sync_voxel_point_cloud_for_world
-                sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=False, initial_hidden=True)
+                sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=True, initial_hidden=True)
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
 

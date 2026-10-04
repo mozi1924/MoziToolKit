@@ -78,7 +78,6 @@ class MOZI_PT_view3d_voxel_storage(bpy.types.Panel):
             row2 = col.row(align=True)
             row2.scale_y = 0.8
             row2.label(text=f"{tr('Target Mesh')}: {world_obj.name}", icon="MESH_DATA")
-            row2.label(text=f"{tr('Collection')}: MTK_Voxel_Storage", icon="OUTLINER_COLLECTION")
 
         if context.mode == "EDIT_MESH" and context.active_object == cloud_obj:
             tip_box = layout.box()
