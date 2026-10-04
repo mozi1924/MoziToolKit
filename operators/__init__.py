@@ -6,8 +6,9 @@ try:
     import bpy
 except ImportError:
     bpy = None
+
 from .op_cull import OPERATOR_CLASSES as CULL_CLASSES
-from .op_extrude import OPERATOR_CLASSES as EXTRUDE_CLASSES
+from .extrude import OPERATOR_CLASSES as EXTRUDE_CLASSES
 from .op_materials import OPERATOR_CLASSES as MATERIAL_CLASSES
 from .op_mesh import OPERATOR_CLASSES as MESH_CLASSES
 from .op_pixel_split import OPERATOR_CLASSES as PIXEL_SPLIT_CLASSES
@@ -26,10 +27,7 @@ ALL_OPERATORS = (
     + CULL_CLASSES
 )
 
-
-
 from . import extrude
-from . import op_extrude
 from . import sync
 
 
@@ -48,4 +46,3 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
-

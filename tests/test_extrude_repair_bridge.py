@@ -198,19 +198,15 @@ class TestExtrudeRepairBridge(unittest.TestCase):
         self.assertEqual(len(new_pos), 8)
         self.assertEqual(len(new_faces), 5)
     def test_uv_editing_and_extrude_progress_guards(self):
-        import importlib.util
-        op_path = PROJECT_DIR / "operators" / "op_extrude.py"
-        spec = importlib.util.spec_from_file_location("op_extrude", str(op_path))
-        op_extrude = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(op_extrude)
-
-        _is_uv_editing_active = op_extrude._is_uv_editing_active
-        _is_extrude_operator_identifier = op_extrude._is_extrude_operator_identifier
-        _is_extrude_in_progress = op_extrude._is_extrude_in_progress
-        _has_recent_extrude_operator = op_extrude._has_recent_extrude_operator
-        _deferred_extrude_repair_tick = op_extrude._deferred_extrude_repair_tick
-        _pending_repairs = op_extrude._pending_repairs
-        _smart_extrude_sessions = op_extrude._smart_extrude_sessions
+        from operators.extrude.watcher import (
+            _is_uv_editing_active,
+            _is_extrude_operator_identifier,
+            _is_extrude_in_progress,
+            _has_recent_extrude_operator,
+            _deferred_extrude_repair_tick,
+            _pending_repairs,
+            _smart_extrude_sessions,
+        )
 
         class DummyArea:
             def __init__(self, type_str):
@@ -277,7 +273,6 @@ class TestExtrudeRepairBridge(unittest.TestCase):
         """Verify the modular separation of operators/extrude subpackage."""
         from operators.extrude import properties, watcher, op_auto_extrude_repair, op_random_extrude
         from operators import extrude
-        from operators import op_extrude
 
         # Verify properties isolation
         self.assertTrue(hasattr(properties, "MOZI_PG_auto_extrude_repair"))
@@ -297,11 +292,8 @@ class TestExtrudeRepairBridge(unittest.TestCase):
         self.assertTrue(len(extrude.OPERATOR_CLASSES) >= 3)
         self.assertTrue(callable(extrude.register))
         self.assertTrue(callable(extrude.unregister))
-
-        # Verify op_extrude facade backward compatibility
-        self.assertEqual(op_extrude.UV_MODE_ITEMS, properties.UV_MODE_ITEMS)
-        self.assertIs(op_extrude.MOZI_OT_auto_extrude_repair, op_auto_extrude_repair.MOZI_OT_auto_extrude_repair)
-        self.assertIs(op_extrude.MOZI_OT_random_extrude, op_random_extrude.MOZI_OT_random_extrude)
+        self.assertIs(extrude.MOZI_OT_auto_extrude_repair, op_auto_extrude_repair.MOZI_OT_auto_extrude_repair)
+        self.assertIs(extrude.MOZI_OT_random_extrude, op_random_extrude.MOZI_OT_random_extrude)
 
 
 if __name__ == "__main__":
