@@ -63,6 +63,45 @@ def ensure_dev_binary() -> Path | None:
     return None
 
 
+def reload_dev_binary() -> bool:
+    """
+    Forces hot-reloading of the latest compiled Rust binary into running Python process.
+    Bypasses OS dlopen inode/path caching by creating timestamped version files.
+    """
+    rust_release_dir = RUST_ROOT / "target" / "release"
+    rust_candidates = [
+        rust_release_dir / "liblibmtk_py.so",
+        rust_release_dir / "libmtk_py.so",
+        rust_release_dir / "libmtk_py.pyd",
+    ]
+    rust_bin = next((p for p in rust_candidates if p.exists()), None)
+    if not rust_bin:
+        return False
+
+    import shutil
+    import importlib.machinery
+    mtime = int(rust_bin.stat().st_mtime)
+    ext = rust_bin.suffix
+    dest = DEV_LIB_DIR / f"libmtk_py_hot_{mtime}{ext}"
+    if not dest.exists():
+        shutil.copy2(rust_bin, dest)
+
+    try:
+        loader = importlib.machinery.ExtensionFileLoader("libmtk_py", str(dest))
+        spec = importlib.machinery.ModuleSpec(name="libmtk_py", loader=loader, origin=str(dest))
+        mod = loader.create_module(spec)
+        loader.exec_module(mod)
+        sys.modules["libmtk_py"] = mod
+        try:
+            from ..bridge import engine
+            engine._libmtk = mod
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 def setup_dev_environment() -> bool:
     """
     Ensures dev/lib is added to sys.path and libmtk_py is importable.

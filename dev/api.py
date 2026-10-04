@@ -52,7 +52,12 @@ def load_debug_world(
     return obj
 
 
-def run_mesher_benchmark(iterations: int = 3, with_models: bool = True) -> Dict[str, Any]:
+def run_mesher_benchmark(
+    iterations: int = 3,
+    with_models: bool = True,
+    num_threads: Optional[int] = None,
+    prefs=None,
+) -> Dict[str, Any]:
     """
     Benchmarks raw meshing throughput for the 32k-block debug world.
     When with_models is True (default), runs full block model baking + atlas UV remapping.
@@ -60,6 +65,13 @@ def run_mesher_benchmark(iterations: int = 3, with_models: bool = True) -> Dict[
     """
     if not bridge.is_debug_world_available():
         raise RuntimeError("Native libmtk_py embedded debug world is unavailable.")
+
+    if prefs is None:
+        try:
+            from ..utils.system.dependencies import get_prefs
+            prefs = get_prefs()
+        except Exception:
+            pass
 
     storage = bridge.load_debug_world_storage()
 
@@ -69,6 +81,8 @@ def run_mesher_benchmark(iterations: int = 3, with_models: bool = True) -> Dict[
         m, elapsed_ms = bridge.generate_debug_world_mesh(
             storage=storage,
             with_models=with_models,
+            prefs=prefs,
+            num_threads=num_threads,
         )
         durations.append(elapsed_ms)
         mesh_data = m
