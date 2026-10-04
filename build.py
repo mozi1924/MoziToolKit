@@ -157,6 +157,7 @@ def parse_manifest(project_dir: str):
         "tests/",
         "dist/",
         "site-packages/",
+        "dev/",
         "*.blend",
         "*.blend1",
         ".DS_Store",

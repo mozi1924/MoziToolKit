@@ -21,9 +21,8 @@ lib64/
 parts/
 sdist/
 var/
-wheels/*
-!wheels/*.whl
-!wheels/.gitkeep
+wheels/
+dev/lib/
 site-packages/
 share/python-wheels/
 *.egg-info/

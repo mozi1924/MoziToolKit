@@ -29,6 +29,12 @@ from .sync import (
     load_model_database_from_cache,
 )
 from .cull import cull_mesh_faces
+from .debug import (
+    create_debug_world_object,
+    generate_debug_world_mesh,
+    is_debug_world_available,
+    load_debug_world_storage,
+)
 from .extrude import (
     generate_random_extrude_heights,
     process_random_extrude,
@@ -127,5 +133,9 @@ __all__ = [
     "GridAtlasSpec",
     "BakedAtlas",
     "load_baked_atlas_from_json",
+    "is_debug_world_available",
+    "load_debug_world_storage",
+    "generate_debug_world_mesh",
+    "create_debug_world_object",
 ]
 

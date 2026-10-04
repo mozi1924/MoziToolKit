@@ -35,13 +35,16 @@
 - 在 Blender 中读写网格几何时，优先使用 `b_mesh.vertices.foreach_set`、`b_mesh.loops.foreach_set`、NumPy 数组或 BMesh 批量操作。
 - 严禁在 Python 中对成千上万个顶点或面进行逐元素循环（如 `for v in mesh.vertices:` 修改坐标），避免造成 Blender 界面卡顿。
 
-### 规则 4：Blender 4.2+ 扩展轮子规范与严禁全局 bpy 污染 (Extension Wheels & No Global bpy Pollution)
-- **严格遵循 Blender 4.2+ 扩展轮子规范**：插件依赖的底层二进制扩展（如 `libmtk_py`）必须打包存放在插件根目录下的 `wheels/` 目录中（如 `wheels/libmtk_py-0.1.0-cp311-...whl`），并通过 `blender_manifest.toml` 的 `wheels = [...]` 字段进行显式声明。
-- **严禁安装在全局 bpy / Python 环境中**：
-  - 严禁通过 `pip install`、脚本或任何外部手段将编译出的轮子直接安装到宿主 Blender 的全局 `bpy` 或系统全局 Python 环境中。
-  - 依赖的装配与解压必须完全交由 Blender 4.2+ Extensions 平台的本地隔离机制（Local Environment Isolation）管理，确保插件是纯净自包含（Self-Contained）的。
-  - 严禁在代码、操作符或测试脚本中假设存在全局安装的 `libmtk_py`。
-- **轮子同步与验证**：当 `../libmozitoolkit` 的核心 API 或实现发生变更时，必须在 Rust 工作区虚拟环境中编译出新 Release 轮子，同步拷贝覆盖至 `wheels/`，并在当前工作区运行测试验证。
+### 规则 4：双态架构与严禁全局 bpy 污染 (Dual-Mode Dev/Release Architecture & No Global bpy Pollution)
+- **开发态（Development Mode）极速迭代规约**：
+  - 日常开发阶段**彻底移除根目录下的一切 wheel 轮子**，`blender_manifest.toml` 中不声明任何固定本地 wheel（避免 VSCode Link 时触发 Blender 轮子缓存锁定与卸载重装地狱）。
+  - 底层二进制扩展统一由 `dev/loader.py` 动态加载，通过软链接（`MoziToolKit/dev/lib/libmtk_py.so` -> `libmozitoolkit/target/release/liblibmtk_py.so`）直通 Rust 编译产物。Rust 核心修改编译后，Blender 重载即可即时生效。
+  - 所有开发专用面板、基准压测与调试算子统一收敛在 `dev/` 模块中，提供 N 侧边栏可视化 UI，并通过 `dev/api.py` 为 MCP Agent（`execute_blender_code`）提供便捷的无头自动化测试能力。
+- **发布态（Release Packaging）纯净隔离规约**：
+  - 最终打包统一由 `python3 build.py` 处理；打包脚本自动拉取/编译 release wheels 注入临时打包目录与 `blender_manifest.toml` 的 `wheels = [...]` 字段。
+  - 打包过程中**自动物理剔除 `dev/` 文件夹**，交回 Blender 4.2+ 原生扩展平台隔离机制，确保面向最终用户的发行包自包含且绝对纯净。
+- **严禁安装在宿主全局 bpy / Python 环境中**：
+  - 严禁通过 `pip install`、脚本或任何外部手段将编译出的轮子直接安装到宿主 Blender 的全局 `bpy` 或系统全局 Python 环境中，彻底杜绝全局环境污染。
 
 ### 规则 5：Blender 4.2+ 扩展清单规范 (Manifest Integrity)
 - 本插件遵循 Blender 4.2+ Extension 标准。版本号、权限、依赖项与元数据必须同步维护在 `blender_manifest.toml` 中。

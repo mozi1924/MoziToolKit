@@ -66,23 +66,10 @@ class TestDebugWorldSnapshot(unittest.TestCase):
     """Verifies offline loading and meshing of exported Minecraft live debug world."""
 
     def test_load_and_mesh_debug_world(self):
-        fixture_path = Path("/home/mozi/libmozitoolkit/crates/mtk-voxel/tests/fixtures/debug_world/debug_world_snapshot.json.gz")
-        if not fixture_path.exists():
-            self.skipTest(f"Fixture {fixture_path} not found")
-
-        with gzip.open(fixture_path, "rt", encoding="utf-8") as f:
-            data = json.load(f)
-
-        bounds = data["bounds"]
-        blocks = data["blocks"]
-        self.assertGreater(len(blocks), 10000, "Debug world snapshot should contain >10000 blocks")
-
-        storage = libmtk_py.VoxelStorage()
-        storage.set_bounds(*bounds)
-        for b in blocks:
-            storage.set_block(b["x"], b["y"], b["z"], b["state"])
-
-        self.assertEqual(len(storage.get_non_empty_sections()), 529)
+        storage = libmtk_py.VoxelStorage.create_debug_world()
+        bounds = storage.get_bounds()
+        self.assertEqual(bounds, (0, 69, 0, 361, 3, 363))
+        self.assertEqual(storage.dirty_section_count(), 529)
 
         config = libmtk_py.MesherConfig(enable_ao=True, mesh_fluids=True, z_up_coordinates=True)
         mesh = libmtk_py.SectionMesher.mesh_world(storage, config)

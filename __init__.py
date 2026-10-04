@@ -28,6 +28,13 @@ from . import ui
 
 
 def register():
+    # 0. Development environment & local native library mounting
+    try:
+        from . import dev
+        dev.register()
+    except ImportError:
+        pass
+
     i18n.register()
     operators.register()
     ui.register()
@@ -37,4 +44,10 @@ def unregister():
     ui.unregister()
     operators.unregister()
     i18n.unregister()
+
+    try:
+        from . import dev
+        dev.unregister()
+    except ImportError:
+        pass
 

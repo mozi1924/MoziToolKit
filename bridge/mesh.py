@@ -472,7 +472,12 @@ def _inject_color_attributes(mesh: Any, mesh_data: Any) -> None:
             if hasattr(col_mv, "cast") and col_mv.format == "B":
                 col_mv = col_mv.cast("f")
             num_color_elems = len(col_mv) // 4
-            domain = "CORNER" if num_color_elems == len(mesh.loops) else "POINT"
+            if num_color_elems == len(mesh.loops):
+                domain = "CORNER"
+            elif num_color_elems == len(mesh.vertices):
+                domain = "POINT"
+            else:
+                return
             color_attr = mesh.color_attributes.get("color")
             if color_attr is None or color_attr.domain != domain:
                 if color_attr is not None:

@@ -67,7 +67,7 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.fixture_path = Path("/home/mozi/libmozitoolkit/crates/mtk-voxel/tests/fixtures/debug_world/debug_world_snapshot.json.gz")
+        cls.fixture_path = Path("/home/mozi/libmozitoolkit/crates/mtk-voxel/assets/debug_world_snapshot.json.gz")
         if not cls.fixture_path.exists():
             raise unittest.SkipTest(f"Fixture {cls.fixture_path} not found")
 
