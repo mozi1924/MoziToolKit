@@ -17,16 +17,28 @@ except ImportError:
     libmtk_py = None
 
 
+def _get_libmtk():
+    global libmtk_py
+    if libmtk_py is None:
+        try:
+            import libmtk_py
+        except ImportError:
+            pass
+    return libmtk_py
+
+
 def is_debug_world_available() -> bool:
     """Checks if libmtk_py has the embedded debug world capability."""
-    return libmtk_py is not None and hasattr(libmtk_py.VoxelStorage, "create_debug_world")
+    mtk = _get_libmtk()
+    return mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world")
 
 
 def load_debug_world_storage():
     """Loads the canonical embedded Minecraft debug world into a VoxelStorage instance."""
-    if not is_debug_world_available():
+    mtk = _get_libmtk()
+    if not is_debug_world_available() or mtk is None:
         raise RuntimeError("libmtk_py is not available or does not support create_debug_world")
-    return libmtk_py.VoxelStorage.create_debug_world()
+    return mtk.VoxelStorage.create_debug_world()
 
 
 def generate_debug_world_mesh(
