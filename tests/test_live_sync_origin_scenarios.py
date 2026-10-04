@@ -435,10 +435,11 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
                 for ev in events:
                     if ev.get("type") == "SELECTION_UPDATED":
                         selection_updated = True
+                        resized_mesh = None
                         self.assertEqual(ev.get("size_x"), 32)
                         self.assertEqual(ev.get("size_y"), 32)
                         self.assertEqual(ev.get("size_z"), 32)
-                    elif ev.get("type") == "WORLD_MESH_READY":
+                    elif ev.get("type") == "WORLD_MESH_READY" and selection_updated:
                         resized_mesh = ev.get("mesh")
                 if selection_updated and resized_mesh is not None:
                     break
