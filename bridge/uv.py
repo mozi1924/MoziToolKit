@@ -6,36 +6,30 @@ Accelerated 2D UV geometric operations backed strictly by Rust libmtk (libmtk_py
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
-try:
-    import libmtk_py as mtk_py
-except ImportError:
-    try:
-        import mtk_py
-    except ImportError:
-        mtk_py = None
+from .engine import get_libmtk, require_libmtk
 
-def _ensure_mtk():
-    if mtk_py is None:
-        raise RuntimeError(
-            "libmtk_py native extension is missing. Please install or compile the extension wheel."
-        )
+
+def __getattr__(name: str) -> Any:
+    if name == "mtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def calculate_uv_area(uvs: List[Tuple[float, float]]) -> float:
-    _ensure_mtk()
-    return mtk_py.calculate_uv_area(uvs)
+    mtk = require_libmtk("calculate_uv_area")
+    return mtk.calculate_uv_area(uvs)
 
 
 def get_uv_bounds(uvs: List[Tuple[float, float]]) -> Tuple[float, float, float, float, float, float]:
-    _ensure_mtk()
-    return mtk_py.get_uv_bounds(uvs)
+    mtk = require_libmtk("get_uv_bounds")
+    return mtk.get_uv_bounds(uvs)
 
 
 def get_uv_center(uvs: List[Tuple[float, float]]) -> Tuple[float, float]:
-    _ensure_mtk()
-    return mtk_py.get_uv_center(uvs)
+    mtk = require_libmtk("get_uv_center")
+    return mtk.get_uv_center(uvs)
 
 
 def is_uv_collapsed(
@@ -44,44 +38,44 @@ def is_uv_collapsed(
     dist_threshold: Optional[float] = None,
     pixel_step: Optional[Tuple[float, float]] = None,
 ) -> bool:
-    _ensure_mtk()
-    return mtk_py.is_uv_collapsed(uvs, area_threshold, dist_threshold, pixel_step)
+    mtk = require_libmtk("is_uv_collapsed")
+    return mtk.is_uv_collapsed(uvs, area_threshold, dist_threshold, pixel_step)
 
 
 def is_orthogonal_angle(angle_rad: float, tolerance: float = 1e-3) -> bool:
-    _ensure_mtk()
-    return mtk_py.is_orthogonal_angle(angle_rad, tolerance)
+    mtk = require_libmtk("is_orthogonal_angle")
+    return mtk.is_orthogonal_angle(angle_rad, tolerance)
 
 
 def detect_uv_rotation(uvs: List[Tuple[float, float]], tolerance: float = 1e-3) -> float:
-    _ensure_mtk()
-    return mtk_py.detect_uv_rotation(uvs, tolerance)
+    mtk = require_libmtk("detect_uv_rotation")
+    return mtk.detect_uv_rotation(uvs, tolerance)
 
 
 def straighten_uv(
     uvs: List[Tuple[float, float]],
     angle: Optional[float] = None,
 ) -> Tuple[float, bool, List[Tuple[float, float]]]:
-    _ensure_mtk()
-    return mtk_py.straighten_uv(uvs, angle)
+    mtk = require_libmtk("straighten_uv")
+    return mtk.straighten_uv(uvs, angle)
 
 
 def scale_uv(uvs: List[Tuple[float, float]], scale_factor: float) -> List[Tuple[float, float]]:
-    _ensure_mtk()
-    return mtk_py.scale_uv(uvs, scale_factor)
+    mtk = require_libmtk("scale_uv")
+    return mtk.scale_uv(uvs, scale_factor)
 
 
 def normalize_uv_for_atlas_tiling(
     uvs: List[Tuple[float, float]],
     epsilon: float = 1e-6,
 ) -> Tuple[List[Tuple[float, float]], Tuple[float, float, float], Tuple[float, float, float]]:
-    _ensure_mtk()
-    return mtk_py.normalize_uv_for_atlas_tiling(uvs, epsilon)
+    mtk = require_libmtk("normalize_uv_for_atlas_tiling")
+    return mtk.normalize_uv_for_atlas_tiling(uvs, epsilon)
 
 
 def uv_requires_atlas_tiling(uvs: List[Tuple[float, float]], epsilon: float = 1e-4) -> bool:
-    _ensure_mtk()
-    return mtk_py.uv_requires_atlas_tiling(uvs, epsilon)
+    mtk = require_libmtk("uv_requires_atlas_tiling")
+    return mtk.uv_requires_atlas_tiling(uvs, epsilon)
 
 
 def restore_atlas_tiling_uv(
@@ -91,8 +85,8 @@ def restore_atlas_tiling_uv(
     location: Tuple[float, float, float] = (0.0, 0.0, 0.0),
     rotation: float = 0.0,
 ) -> Tuple[float, float]:
-    _ensure_mtk()
-    return mtk_py.restore_atlas_tiling_uv(u, v, scale, location, rotation)
+    mtk = require_libmtk("restore_atlas_tiling_uv")
+    return mtk.restore_atlas_tiling_uv(u, v, scale, location, rotation)
 
 
 def repair_quad_fluid_uv(
@@ -102,8 +96,8 @@ def repair_quad_fluid_uv(
     force: bool = False,
     min_slope_threshold: float = 0.005,
 ) -> Tuple[bool, List[Tuple[float, float]]]:
-    _ensure_mtk()
-    return mtk_py.repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
+    mtk = require_libmtk("repair_quad_fluid_uv")
+    return mtk.repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
 
 
 def batch_repair_fluid_uv(
@@ -117,15 +111,15 @@ def batch_repair_fluid_uv(
     Batch repair inverted fluid UVs across quad vertices and UVs.
     Supports zero-copy mutable buffers (numpy ndarray, array.array) and standard Python lists.
     """
-    _ensure_mtk()
-    return mtk_py.batch_repair_fluid_uv(verts_flat, uvs_flat, normals_flat, force, min_slope_threshold)
+    mtk = require_libmtk("batch_repair_fluid_uv")
+    return mtk.batch_repair_fluid_uv(verts_flat, uvs_flat, normals_flat, force, min_slope_threshold)
 
 
 def get_fluid_top_uvs(is_flowing: bool = True, rotation: float = 0.0) -> List[Tuple[float, float]]:
-    _ensure_mtk()
-    return mtk_py.get_fluid_top_uvs(is_flowing, rotation)
+    mtk = require_libmtk("get_fluid_top_uvs")
+    return mtk.get_fluid_top_uvs(is_flowing, rotation)
 
 
 def get_fluid_side_uvs(h_left_top: float, h_right_top: float) -> List[Tuple[float, float]]:
-    _ensure_mtk()
-    return mtk_py.get_fluid_side_uvs(h_left_top, h_right_top)
+    mtk = require_libmtk("get_fluid_side_uvs")
+    return mtk.get_fluid_side_uvs(h_left_top, h_right_top)

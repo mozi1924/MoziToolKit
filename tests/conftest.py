@@ -12,6 +12,17 @@ if str(PROJECT_DIR) not in sys.path:
 if site_pkgs.exists() and str(site_pkgs) not in sys.path:
     sys.path.insert(0, str(site_pkgs))
 
+# Early dev environment mounting for tests
+try:
+    from MoziToolKit.bridge.engine import get_libmtk
+    get_libmtk()
+except Exception:
+    try:
+        from bridge.engine import get_libmtk
+        get_libmtk()
+    except Exception:
+        pass
+
 if "mathutils" not in sys.modules:
     sys.modules["mathutils"] = MagicMock()
 

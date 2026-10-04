@@ -28,7 +28,6 @@ try:
         remap_mesh_multi_uvs,
         BiomeResolver,
     )
-    HAS_LIBMTK = is_material_bridge_available()
 except (ImportError, ValueError):
     from bridge.material import (
         is_material_bridge_available,
@@ -36,7 +35,12 @@ except (ImportError, ValueError):
         remap_mesh_multi_uvs,
         BiomeResolver,
     )
-    HAS_LIBMTK = is_material_bridge_available()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "HAS_LIBMTK":
+        return is_material_bridge_available()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 try:
     from ...bridge.assets import get_cache_dir, precompile_stack
@@ -498,7 +502,7 @@ def replace_materials(
     """
     if not HAS_BPY:
         raise RuntimeError("Blender (bpy) is required to execute replace_materials.")
-    if not HAS_LIBMTK:
+    if not is_material_bridge_available():
         raise RuntimeError("libmtk material bridge is not installed or available.")
 
     mesh = _get_mesh(mesh_or_obj)
@@ -598,7 +602,7 @@ def restore_materials_from_provenance(
     """
     if not HAS_BPY:
         raise RuntimeError("Blender (bpy) is required to execute restore_materials_from_provenance.")
-    if not HAS_LIBMTK:
+    if not is_material_bridge_available():
         raise RuntimeError("libmtk material bridge is not installed or available.")
 
     mesh = _get_mesh(mesh_or_obj)

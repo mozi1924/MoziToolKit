@@ -12,22 +12,28 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     from ....bridge.material import (
-        HAS_LIBMTK,
         BiomeResolver,
         get_biome_meta,
         get_colormap_uv,
         get_all_biomes,
         compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
     )
+    from ....bridge.engine import has_libmtk
 except (ImportError, ValueError):
     from bridge.material import (
-        HAS_LIBMTK,
         BiomeResolver,
         get_biome_meta,
         get_colormap_uv,
         get_all_biomes,
         compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
     )
+    from bridge.engine import has_libmtk
+
+
+def __getattr__(name: str) -> Any:
+    if name == "HAS_LIBMTK":
+        return has_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 from ..constants import (
     ATTR_BIOME_TINT_DATA,
@@ -54,7 +60,7 @@ def get_or_load_biome_resolver(
     Prioritizes instant loading from `biome_mapping.json` in the compiled cache directory (< 0.2ms).
     Falls back to parsing the pack stack if cache is not yet compiled.
     """
-    if not HAS_LIBMTK:
+    if not has_libmtk():
         return BiomeResolver()
 
     # 1. Try loading from cache directory if available
@@ -126,7 +132,7 @@ def get_biome_colors(
     has_custom_dry_foliage: bool = False,
 ) -> Dict[str, Any]:
     """Retrieve canonical metadata, temperature, humidity, and Linear RGBA colors from Rust core."""
-    if not HAS_LIBMTK:
+    if not has_libmtk():
         temp = custom_temp if custom_temp is not None else 0.8
         hum = custom_humidity if custom_humidity is not None else 0.4
         return {
@@ -274,7 +280,7 @@ def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
 # Canonical list of UI dropdown enum items generated from libmtk
 def _get_biome_enum_items():
     items = [("CUSTOM", "Custom", "Custom Biome (Temperature / Humidity & Color Overrides)")]
-    if not HAS_LIBMTK:
+    if not has_libmtk():
         return items + [("PLAINS", "Plains", "Plains Biome")]
     biomes = get_all_biomes()
     return items + [(b["id"].upper(), b["name"], f"{b['name']} Biome ({b['temperature']} / {b['humidity']})") for b in biomes]

@@ -19,27 +19,23 @@ try:
 except (ImportError, ValueError):
     from utils.system import get_prefs
 
-try:
-    import libmtk_py
-    HAS_LIBMTK = True
-except ImportError:
-    libmtk_py = None
-    HAS_LIBMTK = False
+from .engine import get_libmtk, has_libmtk, require_libmtk
 
 
 def _get_libmtk():
-    global libmtk_py, HAS_LIBMTK
-    if libmtk_py is None:
-        try:
-            import libmtk_py
-            HAS_LIBMTK = True
-        except ImportError:
-            pass
-    return libmtk_py
+    return get_libmtk()
 
 
 def _has_libmtk() -> bool:
-    return _get_libmtk() is not None
+    return has_libmtk()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "HAS_LIBMTK":
+        return has_libmtk()
+    if name == "libmtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def get_cache_dir(prefs=None) -> Path:
@@ -159,9 +155,9 @@ def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str,
     base_cache = get_cache_dir(prefs)
 
     # Use unified high-performance Rust engine with thread pool control
-    if hasattr(libmtk_py, "precompile_all_assets"):
+    if hasattr(mtk, "precompile_all_assets"):
         try:
-            res = libmtk_py.precompile_all_assets(
+            res = mtk.precompile_all_assets(
                 stack,
                 str(base_cache.resolve()),
                 atlas_category="blocks",
@@ -174,7 +170,7 @@ def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str,
             )
         except TypeError:
             # Fallback for older bindings without num_threads keyword
-            res = libmtk_py.precompile_all_assets(
+            res = mtk.precompile_all_assets(
                 stack,
                 str(base_cache.resolve()),
                 atlas_category="blocks",

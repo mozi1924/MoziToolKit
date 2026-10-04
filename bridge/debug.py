@@ -13,34 +13,28 @@ from .mesh import inject_mesh_data
 
 logger = logging.getLogger("MoziToolKit.Bridge.Debug")
 
-try:
-    import libmtk_py
-except ImportError:
-    libmtk_py = None
+from .engine import get_libmtk, has_libmtk, require_libmtk
 
 
-def _get_libmtk():
-    global libmtk_py
-    if libmtk_py is None:
-        try:
-            import libmtk_py
-        except ImportError:
-            pass
-    return libmtk_py
+def __getattr__(name: str) -> Any:
+    if name == "libmtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def is_debug_world_available() -> bool:
     """Checks if libmtk_py has the embedded debug world capability."""
-    mtk = _get_libmtk()
+    mtk = get_libmtk()
     return mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world")
 
 
 def load_debug_world_storage():
     """Loads the canonical embedded Minecraft debug world into a VoxelStorage instance."""
-    mtk = _get_libmtk()
-    if not is_debug_world_available() or mtk is None:
-        raise RuntimeError("libmtk_py is not available or does not support create_debug_world")
-    return mtk.VoxelStorage.create_debug_world()
+    mtk = require_libmtk("load_debug_world_storage")
+    voxel_storage = getattr(mtk, "VoxelStorage", None)
+    if voxel_storage is None or not hasattr(voxel_storage, "create_debug_world"):
+        raise RuntimeError("libmtk_py does not support create_debug_world")
+    return voxel_storage.create_debug_world()
 
 
 def generate_debug_world_mesh(
@@ -72,9 +66,7 @@ def generate_debug_world_mesh(
         )
     else:
         import time
-        mtk = _get_libmtk()
-        if mtk is None:
-            raise RuntimeError("libmtk_py is not available.")
+        mtk = require_libmtk("generate_debug_world_mesh")
         if config is None:
             config = mtk.MesherConfig(
                 enable_ao=True,

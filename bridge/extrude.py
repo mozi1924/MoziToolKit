@@ -16,19 +16,13 @@ except ImportError:
     bmesh = None
     bpy = None
 
-try:
-    import libmtk_py as mtk_py
-except ImportError:
-    try:
-        import mtk_py
-    except ImportError:
-        mtk_py = None
+from .engine import get_libmtk, require_libmtk
 
-def _ensure_mtk():
-    if mtk_py is None:
-        raise RuntimeError(
-            "libmtk_py native extension is missing. Please install or compile the extension wheel."
-        )
+
+def __getattr__(name: str) -> Any:
+    if name == "mtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 try:
@@ -53,9 +47,9 @@ def repair_extruded_side_uv(
     adjacent_uv_strip: Optional[Sequence[Tuple[float, float]]] = None,
 ) -> List[Tuple[float, float]]:
     """Reconstruct 4 UV corner coordinates for an extruded side quad polygon."""
-    _ensure_mtk()
+    mtk = require_libmtk("repair_extruded_side_uv")
     adj = list(adjacent_uv_strip) if adjacent_uv_strip is not None else None
-    return mtk_py.repair_extruded_side_uv(
+    return mtk.repair_extruded_side_uv(
         tuple(uv_base_a),
         tuple(uv_base_b),
         tuple(top_normal),
@@ -78,9 +72,9 @@ def generate_random_extrude_heights(
     discrete_steps: Optional[int] = None,
 ) -> List[float]:
     """Generate 3D noise-based random extrusion displacement heights."""
-    _ensure_mtk()
+    mtk = require_libmtk("generate_random_extrude_heights")
     pts = [tuple(c) for c in centers]
-    return mtk_py.generate_random_extrude_heights(
+    return mtk.generate_random_extrude_heights(
         pts, noise_type, min_height, max_height, noise_scale, seed, discrete_steps
     )
 
@@ -100,7 +94,7 @@ def repair_mesh_extruded_side_faces_batch(
     if not repair_uv and not add_crease:
         return 0
 
-    _ensure_mtk()
+    mtk = require_libmtk("repair_mesh_extruded_side_faces_batch")
 
     bm.faces.ensure_lookup_table()
     bm.faces.index_update()
@@ -118,7 +112,7 @@ def repair_mesh_extruded_side_faces_batch(
     # 1. Extract Data In buffers & Call Rust backend
     smart_faces_list = list(smart_side_face_indices) if smart_side_face_indices else None
 
-    if hasattr(mtk_py, "process_flat_mesh_extrude_repair"):
+    if hasattr(mtk, "process_flat_mesh_extrude_repair"):
         positions_flat = [coord for v in bm.verts for coord in (v.co.x, v.co.y, v.co.z)]
         loop_vertices = [v.index for f in bm.faces for v in f.verts]
         loop_uvs = []
@@ -144,7 +138,7 @@ def repair_mesh_extruded_side_faces_batch(
                 loop_uvs.extend([0.0, 0.0] * tot)
                 pixel_steps.append([1.0 / 64.0, 1.0 / 64.0])
 
-        modified_uvs, modified_mats, modified_creases, repaired_count = mtk_py.process_flat_mesh_extrude_repair(
+        modified_uvs, modified_mats, modified_creases, repaired_count = mtk.process_flat_mesh_extrude_repair(
             positions=positions_flat,
             loop_vertices=loop_vertices,
             loop_uvs=loop_uvs,
@@ -178,7 +172,7 @@ def repair_mesh_extruded_side_faces_batch(
                 face_uvs.append([[0.0, 0.0] for _ in f.verts])
                 pixel_steps.append([1.0 / 64.0, 1.0 / 64.0])
 
-        modified_uvs, modified_mats, modified_creases, repaired_count = mtk_py.process_mesh_extrude_repair(
+        modified_uvs, modified_mats, modified_creases, repaired_count = mtk.process_mesh_extrude_repair(
             positions=positions,
             face_vertices=face_vertices,
             face_uvs=face_uvs,
