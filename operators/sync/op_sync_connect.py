@@ -52,9 +52,16 @@ def _sync_timer_tick() -> Optional[float]:
     props = _get_active_props(bpy.context)
     events = session.poll_events()
 
+    latest_world_mesh = None
+
     for ev in events:
         ev_type = ev.get("type")
         if not ev_type:
+            continue
+
+        if ev_type == "WORLD_MESH_READY":
+            # Coalesce: only keep newest mesh to prevent Blender event queue choke and OOM
+            latest_world_mesh = ev.get("mesh")
             continue
 
         if ev_type == "STATUS_CHANGE":
@@ -81,19 +88,6 @@ def _sync_timer_tick() -> Optional[float]:
                 tot = ev.get("total_sections", 0)
                 vol = ev.get("total_volume", 0)
                 props.validation_info = f"Sync Handshake: {tot} chunks ({vol:,} blocks)"
-
-        elif ev_type == "WORLD_MESH_READY":
-            mesh_data = ev.get("mesh")
-            if mesh_data:
-                try:
-                    world_obj = get_or_create_world_mesh_object(bpy.context)
-                    v_count, f_count = update_world_mesh(world_obj, mesh_data)
-                    if props:
-                        props.point_count = v_count
-                        props.faces_count = f_count
-                        props.last_update_info = f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces"
-                except Exception as e:
-                    logger.error(f"Failed to inject WorldMesh into Blender: {e}")
 
         elif ev_type == "DELTA_APPLIED":
             if props:
@@ -133,6 +127,17 @@ def _sync_timer_tick() -> Optional[float]:
         elif ev_type == "ERROR":
             if props:
                 props.validation_info = f"Error: {ev.get('message', '')}"
+
+    if latest_world_mesh is not None:
+        try:
+            world_obj = get_or_create_world_mesh_object(bpy.context)
+            v_count, f_count = update_world_mesh(world_obj, latest_world_mesh, skip_string_attributes=True)
+            if props:
+                props.point_count = v_count
+                props.faces_count = f_count
+                props.last_update_info = f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces"
+        except Exception as e:
+            logger.error(f"Failed to inject WorldMesh into Blender: {e}")
 
     return 0.016  # ~60 fps poll interval
 

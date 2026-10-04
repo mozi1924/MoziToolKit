@@ -70,7 +70,11 @@ def get_or_create_world_mesh_object(
     return world_obj
 
 
-def update_world_mesh(world_obj: bpy.types.Object, mesh_data: Any) -> Tuple[int, int]:
+def update_world_mesh(
+    world_obj: bpy.types.Object,
+    mesh_data: Any,
+    skip_string_attributes: bool = False,
+) -> Tuple[int, int]:
     """
     Injects processed geometry buffer into the single world mesh object using high-throughput
     zero-copy bridge methods.
@@ -85,6 +89,7 @@ def update_world_mesh(world_obj: bpy.types.Object, mesh_data: Any) -> Tuple[int,
         mesh_data,
         update_topology=True,
         update_normals=True,
+        skip_string_attributes=skip_string_attributes,
     )
 
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None

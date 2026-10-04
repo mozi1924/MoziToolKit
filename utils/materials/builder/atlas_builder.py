@@ -101,6 +101,7 @@ def build_atlas_chunk_material(
     atlas_height: float = 4096.0,
     tile_width: float = 16.0,
     tile_height: float = 16.0,
+    force_rebuild: bool = False,
 ) -> Optional[Any]:
     """
     Builds or updates an Atlas Chunk Minecraft material in Blender with structured Frames.
@@ -116,6 +117,13 @@ def build_atlas_chunk_material(
         mat_name = f"MTK:Atlas:{category}:{category_chunk_index:03}"
 
     mat = bpy.data.materials.get(mat_name)
+    if not force_rebuild and mat is not None and getattr(mat, "node_tree", None) and len(mat.node_tree.nodes) > 0:
+        if (
+            mat.get("mtk_atlas_chunk_id") == chunk_id
+            and (not stack_fingerprint or mat.get("mtk_stack_fingerprint") == stack_fingerprint)
+        ):
+            return mat
+
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
 

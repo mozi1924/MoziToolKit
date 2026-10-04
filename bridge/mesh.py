@@ -507,7 +507,7 @@ def _inject_face_materials(mesh: Any, mesh_data: Any) -> None:
         logger.debug("Failed setting material indices: %s", e)
 
 
-def _inject_custom_attributes(mesh: Any, mesh_data: Any) -> None:
+def _inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: bool = False) -> None:
     """Generic custom attributes synchronization into mesh.attributes."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh_data, "attribute_names"):
         return
@@ -519,6 +519,9 @@ def _inject_custom_attributes(mesh: Any, mesh_data: Any) -> None:
                 continue
 
             domain_str, dtype_name, elem_count = info
+            if skip_string_attributes and dtype_name.lower() == "string":
+                continue
+
             b_domain = MTK_TO_BLENDER_DOMAIN.get(domain_str.lower(), "POINT")
             type_tuple = MTK_TO_BLENDER_TYPE.get(dtype_name)
             if type_tuple is None:
@@ -744,6 +747,7 @@ def inject_mesh_data(
     update_normals: bool = False,
     inject_attributes: bool = True,
     shade_smooth: bool = False,
+    skip_string_attributes: bool = False,
 ) -> None:
     """
     Injects processed geometry and custom attributes from PyMeshData back into a Blender Mesh.
@@ -784,6 +788,6 @@ def inject_mesh_data(
     _inject_face_materials(mesh, mesh_data)
 
     if inject_attributes:
-        _inject_custom_attributes(mesh, mesh_data)
+        _inject_custom_attributes(mesh, mesh_data, skip_string_attributes=skip_string_attributes)
 
     mesh.update(calc_edges=topology_updated)
