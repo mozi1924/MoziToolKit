@@ -3,7 +3,6 @@ System environment, preference utilities, and UI context menu registry subpackag
 """
 
 from .dependencies import (
-    ensure_sys_paths,
     has_libmtk,
     get_prefs,
 )
@@ -34,7 +33,6 @@ from .menu_config import (
 
 
 __all__ = [
-    "ensure_sys_paths",
     "has_libmtk",
     "get_prefs",
     "register_menu_item",
@@ -54,7 +52,6 @@ __all__ = [
     "load_material_settings_config",
     "save_material_settings_config",
     "get_enabled_pack_entries",
-    "reset_config",
     "export_config",
     "import_config",
     "draw_dynamic_menu",

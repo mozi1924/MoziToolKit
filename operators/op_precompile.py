@@ -173,10 +173,11 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
         return {"FINISHED"}
 
 
-OPERATORS_CLASSES = (
+OPERATOR_CLASSES = (
     MOZI_OT_precompile_cache,
     MOZI_OT_clear_cache,
     MOZI_OT_open_cache_folder,
     MOZI_OT_open_url,
     MOZI_OT_open_preferences,
 )
+OPERATORS_CLASSES = OPERATOR_CLASSES

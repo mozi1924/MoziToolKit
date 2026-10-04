@@ -3,10 +3,17 @@ Material Builders for MoziToolKit.
 """
 
 from .atlas_builder import build_atlas_chunk_material
-from .standalone_builder import build_standalone_material, get_or_create_image
+from .standalone_builder import (
+    build_standalone_material,
+    get_or_create_image,
+    set_material_displacement_method,
+    ensure_material_node_tree,
+)
 
 __all__ = [
     "build_atlas_chunk_material",
     "build_standalone_material",
     "get_or_create_image",
+    "set_material_displacement_method",
+    "ensure_material_node_tree",
 ]

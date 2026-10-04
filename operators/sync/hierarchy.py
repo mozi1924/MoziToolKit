@@ -12,13 +12,16 @@ try:
     from ...bridge.mesh import inject_mesh_data
     from ...bridge.assets import get_cache_dir
     from ...utils.materials.builder.atlas_builder import build_atlas_chunk_material
+    from ...utils.materials.builder import ensure_material_node_tree
 except (ImportError, ValueError):
     from bridge.mesh import inject_mesh_data
     from bridge.assets import get_cache_dir
     try:
         from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+        from utils.materials.builder import ensure_material_node_tree
     except (ImportError, ValueError):
         build_atlas_chunk_material = None
+        ensure_material_node_tree = lambda m: getattr(m, "node_tree", None)
 
 logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")
 
@@ -133,8 +136,7 @@ def ensure_world_materials(world_obj: bpy.types.Object, prefs=None) -> None:
     mat = bpy.data.materials.get(default_mat_name)
     if mat is None:
         mat = bpy.data.materials.new(name=default_mat_name)
-        if getattr(mat, "node_tree", None) is None:
-            mat.use_nodes = True
+        ensure_material_node_tree(mat)
         nodes = mat.node_tree.nodes
         nodes.clear()
         bsdf = nodes.new("ShaderNodeBsdfPrincipled")

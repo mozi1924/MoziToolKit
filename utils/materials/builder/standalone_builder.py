@@ -57,6 +57,27 @@ def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
             pass
 
 
+def ensure_material_node_tree(mat: Any) -> Any:
+    """
+    Ensure the material has an active node tree across Blender versions
+    without accessing deprecated 'Material.use_nodes' in Blender 5.x/6.0+.
+    """
+    if mat is None:
+        return None
+    tree = getattr(mat, "node_tree", None)
+    if tree is not None:
+        return tree
+
+    # Legacy Blender fallback (< 5.0) where node_tree is not initialized automatically
+    try:
+        import bpy
+        if getattr(bpy.app, "version", (0, 0, 0)) < (5, 0, 0):
+            mat.use_nodes = True
+    except Exception:
+        pass
+    return getattr(mat, "node_tree", None)
+
+
 def get_or_create_image(image_path: str | Path, colorspace: str = "sRGB") -> Optional[Any]:
     """Load or retrieve an image datablock from disk with proper colorspace."""
     if not HAS_BPY:
@@ -138,11 +159,7 @@ def build_standalone_material(
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
 
-    if getattr(mat, "node_tree", None) is None:
-        try:
-            mat.use_nodes = True
-        except Exception:
-            pass
+    ensure_material_node_tree(mat)
     mat.use_fake_user = False
     set_material_displacement_method(mat, "BOTH")
 

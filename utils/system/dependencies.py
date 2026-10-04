@@ -15,11 +15,6 @@ def has_libmtk() -> bool:
         return False
 
 
-def ensure_sys_paths(*args, **kwargs):
-    """Deprecated no-op for backward compatibility. Dependencies are handled natively by Blender 4.2+."""
-    return []
-
-
 def get_prefs(context=None):
     """
     Retrieve MoziToolKit AddonPreferences safely across legacy add-on

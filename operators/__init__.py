@@ -8,12 +8,12 @@ except ImportError:
     bpy = None
 from .op_cull import OPERATOR_CLASSES as CULL_CLASSES
 from .op_extrude import OPERATOR_CLASSES as EXTRUDE_CLASSES
-from .op_materials import OPERATORS_CLASSES as MATERIAL_CLASSES
-from .op_mesh import OPERATORS_CLASSES as MESH_CLASSES
+from .op_materials import OPERATOR_CLASSES as MATERIAL_CLASSES
+from .op_mesh import OPERATOR_CLASSES as MESH_CLASSES
 from .op_pixel_split import OPERATOR_CLASSES as PIXEL_SPLIT_CLASSES
-from .op_precompile import OPERATORS_CLASSES as PRECOMPILE_CLASSES
-from .op_texture import OPERATORS_CLASSES as TEXTURE_CLASSES
-from .op_uv import OPERATORS_CLASSES as UV_CLASSES
+from .op_precompile import OPERATOR_CLASSES as PRECOMPILE_CLASSES
+from .op_texture import OPERATOR_CLASSES as TEXTURE_CLASSES
+from .op_uv import OPERATOR_CLASSES as UV_CLASSES
 
 ALL_OPERATORS = (
     PRECOMPILE_CLASSES
