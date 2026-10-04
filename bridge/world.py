@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from .mesh import inject_mesh_data
+from .point_cloud import inject_voxel_point_cloud, sync_voxel_point_cloud_for_world
 from .assets import (
     get_cache_dir,
     load_baked_atlas_from_cache,
@@ -372,7 +373,16 @@ def ingest_voxel_world(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
-    # 5. Set active in viewport
+    # 5. Extract unculled VoxelPointCloud and sync into companion object
+    cloud_obj = sync_voxel_point_cloud_for_world(
+        world_obj=obj,
+        storage=storage,
+        origin_centered=origin_centered,
+        initial_hidden=True,
+    )
+    cloud_count = len(cloud_obj.data.vertices) if cloud_obj and cloud_obj.data else 0
+
+    # 6. Set active in viewport
     if context and hasattr(context, "view_layer"):
         obj.select_set(True)
         context.view_layer.objects.active = obj
@@ -383,6 +393,8 @@ def ingest_voxel_world(
         "quad_count": mesh_data.quad_count,
         "polygon_count": len(b_mesh.polygons),
         "materials_count": len(b_mesh.materials),
+        "voxel_count": cloud_count,
+        "voxel_cloud_name": cloud_obj.name if cloud_obj else None,
         "meshing_time_ms": round(elapsed_ms, 2),
     }
 

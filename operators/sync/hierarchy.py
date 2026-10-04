@@ -11,9 +11,11 @@ import bpy
 try:
     from ...bridge.mesh import inject_mesh_data
     from ...bridge.world import ensure_world_materials
+    from ...bridge.point_cloud import sync_voxel_point_cloud_for_world
 except (ImportError, ValueError):
     from bridge.mesh import inject_mesh_data
     from bridge.world import ensure_world_materials
+    from bridge.point_cloud import sync_voxel_point_cloud_for_world
 
 logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")
 
@@ -74,10 +76,11 @@ def update_world_mesh(
     world_obj: bpy.types.Object,
     mesh_data: Any,
     skip_string_attributes: bool = False,
+    storage: Optional[Any] = None,
 ) -> Tuple[int, int]:
     """
     Injects processed geometry buffer into the single world mesh object using high-throughput
-    zero-copy bridge methods.
+    zero-copy bridge methods, and synchronizes unculled voxel storage into companion point cloud.
     Returns (vertex_count, face_count).
     """
     if not world_obj or world_obj.type != "MESH":
@@ -94,6 +97,13 @@ def update_world_mesh(
 
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(world_obj, used_chunk_ids=used_chunk_ids)
+
+    # Synchronize unculled voxel storage point cloud if storage is provided
+    if storage is not None:
+        try:
+            sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=False, initial_hidden=True)
+        except Exception as e:
+            logger.warning("Failed syncing voxel point cloud during live sync mesh update: %s", e)
 
     v_count = len(mesh.vertices)
     f_count = len(mesh.polygons)

@@ -15,6 +15,7 @@ from .op_pixel_split import OPERATOR_CLASSES as PIXEL_SPLIT_CLASSES
 from .op_precompile import OPERATOR_CLASSES as PRECOMPILE_CLASSES
 from .op_texture import OPERATOR_CLASSES as TEXTURE_CLASSES
 from .op_uv import OPERATOR_CLASSES as UV_CLASSES
+from .op_voxel_cloud import OPERATOR_CLASSES as VOXEL_CLOUD_CLASSES
 
 ALL_OPERATORS = (
     PRECOMPILE_CLASSES
@@ -25,6 +26,7 @@ ALL_OPERATORS = (
     + PIXEL_SPLIT_CLASSES
     + EXTRUDE_CLASSES
     + CULL_CLASSES
+    + VOXEL_CLOUD_CLASSES
 )
 
 from . import extrude

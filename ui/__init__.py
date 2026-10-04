@@ -55,6 +55,10 @@ from .panel_sync import (
     register as register_panel_sync,
     unregister as unregister_panel_sync,
 )
+from .panel_voxel_storage import (
+    register as register_panel_voxel_storage,
+    unregister as unregister_panel_voxel_storage,
+)
 
 classes = (
     # PropertyGroups
@@ -100,9 +104,11 @@ def register():
     register_menu_uv()
     register_panel_biome()
     register_panel_sync()
+    register_panel_voxel_storage()
 
 
 def unregister():
+    unregister_panel_voxel_storage()
     unregister_panel_sync()
     unregister_panel_biome()
     unregister_menu_uv()
