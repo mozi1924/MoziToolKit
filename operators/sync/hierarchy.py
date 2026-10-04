@@ -87,7 +87,8 @@ def update_world_mesh(world_obj: bpy.types.Object, mesh_data: Any) -> Tuple[int,
         update_normals=True,
     )
 
-    ensure_world_materials(world_obj)
+    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+    ensure_world_materials(world_obj, used_chunk_ids=used_chunk_ids)
 
     v_count = len(mesh.vertices)
     f_count = len(mesh.polygons)
