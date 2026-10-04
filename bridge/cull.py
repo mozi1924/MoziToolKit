@@ -8,13 +8,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-try:
-    import libmtk_py as mtk_py
-except ImportError:
-    try:
-        import mtk_py
-    except ImportError:
-        mtk_py = None
+from .engine import get_libmtk, require_libmtk
+
+
+def __getattr__(name: str) -> Any:
+    if name == "mtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 
 def cull_mesh_faces(
     mesh_data: Any,
@@ -23,10 +24,7 @@ def cull_mesh_faces(
     cull_duplicates: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """Cull interior contacting faces and duplicate polygons from a MeshData buffer."""
-    if mtk_py is None:
-        raise RuntimeError(
-            "libmtk_py native extension is missing. Please install or compile the extension wheel."
-        )
-    return mtk_py.cull_mesh_faces(
+    mtk = require_libmtk("cull_mesh_faces")
+    return mtk.cull_mesh_faces(
         mesh_data, tolerance, cull_coplanar_opposite, cull_duplicates
     )

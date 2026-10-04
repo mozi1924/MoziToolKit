@@ -19,19 +19,18 @@ try:
 except ImportError:
     HAS_NUMPY = False
 
-try:
-    import libmtk_py as mtk_py
-    MeshData = getattr(mtk_py, "MeshData", Any)
-    AttributeDomain = getattr(mtk_py, "AttributeDomain", Any)
-except (ImportError, AttributeError):
-    try:
-        import mtk_py
-        MeshData = getattr(mtk_py, "MeshData", Any)
-        AttributeDomain = getattr(mtk_py, "AttributeDomain", Any)
-    except (ImportError, AttributeError):
-        mtk_py = None
-        MeshData = Any  # type: ignore
-        AttributeDomain = Any  # type: ignore
+from .engine import get_libmtk, require_libmtk
+
+
+def __getattr__(name: str) -> Any:
+    mtk = get_libmtk()
+    if name == "mtk_py":
+        return mtk
+    if name == "MeshData":
+        return getattr(mtk, "MeshData", Any) if mtk else Any
+    if name == "AttributeDomain":
+        return getattr(mtk, "AttributeDomain", Any) if mtk else Any
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 BLENDER_TO_MTK_DOMAIN: Dict[str, str] = {
     "POINT": "point",
@@ -693,14 +692,15 @@ def extract_mesh_data(
 
     Preserves Quad face topology and per-corner Loop UVs without destroying UV seams.
     """
-    if mtk_py is None or not hasattr(mtk_py, "MeshData"):
-        raise RuntimeError("mtk_py is not installed or available.")
+    mtk = require_libmtk("extract_mesh_data")
+    if not hasattr(mtk, "MeshData"):
+        raise RuntimeError("Native libmtk does not provide MeshData.")
 
     mesh = _get_mesh(mesh_or_obj)
     num_polys = len(mesh.polygons)
     num_verts = len(mesh.vertices)
     if num_polys == 0 or num_verts == 0:
-        return mtk_py.MeshData()
+        return mtk.MeshData()
 
     uv_layer = None
     if hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
@@ -722,7 +722,7 @@ def extract_mesh_data(
         )
         uvs = _extract_uvs_tris(mesh, uv_layer, num_verts)
 
-    mesh_data = mtk_py.MeshData.from_raw_buffers(
+    mesh_data = mtk.MeshData.from_raw_buffers(
         positions=positions,
         uvs=uvs,
         indices=indices,

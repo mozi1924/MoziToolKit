@@ -14,16 +14,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("MoziToolKit.Bridge.Sync")
 
-try:
-    import libmtk_py as mtk_py
-    HAS_LIBMTK = True
-except (ImportError, AttributeError):
-    try:
-        import mtk_py
-        HAS_LIBMTK = True
-    except (ImportError, AttributeError):
-        mtk_py = None
-        HAS_LIBMTK = False
+from .engine import get_libmtk, has_libmtk, require_libmtk
+
+
+def __getattr__(name: str) -> Any:
+    if name == "HAS_LIBMTK":
+        return is_sync_available()
+    if name == "mtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
 
 try:
     from .assets import (
@@ -43,7 +43,8 @@ except (ImportError, ValueError):
 
 def is_sync_available() -> bool:
     """Checks whether the native libmtk Live Sync backend is loaded and ready."""
-    return HAS_LIBMTK and hasattr(mtk_py, "LiveSyncSession")
+    mtk = get_libmtk()
+    return bool(mtk and hasattr(mtk, "LiveSyncSession"))
 
 
 class SyncBridgeSession:
@@ -93,7 +94,8 @@ class SyncBridgeSession:
         """
         Starts the background LiveSync client thread connecting to `url`.
         """
-        if not is_sync_available():
+        mtk = get_libmtk()
+        if mtk is None or not hasattr(mtk, "LiveSyncSession"):
             self._last_error = "Native libmtk_py core is not available."
             logger.error("Cannot start Live Sync: native libmtk_py core is not available.")
             return False
@@ -117,7 +119,7 @@ class SyncBridgeSession:
         try:
             # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
             try:
-                config = mtk_py.MesherConfig(
+                config = mtk.MesherConfig(
                     enable_ao=enable_ao,
                     mesh_fluids=mesh_fluids,
                     z_up_coordinates=True,
@@ -131,7 +133,7 @@ class SyncBridgeSession:
             except (TypeError, AttributeError):
                 # Backwards-compatible fallback for older wheel binaries
                 try:
-                    config = mtk_py.MesherConfig(
+                    config = mtk.MesherConfig(
                         enable_ao=enable_ao,
                         mesh_fluids=mesh_fluids,
                         z_up_coordinates=True,
@@ -142,7 +144,7 @@ class SyncBridgeSession:
                         custom_aliases=custom_aliases,
                     )
                 except (TypeError, AttributeError):
-                    config = mtk_py.MesherConfig(
+                    config = mtk.MesherConfig(
                         enable_ao=enable_ao,
                         mesh_fluids=mesh_fluids,
                         z_up_coordinates=True,
@@ -160,10 +162,10 @@ class SyncBridgeSession:
                         pass
 
             # Face culler instance
-            culler = mtk_py.FaceCuller() if hasattr(mtk_py, "FaceCuller") else None
+            culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
             # Instantiate native LiveSyncSession
-            self._session = mtk_py.LiveSyncSession(
+            self._session = mtk.LiveSyncSession(
                 config=config,
                 culler=culler,
                 model_db=model_db,

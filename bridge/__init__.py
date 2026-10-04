@@ -3,6 +3,12 @@ MoziToolKit Bridge Package.
 Pure zero-computation data marshalling layer between Blender (bpy/bmesh) and libmtk (Rust).
 """
 
+from .engine import (
+    get_engine_info,
+    get_libmtk,
+    has_libmtk,
+    require_libmtk,
+)
 from .assets import (
     clear_cache,
     get_cache_dir,
@@ -147,5 +153,9 @@ __all__ = [
     "mesh_voxel_storage",
     "ensure_world_materials",
     "get_world_pipeline_assets",
+    "get_libmtk",
+    "has_libmtk",
+    "require_libmtk",
+    "get_engine_info",
 ]
 

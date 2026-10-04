@@ -25,20 +25,17 @@ from .assets import (
 
 logger = logging.getLogger("MoziToolKit.Bridge.World")
 
-try:
-    import libmtk_py
-except ImportError:
-    libmtk_py = None
+from .engine import get_libmtk, has_libmtk, require_libmtk
 
 
 def _get_libmtk():
-    global libmtk_py
-    if libmtk_py is None:
-        try:
-            import libmtk_py
-        except ImportError:
-            pass
-    return libmtk_py
+    return get_libmtk()
+
+
+def __getattr__(name: str) -> Any:
+    if name == "libmtk_py":
+        return get_libmtk()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
@@ -195,9 +192,7 @@ def mesh_voxel_storage(
     culling, and biome tinting.
     Returns (mesh_data, elapsed_ms).
     """
-    mtk = _get_libmtk()
-    if mtk is None:
-        raise RuntimeError("libmtk_py is not available.")
+    mtk = require_libmtk("mesh_voxel_storage")
 
     # Auto-load cached assets if not explicitly passed
     if model_db is None or atlas is None or biome_resolver is None:
