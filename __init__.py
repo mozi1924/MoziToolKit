@@ -22,6 +22,19 @@ bl_info = {
     "category": "3D View",
 }
 
+import sys
+
+# 0. Early development bootstrap: ensure dev/lib (.so) is mounted on sys.path
+try:
+    from .dev import loader
+    loader.setup_dev_environment()
+except ImportError:
+    pass
+
+# Aliasing for Blender 4.2+ extension repos (e.g. bl_ext.vscode_development.MoziToolKit)
+if __name__ not in ("MoziToolKit", "__main__"):
+    sys.modules.setdefault("MoziToolKit", sys.modules[__name__])
+
 from . import i18n
 from . import operators
 from . import ui
