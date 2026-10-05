@@ -119,19 +119,23 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
     _runner: Optional[ModalTaskRunner] = None
 
     def draw(self, context):
+        try:
+            from ...i18n import tr
+        except (ImportError, ValueError):
+            from i18n import tr
         layout = self.layout
 
         # 1. Dimension selection
         box_dim = layout.box()
-        box_dim.label(text="Dimension", icon="WORLD")
+        box_dim.label(text=tr("Dimension"), icon="WORLD")
         box_dim.prop(self, "dimension", text="")
 
         # 2. 3D Bounding Box selection
         box_coords = layout.box()
-        box_coords.label(text="3D Selection Bounds (Blocks)", icon="SNAP_INCREMENT")
+        box_coords.label(text=tr("3D Selection Bounds (Blocks)"), icon="SNAP_INCREMENT")
         col_coords = box_coords.column(align=True)
-        col_coords.prop(self, "min_coord")
-        col_coords.prop(self, "max_coord")
+        col_coords.prop(self, "min_coord", text=tr("Min Coordinate"))
+        col_coords.prop(self, "max_coord", text=tr("Max Coordinate"))
 
         # Range preview
         dx = abs(self.max_coord[0] - self.min_coord[0]) + 1
@@ -139,17 +143,17 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         dz = abs(self.max_coord[2] - self.min_coord[2]) + 1
         vol = dx * dy * dz
         box_coords.label(
-            text=f"Size: {dx} × {dy} × {dz} ({vol:,} blocks)",
+            text=f"{tr('Size')}: {dx} × {dy} × {dz} ({vol:,} {tr('blocks')})",
             icon="INFO",
         )
 
         # 3. Meshing & Shading Options
         box_mesh = layout.box()
-        box_mesh.label(text="Meshing & Shaders", icon="MATERIAL")
-        box_mesh.prop(self, "enable_ao")
-        box_mesh.prop(self, "mesh_fluids")
-        box_mesh.prop(self, "weld_vertices")
-        box_mesh.prop(self, "origin_centered")
+        box_mesh.label(text=tr("Meshing & Shaders"), icon="MATERIAL")
+        box_mesh.prop(self, "enable_ao", text=tr("Ambient Occlusion"))
+        box_mesh.prop(self, "mesh_fluids", text=tr("Mesh Fluids"))
+        box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
+        box_mesh.prop(self, "origin_centered", text=tr("Origin Centered"))
 
     def execute(self, context):
         target_dir = self.directory or getattr(self, "filepath", "")

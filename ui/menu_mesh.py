@@ -74,25 +74,29 @@ class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
     bl_region_type = "HEADER"
 
     def draw(self, context):
+        try:
+            from ..i18n import tr
+        except (ImportError, ValueError):
+            from i18n import tr
         layout = self.layout
         props = getattr(context.scene, "mozi_auto_extrude_repair", None)
         if not props:
             return
 
-        layout.prop(props, "enabled", text="Auto Extrude Repair")
+        layout.prop(props, "enabled", text=tr("Auto Extrude Repair"))
         layout.separator()
-        layout.prop(props, "repair_uv", text="Repair UV Overlap")
+        layout.prop(props, "repair_uv", text=tr("Repair UV Overlap"))
 
         sub_uv = layout.column()
         sub_uv.active = props.repair_uv
-        sub_uv.prop(props, "uv_mode", text="UV Correction Mode")
+        sub_uv.prop(props, "uv_mode", text=tr("UV Correction Mode"))
 
         layout.separator()
-        layout.prop(props, "add_mean_crease", text="Add Mean Crease")
+        layout.prop(props, "add_mean_crease", text=tr("Add Mean Crease"))
 
         sub_crease = layout.column()
         sub_crease.active = props.add_mean_crease
-        sub_crease.prop(props, "crease_value", text="Crease Weight")
+        sub_crease.prop(props, "crease_value", text=tr("Crease Weight"))
 
 
 def draw_auto_extrude_repair_header(self, context):

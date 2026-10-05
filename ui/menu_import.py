@@ -11,9 +11,13 @@ except ImportError:
 
 
 def menu_func_import(self, context):
+    try:
+        from ..i18n import tr
+    except (ImportError, ValueError):
+        from i18n import tr
     self.layout.operator(
         "mtk.import_minecraft_save",
-        text="Minecraft World / Save (.mca / level.dat)",
+        text=tr("Minecraft World / Save (.mca / level.dat)"),
         icon="WORLD",
     )
 

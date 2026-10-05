@@ -518,7 +518,8 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         st_row = info_box.row(align=True)
         st_row.scale_y = 0.9
-        st_row.label(text=f"{tr('Active Scene Engine')}: {curr_engine} ({'EEVEE Mode' if is_eevee else 'Cycles Mode'})", icon="RESTRICT_RENDER_OFF")
+        engine_mode_text = tr("EEVEE Mode") if is_eevee else tr("Cycles Mode")
+        st_row.label(text=f"{tr('Active Scene Engine')}: {curr_engine} ({engine_mode_text})", icon="RESTRICT_RENDER_OFF")
 
         layout.separator()
 
@@ -709,9 +710,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         perf_col.prop(self, "thread_count", text=tr("Worker Threads"))
         perf_col.scale_y = 0.85
         if self.thread_count == 0:
-            perf_col.label(text=f"{tr('Active mode')}: Auto ({cpu_cnt} threads)")
+            perf_col.label(text=f"{tr('Active mode')}: {tr('Auto')} ({cpu_cnt} {tr('threads')})")
         else:
-            perf_col.label(text=f"{tr('Active mode')}: Fixed ({self.thread_count} threads)")
+            perf_col.label(text=f"{tr('Active mode')}: {tr('Fixed')} ({self.thread_count} {tr('threads')})")
         perf_col.label(text=tr("Controls Rayon thread pool concurrency for asset precompilation, atlas encoding, and mesh construction."))
 
         layout.separator()
