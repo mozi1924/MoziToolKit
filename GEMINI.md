@@ -59,6 +59,10 @@
 - **严禁使用即将废弃的属性**：严禁直接在代码中编写 `mat.use_nodes = True`（在 Blender 5.2 中已标记废弃，Blender 6.0 彻底移除）。
 - **统一使用兼容封装**：必须统一使用 `utils/materials/builder/` 中封装的安全兼容方法，或在材质创建后直接操作/判断 `mat.node_tree`，彻底杜绝 DeprecationWarning。
 
+### 规则 8：代码检索与构建目录过滤规范 (Code Search & Target Exclusion)
+- **优先使用 ripgrep (`rg`)**：在工作区检索代码、资产引用或符号时，**首选且尽量使用 `rg` (ripgrep)** 命令。`rg` 具备极致的检索性能且原生遵循 `.gitignore` 规则。
+- **使用 `grep` 时必须忽略 `target` 目录**：若在特定场景下使用 `grep`，**必须显式添加 `--exclude-dir=target`**（以及 `--exclude-dir=.git`、`--exclude-dir=__pycache__`、`--exclude-dir=.venv` 等冗余目录），严禁递归扫描底层 Rust 构建产物 `target/` 目录与 Python 缓存，杜绝海量输出干扰与性能损耗。
+
 ---
 
 ## 3. 插件目录架构
