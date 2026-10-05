@@ -90,6 +90,14 @@ def ensure_world_materials(
     target_chunk_ids: Optional[set[int]] = None
     if used_chunk_ids is not None:
         target_chunk_ids = {int(c) for c in used_chunk_ids}
+    elif hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
+        try:
+            import numpy as np
+            raw_cids = np.empty(len(mesh.polygons), dtype=np.int32)
+            mesh.attributes["mtk_atlas_chunk_id"].data.foreach_get("value", raw_cids)
+            target_chunk_ids = {int(x) for x in np.unique(raw_cids).tolist()}
+        except Exception:
+            target_chunk_ids = {int(getattr(d, "value", 0)) for d in mesh.attributes["mtk_atlas_chunk_id"].data}
     elif hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
         if hasattr(mesh.polygons, "foreach_get"):
             try:
@@ -146,9 +154,6 @@ def ensure_world_materials(
                     except Exception:
                         pass
 
-                if len(mesh.materials) == 1 and mesh.materials[0] and mesh.materials[0].name.startswith("MTK:Default"):
-                    mesh.materials.clear()
-
                 sorted_chunks = sorted(chunk_meta_map.keys())
                 chunk_to_compact_slot: dict[int, int] = {}
                 compact_materials: list[Any] = []
@@ -187,27 +192,40 @@ def ensure_world_materials(
                     compact_materials.append(mat)
                     chunk_to_compact_slot[chunk_id] = slot_idx
 
-                # Remap mesh polygon material_index to compact sequential slot indices
-                if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
-                    try:
-                        import numpy as np
-                        poly_mats = np.empty(len(mesh.polygons), dtype=np.int32)
-                        mesh.polygons.foreach_get("material_index", poly_mats)
-                        remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in poly_mats], dtype=np.int32)
-                        mesh.polygons.foreach_set("material_index", remapped)
-                    except Exception:
-                        for p in mesh.polygons:
-                            p.material_index = chunk_to_compact_slot.get(getattr(p, "material_index", 0), 0)
-
-                # Assign exclusively valid, compacted materials with zero empty slots
+                # CRITICAL: Reconstruct mesh.materials FIRST so valid slot range exists
                 mesh.materials.clear()
                 for mat in compact_materials:
                     mesh.materials.append(mat)
+
+                # CRITICAL: Remap polygon material_index AFTER materials are populated
+                # Retrieve authoritative face chunk IDs from mtk_atlas_chunk_id attribute if available
+                if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
+                    num_polys = len(mesh.polygons)
+                    try:
+                        import numpy as np
+                        if hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
+                            raw_cids = np.empty(num_polys, dtype=np.int32)
+                            mesh.attributes["mtk_atlas_chunk_id"].data.foreach_get("value", raw_cids)
+                        else:
+                            raw_cids = np.empty(num_polys, dtype=np.int32)
+                            mesh.polygons.foreach_get("material_index", raw_cids)
+
+                        remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
+                        mesh.polygons.foreach_set("material_index", remapped)
+                    except Exception as e:
+                        logger.debug("Failed remapping polygon material indices: %s", e)
+                        for idx, p in enumerate(mesh.polygons):
+                            if hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
+                                raw_cid = mesh.attributes["mtk_atlas_chunk_id"].data[idx].value
+                            else:
+                                raw_cid = getattr(p, "material_index", 0)
+                            p.material_index = chunk_to_compact_slot.get(int(raw_cid), 0)
 
                 if len(mesh.materials) > 0:
                     return
         except Exception as e:
             logger.warning(f"Failed binding Atlas chunk materials: {e}")
+
 
     # 2. Fallback: Default shaded material with vertex colors / AO
     default_mat_name = "MTK:Default:AO"
