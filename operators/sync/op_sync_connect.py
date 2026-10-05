@@ -32,15 +32,17 @@ _timer_registered = False
 _progress_reporter = None
 
 
-def _get_progress_reporter():
+def _get_progress_reporter(title: str = "Mozi Live Sync"):
     global _progress_reporter
     if _progress_reporter is None:
         try:
             from ...utils.progress import BlenderProgressReporter
         except (ImportError, ValueError):
             from utils.progress import BlenderProgressReporter
-        _progress_reporter = BlenderProgressReporter(bpy.context, title="Mozi Live Sync")
+        _progress_reporter = BlenderProgressReporter(bpy.context, title=title)
         _progress_reporter.start()
+    else:
+        _progress_reporter.title = title
     return _progress_reporter
 
 
@@ -138,21 +140,31 @@ def _sync_timer_tick() -> Optional[float]:
                     props.delta_history.remove(0)
 
         elif ev_type == "STREAM_PROGRESS":
+            stage = ev.get("stage", "sync")
             curr = ev.get("current", 0)
             tot = ev.get("total", 0)
             msg = ev.get("message", "")
             if props:
+                props.is_streaming = True
+                props.stream_stage = stage
                 props.stream_progress_current = curr
                 props.stream_progress_total = tot
                 props.stream_message = msg
             if tot > 0:
-                _get_progress_reporter().update(curr, tot, message=msg)
+                stage_title = (
+                    "Live Sync: Download" if stage == "sync_download"
+                    else ("Live Sync: Mesh" if stage == "sync_meshing"
+                    else ("Live Sync: Request" if stage == "sync_request"
+                    else "Live Sync"))
+                )
+                _get_progress_reporter(title=stage_title).update(curr, tot, message=msg)
 
         elif ev_type == "STREAM_FINISHED":
             needs_voxel_sync = True
             if props:
                 built = ev.get("built_sections", 0)
                 props.last_update_info = f"Stream Complete ({built} chunks received)"
+                props.is_streaming = False
 
         elif ev_type == "VERIFIED":
             if props:
@@ -181,6 +193,7 @@ def _sync_timer_tick() -> Optional[float]:
                 props.point_count = v_count
                 props.faces_count = f_count
                 props.last_update_info = f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces"
+                props.is_streaming = False
             if _progress_reporter is not None:
                 _progress_reporter.update(_progress_reporter.total, _progress_reporter.total, message=f"Mesh ready ({v_count:,} v, {f_count:,} f)")
         except Exception as e:
@@ -291,6 +304,17 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
         if not session.is_active:
             self.report({'WARNING'}, "Live Sync is not connected.")
             return {'CANCELLED'}
+
+        props = getattr(context.scene, "mozi_sync", None)
+        if props:
+            props.is_streaming = True
+            props.stream_stage = "sync_request"
+            props.stream_message = "Requesting snapshot from server..."
+            props.stream_progress_current = 0
+            props.stream_progress_total = 100
+
+        reporter = _get_progress_reporter(title="Live Sync: Request")
+        reporter.update(0, 100, message="Requesting snapshot from server...")
 
         session.send_full_sync_request()
         self.report({'INFO'}, "Full snapshot requested from server.")

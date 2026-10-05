@@ -75,6 +75,8 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
     last_update_info: StringProperty(name="Last Update", default="No updates received yet.")
 
     # Streaming progress
+    is_streaming: BoolProperty(name="Is Streaming", default=False)
+    stream_stage: StringProperty(name="Stream Stage", default="")
     stream_progress_current: IntProperty(name="Stream Current", default=0)
     stream_progress_total: IntProperty(name="Stream Total", default=0)
     stream_message: StringProperty(name="Stream Message", default="")
