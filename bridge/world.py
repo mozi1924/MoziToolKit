@@ -234,6 +234,7 @@ def mesh_voxel_storage(
     weld_vertices: bool = True,
     origin_centered: bool = True,
     num_threads: Optional[int] = None,
+    progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -295,7 +296,15 @@ def mesh_voxel_storage(
                 model_db=model_db,
                 unified_mesh=True,
             )
-        mesh_data = world.rebuild_all()
+        if progress_callback is not None:
+            from .progress import wrap_progress_callback
+            wrapped_cb = wrap_progress_callback(progress_callback)
+            try:
+                mesh_data = world.rebuild_all(callback=wrapped_cb)
+            except TypeError:
+                mesh_data = world.rebuild_all()
+        else:
+            mesh_data = world.rebuild_all()
     else:
         mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, model_db)
     t1 = time.perf_counter()
@@ -304,26 +313,21 @@ def mesh_voxel_storage(
     return mesh_data, elapsed_ms
 
 
-def ingest_voxel_world(
+def apply_voxel_mesh_to_blender(
+    mesh_data: Any,
     storage: Any,
+    elapsed_ms: float = 0.0,
     context: Optional[Any] = None,
     name: str = "MTK_World",
     prefs=None,
-    model_db: Optional[Any] = None,
     atlas: Optional[Any] = None,
-    biome_resolver: Optional[Any] = None,
-    enable_ao: bool = True,
-    mesh_fluids: bool = True,
-    weld_vertices: bool = True,
     origin_centered: bool = True,
     reuse_existing: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Complete end-to-end Voxel World Ingestion Pipeline:
-    1. Meshes VoxelStorage using cached Model Database, Atlas, and Biome Resolver
-    2. Injects high-throughput geometry into a Blender Mesh object
-    3. Builds and binds full Atlas Chunk PBR Materials and Shaders
-    Returns (bpy_object, stats_dict).
+    Main-thread Blender scene injector for pre-meshed voxel world geometry.
+    Instantiates or updates target Blender Mesh object, binds Atlas PBR chunk shaders,
+    and synchronizes companion unculled VoxelPointCloud.
     """
     try:
         import bpy
@@ -333,20 +337,7 @@ def ingest_voxel_world(
     if context is None:
         context = bpy.context
 
-    # 1. Mesh the voxel volume
-    mesh_data, elapsed_ms = mesh_voxel_storage(
-        storage=storage,
-        model_db=model_db,
-        atlas=atlas,
-        biome_resolver=biome_resolver,
-        prefs=prefs,
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        weld_vertices=weld_vertices,
-        origin_centered=origin_centered,
-    )
-
-    # 2. Acquire or create Blender object
+    # 1. Acquire or create Blender object
     obj = None
     if reuse_existing and name in bpy.data.objects:
         cand = bpy.data.objects[name]
@@ -361,7 +352,7 @@ def ingest_voxel_world(
     else:
         b_mesh = obj.data
 
-    # 3. Inject topology, positions, UVs, normals, materials
+    # 2. Inject topology, positions, UVs, normals, materials
     inject_mesh_data(
         b_mesh,
         mesh_data,
@@ -369,11 +360,11 @@ def ingest_voxel_world(
         update_normals=True,
     )
 
-    # 4. Bind only used Atlas chunk materials & shaders
+    # 3. Bind only used Atlas chunk materials & shaders
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
-    # 5. Extract unculled VoxelPointCloud and ensure child companion object
+    # 4. Extract unculled VoxelPointCloud and ensure child companion object
     cloud_obj = ensure_voxel_child_cloud(
         parent_obj=obj,
         storage=storage,
@@ -382,7 +373,7 @@ def ingest_voxel_world(
     )
     cloud_count = len(cloud_obj.data.vertices) if cloud_obj and cloud_obj.data else 0
 
-    # 6. Set active in viewport
+    # 5. Set active in viewport
     if context and hasattr(context, "view_layer"):
         obj.select_set(True)
         context.view_layer.objects.active = obj
@@ -399,3 +390,51 @@ def ingest_voxel_world(
     }
 
     return obj, stats
+
+
+def ingest_voxel_world(
+    storage: Any,
+    context: Optional[Any] = None,
+    name: str = "MTK_World",
+    prefs=None,
+    model_db: Optional[Any] = None,
+    atlas: Optional[Any] = None,
+    biome_resolver: Optional[Any] = None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    reuse_existing: bool = True,
+    progress_callback: Optional[Any] = None,
+) -> Tuple[Any, Dict[str, Any]]:
+    """
+    Complete synchronous end-to-end Voxel World Ingestion Pipeline:
+    1. Meshes VoxelStorage using cached Model Database, Atlas, and Biome Resolver
+    2. Injects high-throughput geometry into a Blender Mesh object
+    3. Builds and binds full Atlas Chunk PBR Materials and Shaders
+    Returns (bpy_object, stats_dict).
+    """
+    mesh_data, elapsed_ms = mesh_voxel_storage(
+        storage=storage,
+        model_db=model_db,
+        atlas=atlas,
+        biome_resolver=biome_resolver,
+        prefs=prefs,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+        progress_callback=progress_callback,
+    )
+
+    return apply_voxel_mesh_to_blender(
+        mesh_data=mesh_data,
+        storage=storage,
+        elapsed_ms=elapsed_ms,
+        context=context,
+        name=name,
+        prefs=prefs,
+        atlas=atlas,
+        origin_centered=origin_centered,
+        reuse_existing=reuse_existing,
+    )

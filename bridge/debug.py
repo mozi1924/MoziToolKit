@@ -79,6 +79,7 @@ def generate_debug_world_mesh(
     prefs=None,
     num_threads: Optional[int] = None,
     with_models: bool = True,
+    progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes the debug world using SectionMesher and returns (MeshData, elapsed_time_ms).
@@ -97,6 +98,7 @@ def generate_debug_world_mesh(
             biome_resolver=biome_resolver,
             prefs=prefs,
             num_threads=num_threads,
+            progress_callback=progress_callback,
         )
     else:
         import time
@@ -117,6 +119,44 @@ def generate_debug_world_mesh(
         return mesh_data, (t1 - t0) * 1000.0
 
 
+def build_debug_world_data(
+    prefs=None,
+    states=None,
+    stack=None,
+    model_db=None,
+    atlas=None,
+    biome_resolver=None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    num_threads: Optional[int] = None,
+    progress_callback: Optional[Any] = None,
+) -> Tuple[Any, Any, float]:
+    """
+    Pure data background worker target for debug world generation.
+    Generates VoxelStorage and meshes it without calling any Blender host APIs.
+    Returns (mesh_data, storage, elapsed_ms).
+    """
+    from .world import mesh_voxel_storage
+
+    storage = load_debug_world_storage(prefs=prefs, states=states, stack=stack)
+    mesh_data, elapsed_ms = mesh_voxel_storage(
+        storage=storage,
+        model_db=model_db,
+        atlas=atlas,
+        biome_resolver=biome_resolver,
+        prefs=prefs,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+        num_threads=num_threads,
+        progress_callback=progress_callback,
+    )
+    return mesh_data, storage, elapsed_ms
+
+
 def create_debug_world_object(
     context=None,
     name: str = "MTK_Debug_World",
@@ -133,6 +173,7 @@ def create_debug_world_object(
     culler=None,
     states=None,
     stack=None,
+    progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Meshes the canonical debug world and creates/updates a Blender Mesh Object in the active scene,
@@ -156,6 +197,7 @@ def create_debug_world_object(
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
         reuse_existing=reuse_existing,
+        progress_callback=progress_callback,
     )
 
     # Ensure backwards compatibility for dict keys

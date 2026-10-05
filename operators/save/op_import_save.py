@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 try:
     import bpy
@@ -18,9 +19,23 @@ except ImportError:
     ImportHelper = object
 
 try:
-    from ...bridge.save import import_save_to_blender, inspect_minecraft_save
+    from ...bridge.save import (
+        apply_imported_save_to_blender,
+        import_save_to_blender,
+        inspect_minecraft_save,
+        load_and_mesh_minecraft_save,
+    )
+    from ...utils.async_task import AsyncTask, ModalTaskRunner
+    from ...utils.progress import BlenderProgressReporter
 except (ImportError, ValueError):
-    from bridge.save import import_save_to_blender, inspect_minecraft_save
+    from bridge.save import (
+        apply_imported_save_to_blender,
+        import_save_to_blender,
+        inspect_minecraft_save,
+        load_and_mesh_minecraft_save,
+    )
+    from utils.async_task import AsyncTask, ModalTaskRunner
+    from utils.progress import BlenderProgressReporter
 
 logger = logging.getLogger("MoziToolKit.Operators.Save")
 
@@ -94,6 +109,15 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         default=True,
     ) # type: ignore
 
+    run_async: BoolProperty(
+        name="Run Asynchronously",
+        description="Run calculation in non-blocking background thread with live status bar progress",
+        default=True,
+        options={"HIDDEN"},
+    ) # type: ignore
+
+    _runner: Optional[ModalTaskRunner] = None
+
     def draw(self, context):
         layout = self.layout
 
@@ -150,31 +174,94 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         min_c = tuple(self.min_coord)
         max_c = tuple(self.max_coord)
 
-        try:
-            obj, stats = import_save_to_blender(
+        # Synchronous fallback for CLI / tests when run_async is explicitly False
+        if not self.run_async:
+            try:
+                try:
+                    from ...utils.progress import blender_progress_scope
+                except (ImportError, ValueError):
+                    from utils.progress import blender_progress_scope
+
+                with blender_progress_scope(context, total=100, title=f"Import {self.dimension}") as reporter:
+                    obj, stats = import_save_to_blender(
+                        world_dir=path,
+                        dimension=self.dimension,
+                        min_block=min_c,
+                        max_block=max_c,
+                        context=context,
+                        prefs=prefs,
+                        enable_ao=self.enable_ao,
+                        mesh_fluids=self.mesh_fluids,
+                        weld_vertices=self.weld_vertices,
+                        origin_centered=self.origin_centered,
+                        progress_callback=reporter.on_progress,
+                    )
+
+                self.report(
+                    {"INFO"},
+                    f"Imported '{stats['level_name']}' ({self.dimension}): "
+                    f"{stats['polygon_count']:,} faces, {stats['voxel_count']:,} voxels "
+                    f"in {stats['elapsed_ms']}ms",
+                )
+                return {"FINISHED"}
+            except Exception as e:
+                logger.exception("Failed importing Minecraft world save")
+                self.report({"ERROR"}, f"Save import failed: {e}")
+                return {"CANCELLED"}
+
+        # Asynchronous non-blocking modal execution (UI mode)
+        task = AsyncTask(
+            target=load_and_mesh_minecraft_save,
+            kwargs={
+                "world_dir": path,
+                "dimension": self.dimension,
+                "min_block": min_c,
+                "max_block": max_c,
+                "prefs": prefs,
+                "enable_ao": self.enable_ao,
+                "mesh_fluids": self.mesh_fluids,
+                "weld_vertices": self.weld_vertices,
+                "origin_centered": self.origin_centered,
+            },
+        )
+
+        def on_success(result):
+            mesh_data, meta, storage, elapsed_ms = result
+            obj, stats = apply_imported_save_to_blender(
+                mesh_data=mesh_data,
+                meta=meta,
+                storage=storage,
+                elapsed_ms=elapsed_ms,
                 world_dir=path,
                 dimension=self.dimension,
                 min_block=min_c,
                 max_block=max_c,
                 context=context,
                 prefs=prefs,
-                enable_ao=self.enable_ao,
-                mesh_fluids=self.mesh_fluids,
-                weld_vertices=self.weld_vertices,
                 origin_centered=self.origin_centered,
             )
-
             self.report(
                 {"INFO"},
                 f"Imported '{stats['level_name']}' ({self.dimension}): "
                 f"{stats['polygon_count']:,} faces, {stats['voxel_count']:,} voxels "
                 f"in {stats['elapsed_ms']}ms",
             )
-            return {"FINISHED"}
-        except Exception as e:
-            logger.exception("Failed importing Minecraft world save")
-            self.report({"ERROR"}, f"Save import failed: {e}")
-            return {"CANCELLED"}
+
+        reporter = BlenderProgressReporter(context=context, total=100, title=f"Import {self.dimension}")
+        self._runner = ModalTaskRunner(
+            operator=self,
+            context=context,
+            task=task,
+            reporter=reporter,
+            on_success=on_success,
+            title=f"Import {self.dimension}",
+        )
+        return self._runner.start()
+
+    def modal(self, context, event):
+        if self._runner is not None:
+            return self._runner.modal(event)
+        return {"FINISHED"}
 
 
 OPERATOR_CLASSES = (

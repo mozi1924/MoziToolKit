@@ -29,6 +29,33 @@ from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
 logger = logging.getLogger("MoziToolKit.Sync.Connect")
 
 _timer_registered = False
+_progress_reporter = None
+
+
+def _get_progress_reporter():
+    global _progress_reporter
+    if _progress_reporter is None:
+        try:
+            from ...utils.progress import BlenderProgressReporter
+        except (ImportError, ValueError):
+            from utils.progress import BlenderProgressReporter
+        _progress_reporter = BlenderProgressReporter(bpy.context, title="Mozi Live Sync")
+        _progress_reporter.start()
+    return _progress_reporter
+
+
+def _close_progress_reporter(delay_sec: float = 0.0):
+    global _progress_reporter
+    if _progress_reporter is not None:
+        rep = _progress_reporter
+        _progress_reporter = None
+        if delay_sec > 0 and bpy is not None and hasattr(bpy.app, "timers"):
+            def _delayed_close():
+                rep.close()
+                return None
+            bpy.app.timers.register(_delayed_close, first_interval=delay_sec)
+        else:
+            rep.close()
 
 
 def _get_active_props(context: bpy.types.Context) -> Optional[bpy.types.PropertyGroup]:
@@ -47,6 +74,7 @@ def _sync_timer_tick() -> Optional[float]:
     session = get_sync_bridge_session()
     if not session.is_active:
         _timer_registered = False
+        _close_progress_reporter()
         return None
 
     props = _get_active_props(bpy.context)
@@ -68,6 +96,8 @@ def _sync_timer_tick() -> Optional[float]:
 
         if ev_type == "STATUS_CHANGE":
             status = ev.get("status", "DISCONNECTED")
+            if status != "CONNECTED":
+                _close_progress_reporter()
             if props:
                 props.connection_status = status
                 props.is_connected = (status == "CONNECTED")
@@ -108,10 +138,15 @@ def _sync_timer_tick() -> Optional[float]:
                     props.delta_history.remove(0)
 
         elif ev_type == "STREAM_PROGRESS":
+            curr = ev.get("current", 0)
+            tot = ev.get("total", 0)
+            msg = ev.get("message", "")
             if props:
-                props.stream_progress_current = ev.get("current", 0)
-                props.stream_progress_total = ev.get("total", 0)
-                props.stream_message = ev.get("message", "")
+                props.stream_progress_current = curr
+                props.stream_progress_total = tot
+                props.stream_message = msg
+            if tot > 0:
+                _get_progress_reporter().update(curr, tot, message=msg)
 
         elif ev_type == "STREAM_FINISHED":
             needs_voxel_sync = True
@@ -146,8 +181,12 @@ def _sync_timer_tick() -> Optional[float]:
                 props.point_count = v_count
                 props.faces_count = f_count
                 props.last_update_info = f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces"
+            if _progress_reporter is not None:
+                _progress_reporter.update(_progress_reporter.total, _progress_reporter.total, message=f"Mesh ready ({v_count:,} v, {f_count:,} f)")
         except Exception as e:
             logger.error(f"Failed to inject WorldMesh into Blender: {e}")
+        finally:
+            _close_progress_reporter(delay_sec=1.5)
     elif needs_voxel_sync:
         try:
             storage = session.get_storage()
@@ -236,6 +275,7 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             props.validation_info = "Disconnected"
 
         _timer_registered = False
+        _close_progress_reporter()
         self.report({'INFO'}, "Live Sync Disconnected.")
         return {'FINISHED'}
 

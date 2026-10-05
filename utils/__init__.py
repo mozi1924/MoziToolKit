@@ -8,6 +8,8 @@ Organized into core glue and Blender orchestration domains:
 
 from . import system
 from . import config
+from . import progress
+from . import async_task
 
 try:
     import bpy
@@ -24,6 +26,8 @@ else:
 __all__ = [
     "system",
     "config",
+    "progress",
+    "async_task",
     "node_groups",
 ]
 
