@@ -120,6 +120,70 @@ class TestVoxelPointCloudBridge:
             bpy.data.meshes.remove(b_mesh, do_unlink=True)
 
     @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
+    def test_ensure_voxel_child_cloud_hierarchy_contract(self):
+        """Verifies the unified ensure_voxel_child_cloud contract and deprecation of old API."""
+        import warnings
+        from MoziToolKit.bridge.point_cloud import (
+            ensure_voxel_child_cloud,
+            sync_voxel_point_cloud_for_world,
+            get_associated_voxel_cloud,
+            get_associated_parent_mesh,
+        )
+
+        storage = libmtk_py.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_block(0, 0, 0, "minecraft:oak_planks", "minecraft:plains")
+        storage.set_block(1, 0, 0, "minecraft:stone", "minecraft:plains")
+
+        parent_mesh = bpy.data.meshes.new("Test_Parent_World")
+        parent_obj = bpy.data.objects.new("Test_Parent_World", parent_mesh)
+        bpy.context.scene.collection.objects.link(parent_obj)
+
+        try:
+            # 1. Ensure child voxel cloud is created directly under parent
+            cloud_obj = ensure_voxel_child_cloud(
+                parent_obj=parent_obj,
+                storage=storage,
+                origin_centered=True,
+                initial_hidden=True,
+            )
+            assert cloud_obj is not None
+            assert cloud_obj.name == "Test_Parent_World_VoxelCloud"
+            assert cloud_obj.parent == parent_obj
+            assert tuple(cloud_obj.location) == (0.0, 0.0, 0.0)
+            assert tuple(cloud_obj.rotation_euler) == (0.0, 0.0, 0.0)
+            assert tuple(cloud_obj.scale) == (1.0, 1.0, 1.0)
+            assert cloud_obj.users_collection == parent_obj.users_collection
+            assert len(cloud_obj.data.vertices) == 2
+
+            # 2. Check metadata
+            assert parent_obj["mtk_voxel_cloud"] == cloud_obj.name
+            assert cloud_obj["mtk_is_voxel_cloud"] is True
+            assert cloud_obj["mtk_world_mesh"] == parent_obj.name
+
+            # 3. Test bidirectional resolution
+            found_cloud = get_associated_voxel_cloud(parent_obj)
+            assert found_cloud == cloud_obj
+            found_parent = get_associated_parent_mesh(cloud_obj)
+            assert found_parent == parent_obj
+
+            # 4. Verify deprecated sync_voxel_point_cloud_for_world emits DeprecationWarning
+            with warnings.catch_warnings(record=True) as recorded_warnings:
+                warnings.simplefilter("always")
+                ret = sync_voxel_point_cloud_for_world(parent_obj, storage=storage)
+                assert ret == cloud_obj
+                deprecations = [w for w in recorded_warnings if issubclass(w.category, DeprecationWarning)]
+                assert len(deprecations) >= 1
+                assert "deprecated" in str(deprecations[0].message)
+
+        finally:
+            cloud_name = "Test_Parent_World_VoxelCloud"
+            if cloud_name in bpy.data.objects:
+                bpy.data.objects.remove(bpy.data.objects[cloud_name], do_unlink=True)
+            if parent_obj.name in bpy.data.objects:
+                bpy.data.objects.remove(parent_obj, do_unlink=True)
+
+    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_ingest_and_user_carving_remesh_flow(self):
         """Simulates end-to-end user carving workflow in Blender."""
         from MoziToolKit.bridge.world import ingest_voxel_world

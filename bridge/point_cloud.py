@@ -371,22 +371,59 @@ def get_associated_voxel_cloud(mesh_or_obj: Any) -> Optional[Any]:
     return None
 
 
-def sync_voxel_point_cloud_for_world(
-    world_obj: Any,
+def get_associated_parent_mesh(cloud_or_mesh: Any) -> Optional[Any]:
+    """Resolves the parent world mesh object from an associated voxel point cloud."""
+    if not HAS_BPY or cloud_or_mesh is None:
+        return None
+
+    obj = cloud_or_mesh if hasattr(cloud_or_mesh, "type") else None
+    if obj is None:
+        return None
+
+    # If already parent mesh (not a voxel cloud itself)
+    if not obj.get("mtk_is_voxel_cloud"):
+        return obj
+
+    # Query parent hierarchy
+    if obj.parent and obj.parent.type == "MESH":
+        return obj.parent
+
+    # Fallback to custom property pointer
+    world_name = obj.get("mtk_world_mesh")
+    if world_name and world_name in bpy.data.objects:
+        cand = bpy.data.objects[world_name]
+        if cand and cand.type == "MESH":
+            return cand
+
+    return None
+
+
+def ensure_voxel_child_cloud(
+    parent_obj: Any,
     storage: Optional[Any] = None,
     cloud_data: Optional[Any] = None,
     origin_centered: bool = True,
     initial_hidden: bool = True,
 ) -> Optional[Any]:
-    """Synchronizes or creates a companion Voxel Point Cloud object for a given world mesh.
+    """Ensures a persistent Voxel Point Cloud mesh object is built and synchronized
+    directly under the given parent mesh object as a child.
 
-    The point cloud is parented directly to `world_obj` with (0,0,0) local transform
-    and placed in the exact same collection as `world_obj` (no separate collection),
-    allowing 1:1 spatial alignment between world mesh blocks and voxel points.
-    Accepts either an unmeshed `storage` (from which cloud points are extracted) or
-    a pre-extracted `cloud_data` (VoxelPointCloud).
+    Architectural Contract:
+    Any 3D mesh reconstructed or imported from voxel storage (Live Sync streaming,
+    Minecraft Anvil save importing, offline schematic / nbt structures, or debug worlds)
+    MUST maintain an unculled companion child point cloud under its hierarchy. This retains
+    lossless block states, biomes, and integer coordinates for subsequent remeshing, block picking,
+    and user carving.
+
+    Hierarchy & Transform Guarantees:
+    - `cloud_obj.parent = parent_obj`
+    - `cloud_obj.matrix_parent_inverse.identity()`
+    - `cloud_obj.location = (0, 0, 0)`, `rotation_euler = (0, 0, 0)`, `scale = (1, 1, 1)`
+    - Shares the exact same collection as `parent_obj` without creating extraneous collections.
+    - Native Mask Modifier configured to mask out voxel points by default in the viewport.
+    - Custom properties: `parent_obj["mtk_voxel_cloud"]` and `cloud_obj["mtk_is_voxel_cloud"]`.
     """
-    if not HAS_BPY or world_obj is None or getattr(world_obj, "type", "") != "MESH":
+    if not HAS_BPY or parent_obj is None or getattr(parent_obj, "type", "") != "MESH":
         return None
 
     mtk = get_libmtk()
@@ -406,13 +443,13 @@ def sync_voxel_point_cloud_for_world(
     if cloud_data is None:
         return None
 
-    # 2. Acquire target collection from parent world_obj
-    target_coll = world_obj.users_collection[0] if world_obj.users_collection else (
+    # 1. Acquire target collection from parent parent_obj
+    target_coll = parent_obj.users_collection[0] if parent_obj.users_collection else (
         bpy.context.scene.collection if hasattr(bpy.context, "scene") else None
     )
 
-    # 3. Acquire or create companion point cloud object in parent's collection
-    cloud_name = f"{world_obj.name}_VoxelCloud"
+    # 2. Acquire or create child point cloud object in parent's collection
+    cloud_name = f"{parent_obj.name}_VoxelCloud"
     cloud_obj = bpy.data.objects.get(cloud_name)
     if cloud_obj is None or cloud_obj.type != "MESH":
         cloud_mesh = bpy.data.meshes.new(cloud_name)
@@ -436,18 +473,19 @@ def sync_voxel_point_cloud_for_world(
         except Exception:
             pass
 
-    # 4. Set hierarchy and 1:1 absolute transform alignment
-    if cloud_obj.parent != world_obj:
-        cloud_obj.parent = world_obj
+    # 3. Enforce strict hierarchy and 1:1 absolute local transform alignment
+    if cloud_obj.parent != parent_obj:
+        cloud_obj.parent = parent_obj
         if hasattr(cloud_obj, "matrix_parent_inverse"):
             cloud_obj.matrix_parent_inverse.identity()
     cloud_obj.location = (0.0, 0.0, 0.0)
     cloud_obj.rotation_euler = (0.0, 0.0, 0.0)
     cloud_obj.scale = (1.0, 1.0, 1.0)
 
+    # 4. Bind bidirectional custom properties
     cloud_obj["mtk_is_voxel_cloud"] = True
-    cloud_obj["mtk_world_mesh"] = world_obj.name
-    world_obj["mtk_voxel_cloud"] = cloud_obj.name
+    cloud_obj["mtk_world_mesh"] = parent_obj.name
+    parent_obj["mtk_voxel_cloud"] = cloud_obj.name
 
     # Record bounds to lock origin alignment during future user carving & remeshing
     if hasattr(cloud_data, "bounds") and cloud_data.bounds is not None:
@@ -457,3 +495,30 @@ def sync_voxel_point_cloud_for_world(
     inject_voxel_point_cloud(cloud_obj, cloud_data, update_mask=True, initial_hidden=initial_hidden)
 
     return cloud_obj
+
+
+def sync_voxel_point_cloud_for_world(
+    world_obj: Any,
+    storage: Optional[Any] = None,
+    cloud_data: Optional[Any] = None,
+    origin_centered: bool = True,
+    initial_hidden: bool = True,
+) -> Optional[Any]:
+    """Deprecated alias for `ensure_voxel_child_cloud`.
+
+    Maintained temporarily for backwards compatibility. Use `ensure_voxel_child_cloud` instead.
+    """
+    import warnings
+    warnings.warn(
+        "sync_voxel_point_cloud_for_world is deprecated and misleading; "
+        "use ensure_voxel_child_cloud instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return ensure_voxel_child_cloud(
+        parent_obj=world_obj,
+        storage=storage,
+        cloud_data=cloud_data,
+        origin_centered=origin_centered,
+        initial_hidden=initial_hidden,
+    )

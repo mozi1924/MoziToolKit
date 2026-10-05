@@ -50,6 +50,10 @@
 - **[智能挤出与 UV 修复系统 (Auto Extrude Repair)](mesh/extrude_repair.md)**：
   - 侧面 UV 塌陷成因与三种修复模式（`SMART`、`INWARD`、`OUTWARD`）。
   - 图集跨界防溢色安全裁剪、边缘折痕保护（Mean Crease = 1.0）与随机挤出（Random Extrude）噪声算法。
+- **[体素点云网格持久化存储规范 (Voxel Point Cloud Storage)](mesh/voxel_point_cloud.md)**：
+  - 强制契约：任何从体素构建的网格对象必须在子级挂载全量点云网格（`ensure_voxel_child_cloud`）。
+  - 父子 1:1 本地空间对齐、同集合挂载与原生 Mask Modifier 视口隐蔽机制。
+  - 双向对象解析（`get_associated_voxel_cloud`, `get_associated_parent_mesh`）与用户雕刻反向网格化流程。
 - **[网格与 UV 实用工具集 (Mesh & UV Tools)](mesh/tools.md)**：
   - 清除自定义分割法线（Clear Custom Normals）、锐边与硬边选择、UV 原地独立缩放（Scale UV Individual）、修复流体 UV、Alpha 智能选面与纹理插值模式一键切换。
 

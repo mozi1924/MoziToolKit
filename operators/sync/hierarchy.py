@@ -11,11 +11,11 @@ import bpy
 try:
     from ...bridge.mesh import inject_mesh_data
     from ...bridge.world import ensure_world_materials
-    from ...bridge.point_cloud import sync_voxel_point_cloud_for_world
+    from ...bridge.point_cloud import ensure_voxel_child_cloud
 except (ImportError, ValueError):
     from bridge.mesh import inject_mesh_data
     from bridge.world import ensure_world_materials
-    from bridge.point_cloud import sync_voxel_point_cloud_for_world
+    from bridge.point_cloud import ensure_voxel_child_cloud
 
 logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")
 
@@ -98,12 +98,12 @@ def update_world_mesh(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(world_obj, used_chunk_ids=used_chunk_ids)
 
-    # Synchronize unculled voxel storage point cloud if storage is provided
+    # Ensure unculled voxel storage point cloud is attached under world_obj as child
     if storage is not None:
         try:
-            sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=True, initial_hidden=True)
+            ensure_voxel_child_cloud(world_obj, storage=storage, origin_centered=True, initial_hidden=True)
         except Exception as e:
-            logger.warning("Failed syncing voxel point cloud during live sync mesh update: %s", e)
+            logger.warning("Failed ensuring voxel child cloud during live sync mesh update: %s", e)
 
     v_count = len(mesh.vertices)
     f_count = len(mesh.polygons)

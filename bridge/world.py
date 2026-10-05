@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from .mesh import inject_mesh_data
-from .point_cloud import inject_voxel_point_cloud, sync_voxel_point_cloud_for_world
+from .point_cloud import ensure_voxel_child_cloud, inject_voxel_point_cloud
 from .assets import (
     get_cache_dir,
     load_baked_atlas_from_cache,
@@ -373,9 +373,9 @@ def ingest_voxel_world(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
-    # 5. Extract unculled VoxelPointCloud and sync into companion object
-    cloud_obj = sync_voxel_point_cloud_for_world(
-        world_obj=obj,
+    # 5. Extract unculled VoxelPointCloud and ensure child companion object
+    cloud_obj = ensure_voxel_child_cloud(
+        parent_obj=obj,
         storage=storage,
         origin_centered=origin_centered,
         initial_hidden=True,
