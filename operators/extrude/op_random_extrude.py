@@ -116,9 +116,13 @@ class MOZI_OT_random_extrude(bpy.types.Operator):
         return poll_edit_mesh(context)
 
     def draw(self, context):
+        try:
+            from ...i18n import tr
+        except (ImportError, ValueError):
+            from i18n import tr
         layout = self.layout
         box_ext = layout.box()
-        box_ext.label(text="Random Extrude Options", icon="MOD_DISPLACE")
+        box_ext.label(text=tr("Random Extrude Options"), icon="MOD_DISPLACE")
         box_ext.prop(self, "min_height")
         box_ext.prop(self, "max_height")
         box_ext.prop(self, "seed")
@@ -127,7 +131,7 @@ class MOZI_OT_random_extrude(bpy.types.Operator):
             box_ext.prop(self, "noise_scale")
 
         box_uv = layout.box()
-        box_uv.label(text="UV & Crease Options", icon="UV_DATA")
+        box_uv.label(text=tr("UV & Crease Options"), icon="UV_DATA")
         box_uv.prop(self, "repair_uv")
         sub_uv = box_uv.column()
         sub_uv.active = self.repair_uv

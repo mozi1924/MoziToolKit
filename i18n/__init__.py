@@ -33,8 +33,8 @@ def _get_expanded_translations_dict() -> dict:
         for (ctx, msgid), trans in entries.items():
             lang_dict[(ctx, msgid)] = trans
             if ctx == "*":
-                # Ensure operator contexts are populated so BLT_pgettext resolves correctly
-                for extra_ctx in ("Operator", "operator_default"):
+                # Ensure operator and UI contexts are populated so BLT_pgettext resolves correctly
+                for extra_ctx in ("Operator", "operator_default", "UI", "DEFAULT"):
                     extra_key = (extra_ctx, msgid)
                     if extra_key not in entries:
                         lang_dict[extra_key] = trans
