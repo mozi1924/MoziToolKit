@@ -59,8 +59,21 @@ def register():
     except Exception:
         pass
 
+    # Register persistent real-time render engine adaptation listeners
+    try:
+        from .utils.materials.builder.adaptation import register_render_engine_adaptation_handlers
+        register_render_engine_adaptation_handlers()
+    except Exception:
+        pass
+
 
 def unregister():
+    try:
+        from .utils.materials.builder.adaptation import unregister_render_engine_adaptation_handlers
+        unregister_render_engine_adaptation_handlers()
+    except Exception:
+        pass
+
     ui.unregister()
     operators.unregister()
     i18n.unregister()
@@ -70,4 +83,5 @@ def unregister():
         dev.unregister()
     except ImportError:
         pass
+
 

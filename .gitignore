@@ -244,3 +244,5 @@ Icon?
 *.blend*
 
 .VSCodeCounter
+
+MagicMock

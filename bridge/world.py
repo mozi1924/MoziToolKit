@@ -149,11 +149,12 @@ def ensure_world_materials(
                 if len(mesh.materials) == 1 and mesh.materials[0] and mesh.materials[0].name.startswith("MTK:Default"):
                     mesh.materials.clear()
 
-                max_chunk_id = max(chunk_meta_map.keys())
-                while len(mesh.materials) <= max_chunk_id:
-                    mesh.materials.append(None)
+                sorted_chunks = sorted(chunk_meta_map.keys())
+                chunk_to_compact_slot: dict[int, int] = {}
+                compact_materials: list[Any] = []
 
-                for chunk_id, cm in chunk_meta_map.items():
+                for slot_idx, chunk_id in enumerate(sorted_chunks):
+                    cm = chunk_meta_map[chunk_id]
                     cat = cm.get("category", "blocks")
                     c_idx = cm.get("category_chunk_index", chunk_id + 1)
                     is_anim = cm.get("is_animated", False)
@@ -183,14 +184,25 @@ def ensure_world_materials(
                         tile_width=16.0,
                         tile_height=16.0,
                     )
+                    compact_materials.append(mat)
+                    chunk_to_compact_slot[chunk_id] = slot_idx
 
-                    if mesh.materials[chunk_id] != mat:
-                        mesh.materials[chunk_id] = mat
+                # Remap mesh polygon material_index to compact sequential slot indices
+                if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
+                    try:
+                        import numpy as np
+                        poly_mats = np.empty(len(mesh.polygons), dtype=np.int32)
+                        mesh.polygons.foreach_get("material_index", poly_mats)
+                        remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in poly_mats], dtype=np.int32)
+                        mesh.polygons.foreach_set("material_index", remapped)
+                    except Exception:
+                        for p in mesh.polygons:
+                            p.material_index = chunk_to_compact_slot.get(getattr(p, "material_index", 0), 0)
 
-                # Clear unused material slots that are not present in chunk_meta_map
-                for idx in range(len(mesh.materials)):
-                    if idx not in chunk_meta_map and mesh.materials[idx] is not None:
-                        mesh.materials[idx] = None
+                # Assign exclusively valid, compacted materials with zero empty slots
+                mesh.materials.clear()
+                for mat in compact_materials:
+                    mesh.materials.append(mat)
 
                 if len(mesh.materials) > 0:
                     return
@@ -216,10 +228,9 @@ def ensure_world_materials(
         attr_node.attribute_name = "color"
         mat.node_tree.links.new(attr_node.outputs["Color"], bsdf.inputs["Base Color"])
 
-    if len(mesh.materials) == 0:
-        mesh.materials.append(mat)
-    elif mesh.materials[0] is None:
-        mesh.materials[0] = mat
+    mesh.materials.clear()
+    mesh.materials.append(mat)
+
 
 
 def mesh_voxel_storage(

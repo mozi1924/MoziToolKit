@@ -145,6 +145,77 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
             return {'CANCELLED'}
 
 
+@register_menu_item(views=["object", "mesh"], label="Clean Empty Material Slots")
+class MOZI_OT_clean_empty_material_slots(bpy.types.Operator):
+    """Remove empty and unused material slots while preserving face assignments."""
+
+    bl_idname = "mozi.clean_empty_material_slots"
+    bl_label = "Clean Empty Material Slots"
+    bl_options = {"REGISTER", "UNDO"}
+
+    remove_unused: bpy.props.BoolProperty(
+        name="Remove Unused Slots",
+        description="Also remove material slots that have materials assigned but are not used by any faces",
+        default=False,
+    )
+    all_objects: bpy.props.BoolProperty(
+        name="All Scene Objects",
+        description="Clean material slots across all mesh objects in the active scene instead of just selection",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if context.selected_objects:
+            return any(o.type == "MESH" for o in context.selected_objects)
+        return bool(context.active_object and context.active_object.type == "MESH")
+
+    def execute(self, context):
+        try:
+            from ..utils.materials.cleaner import clean_scene_material_slots, clean_object_material_slots
+        except (ImportError, ValueError):
+            from utils.materials.cleaner import clean_scene_material_slots, clean_object_material_slots
+
+        if self.all_objects:
+            res = clean_scene_material_slots(scene=context.scene, selected_only=False, remove_unused=self.remove_unused)
+            self.report({'INFO'}, res.get("message", "Cleaned material slots."))
+            return {'FINISHED'}
+
+        targets = [o for o in context.selected_objects if o.type == "MESH"]
+        if not targets and context.active_object and context.active_object.type == "MESH":
+            targets = [context.active_object]
+
+        total_cleaned = 0
+        cleaned_objs = 0
+        for obj in targets:
+            res = clean_object_material_slots(obj, remove_unused=self.remove_unused)
+            if res.get("success") and res.get("removed_slots", 0) > 0:
+                cleaned_objs += 1
+                total_cleaned += res["removed_slots"]
+
+        self.report({'INFO'}, f"Cleaned {total_cleaned} empty material slot(s) across {cleaned_objs} object(s).")
+        return {'FINISHED'}
+
+
+@register_menu_item(views=["object", "mesh"], label="Sync Engine Shading Adaptations")
+class MOZI_OT_update_material_shading_adaptation(bpy.types.Operator):
+    """Update all material shading parameters (Transmission, SSS, Emission) to match active render engine."""
+
+    bl_idname = "mozi.update_material_shading_adaptation"
+    bl_label = "Sync Engine Shading"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        try:
+            from ..utils.materials.builder.adaptation import update_materials_render_engine_adaptation
+        except (ImportError, ValueError):
+            from utils.materials.builder.adaptation import update_materials_render_engine_adaptation
+
+        count = update_materials_render_engine_adaptation(scene=context.scene, context=context)
+        self.report({'INFO'}, f"Synchronized shading adaptations for {count} material(s).")
+        return {'FINISHED'}
+
+
 # Backwards compatibility aliases
 MOZI_OT_replace_materials = MOZI_OT_replace_material
 MOZI_OT_restore_materials_from_provenance = MOZI_OT_restore_materials_from_attributes
@@ -152,5 +223,8 @@ MOZI_OT_restore_materials_from_provenance = MOZI_OT_restore_materials_from_attri
 OPERATOR_CLASSES = (
     MOZI_OT_replace_material,
     MOZI_OT_restore_materials_from_attributes,
+    MOZI_OT_clean_empty_material_slots,
+    MOZI_OT_update_material_shading_adaptation,
 )
 OPERATORS_CLASSES = OPERATOR_CLASSES
+
