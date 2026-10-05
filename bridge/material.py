@@ -7,6 +7,7 @@ UV remapping, atlas metadata, and Biome color/tint generation.
 from __future__ import annotations
 
 import array
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -364,6 +365,78 @@ def get_block_sticker_threshold(
     return float(mtk.get_block_sticker_threshold(block_name, texture_name))
 
 
+def get_default_material_properties_path() -> Path:
+    """Return default configuration path in MoziToolKit/configs/material_properties.json."""
+    return Path(__file__).resolve().parent.parent / "configs" / "material_properties.json"
+
+
+def load_material_properties_config(
+    config: Optional[Union[str, Path, Dict[str, Any]]] = None,
+    replace: bool = False,
+) -> bool:
+    """
+    Load and send physical material properties (emission, thin wall, transmission, sticker threshold)
+    into the Rust core registry.
+
+    Args:
+        config: Path to a JSON file, raw JSON string, or dict. If None, loads from `configs/material_properties.json`.
+        replace: If True, completely replaces the Rust registry; if False, merges/overrides.
+    """
+    mtk = get_libmtk()
+    if not mtk or not hasattr(mtk, "register_material_properties"):
+        return False
+
+    if config is None:
+        cfg_path = get_default_material_properties_path()
+        if not cfg_path.is_file():
+            return False
+        config = cfg_path
+
+    if isinstance(config, (str, Path)):
+        p = Path(config)
+        if p.is_file():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to read material properties JSON '{p}': {e}")
+                return False
+        else:
+            if isinstance(config, str) and config.strip().startswith("{"):
+                try:
+                    payload = json.loads(config)
+                except Exception as e:
+                    logger.error(f"Failed to parse material properties JSON string: {e}")
+                    return False
+            else:
+                logger.error(f"Material properties file not found: {p}")
+                return False
+    elif isinstance(config, dict):
+        payload = config
+    else:
+        logger.error(f"Unsupported config type: {type(config)}")
+        return False
+
+    try:
+        if replace and hasattr(mtk, "load_material_properties_replace"):
+            mtk.load_material_properties_replace(payload)
+        else:
+            mtk.register_material_properties(payload)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to inject material properties into Rust core: {e}")
+        return False
+
+
+def reset_material_properties_config() -> bool:
+    """Reset Rust core material properties to built-in vanilla defaults."""
+    mtk = get_libmtk()
+    if not mtk or not hasattr(mtk, "reset_material_properties_to_default"):
+        return False
+    mtk.reset_material_properties_to_default()
+    return True
+
+
 __all__ = [
     "HAS_LIBMTK",
     "is_material_bridge_available",
@@ -388,5 +461,9 @@ __all__ = [
     "is_transmissive_block",
     "get_block_transmission_weight",
     "get_block_sticker_threshold",
+    "get_default_material_properties_path",
+    "load_material_properties_config",
+    "reset_material_properties_config",
 ]
+
 
