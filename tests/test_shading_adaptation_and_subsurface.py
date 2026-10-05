@@ -136,3 +136,32 @@ def test_build_standalone_material_eevee_vs_cycles_adaptation(tmp_path):
     assert mat_cycles is not None
     assert getattr(mat_cycles, "use_raytrace_refraction", False) is True
     assert getattr(mat_cycles, "surface_render_method", "BLENDED") == "BLENDED"
+
+
+@pytest.mark.skipif(not HAS_BPY, reason="Blender environment required")
+def test_build_atlas_chunk_material_eevee_vs_cycles_transmission_scale(tmp_path):
+    tex_path = tmp_path / "atlas_chunk_000.png"
+    tex_path.write_bytes(b"dummy")
+
+    # Atlas in EEVEE mode: Material Transmission Scale is 0.0 (prevents black rendering artifacts)
+    mat_eevee = build_atlas_chunk_material(
+        chunk_id=99,
+        albedo_path=tex_path,
+        render_engine="EEVEE",
+    )
+    assert mat_eevee is not None
+    scale_node_eevee = mat_eevee.node_tree.nodes.get("Material Transmission Scale")
+    assert scale_node_eevee is not None
+    assert scale_node_eevee.inputs[1].default_value == 0.0
+
+    # Atlas in CYCLES mode: Material Transmission Scale is 1.0 (preserves physical dielectric transmission)
+    mat_cycles = build_atlas_chunk_material(
+        chunk_id=98,
+        albedo_path=tex_path,
+        render_engine="CYCLES",
+    )
+    assert mat_cycles is not None
+    scale_node_cycles = mat_cycles.node_tree.nodes.get("Material Transmission Scale")
+    assert scale_node_cycles is not None
+    assert scale_node_cycles.inputs[1].default_value == 1.0
+

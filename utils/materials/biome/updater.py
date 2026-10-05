@@ -158,14 +158,19 @@ def update_object_biome(
             effective_stack = None
 
     # 1. Update mesh face attributes (Both ATLAS and STANDALONE modes use attribute drivers)
-    if hasattr(mesh, "polygons") and len(mesh.polygons) > 0 and ATTR_SOURCE_TEXTURE_KEY in mesh.attributes:
+    num_polys = len(mesh.polygons) if hasattr(mesh, "polygons") else 0
+    if num_polys > 0:
         from .biome import (
             compute_biome_tint_attributes,
             apply_biome_tint_attributes,
             read_face_string_attribute,
             get_or_load_biome_resolver,
         )
-        source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+
+        source_keys = []
+        if ATTR_SOURCE_TEXTURE_KEY in mesh.attributes:
+            source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+
         if any(source_keys):
             biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
             packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
@@ -183,9 +188,89 @@ def update_object_biome(
                 has_custom_dry_foliage=has_custom_dry_foliage,
             )
             apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
-            mesh.update()
+        elif ATTR_BIOME_TINT_DATA in mesh.attributes:
+            # Fast in-place update for Live Sync / Voxel World meshes where mtk_biome_tint_data is present
+            tint_data_attr = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
+            if tint_data_attr and len(tint_data_attr.data) == num_polys:
+                grass_col = biome_colors.get("grass_linear", [0.28, 0.51, 0.10, 1.0])
+                foliage_col = biome_colors.get("foliage_linear", [0.18, 0.41, 0.03, 1.0])
+                water_col = biome_colors.get("water_linear", [0.05, 0.18, 0.78, 1.0])
+                dry_foliage_col = biome_colors.get("dry_foliage_linear", [0.37, 0.18, 0.06, 1.0])
+                cm_uv = biome_colors.get("colormap_uv", [0.2, 0.32])
+                base_uv_3 = [float(cm_uv[0]), float(cm_uv[1]), 0.0]
 
-    # 2. Shader node trees update (Fallback / Legacy Standalone direct node compatibility)
+                # Preserve existing hardcoded colors if available
+                old_cols = None
+                if ATTR_BIOME_TINT_COLOR in mesh.attributes:
+                    old_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+                    if old_attr and len(old_attr.data) == num_polys:
+                        old_cols = [list(d.color) for d in old_attr.data]
+
+                new_tint_colors = []
+                new_cm_uvs = []
+                new_packed_data = []
+
+                for idx, d in enumerate(tint_data_attr.data):
+                    c = d.color
+                    base_w = float(c[0])
+                    overlay_w = float(c[1])
+                    tw = float(c[2])
+                    tt = int(round(c[3]))
+
+                    if tt == TINT_TYPE_GRASS:
+                        final_col = grass_col
+                    elif tt == TINT_TYPE_FOLIAGE:
+                        final_col = foliage_col
+                    elif tt == TINT_TYPE_WATER:
+                        final_col = water_col
+                    elif tt == TINT_TYPE_DRY_FOLIAGE:
+                        final_col = dry_foliage_col
+                    elif tt == TINT_TYPE_HARDCODED:
+                        if old_cols and idx < len(old_cols):
+                            final_col = old_cols[idx]
+                        else:
+                            final_col = [1.0, 1.0, 1.0, 1.0]
+                    else:
+                        final_col = [1.0, 1.0, 1.0, 1.0]
+
+                    new_tint_colors.append(final_col)
+                    new_cm_uvs.append(base_uv_3)
+                    new_packed_data.append([base_w, overlay_w, tw, float(tt)])
+
+                apply_biome_tint_attributes(mesh, new_packed_data, new_tint_colors, new_cm_uvs)
+        elif len(obj.material_slots) > 0:
+            # Standalone mesh without face attributes: infer keys from material slot identities
+            derived_keys = []
+            for poly in mesh.polygons:
+                m_idx = poly.material_index
+                mat = obj.material_slots[m_idx].material if m_idx < len(obj.material_slots) else None
+                key = (mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or (mat.name if mat else "")) if mat else ""
+                derived_keys.append(str(key))
+
+            if any(derived_keys):
+                try:
+                    from bridge.mesh import inject_face_attribute_string
+                    inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
+                except Exception:
+                    pass
+                biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
+                packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+                    derived_keys,
+                    biome_preset=biome_name,
+                    resolver=biome_resolver,
+                    custom_temp=custom_temp,
+                    custom_humidity=custom_humidity,
+                    custom_grass=custom_grass,
+                    custom_foliage=custom_foliage,
+                    custom_dry_foliage=custom_dry_foliage,
+                    custom_water=custom_water,
+                    has_custom_grass=has_custom_grass,
+                    has_custom_foliage=has_custom_foliage,
+                    has_custom_dry_foliage=has_custom_dry_foliage,
+                )
+                apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
+
+    # 2. Shader node trees update (Fallback / Direct node compatibility)
     updated_materials = set()
     for slot in obj.material_slots:
         mat = slot.material
@@ -193,7 +278,7 @@ def update_object_biome(
             continue
         updated_materials.add(mat.name)
         nt = mat.node_tree
-        biome_tint_node = nt.nodes.get("MC Biome Tint")
+        biome_tint_node = nt.nodes.get("MC Biome Tint") or nt.nodes.get("Biome Tint")
         if not biome_tint_node:
             continue
 
@@ -239,19 +324,20 @@ def update_object_biome(
             sampler_node.inputs["Humidity"].default_value = float(biome_colors.get("humidity", 0.4))
 
         # 2. Update Tint Color socket default value
-        biome_tint_node.inputs["Tint Color"].default_value = tuple(resolved_col)
+        if "Tint Color" in biome_tint_node.inputs:
+            biome_tint_node.inputs["Tint Color"].default_value = tuple(resolved_col)
 
         # 3. Route links:
         colormap_decoder = nt.nodes.get("MC Biome Colormap Decoder")
-        tint_input = biome_tint_node.inputs["Tint Color"]
-        if colormap_decoder:
+        tint_input = biome_tint_node.inputs.get("Tint Color")
+        if colormap_decoder and tint_input:
             # Modern attribute-driven architecture: ensure decoder is properly linked to tint node
             if not any(l.to_socket == tint_input and l.from_node == colormap_decoder for l in nt.links):
                 for l in list(nt.links):
                     if l.to_socket == tint_input:
                         nt.links.remove(l)
                 nt.links.new(colormap_decoder.outputs["Color"], tint_input)
-        else:
+        elif tint_input:
             # Legacy direct colormap graph: disconnect when custom override is active
             cm_nodes = [n for n in nt.nodes if n.type == "TEX_IMAGE" and n.name.startswith("Colormap ")]
             tex_colormap = cm_nodes[0] if len(cm_nodes) == 1 else None

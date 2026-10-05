@@ -196,6 +196,46 @@ class TestBiomeTintingFix(unittest.TestCase):
 
         self.assertGreater(len(distinct_u), 2, "Transition zone must produce continuous blended gradient values!")
 
+    def test_update_object_biome_live_sync_mesh_without_source_keys(self):
+        """Verifies update_object_biome successfully updates colors and colormap UVs on meshes lacking string attributes."""
+        import array
+        from utils.materials.biome.updater import update_object_biome
+
+        b_mesh = bpy.data.meshes.new("TestLiveSyncMesh")
+        b_mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])
+        obj = bpy.data.objects.new("Yefira_World_Test", b_mesh)
+        obj["mtk:is_yefira_world"] = True
+        bpy.context.collection.objects.link(obj)
+
+        try:
+            # Create mtk_biome_tint_data (Grass face: tint_type=1)
+            attr_data = b_mesh.attributes.new(name="mtk_biome_tint_data", type="FLOAT_COLOR", domain="FACE")
+            attr_data.data.foreach_set("color", array.array("f", [1.0, 1.0, 1.0, 1.0]))
+
+            # Initial Plains values
+            attr_col = b_mesh.attributes.new(name="mtk_biome_tint_color", type="FLOAT_COLOR", domain="FACE")
+            attr_col.data.foreach_set("color", array.array("f", [0.28, 0.51, 0.10, 1.0]))
+
+            attr_uv = b_mesh.attributes.new(name="mtk_colormap_uv", type="FLOAT_VECTOR", domain="FACE")
+            attr_uv.data.foreach_set("vector", array.array("f", [0.2, 0.32, 0.0]))
+
+            # Update to DESERT
+            res = update_object_biome(obj, "DESERT")
+            self.assertTrue(res)
+
+            # Check new tint color (Desert yellow-green ~ 0.52, 0.47, 0.09)
+            new_col = list(b_mesh.attributes["mtk_biome_tint_color"].data[0].color)
+            self.assertAlmostEqual(new_col[0], 0.5209956, places=2)
+            self.assertAlmostEqual(new_col[1], 0.4735315, places=2)
+
+            # Check new colormap UV (Desert: [0.0, 0.0, 0.0])
+            new_uv = list(b_mesh.attributes["mtk_colormap_uv"].data[0].vector)
+            self.assertAlmostEqual(new_uv[0], 0.0, places=3)
+            self.assertAlmostEqual(new_uv[1], 0.0, places=3)
+        finally:
+            bpy.data.objects.remove(obj)
+            bpy.data.meshes.remove(b_mesh)
+
 
 if __name__ == "__main__":
     unittest.main()

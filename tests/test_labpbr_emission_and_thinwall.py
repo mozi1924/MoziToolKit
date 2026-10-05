@@ -260,9 +260,15 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         self.assertEqual(len(thin_link), 1)
         self.assertEqual(thin_link[0].from_node, clamp_node)
 
+        scale_node = nodes.get("Material Transmission Scale")
+        self.assertIsNotNone(scale_node)
+
         trans_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Transmission Weight"]
         self.assertEqual(len(trans_link), 1)
-        self.assertEqual(trans_link[0].from_node, split_node)
+        self.assertEqual(trans_link[0].from_node, scale_node)
+
+        scale_in_link = [l for l in links if l.to_node == scale_node and l.from_node == split_node]
+        self.assertEqual(len(scale_in_link), 1)
 
         thresh_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Sticker Threshold"]
         self.assertEqual(len(thresh_link), 1)

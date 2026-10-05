@@ -159,6 +159,7 @@ def resolve_material_shading_config(
         "emission_strength": final_emission,
         "thin_wall": final_thin_wall,
         "transmission_weight": final_transmission,
+        "transmission_mode": trans_mode,
         "sticker_threshold": final_sticker,
         "disable_subsurface": final_disable_sss,
         "use_raytrace_refraction": use_raytrace,
