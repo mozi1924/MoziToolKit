@@ -181,6 +181,10 @@ class TestMaterialPipeline(unittest.TestCase):
             self.assertIn("MTK UV Rotation", node_names)
             self.assertIn("Atlas UV Tiling", node_names)
             self.assertIn("LabPBR Decoder", node_names)
+            self.assertIn("Attr Material Props", node_names)
+            self.assertIn("Split Material Props", node_names)
+            self.assertIn("Clamp Thin Wall", node_names)
+            self.assertIn("Safe Sticker Threshold", node_names)
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_with_overlay_in_blender(self):

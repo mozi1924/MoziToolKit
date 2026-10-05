@@ -26,6 +26,7 @@ try:
         ATTR_BIOME_TINT_COLOR,
         ATTR_COLORMAP_UV,
     )
+    from ....bridge.material import get_material_props
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
     from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
@@ -39,6 +40,7 @@ except (ImportError, ValueError):
         ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
+    from bridge.material import get_material_props
 
 
 def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
@@ -139,6 +141,13 @@ def build_standalone_material(
     use_attribute_node: bool = True,
     use_labpbr: bool = True,
     uv_map_name: Optional[str] = None,
+    block_name: Optional[str] = None,
+    emission_override: Optional[float] = None,
+    thin_wall_override: Optional[bool] = None,
+    transmission_override: Optional[float] = None,
+    sticker_threshold_override: Optional[float] = None,
+    disable_subsurface: bool = False,
+    subsurface_scale: float = 0.1,
 ) -> Optional[Any]:
     """
     Builds or updates a standalone Minecraft material in Blender with structured Frames.
@@ -400,6 +409,50 @@ def build_standalone_material(
         links.new(spec_node.outputs["Color"], decoder_node.inputs["Specular (_s) Color"])
         links.new(spec_node.outputs["Alpha"], decoder_node.inputs["Specular (_s) Alpha (Emission)"])
 
+    # Configure PBR gating and catalog physical properties (Emission, Thin Wall, Transmission, Sticker Threshold, SSS)
+    has_pbr = bool(normal_node or spec_node)
+    clean_block = block_name or texture_key or mat_name
+
+    props = get_material_props(clean_block, texture_name=texture_key)
+    emission_val = emission_override if emission_override is not None else props[0]
+    is_thin = thin_wall_override if thin_wall_override is not None else (props[1] > 0.5)
+    trans_val = transmission_override if transmission_override is not None else props[2]
+    sticker_thresh = (
+        sticker_threshold_override
+        if sticker_threshold_override is not None
+        else props[3]
+    )
+
+    if decoder_group:
+        if "Enable PBR (0-1)" in decoder_node.inputs:
+            decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
+        if "Hardcoded Emission" in decoder_node.inputs:
+            decoder_node.inputs["Hardcoded Emission"].default_value = float(emission_val)
+        if "Thin Wall" in decoder_node.inputs:
+            decoder_node.inputs["Thin Wall"].default_value = bool(is_thin)
+        if "Transmission Weight" in decoder_node.inputs:
+            decoder_node.inputs["Transmission Weight"].default_value = float(trans_val)
+        if "Sticker Threshold" in decoder_node.inputs:
+            decoder_node.inputs["Sticker Threshold"].default_value = float(sticker_thresh)
+        if "Disable Subsurface" in decoder_node.inputs:
+            decoder_node.inputs["Disable Subsurface"].default_value = bool(disable_subsurface)
+        if "Subsurface Scale" in decoder_node.inputs:
+            decoder_node.inputs["Subsurface Scale"].default_value = float(subsurface_scale)
+    else:
+        if "Transmission Weight" in decoder_node.inputs:
+            decoder_node.inputs["Transmission Weight"].default_value = float(trans_val)
+            if trans_val > 0.0 and "Roughness" in decoder_node.inputs:
+                decoder_node.inputs["Roughness"].default_value = 0.0
+        if "Emission Strength" in decoder_node.inputs and emission_val > 0.0:
+            decoder_node.inputs["Emission Strength"].default_value = float(emission_val)
+        if "Thin Wall" in decoder_node.inputs and is_thin:
+            decoder_node.inputs["Thin Wall"].default_value = True
+        if not disable_subsurface:
+            if "Subsurface Weight" in decoder_node.inputs:
+                decoder_node.inputs["Subsurface Weight"].default_value = 1.0
+            if "Subsurface Scale" in decoder_node.inputs:
+                decoder_node.inputs["Subsurface Scale"].default_value = float(subsurface_scale)
+
     # Ensure Albedo image texture node is active and selected for Solid Viewport mode
     if albedo_node:
         for n in nodes:
@@ -407,17 +460,30 @@ def build_standalone_material(
         nodes.active = albedo_node
         albedo_node.select = True
 
-    # Material settings for transparency (Blender 5.0+ surface_render_method)
-    if hasattr(mat, "surface_render_method"):
-        try:
-            mat.surface_render_method = "DITHERED"
-        except Exception:
-            pass
-    elif hasattr(mat, "blend_method"):
-        try:
-            mat.blend_method = "CLIP"
-        except Exception:
-            pass
+    # Material settings for transparency and refraction (Blender 4.2+ EEVEE Next & legacy)
+    is_transmissive = bool(trans_val > 0.0)
+    if is_transmissive:
+        if hasattr(mat, "surface_render_method"):
+            try:
+                mat.surface_render_method = "BLENDED"
+            except Exception:
+                pass
+        elif hasattr(mat, "blend_method"):
+            try:
+                mat.blend_method = "HASHED"
+            except Exception:
+                pass
+    else:
+        if hasattr(mat, "surface_render_method"):
+            try:
+                mat.surface_render_method = "DITHERED"
+            except Exception:
+                pass
+        elif hasattr(mat, "blend_method"):
+            try:
+                mat.blend_method = "CLIP"
+            except Exception:
+                pass
 
     if hasattr(mat, "use_transparency_overlap"):
         try:
@@ -427,6 +493,11 @@ def build_standalone_material(
     if hasattr(mat, "use_raytrace_refraction"):
         try:
             mat.use_raytrace_refraction = True
+        except Exception:
+            pass
+    if hasattr(mat, "use_screen_refraction"):
+        try:
+            mat.use_screen_refraction = True
         except Exception:
             pass
 

@@ -273,6 +273,97 @@ def load_baked_atlas_from_json(json_str: str) -> Any:
     return mtk.BakedAtlas.from_mapping_json(json_str)
 
 
+# ---------------------------------------------------------------------------
+# Material Physical Properties & Catalog API (Pure Rust libmtk_py)
+# ---------------------------------------------------------------------------
+
+def compute_mesh_material_props(
+    face_source_keys: Sequence[str],
+    block_names: Optional[Sequence[str]] = None,
+) -> List[List[float]]:
+    """
+    Compute packed material properties `[emission, thin_wall, transmission, sticker_threshold]`
+    for a list of face texture keys in parallel Rayon in Rust.
+    """
+    mtk = require_libmtk("compute_mesh_material_props")
+    return mtk.compute_mesh_material_props(
+        list(face_source_keys),
+        list(block_names) if block_names is not None else None,
+    )
+
+
+def compute_flat_material_props(
+    face_source_keys: Sequence[str],
+    block_names: Optional[Sequence[str]] = None,
+) -> List[float]:
+    """
+    Compute flat packed material properties (float array of length len * 4)
+    for zero-copy memoryview / foreach_set injection into Blender Mesh.
+    """
+    mtk = require_libmtk("compute_flat_material_props")
+    return mtk.compute_flat_material_props(
+        list(face_source_keys),
+        list(block_names) if block_names is not None else None,
+    )
+
+
+def get_material_props(
+    block_name: str = "",
+    texture_name: Optional[str] = None,
+) -> Tuple[float, float, float, float]:
+    """Query individual block material physical properties `[emission, thin_wall, transmission, sticker_threshold]`."""
+    mtk = require_libmtk("get_material_props")
+    props = mtk.get_material_props(block_name, texture_name)
+    return (float(props[0]), float(props[1]), float(props[2]), float(props[3]))
+
+
+def get_block_emission_strength(
+    block_name: str = "",
+    properties: Optional[Dict[str, Any]] = None,
+    texture_name: Optional[str] = None,
+) -> float:
+    """Query canonical emission strength for a block / texture (0.0 .. 15.0)."""
+    mtk = require_libmtk("get_block_emission_strength")
+    str_props = {str(k): str(v) for k, v in properties.items()} if properties else None
+    return float(mtk.get_block_emission_strength(block_name, str_props, texture_name))
+
+
+def is_thin_wall_block(
+    block_name: str = "",
+    texture_name: Optional[str] = None,
+) -> bool:
+    """Query whether a block or texture is thin wall foliage / vegetation."""
+    mtk = require_libmtk("is_thin_wall_block")
+    return bool(mtk.is_thin_wall_block(block_name, texture_name))
+
+
+def is_transmissive_block(
+    block_name: str = "",
+    texture_name: Optional[str] = None,
+) -> bool:
+    """Query whether a block or texture is a dielectric transmissive medium (glass, water, ice, etc.)."""
+    mtk = require_libmtk("is_transmissive_block")
+    return bool(mtk.is_transmissive_block(block_name, texture_name))
+
+
+def get_block_transmission_weight(
+    block_name: str = "",
+    texture_name: Optional[str] = None,
+) -> float:
+    """Query transmission weight (1.0 for glass/water/ice, 0.0 otherwise)."""
+    mtk = require_libmtk("get_block_transmission_weight")
+    return float(mtk.get_block_transmission_weight(block_name, texture_name))
+
+
+def get_block_sticker_threshold(
+    block_name: str = "",
+    texture_name: Optional[str] = None,
+) -> float:
+    """Query alpha sticker threshold (0.55 for glass, 0.95 for water/ice/slime/honey)."""
+    mtk = require_libmtk("get_block_sticker_threshold")
+    return float(mtk.get_block_sticker_threshold(block_name, texture_name))
+
+
 __all__ = [
     "HAS_LIBMTK",
     "is_material_bridge_available",
@@ -289,4 +380,13 @@ __all__ = [
     "GridAtlasSpec",
     "BakedAtlas",
     "load_baked_atlas_from_json",
+    "compute_mesh_material_props",
+    "compute_flat_material_props",
+    "get_material_props",
+    "get_block_emission_strength",
+    "is_thin_wall_block",
+    "is_transmissive_block",
+    "get_block_transmission_weight",
+    "get_block_sticker_threshold",
 ]
+
