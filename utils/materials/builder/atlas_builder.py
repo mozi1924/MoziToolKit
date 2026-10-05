@@ -31,6 +31,7 @@ try:
         ATTR_MATERIAL_PROPS,
     )
     from .standalone_builder import get_or_create_image, ensure_material_node_tree
+    from .shading_config import resolve_material_shading_config
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
     from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
@@ -52,6 +53,10 @@ except (ImportError, ValueError):
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
         ATTR_MATERIAL_PROPS = "mtk_material_props"
     from utils.materials.builder.standalone_builder import get_or_create_image, ensure_material_node_tree
+    try:
+        from .shading_config import resolve_material_shading_config
+    except (ImportError, ValueError):
+        from utils.materials.builder.shading_config import resolve_material_shading_config
 
 
 def add_packed_material_props_nodes(
@@ -162,6 +167,11 @@ def build_atlas_chunk_material(
     tile_height: float = 16.0,
     force_rebuild: bool = False,
     uv_map_name: Optional[str] = None,
+    render_engine: Optional[str] = None,
+    enable_game_semantics: Optional[bool] = None,
+    enable_transmission: Optional[bool] = None,
+    enable_thin_wall: Optional[bool] = None,
+    disable_subsurface: Optional[bool] = None,
 ) -> Optional[Any]:
     """
     Builds or updates an Atlas Chunk Minecraft material in Blender with structured Frames.
@@ -516,11 +526,21 @@ def build_atlas_chunk_material(
 
     # Configure PBR gating and connect packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
     has_pbr = bool(normal_node or spec_node)
+    cfg = resolve_material_shading_config(
+        clean_block=f"atlas_chunk_{chunk_id}",
+        has_pbr=has_pbr,
+        render_engine=render_engine,
+        enable_game_semantics=enable_game_semantics,
+        enable_transmission=enable_transmission,
+        enable_thin_wall=enable_thin_wall,
+        disable_subsurface=disable_subsurface,
+    )
+
     if decoder_group:
         if "Enable PBR (0-1)" in decoder_node.inputs:
             decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
         if "Disable Subsurface" in decoder_node.inputs:
-            decoder_node.inputs["Disable Subsurface"].default_value = False
+            decoder_node.inputs["Disable Subsurface"].default_value = bool(cfg["disable_subsurface"])
         if "Subsurface Scale" in decoder_node.inputs:
             decoder_node.inputs["Subsurface Scale"].default_value = 0.1
 
@@ -552,12 +572,12 @@ def build_atlas_chunk_material(
             pass
     if hasattr(mat, "use_raytrace_refraction"):
         try:
-            mat.use_raytrace_refraction = True
+            mat.use_raytrace_refraction = cfg["use_raytrace_refraction"]
         except Exception:
             pass
     if hasattr(mat, "use_screen_refraction"):
         try:
-            mat.use_screen_refraction = True
+            mat.use_screen_refraction = cfg["use_raytrace_refraction"]
         except Exception:
             pass
 
