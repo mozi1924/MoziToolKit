@@ -113,7 +113,7 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         """Verify LabPBR 1.3 Decoder public interface and sockets."""
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(ng.get("mozi_template_version"), 18)
+        self.assertEqual(ng.get("mozi_template_version"), 19)
         self.assertEqual(reference_shape_errors(ng), ())
         assert_reference_shape(ng)
 
@@ -167,12 +167,13 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         """Verify build_standalone_material sets Transmission, Sticker Threshold, Emission, and Thin Wall."""
         from utils.materials.builder.standalone_builder import build_standalone_material
 
-        # 1. Glass
+        # 1. Glass (CYCLES physical mode)
         mat_glass = build_standalone_material(
             texture_key="block/glass",
             albedo_path="/tmp/fake_glass.png",
             material_name="Test_Glass",
             block_name="glass",
+            render_engine="CYCLES",
         )
         self.assertIsNotNone(mat_glass)
         dec_glass = mat_glass.node_tree.nodes.get("LabPBR Decoder")
@@ -182,12 +183,13 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         self.assertEqual(dec_glass.inputs["Hardcoded Emission"].default_value, 0.0)
         self.assertEqual(dec_glass.inputs["Thin Wall"].default_value, False)
 
-        # 2. Water
+        # 2. Water (CYCLES physical mode)
         mat_water = build_standalone_material(
             texture_key="block/water_still",
             albedo_path="/tmp/fake_water.png",
             material_name="Test_Water",
             block_name="water_still",
+            render_engine="CYCLES",
         )
         self.assertIsNotNone(mat_water)
         dec_water = mat_water.node_tree.nodes.get("LabPBR Decoder")

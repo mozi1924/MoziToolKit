@@ -8,10 +8,10 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 18
+LABPBR_TEMPLATE_VERSION = 19
 
 # Captured from the verified in-Blender decoder and its appended reference.
-# The graph contains functional nodes and effective links with Random Walk SSS,
+# The graph contains functional nodes and effective links with Christensen-Burley SSS,
 # boolean Thin Wall transmission support, hardcoded emission direct input,
 # Transmission Weight physical refraction decoding, clean albedo for clear glass,
 # dual-layer glass and water surface sticker decoding (configurable Sticker Threshold),
@@ -186,7 +186,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         principled_inputs["Thin Wall"] = False
 
     principled = node(nodes, "ShaderNodeBsdfPrincipled", "LabPBR Principled BSDF", label="LabPBR 1.3 Material", location=(1120, 300), properties={
-        "subsurface_method": "RANDOM_WALK",
+        "subsurface_method": "BURLEY",
     }, inputs=principled_inputs)
     displacement = node(nodes, "ShaderNodeDisplacement", "LabPBR Height Displacement", location=(800, -350), inputs={"Midlevel": 0.0, "Scale": 1.0, "Normal": (0, 0, 0)})
 

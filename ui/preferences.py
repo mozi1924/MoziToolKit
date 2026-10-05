@@ -229,6 +229,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         description="Select preferences category",
         items=[
             ("RESOURCE_PACKS", "Resource Packs & Base JARs", "Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking"),
+            ("MATERIAL", "Material & Shading", "Configure LabPBR shading, render engine adaptations, transmission, and thin wall"),
             ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
             ("MISC", "Performance & Storage", "Storage backend, worker thread concurrency, and persistent cache settings"),
         ],
@@ -272,6 +273,67 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         name="Pack Textures into Blend File",
         description="Embed imported textures directly into the Blender file. When unchecked and the .blend file is saved, textures will be saved externally to '//textures/block/' in your project directory",
         default=True,
+        update=on_material_setting_changed,
+    )
+
+    material_render_engine: EnumProperty(
+        name="Render Engine Adaptation",
+        description="Choose how shader features adapt to the active render engine",
+        items=[
+            ('AUTO', "Auto (Follow Active Scene)", "Automatically adapt: disable physical transmission and SSS in EEVEE to prevent artifacts, enable full physical simulation in Cycles"),
+            ('CYCLES', "Cycles (Full Physical)", "Always enable full physical transmission and thin-wall scattering"),
+            ('EEVEE', "EEVEE (Realtime Optimized)", "Always optimize for EEVEE: traditional alpha blending for glass, no transmission refraction artifacts"),
+        ],
+        default='AUTO',
+        update=on_material_setting_changed,
+    )
+
+    enable_game_semantics: BoolProperty(
+        name="Enable Minecraft Game Semantics",
+        description="Enable Minecraft light level emissions (torches, glowstone) and foliage thin-wall for non-PBR textures. Automatically bypassed when PBR textures are present",
+        default=True,
+        update=on_material_setting_changed,
+    )
+
+    material_transmission_mode: EnumProperty(
+        name="Glass & Fluid Transmission",
+        description="Control dielectric transmission and refraction for glass and water",
+        items=[
+            ('AUTO', "Auto", "Enable transmission in Cycles; fallback to Alpha blend in EEVEE to prevent black artifacts"),
+            ('ENABLED', "Always Enabled", "Force physical transmission (1.0) and refraction"),
+            ('DISABLED', "Always Disabled", "Disable physical transmission (0.0); render via traditional alpha blending"),
+        ],
+        default='AUTO',
+        update=on_material_setting_changed,
+    )
+
+    material_thin_wall_mode: EnumProperty(
+        name="Foliage Thin Wall",
+        description="Control thin-wall double-sided scattering for leaves, crops, and flowers",
+        items=[
+            ('AUTO', "Auto", "Enable thin-wall in Cycles; optimize in EEVEE"),
+            ('ENABLED', "Always Enabled", "Force thin-wall scattering on foliage"),
+            ('DISABLED', "Always Disabled", "Disable thin-wall scattering"),
+        ],
+        default='AUTO',
+        update=on_material_setting_changed,
+    )
+
+    material_disable_subsurface: BoolProperty(
+        name="Disable Subsurface Scattering (SSS)",
+        description="Disable SSS on materials (Recommended in EEVEE to eliminate screen-space whiteout noise on leaves)",
+        default=False,
+        update=on_material_setting_changed,
+    )
+
+    material_subsurface_method: EnumProperty(
+        name="Subsurface Method",
+        description="Subsurface scattering calculation model in Principled BSDF",
+        items=[
+            ('BURLEY', "Christensen-Burley", "Fast, high-fidelity subsurface scattering with excellent performance and visual stability in both Cycles and EEVEE"),
+            ('RANDOM_WALK', "Random Walk", "Volumetric path-traced random walk scattering (Cycles only, high noise in EEVEE)"),
+        ],
+        default='BURLEY',
         update=on_material_setting_changed,
     )
 
@@ -339,6 +401,8 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         if self.category_tab == "RESOURCE_PACKS":
             self.draw_resource_packs(layout, context)
+        elif self.category_tab == "MATERIAL":
+            self.draw_material(layout, context)
         elif self.category_tab == "CONTEXT_MENU":
             self.draw_context_menus(layout, context)
         elif self.category_tab == "MISC":
@@ -441,6 +505,78 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         row_precompile = mat_box.row(align=True)
         row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")
         row_precompile.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
+
+    def draw_material(self, layout, context):
+        from ..i18n import tr
+        curr_engine = getattr(context.scene.render, "engine", "UNKNOWN") if context and context.scene else "UNKNOWN"
+        is_eevee = curr_engine in {"BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"}
+
+        # Information Banner
+        info_box = layout.box()
+        b_row = info_box.row(align=True)
+        b_row.label(text=tr("Material & LabPBR Shading Configuration:"), icon="SHADING_RENDERED")
+
+        st_row = info_box.row(align=True)
+        st_row.scale_y = 0.9
+        st_row.label(text=f"{tr('Active Scene Engine')}: {curr_engine} ({'EEVEE Mode' if is_eevee else 'Cycles Mode'})", icon="RESTRICT_RENDER_OFF")
+
+        layout.separator()
+
+        # Group 1: Render Engine Adaptation & Presets
+        box_engine = layout.box()
+        b1_head = box_engine.row(align=True)
+        b1_head.label(text=tr("Render Engine Adaptation & Presets:"), icon="SCENE")
+        col_eng = box_engine.column(align=False)
+        col_eng.prop(self, "material_render_engine", text=tr("Adaptation Mode"))
+        hint_eng = col_eng.row(align=True)
+        hint_eng.scale_y = 0.85
+        if self.material_render_engine == "AUTO":
+            hint_eng.label(text=tr("• Auto Mode: Automatically disables physical refraction and heavy SSS in EEVEE to prevent artifacts."))
+        elif self.material_render_engine == "EEVEE":
+            hint_eng.label(text=tr("• EEVEE Mode: Optimizes materials for realtime rasterization (Alpha hashed transparency, low noise)."))
+        else:
+            hint_eng.label(text=tr("• Cycles Mode: Preserves full physical dielectric transmission and path-traced scattering."))
+
+        # Group 2: Game Semantics & PBR Rules
+        layout.separator()
+        box_sem = layout.box()
+        b2_head = box_sem.row(align=True)
+        b2_head.label(text=tr("Minecraft Game Semantics & PBR Gating:"), icon="LIGHT")
+        col_sem = box_sem.column(align=False)
+        col_sem.prop(self, "enable_game_semantics", text=tr("Enable Game Semantics Fallback"))
+        tip_row = col_sem.row(align=True)
+        tip_row.scale_y = 0.85
+        tip_row.label(text=tr("• Non-PBR: Torches, lava, and light blocks emit light according to Minecraft light levels."))
+        tip_row2 = col_sem.row(align=True)
+        tip_row2.scale_y = 0.85
+        tip_row2.label(text=tr("• LabPBR: Uniform emission is bypassed; emission is controlled strictly per-pixel by _s texture."))
+
+        # Group 3: Transmission & Refraction (Glass / Water)
+        layout.separator()
+        box_trans = layout.box()
+        b3_head = box_trans.row(align=True)
+        b3_head.label(text=tr("Dielectric Transmission & Refraction (Glass / Water / Ice):"), icon="MATERIAL")
+        col_trans = box_trans.column(align=False)
+        col_trans.prop(self, "material_transmission_mode", text=tr("Transmission Mode"))
+        tip_trans = col_trans.row(align=True)
+        tip_trans.scale_y = 0.85
+        tip_trans.label(text=tr("• Auto: Cycles uses physical refraction; EEVEE falls back to Alpha blend to avoid black overlap artifacts."))
+
+        # Group 4: Subsurface Scattering & Thin Wall
+        layout.separator()
+        box_sss = layout.box()
+        b4_head = box_sss.row(align=True)
+        b4_head.label(text=tr("Foliage & Subsurface Scattering (Leaves / Plants / Crops):"), icon="OUTLINER_OB_CURVES")
+        col_sss = box_sss.column(align=False)
+        col_sss.prop(self, "material_thin_wall_mode", text=tr("Thin Wall Mode"))
+        col_sss.prop(self, "material_subsurface_method", text=tr("Subsurface Method"))
+        col_sss.prop(self, "material_disable_subsurface", text=tr("Disable Subsurface Scattering"))
+
+        # Precompile Action
+        layout.separator()
+        row_pre = layout.row(align=True)
+        row_pre.operator("mozi.precompile_cache", text=tr("Rebuild / Precompile Stack Caches"), icon="FILE_REFRESH")
+        row_pre.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
 
     def draw_context_menus(self, layout, context):
         from ..i18n import tr

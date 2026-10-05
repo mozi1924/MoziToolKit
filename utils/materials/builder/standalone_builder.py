@@ -27,6 +27,7 @@ try:
         ATTR_COLORMAP_UV,
     )
     from ....bridge.material import get_material_props
+    from .shading_config import resolve_material_shading_config
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
     from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
@@ -41,6 +42,10 @@ except (ImportError, ValueError):
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
     from bridge.material import get_material_props
+    try:
+        from .shading_config import resolve_material_shading_config
+    except (ImportError, ValueError):
+        from utils.materials.builder.shading_config import resolve_material_shading_config
 
 
 def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
@@ -146,8 +151,12 @@ def build_standalone_material(
     thin_wall_override: Optional[bool] = None,
     transmission_override: Optional[float] = None,
     sticker_threshold_override: Optional[float] = None,
-    disable_subsurface: bool = False,
+    disable_subsurface: Optional[bool] = None,
     subsurface_scale: float = 0.1,
+    render_engine: Optional[str] = None,
+    enable_game_semantics: Optional[bool] = None,
+    enable_transmission: Optional[bool] = None,
+    enable_thin_wall: Optional[bool] = None,
 ) -> Optional[Any]:
     """
     Builds or updates a standalone Minecraft material in Blender with structured Frames.
@@ -413,15 +422,28 @@ def build_standalone_material(
     has_pbr = bool(normal_node or spec_node)
     clean_block = block_name or texture_key or mat_name
 
-    props = get_material_props(clean_block, texture_name=texture_key)
-    emission_val = emission_override if emission_override is not None else props[0]
-    is_thin = thin_wall_override if thin_wall_override is not None else (props[1] > 0.5)
-    trans_val = transmission_override if transmission_override is not None else props[2]
-    sticker_thresh = (
-        sticker_threshold_override
-        if sticker_threshold_override is not None
-        else props[3]
+    raw_props = get_material_props(clean_block, texture_name=texture_key)
+    cfg = resolve_material_shading_config(
+        clean_block=clean_block,
+        texture_key=texture_key,
+        raw_props=raw_props,
+        has_pbr=has_pbr,
+        render_engine=render_engine,
+        enable_game_semantics=enable_game_semantics,
+        enable_transmission=enable_transmission,
+        enable_thin_wall=enable_thin_wall,
+        disable_subsurface=disable_subsurface,
+        emission_override=emission_override,
+        thin_wall_override=thin_wall_override,
+        transmission_override=transmission_override,
+        sticker_threshold_override=sticker_threshold_override,
     )
+
+    emission_val = cfg["emission_strength"]
+    is_thin = cfg["thin_wall"]
+    trans_val = cfg["transmission_weight"]
+    sticker_thresh = cfg["sticker_threshold"]
+    final_disable_sss = cfg["disable_subsurface"]
 
     if decoder_group:
         if "Enable PBR (0-1)" in decoder_node.inputs:
@@ -435,7 +457,7 @@ def build_standalone_material(
         if "Sticker Threshold" in decoder_node.inputs:
             decoder_node.inputs["Sticker Threshold"].default_value = float(sticker_thresh)
         if "Disable Subsurface" in decoder_node.inputs:
-            decoder_node.inputs["Disable Subsurface"].default_value = bool(disable_subsurface)
+            decoder_node.inputs["Disable Subsurface"].default_value = bool(final_disable_sss)
         if "Subsurface Scale" in decoder_node.inputs:
             decoder_node.inputs["Subsurface Scale"].default_value = float(subsurface_scale)
     else:
@@ -447,7 +469,7 @@ def build_standalone_material(
             decoder_node.inputs["Emission Strength"].default_value = float(emission_val)
         if "Thin Wall" in decoder_node.inputs and is_thin:
             decoder_node.inputs["Thin Wall"].default_value = True
-        if not disable_subsurface:
+        if not final_disable_sss:
             if "Subsurface Weight" in decoder_node.inputs:
                 decoder_node.inputs["Subsurface Weight"].default_value = 1.0
             if "Subsurface Scale" in decoder_node.inputs:
@@ -492,12 +514,12 @@ def build_standalone_material(
             pass
     if hasattr(mat, "use_raytrace_refraction"):
         try:
-            mat.use_raytrace_refraction = True
+            mat.use_raytrace_refraction = cfg["use_raytrace_refraction"]
         except Exception:
             pass
     if hasattr(mat, "use_screen_refraction"):
         try:
-            mat.use_screen_refraction = True
+            mat.use_screen_refraction = cfg["use_raytrace_refraction"]
         except Exception:
             pass
 
