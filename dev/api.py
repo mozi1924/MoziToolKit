@@ -103,3 +103,14 @@ def run_mesher_benchmark(
         "vertex_count": verts,
         "quads_per_second": int(quads_per_sec),
     }
+
+
+def clear_material_cache(prefs=None) -> int:
+    """Clears all precompiled material and model caches via bridge."""
+    return bridge.clear_cache(prefs)
+
+
+def precompile_material_cache(prefs=None, num_threads: Optional[int] = None) -> Dict[str, Any]:
+    """Precompiles and rebuilds complete material atlas, standalone textures, and model caches via bridge."""
+    return bridge.precompile_stack(prefs, num_threads=num_threads)
+

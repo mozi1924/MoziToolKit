@@ -53,9 +53,9 @@ class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):
         row2 = scenarios_box.row(align=True)
         row2.operator("mozi.dev_mesh_benchmark", text="Mesher Benchmark", icon="TIME")
 
-        # 3. Cache & Storage Status
+        # 3. Material & Asset Cache Status
         cache_box = layout.box()
-        cache_box.label(text="Asset Cache", icon="FILE_CACHE")
+        cache_box.label(text="Material & Asset Cache", icon="FILE_CACHE")
         try:
             stats = bridge.get_cache_stats()
             c_col = cache_box.column(align=True)
@@ -66,4 +66,8 @@ class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):
             cache_box.label(text="Cache unavailable")
 
         row_c = cache_box.row(align=True)
+        row_c.operator("mozi.precompile_cache", text="Precompile Cache", icon="FILE_REFRESH")
         row_c.operator("mozi.clear_cache", text="Clear Cache", icon="TRASH")
+
+        row_f = cache_box.row(align=True)
+        row_f.operator("mozi.open_cache_folder", text="Open Cache Folder", icon="FILE_FOLDER")

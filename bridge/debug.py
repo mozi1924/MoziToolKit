@@ -28,12 +28,44 @@ def is_debug_world_available() -> bool:
     return mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world")
 
 
-def load_debug_world_storage():
-    """Loads the canonical embedded Minecraft debug world into a VoxelStorage instance."""
+def load_debug_world_storage(prefs=None, states=None, stack=None):
+    """
+    Loads or dynamically generates the canonical Minecraft debug world into a VoxelStorage instance.
+    Supports pure-code layout from:
+    1. Explicit blockstates list;
+    2. Active configured resource pack stack (including any mod packs);
+    3. Canonical unpack directory (/home/mozi/mc);
+    4. Builtin pure-code fallback generator.
+    """
     mtk = require_libmtk("load_debug_world_storage")
     voxel_storage = getattr(mtk, "VoxelStorage", None)
-    if voxel_storage is None or not hasattr(voxel_storage, "create_debug_world"):
-        raise RuntimeError("libmtk_py does not support create_debug_world")
+    if voxel_storage is None:
+        raise RuntimeError("libmtk_py does not support VoxelStorage")
+
+    if states is not None:
+        if hasattr(voxel_storage, "create_debug_world_from_states"):
+            return voxel_storage.create_debug_world_from_states(states)
+        return voxel_storage.create_debug_world(states=states)
+
+    if stack is None:
+        try:
+            from .assets import get_configured_pack_stack
+            stack = get_configured_pack_stack(prefs)
+        except Exception:
+            stack = None
+
+    if stack is not None and hasattr(voxel_storage, "create_debug_world_from_pack_stack"):
+        pack_count = getattr(stack, "get_pack_count", lambda: 0)()
+        if pack_count > 0:
+            return voxel_storage.create_debug_world_from_pack_stack(stack)
+
+        # Fallback to local dev unpack directory if configured stack has no packs
+        from pathlib import Path
+        mc_path = Path("/home/mozi/mc")
+        if mc_path.exists() and (mc_path / "assets").exists():
+            stack.add_directory_pack(str(mc_path.resolve()), "VanillaMC")
+            return voxel_storage.create_debug_world_from_pack_stack(stack)
+
     return voxel_storage.create_debug_world()
 
 
@@ -99,15 +131,17 @@ def create_debug_world_object(
     reuse_existing: bool = True,
     config=None,
     culler=None,
+    states=None,
+    stack=None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Meshes the embedded debug world and creates/updates a Blender Mesh Object in the active scene,
+    Meshes the canonical debug world and creates/updates a Blender Mesh Object in the active scene,
     binding all precompiled Atlas chunk PBR materials and shaders.
     Returns (bpy_object, stats_dict).
     """
     from .world import ingest_voxel_world
 
-    storage = load_debug_world_storage()
+    storage = load_debug_world_storage(prefs=prefs, states=states, stack=stack)
 
     obj, stats = ingest_voxel_world(
         storage=storage,
