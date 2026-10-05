@@ -79,7 +79,20 @@ def resolve_material_shading_config(
     is_eevee = (target_engine == "EEVEE")
 
     # 3. Base physical properties from catalog: [emission, thin_wall, transmission, sticker_threshold]
-    props = raw_props or (0.0, 0.0, 0.0, 0.55)
+    props = raw_props
+    if props is None:
+        try:
+            from ....bridge.material import get_material_props
+            props = get_material_props(clean_block, texture_name=texture_key)
+        except Exception:
+            try:
+                from bridge.material import get_material_props
+                props = get_material_props(clean_block, texture_name=texture_key)
+            except Exception:
+                props = (0.0, 0.0, 0.0, 0.55)
+    if not props or not isinstance(props, (tuple, list)) or len(props) < 4:
+        props = (0.0, 0.0, 0.0, 0.55)
+
 
     # 4. Minecraft Game Semantics & Emission
     # Rule: If PBR textures (_s) are present, uniform block emission is BYPASSED (0.0) so per-pixel texture takes full control.

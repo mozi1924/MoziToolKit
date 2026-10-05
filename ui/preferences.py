@@ -197,8 +197,18 @@ def on_material_setting_changed(self, context):
         if prefs:
             get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
+            try:
+                from ..utils.materials.builder.adaptation import update_materials_render_engine_adaptation
+                update_materials_render_engine_adaptation(context=context)
+            except Exception:
+                try:
+                    from utils.materials.builder.adaptation import update_materials_render_engine_adaptation
+                    update_materials_render_engine_adaptation(context=context)
+                except Exception:
+                    pass
     finally:
         _is_updating_material_settings = False
+
 
 
 def sync_prefs_from_json(prefs):

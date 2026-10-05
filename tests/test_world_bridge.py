@@ -173,11 +173,14 @@ class TestWorldBridgePipeline:
                 # build_atlas_chunk_material should ONLY be called for chunk 2 and chunk 5 (2 times)!
                 # It must NOT be called 50 times!
                 assert sorted(built_chunks) == [2, 5], f"Expected only chunks [2, 5] built, got {built_chunks}"
-                # The material slots should be allocated up to max chunk ID (5)
-                assert len(test_obj.data.materials) == 6
-                assert test_obj.data.materials[2] is not None
-                assert test_obj.data.materials[5] is not None
-                # Unused chunks (0, 1, 3, 4) must be None
-                for unused_idx in [0, 1, 3, 4]:
-                    assert test_obj.data.materials[unused_idx] is None
+                # The material slots should be compacted to only the 2 used chunks (zero empty/None slots)
+                assert len(test_obj.data.materials) == 2
+                assert test_obj.data.materials[0].name == "MTK:Atlas:blocks:003"
+                assert test_obj.data.materials[1].name == "MTK:Atlas:blocks:006"
+                for mat in test_obj.data.materials:
+                    assert mat is not None
+                # Polygons must be remapped to compact slot indices 0 and 1
+                assert test_obj.data.polygons[0].material_index == 0
+                assert test_obj.data.polygons[1].material_index == 1
+
 
