@@ -20,6 +20,7 @@ except (ImportError, ValueError):
     from utils.system import get_prefs
 
 from .engine import get_libmtk, has_libmtk, require_libmtk
+from .progress import ProgressCallback, wrap_progress_callback
 
 
 def _get_libmtk():
@@ -129,7 +130,11 @@ def get_configured_pack_stack(prefs=None) -> Optional[Any]:
     return stack
 
 
-def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str, Any]:
+def precompile_stack(
+    prefs=None,
+    num_threads: Optional[int] = None,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> Dict[str, Any]:
     """
     Executes end-to-end asset precompilation via libmtk:
     1. Compiles blocks Atlas and saves all chunk PNGs + atlas_mapping.json
@@ -154,7 +159,9 @@ def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str,
     start_time = time.time()
     base_cache = get_cache_dir(prefs)
 
-    # Use unified high-performance Rust engine with thread pool control
+    wrapped_cb = wrap_progress_callback(progress_callback)
+
+    # Use unified high-performance Rust engine with thread pool control & progress callback
     if hasattr(mtk, "precompile_all_assets"):
         try:
             res = mtk.precompile_all_assets(
@@ -167,19 +174,33 @@ def precompile_stack(prefs=None, num_threads: Optional[int] = None) -> Dict[str,
                 compile_standalone=True,
                 compile_models=True,
                 num_threads=num_threads,
+                callback=wrapped_cb,
             )
         except TypeError:
-            # Fallback for older bindings without num_threads keyword
-            res = mtk.precompile_all_assets(
-                stack,
-                str(base_cache.resolve()),
-                atlas_category="blocks",
-                max_atlas_width=4096,
-                max_atlas_height=4096,
-                compile_atlas=True,
-                compile_standalone=True,
-                compile_models=True,
-            )
+            try:
+                # Fallback for bindings without callback keyword
+                res = mtk.precompile_all_assets(
+                    stack,
+                    str(base_cache.resolve()),
+                    atlas_category="blocks",
+                    max_atlas_width=4096,
+                    max_atlas_height=4096,
+                    compile_atlas=True,
+                    compile_standalone=True,
+                    compile_models=True,
+                    num_threads=num_threads,
+                )
+            except TypeError:
+                res = mtk.precompile_all_assets(
+                    stack,
+                    str(base_cache.resolve()),
+                    atlas_category="blocks",
+                    max_atlas_width=4096,
+                    max_atlas_height=4096,
+                    compile_atlas=True,
+                    compile_standalone=True,
+                    compile_models=True,
+                )
         get_cache_stats(prefs, force_refresh=True)
         duration = time.time() - start_time
         return {
@@ -200,6 +221,7 @@ def precompile_stack_async(
     num_threads: Optional[int] = None,
     on_complete=None,
     on_error=None,
+    progress_callback: Optional[ProgressCallback] = None,
 ):
     """
     Executes precompile_stack asynchronously in a background worker thread.
@@ -211,7 +233,7 @@ def precompile_stack_async(
 
     def worker():
         try:
-            res = precompile_stack(prefs, num_threads=num_threads)
+            res = precompile_stack(prefs, num_threads=num_threads, progress_callback=progress_callback)
             if on_complete:
                 on_complete(res)
             return res
