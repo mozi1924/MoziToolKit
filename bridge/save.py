@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .engine import get_libmtk, has_libmtk, require_libmtk
 from .mesh import inject_mesh_data
-from .point_cloud import sync_voxel_point_cloud_for_world
+from .point_cloud import ensure_voxel_child_cloud
 from .world import ensure_world_materials, get_world_pipeline_assets
 
 logger = logging.getLogger("MoziToolKit.Bridge.Save")
@@ -207,9 +207,9 @@ def import_save_to_blender(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
-    # 5. Extract companion point cloud
-    cloud_obj = sync_voxel_point_cloud_for_world(
-        world_obj=obj,
+    # 5. Extract unculled VoxelPointCloud and ensure child companion object
+    cloud_obj = ensure_voxel_child_cloud(
+        parent_obj=obj,
         storage=storage,
         origin_centered=origin_centered,
         initial_hidden=True,

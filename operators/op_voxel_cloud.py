@@ -14,6 +14,7 @@ logger = logging.getLogger("MoziToolKit.Operators.VoxelCloud")
 try:
     from ..bridge.point_cloud import (
         extract_voxel_point_cloud,
+        get_associated_parent_mesh,
         get_associated_voxel_cloud,
         inject_voxel_point_cloud,
         is_voxel_cloud_visible,
@@ -30,6 +31,7 @@ try:
 except (ImportError, ValueError):
     from bridge.point_cloud import (
         extract_voxel_point_cloud,
+        get_associated_parent_mesh,
         get_associated_voxel_cloud,
         inject_voxel_point_cloud,
         is_voxel_cloud_visible,
@@ -53,8 +55,7 @@ def _resolve_world_and_cloud_objects(context) -> tuple[Optional[bpy.types.Object
 
     if active.get("mtk_is_voxel_cloud"):
         cloud_obj = active
-        world_name = active.get("mtk_world_mesh") or active.parent.name if active.parent else None
-        world_obj = bpy.data.objects.get(world_name) if world_name else None
+        world_obj = get_associated_parent_mesh(active)
         return world_obj, cloud_obj
 
     cloud_obj = get_associated_voxel_cloud(active)

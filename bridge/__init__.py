@@ -82,7 +82,9 @@ from .uv import (
     uv_requires_atlas_tiling,
 )
 from .point_cloud import (
+    ensure_voxel_child_cloud,
     extract_voxel_point_cloud,
+    get_associated_parent_mesh,
     get_associated_voxel_cloud,
     inject_voxel_point_cloud,
     is_voxel_cloud_visible,
@@ -170,6 +172,13 @@ __all__ = [
     "import_save_to_blender",
     "inspect_minecraft_save",
     "load_and_mesh_minecraft_save",
+    "ensure_voxel_child_cloud",
+    "extract_voxel_point_cloud",
+    "get_associated_voxel_cloud",
+    "get_associated_parent_mesh",
+    "inject_voxel_point_cloud",
+    "is_voxel_cloud_visible",
+    "set_voxel_cloud_visibility",
     "get_libmtk",
     "has_libmtk",
     "require_libmtk",

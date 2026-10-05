@@ -154,10 +154,10 @@ def _sync_timer_tick() -> Optional[float]:
             if storage is not None:
                 world_obj = get_or_create_world_mesh_object(bpy.context)
                 try:
-                    from ...bridge.point_cloud import sync_voxel_point_cloud_for_world
+                    from ...bridge.point_cloud import ensure_voxel_child_cloud
                 except (ImportError, ValueError):
-                    from bridge.point_cloud import sync_voxel_point_cloud_for_world
-                sync_voxel_point_cloud_for_world(world_obj, storage, origin_centered=True, initial_hidden=True)
+                    from bridge.point_cloud import ensure_voxel_child_cloud
+                ensure_voxel_child_cloud(world_obj, storage=storage, origin_centered=True, initial_hidden=True)
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
 
