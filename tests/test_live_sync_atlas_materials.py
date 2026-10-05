@@ -343,6 +343,103 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
             bpy.data.objects.remove(test_obj)
             bpy.data.meshes.remove(test_mesh)
 
+    def test_live_sync_incremental_materials_addressing_stability(self):
+        """
+        Verify that when new materials are introduced during Live Sync updates,
+        existing faces stay accurately addressed to their respective materials
+        and do NOT accidentally get remapped to newly introduced materials.
+        """
+        if not HAS_BPY:
+            self.skipTest("bpy is required for Live Sync material test")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            atlas_dir = tmp_path / "atlas"
+            atlas_dir.mkdir(parents=True)
+
+            _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
+            _write_dummy_png(atlas_dir / "blocks_chunk_002.png")
+            _write_dummy_png(atlas_dir / "blocks_chunk_003.png")
+
+            mapping_data = {
+                "format_version": 1,
+                "category": "blocks",
+                "chunks": [
+                    {"chunk_id": 0, "category": "blocks", "category_chunk_index": 1, "width": 1024, "height": 1024, "is_animated": False},
+                    {"chunk_id": 1, "category": "blocks", "category_chunk_index": 2, "width": 1024, "height": 1024, "is_animated": False},
+                    {"chunk_id": 2, "category": "blocks", "category_chunk_index": 3, "width": 1024, "height": 1024, "is_animated": False},
+                ],
+                "sprites": {}
+            }
+            (atlas_dir / "atlas_mapping.json").write_text(json.dumps(mapping_data))
+
+            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(tmp_path)}):
+                # Frame 1: Mesh with 2 faces, both from Chunk 0
+                test_mesh = bpy.data.meshes.new("SyncAddressingMesh")
+                verts = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (2, 1, 0)]
+                faces = [(0, 1, 2, 3), (1, 4, 5, 2)]
+                test_mesh.from_pydata(verts, [], faces)
+                test_mesh.update()
+
+                attr_chunk = test_mesh.attributes.new(name="mtk_atlas_chunk_id", type="INT", domain="FACE")
+                attr_chunk.data[0].value = 0
+                attr_chunk.data[1].value = 0
+
+                test_obj = bpy.data.objects.new("SyncAddressingObj", test_mesh)
+
+                try:
+                    ensure_world_materials(test_obj, used_chunk_ids=[0])
+
+                    self.assertEqual(len(test_mesh.materials), 1)
+                    self.assertIn("001", test_mesh.materials[0].name)
+                    self.assertEqual(test_mesh.polygons[0].material_index, 0)
+                    self.assertEqual(test_mesh.polygons[1].material_index, 0)
+
+                    # Frame 2: New geometry arrives with 4 faces (Faces 0,1 from Chunk 0; Faces 2,3 from Chunk 1)
+                    test_mesh.clear_geometry()
+                    verts4 = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+                              (2, 0, 0), (2, 1, 0), (3, 0, 0), (3, 1, 0), (4, 0, 0), (4, 1, 0)]
+                    faces4 = [(0, 1, 2, 3), (1, 4, 5, 2), (4, 6, 7, 5), (6, 8, 9, 7)]
+                    test_mesh.from_pydata(verts4, [], faces4)
+                    test_mesh.update()
+
+                    attr_chunk2 = test_mesh.attributes.new(name="mtk_atlas_chunk_id", type="INT", domain="FACE")
+                    attr_chunk2.data[0].value = 0
+                    attr_chunk2.data[1].value = 0
+                    attr_chunk2.data[2].value = 1
+                    attr_chunk2.data[3].value = 1
+
+                    ensure_world_materials(test_obj, used_chunk_ids=[0, 1])
+
+                    self.assertEqual(len(test_mesh.materials), 2)
+                    self.assertIn("001", test_mesh.materials[0].name)
+                    self.assertIn("002", test_mesh.materials[1].name)
+
+                    # CRITICAL: Chunk 0 faces MUST point to Slot 0 (mat0), Chunk 1 faces MUST point to Slot 1 (mat1)
+                    self.assertEqual(test_mesh.polygons[0].material_index, 0, "Chunk 0 face must remain at material slot 0")
+                    self.assertEqual(test_mesh.polygons[1].material_index, 0, "Chunk 0 face must remain at material slot 0")
+                    self.assertEqual(test_mesh.polygons[2].material_index, 1, "Chunk 1 face must point to material slot 1")
+                    self.assertEqual(test_mesh.polygons[3].material_index, 1, "Chunk 1 face must point to material slot 1")
+
+                    # Frame 3: Multi-chunk interleaved (Chunk 0, Chunk 1, Chunk 2)
+                    attr_chunk2.data[0].value = 0
+                    attr_chunk2.data[1].value = 1
+                    attr_chunk2.data[2].value = 2
+                    attr_chunk2.data[3].value = 0
+
+                    ensure_world_materials(test_obj, used_chunk_ids=[0, 1, 2])
+
+                    self.assertEqual(len(test_mesh.materials), 3)
+                    self.assertEqual(test_mesh.polygons[0].material_index, 0)
+                    self.assertEqual(test_mesh.polygons[1].material_index, 1)
+                    self.assertEqual(test_mesh.polygons[2].material_index, 2)
+                    self.assertEqual(test_mesh.polygons[3].material_index, 0)
+
+                finally:
+                    bpy.data.objects.remove(test_obj)
+                    bpy.data.meshes.remove(test_mesh)
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0]])
+
