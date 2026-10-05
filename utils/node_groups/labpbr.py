@@ -8,7 +8,7 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 17
+LABPBR_TEMPLATE_VERSION = 18
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The graph contains functional nodes and effective links with Random Walk SSS,
@@ -101,7 +101,7 @@ def reference_shape_errors(group: bpy.types.NodeTree) -> tuple[str, ...]:
     effective_links = effective_link_signature(group)
     expected_links = (
         LABPBR_REFERENCE_LINK_COUNT
-        if (hasattr(bpy.app, "version") and bpy.app.version >= (5, 2, 0))
+        if (hasattr(bpy.app, "version") and isinstance(bpy.app.version, tuple) and bpy.app.version >= (5, 2, 0))
         else (LABPBR_REFERENCE_LINK_COUNT - 1)
     )
     if len(effective_links) != expected_links:
@@ -165,12 +165,12 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
         ("Subsurface Scale", "INPUT", "NodeSocketFloat", 0.1, 0.0, 10.0),
         ("Transmission Weight", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Sticker Threshold", "INPUT", "NodeSocketFloat", 0.55, 0.0, 1.0),
-        ("Disable Subsurface", "INPUT", "NodeSocketBool", True),
+        ("Disable Subsurface", "INPUT", "NodeSocketBool", False),
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1400, 200))
     group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(1400, 200))
-    has_thin_wall = bool(hasattr(bpy.app, "version") and bpy.app.version >= (5, 2, 0))
+    has_thin_wall = bool(hasattr(bpy.app, "version") and isinstance(bpy.app.version, tuple) and bpy.app.version >= (5, 2, 0))
     principled_inputs = {
         "Weight": 0.0, "Diffuse Roughness": 0.0,
         "Subsurface Radius": (1.0, 1.0, 1.0), "Subsurface Scale": 0.1,

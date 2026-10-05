@@ -26,6 +26,7 @@ try:
         is_material_bridge_available,
         load_baked_atlas_from_json,
         remap_mesh_multi_uvs,
+        compute_flat_material_props,
         BiomeResolver,
     )
 except (ImportError, ValueError):
@@ -33,6 +34,7 @@ except (ImportError, ValueError):
         is_material_bridge_available,
         load_baked_atlas_from_json,
         remap_mesh_multi_uvs,
+        compute_flat_material_props,
         BiomeResolver,
     )
 
@@ -71,6 +73,7 @@ try:
         ATTR_BIOME_TINT_DATA,
         ATTR_BIOME_TINT_COLOR,
         ATTR_COLORMAP_UV,
+        ATTR_MATERIAL_PROPS,
     )
 except (ImportError, ValueError):
     from bridge.assets import get_cache_dir, precompile_stack
@@ -102,6 +105,7 @@ except (ImportError, ValueError):
             ATTR_BIOME_TINT_DATA,
             ATTR_BIOME_TINT_COLOR,
             ATTR_COLORMAP_UV,
+            ATTR_MATERIAL_PROPS,
         )
     except Exception:
         pass
@@ -423,6 +427,15 @@ def inject_mesh_provenance_attributes(
 
     if face_uv_rotations is not None:
         inject_face_attribute_float(mesh, "mtk_uv_rotation", face_uv_rotations)
+
+    # Inject packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
+    if face_source_keys:
+        clean_keys = [
+            k.decode("utf-8", errors="ignore") if isinstance(k, (bytes, bytearray)) else str(k or "")
+            for k in (face_source_keys[:num_polys] if len(face_source_keys) >= num_polys else face_source_keys + [""] * (num_polys - len(face_source_keys)))
+        ]
+        flat_props = compute_flat_material_props(clean_keys)
+        inject_face_attribute_float4(mesh, ATTR_MATERIAL_PROPS, flat_props)
 
 
 def resolve_and_apply_biome_tint(

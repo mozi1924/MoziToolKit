@@ -28,6 +28,7 @@ try:
         ATTR_BIOME_TINT_DATA,
         ATTR_BIOME_TINT_COLOR,
         ATTR_COLORMAP_UV,
+        ATTR_MATERIAL_PROPS,
     )
     from .standalone_builder import get_or_create_image, ensure_material_node_tree
 except (ImportError, ValueError):
@@ -41,6 +42,7 @@ except (ImportError, ValueError):
             ATTR_BIOME_TINT_DATA,
             ATTR_BIOME_TINT_COLOR,
             ATTR_COLORMAP_UV,
+            ATTR_MATERIAL_PROPS,
         )
     except (ImportError, ValueError):
         ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"
@@ -48,7 +50,64 @@ except (ImportError, ValueError):
         ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
+        ATTR_MATERIAL_PROPS = "mtk_material_props"
     from utils.materials.builder.standalone_builder import get_or_create_image, ensure_material_node_tree
+
+
+def add_packed_material_props_nodes(
+    nodes: Any,
+    links: Any,
+    decoder_node: Any,
+    location: tuple[float, float] = (150, -250),
+    parent: Optional[Any] = None,
+) -> None:
+    """Connect packed material properties attribute (Hardcoded Emission, Thin Wall, Transmission, Sticker Threshold) to decoder."""
+    attr_props = nodes.new("ShaderNodeAttribute")
+    attr_props.name = "Attr Material Props"
+    attr_props.attribute_type = "GEOMETRY"
+    attr_props.attribute_name = ATTR_MATERIAL_PROPS
+    attr_props.location = location
+    if parent:
+        attr_props.parent = parent
+
+    split_props = nodes.new("ShaderNodeSeparateColor")
+    split_props.name = "Split Material Props"
+    split_props.location = (location[0] + 180, location[1])
+    if parent:
+        split_props.parent = parent
+    links.new(attr_props.outputs["Color"], split_props.inputs["Color"])
+
+    # Red: Hardcoded Emission
+    if "Hardcoded Emission" in decoder_node.inputs:
+        links.new(split_props.outputs["Red"], decoder_node.inputs["Hardcoded Emission"])
+
+    # Green: Thin Wall (clamped with Greater Than 0.5 to prevent float jitter)
+    if "Thin Wall" in decoder_node.inputs:
+        clamp_thin = nodes.new("ShaderNodeMath")
+        clamp_thin.name = "Clamp Thin Wall"
+        clamp_thin.operation = 'GREATER_THAN'
+        clamp_thin.inputs[1].default_value = 0.5
+        clamp_thin.location = (location[0] + 360, location[1] - 50)
+        if parent:
+            clamp_thin.parent = parent
+        links.new(split_props.outputs["Green"], clamp_thin.inputs[0])
+        links.new(clamp_thin.outputs["Value"], decoder_node.inputs["Thin Wall"])
+
+    # Blue: Transmission Weight
+    if "Transmission Weight" in decoder_node.inputs:
+        links.new(split_props.outputs["Blue"], decoder_node.inputs["Transmission Weight"])
+
+    # Alpha: Sticker Threshold (Safe fallback to 0.55 if 0.0 / uninitialized)
+    if "Sticker Threshold" in decoder_node.inputs:
+        safe_thresh = nodes.new("ShaderNodeMath")
+        safe_thresh.name = "Safe Sticker Threshold"
+        safe_thresh.operation = 'MAXIMUM'
+        safe_thresh.inputs[1].default_value = 0.55
+        safe_thresh.location = (location[0] + 360, location[1] - 150)
+        if parent:
+            safe_thresh.parent = parent
+        links.new(attr_props.outputs["Alpha"], safe_thresh.inputs[0])
+        links.new(safe_thresh.outputs["Value"], decoder_node.inputs["Sticker Threshold"])
 
 
 def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
@@ -455,6 +514,18 @@ def build_atlas_chunk_material(
         links.new(spec_node.outputs["Color"], decoder_node.inputs["Specular (_s) Color"])
         links.new(spec_node.outputs["Alpha"], decoder_node.inputs["Specular (_s) Alpha (Emission)"])
 
+    # Configure PBR gating and connect packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
+    has_pbr = bool(normal_node or spec_node)
+    if decoder_group:
+        if "Enable PBR (0-1)" in decoder_node.inputs:
+            decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
+        if "Disable Subsurface" in decoder_node.inputs:
+            decoder_node.inputs["Disable Subsurface"].default_value = False
+        if "Subsurface Scale" in decoder_node.inputs:
+            decoder_node.inputs["Subsurface Scale"].default_value = 0.1
+
+        add_packed_material_props_nodes(nodes, links, decoder_node, location=(150, -250), parent=frame_shading)
+
     # Ensure Albedo image texture node is active and selected for Solid Viewport mode
     if albedo_node:
         for n in nodes:
@@ -462,7 +533,7 @@ def build_atlas_chunk_material(
         nodes.active = albedo_node
         albedo_node.select = True
 
-    # Material settings for transparency (Blender 5.0+ surface_render_method)
+    # Material settings for transparency and refraction (Blender 4.2+ EEVEE Next & legacy)
     if hasattr(mat, "surface_render_method"):
         try:
             mat.surface_render_method = "DITHERED"
@@ -470,7 +541,7 @@ def build_atlas_chunk_material(
             pass
     elif hasattr(mat, "blend_method"):
         try:
-            mat.blend_method = "CLIP"
+            mat.blend_method = "HASHED"
         except Exception:
             pass
 
@@ -482,6 +553,11 @@ def build_atlas_chunk_material(
     if hasattr(mat, "use_raytrace_refraction"):
         try:
             mat.use_raytrace_refraction = True
+        except Exception:
+            pass
+    if hasattr(mat, "use_screen_refraction"):
+        try:
+            mat.use_screen_refraction = True
         except Exception:
             pass
 
