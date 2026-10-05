@@ -69,6 +69,7 @@ def load_and_mesh_minecraft_save(
     weld_vertices: bool = True,
     origin_centered: bool = True,
     num_threads: Optional[int] = None,
+    progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -101,17 +102,35 @@ def load_and_mesh_minecraft_save(
 
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
+    wrapped_cb = None
+    if progress_callback is not None:
+        from .progress import wrap_progress_callback
+        wrapped_cb = wrap_progress_callback(progress_callback)
+
     t0 = time.perf_counter()
-    mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
-        world_dir=target_path,
-        dimension=dimension,
-        min_block=min_block,
-        max_block=max_block,
-        config=config,
-        culler=culler,
-        model_db=model_db,
-        num_threads=num_threads,
-    )
+    try:
+        mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
+            world_dir=target_path,
+            dimension=dimension,
+            min_block=min_block,
+            max_block=max_block,
+            config=config,
+            culler=culler,
+            model_db=model_db,
+            num_threads=num_threads,
+            callback=wrapped_cb,
+        )
+    except TypeError:
+        mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
+            world_dir=target_path,
+            dimension=dimension,
+            min_block=min_block,
+            max_block=max_block,
+            config=config,
+            culler=culler,
+            model_db=model_db,
+            num_threads=num_threads,
+        )
     t1 = time.perf_counter()
     elapsed_ms = (t1 - t0) * 1000.0
 
@@ -130,28 +149,24 @@ def load_and_mesh_minecraft_save(
     return mesh_data, meta_dict, storage, elapsed_ms
 
 
-def import_save_to_blender(
+def apply_imported_save_to_blender(
+    mesh_data: Any,
+    meta: Dict[str, Any],
+    storage: Any,
+    elapsed_ms: float,
     world_dir: str | Path,
     dimension: str = "overworld",
     min_block: Tuple[int, int, int] = (-64, -64, -64),
     max_block: Tuple[int, int, int] = (64, 320, 64),
     context: Optional[Any] = None,
     prefs=None,
-    model_db: Optional[Any] = None,
     atlas: Optional[Any] = None,
-    biome_resolver: Optional[Any] = None,
-    enable_ao: bool = True,
-    mesh_fluids: bool = True,
-    weld_vertices: bool = True,
     origin_centered: bool = True,
     reuse_existing: bool = False,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Full end-to-end Minecraft save importer for Blender:
-    1. Loads bounded selection via Rust mtk-save on-demand stream
-    2. Builds mesh geometry with textures & shaders
-    3. Injects metadata into object custom properties
-    4. Syncs companion unculled point cloud
+    Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
+    Fast (tens of milliseconds), zero-copy vertex/loop injection and material binding.
     """
     try:
         import bpy
@@ -161,26 +176,10 @@ def import_save_to_blender(
     if context is None:
         context = bpy.context
 
-    # 1. Load and mesh from Rust backend
-    mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
-        world_dir=world_dir,
-        dimension=dimension,
-        min_block=min_block,
-        max_block=max_block,
-        prefs=prefs,
-        model_db=model_db,
-        atlas=atlas,
-        biome_resolver=biome_resolver,
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        weld_vertices=weld_vertices,
-        origin_centered=origin_centered,
-    )
-
     clean_name = meta["level_name"].replace(" ", "_")
     obj_name = f"MC_{clean_name}_{dimension}"
 
-    # 2. Acquire or create Blender object
+    # 1. Acquire or create Blender object
     obj = None
     if reuse_existing and obj_name in bpy.data.objects:
         cand = bpy.data.objects[obj_name]
@@ -195,7 +194,7 @@ def import_save_to_blender(
     else:
         b_mesh = obj.data
 
-    # 3. Inject mesh geometry
+    # 2. Inject mesh geometry
     inject_mesh_data(
         b_mesh,
         mesh_data,
@@ -203,11 +202,11 @@ def import_save_to_blender(
         update_normals=True,
     )
 
-    # 4. Bind Atlas materials and shaders
+    # 3. Bind Atlas materials and shaders
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
-    # 5. Extract unculled VoxelPointCloud and ensure child companion object
+    # 4. Extract unculled VoxelPointCloud and ensure child companion object
     cloud_obj = ensure_voxel_child_cloud(
         parent_obj=obj,
         storage=storage,
@@ -216,7 +215,7 @@ def import_save_to_blender(
     )
     cloud_count = len(cloud_obj.data.vertices) if cloud_obj and cloud_obj.data else 0
 
-    # 6. Store metadata in Object Custom Properties
+    # 5. Store metadata in Object Custom Properties
     obj["mtk_world_name"] = str(meta["level_name"])
     obj["mtk_mc_version"] = str(meta["version_name"])
     obj["mtk_data_version"] = int(meta["data_version"])
@@ -226,7 +225,7 @@ def import_save_to_blender(
     obj["mtk_max_coord"] = list(max_block)
     obj["mtk_source_path"] = str(Path(world_dir).resolve())
 
-    # 7. Activate in viewport
+    # 6. Activate in viewport
     if context and hasattr(context, "view_layer"):
         obj.select_set(True)
         context.view_layer.objects.active = obj
@@ -243,3 +242,56 @@ def import_save_to_blender(
     }
 
     return obj, stats
+
+
+def import_save_to_blender(
+    world_dir: str | Path,
+    dimension: str = "overworld",
+    min_block: Tuple[int, int, int] = (-64, -64, -64),
+    max_block: Tuple[int, int, int] = (64, 320, 64),
+    context: Optional[Any] = None,
+    prefs=None,
+    model_db: Optional[Any] = None,
+    atlas: Optional[Any] = None,
+    biome_resolver: Optional[Any] = None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    reuse_existing: bool = False,
+    progress_callback: Optional[Any] = None,
+) -> Tuple[Any, Dict[str, Any]]:
+    """
+    Full synchronous end-to-end Minecraft save importer for Blender.
+    """
+    mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
+        world_dir=world_dir,
+        dimension=dimension,
+        min_block=min_block,
+        max_block=max_block,
+        prefs=prefs,
+        model_db=model_db,
+        atlas=atlas,
+        biome_resolver=biome_resolver,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+        progress_callback=progress_callback,
+    )
+
+    return apply_imported_save_to_blender(
+        mesh_data=mesh_data,
+        meta=meta,
+        storage=storage,
+        elapsed_ms=elapsed_ms,
+        world_dir=world_dir,
+        dimension=dimension,
+        min_block=min_block,
+        max_block=max_block,
+        context=context,
+        prefs=prefs,
+        atlas=atlas,
+        origin_centered=origin_centered,
+        reuse_existing=reuse_existing,
+    )

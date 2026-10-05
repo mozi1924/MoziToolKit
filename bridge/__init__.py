@@ -27,6 +27,11 @@ from .mesh import (
     extract_mesh_data,
     inject_mesh_data,
 )
+from .progress import (
+    ProgressCallback,
+    ProgressReport,
+    wrap_progress_callback,
+)
 from .sync import (
     SyncBridgeSession,
     get_sync_bridge_session,
@@ -36,18 +41,21 @@ from .sync import (
 )
 from .cull import cull_mesh_faces
 from .debug import (
+    build_debug_world_data,
     create_debug_world_object,
     generate_debug_world_mesh,
     is_debug_world_available,
     load_debug_world_storage,
 )
 from .world import (
+    apply_voxel_mesh_to_blender,
     ensure_world_materials,
     get_world_pipeline_assets,
     ingest_voxel_world,
     mesh_voxel_storage,
 )
 from .save import (
+    apply_imported_save_to_blender,
     import_save_to_blender,
     inspect_minecraft_save,
     load_and_mesh_minecraft_save,
@@ -164,11 +172,17 @@ __all__ = [
     "is_debug_world_available",
     "load_debug_world_storage",
     "generate_debug_world_mesh",
+    "build_debug_world_data",
     "create_debug_world_object",
+    "apply_voxel_mesh_to_blender",
     "ingest_voxel_world",
     "mesh_voxel_storage",
     "ensure_world_materials",
     "get_world_pipeline_assets",
+    "ProgressReport",
+    "ProgressCallback",
+    "wrap_progress_callback",
+    "apply_imported_save_to_blender",
     "import_save_to_blender",
     "inspect_minecraft_save",
     "load_and_mesh_minecraft_save",
