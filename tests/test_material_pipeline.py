@@ -216,7 +216,7 @@ class TestMaterialPipeline(unittest.TestCase):
             node_names = [n.name for n in mat.node_tree.nodes]
             self.assertIn("Atlas Albedo Texture", node_names)
             self.assertIn("Atlas Overlay Texture", node_names)
-            self.assertIn("Biome Tint", node_names)
+            self.assertIn("MC Biome Tint", node_names)
             self.assertIn("MC Biome Colormap Decoder", node_names)
             self.assertIn("Colormap Grass", node_names)
             self.assertIn("LabPBR Decoder", node_names)

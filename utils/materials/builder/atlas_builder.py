@@ -65,6 +65,7 @@ def add_packed_material_props_nodes(
     decoder_node: Any,
     location: tuple[float, float] = (150, -250),
     parent: Optional[Any] = None,
+    cfg: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Connect packed material properties attribute (Hardcoded Emission, Thin Wall, Transmission, Sticker Threshold) to decoder."""
     attr_props = nodes.new("ShaderNodeAttribute")
@@ -99,8 +100,24 @@ def add_packed_material_props_nodes(
         links.new(clamp_thin.outputs["Value"], decoder_node.inputs["Thin Wall"])
 
     # Blue: Transmission Weight
+    # Controlled by engine adaptation: In EEVEE or disabled transmission, scale is 0.0 to prevent black rendering artifacts
     if "Transmission Weight" in decoder_node.inputs:
-        links.new(split_props.outputs["Blue"], decoder_node.inputs["Transmission Weight"])
+        trans_scale = 1.0
+        if cfg:
+            if cfg.get("is_eevee", False) or cfg.get("transmission_mode") == "DISABLED":
+                trans_scale = 0.0
+            else:
+                trans_scale = 1.0
+
+        scale_trans = nodes.new("ShaderNodeMath")
+        scale_trans.name = "Material Transmission Scale"
+        scale_trans.operation = 'MULTIPLY'
+        scale_trans.inputs[1].default_value = trans_scale
+        scale_trans.location = (location[0] + 360, location[1] - 100)
+        if parent:
+            scale_trans.parent = parent
+        links.new(split_props.outputs["Blue"], scale_trans.inputs[0])
+        links.new(scale_trans.outputs["Value"], decoder_node.inputs["Transmission Weight"])
 
     # Alpha: Sticker Threshold (Safe fallback to 0.55 if 0.0 / uninitialized)
     if "Sticker Threshold" in decoder_node.inputs:
@@ -380,7 +397,7 @@ def build_atlas_chunk_material(
     tint_node = None
     if biome_tint_group and albedo_node:
         tint_node = nodes.new("ShaderNodeGroup")
-        tint_node.name = "Biome Tint"
+        tint_node.name = "MC Biome Tint"
         tint_node.node_tree = biome_tint_group
         tint_node.location = (200, 350)
         tint_node.parent = frame_biome
@@ -544,7 +561,7 @@ def build_atlas_chunk_material(
         if "Subsurface Scale" in decoder_node.inputs:
             decoder_node.inputs["Subsurface Scale"].default_value = 0.1
 
-        add_packed_material_props_nodes(nodes, links, decoder_node, location=(150, -250), parent=frame_shading)
+        add_packed_material_props_nodes(nodes, links, decoder_node, location=(150, -250), parent=frame_shading, cfg=cfg)
 
     # Ensure Albedo image texture node is active and selected for Solid Viewport mode
     if albedo_node:

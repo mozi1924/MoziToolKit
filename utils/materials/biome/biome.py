@@ -221,40 +221,63 @@ def apply_biome_tint_attributes(
     colormap_uvs: Optional[List[List[float]]] = None,
 ) -> None:
     """Write Rust-computed biome tint data, color vectors, and colormap UVs directly to Blender mesh face attributes."""
-    if not hasattr(mesh, "attributes"):
+    if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
 
-    # 1. ATTR_BIOME_TINT_DATA (FLOAT_COLOR)
+    num_polys = len(mesh.polygons)
+    target_len = len(packed_tint_data)
+    if target_len == 0 or num_polys != target_len:
+        return
+
+    # 1. ATTR_BIOME_TINT_DATA (FLOAT_COLOR, domain=FACE)
     attr_data = mesh.attributes.get(ATTR_BIOME_TINT_DATA)
+    if attr_data is not None and (getattr(attr_data, "domain", None) != "FACE" or len(attr_data.data) != target_len):
+        try:
+            mesh.attributes.remove(attr_data)
+        except Exception:
+            pass
+        attr_data = None
     if attr_data is None:
         try:
             attr_data = mesh.attributes.new(name=ATTR_BIOME_TINT_DATA, type="FLOAT_COLOR", domain="FACE")
         except Exception:
             attr_data = None
-    if attr_data and len(attr_data.data) * 4 == len(packed_tint_data) * 4:
+    if attr_data and len(attr_data.data) == target_len:
         flat_data = [c for val in packed_tint_data for c in val]
         attr_data.data.foreach_set("color", array.array("f", flat_data))
 
-    # 2. ATTR_BIOME_TINT_COLOR (FLOAT_COLOR)
+    # 2. ATTR_BIOME_TINT_COLOR (FLOAT_COLOR, domain=FACE)
     attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+    if attr_col is not None and (getattr(attr_col, "domain", None) != "FACE" or len(attr_col.data) != target_len):
+        try:
+            mesh.attributes.remove(attr_col)
+        except Exception:
+            pass
+        attr_col = None
     if attr_col is None:
         try:
             attr_col = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
         except Exception:
             attr_col = None
-    if attr_col and len(attr_col.data) * 4 == len(tint_colors) * 4:
+    if attr_col and len(attr_col.data) == target_len:
         flat_col = [c for val in tint_colors for c in val]
         attr_col.data.foreach_set("color", array.array("f", flat_col))
 
-    # 3. ATTR_COLORMAP_UV (FLOAT_VECTOR)
-    if colormap_uvs is not None:
+    # 3. ATTR_COLORMAP_UV (FLOAT_VECTOR, domain=FACE)
+    if colormap_uvs is not None and len(colormap_uvs) == target_len:
         attr_uv = mesh.attributes.get(ATTR_COLORMAP_UV)
+        if attr_uv is not None and (getattr(attr_uv, "domain", None) != "FACE" or len(attr_uv.data) != target_len):
+            try:
+                mesh.attributes.remove(attr_uv)
+            except Exception:
+                pass
+            attr_uv = None
         if attr_uv is None:
             try:
                 attr_uv = mesh.attributes.new(name=ATTR_COLORMAP_UV, type="FLOAT_VECTOR", domain="FACE")
             except Exception:
                 attr_uv = None
-        if attr_uv and len(attr_uv.data) * 3 == len(colormap_uvs) * 3:
+        if attr_uv and len(attr_uv.data) == target_len:
             flat_uv = [v for val in colormap_uvs for v in (val[0], val[1], val[2] if len(val) > 2 else 0.0)]
             attr_uv.data.foreach_set("vector", array.array("f", flat_uv))
 
