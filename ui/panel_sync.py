@@ -70,7 +70,19 @@ def _draw_sync_panel_content(layout: bpy.types.UILayout, context: bpy.types.Cont
         row_val.scale_y = 0.85
         row_val.label(text=props.validation_info, icon='INFO')
 
-    # 2. World Bounds & Unified Mesh Metrics
+    # 2. Live Synchronization Progress Card
+    if props.is_streaming:
+        box_prog = layout.box()
+        box_prog.label(text="Synchronization in Progress", icon='SORTTIME')
+        if props.stream_message:
+            box_prog.label(text=props.stream_message, icon='INFO')
+        if props.stream_progress_total > 0:
+            pct = min(100.0, max(0.0, props.stream_progress_current / props.stream_progress_total * 100.0))
+            row_p = box_prog.row(align=True)
+            row_p.scale_y = 0.85
+            row_p.label(text=f"Progress: {pct:.1f}% ({props.stream_progress_current}/{props.stream_progress_total})")
+
+    # 3. World Bounds & Unified Mesh Metrics
     if props.has_selection:
         box_geo = layout.box()
         box_geo.label(text="Unified World Mesh", icon='MESH_CUBE')
@@ -88,7 +100,7 @@ def _draw_sync_panel_content(layout: bpy.types.UILayout, context: bpy.types.Cont
         row_reb = box_geo.row(align=True)
         row_reb.operator("mozi.sync_rebuild_world", text="Rebuild Mesh", icon='FILE_REFRESH')
 
-    # 3. Delta Update Log
+    # 4. Delta Update Log
     if len(props.delta_history) > 0:
         box_delta = layout.box()
         row_h = box_delta.row(align=True)
@@ -105,7 +117,7 @@ def _draw_sync_panel_content(layout: bpy.types.UILayout, context: bpy.types.Cont
             rows=3,
         )
 
-    # 4. Block Palette
+    # 5. Block Palette
     if len(props.palette_list) > 0:
         box_pal = layout.box()
         box_pal.label(text=f"Palette ({len(props.palette_list)})", icon='COLOR')
@@ -118,18 +130,6 @@ def _draw_sync_panel_content(layout: bpy.types.UILayout, context: bpy.types.Cont
             "palette_active_index",
             rows=3,
         )
-
-
-class MOZI_PT_live_sync_view3d(bpy.types.Panel):
-    """Live Sync Panel in 3D Viewport sidebar."""
-    bl_label = "Live Sync"
-    bl_idname = "MOZI_PT_live_sync_view3d"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "Mozi"
-
-    def draw(self, context):
-        _draw_sync_panel_content(self.layout, context)
 
 
 class MOZI_PT_live_sync_properties(bpy.types.Panel):
@@ -147,7 +147,6 @@ class MOZI_PT_live_sync_properties(bpy.types.Panel):
 PANEL_CLASSES = (
     MOZI_UL_sync_palette_list,
     MOZI_UL_sync_delta_list,
-    MOZI_PT_live_sync_view3d,
     MOZI_PT_live_sync_properties,
 )
 
