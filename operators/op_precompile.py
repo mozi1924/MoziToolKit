@@ -3,13 +3,18 @@ Operators for Asset Precompilation, Cache Management, and Environment checks.
 """
 
 import time
+from typing import Optional
 import bpy
 try:
     from ..bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
     from ..utils.system import get_prefs
+    from ..utils.async_task import AsyncTask, ModalTaskRunner
+    from ..utils.progress import BlenderProgressReporter, blender_progress_scope
 except (ImportError, ValueError):
     from bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
     from utils.system import get_prefs
+    from utils.async_task import AsyncTask, ModalTaskRunner
+    from utils.progress import BlenderProgressReporter, blender_progress_scope
 
 
 class MOZI_OT_precompile_cache(bpy.types.Operator):
@@ -19,42 +24,30 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
     bl_label = "Precompile Stack Caches"
     bl_options = {"REGISTER"}
 
-    _timer = None
-    _future = None
-    _start_time = 0.0
+    run_async: bpy.props.BoolProperty(
+        name="Run Asynchronously",
+        description="Run calculation in non-blocking background thread with live status bar progress",
+        default=True,
+        options={"HIDDEN"},
+    )  # type: ignore
+
+    _runner: Optional[ModalTaskRunner] = None
 
     def invoke(self, context, event):
-        # In background or headless mode, execute synchronously
-        if getattr(bpy.app, "background", False):
-            return self.execute(context)
+        return self.execute(context)
 
+    def execute(self, context):
         prefs = get_prefs(context)
-        try:
-            self.report({'INFO'}, "Starting background asset precompilation via libmtk...")
-            self._start_time = time.time()
-            self._future = precompile_stack_async(prefs)
+        title = "Precompiling Assets"
 
-            wm = context.window_manager
-            self._timer = wm.event_timer_add(0.1, window=context.window)
-            wm.modal_handler_add(self)
-            return {'RUNNING_MODAL'}
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to start precompilation: {e}")
-            return {'CANCELLED'}
-
-    def modal(self, context, event):
-        if event.type != 'TIMER':
-            return {'PASS_THROUGH'}
-
-        if self._future is not None and self._future.done():
-            if self._timer:
-                context.window_manager.event_timer_remove(self._timer)
-                self._timer = None
-
+        # Synchronous fallback for CLI / tests when run_async is explicitly False
+        if not self.run_async:
             try:
-                res = self._future.result()
+                with blender_progress_scope(context, total=100, title=title) as reporter:
+                    res = precompile_stack(prefs, progress_callback=reporter.on_progress)
+
                 models_cnt = res.get("models", res.get("baked_models", 0))
-                duration = res.get("duration_seconds", time.time() - self._start_time)
+                duration = res.get("duration_seconds", 0.0)
                 summary_msg = (
                     f"Compiled {res.get('pack_count', 0)} packs: "
                     f"{res.get('atlas_chunks', 0)} atlas chunks, "
@@ -67,13 +60,13 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
                 self.report({'ERROR'}, f"Failed to precompile asset caches: {e}")
                 return {'CANCELLED'}
 
-        return {'PASS_THROUGH'}
+        # Asynchronous non-blocking modal execution (UI mode)
+        task = AsyncTask(
+            target=precompile_stack,
+            kwargs={"prefs": prefs},
+        )
 
-    def execute(self, context):
-        prefs = get_prefs(context)
-        try:
-            self.report({'INFO'}, "Precompiling assets via libmtk (Rust backend)...")
-            res = precompile_stack(prefs)
+        def on_success(res):
             models_cnt = res.get("models", res.get("baked_models", 0))
             duration = res.get("duration_seconds", 0.0)
             summary_msg = (
@@ -83,10 +76,22 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
                 f"{models_cnt} models in {duration:.2f}s"
             )
             self.report({'INFO'}, summary_msg)
-            return {'FINISHED'}
-        except Exception as e:
-            self.report({'ERROR'}, f"Failed to precompile asset caches: {e}")
-            return {'CANCELLED'}
+
+        reporter = BlenderProgressReporter(context=context, total=100, title=title)
+        self._runner = ModalTaskRunner(
+            operator=self,
+            context=context,
+            task=task,
+            reporter=reporter,
+            on_success=on_success,
+            title=title,
+        )
+        return self._runner.start()
+
+    def modal(self, context, event):
+        if self._runner is not None:
+            return self._runner.modal(event)
+        return {'FINISHED'}
 
 
 class MOZI_OT_clear_cache(bpy.types.Operator):
