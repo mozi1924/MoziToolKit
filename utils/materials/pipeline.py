@@ -182,21 +182,26 @@ def extract_face_material_context(
 
     for idx, poly in enumerate(mesh.polygons):
         mat_name = "default"
+        mat_slot = None
         if poly.material_index < len(mesh.materials):
             mat_slot = mesh.materials[poly.material_index]
             if mat_slot:
                 mat_name = mat_slot.name
 
-        if (
-            mat_name.startswith("MTK:Atlas:")
-            or mat_name.startswith("MTK_Atlas_Chunk_")
-            or mat_name.startswith("MTK:")
-            or mat_name.startswith("MTK_")
-            or mat_name == "default"
-        ) and existing_prov_keys:
+        mat_lower = mat_name.strip().lower()
+        is_mtk_mat = (
+            mat_lower.startswith(("mtk:", "mtk_", "mc_atlas", "default"))
+            or (mat_slot and bool(mat_slot.get("mtk:material_id") or mat_slot.get("mtk_source_texture_key") or mat_slot.get("mtk_material_mode")))
+        )
+
+        if is_mtk_mat and existing_prov_keys:
             candidate = existing_prov_keys[idx]
             if candidate and candidate != "mozi:fallback":
                 mat_name = candidate
+        elif is_mtk_mat and mat_slot:
+            mat_id = mat_slot.get("mtk_source_texture_key") or mat_slot.get("mtk:material_id") or mat_slot.get("mtk:source_texture")
+            if mat_id and mat_id != "mozi:fallback":
+                mat_name = mat_id
 
         face_materials.append(mat_name)
         face_loop_ranges.append((poly.loop_start, poly.loop_total))
@@ -301,6 +306,7 @@ def assign_atlas_chunk_materials(
             atlas_height=chunk_height,
             tile_width=16.0,
             tile_height=16.0,
+            uv_map_name=uv_layer.name if uv_layer else "UVMap",
         )
         mesh.materials.append(mat)
         chunk_to_slot[chunk_id] = slot_idx
@@ -369,6 +375,7 @@ def assign_standalone_materials(
             colormaps=colormaps,
             is_animated=is_anim,
             stack_fingerprint=manifest_fingerprint,
+            uv_map_name=uv_layer.name if uv_layer else "UVMap",
         )
         mesh.materials.append(mat)
         key_to_slot[key] = slot_idx
@@ -631,6 +638,10 @@ def restore_materials_from_provenance(
     # Step 1: Load cache context
     base_cache, atlas_dir, standalone_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
 
+    uv_layer = mesh.uv_layers.active if hasattr(mesh, "uv_layers") and mesh.uv_layers else None
+    if uv_layer is None and hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
+        uv_layer = mesh.uv_layers[0]
+
     # Step 2: Reconstruct material slots
     mode_upper = mode.strip().upper()
     if mode_upper == "ATLAS":
@@ -640,7 +651,7 @@ def restore_materials_from_provenance(
         atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
         poly_mat_indices = assign_atlas_chunk_materials(
             mesh=mesh,
-            uv_layer=None,
+            uv_layer=uv_layer,
             atlas_data=atlas_data,
             atlas_dir=atlas_dir,
             face_chunk_ids=face_chunk_ids,
@@ -651,7 +662,7 @@ def restore_materials_from_provenance(
     else:
         poly_mat_indices = assign_standalone_materials(
             mesh=mesh,
-            uv_layer=None,
+            uv_layer=uv_layer,
             standalone_mapping_path=standalone_dir / "standalone_mapping.json",
             standalone_dir=standalone_dir,
             face_source_keys=face_source_keys,
