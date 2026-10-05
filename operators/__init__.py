@@ -16,6 +16,7 @@ from .op_precompile import OPERATOR_CLASSES as PRECOMPILE_CLASSES
 from .op_texture import OPERATOR_CLASSES as TEXTURE_CLASSES
 from .op_uv import OPERATOR_CLASSES as UV_CLASSES
 from .op_voxel_cloud import OPERATOR_CLASSES as VOXEL_CLOUD_CLASSES
+from .save import OPERATOR_CLASSES as SAVE_CLASSES
 
 ALL_OPERATORS = (
     PRECOMPILE_CLASSES
@@ -27,6 +28,7 @@ ALL_OPERATORS = (
     + EXTRUDE_CLASSES
     + CULL_CLASSES
     + VOXEL_CLOUD_CLASSES
+    + SAVE_CLASSES
 )
 
 from . import extrude
