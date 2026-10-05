@@ -47,6 +47,11 @@ from .world import (
     ingest_voxel_world,
     mesh_voxel_storage,
 )
+from .save import (
+    import_save_to_blender,
+    inspect_minecraft_save,
+    load_and_mesh_minecraft_save,
+)
 from .extrude import (
     generate_random_extrude_heights,
     process_random_extrude,
@@ -162,6 +167,9 @@ __all__ = [
     "mesh_voxel_storage",
     "ensure_world_materials",
     "get_world_pipeline_assets",
+    "import_save_to_blender",
+    "inspect_minecraft_save",
+    "load_and_mesh_minecraft_save",
     "get_libmtk",
     "has_libmtk",
     "require_libmtk",
