@@ -72,6 +72,8 @@ def reload_dev_binary() -> bool:
     rust_candidates = [
         rust_release_dir / "liblibmtk_py.so",
         rust_release_dir / "libmtk_py.so",
+        rust_release_dir / "liblibmtk_py.dylib",
+        rust_release_dir / "libmtk_py.dylib",
         rust_release_dir / "libmtk_py.pyd",
     ]
     rust_bin = next((p for p in rust_candidates if p.exists()), None)
@@ -81,7 +83,7 @@ def reload_dev_binary() -> bool:
     import shutil
     import importlib.machinery
     mtime = int(rust_bin.stat().st_mtime)
-    ext = rust_bin.suffix
+    ext = ".pyd" if rust_bin.suffix == ".pyd" else ".so"
     dest = DEV_LIB_DIR / f"libmtk_py_hot_{mtime}{ext}"
     if not dest.exists():
         shutil.copy2(rust_bin, dest)
