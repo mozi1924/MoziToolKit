@@ -102,6 +102,7 @@ def build_atlas_chunk_material(
     tile_width: float = 16.0,
     tile_height: float = 16.0,
     force_rebuild: bool = False,
+    uv_map_name: Optional[str] = None,
 ) -> Optional[Any]:
     """
     Builds or updates an Atlas Chunk Minecraft material in Blender with structured Frames.
@@ -168,7 +169,7 @@ def build_atlas_chunk_material(
     uv_node = nodes.new("ShaderNodeUVMap")
     uv_node.name = "UV Map"
     uv_node.location = (-2200, 150)
-    uv_node.uv_map = "UVMap"
+    uv_node.uv_map = uv_map_name or "UVMap"
     uv_node.parent = frame_uv
 
     target_uv_output = uv_node.outputs["UV"]

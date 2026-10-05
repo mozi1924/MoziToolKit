@@ -33,6 +33,7 @@ from bridge.mesh import (
 from utils.materials.matching.presets.registry import (
     build_matching_context,
     build_material_alias_map,
+    clean_mtk_material_name,
     detect_material_origin,
     generate_candidates_for_name,
 )
@@ -63,6 +64,18 @@ class TestMaterialPresets(unittest.TestCase):
         self.assertEqual(detect_material_origin("mineways_stone"), "mineways")
         self.assertEqual(detect_material_origin("minecraft_block_stone"), "jmc2obj")
         self.assertEqual(detect_material_origin("ice_cube_dirt"), "ice_cube")
+        self.assertEqual(detect_material_origin("mtk:minecraft:grass_block_top:8d09ec43b668"), "mtk")
+
+        # Test clean_mtk_material_name
+        self.assertEqual(clean_mtk_material_name("mtk:minecraft:bell_side:8d09ec43b668"), "minecraft:bell_side")
+        self.assertEqual(clean_mtk_material_name("MTK:minecraft:grass_block_top:8d09ec43b668"), "minecraft:grass_block_top")
+
+        # Test generate_candidates_for_name for MTK materials
+        candidates = generate_candidates_for_name("mtk:minecraft:bell_side:8d09ec43b668")
+        self.assertIn("minecraft:bell_side", candidates)
+        self.assertIn("bell_side", candidates)
+        self.assertIn("block/bell_side", candidates)
+        self.assertIn("minecraft:block/bell_side", candidates)
 
         alias_map, grid_spec = build_matching_context(["mineways_stone"], origin="mineways")
         self.assertIn("mineways_stone", alias_map)

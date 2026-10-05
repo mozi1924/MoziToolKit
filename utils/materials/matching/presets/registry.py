@@ -11,6 +11,26 @@ from .jmc2obj import expand_jmc2obj_candidates
 from .mineways import expand_mineways_candidates
 
 
+def clean_mtk_material_name(raw_name: str) -> str:
+    """Clean MTK synthesized prefixes (MTK:, mtk:, MTK_, mtk_), namespace tags, and hash digests."""
+    s = raw_name.strip()
+    lower = s.lower()
+    for p in ("mtk:atlas:", "mtk_atlas_", "mtk:", "mtk_"):
+        if lower.startswith(p):
+            s = s[len(p):]
+            break
+
+    # Strip hash suffix if present (e.g. :8d09ec43b668 or _8d09ec43b668)
+    if ":" in s:
+        parts = s.split(":")
+        # Format namespace:texture:hash (3 parts) e.g. minecraft:bell_side:8d09ec43b668
+        if len(parts) >= 3 and len(parts[-1]) >= 8:
+            s = f"{parts[0]}:{parts[1]}"
+        elif len(parts) == 2 and len(parts[1]) >= 8 and all(c in "0123456789abcdefABCDEF" for c in parts[1]):
+            s = parts[0]
+    return s
+
+
 def detect_material_origin(material_name: str) -> str:
     """Heuristic auto-detection of importer format from a material name."""
     lower = material_name.strip().lower()
@@ -20,6 +40,8 @@ def detect_material_origin(material_name: str) -> str:
         return "jmc2obj"
     elif lower.startswith(("ice_cube", "icecube", "m_")):
         return "ice_cube"
+    elif lower.startswith(("mtk:", "mtk_")):
+        return "mtk"
     return "generic"
 
 
@@ -30,6 +52,22 @@ def generate_candidates_for_name(raw_name: str, origin: str = "auto") -> List[st
 
     orig = origin if origin != "auto" else detect_material_origin(raw_name)
     candidates: List[str] = []
+
+    # If the material name has MTK prefix, clean it and extract core texture path
+    name_lower = raw_name.strip().lower()
+    if name_lower.startswith(("mtk:", "mtk_")) or orig == "mtk":
+        cleaned = clean_mtk_material_name(raw_name)
+        if cleaned:
+            candidates.append(cleaned)
+            # Remove namespace if present
+            unnamespaced = cleaned.split(":", 1)[-1] if ":" in cleaned else cleaned
+            candidates.append(unnamespaced)
+            candidates.append(f"block/{unnamespaced}")
+            candidates.append(f"entity/{unnamespaced}")
+            candidates.append(f"item/{unnamespaced}")
+            candidates.append(f"minecraft:block/{unnamespaced}")
+            candidates.append(f"minecraft:entity/{unnamespaced}")
+            candidates.append(f"minecraft:item/{unnamespaced}")
 
     if orig == "jmc2obj":
         candidates.extend(expand_jmc2obj_candidates(raw_name))

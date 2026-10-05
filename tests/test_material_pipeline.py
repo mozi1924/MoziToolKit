@@ -357,6 +357,99 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIsNotNone(biome_node)
                 self.assertEqual(tuple(biome_node.inputs["Tint Color"].default_value), (1.0, 0.0, 0.0, 1.0))
 
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_secondary_replacement_with_hashed_mtk_materials(self):
+        # Create a test cube in Blender with hashed MTK material (mimicking previously processed map)
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        obj = bpy.context.active_object
+        self.assertIsNotNone(obj)
+        mesh = obj.data
+
+        hashed_mat = bpy.data.materials.new(name="mtk:minecraft:grass_block_top:8d09ec43b668")
+        mesh.materials.append(hashed_mat)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            atlas_dir = cache_dir / "atlas"
+            standalone_dir = cache_dir / "standalone"
+            colormaps_dir = cache_dir / "colormaps"
+            atlas_dir.mkdir(parents=True, exist_ok=True)
+            standalone_dir.mkdir(parents=True, exist_ok=True)
+            colormaps_dir.mkdir(parents=True, exist_ok=True)
+
+            _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
+            _write_dummy_png(colormaps_dir / "grass.png")
+            (standalone_dir / "assets" / "minecraft" / "textures" / "block").mkdir(parents=True, exist_ok=True)
+            _write_dummy_png(standalone_dir / "assets" / "minecraft" / "textures" / "block" / "grass_block_top.png")
+
+            manifest = {"fingerprint": "xyz987stackfp", "packs": []}
+            (cache_dir / "cache_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+            atlas_mapping = {
+                "chunks": [
+                    {
+                        "chunk_id": 0,
+                        "category": "blocks",
+                        "is_animated": False,
+                        "category_chunk_index": 1,
+                        "width": 1024,
+                        "height": 1024,
+                        "has_normal": False,
+                        "has_specular": False,
+                    }
+                ],
+                "sprites": {
+                    "minecraft:block/grass_block_top": {
+                        "chunk_id": 0,
+                        "category": "blocks",
+                        "is_animated": False,
+                        "texture_id": 1,
+                        "uv_bounds": [0.0, 0.0, 1.0, 1.0],
+                        "frame_0_uv_bounds": [0.0, 0.0, 1.0, 1.0],
+                        "local_uv_bounds": [0.0, 0.0, 1.0, 1.0],
+                        "pixel_rect": [0, 0, 16, 16],
+                        "frame_size": [16, 16],
+                        "frame_count": 1,
+                        "has_normal": False,
+                        "has_specular": False,
+                    }
+                }
+            }
+            (atlas_dir / "atlas_mapping.json").write_text(json.dumps(atlas_mapping), encoding="utf-8")
+
+            sa_mapping = {
+                "format_version": 3,
+                "textures": {
+                    "minecraft:block/grass_block_top": {
+                        "files": {"albedo": "assets/minecraft/textures/block/grass_block_top.png"},
+                        "is_animated": False
+                    }
+                }
+            }
+            (standalone_dir / "standalone_mapping.json").write_text(json.dumps(sa_mapping), encoding="utf-8")
+
+            with patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+                # 1. Replace Materials in ATLAS mode from hashed MTK material name
+                res_atlas = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
+                self.assertTrue(res_atlas["success"])
+                self.assertEqual(res_atlas["unmapped_faces"], 0)
+                self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
+
+                # 2. Update to Custom Biome with custom green tint
+                obj.mtk_biome_use_custom_grass = True
+                obj.mtk_biome_grass_color = (0.0, 1.0, 0.0, 1.0)
+                up_res = update_object_biome(obj, "CUSTOM")
+                self.assertTrue(up_res)
+
+                # Check attribute on face
+                tint_cols = [list(d.color) for d in mesh.attributes[ATTR_BIOME_TINT_COLOR].data]
+                self.assertEqual(tint_cols[0], [0.0, 1.0, 0.0, 1.0])
+
+                # 3. Secondary replacement into STANDALONE mode
+                res_sa = replace_materials(obj, mode="STANDALONE", origin="AUTO", biome="CUSTOM")
+                self.assertTrue(res_sa["success"])
+                self.assertEqual(res_sa["unmapped_faces"], 0)
+
 
 if __name__ == "__main__":
     if "--" in sys.argv:

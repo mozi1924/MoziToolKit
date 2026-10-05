@@ -138,6 +138,7 @@ def build_standalone_material(
     stack_fingerprint: Optional[str] = None,
     use_attribute_node: bool = True,
     use_labpbr: bool = True,
+    uv_map_name: Optional[str] = None,
 ) -> Optional[Any]:
     """
     Builds or updates a standalone Minecraft material in Blender with structured Frames.
@@ -190,7 +191,7 @@ def build_standalone_material(
     uv_node = nodes.new("ShaderNodeUVMap")
     uv_node.name = "UV Map"
     uv_node.location = (-1500, 150)
-    uv_node.uv_map = "UVMap"
+    uv_node.uv_map = uv_map_name or "UVMap"
     uv_node.parent = frame_uv
 
     # -------------------------------------------------------------------------
