@@ -273,3 +273,57 @@ class TestVoxelPointCloudBridge:
                 bpy.data.objects.remove(bpy.data.objects[cloud_name], do_unlink=True)
             if obj.name in bpy.data.objects:
                 bpy.data.objects.remove(obj, do_unlink=True)
+
+    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
+    def test_fast_palette_point_cloud_large_batch_roundtrip(self):
+        """Verifies fast palette-based bulk injection and reconstruction for large point clouds."""
+        from MoziToolKit.bridge.point_cloud import (
+            inject_voxel_point_cloud,
+            extract_voxel_point_cloud,
+            ATTR_BLOCK_STATE_IDX,
+            PROP_BLOCK_PALETTE,
+        )
+
+        storage = libmtk_py.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        # Create 1000 blocks with alternating states
+        expected_states = []
+        for i in range(10):
+            for j in range(10):
+                for k in range(10):
+                    st = "minecraft:stone" if (i + j + k) % 2 == 0 else "minecraft:redstone_block"
+                    bm = "minecraft:plains" if i < 5 else "minecraft:desert"
+                    storage.set_block(i, j, k, st, bm)
+                    expected_states.append(st)
+
+        cloud = storage.to_point_cloud()
+        assert len(cloud) == 1000
+
+        b_mesh = bpy.data.meshes.new("Test_LargeVoxelCloud_Mesh")
+        b_obj = bpy.data.objects.new("Test_LargeVoxelCloud_Obj", b_mesh)
+        bpy.context.scene.collection.objects.link(b_obj)
+
+        try:
+            # 1. Fast batch injection
+            ok = inject_voxel_point_cloud(b_obj, cloud, update_mask=False, fast_mode=True)
+            assert ok is True
+            assert len(b_mesh.vertices) == 1000
+
+            # 2. Verify palette attributes were created
+            assert ATTR_BLOCK_STATE_IDX in b_mesh.attributes
+            assert PROP_BLOCK_PALETTE in b_mesh
+            palette = list(b_mesh[PROP_BLOCK_PALETTE])
+            assert "minecraft:stone" in palette
+            assert "minecraft:redstone_block" in palette
+
+            # 3. Fast roundtrip extraction
+            extracted = extract_voxel_point_cloud(b_obj)
+            assert extracted is not None
+            assert len(extracted) == 1000
+            extracted_states = extracted.get_block_states()
+            assert len(extracted_states) == 1000
+            # All extracted states must match the palette states
+            assert set(extracted_states) == {"minecraft:stone", "minecraft:redstone_block"}
+        finally:
+            bpy.data.objects.remove(b_obj, do_unlink=True)
+            bpy.data.meshes.remove(b_mesh, do_unlink=True)

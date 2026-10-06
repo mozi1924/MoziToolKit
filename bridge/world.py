@@ -192,10 +192,12 @@ def ensure_world_materials(
                     compact_materials.append(mat)
                     chunk_to_compact_slot[chunk_id] = slot_idx
 
-                # CRITICAL: Reconstruct mesh.materials FIRST so valid slot range exists
-                mesh.materials.clear()
-                for mat in compact_materials:
-                    mesh.materials.append(mat)
+                # Reconstruct mesh.materials only if slots actually changed
+                curr_mats = list(mesh.materials)
+                if curr_mats != compact_materials:
+                    mesh.materials.clear()
+                    for mat in compact_materials:
+                        mesh.materials.append(mat)
 
                 # CRITICAL: Remap polygon material_index AFTER materials are populated
                 # Retrieve authoritative face chunk IDs from mtk_atlas_chunk_id attribute if available

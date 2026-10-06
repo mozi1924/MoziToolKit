@@ -31,6 +31,7 @@ logger = logging.getLogger("MoziToolKit.Sync.Connect")
 _timer_registered = False
 _progress_reporter = None
 _delayed_close_callback = None
+_pending_cloud_sync_time = None
 
 
 def is_sync_timer_running() -> bool:
@@ -49,7 +50,7 @@ def start_sync_timer() -> None:
 
 def stop_sync_timer() -> None:
     """Safely unregisters and cancels the main-thread sync polling timer and pending progress reporters."""
-    global _timer_registered, _delayed_close_callback
+    global _timer_registered, _delayed_close_callback, _pending_cloud_sync_time
     if bpy is not None and hasattr(bpy.app, "timers"):
         if bpy.app.timers.is_registered(_sync_timer_tick):
             try:
@@ -62,6 +63,7 @@ def stop_sync_timer() -> None:
             except Exception:
                 pass
             _delayed_close_callback = None
+    _pending_cloud_sync_time = None
     _timer_registered = False
     _close_progress_reporter()
 
@@ -117,6 +119,7 @@ def _sync_timer_tick() -> Optional[float]:
     Main-thread non-blocking timer polling events from native libmtk engine
     and updating the Blender viewport world mesh.
     """
+    global _pending_cloud_sync_time
     session = get_sync_bridge_session()
     if not session.is_active:
         stop_sync_timer()
@@ -175,7 +178,8 @@ def _sync_timer_tick() -> Optional[float]:
                     props.validation_info = f"Sync Handshake: {non_empty} active chunks ({tot} covered, {vol:,} blocks)"
 
         elif ev_type == "DELTA_APPLIED":
-            needs_voxel_sync = True
+            # Schedule debounced point cloud sync (350ms idle) to prevent blocking main thread
+            _pending_cloud_sync_time = time.time() + 0.35
             if props:
                 cnt = ev.get("change_count", 0)
                 props.last_update_info = f"Delta Applied: {cnt} block modification(s)"
@@ -212,6 +216,7 @@ def _sync_timer_tick() -> Optional[float]:
 
         elif ev_type == "STREAM_FINISHED":
             needs_voxel_sync = True
+            _pending_cloud_sync_time = None  # Immediate sync on complete stream
             if props:
                 built = ev.get("built_sections", 0)
                 props.last_update_info = f"Stream Complete ({built} active chunks)"
@@ -240,11 +245,13 @@ def _sync_timer_tick() -> Optional[float]:
         try:
             world_obj = get_or_create_world_mesh_object(bpy.context)
             storage = session.get_storage()
+            # Only synchronously rebuild point cloud on stream finished milestone
             v_count, f_count = update_world_mesh(
                 world_obj,
                 latest_world_mesh,
                 skip_string_attributes=True,
                 storage=storage,
+                sync_point_cloud=needs_voxel_sync,
             )
             if props:
                 props.point_count = v_count
@@ -269,6 +276,22 @@ def _sync_timer_tick() -> Optional[float]:
                 ensure_voxel_child_cloud(world_obj, storage=storage, origin_centered=True, initial_hidden=True)
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
+
+    # Check debounced point cloud sync
+    if _pending_cloud_sync_time is not None and time.time() >= _pending_cloud_sync_time:
+        _pending_cloud_sync_time = None
+        try:
+            storage = session.get_storage()
+            if storage is not None:
+                world_obj = get_or_create_world_mesh_object(bpy.context)
+                try:
+                    from ...bridge.point_cloud import ensure_voxel_child_cloud
+                except (ImportError, ValueError):
+                    from bridge.point_cloud import ensure_voxel_child_cloud
+                ensure_voxel_child_cloud(world_obj, storage=storage, origin_centered=True, initial_hidden=True)
+                logger.debug("Debounced voxel child cloud updated successfully")
+        except Exception as e:
+            logger.debug(f"Failed debounced voxel cloud sync: {e}")
 
     # If session is disconnected or ended, unregister timer cleanly
     if not session.is_active or (props and not props.is_connected and props.connection_status.startswith("DISCONNECTED")):
