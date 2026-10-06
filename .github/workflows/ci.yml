@@ -47,6 +47,14 @@ jobs:
       - name: Download real Minecraft assets
         run: bash .github/scripts/fetch_test_assets.sh
 
+      - name: Precompile asset cache
+        run: |
+          set -euo pipefail
+          cache_dir="$RUNNER_TEMP/mtk-cache"
+          echo "MOZI_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
+          echo "MTK_TEST_CACHE=$cache_dir" >> "$GITHUB_ENV"
+          MOZI_CACHE_DIR="$cache_dir" python .github/scripts/precompile_cache.py
+
       - name: Run test suite (mocked bpy)
         run: python -m pytest tests/ -q -rs
 
@@ -94,6 +102,14 @@ jobs:
 
       - name: Download real Minecraft assets
         run: bash .github/scripts/fetch_test_assets.sh
+
+      - name: Precompile asset cache
+        run: |
+          set -euo pipefail
+          cache_dir="$RUNNER_TEMP/mtk-cache"
+          echo "MOZI_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
+          echo "MTK_TEST_CACHE=$cache_dir" >> "$GITHUB_ENV"
+          MOZI_CACHE_DIR="$cache_dir" python .github/scripts/precompile_cache.py
 
       - name: Run Blender host suite
         run: |

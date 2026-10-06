@@ -81,11 +81,14 @@ from tools.mock_sync_server import MockLiveSyncServer
 class TestDirectionalAndStateBlocksSync(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.models_bin_path = Path(
-            os.path.expanduser(
-                "~/Library/Application Support/Blender/5.2/datafiles/MoziToolKit/cache/models/models.bin"
+        from _assets import blender_datafiles_cache
+
+        cache_root = blender_datafiles_cache()
+        if cache_root is None:
+            raise unittest.SkipTest(
+                "Blender asset cache not found (set MOZI_CACHE_DIR / MTK_TEST_CACHE)"
             )
-        )
+        cls.models_bin_path = cache_root / "models" / "models.bin"
         if not cls.models_bin_path.exists():
             raise unittest.SkipTest(f"models.bin cache not found at {cls.models_bin_path}")
 

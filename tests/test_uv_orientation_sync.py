@@ -75,16 +75,12 @@ import libmtk_py
 
 class TestUvOrientationSync(unittest.TestCase):
     def setUp(self):
-        self.atlas_path = Path(
-            os.path.expanduser(
-                "~/Library/Application Support/Blender/5.2/datafiles/MoziToolKit/cache/atlas/atlas_mapping.json"
-            )
-        )
-        self.models_bin_path = Path(
-            os.path.expanduser(
-                "~/Library/Application Support/Blender/5.2/datafiles/MoziToolKit/cache/models/models.bin"
-            )
-        )
+        from _assets import blender_datafiles_cache
+
+        cache_root = blender_datafiles_cache()
+        cache_root = cache_root if cache_root is not None else Path("/nonexistent-cache")
+        self.atlas_path = cache_root / "atlas" / "atlas_mapping.json"
+        self.models_bin_path = cache_root / "models" / "models.bin"
 
         self.atlas = None
         if self.atlas_path.exists():

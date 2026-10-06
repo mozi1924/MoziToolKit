@@ -88,10 +88,25 @@ def save_world() -> Optional[Path]:
 
 
 def blender_datafiles_cache() -> Optional[Path]:
-    """Blender `DATAFILES/MoziToolKit/cache` directory, if resolvable on this machine."""
-    value = os.environ.get("MTK_TEST_CACHE")
-    if value and Path(value).exists():
-        return Path(value)
+    """Resolves the Blender asset cache root cross-platform (contains `models/`, `atlas/`, ...).
+
+    Priority:
+      1. `MTK_TEST_CACHE` / `MOZI_CACHE_DIR` sandbox overrides (used by CI / local tests).
+      2. Production `bridge.assets.get_cache_dir()` (honours `MOZI_CACHE_DIR`, user prefs,
+         `bpy.utils.user_resource("DATAFILES")`, then a `~/.config/blender/...` fallback).
+      3. Repository-adjacent `cache/` directories.
+    """
+    value = os.environ.get("MTK_TEST_CACHE") or os.environ.get("MOZI_CACHE_DIR")
+    if value:
+        path = Path(value)
+        return path if path.exists() else None
+
+    try:
+        from bridge.assets import get_cache_dir
+
+        return get_cache_dir()
+    except Exception:
+        pass
 
     candidates = [
         _WORKSPACE_PARENT / "cache",
