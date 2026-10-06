@@ -63,6 +63,17 @@
 - **优先使用 ripgrep (`rg`)**：在工作区检索代码、资产引用或符号时，**首选且尽量使用 `rg` (ripgrep)** 命令。`rg` 具备极致的检索性能且原生遵循 `.gitignore` 规则。
 - **使用 `grep` 时必须忽略 `target` 目录**：若在特定场景下使用 `grep`，**必须显式添加 `--exclude-dir=target`**（以及 `--exclude-dir=.git`、`--exclude-dir=__pycache__`、`--exclude-dir=.venv` 等冗余目录），严禁递归扫描底层 Rust 构建产物 `target/` 目录与 Python 缓存，杜绝海量输出干扰与性能损耗。
 
+### 规则 9：测试门禁与测试资产规范 (Test Gate & Asset Policy)
+- **两个测试模式缺一不可**：
+  - **Mock 快速模式（无 Blender，CI 首选）**：`python -m pytest tests/ -q`（`conftest.py` 自动 mock `bpy`，仅验证 Bridge 与纯数据逻辑）；
+  - **Blender 宿主模式（真实 bpy / 节点树 / 算子）**：`blender --background --python tests/run_tests.py -- -q`。`tests/run_tests.py` 是唯一测试入口，禁止再另起 `pytest.main` 脚本。
+- **测试资产统一走 `tests/_assets.py`**：所有需要真实 Minecraft 资产的测试必须通过 `assets_root()` / `fabric_jar()` / `resource_pack_zip()` / `save_world()` / `blender_datafiles_cache()` 定位；严禁硬编码 `/home/<user>`、`/Users/<user>` 等个人绝对路径。
+  - 环境变量：`MTK_TEST_ASSETS` / `MC_DIR` / `MC_ASSETS_DIR` / `MTK_TEST_JAR` / `MTK_TEST_RESOURCE_PACK` / `MTK_TEST_SAVE` / `MTK_TEST_CACHE`。
+  - 大型真包（客户端 JAR、资源包、Blender 本体）**绝不入库**，由 `.github/workflows/ci.yml` 从临时镜像 `mozi1924/mtk-ci-assets` 下载（过渡方案，迁移后删除）。
+- **缺失即优雅跳过**：资产或 Blender 不可用时，相关测试必须 `skip`（`pytest.skip` / `unittest.SkipTest`），严禁在 `setUpClass` 中直接 `FileNotFoundError` 崩溃。
+- **严禁在 `.venv` 中保留陈旧 `libmtk_py`**：开发态必须依赖 `dev/lib/libmtk_py.so` 直连编译产物；若确需安装 wheel 调试，必须先卸载旧版本，否则陈旧 API 会掩盖真实集成问题（曾导致大量假 `AttributeError`）。
+- **提交前必须通过**：Mock 模式全绿；涉及 bpy 的变更还需 `blender --background --python tests/run_tests.py` 全绿。
+
 ---
 
 ## 3. 插件目录架构
@@ -97,15 +108,20 @@ MoziToolKit/
 ## 4. 开发与测试流程
 
 ### 1. 运行测试
-- **纯 Python / Mock 单元测试 (快速验证 Bridge 与数据逻辑)**：
+- **纯 Python / Mock 快速测试（无 Blender，CI 首选）**：
   ```bash
-  /home/mozi/libmozitoolkit/.venv/bin/pytest tests/
+  python -m pytest tests/ -q
   ```
-- **完整 Blender 宿主环境测试 (验证原生 bpy 对象与着色器节点树)**：
+- **完整 Blender 宿主环境测试（真实 bpy / 节点树 / 算子）**：
   ```bash
-  blender --background --python-expr "import sys; sys.path.insert(0, '/home/mozi/libmozitoolkit/.venv/lib/python3.14/site-packages'); import pytest; pytest.main(['tests'])"
+  # 将当前虚拟环境的 site-packages 注入 Blender 内置 Python（pytest + libmtk_py abi3 轮子）
+  MTK_TEST_SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')" \
+    blender --background --python tests/run_tests.py -- -q
   ```
+- **真实资产注入（可选）**：设置 `MTK_TEST_ASSETS=/path/to/unpacked/mc`、`MTK_TEST_JAR=/path/to/26.2-Fabric.jar` 可启用真包验证；缺失时相关测试自动跳过。
 
 ### 2. 多工作区联动验证
-涉及 Rust 核心调整时，首先在 `../libmozitoolkit` 完成 `cargo test` 与 `maturin build`，更新 `wheels/` 后再在 `MoziToolKit` 运行上述双端测试验证。
+- 涉及 Rust 核心调整时，首先在 `../libmozitoolkit` 完成 `cargo test` 与 `maturin build`；
+- **严禁在 `.venv` 中保留陈旧 `libmtk_py`**：开发态优先通过 `dev/lib/libmtk_py.so` 直连 `target/release` 产物；若需安装 wheel，先 `pip uninstall libmtk_py` 再装新版本；
+- 然后在 `MoziToolKit` 运行上述 Mock 与 Blender 双端测试验证。CI 默认从 `libmozitoolkit` 的滚动 `ci-latest` Release 下载 abi3 轮子，并可从临时镜像获取 Blender 与真包加速。
 

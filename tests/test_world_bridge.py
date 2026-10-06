@@ -24,6 +24,9 @@ except ImportError:
 class TestWorldBridgePipeline:
     def test_load_debug_world_storage(self):
         from MoziToolKit.bridge.debug import load_debug_world_storage, is_debug_world_available
+        from _assets import require_assets
+
+        require_assets()  # canonical debug world requires full vanilla assets
         assert is_debug_world_available()
         storage = load_debug_world_storage()
         assert storage is not None

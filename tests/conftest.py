@@ -5,23 +5,17 @@ from unittest.mock import MagicMock
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
+TESTS_DIR = Path(__file__).parent.resolve()
+PARENT_DIR = PROJECT_DIR.parent
 site_pkgs = PROJECT_DIR / "site-packages"
+dev_lib = PROJECT_DIR / "dev" / "lib"
 
-if str(PROJECT_DIR) not in sys.path:
-    sys.path.insert(0, str(PROJECT_DIR))
-if site_pkgs.exists() and str(site_pkgs) not in sys.path:
-    sys.path.insert(0, str(site_pkgs))
-
-# Early dev environment mounting for tests
-try:
-    from MoziToolKit.bridge.engine import get_libmtk
-    get_libmtk()
-except Exception:
-    try:
-        from bridge.engine import get_libmtk
-        get_libmtk()
-    except Exception:
-        pass
+# Make both `import MoziToolKit...` and top-level `import bridge...` work, and mount the
+# dev direct-link native library before test modules are collected (several modules do
+# `import libmtk_py` at import time).
+for _path in (PROJECT_DIR, TESTS_DIR, PARENT_DIR, site_pkgs, dev_lib):
+    if _path.exists() and str(_path) not in sys.path:
+        sys.path.insert(0, str(_path))
 
 if "mathutils" not in sys.modules:
     sys.modules["mathutils"] = MagicMock()
@@ -71,3 +65,24 @@ if not HAS_BPY:
     sys.modules["bpy.types"] = _MockTypes
     sys.modules["bpy.app"] = bpy.app
     sys.modules["bmesh"] = MagicMock()
+
+# Best-effort native engine mount (dev direct-link). Runs after bpy is mocked so that
+# importing the `MoziToolKit` package does not pull real Blender APIs.
+try:
+    from MoziToolKit.dev import loader as _dev_loader
+
+    _dev_loader.setup_dev_environment()
+except Exception:
+    pass
+
+try:
+    from MoziToolKit.bridge.engine import get_libmtk
+
+    get_libmtk()
+except Exception:
+    try:
+        from bridge.engine import get_libmtk
+
+        get_libmtk()
+    except Exception:
+        pass

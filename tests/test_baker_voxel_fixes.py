@@ -2,12 +2,19 @@ import unittest
 import libmtk_py
 from pathlib import Path
 
+from _assets import assets_root
+
 
 class TestBakerVoxelFixes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        root = assets_root()
+        if root is None:
+            raise unittest.SkipTest(
+                "Minecraft assets unavailable (set MTK_TEST_ASSETS / MC_DIR)"
+            )
         cls.stack = libmtk_py.ResourcePackStack()
-        cls.stack.add_directory_pack("/home/mozi/mc")
+        cls.stack.add_directory_pack(str(root))
         cls.baker = libmtk_py.ModelBaker()
 
     def test_spawner_faces(self):

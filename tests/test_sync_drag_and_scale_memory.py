@@ -93,8 +93,14 @@ def _get_rss_mb() -> float:
                     return float(line.split()[1]) / 1024.0
     except Exception:
         pass
+    import platform
     import resource
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+
+    max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # macOS reports `ru_maxrss` in bytes; Linux reports it in kibibytes.
+    if platform.system() == "Darwin":
+        return max_rss / (1024.0 * 1024.0)
+    return max_rss / 1024.0
 
 
 class _TestControllableSyncServer:

@@ -67,12 +67,16 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # Load vanilla resource pack stack
-        cls.vanilla_jar = Path(os.path.expanduser("~/26.2-Fabric.jar"))
-        if not cls.vanilla_jar.exists():
-            cls.vanilla_jar = Path("/home/mozi/mc")
-        if not cls.vanilla_jar.exists():
-            raise unittest.SkipTest("No vanilla jar or assets directory found")
+        # Load vanilla resource pack stack (jar preferred, unpacked assets fallback).
+        from _assets import assets_root, fabric_jar
+
+        cls.vanilla_jar = fabric_jar()
+        if cls.vanilla_jar is None:
+            cls.vanilla_jar = assets_root()
+        if cls.vanilla_jar is None:
+            raise unittest.SkipTest(
+                "No vanilla jar or assets directory found (set MTK_TEST_JAR / MTK_TEST_ASSETS)"
+            )
 
         cls.stack = libmtk_py.ResourcePackStack()
         if cls.vanilla_jar.is_file():

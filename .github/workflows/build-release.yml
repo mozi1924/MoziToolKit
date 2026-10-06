@@ -18,6 +18,11 @@ on:
         required: false
         default: ''
 
+env:
+  # Temporary CI mirror (see .github/workflows/ci.yml). Falls back to blender.org.
+  MTK_CI_ASSETS_BASE: https://github.com/mozi1924/mtk-ci-assets/releases/download/ci-assets-v1
+  BLENDER_VERSION: "5.2.1"
+
 permissions:
   contents: write
 
@@ -53,13 +58,18 @@ jobs:
             libsm6 \
             libxext6
 
-      - name: Download & Install Blender 5.2.1
+      - name: Download & Install Blender
         run: |
-          echo "⬇️ Downloading Blender 5.2.1..."
-          curl -fL -o blender.tar.xz https://download.blender.org/release/Blender5.2/blender-5.2.1-linux-x64.tar.xz
+          set -euo pipefail
+          tar_name="blender-${{ env.BLENDER_VERSION }}-linux-x64.tar.xz"
+          if ! curl -fL --retry 3 -o "$tar_name" "$MTK_CI_ASSETS_BASE/$tar_name"; then
+            echo "::warning::Blender mirror unavailable; falling back to download.blender.org"
+            curl -fL --retry 3 -o "$tar_name" \
+              "https://download.blender.org/release/Blender5.2/$tar_name"
+          fi
           mkdir -p /opt/blender
-          tar -xJf blender.tar.xz -C /opt/blender --strip-components=1
-          rm -f blender.tar.xz
+          tar -xJf "$tar_name" -C /opt/blender --strip-components=1
+          rm -f "$tar_name"
           echo "/opt/blender" >> $GITHUB_PATH
           /opt/blender/blender --version
 
@@ -67,9 +77,25 @@ jobs:
         run: |
           python3 build.py --blender /opt/blender/blender --clean-wheels --download-deps
 
+      - name: Install Rust (libmtk wheel fallback)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Fetch libmtk_py wheel & test dependencies
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip pytest maturin
+          bash .github/scripts/fetch_libmtk_wheel.sh wheel ""
+          python3 -m venv .venv-test
+          .venv-test/bin/pip install --upgrade pip pytest wheel/*.whl
+          echo "SITE_PACKAGES=$(.venv-test/bin/python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_ENV"
+
+      - name: Download real Minecraft assets
+        run: bash .github/scripts/fetch_test_assets.sh
+
       - name: Run Test Suite
         run: |
-          /opt/blender/blender -b --python tests/run_tests.py -- -f
+          MTK_TEST_SITE_PACKAGES="$SITE_PACKAGES" \
+            /opt/blender/blender -b --python tests/run_tests.py -- -q
 
       - name: Determine Release Tag & Status
         id: release_meta
