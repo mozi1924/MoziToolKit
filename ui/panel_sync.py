@@ -131,7 +131,8 @@ def _draw_sync_panel_content(layout: bpy.types.UILayout, context: bpy.types.Cont
     if props.validation_info:
         row_val = box_conn.row(align=True)
         row_val.scale_y = 0.85
-        row_val.label(text=_format_sync_info(props.validation_info), icon='INFO')
+        val_icon = 'CHECKMARK' if props.sync_verified else ('ERROR' if ("Detected" in props.validation_info or "Out of sync" in props.validation_info) else 'INFO')
+        row_val.label(text=_format_sync_info(props.validation_info), icon=val_icon)
 
     # 2. Live Synchronization Progress Card
     if props.is_streaming:

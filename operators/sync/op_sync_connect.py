@@ -165,8 +165,14 @@ def _sync_timer_tick() -> Optional[float]:
         elif ev_type == "HANDSHAKE":
             if props:
                 tot = ev.get("total_sections", 0)
+                non_empty = ev.get("non_empty_sections", 0)
                 vol = ev.get("total_volume", 0)
-                props.validation_info = f"Sync Handshake: {tot} chunks ({vol:,} blocks)"
+                props.total_sections = tot
+                props.non_empty_sections = non_empty
+                if tot == non_empty or non_empty == 0:
+                    props.validation_info = f"Sync Handshake: {tot} chunks ({vol:,} blocks)"
+                else:
+                    props.validation_info = f"Sync Handshake: {non_empty} active chunks ({tot} covered, {vol:,} blocks)"
 
         elif ev_type == "DELTA_APPLIED":
             needs_voxel_sync = True
@@ -208,13 +214,19 @@ def _sync_timer_tick() -> Optional[float]:
             needs_voxel_sync = True
             if props:
                 built = ev.get("built_sections", 0)
-                props.last_update_info = f"Stream Complete ({built} chunks received)"
+                props.last_update_info = f"Stream Complete ({built} active chunks)"
                 props.is_streaming = False
 
         elif ev_type == "VERIFIED":
             if props:
-                props.sync_verified = ev.get("is_verified", False)
-                props.validation_info = ev.get("message", "")
+                is_ver = ev.get("is_verified", False)
+                props.sync_verified = is_ver
+                msg = ev.get("message", "")
+                if is_ver:
+                    props.validation_info = msg or "100% in sync with scene"
+                    props.is_streaming = False
+                else:
+                    props.validation_info = f"Out of sync: {msg}" if msg else "Detected out-of-sync sections"
 
         elif ev_type == "WARNING":
             if props:

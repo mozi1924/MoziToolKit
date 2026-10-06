@@ -64,6 +64,8 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
     size_z: IntProperty(name="Size Z", default=0)
 
     total_blocks: IntProperty(name="Total Blocks", default=0)
+    total_sections: IntProperty(name="Total Sections", default=0)
+    non_empty_sections: IntProperty(name="Active Sections", default=0)
 
     # Geometry statistics
     point_count: IntProperty(name="Vertices", default=0)
