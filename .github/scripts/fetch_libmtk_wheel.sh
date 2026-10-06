@@ -17,6 +17,12 @@ ref="${2:-}"
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd)"
 
+PYTHON="$(command -v python || command -v python3 || true)"
+if [ -z "$PYTHON" ]; then
+  echo "::error::python interpreter not found on PATH"
+  exit 1
+fi
+
 build_from_source() {
   local checkout_ref="$1"
   local src
@@ -31,8 +37,8 @@ build_from_source() {
   else
     git clone --depth 1 https://github.com/mozi1924/libmozitoolkit "$src"
   fi
-  python -m pip install --upgrade maturin >/dev/null
-  (cd "$src" && maturin build --release --out "$out_dir" -m bindings/mtk-py/Cargo.toml)
+  "$PYTHON" -m pip install --upgrade maturin >/dev/null
+  (cd "$src" && "$PYTHON" -m maturin build --release --out "$out_dir" -m bindings/mtk-py/Cargo.toml)
 }
 
 if [ -n "$ref" ]; then
@@ -41,7 +47,7 @@ if [ -n "$ref" ]; then
 fi
 
 api="https://api.github.com/repos/mozi1924/libmozitoolkit/releases/tags/ci-latest"
-wheel_url="$(curl -sL "$api" | python -c '
+wheel_url="$(curl -sL "$api" | "$PYTHON" -c '
 import json, sys
 try:
     data = json.load(sys.stdin)
@@ -51,9 +57,12 @@ assets = data.get("assets", []) if isinstance(data, dict) else []
 print(next((a["browser_download_url"] for a in assets if a["name"].endswith(".whl")), ""))
 ' 2>/dev/null || true)"
 
-if [ -n "$wheel_url" ] && curl -fL -o "$out_dir/libmtk_py.whl" "$wheel_url"; then
-  echo "Using published ci-latest wheel: $wheel_url"
-  exit 0
+if [ -n "$wheel_url" ]; then
+  asset_name="$(basename "${wheel_url%%\?*}")"
+  if curl -fL -o "$out_dir/$asset_name" "$wheel_url"; then
+    echo "Using published ci-latest wheel: $asset_name"
+    exit 0
+  fi
 fi
 
 echo "::warning::ci-latest wheel unavailable; building libmtk_py from source (main)"
