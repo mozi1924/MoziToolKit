@@ -1,250 +1,248 @@
 """
-Scene Properties and PropertyGroups for MoziToolKit Live Sync and Yefira DCC compatibility.
+Properties definition for Live Sync real-time synchronization state.
 """
+
+from __future__ import annotations
 
 import logging
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, IntProperty, PointerProperty, StringProperty
+from bpy.props import (
+    BoolProperty,
+    CollectionProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
 
-logger = logging.getLogger("MoziToolKit.LiveSync")
+logger = logging.getLogger("MoziToolKit.Sync.Properties")
 
 
 class MoziSyncPaletteItem(bpy.types.PropertyGroup):
-    """Single item in the Minecraft block state palette."""
-    state_str: StringProperty(name="Block State", default="")
+    """Single item in the block palette."""
+    __slots__ = ()
+
+    name: StringProperty(name="BlockState", default="")
+    block_count: IntProperty(name="Count", default=0)
 
 
 class MoziSyncDeltaItem(bpy.types.PropertyGroup):
-    """Single entry in the live delta change history log."""
-    timestamp: StringProperty(name="Time", default="")
+    """Single modification log entry in delta history."""
+    __slots__ = ()
+
     pos_str: StringProperty(name="Position", default="")
-    block_state: StringProperty(name="Block State", default="")
+    block_state: StringProperty(name="BlockState", default="")
+    time_str: StringProperty(name="Time", default="")
 
 
-class MoziSyncSceneProperties(bpy.types.PropertyGroup):
-    """Live Sync scene settings, network state, and world metrics."""
+class MoziSyncProperties(bpy.types.PropertyGroup):
+    """Scene and object level properties for Live Sync state tracking and UI binding."""
+    __slots__ = ()
+
     url: StringProperty(
         name="Server URL",
-        description="WebSocket address of Yefira / Mozi Live Sync server",
-        default="ws://localhost:8765",
-    )
-    is_connected: BoolProperty(
-        name="Is Connected",
-        description="Whether Live Sync client is currently connected",
-        default=False,
-        options={'SKIP_SAVE'},
-    )
-    connection_status: StringProperty(
-        name="Status",
-        description="Live Sync connection status message",
-        default="DISCONNECTED",
-        options={'SKIP_SAVE'},
-    )
-    show_3d_bbox: BoolProperty(
-        name="Show 3D BBox",
-        description="Visualize selection bounding box in 3D Viewport",
-        default=True,
-    )
-    filter_air: BoolProperty(
-        name="Filter Air",
-        description="Exclude air blocks from the point cloud to optimize point count",
-        default=True,
+        description="WebSocket address of the Live Sync streaming server",
+        default="ws://127.0.0.1:8765",
     )
 
-    # Selection Bounds
-    has_selection: BoolProperty(name="Has Selection", default=False)
+    is_connected: BoolProperty(
+        name="Is Connected",
+        description="Whether Live Sync client is actively connected",
+        default=False,
+    )
+
+    connection_status: StringProperty(
+        name="Connection Status",
+        default="DISCONNECTED",
+    )
+
+    has_selection: BoolProperty(
+        name="Has Selection",
+        default=False,
+    )
+
+    # World bounds (in block coordinates)
     min_x: IntProperty(name="Min X", default=0)
     min_y: IntProperty(name="Min Y", default=0)
     min_z: IntProperty(name="Min Z", default=0)
-    max_x: IntProperty(name="Max X", default=0)
-    max_y: IntProperty(name="Max Y", default=0)
-    max_z: IntProperty(name="Max Z", default=0)
     size_x: IntProperty(name="Size X", default=0)
     size_y: IntProperty(name="Size Y", default=0)
     size_z: IntProperty(name="Size Z", default=0)
-    total_blocks: IntProperty(name="Total Blocks", default=0)
-    palette_count: IntProperty(name="Palette Count", default=0)
-    update_counter: IntProperty(name="Update Counter", default=0)
 
-    # Point Cloud & Geometry Nodes Metrics
-    point_count: IntProperty(name="Point Count", default=0)
-    cubes_count: IntProperty(name="Cubes Count", default=0)
-    props_count: IntProperty(name="Props Count", default=0)
-    fluids_count: IntProperty(name="Fluids Count", default=0)
-    sync_verified: BoolProperty(name="Sync Verified", default=False, options={'SKIP_SAVE'})
-    validation_info: StringProperty(name="Validation Status", default="Pending validation...", options={'SKIP_SAVE'})
-    last_update_info: StringProperty(name="Last Update", default="No updates received yet.", options={'SKIP_SAVE'})
-    is_locked: BoolProperty(
-        name="Is Locked",
-        description="Whether full sync streaming is actively building in the scene",
-        default=False,
-        options={'SKIP_SAVE'},
-    )
+    total_blocks: IntProperty(name="Total Blocks", default=0)
+    total_sections: IntProperty(name="Total Sections", default=0)
+    non_empty_sections: IntProperty(name="Active Sections", default=0)
+
+    # Geometry statistics
+    point_count: IntProperty(name="Vertices", default=0)
+    faces_count: IntProperty(name="Faces", default=0)
+
+    # Verification and status messages
+    sync_verified: BoolProperty(name="Sync Verified", default=False)
+    validation_info: StringProperty(name="Validation Status", default="Ready to connect")
+    last_update_info: StringProperty(name="Last Update", default="No updates received yet.")
+
+    # Streaming progress
+    is_streaming: BoolProperty(name="Is Streaming", default=False)
+    stream_stage: StringProperty(name="Stream Stage", default="")
+    stream_progress_current: IntProperty(name="Stream Current", default=0)
+    stream_progress_total: IntProperty(name="Stream Total", default=0)
+    stream_message: StringProperty(name="Stream Message", default="")
 
     # Lists
     palette_list: CollectionProperty(type=MoziSyncPaletteItem)
     palette_active_index: IntProperty(name="Active Palette Index", default=0)
+
     delta_history: CollectionProperty(type=MoziSyncDeltaItem)
     delta_active_index: IntProperty(name="Active Delta Index", default=0)
 
 
 @bpy.app.handlers.persistent
 def _on_blend_file_pre_load(dummy=None):
-    """Disconnect Live Sync client and free preloaded resources before loading a new project or file."""
+    """Disconnect Live Sync client, cancel timers, and reset session before loading a new blend file."""
     try:
         try:
-            from .op_sync_connect import cleanup_sync_state
+            from .op_sync_connect import stop_sync_timer
         except (ImportError, ValueError):
-            from operators.sync.op_sync_connect import cleanup_sync_state
-        cleanup_sync_state()
+            from operators.sync.op_sync_connect import stop_sync_timer
+        stop_sync_timer()
     except Exception as e:
-        logger.debug(f"Error in Live Sync pre-load handler: {e}")
+        logger.debug(f"Error stopping sync timer on file pre-load: {e}")
+
+    try:
+        try:
+            from ...bridge.sync import reset_sync_bridge_session
+        except (ImportError, ValueError):
+            from bridge.sync import reset_sync_bridge_session
+        reset_sync_bridge_session()
+    except Exception as e:
+        logger.debug(f"Error resetting sync session on file pre-load: {e}")
+
+
+def get_active_sync_container(scene: Optional[bpy.types.Scene] = None) -> Optional[bpy.types.Object]:
+    """Resolves the currently active Live Sync Empty root container object."""
+    if scene is None:
+        scene = getattr(bpy.context, "scene", None)
+    if not scene:
+        return None
+    container_name = getattr(scene, "mozi_active_sync_container_name", "")
+    if container_name and container_name in bpy.data.objects:
+        obj = bpy.data.objects[container_name]
+        try:
+            from .hierarchy import is_yefira_root_object
+            if is_yefira_root_object(obj):
+                return obj
+        except Exception:
+            return obj
+
+    # Fallback: find any connected container or container tagged with sync
+    objs = bpy.data.objects.values() if hasattr(bpy.data.objects, "values") else bpy.data.objects
+    for obj in objs:
+        if isinstance(obj, str):
+            obj = bpy.data.objects.get(obj)
+        if obj is None:
+            continue
+        if getattr(obj, "type", "") == 'EMPTY' and (
+            (hasattr(obj, "get") and obj.get("mtk:is_yefira_world")) or getattr(obj, "name", "").startswith("Yefira_World")
+        ):
+            props = getattr(obj, "mozi_sync", None)
+            if props and getattr(props, "is_connected", False):
+                return obj
+    return None
+
+
+def set_active_sync_container(scene: Optional[bpy.types.Scene], container: Optional[bpy.types.Object]) -> None:
+    """Sets or clears the active Live Sync container for the scene."""
+    if not scene:
+        return
+    if hasattr(scene, "mozi_active_sync_container_name"):
+        scene.mozi_active_sync_container_name = container.name if container else ""
+    else:
+        try:
+            scene["mozi_active_sync_container_name"] = container.name if container else ""
+        except Exception:
+            pass
 
 
 @bpy.app.handlers.persistent
 def _on_blend_file_loaded(dummy=None):
-    """Ensure runtime connection properties, caches, and sync states are strictly reset upon loading any .blend file."""
-    try:
-        try:
-            from .op_sync_connect import cleanup_sync_state
-        except (ImportError, ValueError):
-            from operators.sync.op_sync_connect import cleanup_sync_state
-        cleanup_sync_state()
-    except Exception as e:
-        logger.debug(f"Error in Live Sync post-load cleanup: {e}")
-
+    """Reset properties across all scenes and objects upon file load."""
     try:
         for scene in bpy.data.scenes:
             if hasattr(scene, "mozi_sync"):
                 props = scene.mozi_sync
                 props.is_connected = False
-                props.is_locked = False
                 props.connection_status = "DISCONNECTED"
-                props.sync_verified = False
                 props.validation_info = "Ready to connect"
-
+                props.is_streaming = False
+            if hasattr(scene, "mozi_active_sync_container_name"):
+                scene.mozi_active_sync_container_name = ""
         for obj in bpy.data.objects:
             if hasattr(obj, "mozi_sync"):
                 props = obj.mozi_sync
                 props.is_connected = False
-                props.is_locked = False
                 props.connection_status = "DISCONNECTED"
-                props.sync_verified = False
-                props.validation_info = "Ready to connect"
+                props.is_streaming = False
     except Exception as e:
         logger.debug(f"Error resetting properties on file load: {e}")
 
-    # Deep garbage collection for clean project switch
-    try:
-        import gc
-        gc.collect()
-    except Exception:
-        pass
 
-
-def _get_pending_rename_roots() -> set[str]:
-    if not hasattr(bpy.types, "_mozi_pending_rename_roots"):
-        bpy.types._mozi_pending_rename_roots = set()
-    return bpy.types._mozi_pending_rename_roots
-
-
-def _deferred_sync_renamed_roots():
-    """Execute rename propagation safely on Blender's main event queue outside depsgraph evaluation."""
-    pending = _get_pending_rename_roots()
-    if not pending:
-        return None
-    root_names = list(pending)
-    pending.clear()
-    for name in root_names:
-        obj = bpy.data.objects.get(name)
-        if obj and obj.type == 'EMPTY':
-            try:
-                from ...utils.live_sync.meshing import sync_child_section_names
-            except (ImportError, ValueError):
-                from utils.live_sync.meshing import sync_child_section_names
-            sync_child_section_names(obj)
-            obj["mtk:last_name"] = obj.name
-    return None
-
-
-def _deferred_enforce_object_mode():
-    """Safely switch back to Object Mode on Blender's main event queue outside depsgraph evaluation."""
-    active_obj = getattr(bpy.context, "active_object", None)
-    if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
-        try:
-            bpy.ops.object.mode_set(mode='OBJECT')
-        except Exception:
-            pass
-    return None
-
-
-@bpy.app.handlers.persistent
-def _on_depsgraph_update_post(scene, depsgraph):
-    """Detect when Live Sync is active to disallow Edit Mode, and detect Yefira World renames."""
-    global _pending_rename_roots
-    try:
-        # 1. Guard against Edit Mode while Live Sync is actively connected (defer operator call)
-        props = getattr(scene, "mozi_sync", None)
-        active_obj = getattr(bpy.context, "active_object", None)
-        obj_props = getattr(active_obj, "mozi_sync", None) if active_obj else None
-        is_any_connected = (props and props.is_connected) or (obj_props and obj_props.is_connected)
-        if is_any_connected:
-            if bpy.context.mode == 'EDIT_MESH' or (active_obj and getattr(active_obj, "mode", None) == 'EDIT'):
-                msg = bpy.app.translations.pgettext_iface("Edit Mode is not supported during Live Sync. Switched to Object Mode.")
-                if props:
-                    props.validation_info = msg
-                    props.last_update_info = msg
-                if obj_props:
-                    obj_props.validation_info = msg
-                    obj_props.last_update_info = msg
-                if not bpy.app.timers.is_registered(_deferred_enforce_object_mode):
-                    bpy.app.timers.register(_deferred_enforce_object_mode, first_interval=0.0)
-
-        # 2. Check for renamed Yefira World objects via depsgraph updates
-        for update in depsgraph.updates:
-            if isinstance(update.id, bpy.types.Object):
-                obj = update.id
-                if obj.type == 'EMPTY' and obj.get("mtk:is_yefira_world"):
-                    last_name = obj.get("mtk:last_name")
-                    if last_name and last_name != obj.name:
-                        _get_pending_rename_roots().add(obj.name)
-                        if not bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
-                            bpy.app.timers.register(_deferred_sync_renamed_roots, first_interval=0.0)
-    except Exception as e:
-        logger.debug(f"Error in Live Sync depsgraph handler: {e}")
+CLASSES = (
+    MoziSyncPaletteItem,
+    MoziSyncDeltaItem,
+    MoziSyncProperties,
+)
 
 
 def register():
-    bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
-    bpy.types.Object.mozi_sync = PointerProperty(type=MoziSyncSceneProperties)
+    for cls in CLASSES:
+        bpy.utils.register_class(cls)
+    bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncProperties)
+    bpy.types.Scene.mozi_active_sync_container_name = StringProperty(
+        name="Active Sync Container",
+        description="Name of the root Empty container actively bound to Live Sync",
+        default="",
+    )
+    bpy.types.Object.mozi_sync = PointerProperty(type=MoziSyncProperties)
+
     if _on_blend_file_pre_load not in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.append(_on_blend_file_pre_load)
     if _on_blend_file_loaded not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_blend_file_loaded)
-    if _on_depsgraph_update_post not in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
 
 
 def unregister():
-    _get_pending_rename_roots().clear()
-    if bpy.app.timers.is_registered(_deferred_sync_renamed_roots):
-        bpy.app.timers.unregister(_deferred_sync_renamed_roots)
-    if bpy.app.timers.is_registered(_deferred_enforce_object_mode):
-        bpy.app.timers.unregister(_deferred_enforce_object_mode)
-    if _on_depsgraph_update_post in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post)
     if _on_blend_file_pre_load in bpy.app.handlers.load_pre:
         bpy.app.handlers.load_pre.remove(_on_blend_file_pre_load)
     if _on_blend_file_loaded in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_blend_file_loaded)
-    if hasattr(bpy.types.Object, "mozi_sync"):
-        try:
-            del bpy.types.Object.mozi_sync
-        except Exception:
-            pass
-    if hasattr(bpy.types.Scene, "mozi_sync"):
-        try:
-            del bpy.types.Scene.mozi_sync
-        except Exception:
-            pass
 
+    try:
+        try:
+            from .op_sync_connect import stop_sync_timer
+        except (ImportError, ValueError):
+            from operators.sync.op_sync_connect import stop_sync_timer
+        stop_sync_timer()
+    except Exception:
+        pass
+
+    try:
+        try:
+            from ...bridge.sync import reset_sync_bridge_session
+        except (ImportError, ValueError):
+            from bridge.sync import reset_sync_bridge_session
+        reset_sync_bridge_session()
+    except Exception:
+        pass
+
+    if hasattr(bpy.types.Object, "mozi_sync"):
+        del bpy.types.Object.mozi_sync
+    if hasattr(bpy.types.Scene, "mozi_sync"):
+        del bpy.types.Scene.mozi_sync
+    if hasattr(bpy.types.Scene, "mozi_active_sync_container_name"):
+        del bpy.types.Scene.mozi_active_sync_container_name
+
+    for cls in reversed(CLASSES):
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass

@@ -35,16 +35,11 @@ except ImportError:
     tomllib = None
 
 
-# Default dependency targets aligned for Blender 4.2+ / 5.x Extensions
-PLATFORM_DEPENDENCY_SPECS = [
-    "pillow==12.3.0",
-]
-
-PURE_PYTHON_DEPENDENCY_SPECS = [
-    "websockets==15.0.1",
-]
-
-DEFAULT_DEPENDENCY_SPECS = PLATFORM_DEPENDENCY_SPECS + PURE_PYTHON_DEPENDENCY_SPECS
+# External dependencies for MoziToolKit are provided entirely by the libmtk_py native wheel.
+# Optional third-party specs can still be specified explicitly via command-line arguments.
+PLATFORM_DEPENDENCY_SPECS = []
+PURE_PYTHON_DEPENDENCY_SPECS = []
+DEFAULT_DEPENDENCY_SPECS = []
 
 TARGET_PLATFORMS = [
     {
@@ -161,6 +156,8 @@ def parse_manifest(project_dir: str):
         "/*.zip",
         "tests/",
         "dist/",
+        "site-packages/",
+        "dev/",
         "*.blend",
         "*.blend1",
         ".DS_Store",
@@ -346,6 +343,7 @@ def download_dependencies(
 def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
     """
     Ensure blender_manifest.toml has an up-to-date `wheels = [...]` array matching all wheels in `wheels/`.
+    Preserves multi-platform wheel declarations across cross-development environments (e.g. Linux and macOS).
     """
     manifest_path = project_dir / "blender_manifest.toml"
     if not manifest_path.exists():
@@ -355,14 +353,22 @@ def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
     for whl in wheels_dir.glob("websockets*cp*.whl"):
         whl.unlink()
 
-    valid_wheels = [
-        whl for whl in wheels_dir.glob("*.whl")
-        if not (whl.name.startswith("websockets") and "cp" in whl.name)
-    ]
-    relative_wheels = sorted([f"./wheels/{whl.name}" for whl in valid_wheels])
     with open(manifest_path, "r", encoding="utf-8") as f:
         content = f.read()
 
+    # Extract existing wheels from manifest to preserve cross-platform entries
+    existing_wheels = set()
+    match = re.search(r"wheels\s*=\s*\[(.*?)\]", content, flags=re.DOTALL)
+    if match:
+        for item in re.findall(r'"([^"]+)"', match.group(1)):
+            existing_wheels.add(item.strip())
+
+    # Add wheels currently present on disk in wheels/
+    for whl in wheels_dir.glob("*.whl"):
+        if not (whl.name.startswith("websockets") and "cp" in whl.name):
+            existing_wheels.add(f"./wheels/{whl.name}")
+
+    relative_wheels = sorted(list(existing_wheels))
     wheels_toml_block = "wheels = [\n" + "".join(f'  "{w}",\n' for w in relative_wheels) + "]"
 
     if "wheels = [" in content:
@@ -507,8 +513,8 @@ def main():
     parser = argparse.ArgumentParser(description="MoziToolKit Multi-Platform Build & Dependency Coordinator.")
     parser.add_argument("-o", "--output-dir", default="dist", help="Output directory for build artifacts (default: dist)")
     parser.add_argument("--blender", default="", help="Path to custom Blender executable")
-    parser.add_argument("--download-deps", action="store_true", default=True, help="Download / verify cross-platform dependencies via Blender's Python (default: True)")
-    parser.add_argument("--no-download-deps", dest="download_deps", action="store_false", help="Skip downloading dependencies")
+    parser.add_argument("--build-libmtk", action="store_true", help="Compile and copy native libmtk_py wheel from libmozitoolkit")
+    parser.add_argument("--download-deps", action="store_true", default=False, help="Download / verify third-party dependencies via pip (default: False)")
     parser.add_argument("--clean-wheels", action="store_true", help="Clean wheels directory before downloading")
     parser.add_argument("--split-platforms", action="store_true", default=True, help="Build separate packages per platform (default: True)")
     parser.add_argument("--universal", action="store_true", help="Also build universal package containing all wheels")
@@ -539,7 +545,20 @@ def main():
         py_ver_dotted = f"{sys.version_info.major}.{sys.version_info.minor}"
         print(f" Host Python: {blender_py} (v{py_ver_dotted} / cp{py_version_tag})")
 
-    # Step 1: Download / Synchronize Dependencies
+    # Step 0: Optionally compile libmtk_py wheel from libmozitoolkit
+    if args.build_libmtk:
+        libmtk_script = project_dir.parent / "libmozitoolkit" / "tools" / "build_wheels.py"
+        if libmtk_script.exists():
+            print("\n🦀 Compiling libmtk_py wheel from libmozitoolkit...")
+            build_cmd = [sys.executable, str(libmtk_script), "--copy-to-mozitoolkit"]
+            res = subprocess.run(build_cmd, check=False)
+            if res.returncode != 0:
+                print("❌ Failed compiling libmtk_py wheel!")
+                sys.exit(res.returncode)
+        else:
+            print(f"⚠️ libmozitoolkit build script not found at: {libmtk_script}")
+
+    # Step 1: Optional third-party wheels download
     if args.download_deps:
         download_dependencies(
             blender_py=blender_py,

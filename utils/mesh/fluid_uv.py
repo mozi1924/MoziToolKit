@@ -4,12 +4,19 @@ Fluid UV repair utilities.
 Fixes inverted UV heights on Minecraft fluid quad faces (e.g. water, lava flowing
 slopes where the top two vertices have their UV V coordinates inverted relative
 to their 3D heights).
+Accelerated by Rust libmtk (batch_repair_fluid_uv) with zero-copy batch processing.
 """
 
 from __future__ import annotations
 
-from typing import Optional, List, Sequence
-import math
+import array
+from typing import Any, Optional, Sequence
+
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    HAS_NUMPY = False
 
 try:
     import bpy
@@ -20,101 +27,20 @@ except ImportError:
     bmesh = None
     Vector = None
 
-
-def _evaluate_face_axis(face, loops, up_axis: Vector):
-    """
-    Project up_axis onto face plane and evaluate base flatness and top slope.
-    """
-    normal = face.normal
-    if normal.length < 1e-6:
-        face.normal_update()
-        normal = face.normal
-        if normal.length < 1e-6:
-            return None
-
-    proj_up = up_axis - (up_axis.dot(normal)) * normal
-    if proj_up.length < 1e-4:
-        return None
-    proj_up.normalize()
-
-    heights = [(i, l.vert.co.dot(proj_up)) for i, l in enumerate(loops)]
-    heights_sorted = sorted(heights, key=lambda x: x[1])
-
-    b1_idx, h_b1 = heights_sorted[0]
-    b2_idx, h_b2 = heights_sorted[1]
-    t1_idx, h_t1 = heights_sorted[2]
-    t2_idx, h_t2 = heights_sorted[3]
-
-    base_diff = abs(h_b2 - h_b1)
-    top_diff = h_t2 - h_t1
-
-    return {
-        "proj_up": proj_up,
-        "base_diff": base_diff,
-        "top_diff": top_diff,
-        "t1_idx": t1_idx,
-        "t2_idx": t2_idx,
-        "h_t1": h_t1,
-        "h_t2": h_t2,
-    }
-
-
-def repair_face_fluid_uv(face, uv_layer, force: bool = False, min_slope_threshold: float = 0.005) -> bool:
-    """
-    Check and repair inverted fluid UV on a single quad face.
-
-    :param face: bmesh face (must have 4 vertices).
-    :param uv_layer: bmesh loop UV layer.
-    :param force: If True, swap top UV heights if top edge is slanted even if not strictly detected as inverted.
-    :param min_slope_threshold: Minimum height difference between top two vertices to consider face as slanted.
-    :return: True if the face UV was modified, False otherwise.
-    """
-    if face is None or uv_layer is None or len(face.verts) != 4:
-        return False
-
-    loops = list(face.loops)
-
-    # Evaluate candidate up axes: Y-up (Minecraft OBJ) and Z-up (Blender native)
-    eval_y = _evaluate_face_axis(face, loops, Vector((0.0, 1.0, 0.0)))
-    eval_z = _evaluate_face_axis(face, loops, Vector((0.0, 0.0, 1.0)))
-
-    candidates = [e for e in (eval_y, eval_z) if e is not None]
-    if not candidates:
-        return False
-
-    # Choose candidate with the most distinct top slope relative to base flatness
-    def _axis_candidate_score(e):
-        # Higher top_diff and lower base_diff is better
-        return e["top_diff"] - e["base_diff"]
-
-    best_eval = max(candidates, key=_axis_candidate_score)
-
-    top_h_diff = best_eval["top_diff"]
-    if top_h_diff < min_slope_threshold and not force:
-        return False
-
-    t1_idx = best_eval["t1_idx"]
-    t2_idx = best_eval["t2_idx"]
-
-    loop_t1 = loops[t1_idx]
-    loop_t2 = loops[t2_idx]
-
-    uv1 = loop_t1[uv_layer].uv
-    uv2 = loop_t2[uv_layer].uv
-
-    # In standard UV mapping, V corresponds to height.
-    # Since h_t1 < h_t2, we expect uv1.y <= uv2.y.
-    # If uv1.y > uv2.y (within tolerance), it is inverted.
-    uv_v_diff = uv2.y - uv1.y
-    is_inverted = (uv_v_diff < -1e-5)
-
-    if is_inverted or (force and top_h_diff >= min_slope_threshold):
-        old_v1_y = uv1.y
-        loop_t1[uv_layer].uv.y = uv2.y
-        loop_t2[uv_layer].uv.y = old_v1_y
-        return True
-
-    return False
+try:
+    from ...bridge.uv import (
+        repair_quad_fluid_uv,
+        batch_repair_fluid_uv,
+        get_fluid_top_uvs,
+        get_fluid_side_uvs,
+    )
+except (ImportError, ValueError):
+    from bridge.uv import (
+        repair_quad_fluid_uv,
+        batch_repair_fluid_uv,
+        get_fluid_top_uvs,
+        get_fluid_side_uvs,
+    )
 
 
 def is_fluid_texture_name(name: Optional[str]) -> bool:
@@ -135,48 +61,37 @@ def is_flowing_fluid_texture(name: Optional[str]) -> bool:
     return is_fluid and is_flow
 
 
-def get_fluid_top_uvs(is_flowing: bool = True, rotation: float = 0.0) -> tuple[tuple[float, float], ...]:
+def repair_face_fluid_uv(
+    face,
+    uv_layer,
+    force: bool = False,
+    min_slope_threshold: float = 0.005,
+) -> bool:
     """
-    Get Minecraft-standard UV coordinates for top/bottom fluid faces.
-    
-    Flowing fluids sample a 16x16 window ([0.25, 0.75]) inside the 32x32 sprite,
-    centered at (0.5, 0.5), with rotation baked directly into the coordinates.
-    Stationary source pools sample the standard full [0, 1] sprite.
+    Check and repair inverted fluid UV on a single BMesh quad face.
+
+    :param face: bmesh face (must have 4 vertices).
+    :param uv_layer: bmesh loop UV layer.
+    :param force: If True, swap top UV heights if top edge is slanted even if not strictly detected as inverted.
+    :param min_slope_threshold: Minimum height difference between top two vertices to consider face as slanted.
+    :return: True if the face UV was modified, False otherwise.
     """
-    if not is_flowing:
-        return ((0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0))
+    if face is None or uv_layer is None or len(face.verts) != 4:
+        return False
 
-    base_uvs = ((0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25))
-    if abs(rotation) < 1e-4:
-        return base_uvs
+    loops = list(face.loops)
+    verts = [(l.vert.co.x, l.vert.co.y, l.vert.co.z) for l in loops]
+    uvs = [(l[uv_layer].uv.x, l[uv_layer].uv.y) for l in loops]
+    normal = (face.normal.x, face.normal.y, face.normal.z) if face.normal.length >= 1e-6 else None
 
-    # In MC coordinate space (where Y is inverted relative to Blender UV space),
-    # rotating Blender UV by +rotation corresponds to rotating MC UV by -rotation:
-    cos_t = math.cos(-rotation)
-    sin_t = math.sin(-rotation)
-    rotated = []
-    for u, v in base_uvs:
-        du = u - 0.5
-        dv = v - 0.5
-        ru = 0.5 + (du * cos_t - dv * sin_t)
-        rv = 0.5 + (du * sin_t + dv * cos_t)
-        rotated.append((ru, rv))
-    return tuple(rotated)
+    repaired, new_uvs = repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
+    if repaired:
+        for l, (u, v) in zip(loops, new_uvs):
+            l[uv_layer].uv.x = u
+            l[uv_layer].uv.y = v
+        return True
 
-
-def get_fluid_side_uvs(h_left_top: float, h_right_top: float) -> tuple[tuple[float, float], ...]:
-    """
-    Get Minecraft/Mineways-standard UV coordinates for vertical/sloped fluid side faces.
-    
-    Side faces sample the [0.0, 0.5] quadrant of the 32x32 sprite, mapping
-    proportional 1-block height to 16 pixels.
-    """
-    return (
-        (0.0, (1.0 - h_left_top) * 0.5),
-        (0.0, 0.5),
-        (0.5, 0.5),
-        (0.5, (1.0 - h_right_top) * 0.5),
-    )
+    return False
 
 
 def repair_polygon_fluid_uv(
@@ -193,107 +108,294 @@ def repair_polygon_fluid_uv(
         return False
 
     loop_indices = list(polygon.loop_indices)
-    verts = [mesh.vertices[mesh.loops[li].vertex_index] for li in loop_indices]
-    normal = polygon.normal
+    verts = [
+        (
+            mesh.vertices[mesh.loops[li].vertex_index].co.x,
+            mesh.vertices[mesh.loops[li].vertex_index].co.y,
+            mesh.vertices[mesh.loops[li].vertex_index].co.z,
+        )
+        for li in loop_indices
+    ]
+    uvs = [
+        (uv_layer.data[li].uv.x, uv_layer.data[li].uv.y)
+        for li in loop_indices
+    ]
+    normal = (polygon.normal.x, polygon.normal.y, polygon.normal.z) if polygon.normal.length >= 1e-6 else None
 
-    if normal.length < 1e-6:
-        return False
-
-    # Check for Z-up and Y-up candidate up axes
-    candidates = []
-    for up_axis in (Vector((0.0, 0.0, 1.0)), Vector((0.0, 1.0, 0.0))):
-        proj_up = up_axis - (up_axis.dot(normal)) * normal
-        if proj_up.length >= 1e-4:
-            proj_up.normalize()
-            heights = [(i, verts[i].co.dot(proj_up)) for i in range(4)]
-            heights_sorted = sorted(heights, key=lambda x: x[1])
-            base_diff = abs(heights_sorted[1][1] - heights_sorted[0][1])
-            top_diff = heights_sorted[3][1] - heights_sorted[2][1]
-            candidates.append({
-                "top_diff": top_diff,
-                "base_diff": base_diff,
-                "t1_idx": heights_sorted[2][0],
-                "t2_idx": heights_sorted[3][0],
-            })
-
-    if not candidates:
-        return False
-
-    best_eval = max(candidates, key=lambda e: e["top_diff"] - e["base_diff"])
-    top_h_diff = best_eval["top_diff"]
-    if top_h_diff < min_slope_threshold and not force:
-        return False
-
-    t1_li = loop_indices[best_eval["t1_idx"]]
-    t2_li = loop_indices[best_eval["t2_idx"]]
-
-    uv1 = uv_layer.data[t1_li].uv
-    uv2 = uv_layer.data[t2_li].uv
-
-    uv_v_diff = uv2.y - uv1.y
-    is_inverted = (uv_v_diff < -1e-5)
-
-    if is_inverted or (force and top_h_diff >= min_slope_threshold):
-        old_v1_y = uv1.y
-        uv1.y = uv2.y
-        uv2.y = old_v1_y
+    repaired, new_uvs = repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
+    if repaired:
+        for li, (u, v) in zip(loop_indices, new_uvs):
+            uv_layer.data[li].uv.x = u
+            uv_layer.data[li].uv.y = v
         return True
 
     return False
 
 
-def normalize_static_fluid_face_uv(
-    polygon,
-    mesh,
+def _process_bmesh_fluid_uv_repairs(
+    bm,
     uv_layer,
-    texture_name: Optional[str] = None,
-) -> bool:
+    target_faces: Optional[Sequence] = None,
+    force: bool = False,
+    min_slope_threshold: float = 0.005,
+) -> int:
     """
-    Normalize static mesh fluid face UV to canonical Minecraft 16x16 sampling window.
-    
-    - For flowing top faces: fits UV to [0.25, 0.75] window centered at (0.5, 0.5)
-      while preserving geometric rotation.
-    - For side faces: repairs inverted top height V coordinates and fits to [0.0, 0.5] x [0.5, 1.0] quadrant.
+    Batch repair fluid UVs on a BMesh using Rust batch_repair_fluid_uv.
     """
-    if polygon is None or uv_layer is None or not polygon.loop_indices:
-        return False
+    faces_to_process = target_faces if target_faces is not None else bm.faces
+    # Only 4-vertex quads can have fluid slope repairs
+    quad_faces = [f for f in faces_to_process if len(f.verts) == 4]
+    num_faces = len(quad_faces)
+    if num_faces == 0:
+        return 0
 
-    is_flowing = is_flowing_fluid_texture(texture_name)
-    normal = polygon.normal
+    if HAS_NUMPY:
+        verts_flat = np.empty(num_faces * 12, dtype=np.float32)
+        uvs_flat = np.empty(num_faces * 8, dtype=np.float32)
+        normals_flat = np.empty(num_faces * 3, dtype=np.float32)
 
-    # Horizontal (Top / Bottom) Face
-    if abs(normal.z) >= 0.7 or abs(normal.y) >= 0.7:
-        if is_flowing:
-            uvs = [uv_layer.data[li].uv for li in polygon.loop_indices]
-            center_u = sum(uv.x for uv in uvs) / len(uvs)
-            center_v = sum(uv.y for uv in uvs) / len(uvs)
-            # Scale coordinates relative to center into [0.25, 0.75] (scale factor 0.5)
-            for uv in uvs:
-                uv.x = 0.5 + (uv.x - center_u) * 0.5
-                uv.y = 0.5 + (uv.y - center_v) * 0.5
-            return True
+        face_loops = []
+        v_idx = 0
+        uv_idx = 0
+        n_idx = 0
+
+        for f in quad_faces:
+            loops = list(f.loops)
+            face_loops.append(loops)
+            fnorm = f.normal
+            normals_flat[n_idx] = fnorm.x
+            normals_flat[n_idx + 1] = fnorm.y
+            normals_flat[n_idx + 2] = fnorm.z
+            n_idx += 3
+
+            for l in loops:
+                co = l.vert.co
+                verts_flat[v_idx] = co.x
+                verts_flat[v_idx + 1] = co.y
+                verts_flat[v_idx + 2] = co.z
+                v_idx += 3
+
+                uv = l[uv_layer].uv
+                uvs_flat[uv_idx] = uv.x
+                uvs_flat[uv_idx + 1] = uv.y
+                uv_idx += 2
+
+        orig_v = uvs_flat[1::2].copy()
+
+        repaired_count, uvs_flat = batch_repair_fluid_uv(
+            verts_flat,
+            uvs_flat,
+            normals_flat,
+            force=force,
+            min_slope_threshold=min_slope_threshold,
+        )
+
+        if repaired_count == 0:
+            return 0
+
+        # Determine which faces actually changed and update only those loops
+        changed_loops = np.where(uvs_flat[1::2] != orig_v)[0]
+        changed_faces = np.unique(changed_loops // 4)
+
+        for fi in changed_faces:
+            loops = face_loops[fi]
+            base_uv = int(fi) * 8
+            loops[0][uv_layer].uv.y = float(uvs_flat[base_uv + 1])
+            loops[1][uv_layer].uv.y = float(uvs_flat[base_uv + 3])
+            loops[2][uv_layer].uv.y = float(uvs_flat[base_uv + 5])
+            loops[3][uv_layer].uv.y = float(uvs_flat[base_uv + 7])
+
+        return repaired_count
+
     else:
-        # Vertical Side Face
-        if len(polygon.loop_indices) == 4:
-            repair_polygon_fluid_uv(polygon, mesh, uv_layer)
-        if is_flowing:
-            uvs = [uv_layer.data[li].uv for li in polygon.loop_indices]
-            min_u = min(uv.x for uv in uvs)
-            max_u = max(uv.x for uv in uvs)
-            span_u = max_u - min_u
-            if span_u > 0.6:  # Spans full [0, 1], compress to [0.0, 0.5]
-                for uv in uvs:
-                    uv.x = (uv.x - min_u) * 0.5
-            min_v = min(uv.y for uv in uvs)
-            max_v = max(uv.y for uv in uvs)
-            span_v = max_v - min_v
-            if span_v > 0.6:  # Spans full [0, 1], compress to [0.5, 1.0] (top quadrant)
-                for uv in uvs:
-                    uv.y = 0.5 + (uv.y - min_v) * 0.5
-            return True
+        # Fallback when NumPy is not present
+        verts_flat = array.array("f")
+        uvs_flat = array.array("f")
+        normals_flat = array.array("f")
+        face_loops = []
 
-    return False
+        for f in quad_faces:
+            loops = list(f.loops)
+            face_loops.append(loops)
+            fnorm = f.normal
+            normals_flat.extend((fnorm.x, fnorm.y, fnorm.z))
 
+            for l in loops:
+                co = l.vert.co
+                verts_flat.extend((co.x, co.y, co.z))
+                uv = l[uv_layer].uv
+                uvs_flat.extend((uv.x, uv.y))
+
+        orig_v = [uvs_flat[i] for i in range(1, len(uvs_flat), 2)]
+
+        repaired_count, uvs_flat = batch_repair_fluid_uv(
+            verts_flat,
+            uvs_flat,
+            normals_flat,
+            force=force,
+            min_slope_threshold=min_slope_threshold,
+        )
+
+        if repaired_count == 0:
+            return 0
+
+        for fi in range(num_faces):
+            base_v = fi * 4
+            base_uv = fi * 8
+            if (
+                uvs_flat[base_uv + 1] != orig_v[base_v]
+                or uvs_flat[base_uv + 3] != orig_v[base_v + 1]
+                or uvs_flat[base_uv + 5] != orig_v[base_v + 2]
+                or uvs_flat[base_uv + 7] != orig_v[base_v + 3]
+            ):
+                loops = face_loops[fi]
+                loops[0][uv_layer].uv.y = uvs_flat[base_uv + 1]
+                loops[1][uv_layer].uv.y = uvs_flat[base_uv + 3]
+                loops[2][uv_layer].uv.y = uvs_flat[base_uv + 5]
+                loops[3][uv_layer].uv.y = uvs_flat[base_uv + 7]
+
+        return repaired_count
+
+
+def _process_raw_mesh_fluid_uv_repairs(
+    mesh,
+    uv_layer=None,
+    target_faces: Optional[Sequence] = None,
+    force: bool = False,
+    min_slope_threshold: float = 0.005,
+) -> int:
+    """
+    High-throughput zero-copy batch fluid UV repair for standard bpy.types.Mesh
+    using Blender foreach_get / foreach_set.
+    """
+    if mesh is None or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
+        return 0
+
+    if uv_layer is None:
+        if hasattr(mesh, "uv_layers") and mesh.uv_layers.active:
+            uv_layer = mesh.uv_layers.active
+        else:
+            return 0
+
+    if not hasattr(uv_layer, "data") or len(uv_layer.data) == 0:
+        return 0
+
+    num_polys = len(mesh.polygons)
+    num_loops = len(mesh.loops)
+    num_verts = len(mesh.vertices)
+
+    if HAS_NUMPY:
+        poly_totals = np.empty(num_polys, dtype=np.int32)
+        mesh.polygons.foreach_get("loop_total", poly_totals)
+
+        if target_faces is not None:
+            target_indices = np.array(
+                [f.index if hasattr(f, "index") else int(f) for f in target_faces],
+                dtype=np.int32,
+            )
+            quad_mask = poly_totals[target_indices] == 4
+            quad_indices = target_indices[quad_mask]
+        else:
+            quad_indices = np.where(poly_totals == 4)[0]
+
+        if len(quad_indices) == 0:
+            return 0
+
+        poly_starts = np.empty(num_polys, dtype=np.int32)
+        mesh.polygons.foreach_get("loop_start", poly_starts)
+
+        quad_starts = poly_starts[quad_indices]
+        quad_loop_indices = (quad_starts[:, None] + np.arange(4, dtype=np.int32)).ravel()
+
+        loop_v_indices = np.empty(num_loops, dtype=np.int32)
+        mesh.loops.foreach_get("vertex_index", loop_v_indices)
+
+        vert_cos = np.empty(num_verts * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", vert_cos)
+        vert_cos_reshaped = vert_cos.reshape(-1, 3)
+
+        quad_v_indices = loop_v_indices[quad_loop_indices]
+        verts_flat = vert_cos_reshaped[quad_v_indices].ravel()
+
+        normals_all = np.empty(num_polys * 3, dtype=np.float32)
+        mesh.polygons.foreach_get("normal", normals_all)
+        normals_flat = normals_all.reshape(-1, 3)[quad_indices].ravel()
+
+        all_uvs = np.empty(num_loops * 2, dtype=np.float32)
+        uv_layer.data.foreach_get("uv", all_uvs)
+        all_uvs_reshaped = all_uvs.reshape(-1, 2)
+        uvs_flat = all_uvs_reshaped[quad_loop_indices].ravel().copy()
+
+        repaired_count, repaired_uvs = batch_repair_fluid_uv(
+            verts_flat,
+            uvs_flat,
+            normals_flat,
+            force=force,
+            min_slope_threshold=min_slope_threshold,
+        )
+
+        if repaired_count > 0:
+            all_uvs_reshaped[quad_loop_indices] = np.asarray(repaired_uvs, dtype=np.float32).reshape(-1, 2)
+            uv_layer.data.foreach_set("uv", all_uvs.ravel())
+            if hasattr(mesh, "update"):
+                mesh.update()
+
+        return repaired_count
+
+    else:
+        # Fallback per-polygon if NumPy is not available
+        repaired_count = 0
+        polys_to_process = (
+            target_faces if target_faces is not None else mesh.polygons
+        )
+        for poly in polys_to_process:
+            if repair_polygon_fluid_uv(
+                poly,
+                mesh,
+                uv_layer,
+                force=force,
+                min_slope_threshold=min_slope_threshold,
+            ):
+                repaired_count += 1
+        return repaired_count
+
+
+def process_bmesh_fluid_uv_repairs(
+    bm,
+    uv_layer=None,
+    target_faces: Optional[Sequence] = None,
+    force: bool = False,
+    min_slope_threshold: float = 0.005,
+) -> int:
+    """Explicit BMesh batch fluid UV repair entry point."""
+    if bm is None:
+        return 0
+    if uv_layer is None:
+        uv_layer = bm.loops.layers.uv.verify()
+    return _process_bmesh_fluid_uv_repairs(
+        bm,
+        uv_layer=uv_layer,
+        target_faces=target_faces,
+        force=force,
+        min_slope_threshold=min_slope_threshold,
+    )
+
+
+def process_raw_mesh_fluid_uv_repairs(
+    mesh,
+    uv_layer=None,
+    target_faces: Optional[Sequence] = None,
+    force: bool = False,
+    min_slope_threshold: float = 0.005,
+) -> int:
+    """Explicit bpy.types.Mesh zero-copy batch fluid UV repair entry point."""
+    return _process_raw_mesh_fluid_uv_repairs(
+        mesh,
+        uv_layer=uv_layer,
+        target_faces=target_faces,
+        force=force,
+        min_slope_threshold=min_slope_threshold,
+    )
 
 
 def process_mesh_fluid_uv_repairs(
@@ -301,28 +403,39 @@ def process_mesh_fluid_uv_repairs(
     uv_layer=None,
     target_faces: Optional[Sequence] = None,
     force: bool = False,
+    min_slope_threshold: float = 0.005,
 ) -> int:
     """
     Repair fluid UV inversions across target faces or the entire mesh.
+    Supports both BMesh (bmesh.types.BMesh) and standard Blender Mesh (bpy.types.Mesh)
+    with accelerated zero-copy batch processing backed by Rust libmtk (batch_repair_fluid_uv).
 
-    :param bm: bmesh object.
-    :param uv_layer: bmesh loop UV layer. If None, active UV layer is used.
-    :param target_faces: Specific faces to process. If None, all faces in bm.faces are processed.
+    :param bm: bmesh or bpy.types.Mesh object.
+    :param uv_layer: bmesh loop UV layer or mesh UV layer. If None, active UV layer is used.
+    :param target_faces: Specific faces to process. If None, all faces in bm are processed.
     :param force: Force swap on target faces even if slope inversion test is borderline.
+    :param min_slope_threshold: Minimum height difference between top two vertices.
     :return: Number of faces successfully repaired.
     """
     if bm is None:
         return 0
 
+    if hasattr(bm, "polygons"):
+        return _process_raw_mesh_fluid_uv_repairs(
+            bm,
+            uv_layer=uv_layer,
+            target_faces=target_faces,
+            force=force,
+            min_slope_threshold=min_slope_threshold,
+        )
+
     if uv_layer is None:
         uv_layer = bm.loops.layers.uv.verify()
 
-    faces_to_process = target_faces if target_faces is not None else bm.faces
-    repaired_count = 0
-
-    for face in faces_to_process:
-        if repair_face_fluid_uv(face, uv_layer, force=force):
-            repaired_count += 1
-
-    return repaired_count
-
+    return _process_bmesh_fluid_uv_repairs(
+        bm,
+        uv_layer=uv_layer,
+        target_faces=target_faces,
+        force=force,
+        min_slope_threshold=min_slope_threshold,
+    )

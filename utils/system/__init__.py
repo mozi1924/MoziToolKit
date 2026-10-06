@@ -1,22 +1,9 @@
 """
-System environment, dependency management, and UI context menu registry subpackage.
+System environment, preference utilities, and UI context menu registry subpackage.
 """
 
 from .dependencies import (
-    Dependency,
-    DEPENDENCIES,
-    ensure_sys_paths,
-    get_blender_site_packages,
-    get_python_executable,
-    is_module_installed,
-    get_installed_version,
-    get_dependency_status,
-    get_all_dependency_statuses,
-    has_all_dependencies,
-    has_pillow,
-    has_websockets,
-    draw_pillow_warning,
-    draw_websockets_warning,
+    has_libmtk,
     get_prefs,
 )
 
@@ -38,27 +25,15 @@ from .menu_config import (
     load_material_settings_config,
     save_material_settings_config,
     get_enabled_pack_entries,
-    reset_config,
     export_config,
     import_config,
     draw_dynamic_menu,
+    sort_unadded_items,
 )
 
+
 __all__ = [
-    "Dependency",
-    "DEPENDENCIES",
-    "ensure_sys_paths",
-    "get_blender_site_packages",
-    "get_python_executable",
-    "is_module_installed",
-    "get_installed_version",
-    "get_dependency_status",
-    "get_all_dependency_statuses",
-    "has_all_dependencies",
-    "has_pillow",
-    "has_websockets",
-    "draw_pillow_warning",
-    "draw_websockets_warning",
+    "has_libmtk",
     "get_prefs",
     "register_menu_item",
     "register_operator_menu_item",
@@ -77,8 +52,8 @@ __all__ = [
     "load_material_settings_config",
     "save_material_settings_config",
     "get_enabled_pack_entries",
-    "reset_config",
     "export_config",
     "import_config",
     "draw_dynamic_menu",
+    "sort_unadded_items",
 ]

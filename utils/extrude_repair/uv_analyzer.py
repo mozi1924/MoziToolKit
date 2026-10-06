@@ -5,16 +5,10 @@ UV area, pixel resolution, and collapse detection utilities for extrusion repair
 from __future__ import annotations
 
 from typing import Tuple, Optional
-import bpy
-
-from ..pixel_split.uv_analyzer import get_face_effective_texture_info
-from ..materials.matching import get_material_pixel_step
-
-
-from ..mesh.uv_math import (
-    calculate_face_uv_area,
-    is_face_uv_collapsed,
-)
+try:
+    import bpy
+except ImportError:
+    bpy = None
 
 
 
@@ -34,36 +28,37 @@ def get_face_pixel_step(
     - STANDALONE / GENERIC (Non-square or square single textures)
     """
     active_obj = obj or (bpy.context.active_object if bpy and hasattr(bpy, "context") else None)
-    active_ctx = context or (bpy.context if bpy and hasattr(bpy, "context") else None)
 
     if active_obj is not None:
         try:
-            info = get_face_effective_texture_info(
-                face,
-                active_obj,
-                active_ctx,
-                default_res=default_res,
-                uv_layer=uv_layer,
-            )
-            if info.uv_mode in ("ATLAS_BAKED", "STANDALONE_BAKED"):
-                raw_w, raw_h = info.raw_image_resolution
-                return (1.0 / max(1, raw_w), 1.0 / max(1, raw_h))
-            else:
-                eff_w, eff_h = info.effective_resolution
-                return (1.0 / max(1, eff_w), 1.0 / max(1, eff_h))
+            if hasattr(face, "material_index") and face.material_index < len(active_obj.material_slots):
+                mat = active_obj.material_slots[face.material_index].material
+                if mat and getattr(mat, "node_tree", None):
+                    decoder_node = next(
+                        (
+                            n for n in mat.node_tree.nodes
+                            if (n.type == "GROUP" and n.node_tree and "Atlas_UV_Decoder" in n.node_tree.name)
+                            or n.name == "MC Atlas UV Decoder"
+                        ),
+                        None
+                    )
+                    if decoder_node and "Tile Size" in decoder_node.inputs:
+                        ts = int(round(decoder_node.inputs["Tile Size"].default_value))
+                        if ts > 0:
+                            return (1.0 / ts, 1.0 / ts)
+
+                    for n in mat.node_tree.nodes:
+                        if n.type == "TEX_IMAGE" and n.image and n.image.size[0] > 0 and n.image.size[1] > 0:
+                            raw_w, raw_h = int(n.image.size[0]), int(n.image.size[1])
+                            if raw_h > raw_w and raw_h % raw_w == 0:
+                                return (1.0 / max(1, raw_w), 1.0 / max(1, raw_w))
+                            return (1.0 / max(1, raw_w), 1.0 / max(1, raw_h))
         except Exception:
             pass
 
-    # Fallback to active material or default
-    if active_obj and active_obj.active_material:
-        step = get_material_pixel_step(active_obj.active_material, default_size=default_res[0])
-        return (step, step)
     return (1.0 / float(default_res[0]), 1.0 / float(default_res[1]))
 
 
 def get_active_texture_pixel_step(obj=None) -> float:
     """Legacy helper: Retrieve scalar UV step for active object's material."""
-    active_obj = obj or (bpy.context.active_object if bpy and hasattr(bpy, "context") else None)
-    if active_obj and active_obj.active_material:
-        return get_material_pixel_step(active_obj.active_material, default_size=64)
     return 1.0 / 64.0

@@ -1,79 +1,69 @@
 """
-Mesh geometry, UV math, and topology processing subpackage.
+MoziToolKit Mesh & Geometry Manipulation Utilities.
 """
 
-try:
-    from .core import (
-        SELECTION_ACTION_ITEMS,
-        SELECTION_SCOPE_ITEMS,
-        SELECT_MODES,
-        poll_edit_mesh,
-        poll_mesh_object,
-        set_select_mode,
-        bmesh_context,
-        apply_selection,
-        get_connected_faces,
-        get_target_faces,
-        is_hard_edge,
-    )
+from .core import (
+    SELECTION_ACTION_ITEMS,
+    SELECTION_SCOPE_ITEMS,
+    SELECT_MODES,
+    apply_selection,
+    bmesh_context,
+    get_connected_faces,
+    get_target_faces,
+    is_hard_edge,
+    poll_edit_mesh,
+    poll_mesh_object,
+    set_select_mode,
+)
+from .uv import (
+    UVBounds,
+    calculate_face_uv_area,
+    get_face_uv_bounds,
+    get_face_uv_center,
+)
+from .texture import (
+    find_albedo_image_from_material,
+    find_face_image,
+)
+from .fluid_uv import (
+    is_fluid_texture_name,
+    is_flowing_fluid_texture,
+    repair_face_fluid_uv,
+    repair_polygon_fluid_uv,
+    process_mesh_fluid_uv_repairs,
+    process_bmesh_fluid_uv_repairs,
+    process_raw_mesh_fluid_uv_repairs,
+)
 
-    from .subdivide import (
-        subdivide_quad_face,
-        cleanup_mesh_topology,
-    )
-
-    from .random_extrude import (
-        process_random_extrude,
-    )
-
-    from .uv import (
-        UVBounds,
-        get_face_uv_bounds,
-        get_face_uv_center,
-        calculate_face_uv_area,
-        is_face_uv_collapsed,
-        get_image_from_face,
-        is_orthogonal_angle,
-        detect_face_uv_rotation,
-        straighten_face_uv,
-        process_mesh_uv_rotations,
-        normalize_face_uv_for_atlas_tiling,
-        face_uv_requires_atlas_tiling,
-        restore_atlas_tiling_uv,
-        repair_face_fluid_uv,
-        process_mesh_fluid_uv_repairs,
-    )
-except ImportError:
-    pass
+from .random_extrude import (
+    process_random_extrude,
+)
 
 __all__ = [
     "SELECTION_ACTION_ITEMS",
     "SELECTION_SCOPE_ITEMS",
     "SELECT_MODES",
-    "poll_edit_mesh",
-    "poll_mesh_object",
-    "set_select_mode",
-    "bmesh_context",
     "apply_selection",
+    "bmesh_context",
     "get_connected_faces",
     "get_target_faces",
     "is_hard_edge",
+    "poll_edit_mesh",
+    "poll_mesh_object",
+    "set_select_mode",
     "UVBounds",
+    "calculate_face_uv_area",
     "get_face_uv_bounds",
     "get_face_uv_center",
-    "calculate_face_uv_area",
-    "is_face_uv_collapsed",
-    "get_image_from_face",
-    "is_orthogonal_angle",
-    "detect_face_uv_rotation",
-    "straighten_face_uv",
-    "process_mesh_uv_rotations",
-    "normalize_face_uv_for_atlas_tiling",
-    "face_uv_requires_atlas_tiling",
-    "restore_atlas_tiling_uv",
+    "find_albedo_image_from_material",
+    "find_face_image",
+    "is_fluid_texture_name",
+    "is_flowing_fluid_texture",
     "repair_face_fluid_uv",
+    "repair_polygon_fluid_uv",
     "process_mesh_fluid_uv_repairs",
+    "process_bmesh_fluid_uv_repairs",
+    "process_raw_mesh_fluid_uv_repairs",
     "process_random_extrude",
-    "subdivide_quad_face",
-    "cleanup_mesh_topology",
 ]
+

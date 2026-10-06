@@ -245,7 +245,7 @@ def ensure_colormap_sampler() -> bpy.types.NodeTree:
     return finalize_group(tree)
 
 
-COLORMAP_DECODER_VERSION = 1
+COLORMAP_DECODER_VERSION = 2
 
 
 def ensure_colormap_decoder() -> bpy.types.NodeTree:
@@ -265,7 +265,7 @@ def ensure_colormap_decoder() -> bpy.types.NodeTree:
         return tree
 
     add_sockets(tree, (
-        ("Tint Type", "INPUT", "NodeSocketFloat", 1.0, 0.0, 5.0),
+        ("Tint Type", "INPUT", "NodeSocketFloat", 0.0, 0.0, 5.0),
         ("Grass Color", "INPUT", "NodeSocketColor", (0.57, 0.74, 0.35, 1.0)),
         ("Foliage Color", "INPUT", "NodeSocketColor", (0.47, 0.67, 0.18, 1.0)),
         ("Dry Foliage Color", "INPUT", "NodeSocketColor", (0.64, 0.46, 0.27, 1.0)),

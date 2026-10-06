@@ -1,9 +1,9 @@
-schema_version = "1.1.0"
+schema_version = "1.0.0"
 
 # Example of manifest file for a Blender extension
 # Change the values according to your extension
 id = "mozitoolkit"
-version = "1.1.0"
+version = "2.0.0"
 name = "MoziToolKit"
 tagline = "A suite of tools to enhance productivity of Blender artists"
 maintainer = "Mozi Arasaka"
@@ -17,7 +17,7 @@ website = "https://mozi1924.com/"
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
 tags = ["Modeling", "UV", "Mesh", "Material"]
 
-blender_version_min = "5.2.0"
+blender_version_min = "5.0.0"
 # # Optional: Blender version that the extension does not support, earlier versions are supported.
 # # This can be omitted and defined later on the extensions platform if an issue is found.
 # blender_version_max = "5.3.0"
@@ -37,14 +37,9 @@ platforms = ["windows-x64", "windows-arm64", "macos-arm64", "linux-x64"]
 # Other supported platforms: "windows-arm64", "macos-x64"
 
 # Optional: bundle 3rd party Python modules.
-# https://docs.blender.org/manual/en/dev/advanced/extensions/python_wheels.html
-wheels = [
-  "./wheels/pillow-12.3.0-cp313-cp313-macosx_11_0_arm64.whl",
-  "./wheels/pillow-12.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
-  "./wheels/pillow-12.3.0-cp313-cp313-win_amd64.whl",
-  "./wheels/pillow-12.3.0-cp313-cp313-win_arm64.whl",
-  "./wheels/websockets-15.0.1-py3-none-any.whl",
-]
+# In development, native extensions are loaded dynamically from dev/lib/.
+# Release packaging (build.py) automatically populates wheels during release builds.
+# wheels = []
 
 # Resources required by the extension (files permissions)
 [permissions]
@@ -59,6 +54,8 @@ paths_exclude_pattern = [
   "/*.zip",
   "tests/",
   "dist/",
+  "site-packages/",
+  "dev/",
   "*.blend",
   "*.blend1",
   ".DS_Store",
