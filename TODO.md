@@ -34,7 +34,7 @@
 
 ---
 
-## 阶段一：多会话架构与 Empty 容器统一层级规范（P1 - 结构规范 🚧 进行中）
+## 阶段一：多会话架构与 Empty 容器统一层级规范（✅ 已完成）
 - [x] **伴生体素点云子物体结构与全量持久化 (`hierarchy.py`, `bridge/point_cloud.py`)**
   - [x] 废弃独立集合隔离，对齐世界网格挂载伴生点云子物体（`ensure_voxel_child_cloud`）。
   - [x] 自动承载未遮挡剔除体素元数据、Attributes 绑定与 Mask 修改器一键显隐。
@@ -51,9 +51,10 @@
   - [x] 将会话属性绑定至每个 Container 物体本身（独立的 URL、选区坐标、顶点统计与连接状态），实现多会话完全并行隔离与防串流。
   - [x] 单一活跃会话互斥保护机制（检测到多容器同步冲突时弹出友好确认切换对话框）。
   - [x] 属性面板深度优化：移出场景 Scene 选项卡，Empty 根容器显示于绿色 Object Data 选项卡，子物体显示于橙色 Object 选项卡。
-- [ ] **容器与子物体重命名级联同步 (`watcher.py`)**
-  - [ ] 恢复 `bpy.app.handlers.depsgraph_update_post` 监听机制。
-  - [ ] 当用户在大纲视图重命名 Empty 容器时，自动级联同步更新子网格与子点云名称（如 `MyWorld_Mesh`, `MyWorld_PointCloud`）。
+- [x] **容器与子物体重命名级联同步 (`watcher.py`)**
+  - [x] 恢复 `bpy.app.handlers.depsgraph_update_post` 监听机制。
+  - [x] 当用户在大纲视图重命名 Empty 容器时，自动级联同步更新子网格与子点云名称（如 `MyWorld_Mesh`, `MyWorld_PointCloud`）。
+  - [x] 活跃连接中防 Edit Mode 误操作保护机制（自动回退至 Object Mode）。
 
 ---
 

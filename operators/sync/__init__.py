@@ -13,6 +13,10 @@ from .op_sync_connect import OPERATOR_CLASSES as CONNECT_CLASSES
 from .op_sync_rebuild import OPERATOR_CLASSES as REBUILD_CLASSES
 from .op_sync_clear_history import OPERATOR_CLASSES as CLEAR_CLASSES
 from .op_sync_create_world import OPERATOR_CLASSES as CREATE_CLASSES
+from .watcher import (
+    register as register_watcher,
+    unregister as unregister_watcher,
+)
 
 OPERATOR_CLASSES = (
     CONNECT_CLASSES
@@ -24,6 +28,7 @@ OPERATOR_CLASSES = (
 
 def register():
     register_properties()
+    register_watcher()
     for cls in OPERATOR_CLASSES:
         import bpy
         bpy.utils.register_class(cls)
@@ -36,4 +41,5 @@ def unregister():
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
+    unregister_watcher()
     unregister_properties()

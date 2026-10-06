@@ -167,6 +167,74 @@ class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
         self.assertFalse(MOZI_PT_live_sync_data.poll(ctx_mesh))
         self.assertTrue(MOZI_PT_live_sync.poll(ctx_mesh))
 
+    def test_sync_container_rename_cascades_to_children(self):
+        """Verifies that renaming Empty container propagates new prefix to child mesh and point cloud."""
+        from operators.sync.hierarchy import sync_container_child_names
+        from operators.sync.watcher import on_sync_depsgraph_update_post, _deferred_sync_renamed_roots, _get_pending_rename_roots
+
+        root = _MockBpyObject("OldWorld", "EMPTY")
+        root["mtk:is_container"] = True
+        root["mtk:is_yefira_world"] = True
+        root["mtk:last_name"] = "OldWorld"
+        bpy.data.objects["OldWorld"] = root
+
+        mesh_obj = _MockBpyObject("OldWorld_Mesh", "MESH")
+        mesh_obj["mtk:is_yefira_mesh"] = True
+        mesh_obj.parent = root
+        mesh_obj.data = types.SimpleNamespace(name="Mesh_OldWorld")
+        root.children.append(mesh_obj)
+        bpy.data.objects["OldWorld_Mesh"] = mesh_obj
+
+        cloud_obj = _MockBpyObject("OldWorld_VoxelCloud", "MESH")
+        cloud_obj["mtk_is_voxel_cloud"] = True
+        cloud_obj.parent = root
+        root.children.append(cloud_obj)
+        bpy.data.objects["OldWorld_VoxelCloud"] = cloud_obj
+
+        # 1. User renames root container in Outliner
+        root.name = "NewWorld"
+        bpy.data.objects["NewWorld"] = root
+
+        # 2. Direct cascade call
+        sync_container_child_names(root)
+        self.assertEqual(mesh_obj.name, "NewWorld_Mesh")
+        self.assertEqual(mesh_obj.data.name, "Mesh_NewWorld")
+        self.assertEqual(cloud_obj.name, "NewWorld_VoxelCloud")
+        self.assertEqual(root["mtk:last_name"], "NewWorld")
+
+    def test_watcher_depsgraph_listener_triggers_deferred_rename(self):
+        """Verifies that watcher catches rename in depsgraph updates and queues deferred sync."""
+        from operators.sync.watcher import on_sync_depsgraph_update_post, _deferred_sync_renamed_roots, _get_pending_rename_roots
+
+        scene = types.SimpleNamespace(mozi_active_sync_container_name="City_A")
+        root = _MockBpyObject("City_A", "EMPTY")
+        root["mtk:is_container"] = True
+        root["mtk:is_yefira_world"] = True
+        root["mtk:last_name"] = "City_A"
+        bpy.data.objects["City_A"] = root
+
+        child_mesh = _MockBpyObject("City_A_Mesh", "MESH")
+        child_mesh["mtk:is_yefira_mesh"] = True
+        child_mesh.parent = root
+        child_mesh.data = types.SimpleNamespace(name="Mesh_City_A")
+        root.children.append(child_mesh)
+
+        # Rename
+        root.name = "Metropolis"
+        bpy.data.objects["Metropolis"] = root
+
+        # Mock depsgraph update event
+        mock_update = types.SimpleNamespace(id=root)
+        mock_depsgraph = types.SimpleNamespace(updates=[mock_update])
+
+        on_sync_depsgraph_update_post(scene, mock_depsgraph)
+        self.assertIn("Metropolis", _get_pending_rename_roots())
+
+        # Execute deferred task
+        _deferred_sync_renamed_roots(scene)
+        self.assertEqual(child_mesh.name, "Metropolis_Mesh")
+        self.assertEqual(scene.mozi_active_sync_container_name, "Metropolis")
+
 
 if __name__ == "__main__":
     unittest.main()
