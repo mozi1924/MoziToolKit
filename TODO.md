@@ -123,3 +123,23 @@
     - 📡 **实时网络同步 (Live Sync)**：会话管理、多容器状态、流量与增量指标；
     - 📦 **世界存档导入 (World Saves)**：选区预览框、存档导入与刷新记忆；
     - 🧊 **体素与网格工具 (Voxel Tools)**：点云展示、通用网格重构、面剔除与像素切分。
+
+---
+
+## 阶段五：通用二进制中间包与场景交换前端对接 (`.mtkscene` / `.mtkcache` - 规划中 📋)
+- [x] **设计规范对齐（✅ 已落地）**
+  - [x] 底层容器规范与分块协议对齐：见 [`libmozitoolkit/docs/PACKAGE_SPEC.md`](../libmozitoolkit/docs/PACKAGE_SPEC.md)。
+- [ ] **全量资产缓存单文件包挂载 (`bridge/assets.py`)**
+  - [ ] 支持从单一 `.mtkcache` 包中直读图集、Standalone 贴图与模型，替代散文件扫描。
+  - [ ] 预编译面板提供“导出为单一缓存包”与“切换缓存载体（单文件/散文件）”选项。
+- [ ] **场景交换格式导入算子 (`operators/package/op_import_scene.py`)**
+  - [ ] 顶部菜单集成：`File -> Import -> MoziToolKit Scene Package (.mtkscene)`。
+  - [ ] 导入选项面板：
+    - 网格化拓扑：平滑 AO、面遮挡剔除、贪婪网格化 (Greedy Meshing) 开关；
+    - 材质策略：现场烘焙紧凑微图集 (On-the-fly Atlas) vs 独立 Principled BSDF 材质。
+  - [ ] 调用 `bridge/package.py` 驱动 Rust 现场重构网格并生成材质节点树。
+- [ ] **场景交换格式导出算子 (`operators/package/op_export_scene.py`)**
+  - [ ] 顶部菜单集成：`File -> Export -> MoziToolKit Scene Package (.mtkscene)`。
+  - [ ] 支持所选物体/容器（无论是 Live Sync 容器、Save 存档容器还是体素点云）一键导出为 `.mtkscene`。
+  - [ ] 自动树状剪枝（Tree-shaking），仅打包选区内实际引用的独立贴图与方块模型，生成轻量自包含分享包。
+
