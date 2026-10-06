@@ -82,9 +82,14 @@ from tools.mock_sync_server import generate_terrain
 class TestModelRegressionFixes(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.vanilla_jar = Path(os.path.expanduser("~/26.2-Fabric.jar"))
-        cls.spbr_21 = Path(os.path.expanduser("~/Downloads/SPBR-21.zip"))
-        cls.spbr_glowing = Path(os.path.expanduser("~/Downloads/SPBR-GlowingOre.zip"))
+        from _assets import fabric_jar, resource_pack_zip
+
+        cls.vanilla_jar = fabric_jar() or Path("/nonexistent-26.2-Fabric.jar")
+        cls.spbr_21 = resource_pack_zip() or Path("/nonexistent-SPBR-21.zip")
+        glowing = os.environ.get("MTK_TEST_RESOURCE_PACK_GLOWING")
+        cls.spbr_glowing = (
+            Path(glowing) if glowing else Path("/nonexistent-SPBR-GlowingOre.zip")
+        )
 
         cls.stack = libmtk_py.ResourcePackStack()
         if cls.spbr_glowing.exists():
