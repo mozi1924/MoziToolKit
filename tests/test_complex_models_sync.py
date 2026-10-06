@@ -77,11 +77,12 @@ from operators.sync.hierarchy import get_or_create_world_mesh_object, update_wor
 
 class TestComplexModelsSync(unittest.TestCase):
     def setUp(self):
-        self.models_bin_path = Path(
-            os.path.expanduser(
-                "~/Library/Application Support/Blender/5.2/datafiles/MoziToolKit/cache/models/models.bin"
-            )
-        )
+        from _assets import blender_datafiles_cache
+
+        cache_root = blender_datafiles_cache()
+        if cache_root is None:
+            self.skipTest("Blender asset cache not found (set MOZI_CACHE_DIR / MTK_TEST_CACHE)")
+        self.models_bin_path = cache_root / "models" / "models.bin"
         if not self.models_bin_path.exists():
             self.skipTest(f"models.bin cache not found at {self.models_bin_path}")
 
