@@ -70,8 +70,9 @@
     1. 动态重新加载最新 Atlas、ModelDatabase 与 BiomeResolver；
     2. 调用 Rust 端 `VoxelWorld::clear_cache()`，强制清除脏区块网格缓存（`section_mesh_cache`）；
     3. 重新执行全量网格化，并同步更新 Blender 材质节点树中的图集图像节点，彻底杜绝 UV 偏移与模型错乱。
-- [ ] **顶层通用网格重构统一门面算子 (`operators/op_mesh.py`)**
-  - [ ] 智能判定所选物体的体素源（实时同步容器 / 存档导入容器 / 点云物体），统一收拢派发至单一入口 `mozi.rebuild_mesh`。
+- [x] **顶层通用网格重构统一门面算子 (`operators/op_mesh.py`)**
+  - [x] 智能判定所选物体的体素源（实时同步容器 / 存档导入容器 / 点云物体），统一收拢派发至单一入口 `mozi.rebuild_mesh`。
+  - [x] 右键上下文菜单与默认预设无缝集成（`CANONICAL_DEFAULT_PRESETS`，支持对象与网格视图一键重构）。
 
 ---
 
@@ -84,9 +85,10 @@
   - [x] 依据体素元数据自动创建并分配多材质槽与 Principled BSDF 节点树。
   - [x] 自动提取并生成伴生体素点云子物体 (`ensure_voxel_child_cloud`)。
   - [x] 物体自定义属性存储元数据（选区坐标、世界名、数据版本等）。
-- [ ] **存档导入非破坏性独立容器化 (`operators/save/op_import_save.py`, `bridge/save.py`)**
-  - [ ] 存档导入时自动创建独立 Empty 根容器（如 `Save_WorldName_Dimension_01`），子网格与子点云收拢于容器内。
-  - [ ] 连续导入新选区时绝不覆盖历史已导入的存档物体，自动递增序号新建容器。
+- [x] **存档导入非破坏性独立容器化 (`operators/save/op_import_save.py`, `bridge/save.py`)**
+  - [x] 存档导入时自动创建独立 Empty 根容器（如 `Save_WorldName_Dimension_01`），子网格与子点云收拢于容器内。
+  - [x] 连续导入新选区时绝不覆盖历史已导入的存档物体，自动递增序号新建容器。
+  - [x] 根容器与子物体完整记录 AABB、维度、AO、流体、居中与材质参数自定义属性。
 - [ ] **本地隐私注册表管理器 (`utils/system/save_registry.py`)**
   - [ ] 实现基于用户本地数据目录的 `SaveRegistryManager`，在 `DATAFILES/mozi_toolkit/save_registry.json` 中记录：
     ```json

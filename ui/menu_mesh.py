@@ -18,6 +18,8 @@ class MOZI_MT_mesh_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
+        layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
+        layout.separator()
         layout.operator("mozi.adaptive_pixel_split")
         layout.operator("mozi.auto_extrude_repair")
         layout.operator("mozi.random_extrude")

@@ -149,6 +149,34 @@ def load_and_mesh_minecraft_save(
     return mesh_data, meta_dict, storage, elapsed_ms
 
 
+import uuid
+
+
+def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
+    if obj is None:
+        return
+    try:
+        obj[key] = val
+    except (TypeError, AttributeError, KeyError):
+        try:
+            setattr(obj, key, val)
+        except Exception:
+            pass
+
+
+def _resolve_unique_save_container_name(base_name: str, bpy_module: Any) -> str:
+    """Finds the next non-colliding container name (e.g. Save_World_overworld, Save_World_overworld_01)."""
+    if not hasattr(bpy_module, "data") or not hasattr(bpy_module.data, "objects"):
+        return base_name
+    objects = bpy_module.data.objects
+    if base_name not in objects:
+        return base_name
+    idx = 1
+    while f"{base_name}_{idx:02d}" in objects:
+        idx += 1
+    return f"{base_name}_{idx:02d}"
+
+
 def apply_imported_save_to_blender(
     mesh_data: Any,
     meta: Dict[str, Any],
@@ -163,10 +191,16 @@ def apply_imported_save_to_blender(
     atlas: Optional[Any] = None,
     origin_centered: bool = True,
     reuse_existing: bool = False,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
-    Fast (tens of milliseconds), zero-copy vertex/loop injection and material binding.
+    Adheres to the Unified World Empty Container architecture:
+      Container Root (Empty, mtk:is_container=True, mtk:container_type="SAVE")
+      ├── World Mesh (Mesh, <Container>_Mesh)
+      └── Point Cloud (Mesh, <Container>_VoxelCloud, hidden by default)
     """
     try:
         import bpy
@@ -176,25 +210,64 @@ def apply_imported_save_to_blender(
     if context is None:
         context = bpy.context
 
+    target_coll = context.collection if context and context.collection else (
+        bpy.context.scene.collection if hasattr(bpy.context, "scene") else None
+    )
+
     clean_name = meta["level_name"].replace(" ", "_")
-    obj_name = f"MC_{clean_name}_{dimension}"
+    base_container_name = f"Save_{clean_name}_{dimension}"
 
-    # 1. Acquire or create Blender object
-    obj = None
-    if reuse_existing and obj_name in bpy.data.objects:
-        cand = bpy.data.objects[obj_name]
-        if cand.type == "MESH":
-            obj = cand
+    # 1. Acquire or create Root Empty Container
+    root_obj = None
+    if reuse_existing and hasattr(bpy, "data") and hasattr(bpy.data, "objects") and base_container_name in bpy.data.objects:
+        cand = bpy.data.objects[base_container_name]
+        if getattr(cand, "type", "") == 'EMPTY':
+            root_obj = cand
 
-    if obj is None:
-        b_mesh = bpy.data.meshes.new(obj_name)
-        obj = bpy.data.objects.new(obj_name, b_mesh)
-        target_coll = context.collection if context and context.collection else bpy.context.scene.collection
-        target_coll.objects.link(obj)
+    if root_obj is None:
+        container_name = _resolve_unique_save_container_name(base_container_name, bpy) if not reuse_existing else base_container_name
+        root_obj = bpy.data.objects.new(container_name, None)
+        if hasattr(root_obj, "empty_display_type"):
+            root_obj.empty_display_type = 'PLAIN_AXES'
+        if hasattr(root_obj, "empty_display_size"):
+            root_obj.empty_display_size = 1.0
+        _safe_set_custom_prop(root_obj, "mtk:is_container", True)
+        _safe_set_custom_prop(root_obj, "mtk:container_type", "SAVE")
+        _safe_set_custom_prop(root_obj, "mtk:container_id", uuid.uuid4().hex)
+        _safe_set_custom_prop(root_obj, "mtk:last_name", getattr(root_obj, "name", container_name))
+        if target_coll is not None and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
+            try:
+                target_coll.objects.link(root_obj)
+            except Exception:
+                pass
+
+    container_name = getattr(root_obj, "name", base_container_name)
+
+    # 2. Acquire or create Child Mesh Object
+    mesh_child_name = f"{container_name}_Mesh"
+    mesh_obj = None
+    if reuse_existing and hasattr(bpy, "data") and hasattr(bpy.data, "objects") and mesh_child_name in bpy.data.objects:
+        cand = bpy.data.objects[mesh_child_name]
+        if getattr(cand, "type", "") == "MESH":
+            mesh_obj = cand
+
+    if mesh_obj is None:
+        b_mesh = bpy.data.meshes.new(mesh_child_name)
+        mesh_obj = bpy.data.objects.new(mesh_child_name, b_mesh)
+        if hasattr(mesh_obj, "parent"):
+            mesh_obj.parent = root_obj
+        _safe_set_custom_prop(mesh_obj, "mtk:is_save_mesh", True)
+        if target_coll is not None and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
+            try:
+                target_coll.objects.link(mesh_obj)
+            except Exception:
+                pass
     else:
-        b_mesh = obj.data
+        b_mesh = mesh_obj.data
+        if hasattr(mesh_obj, "parent") and mesh_obj.parent != root_obj:
+            mesh_obj.parent = root_obj
 
-    # 2. Inject mesh geometry
+    # 3. Inject mesh geometry
     inject_mesh_data(
         b_mesh,
         mesh_data,
@@ -202,46 +275,61 @@ def apply_imported_save_to_blender(
         update_normals=True,
     )
 
-    # 3. Bind Atlas materials and shaders
+    # 4. Bind Atlas materials and shaders
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    ensure_world_materials(mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
-    # 4. Extract unculled VoxelPointCloud and ensure child companion object
+    # 5. Extract unculled VoxelPointCloud and ensure child companion object under root Empty
     cloud_obj = ensure_voxel_child_cloud(
-        parent_obj=obj,
+        parent_obj=root_obj,
         storage=storage,
         origin_centered=origin_centered,
         initial_hidden=True,
     )
-    cloud_count = len(cloud_obj.data.vertices) if cloud_obj and cloud_obj.data else 0
+    cloud_count = len(cloud_obj.data.vertices) if cloud_obj and hasattr(cloud_obj, "data") and hasattr(cloud_obj.data, "vertices") else 0
 
-    # 5. Store metadata in Object Custom Properties
-    obj["mtk_world_name"] = str(meta["level_name"])
-    obj["mtk_mc_version"] = str(meta["version_name"])
-    obj["mtk_data_version"] = int(meta["data_version"])
-    obj["mtk_dimension"] = str(dimension)
-    obj["mtk_spawn_point"] = list(meta["spawn"])
-    obj["mtk_min_coord"] = list(min_block)
-    obj["mtk_max_coord"] = list(max_block)
-    obj["mtk_source_path"] = str(Path(world_dir).resolve())
+    if cloud_obj:
+        _safe_set_custom_prop(root_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
+        _safe_set_custom_prop(mesh_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
+        _safe_set_custom_prop(cloud_obj, "mtk_world_mesh", getattr(mesh_obj, "name", ""))
 
-    # 6. Activate in viewport
+    # 6. Store metadata in Object Custom Properties on both root container and mesh
+    for target in (root_obj, mesh_obj):
+        _safe_set_custom_prop(target, "mtk_world_name", str(meta["level_name"]))
+        _safe_set_custom_prop(target, "mtk_mc_version", str(meta["version_name"]))
+        _safe_set_custom_prop(target, "mtk_data_version", int(meta["data_version"]))
+        _safe_set_custom_prop(target, "mtk_dimension", str(dimension))
+        _safe_set_custom_prop(target, "mtk_spawn_point", list(meta["spawn"]))
+        _safe_set_custom_prop(target, "mtk_min_coord", list(min_block))
+        _safe_set_custom_prop(target, "mtk_max_coord", list(max_block))
+        _safe_set_custom_prop(target, "mtk_source_path", str(Path(world_dir).resolve()))
+        _safe_set_custom_prop(target, "mtk_origin_centered", bool(origin_centered))
+        _safe_set_custom_prop(target, "mtk_enable_ao", bool(enable_ao))
+        _safe_set_custom_prop(target, "mtk_mesh_fluids", bool(mesh_fluids))
+        _safe_set_custom_prop(target, "mtk_weld_vertices", bool(weld_vertices))
+
+    # 7. Activate root container in viewport
     if context and hasattr(context, "view_layer"):
-        obj.select_set(True)
-        context.view_layer.objects.active = obj
+        if hasattr(root_obj, "select_set"):
+            root_obj.select_set(True)
+        if hasattr(context.view_layer, "objects"):
+            context.view_layer.objects.active = root_obj
 
     stats = {
-        "object_name": obj.name,
+        "object_name": getattr(root_obj, "name", base_container_name),
+        "container_name": getattr(root_obj, "name", base_container_name),
+        "mesh_name": getattr(mesh_obj, "name", mesh_child_name),
+        "cloud_name": getattr(cloud_obj, "name", None) if cloud_obj else None,
         "level_name": meta["level_name"],
         "version_name": meta["version_name"],
         "data_version": meta["data_version"],
-        "vertex_count": len(b_mesh.vertices),
-        "polygon_count": len(b_mesh.polygons),
+        "vertex_count": len(b_mesh.vertices) if hasattr(b_mesh, "vertices") else 0,
+        "polygon_count": len(b_mesh.polygons) if hasattr(b_mesh, "polygons") else 0,
         "voxel_count": cloud_count,
         "elapsed_ms": round(elapsed_ms, 2),
     }
 
-    return obj, stats
+    return root_obj, stats
 
 
 def import_save_to_blender(
@@ -294,4 +382,7 @@ def import_save_to_blender(
         atlas=atlas,
         origin_centered=origin_centered,
         reuse_existing=reuse_existing,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
     )

@@ -243,6 +243,9 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                 context=context,
                 prefs=prefs,
                 origin_centered=self.origin_centered,
+                enable_ao=self.enable_ao,
+                mesh_fluids=self.mesh_fluids,
+                weld_vertices=self.weld_vertices,
             )
             self.report(
                 {"INFO"},
