@@ -91,17 +91,29 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
 
 @bpy.app.handlers.persistent
 def _on_blend_file_pre_load(dummy=None):
-    """Disconnect Live Sync client before loading a new blend file."""
+    """Disconnect Live Sync client, cancel timers, and reset session before loading a new blend file."""
     try:
-        from ...bridge.sync import get_sync_bridge_session
-        get_sync_bridge_session().stop()
+        try:
+            from .op_sync_connect import stop_sync_timer
+        except (ImportError, ValueError):
+            from operators.sync.op_sync_connect import stop_sync_timer
+        stop_sync_timer()
     except Exception as e:
-        logger.debug(f"Error disconnecting sync on file load: {e}")
+        logger.debug(f"Error stopping sync timer on file pre-load: {e}")
+
+    try:
+        try:
+            from ...bridge.sync import reset_sync_bridge_session
+        except (ImportError, ValueError):
+            from bridge.sync import reset_sync_bridge_session
+        reset_sync_bridge_session()
+    except Exception as e:
+        logger.debug(f"Error resetting sync session on file pre-load: {e}")
 
 
 @bpy.app.handlers.persistent
 def _on_blend_file_loaded(dummy=None):
-    """Reset properties upon file load."""
+    """Reset properties across all scenes and objects upon file load."""
     try:
         for scene in bpy.data.scenes:
             if hasattr(scene, "mozi_sync"):
@@ -109,8 +121,15 @@ def _on_blend_file_loaded(dummy=None):
                 props.is_connected = False
                 props.connection_status = "DISCONNECTED"
                 props.validation_info = "Ready to connect"
+                props.is_streaming = False
+        for obj in bpy.data.objects:
+            if hasattr(obj, "mozi_sync"):
+                props = obj.mozi_sync
+                props.is_connected = False
+                props.connection_status = "DISCONNECTED"
+                props.is_streaming = False
     except Exception as e:
-        logger.debug(f"Error resetting properties: {e}")
+        logger.debug(f"Error resetting properties on file load: {e}")
 
 
 CLASSES = (
@@ -137,6 +156,24 @@ def unregister():
         bpy.app.handlers.load_pre.remove(_on_blend_file_pre_load)
     if _on_blend_file_loaded in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_blend_file_loaded)
+
+    try:
+        try:
+            from .op_sync_connect import stop_sync_timer
+        except (ImportError, ValueError):
+            from operators.sync.op_sync_connect import stop_sync_timer
+        stop_sync_timer()
+    except Exception:
+        pass
+
+    try:
+        try:
+            from ...bridge.sync import reset_sync_bridge_session
+        except (ImportError, ValueError):
+            from bridge.sync import reset_sync_bridge_session
+        reset_sync_bridge_session()
+    except Exception:
+        pass
 
     if hasattr(bpy.types.Object, "mozi_sync"):
         del bpy.types.Object.mozi_sync
