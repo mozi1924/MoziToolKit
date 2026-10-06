@@ -66,6 +66,9 @@ class TestDebugWorldSnapshot(unittest.TestCase):
     """Verifies pure-code generation and meshing of canonical Minecraft debug world."""
 
     def test_load_and_mesh_debug_world(self):
+        from _assets import require_assets
+
+        require_assets()  # canonical debug world requires full vanilla assets
         storage = libmtk_py.VoxelStorage.create_debug_world()
         bounds = storage.get_bounds()
         self.assertEqual(bounds[0], 0)

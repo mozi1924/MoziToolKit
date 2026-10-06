@@ -29,13 +29,19 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
     def setUpClass(cls):
         if not HAS_LIBMTK:
             raise unittest.SkipTest("libmtk_py is required for redstone wire tests")
+        from _assets import assets_root, fabric_jar
+
         cls.stack = libmtk_py.ResourcePackStack()
-        jar_path = Path(os.path.expanduser("~/26.2-Fabric.jar"))
-        mc_path = Path("/home/mozi/mc")
-        if jar_path.exists():
+        jar_path = fabric_jar()
+        mc_path = assets_root()
+        if jar_path is not None:
             cls.stack.add_zip_pack(str(jar_path))
-        elif mc_path.exists():
+        elif mc_path is not None:
             cls.stack.add_directory_pack(str(mc_path))
+        else:
+            raise unittest.SkipTest(
+                "Minecraft assets unavailable (set MTK_TEST_JAR / MTK_TEST_ASSETS)"
+            )
         cls.baker = libmtk_py.ModelBaker()
 
     def test_redstone_wire_signal_tints_power_0_to_15(self):

@@ -288,9 +288,14 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         if not HAS_BPY or not HAS_LIBMTK:
             self.skipTest("bpy and libmtk are required for end-to-end injection test")
 
-        cache_atlas_mapping = Path("/home/mozi/.config/blender/5.2/datafiles/MoziToolKit/cache/atlas/atlas_mapping.json")
-        if not cache_atlas_mapping.exists():
-            self.skipTest("Precompiled atlas cache mapping is required")
+        from _assets import blender_datafiles_cache
+
+        cache_root = blender_datafiles_cache()
+        cache_atlas_mapping = (
+            cache_root / "atlas" / "atlas_mapping.json" if cache_root else None
+        )
+        if cache_atlas_mapping is None or not cache_atlas_mapping.exists():
+            self.skipTest("Precompiled atlas cache mapping is required (set MTK_TEST_CACHE)")
 
         atlas = mtk_py.BakedAtlas.from_mapping_json(cache_atlas_mapping.read_text(encoding="utf-8"))
         config = mtk_py.MesherConfig(

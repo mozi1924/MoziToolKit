@@ -34,7 +34,7 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
     Supports pure-code layout from:
     1. Explicit blockstates list;
     2. Active configured resource pack stack (including any mod packs);
-    3. Canonical unpack directory (/home/mozi/mc);
+    3. Configured unpack directory (`MC_DIR` / `MC_ASSETS_DIR` / `MTK_TEST_ASSETS`);
     4. Builtin pure-code fallback generator.
     """
     mtk = require_libmtk("load_debug_world_storage")
@@ -59,12 +59,18 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
         if pack_count > 0:
             return voxel_storage.create_debug_world_from_pack_stack(stack)
 
-        # Fallback to local dev unpack directory if configured stack has no packs
+        # Fallback to a configured unpack directory when the active stack has no packs.
+        import os
         from pathlib import Path
-        mc_path = Path("/home/mozi/mc")
-        if mc_path.exists() and (mc_path / "assets").exists():
-            stack.add_directory_pack(str(mc_path.resolve()), "VanillaMC")
-            return voxel_storage.create_debug_world_from_pack_stack(stack)
+
+        for env_key in ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS"):
+            env_val = os.environ.get(env_key)
+            if not env_val:
+                continue
+            mc_path = Path(env_val)
+            if mc_path.exists() and (mc_path / "assets").exists():
+                stack.add_directory_pack(str(mc_path.resolve()), "VanillaMC")
+                return voxel_storage.create_debug_world_from_pack_stack(stack)
 
     return voxel_storage.create_debug_world()
 
