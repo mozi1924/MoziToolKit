@@ -12,6 +12,7 @@ from ..config import load_config
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
         {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
@@ -24,6 +25,7 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
     ],
     "object": [
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
         {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
@@ -41,6 +43,14 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
 
 
 CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
+    "mozi.rebuild_mesh": {
+        "canonical_id": "mozi.rebuild_mesh",
+        "label": "Rebuild Voxel Mesh",
+        "default_label": "Rebuild Voxel Mesh",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
     "mozi.replace_material": {
         "canonical_id": "mozi.replace_material",
         "label": "Replace Material",
