@@ -6,13 +6,15 @@ Zero-computation on the Python side: all parsing, packing, image decoding,
 and geometric meshing are handled entirely within libmtk.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from ..utils.system import get_prefs
@@ -386,6 +388,122 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
             pass
     return None
 
+
+def get_cache_manifest(prefs=None) -> Optional[Dict[str, Any]]:
+    """
+    Reads cache_manifest.json from the active cache directory if it exists.
+    Returns parsed dictionary or None.
+    """
+    cache_dir = get_cache_dir(prefs)
+    manifest_file = cache_dir / "cache_manifest.json"
+    if not manifest_file.exists():
+        return None
+    try:
+        import json
+        return json.loads(manifest_file.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def get_cache_fingerprint(prefs=None) -> Optional[str]:
+    """
+    Returns the active resource pack stack fingerprint recorded in cache_manifest.json,
+    or None if cache does not exist.
+    """
+    manifest = get_cache_manifest(prefs)
+    if manifest and isinstance(manifest, dict):
+        return manifest.get("fingerprint")
+    return None
+
+
+def get_cache_timestamp(prefs=None) -> float:
+    """
+    Returns creation epoch seconds recorded in cache_manifest.json or file modification time.
+    Returns 0.0 if cache does not exist.
+    """
+    manifest = get_cache_manifest(prefs)
+    if manifest and isinstance(manifest, dict) and "created_at_epoch_secs" in manifest:
+        try:
+            return float(manifest["created_at_epoch_secs"])
+        except (ValueError, TypeError):
+            pass
+
+    cache_dir = get_cache_dir(prefs)
+    candidates = [
+        cache_dir / "cache_manifest.json",
+        cache_dir / "atlas" / "atlas_mapping.json",
+        cache_dir / "models" / "models.bin",
+    ]
+    for c in candidates:
+        if c.exists():
+            try:
+                return float(c.stat().st_mtime)
+            except Exception:
+                pass
+    return 0.0
+
+
+def check_cache_dirty(
+    cached_fingerprint: Optional[str] = None,
+    cached_timestamp: float = 0.0,
+    prefs=None,
+) -> Tuple[bool, Optional[str], float]:
+    """
+    Compares cached fingerprint and timestamp with the current on-disk asset cache.
+    Returns (is_dirty, current_fingerprint, current_timestamp).
+    """
+    current_fp = get_cache_fingerprint(prefs)
+    current_ts = get_cache_timestamp(prefs)
+
+    # If neither fingerprint nor timestamp was previously recorded, consider dirty if cache exists
+    if cached_fingerprint is None and cached_timestamp == 0.0:
+        is_dirty = current_fp is not None or current_ts > 0.0
+        return is_dirty, current_fp, current_ts
+
+    # Fingerprint mismatch
+    if current_fp != cached_fingerprint:
+        return True, current_fp, current_ts
+
+    # Timestamp mismatch (file rewritten or recompiled)
+    if abs(current_ts - cached_timestamp) > 1e-3:
+        return True, current_fp, current_ts
+
+    return False, current_fp, current_ts
+
+
+def reload_atlas_images(prefs=None) -> int:
+    """
+    Finds loaded Blender image datablocks originating from the atlas cache directory
+    and triggers img.reload() so updated pixels and mipmaps immediately reflect on screen.
+    Returns the count of successfully reloaded images.
+    """
+    try:
+        import bpy
+    except ImportError:
+        return 0
+
+    cache_dir = get_cache_dir(prefs)
+    atlas_dir = cache_dir / "atlas"
+    atlas_dir_str = str(atlas_dir.resolve()).lower()
+
+    reloaded_count = 0
+    if not hasattr(bpy, "data") or not hasattr(bpy.data, "images"):
+        return 0
+
+    for img in bpy.data.images:
+        fp = getattr(img, "filepath", "")
+        if not fp:
+            continue
+        try:
+            resolved_fp = str(Path(bpy.path.abspath(fp)).resolve()).lower()
+            if atlas_dir_str in resolved_fp or "atlas" in resolved_fp:
+                if hasattr(img, "reload"):
+                    img.reload()
+                    reloaded_count += 1
+        except Exception:
+            continue
+
+    return reloaded_count
 
 
 _cached_cache_stats: Optional[Dict[str, Any]] = None

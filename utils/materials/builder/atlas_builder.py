@@ -339,7 +339,7 @@ def build_atlas_chunk_material(
     # -------------------------------------------------------------------------
     # 3. Texture Maps Input (X: -1150)
     # -------------------------------------------------------------------------
-    albedo_img = get_or_create_image(albedo_path, colorspace="sRGB")
+    albedo_img = get_or_create_image(albedo_path, colorspace="sRGB", force_reload=force_rebuild)
     albedo_node = None
     if albedo_img:
         albedo_node = nodes.new("ShaderNodeTexImage")
@@ -353,7 +353,7 @@ def build_atlas_chunk_material(
 
     overlay_node = None
     if overlay_path and os.path.exists(str(overlay_path)):
-        overlay_img = get_or_create_image(overlay_path, colorspace="sRGB")
+        overlay_img = get_or_create_image(overlay_path, colorspace="sRGB", force_reload=force_rebuild)
         if overlay_img:
             overlay_node = nodes.new("ShaderNodeTexImage")
             overlay_node.name = "Atlas Overlay Texture"
@@ -366,7 +366,7 @@ def build_atlas_chunk_material(
 
     normal_node = None
     if normal_path and os.path.exists(str(normal_path)):
-        normal_img = get_or_create_image(normal_path, colorspace="Non-Color")
+        normal_img = get_or_create_image(normal_path, colorspace="Non-Color", force_reload=force_rebuild)
         if normal_img:
             normal_node = nodes.new("ShaderNodeTexImage")
             normal_node.name = "Atlas Normal Texture"
@@ -379,7 +379,7 @@ def build_atlas_chunk_material(
 
     spec_node = None
     if specular_path and os.path.exists(str(specular_path)):
-        spec_img = get_or_create_image(specular_path, colorspace="Non-Color")
+        spec_img = get_or_create_image(specular_path, colorspace="Non-Color", force_reload=force_rebuild)
         if spec_img:
             spec_node = nodes.new("ShaderNodeTexImage")
             spec_node.name = "Atlas Specular Texture"
