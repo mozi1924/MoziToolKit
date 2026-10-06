@@ -16,7 +16,7 @@ bl_info = {
     "author": "Mozi Arasaka",
     "description": "Quick utility toolkit for Blender modelling & UV editing",
     "blender": (5, 0, 0),
-    "version": (1, 1, 0),
+    "version": (2, 0, 0),
     "location": "UV > Scale UV Faces / Select Transparent Faces, Edge > Select Hard & Sharp Edges, Object / Mesh > Set Image Interpolation to Closest / Clear Custom Normals",
     "warning": "",
     "category": "3D View",
