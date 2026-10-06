@@ -31,6 +31,10 @@ try:
         load_baked_model_database,
         load_baked_atlas_from_cache,
         load_biome_resolver_from_cache,
+        check_cache_dirty,
+        get_cache_fingerprint,
+        get_cache_timestamp,
+        reload_atlas_images,
     )
 except (ImportError, ValueError):
     from bridge.assets import (
@@ -38,6 +42,10 @@ except (ImportError, ValueError):
         load_baked_model_database,
         load_baked_atlas_from_cache,
         load_biome_resolver_from_cache,
+        check_cache_dirty,
+        get_cache_fingerprint,
+        get_cache_timestamp,
+        reload_atlas_images,
     )
 
 
@@ -61,6 +69,11 @@ class SyncBridgeSession:
         self._current_url: str = ""
         self._model_db: Optional[Any] = None
         self._atlas: Optional[Any] = None
+        self._biome_resolver: Optional[Any] = None
+        self._custom_aliases: Optional[Any] = None
+        self._config_params: Dict[str, Any] = {}
+        self._cached_manifest_fingerprint: Optional[str] = None
+        self._cached_manifest_timestamp: float = 0.0
         self._unified_mesh: bool = True
         self._last_error: str = ""
 
@@ -123,6 +136,15 @@ class SyncBridgeSession:
 
         self._model_db = model_db
         self._atlas = atlas
+        self._biome_resolver = biome_resolver
+        self._custom_aliases = custom_aliases
+        self._config_params = {
+            "enable_ao": enable_ao,
+            "mesh_fluids": mesh_fluids,
+            "num_threads": num_threads,
+        }
+        self._cached_manifest_fingerprint = get_cache_fingerprint()
+        self._cached_manifest_timestamp = get_cache_timestamp()
         self._unified_mesh = unified_mesh
         self._current_url = url
 
@@ -227,7 +249,113 @@ class SyncBridgeSession:
         self._current_url = ""
         self._model_db = None
         self._atlas = None
+        self._biome_resolver = None
+        self._custom_aliases = None
+        self._config_params = {}
+        self._cached_manifest_fingerprint = None
+        self._cached_manifest_timestamp = 0.0
         self._last_error = ""
+
+    def clear_cache(self) -> bool:
+        """
+        Purges cached section meshes on the underlying VoxelWorld, marking all sections dirty.
+        """
+        if self._session is not None and hasattr(self._session, "clear_cache"):
+            try:
+                self._session.clear_cache()
+                return True
+            except Exception as e:
+                logger.warning("Failed clearing native session mesh cache: %s", e)
+        return False
+
+    def check_and_reload_dirty_cache(self, prefs=None, force: bool = False) -> bool:
+        """
+        Checks whether the on-disk asset cache has been modified or recompiled.
+        If dirty (or force=True):
+        1. Reloads latest BakedAtlas, BakedModelDatabase, and BiomeResolver from disk.
+        2. Updates the native LiveSyncSession config and model database.
+        3. Clears dirty section mesh cache in Rust.
+        4. Triggers reload on Blender image datablocks for updated atlas PNGs.
+        Returns True if cache was dirty and reloaded, False otherwise.
+        """
+        is_dirty, current_fp, current_ts = check_cache_dirty(
+            self._cached_manifest_fingerprint,
+            self._cached_manifest_timestamp,
+            prefs=prefs,
+        )
+
+        if not is_dirty and not force:
+            return False
+
+        logger.info(
+            "Dirty cache detected (fp: %s -> %s, ts: %s -> %s). Hot-reloading assets...",
+            self._cached_manifest_fingerprint,
+            current_fp,
+            self._cached_manifest_timestamp,
+            current_ts,
+        )
+
+        # 1. Reload assets from disk
+        new_model_db = load_model_database_from_cache(prefs)
+        new_atlas = load_atlas_from_cache(prefs)
+        new_biome_resolver = load_biome_resolver_from_cache(prefs)
+
+        self._model_db = new_model_db
+        self._atlas = new_atlas
+        self._biome_resolver = new_biome_resolver
+        self._cached_manifest_fingerprint = current_fp
+        self._cached_manifest_timestamp = current_ts
+
+        # 2. Reconfigure active native LiveSyncSession
+        if self._session is not None:
+            mtk = get_libmtk()
+            if mtk is not None and hasattr(mtk, "MesherConfig"):
+                enable_ao = self._config_params.get("enable_ao", True)
+                mesh_fluids = self._config_params.get("mesh_fluids", True)
+                num_threads = self._config_params.get("num_threads", None)
+                try:
+                    new_config = mtk.MesherConfig(
+                        enable_ao=enable_ao,
+                        mesh_fluids=mesh_fluids,
+                        z_up_coordinates=True,
+                        origin_centered=True,
+                        weld_vertices=True,
+                        num_threads=num_threads,
+                        atlas=new_atlas,
+                        biome_resolver=new_biome_resolver,
+                        custom_aliases=self._custom_aliases,
+                    )
+                except Exception:
+                    new_config = None
+
+                if hasattr(self._session, "hot_reload"):
+                    try:
+                        self._session.hot_reload(new_config, new_model_db)
+                    except Exception as e:
+                        logger.warning("Session hot_reload failed: %s", e)
+                else:
+                    if new_config and hasattr(self._session, "set_config"):
+                        try:
+                            self._session.set_config(new_config)
+                        except Exception:
+                            pass
+                    if hasattr(self._session, "set_model_db"):
+                        try:
+                            self._session.set_model_db(new_model_db)
+                        except Exception:
+                            pass
+                    if hasattr(self._session, "clear_cache"):
+                        try:
+                            self._session.clear_cache()
+                        except Exception:
+                            pass
+
+        # 3. Reload Blender images in GPU/VRAM
+        reloaded = reload_atlas_images(prefs)
+        if reloaded > 0:
+            logger.info("Reloaded %d atlas image datablock(s) in Blender.", reloaded)
+
+        return True
 
     def poll_events(self) -> List[Dict[str, Any]]:
         """

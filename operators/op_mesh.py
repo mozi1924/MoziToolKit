@@ -383,6 +383,13 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             except Exception:
                 from operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
+            prefs = get_prefs(context)
+            if hasattr(session, "check_and_reload_dirty_cache"):
+                try:
+                    session.check_and_reload_dirty_cache(prefs=prefs)
+                except Exception:
+                    pass
+
             def do_live_rebuild(progress_callback=None):
                 return session.get_world_mesh()
 
@@ -475,6 +482,11 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 origin_centered = bool(root_container.get("mtk_origin_centered"))
 
         prefs = get_prefs(context)
+        try:
+            from ..bridge.assets import reload_atlas_images
+            reload_atlas_images(prefs)
+        except Exception:
+            pass
         model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
 
         def do_cloud_rebuild(progress_callback=None):

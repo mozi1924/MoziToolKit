@@ -195,6 +195,11 @@ class MOZI_OT_remesh_from_voxel_cloud(bpy.types.Operator):
 
         # 3. Meshing pipeline assets
         prefs = get_prefs(context)
+        try:
+            from ..bridge.assets import reload_atlas_images
+            reload_atlas_images(prefs)
+        except Exception:
+            pass
         model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
 
         # 4. Mesh the voxel volume

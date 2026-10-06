@@ -85,7 +85,11 @@ def ensure_material_node_tree(mat: Any) -> Any:
     return getattr(mat, "node_tree", None)
 
 
-def get_or_create_image(image_path: str | Path, colorspace: str = "sRGB") -> Optional[Any]:
+def get_or_create_image(
+    image_path: str | Path,
+    colorspace: str = "sRGB",
+    force_reload: bool = False,
+) -> Optional[Any]:
     """Load or retrieve an image datablock from disk with proper colorspace."""
     if not HAS_BPY:
         return None
@@ -98,6 +102,11 @@ def get_or_create_image(image_path: str | Path, colorspace: str = "sRGB") -> Opt
     file_name = os.path.basename(path_str)
     for img in bpy.data.images:
         if img.filepath == path_str or img.name == file_name:
+            if force_reload and hasattr(img, "reload"):
+                try:
+                    img.reload()
+                except Exception:
+                    pass
             if hasattr(img, "colorspace_settings") and colorspace:
                 try:
                     img.colorspace_settings.name = colorspace

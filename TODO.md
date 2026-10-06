@@ -76,9 +76,9 @@
   - [x] 重构材质与图集贴图绑定算子（`mozi.rematerialize_from_voxel_cloud`）。
   - [x] 通过 `@register_menu_item(views=["object", "mesh"])` 直接注入 3D 视图右键上下文菜单。
   - [x] 实时同步内存体素世界异步重构算子（`mozi.sync_rebuild_world`，支持 `ModalTaskRunner` + 进度汇报）。
-- [ ] **网格重构前缓存指纹一致性检查 (`bridge/sync.py`, `op_sync_rebuild.py`)**
-  - [ ] 在触发网格重构前，检查磁盘 `assets_cache/cache_manifest.json` 或文件时间戳。
-  - [ ] 若检测到用户在偏好设置中重新预编译/重新配置材质包：
+- [x] **网格重构前缓存指纹一致性检查 (`bridge/sync.py`, `op_sync_rebuild.py`)**
+  - [x] 在触发网格重构前，检查磁盘 `assets_cache/cache_manifest.json` 或文件时间戳。
+  - [x] 若检测到用户在偏好设置中重新预编译/重新配置材质包：
     1. 动态重新加载最新 Atlas、ModelDatabase 与 BiomeResolver；
     2. 调用 Rust 端 `VoxelWorld::clear_cache()`，强制清除脏区块网格缓存（`section_mesh_cache`）；
     3. 重新执行全量网格化，并同步更新 Blender 材质节点树中的图集图像节点，彻底杜绝 UV 偏移与模型错乱。

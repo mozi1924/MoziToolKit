@@ -54,6 +54,26 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             return {'CANCELLED'}
 
         target_container_name = self.target_container
+        prefs = None
+        try:
+            from ...utils.system import get_prefs
+            prefs = get_prefs(context)
+        except Exception:
+            try:
+                from utils.system import get_prefs
+                prefs = get_prefs(context)
+            except Exception:
+                pass
+
+        # Check and hot-reload dirty asset cache before remeshing
+        dirty = False
+        if hasattr(session, "check_and_reload_dirty_cache"):
+            try:
+                dirty = session.check_and_reload_dirty_cache(prefs=prefs)
+                if dirty:
+                    logger.info("Dirty asset cache detected: hot-reloaded assets and cleared mesh cache before rebuild.")
+            except Exception as e:
+                logger.warning("Failed dirty cache check: %s", e)
 
         def do_rebuild(progress_callback=None):
             return session.get_world_mesh()
@@ -72,12 +92,13 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
 
             root_obj = target_root or world_obj
             props = getattr(root_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)
+            info_suffix = " (Assets Hot-Reloaded)" if dirty else ""
             if props:
                 props.point_count = v_count
                 props.faces_count = f_count
-                props.last_update_info = f"Rebuilt World Mesh: {v_count:,} vertices, {f_count:,} faces"
+                props.last_update_info = f"Rebuilt World Mesh: {v_count:,} vertices, {f_count:,} faces{info_suffix}"
 
-            self.report({'INFO'}, f"World mesh rebuilt: {v_count:,} vertices, {f_count:,} faces")
+            self.report({'INFO'}, f"World mesh rebuilt{info_suffix}: {v_count:,} vertices, {f_count:,} faces")
 
         # Synchronous fallback for CLI / tests when run_async is False
         if not self.run_async:
