@@ -34,6 +34,18 @@
 
 ---
 
+## 阶段零点五：Blender 5.2 (Python 3.13) 宿主兼容与类注册稳健性（✅ 已完成）
+- [x] **Python 3.13 严格类型注解与类注册保护 (`operators/op_mesh.py`)**
+  - [x] 补齐顶层 `typing` 显式导入，防止 `bpy.utils.register_class` 触发 `get_type_hints` 时因未导入符号报错崩溃。
+  - [x] 地毯式扫描全插件 97 个注册类，验证 Python 3.13 环境下注解求值 100% 正常。
+- [x] **Blender 5.2 PropertyGroup 结构体标准对齐**
+  - [x] 为全量 PropertyGroup（挤出、实时同步、偏好设置）补充 `__slots__ = ()`，消除结构警告。
+- [x] **双测试门禁（Mock vs Blender 5.2 真实宿主）全绿通过**
+  - [x] Mock 快速模式：140 项测试全过。
+  - [x] Blender 5.2 真实宿主模式：197 项测试全过（涵盖真实 Mesh 拓扑、RNA 属性与算子执行）。
+
+---
+
 ## 阶段一：多会话架构与 Empty 容器统一层级规范（✅ 已完成）
 - [x] **伴生体素点云子物体结构与全量持久化 (`hierarchy.py`, `bridge/point_cloud.py`)**
   - [x] 废弃独立集合隔离，对齐世界网格挂载伴生点云子物体（`ensure_voxel_child_cloud`）。
