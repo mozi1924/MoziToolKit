@@ -48,7 +48,7 @@ jobs:
         run: bash .github/scripts/fetch_test_assets.sh
 
       - name: Run test suite (mocked bpy)
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q -rs
 
   blender:
     name: Blender headless suite (bpy integration)
@@ -100,4 +100,4 @@ jobs:
           set -euo pipefail
           SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
           MTK_TEST_SITE_PACKAGES="$SITE_PACKAGES" \
-            blender --background --python tests/run_tests.py -- -q
+            blender --background --python tests/run_tests.py -- -q -rs
