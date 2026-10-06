@@ -125,3 +125,7 @@ MoziToolKit/
 - **严禁在 `.venv` 中保留陈旧 `libmtk_py`**：开发态优先通过 `dev/lib/libmtk_py.so` 直连 `target/release` 产物；若需安装 wheel，先 `pip uninstall libmtk_py` 再装新版本；
 - 然后在 `MoziToolKit` 运行上述 Mock 与 Blender 双端测试验证。CI 默认从 `libmozitoolkit` 的滚动 `ci-latest` Release 下载 abi3 轮子，并可从临时镜像获取 Blender 与真包加速。
 
+
+## 5.TODO
+
+- [TODO.md](./TODO.md)
