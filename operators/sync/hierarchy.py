@@ -77,10 +77,11 @@ def update_world_mesh(
     mesh_data: Any,
     skip_string_attributes: bool = False,
     storage: Optional[Any] = None,
+    sync_point_cloud: bool = False,
 ) -> Tuple[int, int]:
     """
     Injects processed geometry buffer into the single world mesh object using high-throughput
-    zero-copy bridge methods, and synchronizes unculled voxel storage into companion point cloud.
+    zero-copy bridge methods, and optionally synchronizes unculled voxel storage into companion point cloud.
     Returns (vertex_count, face_count).
     """
     if not world_obj or world_obj.type != "MESH":
@@ -98,8 +99,8 @@ def update_world_mesh(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(world_obj, used_chunk_ids=used_chunk_ids)
 
-    # Ensure unculled voxel storage point cloud is attached under world_obj as child
-    if storage is not None:
+    # Ensure unculled voxel storage point cloud is attached under world_obj as child if requested
+    if sync_point_cloud and storage is not None:
         try:
             ensure_voxel_child_cloud(world_obj, storage=storage, origin_centered=True, initial_hidden=True)
         except Exception as e:
