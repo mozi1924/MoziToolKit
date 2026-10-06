@@ -135,6 +135,8 @@ def on_pack_path_changed(self, context):
 
 
 class MOZI_PG_resource_pack_entry(bpy.types.PropertyGroup):
+    __slots__ = ()
+
     name: StringProperty(
         name="Name",
         description="Display name for this pack/JAR",

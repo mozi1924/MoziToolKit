@@ -69,6 +69,8 @@ def on_item_label_changed(self, context):
 
 
 class MOZI_PG_context_menu_item(bpy.types.PropertyGroup):
+    __slots__ = ()
+
     operator_id: StringProperty(name="Operator ID")
     label: StringProperty(
         name="Label",
@@ -80,6 +82,8 @@ class MOZI_PG_context_menu_item(bpy.types.PropertyGroup):
 
 
 class MOZI_PG_available_menu_item(bpy.types.PropertyGroup):
+    __slots__ = ()
+
     operator_id: StringProperty(name="Operator ID")
     label: StringProperty(name="Label", default="")
 

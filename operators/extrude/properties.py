@@ -32,6 +32,8 @@ NOISE_TYPE_ITEMS = [
 
 
 class MOZI_PG_auto_extrude_repair(bpy.types.PropertyGroup):
+    __slots__ = ()
+
     enabled: BoolProperty(
         name="Auto Extrude Repair",
         description="Enable real-time background extrusion UV and crease repair",
