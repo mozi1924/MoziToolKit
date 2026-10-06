@@ -1,8 +1,15 @@
+"""
+MoziToolKit 3D View Object Mode Menus & Context Menu Integration.
+"""
+
+from __future__ import annotations
+
 import bpy
-from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
-from ..operators.object.op_texture_interpolation import MOZI_OT_set_texture_interpolation_closest
-from ..operators.mesh.op_clear_custom_normals import MOZI_OT_clear_custom_normals
-from ..operators.object.op_replace_material import MOZI_OT_replace_material
+
+try:
+    from ..utils.system import draw_dynamic_menu
+except (ImportError, ValueError):
+    from utils.system import draw_dynamic_menu
 
 
 class MOZI_MT_object_menu(bpy.types.Menu):
@@ -11,10 +18,12 @@ class MOZI_MT_object_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(MOZI_OT_replace_material.bl_idname)
-        layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
-        layout.operator(MOZI_OT_set_texture_interpolation_closest.bl_idname)
-        layout.operator(MOZI_OT_clear_custom_normals.bl_idname)
+        layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
+        layout.separator()
+        layout.operator("mozi.cull_mesh_faces")
+        layout.operator("mozi.adaptive_pixel_split")
+        layout.separator()
+        layout.operator("mozi.clear_custom_normals")
 
 
 
@@ -23,16 +32,17 @@ def draw_object_workspace_menu_func(self, context):
     self.layout.menu("MOZI_MT_object_menu", text="MoziToolKit", icon="TOOL_SETTINGS")
 
 
-from ..utils.system import draw_dynamic_menu
-
-
 def draw_object_menu_func(self, context):
     draw_dynamic_menu(self.layout, "object")
 
 
 def draw_add_menu_func(self, context):
+    try:
+        from ..i18n import tr
+    except (ImportError, ValueError):
+        from i18n import tr
     self.layout.separator()
-    self.layout.operator("mozi.add_yefira_world", text="Yefira World", icon="WORLD")
+    self.layout.operator("mozi.add_yefira_world", text=tr("Yefira World"), icon="WORLD")
 
 
 def register():
@@ -46,8 +56,17 @@ def register():
 
 def unregister():
     if hasattr(bpy.types, "VIEW3D_MT_add"):
-        bpy.types.VIEW3D_MT_add.remove(draw_add_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_add.remove(draw_add_menu_func)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_object_context_menu"):
-        bpy.types.VIEW3D_MT_object_context_menu.remove(draw_object_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_object_context_menu.remove(draw_object_menu_func)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_object"):
-        bpy.types.VIEW3D_MT_object.remove(draw_object_workspace_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_object.remove(draw_object_workspace_menu_func)
+        except Exception:
+            pass

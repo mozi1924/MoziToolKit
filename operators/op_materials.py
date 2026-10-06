@@ -1,0 +1,230 @@
+"""
+Operators for Material Replacement and Provenance Recovery.
+"""
+
+from __future__ import annotations
+
+import bpy
+from bpy.props import EnumProperty
+
+try:
+    from ..utils.materials.biome import BIOME_ENUM_ITEMS
+    from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from ..utils.system import get_prefs, register_menu_item
+except (ImportError, ValueError):
+    from utils.materials.biome import BIOME_ENUM_ITEMS
+    from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from utils.system import get_prefs, register_menu_item
+
+
+@register_menu_item(views=["object", "mesh"], label="Replace Material")
+class MOZI_OT_replace_material(bpy.types.Operator):
+    """Replace and upgrade Minecraft materials using native material pipeline."""
+
+    bl_idname = "mozi.replace_material"
+    bl_label = "Replace Material"
+    bl_options = {"REGISTER", "UNDO"}
+
+    mode: EnumProperty(
+        name="Material Mode",
+        description="Target material organization mode",
+        items=[
+            ("ATLAS", "Atlas Mode", "Pack into single or few Atlas Chunk materials for maximum viewport performance"),
+            ("STANDALONE", "Standalone Mode", "Generate individual Principled BSDF / LabPBR materials for each block"),
+        ],
+        default="ATLAS",
+    )
+
+    biome_preset: EnumProperty(
+        name="Biome",
+        description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
+        items=BIOME_ENUM_ITEMS,
+        default="PLAINS",
+    )
+
+    origin: EnumProperty(
+        name="Source Importer",
+        description="Geometry and material origin format",
+        items=[
+            ("AUTO", "Auto Detect", "Automatically detect from material names and geometry"),
+            ("MINEWAYS", "Mineways", "Mineways grid-based terrain atlas"),
+            ("JMC2OBJ", "jmc2obj", "jmc2obj individual tiled texture blocks"),
+            ("ICE_CUBE", "Ice-Cube", "Ice-Cube asset library format"),
+            ("GENERIC", "Generic", "Standard OBJ/FBX/glTF blocks"),
+        ],
+        default="AUTO",
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type == "MESH"
+
+    def execute(self, context):
+        obj = context.active_object
+        prefs = get_prefs(context)
+
+        try:
+            res = replace_materials(
+                obj,
+                mode=self.mode,
+                origin=self.origin,
+                biome=self.biome_preset,
+                prefs=prefs,
+            )
+            if res.get("success"):
+                msg = (
+                    f"Replaced materials for {res['face_count']} faces "
+                    f"({res['materials_count']} {self.mode.lower()} materials assigned, biome: {res.get('biome', self.biome_preset)})."
+                )
+                if res.get("unmapped_faces", 0) > 0:
+                    msg += f" [{res['unmapped_faces']} faces unmapped/fallback]"
+                self.report({'INFO'}, msg)
+                return {'FINISHED'}
+            else:
+                self.report({'WARNING'}, res.get("message", "Material replacement failed."))
+                return {'CANCELLED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Material replacement error: {e}")
+            return {'CANCELLED'}
+
+
+@register_menu_item(views=["object", "mesh"], label="Restore Materials from Attributes")
+class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
+    """Restore and reconstruct material slots and shader trees from mesh provenance attributes."""
+
+    bl_idname = "mozi.restore_materials_from_attributes"
+    bl_label = "Restore Materials from Attributes"
+    bl_options = {"REGISTER", "UNDO"}
+
+    mode: EnumProperty(
+        name="Material Mode",
+        description="Target material organization mode",
+        items=[
+            ("ATLAS", "Atlas Mode", "Reconstruct Atlas Chunk materials"),
+            ("STANDALONE", "Standalone Mode", "Reconstruct Standalone block materials"),
+        ],
+        default="ATLAS",
+    )
+
+    biome_preset: EnumProperty(
+        name="Biome",
+        description="Optional biome preset override (defaults to current object biome or PLAINS)",
+        items=BIOME_ENUM_ITEMS,
+        default="PLAINS",
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object or context.active_object.type != "MESH":
+            return False
+        mesh = context.active_object.data
+        return hasattr(mesh, "attributes") and "mtk_source_texture_key" in mesh.attributes
+
+    def execute(self, context):
+        obj = context.active_object
+        prefs = get_prefs(context)
+
+        try:
+            res = restore_materials_from_provenance(
+                obj,
+                mode=self.mode,
+                biome=self.biome_preset,
+                prefs=prefs,
+            )
+            if res.get("success"):
+                self.report(
+                    {'INFO'},
+                    f"Successfully restored {res['materials_count']} materials for {res['restored_faces']} faces (biome: {res.get('biome', self.biome_preset)})."
+                )
+                return {'FINISHED'}
+            else:
+                self.report({'WARNING'}, res.get("message", "Restoration failed."))
+                return {'CANCELLED'}
+        except Exception as e:
+            self.report({'ERROR'}, f"Restoration error: {e}")
+            return {'CANCELLED'}
+
+
+@register_menu_item(views=["object", "mesh"], label="Clean Empty Material Slots")
+class MOZI_OT_clean_empty_material_slots(bpy.types.Operator):
+    """Remove empty and unused material slots while preserving face assignments."""
+
+    bl_idname = "mozi.clean_empty_material_slots"
+    bl_label = "Clean Empty Material Slots"
+    bl_options = {"REGISTER", "UNDO"}
+
+    remove_unused: bpy.props.BoolProperty(
+        name="Remove Unused Slots",
+        description="Also remove material slots that have materials assigned but are not used by any faces",
+        default=False,
+    )
+    all_objects: bpy.props.BoolProperty(
+        name="All Scene Objects",
+        description="Clean material slots across all mesh objects in the active scene instead of just selection",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if context.selected_objects:
+            return any(o.type == "MESH" for o in context.selected_objects)
+        return bool(context.active_object and context.active_object.type == "MESH")
+
+    def execute(self, context):
+        try:
+            from ..utils.materials.cleaner import clean_scene_material_slots, clean_object_material_slots
+        except (ImportError, ValueError):
+            from utils.materials.cleaner import clean_scene_material_slots, clean_object_material_slots
+
+        if self.all_objects:
+            res = clean_scene_material_slots(scene=context.scene, selected_only=False, remove_unused=self.remove_unused)
+            self.report({'INFO'}, res.get("message", "Cleaned material slots."))
+            return {'FINISHED'}
+
+        targets = [o for o in context.selected_objects if o.type == "MESH"]
+        if not targets and context.active_object and context.active_object.type == "MESH":
+            targets = [context.active_object]
+
+        total_cleaned = 0
+        cleaned_objs = 0
+        for obj in targets:
+            res = clean_object_material_slots(obj, remove_unused=self.remove_unused)
+            if res.get("success") and res.get("removed_slots", 0) > 0:
+                cleaned_objs += 1
+                total_cleaned += res["removed_slots"]
+
+        self.report({'INFO'}, f"Cleaned {total_cleaned} empty material slot(s) across {cleaned_objs} object(s).")
+        return {'FINISHED'}
+
+
+@register_menu_item(views=["object", "mesh"], label="Sync Engine Shading Adaptations")
+class MOZI_OT_update_material_shading_adaptation(bpy.types.Operator):
+    """Update all material shading parameters (Transmission, SSS, Emission) to match active render engine."""
+
+    bl_idname = "mozi.update_material_shading_adaptation"
+    bl_label = "Sync Engine Shading"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        try:
+            from ..utils.materials.builder.adaptation import update_materials_render_engine_adaptation
+        except (ImportError, ValueError):
+            from utils.materials.builder.adaptation import update_materials_render_engine_adaptation
+
+        count = update_materials_render_engine_adaptation(scene=context.scene, context=context)
+        self.report({'INFO'}, f"Synchronized shading adaptations for {count} material(s).")
+        return {'FINISHED'}
+
+
+# Backwards compatibility aliases
+MOZI_OT_replace_materials = MOZI_OT_replace_material
+MOZI_OT_restore_materials_from_provenance = MOZI_OT_restore_materials_from_attributes
+
+OPERATOR_CLASSES = (
+    MOZI_OT_replace_material,
+    MOZI_OT_restore_materials_from_attributes,
+    MOZI_OT_clean_empty_material_slots,
+    MOZI_OT_update_material_shading_adaptation,
+)
+OPERATORS_CLASSES = OPERATOR_CLASSES
+

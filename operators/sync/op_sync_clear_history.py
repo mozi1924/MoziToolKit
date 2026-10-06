@@ -1,26 +1,26 @@
 """
-Operator to clear delta change history log in MoziToolKit Live Sync.
+Operator to clear live sync delta history logs.
 """
 
 from __future__ import annotations
 
 import bpy
-from .op_sync_connect import get_active_sync_props
 
 
 class MOZI_OT_sync_clear_history(bpy.types.Operator):
+    """Clear all delta modification log entries."""
     bl_idname = "mozi.sync_clear_history"
-    bl_label = "Clear History"
-    bl_description = "Clear all entries from the live delta change history log"
-
-    target_container: bpy.props.StringProperty(name="Target Container", default="")
+    bl_label = "Clear Log"
+    bl_description = "Clear the recorded delta update modification history"
 
     def execute(self, context):
-        target_obj = None
-        if self.target_container:
-            target_obj = bpy.data.objects.get(self.target_container)
-        props = get_active_sync_props(context, target_obj=target_obj)
+        props = getattr(context.scene, "mozi_sync", None)
         if props:
             props.delta_history.clear()
-            self.report({'INFO'}, "Cleared delta change history.")
+        self.report({'INFO'}, "Delta history cleared.")
         return {'FINISHED'}
+
+
+OPERATOR_CLASSES = (
+    MOZI_OT_sync_clear_history,
+)

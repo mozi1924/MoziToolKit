@@ -7,23 +7,28 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
-
-
 from ..config.models import normalize_operator_id, is_valid_operator_id
 from ..config import load_config
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
         {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
         {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
         {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
+        {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
     ],
     "object": [
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
+        {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
@@ -36,7 +41,32 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
+
 CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
+    "mozi.rebuild_mesh": {
+        "canonical_id": "mozi.rebuild_mesh",
+        "label": "Rebuild Voxel Mesh",
+        "default_label": "Rebuild Voxel Mesh",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.replace_material": {
+        "canonical_id": "mozi.replace_material",
+        "label": "Replace Material",
+        "default_label": "Replace Material",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+    "mozi.restore_materials_from_attributes": {
+        "canonical_id": "mozi.restore_materials_from_attributes",
+        "label": "Restore Materials from Attributes",
+        "default_label": "Restore Materials from Attributes",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": False,
+    },
     "mozi.adaptive_pixel_split": {
         "canonical_id": "mozi.adaptive_pixel_split",
         "label": "Adaptive Pixel Split",
@@ -77,14 +107,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.replace_material": {
-        "canonical_id": "mozi.replace_material",
-        "label": "Replace Material",
-        "default_label": "Replace Material",
-        "views": ["object"],
-        "enabled": True,
-        "is_legacy": False,
-    },
     "mozi.set_texture_interpolation_closest": {
         "canonical_id": "mozi.set_texture_interpolation_closest",
         "label": "Set Image Interpolation to Closest",
@@ -116,6 +138,32 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "views": ["mesh", "uv"],
         "enabled": True,
         "is_legacy": False,
+    },
+    "mozi.cull_mesh_faces": {
+        "canonical_id": "mozi.cull_mesh_faces",
+        "label": "Cull Occluded Faces",
+        "default_label": "Cull Occluded Faces",
+        "views": ["mesh", "object"],
+        "enabled": True,
+        "is_legacy": False,
+    },
+
+    # Backwards compatibility legacy aliases
+    "mozi.replace_materials": {
+        "canonical_id": "mozi.replace_material",
+        "label": "Replace Material",
+        "default_label": "Replace Material",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": True,
+    },
+    "mozi.restore_materials_from_provenance": {
+        "canonical_id": "mozi.restore_materials_from_attributes",
+        "label": "Restore Materials from Attributes",
+        "default_label": "Restore Materials from Attributes",
+        "views": ["object", "mesh"],
+        "enabled": True,
+        "is_legacy": True,
     },
 }
 
@@ -271,7 +319,15 @@ def draw_dynamic_menu(layout, view_name: str):
 
     layout.separator()
     layout.operator_context = "INVOKE_DEFAULT"
-    from ...i18n import tr
+    try:
+        from ...i18n import tr
+    except (ImportError, ValueError):
+        try:
+            from i18n import tr
+        except Exception:
+            def tr(s, ctx=None):
+                return s
+
     layout.label(text=tr("MoziToolKit"))
     for op_id, label in valid_items:
         if label:

@@ -1,9 +1,12 @@
 """
-Core mesh manipulation, selection scopes, bmesh contexts, and edge geometry helpers.
+Mesh manipulation helpers, selection scopes, bmesh context managers, and edge geometry tools.
 """
+
+from __future__ import annotations
 
 import math
 from contextlib import contextmanager
+
 try:
     import bmesh
     import bpy
@@ -37,6 +40,8 @@ SELECT_MODES = {
 
 def poll_edit_mesh(context) -> bool:
     """Check if active object is a Mesh in Edit Mode."""
+    if not context:
+        return False
     obj = context.active_object
     return bool(obj and obj.type == "MESH" and context.mode == "EDIT_MESH")
 
@@ -104,8 +109,25 @@ def apply_selection(elements, target_elements, action: str = "SET"):
     elif action == "SUBTRACT":
         for elem in target_set:
             elem.select = False
-    else:
-        raise ValueError(f"Invalid selection action: {action}. Expected 'SET', 'ADD', or 'SUBTRACT'.")
+
+
+def is_hard_edge(edge, sharp_angle_rad: float = math.radians(30.0)) -> bool:
+    """Check if a BMesh edge is considered a hard/sharp edge.
+
+    True if:
+    - It is a boundary / open boundary edge (<= 1 link face)
+    - It is explicitly marked sharp or not smooth
+    - The dihedral angle between its 2 adjacent faces exceeds sharp_angle_rad
+    """
+    if edge.is_boundary or not edge.smooth or edge.seam:
+        return True
+    if len(edge.link_faces) == 2:
+        try:
+            if edge.calc_face_angle(0) > sharp_angle_rad:
+                return True
+        except Exception:
+            pass
+    return False
 
 
 def get_connected_faces(bm, seed_faces):
@@ -119,7 +141,7 @@ def get_connected_faces(bm, seed_faces):
         visited.add(face)
         for edge in face.edges:
             for linked_face in edge.link_faces:
-                if linked_face not in visited:
+                if linked_face not in visited and linked_face.is_valid:
                     stack.append(linked_face)
     return visited
 
@@ -138,12 +160,3 @@ def get_target_faces(bm, scope: str = "ALL"):
         return [f for f in bm.faces if f.is_valid]
     else:  # "ALL"
         return [f for f in bm.faces if f.is_valid]
-
-
-def is_hard_edge(edge, sharp_angle_rad: float = math.radians(30.0)) -> bool:
-    """Check if a BMesh edge is considered a hard/sharp edge."""
-    if edge.is_boundary or not edge.smooth:
-        return True
-    if len(edge.link_faces) == 2 and edge.calc_face_angle(0) > sharp_angle_rad:
-        return True
-    return False

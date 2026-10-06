@@ -2,6 +2,8 @@
 MoziToolKit UI Package Registration
 """
 
+from __future__ import annotations
+
 import bpy
 from .preferences import (
     MOZI_PG_resource_pack_entry,
@@ -19,14 +21,7 @@ from .preferences import (
     MOZI_OT_menu_reset_config,
     MOZI_OT_menu_export_config,
     MOZI_OT_menu_import_config,
-    MOZI_OT_precompile_cache,
     MOZI_AddonPreferences,
-)
-from .panel_sync import (
-    MOZI_UL_sync_palette_list,
-    MOZI_UL_sync_delta_list,
-    MOZI_PT_live_sync,
-    MOZI_PT_live_sync_data,
 )
 from .menu_mesh import (
     MOZI_MT_mesh_menu,
@@ -52,18 +47,25 @@ from .menu_uv import (
     register as register_menu_uv,
     unregister as unregister_menu_uv,
 )
-
 from .panel_biome import (
     register as register_panel_biome,
     unregister as unregister_panel_biome,
 )
-from .panel_foliage import (
-    register as register_panel_foliage,
-    unregister as unregister_panel_foliage,
+from .panel_sync import (
+    register as register_panel_sync,
+    unregister as unregister_panel_sync,
+)
+from .panel_voxel_storage import (
+    register as register_panel_voxel_storage,
+    unregister as unregister_panel_voxel_storage,
+)
+from .menu_import import (
+    register as register_menu_import,
+    unregister as unregister_menu_import,
 )
 
 classes = (
-    # PropertyGroups (must register before AddonPreferences and UI elements that reference them)
+    # PropertyGroups
     MOZI_PG_resource_pack_entry,
     MOZI_PG_context_menu_item,
     MOZI_PG_available_menu_item,
@@ -71,8 +73,6 @@ classes = (
     MOZI_UL_resource_packs_list,
     MOZI_UL_added_items_list,
     MOZI_UL_unadded_items_list,
-    MOZI_UL_sync_palette_list,
-    MOZI_UL_sync_delta_list,
     # Preferences Operators
     MOZI_OT_pack_add,
     MOZI_OT_pack_remove,
@@ -83,7 +83,6 @@ classes = (
     MOZI_OT_menu_reset_config,
     MOZI_OT_menu_export_config,
     MOZI_OT_menu_import_config,
-    MOZI_OT_precompile_cache,
     # Preferences
     MOZI_AddonPreferences,
     # Menus
@@ -96,8 +95,6 @@ classes = (
     MOZI_MT_uv_menu,
     # Panels
     MOZI_PT_auto_extrude_repair_settings,
-    MOZI_PT_live_sync,
-    MOZI_PT_live_sync_data,
 )
 
 
@@ -105,26 +102,28 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    register_panel_biome()
-    register_panel_foliage()
     register_menu_mesh()
     register_menu_object()
     register_menu_select()
     register_menu_uv()
+    register_panel_biome()
+    register_panel_sync()
+    register_panel_voxel_storage()
+    register_menu_import()
 
 
 def unregister():
+    unregister_menu_import()
+    unregister_panel_voxel_storage()
+    unregister_panel_sync()
+    unregister_panel_biome()
     unregister_menu_uv()
     unregister_menu_select()
     unregister_menu_object()
     unregister_menu_mesh()
-    unregister_panel_foliage()
-    unregister_panel_biome()
 
     for cls in reversed(classes):
         try:
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
-
-

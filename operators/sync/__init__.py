@@ -1,54 +1,45 @@
 """
-Live Sync operators and properties registration.
+MoziToolKit Live Sync Operators Subpackage.
 """
 
-import bpy
 from .properties import (
     MoziSyncPaletteItem,
     MoziSyncDeltaItem,
-    MoziSyncSceneProperties,
-    register as register_sync_props,
-    unregister as unregister_sync_props,
+    MoziSyncProperties,
+    register as register_properties,
+    unregister as unregister_properties,
 )
-from .op_sync_connect import (
-    MOZI_OT_sync_connect,
-    MOZI_OT_sync_disconnect,
-    MOZI_OT_sync_refresh,
-    unregister as unregister_sync_connect,
+from .op_sync_connect import OPERATOR_CLASSES as CONNECT_CLASSES
+from .op_sync_rebuild import OPERATOR_CLASSES as REBUILD_CLASSES
+from .op_sync_clear_history import OPERATOR_CLASSES as CLEAR_CLASSES
+from .op_sync_create_world import OPERATOR_CLASSES as CREATE_CLASSES
+from .watcher import (
+    register as register_watcher,
+    unregister as unregister_watcher,
 )
-from .op_sync_rebuild import MOZI_OT_sync_rebuild_world
-from .op_sync_clear_history import MOZI_OT_sync_clear_history
-from .op_sync_create_world import MOZI_OT_add_yefira_world, MOZI_OT_sync_select_root
-from .op_sync_stream_modal import MOZI_OT_sync_stream_runner
 
-classes = (
-    MoziSyncPaletteItem,
-    MoziSyncDeltaItem,
-    MoziSyncSceneProperties,
-    MOZI_OT_sync_connect,
-    MOZI_OT_sync_disconnect,
-    MOZI_OT_sync_refresh,
-    MOZI_OT_sync_rebuild_world,
-    MOZI_OT_sync_clear_history,
-    MOZI_OT_add_yefira_world,
-    MOZI_OT_sync_select_root,
-    MOZI_OT_sync_stream_runner,
+OPERATOR_CLASSES = (
+    CONNECT_CLASSES
+    + REBUILD_CLASSES
+    + CLEAR_CLASSES
+    + CREATE_CLASSES
 )
 
 
 def register():
-    for cls in classes:
+    register_properties()
+    register_watcher()
+    for cls in OPERATOR_CLASSES:
+        import bpy
         bpy.utils.register_class(cls)
-    register_sync_props()
 
 
 def unregister():
-    unregister_sync_connect()
-    unregister_sync_props()
-    for cls in reversed(classes):
+    for cls in reversed(OPERATOR_CLASSES):
         try:
+            import bpy
             bpy.utils.unregister_class(cls)
         except Exception:
             pass
-
-
+    unregister_watcher()
+    unregister_properties()

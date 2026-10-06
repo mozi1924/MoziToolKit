@@ -15,6 +15,10 @@ def normalize_operator_id(op_id: str) -> str:
     """
     if not op_id or not isinstance(op_id, str):
         return ""
+    if op_id == "mozi.replace_materials":
+        return "mozi.replace_material"
+    if op_id == "mozi.restore_materials_from_provenance":
+        return "mozi.restore_materials_from_attributes"
     if op_id.startswith("mozi."):
         return op_id
     if "." in op_id:
@@ -85,12 +89,24 @@ class MaterialSettings:
     material_mode: str = "ATLAS"  # ATLAS | STANDALONE
     biome_preset: str = "PLAINS"
     pack_textures: bool = True
+    render_engine: str = "AUTO"  # AUTO | CYCLES | EEVEE
+    enable_game_semantics: bool = True
+    transmission_mode: str = "AUTO"  # AUTO | ENABLED | DISABLED
+    thin_wall_mode: str = "AUTO"  # AUTO | ENABLED | DISABLED
+    disable_subsurface: bool = False
+    subsurface_method: str = "BURLEY"  # BURLEY | RANDOM_WALK
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "material_mode": self.material_mode,
             "biome_preset": self.biome_preset,
             "pack_textures": self.pack_textures,
+            "render_engine": self.render_engine,
+            "enable_game_semantics": self.enable_game_semantics,
+            "transmission_mode": self.transmission_mode,
+            "thin_wall_mode": self.thin_wall_mode,
+            "disable_subsurface": self.disable_subsurface,
+            "subsurface_method": self.subsurface_method,
         }
 
     @classmethod
@@ -100,10 +116,29 @@ class MaterialSettings:
         mode = data.get("material_mode", "ATLAS")
         if mode not in {"ATLAS", "STANDALONE"}:
             mode = "ATLAS"
+        r_engine = data.get("render_engine", "AUTO")
+        if r_engine not in {"AUTO", "CYCLES", "EEVEE"}:
+            r_engine = "AUTO"
+        trans_mode = data.get("transmission_mode", "AUTO")
+        if trans_mode not in {"AUTO", "ENABLED", "DISABLED"}:
+            trans_mode = "AUTO"
+        tw_mode = data.get("thin_wall_mode", "AUTO")
+        if tw_mode not in {"AUTO", "ENABLED", "DISABLED"}:
+            tw_mode = "AUTO"
+        sss_method = data.get("subsurface_method", "BURLEY")
+        if sss_method not in {"BURLEY", "RANDOM_WALK"}:
+            sss_method = "BURLEY"
+
         return cls(
             material_mode=mode,
             biome_preset=str(data.get("biome_preset", "PLAINS")),
             pack_textures=bool(data.get("pack_textures", True)),
+            render_engine=r_engine,
+            enable_game_semantics=bool(data.get("enable_game_semantics", True)),
+            transmission_mode=trans_mode,
+            thin_wall_mode=tw_mode,
+            disable_subsurface=bool(data.get("disable_subsurface", False)),
+            subsurface_method=sss_method,
         )
 
 
@@ -136,6 +171,8 @@ class MenuItem:
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
@@ -146,6 +183,7 @@ CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     ],
     "object": [
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},

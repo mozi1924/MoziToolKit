@@ -1,137 +1,134 @@
 """
-Operator to rebuild and optimize the Minecraft procedural direct world mesh.
+Operator to trigger on-demand rebuild of the unified world mesh.
 """
 
 from __future__ import annotations
 
+import logging
 import bpy
-from .op_sync_connect import trigger_mesh_sync, clear_sync_caches, restore_sync_state_from_scene
-from ...utils.live_sync.storage import voxel_storage
+
+try:
+    from ...bridge.sync import get_sync_bridge_session
+except (ImportError, ValueError):
+    from bridge.sync import get_sync_bridge_session
+from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
+
+logger = logging.getLogger("MoziToolKit.Sync.Rebuild")
+
+
+from typing import Optional
+
+try:
+    from ...utils.async_task import AsyncTask, ModalTaskRunner
+    from ...utils.progress import BlenderProgressReporter
+except (ImportError, ValueError):
+    from utils.async_task import AsyncTask, ModalTaskRunner
+    from utils.progress import BlenderProgressReporter
 
 
 class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
+    """Re-mesh the active world from in-memory voxel storage."""
     bl_idname = "mozi.sync_rebuild_world"
-    bl_label = "Rebuild World"
-    bl_description = "Reconstruct meshes, face culling, UV maps, and material slots purely from local voxel data"
+    bl_label = "Rebuild World Mesh"
+    bl_description = "Force re-meshing the entire synchronized world from voxel storage"
 
-    target_container: bpy.props.StringProperty(name="Target Container", default="")
+    target_container: bpy.props.StringProperty(
+        name="Target Container",
+        description="Name of the root container to rebuild",
+        default="",
+    )
+
+    run_async: bpy.props.BoolProperty(
+        name="Run Asynchronously",
+        description="Run re-meshing in non-blocking background thread with live status bar progress",
+        default=True,
+        options={"HIDDEN"},
+    )
+
+    _runner: Optional[ModalTaskRunner] = None
 
     def execute(self, context):
-        from .op_sync_connect import (
-            find_bound_atlas_material,
-            get_cached_atlas_params,
-            preload_sync_world_data,
-            get_target_world_object,
-            get_active_sync_props,
-            get_active_session_manager,
-        )
-        try:
-            from ...utils.materials.pack import get_configured_pack_stack
-        except (ImportError, ValueError):
-            from utils.materials.pack import get_configured_pack_stack
-
-        pack_stack = None
-        try:
-            pack_stack = get_configured_pack_stack()
-        except Exception:
-            pass
-
-        target_obj = None
-        if self.target_container:
-            target_obj = bpy.data.objects.get(self.target_container)
-        if not target_obj:
-            target_obj = get_target_world_object(context)
-
-        session_mgr = get_active_session_manager()
-        session = session_mgr.get_session(target_obj.name) if target_obj else None
-        active_storage = session.storage if session else voxel_storage
-
-        if not active_storage.block_map:
-            # Try restoring from scene first
-            if session and session.restore_sync_state_from_scene(target_obj):
-                pass
-            elif restore_sync_state_from_scene(context, target_obj=target_obj):
-                pass
-
-        if not active_storage.block_map:
-            if session and session.client_thread and session.client_thread.is_connected:
-                self.report({'INFO'}, "No voxel data in memory. Requesting full data from server...")
-                bpy.ops.mozi.sync_refresh(target_container=target_obj.name if target_obj else "")
-                return {'FINISHED'}
-            self.report({'WARNING'}, "No voxel data in memory. Connect to server or click Refresh first.")
+        session = get_sync_bridge_session()
+        if not session.is_active:
+            self.report({'WARNING'}, "Live Sync session is not active.")
             return {'CANCELLED'}
 
-        clear_sync_caches()
-
-        existing_world = target_obj or get_target_world_object(context)
+        target_container_name = self.target_container
+        prefs = None
         try:
-            from ...utils.live_sync.material import validate_and_sync_scene_materials
-        except (ImportError, ValueError):
-            from utils.live_sync.material import validate_and_sync_scene_materials
-        validate_and_sync_scene_materials(existing_world, pack_stack=pack_stack)
-
-        mat = find_bound_atlas_material(existing_world) if existing_world else None
-        atlas_params = get_cached_atlas_params(mat)
-        cur_palette = active_storage.get_unique_states()
-        preload_sync_world_data(palette=cur_palette, world_obj=existing_world, atlas_params=atlas_params)
-
-        all_sections = [s for s in active_storage.get_all_sections() if active_storage.get_section_blocks(*s)]
-        if not all_sections:
-            all_sections = list(active_storage.get_all_sections())
-            trigger_mesh_sync(context, force_full_rebuild=True, target_obj=existing_world, storage=active_storage)
-            self.report({'INFO'}, "World is empty.")
-            return {'FINISHED'}
-
-        is_interactive = not getattr(bpy.app, "background", False) and getattr(context, "window", None) is not None
-        if session and is_interactive:
-            import time
-            from ...utils.live_sync.session import start_main_thread_pump
-            from ...pipeline.progress import ProgressBar
+            from ...utils.system import get_prefs
+            prefs = get_prefs(context)
+        except Exception:
             try:
-                from ...operators.sync.op_sync_connect import start_stream_modal_lock
-            except (ImportError, ValueError):
-                try:
-                    from operators.sync.op_sync_connect import start_stream_modal_lock
-                except Exception:
-                    start_stream_modal_lock = None
+                from utils.system import get_prefs
+                prefs = get_prefs(context)
+            except Exception:
+                pass
 
-            session.is_streaming = True
-            session.stream_phase = "BUILD"
-            session.stream_pending_sections.clear()
-            session.server_stream_finished = True
-            session.stream_total_sections = len(all_sections)
-            session.stream_received_sections = len(all_sections)
-            session.stream_built_sections = 0
-            session.stream_last_drain_time = time.time()
-            session.clear_caches()
-            if hasattr(session, "_queued_stream_sections"):
-                session._queued_stream_sections.clear()
-            for (sx, sy, sz) in all_sections:
-                if hasattr(session, "_queued_stream_sections"):
-                    session._queued_stream_sections.add((sx, sy, sz))
-                session.stream_section_queue.put((sx, sy, sz, cur_palette))
+        # Check and hot-reload dirty asset cache before remeshing
+        dirty = False
+        if hasattr(session, "check_and_reload_dirty_cache"):
+            try:
+                dirty = session.check_and_reload_dirty_cache(prefs=prefs)
+                if dirty:
+                    logger.info("Dirty asset cache detected: hot-reloaded assets and cleared mesh cache before rebuild.")
+            except Exception as e:
+                logger.warning("Failed dirty cache check: %s", e)
 
-            start_main_thread_pump()
-            if start_stream_modal_lock and existing_world:
-                start_stream_modal_lock(existing_world.name)
-            ProgressBar.begin(title=f"Rebuilding World ({existing_world.name})", total=100.0, message=f"Rebuilding {len(all_sections)} chunks...")
-            self.report({'INFO'}, f"Rebuilding {len(all_sections)} chunks progressively...")
-            return {'FINISHED'}
+        def do_rebuild(progress_callback=None):
+            return session.get_world_mesh()
 
-        trigger_mesh_sync(context, force_full_rebuild=True, target_obj=existing_world, storage=active_storage)
+        def on_success(mesh_data):
+            if not mesh_data or mesh_data.vertex_count == 0:
+                self.report({'WARNING'}, "Voxel storage is empty or no geometry generated.")
+                return
 
-        for window in context.window_manager.windows:
-            for area in window.screen.areas:
-                if area.type in ('VIEW_3D', 'PROPERTIES'):
-                    area.tag_redraw()
+            target_root = None
+            if target_container_name and target_container_name in bpy.data.objects:
+                target_root = bpy.data.objects[target_container_name]
+            world_obj = get_or_create_world_mesh_object(context, root_container=target_root)
+            storage = session.get_storage()
+            v_count, f_count = update_world_mesh(world_obj, mesh_data, storage=storage, sync_point_cloud=True)
 
-        props = get_active_sync_props(context, target_obj=existing_world)
-        if props:
-            from .op_sync_connect import sync_palette_to_props
-            sync_palette_to_props(props, active_storage)
-            props.sync_verified = True
-            props.validation_info = "Verified (100% in sync)"
-        total_pts = props.point_count if props else 0
-        self.report({'INFO'}, f"Rebuilt world mesh successfully ({total_pts:,} vertices).")
+            root_obj = target_root or world_obj
+            props = getattr(root_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)
+            info_suffix = " (Assets Hot-Reloaded)" if dirty else ""
+            if props:
+                props.point_count = v_count
+                props.faces_count = f_count
+                props.last_update_info = f"Rebuilt World Mesh: {v_count:,} vertices, {f_count:,} faces{info_suffix}"
+
+            self.report({'INFO'}, f"World mesh rebuilt{info_suffix}: {v_count:,} vertices, {f_count:,} faces")
+
+        # Synchronous fallback for CLI / tests when run_async is False
+        if not self.run_async:
+            try:
+                mesh_data = do_rebuild()
+                on_success(mesh_data)
+                return {'FINISHED'}
+            except Exception as e:
+                self.report({'ERROR'}, f"Failed rebuilding world mesh: {e}")
+                return {'CANCELLED'}
+
+        # Non-blocking modal execution
+        task = AsyncTask(target=do_rebuild)
+        reporter = BlenderProgressReporter(context=context, total=100, title="Rebuilding World Mesh")
+        self._runner = ModalTaskRunner(
+            operator=self,
+            context=context,
+            task=task,
+            reporter=reporter,
+            on_success=on_success,
+            title="Rebuilding World Mesh",
+        )
+        return self._runner.start()
+
+    def modal(self, context, event):
+        if self._runner is not None:
+            return self._runner.modal(event)
         return {'FINISHED'}
 
+
+OPERATOR_CLASSES = (
+    MOZI_OT_sync_rebuild_world,
+)

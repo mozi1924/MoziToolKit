@@ -1,6 +1,10 @@
+"""
+MoziToolKit 3D View and UV Select Menus Integration.
+"""
+
+from __future__ import annotations
+
 import bpy
-from ..operators.mesh.op_select_edges import MOZI_OT_select_hard_edges
-from ..operators.uv.op_select_transparent_faces import MOZI_OT_select_transparent_faces
 
 
 class MOZI_MT_select_mesh_menu(bpy.types.Menu):
@@ -9,8 +13,7 @@ class MOZI_MT_select_mesh_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(MOZI_OT_select_hard_edges.bl_idname)
-        layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
+        layout.operator("mozi.select_hard_edges")
 
 
 class MOZI_MT_select_uv_menu(bpy.types.Menu):
@@ -19,7 +22,6 @@ class MOZI_MT_select_uv_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
 
 
 def draw_mesh_select_workspace_menu_func(self, context):
@@ -41,6 +43,12 @@ def register():
 
 def unregister():
     if hasattr(bpy.types, "IMAGE_MT_select_edit"):
-        bpy.types.IMAGE_MT_select_edit.remove(draw_uv_select_workspace_menu_func)
+        try:
+            bpy.types.IMAGE_MT_select_edit.remove(draw_uv_select_workspace_menu_func)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_select_edit_mesh"):
-        bpy.types.VIEW3D_MT_select_edit_mesh.remove(draw_mesh_select_workspace_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_select_edit_mesh.remove(draw_mesh_select_workspace_menu_func)
+        except Exception:
+            pass

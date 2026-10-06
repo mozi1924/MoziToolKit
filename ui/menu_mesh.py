@@ -1,12 +1,15 @@
-import bpy
-from ..operators.mesh.op_select_edges import MOZI_OT_select_hard_edges
-from ..operators.mesh.op_adaptive_pixel_split import MOZI_OT_adaptive_pixel_split
-from ..operators.mesh.op_random_extrude import MOZI_OT_random_extrude
-from ..operators.uv.op_select_transparent_faces import MOZI_OT_select_transparent_faces
-from ..operators.uv.op_repair_fluid_uv import MOZI_OT_repair_fluid_uv
-from ..operators.mesh.op_clear_custom_normals import MOZI_OT_clear_custom_normals
-from ..utils.system import draw_dynamic_menu
+"""
+MoziToolKit 3D View Mesh Edit Mode Menus & Context Menu Integration.
+"""
 
+from __future__ import annotations
+
+import bpy
+
+try:
+    from ..utils.system import draw_dynamic_menu
+except (ImportError, ValueError):
+    from utils.system import draw_dynamic_menu
 
 
 class MOZI_MT_mesh_menu(bpy.types.Menu):
@@ -15,12 +18,14 @@ class MOZI_MT_mesh_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(MOZI_OT_random_extrude.bl_idname)
-        layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
-        layout.operator(MOZI_OT_select_hard_edges.bl_idname)
-        layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
-        layout.operator(MOZI_OT_repair_fluid_uv.bl_idname)
-        layout.operator(MOZI_OT_clear_custom_normals.bl_idname)
+        layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
+        layout.separator()
+        layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.auto_extrude_repair")
+        layout.operator("mozi.random_extrude")
+        layout.operator("mozi.cull_mesh_faces")
+        layout.separator()
+        layout.operator("mozi.clear_custom_normals")
 
 
 class MOZI_MT_mesh_edge_menu(bpy.types.Menu):
@@ -29,7 +34,7 @@ class MOZI_MT_mesh_edge_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(MOZI_OT_select_hard_edges.bl_idname)
+        layout.operator("mozi.select_hard_edges")
 
 
 class MOZI_MT_mesh_face_menu(bpy.types.Menu):
@@ -38,10 +43,11 @@ class MOZI_MT_mesh_face_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(MOZI_OT_random_extrude.bl_idname)
-        layout.operator(MOZI_OT_adaptive_pixel_split.bl_idname)
-        layout.operator(MOZI_OT_select_transparent_faces.bl_idname)
-        layout.operator(MOZI_OT_repair_fluid_uv.bl_idname)
+        layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.auto_extrude_repair")
+        layout.operator("mozi.random_extrude")
+        layout.operator("mozi.cull_mesh_faces")
+
 
 
 def draw_mesh_workspace_menu_func(self, context):
@@ -64,33 +70,35 @@ def draw_mesh_menu_func(self, context):
 
 
 class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
-
     bl_label = "Auto Extrude Repair Options"
     bl_idname = "MOZI_PT_auto_extrude_repair_settings"
     bl_space_type = "VIEW_3D"
     bl_region_type = "HEADER"
 
     def draw(self, context):
+        try:
+            from ..i18n import tr
+        except (ImportError, ValueError):
+            from i18n import tr
         layout = self.layout
         props = getattr(context.scene, "mozi_auto_extrude_repair", None)
         if not props:
             return
 
-        layout.prop(props, "enabled", text="Auto Extrude Repair")
+        layout.prop(props, "enabled", text=tr("Auto Extrude Repair"))
         layout.separator()
-        layout.prop(props, "repair_uv", text="Repair UV Overlap")
+        layout.prop(props, "repair_uv", text=tr("Repair UV Overlap"))
 
         sub_uv = layout.column()
         sub_uv.active = props.repair_uv
-        sub_uv.prop(props, "uv_mode", text="UV Correction Mode")
+        sub_uv.prop(props, "uv_mode", text=tr("UV Correction Mode"))
 
         layout.separator()
-        layout.prop(props, "add_mean_crease", text="Add Mean Crease")
+        layout.prop(props, "add_mean_crease", text=tr("Add Mean Crease"))
 
         sub_crease = layout.column()
         sub_crease.active = props.add_mean_crease
-        sub_crease.prop(props, "crease_value", text="Crease Weight")
-
+        sub_crease.prop(props, "crease_value", text=tr("Crease Weight"))
 
 
 def draw_auto_extrude_repair_header(self, context):
@@ -117,12 +125,27 @@ def register():
 
 def unregister():
     if hasattr(bpy.types, "VIEW3D_HT_tool_header"):
-        bpy.types.VIEW3D_HT_tool_header.remove(draw_auto_extrude_repair_header)
+        try:
+            bpy.types.VIEW3D_HT_tool_header.remove(draw_auto_extrude_repair_header)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_edit_mesh_context_menu"):
-        bpy.types.VIEW3D_MT_edit_mesh_context_menu.remove(draw_mesh_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_edit_mesh_context_menu.remove(draw_mesh_menu_func)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_edit_mesh_faces"):
-        bpy.types.VIEW3D_MT_edit_mesh_faces.remove(draw_face_workspace_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_edit_mesh_faces.remove(draw_face_workspace_menu_func)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_edit_mesh_edges"):
-        bpy.types.VIEW3D_MT_edit_mesh_edges.remove(draw_edge_workspace_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_edit_mesh_edges.remove(draw_edge_workspace_menu_func)
+        except Exception:
+            pass
     if hasattr(bpy.types, "VIEW3D_MT_edit_mesh"):
-        bpy.types.VIEW3D_MT_edit_mesh.remove(draw_mesh_workspace_menu_func)
+        try:
+            bpy.types.VIEW3D_MT_edit_mesh.remove(draw_mesh_workspace_menu_func)
+        except Exception:
+            pass

@@ -1,30 +1,51 @@
-import bpy
+try:
+    import bpy
+except ImportError:
+    bpy = None
+
 from .dictionary import translations_dict
 
 
 def tr(msgid: str, msgctxt: str | None = None) -> str:
-    """Translate string using Blender i18n registry, falling back to msgid if untranslated."""
+    """Translate string using Blender i18n registry, falling back to dictionary/msgid if untranslated."""
     if not msgid:
         return ""
-    try:
-        return bpy.app.translations.pgettext(msgid, msgctxt)
-    except Exception:
-        return msgid
+    if bpy is not None and hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
+        try:
+            return bpy.app.translations.pgettext(msgid, msgctxt)
+        except Exception:
+            pass
+
+    # Direct dictionary fallback for testing or non-Blender environments
+    hans = translations_dict.get("zh_HANS", {})
+    if msgctxt and (msgctxt, msgid) in hans:
+        return hans[(msgctxt, msgid)]
+    if ("*", msgid) in hans:
+        return hans[("*", msgid)]
+    return msgid
 
 
 def _get_expanded_translations_dict() -> dict:
-    """Ensure all wildcard '*' context translations are also available under 'Operator' context."""
+    """Ensure all wildcard '*' context translations are also available under 'Operator' and 'operator_default' contexts, and mirror zh_HANS / zh_CN."""
     expanded = {}
     for lang, entries in translations_dict.items():
         lang_dict = {}
         for (ctx, msgid), trans in entries.items():
             lang_dict[(ctx, msgid)] = trans
             if ctx == "*":
-                # Ensure operator context is populated so BLT_pgettext("Operator", ...) resolves correctly
-                op_key = ("Operator", msgid)
-                if op_key not in entries:
-                    lang_dict[op_key] = trans
+                # Ensure operator and UI contexts are populated so BLT_pgettext resolves correctly
+                for extra_ctx in ("Operator", "operator_default", "UI", "DEFAULT"):
+                    extra_key = (extra_ctx, msgid)
+                    if extra_key not in entries:
+                        lang_dict[extra_key] = trans
         expanded[lang] = lang_dict
+
+    # Mirror zh_HANS <-> zh_CN so both Blender locale identifiers work seamlessly
+    if "zh_HANS" in expanded and "zh_CN" not in expanded:
+        expanded["zh_CN"] = expanded["zh_HANS"].copy()
+    elif "zh_CN" in expanded and "zh_HANS" not in expanded:
+        expanded["zh_HANS"] = expanded["zh_CN"].copy()
+
     return expanded
 
 

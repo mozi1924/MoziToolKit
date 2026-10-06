@@ -1,21 +1,15 @@
 """
 MoziToolKit Utilities Root Package.
-Organized into functional domains:
-- materials: Material construction, resource pack parsing, atlas generation & layout
-- mesh: Geometry math, bmesh contexts, UV helpers, selection scopes
-- node_groups: LabPBR and animation shader template generators
-- pixel_split: Adaptive pixel subdivision algorithms
-- extrude_repair: Extruded side face UV & crease repair
+Organized into core glue and Blender orchestration domains:
 - system: Python dependency management and right-click menu registry
+- config: Addon preference manager and persistence backends
+- node_groups: Pure Blender shader node template generators (LabPBR, parallax, atlas UV, animations)
 """
 
-from . import materials
-from . import mesh
 from . import system
-from . import culling
-from . import mc_baker
-from . import foliage
-from . import live_sync
+from . import config
+from . import progress
+from . import async_task
 
 try:
     import bpy
@@ -26,23 +20,15 @@ except ImportError:
 
 if HAS_BPY:
     from . import node_groups
-    from . import pixel_split
-    from . import extrude_repair
 else:
     node_groups = None
-    pixel_split = None
-    extrude_repair = None
 
 __all__ = [
-    "materials",
-    "mesh",
-    "node_groups",
-    "pixel_split",
-    "extrude_repair",
     "system",
-    "culling",
-    "mc_baker",
-    "foliage",
-    "live_sync",
+    "config",
+    "progress",
+    "async_task",
+    "node_groups",
 ]
+
 
