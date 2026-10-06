@@ -21,16 +21,16 @@
 
 ---
 
-## 阶段零：会话生命周期与跨工程深度清理（P0 - 核心稳定性 🚧 进行中）
-- [ ] **跨工程加载深度断开与清理器 (`operators/sync/properties.py`, `bridge/sync.py`)**
+## 阶段零：会话生命周期与跨工程深度清理（✅ 已完成）
+- [x] **跨工程加载深度断开与清理器 (`operators/sync/properties.py`, `bridge/sync.py`)**
   - [x] 注册 `bpy.app.handlers.load_pre` 钩子，调用 `session.stop()` 切断网络连接。
-  - [ ] 强制注销并终止活跃的 `bpy.app.timers`（防止定时器跨工程残留跳动）。
-  - [ ] 清理全局 `SyncBridgeSession` 内存单例，防止跨工程引用已失效的旧场景数据。
+  - [x] 强制注销并终止活跃的 `bpy.app.timers`（防止定时器跨工程残留跳动）。
+  - [x] 清理全局 `SyncBridgeSession` 内存单例，防止跨工程引用已失效的旧场景数据。
   - [x] 注册 `bpy.app.handlers.load_post` 钩子，重置场景与物体的连接状态（`is_connected=False`, `DISCONNECTED`）。
-- [ ] **底层 TCP 连接强制关闭配合 (`libmozitoolkit::mtk-sync`)**
-  - [ ] 在 `SyncClient::stop()` 中针对底层 TCP Stream 触发 `shutdown(Shutdown::Both)`，确保工程切换时远端 Minecraft 服务端瞬间感应连接断开，杜绝新工程提示“端口占用”。
-- [ ] **自动化测试验证**
-  - [ ] 编写跨工程加载集成测试（验证 `File -> New` / `File -> Open` 后无残留定时器与活跃套接字）。
+- [x] **底层 TCP 连接强制关闭配合 (`libmozitoolkit::mtk-sync`)**
+  - [x] 在 `SyncClient::stop()` 中针对底层 TCP Stream 触发 `shutdown(Shutdown::Both)`，确保工程切换时远端 Minecraft 服务端瞬间感应连接断开，杜绝新工程提示“端口占用”。
+- [x] **自动化测试验证**
+  - [x] 编写跨工程加载与会话状态集成测试（`tests/test_sync_lifecycle_and_session.py`，验证生命周期、定时器清理与状态切换）。
 
 ---
 

@@ -30,6 +30,40 @@ logger = logging.getLogger("MoziToolKit.Sync.Connect")
 
 _timer_registered = False
 _progress_reporter = None
+_delayed_close_callback = None
+
+
+def is_sync_timer_running() -> bool:
+    """Checks whether the Live Sync polling timer is currently active."""
+    return bpy is not None and hasattr(bpy.app, "timers") and bpy.app.timers.is_registered(_sync_timer_tick)
+
+
+def start_sync_timer() -> None:
+    """Safely registers the main-thread sync polling timer if not already running."""
+    global _timer_registered
+    if bpy is not None and hasattr(bpy.app, "timers"):
+        if not bpy.app.timers.is_registered(_sync_timer_tick):
+            bpy.app.timers.register(_sync_timer_tick, first_interval=0.016)
+    _timer_registered = True
+
+
+def stop_sync_timer() -> None:
+    """Safely unregisters and cancels the main-thread sync polling timer and pending progress reporters."""
+    global _timer_registered, _delayed_close_callback
+    if bpy is not None and hasattr(bpy.app, "timers"):
+        if bpy.app.timers.is_registered(_sync_timer_tick):
+            try:
+                bpy.app.timers.unregister(_sync_timer_tick)
+            except Exception as e:
+                logger.debug(f"Failed to unregister sync timer: {e}")
+        if _delayed_close_callback is not None and bpy.app.timers.is_registered(_delayed_close_callback):
+            try:
+                bpy.app.timers.unregister(_delayed_close_callback)
+            except Exception:
+                pass
+            _delayed_close_callback = None
+    _timer_registered = False
+    _close_progress_reporter()
 
 
 def _get_progress_reporter(title: str = "Mozi Live Sync"):
@@ -47,14 +81,25 @@ def _get_progress_reporter(title: str = "Mozi Live Sync"):
 
 
 def _close_progress_reporter(delay_sec: float = 0.0):
-    global _progress_reporter
+    global _progress_reporter, _delayed_close_callback
+    if _delayed_close_callback is not None:
+        if bpy is not None and hasattr(bpy.app, "timers") and bpy.app.timers.is_registered(_delayed_close_callback):
+            try:
+                bpy.app.timers.unregister(_delayed_close_callback)
+            except Exception:
+                pass
+        _delayed_close_callback = None
+
     if _progress_reporter is not None:
         rep = _progress_reporter
         _progress_reporter = None
         if delay_sec > 0 and bpy is not None and hasattr(bpy.app, "timers"):
             def _delayed_close():
+                global _delayed_close_callback
+                _delayed_close_callback = None
                 rep.close()
                 return None
+            _delayed_close_callback = _delayed_close
             bpy.app.timers.register(_delayed_close, first_interval=delay_sec)
         else:
             rep.close()
@@ -72,11 +117,9 @@ def _sync_timer_tick() -> Optional[float]:
     Main-thread non-blocking timer polling events from native libmtk engine
     and updating the Blender viewport world mesh.
     """
-    global _timer_registered
     session = get_sync_bridge_session()
     if not session.is_active:
-        _timer_registered = False
-        _close_progress_reporter()
+        stop_sync_timer()
         return None
 
     props = _get_active_props(bpy.context)
@@ -105,6 +148,8 @@ def _sync_timer_tick() -> Optional[float]:
                 props.is_connected = (status == "CONNECTED")
                 if status == "CONNECTED":
                     props.validation_info = "Connected to Live Sync"
+                elif status.startswith("DISCONNECTED"):
+                    props.validation_info = status
 
         elif ev_type == "SELECTION_UPDATED":
             if props:
@@ -213,6 +258,11 @@ def _sync_timer_tick() -> Optional[float]:
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
 
+    # If session is disconnected or ended, unregister timer cleanly
+    if not session.is_active or (props and not props.is_connected and props.connection_status.startswith("DISCONNECTED")):
+        stop_sync_timer()
+        return None
+
     return 0.016  # ~60 fps poll interval
 
 
@@ -223,7 +273,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
     bl_description = "Connect to Minecraft Live Sync WebSocket Server"
 
     def execute(self, context):
-        global _timer_registered
         if not is_sync_available():
             self.report({'ERROR'}, "Native libmtk core is missing or not installed!")
             return {'CANCELLED'}
@@ -258,14 +307,12 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             return {'CANCELLED'}
 
         if props:
+            props.is_connected = False
             props.connection_status = "CONNECTING..."
             props.validation_info = f"Connecting to {url}..."
+            props.is_streaming = False
 
-        # Register non-blocking event timer
-        if not _timer_registered:
-            bpy.app.timers.register(_sync_timer_tick, first_interval=0.016)
-            _timer_registered = True
-
+        start_sync_timer()
         self.report({'INFO'}, f"Connecting to Live Sync at {url}")
         return {'FINISHED'}
 
@@ -277,7 +324,7 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
     bl_description = "Disconnect Live Sync session and stop background listener"
 
     def execute(self, context):
-        global _timer_registered
+        stop_sync_timer()
         session = get_sync_bridge_session()
         session.stop()
 
@@ -286,9 +333,8 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             props.is_connected = False
             props.connection_status = "DISCONNECTED"
             props.validation_info = "Disconnected"
+            props.is_streaming = False
 
-        _timer_registered = False
-        _close_progress_reporter()
         self.report({'INFO'}, "Live Sync Disconnected.")
         return {'FINISHED'}
 

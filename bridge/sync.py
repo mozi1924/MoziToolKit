@@ -56,6 +56,8 @@ class SyncBridgeSession:
     def __init__(self):
         self._session: Optional[Any] = None
         self._is_active: bool = False
+        self._is_connected: bool = False
+        self._connection_status: str = "DISCONNECTED"
         self._current_url: str = ""
         self._model_db: Optional[Any] = None
         self._atlas: Optional[Any] = None
@@ -65,7 +67,23 @@ class SyncBridgeSession:
     @property
     def is_active(self) -> bool:
         """Whether a background synchronization session is running."""
+        if self._session is not None and hasattr(self._session, "is_active"):
+            return bool(self._session.is_active)
         return self._is_active and self._session is not None
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether the session is currently connected to the server."""
+        if self._session is not None and hasattr(self._session, "is_connected"):
+            return bool(self._session.is_connected)
+        return self._is_connected
+
+    @property
+    def connection_status(self) -> str:
+        """Current connection status string ('DISCONNECTED', 'CONNECTING...', 'CONNECTED', etc.)."""
+        if self._session is not None and hasattr(self._session, "status"):
+            return str(self._session.status)
+        return self._connection_status
 
     @property
     def current_url(self) -> str:
@@ -174,6 +192,8 @@ class SyncBridgeSession:
 
             self._session.start(url, auto_reconnect, max_reconnect_attempts)
             self._is_active = True
+            self._is_connected = False
+            self._connection_status = "CONNECTING..."
             logger.info(f"LiveSyncSession started connecting to {url} (unified_mesh={unified_mesh})")
             return True
         except Exception as e:
@@ -181,6 +201,8 @@ class SyncBridgeSession:
             logger.error(f"Failed to start LiveSyncSession: {e}")
             self._session = None
             self._is_active = False
+            self._is_connected = False
+            self._connection_status = "DISCONNECTED"
             return False
 
     def stop(self) -> None:
@@ -192,17 +214,38 @@ class SyncBridgeSession:
                 logger.debug(f"Error during LiveSyncSession shutdown: {e}")
         self._session = None
         self._is_active = False
+        self._is_connected = False
+        self._connection_status = "DISCONNECTED"
         logger.info("LiveSyncSession stopped.")
+
+    def reset(self) -> None:
+        """
+        Stops the session and thoroughly frees references (model_db, atlas, errors),
+        preventing memory leaks or stale scene references across file operations.
+        """
+        self.stop()
+        self._current_url = ""
+        self._model_db = None
+        self._atlas = None
+        self._last_error = ""
 
     def poll_events(self) -> List[Dict[str, Any]]:
         """
         Polls all pending events from the background Rust engine (non-blocking).
-        Returns a list of event dictionaries.
+        Updates internal connection status accordingly.
         """
-        if self._session is None or not self._is_active:
+        if self._session is None or not self.is_active:
             return []
         try:
-            return self._session.poll_events()
+            events = self._session.poll_events()
+            for ev in events:
+                if ev.get("type") == "STATUS_CHANGE":
+                    status = ev.get("status", "DISCONNECTED")
+                    self._connection_status = status
+                    self._is_connected = (status == "CONNECTED")
+                    if status == "DISCONNECTED" or status.startswith("DISCONNECTED"):
+                        self._is_active = False
+            return events
         except Exception as e:
             logger.error(f"Error polling Live Sync events: {e}")
             return []
@@ -271,6 +314,14 @@ _global_sync_session = SyncBridgeSession()
 
 def get_sync_bridge_session() -> SyncBridgeSession:
     """Returns the shared global SyncBridgeSession singleton."""
+    return _global_sync_session
+
+
+def reset_sync_bridge_session() -> SyncBridgeSession:
+    """Stops and resets the global singleton session, returning the cleaned instance."""
+    global _global_sync_session
+    if _global_sync_session is not None:
+        _global_sync_session.reset()
     return _global_sync_session
 
 

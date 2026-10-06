@@ -106,17 +106,22 @@ def _draw_sync_panel_content(layout: bpy.types.UILayout, context: bpy.types.Cont
     row_btn = box_conn.row(align=True)
     row_btn.scale_y = 1.25
 
-    if not props.is_connected:
-        op = row_btn.operator("mozi.sync_connect", text=tr("Connect"), icon='PLAY')
-    else:
+    if props.is_connected:
         row_btn.operator("mozi.sync_disconnect", text=tr("Disconnect"), icon='CANCEL')
         row_btn.operator("mozi.sync_refresh", text=tr("Refresh"), icon='FILE_REFRESH')
+    elif (
+        props.connection_status.startswith("CONNECTING")
+        or props.connection_status.startswith("RECONNECTING")
+    ):
+        row_btn.operator("mozi.sync_disconnect", text=tr("Cancel Connection"), icon='CANCEL')
+    else:
+        row_btn.operator("mozi.sync_connect", text=tr("Connect"), icon='PLAY')
 
     # Status indicator
     row_status = box_conn.row(align=True)
     if props.is_connected:
         icon = 'CHECKMARK'
-    elif props.connection_status.startswith("CONNECTING"):
+    elif props.connection_status.startswith("CONNECTING") or props.connection_status.startswith("RECONNECTING"):
         icon = 'SORTTIME'
     else:
         icon = 'RADIOBUT_OFF'
