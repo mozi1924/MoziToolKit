@@ -19,12 +19,16 @@ logger = logging.getLogger("MoziToolKit.Sync.Properties")
 
 class MoziSyncPaletteItem(bpy.types.PropertyGroup):
     """Single item in the block palette."""
+    __slots__ = ()
+
     name: StringProperty(name="BlockState", default="")
     block_count: IntProperty(name="Count", default=0)
 
 
 class MoziSyncDeltaItem(bpy.types.PropertyGroup):
     """Single modification log entry in delta history."""
+    __slots__ = ()
+
     pos_str: StringProperty(name="Position", default="")
     block_state: StringProperty(name="BlockState", default="")
     time_str: StringProperty(name="Time", default="")
@@ -32,6 +36,7 @@ class MoziSyncDeltaItem(bpy.types.PropertyGroup):
 
 class MoziSyncProperties(bpy.types.PropertyGroup):
     """Scene and object level properties for Live Sync state tracking and UI binding."""
+    __slots__ = ()
 
     url: StringProperty(
         name="Server URL",
@@ -149,7 +154,13 @@ def set_active_sync_container(scene: Optional[bpy.types.Scene], container: Optio
     """Sets or clears the active Live Sync container for the scene."""
     if not scene:
         return
-    scene.mozi_active_sync_container_name = container.name if container else ""
+    if hasattr(scene, "mozi_active_sync_container_name"):
+        scene.mozi_active_sync_container_name = container.name if container else ""
+    else:
+        try:
+            scene["mozi_active_sync_container_name"] = container.name if container else ""
+        except Exception:
+            pass
 
 
 @bpy.app.handlers.persistent

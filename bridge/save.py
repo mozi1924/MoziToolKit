@@ -310,10 +310,13 @@ def apply_imported_save_to_blender(
 
     # 7. Activate root container in viewport
     if context and hasattr(context, "view_layer"):
-        if hasattr(root_obj, "select_set"):
-            root_obj.select_set(True)
-        if hasattr(context.view_layer, "objects"):
-            context.view_layer.objects.active = root_obj
+        try:
+            if hasattr(root_obj, "select_set"):
+                root_obj.select_set(True)
+            if hasattr(context.view_layer, "objects"):
+                context.view_layer.objects.active = root_obj
+        except (RuntimeError, Exception):
+            pass
 
     stats = {
         "object_name": getattr(root_obj, "name", base_container_name),
