@@ -8,17 +8,20 @@ from unittest.mock import MagicMock
 
 from bridge.engine import get_libmtk
 from operators.sync.op_sync_connect import _sync_timer_tick
-from ui.panel_sync import PANEL_CLASSES, MOZI_PT_live_sync_properties
+from ui.panel_sync import PANEL_CLASSES, MOZI_PT_live_sync_data, MOZI_PT_live_sync
 
 
 class TestLiveSyncProgress(unittest.TestCase):
     def test_n_panel_removed_and_scene_properties_retained(self):
-        """Validates that Live Sync is removed from 3D Viewport N-panel and only exists in Scene Properties."""
+        """Validates that Live Sync panels reside in Data and Object properties, not Scene or N-panel."""
         class_names = [cls.__name__ for cls in PANEL_CLASSES]
         self.assertNotIn("MOZI_PT_live_sync_view3d", class_names, "N-panel MOZI_PT_live_sync_view3d must be removed")
-        self.assertIn("MOZI_PT_live_sync_properties", class_names, "MOZI_PT_live_sync_properties must be registered")
-        self.assertEqual(MOZI_PT_live_sync_properties.bl_space_type, "PROPERTIES")
-        self.assertEqual(MOZI_PT_live_sync_properties.bl_context, "scene")
+        self.assertIn("MOZI_PT_live_sync_data", class_names, "MOZI_PT_live_sync_data must be registered")
+        self.assertEqual(MOZI_PT_live_sync_data.bl_space_type, "PROPERTIES")
+        self.assertEqual(MOZI_PT_live_sync_data.bl_context, "data")
+        self.assertIn("MOZI_PT_live_sync", class_names, "MOZI_PT_live_sync must be registered")
+        self.assertEqual(MOZI_PT_live_sync.bl_space_type, "PROPERTIES")
+        self.assertEqual(MOZI_PT_live_sync.bl_context, "object")
 
     def test_native_sync_event_stream_progress_stages(self):
         """Validates that native libmtk LiveSyncSession dispatches STREAM_PROGRESS with stage and byte tracking."""
