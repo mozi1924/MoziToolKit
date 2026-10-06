@@ -29,3 +29,11 @@ if curl -fL --retry 3 -o "$work/SPBR-21.zip" "$base/SPBR-21.zip"; then
 else
   echo "::warning::External resource pack unavailable; companion-pack tests will be skipped."
 fi
+
+if curl -fL --retry 3 -o "$work/mtk-save-world.tar.gz" "$base/mtk-save-world.tar.gz"; then
+  rm -rf "$work/mtk-save-world"
+  tar -xzf "$work/mtk-save-world.tar.gz" -C "$work"
+  echo "MTK_TEST_SAVE=$work/mtk-save-world" >> "${GITHUB_ENV:?GITHUB_ENV must be set}"
+else
+  echo "::warning::Sample save world unavailable; save-bridge tests will be skipped."
+fi
