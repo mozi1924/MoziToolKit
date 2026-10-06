@@ -113,6 +113,45 @@ def _on_blend_file_pre_load(dummy=None):
         logger.debug(f"Error resetting sync session on file pre-load: {e}")
 
 
+def get_active_sync_container(scene: Optional[bpy.types.Scene] = None) -> Optional[bpy.types.Object]:
+    """Resolves the currently active Live Sync Empty root container object."""
+    if scene is None:
+        scene = getattr(bpy.context, "scene", None)
+    if not scene:
+        return None
+    container_name = getattr(scene, "mozi_active_sync_container_name", "")
+    if container_name and container_name in bpy.data.objects:
+        obj = bpy.data.objects[container_name]
+        try:
+            from .hierarchy import is_yefira_root_object
+            if is_yefira_root_object(obj):
+                return obj
+        except Exception:
+            return obj
+
+    # Fallback: find any connected container or container tagged with sync
+    objs = bpy.data.objects.values() if hasattr(bpy.data.objects, "values") else bpy.data.objects
+    for obj in objs:
+        if isinstance(obj, str):
+            obj = bpy.data.objects.get(obj)
+        if obj is None:
+            continue
+        if getattr(obj, "type", "") == 'EMPTY' and (
+            (hasattr(obj, "get") and obj.get("mtk:is_yefira_world")) or getattr(obj, "name", "").startswith("Yefira_World")
+        ):
+            props = getattr(obj, "mozi_sync", None)
+            if props and getattr(props, "is_connected", False):
+                return obj
+    return None
+
+
+def set_active_sync_container(scene: Optional[bpy.types.Scene], container: Optional[bpy.types.Object]) -> None:
+    """Sets or clears the active Live Sync container for the scene."""
+    if not scene:
+        return
+    scene.mozi_active_sync_container_name = container.name if container else ""
+
+
 @bpy.app.handlers.persistent
 def _on_blend_file_loaded(dummy=None):
     """Reset properties across all scenes and objects upon file load."""
@@ -124,6 +163,8 @@ def _on_blend_file_loaded(dummy=None):
                 props.connection_status = "DISCONNECTED"
                 props.validation_info = "Ready to connect"
                 props.is_streaming = False
+            if hasattr(scene, "mozi_active_sync_container_name"):
+                scene.mozi_active_sync_container_name = ""
         for obj in bpy.data.objects:
             if hasattr(obj, "mozi_sync"):
                 props = obj.mozi_sync
@@ -145,6 +186,11 @@ def register():
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncProperties)
+    bpy.types.Scene.mozi_active_sync_container_name = StringProperty(
+        name="Active Sync Container",
+        description="Name of the root Empty container actively bound to Live Sync",
+        default="",
+    )
     bpy.types.Object.mozi_sync = PointerProperty(type=MoziSyncProperties)
 
     if _on_blend_file_pre_load not in bpy.app.handlers.load_pre:
@@ -181,6 +227,8 @@ def unregister():
         del bpy.types.Object.mozi_sync
     if hasattr(bpy.types.Scene, "mozi_sync"):
         del bpy.types.Scene.mozi_sync
+    if hasattr(bpy.types.Scene, "mozi_active_sync_container_name"):
+        del bpy.types.Scene.mozi_active_sync_container_name
 
     for cls in reversed(CLASSES):
         try:

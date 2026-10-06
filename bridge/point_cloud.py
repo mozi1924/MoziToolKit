@@ -509,7 +509,7 @@ def ensure_voxel_child_cloud(
     - Native Mask Modifier configured to mask out voxel points by default in the viewport.
     - Custom properties: `parent_obj["mtk_voxel_cloud"]` and `cloud_obj["mtk_is_voxel_cloud"]`.
     """
-    if not HAS_BPY or parent_obj is None or getattr(parent_obj, "type", "") != "MESH":
+    if not HAS_BPY or parent_obj is None or getattr(parent_obj, "type", "") not in ("MESH", "EMPTY"):
         return None
 
     mtk = get_libmtk()

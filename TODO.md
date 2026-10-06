@@ -38,17 +38,19 @@
 - [x] **伴生体素点云子物体结构与全量持久化 (`hierarchy.py`, `bridge/point_cloud.py`)**
   - [x] 废弃独立集合隔离，对齐世界网格挂载伴生点云子物体（`ensure_voxel_child_cloud`）。
   - [x] 自动承载未遮挡剔除体素元数据、Attributes 绑定与 Mask 修改器一键显隐。
-- [ ] **统一 Empty 根容器与平铺子物体结构演进**
-  - [ ] 升级为标准 Empty 根容器：
+- [x] **统一 Empty 根容器与平铺子物体结构演进**
+  - [x] 升级为标准 Empty 根容器：
     ```text
-    📁 Container Root (Empty, mtk:is_container=True, mtk:session_id=...)
+    📁 Container Root (Empty, mtk:is_container=True, mtk:container_id=...)
     ├── 🧊 World Mesh (Mesh, 几何面与多材质槽)
     └── ☁️ Point Cloud (Mesh/PointCloud, 存储未剔除体素与元数据，默认隐藏)
     ```
-  - [ ] 重构 `get_or_create_world_mesh_object` 与 `update_world_mesh`，确保 Mesh 与 PointCloud 挂载为同级子物体。
-- [ ] **多会话上下文感知与属性隔离 (`properties.py`, `ui/panel_sync.py`)**
-  - [ ] 编写 `find_root_container(obj)` 向上寻址解析器，无论选中容器、网格还是点云，均精准定位根容器。
-  - [ ] 将会话属性绑定至每个 Container 物体本身（独立的 URL、选区坐标、顶点统计与连接状态），实现多会话完全并行隔离。
+  - [x] 重构 `get_or_create_world_mesh_object` 与 `update_world_mesh`，确保 Mesh 与 PointCloud 挂载为 Empty 根容器子物体。
+- [x] **多会话上下文感知与属性隔离 (`properties.py`, `ui/panel_sync.py`)**
+  - [x] 编写 `resolve_world_root_object(obj)` / `find_root_container(obj)` 向上寻址解析器，无论选中容器、网格还是点云，均精准定位根容器。
+  - [x] 将会话属性绑定至每个 Container 物体本身（独立的 URL、选区坐标、顶点统计与连接状态），实现多会话完全并行隔离与防串流。
+  - [x] 单一活跃会话互斥保护机制（检测到多容器同步冲突时弹出友好确认切换对话框）。
+  - [x] 属性面板深度优化：移出场景 Scene 选项卡，Empty 根容器显示于绿色 Object Data 选项卡，子物体显示于橙色 Object 选项卡。
 - [ ] **容器与子物体重命名级联同步 (`watcher.py`)**
   - [ ] 恢复 `bpy.app.handlers.depsgraph_update_post` 监听机制。
   - [ ] 当用户在大纲视图重命名 Empty 容器时，自动级联同步更新子网格与子点云名称（如 `MyWorld_Mesh`, `MyWorld_PointCloud`）。

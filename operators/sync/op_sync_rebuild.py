@@ -32,6 +32,12 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
     bl_label = "Rebuild World Mesh"
     bl_description = "Force re-meshing the entire synchronized world from voxel storage"
 
+    target_container: bpy.props.StringProperty(
+        name="Target Container",
+        description="Name of the root container to rebuild",
+        default="",
+    )
+
     run_async: bpy.props.BoolProperty(
         name="Run Asynchronously",
         description="Run re-meshing in non-blocking background thread with live status bar progress",
@@ -47,6 +53,8 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
             self.report({'WARNING'}, "Live Sync session is not active.")
             return {'CANCELLED'}
 
+        target_container_name = self.target_container
+
         def do_rebuild(progress_callback=None):
             return session.get_world_mesh()
 
@@ -55,11 +63,15 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                 self.report({'WARNING'}, "Voxel storage is empty or no geometry generated.")
                 return
 
-            world_obj = get_or_create_world_mesh_object(context)
+            target_root = None
+            if target_container_name and target_container_name in bpy.data.objects:
+                target_root = bpy.data.objects[target_container_name]
+            world_obj = get_or_create_world_mesh_object(context, root_container=target_root)
             storage = session.get_storage()
-            v_count, f_count = update_world_mesh(world_obj, mesh_data, storage=storage)
+            v_count, f_count = update_world_mesh(world_obj, mesh_data, storage=storage, sync_point_cloud=True)
 
-            props = getattr(context.scene, "mozi_sync", None)
+            root_obj = target_root or world_obj
+            props = getattr(root_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)
             if props:
                 props.point_count = v_count
                 props.faces_count = f_count
