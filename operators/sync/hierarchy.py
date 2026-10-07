@@ -52,13 +52,18 @@ def is_yefira_root_object(obj: Optional[bpy.types.Object]) -> bool:
         return False
     obj_type = getattr(obj, "type", "")
     if obj_type == 'EMPTY':
-        if _safe_get_custom_prop(obj, "mtk:is_yefira_world") or _safe_get_custom_prop(obj, "mtk:is_container"):
+        c_type = _safe_get_custom_prop(obj, "mtk:container_type")
+        if c_type and c_type != "SYNC":
+            return False
+        if _safe_get_custom_prop(obj, "mtk:is_yefira_world"):
+            return True
+        if _safe_get_custom_prop(obj, "mtk:is_container") and c_type == "SYNC":
             return True
         obj_name = getattr(obj, "name", "")
         if obj_name == DEFAULT_WORLD_OBJECT_NAME or obj_name.startswith("Yefira_World"):
             return True
         for c in getattr(obj, "children", []):
-            if _safe_get_custom_prop(c, "mtk:is_yefira_mesh") or _safe_get_custom_prop(c, "mtk_is_voxel_cloud"):
+            if _safe_get_custom_prop(c, "mtk:is_yefira_mesh"):
                 return True
     return False
 
@@ -162,13 +167,14 @@ def get_or_create_world_container(
                 _safe_set_custom_prop(obj, "mtk:is_container", True)
                 return obj
 
-        # 3. Check any existing Empty tagged with mtk:is_yefira_world
-        objs = bpy.data.objects.values() if hasattr(bpy.data.objects, "values") else bpy.data.objects
-        for obj in objs:
-            if isinstance(obj, str):
-                obj = bpy.data.objects.get(obj) if hasattr(bpy.data.objects, "get") else None
-            if obj and is_yefira_root_object(obj):
-                return obj
+        # 3. Check any existing Empty tagged with mtk:is_yefira_world if target_name is default
+        if target_name == DEFAULT_WORLD_OBJECT_NAME:
+            objs = bpy.data.objects.values() if hasattr(bpy.data.objects, "values") else bpy.data.objects
+            for obj in objs:
+                if isinstance(obj, str):
+                    obj = bpy.data.objects.get(obj) if hasattr(bpy.data.objects, "get") else None
+                if obj and is_yefira_root_object(obj):
+                    return obj
 
     # 4. Create new Empty root container
     root_obj = bpy.data.objects.new(target_name, None)

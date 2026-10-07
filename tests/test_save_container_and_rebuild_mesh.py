@@ -10,12 +10,22 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import bpy
-from bridge.save import apply_imported_save_to_blender, _resolve_unique_save_container_name
+from bridge.save import (
+    apply_imported_save_to_blender,
+    sanitize_save_privacy,
+    _resolve_unique_save_container_name,
+)
 from operators.op_mesh import (
     MOZI_OT_rebuild_mesh,
     resolve_mesh_rebuild_targets,
 )
+from operators.save import (
+    MOZI_OT_refresh_save_mesh,
+    MOZI_OT_relink_save_folder,
+    resolve_save_container,
+)
 from utils.system.menu_registry import CANONICAL_DEFAULT_PRESETS, CANONICAL_OPERATORS
+from utils.system.save_registry import get_save_registry
 
 
 class _MockObject:
@@ -34,6 +44,10 @@ class _MockObject:
 
     def __setitem__(self, key, value):
         self._props[key] = value
+
+    def __delitem__(self, key):
+        if key in self._props:
+            del self._props[key]
 
     def __contains__(self, key):
         return key in self._props
@@ -408,4 +422,132 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             self.assertEqual(res, {"FINISHED"})
             mock_session.get_world_mesh.assert_called_once()
             mock_update_fn.assert_called_once()
+
+    def test_save_container_privacy_and_uuid_registry(self):
+        """Verifies that local filesystem absolute paths are scrubbed and registered to privacy UUID registry."""
+        meta = {
+            "level_name": "SecretWorld",
+            "version_name": "1.21.4",
+            "data_version": 4189,
+            "spawn": (10, 70, 10),
+        }
+        mesh_data = MagicMock()
+        mesh_data.used_materials.return_value = []
+        storage = MagicMock()
+
+        if IS_REAL_BLENDER:
+            context = bpy.context
+        else:
+            context = types.SimpleNamespace(
+                collection=MagicMock(),
+                view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=None)),
+                mode="OBJECT",
+            )
+
+        with patch("bridge.save.inject_mesh_data"), patch("bridge.save.ensure_world_materials"):
+            root, stats = apply_imported_save_to_blender(
+                mesh_data=mesh_data,
+                meta=meta,
+                storage=storage,
+                elapsed_ms=10.0,
+                world_dir="/Users/secret_user/Minecraft/saves/SecretWorld",
+                dimension="overworld",
+                context=context,
+            )
+
+            # 1. UUID must be assigned
+            self.assertIn("mozi_save_uuid", root)
+            save_uuid = root["mozi_save_uuid"]
+            self.assertTrue(bool(save_uuid))
+
+            # 2. Sensitive path must NEVER be stored on the object
+            self.assertNotIn("mtk_source_path", root)
+            mesh_name = f"{root.name}_Mesh"
+            self.assertIn(mesh_name, bpy.data.objects)
+            mesh = bpy.data.objects[mesh_name]
+            self.assertNotIn("mtk_source_path", mesh)
+
+            # 3. Privacy registry should record the mapping
+            reg = get_save_registry()
+            info = reg.get_save_info(save_uuid)
+            self.assertIsNotNone(info)
+            self.assertEqual(info["dimension"], "overworld")
+
+            # 4. Legacy object scrubbing check
+            old_obj = self._make_obj("Legacy_Save_Test", "EMPTY")
+            old_obj["mtk_source_path"] = "/Users/secret_user/old_save"
+            old_obj["mtk_world_name"] = "OldWorld"
+            migrated_uuid = sanitize_save_privacy(old_obj)
+            self.assertTrue(bool(migrated_uuid))
+            self.assertNotIn("mtk_source_path", old_obj)
+
+    def test_save_refresh_and_relink_operators(self):
+        """Verifies resolve_save_container, relink operator, and in-place refresh operator."""
+        save_root = self._make_obj("Save_TestRelink_overworld", "EMPTY")
+        save_root["mtk:is_container"] = True
+        save_root["mtk:container_type"] = "SAVE"
+        save_root["mozi_save_uuid"] = "test-uuid-12345"
+        save_root["mtk_world_name"] = "RelinkWorld"
+        save_root["mtk_dimension"] = "overworld"
+        save_root["mtk_min_coord"] = [-16, 0, -16]
+        save_root["mtk_max_coord"] = [16, 64, 16]
+
+        save_mesh = self._make_obj("Save_TestRelink_overworld_Mesh", "MESH")
+        save_mesh.parent = save_root
+        save_mesh["mtk:is_save_mesh"] = True
+        save_mesh["mozi_save_uuid"] = "test-uuid-12345"
+
+        if isinstance(getattr(save_root, "children", None), list):
+            save_root.children = [save_mesh]
+
+        # 1. Test resolve_save_container
+        r, m, c = resolve_save_container(save_mesh)
+        self.assertEqual(r, save_root)
+        self.assertEqual(m, save_mesh)
+
+        # 2. Relink operator
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir) / "World"
+            tmp_path.mkdir()
+            (tmp_path / "level.dat").write_text("dummy")
+
+            reg = get_save_registry()
+            reg.relink_save("test-uuid-12345", tmp_path)
+            self.assertTrue(reg.is_path_valid("test-uuid-12345"))
+
+            # 3. Refresh operator in synchronous mode
+            class DummyRefreshOp:
+                def __init__(self):
+                    self.report = MagicMock()
+                    self.run_async = False
+                    self._runner = None
+
+                def execute(self, ctx):
+                    return MOZI_OT_refresh_save_mesh.execute(self, ctx)
+
+            op = DummyRefreshOp()
+            ctx = types.SimpleNamespace(
+                active_object=save_mesh,
+                selected_objects=[save_mesh],
+                collection=MagicMock(),
+                view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=save_root)),
+                mode="OBJECT",
+            )
+
+            mock_mesh = MagicMock()
+            mock_mesh.used_materials.return_value = []
+            mock_meta = {
+                "level_name": "RelinkWorld",
+                "version_name": "1.21.4",
+                "data_version": 4189,
+                "spawn": (0, 64, 0),
+            }
+            with patch("operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
+                 patch("bridge.save.inject_mesh_data"), patch("bridge.save.ensure_world_materials"):
+                res = op.execute(ctx)
+                self.assertEqual(res, {"FINISHED"})
+                self.assertIn("mtk_last_refreshed", save_root)
+
 

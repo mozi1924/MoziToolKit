@@ -104,7 +104,7 @@ class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
                 "Yefira_World", "Yefira_World_Mesh", "Yefira_World_VoxelCloud",
                 "Container_A", "Container_B", "MyContainer", "MyContainer_Mesh",
                 "OldWorld", "OldWorld_Mesh", "OldWorld_VoxelCloud", "NewWorld", "NewWorld_Mesh", "NewWorld_VoxelCloud",
-                "City_A", "City_A_Mesh", "Metropolis", "Metropolis_Mesh",
+                "City_A", "City_A_Mesh", "Metropolis", "Metropolis_Mesh", "TestWorld_01", "TestWorld_01_Mesh",
             ]
             for name in cleanup_names:
                 if hasattr(bpy.data, "objects") and name in bpy.data.objects:

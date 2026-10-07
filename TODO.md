@@ -88,7 +88,7 @@
 
 ---
 
-## 阶段三：Minecraft 存档导入容器化、无感刷新与隐私 UUID 体系（P2 - 体验演进 🚧 进行中）
+## 阶段三：Minecraft 存档导入容器化、无感刷新与隐私 UUID 体系（✅ 已完成）
 - [x] **Minecraft 存档端到端导入前端（✅ 已完成基础链路 - commit `8ad56fc`）**
   - [x] 顶部主菜单接入（`File -> Import -> Minecraft World / Save (.mca / level.dat)`，`ui/menu_import.py`）。
   - [x] 世界路径选取、维度选择（主世界/下界/末地）与 `level.dat` 元数据自动探测。
@@ -101,8 +101,8 @@
   - [x] 存档导入时自动创建独立 Empty 根容器（如 `Save_WorldName_Dimension_01`），子网格与子点云收拢于容器内。
   - [x] 连续导入新选区时绝不覆盖历史已导入的存档物体，自动递增序号新建容器。
   - [x] 根容器与子物体完整记录 AABB、维度、AO、流体、居中与材质参数自定义属性。
-- [ ] **本地隐私注册表管理器 (`utils/system/save_registry.py`)**
-  - [ ] 实现基于用户本地数据目录的 `SaveRegistryManager`，在 `DATAFILES/mozi_toolkit/save_registry.json` 中记录：
+- [x] **本地隐私注册表管理器 (`utils/system/save_registry.py`)**
+  - [x] 实现基于用户本地配置目录的 `SaveRegistryManager`，在 `CONFIG/MoziToolKit/save_registry.json`（与右键菜单 `context_menus.json` 同目录）中记录：
     ```json
     {
       "uuid_hash": {
@@ -112,11 +112,13 @@
       }
     }
     ```
-  - [ ] `.blend` 内部仅存储 `mozi_save_uuid` 以及不涉密的 AABB 选区与维度，彻底杜绝个人本地绝对路径随工程文件泄露。
-- [ ] **存档专属面板与“一键刷新模型”算子 (`ui/panel_save.py`, `op_refresh_save.py`)**
-  - [ ] 物体属性面板中为存档容器展示专属信息卡片（选区坐标、体积、最后更新时间）。
-  - [ ] 提供 **“🔄 刷新模型 (Refresh Model)”** 按钮：按原选区重新解包 MCA/NBT 并原地无感替换网格。
-  - [ ] 异地工程加载安全回退：当其他用户打开工程且本地无此 UUID 时，弹出友好提示并提供“重新关联本地存档路径”入口。
+  - [x] `.blend` 内部仅存储 `mozi_save_uuid` 以及不涉密的 AABB 选区与维度，彻底杜绝个人本地绝对路径随工程文件泄露。
+  - [x] 提供 `sanitize_save_privacy` 自动清洗与静默迁移旧工程中的绝对路径属性。
+- [x] **存档专属面板与“一键刷新模型”算子 (`ui/panel_save.py`, `op_refresh_save.py`, `op_relink_save.py`)**
+  - [x] 物体属性面板中为存档容器展示专属信息卡片（选区坐标、体积、几何信息、最后更新时间）。
+  - [x] 提供 **“🔄 刷新模型 (Refresh Model)”** 按钮：按原选区重新解包 MCA/NBT 并原地无感替换网格。
+  - [x] 异地工程加载安全回退与重新关联：当其他用户打开工程或本地路径移动时，弹出友好提示并提供“重新关联本地存档路径”算子（`mozi.relink_save_folder`）。
+
 
 ---
 
