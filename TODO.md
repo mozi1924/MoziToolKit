@@ -132,16 +132,20 @@
 - [x] **材质与资产缓存管理 API 与开发面板（✅ 已完成 - commit `b16fb5d`）**
   - [x] 材质图集与模型预编译缓存清除与重建 API (`bridge.clear_cache`, `bridge.precompile_stack`)。
   - [x] Dev 开发调试面板中的缓存状态监视器与一键预编译/清除算子。
-- [ ] **右键菜单智能差集自适应合并 (`utils/config/manager.py`, `utils/system/menu_registry.py`)**
-  - [ ] 引入 `menu_schema_version` 版本迁移机制。
-  - [ ] 插件启动加载配置时，比对内建 `CANONICAL_DEFAULT_PRESETS` 与用户已保存的 `views`：
-    - 自动将新引入的内建推荐算子并入可用列表或菜单，保留用户已有的自定义排序与开关；
+- [x] **右键菜单智能差集自适应合并与 Schema 迁移（✅ 已完成）**
+  - [x] 引入 `menu_schema_version` (v2) 版本迁移机制 (`utils/config/models.py`)。
+  - [x] 插件启动加载配置时自动执行 `reconcile_views_with_canonical_presets`：
+    - 比对内建 `CANONICAL_DEFAULT_PRESETS` 与用户已保存的 `views`，自动将新引入的内建推荐算子无缝并入菜单列表；
+    - 严格保留用户已有的自定义排序、自定义标签以及启用/禁用开关；
     - 告别每次新增选项都要手动点击“重置右键菜单”的繁琐体验。
-- [ ] **全域 UI 面板风格现代化与整合**
-  - [ ] 3D 视图 N 侧边栏及属性面板分区梳理：
-    - 📡 **实时网络同步 (Live Sync)**：会话管理、多容器状态、流量与增量指标；
-    - 📦 **世界存档导入 (World Saves)**：选区预览框、存档导入与刷新记忆；
-    - 🧊 **体素与网格工具 (Voxel Tools)**：点云展示、通用网格重构、面剔除与像素切分。
+  - [x] 右键菜单项原生图标渲染（`MOD_REMESH`, `MATERIAL`, `GRID`, `UV_DATA` 等，提升视觉辨识度）。
+  - [x] 偏好设置支持直接点击列表项开关 (`enabled` 复选框) 实时控制显示/隐藏，并支持单视图独立重置 (`reset_views(view_name)`)。
+- [x] **全域 UI 面板风格现代化与整合（✅ 已完成）**
+  - [x] 3D 视图 N 侧边栏及属性面板分区梳理：
+    - 📡 **实时网络同步 (Live Sync)**：新增 `MOZI_PT_view3d_live_sync`，在 3D 视图 N 侧边栏直接掌控会话管理、多容器状态、URL、连接/断开与增量指标；未有容器时提供快速创建引导；
+    - 📦 **世界存档导入 (World Saves)**：`MOZI_PT_view3d_save_container` 增加未选中存档物体时的“一键导入 Minecraft 存档”快捷入口，选中时完整展示选区与刷新卡片；
+    - 🧊 **体素与网格工具 (Voxel Tools)**：重构升级为 `MOZI_PT_view3d_voxel_tools`，集成通用网格重构、伴生点云雕刻、自适应像素网格切分、面遮挡剔除、流体 UV 修复与材质法线工具；
+  - [x] 国际化字典全量补齐（`i18n/dictionary.py` 同步覆盖所有新增 UI 标签与提示）。
 
 ---
 

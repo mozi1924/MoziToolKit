@@ -209,13 +209,22 @@ class MOZI_PT_view3d_save_container(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        active = getattr(context, "active_object", None)
-        if not active:
-            return False
-        return is_save_root_container(active) or is_save_child_object(active)
+        return True
 
     def draw(self, context):
-        _draw_save_container_ui(self.layout, context)
+        active = getattr(context, "active_object", None)
+        if active and (is_save_root_container(active) or is_save_child_object(active)):
+            _draw_save_container_ui(self.layout, context)
+        else:
+            box = self.layout.box()
+            box.label(text=tr("Minecraft World Save (.mca)"), icon='WORLD')
+            col = box.column(align=True)
+            col.scale_y = 0.85
+            col.label(text=tr("Import raw Minecraft worlds or inspect save containers."))
+            col.label(text=tr("No Minecraft Save container selected."))
+            row_imp = box.row(align=True)
+            row_imp.scale_y = 1.2
+            row_imp.operator("mozi.import_minecraft_save", text=tr("Import Minecraft Save (.mca / level.dat)"), icon='IMPORT')
 
 
 PANEL_CLASSES = (
