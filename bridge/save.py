@@ -17,6 +17,15 @@ from .mesh import inject_mesh_data
 from .point_cloud import ensure_voxel_child_cloud
 from .world import ensure_world_materials, get_world_pipeline_assets
 
+try:
+    from ..utils.system.save_registry import get_save_registry
+except (ImportError, ValueError):
+    try:
+        from utils.system.save_registry import get_save_registry
+    except (ImportError, ValueError):
+        get_save_registry = None
+
+
 logger = logging.getLogger("MoziToolKit.Bridge.Save")
 
 
@@ -164,6 +173,48 @@ def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
             pass
 
 
+def sanitize_save_privacy(obj: Any) -> Optional[str]:
+    """
+    Checks if the object contains a legacy 'mtk_source_path' property.
+    If present, migrates the local path to SaveRegistryManager and scrubs
+    the sensitive absolute path to avoid leaking username/paths when sharing .blend files.
+    """
+    if obj is None:
+        return None
+    source_path = None
+    if hasattr(obj, "get"):
+        source_path = obj.get("mtk_source_path")
+    elif hasattr(obj, "mtk_source_path"):
+        source_path = getattr(obj, "mtk_source_path")
+
+    save_uuid = None
+    if hasattr(obj, "get"):
+        save_uuid = obj.get("mozi_save_uuid") or obj.get("mtk:container_id")
+
+    if source_path and get_save_registry is not None:
+        try:
+            reg = get_save_registry()
+            dim = obj.get("mtk_dimension", "overworld") if hasattr(obj, "get") else "overworld"
+            world_name = obj.get("mtk_world_name", "") if hasattr(obj, "get") else ""
+            save_uuid = reg.register_save(
+                world_dir=source_path,
+                dimension=dim,
+                level_name=world_name,
+                save_uuid=save_uuid,
+            )
+        except Exception as e:
+            logger.warning(f"Failed migrating legacy mtk_source_path to registry: {e}")
+
+    # Remove the sensitive property completely from blender custom props
+    if hasattr(obj, "__delitem__") and hasattr(obj, "__contains__") and "mtk_source_path" in obj:
+        try:
+            del obj["mtk_source_path"]
+        except Exception:
+            pass
+
+    return save_uuid
+
+
 def _resolve_unique_save_container_name(base_name: str, bpy_module: Any) -> str:
     """Finds the next non-colliding container name (e.g. Save_World_overworld, Save_World_overworld_01)."""
     if not hasattr(bpy_module, "data") or not hasattr(bpy_module.data, "objects"):
@@ -175,6 +226,7 @@ def _resolve_unique_save_container_name(base_name: str, bpy_module: Any) -> str:
     while f"{base_name}_{idx:02d}" in objects:
         idx += 1
     return f"{base_name}_{idx:02d}"
+
 
 
 def apply_imported_save_to_blender(
@@ -194,6 +246,7 @@ def apply_imported_save_to_blender(
     enable_ao: bool = True,
     mesh_fluids: bool = True,
     weld_vertices: bool = True,
+    target_root: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -218,11 +271,30 @@ def apply_imported_save_to_blender(
     base_container_name = f"Save_{clean_name}_{dimension}"
 
     # 1. Acquire or create Root Empty Container
-    root_obj = None
-    if reuse_existing and hasattr(bpy, "data") and hasattr(bpy.data, "objects") and base_container_name in bpy.data.objects:
+    root_obj = target_root
+    if root_obj is None and reuse_existing and hasattr(bpy, "data") and hasattr(bpy.data, "objects") and base_container_name in bpy.data.objects:
         cand = bpy.data.objects[base_container_name]
         if getattr(cand, "type", "") == 'EMPTY':
             root_obj = cand
+
+    save_uuid = None
+    if root_obj is not None and hasattr(root_obj, "get"):
+        save_uuid = root_obj.get("mozi_save_uuid") or root_obj.get("mtk:container_id")
+
+    if get_save_registry is not None and world_dir:
+        try:
+            reg = get_save_registry()
+            save_uuid = reg.register_save(
+                world_dir=world_dir,
+                dimension=dimension,
+                level_name=meta.get("level_name", ""),
+                save_uuid=save_uuid,
+            )
+        except Exception as e:
+            logger.warning(f"Could not register save to local registry: {e}")
+
+    if not save_uuid:
+        save_uuid = uuid.uuid4().hex
 
     if root_obj is None:
         container_name = _resolve_unique_save_container_name(base_container_name, bpy) if not reuse_existing else base_container_name
@@ -233,7 +305,8 @@ def apply_imported_save_to_blender(
             root_obj.empty_display_size = 1.0
         _safe_set_custom_prop(root_obj, "mtk:is_container", True)
         _safe_set_custom_prop(root_obj, "mtk:container_type", "SAVE")
-        _safe_set_custom_prop(root_obj, "mtk:container_id", uuid.uuid4().hex)
+        _safe_set_custom_prop(root_obj, "mtk:container_id", save_uuid)
+        _safe_set_custom_prop(root_obj, "mozi_save_uuid", save_uuid)
         _safe_set_custom_prop(root_obj, "mtk:last_name", getattr(root_obj, "name", container_name))
         if target_coll is not None and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
             try:
@@ -293,8 +366,11 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(mesh_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
         _safe_set_custom_prop(cloud_obj, "mtk_world_mesh", getattr(mesh_obj, "name", ""))
 
-    # 6. Store metadata in Object Custom Properties on both root container and mesh
+    # 6. Store metadata in Object Custom Properties on both root container and mesh (Privacy Protected)
+    now_ts = time.time()
     for target in (root_obj, mesh_obj):
+        _safe_set_custom_prop(target, "mozi_save_uuid", str(save_uuid))
+        _safe_set_custom_prop(target, "mtk:container_id", str(save_uuid))
         _safe_set_custom_prop(target, "mtk_world_name", str(meta["level_name"]))
         _safe_set_custom_prop(target, "mtk_mc_version", str(meta["version_name"]))
         _safe_set_custom_prop(target, "mtk_data_version", int(meta["data_version"]))
@@ -302,11 +378,13 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(target, "mtk_spawn_point", list(meta["spawn"]))
         _safe_set_custom_prop(target, "mtk_min_coord", list(min_block))
         _safe_set_custom_prop(target, "mtk_max_coord", list(max_block))
-        _safe_set_custom_prop(target, "mtk_source_path", str(Path(world_dir).resolve()))
         _safe_set_custom_prop(target, "mtk_origin_centered", bool(origin_centered))
         _safe_set_custom_prop(target, "mtk_enable_ao", bool(enable_ao))
         _safe_set_custom_prop(target, "mtk_mesh_fluids", bool(mesh_fluids))
         _safe_set_custom_prop(target, "mtk_weld_vertices", bool(weld_vertices))
+        _safe_set_custom_prop(target, "mtk_last_refreshed", float(now_ts))
+        sanitize_save_privacy(target)
+
 
     # 7. Activate root container in viewport
     if context and hasattr(context, "view_layer"):
@@ -330,6 +408,7 @@ def apply_imported_save_to_blender(
         "polygon_count": len(b_mesh.polygons) if hasattr(b_mesh, "polygons") else 0,
         "voxel_count": cloud_count,
         "elapsed_ms": round(elapsed_ms, 2),
+        "save_uuid": save_uuid,
     }
 
     return root_obj, stats

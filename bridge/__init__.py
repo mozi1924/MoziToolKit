@@ -59,6 +59,7 @@ from .save import (
     import_save_to_blender,
     inspect_minecraft_save,
     load_and_mesh_minecraft_save,
+    sanitize_save_privacy,
 )
 from .extrude import (
     generate_random_extrude_heights,
@@ -186,6 +187,7 @@ __all__ = [
     "import_save_to_blender",
     "inspect_minecraft_save",
     "load_and_mesh_minecraft_save",
+    "sanitize_save_privacy",
     "ensure_voxel_child_cloud",
     "extract_voxel_point_cloud",
     "get_associated_voxel_cloud",

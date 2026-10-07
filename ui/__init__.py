@@ -59,6 +59,10 @@ from .panel_voxel_storage import (
     register as register_panel_voxel_storage,
     unregister as unregister_panel_voxel_storage,
 )
+from .panel_save import (
+    register as register_panel_save,
+    unregister as unregister_panel_save,
+)
 from .menu_import import (
     register as register_menu_import,
     unregister as unregister_menu_import,
@@ -109,11 +113,13 @@ def register():
     register_panel_biome()
     register_panel_sync()
     register_panel_voxel_storage()
+    register_panel_save()
     register_menu_import()
 
 
 def unregister():
     unregister_menu_import()
+    unregister_panel_save()
     unregister_panel_voxel_storage()
     unregister_panel_sync()
     unregister_panel_biome()
