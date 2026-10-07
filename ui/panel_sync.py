@@ -115,6 +115,11 @@ def _format_stream_message(msg: str) -> str:
 def _draw_live_sync_content(layout: bpy.types.UILayout, context: bpy.types.Context):
     """Internal shared drawing implementation for Live Sync panels."""
     active_obj = getattr(context, "object", None)
+    if not active_obj or not (is_yefira_root_object(active_obj) or is_yefira_world_object(active_obj)):
+        active_cont = get_active_sync_container(context.scene)
+        if active_cont and active_cont.name in bpy.data.objects:
+            active_obj = active_cont
+
     if not active_obj:
         layout.label(text=tr("No active object"), icon='ERROR')
         return
@@ -323,11 +328,46 @@ class MOZI_PT_live_sync(bpy.types.Panel):
         _draw_live_sync_content(self.layout, context)
 
 
+class MOZI_PT_view3d_live_sync(bpy.types.Panel):
+    """Live Sync control panel in 3D Viewport sidebar (Mozi tab)."""
+    bl_label = "Live Sync (Yefira)"
+    bl_idname = "MOZI_PT_view3d_live_sync"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Mozi"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        active_obj = getattr(context, "object", None)
+        root_obj = None
+        if active_obj:
+            root_obj = resolve_world_root_object(active_obj) or (active_obj if is_yefira_root_object(active_obj) else None)
+        if not root_obj:
+            active_cont = get_active_sync_container(context.scene)
+            if active_cont and active_cont.name in bpy.data.objects:
+                root_obj = active_cont
+
+        if root_obj:
+            _draw_live_sync_content(layout, context)
+        else:
+            box = layout.box()
+            box.label(text=tr("Live Sync (Yefira)"), icon="WORLD")
+            col = box.column(align=True)
+            col.scale_y = 0.85
+            col.label(text=tr("Stream Minecraft world changes directly into Blender."))
+            col.label(text=tr("No active container selected or found in scene."))
+            row_add = box.row(align=True)
+            row_add.scale_y = 1.2
+            row_add.operator("mozi.add_yefira_world", text=tr("New Live Sync Container"), icon="ADD")
+
+
 PANEL_CLASSES = (
     MOZI_UL_sync_palette_list,
     MOZI_UL_sync_delta_list,
     MOZI_PT_live_sync_data,
     MOZI_PT_live_sync,
+    MOZI_PT_view3d_live_sync,
 )
 
 # Backward compatibility alias

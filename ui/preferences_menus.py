@@ -68,6 +68,16 @@ def on_item_label_changed(self, context):
         refresh_ui_and_menus(context)
 
 
+def on_item_enabled_changed(self, context):
+    """Callback when an item's enabled state is toggled in UI."""
+    if get_config_manager().is_syncing():
+        return
+    prefs = _safe_get_prefs(self)
+    if prefs:
+        get_config_manager().sync_from_preferences(prefs)
+        refresh_ui_and_menus(context)
+
+
 class MOZI_PG_context_menu_item(bpy.types.PropertyGroup):
     __slots__ = ()
 
@@ -78,7 +88,12 @@ class MOZI_PG_context_menu_item(bpy.types.PropertyGroup):
         default="",
         update=on_item_label_changed,
     )
-    enabled: BoolProperty(name="Enabled", default=True)
+    enabled: BoolProperty(
+        name="Enabled",
+        default=True,
+        description="Toggle menu item visibility in right-click context menu",
+        update=on_item_enabled_changed,
+    )
 
 
 class MOZI_PG_available_menu_item(bpy.types.PropertyGroup):
@@ -97,12 +112,17 @@ class MOZI_UL_added_items_list(bpy.types.UIList):
 
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
-            row.label(text=display_label, icon="CHECKBOX_HLT")
+            row.prop(item, "enabled", text="")
+            sub = row.row(align=True)
+            sub.active = item.enabled
+            op_info = ALL_OPERATORS.get(item.operator_id, {}) if ALL_OPERATORS else {}
+            op_icon = op_info.get("icon", "CHECKBOX_HLT") if item.enabled else "CHECKBOX_DEHLT"
+            sub.label(text=display_label, icon=op_icon)
             op_short = item.operator_id.split(".")[-1]
-            row.label(text=f"({op_short})", icon="NONE")
+            sub.label(text=f"({op_short})", icon="NONE")
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
-            layout.label(text=display_label, icon="CHECKBOX_HLT")
+            layout.prop(item, "enabled", text="")
 
 
 class MOZI_UL_unadded_items_list(bpy.types.UIList):
@@ -240,13 +260,27 @@ class MOZI_OT_menu_reset_config(bpy.types.Operator):
     bl_label = "Reset to Default Presets"
     bl_options = {"REGISTER", "UNDO"}
 
+    reset_all: BoolProperty(
+        name="Reset All Views",
+        default=False,
+        description="Reset all view presets (Mesh, Object, UV) instead of only the active view tab",
+    )
+
     def execute(self, context):
-        get_config_manager().reset_views()
         prefs = _safe_get_prefs(context)
+        view = getattr(prefs, "context_menu_tab", "mesh") if prefs else "mesh"
+        mgr = get_config_manager()
+        if self.reset_all:
+            mgr.reset_views()
+            msg = "All right-click context menu views reset to default presets."
+        else:
+            mgr.reset_views(view_name=view)
+            msg = f"Right-click context menu for '{view}' reset to default presets."
+
         if prefs:
-            get_config_manager().sync_to_preferences(prefs)
+            mgr.sync_to_preferences(prefs)
         refresh_ui_and_menus(context)
-        self.report({"INFO"}, "Right-click context menu reset to default presets.")
+        self.report({"INFO"}, msg)
         return {"FINISHED"}
 
 

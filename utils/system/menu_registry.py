@@ -44,6 +44,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.rebuild_mesh",
         "label": "Rebuild Voxel Mesh",
         "default_label": "Rebuild Voxel Mesh",
+        "icon": "MOD_REMESH",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -52,6 +53,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.replace_material",
         "label": "Replace Material",
         "default_label": "Replace Material",
+        "icon": "MATERIAL",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -60,6 +62,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.toggle_voxel_cloud",
         "label": "Toggle Voxel Point Cloud Visibility",
         "default_label": "Toggle Voxel Point Cloud Visibility",
+        "icon": "POINTCLOUD_DATA",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -68,6 +71,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.adaptive_pixel_split",
         "label": "Adaptive Pixel Split",
         "default_label": "Adaptive Pixel Split",
+        "icon": "GRID",
         "views": ["mesh", "object", "uv"],
         "enabled": True,
         "is_legacy": False,
@@ -76,6 +80,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.auto_extrude_repair",
         "label": "Auto Extrude Repair",
         "default_label": "Auto Extrude Repair",
+        "icon": "NORMALS_FACE",
         "views": ["mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -84,6 +89,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.clear_custom_normals",
         "label": "Clear Custom Normals",
         "default_label": "Clear Custom Normals",
+        "icon": "NORMALS_VERTEX",
         "views": ["mesh", "object"],
         "enabled": True,
         "is_legacy": False,
@@ -92,6 +98,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.random_extrude",
         "label": "Random Extrude",
         "default_label": "Random Extrude",
+        "icon": "MOD_EXPLODE",
         "views": ["mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -100,6 +107,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.select_hard_edges",
         "label": "Select Hard & Sharp Edges",
         "default_label": "Select Hard & Sharp Edges",
+        "icon": "EDGESEL",
         "views": ["mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -108,6 +116,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.set_texture_interpolation_closest",
         "label": "Set Image Interpolation to Closest",
         "default_label": "Set Image Interpolation to Closest",
+        "icon": "IMAGE_DATA",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -116,6 +125,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.repair_fluid_uv",
         "label": "Repair Fluid UV",
         "default_label": "Repair Fluid UV",
+        "icon": "UV_DATA",
         "views": ["uv", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -124,6 +134,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.scale_uv",
         "label": "Scale UV Faces",
         "default_label": "Scale UV Faces",
+        "icon": "CON_SIZELIKE",
         "views": ["uv"],
         "enabled": True,
         "is_legacy": False,
@@ -132,6 +143,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.select_transparent_faces",
         "label": "Select Transparent Faces",
         "default_label": "Select Transparent Faces",
+        "icon": "IMAGE_ALPHA",
         "views": ["mesh", "uv"],
         "enabled": True,
         "is_legacy": False,
@@ -140,6 +152,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.restore_materials_from_attributes",
         "label": "Restore Materials from Attributes",
         "default_label": "Restore Materials from Attributes",
+        "icon": "MATERIAL_DATA",
         "views": ["object", "mesh"],
         "enabled": False,
         "is_legacy": True,
@@ -150,6 +163,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.replace_material",
         "label": "Replace Material",
         "default_label": "Replace Material",
+        "icon": "MATERIAL",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": True,
@@ -158,6 +172,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.restore_materials_from_attributes",
         "label": "Restore Materials from Attributes",
         "default_label": "Restore Materials from Attributes",
+        "icon": "MATERIAL_DATA",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": True,
@@ -168,7 +183,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
 _REGISTERED_MENU_ITEMS: Dict[str, Dict[str, Any]] = {k: dict(v) for k, v in CANONICAL_OPERATORS.items()}
 
 
-def register_operator_menu_item(op_id: str, label: str, views: Optional[List[str]] = None, enabled: bool = True):
+def register_operator_menu_item(op_id: str, label: str, views: Optional[List[str]] = None, enabled: bool = True, icon: str = "NONE"):
     """Register an operator's menu metadata into the central Menu Registry."""
     if views is None:
         views = ["mesh"]
@@ -177,6 +192,7 @@ def register_operator_menu_item(op_id: str, label: str, views: Optional[List[str
         "canonical_id": op_id,
         "label": label,
         "default_label": label,
+        "icon": icon,
         "views": list(views),
         "enabled": enabled,
         "is_legacy": False,
@@ -313,11 +329,19 @@ def draw_dynamic_menu(layout, view_name: str):
 
     layout.label(text=tr("MoziToolKit"))
     for op_id, label in valid_items:
+        op_info = _REGISTERED_MENU_ITEMS.get(op_id, {})
+        op_icon = op_info.get("icon", "NONE")
         if label:
             # First check if the user-specified or default label has a translation in Operator or general context
             trans_label = tr(label, "Operator")
             if trans_label == label:
                 trans_label = tr(label)
-            layout.operator(op_id, text=trans_label)
+            if op_icon and op_icon != "NONE":
+                layout.operator(op_id, text=trans_label, icon=op_icon)
+            else:
+                layout.operator(op_id, text=trans_label)
         else:
-            layout.operator(op_id)
+            if op_icon and op_icon != "NONE":
+                layout.operator(op_id, icon=op_icon)
+            else:
+                layout.operator(op_id)

@@ -182,6 +182,84 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertTrue(_has_provenance_attributes(mock_obj_prov))
 
 
+    def test_reconcile_views_with_canonical_presets(self):
+        from utils.config.models import MenuItem, reconcile_views_with_canonical_presets, ConfigData, MENU_SCHEMA_VERSION
+
+        # Simulate user with legacy v1 config missing rebuild_mesh and toggle_voxel_cloud
+        legacy_views = {
+            "object": [
+                MenuItem(operator="mozi.replace_material", label="My Custom Material", enabled=True),
+                MenuItem(operator="mozi.clear_custom_normals", label="Clear Custom Normals", enabled=False),
+            ],
+            "mesh": [
+                MenuItem(operator="mozi.auto_extrude_repair", label="Auto Extrude Repair", enabled=True),
+            ],
+            "uv": [],
+        }
+
+        reconciled, changed = reconcile_views_with_canonical_presets(legacy_views, user_schema_version=1)
+        self.assertTrue(changed)
+
+        # In object view, existing customized items should be preserved in front
+        self.assertEqual(reconciled["object"][0].operator, "mozi.replace_material")
+        self.assertEqual(reconciled["object"][0].label, "My Custom Material")
+        self.assertEqual(reconciled["object"][1].operator, "mozi.clear_custom_normals")
+        self.assertFalse(reconciled["object"][1].enabled)
+
+        # Missing canonical operators should be appended
+        obj_ops = [it.operator for it in reconciled["object"]]
+        self.assertIn("mozi.rebuild_mesh", obj_ops)
+        self.assertIn("mozi.toggle_voxel_cloud", obj_ops)
+
+        # In mesh view, missing canonical operators should also be appended
+        mesh_ops = [it.operator for it in reconciled["mesh"]]
+        self.assertIn("mozi.rebuild_mesh", mesh_ops)
+        self.assertIn("mozi.adaptive_pixel_split", mesh_ops)
+
+        # Test ConfigData roundtrip with legacy dictionary missing menu_schema_version
+        raw_dict = {
+            "version": 1,
+            "views": {
+                "object": [
+                    {"operator": "mozi.replace_material", "label": "Custom Mat", "enabled": True}
+                ]
+            }
+        }
+        cfg = ConfigData.from_dict(raw_dict)
+        self.assertEqual(cfg.menu_schema_version, MENU_SCHEMA_VERSION)
+        cfg_ops = [it.operator for it in cfg.views["object"]]
+        self.assertIn("mozi.rebuild_mesh", cfg_ops)
+        self.assertIn("mozi.replace_material", cfg_ops)
+        # Custom label preserved
+        self.assertEqual(cfg.views["object"][0].label, "Custom Mat")
+
+    def test_config_manager_reset_single_view(self):
+        from utils.config import get_config_manager
+        from utils.config.models import MenuItem
+
+        mgr = get_config_manager()
+        # Set custom views
+        mgr.set_views({
+            "mesh": [{"operator": "mozi.adaptive_pixel_split", "label": "Custom Split", "enabled": True}],
+            "object": [{"operator": "mozi.rebuild_mesh", "label": "Custom Rebuild", "enabled": True}],
+            "uv": [{"operator": "mozi.scale_uv", "label": "Custom Scale", "enabled": True}],
+        })
+
+        # Reset only mesh view
+        mgr.reset_views(view_name="mesh")
+        views = mgr.get_views()
+        # Mesh should be reset to default preset list (length > 5)
+        self.assertGreater(len(views["mesh"]), 3)
+        # Object and UV should still keep their custom item
+        self.assertEqual(views["object"][0]["label"], "Custom Rebuild")
+        self.assertEqual(views["uv"][0]["label"], "Custom Scale")
+
+        # Reset all views
+        mgr.reset_views()
+        views_all = mgr.get_views()
+        self.assertNotEqual(views_all["object"][0]["label"], "Custom Rebuild")
+
+
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_menu_hooks_registration(self):
         # Register hooks

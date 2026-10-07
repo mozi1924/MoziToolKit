@@ -600,7 +600,10 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Top Bar (Header Actions for Menu tabs)
         top_box = layout.box()
         top_row = top_box.row(align=True)
-        top_row.operator(MOZI_OT_menu_reset_config.bl_idname, text=tr("Reset to Default Presets"), icon="FILE_REFRESH")
+        op_reset_cur = top_row.operator(MOZI_OT_menu_reset_config.bl_idname, text=tr("Reset Current View"), icon="FILE_REFRESH")
+        op_reset_cur.reset_all = False
+        op_reset_all = top_row.operator(MOZI_OT_menu_reset_config.bl_idname, text=tr("Reset All Views"), icon="RECOVER_LAST")
+        op_reset_all.reset_all = True
         top_row.operator(MOZI_OT_menu_import_config.bl_idname, text=tr("Import Presets JSON..."), icon="IMPORT")
         top_row.operator(MOZI_OT_menu_export_config.bl_idname, text=tr("Export Presets JSON..."), icon="EXPORT")
 
@@ -638,7 +641,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         if 0 <= added_idx < len(added_coll):
             item = added_coll[added_idx]
             edit_box = left_col.box()
-            edit_box.label(text=tr("Edit Menu Item Label:"), icon="EDITMODE_HLT")
+            e_row = edit_box.row(align=True)
+            e_row.label(text=tr("Edit Menu Item:"), icon="EDITMODE_HLT")
+            e_row.prop(item, "enabled", text=tr("Enabled"))
             edit_box.prop(item, "label", text=tr("Label"))
 
         # Middle Column: Action Buttons (Icon-Only Compact Column)

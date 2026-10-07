@@ -14,7 +14,15 @@ from .backends.base import ConfigBackend
 from .backends.json_backend import JsonConfigBackend
 from .backends.blender_backend import BlenderPreferencesConfigBackend
 from .backends.memory_backend import MemoryConfigBackend
-from .models import ConfigData, PackEntry, MaterialSettings, MenuItem, normalize_operator_id, get_default_menu_views
+from .models import (
+    ConfigData,
+    PackEntry,
+    MaterialSettings,
+    MenuItem,
+    normalize_operator_id,
+    get_default_menu_views,
+    MENU_SCHEMA_VERSION,
+)
 
 logger = logging.getLogger("MoziToolKit.Config")
 
@@ -105,8 +113,16 @@ class ConfigManager:
         """Get active configuration data (cached or loaded from backend)."""
         with self._lock:
             if self._cache is None or force_reload:
-                self._cache = self._backend.load()
-                self._cache.normalize()
+                loaded = self._backend.load()
+                initial_schema = getattr(loaded, "menu_schema_version", 1)
+                loaded.normalize()
+                self._cache = loaded
+                # If schema was upgraded during normalize, quietly persist the migration
+                if initial_schema < getattr(self._cache, "menu_schema_version", MENU_SCHEMA_VERSION):
+                    try:
+                        self._backend.save(self._cache)
+                    except Exception:
+                        pass
             return self._cache
 
     def save(self) -> bool:
@@ -162,11 +178,19 @@ class ConfigManager:
                 return self.save()
             return True
 
-    def reset_views(self, save: bool = True) -> Dict[str, List[Dict[str, Any]]]:
-        """Reset only context menu views to default registered operator presets without touching resource packs or material settings."""
+    def reset_views(self, view_name: Optional[str] = None, save: bool = True) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Reset context menu views to default registered operator presets without touching resource packs or material settings.
+        If view_name is provided, resets only that view category ('mesh', 'object', or 'uv').
+        Otherwise resets all views.
+        """
         with self._lock:
             data = self.get_data()
-            data.views = get_default_menu_views()
+            defaults = get_default_menu_views()
+            if view_name and view_name in defaults:
+                data.views[view_name] = defaults[view_name]
+            else:
+                data.views = defaults
             data.normalize()
             if save:
                 self.save()

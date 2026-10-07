@@ -224,11 +224,68 @@ def get_default_menu_views() -> Dict[str, List[MenuItem]]:
     return views
 
 
+MENU_SCHEMA_VERSION: int = 2
+
+
+def reconcile_views_with_canonical_presets(
+    views: Dict[str, List[MenuItem]],
+    user_schema_version: int = 1,
+) -> tuple[Dict[str, List[MenuItem]], bool]:
+    """
+    Intelligently reconcile and merge canonical default operators into user's saved menu views.
+
+    If new canonical operators were introduced in newer plugin versions:
+    - Adds missing canonical recommended operators to the end of user views.
+    - Strictly preserves existing user-configured items, their order, custom labels, and enabled state.
+    - Returns (updated_views, changed_flag).
+    """
+    presets = {}
+    try:
+        from ..system.menu_registry import get_default_presets
+        presets = get_default_presets()
+    except Exception:
+        try:
+            from utils.system.menu_registry import get_default_presets
+            presets = get_default_presets()
+        except Exception:
+            presets = {}
+
+    changed = False
+    reconciled_views: Dict[str, List[MenuItem]] = {}
+
+    for view_name in ["mesh", "object", "uv"]:
+        user_items = list(views.get(view_name, []))
+        canonical_items = presets.get(view_name) or CANONICAL_DEFAULT_PRESETS.get(view_name, [])
+
+        existing_ops = set()
+        for it in user_items:
+            op_id = it.operator if isinstance(it, MenuItem) else (it.get("operator", "") if isinstance(it, dict) else "")
+            norm = normalize_operator_id(op_id)
+            if norm:
+                existing_ops.add(norm)
+
+        for c_item in canonical_items:
+            c_op = normalize_operator_id(c_item.get("operator", "") if isinstance(c_item, dict) else getattr(c_item, "operator", ""))
+            if not c_op or not is_valid_operator_id(c_op):
+                continue
+            if c_op not in existing_ops:
+                c_label = c_item.get("label", "") if isinstance(c_item, dict) else getattr(c_item, "label", "")
+                c_enabled = c_item.get("enabled", True) if isinstance(c_item, dict) else getattr(c_item, "enabled", True)
+                user_items.append(MenuItem(operator=c_op, label=c_label, enabled=c_enabled))
+                existing_ops.add(c_op)
+                changed = True
+
+        reconciled_views[view_name] = user_items
+
+    return reconciled_views, changed
+
+
 @dataclass
 class ConfigData:
     """Full MoziToolKit root configuration data model."""
 
     version: int = 1
+    menu_schema_version: int = MENU_SCHEMA_VERSION
     backend_type: str = "JSON"  # JSON | BLENDER_PREFS | MEMORY
     views: Dict[str, List[MenuItem]] = field(default_factory=get_default_menu_views)
     resource_packs: List[PackEntry] = field(default_factory=list)
@@ -251,9 +308,12 @@ class ConfigData:
                         m_item.operator = normalize_operator_id(m_item.operator)
                         norm_items.append(m_item)
             norm_views[view_name] = norm_items
-        self.views = norm_views
+        # 2. Reconcile views with canonical default presets for schema migration
+        reconciled_views, _ = reconcile_views_with_canonical_presets(norm_views, self.menu_schema_version)
+        self.views = reconciled_views
+        self.menu_schema_version = MENU_SCHEMA_VERSION
 
-        # 2. Enforce 3-tier ordering on resource_packs
+        # 3. Enforce 3-tier ordering on resource_packs
         norm_packs = []
         for p in self.resource_packs:
             norm_packs.append(p if isinstance(p, PackEntry) else PackEntry.from_dict(p))
@@ -268,6 +328,7 @@ class ConfigData:
         packs_list = [pack.to_dict() for pack in self.resource_packs]
         return {
             "version": self.version,
+            "menu_schema_version": self.menu_schema_version,
             "backend_type": self.backend_type,
             "views": views_dict,
             "resource_packs": packs_list,
@@ -280,6 +341,7 @@ class ConfigData:
             return cls()
 
         version = int(data.get("version", 1))
+        menu_schema_version = int(data.get("menu_schema_version", 1 if ("views" in data or any(k in data for k in ["mesh", "object", "uv"])) else MENU_SCHEMA_VERSION))
         backend_type = str(data.get("backend_type", "JSON"))
 
         # Views: Extract if present, otherwise populate from default presets
@@ -319,6 +381,7 @@ class ConfigData:
 
         cfg = cls(
             version=version,
+            menu_schema_version=menu_schema_version,
             backend_type=backend_type,
             views=views,
             resource_packs=resource_packs,
