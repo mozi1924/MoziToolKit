@@ -67,7 +67,7 @@ class MOZI_OT_toggle_voxel_cloud(bpy.types.Operator):
     """Toggle visibility of the associated voxel storage point cloud using the Mask modifier."""
 
     bl_idname = "mozi.toggle_voxel_cloud"
-    bl_label = "Toggle Voxel Cloud Visibility"
+    bl_label = "Toggle Voxel Point Cloud Visibility"
     bl_options = {"REGISTER", "UNDO"}
 
     enter_edit_mode: BoolProperty(

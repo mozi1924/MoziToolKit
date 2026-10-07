@@ -295,6 +295,11 @@ def resolve_mesh_rebuild_targets(
         if cloud_obj is not None:
             return None, active, cloud_obj, "SAVE"
 
+        # Check if active has mesh provenance attributes (e.g. from material replacement)
+        mesh = getattr(active, "data", None)
+        if mesh and hasattr(mesh, "attributes") and "mtk_source_texture_key" in mesh.attributes:
+            return None, active, None, "ATTRIBUTES"
+
     return None, None, None, "NONE"
 
 
@@ -348,7 +353,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         if not context:
             return False
         root_container, world_mesh, cloud_obj, source_type = resolve_mesh_rebuild_targets(context)
-        if source_type == "SYNC":
+        if source_type in ("SYNC", "ATTRIBUTES"):
             return True
         if source_type in ("SAVE", "CLOUD") and (cloud_obj is not None or world_mesh is not None):
             return True
@@ -367,6 +372,28 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 bpy.ops.object.mode_set(mode="OBJECT")
             except Exception:
                 pass
+
+        # Branch 0: Mesh with provenance attributes (rebuild/restore materials & shader slots)
+        if source_type == "ATTRIBUTES" and world_mesh_obj is not None:
+            try:
+                from ..utils.materials.pipeline import restore_materials_from_provenance
+            except (ImportError, ValueError):
+                from utils.materials.pipeline import restore_materials_from_provenance
+            prefs = get_prefs(context)
+            res = restore_materials_from_provenance(
+                world_mesh_obj,
+                mode="ATLAS",
+                prefs=prefs,
+            )
+            if res.get("success"):
+                self.report(
+                    {"INFO"},
+                    f"Rebuilt materials from attributes for {res['restored_faces']} faces ({res['materials_count']} materials)."
+                )
+                return {"FINISHED"}
+            else:
+                self.report({"WARNING"}, res.get("message", "Rebuild from attributes failed."))
+                return {"CANCELLED"}
 
         # Branch A: Active Live Sync session
         session = get_sync_bridge_session() if callable(get_sync_bridge_session) else None

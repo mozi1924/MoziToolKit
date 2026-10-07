@@ -12,32 +12,29 @@ from ..config import load_config
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
-        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
-        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
-        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
+        {"operator": "mozi.toggle_voxel_cloud", "label": "Toggle Voxel Point Cloud Visibility", "enabled": True},
+        {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
+        {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
         {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
         {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
-        {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
-        {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
-        {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
     ],
     "object": [
         {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
-        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
-        {"operator": "mozi.cull_mesh_faces", "label": "Cull Occluded Faces", "enabled": True},
-        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
-        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
+        {"operator": "mozi.toggle_voxel_cloud", "label": "Toggle Voxel Point Cloud Visibility", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
     ],
     "uv": [
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.scale_uv", "label": "Scale UV Faces", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
-        {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
     ],
 }
 
@@ -59,10 +56,10 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.restore_materials_from_attributes": {
-        "canonical_id": "mozi.restore_materials_from_attributes",
-        "label": "Restore Materials from Attributes",
-        "default_label": "Restore Materials from Attributes",
+    "mozi.toggle_voxel_cloud": {
+        "canonical_id": "mozi.toggle_voxel_cloud",
+        "label": "Toggle Voxel Point Cloud Visibility",
+        "default_label": "Toggle Voxel Point Cloud Visibility",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
@@ -111,7 +108,7 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "canonical_id": "mozi.set_texture_interpolation_closest",
         "label": "Set Image Interpolation to Closest",
         "default_label": "Set Image Interpolation to Closest",
-        "views": ["object"],
+        "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": False,
     },
@@ -139,13 +136,13 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.cull_mesh_faces": {
-        "canonical_id": "mozi.cull_mesh_faces",
-        "label": "Cull Occluded Faces",
-        "default_label": "Cull Occluded Faces",
-        "views": ["mesh", "object"],
-        "enabled": True,
-        "is_legacy": False,
+    "mozi.restore_materials_from_attributes": {
+        "canonical_id": "mozi.restore_materials_from_attributes",
+        "label": "Restore Materials from Attributes",
+        "default_label": "Restore Materials from Attributes",
+        "views": ["object", "mesh"],
+        "enabled": False,
+        "is_legacy": True,
     },
 
     # Backwards compatibility legacy aliases
@@ -226,25 +223,11 @@ def get_all_operators(include_legacy: bool = False) -> Dict[str, Any]:
 
 
 def get_default_presets() -> Dict[str, List[Dict[str, Any]]]:
-    """Dynamically build default presets dict categorized by view tab ('mesh', 'object', 'uv')."""
-    presets = {"mesh": [], "object": [], "uv": []}
-
-    for op_id, info in _REGISTERED_MENU_ITEMS.items():
-        if info.get("is_legacy", False):
-            continue
-        for view in info.get("views", []):
-            if view in presets:
-                presets[view].append({
-                    "operator": op_id,
-                    "label": info.get("label", ""),
-                    "enabled": info.get("enabled", True),
-                })
-
-    for view in ["mesh", "object", "uv"]:
-        if not presets[view]:
-            presets[view] = [dict(it) for it in CANONICAL_DEFAULT_PRESETS.get(view, [])]
-
-    return presets
+    """Return canonical default presets dict categorized by view tab ('mesh', 'object', 'uv')."""
+    return {
+        view: [dict(it) for it in items]
+        for view, items in CANONICAL_DEFAULT_PRESETS.items()
+    }
 
 
 class _AllOperatorsDict(Mapping):

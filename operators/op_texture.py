@@ -13,7 +13,7 @@ except (ImportError, ValueError):
     from utils.system import register_menu_item
 
 
-@register_menu_item(views=["object"], label="Set Image Interpolation to Closest")
+@register_menu_item(views=["object", "mesh"], label="Set Image Interpolation to Closest")
 class MOZI_OT_set_texture_interpolation_closest(bpy.types.Operator):
     """Set interpolation of all image texture nodes in selected objects' materials to Closest (pixelated)"""
 

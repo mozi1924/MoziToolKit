@@ -19,11 +19,11 @@ class MOZI_MT_object_menu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
-        layout.separator()
-        layout.operator("mozi.cull_mesh_faces")
-        layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.replace_material")
+        layout.operator("mozi.toggle_voxel_cloud")
         layout.separator()
         layout.operator("mozi.clear_custom_normals")
+        layout.operator("mozi.set_texture_interpolation_closest")
 
 
 

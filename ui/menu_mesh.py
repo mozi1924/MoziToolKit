@@ -18,14 +18,19 @@ class MOZI_MT_mesh_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
-        layout.separator()
         layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.replace_material")
+        layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
+        layout.operator("mozi.toggle_voxel_cloud")
+        layout.separator()
         layout.operator("mozi.auto_extrude_repair")
         layout.operator("mozi.random_extrude")
-        layout.operator("mozi.cull_mesh_faces")
+        layout.operator("mozi.select_hard_edges")
+        layout.operator("mozi.select_transparent_faces")
+        layout.operator("mozi.repair_fluid_uv")
         layout.separator()
         layout.operator("mozi.clear_custom_normals")
+        layout.operator("mozi.set_texture_interpolation_closest")
 
 
 class MOZI_MT_mesh_edge_menu(bpy.types.Menu):
@@ -44,9 +49,9 @@ class MOZI_MT_mesh_face_menu(bpy.types.Menu):
     def draw(self, context):
         layout = self.layout
         layout.operator("mozi.adaptive_pixel_split")
+        layout.operator("mozi.select_transparent_faces")
         layout.operator("mozi.auto_extrude_repair")
         layout.operator("mozi.random_extrude")
-        layout.operator("mozi.cull_mesh_faces")
 
 
 

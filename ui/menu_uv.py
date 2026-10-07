@@ -18,7 +18,9 @@ class MOZI_MT_uv_menu(bpy.types.Menu):
 
     def draw(self, context):
         layout = self.layout
+        layout.operator("mozi.adaptive_pixel_split")
         layout.operator("mozi.scale_uv")
+        layout.operator("mozi.select_transparent_faces")
 
 
 def draw_uv_workspace_menu_func(self, context):

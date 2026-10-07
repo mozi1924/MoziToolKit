@@ -4,8 +4,11 @@ Operators for Material Replacement and Provenance Recovery.
 
 from __future__ import annotations
 
+import logging
 import bpy
-from bpy.props import EnumProperty
+from bpy.props import BoolProperty, EnumProperty
+
+logger = logging.getLogger("MoziToolKit.Operators.Materials")
 
 try:
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
@@ -17,13 +20,27 @@ except (ImportError, ValueError):
     from utils.system import get_prefs, register_menu_item
 
 
+def _has_provenance_attributes(obj: bpy.types.Object | None) -> bool:
+    """Pre-detection check whether object has valid mesh provenance attributes."""
+    if not obj or obj.type != "MESH" or not obj.data:
+        return False
+    mesh = obj.data
+    return bool(hasattr(mesh, "attributes") and "mtk_source_texture_key" in mesh.attributes)
+
+
 @register_menu_item(views=["object", "mesh"], label="Replace Material")
 class MOZI_OT_replace_material(bpy.types.Operator):
-    """Replace and upgrade Minecraft materials using native material pipeline."""
+    """Replace and upgrade Minecraft materials using native material pipeline (auto-detects provenance)."""
 
     bl_idname = "mozi.replace_material"
     bl_label = "Replace Material"
     bl_options = {"REGISTER", "UNDO"}
+
+    use_provenance: BoolProperty(
+        name="Restore from Attributes",
+        description="Restore materials directly from existing mesh attributes if available (faster, preserves provenance)",
+        default=True,
+    )
 
     mode: EnumProperty(
         name="Material Mode",
@@ -59,9 +76,43 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     def poll(cls, context):
         return context.active_object and context.active_object.type == "MESH"
 
+    def draw(self, context):
+        layout = self.layout
+        obj = context.active_object
+        has_prov = _has_provenance_attributes(obj)
+        if has_prov:
+            layout.prop(self, "use_provenance")
+            layout.separator()
+
+        layout.prop(self, "mode")
+        layout.prop(self, "biome_preset")
+
+        if not (has_prov and self.use_provenance):
+            layout.prop(self, "origin")
+
     def execute(self, context):
         obj = context.active_object
         prefs = get_prefs(context)
+
+        # Pre-detection mechanism: if object has provenance attributes, directly restore!
+        if self.use_provenance and _has_provenance_attributes(obj):
+            try:
+                res = restore_materials_from_provenance(
+                    obj,
+                    mode=self.mode,
+                    biome=self.biome_preset,
+                    prefs=prefs,
+                )
+                if res.get("success"):
+                    self.report(
+                        {'INFO'},
+                        f"Successfully restored {res['materials_count']} materials for {res['restored_faces']} faces from attributes (biome: {res.get('biome', self.biome_preset)})."
+                    )
+                    return {'FINISHED'}
+                else:
+                    logger.warning("Attribute restoration failed (%s), falling back to full replacement.", res.get("message"))
+            except Exception as e:
+                logger.warning("Attribute restoration raised %s, falling back to full replacement.", e)
 
         try:
             res = replace_materials(
@@ -88,7 +139,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             return {'CANCELLED'}
 
 
-@register_menu_item(views=["object", "mesh"], label="Restore Materials from Attributes")
 class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
     """Restore and reconstruct material slots and shader trees from mesh provenance attributes."""
 
