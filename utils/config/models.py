@@ -171,28 +171,29 @@ class MenuItem:
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
     "mesh": [
-        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
-        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
+        {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
+        {"operator": "mozi.toggle_voxel_cloud", "label": "Toggle Voxel Point Cloud Visibility", "enabled": True},
+        {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
+        {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
         {"operator": "mozi.select_hard_edges", "label": "Select Hard & Sharp Edges", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
         {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
-        {"operator": "mozi.random_extrude", "label": "Random Extrude", "enabled": True},
-        {"operator": "mozi.auto_extrude_repair", "label": "Auto Extrude Repair", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
     ],
     "object": [
+        {"operator": "mozi.rebuild_mesh", "label": "Rebuild Voxel Mesh", "enabled": True},
         {"operator": "mozi.replace_material", "label": "Replace Material", "enabled": True},
-        {"operator": "mozi.restore_materials_from_attributes", "label": "Restore Materials from Attributes", "enabled": True},
-        {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
-        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
+        {"operator": "mozi.toggle_voxel_cloud", "label": "Toggle Voxel Point Cloud Visibility", "enabled": True},
         {"operator": "mozi.clear_custom_normals", "label": "Clear Custom Normals", "enabled": True},
+        {"operator": "mozi.set_texture_interpolation_closest", "label": "Set Image Interpolation to Closest", "enabled": True},
     ],
     "uv": [
         {"operator": "mozi.adaptive_pixel_split", "label": "Adaptive Pixel Split", "enabled": True},
         {"operator": "mozi.scale_uv", "label": "Scale UV Faces", "enabled": True},
         {"operator": "mozi.select_transparent_faces", "label": "Select Transparent Faces", "enabled": True},
-        {"operator": "mozi.repair_fluid_uv", "label": "Repair Fluid UV", "enabled": True},
     ],
 }
 

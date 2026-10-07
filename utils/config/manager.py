@@ -358,6 +358,11 @@ class ConfigManager:
 
                     if ALL_OPERATORS:
                         for op_id, op_info in ALL_OPERATORS.items():
+                            if op_info.get("is_legacy", False):
+                                continue
+                            views = op_info.get("views", [])
+                            if view not in views:
+                                continue
                             norm_op_id = normalize_operator_id(op_id)
                             if norm_op_id not in added_op_ids:
                                 if hasattr(unadded_coll, "add"):

@@ -27,7 +27,6 @@ except (ImportError, ValueError):
     from utils.system.menu_registry import register_menu_item
 
 
-@register_menu_item(views=["mesh", "object"], label="Cull Occluded Faces")
 class MOZI_OT_cull_mesh_faces(bpy.types.Operator):
     """Cull interior contacting faces and duplicate polygons from selected meshes via Rust libmtk"""
 
