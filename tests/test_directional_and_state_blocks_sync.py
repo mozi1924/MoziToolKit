@@ -88,13 +88,15 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
             raise unittest.SkipTest(
                 "Blender asset cache not found (set MOZI_CACHE_DIR / MTK_TEST_CACHE)"
             )
-        cls.models_bin_path = cache_root / "models" / "models.bin"
-        if not cls.models_bin_path.exists():
-            raise unittest.SkipTest(f"models.bin cache not found at {cls.models_bin_path}")
-
-        with open(cls.models_bin_path, "rb") as f:
-            raw = f.read()
-        cls.model_db = libmtk_py.BakedModelDatabase.from_bincode_bytes(raw)
+        candidates = list(cache_root.glob("*.mtkcache"))
+        if candidates and hasattr(libmtk_py, "AssetCache"):
+            try:
+                cache = libmtk_py.AssetCache.open(str(candidates[0]))
+                cls.model_db = cache.load_models()
+            except Exception as e:
+                raise unittest.SkipTest(f"Failed to open .mtkcache: {e}")
+        else:
+            raise unittest.SkipTest(f"No .mtkcache package found at {cache_root}")
 
     def test_log_axis_rotation_models(self):
         """Logs must resolve correct textures for axis=y, axis=x, and axis=z, and unparameterized fallback."""

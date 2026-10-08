@@ -203,18 +203,25 @@ def precompile_stack(
                     compile_standalone=True,
                     compile_models=True,
                 )
+        package_path = getattr(res, "package_path", "")
+        # Extract atlas textures, standalone textures, and colormaps on demand for Blender
+        ensure_atlas_textures_extracted(prefs)
+        ensure_standalone_textures_extracted(prefs)
+        ensure_colormaps_extracted(prefs)
         get_cache_stats(prefs, force_refresh=True)
         duration = time.time() - start_time
+
         return {
-            "success": res.success,
-            "pack_count": res.pack_count,
-            "atlas_chunks": res.atlas_chunks,
-            "standalone_textures": res.standalone_textures,
-            "baked_models": res.baked_models,
-            "models": res.baked_models,
+            "success": getattr(res, "success", True),
+            "pack_count": getattr(res, "pack_count", 0),
+            "atlas_chunks": getattr(res, "atlas_chunks", 0),
+            "standalone_textures": getattr(res, "standalone_textures", 0),
+            "baked_models": getattr(res, "baked_models", 0),
+            "models": getattr(res, "baked_models", 0),
             "duration_seconds": duration,
-            "fingerprint": res.fingerprint,
-            "cache_dir": res.cache_dir,
+            "fingerprint": getattr(res, "fingerprint", ""),
+            "package_path": package_path,
+            "cache_dir": getattr(res, "cache_dir", str(base_cache.resolve())),
         }
 
 
@@ -248,138 +255,188 @@ def precompile_stack_async(
     executor.shutdown(wait=False)
     return future
 
-    # Fallback to individual builders if unified binding is not available
+
+def get_active_cache_package_path(prefs=None) -> Optional[Path]:
+    """
+    Returns the Path to the active .mtkcache file for the configured pack stack.
+    Checks stack fingerprint match first, then falls back to newest package.
+    """
+    mtk = _get_libmtk()
+    cache_dir = get_cache_dir(prefs)
+    if not cache_dir.exists():
+        return None
+
+    stack = get_configured_pack_stack(prefs)
+    if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
+        fp = stack.compute_stack_fingerprint()
+        direct_pkg = cache_dir / f"{fp}.mtkcache"
+        if direct_pkg.exists() and direct_pkg.is_file():
+            if mtk and hasattr(mtk, "is_valid_cache_package"):
+                if mtk.is_valid_cache_package(str(direct_pkg), fp):
+                    return direct_pkg
+            else:
+                return direct_pkg
+
+    # Search for all .mtkcache files in cache dir sorted by mtime descending
+    candidates = sorted(cache_dir.glob("*.mtkcache"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if candidates:
+        return candidates[0]
+    return None
+
+
+def open_active_asset_cache(prefs=None) -> Optional[Any]:
+    """Opens active AssetCache reader from .mtkcache package."""
+    mtk = _get_libmtk()
+    if mtk is None or not hasattr(mtk, "AssetCache"):
+        return None
+    pkg = get_active_cache_package_path(prefs)
+    if pkg is None:
+        return None
+    try:
+        return mtk.AssetCache.open(str(pkg.resolve()))
+    except Exception:
+        return None
+
+
+def ensure_atlas_textures_extracted(prefs=None) -> Path:
+    """
+    Extracts atlas chunk textures and mapping from the active .mtkcache package into cache directory.
+    Returns the atlas directory path.
+    """
+    base_cache = get_cache_dir(prefs)
+    pkg = get_active_cache_package_path(prefs)
     atlas_dir = base_cache / "atlas"
-    standalone_dir = base_cache / "standalone"
-    models_dir = base_cache / "models"
     atlas_dir.mkdir(parents=True, exist_ok=True)
+
+    if pkg is not None:
+        cache = open_active_asset_cache(prefs)
+        if cache is not None:
+            pkg_mtime = pkg.stat().st_mtime
+            marker = atlas_dir / ".pkg_mtime"
+            if not marker.exists() or float(marker.read_text().strip()) != pkg_mtime:
+                cache.extract_atlas_textures(str(atlas_dir.resolve()))
+                marker.write_text(str(pkg_mtime))
+
+    return atlas_dir
+
+
+def ensure_standalone_textures_extracted(prefs=None) -> Path:
+    """
+    Extracts standalone textures and mapping from the active .mtkcache package into cache directory.
+    Returns the standalone directory path.
+    """
+    base_cache = get_cache_dir(prefs)
+    pkg = get_active_cache_package_path(prefs)
+    standalone_dir = base_cache / "standalone"
     standalone_dir.mkdir(parents=True, exist_ok=True)
-    models_dir.mkdir(parents=True, exist_ok=True)
 
-    atlas_builder = libmtk_py.AtlasBuilder(4096, 4096, 0, 0)
-    baked_atlas = atlas_builder.build(stack, "blocks")
-    chunk_count = baked_atlas.get_chunk_count()
-    (atlas_dir / "atlas_mapping.json").write_text(baked_atlas.to_mapping_json(), encoding="utf-8")
+    if pkg is not None:
+        cache = open_active_asset_cache(prefs)
+        if cache is not None and hasattr(cache, "extract_standalone_textures"):
+            pkg_mtime = pkg.stat().st_mtime
+            marker = standalone_dir / ".pkg_mtime"
+            if not marker.exists() or float(marker.read_text().strip()) != pkg_mtime:
+                cache.extract_standalone_textures(str(standalone_dir.resolve()))
+                marker.write_text(str(pkg_mtime))
 
-    for i in range(chunk_count):
-        _, _, _, _, stem = baked_atlas.get_chunk_meta(i)
-        (atlas_dir / f"{stem}.png").write_bytes(baked_atlas.get_chunk_albedo_png_bytes(i))
-        normal_bytes = baked_atlas.get_chunk_normal_png_bytes(i)
-        if normal_bytes is not None:
-            (atlas_dir / f"{stem}_n.png").write_bytes(normal_bytes)
-        specular_bytes = baked_atlas.get_chunk_specular_png_bytes(i)
-        if specular_bytes is not None:
-            (atlas_dir / f"{stem}_s.png").write_bytes(specular_bytes)
+    return standalone_dir
 
-    sa_builder = libmtk_py.StandaloneBuilder()
-    sa_res = sa_builder.build(stack, str(standalone_dir.resolve()))
 
-    baker = libmtk_py.ModelBaker()
-    model_db = baker.bake_all(stack)
-    if hasattr(model_db, "deduplicate_all"):
-        model_db.deduplicate_all()
-    (models_dir / "models.bin").write_bytes(model_db.to_bincode_bytes())
+def ensure_colormaps_extracted(prefs=None) -> Dict[str, Path]:
+    """
+    Extracts colormaps (grass, foliage, dry_foliage) from active package into cache directory.
+    Returns dictionary mapping colormap name to Path.
+    """
+    base_cache = get_cache_dir(prefs)
+    pkg = get_active_cache_package_path(prefs)
+    colormaps_dir = base_cache / "colormaps"
+    colormaps_dir.mkdir(parents=True, exist_ok=True)
 
-    get_cache_stats(prefs, force_refresh=True)
-    duration = time.time() - start_time
-    return {
-        "success": True,
-        "pack_count": stack.get_pack_count(),
-        "atlas_chunks": chunk_count,
-        "standalone_textures": sa_res.texture_count,
-        "baked_models": len(model_db),
-        "models": len(model_db),
-        "duration_seconds": duration,
-        "cache_dir": str(base_cache),
-    }
+    if pkg is not None:
+        cache = open_active_asset_cache(prefs)
+        if cache is not None:
+            pkg_mtime = pkg.stat().st_mtime
+            marker = colormaps_dir / ".pkg_mtime"
+            if not marker.exists() or float(marker.read_text().strip()) != pkg_mtime:
+                cache.extract_colormaps(str(colormaps_dir.resolve()))
+                marker.write_text(str(pkg_mtime))
+
+    result = {}
+    for cm_name in ("grass", "foliage", "dry_foliage"):
+        p = colormaps_dir / f"{cm_name}.png"
+        if p.exists():
+            result[cm_name] = p
+    return result
 
 
 def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Optional[Any]:
     """
-    Loads the precompiled binary model database from cache into memory.
-    Optionally verifies that cache_manifest.json matches the active resource pack stack fingerprint.
+    Loads the precompiled binary model database from cache package into memory.
+    Optionally verifies that the package fingerprint matches active resource pack stack.
     Returns None if cache does not exist, is stale, or libmtk is unavailable.
     """
     mtk = _get_libmtk()
     if mtk is None:
         return None
 
-    cache_dir = get_cache_dir(prefs)
-    manifest_file = cache_dir / "cache_manifest.json"
-    models_bin = cache_dir / "models" / "models.bin"
-    if not models_bin.exists():
+    cache = open_active_asset_cache(prefs)
+    if cache is None:
         return None
 
-    if verify_fingerprint and manifest_file.exists():
-        try:
-            import json
-            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
-            stack = get_configured_pack_stack(prefs)
-            if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
-                current_fp = stack.compute_stack_fingerprint()
-                if manifest.get("fingerprint") != current_fp:
-                    # Stale cache detected: resource pack stack changed
-                    return None
-        except Exception:
-            pass
+    if verify_fingerprint:
+        stack = get_configured_pack_stack(prefs)
+        if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
+            current_fp = stack.compute_stack_fingerprint()
+            if cache.fingerprint != current_fp:
+                return None
 
     try:
-        raw_bytes = models_bin.read_bytes()
-        model_db = mtk.BakedModelDatabase.from_bincode_bytes(raw_bytes)
+        model_db = cache.load_models()
         if hasattr(model_db, "deduplicate_all"):
-            culled = model_db.deduplicate_all()
-            if culled > 0:
-                try:
-                    models_bin.write_bytes(model_db.to_bincode_bytes())
-                except Exception:
-                    pass
+            model_db.deduplicate_all()
         return model_db
     except Exception:
         return None
 
 
+def load_model_database_from_cache(prefs=None, verify_fingerprint: bool = True) -> Optional[Any]:
+    """Alias for load_baked_model_database."""
+    return load_baked_model_database(prefs, verify_fingerprint=verify_fingerprint)
+
+
 def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
     """
-    Loads precompiled BakedAtlas from cache into memory.
+    Loads precompiled BakedAtlas from cache package into memory.
     Returns None if cache does not exist or libmtk is unavailable.
     """
     mtk = _get_libmtk()
     if mtk is None:
         return None
 
-    cache_dir = get_cache_dir(prefs)
-    mapping_file = cache_dir / "atlas" / "atlas_mapping.json"
-    if not mapping_file.exists():
-        return None
-
-    try:
-        json_str = mapping_file.read_text(encoding="utf-8")
-        return mtk.BakedAtlas.from_mapping_json(json_str)
-    except Exception:
-        return None
+    cache = open_active_asset_cache(prefs)
+    if cache is not None:
+        try:
+            return cache.load_atlas()
+        except Exception:
+            pass
+    return None
 
 
 def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
     """
-    Loads precompiled BiomeResolver from cache into memory.
-    Falls back to a default Vanilla 1.21+ BiomeResolver if cache file is missing.
-    Returns None only if libmtk is unavailable.
+    Loads precompiled BiomeResolver from cache package into memory.
+    Falls back to a default Vanilla 1.21+ BiomeResolver if missing.
     """
     mtk = _get_libmtk()
     if mtk is None:
         return None
 
-    cache_dir = get_cache_dir(prefs)
-    candidates = [
-        cache_dir / "biome_mapping.json",
-        cache_dir / "atlas" / "biome_mapping.json",
-    ]
-    for c in candidates:
-        if c.exists() and c.is_file():
-            try:
-                return mtk.BiomeResolver.from_file(str(c.resolve()))
-            except Exception:
-                pass
+    cache = open_active_asset_cache(prefs)
+    if cache is not None:
+        try:
+            return cache.load_biome_resolver()
+        except Exception:
+            pass
 
     if hasattr(mtk, "BiomeResolver"):
         try:
@@ -391,23 +448,21 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
 
 def get_cache_manifest(prefs=None) -> Optional[Dict[str, Any]]:
     """
-    Reads cache_manifest.json from the active cache directory if it exists.
+    Reads manifest from active .mtkcache package.
     Returns parsed dictionary or None.
     """
-    cache_dir = get_cache_dir(prefs)
-    manifest_file = cache_dir / "cache_manifest.json"
-    if not manifest_file.exists():
-        return None
-    try:
-        import json
-        return json.loads(manifest_file.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+    cache = open_active_asset_cache(prefs)
+    if cache is not None:
+        try:
+            return cache.get_manifest()
+        except Exception:
+            pass
+    return None
 
 
 def get_cache_fingerprint(prefs=None) -> Optional[str]:
     """
-    Returns the active resource pack stack fingerprint recorded in cache_manifest.json,
+    Returns active stack fingerprint recorded in package manifest,
     or None if cache does not exist.
     """
     manifest = get_cache_manifest(prefs)
@@ -418,7 +473,7 @@ def get_cache_fingerprint(prefs=None) -> Optional[str]:
 
 def get_cache_timestamp(prefs=None) -> float:
     """
-    Returns creation epoch seconds recorded in cache_manifest.json or file modification time.
+    Returns creation epoch seconds recorded in package manifest or file mtime.
     Returns 0.0 if cache does not exist.
     """
     manifest = get_cache_manifest(prefs)
@@ -428,18 +483,13 @@ def get_cache_timestamp(prefs=None) -> float:
         except (ValueError, TypeError):
             pass
 
-    cache_dir = get_cache_dir(prefs)
-    candidates = [
-        cache_dir / "cache_manifest.json",
-        cache_dir / "atlas" / "atlas_mapping.json",
-        cache_dir / "models" / "models.bin",
-    ]
-    for c in candidates:
-        if c.exists():
-            try:
-                return float(c.stat().st_mtime)
-            except Exception:
-                pass
+    pkg = get_active_cache_package_path(prefs)
+    if pkg is not None and pkg.exists():
+        try:
+            return float(pkg.stat().st_mtime)
+        except Exception:
+            pass
+
     return 0.0
 
 
@@ -449,22 +499,19 @@ def check_cache_dirty(
     prefs=None,
 ) -> Tuple[bool, Optional[str], float]:
     """
-    Compares cached fingerprint and timestamp with the current on-disk asset cache.
+    Compares cached fingerprint and timestamp with current on-disk asset cache package.
     Returns (is_dirty, current_fingerprint, current_timestamp).
     """
     current_fp = get_cache_fingerprint(prefs)
     current_ts = get_cache_timestamp(prefs)
 
-    # If neither fingerprint nor timestamp was previously recorded, consider dirty if cache exists
     if cached_fingerprint is None and cached_timestamp == 0.0:
         is_dirty = current_fp is not None or current_ts > 0.0
         return is_dirty, current_fp, current_ts
 
-    # Fingerprint mismatch
     if current_fp != cached_fingerprint:
         return True, current_fp, current_ts
 
-    # Timestamp mismatch (file rewritten or recompiled)
     if abs(current_ts - cached_timestamp) > 1e-3:
         return True, current_fp, current_ts
 

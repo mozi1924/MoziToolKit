@@ -81,24 +81,22 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.tmp_dir.cleanup()
         reset_sync_bridge_session()
 
+    def _create_package(self, fingerprint: str, created_at: int = 0) -> Path:
+        from bridge.engine import get_libmtk
+        mtk = get_libmtk()
+        pkg_path = self.cache_dir / f"{fingerprint}.mtkcache"
+        if mtk and hasattr(mtk, "create_test_cache_package"):
+            mtk.create_test_cache_package(str(pkg_path), fingerprint, created_at)
+        return pkg_path
+
     def test_cache_fingerprint_and_timestamp_extraction(self):
         # Empty cache
         self.assertIsNone(get_cache_manifest())
         self.assertIsNone(get_cache_fingerprint())
         self.assertEqual(get_cache_timestamp(), 0.0)
 
-        # Write manifest
-        manifest_data = {
-            "format_version": 1,
-            "fingerprint": "fp_test_12345",
-            "pack_count": 2,
-            "atlas_chunks": 1,
-            "standalone_textures": 10,
-            "baked_models": 50,
-            "created_at_epoch_secs": 1728000000,
-        }
-        manifest_file = self.cache_dir / "cache_manifest.json"
-        manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+        # Write package
+        self._create_package("fp_test_12345", 1728000000)
 
         manifest = get_cache_manifest()
         self.assertIsNotNone(manifest)
@@ -107,13 +105,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.assertEqual(get_cache_timestamp(), 1728000000.0)
 
     def test_check_cache_dirty_detection(self):
-        manifest_file = self.cache_dir / "cache_manifest.json"
-        manifest_data = {
-            "format_version": 1,
-            "fingerprint": "fp_v1",
-            "created_at_epoch_secs": 1000,
-        }
-        manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+        self._create_package("fp_v1", 1000)
 
         # Initial clean match
         is_dirty, fp, ts = check_cache_dirty(cached_fingerprint="fp_v1", cached_timestamp=1000.0)
@@ -130,9 +122,10 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.assertTrue(is_dirty)
 
         # Disk cache update to v2
-        manifest_data["fingerprint"] = "fp_v2"
-        manifest_data["created_at_epoch_secs"] = 2000
-        manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+        old_pkg = self.cache_dir / "fp_v1.mtkcache"
+        if old_pkg.exists():
+            old_pkg.unlink()
+        self._create_package("fp_v2", 2000)
 
         is_dirty, fp, ts = check_cache_dirty(cached_fingerprint="fp_v1", cached_timestamp=1000.0)
         self.assertTrue(is_dirty)
@@ -140,13 +133,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.assertEqual(ts, 2000.0)
 
     def test_sync_bridge_session_dirty_cache_hot_reload(self):
-        manifest_file = self.cache_dir / "cache_manifest.json"
-        manifest_data = {
-            "format_version": 1,
-            "fingerprint": "initial_fp",
-            "created_at_epoch_secs": 5000,
-        }
-        manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+        self._create_package("initial_fp", 5000)
 
         session = SyncBridgeSession()
         session._cached_manifest_fingerprint = "initial_fp"
@@ -156,9 +143,10 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.assertFalse(session.check_and_reload_dirty_cache())
 
         # Disk cache updated
-        manifest_data["fingerprint"] = "recompiled_fp"
-        manifest_data["created_at_epoch_secs"] = 6000
-        manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")
+        old_pkg = self.cache_dir / "initial_fp.mtkcache"
+        if old_pkg.exists():
+            old_pkg.unlink()
+        self._create_package("recompiled_fp", 6000)
 
         # Dirty cache detected: returns True and updates cached state
         reloaded = session.check_and_reload_dirty_cache()
@@ -235,13 +223,8 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         session.get_world_mesh = MagicMock(return_value=real_mesh)
         session.get_storage = MagicMock(return_value=world.get_storage())
 
-        # Write new manifest to simulate rebaking
-        manifest_data = {
-            "format_version": 1,
-            "fingerprint": "new_recompiled_fp",
-            "created_at_epoch_secs": 200.0,
-        }
-        (self.cache_dir / "cache_manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
+        # Write new package to simulate rebaking
+        self._create_package("new_recompiled_fp", 200)
 
         # Run operator synchronously
         res = bpy.ops.mozi.sync_rebuild_world("EXEC_DEFAULT", run_async=False)

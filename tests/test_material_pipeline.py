@@ -252,12 +252,11 @@ class TestMaterialPipeline(unittest.TestCase):
             (standalone_dir / "assets" / "minecraft" / "textures" / "block").mkdir(parents=True, exist_ok=True)
             _write_dummy_png(standalone_dir / "assets" / "minecraft" / "textures" / "block" / "grass_block_top.png")
 
-            # Write cache_manifest.json
-            manifest = {
-                "fingerprint": "abc123stackfp",
-                "packs": []
-            }
-            (cache_dir / "cache_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            # Create .mtkcache package
+            from bridge.engine import get_libmtk
+            mtk = get_libmtk()
+            if mtk and hasattr(mtk, "create_test_cache_package"):
+                mtk.create_test_cache_package(str(cache_dir / "abc123stackfp.mtkcache"), "abc123stackfp", 0)
 
             # Write atlas_mapping.json
             atlas_mapping = {
@@ -304,8 +303,8 @@ class TestMaterialPipeline(unittest.TestCase):
             }
             (standalone_dir / "standalone_mapping.json").write_text(json.dumps(sa_mapping), encoding="utf-8")
 
-            # Mock get_cache_dir to return our temporary test cache
-            with patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+            # Mock get_cache_dir and MOZI_CACHE_DIR to return our temporary test cache
+            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
                 # 1. Replace Materials (Atlas Mode)
                 res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="BADLANDS")
                 self.assertTrue(res["success"])
@@ -386,8 +385,10 @@ class TestMaterialPipeline(unittest.TestCase):
             (standalone_dir / "assets" / "minecraft" / "textures" / "block").mkdir(parents=True, exist_ok=True)
             _write_dummy_png(standalone_dir / "assets" / "minecraft" / "textures" / "block" / "grass_block_top.png")
 
-            manifest = {"fingerprint": "xyz987stackfp", "packs": []}
-            (cache_dir / "cache_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            from bridge.engine import get_libmtk
+            mtk = get_libmtk()
+            if mtk and hasattr(mtk, "create_test_cache_package"):
+                mtk.create_test_cache_package(str(cache_dir / "xyz987stackfp.mtkcache"), "xyz987stackfp", 0)
 
             atlas_mapping = {
                 "chunks": [
@@ -432,7 +433,7 @@ class TestMaterialPipeline(unittest.TestCase):
             }
             (standalone_dir / "standalone_mapping.json").write_text(json.dumps(sa_mapping), encoding="utf-8")
 
-            with patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
                 # 1. Replace Materials in ATLAS mode from hashed MTK material name
                 res_atlas = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
                 self.assertTrue(res_atlas["success"])

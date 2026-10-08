@@ -19,6 +19,9 @@ from .mesh import inject_mesh_data
 from .point_cloud import ensure_voxel_child_cloud, inject_voxel_point_cloud
 from .assets import (
     get_cache_dir,
+    get_cache_fingerprint,
+    ensure_atlas_textures_extracted,
+    ensure_colormaps_extracted,
     load_baked_atlas_from_cache,
     load_baked_model_database,
     load_biome_resolver_from_cache,
@@ -82,8 +85,7 @@ def ensure_world_materials(
             ensure_material_node_tree = lambda m: getattr(m, "node_tree", None)
 
     mesh = world_obj.data
-    cache_dir = get_cache_dir(prefs)
-    atlas_dir = cache_dir / "atlas"
+    atlas_dir = ensure_atlas_textures_extracted(prefs)
     atlas_mapping_path = atlas_dir / "atlas_mapping.json"
 
     # 1. Resolve which Chunk IDs are actually present in the mesh geometry
@@ -138,21 +140,8 @@ def ensure_world_materials(
                         chunk_meta_map[cid] = cm
 
             if chunk_meta_map:
-                colormaps_dir = cache_dir / "colormaps"
-                colormaps = {}
-                if colormaps_dir.exists():
-                    for cm_name in ("grass", "foliage", "dry_foliage"):
-                        p = colormaps_dir / f"{cm_name}.png"
-                        if p.exists():
-                            colormaps[cm_name] = p
-
-                manifest_path = cache_dir / "cache_manifest.json"
-                manifest_fp = None
-                if manifest_path.exists():
-                    try:
-                        manifest_fp = json.loads(manifest_path.read_text(encoding="utf-8")).get("fingerprint")
-                    except Exception:
-                        pass
+                colormaps = ensure_colormaps_extracted(prefs)
+                manifest_fp = get_cache_fingerprint(prefs)
 
                 sorted_chunks = sorted(chunk_meta_map.keys())
                 chunk_to_compact_slot: dict[int, int] = {}

@@ -149,12 +149,13 @@
 
 ---
 
-## 阶段五：通用二进制中间包与场景交换前端对接 (`.mtkscene` / `.mtkcache` - 规划中 📋)
+## 阶段五：通用二进制中间包与场景交换前端对接 (`.mtkscene` / `.mtkcache` - 进行中 🚧)
 - [x] **设计规范对齐（✅ 已落地）**
   - [x] 底层容器规范与分块协议对齐：见 [`libmozitoolkit/docs/PACKAGE_SPEC.md`](../libmozitoolkit/docs/PACKAGE_SPEC.md)。
-- [ ] **全量资产缓存单文件包挂载 (`bridge/assets.py`)**
-  - [ ] 支持从单一 `.mtkcache` 包中直读图集、Standalone 贴图与模型，替代散文件扫描。
-  - [ ] 预编译面板提供“导出为单一缓存包”与“切换缓存载体（单文件/散文件）”选项。
+- [x] **全量资产缓存单文件包挂载 (`bridge/assets.py` - ✅ 已完成)**
+  - [x] 后端与前端全面切换至单一 `.mtkcache`（`<fingerprint>.mtkcache`）二进制容器，彻底替代散文件扫描。
+  - [x] 分块压缩策略：原始数据/模型/元数据采用 Zstd 块级压缩，贴图保持 Raw PNG 流，杜绝二次压缩性能开销。
+  - [x] 材质管线按需解包纹理并对齐 Blender Cycles/Eevee 材质节点树加载。
 - [ ] **场景交换格式导入算子 (`operators/package/op_import_scene.py`)**
   - [ ] 顶部菜单集成：`File -> Import -> MoziToolKit Scene Package (.mtkscene)`。
   - [ ] 导入选项面板：
