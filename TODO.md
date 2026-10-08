@@ -167,3 +167,54 @@
   - [ ] 支持所选物体/容器（无论是 Live Sync 容器、Save 存档容器还是体素点云）一键导出为 `.mtkscene`。
   - [ ] 自动树状剪枝（Tree-shaking），仅打包选区内实际引用的独立贴图与方块模型，生成轻量自包含分享包。
 
+---
+
+## 阶段六：现代 Blender 5.0+ 极致批量写入与零拷贝现代化重构（P0 架构性能演进 🚧 待启动）
+
+> 基于 Blender 5.2.1 LTS 现场 MCP 内存探查与压测，彻底铲除插件内残留的 2.x/3.x 时代低效 Python 遍历与 BMesh 过程式拼装模式，全面换装现代通用属性（Generic Attributes）批写入与零拷贝数据通道。
+
+- [ ] **任务一：自适应像素切分算子整体管道化重构（彻底抛弃 BMesh 逐面循环）**
+  - [ ] 彻底废弃 [`utils/mesh/subdivide.py`](utils/mesh/subdivide.py) 中的逐面 `slice_polygon_face_by_pixel_grid` 以及 Python 循环创建 BMVert / BMFace / 逐项权重插值的低效模式。
+  - [ ] 将 [`op_pixel_split.py`](operators/op_pixel_split.py) 全面重构为对接 Rust 的单次批量 Data-In Data-Out 管道：
+    1. 前端通过 `extract_mesh_data`（支持全选区）一次性提取网格连续流；
+    2. 单次调用 Rust `bridge.subdivide.adaptive_pixel_split_mesh`（Rayon 多核并行切分、UV/顶点色/Deform权重/自定义属性双线性插值、空间哈希焊点一次性完成）；
+    3. 单次通过 `inject_mesh_data` 批量回灌 Blender。
+  - [ ] 目标性能：大型网格切分耗时从 3~8 秒下降至 20~50 毫秒（提速 100x+）。
+
+- [ ] **任务二：字符串面属性“调色板化（Palette Indexing）”改造**
+  - [ ] 破局 Blender C RNA 对字符串属性执行 `foreach_set` 报错（`internal error setting the array`）引发的慢速 Python `for i, val in enumerate(values): attr.data[i].value = val` 循环。
+  - [ ] 将面域 `mtk_source_texture_key`、点云 `block_state`、`biome` 全面重构为 **`INT` 索引属性 + 网格/物体级 `ID-Property` 调色板数组**：
+    - 面属性写入：`mesh.attributes.new(name="mtk_source_texture_idx", type="INT", domain="FACE")`，通过 `foreach_set("value", np_indices)` 批量写入（10万面耗时 < 0.5ms）；
+    - 调色板存储：`mesh["mtk_source_textures"] = [...]`；
+    - 读取端兼容适配：提供统一的 `resolve_source_texture_keys(mesh)` 助手方法，优先读取 `INT` + `palette`（微秒级），优雅兼容旧工程遗留的 String 属性；
+    - 彻底删除 [`bridge/mesh.py`](bridge/mesh.py) 和 [`point_cloud.py`](bridge/point_cloud.py) 中的海量面 Python 遍历赋值循环。
+
+- [ ] **任务三：材质槽重映射与生物群系实时更新器向量化加速**
+  - [ ] **材质槽重映射向量化 ([`cleaner.py`](utils/materials/cleaner.py), [`world.py`](bridge/world.py))**：
+    - 废除 `[chunk_to_slot.get(int(idx), 0) for idx in poly_mats]` Python 列表推导；
+    - 改用 NumPy 查找表（LUT）：`lut = np.zeros(poly_mats.max() + 1, dtype=np.int32); lut[keys] = vals; remapped = lut[poly_mats]`（10万面从 50ms 降至 0.2ms，提速 250x）；
+    - 材质查重使用 `set(np.unique(poly_mats))` 代替 `{p.material_index for p in mesh.polygons}`。
+  - [ ] **生物群系实时调色器向量化 ([`updater.py`](utils/materials/biome/updater.py), [`biome.py`](utils/materials/biome/biome.py))**：
+    - 废弃 `[list(d.color) for d in old_attr.data]` 与遍历 `tint_data_attr.data` 的逐元素 RNA 访问循环；
+    - 改用 NumPy 向量化布尔掩码 / 数组切片直接在连续内存上计算 `new_tint_colors`；
+    - 废弃 `apply_biome_tint_attributes` 中的双重推导打平 `[c for val in packed for c in val]`，直接传递平坦的 NumPy / MemoryView 数组；
+    - 确保 20 万面的调色板动态切换真正达成宣称的 `< 1ms` 刷新响应。
+
+- [ ] **任务四：网格拓扑校验与流体 UV 修复向量化**
+  - [ ] **拓扑全四边形校验 ([`bridge/mesh.py`](bridge/mesh.py))**：
+    - 将 `all(getattr(p, "loop_total", len(p.vertices)) == 4 for p in mesh.polygons)`（20万次 Python 对象访问）重构为：
+      ```python
+      poly_totals = np.empty(len(mesh.polygons), dtype=np.int32)
+      mesh.polygons.foreach_get("loop_total", poly_totals)
+      is_all_quads = bool(np.all(poly_totals == 4))
+      ```
+      耗时从 150ms 压缩至 0.3ms（提速 500x）。
+  - [ ] **流体 UV 修复 ([`fluid_uv.py`](utils/mesh/fluid_uv.py))**：
+    - 废弃单面循环 `for li in loop_indices: uv_layer.data[li].uv.x = u`；
+    - BMesh 模式下消除逐顶点、逐面 Python 循环提取，优先在 Object Mode 走全量向量化 Mesh 路径；针对选区面支持批量 NumPy 提取与回写。
+
+- [ ] **任务五：Rust $\leftrightarrow$ Blender 内存直接写入与零拷贝通道探索（进阶）**
+  - [ ] 基于 MCP 实测结论（`mesh.attributes["position"].data[0].as_pointer()` 直指连续 C++ 内存）：
+  - [ ] 在 `bridge/mesh.py` 与 `bindings/mtk-py` 建立可选的 `direct_write_to_ptr` 通道（通过 `ctypes.memmove` 或 Rust `std::ptr::copy_nonoverlapping`），将 10 万顶点/UV 写入耗时从 `foreach_set` 的 3.5ms 进一步压缩至硬件带宽级的 0.19ms（再提速 18x）。
+
+
