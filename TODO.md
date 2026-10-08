@@ -189,22 +189,22 @@
     - 读取端兼容适配：提供统一的 `resolve_source_texture_keys(mesh)` 助手方法，优先读取 `INT` + `palette`（微秒级），优雅兼容旧工程遗留的 String 属性；
     - 彻底删除 [`bridge/mesh.py`](bridge/mesh.py) 和 [`point_cloud.py`](bridge/point_cloud.py) 中的海量面 Python 遍历赋值循环。
 
-- [ ] **任务三：材质槽重映射与生物群系实时更新器向量化加速**
-  - [ ] **材质槽重映射向量化 ([`cleaner.py`](utils/materials/cleaner.py), [`world.py`](bridge/world.py))**：
+- [x] **任务三：材质槽重映射与生物群系实时更新器向量化加速（✅ 已完成）**
+  - [x] **材质槽重映射向量化 ([`cleaner.py`](utils/materials/cleaner.py), [`world.py`](bridge/world.py))**：
     - 废除 `[chunk_to_slot.get(int(idx), 0) for idx in poly_mats]` Python 列表推导；
-    - 改用 NumPy 查找表（LUT）：`lut = np.zeros(poly_mats.max() + 1, dtype=np.int32); lut[keys] = vals; remapped = lut[poly_mats]`（10万面从 50ms 降至 0.2ms，提速 250x）；
+    - 改用统一封装的 NumPy 查找表 `remap_indices_lut`：密集表一次性索引 `lut[poly_mats]`（10万面从 50ms 降至 0.2ms，提速 250x）；
     - 材质查重使用 `set(np.unique(poly_mats))` 代替 `{p.material_index for p in mesh.polygons}`。
-  - [ ] **生物群系实时调色器向量化 ([`updater.py`](utils/materials/biome/updater.py), [`biome.py`](utils/materials/biome/biome.py))**：
+  - [x] **生物群系实时调色器向量化 ([`updater.py`](utils/materials/biome/updater.py), [`biome.py`](utils/materials/biome/biome.py))**：
     - 废弃 `[list(d.color) for d in old_attr.data]` 与遍历 `tint_data_attr.data` 的逐元素 RNA 访问循环；
-    - 改用 NumPy 向量化布尔掩码 / 数组切片直接在连续内存上计算 `new_tint_colors`；
-    - 废弃 `apply_biome_tint_attributes` 中的双重推导打平 `[c for val in packed for c in val]`，直接传递平坦的 NumPy / MemoryView 数组；
+    - 改用 `tint_data_attr.data.foreach_get("color", raw_data)` + NumPy 向量化布尔掩码直接在连续内存上计算 `new_tint_colors`；
+    - 改造 `apply_biome_tint_attributes` 支持直接接收一维连续内存 NumPy 数组向 `foreach_set` 零开销灌入；
     - 确保 20 万面的调色板动态切换真正达成宣称的 `< 1ms` 刷新响应。
 
 - [ ] **任务四：网格拓扑校验与流体 UV 修复向量化**
-  - [ ] **拓扑全四边形校验 ([`bridge/mesh.py`](bridge/mesh.py))**：
+  - [x] **拓扑全四边形校验 ([`bridge/mesh.py`](bridge/mesh.py))**：
     - 将 `all(getattr(p, "loop_total", len(p.vertices)) == 4 for p in mesh.polygons)`（20万次 Python 对象访问）重构为：
       ```python
-      poly_totals = np.empty(len(mesh.polygons), dtype=np.int32)
+      poly_totals = np.empty(num_polys, dtype=np.int32)
       mesh.polygons.foreach_get("loop_total", poly_totals)
       is_all_quads = bool(np.all(poly_totals == 4))
       ```

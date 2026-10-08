@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Optional, Any
 import bpy
 
+try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    np = None
+    HAS_NUMPY = False
+
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_ATLAS_TEXTURE_ID,
@@ -199,45 +206,81 @@ def update_object_biome(
                 cm_uv = biome_colors.get("colormap_uv", [0.2, 0.32])
                 base_uv_3 = [float(cm_uv[0]), float(cm_uv[1]), 0.0]
 
-                # Preserve existing hardcoded colors if available
-                old_cols = None
-                if ATTR_BIOME_TINT_COLOR in mesh.attributes:
-                    old_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
-                    if old_attr and len(old_attr.data) == num_polys:
-                        old_cols = [list(d.color) for d in old_attr.data]
+                vectorized_done = False
+                if HAS_NUMPY and hasattr(tint_data_attr.data, "foreach_get"):
+                    try:
+                        raw_data = np.empty(num_polys * 4, dtype=np.float32)
+                        tint_data_attr.data.foreach_get("color", raw_data)
+                        raw_data_2d = raw_data.reshape(num_polys, 4)
 
-                new_tint_colors = []
-                new_cm_uvs = []
-                new_packed_data = []
+                        tt = np.round(raw_data_2d[:, 3]).astype(np.int32)
+                        new_tint_colors = np.ones((num_polys, 4), dtype=np.float32)
 
-                for idx, d in enumerate(tint_data_attr.data):
-                    c = d.color
-                    base_w = float(c[0])
-                    overlay_w = float(c[1])
-                    tw = float(c[2])
-                    tt = int(round(c[3]))
+                        new_tint_colors[tt == TINT_TYPE_GRASS] = grass_col
+                        new_tint_colors[tt == TINT_TYPE_FOLIAGE] = foliage_col
+                        new_tint_colors[tt == TINT_TYPE_WATER] = water_col
+                        new_tint_colors[tt == TINT_TYPE_DRY_FOLIAGE] = dry_foliage_col
 
-                    if tt == TINT_TYPE_GRASS:
-                        final_col = grass_col
-                    elif tt == TINT_TYPE_FOLIAGE:
-                        final_col = foliage_col
-                    elif tt == TINT_TYPE_WATER:
-                        final_col = water_col
-                    elif tt == TINT_TYPE_DRY_FOLIAGE:
-                        final_col = dry_foliage_col
-                    elif tt == TINT_TYPE_HARDCODED:
-                        if old_cols and idx < len(old_cols):
-                            final_col = old_cols[idx]
+                        if ATTR_BIOME_TINT_COLOR in mesh.attributes:
+                            old_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+                            if old_attr and len(old_attr.data) == num_polys and hasattr(old_attr.data, "foreach_get"):
+                                old_cols_arr = np.empty(num_polys * 4, dtype=np.float32)
+                                old_attr.data.foreach_get("color", old_cols_arr)
+                                old_cols_2d = old_cols_arr.reshape(num_polys, 4)
+                                hc_mask = (tt == TINT_TYPE_HARDCODED)
+                                new_tint_colors[hc_mask] = old_cols_2d[hc_mask]
+
+                        new_cm_uvs = np.empty((num_polys, 3), dtype=np.float32)
+                        new_cm_uvs[:] = base_uv_3
+
+                        new_packed_data = raw_data_2d.copy()
+                        new_packed_data[:, 3] = tt.astype(np.float32)
+
+                        apply_biome_tint_attributes(mesh, new_packed_data, new_tint_colors, new_cm_uvs)
+                        vectorized_done = True
+                    except Exception:
+                        vectorized_done = False
+
+                if not vectorized_done:
+                    # Preserve existing hardcoded colors if available
+                    old_cols = None
+                    if ATTR_BIOME_TINT_COLOR in mesh.attributes:
+                        old_attr = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+                        if old_attr and len(old_attr.data) == num_polys:
+                            old_cols = [list(d.color) for d in old_attr.data]
+
+                    new_tint_colors = []
+                    new_cm_uvs = []
+                    new_packed_data = []
+
+                    for idx, d in enumerate(tint_data_attr.data):
+                        c = d.color
+                        base_w = float(c[0])
+                        overlay_w = float(c[1])
+                        tw = float(c[2])
+                        tt = int(round(c[3]))
+
+                        if tt == TINT_TYPE_GRASS:
+                            final_col = grass_col
+                        elif tt == TINT_TYPE_FOLIAGE:
+                            final_col = foliage_col
+                        elif tt == TINT_TYPE_WATER:
+                            final_col = water_col
+                        elif tt == TINT_TYPE_DRY_FOLIAGE:
+                            final_col = dry_foliage_col
+                        elif tt == TINT_TYPE_HARDCODED:
+                            if old_cols and idx < len(old_cols):
+                                final_col = old_cols[idx]
+                            else:
+                                final_col = [1.0, 1.0, 1.0, 1.0]
                         else:
                             final_col = [1.0, 1.0, 1.0, 1.0]
-                    else:
-                        final_col = [1.0, 1.0, 1.0, 1.0]
 
-                    new_tint_colors.append(final_col)
-                    new_cm_uvs.append(base_uv_3)
-                    new_packed_data.append([base_w, overlay_w, tw, float(tt)])
+                        new_tint_colors.append(final_col)
+                        new_cm_uvs.append(base_uv_3)
+                        new_packed_data.append([base_w, overlay_w, tw, float(tt)])
 
-                apply_biome_tint_attributes(mesh, new_packed_data, new_tint_colors, new_cm_uvs)
+                    apply_biome_tint_attributes(mesh, new_packed_data, new_tint_colors, new_cm_uvs)
         elif len(obj.material_slots) > 0:
             # Standalone mesh without face attributes: infer keys from material slot identities
             derived_keys = []

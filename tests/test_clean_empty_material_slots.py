@@ -31,6 +31,7 @@ from utils.materials.cleaner import (
     compact_mesh_material_slots,
     clean_object_material_slots,
     clean_scene_material_slots,
+    remap_indices_lut,
 )
 
 
@@ -137,6 +138,41 @@ class TestCleanEmptyMaterialSlots(unittest.TestCase):
         self.assertEqual(self.mesh.materials[0], mat)
 
         bpy.data.materials.remove(mat)
+
+
+class TestRemapIndicesLUT(unittest.TestCase):
+    def test_remap_indices_lut_fallback_list(self):
+        """Verify LUT mapping works with Python list even when NumPy is not present."""
+        mapping = {0: 10, 1: 20, 5: 50, 100: 999}
+        indices = [0, 1, 5, 2, 100, 0, 7]
+        expected = [10, 20, 50, 0, 999, 10, 0]
+        res = remap_indices_lut(indices, mapping, default_value=0)
+        self.assertEqual(res, expected)
+
+    def test_remap_indices_lut_vectorized(self):
+        """Verify LUT mapping produces identical results to dict lookup with NumPy arrays."""
+        if np is None:
+            self.skipTest("NumPy is required")
+        mapping = {0: 10, 1: 20, 5: 50, 100: 999}
+        indices = np.array([0, 1, 5, 2, 100, 0, 7], dtype=np.int32)
+        expected = np.array([10, 20, 50, 0, 999, 10, 0], dtype=np.int32)
+
+        res = remap_indices_lut(indices, mapping, default_value=0)
+        np.testing.assert_array_equal(res, expected)
+
+    def test_remap_indices_lut_empty_and_fallback(self):
+        """Verify empty and negative index fallbacks."""
+        if np is None:
+            self.skipTest("NumPy is required")
+        mapping = {1: 10}
+        empty_indices = np.array([], dtype=np.int32)
+        res_empty = remap_indices_lut(empty_indices, mapping)
+        self.assertEqual(res_empty.size, 0)
+
+        # Negative indices triggering safe fallback
+        neg_indices = np.array([-1, 1], dtype=np.int32)
+        res_neg = remap_indices_lut(neg_indices, mapping, default_value=0)
+        np.testing.assert_array_equal(res_neg, np.array([0, 10], dtype=np.int32))
 
 
 if __name__ == "__main__":

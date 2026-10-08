@@ -85,6 +85,14 @@ def ensure_world_materials(
             build_atlas_chunk_material = None
             ensure_material_node_tree = lambda m: getattr(m, "node_tree", None)
 
+    try:
+        from ..utils.materials.cleaner import remap_indices_lut
+    except (ImportError, ValueError):
+        try:
+            from utils.materials.cleaner import remap_indices_lut
+        except (ImportError, ValueError):
+            remap_indices_lut = None
+
     mesh = world_obj.data
     atlas_dir = ensure_atlas_textures_extracted(prefs)
     atlas_mapping_path = atlas_dir / "atlas_mapping.json"
@@ -209,7 +217,10 @@ def ensure_world_materials(
                             raw_cids = np.empty(num_polys, dtype=np.int32)
                             mesh.polygons.foreach_get("material_index", raw_cids)
 
-                        remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
+                        if remap_indices_lut is not None:
+                            remapped = remap_indices_lut(raw_cids, chunk_to_compact_slot, default_value=0)
+                        else:
+                            remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
                         mesh.polygons.foreach_set("material_index", remapped)
                     except Exception as e:
                         logger.debug("Failed remapping polygon material indices: %s", e)
