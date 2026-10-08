@@ -204,10 +204,6 @@ def precompile_stack(
                     compile_models=True,
                 )
         package_path = getattr(res, "package_path", "")
-        # Extract atlas textures, standalone textures, and colormaps on demand for Blender
-        ensure_atlas_textures_extracted(prefs)
-        ensure_standalone_textures_extracted(prefs)
-        ensure_colormaps_extracted(prefs)
         get_cache_stats(prefs, force_refresh=True)
         duration = time.time() - start_time
 
@@ -298,74 +294,114 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
         return None
 
 
+def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
+    """
+    Loads precompiled atlas mapping table as dictionary directly from memory.
+    Prioritizes reading from .mtkcache container, falls back to loose atlas_mapping.json.
+    """
+    import json
+    cache = open_active_asset_cache(prefs)
+    if cache is not None:
+        if hasattr(cache, "load_atlas_mapping"):
+            try:
+                mapping_str = cache.load_atlas_mapping()
+                if mapping_str:
+                    return json.loads(mapping_str)
+            except Exception:
+                pass
+        if hasattr(cache, "load_atlas"):
+            try:
+                baked = cache.load_atlas()
+                if hasattr(baked, "to_mapping_json"):
+                    return json.loads(baked.to_mapping_json())
+            except Exception:
+                pass
+
+    # Fallback to loose file if exists
+    base_cache = get_cache_dir(prefs)
+    loose_p = base_cache / "atlas" / "atlas_mapping.json"
+    if loose_p.exists() and loose_p.is_file():
+        try:
+            return json.loads(loose_p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return None
+
+
+def load_standalone_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
+    """
+    Loads precompiled standalone mapping table as dictionary directly from memory.
+    Prioritizes reading from .mtkcache container, falls back to loose standalone_mapping.json.
+    """
+    import json
+    cache = open_active_asset_cache(prefs)
+    if cache is not None and hasattr(cache, "load_standalone_mapping"):
+        try:
+            mapping_str = cache.load_standalone_mapping()
+            if mapping_str:
+                return json.loads(mapping_str)
+        except Exception:
+            pass
+
+    # Fallback to loose file if exists
+    base_cache = get_cache_dir(prefs)
+    loose_p = base_cache / "standalone" / "standalone_mapping.json"
+    if loose_p.exists() and loose_p.is_file():
+        try:
+            return json.loads(loose_p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return None
+
+
+def get_cached_texture_rgba(chunk_id: str, prefs=None) -> Optional[Tuple[int, int, Any]]:
+    """
+    Reads and decodes a texture chunk directly from .mtkcache into memory as (width, height, memoryview).
+    Zero disk IO and zero temporary files.
+    """
+    cache = open_active_asset_cache(prefs)
+    if cache is not None and hasattr(cache, "read_texture_rgba"):
+        try:
+            return cache.read_texture_rgba(chunk_id)
+        except Exception:
+            return None
+    return None
+
+
 def ensure_atlas_textures_extracted(prefs=None) -> Path:
     """
-    Extracts atlas chunk textures and mapping from the active .mtkcache package into cache directory.
-    Returns the atlas directory path.
+    Returns the atlas cache directory path reference.
+    Directory creation and loose extraction are disabled in favor of zero-disk in-memory streaming.
     """
     base_cache = get_cache_dir(prefs)
-    pkg = get_active_cache_package_path(prefs)
-    atlas_dir = base_cache / "atlas"
-    atlas_dir.mkdir(parents=True, exist_ok=True)
-
-    if pkg is not None:
-        cache = open_active_asset_cache(prefs)
-        if cache is not None:
-            pkg_mtime = pkg.stat().st_mtime
-            marker = atlas_dir / ".pkg_mtime"
-            if not marker.exists() or float(marker.read_text().strip()) != pkg_mtime:
-                cache.extract_atlas_textures(str(atlas_dir.resolve()))
-                marker.write_text(str(pkg_mtime))
-
-    return atlas_dir
+    return base_cache / "atlas"
 
 
 def ensure_standalone_textures_extracted(prefs=None) -> Path:
     """
-    Extracts standalone textures and mapping from the active .mtkcache package into cache directory.
-    Returns the standalone directory path.
+    Returns the standalone cache directory path reference.
+    Directory creation and loose extraction are disabled in favor of zero-disk in-memory streaming.
     """
     base_cache = get_cache_dir(prefs)
-    pkg = get_active_cache_package_path(prefs)
-    standalone_dir = base_cache / "standalone"
-    standalone_dir.mkdir(parents=True, exist_ok=True)
-
-    if pkg is not None:
-        cache = open_active_asset_cache(prefs)
-        if cache is not None and hasattr(cache, "extract_standalone_textures"):
-            pkg_mtime = pkg.stat().st_mtime
-            marker = standalone_dir / ".pkg_mtime"
-            if not marker.exists() or float(marker.read_text().strip()) != pkg_mtime:
-                cache.extract_standalone_textures(str(standalone_dir.resolve()))
-                marker.write_text(str(pkg_mtime))
-
-    return standalone_dir
+    return base_cache / "standalone"
 
 
-def ensure_colormaps_extracted(prefs=None) -> Dict[str, Path]:
+def ensure_colormaps_extracted(prefs=None) -> Dict[str, Any]:
     """
-    Extracts colormaps (grass, foliage, dry_foliage) from active package into cache directory.
-    Returns dictionary mapping colormap name to Path.
+    Returns colormap identifiers (grass, foliage, dry_foliage) for material builders.
+    Prioritizes in-memory package streaming without creating directories or loose files on disk.
     """
     base_cache = get_cache_dir(prefs)
-    pkg = get_active_cache_package_path(prefs)
     colormaps_dir = base_cache / "colormaps"
-    colormaps_dir.mkdir(parents=True, exist_ok=True)
 
-    if pkg is not None:
-        cache = open_active_asset_cache(prefs)
-        if cache is not None:
-            pkg_mtime = pkg.stat().st_mtime
-            marker = colormaps_dir / ".pkg_mtime"
-            if not marker.exists() or float(marker.read_text().strip()) != pkg_mtime:
-                cache.extract_colormaps(str(colormaps_dir.resolve()))
-                marker.write_text(str(pkg_mtime))
-
-    result = {}
+    result: Dict[str, Any] = {}
     for cm_name in ("grass", "foliage", "dry_foliage"):
-        p = colormaps_dir / f"{cm_name}.png"
-        if p.exists():
-            result[cm_name] = p
+        disk_p = colormaps_dir / f"{cm_name}.png"
+        if disk_p.exists():
+            result[cm_name] = disk_p
+        else:
+            # Zero-disk in-memory chunk identifier from .mtkcache
+            result[cm_name] = f"biome/colormap/{cm_name}"
     return result
 
 

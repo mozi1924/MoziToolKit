@@ -63,7 +63,21 @@ def get_or_load_biome_resolver(
     if not has_libmtk():
         return BiomeResolver()
 
-    # 1. Try loading from cache directory if available
+    # 1. Prioritize instant in-memory loading from .mtkcache package
+    try:
+        from ....bridge.assets import load_biome_resolver_from_cache
+    except (ImportError, ValueError):
+        try:
+            from bridge.assets import load_biome_resolver_from_cache
+        except Exception:
+            load_biome_resolver_from_cache = None
+
+    if load_biome_resolver_from_cache is not None:
+        cached_resolver = load_biome_resolver_from_cache(prefs)
+        if cached_resolver is not None:
+            return cached_resolver
+
+    # Fallback: check loose biome_mapping.json if cache directory provided
     target_cache = None
     if cache_dir is not None:
         target_cache = Path(cache_dir)
@@ -81,7 +95,6 @@ def get_or_load_biome_resolver(
             target_cache = None
 
     if target_cache:
-        # Check standard cache mapping locations
         candidates = [
             target_cache / "biome_mapping.json",
             target_cache / "atlas" / "biome_mapping.json",

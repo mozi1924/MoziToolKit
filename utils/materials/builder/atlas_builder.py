@@ -352,7 +352,7 @@ def build_atlas_chunk_material(
         links.new(target_uv_output, albedo_node.inputs["Vector"])
 
     overlay_node = None
-    if overlay_path and os.path.exists(str(overlay_path)):
+    if overlay_path:
         overlay_img = get_or_create_image(overlay_path, colorspace="sRGB", force_reload=force_rebuild)
         if overlay_img:
             overlay_node = nodes.new("ShaderNodeTexImage")
@@ -365,7 +365,7 @@ def build_atlas_chunk_material(
             links.new(target_uv_output, overlay_node.inputs["Vector"])
 
     normal_node = None
-    if normal_path and os.path.exists(str(normal_path)):
+    if normal_path:
         normal_img = get_or_create_image(normal_path, colorspace="Non-Color", force_reload=force_rebuild)
         if normal_img:
             normal_node = nodes.new("ShaderNodeTexImage")
@@ -378,7 +378,7 @@ def build_atlas_chunk_material(
             links.new(target_uv_output, normal_node.inputs["Vector"])
 
     spec_node = None
-    if specular_path and os.path.exists(str(specular_path)):
+    if specular_path:
         spec_img = get_or_create_image(specular_path, colorspace="Non-Color", force_reload=force_rebuild)
         if spec_img:
             spec_node = nodes.new("ShaderNodeTexImage")
@@ -446,8 +446,12 @@ def build_atlas_chunk_material(
         active_colormaps = {}
         if colormaps and isinstance(colormaps, dict):
             for k in ("grass", "foliage", "dry_foliage"):
-                if k in colormaps and os.path.exists(str(colormaps[k])):
-                    active_colormaps[k] = colormaps[k]
+                v = colormaps.get(k)
+                if v and (os.path.exists(str(v)) or str(v).startswith("biome/")):
+                    active_colormaps[k] = v
+        else:
+            for k in ("grass", "foliage", "dry_foliage"):
+                active_colormaps[k] = f"biome/colormap/{k}"
 
         if decoder_group_tree and active_colormaps:
             # Mesh Attribute: mtk_colormap_uv
@@ -477,7 +481,7 @@ def build_atlas_chunk_material(
             for key, node_name, pos, target_sock in cm_configs:
                 cm_file = active_colormaps.get(key)
                 if cm_file:
-                    cm_img = get_or_create_image(cm_file, colorspace="sRGB")
+                    cm_img = get_or_create_image(cm_file, colorspace="sRGB", chunk_id=f"biome/colormap/{key}")
                     if cm_img:
                         tex_cm = nodes.new("ShaderNodeTexImage")
                         tex_cm.name = node_name

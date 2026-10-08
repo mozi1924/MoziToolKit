@@ -85,23 +85,138 @@ def ensure_material_node_tree(mat: Any) -> Any:
     return getattr(mat, "node_tree", None)
 
 
-def get_or_create_image(
-    image_path: str | Path,
+def get_or_create_image_from_rgba(
+    image_name: str,
+    width: int,
+    height: int,
+    rgba_bytes_or_memview: Any,
     colorspace: str = "sRGB",
     force_reload: bool = False,
 ) -> Optional[Any]:
-    """Load or retrieve an image datablock from disk with proper colorspace."""
+    """
+    Creates or updates an image datablock directly in memory using NumPy.
+    Zero disk IO and zero temporary files, tightly packed into Blender.
+    """
     if not HAS_BPY:
         return None
 
-    path_str = str(Path(image_path).resolve())
-    if not os.path.exists(path_str):
+    img = bpy.data.images.get(image_name)
+    if not force_reload and img is not None and getattr(img, "has_data", False):
+        if hasattr(img, "colorspace_settings") and colorspace:
+            try:
+                img.colorspace_settings.name = colorspace
+            except Exception:
+                pass
+        return img
+
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+
+    if np is None:
         return None
 
-    # Check existing images
-    file_name = os.path.basename(path_str)
+    try:
+        if img is None:
+            img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
+        elif img.size[0] != width or img.size[1] != height:
+            img.scale(width, height)
+
+        raw_u8 = np.frombuffer(rgba_bytes_or_memview, dtype=np.uint8)
+        flat_f32 = (raw_u8.astype(np.float32) * (1.0 / 255.0))
+        img.pixels.foreach_set(flat_f32)
+        img.update()
+        if hasattr(img, "pack"):
+            try:
+                img.pack()
+            except Exception:
+                pass
+        if hasattr(img, "colorspace_settings") and colorspace:
+            try:
+                img.colorspace_settings.name = colorspace
+            except Exception:
+                pass
+        return img
+    except Exception:
+        return None
+
+
+def get_or_create_image(
+    image_path_or_source: Any,
+    colorspace: str = "sRGB",
+    force_reload: bool = False,
+    chunk_id: Optional[str] = None,
+) -> Optional[Any]:
+    """
+    Load or retrieve an image datablock from memory (.mtkcache) or disk.
+    Prioritizes fast zero-disk memory streaming before falling back to filesystem.
+    """
+    if not HAS_BPY or image_path_or_source is None:
+        return None
+
+    # 1. Handle in-memory (width, height, buffer) tuple directly
+    if isinstance(image_path_or_source, (tuple, list)) and len(image_path_or_source) == 3:
+        w, h, buf = image_path_or_source
+        img_name = chunk_id or "MTK_Memory_Image"
+        return get_or_create_image_from_rgba(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload)
+
+    # 2. Try resolving chunk_id from package if explicit or identifiable
+    resolved_chunk_id = chunk_id
+    path_str = str(image_path_or_source)
+    if not resolved_chunk_id:
+        if path_str.startswith(("atlas/textures/", "standalone/", "biome/colormap/")):
+            resolved_chunk_id = path_str
+        elif "_chunk_" in path_str and path_str.endswith(".png"):
+            resolved_chunk_id = f"atlas/textures/{os.path.basename(path_str)}"
+        elif "assets/" in path_str and path_str.endswith(".png"):
+            idx = path_str.find("assets/")
+            resolved_chunk_id = f"standalone/{path_str[idx:]}"
+
+    if resolved_chunk_id:
+        img_name = os.path.basename(resolved_chunk_id)
+        existing_img = bpy.data.images.get(img_name)
+        if not force_reload and existing_img is not None and getattr(existing_img, "has_data", False):
+            if hasattr(existing_img, "colorspace_settings") and colorspace:
+                try:
+                    existing_img.colorspace_settings.name = colorspace
+                except Exception:
+                    pass
+            return existing_img
+
+        try:
+            from ....bridge.assets import get_cached_texture_rgba
+        except (ImportError, ValueError):
+            try:
+                from bridge.assets import get_cached_texture_rgba
+            except Exception:
+                get_cached_texture_rgba = None
+
+        if get_cached_texture_rgba is not None:
+            rgba_tuple = get_cached_texture_rgba(resolved_chunk_id)
+            if rgba_tuple is not None:
+                w, h, memview = rgba_tuple
+                img = get_or_create_image_from_rgba(
+                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload
+                )
+                if img is not None:
+                    return img
+
+    # 3. Fallback: On-disk filesystem loading
+    resolved_path = None
+    try:
+        p = Path(path_str).resolve()
+        if p.exists() and p.is_file():
+            resolved_path = str(p)
+    except Exception:
+        resolved_path = None
+
+    if not resolved_path:
+        return None
+
+    file_name = os.path.basename(resolved_path)
     for img in bpy.data.images:
-        if img.filepath == path_str or img.name == file_name:
+        if img.filepath == resolved_path or img.name == file_name:
             if force_reload and hasattr(img, "reload"):
                 try:
                     img.reload()
@@ -115,7 +230,7 @@ def get_or_create_image(
             return img
 
     try:
-        img = bpy.data.images.load(path_str, check_existing=True)
+        img = bpy.data.images.load(resolved_path, check_existing=True)
         if hasattr(img, "colorspace_settings") and colorspace:
             try:
                 img.colorspace_settings.name = colorspace
@@ -237,7 +352,7 @@ def build_standalone_material(
         links.new(uv_node.outputs["UV"], albedo_node.inputs["Vector"])
 
     overlay_node = None
-    if overlay_path and os.path.exists(str(overlay_path)):
+    if overlay_path:
         overlay_img = get_or_create_image(overlay_path, colorspace="sRGB")
         if overlay_img:
             overlay_node = nodes.new("ShaderNodeTexImage")
@@ -250,7 +365,7 @@ def build_standalone_material(
             links.new(uv_node.outputs["UV"], overlay_node.inputs["Vector"])
 
     normal_node = None
-    if normal_path and os.path.exists(str(normal_path)):
+    if normal_path:
         normal_img = get_or_create_image(normal_path, colorspace="Non-Color")
         if normal_img:
             normal_node = nodes.new("ShaderNodeTexImage")
@@ -263,7 +378,7 @@ def build_standalone_material(
             links.new(uv_node.outputs["UV"], normal_node.inputs["Vector"])
 
     spec_node = None
-    if specular_path and os.path.exists(str(specular_path)):
+    if specular_path:
         spec_img = get_or_create_image(specular_path, colorspace="Non-Color")
         if spec_img:
             spec_node = nodes.new("ShaderNodeTexImage")
@@ -332,8 +447,12 @@ def build_standalone_material(
             active_colormaps = {}
             if colormaps and isinstance(colormaps, dict):
                 for k in ("grass", "foliage", "dry_foliage"):
-                    if k in colormaps and os.path.exists(str(colormaps[k])):
-                        active_colormaps[k] = colormaps[k]
+                    v = colormaps.get(k)
+                    if v and (os.path.exists(str(v)) or str(v).startswith("biome/")):
+                        active_colormaps[k] = v
+            else:
+                for k in ("grass", "foliage", "dry_foliage"):
+                    active_colormaps[k] = f"biome/colormap/{k}"
 
             if decoder_group_tree and active_colormaps:
                 # Mesh Attribute: mtk_colormap_uv
@@ -363,7 +482,7 @@ def build_standalone_material(
                 for key, node_name, pos, target_sock in cm_configs:
                     cm_file = active_colormaps.get(key)
                     if cm_file:
-                        cm_img = get_or_create_image(cm_file, colorspace="sRGB")
+                        cm_img = get_or_create_image(cm_file, colorspace="sRGB", chunk_id=f"biome/colormap/{key}")
                         if cm_img:
                             tex_cm = nodes.new("ShaderNodeTexImage")
                             tex_cm.name = node_name
