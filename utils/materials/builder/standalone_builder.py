@@ -92,10 +92,14 @@ def get_or_create_image_from_rgba(
     rgba_bytes_or_memview: Any,
     colorspace: str = "sRGB",
     force_reload: bool = False,
+    flip_y: bool = True,
 ) -> Optional[Any]:
     """
     Creates or updates an image datablock directly in memory using NumPy.
     Zero disk IO and zero temporary files, tightly packed into Blender.
+
+    :param flip_y: If True (default), vertically flips image rows (np.flipud) to align
+                   standard top-to-bottom image buffers with Blender's bottom-to-top img.pixels layout.
     """
     if not HAS_BPY:
         return None
@@ -124,7 +128,15 @@ def get_or_create_image_from_rgba(
             img.scale(width, height)
 
         raw_u8 = np.frombuffer(rgba_bytes_or_memview, dtype=np.uint8)
-        flat_f32 = (raw_u8.astype(np.float32) * (1.0 / 255.0))
+        if flip_y:
+            # Blender's img.pixels stores rows bottom-to-top (row 0 = bottom, V=0.0).
+            # Standard image buffers from Rust / PNG decoders store rows top-to-bottom (row 0 = top, V=1.0).
+            # We must vertically flip (np.flipud) to align memory streaming with Blender's native layout.
+            u8_2d = raw_u8.reshape((height, width, 4))
+            flipped = np.ascontiguousarray(np.flipud(u8_2d))
+            flat_f32 = flipped.reshape(-1).astype(np.float32) * (1.0 / 255.0)
+        else:
+            flat_f32 = (raw_u8.astype(np.float32) * (1.0 / 255.0))
         img.pixels.foreach_set(flat_f32)
         img.update()
         if hasattr(img, "pack"):
@@ -147,6 +159,7 @@ def get_or_create_image(
     colorspace: str = "sRGB",
     force_reload: bool = False,
     chunk_id: Optional[str] = None,
+    flip_y: bool = True,
 ) -> Optional[Any]:
     """
     Load or retrieve an image datablock from memory (.mtkcache) or disk.
@@ -159,7 +172,9 @@ def get_or_create_image(
     if isinstance(image_path_or_source, (tuple, list)) and len(image_path_or_source) == 3:
         w, h, buf = image_path_or_source
         img_name = chunk_id or "MTK_Memory_Image"
-        return get_or_create_image_from_rgba(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload)
+        return get_or_create_image_from_rgba(
+            img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload, flip_y=flip_y
+        )
 
     # 2. Try resolving chunk_id from package if explicit or identifiable
     resolved_chunk_id = chunk_id
@@ -197,7 +212,7 @@ def get_or_create_image(
             if rgba_tuple is not None:
                 w, h, memview = rgba_tuple
                 img = get_or_create_image_from_rgba(
-                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload
+                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload, flip_y=flip_y
                 )
                 if img is not None:
                     return img
