@@ -455,6 +455,70 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertTrue(res_sa["success"])
                 self.assertEqual(res_sa["unmapped_faces"], 0)
 
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_memory_image_pixel_orientation_matches_blender_convention(self):
+        """
+        Verify that in-memory image streaming via get_or_create_image_from_rgba
+        vertically flips incoming top-to-bottom RGBA buffers to align with
+        Blender's bottom-to-top img.pixels layout, matching bpy.data.images.load identically.
+        """
+        import struct
+        import zlib
+        from utils.materials.builder.standalone_builder import get_or_create_image_from_rgba, get_or_create_image
+
+        def make_png(width, height, raw_rgba):
+            line_bytes = width * 4
+            raw_data = bytearray()
+            for y in range(height):
+                raw_data.append(0)
+                raw_data.extend(raw_rgba[y * line_bytes : (y + 1) * line_bytes])
+            compressed = zlib.compress(bytes(raw_data))
+
+            def chunk(tag, data):
+                return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+            header = b"\x89PNG\r\n\x1a\n"
+            ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            idat = chunk(b"IDAT", compressed)
+            iend = chunk(b"IEND", b"")
+            return header + ihdr + idat + iend
+
+        # 2x2 image:
+        # Row 0 (Top): Red [255, 0, 0, 255]
+        # Row 1 (Bottom): Blue [0, 0, 255, 255]
+        top_row = bytes([255, 0, 0, 255, 255, 0, 0, 255])
+        bot_row = bytes([0, 0, 255, 255, 0, 0, 255, 255])
+        raw_rgba = top_row + bot_row
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_png = Path(tmpdir) / "test_orientation.png"
+            tmp_png.write_bytes(make_png(2, 2, raw_rgba))
+
+            file_img = bpy.data.images.load(str(tmp_png))
+            file_pixels = list(file_img.pixels)
+
+            mem_img = get_or_create_image_from_rgba("MTK_Test_Orientation_Mem", 2, 2, raw_rgba, force_reload=True)
+            self.assertIsNotNone(mem_img)
+            mem_pixels = list(mem_img.pixels)
+
+            # 1. Blender row 0 (bottom row, V=0.0) must be Blue (bottom of image)
+            self.assertAlmostEqual(mem_pixels[0], 0.0, places=2)
+            self.assertAlmostEqual(mem_pixels[1], 0.0, places=2)
+            self.assertAlmostEqual(mem_pixels[2], 1.0, places=2)
+
+            # 2. Blender row 1 (top row, V=1.0) must be Red (top of image)
+            self.assertAlmostEqual(mem_pixels[8], 1.0, places=2)
+            self.assertAlmostEqual(mem_pixels[9], 0.0, places=2)
+            self.assertAlmostEqual(mem_pixels[10], 0.0, places=2)
+
+            # 3. Must match Blender's native image load 100%
+            for fp, mp in zip(file_pixels, mem_pixels):
+                self.assertAlmostEqual(fp, mp, places=4)
+
+            # Cleanup
+            bpy.data.images.remove(file_img)
+            bpy.data.images.remove(mem_img)
+
 
 if __name__ == "__main__":
     if "--" in sys.argv:
