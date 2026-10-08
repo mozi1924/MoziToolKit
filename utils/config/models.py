@@ -226,6 +226,17 @@ def get_default_menu_views() -> Dict[str, List[MenuItem]]:
 
 MENU_SCHEMA_VERSION: int = 2
 
+# Tracks which operators were introduced in each schema version upgrade.
+# This prevents overwriting user deletions from earlier versions while still seamlessly
+# injecting truly brand-new operators upon upgrade.
+MENU_SCHEMA_CHANGELOG: Dict[int, Dict[str, List[str]]] = {
+    2: {
+        "mesh": ["mozi.rebuild_mesh", "mozi.toggle_voxel_cloud"],
+        "object": ["mozi.rebuild_mesh", "mozi.toggle_voxel_cloud"],
+        "uv": [],
+    },
+}
+
 
 def reconcile_views_with_canonical_presets(
     views: Dict[str, List[MenuItem]],
@@ -234,21 +245,37 @@ def reconcile_views_with_canonical_presets(
     """
     Intelligently reconcile and merge canonical default operators into user's saved menu views.
 
-    If new canonical operators were introduced in newer plugin versions:
-    - Adds missing canonical recommended operators to the end of user views.
-    - Strictly preserves existing user-configured items, their order, custom labels, and enabled state.
-    - Returns (updated_views, changed_flag).
+    Guarantees:
+    - If user_schema_version >= MENU_SCHEMA_VERSION, no automatic injection is performed,
+      preserving all user customizations (including user deletions, custom labels, and ordering).
+    - If user_schema_version < MENU_SCHEMA_VERSION, only operators introduced in newer schema
+      versions (per MENU_SCHEMA_CHANGELOG) will be appended if not already present.
+    - User-configured order, custom labels, disabled flags, and user removals from earlier
+      versions are 100% preserved.
     """
+    if user_schema_version >= MENU_SCHEMA_VERSION:
+        return views, False
+
     presets = {}
     try:
-        from ..system.menu_registry import get_default_presets
+        from ..system.menu_registry import get_default_presets, ALL_OPERATORS
         presets = get_default_presets()
     except Exception:
         try:
-            from utils.system.menu_registry import get_default_presets
+            from utils.system.menu_registry import get_default_presets, ALL_OPERATORS
             presets = get_default_presets()
         except Exception:
             presets = {}
+            ALL_OPERATORS = {}
+
+    # Collect newly introduced operators across versions (user_schema_version + 1 .. MENU_SCHEMA_VERSION)
+    new_ops_by_view: Dict[str, List[str]] = {"mesh": [], "object": [], "uv": []}
+    for ver in range(user_schema_version + 1, MENU_SCHEMA_VERSION + 1):
+        ver_changes = MENU_SCHEMA_CHANGELOG.get(ver, {})
+        for v_name, op_list in ver_changes.items():
+            for op in op_list:
+                if op not in new_ops_by_view[v_name]:
+                    new_ops_by_view[v_name].append(op)
 
     changed = False
     reconciled_views: Dict[str, List[MenuItem]] = {}
@@ -257,6 +284,12 @@ def reconcile_views_with_canonical_presets(
         user_items = list(views.get(view_name, []))
         canonical_items = presets.get(view_name) or CANONICAL_DEFAULT_PRESETS.get(view_name, [])
 
+        preset_map = {}
+        for c_item in canonical_items:
+            c_op = normalize_operator_id(c_item.get("operator", "") if isinstance(c_item, dict) else getattr(c_item, "operator", ""))
+            if c_op:
+                preset_map[c_op] = c_item
+
         existing_ops = set()
         for it in user_items:
             op_id = it.operator if isinstance(it, MenuItem) else (it.get("operator", "") if isinstance(it, dict) else "")
@@ -264,15 +297,18 @@ def reconcile_views_with_canonical_presets(
             if norm:
                 existing_ops.add(norm)
 
-        for c_item in canonical_items:
-            c_op = normalize_operator_id(c_item.get("operator", "") if isinstance(c_item, dict) else getattr(c_item, "operator", ""))
-            if not c_op or not is_valid_operator_id(c_op):
-                continue
-            if c_op not in existing_ops:
+        # Only inject operators newly introduced in versions higher than user's current schema
+        target_new_ops = new_ops_by_view.get(view_name, [])
+        for new_op in target_new_ops:
+            norm_op = normalize_operator_id(new_op)
+            if norm_op and is_valid_operator_id(norm_op) and norm_op not in existing_ops:
+                c_item = preset_map.get(norm_op, {})
                 c_label = c_item.get("label", "") if isinstance(c_item, dict) else getattr(c_item, "label", "")
+                if not c_label and 'ALL_OPERATORS' in locals() and ALL_OPERATORS:
+                    c_label = ALL_OPERATORS.get(norm_op, {}).get("label", norm_op)
                 c_enabled = c_item.get("enabled", True) if isinstance(c_item, dict) else getattr(c_item, "enabled", True)
-                user_items.append(MenuItem(operator=c_op, label=c_label, enabled=c_enabled))
-                existing_ops.add(c_op)
+                user_items.append(MenuItem(operator=norm_op, label=c_label or norm_op, enabled=c_enabled))
+                existing_ops.add(norm_op)
                 changed = True
 
         reconciled_views[view_name] = user_items
@@ -308,10 +344,14 @@ class ConfigData:
                         m_item.operator = normalize_operator_id(m_item.operator)
                         norm_items.append(m_item)
             norm_views[view_name] = norm_items
-        # 2. Reconcile views with canonical default presets for schema migration
-        reconciled_views, _ = reconcile_views_with_canonical_presets(norm_views, self.menu_schema_version)
-        self.views = reconciled_views
-        self.menu_schema_version = MENU_SCHEMA_VERSION
+
+        # 2. Reconcile views with canonical default presets for schema migration (only if older version)
+        if self.menu_schema_version < MENU_SCHEMA_VERSION:
+            reconciled_views, _ = reconcile_views_with_canonical_presets(norm_views, self.menu_schema_version)
+            self.views = reconciled_views
+            self.menu_schema_version = MENU_SCHEMA_VERSION
+        else:
+            self.views = norm_views
 
         # 3. Enforce 3-tier ordering on resource_packs
         norm_packs = []
