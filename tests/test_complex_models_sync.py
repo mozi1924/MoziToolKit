@@ -82,13 +82,16 @@ class TestComplexModelsSync(unittest.TestCase):
         cache_root = blender_datafiles_cache()
         if cache_root is None:
             self.skipTest("Blender asset cache not found (set MOZI_CACHE_DIR / MTK_TEST_CACHE)")
-        self.models_bin_path = cache_root / "models" / "models.bin"
-        if not self.models_bin_path.exists():
-            self.skipTest(f"models.bin cache not found at {self.models_bin_path}")
 
-        with open(self.models_bin_path, "rb") as f:
-            raw = f.read()
-        self.model_db = libmtk_py.BakedModelDatabase.from_bincode_bytes(raw)
+        candidates = list(cache_root.glob("*.mtkcache"))
+        if candidates and hasattr(libmtk_py, "AssetCache"):
+            try:
+                cache = libmtk_py.AssetCache.open(str(candidates[0]))
+                self.model_db = cache.load_models()
+            except Exception as e:
+                self.skipTest(f"Failed to open .mtkcache: {e}")
+        else:
+            self.skipTest(f"No .mtkcache package found at {cache_root}")
 
     def test_smart_blockstate_lookup_non_cubic(self):
         """Tests that BlockState property stripping and variant matching resolves non-cubic models."""

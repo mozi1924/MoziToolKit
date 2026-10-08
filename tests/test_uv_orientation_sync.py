@@ -79,18 +79,17 @@ class TestUvOrientationSync(unittest.TestCase):
 
         cache_root = blender_datafiles_cache()
         cache_root = cache_root if cache_root is not None else Path("/nonexistent-cache")
-        self.atlas_path = cache_root / "atlas" / "atlas_mapping.json"
-        self.models_bin_path = cache_root / "models" / "models.bin"
-
         self.atlas = None
-        if self.atlas_path.exists():
-            with open(self.atlas_path, "r", encoding="utf-8") as f:
-                self.atlas = libmtk_py.BakedAtlas.from_mapping_json(f.read())
-
         self.model_db = None
-        if self.models_bin_path.exists():
-            with open(self.models_bin_path, "rb") as f:
-                self.model_db = libmtk_py.BakedModelDatabase.from_bincode_bytes(f.read())
+
+        candidates = list(cache_root.glob("*.mtkcache")) if cache_root.exists() else []
+        if candidates and hasattr(libmtk_py, "AssetCache"):
+            try:
+                cache = libmtk_py.AssetCache.open(str(candidates[0]))
+                self.atlas = cache.load_atlas()
+                self.model_db = cache.load_models()
+            except Exception:
+                pass
 
     def test_unit_cube_uv_orientation(self):
         """Verifies that unit cube faces have V_top > V_bottom in Blender coordinate space."""

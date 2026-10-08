@@ -45,7 +45,15 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 try:
-    from ...bridge.assets import get_cache_dir, precompile_stack
+    from ...bridge.assets import (
+        get_cache_dir,
+        get_active_cache_package_path,
+        get_cache_fingerprint,
+        precompile_stack,
+        ensure_atlas_textures_extracted,
+        ensure_standalone_textures_extracted,
+        ensure_colormaps_extracted,
+    )
     from ...bridge.mesh import (
         _get_mesh,
         inject_face_attribute_string,
@@ -56,6 +64,26 @@ try:
     from .builder.atlas_builder import build_atlas_chunk_material
     from .builder.standalone_builder import build_standalone_material
     from .matching.presets.registry import build_matching_context
+except (ImportError, ValueError):
+    from bridge.assets import (
+        get_cache_dir,
+        get_active_cache_package_path,
+        get_cache_fingerprint,
+        precompile_stack,
+        ensure_atlas_textures_extracted,
+        ensure_standalone_textures_extracted,
+        ensure_colormaps_extracted,
+    )
+    from bridge.mesh import (
+        _get_mesh,
+        inject_face_attribute_string,
+        inject_face_attribute_int,
+        inject_face_attribute_float,
+        inject_face_attribute_float4,
+    )
+    from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+    from utils.materials.builder.standalone_builder import build_standalone_material
+    from utils.materials.matching.presets.registry import build_matching_context
     from .biome import (
         get_or_load_biome_resolver,
         compute_biome_tint_attributes,
@@ -112,13 +140,16 @@ except (ImportError, ValueError):
 
 
 def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
-    """Ensure asset caches (Atlas & Standalone) exist in persistent storage."""
+    """Ensure asset caches exist in persistent storage."""
     base_cache = get_cache_dir(prefs)
-    atlas_mapping = base_cache / "atlas" / "atlas_mapping.json"
-    standalone_mapping = base_cache / "standalone" / "standalone_mapping.json"
+    pkg = get_active_cache_package_path(prefs)
 
-    if not atlas_mapping.exists() or not standalone_mapping.exists():
+    if pkg is None:
         precompile_stack(prefs)
+    else:
+        ensure_atlas_textures_extracted(prefs)
+        ensure_standalone_textures_extracted(prefs)
+        ensure_colormaps_extracted(prefs)
 
     return base_cache
 
@@ -134,25 +165,10 @@ def load_material_cache_context(
     Step 1: Ensure assets are precompiled and discover cache directories, colormaps, and manifest.
     """
     base_cache = ensure_stack_precompiled(prefs)
-    atlas_dir = base_cache / "atlas"
-    standalone_dir = base_cache / "standalone"
-    colormaps_dir = base_cache / "colormaps"
-
-    colormaps: Dict[str, Path] = {}
-    if colormaps_dir.exists():
-        for cm_name in ("grass", "foliage", "dry_foliage"):
-            p = colormaps_dir / f"{cm_name}.png"
-            if p.exists():
-                colormaps[cm_name] = p
-
-    manifest_path = base_cache / "cache_manifest.json"
-    manifest_fingerprint = None
-    if manifest_path.exists():
-        try:
-            manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest_fingerprint = manifest_data.get("fingerprint")
-        except Exception:
-            pass
+    atlas_dir = ensure_atlas_textures_extracted(prefs)
+    standalone_dir = ensure_standalone_textures_extracted(prefs)
+    colormaps = ensure_colormaps_extracted(prefs)
+    manifest_fingerprint = get_cache_fingerprint(prefs)
 
     return base_cache, atlas_dir, standalone_dir, colormaps, manifest_fingerprint
 
