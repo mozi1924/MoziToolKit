@@ -26,6 +26,42 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def remap_indices_lut(
+    indices: Any,
+    mapping: Dict[int, int],
+    default_value: int = 0,
+) -> Any:
+    """
+    Vectorized integer index remapping using a dense Look-Up Table (LUT).
+
+    Avoids Python-level list comprehension over hundreds of thousands of polygon indices.
+    Falls back gracefully if mapping keys or indices are negative, empty, or exceed reasonable LUT bounds.
+    """
+    if not mapping or len(indices) == 0:
+        if HAS_NUMPY and isinstance(indices, np.ndarray):
+            return np.full_like(indices, default_value, dtype=np.int32)
+        return [default_value] * len(indices)
+
+    if HAS_NUMPY and isinstance(indices, np.ndarray):
+        try:
+            max_idx = int(indices.max())
+            min_idx = int(indices.min())
+            if min_idx >= 0 and max_idx < 1_000_000:
+                max_key = max(mapping.keys())
+                min_key = min(mapping.keys())
+                if min_key >= 0 and max_key < 1_000_000:
+                    lut_size = max(max_idx, max_key) + 1
+                    lut = np.full(lut_size, default_value, dtype=np.int32)
+                    for k, v in mapping.items():
+                        lut[k] = v
+                    return lut[indices]
+        except Exception:
+            pass
+        return np.array([mapping.get(int(idx), default_value) for idx in indices], dtype=np.int32)
+
+    return [mapping.get(int(idx), default_value) for idx in indices]
+
+
 def compact_mesh_material_slots(
     mesh: Any,
     chunk_to_slot: Optional[Dict[int, int]] = None,
@@ -54,7 +90,7 @@ def compact_mesh_material_slots(
             try:
                 poly_mats = np.empty(num_polys, dtype=np.int32)
                 mesh.polygons.foreach_get("material_index", poly_mats)
-                remapped = np.array([chunk_to_slot.get(int(idx), 0) for idx in poly_mats], dtype=np.int32)
+                remapped = remap_indices_lut(poly_mats, chunk_to_slot, default_value=0)
                 mesh.polygons.foreach_set("material_index", remapped)
             except Exception as e:
                 logger.debug("NumPy polygon material remapping failed: %s", e)
@@ -163,10 +199,7 @@ def clean_object_material_slots(
     if num_polys > 0:
         if HAS_NUMPY and poly_mats is not None and hasattr(mesh.polygons, "foreach_set"):
             try:
-                remapped_poly_mats = np.array(
-                    [old_to_new_map.get(int(idx), 0) for idx in poly_mats],
-                    dtype=np.int32,
-                )
+                remapped_poly_mats = remap_indices_lut(poly_mats, old_to_new_map, default_value=0)
                 mesh.polygons.foreach_set("material_index", remapped_poly_mats)
             except Exception as e:
                 logger.debug("NumPy remap failed, falling back to iteration: %s", e)

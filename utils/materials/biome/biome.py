@@ -11,6 +11,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
+    import numpy as np
+    HAS_NUMPY = True
+except ImportError:
+    np = None
+    HAS_NUMPY = False
+
+try:
     from ....bridge.material import (
         BiomeResolver,
         get_biome_meta,
@@ -256,8 +263,11 @@ def apply_biome_tint_attributes(
         except Exception:
             attr_data = None
     if attr_data and len(attr_data.data) == target_len:
-        flat_data = [c for val in packed_tint_data for c in val]
-        attr_data.data.foreach_set("color", array.array("f", flat_data))
+        if HAS_NUMPY and isinstance(packed_tint_data, np.ndarray):
+            flat_data = np.ascontiguousarray(packed_tint_data, dtype=np.float32).ravel()
+        else:
+            flat_data = array.array("f", [c for val in packed_tint_data for c in val])
+        attr_data.data.foreach_set("color", flat_data)
 
     # 2. ATTR_BIOME_TINT_COLOR (FLOAT_COLOR, domain=FACE)
     attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
@@ -273,8 +283,11 @@ def apply_biome_tint_attributes(
         except Exception:
             attr_col = None
     if attr_col and len(attr_col.data) == target_len:
-        flat_col = [c for val in tint_colors for c in val]
-        attr_col.data.foreach_set("color", array.array("f", flat_col))
+        if HAS_NUMPY and isinstance(tint_colors, np.ndarray):
+            flat_col = np.ascontiguousarray(tint_colors, dtype=np.float32).ravel()
+        else:
+            flat_col = array.array("f", [c for val in tint_colors for c in val])
+        attr_col.data.foreach_set("color", flat_col)
 
     # 3. ATTR_COLORMAP_UV (FLOAT_VECTOR, domain=FACE)
     if colormap_uvs is not None and len(colormap_uvs) == target_len:
@@ -291,8 +304,16 @@ def apply_biome_tint_attributes(
             except Exception:
                 attr_uv = None
         if attr_uv and len(attr_uv.data) == target_len:
-            flat_uv = [v for val in colormap_uvs for v in (val[0], val[1], val[2] if len(val) > 2 else 0.0)]
-            attr_uv.data.foreach_set("vector", array.array("f", flat_uv))
+            if HAS_NUMPY and isinstance(colormap_uvs, np.ndarray):
+                if colormap_uvs.ndim == 2 and colormap_uvs.shape[1] == 2:
+                    padded_uvs = np.zeros((len(colormap_uvs), 3), dtype=np.float32)
+                    padded_uvs[:, :2] = colormap_uvs
+                    flat_uv = padded_uvs.ravel()
+                else:
+                    flat_uv = np.ascontiguousarray(colormap_uvs, dtype=np.float32).ravel()
+            else:
+                flat_uv = array.array("f", [v for val in colormap_uvs for v in (val[0], val[1], val[2] if len(val) > 2 else 0.0)])
+            attr_uv.data.foreach_set("vector", flat_uv)
 
 
 def read_face_string_attribute(mesh: Any, name: str) -> List[str]:

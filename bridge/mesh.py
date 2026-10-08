@@ -712,7 +712,16 @@ def extract_mesh_data(
         if uv_layer is None:
             uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
 
-    is_all_quads = all(getattr(p, "loop_total", len(getattr(p, "vertices", []))) == 4 for p in mesh.polygons)
+    is_all_quads = False
+    if HAS_NUMPY and hasattr(mesh.polygons, "foreach_get"):
+        try:
+            poly_totals = np.empty(num_polys, dtype=np.int32)
+            mesh.polygons.foreach_get("loop_total", poly_totals)
+            is_all_quads = bool(np.all(poly_totals == 4))
+        except Exception:
+            is_all_quads = all(getattr(p, "loop_total", len(getattr(p, "vertices", []))) == 4 for p in mesh.polygons)
+    else:
+        is_all_quads = all(getattr(p, "loop_total", len(getattr(p, "vertices", []))) == 4 for p in mesh.polygons)
 
     if is_all_quads and not triangulate_if_needed:
         positions, normals, indices, face_mats = _extract_topology_quads(
