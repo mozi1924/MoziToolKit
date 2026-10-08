@@ -50,6 +50,9 @@ try:
         get_active_cache_package_path,
         get_cache_fingerprint,
         precompile_stack,
+        load_atlas_mapping_from_cache,
+        load_standalone_mapping_from_cache,
+        load_baked_atlas_from_cache,
         ensure_atlas_textures_extracted,
         ensure_standalone_textures_extracted,
         ensure_colormaps_extracted,
@@ -70,6 +73,9 @@ except (ImportError, ValueError):
         get_active_cache_package_path,
         get_cache_fingerprint,
         precompile_stack,
+        load_atlas_mapping_from_cache,
+        load_standalone_mapping_from_cache,
+        load_baked_atlas_from_cache,
         ensure_atlas_textures_extracted,
         ensure_standalone_textures_extracted,
         ensure_colormaps_extracted,
@@ -146,10 +152,6 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
 
     if pkg is None:
         precompile_stack(prefs)
-    else:
-        ensure_atlas_textures_extracted(prefs)
-        ensure_standalone_textures_extracted(prefs)
-        ensure_colormaps_extracted(prefs)
 
     return base_cache
 
@@ -344,29 +346,46 @@ def assign_atlas_chunk_materials(
 def assign_standalone_materials(
     mesh: Any,
     uv_layer: Optional[Any],
-    standalone_mapping_path: Path,
-    standalone_dir: Path,
-    face_source_keys: List[str],
-    local_uvs: Optional[List[float]],
-    colormaps: Dict[str, Path],
-    manifest_fingerprint: Optional[str],
+    standalone_mapping_path: Optional[Path] = None,
+    standalone_dir: Optional[Path] = None,
+    face_source_keys: Optional[List[str]] = None,
+    local_uvs: Optional[List[float]] = None,
+    colormaps: Optional[Dict[str, Path]] = None,
+    manifest_fingerprint: Optional[str] = None,
+    standalone_data: Optional[Dict[str, Any]] = None,
+    prefs: Optional[Any] = None,
 ) -> array.array:
     """
     Step 4B: Construct Standalone block materials, assign to mesh material slots, and optionally set local UVs.
+    Supports in-memory standalone mapping without loose files on disk.
     """
-    if not standalone_mapping_path.exists():
-        raise FileNotFoundError(f"Standalone mapping missing at {standalone_mapping_path}")
+    if face_source_keys is None:
+        face_source_keys = []
 
+    sa_data = standalone_data
+    if sa_data is None:
+        sa_data = load_standalone_mapping_from_cache(prefs)
+
+    if sa_data is None and standalone_mapping_path is not None and standalone_mapping_path.exists():
+        try:
+            sa_data = json.loads(standalone_mapping_path.read_text(encoding="utf-8"))
+        except Exception:
+            sa_data = None
+
+    if sa_data is None:
+        if standalone_mapping_path is not None and not standalone_mapping_path.exists():
+            raise FileNotFoundError(f"Standalone mapping missing at {standalone_mapping_path} and no active .mtkcache found")
+        sa_data = {}
+
+    sa_textures = sa_data.get("textures", {})
     num_polys = len(mesh.polygons)
     poly_mat_indices = array.array("H", [0]) * num_polys
-
-    sa_mapping_str = standalone_mapping_path.read_text(encoding="utf-8")
-    sa_data = json.loads(sa_mapping_str)
-    sa_textures = sa_data.get("textures", {})
 
     unique_keys = list(dict.fromkeys(face_source_keys))
     key_to_slot: Dict[str, int] = {}
     mesh.materials.clear()
+
+    base_sa_dir = standalone_dir or (get_cache_dir(prefs) / "standalone")
 
     for slot_idx, key in enumerate(unique_keys):
         if not key:
@@ -374,13 +393,14 @@ def assign_standalone_materials(
         tex_entry = sa_textures.get(key)
         if tex_entry:
             files = tex_entry.get("files", {})
-            albedo_p = standalone_dir / files.get("albedo", "textures/mtk_fallback.png")
-            normal_p = (standalone_dir / files["normal"]) if "normal" in files else None
-            specular_p = (standalone_dir / files["specular"]) if "specular" in files else None
-            overlay_p = (standalone_dir / files["overlay"]) if "overlay" in files else None
+            albedo_rel = files.get("albedo", "textures/mtk_fallback.png")
+            albedo_p = base_sa_dir / albedo_rel
+            normal_p = (base_sa_dir / files["normal"]) if "normal" in files else None
+            specular_p = (base_sa_dir / files["specular"]) if "specular" in files else None
+            overlay_p = (base_sa_dir / files["overlay"]) if "overlay" in files else None
             is_anim = tex_entry.get("is_animated", False)
         else:
-            albedo_p = standalone_dir / "textures" / "mtk_fallback.png"
+            albedo_p = base_sa_dir / "textures" / "mtk_fallback.png"
             normal_p = None
             specular_p = None
             overlay_p = None
@@ -547,13 +567,18 @@ def replace_materials(
 
     # Step 1: Load cache context & precompiled assets
     base_cache, atlas_dir, standalone_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
-    atlas_mapping_path = atlas_dir / "atlas_mapping.json"
-    if not atlas_mapping_path.exists():
-        raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path}")
 
-    atlas_json_str = atlas_mapping_path.read_text(encoding="utf-8")
-    atlas_data = json.loads(atlas_json_str)
-    baked_atlas = load_baked_atlas_from_json(atlas_json_str)
+    atlas_data = load_atlas_mapping_from_cache(prefs)
+    baked_atlas = load_baked_atlas_from_cache(prefs)
+    if atlas_data is None:
+        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
+        if not atlas_mapping_path.exists():
+            raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found")
+        atlas_json_str = atlas_mapping_path.read_text(encoding="utf-8")
+        atlas_data = json.loads(atlas_json_str)
+        baked_atlas = load_baked_atlas_from_json(atlas_json_str)
+    elif baked_atlas is None:
+        baked_atlas = load_baked_atlas_from_json(json.dumps(atlas_data))
 
     # Step 2: Extract face materials & UVs
     face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_prov_keys = extract_face_material_context(mesh)
@@ -592,6 +617,7 @@ def replace_materials(
             local_uvs=remap["local_uvs"],
             colormaps=colormaps,
             manifest_fingerprint=manifest_fingerprint,
+            prefs=prefs,
         )
 
     # Step 5: Inject mesh provenance attributes (delegated to bridge/mesh.py)
@@ -674,10 +700,12 @@ def restore_materials_from_provenance(
     # Step 2: Reconstruct material slots
     mode_upper = mode.strip().upper()
     if mode_upper == "ATLAS":
-        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
-        if not atlas_mapping_path.exists():
-            raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path}")
-        atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
+        atlas_data = load_atlas_mapping_from_cache(prefs)
+        if atlas_data is None:
+            atlas_mapping_path = atlas_dir / "atlas_mapping.json"
+            if not atlas_mapping_path.exists():
+                raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found")
+            atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
         poly_mat_indices = assign_atlas_chunk_materials(
             mesh=mesh,
             uv_layer=uv_layer,
@@ -698,6 +726,7 @@ def restore_materials_from_provenance(
             local_uvs=None,
             colormaps=colormaps,
             manifest_fingerprint=manifest_fingerprint,
+            prefs=prefs,
         )
 
     # Step 3: Sync material slot attribute (delegated to bridge/mesh.py)

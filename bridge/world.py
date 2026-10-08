@@ -23,6 +23,7 @@ from .assets import (
     ensure_atlas_textures_extracted,
     ensure_colormaps_extracted,
     load_baked_atlas_from_cache,
+    load_atlas_mapping_from_cache,
     load_baked_model_database,
     load_biome_resolver_from_cache,
 )
@@ -118,26 +119,33 @@ def ensure_world_materials(
             target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
 
     # 2. Bind Precompiled Atlas Chunk Materials for used chunks only
-    if (atlas is not None or atlas_mapping_path.exists()) and build_atlas_chunk_material is not None:
+    active_atlas = atlas or load_baked_atlas_from_cache(prefs)
+    atlas_data = None
+    if active_atlas is None:
+        atlas_data = load_atlas_mapping_from_cache(prefs)
+
+    if (active_atlas is not None or atlas_data is not None or atlas_mapping_path.exists()) and build_atlas_chunk_material is not None:
         try:
             # Query chunk metadata from BakedAtlas (Rust SSOT) or fallback to mapping JSON
             chunk_meta_map: dict[int, dict[str, Any]] = {}
-            if atlas is not None and hasattr(atlas, "get_chunk_info"):
+            if active_atlas is not None and hasattr(active_atlas, "get_chunk_info"):
                 if target_chunk_ids is not None:
                     for cid in sorted(target_chunk_ids):
-                        cm = atlas.get_chunk_info(cid)
+                        cm = active_atlas.get_chunk_info(cid)
                         if cm is not None:
                             chunk_meta_map[cid] = cm
                 else:
-                    all_chunks = atlas.get_all_chunks_info() if hasattr(atlas, "get_all_chunks_info") else []
+                    all_chunks = active_atlas.get_all_chunks_info() if hasattr(active_atlas, "get_all_chunks_info") else []
                     for cm in all_chunks:
                         chunk_meta_map[cm["chunk_id"]] = cm
-            elif atlas_mapping_path.exists():
-                atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
-                for idx, cm in enumerate(atlas_data.get("chunks", [])):
-                    cid = cm.get("chunk_id", idx)
-                    if target_chunk_ids is None or cid in target_chunk_ids:
-                        chunk_meta_map[cid] = cm
+            else:
+                if atlas_data is None and atlas_mapping_path.exists():
+                    atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
+                if atlas_data is not None:
+                    for idx, cm in enumerate(atlas_data.get("chunks", [])):
+                        cid = cm.get("chunk_id", idx)
+                        if target_chunk_ids is None or cid in target_chunk_ids:
+                            chunk_meta_map[cid] = cm
 
             if chunk_meta_map:
                 colormaps = ensure_colormaps_extracted(prefs)
