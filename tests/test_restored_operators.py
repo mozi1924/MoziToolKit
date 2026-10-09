@@ -259,6 +259,51 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_adaptive_pixel_split_operator(self):
+        mesh = bpy.data.meshes.new("TestSplitMesh")
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.verify()
+
+        v0 = bm.verts.new((-0.5, -0.5, 0.0))
+        v1 = bm.verts.new((0.5, -0.5, 0.0))
+        v2 = bm.verts.new((0.5, 0.5, 0.0))
+        v3 = bm.verts.new((-0.5, 0.5, 0.0))
+        face = bm.faces.new([v0, v1, v2, v3])
+        face.select = True
+
+        loops = list(face.loops)
+        loops[0][uv_layer].uv = (0.0, 0.0)
+        loops[1][uv_layer].uv = (1.0, 0.0)
+        loops[2][uv_layer].uv = (1.0, 1.0)
+        loops[3][uv_layer].uv = (0.0, 1.0)
+
+        bm.to_mesh(mesh)
+        bm.free()
+
+        obj = bpy.data.objects.new("TestSplitObj", mesh)
+        bpy.context.collection.objects.link(obj)
+
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+
+        bpy.ops.object.mode_set(mode="EDIT")
+        res = bpy.ops.mozi.adaptive_pixel_split(
+            manual_resolution=(2, 2),
+            pixels_per_face=1.0,
+            auto_resolution=False,
+            selection_scope="ALL",
+        )
+        self.assertEqual(res, {"FINISHED"})
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        # 2x2 subdivision on 1 quad should result in 4 quads
+        self.assertEqual(len(mesh.polygons), 4)
+
+        # Cleanup
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     import sys

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import bpy
 from bpy.props import FloatProperty, EnumProperty, BoolProperty
+import numpy as np
 
 try:
     from ..bridge import batch_analyze_transparent_faces
@@ -177,7 +178,8 @@ class MOZI_OT_select_transparent_faces(bpy.types.Operator):
             transparent_faces = []
             for img, face_data in image_groups.items():
                 w, h = img.size[0], img.size[1]
-                pixels = img.pixels[:]
+                pixels = np.empty(w * h * 4, dtype=np.float32)
+                img.pixels.foreach_get(pixels)
                 faces_list = [fd[0] for fd in face_data]
                 uvs_list = [fd[1] for fd in face_data]
                 results = batch_analyze_transparent_faces(
