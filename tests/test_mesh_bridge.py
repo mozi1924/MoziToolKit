@@ -29,6 +29,8 @@ from bridge.mesh import (
     MTK_TO_BLENDER_TYPE,
     extract_mesh_data,
     inject_mesh_data,
+    resolve_source_texture_keys,
+    inject_face_source_texture_keys,
 )
 from utils.materials.matching.presets.registry import (
     build_matching_context,
@@ -269,6 +271,62 @@ class TestMeshBridge(unittest.TestCase):
         face_mats = mesh_data.get_face_materials()
         self.assertEqual(len(face_mats), 1)
         self.assertEqual(face_mats[0], 1)
+
+
+class TestPaletteSourceTextureKeys(unittest.TestCase):
+    def test_resolve_from_palette_int(self):
+        class MockAttrData:
+            def __init__(self, values):
+                self._values = values
+            def __len__(self):
+                return len(self._values)
+            def foreach_get(self, attr_name, target):
+                for i, v in enumerate(self._values):
+                    target[i] = v
+
+        class MockAttr:
+            def __init__(self, values):
+                self.data = MockAttrData(values)
+
+        class MockMeshObj:
+            def __init__(self):
+                self.polygons = [object(), object(), object(), object()]
+                self.attributes = {"mtk_source_texture_idx": MockAttr([0, 1, 0, 2])}
+                self["mtk_source_textures"] = ["stone", "grass_block_top", "dirt"]
+
+            def __contains__(self, key):
+                return key in self.__dict__
+
+            def __getitem__(self, key):
+                return self.__dict__[key]
+
+            def __setitem__(self, key, value):
+                self.__dict__[key] = value
+
+            def keys(self):
+                return self.__dict__.keys()
+
+        mesh = MockMeshObj()
+        resolved = resolve_source_texture_keys(mesh)
+        self.assertEqual(resolved, ["stone", "grass_block_top", "stone", "dirt"])
+
+    def test_resolve_from_legacy_string(self):
+        class MockStringElem:
+            def __init__(self, val):
+                self.value = val
+
+        class MockAttr:
+            def __init__(self, values):
+                self.data = [MockStringElem(v) for v in values]
+
+        class MockMeshObj:
+            def __init__(self):
+                self.polygons = [object(), object()]
+                self.attributes = {"mtk_source_texture_key": MockAttr([b"stone", "dirt"])}
+
+        mesh = MockMeshObj()
+        resolved = resolve_source_texture_keys(mesh)
+        self.assertEqual(resolved, ["stone", "dirt"])
 
 
 if __name__ == "__main__":

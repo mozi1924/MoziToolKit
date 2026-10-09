@@ -254,10 +254,20 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any) -> None:
     if not hasattr(mesh, "attributes"):
         return
 
+    handled_source_keys = False
     for attr in mesh.attributes:
         try:
             attr_name = attr.name
             if attr_name in ("position", "normal") or attr_name.startswith("."):
+                continue
+
+            if attr_name in ("mtk_source_texture_key", "mtk_source_texture_idx"):
+                if not handled_source_keys:
+                    domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "face")
+                    resolved = resolve_source_texture_keys(mesh)
+                    if resolved:
+                        mesh_data.add_string_attribute("mtk_source_texture_key", domain_str, resolved)
+                    handled_source_keys = True
                 continue
 
             domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "point")
@@ -542,15 +552,18 @@ def _inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes:
             if dtype_name.lower() == "string":
                 str_vals = mesh_data.get_string_attribute(attr_name)
                 if str_vals and len(str_vals) == len(b_attr.data):
-                    for i, val in enumerate(str_vals):
-                        b_val = val.encode("utf-8") if isinstance(val, str) else bytes(val)
-                        try:
-                            b_attr.data[i].value = b_val
-                        except Exception:
+                    if attr_name == "mtk_source_texture_key" and b_domain == "FACE":
+                        inject_face_source_texture_keys(mesh, str_vals)
+                    elif len(str_vals) <= 256:
+                        for i, val in enumerate(str_vals):
+                            b_val = val.encode("utf-8") if isinstance(val, str) else bytes(val)
                             try:
-                                b_attr.data[i].value = val
+                                b_attr.data[i].value = b_val
                             except Exception:
-                                pass
+                                try:
+                                    b_attr.data[i].value = val
+                                except Exception:
+                                    pass
             else:
                 mv = mesh_data.attribute_memoryview(attr_name)
                 if mv is not None:
@@ -581,8 +594,102 @@ def _get_or_create_attribute(mesh: Any, name: str, data_type: str, domain: str =
     return attr
 
 
+def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
+    """
+    High-performance helper to resolve face source texture keys.
+    Prioritizes INT palette-indexed attribute ('mtk_source_texture_idx' + 'mtk_source_textures'),
+    with graceful fallback to legacy STRING attribute ('mtk_source_texture_key').
+    """
+    mesh = _get_mesh(mesh_or_obj)
+    if not mesh or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
+        return []
+
+    num_polys = len(mesh.polygons)
+
+    # 1. Fast Path: INT attribute + Palette
+    palette = None
+    if hasattr(mesh, "keys") and "mtk_source_textures" in mesh:
+        palette = list(mesh["mtk_source_textures"])
+    elif hasattr(mesh_or_obj, "get") and "mtk_source_textures" in mesh_or_obj:
+        palette = list(mesh_or_obj["mtk_source_textures"])
+
+    attr_idx = mesh.attributes.get("mtk_source_texture_idx") if hasattr(mesh, "attributes") else None
+    if attr_idx is not None and palette is not None and len(attr_idx.data) == num_polys:
+        pal_len = len(palette)
+        if hasattr(attr_idx.data, "foreach_get"):
+            if HAS_NUMPY:
+                idx_arr = np.empty(num_polys, dtype=np.int32)
+                attr_idx.data.foreach_get("value", idx_arr)
+                return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
+            else:
+                idx_arr = array.array("i", [0] * num_polys)
+                attr_idx.data.foreach_get("value", idx_arr)
+                return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
+
+    # 2. Legacy Fallback: STRING attribute
+    attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
+    if attr_str is not None and len(attr_str.data) == num_polys:
+        result = []
+        for elem in attr_str.data:
+            val = elem.value
+            if isinstance(val, (bytes, bytearray)):
+                result.append(val.decode("utf-8", errors="replace"))
+            else:
+                result.append(str(val))
+        return result
+
+    return []
+
+
+def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
+    """
+    Inject face source texture keys via palette indexing (sub-millisecond throughput).
+    Creates:
+      - mesh["mtk_source_textures"]: List[str] palette
+      - "mtk_source_texture_idx": INT (FACE) attribute with mapped indices
+      - "mtk_source_texture_key": Legacy STRING (FACE) attribute (only populated for meshes <= 256 faces)
+    """
+    if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
+        return
+    num_polys = len(mesh.polygons)
+    if num_polys == 0 or len(values) != num_polys:
+        return
+
+    # 1. Build palette and index mapping
+    palette = list(dict.fromkeys(values))
+    key_to_idx = {k: i for i, k in enumerate(palette)}
+    mesh["mtk_source_textures"] = palette
+
+    # 2. Write INT attribute in bulk
+    attr_idx = _get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
+    if attr_idx is not None and len(attr_idx.data) == num_polys:
+        if HAS_NUMPY:
+            np_indices = np.array([key_to_idx[k] for k in values], dtype=np.int32)
+            attr_idx.data.foreach_set("value", np_indices)
+        else:
+            arr = array.array("i", (key_to_idx[k] for k in values))
+            attr_idx.data.foreach_set("value", arr)
+
+    # 3. Legacy STRING attribute compatibility
+    attr_str = _get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+    if attr_str is not None and len(attr_str.data) == num_polys:
+        if num_polys <= 256:
+            for i, val in enumerate(values):
+                b_val = val.encode("utf-8") if isinstance(val, str) else bytes(val)
+                try:
+                    attr_str.data[i].value = b_val
+                except Exception:
+                    try:
+                        attr_str.data[i].value = val
+                    except Exception:
+                        pass
+
+
 def inject_face_attribute_string(mesh: Any, name: str, values: List[str]) -> None:
     """Inject a Face-domain String attribute into Blender Mesh."""
+    if name == "mtk_source_texture_key":
+        inject_face_source_texture_keys(mesh, values)
+        return
     attr = _get_or_create_attribute(mesh, name, "STRING", "FACE")
     if attr and len(attr.data) == len(values):
         for i, val in enumerate(values):

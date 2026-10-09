@@ -297,7 +297,7 @@ def resolve_mesh_rebuild_targets(
 
         # Check if active has mesh provenance attributes (e.g. from material replacement)
         mesh = getattr(active, "data", None)
-        if mesh and hasattr(mesh, "attributes") and "mtk_source_texture_key" in mesh.attributes:
+        if mesh and hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes):
             return None, active, None, "ATTRIBUTES"
 
     return None, None, None, "NONE"

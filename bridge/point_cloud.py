@@ -234,8 +234,8 @@ def inject_voxel_point_cloud(
         if obj is not None:
             obj[PROP_BLOCK_PALETTE] = palette
 
-        # Maintain STRING attribute compatibility for small clouds or when fast_mode is explicitly disabled
-        if not fast_mode or pt_count <= 256:
+        # Maintain STRING attribute compatibility only for small clouds (<= 256) to eliminate RNA stalls
+        if pt_count <= 256:
             attr_state = _ensure_attr(ATTR_BLOCK_STATE, "STRING", "POINT")
             if attr_state is not None:
                 for i, st in enumerate(states):
@@ -263,7 +263,8 @@ def inject_voxel_point_cloud(
         if obj is not None:
             obj[PROP_BIOME_PALETTE] = b_palette
 
-        if not fast_mode or pt_count <= 256:
+        # Maintain STRING attribute compatibility only for small clouds (<= 256)
+        if pt_count <= 256:
             attr_biome = _ensure_attr(ATTR_BIOME, "STRING", "POINT")
             if attr_biome is not None:
                 for i, bm in enumerate(biomes):

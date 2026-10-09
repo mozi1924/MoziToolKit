@@ -46,6 +46,7 @@ from ..constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
     ATTR_COLORMAP_UV,
+    ATTR_SOURCE_TEXTURE_KEY,
 )
 
 # Canonical Tint Type Identifiers
@@ -320,8 +321,21 @@ def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
     """Read a FACE domain string attribute in bulk."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return []
-    attr = mesh.attributes.get(name)
     num_polys = len(mesh.polygons)
+    if name == ATTR_SOURCE_TEXTURE_KEY:
+        try:
+            from ....bridge.mesh import resolve_source_texture_keys
+        except (ImportError, ValueError):
+            try:
+                from bridge.mesh import resolve_source_texture_keys
+            except (ImportError, ValueError):
+                resolve_source_texture_keys = None
+        if resolve_source_texture_keys is not None:
+            resolved = resolve_source_texture_keys(mesh)
+            if resolved and len(resolved) == num_polys:
+                return resolved
+
+    attr = mesh.attributes.get(name)
     if not attr or attr.domain != "FACE":
         return [""] * num_polys
 

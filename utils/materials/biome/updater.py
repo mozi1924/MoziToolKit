@@ -23,6 +23,7 @@ from ..constants import (
     ATTR_BIOME_TINT_COLOR,
     ATTR_COLORMAP_UV,
     ATTR_SOURCE_TEXTURE_KEY,
+    ATTR_SOURCE_TEXTURE_IDX,
     PROP_CREATED_BY,
     PROP_ATLAS_MAPPING,
     PROP_PACK_HASH,
@@ -47,7 +48,7 @@ def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
         return True
     mesh = obj.data
     attrs = mesh.attributes
-    if any(name in attrs for name in (ATTR_SOURCE_TEXTURE_KEY, ATTR_BIOME_TINT_DATA, ATTR_BIOME_TINT_COLOR, ATTR_ATLAS_CHUNK_ID, ATTR_COLORMAP_UV)):
+    if any(name in attrs for name in (ATTR_SOURCE_TEXTURE_KEY, ATTR_SOURCE_TEXTURE_IDX, ATTR_BIOME_TINT_DATA, ATTR_BIOME_TINT_COLOR, ATTR_ATLAS_CHUNK_ID, ATTR_COLORMAP_UV)):
         return True
     for slot in obj.material_slots:
         mat = slot.material
@@ -99,7 +100,7 @@ def detect_object_material_mode(obj: bpy.types.Object) -> str:
     mesh = obj.data
     if ATTR_ATLAS_CHUNK_ID in mesh.attributes:
         return "ATLAS"
-    if ATTR_BIOME_TINT_DATA in mesh.attributes or ATTR_SOURCE_TEXTURE_KEY in mesh.attributes:
+    if ATTR_BIOME_TINT_DATA in mesh.attributes or ATTR_SOURCE_TEXTURE_KEY in mesh.attributes or ATTR_SOURCE_TEXTURE_IDX in mesh.attributes:
         return "ATLAS"
 
     return "GENERIC"
@@ -175,7 +176,7 @@ def update_object_biome(
         )
 
         source_keys = []
-        if ATTR_SOURCE_TEXTURE_KEY in mesh.attributes:
+        if ATTR_SOURCE_TEXTURE_KEY in mesh.attributes or ATTR_SOURCE_TEXTURE_IDX in mesh.attributes:
             source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
 
         if any(source_keys):
