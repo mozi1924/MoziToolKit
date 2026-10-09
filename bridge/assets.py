@@ -204,6 +204,7 @@ def precompile_stack(
                     compile_models=True,
                 )
         package_path = getattr(res, "package_path", "")
+        invalidate_asset_cache_memory()
         get_cache_stats(prefs, force_refresh=True)
         duration = time.time() - start_time
 
@@ -252,26 +253,59 @@ def precompile_stack_async(
     return future
 
 
-def get_active_cache_package_path(prefs=None) -> Optional[Path]:
+# In-memory session memoization to eliminate redundant disk hashing & package reopening
+_ACTIVE_ASSET_CACHE: Optional[Any] = None
+_ACTIVE_CACHE_PKG_PATH: Optional[str] = None
+_ACTIVE_CACHE_MTIME: float = 0.0
+_ACTIVE_CACHE_MANIFEST: Optional[Dict[str, Any]] = None
+
+
+def invalidate_asset_cache_memory() -> None:
+    """Invalidates in-memory cached AssetCache, manifest, and pipeline objects."""
+    global _ACTIVE_ASSET_CACHE, _ACTIVE_CACHE_PKG_PATH, _ACTIVE_CACHE_MTIME, _ACTIVE_CACHE_MANIFEST
+    _ACTIVE_ASSET_CACHE = None
+    _ACTIVE_CACHE_PKG_PATH = None
+    _ACTIVE_CACHE_MTIME = 0.0
+    _ACTIVE_CACHE_MANIFEST = None
+    try:
+        from .world import invalidate_world_pipeline_assets
+        invalidate_world_pipeline_assets()
+    except Exception:
+        pass
+
+
+def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = False) -> Optional[Path]:
     """
     Returns the Path to the active .mtkcache file for the configured pack stack.
-    Checks stack fingerprint match first, then falls back to newest package.
+    Checks stack fingerprint match if compute_fingerprint is True, otherwise fast-paths
+    to currently active package or newest package by mtime.
     """
-    mtk = _get_libmtk()
-    cache_dir = get_cache_dir(prefs)
+    global _ACTIVE_CACHE_PKG_PATH
+    cache_dir = get_cache_dir(prefs).resolve()
     if not cache_dir.exists():
+        invalidate_asset_cache_memory()
         return None
 
-    stack = get_configured_pack_stack(prefs)
-    if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
-        fp = stack.compute_stack_fingerprint()
-        direct_pkg = cache_dir / f"{fp}.mtkcache"
-        if direct_pkg.exists() and direct_pkg.is_file():
-            if mtk and hasattr(mtk, "is_valid_cache_package"):
-                if mtk.is_valid_cache_package(str(direct_pkg), fp):
-                    return direct_pkg
-            else:
-                return direct_pkg
+    if _ACTIVE_CACHE_PKG_PATH is not None:
+        p = Path(_ACTIVE_CACHE_PKG_PATH)
+        if p.parent != cache_dir:
+            invalidate_asset_cache_memory()
+        elif not compute_fingerprint and p.exists() and p.is_file():
+            return p
+
+    mtk = _get_libmtk()
+    if compute_fingerprint:
+        stack = get_configured_pack_stack(prefs)
+        if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
+            fp = stack.compute_stack_fingerprint()
+            for cand_name in (f"{fp}.mtkcache", f"mtk_fp_{fp}.mtkcache", f"{fp}"):
+                direct_pkg = cache_dir / cand_name
+                if direct_pkg.exists() and direct_pkg.is_file():
+                    if mtk and hasattr(mtk, "is_valid_cache_package"):
+                        if mtk.is_valid_cache_package(str(direct_pkg), fp):
+                            return direct_pkg
+                    else:
+                        return direct_pkg
 
     # Search for all .mtkcache files in cache dir sorted by mtime descending
     candidates = sorted(cache_dir.glob("*.mtkcache"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -281,16 +315,51 @@ def get_active_cache_package_path(prefs=None) -> Optional[Path]:
 
 
 def open_active_asset_cache(prefs=None) -> Optional[Any]:
-    """Opens active AssetCache reader from .mtkcache package."""
+    """Opens active AssetCache reader from .mtkcache package, reusing open instance when valid."""
+    global _ACTIVE_ASSET_CACHE, _ACTIVE_CACHE_PKG_PATH, _ACTIVE_CACHE_MTIME, _ACTIVE_CACHE_MANIFEST
     mtk = _get_libmtk()
     if mtk is None or not hasattr(mtk, "AssetCache"):
         return None
-    pkg = get_active_cache_package_path(prefs)
-    if pkg is None:
+
+    cache_dir = get_cache_dir(prefs).resolve()
+    if not cache_dir.exists():
+        invalidate_asset_cache_memory()
         return None
+
+    if _ACTIVE_CACHE_PKG_PATH is not None and Path(_ACTIVE_CACHE_PKG_PATH).parent != cache_dir:
+        invalidate_asset_cache_memory()
+
+    pkg = get_active_cache_package_path(prefs, compute_fingerprint=False)
+    if pkg is None or not pkg.exists():
+        invalidate_asset_cache_memory()
+        return None
+
+    pkg_str = str(pkg.resolve())
     try:
-        return mtk.AssetCache.open(str(pkg.resolve()))
+        mtime = pkg.stat().st_mtime
     except Exception:
+        mtime = 0.0
+
+    if (
+        _ACTIVE_ASSET_CACHE is not None
+        and _ACTIVE_CACHE_PKG_PATH == pkg_str
+        and _ACTIVE_CACHE_MTIME == mtime
+    ):
+        return _ACTIVE_ASSET_CACHE
+
+    try:
+        _ACTIVE_ASSET_CACHE = mtk.AssetCache.open(pkg_str)
+        _ACTIVE_CACHE_PKG_PATH = pkg_str
+        _ACTIVE_CACHE_MTIME = mtime
+        _ACTIVE_CACHE_MANIFEST = (
+            _ACTIVE_ASSET_CACHE.get_manifest()
+            if hasattr(_ACTIVE_ASSET_CACHE, "get_manifest")
+            else None
+        )
+        return _ACTIVE_ASSET_CACHE
+    except Exception as e:
+        logger.debug("Failed opening active asset cache: %s", e)
+        invalidate_asset_cache_memory()
         return None
 
 
@@ -405,7 +474,7 @@ def ensure_colormaps_extracted(prefs=None) -> Dict[str, Any]:
     return result
 
 
-def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Optional[Any]:
+def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> Optional[Any]:
     """
     Loads the precompiled binary model database from cache package into memory.
     Optionally verifies that the package fingerprint matches active resource pack stack.
@@ -435,7 +504,7 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = True) -> Op
         return None
 
 
-def load_model_database_from_cache(prefs=None, verify_fingerprint: bool = True) -> Optional[Any]:
+def load_model_database_from_cache(prefs=None, verify_fingerprint: bool = False) -> Optional[Any]:
     """Alias for load_baked_model_database."""
     return load_baked_model_database(prefs, verify_fingerprint=verify_fingerprint)
 
@@ -487,10 +556,14 @@ def get_cache_manifest(prefs=None) -> Optional[Dict[str, Any]]:
     Reads manifest from active .mtkcache package.
     Returns parsed dictionary or None.
     """
+    global _ACTIVE_CACHE_MANIFEST
     cache = open_active_asset_cache(prefs)
     if cache is not None:
+        if _ACTIVE_CACHE_MANIFEST is not None:
+            return _ACTIVE_CACHE_MANIFEST
         try:
-            return cache.get_manifest()
+            _ACTIVE_CACHE_MANIFEST = cache.get_manifest() if hasattr(cache, "get_manifest") else None
+            return _ACTIVE_CACHE_MANIFEST
         except Exception:
             pass
     return None
@@ -498,9 +571,14 @@ def get_cache_manifest(prefs=None) -> Optional[Dict[str, Any]]:
 
 def get_cache_fingerprint(prefs=None) -> Optional[str]:
     """
-    Returns active stack fingerprint recorded in package manifest,
+    Returns active stack fingerprint recorded in package manifest or cache object,
     or None if cache does not exist.
     """
+    cache = open_active_asset_cache(prefs)
+    if cache is not None:
+        fp = getattr(cache, "fingerprint", None)
+        if fp:
+            return str(fp)
     manifest = get_cache_manifest(prefs)
     if manifest and isinstance(manifest, dict):
         return manifest.get("fingerprint")
@@ -519,7 +597,7 @@ def get_cache_timestamp(prefs=None) -> float:
         except (ValueError, TypeError):
             pass
 
-    pkg = get_active_cache_package_path(prefs)
+    pkg = get_active_cache_package_path(prefs, compute_fingerprint=False)
     if pkg is not None and pkg.exists():
         try:
             return float(pkg.stat().st_mtime)
@@ -546,9 +624,11 @@ def check_cache_dirty(
         return is_dirty, current_fp, current_ts
 
     if current_fp != cached_fingerprint:
+        invalidate_asset_cache_memory()
         return True, current_fp, current_ts
 
     if abs(current_ts - cached_timestamp) > 1e-3:
+        invalidate_asset_cache_memory()
         return True, current_fp, current_ts
 
     return False, current_fp, current_ts
@@ -646,6 +726,7 @@ def get_cache_stats(prefs=None, force_refresh: bool = False) -> Dict[str, Any]:
 def clear_cache(prefs=None) -> int:
     """Empties all compiled caches in the cache directory and returns the total bytes freed."""
     global _cached_cache_stats, _cached_cache_stats_path
+    invalidate_asset_cache_memory()
     cache_path = get_cache_dir(prefs)
     freed_bytes = 0
     if cache_path.exists():
