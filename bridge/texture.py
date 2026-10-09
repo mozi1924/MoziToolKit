@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import List, Sequence, Tuple, Any
 
+import numpy as np
+
 from .engine import get_libmtk, require_libmtk
 
 
@@ -15,6 +17,10 @@ def __getattr__(name: str) -> Any:
     if name == "mtk_py":
         return get_libmtk()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def _as_pixel_buffer(pixels: Any) -> Any:
+    return pixels if isinstance(pixels, (list, np.ndarray)) else list(pixels)
 
 
 def sample_uv_alpha(
@@ -27,8 +33,7 @@ def sample_uv_alpha(
 ) -> float:
     """Sample alpha value [0.0, 1.0] at normalized UV coordinate."""
     mtk = require_libmtk("sample_uv_alpha")
-    pix_list = list(pixels) if not isinstance(pixels, list) else pixels
-    return mtk.sample_uv_alpha_f32(u, v, width, height, pix_list, invert_y)
+    return mtk.sample_uv_alpha_f32(u, v, width, height, _as_pixel_buffer(pixels), invert_y)
 
 
 def is_face_transparent(
@@ -42,9 +47,10 @@ def is_face_transparent(
 ) -> bool:
     """Check if a single face is transparent against texture pixels."""
     mtk = require_libmtk("is_face_transparent")
-    pix_list = list(pixels) if not isinstance(pixels, list) else pixels
     uv_list = [tuple(p) for p in face_uvs]
-    return mtk.is_face_transparent_f32(uv_list, width, height, pix_list, mode, threshold, invert_y)
+    return mtk.is_face_transparent_f32(
+        uv_list, width, height, _as_pixel_buffer(pixels), mode, threshold, invert_y
+    )
 
 
 def batch_analyze_transparent_faces(
@@ -60,8 +66,7 @@ def batch_analyze_transparent_faces(
     if not faces_uvs:
         return []
     mtk = require_libmtk("batch_analyze_transparent_faces")
-    pix_list = list(pixels) if not isinstance(pixels, list) else pixels
     uvs_nested = [[tuple(p) for p in face] for face in faces_uvs]
     return mtk.batch_analyze_transparent_faces_f32(
-        uvs_nested, width, height, pix_list, mode, threshold, invert_y
+        uvs_nested, width, height, _as_pixel_buffer(pixels), mode, threshold, invert_y
     )
