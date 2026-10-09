@@ -28,7 +28,8 @@ for _path in (PROJECT_DIR, PROJECT_DIR.parent):
 
 _site_packages = os.environ.get("MTK_TEST_SITE_PACKAGES")
 if _site_packages and _site_packages not in sys.path:
-    sys.path.insert(0, _site_packages)
+    # Append so Blender's built-in packages (e.g. bundled numpy) take precedence over host Python
+    sys.path.append(_site_packages)
 
 
 def main() -> int:
