@@ -236,28 +236,41 @@ class MOZI_OT_repair_fluid_uv(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return poll_edit_mesh(context)
+        return bool(context.active_object and context.active_object.type == "MESH")
 
     def execute(self, context):
-        with bmesh_context(context) as (obj, bm):
-            uv_layer = bm.loops.layers.uv.verify()
-            selected_faces = [f for f in bm.faces if f.select]
+        obj = context.active_object
+        if not obj or obj.type != "MESH":
+            return {"CANCELLED"}
 
-            if self.selection_scope == "SELECTED":
-                target_faces = selected_faces
-            elif self.selection_scope == "ALL":
-                target_faces = list(bm.faces)
-            else:  # AUTO
-                target_faces = selected_faces if selected_faces else list(bm.faces)
+        if context.mode == "EDIT_MESH":
+            with bmesh_context(context) as (edit_obj, bm):
+                uv_layer = bm.loops.layers.uv.verify()
+                selected_faces = [f for f in bm.faces if f.select]
 
-            if not target_faces:
-                self.report({"WARNING"}, "No faces available to repair fluid UV.")
-                return {"CANCELLED"}
+                if self.selection_scope == "SELECTED":
+                    target_faces = selected_faces
+                elif self.selection_scope == "ALL":
+                    target_faces = list(bm.faces)
+                else:  # AUTO
+                    target_faces = selected_faces if selected_faces else list(bm.faces)
 
+                if not target_faces:
+                    self.report({"WARNING"}, "No faces available to repair fluid UV.")
+                    return {"CANCELLED"}
+
+                repaired_count = process_mesh_fluid_uv_repairs(
+                    bm,
+                    uv_layer=uv_layer,
+                    target_faces=target_faces,
+                    force=self.force,
+                    min_slope_threshold=self.min_slope_threshold,
+                )
+        else:
+            # Fast vectorized Object Mode path directly on mesh
+            mesh = obj.data
             repaired_count = process_mesh_fluid_uv_repairs(
-                bm,
-                uv_layer=uv_layer,
-                target_faces=target_faces,
+                mesh,
                 force=self.force,
                 min_slope_threshold=self.min_slope_threshold,
             )

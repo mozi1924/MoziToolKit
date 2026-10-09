@@ -50,6 +50,8 @@ ATTR_EMISSION = "mtk_emission"
 
 # Canonical source provenance attributes
 ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
+ATTR_SOURCE_TEXTURE_IDX = "mtk_source_texture_idx"
+PROP_SOURCE_TEXTURES = "mtk_source_textures"
 ATTR_SOURCE_ORIGIN = "mtk_source_origin"
 FALLBACK_TEXTURE_KEY = "mozi:fallback"
 PROVENANCE_SCHEMA_VERSION = 2

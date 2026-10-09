@@ -25,7 +25,7 @@ def _has_provenance_attributes(obj: bpy.types.Object | None) -> bool:
     if not obj or obj.type != "MESH" or not obj.data:
         return False
     mesh = obj.data
-    return bool(hasattr(mesh, "attributes") and "mtk_source_texture_key" in mesh.attributes)
+    return bool(hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes))
 
 
 @register_menu_item(views=["object", "mesh"], label="Replace Material")
@@ -168,7 +168,7 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
         if not context.active_object or context.active_object.type != "MESH":
             return False
         mesh = context.active_object.data
-        return hasattr(mesh, "attributes") and "mtk_source_texture_key" in mesh.attributes
+        return hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes)
 
     def execute(self, context):
         obj = context.active_object

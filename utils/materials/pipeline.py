@@ -63,6 +63,8 @@ try:
         inject_face_attribute_int,
         inject_face_attribute_float,
         inject_face_attribute_float4,
+        resolve_source_texture_keys,
+        inject_face_source_texture_keys,
     )
     from .builder.atlas_builder import build_atlas_chunk_material
     from .builder.standalone_builder import build_standalone_material
@@ -86,6 +88,8 @@ except (ImportError, ValueError):
         inject_face_attribute_int,
         inject_face_attribute_float,
         inject_face_attribute_float4,
+        resolve_source_texture_keys,
+        inject_face_source_texture_keys,
     )
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
     from utils.materials.builder.standalone_builder import build_standalone_material
@@ -191,13 +195,9 @@ def extract_face_material_context(
     loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
     uv_layer.data.foreach_get("uv", loop_uvs)
 
-    prov_attr = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
-    existing_prov_keys: Optional[List[str]] = None
-    if prov_attr is not None and len(prov_attr.data) == num_polys:
-        existing_prov_keys = [
-            elem.value.decode("utf-8") if isinstance(elem.value, (bytes, bytearray)) else str(elem.value)
-            for elem in prov_attr.data
-        ]
+    existing_prov_keys: Optional[List[str]] = resolve_source_texture_keys(mesh)
+    if not existing_prov_keys or len(existing_prov_keys) != num_polys:
+        existing_prov_keys = None
 
     face_materials: List[str] = []
     face_loop_ranges: List[Tuple[int, int]] = []
@@ -672,14 +672,9 @@ def restore_materials_from_provenance(
         return {"success": False, "message": "Mesh has no geometry or polygons."}
 
     num_polys = len(mesh.polygons)
-    src_attr = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
-    if src_attr is None:
-        return {"success": False, "message": "Mesh lacks required mtk_source_texture_key attribute for provenance."}
-
-    face_source_keys = [
-        elem.value.decode("utf-8", errors="replace") if isinstance(elem.value, (bytes, bytearray)) else str(elem.value)
-        for elem in src_attr.data
-    ]
+    face_source_keys = resolve_source_texture_keys(mesh)
+    if not face_source_keys or len(face_source_keys) != num_polys:
+        return {"success": False, "message": "Mesh lacks required mtk_source_texture_key / mtk_source_texture_idx attribute for provenance."}
 
     chunk_attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
     face_chunk_ids = [elem.value for elem in chunk_attr.data] if chunk_attr else [0] * num_polys

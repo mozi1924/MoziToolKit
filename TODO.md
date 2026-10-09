@@ -181,9 +181,9 @@
     3. 单次通过 `inject_mesh_data` 批量回灌 Blender。
   - [ ] 目标性能：大型网格切分耗时从 3~8 秒下降至 20~50 毫秒（提速 100x+）。
 
-- [ ] **任务二：字符串面属性“调色板化（Palette Indexing）”改造**
-  - [ ] 破局 Blender C RNA 对字符串属性执行 `foreach_set` 报错（`internal error setting the array`）引发的慢速 Python `for i, val in enumerate(values): attr.data[i].value = val` 循环。
-  - [ ] 将面域 `mtk_source_texture_key`、点云 `block_state`、`biome` 全面重构为 **`INT` 索引属性 + 网格/物体级 `ID-Property` 调色板数组**：
+- [x] **任务二：字符串面属性“调色板化（Palette Indexing）”改造（✅ 已完成）**
+  - [x] 破局 Blender C RNA 对字符串属性执行 `foreach_set` 报错（`internal error setting the array`）引发的慢速 Python `for i, val in enumerate(values): attr.data[i].value = val` 循环。
+  - [x] 将面域 `mtk_source_texture_key`、点云 `block_state`、`biome` 全面重构为 **`INT` 索引属性 + 网格/物体级 `ID-Property` 调色板数组**：
     - 面属性写入：`mesh.attributes.new(name="mtk_source_texture_idx", type="INT", domain="FACE")`，通过 `foreach_set("value", np_indices)` 批量写入（10万面耗时 < 0.5ms）；
     - 调色板存储：`mesh["mtk_source_textures"] = [...]`；
     - 读取端兼容适配：提供统一的 `resolve_source_texture_keys(mesh)` 助手方法，优先读取 `INT` + `palette`（微秒级），优雅兼容旧工程遗留的 String 属性；
@@ -200,7 +200,7 @@
     - 改造 `apply_biome_tint_attributes` 支持直接接收一维连续内存 NumPy 数组向 `foreach_set` 零开销灌入；
     - 确保 20 万面的调色板动态切换真正达成宣称的 `< 1ms` 刷新响应。
 
-- [ ] **任务四：网格拓扑校验与流体 UV 修复向量化**
+- [x] **任务四：网格拓扑校验与流体 UV 修复向量化（✅ 已完成）**
   - [x] **拓扑全四边形校验 ([`bridge/mesh.py`](bridge/mesh.py))**：
     - 将 `all(getattr(p, "loop_total", len(p.vertices)) == 4 for p in mesh.polygons)`（20万次 Python 对象访问）重构为：
       ```python
@@ -209,9 +209,9 @@
       is_all_quads = bool(np.all(poly_totals == 4))
       ```
       耗时从 150ms 压缩至 0.3ms（提速 500x）。
-  - [ ] **流体 UV 修复 ([`fluid_uv.py`](utils/mesh/fluid_uv.py))**：
+  - [x] **流体 UV 修复 ([`fluid_uv.py`](utils/mesh/fluid_uv.py), [`op_uv.py`](operators/op_uv.py))**：
     - 废弃单面循环 `for li in loop_indices: uv_layer.data[li].uv.x = u`；
-    - BMesh 模式下消除逐顶点、逐面 Python 循环提取，优先在 Object Mode 走全量向量化 Mesh 路径；针对选区面支持批量 NumPy 提取与回写。
+    - BMesh 模式下消除逐顶点、逐面 Python 循环提取，优先在 Object Mode 走全量向量化 Mesh 路径；针对选区面支持批量 NumPy 提取与回写；算子支持 Object Mode 直接执行。
 
 - [ ] **任务五：Rust $\leftrightarrow$ Blender 内存直接写入与零拷贝通道探索（进阶）**
   - [ ] 基于 MCP 实测结论（`mesh.attributes["position"].data[0].as_pointer()` 直指连续 C++ 内存）：
