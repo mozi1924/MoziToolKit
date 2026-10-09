@@ -167,19 +167,27 @@ def inject_voxel_point_cloud(
 
     # 2. Inject 3D positions via zero-copy MemoryView
     pos_injected = False
+    pos_attr = mesh.attributes.get("position") if hasattr(mesh, "attributes") else None
     if hasattr(cloud_data, "positions_memoryview"):
         try:
             pos_mv = cloud_data.positions_memoryview()
-            if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-                pos_mv = pos_mv.cast("f")
-            mesh.vertices.foreach_set("co", pos_mv)
-            pos_injected = True
+            pos_arr = np.frombuffer(pos_mv, dtype=np.float32)
+            if pos_attr is not None and len(pos_attr.data) == pt_count:
+                pos_attr.data.foreach_set("vector", pos_arr)
+                pos_injected = True
+            else:
+                mesh.vertices.foreach_set("co", pos_arr)
+                pos_injected = True
         except Exception as e:
             logger.debug("Fast positions memoryview injection failed: %s", e)
 
     if not pos_injected:
         if hasattr(cloud_data, "positions"):
-            mesh.vertices.foreach_set("co", cloud_data.positions)
+            pos_arr = np.ascontiguousarray(cloud_data.positions, dtype=np.float32)
+            if pos_attr is not None and len(pos_attr.data) == pt_count:
+                pos_attr.data.foreach_set("vector", pos_arr)
+            else:
+                mesh.vertices.foreach_set("co", pos_arr)
 
     # 3. Helper to create or acquire attribute
     def _ensure_attr(name: str, attr_type: str, domain: str = "POINT") -> Optional[Any]:

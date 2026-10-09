@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
+
 logger = logging.getLogger("MoziToolKit.Material.Pipeline")
 
 try:
@@ -337,9 +339,18 @@ def assign_atlas_chunk_materials(
         poly_mat_indices[i] = chunk_to_slot.get(cid, 0)
 
     if atlas_uvs is not None and uv_layer is not None:
-        uv_layer.data.foreach_set("uv", array.array("f", atlas_uvs))
+        atlas_uv_np = np.ascontiguousarray(atlas_uvs, dtype=np.float32)
+        uv_attr = mesh.attributes.get(uv_layer.name) if hasattr(mesh, "attributes") else None
+        if uv_attr is not None and len(uv_attr.data) * 2 == len(atlas_uv_np):
+            uv_attr.data.foreach_set("vector", atlas_uv_np)
+        else:
+            uv_layer.data.foreach_set("uv", atlas_uv_np)
 
-    mesh.polygons.foreach_set("material_index", poly_mat_indices)
+    mat_attr = mesh.attributes.get("material_index") if hasattr(mesh, "attributes") else None
+    if mat_attr is not None and len(mat_attr.data) == len(poly_mat_indices):
+        mat_attr.data.foreach_set("value", np.ascontiguousarray(poly_mat_indices, dtype=np.int32))
+    else:
+        mesh.polygons.foreach_set("material_index", poly_mat_indices)
     return poly_mat_indices
 
 
@@ -424,9 +435,18 @@ def assign_standalone_materials(
         poly_mat_indices[i] = key_to_slot.get(key, 0)
 
     if local_uvs is not None and uv_layer is not None:
-        uv_layer.data.foreach_set("uv", array.array("f", local_uvs))
+        local_uv_np = np.ascontiguousarray(local_uvs, dtype=np.float32)
+        uv_attr = mesh.attributes.get(uv_layer.name) if hasattr(mesh, "attributes") else None
+        if uv_attr is not None and len(uv_attr.data) * 2 == len(local_uv_np):
+            uv_attr.data.foreach_set("vector", local_uv_np)
+        else:
+            uv_layer.data.foreach_set("uv", local_uv_np)
 
-    mesh.polygons.foreach_set("material_index", poly_mat_indices)
+    mat_attr = mesh.attributes.get("material_index") if hasattr(mesh, "attributes") else None
+    if mat_attr is not None and len(mat_attr.data) == len(poly_mat_indices):
+        mat_attr.data.foreach_set("value", np.ascontiguousarray(poly_mat_indices, dtype=np.int32))
+    else:
+        mesh.polygons.foreach_set("material_index", poly_mat_indices)
     return poly_mat_indices
 
 
