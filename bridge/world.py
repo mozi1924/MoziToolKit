@@ -20,6 +20,7 @@ from .point_cloud import ensure_voxel_child_cloud, inject_voxel_point_cloud
 from .assets import (
     get_cache_dir,
     get_cache_fingerprint,
+    get_cache_timestamp,
     ensure_atlas_textures_extracted,
     ensure_colormaps_extracted,
     load_baked_atlas_from_cache,
@@ -43,15 +44,43 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
+_WORLD_PIPELINE_ASSETS_CACHE: Optional[Tuple[Any, Any, Any]] = None
+_WORLD_PIPELINE_FP_CACHE: Optional[str] = None
+_WORLD_PIPELINE_TS_CACHE: float = 0.0
+
+
+def invalidate_world_pipeline_assets() -> None:
+    """Invalidates in-memory cached pipeline assets tuple."""
+    global _WORLD_PIPELINE_ASSETS_CACHE, _WORLD_PIPELINE_FP_CACHE, _WORLD_PIPELINE_TS_CACHE
+    _WORLD_PIPELINE_ASSETS_CACHE = None
+    _WORLD_PIPELINE_FP_CACHE = None
+    _WORLD_PIPELINE_TS_CACHE = 0.0
+
+
 def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
     """
     Acquires precompiled assets required for high-fidelity world meshing:
     Returns (model_db, atlas, biome_resolver).
+    Memoized in memory against the active package fingerprint and timestamp.
     """
-    model_db = load_baked_model_database(prefs)
+    global _WORLD_PIPELINE_ASSETS_CACHE, _WORLD_PIPELINE_FP_CACHE, _WORLD_PIPELINE_TS_CACHE
+    fp = get_cache_fingerprint(prefs)
+    ts = get_cache_timestamp(prefs)
+    if (
+        _WORLD_PIPELINE_ASSETS_CACHE is not None
+        and _WORLD_PIPELINE_FP_CACHE == fp
+        and _WORLD_PIPELINE_TS_CACHE == ts
+        and fp is not None
+    ):
+        return _WORLD_PIPELINE_ASSETS_CACHE
+
+    model_db = load_baked_model_database(prefs, verify_fingerprint=False)
     atlas = load_baked_atlas_from_cache(prefs)
     biome_resolver = load_biome_resolver_from_cache(prefs)
-    return model_db, atlas, biome_resolver
+    _WORLD_PIPELINE_ASSETS_CACHE = (model_db, atlas, biome_resolver)
+    _WORLD_PIPELINE_FP_CACHE = fp
+    _WORLD_PIPELINE_TS_CACHE = ts
+    return _WORLD_PIPELINE_ASSETS_CACHE
 
 
 def ensure_world_materials(
