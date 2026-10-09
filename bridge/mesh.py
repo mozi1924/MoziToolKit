@@ -7,17 +7,13 @@ Blender Mesh (bpy.types.Mesh) and libmtk (Rust PyMeshData).
 
 from __future__ import annotations
 
-import array
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-logger = logging.getLogger("MoziToolKit.Bridge.Mesh")
+import numpy as np
 
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
+logger = logging.getLogger("MoziToolKit.Bridge.Mesh")
+HAS_NUMPY = True
 
 from .engine import get_libmtk, require_libmtk
 
@@ -104,60 +100,31 @@ def _extract_topology_quads(
     num_polys: int,
     num_verts: int,
     num_loops: int,
-) -> Tuple[array.array, array.array, array.array, array.array]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Extract contiguous vertex positions, normals, quad indices, and face materials."""
-    total_corners = num_polys * 4
+    pos_arr = np.empty(num_verts * 3, dtype=np.float32)
+    mesh.vertices.foreach_get("co", pos_arr)
 
-    raw_pos = array.array("f", [0.0]) * (num_verts * 3)
-    mesh.vertices.foreach_get("co", raw_pos)
+    norm_arr = np.empty(num_verts * 3, dtype=np.float32)
+    mesh.vertices.foreach_get("normal", norm_arr)
 
-    raw_norms = array.array("f", [0.0]) * (num_verts * 3)
-    mesh.vertices.foreach_get("normal", raw_norms)
+    loop_v_indices = np.empty(num_loops, dtype=np.uint32)
+    mesh.loops.foreach_get("vertex_index", loop_v_indices)
 
-    raw_loop_v_indices = array.array("I", [0]) * num_loops
-    mesh.loops.foreach_get("vertex_index", raw_loop_v_indices)
-
-    face_mats = array.array("H", [0]) * num_polys
+    face_mats = np.empty(num_polys, dtype=np.uint16)
     mesh.polygons.foreach_get("material_index", face_mats)
 
-    if HAS_NUMPY:
-        np_pos = np.frombuffer(raw_pos, dtype=np.float32).reshape((num_verts, 3))
-        np_norms = np.frombuffer(raw_norms, dtype=np.float32).reshape((num_verts, 3))
-        np_loop_v = np.frombuffer(raw_loop_v_indices, dtype=np.uint32)
+    np_pos = pos_arr.reshape((num_verts, 3))
+    np_norms = norm_arr.reshape((num_verts, 3))
 
-        np_corner_pos = np_pos[np_loop_v].ravel()
-        np_corner_norms = np_norms[np_loop_v].ravel()
+    corner_pos = np.ascontiguousarray(np_pos[loop_v_indices].ravel(), dtype=np.float32)
+    corner_norms = np.ascontiguousarray(np_norms[loop_v_indices].ravel(), dtype=np.float32)
 
-        positions = array.array("f")
-        positions.frombytes(np_corner_pos.tobytes())
-        normals = array.array("f")
-        normals.frombytes(np_corner_norms.tobytes())
+    base_v = (np.arange(num_polys, dtype=np.uint32) * 4)[:, None]
+    quad_pattern = np.array([0, 1, 2, 0, 2, 3], dtype=np.uint32)[None, :]
+    indices = np.ascontiguousarray((base_v + quad_pattern).ravel(), dtype=np.uint32)
 
-        base_v = (np.arange(num_polys, dtype=np.uint32) * 4)[:, None]
-        quad_pattern = np.array([0, 1, 2, 0, 2, 3], dtype=np.uint32)[None, :]
-        np_indices = (base_v + quad_pattern).ravel()
-        indices = array.array("I")
-        indices.frombytes(np_indices.tobytes())
-    else:
-        positions = array.array("f", [0.0]) * (total_corners * 3)
-        normals = array.array("f", [0.0]) * (total_corners * 3)
-        indices = array.array("I", [0]) * (num_polys * 6)
-
-        for l_idx, v_idx in enumerate(raw_loop_v_indices):
-            p_off = l_idx * 3
-            v_off = v_idx * 3
-            positions[p_off:p_off + 3] = raw_pos[v_off:v_off + 3]
-            normals[p_off:p_off + 3] = raw_norms[v_off:v_off + 3]
-
-        for poly_idx in range(num_polys):
-            base_v = poly_idx * 4
-            idx_off = poly_idx * 6
-            indices[idx_off:idx_off + 6] = array.array("I", [
-                base_v, base_v + 1, base_v + 2,
-                base_v, base_v + 2, base_v + 3
-            ])
-
-    return positions, normals, indices, face_mats
+    return corner_pos, corner_norms, indices, face_mats
 
 
 def _extract_topology_tris(
@@ -165,36 +132,36 @@ def _extract_topology_tris(
     num_polys: int,
     num_verts: int,
     triangulate_if_needed: bool,
-) -> Tuple[array.array, array.array, array.array, array.array]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Extract arbitrary or triangulated mesh positions, normals, triangle indices, and face materials."""
     if hasattr(mesh, "calc_loop_triangles") and triangulate_if_needed:
         mesh.calc_loop_triangles()
 
     if hasattr(mesh, "loop_triangles") and len(mesh.loop_triangles) > 0:
         num_tris = len(mesh.loop_triangles)
-        tri_indices = array.array("I", [0]) * (num_tris * 3)
+        tri_indices = np.empty(num_tris * 3, dtype=np.uint32)
         mesh.loop_triangles.foreach_get("vertices", tri_indices)
 
-        face_mats_arr = array.array("H", [0]) * num_tris
+        face_mats_arr = np.empty(num_tris, dtype=np.uint16)
         mesh.loop_triangles.foreach_get("material_index", face_mats_arr)
     else:
         tri_indices_list: List[int] = []
         face_mats_list: List[int] = []
-        poly_mats = array.array("H", [0]) * num_polys
+        poly_mats = np.empty(num_polys, dtype=np.uint16)
         mesh.polygons.foreach_get("material_index", poly_mats)
         for poly_idx, poly in enumerate(mesh.polygons):
             vs = poly.vertices
-            mat_idx = poly_mats[poly_idx]
+            mat_idx = int(poly_mats[poly_idx])
             for i in range(1, len(vs) - 1):
                 tri_indices_list.extend([vs[0], vs[i], vs[i + 1]])
                 face_mats_list.append(mat_idx)
-        tri_indices = array.array("I", tri_indices_list)
-        face_mats_arr = array.array("H", face_mats_list)
+        tri_indices = np.array(tri_indices_list, dtype=np.uint32)
+        face_mats_arr = np.array(face_mats_list, dtype=np.uint16)
 
-    pos_arr = array.array("f", [0.0]) * (num_verts * 3)
+    pos_arr = np.empty(num_verts * 3, dtype=np.float32)
     mesh.vertices.foreach_get("co", pos_arr)
 
-    norm_arr = array.array("f", [0.0]) * (num_verts * 3)
+    norm_arr = np.empty(num_verts * 3, dtype=np.float32)
     mesh.vertices.foreach_get("normal", norm_arr)
 
     return pos_arr, norm_arr, tri_indices, face_mats_arr
@@ -208,40 +175,34 @@ def _extract_uvs_quads(
     uv_layer: Optional[Any],
     num_polys: int,
     num_loops: int,
-) -> array.array:
+) -> np.ndarray:
     """Extract UV coordinates for quad topology."""
     total_corners = num_polys * 4
-    if uv_layer:
-        uvs = array.array("f", [0.0]) * (num_loops * 2)
+    if uv_layer and len(uv_layer.data) >= num_loops:
+        uvs = np.empty(num_loops * 2, dtype=np.float32)
         uv_layer.data.foreach_get("uv", uvs)
         return uvs
-    return array.array("f", [0.0]) * (total_corners * 2)
+    return np.zeros(total_corners * 2, dtype=np.float32)
 
 
 def _extract_uvs_tris(
     mesh: Any,
     uv_layer: Optional[Any],
     num_verts: int,
-) -> array.array:
+) -> np.ndarray:
     """Extract UV coordinates for arbitrary/triangulated topology."""
-    uv_arr = array.array("f", [0.0]) * (num_verts * 2)
+    uv_arr = np.zeros(num_verts * 2, dtype=np.float32)
     if uv_layer is not None and len(mesh.loops) > 0:
         num_loops = len(mesh.loops)
-        loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
+        loop_uvs = np.empty(num_loops * 2, dtype=np.float32)
         uv_layer.data.foreach_get("uv", loop_uvs)
-        loop_vert_indices = array.array("I", [0]) * num_loops
+        loop_vert_indices = np.empty(num_loops, dtype=np.uint32)
         mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-        if HAS_NUMPY:
-            np_loop_uvs = np.frombuffer(loop_uvs, dtype=np.float32).reshape(-1, 2)
-            np_loop_v_idx = np.frombuffer(loop_vert_indices, dtype=np.uint32)
-            np_uv_arr = np.zeros((num_verts, 2), dtype=np.float32)
-            np_uv_arr[np_loop_v_idx] = np_loop_uvs
-            uv_arr = array.array("f")
-            uv_arr.frombytes(np_uv_arr.tobytes())
-        else:
-            for loop_idx, v_idx in enumerate(loop_vert_indices):
-                uv_arr[v_idx * 2] = loop_uvs[loop_idx * 2]
-                uv_arr[v_idx * 2 + 1] = loop_uvs[loop_idx * 2 + 1]
+
+        np_loop_uvs = loop_uvs.reshape(-1, 2)
+        np_uv_arr = uv_arr.reshape(-1, 2)
+        np_uv_arr[loop_vert_indices] = np_loop_uvs
+        return np_uv_arr.ravel()
     return uv_arr
 
 
@@ -285,16 +246,17 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any) -> None:
                 if elem_count == 0:
                     continue
                 if attr.data_type in ("FLOAT_COLOR", "BYTE_COLOR"):
-                    buf = array.array("f", [0.0] * (elem_count * 4))
+                    buf = np.empty(elem_count * 4, dtype=np.float32)
                     attr.data.foreach_get("color", buf)
                     mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", buf)
                 elif attr.data_type in ("BOOLEAN", "INT8", "INT", "INT32"):
-                    buf = array.array("i", [0] * elem_count)
+                    buf = np.empty(elem_count, dtype=np.int32)
                     attr.data.foreach_get("value", buf)
                     mesh_data.add_attribute_from_buffer(attr_name, domain_str, "int32", buf)
                 else:
                     total_vals = elem_count * num_comp
-                    buf = array.array(typecode, [0.0] * total_vals if typecode == "f" else [0] * total_vals)
+                    np_dtype = np.float32 if typecode == "f" else np.int32
+                    buf = np.empty(total_vals, dtype=np_dtype)
                     attr.data.foreach_get(value_key, buf)
                     mesh_data.add_attribute_from_buffer(attr_name, domain_str, mtk_dtype, buf)
         except Exception:
@@ -338,7 +300,7 @@ def _inject_topology(
                     quad_mv = quad_mv.cast("i")
                 mesh.loops.foreach_set("vertex_index", quad_mv)
             else:
-                mesh.loops.foreach_set("vertex_index", mesh_data.get_quad_indices())
+                mesh.loops.foreach_set("vertex_index", np.ascontiguousarray(mesh_data.get_quad_indices(), dtype=np.int32))
         else:
             indices_mv = mesh_data.indices_memoryview() if hasattr(mesh_data, "indices_memoryview") else None
             if indices_mv is not None:
@@ -346,22 +308,15 @@ def _inject_topology(
                     indices_mv = indices_mv.cast("i")
                 mesh.loops.foreach_set("vertex_index", indices_mv)
             else:
-                mesh.loops.foreach_set("vertex_index", mesh_data.get_indices())
+                mesh.loops.foreach_set("vertex_index", np.ascontiguousarray(mesh_data.get_indices(), dtype=np.int32))
 
         mesh.polygons.add(poly_count)
         if not shade_smooth:
             mesh.polygons.foreach_set("use_smooth", b"\x00" * poly_count)
 
-        if hasattr(mesh_data, "loop_starts_memoryview"):
-            starts_mv = mesh_data.loop_starts_memoryview().cast("i")
-            totals_mv = mesh_data.loop_totals_memoryview().cast("i")
-            mesh.polygons.foreach_set("loop_start", starts_mv)
-            mesh.polygons.foreach_set("loop_total", totals_mv)
-        else:
-            loop_starts = array.array("i", range(0, total_loops, stride))
-            loop_totals = array.array("i", [stride] * poly_count)
-            mesh.polygons.foreach_set("loop_start", loop_starts)
-            mesh.polygons.foreach_set("loop_total", loop_totals)
+        # Vectorized loop starts and totals directly in NumPy
+        mesh.polygons.foreach_set("loop_start", np.arange(0, total_loops, stride, dtype=np.int32))
+        mesh.polygons.foreach_set("loop_total", np.full(poly_count, stride, dtype=np.int32))
 
         return True
     elif hasattr(mesh, "from_pydata"):
@@ -393,7 +348,7 @@ def _inject_vertex_positions(mesh: Any, mesh_data: Any) -> None:
             pos_mv = pos_mv.cast("f")
         mesh.vertices.foreach_set("co", pos_mv)
     except Exception:
-        mesh.vertices.foreach_set("co", mesh_data.get_flat_positions())
+        mesh.vertices.foreach_set("co", np.ascontiguousarray(mesh_data.get_flat_positions(), dtype=np.float32))
 
 
 def _inject_vertex_normals(mesh: Any, mesh_data: Any) -> None:
@@ -404,7 +359,7 @@ def _inject_vertex_normals(mesh: Any, mesh_data: Any) -> None:
             norm_mv = norm_mv.cast("f")
         mesh.vertices.foreach_set("normal", norm_mv)
     except Exception:
-        mesh.vertices.foreach_set("normal", mesh_data.get_flat_normals())
+        mesh.vertices.foreach_set("normal", np.ascontiguousarray(mesh_data.get_flat_normals(), dtype=np.float32))
 
 
 # =============================================================================
@@ -448,27 +403,21 @@ def _inject_uvs(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = None) 
                 uv_layer.data.foreach_set("uv", uv_mv)
             else:
                 uv_cast = uv_mv.cast("f") if hasattr(uv_mv, "cast") else uv_mv
-                loop_vert_indices = array.array("I", [0]) * num_loops
+                loop_vert_indices = np.empty(num_loops, dtype=np.uint32)
                 mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-                loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
-                uv_len = len(uv_cast)
-                for loop_idx, v_idx in enumerate(loop_vert_indices):
-                    v2 = v_idx * 2
-                    if v2 + 1 < uv_len:
-                        loop_uv_arr[loop_idx * 2:loop_idx * 2 + 2] = uv_cast[v2:v2 + 2]
-                uv_layer.data.foreach_set("uv", loop_uv_arr)
+                uv_np = np.frombuffer(uv_cast, dtype=np.float32).reshape(-1, 2)
+                loop_uvs = np.ascontiguousarray(uv_np[loop_vert_indices].ravel(), dtype=np.float32)
+                uv_layer.data.foreach_set("uv", loop_uvs)
         else:
-            uv_flat = mesh_data.get_flat_uvs()
+            uv_flat = np.array(mesh_data.get_flat_uvs(), dtype=np.float32)
             if len(uv_flat) == num_loops * 2:
                 uv_layer.data.foreach_set("uv", uv_flat)
             else:
-                loop_vert_indices = array.array("I", [0]) * num_loops
+                loop_vert_indices = np.empty(num_loops, dtype=np.uint32)
                 mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-                loop_uv_arr = array.array("f", [0.0]) * (num_loops * 2)
-                for loop_idx, v_idx in enumerate(loop_vert_indices):
-                    if v_idx * 2 + 1 < len(uv_flat):
-                        loop_uv_arr[loop_idx * 2:loop_idx * 2 + 2] = uv_flat[v_idx * 2:v_idx * 2 + 2]
-                uv_layer.data.foreach_set("uv", loop_uv_arr)
+                uv_np = uv_flat.reshape(-1, 2)
+                loop_uvs = np.ascontiguousarray(uv_np[loop_vert_indices].ravel(), dtype=np.float32)
+                uv_layer.data.foreach_set("uv", loop_uvs)
 
 
 def _inject_color_attributes(mesh: Any, mesh_data: Any) -> None:
@@ -511,7 +460,7 @@ def _inject_face_materials(mesh: Any, mesh_data: Any) -> None:
         else:
             face_mats = mesh_data.get_face_materials()
             if len(face_mats) == len(mesh.polygons):
-                mat_arr = array.array("H", face_mats)
+                mat_arr = np.ascontiguousarray(face_mats, dtype=np.uint16)
                 mesh.polygons.foreach_set("material_index", mat_arr)
     except Exception as e:
         logger.debug("Failed setting material indices: %s", e)
@@ -617,14 +566,9 @@ def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
     if attr_idx is not None and palette is not None and len(attr_idx.data) == num_polys:
         pal_len = len(palette)
         if hasattr(attr_idx.data, "foreach_get"):
-            if HAS_NUMPY:
-                idx_arr = np.empty(num_polys, dtype=np.int32)
-                attr_idx.data.foreach_get("value", idx_arr)
-                return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
-            else:
-                idx_arr = array.array("i", [0] * num_polys)
-                attr_idx.data.foreach_get("value", idx_arr)
-                return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
+            idx_arr = np.empty(num_polys, dtype=np.int32)
+            attr_idx.data.foreach_get("value", idx_arr)
+            return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
 
     # 2. Legacy Fallback: STRING attribute
     attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
@@ -663,12 +607,8 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     # 2. Write INT attribute in bulk
     attr_idx = _get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
     if attr_idx is not None and len(attr_idx.data) == num_polys:
-        if HAS_NUMPY:
-            np_indices = np.array([key_to_idx[k] for k in values], dtype=np.int32)
-            attr_idx.data.foreach_set("value", np_indices)
-        else:
-            arr = array.array("i", (key_to_idx[k] for k in values))
-            attr_idx.data.foreach_set("value", arr)
+        np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.int32, count=num_polys)
+        attr_idx.data.foreach_set("value", np_indices)
 
     # 3. Legacy STRING attribute compatibility
     attr_str = _get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
@@ -707,7 +647,7 @@ def inject_face_attribute_int(mesh: Any, name: str, values: Any) -> None:
     """Inject a Face-domain Int attribute into Blender Mesh."""
     attr = _get_or_create_attribute(mesh, name, "INT", "FACE")
     if attr and len(attr.data) == len(values):
-        arr = values if isinstance(values, array.array) and values.typecode == "i" else array.array("i", values)
+        arr = np.ascontiguousarray(values, dtype=np.int32)
         attr.data.foreach_set("value", arr)
 
 
@@ -715,7 +655,7 @@ def inject_face_attribute_float(mesh: Any, name: str, values: Any) -> None:
     """Inject a Face-domain Float attribute into Blender Mesh."""
     attr = _get_or_create_attribute(mesh, name, "FLOAT", "FACE")
     if attr and len(attr.data) == len(values):
-        arr = values if isinstance(values, array.array) and values.typecode == "f" else array.array("f", values)
+        arr = np.ascontiguousarray(values, dtype=np.float32)
         attr.data.foreach_set("value", arr)
 
 
@@ -723,7 +663,7 @@ def inject_face_attribute_float4(mesh: Any, name: str, flat_values: Any) -> None
     """Inject a Face-domain Float4/Color attribute into Blender Mesh."""
     attr = _get_or_create_attribute(mesh, name, "FLOAT_COLOR", "FACE")
     if attr and len(attr.data) * 4 == len(flat_values):
-        arr = flat_values if isinstance(flat_values, array.array) and flat_values.typecode == "f" else array.array("f", flat_values)
+        arr = np.ascontiguousarray(flat_values, dtype=np.float32)
         attr.data.foreach_set("color", arr)
 
 
@@ -731,7 +671,7 @@ def inject_face_attribute_vector(mesh: Any, name: str, flat_values: Any) -> None
     """Inject a Face-domain Float Vector attribute into Blender Mesh."""
     attr = _get_or_create_attribute(mesh, name, "FLOAT_VECTOR", "FACE")
     if attr and len(attr.data) * 3 == len(flat_values):
-        arr = flat_values if isinstance(flat_values, array.array) and flat_values.typecode == "f" else array.array("f", flat_values)
+        arr = np.ascontiguousarray(flat_values, dtype=np.float32)
         attr.data.foreach_set("vector", arr)
 
 
@@ -778,13 +718,13 @@ def inject_attribute(
                 except Exception:
                     pass
     elif dtype_upper in ("FLOAT_COLOR", "BYTE_COLOR"):
-        attr.data.foreach_set("color", array.array("f", values))
+        attr.data.foreach_set("color", np.ascontiguousarray(values, dtype=np.float32))
     elif dtype_upper in ("FLOAT_VECTOR", "FLOAT3"):
-        attr.data.foreach_set("vector", array.array("f", values))
+        attr.data.foreach_set("vector", np.ascontiguousarray(values, dtype=np.float32))
     elif dtype_upper in ("INT", "INT32", "INT8", "BOOLEAN"):
-        attr.data.foreach_set("value", array.array("i", values))
+        attr.data.foreach_set("value", np.ascontiguousarray(values, dtype=np.int32))
     elif dtype_upper == "FLOAT":
-        attr.data.foreach_set("value", array.array("f", values))
+        attr.data.foreach_set("value", np.ascontiguousarray(values, dtype=np.float32))
 
 
 # =============================================================================
@@ -820,7 +760,7 @@ def extract_mesh_data(
             uv_layer = mesh.uv_layers.active or mesh.uv_layers[0]
 
     is_all_quads = False
-    if HAS_NUMPY and hasattr(mesh.polygons, "foreach_get"):
+    if hasattr(mesh.polygons, "foreach_get"):
         try:
             poly_totals = np.empty(num_polys, dtype=np.int32)
             mesh.polygons.foreach_get("loop_total", poly_totals)

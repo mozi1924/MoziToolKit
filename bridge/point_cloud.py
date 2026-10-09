@@ -8,9 +8,10 @@ with configurable weight thresholds, and user-driven voxel carving/remeshing.
 
 from __future__ import annotations
 
-import array
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 logger = logging.getLogger("MoziToolKit.Bridge.PointCloud")
 
@@ -216,7 +217,7 @@ def inject_voxel_point_cloud(
                     logger.debug("Fast int memoryview failed for %s: %s", name, e)
             if not injected and hasattr(cloud_data, fallback_attr):
                 vals = getattr(cloud_data, fallback_attr)
-                arr = array.array("i", vals)
+                arr = np.ascontiguousarray(vals, dtype=np.int32)
                 attr.data.foreach_set("value", arr)
 
     # 5. Inject Block States via Palette + INT attribute for high throughput
@@ -224,7 +225,7 @@ def inject_voxel_point_cloud(
     if len(states) == pt_count:
         palette: List[str] = list(dict.fromkeys(states))
         state_map = {st: idx for idx, st in enumerate(palette)}
-        idx_arr = array.array("i", (state_map[st] for st in states))
+        idx_arr = np.fromiter((state_map[st] for st in states), dtype=np.int32, count=pt_count)
 
         attr_state_idx = _ensure_attr(ATTR_BLOCK_STATE_IDX, "INT", "POINT")
         if attr_state_idx is not None:
@@ -253,7 +254,7 @@ def inject_voxel_point_cloud(
     if len(biomes) == pt_count:
         b_palette: List[str] = list(dict.fromkeys(biomes))
         b_map = {bm: idx for idx, bm in enumerate(b_palette)}
-        b_idx_arr = array.array("i", (b_map[bm] for bm in biomes))
+        b_idx_arr = np.fromiter((b_map[bm] for bm in biomes), dtype=np.int32, count=pt_count)
 
         attr_b_idx = _ensure_attr(ATTR_BIOME_IDX, "INT", "POINT")
         if attr_b_idx is not None:
@@ -337,13 +338,13 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
         return None
 
     # Extract 3D positions
-    pos_arr = array.array("f", [0.0] * (v_count * 3))
+    pos_arr = np.empty(v_count * 3, dtype=np.float32)
     mesh.vertices.foreach_get("co", pos_arr)
 
     # Extract integer block coordinates
-    bx_arr = array.array("i", [0] * v_count)
-    by_arr = array.array("i", [0] * v_count)
-    bz_arr = array.array("i", [0] * v_count)
+    bx_arr = np.empty(v_count, dtype=np.int32)
+    by_arr = np.empty(v_count, dtype=np.int32)
+    bz_arr = np.empty(v_count, dtype=np.int32)
     attr_x.data.foreach_get("value", bx_arr)
     attr_y.data.foreach_get("value", by_arr)
     attr_z.data.foreach_get("value", bz_arr)
@@ -351,7 +352,7 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
     # Extract block states: prefer fast palette mapping if available, fallback to STRING attribute
     block_states: List[str] = []
     if attr_state_idx is not None and palette is not None and len(attr_state_idx.data) == v_count:
-        idx_arr = array.array("i", [0] * v_count)
+        idx_arr = np.empty(v_count, dtype=np.int32)
         attr_state_idx.data.foreach_get("value", idx_arr)
         pal_len = len(palette)
         block_states = [
@@ -383,7 +384,7 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
 
     biomes: Optional[List[str]] = None
     if attr_biome_idx is not None and b_palette is not None and len(attr_biome_idx.data) == v_count:
-        b_idx_arr = array.array("i", [0] * v_count)
+        b_idx_arr = np.empty(v_count, dtype=np.int32)
         attr_biome_idx.data.foreach_get("value", b_idx_arr)
         b_pal_len = len(b_palette)
         biomes = [
@@ -411,10 +412,10 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
             pass
 
     return mtk.VoxelPointCloud.from_arrays(
-        list(pos_arr),
-        list(bx_arr),
-        list(by_arr),
-        list(bz_arr),
+        pos_arr,
+        bx_arr,
+        by_arr,
+        bz_arr,
         block_states,
         biomes,
         None,
