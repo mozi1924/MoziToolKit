@@ -85,6 +85,56 @@ def ensure_material_node_tree(mat: Any) -> Any:
     return getattr(mat, "node_tree", None)
 
 
+def get_or_create_image_from_f32(
+    image_name: str,
+    width: int,
+    height: int,
+    f32_bytes_or_memview: Any,
+    colorspace: str = "sRGB",
+    force_reload: bool = False,
+) -> Optional[Any]:
+    """
+    Creates or updates an image datablock directly from normalized float32 memory buffer.
+    Zero disk IO, zero numpy conversion, and zero intermediate copies into Blender's Image.pixels.
+    """
+    if not HAS_BPY:
+        return None
+
+    img = bpy.data.images.get(image_name)
+    if not force_reload and img is not None and getattr(img, "has_data", False):
+        if hasattr(img, "colorspace_settings") and colorspace:
+            try:
+                img.colorspace_settings.name = colorspace
+            except Exception:
+                pass
+        return img
+
+    try:
+        if img is None:
+            img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
+        elif img.size[0] != width or img.size[1] != height:
+            img.scale(width, height)
+
+        mv = memoryview(f32_bytes_or_memview)
+        if mv.format != "f":
+            mv = mv.cast("f")
+        img.pixels.foreach_set(mv)
+        img.update()
+        if hasattr(img, "pack"):
+            try:
+                img.pack()
+            except Exception:
+                pass
+        if hasattr(img, "colorspace_settings") and colorspace:
+            try:
+                img.colorspace_settings.name = colorspace
+            except Exception:
+                pass
+        return img
+    except Exception:
+        return None
+
+
 def get_or_create_image_from_rgba(
     image_name: str,
     width: int,
@@ -172,6 +222,11 @@ def get_or_create_image(
     if isinstance(image_path_or_source, (tuple, list)) and len(image_path_or_source) == 3:
         w, h, buf = image_path_or_source
         img_name = chunk_id or "MTK_Memory_Image"
+        # Check if buffer is already float32
+        if isinstance(buf, (bytes, bytearray, memoryview)) and len(buf) == w * h * 16:
+            img = get_or_create_image_from_f32(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload)
+            if img is not None:
+                return img
         return get_or_create_image_from_rgba(
             img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload, flip_y=flip_y
         )
@@ -187,6 +242,11 @@ def get_or_create_image(
         elif "assets/" in path_str and path_str.endswith(".png"):
             idx = path_str.find("assets/")
             resolved_chunk_id = f"standalone/{path_str[idx:]}"
+        elif "standalone/" in path_str and path_str.endswith(".png"):
+            idx = path_str.find("standalone/")
+            resolved_chunk_id = path_str[idx:]
+        elif path_str.startswith("textures/") and path_str.endswith(".png"):
+            resolved_chunk_id = f"standalone/assets/minecraft/{path_str}"
 
     if resolved_chunk_id:
         img_name = os.path.basename(resolved_chunk_id)
@@ -200,19 +260,33 @@ def get_or_create_image(
             return existing_img
 
         try:
-            from ....bridge.assets import get_cached_texture_rgba
+            from ....bridge.assets import get_cached_texture_f32, get_cached_texture_rgba
         except (ImportError, ValueError):
             try:
-                from bridge.assets import get_cached_texture_rgba
+                from bridge.assets import get_cached_texture_f32, get_cached_texture_rgba
             except Exception:
+                get_cached_texture_f32 = None
                 get_cached_texture_rgba = None
 
+        # Tier 1: Zero-copy float32 streaming directly from native Rust (pre-flipped & converted)
+        if get_cached_texture_f32 is not None:
+            f32_tuple = get_cached_texture_f32(resolved_chunk_id, flip_y=flip_y)
+            if f32_tuple is not None:
+                w, h, memview = f32_tuple
+                img = get_or_create_image_from_f32(
+                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload
+                )
+                if img is not None:
+                    return img
+
+        # Tier 2: Flipped RGBA8 buffer directly from native Rust
         if get_cached_texture_rgba is not None:
-            rgba_tuple = get_cached_texture_rgba(resolved_chunk_id)
+            rgba_tuple = get_cached_texture_rgba(resolved_chunk_id, flip_y=flip_y)
             if rgba_tuple is not None:
                 w, h, memview = rgba_tuple
+                # The buffer has already been vertically aligned in native Rust (zero Python overhead)
                 img = get_or_create_image_from_rgba(
-                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload, flip_y=flip_y
+                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload, flip_y=False
                 )
                 if img is not None:
                     return img

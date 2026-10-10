@@ -519,6 +519,60 @@ class TestMaterialPipeline(unittest.TestCase):
             bpy.data.images.remove(file_img)
             bpy.data.images.remove(mem_img)
 
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_f32_memory_image_pixel_orientation_matches_blender_convention(self):
+        """
+        Verify that direct float32 streaming via get_or_create_image_from_f32
+        streams bottom-to-top pixels directly into Blender matching bpy.data.images.load.
+        """
+        import struct
+        import zlib
+        from utils.materials.builder.standalone_builder import get_or_create_image_from_f32
+
+        def make_png(width, height, raw_rgba):
+            line_bytes = width * 4
+            raw_data = bytearray()
+            for y in range(height):
+                raw_data.append(0)
+                raw_data.extend(raw_rgba[y * line_bytes : (y + 1) * line_bytes])
+            compressed = zlib.compress(bytes(raw_data))
+
+            def chunk(tag, data):
+                return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+            header = b"\x89PNG\r\n\x1a\n"
+            ihdr = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+            idat = chunk(b"IDAT", compressed)
+            iend = chunk(b"IEND", b"")
+            return header + ihdr + idat + iend
+
+        top_row = bytes([255, 0, 0, 255, 255, 0, 0, 255])
+        bot_row = bytes([0, 0, 255, 255, 0, 0, 255, 255])
+        raw_rgba = top_row + bot_row
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_png = Path(tmpdir) / "test_orientation_f32.png"
+            tmp_png.write_bytes(make_png(2, 2, raw_rgba))
+
+            file_img = bpy.data.images.load(str(tmp_png))
+            file_pixels = list(file_img.pixels)
+
+            # In Rust, to_f32_buffer(flip_v=True) puts bottom row (Blue) first, then top row (Red)
+            f32_data = struct.pack(
+                "<16f",
+                0.0, 0.0, 1.0, 1.0,  0.0, 0.0, 1.0, 1.0, # Bottom row
+                1.0, 0.0, 0.0, 1.0,  1.0, 0.0, 0.0, 1.0, # Top row
+            )
+            f32_img = get_or_create_image_from_f32("MTK_Test_Orientation_F32", 2, 2, f32_data, force_reload=True)
+            self.assertIsNotNone(f32_img)
+            f32_pixels = list(f32_img.pixels)
+
+            for fp, mp in zip(file_pixels, f32_pixels):
+                self.assertAlmostEqual(fp, mp, places=4)
+
+            bpy.data.images.remove(file_img)
+            bpy.data.images.remove(f32_img)
+
 
 if __name__ == "__main__":
     if "--" in sys.argv:

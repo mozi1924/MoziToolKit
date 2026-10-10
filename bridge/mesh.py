@@ -16,7 +16,7 @@ import numpy as np
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh")
 HAS_NUMPY = True
 
-from .engine import get_libmtk, require_libmtk
+from .engine import get_libmtk, get_libmtk_blender, require_libmtk
 
 
 def __getattr__(name: str) -> Any:
@@ -300,7 +300,7 @@ def _inject_topology(
                 try:
                     ptr = p0()
                     if ptr != 0:
-                        mesh_data.direct_copy_positions_to_ptr(ptr)
+                        mesh_data.direct_copy_positions_to_ptr(ptr, max_bytes=v_count * 12)
                         pos_injected = True
                 except Exception:
                     pass
@@ -340,10 +340,10 @@ def _inject_topology(
                     ptr = p0()
                     if ptr != 0:
                         if is_quad and hasattr(mesh_data, "direct_copy_quad_indices_to_ptr"):
-                            mesh_data.direct_copy_quad_indices_to_ptr(ptr)
+                            mesh_data.direct_copy_quad_indices_to_ptr(ptr, max_bytes=total_loops * 4)
                             loop_injected = True
                         elif not is_quad and hasattr(mesh_data, "direct_copy_indices_to_ptr"):
-                            mesh_data.direct_copy_indices_to_ptr(ptr)
+                            mesh_data.direct_copy_indices_to_ptr(ptr, max_bytes=total_loops * 4)
                             loop_injected = True
                 except Exception:
                     pass
@@ -418,7 +418,7 @@ def _inject_vertex_positions(mesh: Any, mesh_data: Any) -> None:
             try:
                 ptr = p0()
                 if ptr != 0:
-                    mesh_data.direct_copy_positions_to_ptr(ptr)
+                    mesh_data.direct_copy_positions_to_ptr(ptr, max_bytes=len(pos_attr.data) * 12)
                     return
             except Exception:
                 pass
@@ -454,7 +454,7 @@ def _inject_vertex_normals(mesh: Any, mesh_data: Any) -> None:
             try:
                 ptr = p0()
                 if ptr != 0:
-                    mesh_data.direct_copy_normals_to_ptr(ptr)
+                    mesh_data.direct_copy_normals_to_ptr(ptr, max_bytes=len(norm_attr.data) * 12)
                     return
             except Exception:
                 pass
@@ -513,7 +513,7 @@ def _inject_uvs(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = None) 
             try:
                 ptr = p0()
                 if ptr != 0:
-                    mesh_data.direct_copy_loop_uvs_to_ptr(ptr)
+                    mesh_data.direct_copy_loop_uvs_to_ptr(ptr, max_bytes=num_loops * 8)
                     uv_injected = True
             except Exception as e:
                 logger.debug("Direct loop UV pointer injection fallback: %s", e)
@@ -594,7 +594,7 @@ def _inject_color_attributes(mesh: Any, mesh_data: Any) -> None:
                 try:
                     ptr = p0()
                     if ptr != 0:
-                        mesh_data.direct_copy_colors_to_ptr(ptr)
+                        mesh_data.direct_copy_colors_to_ptr(ptr, max_bytes=len(col_mv))
                         injected = True
                 except Exception:
                     pass
@@ -626,7 +626,7 @@ def _inject_face_materials(mesh: Any, mesh_data: Any) -> None:
             try:
                 ptr = p0()
                 if ptr != 0:
-                    mesh_data.direct_copy_face_materials_to_ptr(ptr)
+                    mesh_data.direct_copy_face_materials_to_ptr(ptr, max_bytes=num_polys * 4)
                     injected = True
             except Exception as e:
                 logger.debug("Direct face materials pointer fallback: %s", e)

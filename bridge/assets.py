@@ -423,17 +423,38 @@ def load_standalone_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
     return None
 
 
-def get_cached_texture_rgba(chunk_id: str, prefs=None) -> Optional[Tuple[int, int, Any]]:
+def get_cached_texture_rgba(chunk_id: str, prefs=None, flip_y: bool = True) -> Optional[Tuple[int, int, Any]]:
     """
     Reads and decodes a texture chunk directly from .mtkcache into memory as (width, height, memoryview).
-    Zero disk IO and zero temporary files.
+    `flip_y`: If True (default), row order is vertically flipped natively in Rust (bottom-to-top layout)
+              to match Blender's native Image.pixels coordinate system with zero Python overhead.
     """
     cache = open_active_asset_cache(prefs)
     if cache is not None and hasattr(cache, "read_texture_rgba"):
         try:
-            return cache.read_texture_rgba(chunk_id)
+            return cache.read_texture_rgba(chunk_id, flip_v=flip_y)
+        except TypeError:
+            try:
+                return cache.read_texture_rgba(chunk_id)
+            except Exception:
+                return None
         except Exception:
             return None
+    return None
+
+
+def get_cached_texture_f32(chunk_id: str, prefs=None, flip_y: bool = True) -> Optional[Tuple[int, int, Any]]:
+    """
+    Reads and decodes a texture chunk directly into normalized float32 memoryview (width, height, memoryview).
+    `flip_y`: If True (default), row order is vertically flipped natively in Rust to match Blender Image.pixels.
+    Allows zero-copy / direct feeding into `img.pixels.foreach_set` without any Python numpy conversion.
+    """
+    cache = open_active_asset_cache(prefs)
+    if cache is not None and hasattr(cache, "read_texture_f32"):
+        try:
+            return cache.read_texture_f32(chunk_id, flip_v=flip_y)
+        except Exception:
+            pass
     return None
 
 
