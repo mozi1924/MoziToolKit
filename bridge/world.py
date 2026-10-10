@@ -199,12 +199,35 @@ def ensure_world_materials(
                     is_anim = cm.get("is_animated", False)
                     stem = cm.get("file_stem") or (f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}")
 
-                    albedo_file = atlas_dir / f"{stem}.png"
-                    normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
-                    specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
-                    overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
                     chunk_width = float(cm.get("width", 4096))
                     chunk_height = float(cm.get("height", 4096))
+
+                    albedo_file: Any = atlas_dir / f"{stem}.png"
+                    normal_file: Any = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
+                    specular_file: Any = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+                    overlay_file: Any = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
+
+                    # Prefer zero-copy flipped in-memory streaming directly from BakedAtlas when available
+                    if active_atlas is not None and hasattr(active_atlas, "get_chunk_albedo_f32"):
+                        try:
+                            c_order_idx = cm.get("chunk_id", chunk_id)
+                            albedo_f32 = active_atlas.get_chunk_albedo_f32(c_order_idx, flip_v=True)
+                            if albedo_f32 is not None:
+                                albedo_file = (int(chunk_width), int(chunk_height), albedo_f32)
+                            if cm.get("has_normal") and hasattr(active_atlas, "get_chunk_normal_f32"):
+                                n_f32 = active_atlas.get_chunk_normal_f32(c_order_idx, flip_v=True)
+                                if n_f32 is not None:
+                                    normal_file = (int(chunk_width), int(chunk_height), n_f32)
+                            if cm.get("has_specular") and hasattr(active_atlas, "get_chunk_specular_f32"):
+                                s_f32 = active_atlas.get_chunk_specular_f32(c_order_idx, flip_v=True)
+                                if s_f32 is not None:
+                                    specular_file = (int(chunk_width), int(chunk_height), s_f32)
+                            if cm.get("has_overlay") and hasattr(active_atlas, "get_chunk_overlay_f32"):
+                                o_f32 = active_atlas.get_chunk_overlay_f32(c_order_idx, flip_v=True)
+                                if o_f32 is not None:
+                                    overlay_file = (int(chunk_width), int(chunk_height), o_f32)
+                        except Exception:
+                            pass
 
                     mat = build_atlas_chunk_material(
                         chunk_id=chunk_id,

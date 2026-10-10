@@ -15,15 +15,10 @@ TOOLKIT_ROOT = DEV_DIR.parent.resolve()
 RUST_ROOT = TOOLKIT_ROOT.parent / "libmozitoolkit"
 
 
-def ensure_dev_binary() -> Path | None:
-    """
-    Locates or symlinks the native libmtk_py shared library for development.
-    Returns the path to the resolved .so / .pyd if found.
-    """
+def _ensure_module_binary(module_name: str) -> Path | None:
     DEV_LIB_DIR.mkdir(parents=True, exist_ok=True)
-
     is_windows = platform.system() == "Windows"
-    target_names = ["libmtk_py.pyd"] if is_windows else ["libmtk_py.so", "libmtk_py.abi3.so"]
+    target_names = [f"{module_name}.pyd"] if is_windows else [f"{module_name}.so", f"{module_name}.abi3.so"]
 
     # 1. Check existing in dev/lib/
     for name in target_names:
@@ -34,17 +29,17 @@ def ensure_dev_binary() -> Path | None:
     # 2. Check rust workspace target/release/
     rust_release_dir = RUST_ROOT / "target" / "release"
     rust_candidates = [
-        rust_release_dir / "libmtk_py.so",
-        rust_release_dir / "liblibmtk_py.so",
-        rust_release_dir / "libmtk_py.dylib",
-        rust_release_dir / "liblibmtk_py.dylib",
-        rust_release_dir / "libmtk_py.dll",
-        rust_release_dir / "libmtk_py.pyd",
+        rust_release_dir / f"{module_name}.so",
+        rust_release_dir / f"lib{module_name}.so",
+        rust_release_dir / f"{module_name}.dylib",
+        rust_release_dir / f"lib{module_name}.dylib",
+        rust_release_dir / f"{module_name}.dll",
+        rust_release_dir / f"{module_name}.pyd",
     ]
 
     for rust_bin in rust_candidates:
         if rust_bin.exists():
-            dest_name = "libmtk_py.pyd" if is_windows else "libmtk_py.so"
+            dest_name = f"{module_name}.pyd" if is_windows else f"{module_name}.so"
             dest = DEV_LIB_DIR / dest_name
             try:
                 if dest.is_symlink() or dest.exists():
@@ -52,15 +47,21 @@ def ensure_dev_binary() -> Path | None:
                 dest.symlink_to(rust_bin.resolve())
                 return dest
             except OSError:
-                # If symlink not permitted (e.g. non-admin Windows), copy instead
                 try:
                     import shutil
                     shutil.copy2(rust_bin, dest)
                     return dest
                 except Exception:
                     pass
-
     return None
+
+
+def ensure_dev_binary() -> Path | None:
+    """
+    Locates or symlinks the unified native libmtk_py shared library for development.
+    Returns the path to the resolved libmtk_py .so / .pyd if found.
+    """
+    return _ensure_module_binary("libmtk_py")
 
 
 def reload_dev_binary() -> bool:

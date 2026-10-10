@@ -75,6 +75,22 @@ def has_libmtk() -> bool:
     return get_libmtk() is not None
 
 
+def get_libmtk_blender() -> Optional[Any]:
+    """
+    Returns the loaded blender accelerator submodule from unified libmtk_py, or None if unavailable.
+    Hardware accelerator for direct Blender memory/DNA manipulation.
+    """
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(mtk, "blender"):
+        return getattr(mtk, "blender")
+    return None
+
+
+def has_libmtk_blender() -> bool:
+    """Returns True if the embedded blender hardware accelerator submodule is active."""
+    return get_libmtk_blender() is not None
+
+
 def require_libmtk(feature: str = "") -> Any:
     """
     Returns the native libmtk_py module, or raises a descriptive RuntimeError.
