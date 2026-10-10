@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 import array
+import ctypes
+import numpy as np
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -22,6 +24,7 @@ if "mathutils" not in sys.modules:
     sys.modules["mathutils"] = MagicMock()
 
 
+from bridge.engine import get_libmtk
 from bridge.mesh import (
     BLENDER_TO_MTK_DOMAIN,
     BLENDER_TO_MTK_TYPE,
@@ -271,6 +274,55 @@ class TestMeshBridge(unittest.TestCase):
         face_mats = mesh_data.get_face_materials()
         self.assertEqual(len(face_mats), 1)
         self.assertEqual(face_mats[0], 1)
+
+
+class TestDualMeshApi(unittest.TestCase):
+    """Verifies strict separation and functionality of Universal Python vs Blender Direct Pointer APIs."""
+
+    def setUp(self):
+        mtk = get_libmtk()
+        if mtk is None or not hasattr(mtk, "MeshData"):
+            self.skipTest("libmtk MeshData not available")
+        self.mesh = mtk.MeshData()
+        self.mesh.append_unit_cube_face(1, 0, -1)  # Top face: 4 vertices, 2 triangles, 1 quad
+
+    def test_universal_python_zero_copy_api(self):
+        """Suite B: Universal Python memoryview & buffer protocol API."""
+        pos_mv = self.mesh.positions_memoryview()
+        self.assertIsInstance(pos_mv, memoryview)
+        pos_arr = np.frombuffer(pos_mv, dtype=np.float32).reshape(-1, 3)
+        self.assertEqual(len(pos_arr), 4)
+
+        idx_mv = self.mesh.indices_memoryview()
+        self.assertIsInstance(idx_mv, memoryview)
+        idx_arr = np.frombuffer(idx_mv, dtype=np.uint32)
+        self.assertEqual(len(idx_arr), 6)
+
+        quad_mv = self.mesh.quad_indices_memoryview()
+        self.assertIsNotNone(quad_mv)
+        quad_arr = np.frombuffer(quad_mv, dtype=np.uint32)
+        self.assertEqual(len(quad_arr), 4)
+
+        uv_mv = self.mesh.uvs_memoryview()
+        self.assertIsInstance(uv_mv, memoryview)
+
+    def test_blender_direct_pointer_api(self):
+        """Suite A: Dedicated Blender Direct Pointer API via ctypes buffer addresses."""
+        # 1. Dedicated blender_direct accessor sub-interface
+        self.assertTrue(hasattr(self.mesh, "blender_direct"))
+        blender_direct = self.mesh.blender_direct
+
+        buf = (ctypes.c_float * 12)()
+        ptr = ctypes.addressof(buf)
+        written = blender_direct.copy_positions(ptr, max_bytes=48)
+        self.assertEqual(written, 48)
+
+        # 2. Legacy direct pointer methods backward-compatibility
+        self.assertTrue(hasattr(self.mesh, "direct_copy_positions_to_ptr"))
+        buf2 = (ctypes.c_float * 12)()
+        ptr2 = ctypes.addressof(buf2)
+        written2 = self.mesh.direct_copy_positions_to_ptr(ptr2, max_bytes=48)
+        self.assertEqual(written2, 48)
 
 
 class TestPaletteSourceTextureKeys(unittest.TestCase):
