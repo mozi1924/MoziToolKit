@@ -327,3 +327,53 @@ class TestVoxelPointCloudBridge:
         finally:
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh, do_unlink=True)
+
+    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
+    def test_direct_pointer_zero_copy_injection_mesh_and_native_pointcloud(self):
+        """Verifies hardware-accelerated direct DNA raw pointer zero-copy injection on Mesh and PointCloud."""
+        from MoziToolKit.bridge.point_cloud import (
+            inject_voxel_point_cloud,
+            extract_voxel_point_cloud,
+            ATTR_BLOCK_X,
+            ATTR_BLOCK_STATE_IDX,
+            PROP_BLOCK_PALETTE,
+        )
+
+        cloud = libmtk_py.VoxelPointCloud()
+        cloud.push([1.0, 2.0, 3.0], [10, 20, 30], "minecraft:stone", "minecraft:plains", 15)
+        cloud.push([4.0, 5.0, 6.0], [40, 50, 60], "minecraft:dirt", "minecraft:desert", 8)
+
+        # 1. Mesh target
+        b_mesh = bpy.data.meshes.new("Test_DirectPtr_Mesh")
+        b_obj = bpy.data.objects.new("Test_DirectPtr_Obj", b_mesh)
+        try:
+            ok = inject_voxel_point_cloud(b_obj, cloud, update_mask=False)
+            assert ok is True
+            assert len(b_mesh.vertices) == 2
+            assert tuple(b_mesh.vertices[0].co) == (1.0, 2.0, 3.0)
+            assert tuple(b_mesh.vertices[1].co) == (4.0, 5.0, 6.0)
+            assert b_mesh.attributes[ATTR_BLOCK_X].data[0].value == 10
+            assert b_mesh.attributes[ATTR_BLOCK_X].data[1].value == 40
+            assert list(b_mesh[PROP_BLOCK_PALETTE]) == ["minecraft:stone", "minecraft:dirt"]
+            assert b_mesh.attributes[ATTR_BLOCK_STATE_IDX].data[0].value == 0
+            assert b_mesh.attributes[ATTR_BLOCK_STATE_IDX].data[1].value == 1
+        finally:
+            bpy.data.meshes.remove(b_mesh, do_unlink=True)
+
+        # 2. Native PointCloud target (if supported in this Blender version)
+        if hasattr(bpy.data, "pointclouds"):
+            b_pc = bpy.data.pointclouds.new("Test_DirectPtr_PC")
+            pc_obj = bpy.data.objects.new("Test_DirectPtr_PCObj", b_pc)
+            try:
+                ok = inject_voxel_point_cloud(pc_obj, cloud, update_mask=False)
+                assert ok is True
+                assert len(b_pc.points) == 2
+                assert tuple(b_pc.points[0].co) == (1.0, 2.0, 3.0)
+                assert tuple(b_pc.points[1].co) == (4.0, 5.0, 6.0)
+                assert b_pc.attributes[ATTR_BLOCK_X].data[0].value == 10
+                assert b_pc.attributes[ATTR_BLOCK_X].data[1].value == 40
+                assert list(pc_obj[PROP_BLOCK_PALETTE]) == ["minecraft:stone", "minecraft:dirt"]
+                assert b_pc.attributes[ATTR_BLOCK_STATE_IDX].data[0].value == 0
+                assert b_pc.attributes[ATTR_BLOCK_STATE_IDX].data[1].value == 1
+            finally:
+                bpy.data.pointclouds.remove(b_pc, do_unlink=True)

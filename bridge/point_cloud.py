@@ -139,158 +139,210 @@ def inject_voxel_point_cloud(
     fast_mode: bool = True,
 ) -> bool:
     """
-    Injects a Rust VoxelPointCloud into a Blender Mesh as a pure point cloud
-    with native attributes (mtk_block_x/y/z, mtk_state_idx/mtk_block_state, mtk_biome_idx/mtk_biome, mtk_light)
-    and configures the Mask modifier.
+    Injects a Rust VoxelPointCloud into a Blender Mesh or PointCloud datablock
+    using hardware-accelerated direct DNA raw pointer zero-copy memory ingestion.
 
-    When fast_mode=True (default), block states and biomes are indexed via palette arrays
-    and written in bulk using foreach_set into INT attributes, achieving 1000x faster throughput.
+    Supports native attributes (position, mtk_block_x/y/z, mtk_state_idx, mtk_biome_idx, mtk_light)
+    and configures the Mask modifier.
     """
     if not HAS_BPY:
         return False
 
-    if hasattr(cloud_obj_or_mesh, "data") and cloud_obj_or_mesh.type == "MESH":
+    is_pc = False
+    if hasattr(cloud_obj_or_mesh, "data"):
         obj = cloud_obj_or_mesh
-        mesh = cloud_obj_or_mesh.data
+        target_data = cloud_obj_or_mesh.data
+        if getattr(cloud_obj_or_mesh, "type", "") == "POINTCLOUD":
+            is_pc = True
     else:
         obj = None
-        mesh = cloud_obj_or_mesh
+        target_data = cloud_obj_or_mesh
+        if hasattr(target_data, "points") and hasattr(target_data, "resize"):
+            is_pc = True
 
     pt_count = len(cloud_data) if hasattr(cloud_data, "__len__") else cloud_data.len()
     if pt_count == 0:
-        mesh.clear_geometry()
+        if hasattr(target_data, "clear_geometry"):
+            target_data.clear_geometry()
+        elif hasattr(target_data, "resize"):
+            target_data.resize(0)
         return True
 
     # 1. Clear old topology and allocate points
-    mesh.clear_geometry()
-    mesh.vertices.add(pt_count)
+    if is_pc or hasattr(target_data, "resize"):
+        target_data.resize(pt_count)
+    elif hasattr(target_data, "clear_geometry") and hasattr(target_data.vertices, "add"):
+        target_data.clear_geometry()
+        target_data.vertices.add(pt_count)
 
-    # 2. Inject 3D positions via zero-copy MemoryView
-    pos_injected = False
-    pos_attr = mesh.attributes.get("position") if hasattr(mesh, "attributes") else None
-    if hasattr(cloud_data, "positions_memoryview"):
-        try:
-            pos_mv = cloud_data.positions_memoryview()
-            pos_arr = np.frombuffer(pos_mv, dtype=np.float32)
-            if pos_attr is not None and len(pos_attr.data) == pt_count:
-                pos_attr.data.foreach_set("vector", pos_arr)
-                pos_injected = True
-            else:
-                mesh.vertices.foreach_set("co", pos_arr)
-                pos_injected = True
-        except Exception as e:
-            logger.debug("Fast positions memoryview injection failed: %s", e)
-
-    if not pos_injected:
-        if hasattr(cloud_data, "positions"):
-            pos_arr = np.ascontiguousarray(cloud_data.positions, dtype=np.float32)
-            if pos_attr is not None and len(pos_attr.data) == pt_count:
-                pos_attr.data.foreach_set("vector", pos_arr)
-            else:
-                mesh.vertices.foreach_set("co", pos_arr)
-
-    # 3. Helper to create or acquire attribute
+    # 2. Helper to create or acquire attribute
     def _ensure_attr(name: str, attr_type: str, domain: str = "POINT") -> Optional[Any]:
-        if not hasattr(mesh, "attributes"):
+        if not hasattr(target_data, "attributes"):
             return None
-        attr = mesh.attributes.get(name)
+        attr = target_data.attributes.get(name)
         if attr is not None and (attr.data_type != attr_type or attr.domain != domain):
-            mesh.attributes.remove(attr)
+            target_data.attributes.remove(attr)
             attr = None
         if attr is None:
             try:
-                attr = mesh.attributes.new(name=name, type=attr_type, domain=domain)
+                attr = target_data.attributes.new(name=name, type=attr_type, domain=domain)
             except Exception as e:
                 logger.warning("Failed creating attribute %s: %s", name, e)
                 return None
         return attr
 
-    # 4. Inject block integer coordinates: block_x, block_y, block_z
-    for name, mv_fn, fallback_attr in [
-        (ATTR_BLOCK_X, "block_x_memoryview", "block_x"),
-        (ATTR_BLOCK_Y, "block_y_memoryview", "block_y"),
-        (ATTR_BLOCK_Z, "block_z_memoryview", "block_z"),
-    ]:
-        attr = _ensure_attr(name, "INT", "POINT")
-        if attr is not None:
-            injected = False
-            if hasattr(cloud_data, mv_fn):
+    # Helper to resolve C memory pointer of an attribute layer
+    def _get_ptr(attr: Any) -> Optional[int]:
+        if attr is not None and hasattr(attr, "data") and len(attr.data) > 0:
+            p0 = getattr(attr.data[0], "as_pointer", None)
+            if p0 is not None:
                 try:
-                    mv = getattr(cloud_data, mv_fn)()
-                    if hasattr(mv, "cast") and mv.format == "B":
-                        mv = mv.cast("i")
-                    attr.data.foreach_set("value", mv)
-                    injected = True
-                except Exception as e:
-                    logger.debug("Fast int memoryview failed for %s: %s", name, e)
-            if not injected and hasattr(cloud_data, fallback_attr):
-                vals = getattr(cloud_data, fallback_attr)
-                arr = np.ascontiguousarray(vals, dtype=np.int32)
-                attr.data.foreach_set("value", arr)
+                    ptr = p0()
+                    if ptr != 0:
+                        return ptr
+                except Exception:
+                    pass
+        return None
 
-    # 5. Inject Block States via Palette + INT attribute for high throughput
-    states = cloud_data.get_block_states() if hasattr(cloud_data, "get_block_states") else getattr(cloud_data, "block_states", [])
-    if len(states) == pt_count:
-        palette: List[str] = list(dict.fromkeys(states))
-        state_map = {st: idx for idx, st in enumerate(palette)}
-        idx_arr = np.fromiter((state_map[st] for st in states), dtype=np.int32, count=pt_count)
+    # Pre-allocate standard attributes
+    pos_attr = target_data.attributes.get("position") if hasattr(target_data, "attributes") else None
+    attr_x = _ensure_attr(ATTR_BLOCK_X, "INT", "POINT")
+    attr_y = _ensure_attr(ATTR_BLOCK_Y, "INT", "POINT")
+    attr_z = _ensure_attr(ATTR_BLOCK_Z, "INT", "POINT")
+    attr_state_idx = _ensure_attr(ATTR_BLOCK_STATE_IDX, "INT", "POINT")
+    attr_biome_idx = _ensure_attr(ATTR_BIOME_IDX, "INT", "POINT")
 
-        attr_state_idx = _ensure_attr(ATTR_BLOCK_STATE_IDX, "INT", "POINT")
+    # 3. Direct Pointer Fast Path (Zero-Copy DNA Ingestion)
+    direct_injected = False
+    if hasattr(cloud_data, "direct_copy_to_ptrs"):
+        pos_ptr = _get_ptr(pos_attr)
+        bx_ptr = _get_ptr(attr_x)
+        by_ptr = _get_ptr(attr_y)
+        bz_ptr = _get_ptr(attr_z)
+        st_ptr = _get_ptr(attr_state_idx)
+        bm_ptr = _get_ptr(attr_biome_idx)
+
+        if pos_ptr and bx_ptr and by_ptr and bz_ptr and st_ptr and bm_ptr:
+            try:
+                state_palette, biome_palette = cloud_data.direct_copy_to_ptrs(
+                    pos_ptr=pos_ptr,
+                    block_x_ptr=bx_ptr,
+                    block_y_ptr=by_ptr,
+                    block_z_ptr=bz_ptr,
+                    state_idx_ptr=st_ptr,
+                    biome_idx_ptr=bm_ptr,
+                    light_ptr=None,
+                )
+                if state_palette is not None:
+                    target_data[PROP_BLOCK_PALETTE] = state_palette
+                    if obj is not None:
+                        obj[PROP_BLOCK_PALETTE] = state_palette
+                if biome_palette is not None:
+                    target_data[PROP_BIOME_PALETTE] = biome_palette
+                    if obj is not None:
+                        obj[PROP_BIOME_PALETTE] = biome_palette
+                direct_injected = True
+            except Exception as e:
+                logger.debug("direct_copy_to_ptrs failed, falling back: %s", e)
+
+    # 4. Fallback Path if direct pointer copy was not available/successful
+    if not direct_injected:
+        pos_injected = False
+        if pos_attr is not None and len(pos_attr.data) == pt_count:
+            if hasattr(cloud_data, "direct_copy_positions_to_ptr"):
+                p = _get_ptr(pos_attr)
+                if p:
+                    try:
+                        cloud_data.direct_copy_positions_to_ptr(p)
+                        pos_injected = True
+                    except Exception:
+                        pass
+        if not pos_injected:
+            if hasattr(cloud_data, "positions_memoryview"):
+                try:
+                    pos_mv = cloud_data.positions_memoryview()
+                    pos_arr = np.frombuffer(pos_mv, dtype=np.float32)
+                    if pos_attr is not None and len(pos_attr.data) == pt_count:
+                        pos_attr.data.foreach_set("vector", pos_arr)
+                    elif hasattr(target_data, "vertices"):
+                        target_data.vertices.foreach_set("co", pos_arr)
+                    elif hasattr(target_data, "points"):
+                        target_data.points.foreach_set("co", pos_arr)
+                    pos_injected = True
+                except Exception:
+                    pass
+            if not pos_injected and hasattr(cloud_data, "positions"):
+                pos_arr = np.ascontiguousarray(cloud_data.positions, dtype=np.float32)
+                if pos_attr is not None and len(pos_attr.data) == pt_count:
+                    pos_attr.data.foreach_set("vector", pos_arr)
+                elif hasattr(target_data, "vertices"):
+                    target_data.vertices.foreach_set("co", pos_arr)
+                elif hasattr(target_data, "points"):
+                    target_data.points.foreach_set("co", pos_arr)
+
+        for name, mv_fn, fallback_attr, target_attr in [
+            (ATTR_BLOCK_X, "block_x_memoryview", "block_x", attr_x),
+            (ATTR_BLOCK_Y, "block_y_memoryview", "block_y", attr_y),
+            (ATTR_BLOCK_Z, "block_z_memoryview", "block_z", attr_z),
+        ]:
+            if target_attr is not None:
+                injected = False
+                if hasattr(cloud_data, mv_fn):
+                    try:
+                        mv = getattr(cloud_data, mv_fn)()
+                        if hasattr(mv, "cast") and mv.format == "B":
+                            mv = mv.cast("i")
+                        target_attr.data.foreach_set("value", mv)
+                        injected = True
+                    except Exception:
+                        pass
+                if not injected and hasattr(cloud_data, fallback_attr):
+                    vals = getattr(cloud_data, fallback_attr)
+                    arr = np.ascontiguousarray(vals, dtype=np.int32)
+                    target_attr.data.foreach_set("value", arr)
+
         if attr_state_idx is not None:
-            attr_state_idx.data.foreach_set("value", idx_arr)
+            if hasattr(cloud_data, "build_state_palette_indices"):
+                palette, indices = cloud_data.build_state_palette_indices()
+                attr_state_idx.data.foreach_set("value", np.ascontiguousarray(indices, dtype=np.int32))
+                target_data[PROP_BLOCK_PALETTE] = palette
+                if obj is not None:
+                    obj[PROP_BLOCK_PALETTE] = palette
+            else:
+                states = cloud_data.get_block_states() if hasattr(cloud_data, "get_block_states") else getattr(cloud_data, "block_states", [])
+                if len(states) == pt_count:
+                    palette = list(dict.fromkeys(states))
+                    state_map = {st: idx for idx, st in enumerate(palette)}
+                    idx_arr = np.fromiter((state_map[st] for st in states), dtype=np.int32, count=pt_count)
+                    attr_state_idx.data.foreach_set("value", idx_arr)
+                    target_data[PROP_BLOCK_PALETTE] = palette
+                    if obj is not None:
+                        obj[PROP_BLOCK_PALETTE] = palette
 
-        mesh[PROP_BLOCK_PALETTE] = palette
-        if obj is not None:
-            obj[PROP_BLOCK_PALETTE] = palette
+        if attr_biome_idx is not None:
+            if hasattr(cloud_data, "build_biome_palette_indices"):
+                b_palette, b_indices = cloud_data.build_biome_palette_indices()
+                attr_biome_idx.data.foreach_set("value", np.ascontiguousarray(b_indices, dtype=np.int32))
+                target_data[PROP_BIOME_PALETTE] = b_palette
+                if obj is not None:
+                    obj[PROP_BIOME_PALETTE] = b_palette
+            else:
+                biomes = cloud_data.get_biomes() if hasattr(cloud_data, "get_biomes") else getattr(cloud_data, "biomes", [])
+                if len(biomes) == pt_count:
+                    b_palette = list(dict.fromkeys(biomes))
+                    b_map = {bm: idx for idx, bm in enumerate(b_palette)}
+                    b_idx_arr = np.fromiter((b_map[bm] for bm in biomes), dtype=np.int32, count=pt_count)
+                    attr_biome_idx.data.foreach_set("value", b_idx_arr)
+                    target_data[PROP_BIOME_PALETTE] = b_palette
+                    if obj is not None:
+                        obj[PROP_BIOME_PALETTE] = b_palette
 
-        # Maintain STRING attribute compatibility only for small clouds (<= 256) to eliminate RNA stalls
-        if pt_count <= 256:
-            attr_state = _ensure_attr(ATTR_BLOCK_STATE, "STRING", "POINT")
-            if attr_state is not None:
-                for i, st in enumerate(states):
-                    b_val = st.encode("utf-8") if isinstance(st, str) else bytes(st)
-                    try:
-                        attr_state.data[i].value = b_val
-                    except Exception:
-                        try:
-                            attr_state.data[i].value = st
-                        except Exception:
-                            pass
-
-    # 6. Inject Biomes via Palette + INT attribute
-    biomes = cloud_data.get_biomes() if hasattr(cloud_data, "get_biomes") else getattr(cloud_data, "biomes", [])
-    if len(biomes) == pt_count:
-        b_palette: List[str] = list(dict.fromkeys(biomes))
-        b_map = {bm: idx for idx, bm in enumerate(b_palette)}
-        b_idx_arr = np.fromiter((b_map[bm] for bm in biomes), dtype=np.int32, count=pt_count)
-
-        attr_b_idx = _ensure_attr(ATTR_BIOME_IDX, "INT", "POINT")
-        if attr_b_idx is not None:
-            attr_b_idx.data.foreach_set("value", b_idx_arr)
-
-        mesh[PROP_BIOME_PALETTE] = b_palette
-        if obj is not None:
-            obj[PROP_BIOME_PALETTE] = b_palette
-
-        # Maintain STRING attribute compatibility only for small clouds (<= 256)
-        if pt_count <= 256:
-            attr_biome = _ensure_attr(ATTR_BIOME, "STRING", "POINT")
-            if attr_biome is not None:
-                for i, bm in enumerate(biomes):
-                    b_val = bm.encode("utf-8") if isinstance(bm, str) else bytes(bm)
-                    try:
-                        attr_biome.data[i].value = b_val
-                    except Exception:
-                        try:
-                            attr_biome.data[i].value = bm
-                        except Exception:
-                            pass
-
-    # 7. Configure Mask Modifier
-    if update_mask and obj is not None:
+    # 5. Configure Mask Modifier (for Mesh objects)
+    if update_mask and obj is not None and getattr(obj, "type", "") == "MESH":
         setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
 
-    mesh.update()
+    if hasattr(target_data, "update"):
+        target_data.update()
     return True
 
 
