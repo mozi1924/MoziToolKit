@@ -313,6 +313,18 @@ def ensure_world_materials(
 
 
 
+_WORLD_SESSIONS: Dict[str, Any] = {}
+
+
+def clear_world_sessions(session_key: Optional[str] = None) -> None:
+    """Clears cached VoxelWorld instances across sessions."""
+    global _WORLD_SESSIONS
+    if session_key is None:
+        _WORLD_SESSIONS.clear()
+    else:
+        _WORLD_SESSIONS.pop(session_key, None)
+
+
 def mesh_voxel_storage(
     storage: Any,
     config: Optional[Any] = None,
@@ -326,10 +338,11 @@ def mesh_voxel_storage(
     origin_centered: bool = True,
     num_threads: Optional[int] = None,
     progress_callback: Optional[Any] = None,
+    world_session_key: Optional[str] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
-    culling, and biome tinting.
+    culling, and biome tinting. Supports incremental dirty sync when world_session_key is provided.
     Returns (mesh_data, elapsed_ms).
     """
     mtk = require_libmtk("mesh_voxel_storage")
@@ -369,7 +382,46 @@ def mesh_voxel_storage(
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
     t0 = time.perf_counter()
-    if hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
+    if world_session_key and hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
+        cached_world = _WORLD_SESSIONS.get(world_session_key)
+        if cached_world is not None and hasattr(cached_world, "sync_from_storage"):
+            dirty_count = cached_world.sync_from_storage(storage)
+            if dirty_count == 0:
+                mesh_data = cached_world.get_world_mesh()
+            elif dirty_count <= 30:
+                cached_world.rebuild_dirty()
+                mesh_data = cached_world.get_world_mesh()
+            else:
+                mesh_data = cached_world.rebuild_all()
+        else:
+            try:
+                cached_world = mtk.VoxelWorld.from_storage(
+                    storage=storage,
+                    config=config,
+                    culler=culler,
+                    model_db=model_db,
+                    unified_mesh=True,
+                    num_threads=num_threads,
+                )
+            except TypeError:
+                cached_world = mtk.VoxelWorld.from_storage(
+                    storage=storage,
+                    config=config,
+                    culler=culler,
+                    model_db=model_db,
+                    unified_mesh=True,
+                )
+            _WORLD_SESSIONS[world_session_key] = cached_world
+            if progress_callback is not None:
+                from .progress import wrap_progress_callback
+                wrapped_cb = wrap_progress_callback(progress_callback)
+                try:
+                    mesh_data = cached_world.rebuild_all(callback=wrapped_cb)
+                except TypeError:
+                    mesh_data = cached_world.rebuild_all()
+            else:
+                mesh_data = cached_world.rebuild_all()
+    elif hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
         try:
             world = mtk.VoxelWorld.from_storage(
                 storage=storage,

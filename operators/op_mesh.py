@@ -516,6 +516,13 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             pass
         model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
 
+        session_key = (
+            getattr(root_container, "name", None)
+            or (root_container.get("mozi_save_uuid") if root_container and hasattr(root_container, "get") else None)
+            or (getattr(world_mesh_obj, "name", None))
+            or (getattr(cloud_obj, "name", "global_cloud"))
+        )
+
         def do_cloud_rebuild(progress_callback=None):
             storage = cloud_data.to_storage()
             mesh_data, elapsed_ms = mesh_voxel_storage(
@@ -528,6 +535,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 mesh_fluids=mesh_fluids,
                 weld_vertices=weld_vertices,
                 origin_centered=origin_centered,
+                world_session_key=session_key,
             )
             return mesh_data, elapsed_ms
 

@@ -84,7 +84,60 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
     attr_y.data.foreach_get("value", by_arr)
     attr_z.data.foreach_get("value", bz_arr)
 
-    # Extract block states
+    # Extract biomes palette
+    attr_biome = mesh.attributes.get(ATTR_BIOME)
+    attr_biome_idx = mesh.attributes.get(ATTR_BIOME_IDX)
+    b_palette = None
+    if obj is not None and PROP_BIOME_PALETTE in obj:
+        try:
+            b_palette = list(obj[PROP_BIOME_PALETTE])
+        except Exception:
+            pass
+    if b_palette is None and PROP_BIOME_PALETTE in mesh:
+        try:
+            b_palette = list(mesh[PROP_BIOME_PALETTE])
+        except Exception:
+            pass
+
+    # Extract bounds if stored on object
+    bounds = None
+    if obj is not None and "mtk_bounds" in obj:
+        try:
+            raw_b = obj["mtk_bounds"]
+            if len(raw_b) == 6:
+                bounds = [int(x) for x in raw_b]
+        except Exception:
+            pass
+
+    # Fast Path: Zero-copy NumPy buffer ingestion using indexed palette
+    if (
+        hasattr(mtk.VoxelPointCloud, "from_indexed_arrays")
+        and attr_state_idx is not None
+        and palette is not None
+        and len(attr_state_idx.data) == v_count
+    ):
+        idx_arr = np.empty(v_count, dtype=np.int32)
+        attr_state_idx.data.foreach_get("value", idx_arr)
+
+        b_idx_arr = None
+        if attr_biome_idx is not None and b_palette is not None and len(attr_biome_idx.data) == v_count:
+            b_idx_arr = np.empty(v_count, dtype=np.int32)
+            attr_biome_idx.data.foreach_get("value", b_idx_arr)
+
+        return mtk.VoxelPointCloud.from_indexed_arrays(
+            pos_arr,
+            bx_arr,
+            by_arr,
+            bz_arr,
+            idx_arr,
+            palette,
+            b_idx_arr,
+            b_palette,
+            None,
+            bounds,
+        )
+
+    # Fallback Path: Materialize full Python string lists for legacy meshes
     block_states: List[str] = []
     if attr_state_idx is not None and palette is not None and len(attr_state_idx.data) == v_count:
         idx_arr = np.empty(v_count, dtype=np.int32)
@@ -101,21 +154,6 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
                 block_states.append(val.decode("utf-8", errors="replace"))
             else:
                 block_states.append(str(val))
-
-    # Extract biomes
-    attr_biome = mesh.attributes.get(ATTR_BIOME)
-    attr_biome_idx = mesh.attributes.get(ATTR_BIOME_IDX)
-    b_palette = None
-    if obj is not None and PROP_BIOME_PALETTE in obj:
-        try:
-            b_palette = list(obj[PROP_BIOME_PALETTE])
-        except Exception:
-            pass
-    if b_palette is None and PROP_BIOME_PALETTE in mesh:
-        try:
-            b_palette = list(mesh[PROP_BIOME_PALETTE])
-        except Exception:
-            pass
 
     biomes: Optional[List[str]] = None
     if attr_biome_idx is not None and b_palette is not None and len(attr_biome_idx.data) == v_count:
@@ -135,16 +173,6 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
             else:
                 b_list.append(str(val))
         biomes = b_list
-
-    # Extract bounds if stored on object
-    bounds = None
-    if obj is not None and "mtk_bounds" in obj:
-        try:
-            raw_b = obj["mtk_bounds"]
-            if len(raw_b) == 6:
-                bounds = [int(x) for x in raw_b]
-        except Exception:
-            pass
 
     return mtk.VoxelPointCloud.from_arrays(
         pos_arr,
