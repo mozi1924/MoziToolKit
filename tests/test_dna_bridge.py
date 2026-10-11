@@ -122,21 +122,27 @@ class TestDnaBridge(unittest.TestCase):
 
         # Test mesh attribute resolution
         mesh = MagicMock()
+        color_mock = make_mock_attr(8)
+        color_mock.data_type = "FLOAT_COLOR"
+        color_mock.name = "Color"
         attrs_dict = {
             "position": make_mock_attr(8),
             ".corner_vert": make_mock_attr(24),
             "UVMap": make_mock_attr(24),
             "material_index": make_mock_attr(6),
-            "Color": make_mock_attr(8),
+            "Color": color_mock,
         }
         mesh.attributes.get = lambda k: attrs_dict.get(k)
         mesh.uv_layers.active.name = "UVMap"
-        mesh.color_attributes.active.name = "Color"
+        mesh.color_attributes.active = color_mock
+        mesh.color_attributes.__len__.return_value = 1
+        mesh.color_attributes.__contains__.side_effect = lambda k: k in ("Color",)
 
         self.assertEqual(resolve_positions_ptr(mesh, expected_count=8), valid_ptr)
         self.assertEqual(resolve_corner_verts_ptr(mesh, expected_count=24), valid_ptr)
         self.assertEqual(resolve_loop_uvs_ptr(mesh, expected_count=24), valid_ptr)
-        self.assertEqual(resolve_materials_ptr(mesh, expected_count=6), valid_ptr)
+        # Material index resolution is intentionally deferred to Stage 2 Python API
+        self.assertIsNone(resolve_materials_ptr(mesh, expected_count=6))
         self.assertEqual(resolve_colors_ptr(mesh, expected_count=8), valid_ptr)
 
         # Mismatched count should return None

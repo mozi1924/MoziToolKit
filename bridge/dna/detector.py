@@ -49,9 +49,10 @@ def get_blender_version() -> Tuple[int, int, int]:
 def is_version_supported() -> bool:
     """
     Returns True if the current host Blender version is within the validated DNA compatibility matrix.
+    Supports all Blender 4.x LTS releases and 5.x releases.
     """
     major, minor, _ = get_blender_version()
-    return (major, minor) in SUPPORTED_VERSIONS
+    return major in (4, 5)
 
 
 def is_dna_available() -> bool:

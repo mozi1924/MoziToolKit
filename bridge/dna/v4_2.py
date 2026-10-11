@@ -100,15 +100,10 @@ class DnaResolverV42(BaseDnaResolver):
     def resolve_materials_ptr(
         self, mesh: Any, expected_count: Optional[int] = None
     ) -> Optional[int]:
-        """Resolves pointer for the 'material_index' face attribute layer."""
-        if mesh is None or not hasattr(mesh, "attributes"):
-            return None
-
-        mat_attr = mesh.attributes.get("material_index")
-        if mat_attr is not None:
-            if expected_count is None or len(mat_attr.data) == expected_count:
-                return self.resolve_attribute_ptr(mat_attr)
-
+        """
+        Polygon material indices are intentionally deferred to Phase 2 standard BPy foreach_set.
+        Prevents CustomData corruption and ensures cross-version stability.
+        """
         return None
 
     def resolve_colors_ptr(
@@ -118,18 +113,26 @@ class DnaResolverV42(BaseDnaResolver):
         expected_count: Optional[int] = None,
     ) -> Optional[int]:
         """Resolves pointer for the active or named color attribute layer."""
-        if mesh is None:
+        if mesh is None or not hasattr(mesh, "color_attributes"):
             return None
 
-        target_name = color_name
-        if target_name is None and hasattr(mesh, "color_attributes") and mesh.color_attributes.active:
-            target_name = mesh.color_attributes.active.name
+        # Verify mesh actually has dedicated color attributes (avoid aliasing 'position')
+        if len(mesh.color_attributes) == 0:
+            return None
 
-        if target_name and hasattr(mesh, "attributes"):
-            col_attr = mesh.attributes.get(target_name)
-            if col_attr is not None:
-                if expected_count is None or len(col_attr.data) == expected_count:
-                    return self.resolve_attribute_ptr(col_attr)
+        col_attr = None
+        if color_name is not None:
+            col_attr = mesh.color_attributes.get(color_name)
+        else:
+            active_col = mesh.color_attributes.active
+            if active_col is not None and getattr(active_col, "name", "") in mesh.color_attributes:
+                col_attr = active_col
+            elif len(mesh.color_attributes) > 0:
+                col_attr = mesh.color_attributes[0]
+
+        if col_attr is not None and getattr(col_attr, "data_type", "") in ("FLOAT_COLOR", "BYTE_COLOR"):
+            if expected_count is None or len(col_attr.data) == expected_count:
+                return self.resolve_attribute_ptr(col_attr)
 
         return None
 
