@@ -229,5 +229,70 @@
     - 材质插槽写入：从旧版 `mesh.polygons.foreach_set("material_index")` 的 3.63ms 降至 **0.004ms**（提速 **900x**）；
     - 纯数据写入阶段总耗时由 16.79ms 压缩至 **0.44ms**（写入阶段整体提速 **38x**）。
 
+---
+
+## 阶段七：胶水层智能按需预烘焙门禁与全自动化流（P0 - 交互体验闭环 🚧 待启动）
+- [ ] **按需预烘焙前置门禁助手 (`bridge/assets.py`, `utils/async_task.py`)**
+  - [ ] 实现 `check_asset_cache_status(prefs) -> Literal["READY", "MISSING", "STALE"]`，依据已配置资源包栈计算指纹比对 `.mtkcache`；
+  - [ ] 封装通用前置门禁执行器 `ensure_pipeline_assets_ready_modal(context, on_ready_callback)`：
+    - 若缓存处于 `READY` 状态：微秒级通过，直接无缝触发目标业务；
+    - 若处于 `MISSING`（初次使用）或 `STALE`（材质包变动）：自动将 `precompile_stack` 编排为异步流水线第一阶段，烘焙完成后自动级联触发后续操作；
+- [ ] **全量核心入口操作符统一接入门禁**
+  - [ ] `mtk.import_minecraft_save`（存档导入操作符）：彻底杜绝首次导入出现无 UV 灰模问题；
+  - [ ] `mozi.sync_connect`（实时网络同步操作符）：连接前自动保证资产缓存就绪；
+  - [ ] `mozi.rebuild_mesh` / `mozi.refresh_save`（通用网格重构与存档刷新）：修改材质包后一键原地重构；
+  - [ ] 状态栏与 Header 双进度条呈现两阶段反馈（`阶段 1/2: 自动预烘焙材质与模型库` $\rightarrow$ `阶段 2/2: 构建三维世界几何`）。
+
+---
+
+## 阶段八：原版生态真实生物群系 3D 染色与平滑过渡管线（P0 - 色彩保真 🚧 待启动）
+- [ ] **真实 3D Quart Biome 染色采样端到端打通**
+  - [ ] 接入 Rust 核心按真实坐标（而不是全局 fallback 平原）求得的面域 Tint 数据；
+  - [ ] 沼泽特异色彩（深灰绿水色、斑驳沼泽草）、热带雨林（高饱和翠绿）、恶地/沙漠（枯草黄）；
+  - [ ] 接入 5×5 (R=2) 生物群系平滑过渡核（Biome Blend）色彩插值；
+- [ ] **着色器节点树与属性通道协同优化**
+  - [ ] 校验 `mtk_biome_tint_data` 与 `mtk_biome_colormap_uv` 在 Cycles 与 Eevee Next 视口中的实时渲染保真度；
+  - [ ] 确保红石线信号强弱、双层水体与水下雾气着色节点树自适应适配。
+
+---
+
+## 阶段九：原版静态与悬挂实体导入系统（P1 - 动画级布景资产 🚧 待启动）
+- [ ] **艺术画 (Painting) 前端构建器 (`bridge/entity.py`, `operators/save/`)**
+  - [ ] 从存档解析数据读取 `PaintingEntity`（`variant`, `facing`, `pos`）；
+  - [ ] 生成规整的 1x1 ~ 4x4 原版尺寸三维画框带木质背板几何，绑定对应画作贴图；
+  - [ ] 收拢至容器根 Empty 下的 `Entities` 子集合，准确对齐墙面。
+- [ ] **物品展示框 (Item Frame & Glow Item Frame) 前端构建器**
+  - [ ] 解析展示框外壳与发光边框，处理 45° `ItemRotation` 步进旋转与 `Invisible` 隐形状态；
+  - [ ] 放置内容物自适应装配：
+    - 方块类型：生成微缩 3D 方块模型；
+    - 物品类型（工具/武器/食物）：生成自适应像素切分与挤出的 Flat 3D 物品几何；
+    - 地图类型：自适应切换为无框 1×1 平坦面。
+- [ ] **填充地图 (Filled Map Data) 像素图像解码与材质绑定**
+  - [ ] 对接 Rust 导出的 128×128 RGBA8 像素缓冲；
+  - [ ] 现场生成 Blender 内存 Image Datablock 并赋予展示框平面材质。
+- [ ] **盔甲架 (Armor Stand) 支架与装备挂载**
+  - [ ] 导入木质支架骨架与 `Pose` 姿态角度，挂载手持与穿戴装备。
+
+---
+
+## 阶段十：CTM 连接纹理端到端验证与修正（P1 - 材质增强 🚧 待启动）
+- [ ] **CTM 规则在 Blender 前端网格重构中的开关与配置面板**
+  - [ ] 在偏好设置与导入选项中提供 `enable_ctm` 复选框（针对大型场景提供可选性能平衡）；
+- [ ] **CTM 材质节点树与图集 UV 解算兼容性排查与修复**
+  - [ ] 结合真实 OptiFine / Continuity 资源包验证连续玻璃、连续书架、平滑石材的 UV 渲染；
+  - [ ] 消除潜在的边界 UV 漂移与接缝溢色问题。
+
+---
+
+## 阶段十一：复杂方块实体 NBT 图元与动画分体铰链装配（P2 - 动画生产力 🚧 待启动）
+- [ ] **告示牌与悬挂告示牌文字生成器 (Sign Text)**
+  - [ ] 读取 `front_text` / `back_text`，生成文本顶点网格或高保真纹理投影，支持 16 色染料与发光墨囊辉光效果；
+- [ ] **旗帜多层花纹合成 (Banner Patterns)**
+  - [ ] 依照原版 40+ 种图案公式与 16 种颜色按 NBT 顺位合成多层 Alpha 纹理；
+- [ ] **动画铰链分体装配选项 (Animation-Ready Hierarchy)**
+  - [ ] 提供“分离可动部件”选项：门（Door）、栅栏门（Fence Gate）、箱子顶盖（Chest Lid）、钟体（Bell Body）生成为独立子物体；
+  - [ ] 精确放置铰链旋转中心（Pivot Point），方便动画师直接设置旋转关键帧。
+
+
 
 

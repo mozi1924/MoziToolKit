@@ -9,6 +9,7 @@
 ### 1. 架构总览与防回归哲学 (Architecture & Principles)
 - **[架构总览与设计原则](architecture/overview.md)**：包含插件的分层架构图（UI 层、Pipeline 调度层、Engine 引擎层、System 基础层）以及全项目不可违背的四大核心设计哲学。
 - **[核心设计决策与防回归 FAQ 对照表](architecture/faq_anti_regression.md)**：列举了草方块侧面染色、动画贴图正方形截断、jmc2obj 连续平铺 UV 等常见易被误判为 Bug 的既定设计特征对照表。
+- **[生产级动画资产、按需预烘焙与原版特性规范](architecture/animation_assets_and_prebake_spec.md)**：包含胶水层按需自动预烘焙门禁、真实 3D 生物群系 Tint 采样与平滑混合、静态悬挂实体（画/展示框/地图）以及 CTM 闭环技术规范。
 
 ---
 
