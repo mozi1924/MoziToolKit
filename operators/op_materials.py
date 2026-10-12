@@ -11,10 +11,12 @@ from bpy.props import BoolProperty, EnumProperty
 logger = logging.getLogger("MoziToolKit.Operators.Materials")
 
 try:
+    from ..bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
     from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
     from ..utils.system import get_prefs, register_menu_item
 except (ImportError, ValueError):
+    from bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from utils.materials.biome import BIOME_ENUM_ITEMS
     from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
     from utils.system import get_prefs, register_menu_item
@@ -93,6 +95,18 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     def execute(self, context):
         obj = context.active_object
         prefs = get_prefs(context)
+
+        # Asset readiness gate: verify cache freshness before material operations
+        status = check_asset_cache_status(prefs)
+        if status == "NO_PACKS":
+            self.report({'WARNING'}, "No enabled resource packs configured. Please configure a Minecraft pack in Preferences.")
+            return {'CANCELLED'}
+        if status in ("MISSING", "STALE"):
+            self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before replacing materials...")
+            success, _ = ensure_pipeline_assets_ready_sync(prefs)
+            if not success:
+                self.report({'ERROR'}, "Failed to precompile assets.")
+                return {'CANCELLED'}
 
         # Pre-detection mechanism: if object has provenance attributes, directly restore!
         if self.use_provenance and _has_provenance_attributes(obj):
@@ -173,6 +187,18 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
     def execute(self, context):
         obj = context.active_object
         prefs = get_prefs(context)
+
+        # Asset readiness gate
+        status = check_asset_cache_status(prefs)
+        if status == "NO_PACKS":
+            self.report({'WARNING'}, "No enabled resource packs configured. Please configure a Minecraft pack in Preferences.")
+            return {'CANCELLED'}
+        if status in ("MISSING", "STALE"):
+            self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before restoring materials...")
+            success, _ = ensure_pipeline_assets_ready_sync(prefs)
+            if not success:
+                self.report({'ERROR'}, "Failed to precompile assets.")
+                return {'CANCELLED'}
 
         try:
             res = restore_materials_from_provenance(

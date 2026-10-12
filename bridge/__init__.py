@@ -10,7 +10,9 @@ from .engine import (
     require_libmtk,
 )
 from .assets import (
+    check_asset_cache_status,
     clear_cache,
+    ensure_pipeline_assets_ready_sync,
     get_cache_dir,
     get_cache_stats,
     get_configured_pack_stack,
@@ -18,6 +20,7 @@ from .assets import (
     open_cache_folder,
     precompile_stack,
     precompile_stack_async,
+    run_task_with_asset_guard,
 )
 from .mesh import (
     BLENDER_TO_MTK_DOMAIN,
@@ -119,12 +122,15 @@ from .material import (
 )
 
 __all__ = [
+    "check_asset_cache_status",
     "clear_cache",
+    "ensure_pipeline_assets_ready_sync",
     "get_cache_dir",
     "get_cache_stats",
     "get_configured_pack_stack",
     "open_cache_folder",
     "precompile_stack",
+    "run_task_with_asset_guard",
     "extract_mesh_data",
     "inject_mesh_data",
     "BLENDER_TO_MTK_DOMAIN",

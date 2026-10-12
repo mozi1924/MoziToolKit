@@ -231,17 +231,20 @@
 
 ---
 
-## 阶段七：胶水层智能按需预烘焙门禁与全自动化流（P0 - 交互体验闭环 🚧 待启动）
-- [ ] **按需预烘焙前置门禁助手 (`bridge/assets.py`, `utils/async_task.py`)**
-  - [ ] 实现 `check_asset_cache_status(prefs) -> Literal["READY", "MISSING", "STALE"]`，依据已配置资源包栈计算指纹比对 `.mtkcache`；
-  - [ ] 封装通用前置门禁执行器 `ensure_pipeline_assets_ready_modal(context, on_ready_callback)`：
+## 阶段七：胶水层智能按需预烘焙门禁与全自动化流（✅ 已完成）
+- [x] **按需预烘焙前置门禁助手 (`bridge/assets.py`, `utils/async_task.py`)**
+  - [x] 实现 `check_asset_cache_status(prefs) -> Literal["READY", "MISSING", "STALE", "NO_PACKS"]`，依据已配置资源包栈计算指纹比对 `.mtkcache`；
+  - [x] 封装同步门禁 `ensure_pipeline_assets_ready_sync(prefs, progress_callback)` 与异步门禁 `run_task_with_asset_guard(target_func, target_kwargs, ...)`：
     - 若缓存处于 `READY` 状态：微秒级通过，直接无缝触发目标业务；
-    - 若处于 `MISSING`（初次使用）或 `STALE`（材质包变动）：自动将 `precompile_stack` 编排为异步流水线第一阶段，烘焙完成后自动级联触发后续操作；
-- [ ] **全量核心入口操作符统一接入门禁**
-  - [ ] `mtk.import_minecraft_save`（存档导入操作符）：彻底杜绝首次导入出现无 UV 灰模问题；
-  - [ ] `mozi.sync_connect`（实时网络同步操作符）：连接前自动保证资产缓存就绪；
-  - [ ] `mozi.rebuild_mesh` / `mozi.refresh_save`（通用网格重构与存档刷新）：修改材质包后一键原地重构；
-  - [ ] 状态栏与 Header 双进度条呈现两阶段反馈（`阶段 1/2: 自动预烘焙材质与模型库` $\rightarrow$ `阶段 2/2: 构建三维世界几何`）。
+    - 若处于 `MISSING`（初次使用）或 `STALE`（材质包变动）：自动将 `precompile_stack` 编排为两阶段流水线第一阶段，烘焙完成后自动级联触发后续操作并重载图集纹理；
+- [x] **全量核心入口操作符统一接入门禁**
+  - [x] `mtk.import_minecraft_save` 与 `mtk.refresh_save`（存档导入与刷新操作符）：彻底杜绝首次导入出现无 UV 灰模问题；
+  - [x] `mozi.sync_connect` 与 `mozi.sync_rebuild_world`（实时网络同步连接与重构）：连接与重构前自动保证资产缓存就绪与热重载；
+  - [x] `mozi.rebuild_mesh`（通用网格重构）：智能派发各分支均接入前置烘焙门禁；
+  - [x] `mozi.remesh_from_voxel_cloud` 与 `mozi.rematerialize_from_voxel_cloud`（点云网格化与重新赋材质）：体素操作前自动门禁校验；
+  - [x] `mozi.replace_material` 与 `mozi.restore_materials_from_attributes`（材质替换与回退操作）：材质替换前自动确保图集与材质包预烘焙；
+  - [x] 状态栏与 Header 双进度条呈现两阶段反馈（`[1/2 Precompile] ...` $\rightarrow$ `[2/2 Target] ...`）；
+  - [x] 编写 `tests/test_asset_bake_guard.py` 覆盖 9 项单元/集成测试，并在真实 Blender 环境下全绿通过。
 
 ---
 

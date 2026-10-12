@@ -18,6 +18,12 @@ try:
         load_model_database_from_cache,
         load_biome_resolver_from_cache,
     )
+    from ...bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        invalidate_asset_cache_memory,
+        reload_atlas_images,
+    )
 except (ImportError, ValueError):
     from bridge.sync import (
         get_sync_bridge_session,
@@ -25,6 +31,12 @@ except (ImportError, ValueError):
         load_atlas_from_cache,
         load_model_database_from_cache,
         load_biome_resolver_from_cache,
+    )
+    from bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        invalidate_asset_cache_memory,
+        reload_atlas_images,
     )
 from .hierarchy import (
     get_or_create_world_container,
@@ -405,6 +417,21 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         except (ImportError, ValueError):
             from utils.system import get_prefs
         prefs = get_prefs(context)
+
+        # Asset readiness gate
+        status = check_asset_cache_status(prefs)
+        if status in ("MISSING", "STALE"):
+            self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before Live Sync connection...")
+            success, _ = ensure_pipeline_assets_ready_sync(prefs)
+            if not success:
+                self.report({'ERROR'}, "Failed to precompile assets before connection.")
+                return {'CANCELLED'}
+            invalidate_asset_cache_memory()
+            try:
+                reload_atlas_images(prefs)
+            except Exception:
+                pass
+
         model_db = load_model_database_from_cache(prefs)
         atlas = load_atlas_from_cache(prefs)
         biome_resolver = load_biome_resolver_from_cache(prefs)

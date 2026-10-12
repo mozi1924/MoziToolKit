@@ -9,8 +9,10 @@ import bpy
 
 try:
     from ...bridge.sync import get_sync_bridge_session
+    from ...bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
 except (ImportError, ValueError):
     from bridge.sync import get_sync_bridge_session
+    from bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
 from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
 logger = logging.getLogger("MoziToolKit.Sync.Rebuild")
@@ -74,6 +76,14 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                     logger.info("Dirty asset cache detected: hot-reloaded assets and cleared mesh cache before rebuild.")
             except Exception as e:
                 logger.warning("Failed dirty cache check: %s", e)
+
+        if not dirty:
+            status = check_asset_cache_status(prefs)
+            if status in ("MISSING", "STALE"):
+                ensure_pipeline_assets_ready_sync(prefs)
+                dirty = True
+                if hasattr(session, "check_and_reload_dirty_cache"):
+                    session.check_and_reload_dirty_cache(prefs=prefs, force=True)
 
         def do_rebuild(progress_callback=None):
             return session.get_world_mesh()

@@ -52,6 +52,9 @@ try:
         get_active_cache_package_path,
         get_cache_fingerprint,
         precompile_stack,
+        check_asset_cache_status,
+        invalidate_asset_cache_memory,
+        reload_atlas_images,
         load_atlas_mapping_from_cache,
         load_standalone_mapping_from_cache,
         load_baked_atlas_from_cache,
@@ -77,6 +80,9 @@ except (ImportError, ValueError):
         get_active_cache_package_path,
         get_cache_fingerprint,
         precompile_stack,
+        check_asset_cache_status,
+        invalidate_asset_cache_memory,
+        reload_atlas_images,
         load_atlas_mapping_from_cache,
         load_standalone_mapping_from_cache,
         load_baked_atlas_from_cache,
@@ -152,13 +158,20 @@ except (ImportError, ValueError):
 
 
 def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
-    """Ensure asset caches exist in persistent storage."""
+    """Ensure asset caches exist in persistent storage and match configured pack stack."""
     base_cache = get_cache_dir(prefs)
-    pkg = get_active_cache_package_path(prefs)
-
-    if pkg is None:
-        precompile_stack(prefs)
-
+    status = check_asset_cache_status(prefs)
+    if status in ("MISSING", "STALE"):
+        logger.info("Asset cache is %s; running automated precompilation...", status)
+        try:
+            precompile_stack(prefs)
+            invalidate_asset_cache_memory()
+            try:
+                reload_atlas_images(prefs)
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning("Automated precompilation in ensure_stack_precompiled failed: %s", e)
     return base_cache
 
 

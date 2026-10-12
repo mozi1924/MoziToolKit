@@ -18,6 +18,12 @@ except ImportError:
     bpy = None
 
 try:
+    from ...bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        reload_atlas_images,
+        run_task_with_asset_guard,
+    )
     from ...bridge.save import (
         apply_imported_save_to_blender,
         load_and_mesh_minecraft_save,
@@ -27,6 +33,12 @@ try:
     from ...utils.system.dependencies import get_prefs
     from ...utils.system.save_registry import get_save_registry
 except (ImportError, ValueError):
+    from bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        reload_atlas_images,
+        run_task_with_asset_guard,
+    )
     from bridge.save import (
         apply_imported_save_to_blender,
         load_and_mesh_minecraft_save,
@@ -105,9 +117,16 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
         level_name = str(target.get("mtk_world_name", "Minecraft World"))
         prefs = get_prefs(context)
 
+        # Asset readiness gate
+        status = check_asset_cache_status(prefs)
+
         # Synchronous mode (headless / tests)
         if not self.run_async:
             try:
+                if status in ("MISSING", "STALE"):
+                    self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before refreshing...")
+                    ensure_pipeline_assets_ready_sync(prefs)
+
                 with blender_progress_scope(context, total=100, title=f"Refreshing {level_name}") as reporter:
                     mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
                         world_dir=world_dir,
@@ -153,23 +172,34 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                 self.report({"ERROR"}, f"Save refresh failed: {e}")
                 return {"CANCELLED"}
 
-        # Asynchronous non-blocking modal execution
+        # Asynchronous non-blocking modal execution with asset guard
         task = AsyncTask(
-            target=load_and_mesh_minecraft_save,
+            target=run_task_with_asset_guard,
             kwargs={
-                "world_dir": world_dir,
-                "dimension": dimension,
-                "min_block": min_block,
-                "max_block": max_block,
+                "target_func": load_and_mesh_minecraft_save,
+                "target_kwargs": {
+                    "world_dir": world_dir,
+                    "dimension": dimension,
+                    "min_block": min_block,
+                    "max_block": max_block,
+                    "prefs": prefs,
+                    "enable_ao": enable_ao,
+                    "mesh_fluids": mesh_fluids,
+                    "weld_vertices": weld_vertices,
+                    "origin_centered": origin_centered,
+                },
                 "prefs": prefs,
-                "enable_ao": enable_ao,
-                "mesh_fluids": mesh_fluids,
-                "weld_vertices": weld_vertices,
-                "origin_centered": origin_centered,
+                "task_title": f"Refreshing {level_name}",
             },
         )
 
-        def on_success(result):
+        def on_success(result_tuple):
+            result, did_precompile = result_tuple
+            if did_precompile:
+                try:
+                    reload_atlas_images(prefs)
+                except Exception:
+                    pass
             mesh_data, meta, storage, elapsed_ms = result
             obj, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,

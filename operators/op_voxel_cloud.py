@@ -26,6 +26,12 @@ try:
         get_world_pipeline_assets,
         mesh_voxel_storage,
     )
+    from ..bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        invalidate_asset_cache_memory,
+        reload_atlas_images,
+    )
     from ..bridge.mesh import inject_mesh_data
     from ..utils.system import get_prefs, register_menu_item
 except (ImportError, ValueError):
@@ -42,6 +48,12 @@ except (ImportError, ValueError):
         ensure_world_materials,
         get_world_pipeline_assets,
         mesh_voxel_storage,
+    )
+    from bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        invalidate_asset_cache_memory,
+        reload_atlas_images,
     )
     from bridge.mesh import inject_mesh_data
     from utils.system import get_prefs, register_menu_item
@@ -193,10 +205,18 @@ class MOZI_OT_remesh_from_voxel_cloud(bpy.types.Operator):
         # 2. Reconstruct VoxelStorage purely from point cloud
         storage = cloud_data.to_storage()
 
-        # 3. Meshing pipeline assets
+        # 3. Meshing pipeline assets & asset readiness gate
         prefs = get_prefs(context)
+        status = check_asset_cache_status(prefs)
+        if status in ("MISSING", "STALE"):
+            self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before remeshing...")
+            success, _ = ensure_pipeline_assets_ready_sync(prefs)
+            if not success:
+                self.report({'ERROR'}, "Failed to precompile assets.")
+                return {'CANCELLED'}
+            invalidate_asset_cache_memory()
+
         try:
-            from ..bridge.assets import reload_atlas_images
             reload_atlas_images(prefs)
         except Exception:
             pass

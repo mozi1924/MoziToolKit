@@ -26,6 +26,12 @@ try:
     from ..bridge.world import ensure_world_materials, get_world_pipeline_assets, mesh_voxel_storage
     from ..bridge.mesh import inject_mesh_data
     from ..bridge.sync import get_sync_bridge_session
+    from ..bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        reload_atlas_images,
+        run_task_with_asset_guard,
+    )
 except (ImportError, ValueError):
     from utils.mesh import (
         SELECTION_ACTION_ITEMS,
@@ -43,6 +49,12 @@ except (ImportError, ValueError):
     from bridge.world import ensure_world_materials, get_world_pipeline_assets, mesh_voxel_storage
     from bridge.mesh import inject_mesh_data
     from bridge.sync import get_sync_bridge_session
+    from bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        reload_atlas_images,
+        run_task_with_asset_guard,
+    )
 
 
 @register_menu_item(views=["mesh"], label="Select Hard & Sharp Edges")
@@ -365,6 +377,9 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             self.report({"WARNING"}, "No valid Live Sync, Save container, or Voxel Point Cloud found.")
             return {"CANCELLED"}
 
+        prefs = get_prefs(context)
+        status = check_asset_cache_status(prefs)
+
         # Ensure Object mode
         saved_mode = getattr(context, "mode", "OBJECT")
         if saved_mode != "OBJECT" and hasattr(bpy.ops, "object") and hasattr(bpy.ops.object, "mode_set"):
@@ -411,7 +426,11 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 from operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
             prefs = get_prefs(context)
-            if hasattr(session, "check_and_reload_dirty_cache"):
+            if status in ("MISSING", "STALE"):
+                ensure_pipeline_assets_ready_sync(prefs)
+                if hasattr(session, "check_and_reload_dirty_cache"):
+                    session.check_and_reload_dirty_cache(prefs=prefs, force=True)
+            elif hasattr(session, "check_and_reload_dirty_cache"):
                 try:
                     session.check_and_reload_dirty_cache(prefs=prefs)
                 except Exception:
@@ -509,8 +528,10 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 origin_centered = bool(root_container.get("mtk_origin_centered"))
 
         prefs = get_prefs(context)
+        if not self.run_async and status in ("MISSING", "STALE"):
+            ensure_pipeline_assets_ready_sync(prefs)
+
         try:
-            from ..bridge.assets import reload_atlas_images
             reload_atlas_images(prefs)
         except Exception:
             pass
@@ -524,6 +545,9 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         )
 
         def do_cloud_rebuild(progress_callback=None):
+            nonlocal model_db, atlas, biome_resolver
+            if model_db is None or atlas is None:
+                model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
             storage = cloud_data.to_storage()
             mesh_data, elapsed_ms = mesh_voxel_storage(
                 storage=storage,
@@ -539,8 +563,17 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             )
             return mesh_data, elapsed_ms
 
-        def on_cloud_success(result):
-            mesh_data, elapsed_ms = result
+        def on_cloud_success(result_tuple):
+            if isinstance(result_tuple, tuple) and len(result_tuple) == 2 and isinstance(result_tuple[1], bool):
+                (mesh_data, elapsed_ms), did_precompile = result_tuple
+                if did_precompile:
+                    try:
+                        reload_atlas_images(prefs)
+                    except Exception:
+                        pass
+            else:
+                mesh_data, elapsed_ms = result_tuple
+
             nonlocal world_mesh_obj
             if world_mesh_obj is None and root_container is not None:
                 mesh_name = f"{root_container.name}_Mesh"
@@ -584,7 +617,15 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             from utils.async_task import AsyncTask, ModalTaskRunner
             from utils.progress import BlenderProgressReporter
 
-        task = AsyncTask(target=do_cloud_rebuild)
+        task = AsyncTask(
+            target=run_task_with_asset_guard,
+            kwargs={
+                "target_func": do_cloud_rebuild,
+                "target_kwargs": {},
+                "prefs": prefs,
+                "task_title": "Rebuilding Voxel Mesh",
+            },
+        )
         reporter = BlenderProgressReporter(context=context, total=100, title="Rebuilding Voxel Mesh")
         self._runner = ModalTaskRunner(
             operator=self,

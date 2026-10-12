@@ -19,6 +19,12 @@ except ImportError:
     ImportHelper = object
 
 try:
+    from ...bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        reload_atlas_images,
+        run_task_with_asset_guard,
+    )
     from ...bridge.save import (
         apply_imported_save_to_blender,
         import_save_to_blender,
@@ -28,6 +34,12 @@ try:
     from ...utils.async_task import AsyncTask, ModalTaskRunner
     from ...utils.progress import BlenderProgressReporter
 except (ImportError, ValueError):
+    from bridge.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+        reload_atlas_images,
+        run_task_with_asset_guard,
+    )
     from bridge.save import (
         apply_imported_save_to_blender,
         import_save_to_blender,
@@ -175,12 +187,19 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         except Exception:
             prefs = None
 
+        # Asset readiness gate
+        status = check_asset_cache_status(prefs)
+
         min_c = tuple(self.min_coord)
         max_c = tuple(self.max_coord)
 
         # Synchronous fallback for CLI / tests when run_async is explicitly False
         if not self.run_async:
             try:
+                if status in ("MISSING", "STALE"):
+                    self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before importing...")
+                    ensure_pipeline_assets_ready_sync(prefs)
+
                 try:
                     from ...utils.progress import blender_progress_scope
                 except (ImportError, ValueError):
@@ -213,23 +232,34 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                 self.report({"ERROR"}, f"Save import failed: {e}")
                 return {"CANCELLED"}
 
-        # Asynchronous non-blocking modal execution (UI mode)
+        # Asynchronous non-blocking modal execution (UI mode) with asset guard
         task = AsyncTask(
-            target=load_and_mesh_minecraft_save,
+            target=run_task_with_asset_guard,
             kwargs={
-                "world_dir": path,
-                "dimension": self.dimension,
-                "min_block": min_c,
-                "max_block": max_c,
+                "target_func": load_and_mesh_minecraft_save,
+                "target_kwargs": {
+                    "world_dir": path,
+                    "dimension": self.dimension,
+                    "min_block": min_c,
+                    "max_block": max_c,
+                    "prefs": prefs,
+                    "enable_ao": self.enable_ao,
+                    "mesh_fluids": self.mesh_fluids,
+                    "weld_vertices": self.weld_vertices,
+                    "origin_centered": self.origin_centered,
+                },
                 "prefs": prefs,
-                "enable_ao": self.enable_ao,
-                "mesh_fluids": self.mesh_fluids,
-                "weld_vertices": self.weld_vertices,
-                "origin_centered": self.origin_centered,
+                "task_title": f"Import {self.dimension}",
             },
         )
 
-        def on_success(result):
+        def on_success(result_tuple):
+            result, did_precompile = result_tuple
+            if did_precompile:
+                try:
+                    reload_atlas_images(prefs)
+                except Exception:
+                    pass
             mesh_data, meta, storage, elapsed_ms = result
             obj, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
