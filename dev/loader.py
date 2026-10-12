@@ -100,6 +100,11 @@ def reload_dev_binary() -> bool:
             engine._libmtk = mod
         except Exception:
             pass
+        try:
+            from ..bridge.assets import invalidate_asset_cache_memory
+            invalidate_asset_cache_memory()
+        except Exception:
+            pass
         return True
     except Exception:
         return False
