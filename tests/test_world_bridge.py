@@ -186,4 +186,32 @@ class TestWorldBridgePipeline:
                 assert test_obj.data.polygons[0].material_index == 0
                 assert test_obj.data.polygons[1].material_index == 1
 
+    def test_apply_voxel_mesh_to_blender_routes_to_atlas_when_atlas_arg_is_none(self):
+        """Regression test: apply_voxel_mesh_to_blender with atlas=None must call ensure_world_materials in ATLAS mode."""
+        from unittest.mock import patch, MagicMock
+        from MoziToolKit.bridge.world import apply_voxel_mesh_to_blender
+
+        mock_mesh_data = MagicMock()
+        mock_mesh_data.used_materials.return_value = [0]
+
+        mock_obj = MagicMock()
+        mock_obj.type = "MESH"
+        mock_obj.data = MagicMock()
+
+        with patch("MoziToolKit.bridge.world.inject_mesh_data"), \
+             patch("MoziToolKit.bridge.world.ensure_voxel_child_cloud"), \
+             patch("MoziToolKit.bridge.world.ensure_world_materials") as mock_ensure_atlas, \
+             patch("MoziToolKit.utils.materials.pipeline.restore_materials_from_provenance") as mock_standalone:
+
+            obj, stats = apply_voxel_mesh_to_blender(
+                mesh_data=mock_mesh_data,
+                storage=MagicMock(),
+                name="TestWorld",
+                atlas=None,
+                material_mode="ATLAS",
+            )
+
+            assert mock_ensure_atlas.called, "ensure_world_materials must be called for ATLAS mode even if atlas is None"
+            assert not mock_standalone.called, "restore_materials_from_provenance must NOT be called when material_mode is ATLAS"
+
 

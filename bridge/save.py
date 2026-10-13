@@ -367,7 +367,7 @@ def apply_imported_save_to_blender(
     )
 
     # 4. Bind Atlas materials or Standalone materials and shaders
-    if material_mode.strip().upper() == "STANDALONE" or atlas is None:
+    if material_mode.strip().upper() == "STANDALONE":
         try:
             from ..utils.materials.pipeline import restore_materials_from_provenance
         except (ImportError, ValueError):

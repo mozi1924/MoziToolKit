@@ -172,18 +172,10 @@ def require_jar() -> Path:
 def require_ctm_resource_pack() -> Path:
     """Returns the CTM resource pack path or skips the enclosing test if unavailable."""
     pack = ctm_resource_pack_zip()
-    if pack is None:
-        # Gracefully attempt to fetch from Modrinth cache if internet is available
-        try:
-            from bridge.assets.modrinth import fetch_modrinth_pack
-            pack = fetch_modrinth_pack("clean-connected-glass", target_dir=Path("/tmp"))
-        except Exception:
-            pass
-
     if pack is None or not pack.exists():
         import pytest
         pytest.skip(
-            "CTM resource pack unavailable: set MTK_TEST_CTM_PACK or place clean_connected_glass.zip in /tmp"
+            "CTM resource pack unavailable: set MTK_TEST_CTM_PACK environment variable or place pack zip in parent directory."
         )
     os.environ.setdefault("MTK_TEST_CTM_PACK", str(pack))
     return pack

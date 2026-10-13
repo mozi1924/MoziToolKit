@@ -526,7 +526,7 @@ def apply_voxel_mesh_to_blender(
     )
 
     # 3. Bind only used Atlas chunk materials & shaders (or Standalone materials if standalone mode)
-    if material_mode.strip().upper() == "STANDALONE" or atlas is None:
+    if material_mode.strip().upper() == "STANDALONE":
         try:
             from ..utils.materials.pipeline import restore_materials_from_provenance
         except (ImportError, ValueError):
