@@ -521,76 +521,14 @@ def resolve_and_apply_biome_tint(
     biome_resolver = get_or_load_biome_resolver(cache_dir=base_cache, prefs=prefs)
 
     if biome.upper() == "WORLD":
-        storage = getattr(mesh_or_obj, "_storage", None) or getattr(mesh, "_storage", None)
-        if storage is None and hasattr(mesh_or_obj, "get"):
-            storage = mesh_or_obj.get("mtk:storage", None)
-        if storage is None and hasattr(mesh, "get"):
-            storage = mesh.get("mtk:storage", None)
-        if storage is None:
-            try:
-                try:
-                    from ...bridge.sync import get_live_sync_session
-                except (ImportError, ValueError):
-                    from bridge.sync import get_live_sync_session
-                session = get_live_sync_session()
-                if session:
-                    storage = session.get_storage()
-            except Exception:
-                storage = None
-
-        has_coords = (
-            hasattr(mesh, "attributes")
-            and "mtk_block_x" in mesh.attributes
-            and "mtk_block_y" in mesh.attributes
-            and "mtk_block_z" in mesh.attributes
-        )
-
-        if storage is not None and has_coords and face_source_keys:
-            try:
-                from ...bridge.material import compute_mesh_biome_attributes_from_storage
-            except (ImportError, ValueError):
-                from bridge.material import compute_mesh_biome_attributes_from_storage
-
-            num_polys = len(mesh.polygons)
-            attr_x = mesh.attributes.get("mtk_block_x")
-            attr_y = mesh.attributes.get("mtk_block_y")
-            attr_z = mesh.attributes.get("mtk_block_z")
-            if np is not None and hasattr(attr_x.data, "foreach_get"):
-                xs = np.empty(num_polys, dtype=np.int32)
-                ys = np.empty(num_polys, dtype=np.int32)
-                zs = np.empty(num_polys, dtype=np.int32)
-                attr_x.data.foreach_get("value", xs)
-                attr_y.data.foreach_get("value", ys)
-                attr_z.data.foreach_get("value", zs)
-                xs_l, ys_l, zs_l = xs.tolist(), ys.tolist(), zs.tolist()
-            else:
-                xs_l = [int(p.value) for p in attr_x.data]
-                ys_l = [int(p.value) for p in attr_y.data]
-                zs_l = [int(p.value) for p in attr_z.data]
-
-            res = compute_mesh_biome_attributes_from_storage(
-                face_source_keys,
-                xs_l,
-                ys_l,
-                zs_l,
-                storage,
-                resolver=biome_resolver,
-                smooth=True,
-            )
-            apply_biome_tint_attributes(mesh, res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"])
-            if hasattr(mesh_or_obj, "__setitem__"):
-                try:
-                    mesh_or_obj["mtk:biome_preset"] = "WORLD"
-                except Exception:
-                    pass
-            return
-
-        if hasattr(mesh, "attributes") and "mtk_biome_tint_data" in mesh.attributes:
-            if hasattr(mesh_or_obj, "__setitem__"):
-                try:
-                    mesh_or_obj["mtk:biome_preset"] = "WORLD"
-                except Exception:
-                    pass
+        from .biome.updater import resolve_and_apply_world_biome_tint
+        if resolve_and_apply_world_biome_tint(
+            mesh_or_obj=mesh_or_obj,
+            mesh=mesh,
+            face_source_keys=face_source_keys,
+            prefs=prefs,
+            base_cache=base_cache,
+        ):
             return
 
     is_custom = biome.upper() == "CUSTOM"

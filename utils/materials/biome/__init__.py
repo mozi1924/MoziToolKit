@@ -29,11 +29,13 @@ if HAS_BPY:
         is_mtk_object,
         detect_object_material_mode,
         update_object_biome,
+        resolve_and_apply_world_biome_tint,
     )
 else:
     is_mtk_object = None
     detect_object_material_mode = None
     update_object_biome = None
+    resolve_and_apply_world_biome_tint = None
 
 __all__ = [
     "TINT_TYPE_NONE",
@@ -51,4 +53,5 @@ __all__ = [
     "is_mtk_object",
     "detect_object_material_mode",
     "update_object_biome",
+    "resolve_and_apply_world_biome_tint",
 ]
