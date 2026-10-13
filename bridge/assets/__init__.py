@@ -40,7 +40,14 @@ from .guard import (
     ensure_pipeline_assets_ready_sync,
     run_task_with_asset_guard,
 )
-from .pack import get_configured_pack_stack
+from .pack import get_configured_pack_stack, get_configured_ctm_solver
+from .modrinth import (
+    RECOMMENDED_CTM_PACKS,
+    download_modrinth_file,
+    fetch_modrinth_pack,
+    get_project_versions,
+    search_modrinth_packs,
+)
 from .precompile import (
     precompile_stack,
     precompile_stack_async,
@@ -94,4 +101,11 @@ __all__ = [
     "check_asset_cache_status",
     "ensure_pipeline_assets_ready_sync",
     "run_task_with_asset_guard",
+    "get_configured_pack_stack",
+    "get_configured_ctm_solver",
+    "search_modrinth_packs",
+    "get_project_versions",
+    "download_modrinth_file",
+    "fetch_modrinth_pack",
+    "RECOMMENDED_CTM_PACKS",
 ]

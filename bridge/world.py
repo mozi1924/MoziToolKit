@@ -27,6 +27,7 @@ from .assets import (
     load_atlas_mapping_from_cache,
     load_baked_model_database,
     load_biome_resolver_from_cache,
+    get_configured_ctm_solver,
 )
 
 logger = logging.getLogger("MoziToolKit.Bridge.World")
@@ -331,6 +332,7 @@ def mesh_voxel_storage(
     model_db: Optional[Any] = None,
     atlas: Optional[Any] = None,
     biome_resolver: Optional[Any] = None,
+    ctm_solver: Optional[Any] = None,
     prefs=None,
     enable_ao: bool = True,
     mesh_fluids: bool = True,
@@ -339,6 +341,7 @@ def mesh_voxel_storage(
     num_threads: Optional[int] = None,
     progress_callback: Optional[Any] = None,
     world_session_key: Optional[str] = None,
+    material_mode: str = "ATLAS",
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -347,12 +350,24 @@ def mesh_voxel_storage(
     """
     mtk = require_libmtk("mesh_voxel_storage")
 
+    is_standalone = material_mode.strip().upper() == "STANDALONE"
+
     # Auto-load cached assets if not explicitly passed
-    if model_db is None or atlas is None or biome_resolver is None:
-        cached_model_db, cached_atlas, cached_biome_resolver = get_world_pipeline_assets(prefs)
-        model_db = model_db or cached_model_db
-        atlas = atlas or cached_atlas
-        biome_resolver = biome_resolver or cached_biome_resolver
+    if is_standalone:
+        if model_db is None or biome_resolver is None:
+            cached_model_db, _, cached_biome_resolver = get_world_pipeline_assets(prefs)
+            model_db = model_db or cached_model_db
+            biome_resolver = biome_resolver or cached_biome_resolver
+        atlas = None
+    else:
+        if model_db is None or atlas is None or biome_resolver is None:
+            cached_model_db, cached_atlas, cached_biome_resolver = get_world_pipeline_assets(prefs)
+            model_db = model_db or cached_model_db
+            atlas = atlas or cached_atlas
+            biome_resolver = biome_resolver or cached_biome_resolver
+
+    # Auto-resolve CTM solver from pack stack if available
+    ctm_solver = ctm_solver or get_configured_ctm_solver(prefs)
 
     # Auto-resolve thread count from preferences if not explicitly set
     if num_threads is None:
@@ -366,18 +381,24 @@ def mesh_voxel_storage(
             num_threads = getattr(prefs, "thread_count", 0) or None
 
     if config is None:
-        config = mtk.MesherConfig(
-            enable_ao=enable_ao,
-            mesh_fluids=mesh_fluids,
-            z_up_coordinates=True,
-            origin_centered=origin_centered,
-            weld_vertices=weld_vertices,
-            num_threads=num_threads,
-            atlas=atlas,
-            biome_resolver=biome_resolver,
-        )
-    elif num_threads is not None and hasattr(config, "num_threads"):
-        config.num_threads = num_threads
+        config_kwargs = {
+            "enable_ao": enable_ao,
+            "mesh_fluids": mesh_fluids,
+            "z_up_coordinates": True,
+            "origin_centered": origin_centered,
+            "weld_vertices": weld_vertices,
+            "num_threads": num_threads,
+            "atlas": atlas,
+            "biome_resolver": biome_resolver,
+        }
+        if ctm_solver is not None:
+            config_kwargs["ctm_solver"] = ctm_solver
+        config = mtk.MesherConfig(**config_kwargs)
+    else:
+        if num_threads is not None and hasattr(config, "num_threads"):
+            config.num_threads = num_threads
+        if ctm_solver is not None and hasattr(config, "set_ctm_solver"):
+            config.set_ctm_solver(ctm_solver)
 
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
@@ -466,11 +487,12 @@ def apply_voxel_mesh_to_blender(
     atlas: Optional[Any] = None,
     origin_centered: bool = True,
     reuse_existing: bool = True,
+    material_mode: str = "ATLAS",
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed voxel world geometry.
-    Instantiates or updates target Blender Mesh object, binds Atlas PBR chunk shaders,
-    and synchronizes companion unculled VoxelPointCloud.
+    Instantiates or updates target Blender Mesh object, binds Atlas PBR chunk shaders
+    or Standalone Principled/LabPBR materials, and synchronizes companion unculled VoxelPointCloud.
     """
     try:
         import bpy
@@ -503,9 +525,19 @@ def apply_voxel_mesh_to_blender(
         update_normals=True,
     )
 
-    # 3. Bind only used Atlas chunk materials & shaders
-    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    # 3. Bind only used Atlas chunk materials & shaders (or Standalone materials if standalone mode)
+    if material_mode.strip().upper() == "STANDALONE" or atlas is None:
+        try:
+            from ..utils.materials.pipeline import restore_materials_from_provenance
+        except (ImportError, ValueError):
+            from utils.materials.pipeline import restore_materials_from_provenance
+        try:
+            restore_materials_from_provenance(obj, mode="STANDALONE", prefs=prefs)
+        except Exception as e:
+            logger.warning("Failed to restore standalone materials for world mesh: %s", e)
+    else:
+        used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+        ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
     # 4. Extract unculled VoxelPointCloud and ensure child companion object
     cloud_obj = ensure_voxel_child_cloud(
@@ -543,6 +575,8 @@ def ingest_voxel_world(
     model_db: Optional[Any] = None,
     atlas: Optional[Any] = None,
     biome_resolver: Optional[Any] = None,
+    ctm_solver: Optional[Any] = None,
+    material_mode: str = "ATLAS",
     enable_ao: bool = True,
     mesh_fluids: bool = True,
     weld_vertices: bool = True,
@@ -552,9 +586,9 @@ def ingest_voxel_world(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Complete synchronous end-to-end Voxel World Ingestion Pipeline:
-    1. Meshes VoxelStorage using cached Model Database, Atlas, and Biome Resolver
+    1. Meshes VoxelStorage using cached Model Database, Atlas/Standalone, CTM Solver, and Biome Resolver
     2. Injects high-throughput geometry into a Blender Mesh object
-    3. Builds and binds full Atlas Chunk PBR Materials and Shaders
+    3. Builds and binds full Atlas Chunk PBR Materials or Standalone BSDF Materials
     Returns (bpy_object, stats_dict).
     """
     mesh_data, elapsed_ms = mesh_voxel_storage(
@@ -562,12 +596,14 @@ def ingest_voxel_world(
         model_db=model_db,
         atlas=atlas,
         biome_resolver=biome_resolver,
+        ctm_solver=ctm_solver,
         prefs=prefs,
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
         progress_callback=progress_callback,
+        material_mode=material_mode,
     )
 
     return apply_voxel_mesh_to_blender(
@@ -580,4 +616,5 @@ def ingest_voxel_world(
         atlas=atlas,
         origin_centered=origin_centered,
         reuse_existing=reuse_existing,
+        material_mode=material_mode,
     )

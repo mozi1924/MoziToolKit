@@ -79,6 +79,24 @@ def resource_pack_zip() -> Optional[Path]:
     return None
 
 
+def ctm_resource_pack_zip() -> Optional[Path]:
+    """CTM resource pack `.zip` (e.g. clean-connected-glass or custom CTM pack)."""
+    value = os.environ.get("MTK_TEST_CTM_PACK")
+    if value and Path(value).exists():
+        return Path(value)
+
+    candidates = [
+        Path("/tmp/clean_connected_glass.zip"),
+        _WORKSPACE_PARENT / "clean_connected_glass.zip",
+        _WORKSPACE_PARENT / "clean-connected-glass.zip",
+        Path.home() / "Downloads" / "clean_connected_glass.zip",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def save_world() -> Optional[Path]:
     """A Minecraft save directory containing `level.dat`."""
     value = os.environ.get("MTK_TEST_SAVE")
@@ -149,3 +167,23 @@ def require_jar() -> Path:
         )
     os.environ.setdefault("MTK_TEST_JAR", str(jar))
     return jar
+
+
+def require_ctm_resource_pack() -> Path:
+    """Returns the CTM resource pack path or skips the enclosing test if unavailable."""
+    pack = ctm_resource_pack_zip()
+    if pack is None:
+        # Gracefully attempt to fetch from Modrinth cache if internet is available
+        try:
+            from bridge.assets.modrinth import fetch_modrinth_pack
+            pack = fetch_modrinth_pack("clean-connected-glass", target_dir=Path("/tmp"))
+        except Exception:
+            pass
+
+    if pack is None or not pack.exists():
+        import pytest
+        pytest.skip(
+            "CTM resource pack unavailable: set MTK_TEST_CTM_PACK or place clean_connected_glass.zip in /tmp"
+        )
+    os.environ.setdefault("MTK_TEST_CTM_PACK", str(pack))
+    return pack

@@ -35,6 +35,7 @@ try:
         get_cache_fingerprint,
         get_cache_timestamp,
         reload_atlas_images,
+        get_configured_ctm_solver,
     )
 except (ImportError, ValueError):
     from bridge.assets import (
@@ -46,6 +47,7 @@ except (ImportError, ValueError):
         get_cache_fingerprint,
         get_cache_timestamp,
         reload_atlas_images,
+        get_configured_ctm_solver,
     )
 
 
@@ -148,28 +150,35 @@ class SyncBridgeSession:
         self._unified_mesh = unified_mesh
         self._current_url = url
 
-        if num_threads is None:
-            try:
-                from ..utils.system import get_prefs
-                prefs = get_prefs()
-                num_threads = getattr(prefs, "thread_count", 0) or None
-            except Exception:
-                num_threads = None
+        prefs = None
+        try:
+            from ..utils.system import get_prefs
+            prefs = get_prefs()
+        except Exception:
+            prefs = None
+
+        if num_threads is None and prefs is not None:
+            num_threads = getattr(prefs, "thread_count", 0) or None
+
+        ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
 
         try:
             # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
             try:
-                config = mtk.MesherConfig(
-                    enable_ao=enable_ao,
-                    mesh_fluids=mesh_fluids,
-                    z_up_coordinates=True,
-                    origin_centered=True,
-                    weld_vertices=True,
-                    num_threads=num_threads,
-                    atlas=atlas,
-                    biome_resolver=biome_resolver,
-                    custom_aliases=custom_aliases,
-                )
+                config_kwargs = {
+                    "enable_ao": enable_ao,
+                    "mesh_fluids": mesh_fluids,
+                    "z_up_coordinates": True,
+                    "origin_centered": True,
+                    "weld_vertices": True,
+                    "num_threads": num_threads,
+                    "atlas": atlas,
+                    "biome_resolver": biome_resolver,
+                    "custom_aliases": custom_aliases,
+                }
+                if ctm_solver is not None:
+                    config_kwargs["ctm_solver"] = ctm_solver
+                config = mtk.MesherConfig(**config_kwargs)
             except (TypeError, AttributeError):
                 # Backwards-compatible fallback for older wheel binaries
                 try:
@@ -313,18 +322,22 @@ class SyncBridgeSession:
                 enable_ao = self._config_params.get("enable_ao", True)
                 mesh_fluids = self._config_params.get("mesh_fluids", True)
                 num_threads = self._config_params.get("num_threads", None)
+                ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
                 try:
-                    new_config = mtk.MesherConfig(
-                        enable_ao=enable_ao,
-                        mesh_fluids=mesh_fluids,
-                        z_up_coordinates=True,
-                        origin_centered=True,
-                        weld_vertices=True,
-                        num_threads=num_threads,
-                        atlas=new_atlas,
-                        biome_resolver=new_biome_resolver,
-                        custom_aliases=self._custom_aliases,
-                    )
+                    cfg_kwargs = {
+                        "enable_ao": enable_ao,
+                        "mesh_fluids": mesh_fluids,
+                        "z_up_coordinates": True,
+                        "origin_centered": True,
+                        "weld_vertices": True,
+                        "num_threads": num_threads,
+                        "atlas": new_atlas,
+                        "biome_resolver": new_biome_resolver,
+                        "custom_aliases": self._custom_aliases,
+                    }
+                    if ctm_solver is not None:
+                        cfg_kwargs["ctm_solver"] = ctm_solver
+                    new_config = mtk.MesherConfig(**cfg_kwargs)
                 except Exception:
                     new_config = None
 

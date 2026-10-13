@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from .assets import get_configured_ctm_solver
 from .engine import get_libmtk, has_libmtk, require_libmtk
 from .mesh import inject_mesh_data
 from .point_cloud import ensure_voxel_child_cloud
@@ -79,6 +80,7 @@ def load_and_mesh_minecraft_save(
     origin_centered: bool = True,
     num_threads: Optional[int] = None,
     progress_callback: Optional[Any] = None,
+    material_mode: str = "ATLAS",
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -87,27 +89,42 @@ def load_and_mesh_minecraft_save(
     mtk = require_libmtk("load_and_mesh_minecraft_save")
     target_path = str(Path(world_dir).resolve())
 
+    is_standalone = material_mode.strip().upper() == "STANDALONE"
+
     # Auto-resolve pipeline assets if not supplied
-    if model_db is None or atlas is None or biome_resolver is None:
-        cached_mdb, cached_atlas, cached_resolver = get_world_pipeline_assets(prefs)
-        model_db = model_db or cached_mdb
-        atlas = atlas or cached_atlas
-        biome_resolver = biome_resolver or cached_resolver
+    if is_standalone:
+        if model_db is None or biome_resolver is None:
+            cached_mdb, _, cached_resolver = get_world_pipeline_assets(prefs)
+            model_db = model_db or cached_mdb
+            biome_resolver = biome_resolver or cached_resolver
+        atlas = None
+    else:
+        if model_db is None or atlas is None or biome_resolver is None:
+            cached_mdb, cached_atlas, cached_resolver = get_world_pipeline_assets(prefs)
+            model_db = model_db or cached_mdb
+            atlas = atlas or cached_atlas
+            biome_resolver = biome_resolver or cached_resolver
 
     # Thread count resolution
     if num_threads is None and prefs is not None:
         num_threads = getattr(prefs, "thread_count", 0) or None
 
-    config = mtk.MesherConfig(
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        z_up_coordinates=True,
-        origin_centered=origin_centered,
-        weld_vertices=weld_vertices,
-        num_threads=num_threads,
-        atlas=atlas,
-        biome_resolver=biome_resolver,
-    )
+    ctm_solver = get_configured_ctm_solver(prefs)
+
+    config_kwargs = {
+        "enable_ao": enable_ao,
+        "mesh_fluids": mesh_fluids,
+        "z_up_coordinates": True,
+        "origin_centered": origin_centered,
+        "weld_vertices": weld_vertices,
+        "num_threads": num_threads,
+        "atlas": atlas,
+        "biome_resolver": biome_resolver,
+    }
+    if ctm_solver is not None:
+        config_kwargs["ctm_solver"] = ctm_solver
+
+    config = mtk.MesherConfig(**config_kwargs)
 
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
@@ -247,6 +264,7 @@ def apply_imported_save_to_blender(
     mesh_fluids: bool = True,
     weld_vertices: bool = True,
     target_root: Optional[Any] = None,
+    material_mode: str = "ATLAS",
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -348,9 +366,19 @@ def apply_imported_save_to_blender(
         update_normals=True,
     )
 
-    # 4. Bind Atlas materials and shaders
-    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    # 4. Bind Atlas materials or Standalone materials and shaders
+    if material_mode.strip().upper() == "STANDALONE" or atlas is None:
+        try:
+            from ..utils.materials.pipeline import restore_materials_from_provenance
+        except (ImportError, ValueError):
+            from utils.materials.pipeline import restore_materials_from_provenance
+        try:
+            restore_materials_from_provenance(mesh_obj, mode="STANDALONE", prefs=prefs)
+        except Exception as e:
+            logger.warning("Failed to restore standalone materials for save mesh: %s", e)
+    else:
+        used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+        ensure_world_materials(mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
     # 5. Extract unculled VoxelPointCloud and ensure child companion object under root Empty
     cloud_obj = ensure_voxel_child_cloud(
@@ -431,6 +459,7 @@ def import_save_to_blender(
     origin_centered: bool = True,
     reuse_existing: bool = False,
     progress_callback: Optional[Any] = None,
+    material_mode: str = "ATLAS",
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Full synchronous end-to-end Minecraft save importer for Blender.
@@ -449,6 +478,7 @@ def import_save_to_blender(
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
         progress_callback=progress_callback,
+        material_mode=material_mode,
     )
 
     return apply_imported_save_to_blender(
@@ -468,4 +498,5 @@ def import_save_to_blender(
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,
+        material_mode=material_mode,
     )
