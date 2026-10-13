@@ -193,6 +193,7 @@ def compute_biome_tint_attributes(
     has_custom_grass: bool = False,
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
+    face_biomes: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Compute packed tint weights, colors, and colormap UV coordinates using Rust core.
@@ -209,6 +210,14 @@ def compute_biome_tint_attributes(
             "tint_colors": [[1.0, 1.0, 1.0, 1.0]] * n,
             "colormap_uvs": [[uv[0], uv[1], 0.0]] * n,
         }
+
+    if face_biomes is not None:
+        return mtk.compute_biome_tint_attributes(
+            face_texture_keys,
+            "PLAINS",
+            resolver=resolver,
+            face_biomes=face_biomes,
+        )
 
     if isinstance(biome_preset, list):
         return mtk.compute_biome_tint_attributes(
@@ -232,6 +241,33 @@ def compute_biome_tint_attributes(
         has_custom_grass=has_custom_grass,
         has_custom_foliage=has_custom_foliage,
         has_custom_dry_foliage=has_custom_dry_foliage,
+    )
+
+
+def compute_mesh_biome_attributes_from_storage(
+    face_texture_keys: List[str],
+    block_xs: List[int],
+    block_ys: List[int],
+    block_zs: List[int],
+    storage: Any,
+    resolver: Optional[Any] = None,
+    smooth: bool = True,
+) -> Dict[str, Any]:
+    """
+    Compute coordinate-aware 3D biome tint attributes from VoxelStorage container.
+    """
+    mtk = get_libmtk()
+    if mtk is None or not hasattr(mtk, "compute_mesh_biome_attributes_from_storage"):
+        return compute_biome_tint_attributes(face_texture_keys, "PLAINS", resolver=resolver)
+
+    return mtk.compute_mesh_biome_attributes_from_storage(
+        face_texture_keys,
+        block_xs,
+        block_ys,
+        block_zs,
+        storage,
+        resolver=resolver,
+        smooth=smooth,
     )
 
 
@@ -448,6 +484,7 @@ __all__ = [
     "get_colormap_uv",
     "get_all_biomes",
     "compute_biome_tint_attributes",
+    "compute_mesh_biome_attributes_from_storage",
     "MaterialResolver",
     "clean_material_name",
     "remap_mesh_multi_uvs",

@@ -248,14 +248,14 @@
 
 ---
 
-## 阶段八：原版生态真实生物群系 3D 染色与平滑过渡管线（P0 - 色彩保真 🚧 待启动）
-- [ ] **真实 3D Quart Biome 染色采样端到端打通**
-  - [ ] 接入 Rust 核心按真实坐标（而不是全局 fallback 平原）求得的面域 Tint 数据；
-  - [ ] 沼泽特异色彩（深灰绿水色、斑驳沼泽草）、热带雨林（高饱和翠绿）、恶地/沙漠（枯草黄）；
-  - [ ] 接入 5×5 (R=2) 生物群系平滑过渡核（Biome Blend）色彩插值；
-- [ ] **着色器节点树与属性通道协同优化**
-  - [ ] 校验 `mtk_biome_tint_data` 与 `mtk_biome_colormap_uv` 在 Cycles 与 Eevee Next 视口中的实时渲染保真度；
-  - [ ] 确保红石线信号强弱、双层水体与水下雾气着色节点树自适应适配。
+## 阶段八：原版生态真实生物群系 3D 染色与平滑过渡管线（✅ 已完成）
+- [x] **真实 3D Quart Biome 染色采样端到端打通**
+  - [x] 接入 Rust 核心按真实坐标（而不是全局 fallback 平原）求得的面域 Tint 数据（`WORLD` 3D 生物群系预设与 `compute_mesh_biome_attributes_from_storage`）；
+  - [x] 沼泽特异色彩（深灰绿水色、2D Perlin 噪声斑驳双色沼泽草）、热带雨林（高饱和翠绿）、黑森林（自定义深绿 `#507A32`）、恶地/沙漠（枯草黄）；
+  - [x] 接入 5×5 (R=2) 原版均匀盒式平滑过渡核（Uniform Box Filter Biome Blend）色彩与 Colormap UV 插值；
+- [x] **着色器节点树与属性通道协同优化**
+  - [x] 校验 `mtk_biome_tint_data`（特异群系自动路由至 `TINT_TYPE_HARDCODED = 4.0`）与 `mtk_colormap_uv` 在 Cycles 与 Eevee Next 视口中的实时渲染保真度；
+  - [x] 确保红石线信号强弱、双层水体与水下雾气着色节点树自适应适配。
 
 ---
 

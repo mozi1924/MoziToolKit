@@ -58,21 +58,11 @@ except (ImportError, ValueError):
         sort_unadded_items,
     )
 
-BIOME_ENUM_ITEMS = [
-    ('PLAINS', "Plains", "Standard plains biome tint"),
-    ('DESERT', "Desert", "Desert warm foliage and dry tint"),
-    ('FOREST', "Forest", "Standard forest green foliage tint"),
-    ('TAIGA', "Taiga", "Taiga cool green foliage tint"),
-    ('SWAMP', "Swamp", "Swamp muddy dark green foliage tint"),
-    ('JUNGLE', "Jungle", "Jungle vibrant lush green foliage tint"),
-    ('SAVANNA', "Savanna", "Savanna brownish dry foliage tint"),
-    ('BADLANDS', "Badlands", "Badlands warm terracotta tint"),
-    ('SNOWY_PLAINS', "Snowy Plains", "Snowy cold plains foliage tint"),
-    ('DARK_FOREST', "Dark Forest", "Dark forest deep dark green foliage tint"),
-    ('BIRCH_FOREST', "Birch Forest", "Birch forest light green foliage tint"),
-    ('MANGROVE_SWAMP', "Mangrove Swamp", "Mangrove swamp deep olive foliage tint"),
-    ('CHERRY_GROVE', "Cherry Grove", "Cherry grove pastel tint"),
-]
+try:
+    from ..utils.materials.biome import BIOME_ENUM_ITEMS
+except (ImportError, ValueError):
+    from utils.materials.biome import BIOME_ENUM_ITEMS
+
 from .preferences_packs import (
     MOZI_PG_resource_pack_entry,
     MOZI_UL_resource_packs_list,

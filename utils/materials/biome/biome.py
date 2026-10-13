@@ -212,6 +212,7 @@ def compute_biome_tint_attributes(
     has_custom_grass: bool = False,
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
+    face_biomes: Optional[List[str]] = None,
 ) -> Tuple[List[List[float]], List[List[float]], List[List[float]]]:
     """
     Compute packed tint weights, colors, and colormap UV coordinates for mesh faces using Rust core.
@@ -230,6 +231,7 @@ def compute_biome_tint_attributes(
         has_custom_grass=has_custom_grass,
         has_custom_foliage=has_custom_foliage,
         has_custom_dry_foliage=has_custom_dry_foliage,
+        face_biomes=face_biomes,
     )
 
     return res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"]
@@ -350,7 +352,10 @@ def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
 
 # Canonical list of UI dropdown enum items generated from libmtk
 def _get_biome_enum_items():
-    items = [("CUSTOM", "Custom", "Custom Biome (Temperature / Humidity & Color Overrides)")]
+    items = [
+        ("WORLD", "World Biome (3D)", "Use true 3D Minecraft world biomes with 5x5 smooth blending"),
+        ("CUSTOM", "Custom", "Custom Biome (Temperature / Humidity & Color Overrides)"),
+    ]
     if not has_libmtk():
         return items + [("PLAINS", "Plains", "Plains Biome")]
     biomes = get_all_biomes()

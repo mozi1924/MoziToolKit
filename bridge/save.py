@@ -383,6 +383,7 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(target, "mtk_mesh_fluids", bool(mesh_fluids))
         _safe_set_custom_prop(target, "mtk_weld_vertices", bool(weld_vertices))
         _safe_set_custom_prop(target, "mtk_last_refreshed", float(now_ts))
+        _safe_set_custom_prop(target, "mtk:biome_preset", "WORLD")
         sanitize_save_privacy(target)
 
 

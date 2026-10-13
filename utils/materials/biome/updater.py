@@ -179,6 +179,81 @@ def update_object_biome(
         if ATTR_SOURCE_TEXTURE_KEY in mesh.attributes or ATTR_SOURCE_TEXTURE_IDX in mesh.attributes:
             source_keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
 
+        if biome_name.upper() == "WORLD":
+            storage = getattr(obj, "_storage", None) or getattr(mesh, "_storage", None)
+            if storage is None and hasattr(obj, "get"):
+                storage = obj.get("mtk:storage", None)
+            if storage is None and hasattr(mesh, "get"):
+                storage = mesh.get("mtk:storage", None)
+            if storage is None:
+                try:
+                    try:
+                        from ....bridge.sync import get_live_sync_session
+                    except (ImportError, ValueError):
+                        from bridge.sync import get_live_sync_session
+                    session = get_live_sync_session()
+                    if session:
+                        storage = session.get_storage()
+                except Exception:
+                    storage = None
+
+            if not any(source_keys) and len(obj.material_slots) > 0:
+                for poly in mesh.polygons:
+                    m_idx = poly.material_index
+                    mat = obj.material_slots[m_idx].material if m_idx < len(obj.material_slots) else None
+                    key = (mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or (mat.name if mat else "")) if mat else ""
+                    source_keys.append(str(key))
+
+            has_coords = (
+                hasattr(mesh, "attributes")
+                and "mtk_block_x" in mesh.attributes
+                and "mtk_block_y" in mesh.attributes
+                and "mtk_block_z" in mesh.attributes
+            )
+
+            if storage is not None and has_coords and any(source_keys):
+                try:
+                    from ....bridge.material import compute_mesh_biome_attributes_from_storage
+                except (ImportError, ValueError):
+                    from bridge.material import compute_mesh_biome_attributes_from_storage
+                biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
+                attr_x = mesh.attributes.get("mtk_block_x")
+                attr_y = mesh.attributes.get("mtk_block_y")
+                attr_z = mesh.attributes.get("mtk_block_z")
+                if HAS_NUMPY and hasattr(attr_x.data, "foreach_get"):
+                    xs = np.empty(num_polys, dtype=np.int32)
+                    ys = np.empty(num_polys, dtype=np.int32)
+                    zs = np.empty(num_polys, dtype=np.int32)
+                    attr_x.data.foreach_get("value", xs)
+                    attr_y.data.foreach_get("value", ys)
+                    attr_z.data.foreach_get("value", zs)
+                    xs_l, ys_l, zs_l = xs.tolist(), ys.tolist(), zs.tolist()
+                else:
+                    xs_l = [int(p.value) for p in attr_x.data]
+                    ys_l = [int(p.value) for p in attr_y.data]
+                    zs_l = [int(p.value) for p in attr_z.data]
+
+                res = compute_mesh_biome_attributes_from_storage(
+                    source_keys,
+                    xs_l,
+                    ys_l,
+                    zs_l,
+                    storage,
+                    resolver=biome_resolver,
+                    smooth=True,
+                )
+                apply_biome_tint_attributes(mesh, res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"])
+                obj["mtk:biome_preset"] = biome_name
+                if hasattr(mesh, "update"):
+                    mesh.update()
+                return True
+
+            if ATTR_BIOME_TINT_DATA in mesh.attributes:
+                obj["mtk:biome_preset"] = biome_name
+                if hasattr(mesh, "update"):
+                    mesh.update()
+                return True
+
         if any(source_keys):
             biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
             packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
