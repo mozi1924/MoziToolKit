@@ -37,9 +37,18 @@ from . import sync
 
 def register():
     for cls in ALL_OPERATORS:
-        bpy.utils.register_class(cls)
-    extrude.register()
-    sync.register()
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError:
+            pass
+    try:
+        extrude.register()
+    except Exception:
+        pass
+    try:
+        sync.register()
+    except Exception:
+        pass
 
 
 def unregister():

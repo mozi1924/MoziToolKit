@@ -12,7 +12,9 @@ def tr(msgid: str, msgctxt: str | None = None) -> str:
         return ""
     if bpy is not None and hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
         try:
-            return bpy.app.translations.pgettext(msgid, msgctxt)
+            val = bpy.app.translations.pgettext(msgid, msgctxt)
+            if isinstance(val, str):
+                return val
         except Exception:
             pass
 
