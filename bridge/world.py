@@ -203,54 +203,51 @@ def ensure_world_materials(
                     chunk_width = float(cm.get("width", 4096))
                     chunk_height = float(cm.get("height", 4096))
 
+                    # Fast path: if material already exists in Blender and fingerprint matches, reuse directly
+                    mat_name = f"MTK:Atlas:{cat}:anim:{c_idx:03}" if is_anim else f"MTK:Atlas:{cat}:{c_idx:03}"
+                    existing_mat = bpy.data.materials.get(mat_name)
+                    is_stale_fp = bool(
+                        existing_mat is not None
+                        and manifest_fp
+                        and existing_mat.get("mtk_stack_fingerprint") != manifest_fp
+                    )
+                    if (
+                        existing_mat is not None
+                        and not is_stale_fp
+                        and getattr(existing_mat, "node_tree", None)
+                        and len(existing_mat.node_tree.nodes) > 0
+                        and existing_mat.get("mtk_atlas_chunk_id") == chunk_id
+                    ):
+                        compact_materials.append(existing_mat)
+                        chunk_to_compact_slot[chunk_id] = slot_idx
+                        continue
+
                     albedo_file: Any = atlas_dir / f"{stem}.png"
                     normal_file: Any = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
                     specular_file: Any = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
                     overlay_file: Any = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
 
-                    # Prefer zero-copy flipped in-memory streaming directly from BakedAtlas when available
-                    if active_atlas is not None and hasattr(active_atlas, "get_chunk_albedo_f32"):
+                    # If file doesn't exist on disk, stream in-memory from active BakedAtlas if available
+                    if not albedo_file.exists() and active_atlas is not None and hasattr(active_atlas, "get_chunk_albedo_f32"):
                         try:
                             c_order_idx = cm.get("chunk_id", chunk_id)
                             albedo_f32 = active_atlas.get_chunk_albedo_f32(c_order_idx, flip_v=True)
                             if albedo_f32 is not None:
                                 albedo_file = (int(chunk_width), int(chunk_height), albedo_f32)
-                            if cm.get("has_normal") and hasattr(active_atlas, "get_chunk_normal_f32"):
+                            if normal_file and hasattr(active_atlas, "get_chunk_normal_f32"):
                                 n_f32 = active_atlas.get_chunk_normal_f32(c_order_idx, flip_v=True)
                                 if n_f32 is not None:
                                     normal_file = (int(chunk_width), int(chunk_height), n_f32)
-                            if cm.get("has_specular") and hasattr(active_atlas, "get_chunk_specular_f32"):
+                            if specular_file and hasattr(active_atlas, "get_chunk_specular_f32"):
                                 s_f32 = active_atlas.get_chunk_specular_f32(c_order_idx, flip_v=True)
                                 if s_f32 is not None:
                                     specular_file = (int(chunk_width), int(chunk_height), s_f32)
-                            if cm.get("has_overlay") and hasattr(active_atlas, "get_chunk_overlay_f32"):
+                            if overlay_file and hasattr(active_atlas, "get_chunk_overlay_f32"):
                                 o_f32 = active_atlas.get_chunk_overlay_f32(c_order_idx, flip_v=True)
                                 if o_f32 is not None:
                                     overlay_file = (int(chunk_width), int(chunk_height), o_f32)
                         except Exception:
                             pass
-
-                    # Query directly from active .mtkcache package if memory buffer was not obtained from BakedAtlas
-                    from .assets import get_cached_texture_f32
-                    if not isinstance(albedo_file, (tuple, list)):
-                        cached_albedo = get_cached_texture_f32(f"atlas/textures/{stem}.png", prefs=prefs, flip_y=True)
-                        if cached_albedo is not None:
-                            albedo_file = cached_albedo
-
-                    if normal_file is not None and not isinstance(normal_file, (tuple, list)):
-                        cached_normal = get_cached_texture_f32(f"atlas/textures/{stem}_n.png", prefs=prefs, flip_y=True)
-                        if cached_normal is not None:
-                            normal_file = cached_normal
-
-                    if specular_file is not None and not isinstance(specular_file, (tuple, list)):
-                        cached_specular = get_cached_texture_f32(f"atlas/textures/{stem}_s.png", prefs=prefs, flip_y=True)
-                        if cached_specular is not None:
-                            specular_file = cached_specular
-
-                    if overlay_file is not None and not isinstance(overlay_file, (tuple, list)):
-                        cached_overlay = get_cached_texture_f32(f"atlas/textures/{stem}_overlay.png", prefs=prefs, flip_y=True)
-                        if cached_overlay is not None:
-                            overlay_file = cached_overlay
 
                     mat = build_atlas_chunk_material(
                         chunk_id=chunk_id,
@@ -453,8 +450,6 @@ def mesh_voxel_storage(
             and cached_meta is not None
             and cached_meta.get("fingerprint") == current_fp
             and cached_meta.get("timestamp") == current_ts
-            and cached_meta.get("atlas_id") == id(atlas)
-            and cached_meta.get("model_db_id") == id(model_db)
             and not force_rebuild
         )
 
@@ -494,8 +489,6 @@ def mesh_voxel_storage(
             _WORLD_SESSION_META[world_session_key] = {
                 "fingerprint": current_fp,
                 "timestamp": current_ts,
-                "atlas_id": id(atlas),
-                "model_db_id": id(model_db),
             }
             if progress_callback is not None:
                 from .progress import wrap_progress_callback

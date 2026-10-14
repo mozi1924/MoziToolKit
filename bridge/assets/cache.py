@@ -120,6 +120,12 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
         invalidate_asset_cache_memory()
         return None
 
+    # O(1) Fast-path: return cached valid path immediately if not checking fingerprint
+    if not compute_fingerprint and _ACTIVE_CACHE_PKG_PATH is not None:
+        p = Path(_ACTIVE_CACHE_PKG_PATH)
+        if p.parent == cache_dir and p.exists() and p.is_file():
+            return p
+
     mtk = get_libmtk()
 
     # Test sandbox isolation guard: if isolated via MOZI_CACHE_DIR and caller did not specify custom prefs,
@@ -164,8 +170,7 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
                         return pkg
 
                 # If stack is configured but no matching cache package exists in cache_dir:
-                # In test sandboxes (MOZI_CACHE_DIR set), if none of the packages match the host-level stack fingerprint,
-                # fallback to synthetic packages in sandbox to let synthetic unit tests run seamlessly
+                # In test sandboxes (MOZI_CACHE_DIR set), fallback to synthetic packages in sandbox
                 if os.environ.get("MOZI_CACHE_DIR"):
                     candidates = sorted(cache_dir.glob("*.mtkcache"), key=lambda p: p.stat().st_mtime, reverse=True)
                     if candidates:
@@ -174,7 +179,7 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
                 invalidate_asset_cache_memory()
                 return None
 
-    # Unconstrained fast-path or fallback when no pack stack is configured (e.g. test isolation sandbox)
+    # Fallback when compute_fingerprint=False or no pack stack configured
     if _ACTIVE_CACHE_PKG_PATH is not None:
         p = Path(_ACTIVE_CACHE_PKG_PATH)
         if p.parent != cache_dir:
@@ -200,6 +205,17 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
     if not cache_dir.exists():
         invalidate_asset_cache_memory()
         return None
+
+    # O(1) Fast-path: return currently cached instance if path & mtime still match on disk
+    if _ACTIVE_ASSET_CACHE is not None and _ACTIVE_CACHE_PKG_PATH is not None:
+        p = Path(_ACTIVE_CACHE_PKG_PATH)
+        if p.parent == cache_dir and p.exists() and p.is_file():
+            try:
+                mtime = p.stat().st_mtime
+                if _ACTIVE_CACHE_MTIME == mtime:
+                    return _ACTIVE_ASSET_CACHE
+            except Exception:
+                pass
 
     if _ACTIVE_CACHE_PKG_PATH is not None and Path(_ACTIVE_CACHE_PKG_PATH).parent != cache_dir:
         invalidate_asset_cache_memory()
@@ -465,7 +481,7 @@ def get_cache_timestamp(prefs=None) -> float:
         except (ValueError, TypeError):
             pass
 
-    pkg = get_active_cache_package_path(prefs, compute_fingerprint=True)
+    pkg = get_active_cache_package_path(prefs, compute_fingerprint=False)
     if pkg is not None and pkg.exists():
         try:
             return float(pkg.stat().st_mtime)

@@ -542,20 +542,11 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 origin_centered = bool(root_container.get("mtk_origin_centered"))
 
         prefs = get_prefs(context)
+        did_precompile = False
         if status in ("MISSING", "STALE"):
             ensure_pipeline_assets_ready_sync(prefs)
-            clear_world_sessions()
-            invalidate_asset_cache_memory()
+            did_precompile = True
 
-        is_dirty, _, _ = check_cache_dirty(prefs=prefs)
-        if is_dirty:
-            clear_world_sessions()
-            invalidate_asset_cache_memory()
-
-        try:
-            reload_atlas_images(prefs)
-        except Exception:
-            pass
         model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
 
         session_key = (
@@ -581,7 +572,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 weld_vertices=weld_vertices,
                 origin_centered=origin_centered,
                 world_session_key=session_key,
-                force_rebuild=True,
+                force_rebuild=did_precompile,
             )
             return mesh_data, elapsed_ms
 
