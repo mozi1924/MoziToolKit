@@ -57,7 +57,7 @@ def _create_synthetic_ctm_pack(zip_path: Path) -> Path:
         }
         zf.writestr("pack.mcmeta", json.dumps(pack_mcmeta))
 
-        # CTM properties for glass
+        # CTM properties for glass (compact)
         props = (
             "matchBlocks=minecraft:glass\n"
             "method=ctm_compact\n"
@@ -67,10 +67,20 @@ def _create_synthetic_ctm_pack(zip_path: Path) -> Path:
         zf.writestr("assets/minecraft/optifine/ctm/glass/glass.properties", props)
 
         # 5 dummy 1x1 png images (compact ctm tiles 0..4)
-        # 1x1 transparent PNG bytes
         png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
         for i in range(5):
             zf.writestr(f"assets/minecraft/optifine/ctm/glass/{i}.png", png_bytes)
+
+        # Full 47-tile CTM properties for white_stained_glass
+        props_47 = (
+            "matchBlocks=minecraft:white_stained_glass\n"
+            "method=ctm\n"
+            "tiles=0-46\n"
+            "connect=block\n"
+        )
+        zf.writestr("assets/minecraft/optifine/ctm/white_glass/glass.properties", props_47)
+        for i in range(47):
+            zf.writestr(f"assets/minecraft/optifine/ctm/white_glass/{i}.png", png_bytes)
 
     return zip_path
 
@@ -101,10 +111,10 @@ class TestCtmBridge(unittest.TestCase):
         stack = self.mtk.ResourcePackStack()
         stack.add_zip_pack(str(self.synthetic_pack_zip))
 
-        self.assertEqual(stack.get_ctm_rule_count(), 1)
+        self.assertEqual(stack.get_ctm_rule_count(), 2)
         solver = stack.build_ctm_solver()
         self.assertIsNotNone(solver)
-        self.assertEqual(solver.rule_count, 1)
+        self.assertEqual(solver.rule_count, 2)
 
     def test_configured_ctm_solver_helper(self):
         """Verify bridge helper get_configured_ctm_solver loads rules."""
@@ -245,6 +255,78 @@ class TestCtmBridge(unittest.TestCase):
 
         # Cleanup
         bpy.data.objects.remove(obj, do_unlink=True)
+
+    def test_ctm_tangent_orientation_across_axes(self):
+        """Verify full 47-tile CTM resolves seamless connection tiles correctly across all axes."""
+        if self.mtk is None or not hasattr(self.mtk, "VoxelStorage"):
+            self.skipTest("libmtk_py VoxelStorage not available")
+
+        stack = self.mtk.ResourcePackStack()
+        stack.add_zip_pack(str(self.synthetic_pack_zip))
+        solver = stack.build_ctm_solver()
+
+        def get_face_key_for(mesh_data, target_x, target_y, target_z, target_dir):
+            keys = mesh_data.get_string_attribute("mtk_source_texture_key")
+            bxs = mesh_data.attribute_memoryview("mtk_block_x").cast("i")
+            bys = mesh_data.attribute_memoryview("mtk_block_y").cast("i")
+            bzs = mesh_data.attribute_memoryview("mtk_block_z").cast("i")
+            dirs = mesh_data.attribute_memoryview("mtk_face_dir").cast("B")
+            for i in range(mesh_data.quad_count):
+                if (bxs[i] == target_x and bys[i] == target_y and
+                    bzs[i] == target_z and dirs[i] == target_dir):
+                    return keys[i]
+            return None
+
+        # 1. Horizontal connection along X axis (East-West)
+        storage_x = self.mtk.VoxelStorage()
+        storage_x.set_block(0, 0, 0, "minecraft:white_stained_glass")
+        storage_x.set_block(1, 0, 0, "minecraft:white_stained_glass")
+        mesh_x, _ = mesh_voxel_storage(storage=storage_x, atlas=None, ctm_solver=solver, material_mode="STANDALONE")
+
+        # North face (dir 5): looking +Z
+        # Block (0,0,0) has neighbor at (1,0,0) (East = left) -> Tile 3
+        key_0_north = get_face_key_for(mesh_x, 0, 0, 0, 5)
+        self.assertIsNotNone(key_0_north)
+        self.assertTrue(key_0_north.endswith("white_glass/3"), f"Expected tile 3 for left connect, got {key_0_north}")
+
+        # Block (1,0,0) has neighbor at (0,0,0) (West = right) -> Tile 1
+        key_1_north = get_face_key_for(mesh_x, 1, 0, 0, 5)
+        self.assertIsNotNone(key_1_north)
+        self.assertTrue(key_1_north.endswith("white_glass/1"), f"Expected tile 1 for right connect, got {key_1_north}")
+
+        # 2. Horizontal connection along Z axis (North-South)
+        storage_z = self.mtk.VoxelStorage()
+        storage_z.set_block(0, 0, 0, "minecraft:white_stained_glass")
+        storage_z.set_block(0, 0, 1, "minecraft:white_stained_glass")
+        mesh_z, _ = mesh_voxel_storage(storage=storage_z, atlas=None, ctm_solver=solver, material_mode="STANDALONE")
+
+        # East face (dir 0): looking -X
+        # Block (0,0,0) has neighbor at (0,0,1) (South = left of East face) -> Tile 3
+        key_0_east = get_face_key_for(mesh_z, 0, 0, 0, 0)
+        self.assertIsNotNone(key_0_east)
+        self.assertTrue(key_0_east.endswith("white_glass/3"), f"Expected tile 3 for left connect, got {key_0_east}")
+
+        # Block (0,0,1) has neighbor at (0,0,0) (North = right of East face) -> Tile 1
+        key_1_east = get_face_key_for(mesh_z, 0, 0, 1, 0)
+        self.assertIsNotNone(key_1_east)
+        self.assertTrue(key_1_east.endswith("white_glass/1"), f"Expected tile 1 for right connect, got {key_1_east}")
+
+        # 3. Vertical connection along Y axis (Up-Down)
+        storage_y = self.mtk.VoxelStorage()
+        storage_y.set_block(0, 0, 0, "minecraft:white_stained_glass")
+        storage_y.set_block(0, 1, 0, "minecraft:white_stained_glass")
+        mesh_y, _ = mesh_voxel_storage(storage=storage_y, atlas=None, ctm_solver=solver, material_mode="STANDALONE")
+
+        # North face (dir 5):
+        # Block (0,0,0) has neighbor at (0,1,0) (Up = top of North face) -> Tile 36
+        key_0_up = get_face_key_for(mesh_y, 0, 0, 0, 5)
+        self.assertIsNotNone(key_0_up)
+        self.assertTrue(key_0_up.endswith("white_glass/36"), f"Expected tile 36 for up connect, got {key_0_up}")
+
+        # Block (0,1,0) has neighbor at (0,0,0) (Down = bottom of North face) -> Tile 12
+        key_1_down = get_face_key_for(mesh_y, 0, 1, 0, 5)
+        self.assertIsNotNone(key_1_down)
+        self.assertTrue(key_1_down.endswith("white_glass/12"), f"Expected tile 12 for down connect, got {key_1_down}")
 
 
 if __name__ == "__main__":
