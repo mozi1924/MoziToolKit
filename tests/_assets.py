@@ -102,6 +102,15 @@ def save_world() -> Optional[Path]:
     value = os.environ.get("MTK_TEST_SAVE")
     if value and Path(value).exists():
         return Path(value)
+
+    candidates = [
+        Path.home() / "Library/Application Support/minecraft/versions/26.2-Fabric/saves/新的世界",
+        _WORKSPACE_PARENT / "saves" / "test_world",
+        Path.home() / "saves" / "test_world",
+    ]
+    for candidate in candidates:
+        if candidate.exists() and (candidate / "level.dat").exists():
+            return candidate.resolve()
     return None
 
 

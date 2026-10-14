@@ -189,6 +189,7 @@ def build_atlas_chunk_material(
     enable_transmission: Optional[bool] = None,
     enable_thin_wall: Optional[bool] = None,
     disable_subsurface: Optional[bool] = None,
+    chunk_stem: Optional[str] = None,
 ) -> Optional[Any]:
     """
     Builds or updates an Atlas Chunk Minecraft material in Blender with structured Frames.
@@ -204,12 +205,16 @@ def build_atlas_chunk_material(
         mat_name = f"MTK:Atlas:{category}:{category_chunk_index:03}"
 
     mat = bpy.data.materials.get(mat_name)
-    if not force_rebuild and mat is not None and getattr(mat, "node_tree", None) and len(mat.node_tree.nodes) > 0:
-        if (
-            mat.get("mtk_atlas_chunk_id") == chunk_id
-            and (not stack_fingerprint or mat.get("mtk_stack_fingerprint") == stack_fingerprint)
-        ):
+    is_stale_fingerprint = bool(
+        mat is not None
+        and stack_fingerprint
+        and mat.get("mtk_stack_fingerprint") != stack_fingerprint
+    )
+    if not force_rebuild and not is_stale_fingerprint and mat is not None and getattr(mat, "node_tree", None) and len(mat.node_tree.nodes) > 0:
+        if mat.get("mtk_atlas_chunk_id") == chunk_id:
             return mat
+
+    image_reload_needed = force_rebuild or is_stale_fingerprint
 
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
@@ -339,7 +344,13 @@ def build_atlas_chunk_material(
     # -------------------------------------------------------------------------
     # 3. Texture Maps Input (X: -1150)
     # -------------------------------------------------------------------------
-    albedo_img = get_or_create_image(albedo_path, colorspace="sRGB", force_reload=force_rebuild)
+    c_stem = chunk_stem or (f"{category}_anim_chunk_{category_chunk_index:03}" if is_animated else f"{category}_chunk_{category_chunk_index:03}")
+    albedo_img = get_or_create_image(
+        albedo_path,
+        colorspace="sRGB",
+        force_reload=image_reload_needed,
+        chunk_id=f"atlas/textures/{c_stem}.png",
+    )
     albedo_node = None
     if albedo_img:
         albedo_node = nodes.new("ShaderNodeTexImage")
@@ -353,7 +364,12 @@ def build_atlas_chunk_material(
 
     overlay_node = None
     if overlay_path:
-        overlay_img = get_or_create_image(overlay_path, colorspace="sRGB", force_reload=force_rebuild)
+        overlay_img = get_or_create_image(
+            overlay_path,
+            colorspace="sRGB",
+            force_reload=image_reload_needed,
+            chunk_id=f"atlas/textures/{c_stem}_overlay.png",
+        )
         if overlay_img:
             overlay_node = nodes.new("ShaderNodeTexImage")
             overlay_node.name = "Atlas Overlay Texture"
@@ -366,7 +382,12 @@ def build_atlas_chunk_material(
 
     normal_node = None
     if normal_path:
-        normal_img = get_or_create_image(normal_path, colorspace="Non-Color", force_reload=force_rebuild)
+        normal_img = get_or_create_image(
+            normal_path,
+            colorspace="Non-Color",
+            force_reload=image_reload_needed,
+            chunk_id=f"atlas/textures/{c_stem}_n.png",
+        )
         if normal_img:
             normal_node = nodes.new("ShaderNodeTexImage")
             normal_node.name = "Atlas Normal Texture"
@@ -379,7 +400,12 @@ def build_atlas_chunk_material(
 
     spec_node = None
     if specular_path:
-        spec_img = get_or_create_image(specular_path, colorspace="Non-Color", force_reload=force_rebuild)
+        spec_img = get_or_create_image(
+            specular_path,
+            colorspace="Non-Color",
+            force_reload=image_reload_needed,
+            chunk_id=f"atlas/textures/{c_stem}_s.png",
+        )
         if spec_img:
             spec_node = nodes.new("ShaderNodeTexImage")
             spec_node.name = "Atlas Specular Texture"

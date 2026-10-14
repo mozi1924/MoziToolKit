@@ -221,9 +221,11 @@ def get_or_create_image(
     # 1. Handle in-memory (width, height, buffer) tuple directly
     if isinstance(image_path_or_source, (tuple, list)) and len(image_path_or_source) == 3:
         w, h, buf = image_path_or_source
-        img_name = chunk_id or "MTK_Memory_Image"
-        # Check if buffer is already float32
-        if isinstance(buf, (bytes, bytearray, memoryview)) and len(buf) == w * h * 16:
+        img_name = os.path.basename(chunk_id) if chunk_id else "MTK_Memory_Image"
+        # Check if buffer is already float32 (nbytes == w * h * 16 or format 'f' with w * h * 4 items)
+        nbytes = getattr(buf, "nbytes", len(buf))
+        is_f32 = (nbytes == w * h * 16) or (hasattr(buf, "format") and buf.format == "f" and len(buf) == w * h * 4)
+        if isinstance(buf, (bytes, bytearray, memoryview)) and is_f32:
             img = get_or_create_image_from_f32(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload)
             if img is not None:
                 return img
@@ -247,6 +249,8 @@ def get_or_create_image(
             resolved_chunk_id = path_str[idx:]
         elif path_str.startswith("textures/") and path_str.endswith(".png"):
             resolved_chunk_id = f"standalone/assets/minecraft/{path_str}"
+    elif "_chunk_" in resolved_chunk_id and not resolved_chunk_id.startswith("atlas/textures/"):
+        resolved_chunk_id = f"atlas/textures/{os.path.basename(resolved_chunk_id)}"
 
     if resolved_chunk_id:
         img_name = os.path.basename(resolved_chunk_id)

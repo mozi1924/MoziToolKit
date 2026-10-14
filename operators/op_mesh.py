@@ -23,12 +23,19 @@ try:
     from ..utils.async_task import AsyncTask, ModalTaskRunner
     from ..utils.progress import BlenderProgressReporter
     from ..bridge.point_cloud import extract_voxel_point_cloud
-    from ..bridge.world import ensure_world_materials, get_world_pipeline_assets, mesh_voxel_storage
+    from ..bridge.world import (
+        clear_world_sessions,
+        ensure_world_materials,
+        get_world_pipeline_assets,
+        mesh_voxel_storage,
+    )
     from ..bridge.mesh import inject_mesh_data
     from ..bridge.sync import get_sync_bridge_session
     from ..bridge.assets import (
         check_asset_cache_status,
+        check_cache_dirty,
         ensure_pipeline_assets_ready_sync,
+        invalidate_asset_cache_memory,
         reload_atlas_images,
         run_task_with_asset_guard,
     )
@@ -46,12 +53,19 @@ except (ImportError, ValueError):
     from utils.async_task import AsyncTask, ModalTaskRunner
     from utils.progress import BlenderProgressReporter
     from bridge.point_cloud import extract_voxel_point_cloud
-    from bridge.world import ensure_world_materials, get_world_pipeline_assets, mesh_voxel_storage
+    from bridge.world import (
+        clear_world_sessions,
+        ensure_world_materials,
+        get_world_pipeline_assets,
+        mesh_voxel_storage,
+    )
     from bridge.mesh import inject_mesh_data
     from bridge.sync import get_sync_bridge_session
     from bridge.assets import (
         check_asset_cache_status,
+        check_cache_dirty,
         ensure_pipeline_assets_ready_sync,
+        invalidate_asset_cache_memory,
         reload_atlas_images,
         run_task_with_asset_guard,
     )
@@ -528,8 +542,15 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 origin_centered = bool(root_container.get("mtk_origin_centered"))
 
         prefs = get_prefs(context)
-        if not self.run_async and status in ("MISSING", "STALE"):
+        if status in ("MISSING", "STALE"):
             ensure_pipeline_assets_ready_sync(prefs)
+            clear_world_sessions()
+            invalidate_asset_cache_memory()
+
+        is_dirty, _, _ = check_cache_dirty(prefs=prefs)
+        if is_dirty:
+            clear_world_sessions()
+            invalidate_asset_cache_memory()
 
         try:
             reload_atlas_images(prefs)
@@ -560,6 +581,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 weld_vertices=weld_vertices,
                 origin_centered=origin_centered,
                 world_session_key=session_key,
+                force_rebuild=True,
             )
             return mesh_data, elapsed_ms
 

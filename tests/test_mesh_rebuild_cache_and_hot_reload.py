@@ -234,6 +234,104 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.assertEqual(session._cached_manifest_fingerprint, "new_recompiled_fp")
         self.assertEqual(session._cached_manifest_timestamp, 200.0)
 
+    def test_pack_stack_enable_disable_fingerprint_matching(self):
+        """
+        Verifies that when toggling enabled state on resource packs, the active cache
+        strictly resolves to the package matching the active stack fingerprint,
+        and never mistakenly picks an older or newer mtime package from a different configuration.
+        """
+        import types
+        from bridge.assets import (
+            get_active_cache_package_path,
+            invalidate_asset_cache_memory,
+        )
+
+        pack_a_dir = self.cache_dir / "pack_a"
+        pack_b_dir = self.cache_dir / "pack_b"
+        pack_a_dir.mkdir(parents=True, exist_ok=True)
+        pack_b_dir.mkdir(parents=True, exist_ok=True)
+
+        entry_a = types.SimpleNamespace(path=str(pack_a_dir), name="PackVanilla", enabled=True, pack_type="VANILLA")
+        entry_b = types.SimpleNamespace(path=str(pack_b_dir), name="PackAddon", enabled=False, pack_type="RESOURCE_PACK")
+
+        mock_prefs = types.SimpleNamespace(
+            resource_packs=[entry_a, entry_b],
+            thread_count=0,
+            enable_ctm=False,
+        )
+
+        # 1. With PackAddon disabled: fingerprint is vanilla only
+        from bridge.assets.pack import get_configured_pack_stack
+        stack_vanilla = get_configured_pack_stack(mock_prefs)
+        fp_vanilla = stack_vanilla.compute_stack_fingerprint()
+
+        # Bake / create package for vanilla
+        pkg_vanilla = self._create_package(fp_vanilla, 1000)
+
+        # 2. Enable PackAddon: fingerprint includes addon
+        entry_b.enabled = True
+        stack_full = get_configured_pack_stack(mock_prefs)
+        fp_full = stack_full.compute_stack_fingerprint()
+        self.assertNotEqual(fp_vanilla, fp_full)
+
+        # Bake / create package for full stack with newer mtime
+        pkg_full = self._create_package(fp_full, 2000)
+
+        # Now disk has BOTH pkg_vanilla and pkg_full.
+        # Current prefs has PackAddon ENABLED.
+        invalidate_asset_cache_memory()
+        active_pkg = get_active_cache_package_path(mock_prefs)
+        self.assertIsNotNone(active_pkg)
+        self.assertEqual(active_pkg.resolve(), pkg_full.resolve())
+        self.assertEqual(get_cache_fingerprint(mock_prefs), fp_full)
+
+        # 3. User switches back to disabling PackAddon (only Vanilla enabled).
+        # Even though pkg_full has a NEWER mtime (2000 > 1000), it MUST match pkg_vanilla!
+        entry_b.enabled = False
+        invalidate_asset_cache_memory()
+
+        active_pkg = get_active_cache_package_path(mock_prefs)
+        self.assertIsNotNone(active_pkg)
+        self.assertEqual(active_pkg.resolve(), pkg_vanilla.resolve())
+        self.assertEqual(get_cache_fingerprint(mock_prefs), fp_vanilla)
+
+        # 4. User re-enables PackAddon: must seamlessly switch back to pkg_full
+        entry_b.enabled = True
+        invalidate_asset_cache_memory()
+
+        active_pkg = get_active_cache_package_path(mock_prefs)
+        self.assertIsNotNone(active_pkg)
+        self.assertEqual(active_pkg.resolve(), pkg_full.resolve())
+        self.assertEqual(get_cache_fingerprint(mock_prefs), fp_full)
+
+    def test_world_session_cache_invalidation_on_rebuild(self):
+        """
+        Verifies that clearing cache or invalidating memory drops cached VoxelWorld sessions
+        so geometry and materials are reconstructed with fresh atlas data.
+        """
+        from bridge.world import _WORLD_SESSIONS, _WORLD_SESSION_META, clear_world_sessions
+        from bridge.assets import clear_cache, invalidate_asset_cache_memory
+
+        # Insert dummy mock session
+        mock_world = MagicMock()
+        _WORLD_SESSIONS["test_session"] = mock_world
+        _WORLD_SESSION_META["test_session"] = {"fingerprint": "fp1", "timestamp": 10.0}
+
+        self.assertIn("test_session", _WORLD_SESSIONS)
+        self.assertIn("test_session", _WORLD_SESSION_META)
+
+        # Invalidation must clear sessions
+        invalidate_asset_cache_memory()
+        self.assertEqual(len(_WORLD_SESSIONS), 0)
+        self.assertEqual(len(_WORLD_SESSION_META), 0)
+
+        # Re-insert and test clear_cache
+        _WORLD_SESSIONS["test_session_2"] = mock_world
+        _WORLD_SESSION_META["test_session_2"] = {"fingerprint": "fp2", "timestamp": 20.0}
+        clear_cache()
+        self.assertEqual(len(_WORLD_SESSIONS), 0)
+        self.assertEqual(len(_WORLD_SESSION_META), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

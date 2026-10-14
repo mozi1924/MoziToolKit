@@ -230,6 +230,28 @@ def ensure_world_materials(
                         except Exception:
                             pass
 
+                    # Query directly from active .mtkcache package if memory buffer was not obtained from BakedAtlas
+                    from .assets import get_cached_texture_f32
+                    if not isinstance(albedo_file, (tuple, list)):
+                        cached_albedo = get_cached_texture_f32(f"atlas/textures/{stem}.png", prefs=prefs, flip_y=True)
+                        if cached_albedo is not None:
+                            albedo_file = cached_albedo
+
+                    if normal_file is not None and not isinstance(normal_file, (tuple, list)):
+                        cached_normal = get_cached_texture_f32(f"atlas/textures/{stem}_n.png", prefs=prefs, flip_y=True)
+                        if cached_normal is not None:
+                            normal_file = cached_normal
+
+                    if specular_file is not None and not isinstance(specular_file, (tuple, list)):
+                        cached_specular = get_cached_texture_f32(f"atlas/textures/{stem}_s.png", prefs=prefs, flip_y=True)
+                        if cached_specular is not None:
+                            specular_file = cached_specular
+
+                    if overlay_file is not None and not isinstance(overlay_file, (tuple, list)):
+                        cached_overlay = get_cached_texture_f32(f"atlas/textures/{stem}_overlay.png", prefs=prefs, flip_y=True)
+                        if cached_overlay is not None:
+                            overlay_file = cached_overlay
+
                     mat = build_atlas_chunk_material(
                         chunk_id=chunk_id,
                         albedo_path=albedo_file,
@@ -246,6 +268,7 @@ def ensure_world_materials(
                         atlas_height=chunk_height,
                         tile_width=16.0,
                         tile_height=16.0,
+                        chunk_stem=stem,
                     )
                     compact_materials.append(mat)
                     chunk_to_compact_slot[chunk_id] = slot_idx
@@ -315,15 +338,29 @@ def ensure_world_materials(
 
 
 _WORLD_SESSIONS: Dict[str, Any] = {}
+_WORLD_SESSION_META: Dict[str, Dict[str, Any]] = {}
 
 
 def clear_world_sessions(session_key: Optional[str] = None) -> None:
     """Clears cached VoxelWorld instances across sessions."""
-    global _WORLD_SESSIONS
+    global _WORLD_SESSIONS, _WORLD_SESSION_META
     if session_key is None:
+        for w in _WORLD_SESSIONS.values():
+            if hasattr(w, "clear_cache"):
+                try:
+                    w.clear_cache()
+                except Exception:
+                    pass
         _WORLD_SESSIONS.clear()
+        _WORLD_SESSION_META.clear()
     else:
-        _WORLD_SESSIONS.pop(session_key, None)
+        w = _WORLD_SESSIONS.pop(session_key, None)
+        if w is not None and hasattr(w, "clear_cache"):
+            try:
+                w.clear_cache()
+            except Exception:
+                pass
+        _WORLD_SESSION_META.pop(session_key, None)
 
 
 def mesh_voxel_storage(
@@ -342,6 +379,7 @@ def mesh_voxel_storage(
     progress_callback: Optional[Any] = None,
     world_session_key: Optional[str] = None,
     material_mode: str = "ATLAS",
+    force_rebuild: bool = False,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -403,9 +441,24 @@ def mesh_voxel_storage(
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
     t0 = time.perf_counter()
+    current_fp = get_cache_fingerprint(prefs)
+    current_ts = get_cache_timestamp(prefs)
+
     if world_session_key and hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
         cached_world = _WORLD_SESSIONS.get(world_session_key)
-        if cached_world is not None and hasattr(cached_world, "sync_from_storage"):
+        cached_meta = _WORLD_SESSION_META.get(world_session_key)
+
+        is_cache_valid = (
+            cached_world is not None
+            and cached_meta is not None
+            and cached_meta.get("fingerprint") == current_fp
+            and cached_meta.get("timestamp") == current_ts
+            and cached_meta.get("atlas_id") == id(atlas)
+            and cached_meta.get("model_db_id") == id(model_db)
+            and not force_rebuild
+        )
+
+        if is_cache_valid and hasattr(cached_world, "sync_from_storage"):
             dirty_count = cached_world.sync_from_storage(storage)
             if dirty_count == 0:
                 mesh_data = cached_world.get_world_mesh()
@@ -415,6 +468,11 @@ def mesh_voxel_storage(
             else:
                 mesh_data = cached_world.rebuild_all()
         else:
+            if cached_world is not None and hasattr(cached_world, "clear_cache"):
+                try:
+                    cached_world.clear_cache()
+                except Exception:
+                    pass
             try:
                 cached_world = mtk.VoxelWorld.from_storage(
                     storage=storage,
@@ -433,6 +491,12 @@ def mesh_voxel_storage(
                     unified_mesh=True,
                 )
             _WORLD_SESSIONS[world_session_key] = cached_world
+            _WORLD_SESSION_META[world_session_key] = {
+                "fingerprint": current_fp,
+                "timestamp": current_ts,
+                "atlas_id": id(atlas),
+                "model_db_id": id(model_db),
+            }
             if progress_callback is not None:
                 from .progress import wrap_progress_callback
                 wrapped_cb = wrap_progress_callback(progress_callback)

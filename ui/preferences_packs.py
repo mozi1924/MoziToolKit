@@ -96,6 +96,19 @@ def on_pack_entry_changed(self, context):
     if prefs:
         get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)
+        try:
+            from ..bridge.assets import invalidate_asset_cache_memory
+            from ..bridge.world import clear_world_sessions
+            invalidate_asset_cache_memory()
+            clear_world_sessions()
+        except Exception:
+            try:
+                from bridge.assets import invalidate_asset_cache_memory
+                from bridge.world import clear_world_sessions
+                invalidate_asset_cache_memory()
+                clear_world_sessions()
+            except Exception:
+                pass
 
 
 def on_pack_type_changed(self, context):
