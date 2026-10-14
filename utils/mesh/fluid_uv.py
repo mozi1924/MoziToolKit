@@ -4,7 +4,7 @@ Fluid UV repair utilities.
 Fixes inverted UV heights on Minecraft fluid quad faces (e.g. water, lava flowing
 slopes where the top two vertices have their UV V coordinates inverted relative
 to their 3D heights).
-Accelerated by Rust libmtk (batch_repair_fluid_uv) with zero-copy batch processing.
+Accelerated by Rust libmtk (repair_mesh_fluid_uv_inplace) with zero-copy batch processing.
 """
 
 from __future__ import annotations
@@ -24,15 +24,13 @@ except ImportError:
 
 try:
     from ...bridge.uv import (
-        repair_quad_fluid_uv,
-        batch_repair_fluid_uv,
+        repair_mesh_fluid_uv_inplace,
         get_fluid_top_uvs,
         get_fluid_side_uvs,
     )
 except (ImportError, ValueError):
     from bridge.uv import (
-        repair_quad_fluid_uv,
-        batch_repair_fluid_uv,
+        repair_mesh_fluid_uv_inplace,
         get_fluid_top_uvs,
         get_fluid_side_uvs,
     )
@@ -62,30 +60,32 @@ def repair_face_fluid_uv(
     force: bool = False,
     min_slope_threshold: float = 0.005,
 ) -> bool:
-    """
-    Check and repair inverted fluid UV on a single BMesh quad face.
-
-    :param face: bmesh face (must have 4 vertices).
-    :param uv_layer: bmesh loop UV layer.
-    :param force: If True, swap top UV heights if top edge is slanted even if not strictly detected as inverted.
-    :param min_slope_threshold: Minimum height difference between top two vertices to consider face as slanted.
-    :return: True if the face UV was modified, False otherwise.
-    """
+    """Check and repair inverted fluid UV on a single BMesh quad face."""
     if face is None or uv_layer is None or len(face.verts) != 4:
         return False
 
     loops = list(face.loops)
-    verts = [(l.vert.co.x, l.vert.co.y, l.vert.co.z) for l in loops]
-    uvs = [(l[uv_layer].uv.x, l[uv_layer].uv.y) for l in loops]
-    normal = (face.normal.x, face.normal.y, face.normal.z) if face.normal.length >= 1e-6 else None
+    positions = np.empty(12, dtype=np.float32)
+    uvs = np.empty(8, dtype=np.float32)
+    for i, l in enumerate(loops):
+        positions[i * 3 : i * 3 + 3] = (l.vert.co.x, l.vert.co.y, l.vert.co.z)
+        uvs[i * 2 : i * 2 + 2] = (l[uv_layer].uv.x, l[uv_layer].uv.y)
 
-    repaired, new_uvs = repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
-    if repaired:
-        for l, (u, v) in zip(loops, new_uvs):
-            l[uv_layer].uv.x = u
-            l[uv_layer].uv.y = v
+    orig_v = uvs[1::2].copy()
+    count = repair_mesh_fluid_uv_inplace(
+        positions=positions,
+        loop_verts=np.arange(4, dtype=np.uint32),
+        face_loop_starts=np.array([0], dtype=np.uint32),
+        face_loop_totals=np.array([4], dtype=np.uint32),
+        uvs=uvs,
+        force=force,
+        min_slope_threshold=min_slope_threshold,
+    )
+    if count > 0:
+        for i, l in enumerate(loops):
+            if uvs[i * 2 + 1] != orig_v[i]:
+                l[uv_layer].uv.y = float(uvs[i * 2 + 1])
         return True
-
     return False
 
 
@@ -96,35 +96,16 @@ def repair_polygon_fluid_uv(
     force: bool = False,
     min_slope_threshold: float = 0.005,
 ) -> bool:
-    """
-    Repair inverted fluid UV on a standard bpy.types.MeshPolygon.
-    """
+    """Repair inverted fluid UV on a standard bpy.types.MeshPolygon."""
     if polygon is None or mesh is None or uv_layer is None or len(polygon.loop_indices) != 4:
         return False
-
-    loop_indices = list(polygon.loop_indices)
-    verts = [
-        (
-            mesh.vertices[mesh.loops[li].vertex_index].co.x,
-            mesh.vertices[mesh.loops[li].vertex_index].co.y,
-            mesh.vertices[mesh.loops[li].vertex_index].co.z,
-        )
-        for li in loop_indices
-    ]
-    uvs = [
-        (uv_layer.data[li].uv.x, uv_layer.data[li].uv.y)
-        for li in loop_indices
-    ]
-    normal = (polygon.normal.x, polygon.normal.y, polygon.normal.z) if polygon.normal.length >= 1e-6 else None
-
-    repaired, new_uvs = repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
-    if repaired:
-        for li, (u, v) in zip(loop_indices, new_uvs):
-            uv_layer.data[li].uv.x = u
-            uv_layer.data[li].uv.y = v
-        return True
-
-    return False
+    return _process_raw_mesh_fluid_uv_repairs(
+        mesh,
+        uv_layer=uv_layer,
+        target_faces=[polygon],
+        force=force,
+        min_slope_threshold=min_slope_threshold,
+    ) > 0
 
 
 def _process_bmesh_fluid_uv_repairs(
@@ -135,7 +116,7 @@ def _process_bmesh_fluid_uv_repairs(
     min_slope_threshold: float = 0.005,
 ) -> int:
     """
-    Batch repair fluid UVs on a BMesh using Rust batch_repair_fluid_uv.
+    Batch repair fluid UVs on a BMesh using Rust repair_mesh_fluid_uv_inplace.
     """
     faces_to_process = target_faces if target_faces is not None else bm.faces
     # Only 4-vertex quads can have fluid slope repairs
@@ -146,40 +127,35 @@ def _process_bmesh_fluid_uv_repairs(
 
     verts_flat = np.empty(num_faces * 12, dtype=np.float32)
     uvs_flat = np.empty(num_faces * 8, dtype=np.float32)
-    normals_flat = np.empty(num_faces * 3, dtype=np.float32)
 
     face_loops = []
     v_idx = 0
     uv_idx = 0
-    n_idx = 0
 
     for f in quad_faces:
         loops = list(f.loops)
         face_loops.append(loops)
-        fnorm = f.normal
-        normals_flat[n_idx] = fnorm.x
-        normals_flat[n_idx + 1] = fnorm.y
-        normals_flat[n_idx + 2] = fnorm.z
-        n_idx += 3
-
         for l in loops:
             co = l.vert.co
-            verts_flat[v_idx] = co.x
-            verts_flat[v_idx + 1] = co.y
-            verts_flat[v_idx + 2] = co.z
+            verts_flat[v_idx : v_idx + 3] = (co.x, co.y, co.z)
             v_idx += 3
 
             uv = l[uv_layer].uv
-            uvs_flat[uv_idx] = uv.x
-            uvs_flat[uv_idx + 1] = uv.y
+            uvs_flat[uv_idx : uv_idx + 2] = (uv.x, uv.y)
             uv_idx += 2
 
     orig_v = uvs_flat[1::2].copy()
 
-    repaired_count, uvs_flat = batch_repair_fluid_uv(
-        verts_flat,
-        uvs_flat,
-        normals_flat,
+    loop_verts = np.arange(num_faces * 4, dtype=np.uint32)
+    face_starts = np.arange(0, num_faces * 4, 4, dtype=np.uint32)
+    face_totals = np.full(num_faces, 4, dtype=np.uint32)
+
+    repaired_count = repair_mesh_fluid_uv_inplace(
+        positions=verts_flat,
+        loop_verts=loop_verts,
+        face_loop_starts=face_starts,
+        face_loop_totals=face_totals,
+        uvs=uvs_flat,
         force=force,
         min_slope_threshold=min_slope_threshold,
     )
@@ -211,7 +187,7 @@ def _process_raw_mesh_fluid_uv_repairs(
 ) -> int:
     """
     High-throughput zero-copy batch fluid UV repair for standard bpy.types.Mesh
-    using Blender foreach_get / foreach_set.
+    using Blender foreach_get / foreach_set and Rust repair_mesh_fluid_uv_inplace.
     """
     if mesh is None or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
         return 0
@@ -229,58 +205,41 @@ def _process_raw_mesh_fluid_uv_repairs(
     num_loops = len(mesh.loops)
     num_verts = len(mesh.vertices)
 
-    poly_totals = np.empty(num_polys, dtype=np.int32)
-    mesh.polygons.foreach_get("loop_total", poly_totals)
+    positions = np.empty(num_verts * 3, dtype=np.float32)
+    mesh.vertices.foreach_get("co", positions)
 
+    loop_verts = np.empty(num_loops, dtype=np.uint32)
+    mesh.loops.foreach_get("vertex_index", loop_verts)
+
+    loop_starts = np.empty(num_polys, dtype=np.uint32)
+    mesh.polygons.foreach_get("loop_start", loop_starts)
+
+    loop_totals = np.empty(num_polys, dtype=np.uint32)
+    mesh.polygons.foreach_get("loop_total", loop_totals)
+
+    uvs = np.empty(num_loops * 2, dtype=np.float32)
+    uv_layer.data.foreach_get("uv", uvs)
+
+    face_indices = None
     if target_faces is not None:
-        target_indices = np.array(
+        face_indices = np.array(
             [f.index if hasattr(f, "index") else int(f) for f in target_faces],
-            dtype=np.int32,
+            dtype=np.uint32,
         )
-        quad_mask = poly_totals[target_indices] == 4
-        quad_indices = target_indices[quad_mask]
-    else:
-        quad_indices = np.where(poly_totals == 4)[0]
 
-    if len(quad_indices) == 0:
-        return 0
-
-    poly_starts = np.empty(num_polys, dtype=np.int32)
-    mesh.polygons.foreach_get("loop_start", poly_starts)
-
-    quad_starts = poly_starts[quad_indices]
-    quad_loop_indices = (quad_starts[:, None] + np.arange(4, dtype=np.int32)).ravel()
-
-    loop_v_indices = np.empty(num_loops, dtype=np.int32)
-    mesh.loops.foreach_get("vertex_index", loop_v_indices)
-
-    vert_cos = np.empty(num_verts * 3, dtype=np.float32)
-    mesh.vertices.foreach_get("co", vert_cos)
-    vert_cos_reshaped = vert_cos.reshape(-1, 3)
-
-    quad_v_indices = loop_v_indices[quad_loop_indices]
-    verts_flat = vert_cos_reshaped[quad_v_indices].ravel()
-
-    normals_all = np.empty(num_polys * 3, dtype=np.float32)
-    mesh.polygons.foreach_get("normal", normals_all)
-    normals_flat = normals_all.reshape(-1, 3)[quad_indices].ravel()
-
-    all_uvs = np.empty(num_loops * 2, dtype=np.float32)
-    uv_layer.data.foreach_get("uv", all_uvs)
-    all_uvs_reshaped = all_uvs.reshape(-1, 2)
-    uvs_flat = all_uvs_reshaped[quad_loop_indices].ravel().copy()
-
-    repaired_count, repaired_uvs = batch_repair_fluid_uv(
-        verts_flat,
-        uvs_flat,
-        normals_flat,
+    repaired_count = repair_mesh_fluid_uv_inplace(
+        positions=positions,
+        loop_verts=loop_verts,
+        face_loop_starts=loop_starts,
+        face_loop_totals=loop_totals,
+        uvs=uvs,
+        face_indices=face_indices,
         force=force,
         min_slope_threshold=min_slope_threshold,
     )
 
     if repaired_count > 0:
-        all_uvs_reshaped[quad_loop_indices] = np.asarray(repaired_uvs, dtype=np.float32).reshape(-1, 2)
-        uv_layer.data.foreach_set("uv", all_uvs.ravel())
+        uv_layer.data.foreach_set("uv", uvs)
         if hasattr(mesh, "update"):
             mesh.update()
 
@@ -335,7 +294,7 @@ def process_mesh_fluid_uv_repairs(
     """
     Repair fluid UV inversions across target faces or the entire mesh.
     Supports both BMesh (bmesh.types.BMesh) and standard Blender Mesh (bpy.types.Mesh)
-    with accelerated zero-copy batch processing backed by Rust libmtk (batch_repair_fluid_uv).
+    with accelerated zero-copy batch processing backed by Rust libmtk (repair_mesh_fluid_uv_inplace).
 
     :param bm: bmesh or bpy.types.Mesh object.
     :param uv_layer: bmesh loop UV layer or mesh UV layer. If None, active UV layer is used.

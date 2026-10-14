@@ -41,6 +41,7 @@ from .dna import (
     inject_vertex_positions_dna,
 )
 from .extract import extract_mesh_data
+from .topology import analyze_mesh_hard_edges
 from .standard import (
     inject_color_attributes_standard,
     inject_face_materials_standard,
@@ -185,6 +186,7 @@ __all__ = [
     "MTK_TO_BLENDER_DOMAIN",
     "MTK_TO_BLENDER_TYPE",
     "_get_mesh",
+    "analyze_mesh_hard_edges",
     "extract_mesh_data",
     "inject_attribute",
     "inject_custom_attributes",

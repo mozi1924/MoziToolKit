@@ -37,6 +37,7 @@ except ImportError:
     HAS_REAL_BPY = False
 
 from bridge.uv import (
+    repair_mesh_fluid_uv_inplace,
     repair_quad_fluid_uv,
     batch_repair_fluid_uv,
     get_fluid_top_uvs,
@@ -200,6 +201,74 @@ class TestFluidUVBridge(unittest.TestCase):
             self.assertAlmostEqual(float(np_uvs[7]), 0.8, places=5)
         except ImportError:
             pass
+
+    def test_repair_mesh_fluid_uv_inplace(self):
+        """Test vectorized in-place fluid UV repair on indexed geometry."""
+        import numpy as np
+
+        # Quad 0: inverted slope
+        # Quad 1: valid slope (not inverted)
+        # Face 2: triangle (3 verts, should be ignored)
+        positions = np.array([
+            # Quad 0 verts (0, 1, 2, 3)
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.2,
+            0.0, 1.0, 0.8,
+            # Quad 1 verts (4, 5, 6, 7)
+            1.0, 1.0, 0.0,
+            1.0, 0.0, 0.0,
+            1.0, 0.0, 0.2,
+            1.0, 1.0, 0.8,
+            # Triangle verts (8, 9, 10)
+            2.0, 0.0, 0.0,
+            2.0, 1.0, 0.0,
+            2.0, 0.5, 1.0,
+        ], dtype=np.float32)
+
+        loop_verts = np.array([
+            0, 1, 2, 3,  # Face 0
+            4, 5, 6, 7,  # Face 1
+            8, 9, 10,    # Face 2
+        ], dtype=np.uint32)
+
+        loop_starts = np.array([0, 4, 8], dtype=np.uint32)
+        loop_totals = np.array([4, 4, 3], dtype=np.uint32)
+
+        uvs = np.array([
+            # Face 0: inverted UV
+            1.0, 0.0,
+            0.0, 0.0,
+            0.0, 0.8,  # Inverted (should become 0.2)
+            1.0, 0.2,  # Inverted (should become 0.8)
+            # Face 1: correct UV
+            1.0, 0.0,
+            0.0, 0.0,
+            0.0, 0.2,  # Correct
+            1.0, 0.8,  # Correct
+            # Face 2: triangle UV
+            0.0, 0.0,
+            1.0, 0.0,
+            0.5, 1.0,
+        ], dtype=np.float32)
+
+        count = repair_mesh_fluid_uv_inplace(
+            positions=positions,
+            loop_verts=loop_verts,
+            face_loop_starts=loop_starts,
+            face_loop_totals=loop_totals,
+            uvs=uvs,
+        )
+
+        self.assertEqual(count, 1)
+        # Face 0 repaired in-place
+        self.assertAlmostEqual(float(uvs[5]), 0.2, places=5)
+        self.assertAlmostEqual(float(uvs[7]), 0.8, places=5)
+        # Face 1 untouched
+        self.assertAlmostEqual(float(uvs[13]), 0.2, places=5)
+        self.assertAlmostEqual(float(uvs[15]), 0.8, places=5)
+        # Face 2 untouched
+        self.assertAlmostEqual(float(uvs[21]), 1.0, places=5)
 
 
 @unittest.skipIf(not HAS_REAL_BPY, "Blender environment not available")

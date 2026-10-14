@@ -123,3 +123,31 @@ def get_fluid_top_uvs(is_flowing: bool = True, rotation: float = 0.0) -> List[Tu
 def get_fluid_side_uvs(h_left_top: float, h_right_top: float) -> List[Tuple[float, float]]:
     mtk = require_libmtk("get_fluid_side_uvs")
     return mtk.get_fluid_side_uvs(h_left_top, h_right_top)
+
+
+def repair_mesh_fluid_uv_inplace(
+    positions: Any,
+    loop_verts: Any,
+    face_loop_starts: Any,
+    face_loop_totals: Any,
+    uvs: Any,
+    face_indices: Optional[Any] = None,
+    force: bool = False,
+    min_slope_threshold: float = 0.005,
+) -> int:
+    """
+    In-place vectorized batch repair for inverted fluid UVs directly on indexed mesh geometry.
+    Modifies the uvs numpy ndarray buffer directly in-place.
+    Returns the number of quad faces repaired.
+    """
+    mtk = require_libmtk("repair_mesh_fluid_uv_inplace")
+    return mtk.repair_mesh_fluid_uv_inplace(
+        positions,
+        loop_verts,
+        face_loop_starts,
+        face_loop_totals,
+        uvs,
+        face_indices,
+        force,
+        min_slope_threshold,
+    )

@@ -112,13 +112,13 @@ def apply_selection(elements, target_elements, action: str = "SET"):
 
 
 def is_hard_edge(edge, sharp_angle_rad: float = math.radians(30.0)) -> bool:
-    """Check if a BMesh edge is considered a hard/sharp edge.
-
-    True if:
-    - It is a boundary / open boundary edge (<= 1 link face)
-    - It is explicitly marked sharp or not smooth
-    - The dihedral angle between its 2 adjacent faces exceeds sharp_angle_rad
-    """
+    """[DEPRECATED] Use bridge.mesh.analyze_mesh_hard_edges instead for vectorized Rust acceleration."""
+    import warnings
+    warnings.warn(
+        "is_hard_edge is deprecated. Use bridge.mesh.analyze_mesh_hard_edges instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if edge.is_boundary or not edge.smooth or edge.seam:
         return True
     if len(edge.link_faces) == 2:
