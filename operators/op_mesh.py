@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 from typing import Any, Dict, List, Optional, Tuple
+import numpy as np
 import bpy
 from bpy.props import EnumProperty, FloatProperty
 

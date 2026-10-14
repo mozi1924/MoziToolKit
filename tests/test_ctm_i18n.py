@@ -50,12 +50,30 @@ class TestCtmI18n(unittest.TestCase):
 
     def test_tr_function_fallback(self):
         """Verify the tr() helper returns the correct Chinese translations."""
-        self.assertEqual(tr("Connected Textures (CTM)"), "连接纹理 (CTM)")
-        self.assertEqual(tr("Enable Connected Textures (CTM)"), "启用连接纹理 (CTM)")
-        self.assertEqual(tr("Enable OptiFine and Continuity connected textures resolution"), "启用 OptiFine 与 Continuity 连接纹理求解")
-        self.assertEqual(tr("Enable OptiFine / Continuity connected textures during world meshing"), "在世界网格化过程中启用 OptiFine / Continuity 连接纹理")
-        self.assertEqual(tr("CTM Rules"), "CTM 规则")
-        self.assertEqual(tr("CTM Solver"), "CTM 求解器")
+        saved_lang = None
+        saved_ui = False
+        if HAS_BPY and hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
+            try:
+                import i18n
+                i18n.register()
+            except Exception:
+                pass
+            saved_lang = getattr(bpy.context.preferences.view, "language", "DEFAULT")
+            saved_ui = getattr(bpy.context.preferences.view, "use_translate_interface", False)
+            bpy.context.preferences.view.language = "zh_HANS"
+            bpy.context.preferences.view.use_translate_interface = True
+
+        try:
+            self.assertEqual(tr("Connected Textures (CTM)"), "连接纹理 (CTM)")
+            self.assertEqual(tr("Enable Connected Textures (CTM)"), "启用连接纹理 (CTM)")
+            self.assertEqual(tr("Enable OptiFine and Continuity connected textures resolution"), "启用 OptiFine 与 Continuity 连接纹理求解")
+            self.assertEqual(tr("Enable OptiFine / Continuity connected textures during world meshing"), "在世界网格化过程中启用 OptiFine / Continuity 连接纹理")
+            self.assertEqual(tr("CTM Rules"), "CTM 规则")
+            self.assertEqual(tr("CTM Solver"), "CTM 求解器")
+        finally:
+            if saved_lang is not None and HAS_BPY and hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
+                bpy.context.preferences.view.language = saved_lang
+                bpy.context.preferences.view.use_translate_interface = saved_ui
 
     def test_expanded_translations_dict(self):
         """Verify expanded dictionary populates Operator/UI contexts and mirrors zh_HANS to zh_CN."""

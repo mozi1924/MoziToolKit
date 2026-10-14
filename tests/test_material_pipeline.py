@@ -151,79 +151,92 @@ class TestMaterialPipeline(unittest.TestCase):
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_construction_in_blender(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            albedo_file = tmp_path / "blocks_chunk_001.png"
-            _write_dummy_png(albedo_file)
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = Path(tmpdir)
+                albedo_file = tmp_path / "blocks_chunk_001.png"
+                _write_dummy_png(albedo_file)
 
-            mat = build_atlas_chunk_material(
-                chunk_id=0,
-                albedo_path=albedo_file,
-                category="blocks",
-                category_chunk_index=1,
-                stack_fingerprint="test_fp_456",
-                use_attribute_node=True,
-                use_labpbr=True,
-            )
+                mat = build_atlas_chunk_material(
+                    chunk_id=0,
+                    albedo_path=albedo_file,
+                    category="blocks",
+                    category_chunk_index=1,
+                    stack_fingerprint="test_fp_456",
+                    use_attribute_node=True,
+                    use_labpbr=True,
+                )
 
-            self.assertIsNotNone(mat)
-            self.assertEqual(mat.name, "MTK:Atlas:blocks:001")
-            self.assertEqual(mat["mtk_material_mode"], "ATLAS")
-            self.assertEqual(mat["mtk_atlas_category"], "blocks")
-            self.assertEqual(mat["mtk_atlas_chunk_id"], 0)
-            self.assertEqual(mat["mtk_atlas_chunk_index"], 1)
-            self.assertEqual(mat["mtk_stack_fingerprint"], "test_fp_456")
-            self.assertFalse(mat["mtk_is_animated"])
+                self.assertIsNotNone(mat)
+                self.assertEqual(mat.name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mat["mtk_material_mode"], "ATLAS")
+                self.assertEqual(mat["mtk_atlas_category"], "blocks")
+                self.assertEqual(mat["mtk_atlas_chunk_id"], 0)
+                self.assertEqual(mat["mtk_atlas_chunk_index"], 1)
+                self.assertEqual(mat["mtk_stack_fingerprint"], "test_fp_456")
+                self.assertFalse(mat["mtk_is_animated"])
 
-            node_names = [n.name for n in mat.node_tree.nodes]
-            self.assertIn("Atlas Albedo Texture", node_names)
-            self.assertIn("MTK UV Transform", node_names)
-            self.assertIn("MTK UV Rotation", node_names)
-            self.assertIn("Atlas UV Tiling", node_names)
-            self.assertIn("LabPBR Decoder", node_names)
-            self.assertIn("Attr Material Props", node_names)
-            self.assertIn("Split Material Props", node_names)
-            self.assertIn("Clamp Thin Wall", node_names)
-            self.assertIn("Safe Sticker Threshold", node_names)
+                node_names = [n.name for n in mat.node_tree.nodes]
+                self.assertIn("Atlas Albedo Texture", node_names)
+                self.assertIn("MTK UV Transform", node_names)
+                self.assertIn("MTK UV Rotation", node_names)
+                self.assertIn("Atlas UV Tiling", node_names)
+                self.assertIn("LabPBR Decoder", node_names)
+                self.assertIn("Attr Material Props", node_names)
+                self.assertIn("Split Material Props", node_names)
+                self.assertIn("Clamp Thin Wall", node_names)
+                self.assertIn("Safe Sticker Threshold", node_names)
+        finally:
+            if "MTK:Atlas:blocks:001" in bpy.data.materials:
+                bpy.data.materials.remove(bpy.data.materials["MTK:Atlas:blocks:001"])
+            if "blocks_chunk_001.png" in bpy.data.images:
+                bpy.data.images.remove(bpy.data.images["blocks_chunk_001.png"])
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_with_overlay_in_blender(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            albedo_file = tmp_path / "blocks_chunk_001.png"
-            overlay_file = tmp_path / "blocks_chunk_001_overlay.png"
-            grass_cm = tmp_path / "grass.png"
-            _write_dummy_png(albedo_file)
-            _write_dummy_png(overlay_file)
-            _write_dummy_png(grass_cm)
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = Path(tmpdir)
+                albedo_file = tmp_path / "blocks_chunk_001.png"
+                overlay_file = tmp_path / "blocks_chunk_001_overlay.png"
+                grass_cm = tmp_path / "grass.png"
+                _write_dummy_png(albedo_file)
+                _write_dummy_png(overlay_file)
+                _write_dummy_png(grass_cm)
 
-            mat = build_atlas_chunk_material(
-                chunk_id=0,
-                albedo_path=albedo_file,
-                overlay_path=overlay_file,
-                colormaps={"grass": grass_cm},
-                category="blocks",
-                category_chunk_index=1,
-                stack_fingerprint="test_fp_overlay",
-                use_attribute_node=True,
-                use_labpbr=True,
-            )
+                mat = build_atlas_chunk_material(
+                    chunk_id=0,
+                    albedo_path=albedo_file,
+                    overlay_path=overlay_file,
+                    colormaps={"grass": grass_cm},
+                    category="blocks",
+                    category_chunk_index=1,
+                    stack_fingerprint="test_fp_overlay",
+                    use_attribute_node=True,
+                    use_labpbr=True,
+                )
 
-            self.assertIsNotNone(mat)
-            self.assertEqual(mat.name, "MTK:Atlas:blocks:001")
-            self.assertTrue(mat["mtk_has_overlay"])
+                self.assertIsNotNone(mat)
+                self.assertEqual(mat.name, "MTK:Atlas:blocks:001")
+                self.assertTrue(mat["mtk_has_overlay"])
 
-            node_names = [n.name for n in mat.node_tree.nodes]
-            self.assertIn("Atlas Albedo Texture", node_names)
-            self.assertIn("Atlas Overlay Texture", node_names)
-            self.assertIn("MC Biome Tint", node_names)
-            self.assertIn("MC Biome Colormap Decoder", node_names)
-            self.assertIn("Colormap Grass", node_names)
-            self.assertIn("LabPBR Decoder", node_names)
+                node_names = [n.name for n in mat.node_tree.nodes]
+                self.assertIn("Atlas Albedo Texture", node_names)
+                self.assertIn("Atlas Overlay Texture", node_names)
+                self.assertIn("MC Biome Tint", node_names)
+                self.assertIn("MC Biome Colormap Decoder", node_names)
+                self.assertIn("Colormap Grass", node_names)
+                self.assertIn("LabPBR Decoder", node_names)
 
-            cm_grass_node = mat.node_tree.nodes["Colormap Grass"]
-            self.assertEqual(cm_grass_node.interpolation, "Linear")
-            self.assertEqual(cm_grass_node.extension, "EXTEND")
+                cm_grass_node = mat.node_tree.nodes["Colormap Grass"]
+                self.assertEqual(cm_grass_node.interpolation, "Linear")
+                self.assertEqual(cm_grass_node.extension, "EXTEND")
+        finally:
+            if "MTK:Atlas:blocks:001" in bpy.data.materials:
+                bpy.data.materials.remove(bpy.data.materials["MTK:Atlas:blocks:001"])
+            for img_n in ("blocks_chunk_001.png", "blocks_chunk_001_overlay.png", "grass.png"):
+                if img_n in bpy.data.images:
+                    bpy.data.images.remove(bpy.data.images[img_n])
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_end_to_end_material_replacement_and_provenance(self):

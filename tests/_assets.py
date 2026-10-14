@@ -86,7 +86,6 @@ def ctm_resource_pack_zip() -> Optional[Path]:
         return Path(value)
 
     candidates = [
-        Path("/tmp/clean_connected_glass.zip"),
         _WORKSPACE_PARENT / "clean_connected_glass.zip",
         _WORKSPACE_PARENT / "clean-connected-glass.zip",
         Path.home() / "Downloads" / "clean_connected_glass.zip",
@@ -104,8 +103,9 @@ def save_world() -> Optional[Path]:
         return Path(value)
 
     candidates = [
-        Path.home() / "Library/Application Support/minecraft/versions/26.2-Fabric/saves/新的世界",
         _WORKSPACE_PARENT / "saves" / "test_world",
+        _WORKSPACE_PARENT / "saves" / "mtk-save-world",
+        _WORKSPACE_PARENT / "mtk-save-world",
         Path.home() / "saves" / "test_world",
     ]
     for candidate in candidates:

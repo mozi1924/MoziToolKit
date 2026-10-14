@@ -160,6 +160,15 @@ class TestWorldBridgePipeline:
 
             test_obj = MockObject()
 
+            try:
+                import bpy
+                if hasattr(bpy, "data") and hasattr(bpy.data, "materials"):
+                    for m_name in ("MTK:Atlas:blocks:003", "MTK:Atlas:blocks:006"):
+                        if m_name in bpy.data.materials:
+                            bpy.data.materials.remove(bpy.data.materials[m_name])
+            except Exception:
+                pass
+
             with patch.dict("os.environ", {"MOZI_CACHE_DIR": str(tmp_path)}):
                 # Call ensure_world_materials with used_chunk_ids=[2, 5]
                 built_chunks = []

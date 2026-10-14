@@ -109,6 +109,14 @@ def get_or_create_image_from_f32(
                 pass
         return img
 
+    # Clean up stale, corrupted, or file-backed image datablocks to allow clean memory streaming
+    if img is not None and (getattr(img, "source", "") != "GENERATED" or not getattr(img, "has_data", False)):
+        try:
+            bpy.data.images.remove(img)
+        except Exception:
+            pass
+        img = None
+
     try:
         if img is None:
             img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
@@ -132,7 +140,28 @@ def get_or_create_image_from_f32(
                 pass
         return img
     except Exception:
-        return None
+        try:
+            if img is not None:
+                bpy.data.images.remove(img)
+            fresh_img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
+            mv = memoryview(f32_bytes_or_memview)
+            if mv.format != "f":
+                mv = mv.cast("f")
+            fresh_img.pixels.foreach_set(mv)
+            fresh_img.update()
+            if hasattr(fresh_img, "pack"):
+                try:
+                    fresh_img.pack()
+                except Exception:
+                    pass
+            if hasattr(fresh_img, "colorspace_settings") and colorspace:
+                try:
+                    fresh_img.colorspace_settings.name = colorspace
+                except Exception:
+                    pass
+            return fresh_img
+        except Exception:
+            return None
 
 
 def get_or_create_image_from_rgba(
@@ -162,6 +191,14 @@ def get_or_create_image_from_rgba(
             except Exception:
                 pass
         return img
+
+    # Clean up stale, corrupted, or file-backed image datablocks to allow clean memory streaming
+    if img is not None and (getattr(img, "source", "") != "GENERATED" or not getattr(img, "has_data", False)):
+        try:
+            bpy.data.images.remove(img)
+        except Exception:
+            pass
+        img = None
 
     try:
         import numpy as np
@@ -201,7 +238,32 @@ def get_or_create_image_from_rgba(
                 pass
         return img
     except Exception:
-        return None
+        try:
+            if img is not None:
+                bpy.data.images.remove(img)
+            fresh_img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
+            raw_u8 = np.frombuffer(rgba_bytes_or_memview, dtype=np.uint8)
+            if flip_y:
+                u8_2d = raw_u8.reshape((height, width, 4))
+                flipped = np.ascontiguousarray(np.flipud(u8_2d))
+                flat_f32 = flipped.reshape(-1).astype(np.float32) * (1.0 / 255.0)
+            else:
+                flat_f32 = (raw_u8.astype(np.float32) * (1.0 / 255.0))
+            fresh_img.pixels.foreach_set(flat_f32)
+            fresh_img.update()
+            if hasattr(fresh_img, "pack"):
+                try:
+                    fresh_img.pack()
+                except Exception:
+                    pass
+            if hasattr(fresh_img, "colorspace_settings") and colorspace:
+                try:
+                    fresh_img.colorspace_settings.name = colorspace
+                except Exception:
+                    pass
+            return fresh_img
+        except Exception:
+            return None
 
 
 def get_or_create_image(
