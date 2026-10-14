@@ -121,6 +121,12 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         default=True,
     ) # type: ignore
 
+    enable_ctm: BoolProperty(
+        name="Connected Textures (CTM)",
+        description="Enable OptiFine / Continuity connected textures during world meshing",
+        default=True,
+    ) # type: ignore
+
     run_async: BoolProperty(
         name="Run Asynchronously",
         description="Run calculation in non-blocking background thread with live status bar progress",
@@ -166,6 +172,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         box_mesh.prop(self, "mesh_fluids", text=tr("Mesh Fluids"))
         box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
         box_mesh.prop(self, "origin_centered", text=tr("Origin Centered"))
+        box_mesh.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
 
     def execute(self, context):
         target_dir = self.directory or getattr(self, "filepath", "")
@@ -217,6 +224,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                         mesh_fluids=self.mesh_fluids,
                         weld_vertices=self.weld_vertices,
                         origin_centered=self.origin_centered,
+                        enable_ctm=self.enable_ctm,
                         progress_callback=reporter.on_progress,
                     )
 
@@ -247,6 +255,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                     "mesh_fluids": self.mesh_fluids,
                     "weld_vertices": self.weld_vertices,
                     "origin_centered": self.origin_centered,
+                    "enable_ctm": self.enable_ctm,
                 },
                 "prefs": prefs,
                 "task_title": f"Import {self.dimension}",

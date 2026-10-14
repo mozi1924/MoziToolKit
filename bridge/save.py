@@ -81,6 +81,7 @@ def load_and_mesh_minecraft_save(
     num_threads: Optional[int] = None,
     progress_callback: Optional[Any] = None,
     material_mode: str = "ATLAS",
+    enable_ctm: bool = True,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -109,7 +110,7 @@ def load_and_mesh_minecraft_save(
     if num_threads is None and prefs is not None:
         num_threads = getattr(prefs, "thread_count", 0) or None
 
-    ctm_solver = get_configured_ctm_solver(prefs)
+    ctm_solver = get_configured_ctm_solver(prefs) if enable_ctm else None
 
     config_kwargs = {
         "enable_ao": enable_ao,
@@ -460,6 +461,7 @@ def import_save_to_blender(
     reuse_existing: bool = False,
     progress_callback: Optional[Any] = None,
     material_mode: str = "ATLAS",
+    enable_ctm: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Full synchronous end-to-end Minecraft save importer for Blender.
@@ -479,6 +481,7 @@ def import_save_to_blender(
         origin_centered=origin_centered,
         progress_callback=progress_callback,
         material_mode=material_mode,
+        enable_ctm=enable_ctm,
     )
 
     return apply_imported_save_to_blender(

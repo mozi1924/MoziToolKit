@@ -276,6 +276,12 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         update=on_material_setting_changed,
     )
 
+    enable_ctm: BoolProperty(
+        name="Connected Textures (CTM)",
+        description="Enable OptiFine and Continuity connected textures resolution",
+        default=True,
+    )
+
     material_render_engine: EnumProperty(
         name="Render Engine Adaptation",
         description="Choose how shader features adapt to the active render engine",
@@ -501,6 +507,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         m_col = mat_box.column(align=False)
         row_opts = m_col.row(align=True)
         row_opts.prop(self, "pack_textures")
+        row_opts.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
 
         row_precompile = mat_box.row(align=True)
         row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")

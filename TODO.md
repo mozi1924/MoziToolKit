@@ -70,7 +70,7 @@
 
 ---
 
-## 阶段二：网格重构脏缓存校验与顶层右键菜单解耦（P1 - 功能解耦 🚧 进行中）
+## 阶段二：网格重构脏缓存校验与顶层右键菜单解耦（✅ 已完成）
 - [x] **基于体素点云的网格重构算子与右键菜单化 (`operators/op_voxel_cloud.py`)**
   - [x] 从点云数据提取并无损重构网格算子（`mozi.remesh_from_voxel_cloud`，支持用户手动删点雕刻并即时重构）。
   - [x] 重构材质与图集贴图绑定算子（`mozi.rematerialize_from_voxel_cloud`）。
@@ -122,7 +122,7 @@
 
 ---
 
-## 阶段四：右键菜单管理器自适应与全域 UI/UX 深度重构（P2 - 交互精修 🚧 进行中）
+## 阶段四：右键菜单管理器自适应与全域 UI/UX 深度重构（✅ 已完成）
 - [x] **统一异步任务与分阶段物理进度条流水线（✅ 已完成 - commit `8119e06`, `4ac500d`, `30bf638`）**
   - [x] 封装统一的 Blender 模态异步进度汇报器 (`utils/progress.py` -> `BlenderProgressReporter`, `wrap_progress_callback`)。
   - [x] 非阻塞后台任务执行框架 (`utils/async_task.py` -> `AsyncTask`, `ModalTaskRunner`)。
@@ -169,17 +169,17 @@
 
 ---
 
-## 阶段六：现代 Blender 5.0+ 极致批量写入与零拷贝现代化重构（P0 架构性能演进 🚧 待启动）
+## 阶段六：现代 Blender 5.0+ 极致批量写入与零拷贝现代化重构（✅ 已完成）
 
 > 基于 Blender 5.2.1 LTS 现场 MCP 内存探查与压测，彻底铲除插件内残留的 2.x/3.x 时代低效 Python 遍历与 BMesh 过程式拼装模式，全面换装现代通用属性（Generic Attributes）批写入与零拷贝数据通道。
 
-- [ ] **任务一：自适应像素切分算子整体管道化重构（彻底抛弃 BMesh 逐面循环）**
-  - [ ] 彻底废弃 [`utils/mesh/subdivide.py`](utils/mesh/subdivide.py) 中的逐面 `slice_polygon_face_by_pixel_grid` 以及 Python 循环创建 BMVert / BMFace / 逐项权重插值的低效模式。
-  - [ ] 将 [`op_pixel_split.py`](operators/op_pixel_split.py) 全面重构为对接 Rust 的单次批量 Data-In Data-Out 管道：
+- [x] **任务一：自适应像素切分算子整体管道化重构（彻底抛弃 BMesh 逐面循环 - ✅ 已完成）**
+  - [x] 彻底废弃 [`utils/mesh/subdivide.py`](utils/mesh/subdivide.py) 中的逐面 `slice_polygon_face_by_pixel_grid` 以及 Python 循环创建 BMVert / BMFace / 逐项权重插值的低效模式。
+  - [x] 将 [`op_pixel_split.py`](operators/op_pixel_split.py) 全面重构为对接 Rust 的单次批量 Data-In Data-Out 管道：
     1. 前端通过 `extract_mesh_data`（支持全选区）一次性提取网格连续流；
     2. 单次调用 Rust `bridge.subdivide.adaptive_pixel_split_mesh`（Rayon 多核并行切分、UV/顶点色/Deform权重/自定义属性双线性插值、空间哈希焊点一次性完成）；
     3. 单次通过 `inject_mesh_data` 批量回灌 Blender。
-  - [ ] 目标性能：大型网格切分耗时从 3~8 秒下降至 20~50 毫秒（提速 100x+）。
+  - [x] 目标性能：大型网格切分耗时从 3~8 秒下降至 20~50 毫秒（提速 100x+）。
 
 - [x] **任务二：字符串面属性“调色板化（Palette Indexing）”改造（✅ 已完成）**
   - [x] 破局 Blender C RNA 对字符串属性执行 `foreach_set` 报错（`internal error setting the array`）引发的慢速 Python `for i, val in enumerate(values): attr.data[i].value = val` 循环。
@@ -278,12 +278,12 @@
 
 ---
 
-## 阶段十：CTM 连接纹理端到端验证与修正（P1 - 材质增强 🚧 待启动）
-- [ ] **CTM 规则在 Blender 前端网格重构中的开关与配置面板**
-  - [ ] 在偏好设置与导入选项中提供 `enable_ctm` 复选框（针对大型场景提供可选性能平衡）；
-- [ ] **CTM 材质节点树与图集 UV 解算兼容性排查与修复**
-  - [ ] 结合真实 OptiFine / Continuity 资源包验证连续玻璃、连续书架、平滑石材的 UV 渲染；
-  - [ ] 消除潜在的边界 UV 漂移与接缝溢色问题。
+## 阶段十：CTM 连接纹理端到端验证与修正（✅ 已完成）
+- [x] **CTM 规则在 Blender 前端网格重构中的开关与配置面板**
+  - [x] 在偏好设置与导入选项中提供 `enable_ctm` 复选框（针对大型场景提供可选性能平衡，支持存档导入与实时同步）；
+- [x] **CTM 材质节点树与图集 UV 解算兼容性排查与修复**
+  - [x] 结合真实 OptiFine / Continuity 资源包验证连续玻璃、连续书架、平滑石材的 UV 渲染与方块朝向；
+  - [x] 彻底消除 Standalone 模式下的单像素塌陷与 6 向切线/缝隙镜像问题，对齐 Continuity 拓扑朝向标准。
 
 ---
 

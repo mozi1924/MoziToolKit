@@ -74,6 +74,8 @@ def get_configured_ctm_solver(prefs=None) -> Optional[Any]:
     """
     Builds a CtmSolver from the configured resource pack stack if any CTM rules exist.
     """
+    if prefs is not None and not getattr(prefs, "enable_ctm", True):
+        return None
     stack = get_configured_pack_stack(prefs)
     if stack is not None and hasattr(stack, "build_ctm_solver"):
         try:
