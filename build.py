@@ -350,29 +350,29 @@ def sync_manifest_wheels(project_dir: Path, wheels_dir: Path) -> list[str]:
         return []
 
     # Filter out any platform-specific websockets wheels
-    for whl in wheels_dir.glob("websockets*cp*.whl"):
-        whl.unlink()
+    if wheels_dir.exists():
+        for whl in wheels_dir.glob("websockets*cp*.whl"):
+            whl.unlink()
 
     with open(manifest_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Extract existing wheels from manifest to preserve cross-platform entries
-    existing_wheels = set()
-    match = re.search(r"wheels\s*=\s*\[(.*?)\]", content, flags=re.DOTALL)
-    if match:
-        for item in re.findall(r'"([^"]+)"', match.group(1)):
-            existing_wheels.add(item.strip())
+    # Scan wheels currently present on disk in wheels/
+    active_wheels = set()
+    if wheels_dir.exists():
+        for whl in wheels_dir.glob("*.whl"):
+            if not (whl.name.startswith("websockets") and "cp" in whl.name):
+                active_wheels.add(f"./wheels/{whl.name}")
 
-    # Add wheels currently present on disk in wheels/
-    for whl in wheels_dir.glob("*.whl"):
-        if not (whl.name.startswith("websockets") and "cp" in whl.name):
-            existing_wheels.add(f"./wheels/{whl.name}")
+    relative_wheels = sorted(list(active_wheels))
+    if not relative_wheels:
+        wheels_toml_block = "# wheels = []"
+    else:
+        wheels_toml_block = "wheels = [\n" + "".join(f'  "{w}",\n' for w in relative_wheels) + "]"
 
-    relative_wheels = sorted(list(existing_wheels))
-    wheels_toml_block = "wheels = [\n" + "".join(f'  "{w}",\n' for w in relative_wheels) + "]"
-
-    if "wheels = [" in content:
-        new_content = re.sub(r"wheels\s*=\s*\[[^\]]*\]", wheels_toml_block, content, flags=re.DOTALL)
+    pattern = r"^[ \t]*#?[ \t]*wheels\s*=\s*\[[^\]]*\]"
+    if re.search(pattern, content, flags=re.MULTILINE | re.DOTALL):
+        new_content = re.sub(pattern, wheels_toml_block, content, flags=re.MULTILINE | re.DOTALL)
     else:
         new_content = content + f"\n# Bundled Python Wheels\n{wheels_toml_block}\n"
 

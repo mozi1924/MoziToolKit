@@ -431,6 +431,7 @@ def mesh_voxel_storage(
     world_session_key: Optional[str] = None,
     material_mode: str = "ATLAS",
     force_rebuild: bool = False,
+    enable_animated_textures: Optional[bool] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -469,6 +470,10 @@ def mesh_voxel_storage(
         if prefs is not None:
             num_threads = getattr(prefs, "thread_count", 0) or None
 
+    anim_tex_enabled = enable_animated_textures
+    if anim_tex_enabled is None:
+        anim_tex_enabled = getattr(prefs, "enable_animated_textures", True) if prefs else True
+
     if config is None:
         config_kwargs = {
             "enable_ao": enable_ao,
@@ -479,6 +484,7 @@ def mesh_voxel_storage(
             "num_threads": num_threads,
             "atlas": atlas,
             "biome_resolver": biome_resolver,
+            "enable_animated_textures": anim_tex_enabled,
         }
         if ctm_solver is not None:
             config_kwargs["ctm_solver"] = ctm_solver
@@ -488,6 +494,8 @@ def mesh_voxel_storage(
             config.num_threads = num_threads
         if ctm_solver is not None and hasattr(config, "set_ctm_solver"):
             config.set_ctm_solver(ctm_solver)
+        if hasattr(config, "enable_animated_textures"):
+            config.enable_animated_textures = anim_tex_enabled
 
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 

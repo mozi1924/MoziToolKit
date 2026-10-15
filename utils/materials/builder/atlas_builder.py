@@ -22,6 +22,11 @@ try:
     from ...node_groups.labpbr import ensure_labpbr_decoder
     from ...node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
     from ...node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
+    from ...node_groups.animated import (
+        ensure_animation_scheduler,
+        ensure_animated_uv_mapping,
+        ensure_animated_frame_blend,
+    )
     from ..constants import (
         ATTR_UV_TILING_TRANSFORM,
         ATTR_UV_ROTATION,
@@ -36,6 +41,16 @@ except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
     from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
     from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
+    try:
+        from utils.node_groups.animated import (
+            ensure_animation_scheduler,
+            ensure_animated_uv_mapping,
+            ensure_animated_frame_blend,
+        )
+    except (ImportError, ValueError):
+        ensure_animation_scheduler = None
+        ensure_animated_uv_mapping = None
+        ensure_animated_frame_blend = None
     try:
         from utils.materials.constants import (
             ATTR_UV_TILING_TRANSFORM,
@@ -342,8 +357,48 @@ def build_atlas_chunk_material(
             target_uv_output = tiling_node.outputs["Atlas UV"]
 
     # -------------------------------------------------------------------------
+    # 2.5 Animated UV Mapping Pipeline (if animated chunk)
+    # -------------------------------------------------------------------------
+    anim_uv_node = None
+    anim_blend_node = None
+    anim_curr_uv = target_uv_output
+    anim_next_uv = target_uv_output
+    blend_factor_sock = None
+
+    if is_animated and ensure_animated_uv_mapping is not None and ensure_animation_scheduler is not None:
+        sched_group = ensure_animation_scheduler()
+        uv_map_group = ensure_animated_uv_mapping()
+        if sched_group and uv_map_group:
+            sched_node = nodes.new("ShaderNodeGroup")
+            sched_node.name = "Animation Scheduler"
+            sched_node.node_tree = sched_group
+            sched_node.location = (-1700, 350)
+            sched_node.parent = frame_uv
+
+            anim_uv_node = nodes.new("ShaderNodeGroup")
+            anim_uv_node.name = "Animated UV Mapping"
+            anim_uv_node.node_tree = uv_map_group
+            anim_uv_node.location = (-1450, 350)
+            anim_uv_node.inputs["Frame Width"].default_value = float(tile_width)
+            anim_uv_node.inputs["Frame Height"].default_value = float(tile_height)
+            anim_uv_node.inputs["Image Width"].default_value = float(atlas_width)
+            anim_uv_node.inputs["Image Height"].default_value = float(atlas_height)
+            anim_uv_node.inputs["Atlas Mode"].default_value = 1.0
+            anim_uv_node.parent = frame_uv
+
+            links.new(target_uv_output, anim_uv_node.inputs["Vector"])
+            links.new(sched_node.outputs["Current Frame"], anim_uv_node.inputs["Current Frame"])
+            links.new(sched_node.outputs["Next Frame"], anim_uv_node.inputs["Next Frame"])
+            links.new(sched_node.outputs["Blend Factor"], anim_uv_node.inputs["Blend Factor"])
+
+            anim_curr_uv = anim_uv_node.outputs["Current UV"]
+            anim_next_uv = anim_uv_node.outputs["Next UV"]
+            blend_factor_sock = anim_uv_node.outputs["Blend Factor"]
+
+    # -------------------------------------------------------------------------
     # 3. Texture Maps Input (X: -1150)
     # -------------------------------------------------------------------------
+    active_sample_uv = anim_curr_uv if is_animated else target_uv_output
     c_stem = chunk_stem or (f"{category}_anim_chunk_{category_chunk_index:03}" if is_animated else f"{category}_chunk_{category_chunk_index:03}")
     albedo_img = get_or_create_image(
         albedo_path,
@@ -352,15 +407,59 @@ def build_atlas_chunk_material(
         chunk_id=f"atlas/textures/{c_stem}.png",
     )
     albedo_node = None
+    albedo_out_color = None
+    albedo_out_alpha = None
     if albedo_img:
-        albedo_node = nodes.new("ShaderNodeTexImage")
-        albedo_node.name = "Atlas Albedo Texture"
-        albedo_node.image = albedo_img
-        albedo_node.interpolation = "Closest"
-        albedo_node.extension = "CLIP"
-        albedo_node.location = (-1150, 300)
-        albedo_node.parent = frame_tex
-        links.new(target_uv_output, albedo_node.inputs["Vector"])
+        if is_animated and anim_uv_node is not None and ensure_animated_frame_blend is not None:
+            albedo_node = nodes.new("ShaderNodeTexImage")
+            albedo_node.name = "Atlas Albedo Texture (Current)"
+            albedo_node.image = albedo_img
+            albedo_node.interpolation = "Closest"
+            albedo_node.extension = "CLIP"
+            albedo_node.location = (-1150, 420)
+            albedo_node.parent = frame_tex
+            links.new(anim_curr_uv, albedo_node.inputs["Vector"])
+
+            albedo_next_node = nodes.new("ShaderNodeTexImage")
+            albedo_next_node.name = "Atlas Albedo Texture (Next)"
+            albedo_next_node.image = albedo_img
+            albedo_next_node.interpolation = "Closest"
+            albedo_next_node.extension = "CLIP"
+            albedo_next_node.location = (-1150, 160)
+            albedo_next_node.parent = frame_tex
+            links.new(anim_next_uv, albedo_next_node.inputs["Vector"])
+
+            blend_group = ensure_animated_frame_blend()
+            if blend_group:
+                anim_blend_node = nodes.new("ShaderNodeGroup")
+                anim_blend_node.name = "Animated Frame Blend"
+                anim_blend_node.node_tree = blend_group
+                anim_blend_node.location = (-880, 300)
+                anim_blend_node.parent = frame_tex
+
+                links.new(albedo_node.outputs["Color"], anim_blend_node.inputs["Current Color"])
+                links.new(albedo_next_node.outputs["Color"], anim_blend_node.inputs["Next Color"])
+                links.new(albedo_node.outputs["Alpha"], anim_blend_node.inputs["Current Alpha"])
+                links.new(albedo_next_node.outputs["Alpha"], anim_blend_node.inputs["Next Alpha"])
+                if blend_factor_sock:
+                    links.new(blend_factor_sock, anim_blend_node.inputs["Blend Factor"])
+
+                albedo_out_color = anim_blend_node.outputs["Color"]
+                albedo_out_alpha = anim_blend_node.outputs["Alpha"]
+            else:
+                albedo_out_color = albedo_node.outputs["Color"]
+                albedo_out_alpha = albedo_node.outputs["Alpha"]
+        else:
+            albedo_node = nodes.new("ShaderNodeTexImage")
+            albedo_node.name = "Atlas Albedo Texture"
+            albedo_node.image = albedo_img
+            albedo_node.interpolation = "Closest"
+            albedo_node.extension = "CLIP"
+            albedo_node.location = (-1150, 300)
+            albedo_node.parent = frame_tex
+            links.new(target_uv_output, albedo_node.inputs["Vector"])
+            albedo_out_color = albedo_node.outputs["Color"]
+            albedo_out_alpha = albedo_node.outputs["Alpha"]
 
     overlay_node = None
     if overlay_path:
@@ -378,7 +477,7 @@ def build_atlas_chunk_material(
             overlay_node.extension = "CLIP"
             overlay_node.location = (-1150, 580)
             overlay_node.parent = frame_tex
-            links.new(target_uv_output, overlay_node.inputs["Vector"])
+            links.new(active_sample_uv, overlay_node.inputs["Vector"])
 
     normal_node = None
     if normal_path:
@@ -396,7 +495,7 @@ def build_atlas_chunk_material(
             normal_node.extension = "CLIP"
             normal_node.location = (-1150, 20)
             normal_node.parent = frame_tex
-            links.new(target_uv_output, normal_node.inputs["Vector"])
+            links.new(active_sample_uv, normal_node.inputs["Vector"])
 
     spec_node = None
     if specular_path:
@@ -414,14 +513,14 @@ def build_atlas_chunk_material(
             spec_node.extension = "CLIP"
             spec_node.location = (-1150, -260)
             spec_node.parent = frame_tex
-            links.new(target_uv_output, spec_node.inputs["Vector"])
+            links.new(active_sample_uv, spec_node.inputs["Vector"])
 
     # -------------------------------------------------------------------------
     # 4. Biome Tint & Colormap Decoding Integration (X: -700 to 200)
     # -------------------------------------------------------------------------
     biome_tint_group = ensure_biome_tint()
     tint_node = None
-    if biome_tint_group and albedo_node:
+    if biome_tint_group and albedo_out_color is not None:
         tint_node = nodes.new("ShaderNodeGroup")
         tint_node.name = "MC Biome Tint"
         tint_node.node_tree = biome_tint_group
@@ -429,8 +528,8 @@ def build_atlas_chunk_material(
         tint_node.parent = frame_biome
 
         # Base Color & Alpha
-        links.new(albedo_node.outputs["Color"], tint_node.inputs["Base Color"])
-        links.new(albedo_node.outputs["Alpha"], tint_node.inputs["Base Alpha"])
+        links.new(albedo_out_color, tint_node.inputs["Base Color"])
+        links.new(albedo_out_alpha, tint_node.inputs["Base Alpha"])
 
         # Overlay Color & Alpha
         if overlay_node:
@@ -553,13 +652,13 @@ def build_atlas_chunk_material(
         else:
             links.new(tint_node.outputs["Color"], decoder_node.inputs["Base Color"])
             links.new(tint_node.outputs["Alpha"], decoder_node.inputs["Alpha"])
-    elif albedo_node:
+    elif albedo_node and albedo_out_color is not None:
         if decoder_group:
-            links.new(albedo_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
-            links.new(albedo_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
+            links.new(albedo_out_color, decoder_node.inputs["Albedo Color"])
+            links.new(albedo_out_alpha, decoder_node.inputs["Albedo Alpha"])
         else:
-            links.new(albedo_node.outputs["Color"], decoder_node.inputs["Base Color"])
-            links.new(albedo_node.outputs["Alpha"], decoder_node.inputs["Alpha"])
+            links.new(albedo_out_color, decoder_node.inputs["Base Color"])
+            links.new(albedo_out_alpha, decoder_node.inputs["Alpha"])
 
     # Link Normal -> Decoder
     if normal_node and decoder_group:

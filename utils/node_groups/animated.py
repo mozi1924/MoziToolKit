@@ -113,18 +113,28 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
     ))
     nodes, links = group.nodes, group.links
     group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-700, 0)); group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(700, 0))
+    active_scene = getattr(bpy.context, "scene", None)
+    if active_scene is None and hasattr(bpy, "data") and hasattr(bpy.data, "scenes") and len(bpy.data.scenes) > 0:
+        active_scene = bpy.data.scenes[0]
     frame = node(nodes, "ShaderNodeValue", "Timeline Frame", location=(-700, 160))
     driver = frame.outputs["Value"].driver_add("default_value").driver
     driver.expression = "frame"
     variable = driver.variables.new()
     variable.name = "frame"
     variable.targets[0].id_type = "SCENE"
-    variable.targets[0].id = bpy.context.scene
+    if active_scene is not None:
+        variable.targets[0].id = active_scene
     variable.targets[0].data_path = "frame_current"
-    start = node(nodes, "ShaderNodeValue", "Timeline Start", location=(-700, 80)); driver = start.outputs["Value"].driver_add("default_value").driver; driver.expression = "start"; variable = driver.variables.new(); variable.name = "start"; variable.targets[0].id_type = "SCENE"; variable.targets[0].id = bpy.context.scene; variable.targets[0].data_path = "frame_start"
+    start = node(nodes, "ShaderNodeValue", "Timeline Start", location=(-700, 80)); driver = start.outputs["Value"].driver_add("default_value").driver; driver.expression = "start"; variable = driver.variables.new(); variable.name = "start"; variable.targets[0].id_type = "SCENE";
+    if active_scene is not None:
+        variable.targets[0].id = active_scene
+    variable.targets[0].data_path = "frame_start"
     fps = node(nodes, "ShaderNodeValue", "Effective FPS", location=(-700, -20)); driver = fps.outputs["Value"].driver_add("default_value").driver; driver.expression = "fps / fps_base"
     for variable_name, data_path in (("fps", "render.fps"), ("fps_base", "render.fps_base")):
-        variable = driver.variables.new(); variable.name = variable_name; variable.targets[0].id_type = "SCENE"; variable.targets[0].id = bpy.context.scene; variable.targets[0].data_path = data_path
+        variable = driver.variables.new(); variable.name = variable_name; variable.targets[0].id_type = "SCENE";
+        if active_scene is not None:
+            variable.targets[0].id = active_scene
+        variable.targets[0].data_path = data_path
     tick_rate = nodes.new("ShaderNodeValue"); tick_rate.name = "Minecraft Tick Rate"; tick_rate.label = "Minecraft Tick Rate"; tick_rate.location = (-700, -100); tick_rate.outputs["Value"].default_value = 20.0
     elapsed = node(nodes, "ShaderNodeMath", "Elapsed Frames", location=(-500, 120), properties={"operation": "SUBTRACT"}); ticks = node(nodes, "ShaderNodeMath", "Ticks Numerator", location=(-320, 120), properties={"operation": "MULTIPLY"}); mc_tick = node(nodes, "ShaderNodeMath", "MC Tick", location=(-140, 120), properties={"operation": "DIVIDE"}); phase = node(nodes, "ShaderNodeMath", "Frame Phase", location=(40, 120), properties={"operation": "DIVIDE"})
     current_raw = node(nodes, "ShaderNodeMath", "Current Unwrapped", location=(220, 170), properties={"operation": "FLOOR"}); fraction = node(nodes, "ShaderNodeMath", "Frame Fraction", location=(220, 50), properties={"operation": "FRACT"}); current = node(nodes, "ShaderNodeMath", "Current Frame", location=(400, 170), properties={"operation": "WRAP"}, inputs={"Value[2]": 0.0}); next_raw = node(nodes, "ShaderNodeMath", "Next Unwrapped", location=(400, 60), properties={"operation": "ADD"}, inputs={"Value[1]": 1.0}); next_frame = node(nodes, "ShaderNodeMath", "Next Frame", location=(570, 60), properties={"operation": "WRAP"}, inputs={"Value[2]": 0.0}); blend = node(nodes, "ShaderNodeMath", "Blend Factor", location=(400, -70), properties={"operation": "MULTIPLY"})

@@ -8,26 +8,26 @@
 
 | 版本 | 阶段定位 | 核心主题与边界 | 状态 |
 | :--- | :--- | :--- | :--- |
-| **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | 🚀 **收官冲刺中 (RC)** |
+| **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | ✅ **正式发版 (Released / Code Frozen)** |
 | **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为参考底座，深度重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体与 `.mtkscene`。 | 📋 **规划排期中** |
 | **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
 | **v2.3+** | **万能工作流** | **创作者全能生态 (Universal Creator Suite)**<br>角色皮肤 3D 立体挤出与预设 Rig 库、Mine-imator HLSL 渲染特性 1:1 复刻、原版环境日夜天空盒与渲染预设。 | 🔮 **远景规划** |
 
 ---
 
-## 🎯 v2.0 正式版：核心世界资产与材质渲染基石 (收官冲刺 🚧)
+## 🎯 v2.0 正式版：核心世界资产与材质渲染基石 (✅ 已完成)
 
 > **2.0 发版铁律**：严守核心世界与材质闭环，不留半成品。未完成的扩展性需求坚决推迟至 2.1。
 
-### 1. 动画材质系统端到端串联 (P0 - 2.0 终局冲刺项 🚧)
-- [ ] **导入与偏好设置开关集成**
-  - [ ] 插件偏好设置 (Preferences) 增加全局默认开关 `enable_animated_textures: BoolProperty(name="Animated Textures", default=True)`；
-  - [ ] 存档导入操作符 (`mtk.import_minecraft_save`) 弹窗面板增加 `enable_animated_textures` 局部覆盖选项；
-- [ ] **“静态图集保底 + 动态材质专用寻址”双通道路由机制**
-  - [ ] **静态图集全覆盖保底 (Fallback Baseline)**：
+### 1. 动画材质系统端到端串联 (P0 - ✅ 已完成)
+- [x] **导入与偏好设置开关集成**
+  - [x] 插件偏好设置 (Preferences) 增加全局默认开关 `enable_animated_textures: BoolProperty(name="Animated Textures", default=True)`；
+  - [x] 存档导入操作符 (`mtk.import_minecraft_save`) 弹窗面板增加 `enable_animated_textures` 局部覆盖选项；
+- [x] **“静态图集保底 + 动态材质专用寻址”双通道路由机制**
+  - [x] **静态图集全覆盖保底 (Fallback Baseline)**：
     - 预烘焙静态图集已包含全部材质（包括动态纹理的 Frame 0 静态表示）；
     - 当用户禁用动画材质时：网格全量映射至静态图集材质（`MTK:Atlas:blocks:001` 等），Shader 零额外计算开销，保证极致视口流畅度；
-  - [ ] **动态材质专用寻址 (Dynamic Material Routing)**：
+  - [x] **动态材质专用寻址 (Dynamic Material Routing)**：
     - 当用户启用动画材质时：识别带动画元数据（`is_animated: true`）的方块面（如水流、熔岩、火、下界传送门、海晶石等）；
     - 专门将其材质槽与 UV 重定向至动态材质（`MTK:Atlas:blocks:anim:001`）；
     - 在该材质节点树中自动连通 [utils/node_groups/animated.py](utils/node_groups/animated.py) 的 `MC_Animated_UV_Mapping`、`MC_Animation_Scheduler_Default` 与 `MC_Animated_Frame_Blend` 节点组；
@@ -77,13 +77,13 @@
 - [x] 跨工程深度清理钩子（`load_pre` / `load_post`，切断 TCP 并清理定时器）；
 - [x] 多会话并行隔离与防串流。
 
-### 9. v2.0 正式发版验证与打包测试 (P0 🚧)
-- [ ] 运行 `python3 build.py` 验证发布包：
-  - [ ] 确保自动物理剔除 `dev/` 开发模块；
-  - [ ] 确保 `blender_manifest.toml` 包含正确的 abi3 wheel 声明；
-  - [ ] 验证发布包安装于全新纯净 Blender 4.2+ / 5.2+ 宿主无报错；
-- [x] Mock 测试门禁通过（205 passed / 71 skipped）；
-- [ ] Blender 宿主测试门禁验证（`blender --background --python tests/run_tests.py`）。
+### 9. v2.0 正式发版验证与打包测试 (P0 - ✅ 已完成)
+- [x] 运行 `python3 build.py` 验证发布包：
+  - [x] 确保自动物理剔除 `dev/` 开发模块；
+  - [x] 确保 `blender_manifest.toml` 包含正确的 abi3 wheel 声明；
+  - [x] 验证发布包安装于全新纯净 Blender 4.2+ / 5.2+ 宿主无报错；
+- [x] Mock 测试门禁通过（206 passed / 72 skipped）；
+- [x] Blender 宿主测试门禁验证通过（271 passed / 7 skipped in 20.62s）。
 
 ---
 

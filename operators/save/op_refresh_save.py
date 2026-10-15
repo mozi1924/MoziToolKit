@@ -114,6 +114,8 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
         mesh_fluids = bool(target.get("mtk_mesh_fluids", True))
         weld_vertices = bool(target.get("mtk_weld_vertices", True))
         origin_centered = bool(target.get("mtk_origin_centered", True))
+        enable_ctm = bool(target.get("mtk_enable_ctm", True))
+        enable_animated_textures = bool(target.get("mtk_enable_animated_textures", True))
         level_name = str(target.get("mtk_world_name", "Minecraft World"))
         prefs = get_prefs(context)
 
@@ -138,6 +140,8 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                         mesh_fluids=mesh_fluids,
                         weld_vertices=weld_vertices,
                         origin_centered=origin_centered,
+                        enable_ctm=enable_ctm,
+                        enable_animated_textures=enable_animated_textures,
                         progress_callback=reporter.on_progress,
                     )
 
@@ -157,6 +161,8 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                         enable_ao=enable_ao,
                         mesh_fluids=mesh_fluids,
                         weld_vertices=weld_vertices,
+                        enable_ctm=enable_ctm,
+                        enable_animated_textures=enable_animated_textures,
                         target_root=root,
                     )
 
@@ -187,6 +193,8 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     "mesh_fluids": mesh_fluids,
                     "weld_vertices": weld_vertices,
                     "origin_centered": origin_centered,
+                    "enable_ctm": enable_ctm,
+                    "enable_animated_textures": enable_animated_textures,
                 },
                 "prefs": prefs,
                 "task_title": f"Refreshing {level_name}",
@@ -217,6 +225,8 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                 enable_ao=enable_ao,
                 mesh_fluids=mesh_fluids,
                 weld_vertices=weld_vertices,
+                enable_ctm=enable_ctm,
+                enable_animated_textures=enable_animated_textures,
                 target_root=root,
             )
             self.report(

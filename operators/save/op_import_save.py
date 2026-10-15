@@ -127,6 +127,12 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         default=True,
     ) # type: ignore
 
+    enable_animated_textures: BoolProperty(
+        name="Animated Textures",
+        description="Enable animated texture frame playback for water, lava, fire, portals, and animated blocks",
+        default=True,
+    ) # type: ignore
+
     run_async: BoolProperty(
         name="Run Asynchronously",
         description="Run calculation in non-blocking background thread with live status bar progress",
@@ -173,6 +179,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
         box_mesh.prop(self, "origin_centered", text=tr("Origin Centered"))
         box_mesh.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
+        box_mesh.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
 
     def execute(self, context):
         target_dir = self.directory or getattr(self, "filepath", "")
@@ -225,6 +232,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                         weld_vertices=self.weld_vertices,
                         origin_centered=self.origin_centered,
                         enable_ctm=self.enable_ctm,
+                        enable_animated_textures=self.enable_animated_textures,
                         progress_callback=reporter.on_progress,
                     )
 
@@ -256,6 +264,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                     "weld_vertices": self.weld_vertices,
                     "origin_centered": self.origin_centered,
                     "enable_ctm": self.enable_ctm,
+                    "enable_animated_textures": self.enable_animated_textures,
                 },
                 "prefs": prefs,
                 "task_title": f"Import {self.dimension}",
@@ -285,6 +294,8 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                 enable_ao=self.enable_ao,
                 mesh_fluids=self.mesh_fluids,
                 weld_vertices=self.weld_vertices,
+                enable_ctm=self.enable_ctm,
+                enable_animated_textures=self.enable_animated_textures,
             )
             self.report(
                 {"INFO"},

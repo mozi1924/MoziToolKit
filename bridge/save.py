@@ -82,6 +82,7 @@ def load_and_mesh_minecraft_save(
     progress_callback: Optional[Any] = None,
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
+    enable_animated_textures: Optional[bool] = None,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -112,6 +113,10 @@ def load_and_mesh_minecraft_save(
 
     ctm_solver = get_configured_ctm_solver(prefs) if enable_ctm else None
 
+    anim_tex_enabled = enable_animated_textures
+    if anim_tex_enabled is None:
+        anim_tex_enabled = getattr(prefs, "enable_animated_textures", True) if prefs else True
+
     config_kwargs = {
         "enable_ao": enable_ao,
         "mesh_fluids": mesh_fluids,
@@ -121,6 +126,7 @@ def load_and_mesh_minecraft_save(
         "num_threads": num_threads,
         "atlas": atlas,
         "biome_resolver": biome_resolver,
+        "enable_animated_textures": anim_tex_enabled,
     }
     if ctm_solver is not None:
         config_kwargs["ctm_solver"] = ctm_solver
@@ -266,6 +272,8 @@ def apply_imported_save_to_blender(
     weld_vertices: bool = True,
     target_root: Optional[Any] = None,
     material_mode: str = "ATLAS",
+    enable_ctm: bool = True,
+    enable_animated_textures: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -411,6 +419,8 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(target, "mtk_enable_ao", bool(enable_ao))
         _safe_set_custom_prop(target, "mtk_mesh_fluids", bool(mesh_fluids))
         _safe_set_custom_prop(target, "mtk_weld_vertices", bool(weld_vertices))
+        _safe_set_custom_prop(target, "mtk_enable_ctm", bool(enable_ctm))
+        _safe_set_custom_prop(target, "mtk_enable_animated_textures", bool(enable_animated_textures))
         _safe_set_custom_prop(target, "mtk_last_refreshed", float(now_ts))
         _safe_set_custom_prop(target, "mtk:biome_preset", "WORLD")
         sanitize_save_privacy(target)
@@ -492,10 +502,15 @@ def import_save_to_blender(
     progress_callback: Optional[Any] = None,
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
+    enable_animated_textures: Optional[bool] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Full synchronous end-to-end Minecraft save importer for Blender.
     """
+    anim_tex_enabled = enable_animated_textures
+    if anim_tex_enabled is None:
+        anim_tex_enabled = getattr(prefs, "enable_animated_textures", True) if prefs else True
+
     mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
         world_dir=world_dir,
         dimension=dimension,
@@ -512,6 +527,7 @@ def import_save_to_blender(
         progress_callback=progress_callback,
         material_mode=material_mode,
         enable_ctm=enable_ctm,
+        enable_animated_textures=anim_tex_enabled,
     )
 
     return apply_imported_save_to_blender(
@@ -532,4 +548,6 @@ def import_save_to_blender(
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,
         material_mode=material_mode,
+        enable_ctm=enable_ctm,
+        enable_animated_textures=anim_tex_enabled,
     )

@@ -282,6 +282,12 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         default=True,
     )
 
+    enable_animated_textures: BoolProperty(
+        name="Animated Textures",
+        description="Enable animated texture frame playback for water, lava, fire, portals, and animated blocks",
+        default=True,
+    )
+
     material_render_engine: EnumProperty(
         name="Render Engine Adaptation",
         description="Choose how shader features adapt to the active render engine",
@@ -508,6 +514,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         row_opts = m_col.row(align=True)
         row_opts.prop(self, "pack_textures")
         row_opts.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
+        row_opts.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
 
         row_precompile = mat_box.row(align=True)
         row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")
