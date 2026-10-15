@@ -224,7 +224,7 @@ class MOZI_PT_view3d_save_container(bpy.types.Panel):
             col.label(text=tr("No Minecraft Save container selected."))
             row_imp = box.row(align=True)
             row_imp.scale_y = 1.2
-            row_imp.operator("mozi.import_minecraft_save", text=tr("Import Minecraft Save (.mca / level.dat)"), icon='IMPORT')
+            row_imp.operator("mtk.import_minecraft_save", text=tr("Import Minecraft Save (.mca / level.dat)"), icon='IMPORT')
 
 
 PANEL_CLASSES = (
