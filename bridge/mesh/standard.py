@@ -17,6 +17,22 @@ from .constants import safe_get_attribute
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh.Standard")
 
 
+def clean_zombie_attributes(mesh: Any) -> None:
+    """Purges non-builtin custom attributes before or after clear_geometry so they don't linger with 0 length."""
+    if not hasattr(mesh, "attributes"):
+        return
+    builtin_names = {
+        "position", ".corner_vert", ".corner_edge", ".edge_verts",
+        ".select_vert", ".select_edge", ".select_poly", "sharp_face",
+    }
+    for attr in list(mesh.attributes):
+        if attr.name not in builtin_names:
+            try:
+                mesh.attributes.remove(attr)
+            except Exception:
+                pass
+
+
 def inject_topology_standard(
     mesh: Any,
     mesh_data: Any,
@@ -27,7 +43,9 @@ def inject_topology_standard(
 ) -> bool:
     """Rebuilds mesh topology using standard Blender BPy APIs (vertices.add, foreach_set)."""
     if hasattr(mesh.vertices, "add") and hasattr(mesh.loops, "add") and hasattr(mesh.polygons, "add"):
+        clean_zombie_attributes(mesh)
         mesh.clear_geometry()
+        clean_zombie_attributes(mesh)
         mesh.vertices.add(v_count)
 
         # 1. Vertex positions
@@ -199,20 +217,31 @@ def inject_uvs_standard(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] 
     if not hasattr(mesh, "uv_layers") or len(mesh.loops) == 0:
         return
 
-    uv_layer = None
-    if uv_layer_name and hasattr(mesh.uv_layers, "get"):
-        uv_layer = mesh.uv_layers.get(uv_layer_name)
-    if uv_layer is None:
-        uv_layer = getattr(mesh.uv_layers, "active", None) or (
-            mesh.uv_layers[0] if len(mesh.uv_layers) > 0 else (
-                mesh.uv_layers.new(name=uv_layer_name or "UVMap") if hasattr(mesh.uv_layers, "new") else None
-            )
-        )
-    if uv_layer is None:
-        return
-
     num_loops = len(mesh.loops)
-    uv_attr = safe_get_attribute(mesh, getattr(uv_layer, "name", "UVMap"))
+    target_name = uv_layer_name
+    if not target_name:
+        active_layer = getattr(mesh.uv_layers, "active", None)
+        target_name = active_layer.name if active_layer else (mesh.uv_layers[0].name if len(mesh.uv_layers) > 0 else "UVMap")
+
+    uv_attr = safe_get_attribute(mesh, target_name)
+    if uv_attr is not None and len(uv_attr.data) != num_loops:
+        try:
+            mesh.attributes.remove(uv_attr)
+        except Exception:
+            pass
+        uv_attr = None
+
+    uv_layer = mesh.uv_layers.get(target_name) if hasattr(mesh.uv_layers, "get") else None
+    if uv_layer is None and hasattr(mesh.uv_layers, "new"):
+        try:
+            uv_layer = mesh.uv_layers.new(name=target_name)
+        except Exception:
+            pass
+    if uv_attr is None:
+        uv_attr = safe_get_attribute(mesh, target_name)
+
+    if uv_layer is None and uv_attr is None:
+        return
 
     # Priority 1: Fast loop UVs memoryview
     if hasattr(mesh_data, "loop_uvs_memoryview"):
@@ -278,12 +307,18 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
             return
 
         color_attr = mesh.color_attributes.get("color")
-        if color_attr is None or color_attr.domain != domain:
-            if color_attr is not None and hasattr(mesh.color_attributes, "remove"):
-                mesh.color_attributes.remove(color_attr)
-            if hasattr(mesh.color_attributes, "new"):
+        if color_attr is not None and (color_attr.domain != domain or len(color_attr.data) != num_color_elems):
+            if hasattr(mesh.color_attributes, "remove"):
+                try:
+                    mesh.color_attributes.remove(color_attr)
+                except Exception:
+                    pass
+            color_attr = None
+
+        if color_attr is None and hasattr(mesh.color_attributes, "new"):
+            try:
                 color_attr = mesh.color_attributes.new(name="color", type="FLOAT_COLOR", domain=domain)
-            else:
+            except Exception:
                 return
 
         if color_attr is not None and hasattr(color_attr.data, "foreach_set"):

@@ -225,8 +225,15 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
 
             b_type, value_key, typecode = type_tuple
             b_attr = mesh.attributes.get(attr_name)
-            if b_attr is not None and (b_attr.data_type != b_type or b_attr.domain != b_domain):
-                mesh.attributes.remove(b_attr)
+            if b_attr is not None and (
+                b_attr.data_type != b_type
+                or b_attr.domain != b_domain
+                or len(b_attr.data) != elem_count
+            ):
+                try:
+                    mesh.attributes.remove(b_attr)
+                except Exception:
+                    pass
                 b_attr = None
 
             if b_attr is None:

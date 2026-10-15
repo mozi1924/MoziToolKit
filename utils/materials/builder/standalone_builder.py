@@ -85,6 +85,23 @@ def ensure_material_node_tree(mat: Any) -> Any:
     return getattr(mat, "node_tree", None)
 
 
+def _is_valid_image(img: Any, expected_w: Optional[int] = None, expected_h: Optional[int] = None) -> bool:
+    """Check if a Blender image datablock exists and holds valid image data."""
+    if img is None:
+        return False
+    try:
+        w, h = img.size[0], img.size[1]
+        if w <= 0 or h <= 0:
+            return False
+        if expected_w is not None and w != expected_w:
+            return False
+        if expected_h is not None and h != expected_h:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def get_or_create_image_from_f32(
     image_name: str,
     width: int,
@@ -101,21 +118,13 @@ def get_or_create_image_from_f32(
         return None
 
     img = bpy.data.images.get(image_name)
-    if not force_reload and img is not None and getattr(img, "has_data", False):
+    if not force_reload and _is_valid_image(img, width, height):
         if hasattr(img, "colorspace_settings") and colorspace:
             try:
                 img.colorspace_settings.name = colorspace
             except Exception:
                 pass
         return img
-
-    # Clean up stale, corrupted, or file-backed image datablocks to allow clean memory streaming
-    if img is not None and (getattr(img, "source", "") != "GENERATED" or not getattr(img, "has_data", False)):
-        try:
-            bpy.data.images.remove(img)
-        except Exception:
-            pass
-        img = None
 
     try:
         if img is None:
@@ -141,8 +150,6 @@ def get_or_create_image_from_f32(
         return img
     except Exception:
         try:
-            if img is not None:
-                bpy.data.images.remove(img)
             fresh_img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
             mv = memoryview(f32_bytes_or_memview)
             if mv.format != "f":
@@ -184,21 +191,13 @@ def get_or_create_image_from_rgba(
         return None
 
     img = bpy.data.images.get(image_name)
-    if not force_reload and img is not None and getattr(img, "has_data", False):
+    if not force_reload and _is_valid_image(img, width, height):
         if hasattr(img, "colorspace_settings") and colorspace:
             try:
                 img.colorspace_settings.name = colorspace
             except Exception:
                 pass
         return img
-
-    # Clean up stale, corrupted, or file-backed image datablocks to allow clean memory streaming
-    if img is not None and (getattr(img, "source", "") != "GENERATED" or not getattr(img, "has_data", False)):
-        try:
-            bpy.data.images.remove(img)
-        except Exception:
-            pass
-        img = None
 
     try:
         import numpy as np
@@ -239,8 +238,6 @@ def get_or_create_image_from_rgba(
         return img
     except Exception:
         try:
-            if img is not None:
-                bpy.data.images.remove(img)
             fresh_img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
             raw_u8 = np.frombuffer(rgba_bytes_or_memview, dtype=np.uint8)
             if flip_y:
@@ -317,7 +314,7 @@ def get_or_create_image(
     if resolved_chunk_id:
         img_name = os.path.basename(resolved_chunk_id)
         existing_img = bpy.data.images.get(img_name)
-        if not force_reload and existing_img is not None and getattr(existing_img, "has_data", False):
+        if not force_reload and _is_valid_image(existing_img):
             if hasattr(existing_img, "colorspace_settings") and colorspace:
                 try:
                     existing_img.colorspace_settings.name = colorspace

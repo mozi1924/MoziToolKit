@@ -88,10 +88,34 @@ def get_or_create_attribute(
     """Helper to safely get or create a Blender Mesh attribute."""
     if not hasattr(mesh, "attributes"):
         return None
+
+    dom_upper = domain.upper()
+    expected_count = None
+    if dom_upper == "FACE":
+        expected_count = len(getattr(mesh, "polygons", []))
+    elif dom_upper == "CORNER":
+        expected_count = len(getattr(mesh, "loops", []))
+    elif dom_upper == "POINT":
+        expected_count = len(getattr(mesh, "vertices", []))
+    elif dom_upper == "EDGE":
+        expected_count = len(getattr(mesh, "edges", []))
+
     attr = mesh.attributes.get(name)
+    if attr is not None and (
+        attr.data_type != data_type
+        or attr.domain != dom_upper
+        or (expected_count is not None and len(attr.data) != expected_count)
+    ):
+        try:
+            mesh.attributes.remove(attr)
+        except Exception:
+            pass
+        attr = None
+
     if attr is None:
         try:
             return mesh.attributes.new(name=name, type=data_type, domain=domain)
         except Exception:
             return None
     return attr
+

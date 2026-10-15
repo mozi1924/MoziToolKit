@@ -21,6 +21,7 @@ from ..dna import (
     resolve_positions_ptr,
 )
 from ..engine import get_libmtk_dna
+from .standard import clean_zombie_attributes
 
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh.DNA")
 
@@ -44,7 +45,9 @@ def inject_topology_dna(
     if not (hasattr(mesh.vertices, "add") and hasattr(mesh.loops, "add") and hasattr(mesh.polygons, "add")):
         return False
 
+    clean_zombie_attributes(mesh)
     mesh.clear_geometry()
+    clean_zombie_attributes(mesh)
     mesh.vertices.add(v_count)
 
     # 1. Direct copy vertex positions
@@ -173,7 +176,26 @@ def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = Non
     if num_loops == 0:
         return False
 
-    uv_ptr = resolve_loop_uvs_ptr(mesh, uv_name=uv_layer_name, expected_count=num_loops)
+    target_name = uv_layer_name
+    if not target_name:
+        active_layer = getattr(mesh.uv_layers, "active", None) if hasattr(mesh, "uv_layers") else None
+        target_name = active_layer.name if active_layer else (mesh.uv_layers[0].name if hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0 else "UVMap")
+
+    uv_attr = mesh.attributes.get(target_name) if hasattr(mesh, "attributes") else None
+    if uv_attr is not None and len(uv_attr.data) != num_loops:
+        try:
+            mesh.attributes.remove(uv_attr)
+        except Exception:
+            pass
+        uv_attr = None
+
+    if uv_attr is None and hasattr(mesh, "uv_layers") and hasattr(mesh.uv_layers, "new"):
+        try:
+            mesh.uv_layers.new(name=target_name)
+        except Exception:
+            pass
+
+    uv_ptr = resolve_loop_uvs_ptr(mesh, uv_name=target_name, expected_count=num_loops)
     if uv_ptr is None:
         return False
 
@@ -204,15 +226,37 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
     if blender_dna is None or not is_dna_available():
         return False
 
-    col_ptr = resolve_colors_ptr(mesh)
+    col_mv = mesh_data.colors_memoryview() if hasattr(mesh_data, "colors_memoryview") else None
+    if col_mv is None:
+        return False
+
+    num_color_elems = len(col_mv) // (4 * 4)
+    if num_color_elems == len(getattr(mesh, "loops", [])):
+        domain = "CORNER"
+    elif num_color_elems == len(getattr(mesh, "vertices", [])):
+        domain = "POINT"
+    else:
+        return False
+
+    col_attr = mesh.color_attributes.get("color") if hasattr(mesh, "color_attributes") else None
+    if col_attr is not None and (getattr(col_attr, "domain", "") != domain or len(col_attr.data) != num_color_elems):
+        try:
+            mesh.color_attributes.remove(col_attr)
+        except Exception:
+            pass
+        col_attr = None
+
+    if col_attr is None and hasattr(mesh, "color_attributes") and hasattr(mesh.color_attributes, "new"):
+        try:
+            mesh.color_attributes.new(name="color", type="FLOAT_COLOR", domain=domain)
+        except Exception:
+            pass
+
+    col_ptr = resolve_colors_ptr(mesh, expected_count=num_color_elems)
     if col_ptr is None:
         return False
 
     try:
-        col_mv = mesh_data.colors_memoryview() if hasattr(mesh_data, "colors_memoryview") else None
-        if col_mv is None:
-            return False
-
         if hasattr(blender_dna, "copy_colors_to_ptr"):
             blender_dna.copy_colors_to_ptr(mesh_data, col_ptr, max_bytes=len(col_mv))
             return True

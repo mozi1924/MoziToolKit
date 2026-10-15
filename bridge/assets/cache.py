@@ -34,6 +34,10 @@ _ACTIVE_CACHE_MANIFEST: Optional[Dict[str, Any]] = None
 _cached_cache_stats: Optional[Dict[str, Any]] = None
 _cached_cache_stats_path: Optional[str] = None
 
+_CACHED_BIOME_RESOLVER: Optional[Any] = None
+_CACHED_BIOME_RESOLVER_PKG_PATH: Optional[str] = None
+_CACHED_BIOME_RESOLVER_MTIME: float = 0.0
+
 
 def get_cache_dir(prefs=None) -> Path:
     """
@@ -90,10 +94,23 @@ def get_cache_dir(prefs=None) -> Path:
 def invalidate_asset_cache_memory() -> None:
     """Invalidates in-memory cached AssetCache, manifest, and pipeline objects."""
     global _ACTIVE_ASSET_CACHE, _ACTIVE_CACHE_PKG_PATH, _ACTIVE_CACHE_MTIME, _ACTIVE_CACHE_MANIFEST
+    global _CACHED_BIOME_RESOLVER, _CACHED_BIOME_RESOLVER_PKG_PATH, _CACHED_BIOME_RESOLVER_MTIME
     _ACTIVE_ASSET_CACHE = None
     _ACTIVE_CACHE_PKG_PATH = None
     _ACTIVE_CACHE_MTIME = 0.0
     _ACTIVE_CACHE_MANIFEST = None
+    _CACHED_BIOME_RESOLVER = None
+    _CACHED_BIOME_RESOLVER_PKG_PATH = None
+    _CACHED_BIOME_RESOLVER_MTIME = 0.0
+    try:
+        from .pack import invalidate_pack_stack_cache
+        invalidate_pack_stack_cache()
+    except Exception:
+        try:
+            from bridge.assets.pack import invalidate_pack_stack_cache
+            invalidate_pack_stack_cache()
+        except Exception:
+            pass
     try:
         from ..world import invalidate_world_pipeline_assets, clear_world_sessions
         invalidate_world_pipeline_assets()
@@ -424,15 +441,30 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
 
 
 def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
-    """Loads precompiled BiomeResolver from cache package into memory."""
+    """Loads precompiled BiomeResolver from cache package into memory, reusing cached instance."""
+    global _CACHED_BIOME_RESOLVER, _CACHED_BIOME_RESOLVER_PKG_PATH, _CACHED_BIOME_RESOLVER_MTIME
     mtk = get_libmtk()
     if mtk is None:
         return None
 
     cache = open_active_asset_cache(prefs)
     if cache is not None:
+        pkg_path = _ACTIVE_CACHE_PKG_PATH
+        mtime = _ACTIVE_CACHE_MTIME
+        if (
+            _CACHED_BIOME_RESOLVER is not None
+            and _CACHED_BIOME_RESOLVER_PKG_PATH == pkg_path
+            and _CACHED_BIOME_RESOLVER_MTIME == mtime
+        ):
+            return _CACHED_BIOME_RESOLVER
+
         try:
-            return cache.load_biome_resolver()
+            resolver = cache.load_biome_resolver()
+            if resolver is not None:
+                _CACHED_BIOME_RESOLVER = resolver
+                _CACHED_BIOME_RESOLVER_PKG_PATH = pkg_path
+                _CACHED_BIOME_RESOLVER_MTIME = mtime
+                return resolver
         except Exception:
             pass
 

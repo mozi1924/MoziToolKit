@@ -183,11 +183,11 @@ def get_biome_colors(
         meta["humidity"] = hum
         meta["colormap_uv"] = get_colormap_uv(temp, hum)
 
-        if custom_grass is not None:
+        if has_custom_grass and custom_grass is not None:
             meta["grass_linear"] = list(custom_grass)
-        if custom_foliage is not None:
+        if has_custom_foliage and custom_foliage is not None:
             meta["foliage_linear"] = list(custom_foliage)
-        if custom_dry_foliage is not None:
+        if has_custom_dry_foliage and custom_dry_foliage is not None:
             meta["dry_foliage_linear"] = list(custom_dry_foliage)
         if custom_water is not None:
             meta["water_linear"] = list(custom_water)
