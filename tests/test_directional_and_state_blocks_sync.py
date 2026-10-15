@@ -348,7 +348,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
                 if any(e.get("type") == "DELTA_APPLIED" for e in evs):
                     delta2_applied = True
                 delta2_mesh = session.get_world_mesh()
-                if delta2_applied and delta2_mesh:
+                if delta2_applied and delta2_mesh and delta2_mesh.vertex_count < delta1_mesh.vertex_count:
                     break
 
             self.assertIsNotNone(delta2_mesh)

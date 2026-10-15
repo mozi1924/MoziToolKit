@@ -286,13 +286,14 @@ def _sync_timer_tick() -> Optional[float]:
     if latest_world_mesh is not None:
         try:
             world_obj = get_or_create_world_mesh_object(bpy.context, root_container=active_container)
-            storage = session.get_storage()
+            storage = session.get_storage() if needs_voxel_sync else None
             v_count, f_count = update_world_mesh(
                 world_obj,
                 latest_world_mesh,
                 skip_string_attributes=True,
                 storage=storage,
                 sync_point_cloud=needs_voxel_sync,
+                atlas=getattr(session, "atlas", None),
             )
             _sync_prop("point_count", v_count)
             _sync_prop("faces_count", f_count)

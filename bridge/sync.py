@@ -110,6 +110,26 @@ class SyncBridgeSession:
         """Last error message recorded during session operations."""
         return self._last_error
 
+    @property
+    def atlas(self) -> Optional[Any]:
+        """Currently loaded BakedAtlas in session memory."""
+        return self._atlas
+
+    @property
+    def model_db(self) -> Optional[Any]:
+        """Currently loaded BakedModelDatabase in session memory."""
+        return self._model_db
+
+    @property
+    def biome_resolver(self) -> Optional[Any]:
+        """Currently loaded BiomeResolver in session memory."""
+        return self._biome_resolver
+
+    @property
+    def manifest_fingerprint(self) -> Optional[str]:
+        """Fingerprint of the active asset cache package associated with this session."""
+        return self._cached_manifest_fingerprint
+
     def start(
         self,
         url: str = "ws://127.0.0.1:8765",

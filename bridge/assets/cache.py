@@ -38,6 +38,14 @@ _CACHED_BIOME_RESOLVER: Optional[Any] = None
 _CACHED_BIOME_RESOLVER_PKG_PATH: Optional[str] = None
 _CACHED_BIOME_RESOLVER_MTIME: float = 0.0
 
+_CACHED_ATLAS: Optional[Any] = None
+_CACHED_ATLAS_PKG_PATH: Optional[str] = None
+_CACHED_ATLAS_MTIME: float = 0.0
+
+_CACHED_MODEL_DB: Optional[Any] = None
+_CACHED_MODEL_DB_PKG_PATH: Optional[str] = None
+_CACHED_MODEL_DB_MTIME: float = 0.0
+
 
 def get_cache_dir(prefs=None) -> Path:
     """
@@ -95,6 +103,8 @@ def invalidate_asset_cache_memory() -> None:
     """Invalidates in-memory cached AssetCache, manifest, and pipeline objects."""
     global _ACTIVE_ASSET_CACHE, _ACTIVE_CACHE_PKG_PATH, _ACTIVE_CACHE_MTIME, _ACTIVE_CACHE_MANIFEST
     global _CACHED_BIOME_RESOLVER, _CACHED_BIOME_RESOLVER_PKG_PATH, _CACHED_BIOME_RESOLVER_MTIME
+    global _CACHED_ATLAS, _CACHED_ATLAS_PKG_PATH, _CACHED_ATLAS_MTIME
+    global _CACHED_MODEL_DB, _CACHED_MODEL_DB_PKG_PATH, _CACHED_MODEL_DB_MTIME
     _ACTIVE_ASSET_CACHE = None
     _ACTIVE_CACHE_PKG_PATH = None
     _ACTIVE_CACHE_MTIME = 0.0
@@ -102,6 +112,12 @@ def invalidate_asset_cache_memory() -> None:
     _CACHED_BIOME_RESOLVER = None
     _CACHED_BIOME_RESOLVER_PKG_PATH = None
     _CACHED_BIOME_RESOLVER_MTIME = 0.0
+    _CACHED_ATLAS = None
+    _CACHED_ATLAS_PKG_PATH = None
+    _CACHED_ATLAS_MTIME = 0.0
+    _CACHED_MODEL_DB = None
+    _CACHED_MODEL_DB_PKG_PATH = None
+    _CACHED_MODEL_DB_MTIME = 0.0
     try:
         from .pack import invalidate_pack_stack_cache
         invalidate_pack_stack_cache()
@@ -396,6 +412,7 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> O
     Loads the precompiled binary model database from cache package into memory.
     Optionally verifies that the package fingerprint matches active resource pack stack.
     """
+    global _CACHED_MODEL_DB, _CACHED_MODEL_DB_PKG_PATH, _CACHED_MODEL_DB_MTIME
     mtk = get_libmtk()
     if mtk is None:
         return None
@@ -404,6 +421,9 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> O
     if cache is None:
         return None
 
+    pkg_path = _ACTIVE_CACHE_PKG_PATH
+    mtime = _ACTIVE_CACHE_MTIME
+
     if verify_fingerprint:
         stack = get_configured_pack_stack(prefs)
         if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
@@ -411,10 +431,22 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> O
             if getattr(cache, "fingerprint", None) != current_fp:
                 return None
 
+    if (
+        not verify_fingerprint
+        and _CACHED_MODEL_DB is not None
+        and _CACHED_MODEL_DB_PKG_PATH == pkg_path
+        and _CACHED_MODEL_DB_MTIME == mtime
+    ):
+        return _CACHED_MODEL_DB
+
     try:
         model_db = cache.load_models()
         if hasattr(model_db, "deduplicate_all"):
             model_db.deduplicate_all()
+        if model_db is not None:
+            _CACHED_MODEL_DB = model_db
+            _CACHED_MODEL_DB_PKG_PATH = pkg_path
+            _CACHED_MODEL_DB_MTIME = mtime
         return model_db
     except Exception:
         return None
@@ -426,15 +458,30 @@ def load_model_database_from_cache(prefs=None, verify_fingerprint: bool = False)
 
 
 def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
-    """Loads precompiled BakedAtlas from cache package into memory."""
+    """Loads precompiled BakedAtlas from cache package into memory, reusing cached instance."""
+    global _CACHED_ATLAS, _CACHED_ATLAS_PKG_PATH, _CACHED_ATLAS_MTIME
     mtk = get_libmtk()
     if mtk is None:
         return None
 
     cache = open_active_asset_cache(prefs)
     if cache is not None:
+        pkg_path = _ACTIVE_CACHE_PKG_PATH
+        mtime = _ACTIVE_CACHE_MTIME
+        if (
+            _CACHED_ATLAS is not None
+            and _CACHED_ATLAS_PKG_PATH == pkg_path
+            and _CACHED_ATLAS_MTIME == mtime
+        ):
+            return _CACHED_ATLAS
+
         try:
-            return cache.load_atlas()
+            atlas = cache.load_atlas()
+            if atlas is not None:
+                _CACHED_ATLAS = atlas
+                _CACHED_ATLAS_PKG_PATH = pkg_path
+                _CACHED_ATLAS_MTIME = mtime
+                return atlas
         except Exception:
             pass
     return None

@@ -299,6 +299,7 @@ def update_world_mesh(
     skip_string_attributes: bool = False,
     storage: Optional[Any] = None,
     sync_point_cloud: bool = False,
+    atlas: Optional[Any] = None,
 ) -> Tuple[int, int]:
     """
     Injects processed geometry buffer into the single world mesh object using high-throughput
@@ -318,7 +319,7 @@ def update_world_mesh(
     )
 
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(world_obj, used_chunk_ids=used_chunk_ids)
+    ensure_world_materials(world_obj, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
     # Ensure unculled voxel storage point cloud is attached under root container or world_obj as sibling
     if sync_point_cloud and storage is not None:

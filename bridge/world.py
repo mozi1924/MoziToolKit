@@ -124,8 +124,6 @@ def ensure_world_materials(
             remap_indices_lut = None
 
     mesh = world_obj.data
-    atlas_dir = ensure_atlas_textures_extracted(prefs)
-    atlas_mapping_path = atlas_dir / "atlas_mapping.json"
 
     # 1. Resolve which Chunk IDs are actually present in the mesh geometry
     target_chunk_ids: Optional[set[int]] = None
@@ -155,6 +153,62 @@ def ensure_world_materials(
                     target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
         else:
             target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
+
+    # 0. Zero-cost Fast Path:
+    # If the mesh has no polygons, or if target_chunk_ids is empty, nothing to bind
+    if target_chunk_ids is not None and len(target_chunk_ids) == 0:
+        return
+
+    # If world_obj already has valid Atlas chunk materials assigned, check if we can fast-path:
+    if target_chunk_ids is not None and len(mesh.materials) > 0:
+        existing_chunk_to_slot: dict[int, int] = {}
+        all_valid = True
+        for s_idx, mat in enumerate(mesh.materials):
+            if mat is None:
+                all_valid = False
+                break
+            cid = mat.get("mtk_atlas_chunk_id")
+            if cid is None:
+                all_valid = False
+                break
+            if getattr(mat, "node_tree", None) is None or len(mat.node_tree.nodes) == 0:
+                all_valid = False
+                break
+            existing_chunk_to_slot[int(cid)] = s_idx
+
+        if all_valid and target_chunk_ids.issubset(existing_chunk_to_slot.keys()):
+            has_chunk_attr = hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes
+            is_identity_mapping = all(existing_chunk_to_slot[cid] == cid for cid in target_chunk_ids)
+
+            # If identity mapping AND no separate mtk_atlas_chunk_id attribute overriding polygons,
+            # then inject_face_materials_standard has already set the exact material_index.
+            # We can return immediately with zero operations, zero disk reads, and zero cache hashing!
+            if is_identity_mapping and not has_chunk_attr:
+                return
+
+            # Otherwise, if slot indices differ or mtk_atlas_chunk_id is present, remap polygon indices:
+            if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
+                num_polys = len(mesh.polygons)
+                try:
+                    import numpy as np
+                    if has_chunk_attr:
+                        raw_cids = np.empty(num_polys, dtype=np.int32)
+                        mesh.attributes["mtk_atlas_chunk_id"].data.foreach_get("value", raw_cids)
+                    else:
+                        raw_cids = np.empty(num_polys, dtype=np.int32)
+                        mesh.polygons.foreach_get("material_index", raw_cids)
+
+                    if remap_indices_lut is not None:
+                        remapped = remap_indices_lut(raw_cids, existing_chunk_to_slot, default_value=0)
+                    else:
+                        remapped = np.array([existing_chunk_to_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
+                    mesh.polygons.foreach_set("material_index", remapped)
+                except Exception as e:
+                    logger.debug("Failed remapping polygon material indices in fast path: %s", e)
+            return
+
+    atlas_dir = ensure_atlas_textures_extracted(prefs)
+    atlas_mapping_path = atlas_dir / "atlas_mapping.json"
 
     # 2. Bind Precompiled Atlas Chunk Materials for used chunks only
     active_atlas = atlas or load_baked_atlas_from_cache(prefs)

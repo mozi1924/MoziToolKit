@@ -78,12 +78,15 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                 logger.warning("Failed dirty cache check: %s", e)
 
         if not dirty:
-            status = check_asset_cache_status(prefs)
-            if status in ("MISSING", "STALE"):
-                ensure_pipeline_assets_ready_sync(prefs)
-                dirty = True
-                if hasattr(session, "check_and_reload_dirty_cache"):
-                    session.check_and_reload_dirty_cache(prefs=prefs, force=True)
+            # If session is actively connected and atlas is present in memory, the cache is already verified.
+            # Only perform the expensive full resource pack stack scan if session is uninitialized or missing assets.
+            if not getattr(session, "is_active", False) or getattr(session, "atlas", None) is None:
+                status = check_asset_cache_status(prefs)
+                if status in ("MISSING", "STALE"):
+                    ensure_pipeline_assets_ready_sync(prefs)
+                    dirty = True
+                    if hasattr(session, "check_and_reload_dirty_cache"):
+                        session.check_and_reload_dirty_cache(prefs=prefs, force=True)
 
         def do_rebuild(progress_callback=None):
             return session.get_world_mesh()
@@ -98,7 +101,13 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                 target_root = bpy.data.objects[target_container_name]
             world_obj = get_or_create_world_mesh_object(context, root_container=target_root)
             storage = session.get_storage()
-            v_count, f_count = update_world_mesh(world_obj, mesh_data, storage=storage, sync_point_cloud=True)
+            v_count, f_count = update_world_mesh(
+                world_obj,
+                mesh_data,
+                storage=storage,
+                sync_point_cloud=True,
+                atlas=getattr(session, "atlas", None),
+            )
 
             root_obj = target_root or world_obj
             props = getattr(root_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)

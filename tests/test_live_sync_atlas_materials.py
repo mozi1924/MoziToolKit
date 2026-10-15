@@ -440,6 +440,32 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
                     self.assertEqual(test_mesh.polygons[2].material_index, 2)
                     self.assertEqual(test_mesh.polygons[3].material_index, 0)
 
+                    # Frame 4: Incremental update fast-path
+                    # When geometry changes but uses chunk materials already bound on test_obj,
+                    # ensure_world_materials must completely bypass disk I/O, cache reloading, and colormap checks!
+                    attr_chunk2.data[0].value = 1
+                    attr_chunk2.data[1].value = 0
+                    attr_chunk2.data[2].value = 1
+                    attr_chunk2.data[3].value = 0
+
+                    with patch("MoziToolKit.bridge.world.ensure_atlas_textures_extracted") as mock_extract, \
+                         patch("MoziToolKit.bridge.world.load_baked_atlas_from_cache") as mock_load_atlas, \
+                         patch("MoziToolKit.bridge.world.ensure_colormaps_extracted") as mock_colormaps, \
+                         patch("MoziToolKit.bridge.world.get_cache_fingerprint") as mock_fp:
+                        ensure_world_materials(test_obj, used_chunk_ids=[0, 1])
+
+                        # Fast-path assertion: ZERO cache reading or texture extraction during incremental update
+                        self.assertFalse(mock_extract.called, "Fast-path must not extract atlas textures")
+                        self.assertFalse(mock_load_atlas.called, "Fast-path must not load atlas from cache")
+                        self.assertFalse(mock_colormaps.called, "Fast-path must not check colormaps")
+                        self.assertFalse(mock_fp.called, "Fast-path must not check manifest fingerprint")
+
+                    self.assertEqual(len(test_mesh.materials), 3, "Material slots must be preserved")
+                    self.assertEqual(test_mesh.polygons[0].material_index, 1)
+                    self.assertEqual(test_mesh.polygons[1].material_index, 0)
+                    self.assertEqual(test_mesh.polygons[2].material_index, 1)
+                    self.assertEqual(test_mesh.polygons[3].material_index, 0)
+
                 finally:
                     bpy.data.objects.remove(test_obj)
                     bpy.data.meshes.remove(test_mesh)
