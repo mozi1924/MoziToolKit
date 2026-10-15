@@ -415,8 +415,38 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(target, "mtk:biome_preset", "WORLD")
         sanitize_save_privacy(target)
 
+    # 7. Register VoxelStorage in memory cache for instant WORLD biome restores
+    if storage is not None:
+        try:
+            from ..utils.materials.biome.updater import register_object_storage
+        except (ImportError, ValueError):
+            try:
+                from utils.materials.biome.updater import register_object_storage
+            except Exception:
+                register_object_storage = None
+        if register_object_storage is not None:
+            if save_uuid:
+                register_object_storage(str(save_uuid), storage)
+            if root_obj and hasattr(root_obj, "name"):
+                register_object_storage(root_obj.name, storage)
+            if mesh_obj and hasattr(mesh_obj, "name"):
+                register_object_storage(mesh_obj.name, storage)
 
-    # 7. Activate root container in viewport
+    # 8. Prime base tint types for the newly created mesh
+    try:
+        from ..utils.materials.biome.updater import resolve_mesh_base_tint_types
+    except (ImportError, ValueError):
+        try:
+            from utils.materials.biome.updater import resolve_mesh_base_tint_types
+        except Exception:
+            resolve_mesh_base_tint_types = None
+    if resolve_mesh_base_tint_types is not None:
+        try:
+            resolve_mesh_base_tint_types(b_mesh, mesh_obj)
+        except Exception:
+            pass
+
+    # 9. Activate root container in viewport
     if context and hasattr(context, "view_layer"):
         try:
             if hasattr(root_obj, "select_set"):

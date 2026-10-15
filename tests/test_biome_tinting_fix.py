@@ -236,6 +236,68 @@ class TestBiomeTintingFix(unittest.TestCase):
             bpy.data.objects.remove(obj)
             bpy.data.meshes.remove(b_mesh)
 
+    def test_update_object_biome_unlocks_hardcoded_save_faces(self):
+        """Verifies that faces baked as TINT_TYPE_HARDCODED (4.0) from Dark Forest save imports unlock to 1.0/custom colors."""
+        import array
+        from utils.materials.biome.updater import update_object_biome
+
+        b_mesh = bpy.data.meshes.new("TestDarkForestSaveMesh")
+        b_mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])
+        obj = bpy.data.objects.new("Save_World_Mesh", b_mesh)
+        obj["mtk:is_save_mesh"] = True
+        bpy.context.collection.objects.link(obj)
+
+        try:
+            # 1. Texture provenance attributes: grass block
+            b_mesh["mtk_source_textures"] = ["grass_block_top"]
+            attr_idx = b_mesh.attributes.new(name="mtk_source_texture_idx", type="INT", domain="FACE")
+            attr_idx.data.foreach_set("value", array.array("i", [0]))
+
+            # 2. Simulate Dark Forest import: tint_type was baked as 4.0 (HARDCODED) with dark green
+            attr_data = b_mesh.attributes.new(name="mtk_biome_tint_data", type="FLOAT_COLOR", domain="FACE")
+            attr_data.data.foreach_set("color", array.array("f", [1.0, 1.0, 1.0, 4.0]))
+
+            dark_green = [0.0802, 0.1946, 0.0319, 1.0]
+            attr_col = b_mesh.attributes.new(name="mtk_biome_tint_color", type="FLOAT_COLOR", domain="FACE")
+            attr_col.data.foreach_set("color", array.array("f", dark_green))
+
+            attr_uv = b_mesh.attributes.new(name="mtk_colormap_uv", type="FLOAT_VECTOR", domain="FACE")
+            attr_uv.data.foreach_set("vector", array.array("f", [0.3, 0.56, 0.0]))
+
+            # 3. Switch to PLAINS: Must unlock tint_type from 4.0 to 1.0 (GRASS)
+            res = update_object_biome(obj, "PLAINS")
+            self.assertTrue(res)
+
+            data_val = list(b_mesh.attributes["mtk_biome_tint_data"].data[0].color)
+            self.assertAlmostEqual(data_val[3], 1.0, places=3, msg="Grass face must unlock from 4.0 to 1.0 in Plains preset!")
+
+            # 4. Switch to CUSTOM with grass override enabled (red): Must route to 4.0 with red color
+            obj["mtk_biome_temp"] = 0.8
+            obj["mtk_biome_humidity"] = 0.4
+            obj["mtk_biome_use_custom_grass"] = True
+            obj["mtk_biome_grass_color"] = [0.9, 0.1, 0.1, 1.0]
+
+            res = update_object_biome(obj, "CUSTOM")
+            self.assertTrue(res)
+
+            data_val = list(b_mesh.attributes["mtk_biome_tint_data"].data[0].color)
+            self.assertAlmostEqual(data_val[3], 4.0, places=3, msg="Override must set target tint type to 4.0")
+
+            col_val = list(b_mesh.attributes["mtk_biome_tint_color"].data[0].color)
+            self.assertAlmostEqual(col_val[0], 0.9, places=2, msg="Custom grass red channel must be applied!")
+            self.assertAlmostEqual(col_val[1], 0.1, places=2)
+
+            # 5. Disable custom grass override: Must unlock back to 1.0 (colormap sampling)
+            obj["mtk_biome_use_custom_grass"] = False
+            res = update_object_biome(obj, "CUSTOM")
+            self.assertTrue(res)
+
+            data_val = list(b_mesh.attributes["mtk_biome_tint_data"].data[0].color)
+            self.assertAlmostEqual(data_val[3], 1.0, places=3, msg="Disabling override must restore tint type to 1.0!")
+        finally:
+            bpy.data.objects.remove(obj)
+            bpy.data.meshes.remove(b_mesh)
+
 
 if __name__ == "__main__":
     unittest.main()

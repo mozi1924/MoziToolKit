@@ -57,13 +57,53 @@ class _FallbackBiomeResolver:
         block_name: Optional[str] = None,
         tint_index: Optional[int] = None,
     ) -> Dict[str, Any]:
+        tex = str(texture_name or "").lower()
+        blk = str(block_name or "").lower()
+        full = f"{tex} {blk}"
+
+        if tint_index is not None and tint_index < 0:
+            tt = 0
+            cat = "none"
+            wt = 0.0
+            is_hc = False
+        elif any(w in full for w in ("spruce", "birch", "lily_pad", "redstone")):
+            tt = 4
+            cat = "hardcoded"
+            wt = 1.0
+            is_hc = True
+        elif any(w in full for w in ("leaf_litter", "dry_foliage", "pale_hanging_moss")):
+            tt = 5
+            cat = "dry_foliage"
+            wt = 1.0
+            is_hc = False
+        elif any(w in full for w in ("grass", "fern", "sugar_cane", "bush")):
+            tt = 1
+            cat = "grass"
+            wt = 1.0
+            is_hc = False
+        elif "water" in full:
+            tt = 3
+            cat = "water"
+            wt = 1.0
+            is_hc = False
+        elif any(w in full for w in ("leaf", "leaves", "foliage", "vine")):
+            tt = 2
+            cat = "foliage"
+            wt = 1.0
+            is_hc = False
+        else:
+            tt = 0
+            cat = "none"
+            wt = 0.0
+            is_hc = False
+
         return {
-            "tint_type": 0,
-            "tint_category": "none",
-            "tint_weight": 0.0,
-            "base_tint_weight": 0.0,
+            "tint_type": tt,
+            "tint_category": cat,
+            "tint_weight": wt,
+            "base_tint_weight": wt,
             "overlay_tint_weight": 0.0,
-            "is_hardcoded": False,
+            "is_hardcoded": is_hc,
             "hardcoded_color": None,
         }
 

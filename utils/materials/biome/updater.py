@@ -42,6 +42,145 @@ from .biome import (
 # In-memory cache for original face tint types (to prevent RNA allocation overhead and preserve base categories)
 _MESH_BASE_TINT_TYPES: dict[str, Any] = {}
 
+# In-memory storage registry to avoid serializing unpicklable native VoxelStorage into bpy properties
+_STORAGE_CACHE: dict[str, Any] = {}
+
+
+def register_object_storage(key: str, storage: Any) -> None:
+    """Register native VoxelStorage in memory for a given container UUID or object name."""
+    if key and storage is not None:
+        _STORAGE_CACHE[str(key)] = storage
+
+
+def get_object_storage(key: str) -> Any:
+    """Retrieve native VoxelStorage from memory cache."""
+    if not key:
+        return None
+    return _STORAGE_CACHE.get(str(key))
+
+
+def resolve_mesh_base_tint_types(
+    mesh: Any,
+    obj: Optional[Any] = None,
+    raw_tint_data_2d: Optional[Any] = None,
+    pack_stack: Optional[Any] = None,
+) -> Any:
+    """
+    Resolve intrinsic material base tint types (0=None, 1=Grass, 2=Foliage, 3=Water, 4=Hardcoded, 5=Dry Foliage)
+    for each face of the mesh, decoupling intrinsic material identity from biome-level hardcoded overrides.
+
+    Prevents faces from being permanently trapped in TINT_TYPE_HARDCODED (4.0) after imports from biomes
+    with custom colors (such as dark_forest or badlands).
+    """
+    if not HAS_NUMPY or mesh is None:
+        return np.empty(0, dtype=np.int32) if HAS_NUMPY else []
+
+    num_polys = len(mesh.polygons) if hasattr(mesh, "polygons") else 0
+    if num_polys == 0:
+        return np.empty(0, dtype=np.int32)
+
+    mesh_name = getattr(mesh, "name", "")
+    cached = _MESH_BASE_TINT_TYPES.get(mesh_name)
+    if cached is not None and len(cached) == num_polys:
+        return cached
+
+    from .biome import get_or_load_biome_resolver, read_face_string_attribute
+    resolver = get_or_load_biome_resolver(pack_stack=pack_stack)
+
+    # Strategy A: Sub-millisecond INT Palette Indexing ('mtk_source_textures' + 'mtk_source_texture_idx')
+    palette = None
+    if hasattr(mesh, "get") and mesh.get("mtk_source_textures") is not None:
+        palette = list(mesh.get("mtk_source_textures"))
+    elif hasattr(mesh, "__contains__") and "mtk_source_textures" in mesh:
+        palette = list(mesh["mtk_source_textures"])
+    elif hasattr(mesh, "keys") and "mtk_source_textures" in mesh:
+        palette = list(mesh["mtk_source_textures"])
+    elif obj is not None and hasattr(obj, "get") and "mtk_source_textures" in obj:
+        palette = list(obj["mtk_source_textures"])
+
+    attr_idx = mesh.attributes.get(ATTR_SOURCE_TEXTURE_IDX) if hasattr(mesh, "attributes") else None
+    if palette is not None and attr_idx is not None and len(attr_idx.data) == num_polys:
+        if hasattr(attr_idx.data, "foreach_get"):
+            pal_tt = np.array([
+                resolver.get_tint_info(tex).get("tint_type", 0) if hasattr(resolver, "get_tint_info") else 0
+                for tex in palette
+            ], dtype=np.int32)
+            idx_arr = np.empty(num_polys, dtype=np.int32)
+            attr_idx.data.foreach_get("value", idx_arr)
+            valid_mask = (idx_arr >= 0) & (idx_arr < len(pal_tt))
+            base_tt = np.zeros(num_polys, dtype=np.int32)
+            base_tt[valid_mask] = pal_tt[idx_arr[valid_mask]]
+
+            # Refinement with raw_tint_data_2d:
+            # Faces that were untinted during meshing (e.g. dirt bottom/side of grass block) have raw_data == 0.0.
+            if raw_tint_data_2d is not None and len(raw_tint_data_2d) == num_polys:
+                raw_zero_mask = (raw_tint_data_2d[:, 3] == float(TINT_TYPE_NONE))
+                base_tt[raw_zero_mask] = TINT_TYPE_NONE
+
+            if np.any(base_tt > 0):
+                if mesh_name:
+                    _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
+                return base_tt
+
+    # Strategy B: Legacy STRING attribute ('mtk_source_texture_key')
+    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY) if hasattr(mesh, "attributes") else None
+    if attr_str is not None and len(attr_str.data) == num_polys:
+        keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
+        if any(keys):
+            unique_keys = set(keys)
+            key_to_tt = {
+                k: (resolver.get_tint_info(k).get("tint_type", 0) if hasattr(resolver, "get_tint_info") else 0)
+                for k in unique_keys
+            }
+            base_tt = np.fromiter((key_to_tt.get(k, 0) for k in keys), dtype=np.int32, count=num_polys)
+            if raw_tint_data_2d is not None and len(raw_tint_data_2d) == num_polys:
+                raw_zero_mask = (raw_tint_data_2d[:, 3] == float(TINT_TYPE_NONE))
+                base_tt[raw_zero_mask] = TINT_TYPE_NONE
+
+            if np.any(base_tt > 0):
+                if mesh_name:
+                    _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
+                return base_tt
+
+    # Strategy C: Material slots on object
+    if obj is not None and len(getattr(obj, "material_slots", [])) > 0:
+        slot_tt = []
+        for slot in obj.material_slots:
+            mat = slot.material
+            if mat:
+                key = str(mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or mat.name)
+                tt = resolver.get_tint_info(key).get("tint_type", 0) if hasattr(resolver, "get_tint_info") else 0
+            else:
+                tt = 0
+            slot_tt.append(tt)
+
+        slot_tt_arr = np.array(slot_tt, dtype=np.int32)
+        poly_mat_indices = np.empty(num_polys, dtype=np.int32)
+        mesh.polygons.foreach_get("material_index", poly_mat_indices)
+        valid_mask = (poly_mat_indices >= 0) & (poly_mat_indices < len(slot_tt_arr))
+        base_tt = np.zeros(num_polys, dtype=np.int32)
+        base_tt[valid_mask] = slot_tt_arr[poly_mat_indices[valid_mask]]
+        if raw_tint_data_2d is not None and len(raw_tint_data_2d) == num_polys:
+            raw_zero_mask = (raw_tint_data_2d[:, 3] == float(TINT_TYPE_NONE))
+            base_tt[raw_zero_mask] = TINT_TYPE_NONE
+
+        if np.any(base_tt > 0):
+            if mesh_name:
+                _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
+            return base_tt
+
+    # Strategy D: Fallback to raw_tint_data_2d
+    if raw_tint_data_2d is not None and len(raw_tint_data_2d) == num_polys:
+        base_tt = np.round(raw_tint_data_2d[:, 3]).astype(np.int32)
+        if mesh_name:
+            _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
+        return base_tt
+
+    base_tt = np.zeros(num_polys, dtype=np.int32)
+    if mesh_name:
+        _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
+    return base_tt
+
 
 
 def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
@@ -137,6 +276,18 @@ def resolve_and_apply_world_biome_tint(
     )
 
     storage = getattr(mesh_or_obj, "_storage", None) or getattr(target_mesh, "_storage", None)
+    if storage is None and hasattr(mesh_or_obj, "name"):
+        storage = get_object_storage(mesh_or_obj.name)
+    if storage is None and hasattr(target_mesh, "name"):
+        storage = get_object_storage(target_mesh.name)
+    if storage is None and hasattr(mesh_or_obj, "get"):
+        save_uuid = mesh_or_obj.get("mozi_save_uuid") or mesh_or_obj.get("mtk:container_id")
+        if save_uuid:
+            storage = get_object_storage(save_uuid)
+    if storage is None and hasattr(target_mesh, "get"):
+        save_uuid = target_mesh.get("mozi_save_uuid") or target_mesh.get("mtk:container_id")
+        if save_uuid:
+            storage = get_object_storage(save_uuid)
     if storage is None and hasattr(mesh_or_obj, "get"):
         storage = mesh_or_obj.get("mtk:storage", None)
     if storage is None and hasattr(target_mesh, "get"):
@@ -280,6 +431,11 @@ def update_object_biome(
         has_custom_foliage=has_custom_foliage,
         has_custom_dry_foliage=has_custom_dry_foliage,
     )
+    if not is_custom:
+        has_custom_grass = bool(biome_colors.get("has_custom_grass", False))
+        has_custom_foliage = bool(biome_colors.get("has_custom_foliage", False))
+        has_custom_dry_foliage = bool(biome_colors.get("has_custom_dry_foliage", False))
+
     effective_stack = pack_stack
     if effective_stack is None:
         try:
@@ -323,11 +479,8 @@ def update_object_biome(
                 tint_data_attr.data.foreach_get("color", raw_data)
                 raw_data_2d = raw_data.reshape(num_polys, 4)
 
-                # Maintain cached base tint type (original 0..5 categories before any hardcoded overrides)
-                base_tt = _MESH_BASE_TINT_TYPES.get(mesh.name)
-                if base_tt is None or len(base_tt) != num_polys:
-                    base_tt = np.round(raw_data_2d[:, 3]).astype(np.int32)
-                    _MESH_BASE_TINT_TYPES[mesh.name] = base_tt
+                # Maintain cached base tint type (original 0..5 categories decoupled from biome hardcoded overrides)
+                base_tt = resolve_mesh_base_tint_types(mesh, obj, raw_data_2d, pack_stack=effective_stack)
 
                 is_init = bool(mesh.get("mtk:biome_tint_initialized", False)) if hasattr(mesh, "get") else False
                 if not np.any(base_tt > 0) and not is_init:
