@@ -9,8 +9,9 @@
 | 版本 | 阶段定位 | 核心主题与边界 | 状态 |
 | :--- | :--- | :--- | :--- |
 | **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | 🚀 **收官冲刺中 (RC)** |
-| **v2.1** | **次级大版本** | **动画生态整合与高级实体 (Animation Ecosystem & Advanced Entities)**<br>整合 `mi2bl`（Mine-imator 动画导入）、自包含场景交换包 (`.mtkscene`)、原版悬挂实体（画作/展示框）、地图物品解码、1.21.4+ 铜像特殊模型与可动铰链装配。 | 📋 **规划排期中** |
-| **v2.2+** | **万能创作套件** | **创作者全能工具箱 (Creator's Swiss Army Knife)**<br>交互式 2D 俯视微型地图选区器、建筑蓝图 (`.litematic` / `.schematic`) 导入、角色皮肤 3D 挤出与预设 Rig 库、环境日夜天空盒。 | 🔮 **远景规划** |
+| **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为参考底座，深度重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体与 `.mtkscene`。 | 📋 **规划排期中** |
+| **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
+| **v2.3+** | **万能工作流** | **创作者全能生态 (Universal Creator Suite)**<br>角色皮肤 3D 立体挤出与预设 Rig 库、Mine-imator HLSL 渲染特性 1:1 复刻、原版环境日夜天空盒与渲染预设。 | 🔮 **远景规划** |
 
 ---
 
@@ -86,27 +87,36 @@
 
 ---
 
-## 🚀 v2.1 版本：动画生态整合与高级实体 (规划排期中 📋)
+## 🚀 v2.1 版本：Mine-imator 深度集成、通用动作重定向与高级实体 (规划排期中 📋)
 
-> **2.1 版本主题**：从“静态世界资产”升级为“Minecraft 角色、动画与跨工具生产力生态”，打造核心工作流闭环。
+> **2.1 版本主题**：以官方停更的 Mine-imator 2.0 源码为权威参考，构建“临时参考骨骼 + 通用动作重定向”管道，将角色动作自由映射到 Rig2 / Ice Cube / BPS / Thomas 等主流人模，并攻坚 1.21.4+ 客户端特殊模型与场景交换。
 
-### 1. 整合 Mine-imator 转 Blender 导入器 (`mi2bl`) (P1 核心特性 🌟)
-- [ ] **模块化架构引入**
-  - [ ] 将原 [mi2bl](https://github.com/mozi1924/mi2bl) 重构为 `MoziToolKit` 子包（`operators/mi2bl/`）；
-  - [ ] 顶部主菜单接入：`File -> Import -> Mine-imator Project (.miproject / .miobject / .miframes)`；
-- [ ] **高保真动画与曲线映射 (F-Curves)**
-  - [ ] 全量支持 Mine-imator 过渡曲线类型（Linear, Instant, Bézier 等）直接映射为 Blender F-curves；
-  - [ ] 时间线对齐与帧率自适应转换；
-- [ ] **Pivot 空物体骨架与层级系统**
-  - [ ] 自动构建基于 Pivot Empty 的父子层级结构，精准处理 Y/Z 轴翻转；
-  - [ ] 确保局部旋转、缩放与原版 Mine-imator 视觉完全一致；
-- [ ] **原生参数与自定义属性无缝映射**
-  - [ ] 摄像机参数映射：FOV、景深 (DOF) 焦距、光圈大小、散景叶片数 (Blades)、散景比例；
-  - [ ] 灯光参数映射：强度换算、裁剪距离 (Cutoff Distance)、颜色、软阴影半径 (Radius)、聚光灯圆锥角度；
-  - [ ] 材质自定义属性保留：`mi_alpha`、`mi_emissive`、`mi_roughness`、`mi_metallic` 等挂载至物体属性，供着色器调用。
+### 1. Mine-imator 深度集成与全能动作重定向管线 (`mi2bl` Retargeting Pipeline - P1 核心 🌟)
+- [ ] **Mine-imator 2.0 官方源码参考与逆向分析**
+  - [ ] 基于已克隆的稳定 Mine-imator 2.0 源码，提取核心数学与渲染规范；
+  - [ ] 剖析 MI 着色器特性（HLSL/GLSL 自发光、卡通描边、次表面散射、高光粗糙度换算、Alpha Blend/Hash）；
+  - [ ] 剖析关键帧过渡曲线（Linear, Instant, Bézier 速度与张力参数算法）；
+  - [ ] 剖析摄像机物理参数（FOV、景深焦距/光圈、散景叶片、Camera Shake 随机噪声）；
+  - [ ] 剖析灯光能量换算（Strength × Range² × 4π 物理辐射照度映射）；
+- [ ] **MI 标准临时参考骨骼 (Template Intermediate Armature)**
+  - [ ] 导入 `.miproject` / `.miobject` / `.miframes` 时，在 Blender 现场动态构建 1:1 对齐 Mine-imator 关节命名与层级的标准临时骨骼；
+  - [ ] 将 MI 原始关键帧无损灌入该参考骨骼，原汁原味还原动作与时间线；
+- [ ] **通用动作重定向引擎 (Universal Minecraft Action Retargeting Engine)**
+  - [ ] 建立基于中间标准的**骨骼重定向映射表 (Bone Retargeting Profiles)**；
+  - [ ] 预置主流人模映射 Profile：
+    - **Rig2** (Mozi 家族专属 Rig)
+    - **Ice Cube** (经典传奇人模)
+    - **BPS** (Black Plasma Studios 人模)
+    - **Thomas** (Thomas's Rig 系列)
+    - **Custom Armature** (用户自定义骨骼交互式配准)；
+  - [ ] 支持一键将临时参考骨骼的 Action 动作重定向、解算轴心偏移并烘焙为目标人模的 FK/IK 动作；
+  - [ ] 动作重定向完成后支持一键安全清理/隐藏临时中介骨骼；
+- [ ] **场景材质与物理相机一键映射**
+  - [ ] 将 MI 的材质轨道（`alpha`, `emissive`, `metallic`, `roughness`, `subsurface`）转换为 Blender Principled BSDF 节点树；
+  - [ ] 生成对齐 MI 渲染特性的物理摄像机与 Cycles/Eevee 灯光阵列。
 
 ### 2. 1.21.4+ 客户端特殊模型攻坚 (Special Renderers & Copper Golem Statue) (P1)
-- [ ] **解析客户端模型新规范**
+- [ ] **解析客户端模型新规范 (`mtk-model::special`)**
   - [ ] 攻坚 Minecraft 1.21.4+ Item/Block Model Definitions 中的 `"type": "minecraft:special"` 与 `"type": "minecraft:select"` 语法；
 - [ ] **铜像 / 铜傀儡像 (Copper Golem Statue) 网格重构**
   - [ ] 解决铜像在缺少传统 `"elements"` 字段时的网格丢失问题；
@@ -141,16 +151,54 @@
 
 ---
 
-## 🔮 v2.2+ 远景：万能创作者瑞士军刀 (Future Vision)
+## 🛠️ v2.2 版本：从资产到代码：通用面部绑定与高级创作者工具 (规划排期中 📋)
 
-- [ ] **交互式 2D 俯视微型地图选区器 (Interactive 2D Minimap Selector)**
-  - 彻底告别纯数字 AABB 坐标输入；
-  - 提供可视化的世界俯视微缩地图弹窗，支持缩放拖拽、方块生物群系着色预览与矩形框选选区。
-- [ ] **建筑投影与蓝图文件直接导入 (`.litematic` / `.schematic` / `.nbt`)**
-  - 无需把建筑粘贴进世界存档，直接在 Blender 中单选 `.litematic` 蓝图文件一键生成网格与材质。
+> **2.2 版本主题**：将 `rig2_addons` 沉淀的资产能力抽象为通用代码规范；构建多模型适配的面部绑定系统；Rust 处理网络与滤波；提供 2D 小地图与建筑蓝图支持。
+
+### 1. 通用 Minecraft 面部绑定与驱动系统 (Universal Facial Engine - P1 核心 🌟)
+- [ ] **从资产强绑定解耦为通用代码规范**
+  - [ ] 彻底摆脱对特定 Rig 内部 Driver 资产的硬依赖，将 ARKit 52 Blendshapes 映射抽象为代码层可配置的骨骼变换映射表 (Mapping Schema)；
+  - [ ] 建立标准数据流：`Blendshape Weights (0..1) -> Mapping Rules (Translation/Rotation/Scale) -> Bone Pose Channels`；
+- [ ] **主流人模全覆盖预设 Profile (Universal Rig Support)**
+  - [ ] 预置 **Rig2** 面部骨骼映射 Profile；
+  - [ ] 预置 **Ice Cube** 面部骨骼映射 Profile；
+  - [ ] 预置 **BPS** 面部骨骼映射 Profile；
+  - [ ] 预置 **Thomas** 面部骨骼映射 Profile；
+  - [ ] 提供可视化映射编辑器：允许用户针对任意自定义 Minecraft 骨骼拾取骨骼并标定极值偏移行程；
+- [ ] **一键装配模式 vs 实时驱动模式**
+  - [ ] **一键装配模式 (Generate Drivers)**：根据选定 Profile，一键在目标 Armature 上生成原生 Blender Driver，永久脱离插件独立工作；
+  - [ ] **实时驱动模式 (Live Motion Stream)**：无需修改绑定，实时将面部动作直接写入 PoseBone，支持一键烘焙关键帧；
+- [ ] **Rust 高性能网络与平滑滤波后端 (`mtk-face` / `mtk-net`)**
+  - [ ] 原生 Rust 实现 LiveLinkFace (UDP 11111) 与 WebSocket 高并发无锁数据包监听；
+  - [ ] 集成 One Euro Filter 与卡尔曼滤波，消除面捕抖动与网络丢包卡顿；
+  - [ ] 头部姿态四元数解算与零延迟桥接进 Blender。
+
+### 2. GeckoLib 动画双向协同 (`.animation.json`) (P2)
+- [ ] **Rig2 / 通用骨骼导出至 Blockbench / GeckoLib**
+  - [ ] 继承并重构 `rig2_addons` 的 R2BB 引擎，支持将 Blender Action 导出为标准 GeckoLib 1.8.0 格式；
+  - [ ] 支持轴向反转、关键帧去重压缩与时间线归一化；
+- [ ] **GeckoLib 动画导入至 Blender**
+  - [ ] 支持读取 `.animation.json` 并重定向至 Rig2 / Thomas / BPS 骨骼。
+
+### 3. 交互式 2D 俯视微型地图选区器 (Interactive 2D Minimap Selector) (P1)
+- [ ] **可视化世界选区面板**
+  - [ ] 告别纯数字 AABB 坐标输入；
+  - [ ] 基于 Rust 后端快速渲染 2D 俯视地形与群系切片，提供视口弹窗点击拖拽框选。
+
+### 4. 建筑投影与蓝图文件直接导入 (`.litematic` / `.schematic` / `.nbt`) (P1)
+- [ ] **蓝图一键转网格**
+  - [ ] 无需先将建筑导入世界存档，直接在 Blender 中单选 `.litematic` 文件；
+  - [ ] 现场生成带完整材质、CTM 与 Biome 的自包含建筑网格。
+
+---
+
+## 🔮 v2.3+ 远景：万能创作者全能生态 (Future Vision)
+
 - [ ] **玩家角色与原版生物绑定库 (Character Rig & Skin Tools)**
-  - 玩家皮肤一键加载器（支持 64×64 双层皮肤，第二层立体挤出）；
-  - 内置经典角色与常用原版生物基础 FK/IK 骨骼绑定预设。
+  - 玩家皮肤一键贴图与 64×64 双层外皮 3D 立体切分挤出；
+  - 内置经典角色与常用原版生物（苦力怕、僵尸、骷髅、末影人）基础 FK/IK 骨骼绑定。
+- [ ] **Mine-imator 渲染特性 1:1 深度复刻预设**
+  - 深入 Mine-imator 2.0 官方源码的 HLSL 着色器，精确复刻其光影衰减、高光反光率与卡通轮廓。
 - [ ] **环境氛围与渲染辅助工具集 (Atmosphere & Render Presets)**
   - 原版日夜循环天空盒节点树（动态太阳、月相与体积云朵方块层）；
   - Cycles / Eevee Next 一键渲染优化预设（AgX 色彩管理、景深与采样率自动化）。
