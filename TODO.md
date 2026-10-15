@@ -1,301 +1,156 @@
-# 📋 MoziToolKit (Blender Addon) 开发计划与 TODO 清单
+# 📋 MoziToolKit (Blender Addon) 开发计划与版本路线图 (Roadmap)
 
-本文档为 `MoziToolKit` Blender 插件前端的功能演进与任务规划清单。底层核心算法、体素流与几何计算见 [`libmozitoolkit/TODO.md`](../libmozitoolkit/TODO.md)。
-
----
-
-## 阶段一：小三样核心网格与 UV 工具库（✅ 已完成）
-- [x] **自适应像素网格切分前端 (`operators/op_pixel_split.py`)**
-  - [x] 封装 `bridge/subdivide.py`，与 Rust 后端 `adaptive_pixel_split_mesh` 零拷贝通信。
-  - [x] UI 侧边栏参数绑定（像素密度、最大切分数、微距焊接阈值）。
-  - [x] 自动保留顶点色、UV、Deform 蒙皮权重等原生 Blender 属性。
-- [x] **智能挤出与 UV 修复系统前端 (`operators/extrude/`)**
-  - [x] 模块化重构为子包架构（`properties.py`, `watcher.py`, `op_auto_extrude_repair.py`, `op_random_extrude.py`）。
-  - [x] 封装 `bridge/extrude.py`，支持 SMART / INWARD / OUTWARD 模式。
-  - [x] Blender 4.2+ 实时编辑模式 Depsgraph 动态监听与 UV 即时修复。
-  - [x] 3D 噪声与随机高度挤出操作符及 UI 控制面板。
-  - [x] 自动标记锐边 Crease，保持边缘硬朗着色。
-- [x] **外部网格面遮挡剔除前端 (`operators/op_cull.py`)**
-  - [x] 封装 `bridge/cull.py`，调用 Rust 6 向邻域遮挡分析。
-  - [x] 一键清理 Mineways / MiEx 导入资产的内部重叠废面。
+本文档为 `MoziToolKit` Blender 插件前端的功能演进与版本规划清单。底层核心算法、体素流与几何计算见 [`libmozitoolkit/TODO.md`](../libmozitoolkit/TODO.md)。
 
 ---
 
-## 阶段零：会话生命周期与跨工程深度清理（✅ 已完成）
-- [x] **跨工程加载深度断开与清理器 (`operators/sync/properties.py`, `bridge/sync.py`)**
-  - [x] 注册 `bpy.app.handlers.load_pre` 钩子，调用 `session.stop()` 切断网络连接。
-  - [x] 强制注销并终止活跃的 `bpy.app.timers`（防止定时器跨工程残留跳动）。
-  - [x] 清理全局 `SyncBridgeSession` 内存单例，防止跨工程引用已失效的旧场景数据。
-  - [x] 注册 `bpy.app.handlers.load_post` 钩子，重置场景与物体的连接状态（`is_connected=False`, `DISCONNECTED`）。
-- [x] **底层 TCP 连接强制关闭配合 (`libmozitoolkit::mtk-sync`)**
-  - [x] 在 `SyncClient::stop()` 中针对底层 TCP Stream 触发 `shutdown(Shutdown::Both)`，确保工程切换时远端 Minecraft 服务端瞬间感应连接断开，杜绝新工程提示“端口占用”。
-- [x] **自动化测试验证**
-  - [x] 编写跨工程加载与会话状态集成测试（`tests/test_sync_lifecycle_and_session.py`，验证生命周期、定时器清理与状态切换）。
+## 📌 版本演进总览 (Milestones Overview)
+
+| 版本 | 阶段定位 | 核心主题与边界 | 状态 |
+| :--- | :--- | :--- | :--- |
+| **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | 🚀 **收官冲刺中 (RC)** |
+| **v2.1** | **次级大版本** | **动画生态整合与高级实体 (Animation Ecosystem & Advanced Entities)**<br>整合 `mi2bl`（Mine-imator 动画导入）、自包含场景交换包 (`.mtkscene`)、原版悬挂实体（画作/展示框）、地图物品解码、1.21.4+ 铜像特殊模型与可动铰链装配。 | 📋 **规划排期中** |
+| **v2.2+** | **万能创作套件** | **创作者全能工具箱 (Creator's Swiss Army Knife)**<br>交互式 2D 俯视微型地图选区器、建筑蓝图 (`.litematic` / `.schematic`) 导入、角色皮肤 3D 挤出与预设 Rig 库、环境日夜天空盒。 | 🔮 **远景规划** |
 
 ---
 
-## 阶段零点五：Blender 5.2 (Python 3.13) 宿主兼容与类注册稳健性（✅ 已完成）
-- [x] **Python 3.13 严格类型注解与类注册保护 (`operators/op_mesh.py`)**
-  - [x] 补齐顶层 `typing` 显式导入，防止 `bpy.utils.register_class` 触发 `get_type_hints` 时因未导入符号报错崩溃。
-  - [x] 地毯式扫描全插件 97 个注册类，验证 Python 3.13 环境下注解求值 100% 正常。
-- [x] **Blender 5.2 PropertyGroup 结构体标准对齐**
-  - [x] 为全量 PropertyGroup（挤出、实时同步、偏好设置）补充 `__slots__ = ()`，消除结构警告。
-- [x] **双测试门禁（Mock vs Blender 5.2 真实宿主）全绿通过**
-  - [x] Mock 快速模式：140 项测试全过。
-  - [x] Blender 5.2 真实宿主模式：197 项测试全过（涵盖真实 Mesh 拓扑、RNA 属性与算子执行）。
+## 🎯 v2.0 正式版：核心世界资产与材质渲染基石 (收官冲刺 🚧)
+
+> **2.0 发版铁律**：严守核心世界与材质闭环，不留半成品。未完成的扩展性需求坚决推迟至 2.1。
+
+### 1. 动画材质系统端到端串联 (P0 - 2.0 终局冲刺项 🚧)
+- [ ] **导入与偏好设置开关集成**
+  - [ ] 插件偏好设置 (Preferences) 增加全局默认开关 `enable_animated_textures: BoolProperty(name="Animated Textures", default=True)`；
+  - [ ] 存档导入操作符 (`mtk.import_minecraft_save`) 弹窗面板增加 `enable_animated_textures` 局部覆盖选项；
+- [ ] **“静态图集保底 + 动态材质专用寻址”双通道路由机制**
+  - [ ] **静态图集全覆盖保底 (Fallback Baseline)**：
+    - 预烘焙静态图集已包含全部材质（包括动态纹理的 Frame 0 静态表示）；
+    - 当用户禁用动画材质时：网格全量映射至静态图集材质（`MTK:Atlas:blocks:001` 等），Shader 零额外计算开销，保证极致视口流畅度；
+  - [ ] **动态材质专用寻址 (Dynamic Material Routing)**：
+    - 当用户启用动画材质时：识别带动画元数据（`is_animated: true`）的方块面（如水流、熔岩、火、下界传送门、海晶石等）；
+    - 专门将其材质槽与 UV 重定向至动态材质（`MTK:Atlas:blocks:anim:001`）；
+    - 在该材质节点树中自动连通 [utils/node_groups/animated.py](utils/node_groups/animated.py) 的 `MC_Animated_UV_Mapping`、`MC_Animation_Scheduler_Default` 与 `MC_Animated_Frame_Blend` 节点组；
+    - 绑定 Blender 时间线驱动（`frame_current`），实现与 MC Tick Rate (20 TPS) 对齐的实时帧播放与双帧插值混合。
+
+### 2. 存档导入容器化与稳定性闭环 (✅ 已完成)
+- [x] **Minecraft 存档端到端导入前端 (`operators/save/op_import_save.py`, `bridge/save.py`)**
+  - [x] 顶部主菜单接入（`File -> Import -> Minecraft World / Save (.mca / level.dat)`）；
+  - [x] 修复导入按钮调用 ID (`mtk.import_minecraft_save`)；
+  - [x] 世界路径选取、维度选择（主世界/下界/末地）与 `level.dat` 元数据探测；
+  - [x] 3D 轴对齐选区坐标输入与方块体积统计；
+  - [x] 独立 Empty 根容器化（`Save_WorldName_Dimension_01`），多选区自动递增序号新建容器；
+  - [x] 本地隐私注册表管理器（`save_registry.json`），工程内仅存 UUID，杜绝本地路径随工程泄露；
+  - [x] 专属信息面板卡片与“🔄 刷新模型 (Refresh Model)”原地无感重构算子。
+
+### 3. 胶水层智能按需预烘焙门禁 (✅ 已完成)
+- [x] **自动前置资产校验与热重载 (`bridge/assets.py`)**
+  - [x] 门禁机制：未就绪或材质包变更时，自动两阶段流水线先烘焙再执行导入/同步；
+  - [x] 涵盖存档导入、刷新、Live Sync 连接/重构、通用网格重构各核心入口；
+  - [x] 彻底杜绝首次导入出现无 UV 灰模问题。
+
+### 4. 真实生态 3D Biome 染色与平滑过渡管线 (✅ 已完成)
+- [x] **真实 3D Quart Biome 染色采样**
+  - [x] 接入 Rust 核心 3D 生物群系面域 Tint（沼泽特异水色/斑驳双色草、热带雨林、黑森林、恶地等）；
+  - [x] 5×5 (R=2) 原版均匀盒式平滑过渡核（Uniform Box Filter）与 Colormap UV 插值；
+  - [x] 着色器节点树自适应适配 Cycles 与 Eevee Next。
+
+### 5. CTM 连接纹理端到端验证 (✅ 已完成)
+- [x] **OptiFine / Continuity CTM 规则与图集解算**
+  - [x] 偏好设置与导入选项提供 `enable_ctm` 复选框；
+  - [x] 验证连续玻璃、连续书架、平滑石材的 47-tile 拓扑解算与 UV 渲染，杜绝单像素塌陷。
+
+### 6. 现代 Blender 5.0+ 零拷贝与批写入现代化 (✅ 已完成)
+- [x] **Rust $\leftrightarrow$ Blender 内存直接写入管道**
+  - [x] Tier 1 直接指针直写 (`direct_copy_*_to_ptr`)；
+  - [x] Tier 2 通用属性（Generic Attributes）向量化批量灌入；
+  - [x] 字符串面属性“调色板化（Palette Indexing）”改造；
+  - [x] 几何写入总耗时提速 38x~900x。
+
+### 7. 小三样核心网格与 UV 工具库 (✅ 已完成)
+- [x] 自适应像素网格切分 (`op_pixel_split.py`)；
+- [x] 智能挤出与 UV 修复系统 (`operators/extrude/`，SMART / INWARD / OUTWARD 模式，实时 Depsgraph 监听)；
+- [x] 外部网格面遮挡剔除 (`op_cull.py`，6 向邻域分析)。
+
+### 8. 实时网络同步 (Live Sync) 会话生命周期 (✅ 已完成)
+- [x] 伴生体素点云子物体结构与 Empty 根容器平铺统一层级；
+- [x] 跨工程深度清理钩子（`load_pre` / `load_post`，切断 TCP 并清理定时器）；
+- [x] 多会话并行隔离与防串流。
+
+### 9. v2.0 正式发版验证与打包测试 (P0 🚧)
+- [ ] 运行 `python3 build.py` 验证发布包：
+  - [ ] 确保自动物理剔除 `dev/` 开发模块；
+  - [ ] 确保 `blender_manifest.toml` 包含正确的 abi3 wheel 声明；
+  - [ ] 验证发布包安装于全新纯净 Blender 4.2+ / 5.2+ 宿主无报错；
+- [x] Mock 测试门禁通过（205 passed / 71 skipped）；
+- [ ] Blender 宿主测试门禁验证（`blender --background --python tests/run_tests.py`）。
 
 ---
 
-## 阶段一：多会话架构与 Empty 容器统一层级规范（✅ 已完成）
-- [x] **伴生体素点云子物体结构与全量持久化 (`hierarchy.py`, `bridge/point_cloud.py`)**
-  - [x] 废弃独立集合隔离，对齐世界网格挂载伴生点云子物体（`ensure_voxel_child_cloud`）。
-  - [x] 自动承载未遮挡剔除体素元数据、Attributes 绑定与 Mask 修改器一键显隐。
-- [x] **统一 Empty 根容器与平铺子物体结构演进**
-  - [x] 升级为标准 Empty 根容器：
-    ```text
-    📁 Container Root (Empty, mtk:is_container=True, mtk:container_id=...)
-    ├── 🧊 World Mesh (Mesh, 几何面与多材质槽)
-    └── ☁️ Point Cloud (Mesh/PointCloud, 存储未剔除体素与元数据，默认隐藏)
-    ```
-  - [x] 重构 `get_or_create_world_mesh_object` 与 `update_world_mesh`，确保 Mesh 与 PointCloud 挂载为 Empty 根容器子物体。
-- [x] **多会话上下文感知与属性隔离 (`properties.py`, `ui/panel_sync.py`)**
-  - [x] 编写 `resolve_world_root_object(obj)` / `find_root_container(obj)` 向上寻址解析器，无论选中容器、网格还是点云，均精准定位根容器。
-  - [x] 将会话属性绑定至每个 Container 物体本身（独立的 URL、选区坐标、顶点统计与连接状态），实现多会话完全并行隔离与防串流。
-  - [x] 单一活跃会话互斥保护机制（检测到多容器同步冲突时弹出友好确认切换对话框）。
-  - [x] 属性面板深度优化：移出场景 Scene 选项卡，Empty 根容器显示于绿色 Object Data 选项卡，子物体显示于橙色 Object 选项卡。
-- [x] **容器与子物体重命名级联同步 (`watcher.py`)**
-  - [x] 恢复 `bpy.app.handlers.depsgraph_update_post` 监听机制。
-  - [x] 当用户在大纲视图重命名 Empty 容器时，自动级联同步更新子网格与子点云名称（如 `MyWorld_Mesh`, `MyWorld_PointCloud`）。
-  - [x] 活跃连接中防 Edit Mode 误操作保护机制（自动回退至 Object Mode）。
+## 🚀 v2.1 版本：动画生态整合与高级实体 (规划排期中 📋)
 
----
+> **2.1 版本主题**：从“静态世界资产”升级为“Minecraft 角色、动画与跨工具生产力生态”，打造核心工作流闭环。
 
-## 阶段二：网格重构脏缓存校验与顶层右键菜单解耦（✅ 已完成）
-- [x] **基于体素点云的网格重构算子与右键菜单化 (`operators/op_voxel_cloud.py`)**
-  - [x] 从点云数据提取并无损重构网格算子（`mozi.remesh_from_voxel_cloud`，支持用户手动删点雕刻并即时重构）。
-  - [x] 重构材质与图集贴图绑定算子（`mozi.rematerialize_from_voxel_cloud`）。
-  - [x] 通过 `@register_menu_item(views=["object", "mesh"])` 直接注入 3D 视图右键上下文菜单。
-  - [x] 实时同步内存体素世界异步重构算子（`mozi.sync_rebuild_world`，支持 `ModalTaskRunner` + 进度汇报）。
-- [x] **网格重构前缓存指纹一致性检查 (`bridge/sync.py`, `op_sync_rebuild.py`)**
-  - [x] 在触发网格重构前，检查磁盘 `assets_cache/cache_manifest.json` 或文件时间戳。
-  - [x] 若检测到用户在偏好设置中重新预编译/重新配置材质包：
-    1. 动态重新加载最新 Atlas、ModelDatabase 与 BiomeResolver；
-    2. 调用 Rust 端 `VoxelWorld::clear_cache()`，强制清除脏区块网格缓存（`section_mesh_cache`）；
-    3. 重新执行全量网格化，并同步更新 Blender 材质节点树中的图集图像节点，彻底杜绝 UV 偏移与模型错乱。
-- [x] **顶层通用网格重构统一门面算子 (`operators/op_mesh.py`)**
-  - [x] 智能判定所选物体的体素源（实时同步容器 / 存档导入容器 / 点云物体），统一收拢派发至单一入口 `mozi.rebuild_mesh`。
-  - [x] 右键上下文菜单与默认预设无缝集成（`CANONICAL_DEFAULT_PRESETS`，支持对象与网格视图一键重构）。
+### 1. 整合 Mine-imator 转 Blender 导入器 (`mi2bl`) (P1 核心特性 🌟)
+- [ ] **模块化架构引入**
+  - [ ] 将原 [mi2bl](https://github.com/mozi1924/mi2bl) 重构为 `MoziToolKit` 子包（`operators/mi2bl/`）；
+  - [ ] 顶部主菜单接入：`File -> Import -> Mine-imator Project (.miproject / .miobject / .miframes)`；
+- [ ] **高保真动画与曲线映射 (F-Curves)**
+  - [ ] 全量支持 Mine-imator 过渡曲线类型（Linear, Instant, Bézier 等）直接映射为 Blender F-curves；
+  - [ ] 时间线对齐与帧率自适应转换；
+- [ ] **Pivot 空物体骨架与层级系统**
+  - [ ] 自动构建基于 Pivot Empty 的父子层级结构，精准处理 Y/Z 轴翻转；
+  - [ ] 确保局部旋转、缩放与原版 Mine-imator 视觉完全一致；
+- [ ] **原生参数与自定义属性无缝映射**
+  - [ ] 摄像机参数映射：FOV、景深 (DOF) 焦距、光圈大小、散景叶片数 (Blades)、散景比例；
+  - [ ] 灯光参数映射：强度换算、裁剪距离 (Cutoff Distance)、颜色、软阴影半径 (Radius)、聚光灯圆锥角度；
+  - [ ] 材质自定义属性保留：`mi_alpha`、`mi_emissive`、`mi_roughness`、`mi_metallic` 等挂载至物体属性，供着色器调用。
 
----
+### 2. 1.21.4+ 客户端特殊模型攻坚 (Special Renderers & Copper Golem Statue) (P1)
+- [ ] **解析客户端模型新规范**
+  - [ ] 攻坚 Minecraft 1.21.4+ Item/Block Model Definitions 中的 `"type": "minecraft:special"` 与 `"type": "minecraft:select"` 语法；
+- [ ] **铜像 / 铜傀儡像 (Copper Golem Statue) 网格重构**
+  - [ ] 解决铜像在缺少传统 `"elements"` 字段时的网格丢失问题；
+  - [ ] 内置铜傀儡像 4 种氧化态（未氧化、斑驳、锈蚀、完全氧化）与各姿态（standing, sitting, running, star）的盒模型几何拓扑与贴图映射。
 
-## 阶段三：Minecraft 存档导入容器化、无感刷新与隐私 UUID 体系（✅ 已完成）
-- [x] **Minecraft 存档端到端导入前端（✅ 已完成基础链路 - commit `8ad56fc`）**
-  - [x] 顶部主菜单接入（`File -> Import -> Minecraft World / Save (.mca / level.dat)`，`ui/menu_import.py`）。
-  - [x] 世界路径选取、维度选择（主世界/下界/末地）与 `level.dat` 元数据自动探测。
-  - [x] 3D 轴对齐选区坐标输入与方块体积统计实时预览。
-  - [x] 零拷贝网格流极速灌入（AO、流体、顶点焊接、原点居中，`bridge/save.py`）。
-  - [x] 依据体素元数据自动创建并分配多材质槽与 Principled BSDF 节点树。
-  - [x] 自动提取并生成伴生体素点云子物体 (`ensure_voxel_child_cloud`)。
-  - [x] 物体自定义属性存储元数据（选区坐标、世界名、数据版本等）。
-- [x] **存档导入非破坏性独立容器化 (`operators/save/op_import_save.py`, `bridge/save.py`)**
-  - [x] 存档导入时自动创建独立 Empty 根容器（如 `Save_WorldName_Dimension_01`），子网格与子点云收拢于容器内。
-  - [x] 连续导入新选区时绝不覆盖历史已导入的存档物体，自动递增序号新建容器。
-  - [x] 根容器与子物体完整记录 AABB、维度、AO、流体、居中与材质参数自定义属性。
-- [x] **本地隐私注册表管理器 (`utils/system/save_registry.py`)**
-  - [x] 实现基于用户本地配置目录的 `SaveRegistryManager`，在 `CONFIG/MoziToolKit/save_registry.json`（与右键菜单 `context_menus.json` 同目录）中记录：
-    ```json
-    {
-      "uuid_hash": {
-        "world_dir": "/path/to/local/saves/WorldName",
-        "dimension": "overworld",
-        "last_refreshed": 1728100000
-      }
-    }
-    ```
-  - [x] `.blend` 内部仅存储 `mozi_save_uuid` 以及不涉密的 AABB 选区与维度，彻底杜绝个人本地绝对路径随工程文件泄露。
-  - [x] 提供 `sanitize_save_privacy` 自动清洗与静默迁移旧工程中的绝对路径属性。
-- [x] **存档专属面板与“一键刷新模型”算子 (`ui/panel_save.py`, `op_refresh_save.py`, `op_relink_save.py`)**
-  - [x] 物体属性面板中为存档容器展示专属信息卡片（选区坐标、体积、几何信息、最后更新时间）。
-  - [x] 提供 **“🔄 刷新模型 (Refresh Model)”** 按钮：按原选区重新解包 MCA/NBT 并原地无感替换网格。
-  - [x] 异地工程加载安全回退与重新关联：当其他用户打开工程或本地路径移动时，弹出友好提示并提供“重新关联本地存档路径”算子（`mozi.relink_save_folder`）。
-
-
----
-
-## 阶段四：右键菜单管理器自适应与全域 UI/UX 深度重构（✅ 已完成）
-- [x] **统一异步任务与分阶段物理进度条流水线（✅ 已完成 - commit `8119e06`, `4ac500d`, `30bf638`）**
-  - [x] 封装统一的 Blender 模态异步进度汇报器 (`utils/progress.py` -> `BlenderProgressReporter`, `wrap_progress_callback`)。
-  - [x] 非阻塞后台任务执行框架 (`utils/async_task.py` -> `AsyncTask`, `ModalTaskRunner`)。
-  - [x] 资产预编译多阶段进度汇报 (`op_precompile.py`)。
-  - [x] 实时网络同步多阶段下载与网格化进度追踪 (`StreamProgress` -> `sync_download`, `sync_meshing`, `sync_request`)。
-  - [x] 存档导入物理进度接入与状态栏即时提示。
-- [x] **材质与资产缓存管理 API 与开发面板（✅ 已完成 - commit `b16fb5d`）**
-  - [x] 材质图集与模型预编译缓存清除与重建 API (`bridge.clear_cache`, `bridge.precompile_stack`)。
-  - [x] Dev 开发调试面板中的缓存状态监视器与一键预编译/清除算子。
-- [x] **右键菜单智能差集自适应合并与 Schema 迁移（✅ 已完成）**
-  - [x] 引入 `menu_schema_version` (v2) 版本迁移机制 (`utils/config/models.py`)。
-  - [x] 插件启动加载配置时自动执行 `reconcile_views_with_canonical_presets`：
-    - 比对内建 `CANONICAL_DEFAULT_PRESETS` 与用户已保存的 `views`，自动将新引入的内建推荐算子无缝并入菜单列表；
-    - 严格保留用户已有的自定义排序、自定义标签以及启用/禁用开关；
-    - 告别每次新增选项都要手动点击“重置右键菜单”的繁琐体验。
-  - [x] 右键菜单项原生图标渲染（`MOD_REMESH`, `MATERIAL`, `GRID`, `UV_DATA` 等，提升视觉辨识度）。
-  - [x] 偏好设置支持直接点击列表项开关 (`enabled` 复选框) 实时控制显示/隐藏，并支持单视图独立重置 (`reset_views(view_name)`)。
-- [x] **全域 UI 面板风格现代化与整合（✅ 已完成）**
-  - [x] 3D 视图 N 侧边栏及属性面板分区梳理：
-    - 📡 **实时网络同步 (Live Sync)**：新增 `MOZI_PT_view3d_live_sync`，在 3D 视图 N 侧边栏直接掌控会话管理、多容器状态、URL、连接/断开与增量指标；未有容器时提供快速创建引导；
-    - 📦 **世界存档导入 (World Saves)**：`MOZI_PT_view3d_save_container` 增加未选中存档物体时的“一键导入 Minecraft 存档”快捷入口，选中时完整展示选区与刷新卡片；
-    - 🧊 **体素与网格工具 (Voxel Tools)**：重构升级为 `MOZI_PT_view3d_voxel_tools`，集成通用网格重构、伴生点云雕刻、自适应像素网格切分、面遮挡剔除、流体 UV 修复与材质法线工具；
-  - [x] 国际化字典全量补齐（`i18n/dictionary.py` 同步覆盖所有新增 UI 标签与提示）。
-
----
-
-## 阶段五：通用二进制中间包与场景交换前端对接 (`.mtkscene` / `.mtkcache` - 进行中 🚧)
-- [x] **设计规范对齐（✅ 已落地）**
-  - [x] 底层容器规范与分块协议对齐：见 [`libmozitoolkit/docs/PACKAGE_SPEC.md`](../libmozitoolkit/docs/PACKAGE_SPEC.md)。
-- [x] **全量资产缓存单文件包挂载 (`bridge/assets.py` - ✅ 已完成)**
-  - [x] 后端与前端全面切换至单一 `.mtkcache`（`<fingerprint>.mtkcache`）二进制容器，彻底替代散文件扫描。
-  - [x] 分块压缩策略：原始数据/模型/元数据采用 Zstd 块级压缩，贴图保持 Raw PNG 流，杜绝二次压缩性能开销。
-  - [x] 材质管线按需解包纹理并对齐 Blender Cycles/Eevee 材质节点树加载。
-- [ ] **场景交换格式导入算子 (`operators/package/op_import_scene.py`)**
-  - [ ] 顶部菜单集成：`File -> Import -> MoziToolKit Scene Package (.mtkscene)`。
-  - [ ] 导入选项面板：
-    - 网格化拓扑：平滑 AO、面遮挡剔除、贪婪网格化 (Greedy Meshing) 开关；
-    - 材质策略：现场烘焙紧凑微图集 (On-the-fly Atlas) vs 独立 Principled BSDF 材质。
-  - [ ] 调用 `bridge/package.py` 驱动 Rust 现场重构网格并生成材质节点树。
-- [ ] **场景交换格式导出算子 (`operators/package/op_export_scene.py`)**
-  - [ ] 顶部菜单集成：`File -> Export -> MoziToolKit Scene Package (.mtkscene)`。
-  - [ ] 支持所选物体/容器（无论是 Live Sync 容器、Save 存档容器还是体素点云）一键导出为 `.mtkscene`。
-  - [ ] 自动树状剪枝（Tree-shaking），仅打包选区内实际引用的独立贴图与方块模型，生成轻量自包含分享包。
-
----
-
-## 阶段六：现代 Blender 5.0+ 极致批量写入与零拷贝现代化重构（✅ 已完成）
-
-> 基于 Blender 5.2.1 LTS 现场 MCP 内存探查与压测，彻底铲除插件内残留的 2.x/3.x 时代低效 Python 遍历与 BMesh 过程式拼装模式，全面换装现代通用属性（Generic Attributes）批写入与零拷贝数据通道。
-
-- [x] **任务一：自适应像素切分算子整体管道化重构（彻底抛弃 BMesh 逐面循环 - ✅ 已完成）**
-  - [x] 彻底废弃 [`utils/mesh/subdivide.py`](utils/mesh/subdivide.py) 中的逐面 `slice_polygon_face_by_pixel_grid` 以及 Python 循环创建 BMVert / BMFace / 逐项权重插值的低效模式。
-  - [x] 将 [`op_pixel_split.py`](operators/op_pixel_split.py) 全面重构为对接 Rust 的单次批量 Data-In Data-Out 管道：
-    1. 前端通过 `extract_mesh_data`（支持全选区）一次性提取网格连续流；
-    2. 单次调用 Rust `bridge.subdivide.adaptive_pixel_split_mesh`（Rayon 多核并行切分、UV/顶点色/Deform权重/自定义属性双线性插值、空间哈希焊点一次性完成）；
-    3. 单次通过 `inject_mesh_data` 批量回灌 Blender。
-  - [x] 目标性能：大型网格切分耗时从 3~8 秒下降至 20~50 毫秒（提速 100x+）。
-
-- [x] **任务二：字符串面属性“调色板化（Palette Indexing）”改造（✅ 已完成）**
-  - [x] 破局 Blender C RNA 对字符串属性执行 `foreach_set` 报错（`internal error setting the array`）引发的慢速 Python `for i, val in enumerate(values): attr.data[i].value = val` 循环。
-  - [x] 将面域 `mtk_source_texture_key`、点云 `block_state`、`biome` 全面重构为 **`INT` 索引属性 + 网格/物体级 `ID-Property` 调色板数组**：
-    - 面属性写入：`mesh.attributes.new(name="mtk_source_texture_idx", type="INT", domain="FACE")`，通过 `foreach_set("value", np_indices)` 批量写入（10万面耗时 < 0.5ms）；
-    - 调色板存储：`mesh["mtk_source_textures"] = [...]`；
-    - 读取端兼容适配：提供统一的 `resolve_source_texture_keys(mesh)` 助手方法，优先读取 `INT` + `palette`（微秒级），优雅兼容旧工程遗留的 String 属性；
-    - 彻底删除 [`bridge/mesh.py`](bridge/mesh.py) 和 [`point_cloud.py`](bridge/point_cloud.py) 中的海量面 Python 遍历赋值循环。
-
-- [x] **任务三：材质槽重映射与生物群系实时更新器向量化加速（✅ 已完成）**
-  - [x] **材质槽重映射向量化 ([`cleaner.py`](utils/materials/cleaner.py), [`world.py`](bridge/world.py))**：
-    - 废除 `[chunk_to_slot.get(int(idx), 0) for idx in poly_mats]` Python 列表推导；
-    - 改用统一封装的 NumPy 查找表 `remap_indices_lut`：密集表一次性索引 `lut[poly_mats]`（10万面从 50ms 降至 0.2ms，提速 250x）；
-    - 材质查重使用 `set(np.unique(poly_mats))` 代替 `{p.material_index for p in mesh.polygons}`。
-  - [x] **生物群系实时调色器向量化 ([`updater.py`](utils/materials/biome/updater.py), [`biome.py`](utils/materials/biome/biome.py))**：
-    - 废弃 `[list(d.color) for d in old_attr.data]` 与遍历 `tint_data_attr.data` 的逐元素 RNA 访问循环；
-    - 改用 `tint_data_attr.data.foreach_get("color", raw_data)` + NumPy 向量化布尔掩码直接在连续内存上计算 `new_tint_colors`；
-    - 改造 `apply_biome_tint_attributes` 支持直接接收一维连续内存 NumPy 数组向 `foreach_set` 零开销灌入；
-    - 确保 20 万面的调色板动态切换真正达成宣称的 `< 1ms` 刷新响应。
-
-- [x] **任务四：网格拓扑校验与流体 UV 修复向量化（✅ 已完成）**
-  - [x] **拓扑全四边形校验 ([`bridge/mesh.py`](bridge/mesh.py))**：
-    - 将 `all(getattr(p, "loop_total", len(p.vertices)) == 4 for p in mesh.polygons)`（20万次 Python 对象访问）重构为：
-      ```python
-      poly_totals = np.empty(num_polys, dtype=np.int32)
-      mesh.polygons.foreach_get("loop_total", poly_totals)
-      is_all_quads = bool(np.all(poly_totals == 4))
-      ```
-      耗时从 150ms 压缩至 0.3ms（提速 500x）。
-  - [x] **流体 UV 修复 ([`fluid_uv.py`](utils/mesh/fluid_uv.py), [`op_uv.py`](operators/op_uv.py))**：
-    - 废弃单面循环 `for li in loop_indices: uv_layer.data[li].uv.x = u`；
-    - BMesh 模式下消除逐顶点、逐面 Python 循环提取，优先在 Object Mode 走全量向量化 Mesh 路径；针对选区面支持批量 NumPy 提取与回写；算子支持 Object Mode 直接执行。
-
-- [x] **任务五：Rust $\leftrightarrow$ Blender 内存直接写入与零拷贝通道探索（✅ 已完成）**
-  - [x] **底层 C++ 连续内存直写通道 (`libmozitoolkit/bindings/mtk-py/src/mesh/direct_ptr.rs`)**：
-    - 新增 `direct_copy_positions_to_ptr`、`direct_copy_normals_to_ptr`、`direct_copy_indices_to_ptr`、`direct_copy_quad_indices_to_ptr`、`direct_copy_loop_uvs_to_ptr`、`direct_copy_loop_starts_to_ptr`、`direct_copy_loop_totals_to_ptr`、`direct_copy_face_materials_to_ptr`、`direct_copy_colors_to_ptr`；
-    - Rust 端直接通过 `std::ptr::copy_nonoverlapping` 和 SIMD 向量化实现硬件带宽级内存拷贝，绕过 Python 对象包装。
-  - [x] **通用属性与直接指针三层写入管道 (`bridge/mesh.py`, `bridge/point_cloud.py`, `utils/materials/pipeline.py`)**：
-    - **Tier 1 (Direct Pointer)**：`mesh.attributes["position"].data[0].as_pointer()` 指针直通 Rust 机器码级写入；
-    - **Tier 2 (Modern Generic Attributes)**：避开 Blender 4.0+/5.x 中极度缓慢的 legacy `mesh.vertices/loops/polygons/uv_layers` 兼容包装层，优先使用 `np.frombuffer` 零拷贝视图通过 `attr.data.foreach_set` 批量灌入；
-    - **Tier 3 (Defensive Fallback)**：封装 `_safe_get_attribute`，在 Mock 测试与旧版环境中平滑降级到 legacy 集合 API，保持 100% 稳健兼容；
-    - 消除 `utils/materials/pipeline.py` 中残留的 `array.array("f", ...)`，全面切换为连续 NumPy 数组；
-  - [x] **实测基准压测性能验证 (100,000 顶点, 50,000 四边形面 / 200,000 loops)**：
-    - 顶点坐标写入：从旧版 `mesh.vertices.foreach_set("co")` 的 2.31ms 降至 **0.016ms**（提速 **140x**）；
-    - 拓扑角点索引写入：从旧版 `mesh.loops.foreach_set("vertex_index")` 的 7.70ms 降至 **0.152ms**（提速 **50x**）；
-    - Loop UV 写入：从旧版 `uv_layer.data.foreach_set("uv")` 的 3.15ms 降至 **0.270ms**（提速 **11x**）；
-    - 材质插槽写入：从旧版 `mesh.polygons.foreach_set("material_index")` 的 3.63ms 降至 **0.004ms**（提速 **900x**）；
-    - 纯数据写入阶段总耗时由 16.79ms 压缩至 **0.44ms**（写入阶段整体提速 **38x**）。
-
----
-
-## 阶段七：胶水层智能按需预烘焙门禁与全自动化流（✅ 已完成）
-- [x] **按需预烘焙前置门禁助手 (`bridge/assets.py`, `utils/async_task.py`)**
-  - [x] 实现 `check_asset_cache_status(prefs) -> Literal["READY", "MISSING", "STALE", "NO_PACKS"]`，依据已配置资源包栈计算指纹比对 `.mtkcache`；
-  - [x] 封装同步门禁 `ensure_pipeline_assets_ready_sync(prefs, progress_callback)` 与异步门禁 `run_task_with_asset_guard(target_func, target_kwargs, ...)`：
-    - 若缓存处于 `READY` 状态：微秒级通过，直接无缝触发目标业务；
-    - 若处于 `MISSING`（初次使用）或 `STALE`（材质包变动）：自动将 `precompile_stack` 编排为两阶段流水线第一阶段，烘焙完成后自动级联触发后续操作并重载图集纹理；
-- [x] **全量核心入口操作符统一接入门禁**
-  - [x] `mtk.import_minecraft_save` 与 `mtk.refresh_save`（存档导入与刷新操作符）：彻底杜绝首次导入出现无 UV 灰模问题；
-  - [x] `mozi.sync_connect` 与 `mozi.sync_rebuild_world`（实时网络同步连接与重构）：连接与重构前自动保证资产缓存就绪与热重载；
-  - [x] `mozi.rebuild_mesh`（通用网格重构）：智能派发各分支均接入前置烘焙门禁；
-  - [x] `mozi.remesh_from_voxel_cloud` 与 `mozi.rematerialize_from_voxel_cloud`（点云网格化与重新赋材质）：体素操作前自动门禁校验；
-  - [x] `mozi.replace_material` 与 `mozi.restore_materials_from_attributes`（材质替换与回退操作）：材质替换前自动确保图集与材质包预烘焙；
-  - [x] 状态栏与 Header 双进度条呈现两阶段反馈（`[1/2 Precompile] ...` $\rightarrow$ `[2/2 Target] ...`）；
-  - [x] 编写 `tests/test_asset_bake_guard.py` 覆盖 9 项单元/集成测试，并在真实 Blender 环境下全绿通过。
-
----
-
-## 阶段八：原版生态真实生物群系 3D 染色与平滑过渡管线（✅ 已完成）
-- [x] **真实 3D Quart Biome 染色采样端到端打通**
-  - [x] 接入 Rust 核心按真实坐标（而不是全局 fallback 平原）求得的面域 Tint 数据（`WORLD` 3D 生物群系预设与 `compute_mesh_biome_attributes_from_storage`）；
-  - [x] 沼泽特异色彩（深灰绿水色、2D Perlin 噪声斑驳双色沼泽草）、热带雨林（高饱和翠绿）、黑森林（自定义深绿 `#507A32`）、恶地/沙漠（枯草黄）；
-  - [x] 接入 5×5 (R=2) 原版均匀盒式平滑过渡核（Uniform Box Filter Biome Blend）色彩与 Colormap UV 插值；
-- [x] **着色器节点树与属性通道协同优化**
-  - [x] 校验 `mtk_biome_tint_data`（特异群系自动路由至 `TINT_TYPE_HARDCODED = 4.0`）与 `mtk_colormap_uv` 在 Cycles 与 Eevee Next 视口中的实时渲染保真度；
-  - [x] 确保红石线信号强弱、双层水体与水下雾气着色节点树自适应适配。
-
----
-
-## 阶段九：原版静态与悬挂实体导入系统（P1 - 动画级布景资产 🚧 待启动）
+### 3. 原版静态与悬挂实体导入系统 (P1)
 - [ ] **艺术画 (Painting) 前端构建器 (`bridge/entity.py`, `operators/save/`)**
-  - [ ] 从存档解析数据读取 `PaintingEntity`（`variant`, `facing`, `pos`）；
-  - [ ] 生成规整的 1x1 ~ 4x4 原版尺寸三维画框带木质背板几何，绑定对应画作贴图；
-  - [ ] 收拢至容器根 Empty 下的 `Entities` 子集合，准确对齐墙面。
-- [ ] **物品展示框 (Item Frame & Glow Item Frame) 前端构建器**
-  - [ ] 解析展示框外壳与发光边框，处理 45° `ItemRotation` 步进旋转与 `Invisible` 隐形状态；
-  - [ ] 放置内容物自适应装配：
-    - 方块类型：生成微缩 3D 方块模型；
-    - 物品类型（工具/武器/食物）：生成自适应像素切分与挤出的 Flat 3D 物品几何；
-    - 地图类型：自适应切换为无框 1×1 平坦面。
-- [ ] **填充地图 (Filled Map Data) 像素图像解码与材质绑定**
-  - [ ] 对接 Rust 导出的 128×128 RGBA8 像素缓冲；
-  - [ ] 现场生成 Blender 内存 Image Datablock 并赋予展示框平面材质。
+  - [ ] 从存档数据读取 `PaintingEntity`（`variant`, `facing`, `pos`）；
+  - [ ] 生成规整的 1x1 ~ 4x4 原版三维画框带木质背板，绑定对应画作贴图；
+- [ ] **物品展示框 (Item Frame & Glow Item Frame)**
+  - [ ] 解析展示框外壳与发光边框，处理 45° `ItemRotation` 与 `Invisible` 隐形状态；
+  - [ ] 内容物自适应装配：方块模型、平面切分挤出物品模型、或地图无框平坦面；
+- [ ] **填充地图 (Filled Map Data) 像素图像解码**
+  - [ ] 对接 Rust 导出的 128×128 RGBA8 像素缓冲，现场生成 Blender Image Datablock 并赋材质；
 - [ ] **盔甲架 (Armor Stand) 支架与装备挂载**
   - [ ] 导入木质支架骨架与 `Pose` 姿态角度，挂载手持与穿戴装备。
 
----
-
-## 阶段十：CTM 连接纹理端到端验证与修正（✅ 已完成）
-- [x] **CTM 规则在 Blender 前端网格重构中的开关与配置面板**
-  - [x] 在偏好设置与导入选项中提供 `enable_ctm` 复选框（针对大型场景提供可选性能平衡，支持存档导入与实时同步）；
-- [x] **CTM 材质节点树与图集 UV 解算兼容性排查与修复**
-  - [x] 结合真实 OptiFine / Continuity 资源包验证连续玻璃、连续书架、平滑石材的 UV 渲染与方块朝向；
-  - [x] 彻底消除 Standalone 模式下的单像素塌陷与 6 向切线/缝隙镜像问题，对齐 Continuity 拓扑朝向标准。
-
----
-
-## 阶段十一：复杂方块实体 NBT 图元与动画分体铰链装配（P2 - 动画生产力 🚧 待启动）
+### 4. 复杂方块实体 NBT 图元与动画分体铰链装配 (P2)
 - [ ] **告示牌与悬挂告示牌文字生成器 (Sign Text)**
-  - [ ] 读取 `front_text` / `back_text`，生成文本顶点网格或高保真纹理投影，支持 16 色染料与发光墨囊辉光效果；
+  - [ ] 读取 `front_text` / `back_text`，生成文字网格或高保真纹理投影，支持 16 色染料与发光墨囊；
 - [ ] **旗帜多层花纹合成 (Banner Patterns)**
   - [ ] 依照原版 40+ 种图案公式与 16 种颜色按 NBT 顺位合成多层 Alpha 纹理；
 - [ ] **动画铰链分体装配选项 (Animation-Ready Hierarchy)**
   - [ ] 提供“分离可动部件”选项：门（Door）、栅栏门（Fence Gate）、箱子顶盖（Chest Lid）、钟体（Bell Body）生成为独立子物体；
   - [ ] 精确放置铰链旋转中心（Pivot Point），方便动画师直接设置旋转关键帧。
 
+### 5. 自包含轻量场景交换包 (`.mtkscene`) (P2)
+- [ ] **场景交换格式导入导出算子 (`operators/package/`)**
+  - [ ] 顶部菜单集成：`File -> Import/Export -> MoziToolKit Scene Package (.mtkscene)`；
+  - [ ] 导出端自动 Tree-shaking 剪枝，仅打包选区内实际引用的独立贴图与方块模型；
+  - [ ] 导入端现场动态重构世界几何与材质节点树。
 
+---
 
+## 🔮 v2.2+ 远景：万能创作者瑞士军刀 (Future Vision)
 
+- [ ] **交互式 2D 俯视微型地图选区器 (Interactive 2D Minimap Selector)**
+  - 彻底告别纯数字 AABB 坐标输入；
+  - 提供可视化的世界俯视微缩地图弹窗，支持缩放拖拽、方块生物群系着色预览与矩形框选选区。
+- [ ] **建筑投影与蓝图文件直接导入 (`.litematic` / `.schematic` / `.nbt`)**
+  - 无需把建筑粘贴进世界存档，直接在 Blender 中单选 `.litematic` 蓝图文件一键生成网格与材质。
+- [ ] **玩家角色与原版生物绑定库 (Character Rig & Skin Tools)**
+  - 玩家皮肤一键加载器（支持 64×64 双层皮肤，第二层立体挤出）；
+  - 内置经典角色与常用原版生物基础 FK/IK 骨骼绑定预设。
+- [ ] **环境氛围与渲染辅助工具集 (Atmosphere & Render Presets)**
+  - 原版日夜循环天空盒节点树（动态太阳、月相与体积云朵方块层）；
+  - Cycles / Eevee Next 一键渲染优化预设（AgX 色彩管理、景深与采样率自动化）。
