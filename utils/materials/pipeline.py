@@ -56,10 +56,8 @@ try:
         invalidate_asset_cache_memory,
         reload_atlas_images,
         load_atlas_mapping_from_cache,
-        load_standalone_mapping_from_cache,
         load_baked_atlas_from_cache,
         ensure_atlas_textures_extracted,
-        ensure_standalone_textures_extracted,
         ensure_colormaps_extracted,
     )
     from ...bridge.mesh import (
@@ -72,7 +70,6 @@ try:
         inject_face_source_texture_keys,
     )
     from .builder.atlas_builder import build_atlas_chunk_material
-    from .builder.standalone_builder import build_standalone_material
     from .matching.presets.registry import build_matching_context
     from .biome import (
         get_or_load_biome_resolver,
@@ -103,10 +100,8 @@ except (ImportError, ValueError):
         invalidate_asset_cache_memory,
         reload_atlas_images,
         load_atlas_mapping_from_cache,
-        load_standalone_mapping_from_cache,
         load_baked_atlas_from_cache,
         ensure_atlas_textures_extracted,
-        ensure_standalone_textures_extracted,
         ensure_colormaps_extracted,
     )
     from bridge.mesh import (
@@ -119,7 +114,6 @@ except (ImportError, ValueError):
         inject_face_source_texture_keys,
     )
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-    from utils.materials.builder.standalone_builder import build_standalone_material
     from utils.materials.matching.presets.registry import build_matching_context
     try:
         from utils.materials.biome import (
@@ -183,17 +177,16 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
 
 def load_material_cache_context(
     prefs: Optional[Any] = None,
-) -> Tuple[Path, Path, Path, Dict[str, Path], Optional[str]]:
+) -> Tuple[Path, Path, Dict[str, Path], Optional[str]]:
     """
     Step 1: Ensure assets are precompiled and discover cache directories, colormaps, and manifest.
     """
     base_cache = ensure_stack_precompiled(prefs)
     atlas_dir = ensure_atlas_textures_extracted(prefs)
-    standalone_dir = ensure_standalone_textures_extracted(prefs)
     colormaps = ensure_colormaps_extracted(prefs)
     manifest_fingerprint = get_cache_fingerprint(prefs)
 
-    return base_cache, atlas_dir, standalone_dir, colormaps, manifest_fingerprint
+    return base_cache, atlas_dir, colormaps, manifest_fingerprint
 
 
 def extract_face_material_context(
@@ -369,100 +362,6 @@ def assign_atlas_chunk_materials(
     return poly_mat_indices
 
 
-def assign_standalone_materials(
-    mesh: Any,
-    uv_layer: Optional[Any],
-    standalone_mapping_path: Optional[Path] = None,
-    standalone_dir: Optional[Path] = None,
-    face_source_keys: Optional[List[str]] = None,
-    local_uvs: Optional[List[float]] = None,
-    colormaps: Optional[Dict[str, Path]] = None,
-    manifest_fingerprint: Optional[str] = None,
-    standalone_data: Optional[Dict[str, Any]] = None,
-    prefs: Optional[Any] = None,
-) -> array.array:
-    """
-    Step 4B: Construct Standalone block materials, assign to mesh material slots, and optionally set local UVs.
-    Supports in-memory standalone mapping without loose files on disk.
-    """
-    if face_source_keys is None:
-        face_source_keys = []
-
-    sa_data = standalone_data
-    if sa_data is None:
-        sa_data = load_standalone_mapping_from_cache(prefs)
-
-    if sa_data is None and standalone_mapping_path is not None and standalone_mapping_path.exists():
-        try:
-            sa_data = json.loads(standalone_mapping_path.read_text(encoding="utf-8"))
-        except Exception:
-            sa_data = None
-
-    if sa_data is None:
-        if standalone_mapping_path is not None and not standalone_mapping_path.exists():
-            raise FileNotFoundError(f"Standalone mapping missing at {standalone_mapping_path} and no active .mtkcache found")
-        sa_data = {}
-
-    sa_textures = sa_data.get("textures", {})
-    num_polys = len(mesh.polygons)
-    poly_mat_indices = array.array("H", [0]) * num_polys
-
-    unique_keys = list(dict.fromkeys(face_source_keys))
-    key_to_slot: Dict[str, int] = {}
-    mesh.materials.clear()
-
-    base_sa_dir = standalone_dir or (get_cache_dir(prefs) / "standalone")
-
-    for slot_idx, key in enumerate(unique_keys):
-        if not key:
-            continue
-        tex_entry = sa_textures.get(key)
-        if tex_entry:
-            files = tex_entry.get("files", {})
-            albedo_rel = files.get("albedo", "textures/mtk_fallback.png")
-            albedo_p = base_sa_dir / albedo_rel
-            normal_p = (base_sa_dir / files["normal"]) if "normal" in files else None
-            specular_p = (base_sa_dir / files["specular"]) if "specular" in files else None
-            overlay_p = (base_sa_dir / files["overlay"]) if "overlay" in files else None
-            is_anim = tex_entry.get("is_animated", False)
-        else:
-            albedo_p = base_sa_dir / "textures" / "mtk_fallback.png"
-            normal_p = None
-            specular_p = None
-            overlay_p = None
-            is_anim = False
-
-        mat = build_standalone_material(
-            texture_key=key,
-            albedo_path=albedo_p,
-            normal_path=normal_p,
-            specular_path=specular_p,
-            overlay_path=overlay_p,
-            colormaps=colormaps,
-            is_animated=is_anim,
-            stack_fingerprint=manifest_fingerprint,
-            uv_map_name=uv_layer.name if uv_layer else "UVMap",
-        )
-        mesh.materials.append(mat)
-        key_to_slot[key] = slot_idx
-
-    for i, key in enumerate(face_source_keys):
-        poly_mat_indices[i] = key_to_slot.get(key, 0)
-
-    if local_uvs is not None and uv_layer is not None:
-        local_uv_np = np.ascontiguousarray(local_uvs, dtype=np.float32)
-        uv_attr = mesh.attributes.get(uv_layer.name) if hasattr(mesh, "attributes") else None
-        if uv_attr is not None and len(uv_attr.data) * 2 == len(local_uv_np):
-            uv_attr.data.foreach_set("vector", local_uv_np)
-        else:
-            uv_layer.data.foreach_set("uv", local_uv_np)
-
-    mat_attr = mesh.attributes.get("material_index") if hasattr(mesh, "attributes") else None
-    if mat_attr is not None and len(mat_attr.data) == len(poly_mat_indices):
-        mat_attr.data.foreach_set("value", np.ascontiguousarray(poly_mat_indices, dtype=np.int32))
-    else:
-        mesh.polygons.foreach_set("material_index", poly_mat_indices)
-    return poly_mat_indices
 
 
 def inject_mesh_provenance_attributes(
@@ -594,7 +493,7 @@ def replace_materials(
 
     Args:
         mesh_or_obj: A `bpy.types.Object` (type MESH) or `bpy.types.Mesh`.
-        mode: Material mode - "ATLAS" or "STANDALONE".
+        mode: Material mode (defaults to "ATLAS").
         origin: Format heuristic - "AUTO", "MINEWAYS", "JMC2OBJ", "ICE_CUBE", "GENERIC".
         biome: Biome preset name (e.g. "PLAINS", "BADLANDS", "DESERT").
         prefs: Add-on preferences reference.
@@ -611,8 +510,10 @@ def replace_materials(
     if mesh is None or len(mesh.polygons) == 0:
         return {"success": False, "message": "Mesh has no geometry or polygons."}
 
+    mode_upper = "ATLAS"
+
     # Step 1: Load cache context & precompiled assets
-    base_cache, atlas_dir, standalone_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
+    base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
 
     atlas_data = load_atlas_mapping_from_cache(prefs)
     baked_atlas = load_baked_atlas_from_cache(prefs)
@@ -641,30 +542,16 @@ def replace_materials(
     )
 
     # Step 4: Construct and assign materials
-    mode_upper = mode.strip().upper()
-    if mode_upper == "ATLAS":
-        poly_mat_indices = assign_atlas_chunk_materials(
-            mesh=mesh,
-            uv_layer=uv_layer,
-            atlas_data=atlas_data,
-            atlas_dir=atlas_dir,
-            face_chunk_ids=remap["face_chunk_ids"],
-            atlas_uvs=remap["atlas_uvs"],
-            colormaps=colormaps,
-            manifest_fingerprint=manifest_fingerprint,
-        )
-    else:
-        poly_mat_indices = assign_standalone_materials(
-            mesh=mesh,
-            uv_layer=uv_layer,
-            standalone_mapping_path=standalone_dir / "standalone_mapping.json",
-            standalone_dir=standalone_dir,
-            face_source_keys=remap["face_source_keys"],
-            local_uvs=remap["local_uvs"],
-            colormaps=colormaps,
-            manifest_fingerprint=manifest_fingerprint,
-            prefs=prefs,
-        )
+    poly_mat_indices = assign_atlas_chunk_materials(
+        mesh=mesh,
+        uv_layer=uv_layer,
+        atlas_data=atlas_data,
+        atlas_dir=atlas_dir,
+        face_chunk_ids=remap["face_chunk_ids"],
+        atlas_uvs=remap["atlas_uvs"],
+        colormaps=colormaps,
+        manifest_fingerprint=manifest_fingerprint,
+    )
 
     # Step 5: Inject mesh provenance attributes (delegated to bridge/mesh.py)
     inject_mesh_provenance_attributes(
@@ -704,7 +591,7 @@ def restore_materials_from_provenance(
 
     Args:
         mesh_or_obj: Blender mesh or object with mtk_source_texture_key attributes.
-        mode: Target reconstruction mode ("ATLAS" or "STANDALONE").
+        mode: Target reconstruction mode ("ATLAS").
         biome: Optional biome preset to restore. Defaults to object property or "PLAINS".
         prefs: Add-on preferences reference.
     """
@@ -732,43 +619,29 @@ def restore_materials_from_provenance(
         effective_biome = "PLAINS"
 
     # Step 1: Load cache context
-    base_cache, atlas_dir, standalone_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
+    base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
 
     uv_layer = mesh.uv_layers.active if hasattr(mesh, "uv_layers") and mesh.uv_layers else None
     if uv_layer is None and hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
         uv_layer = mesh.uv_layers[0]
 
     # Step 2: Reconstruct material slots
-    mode_upper = mode.strip().upper()
-    if mode_upper == "ATLAS":
-        atlas_data = load_atlas_mapping_from_cache(prefs)
-        if atlas_data is None:
-            atlas_mapping_path = atlas_dir / "atlas_mapping.json"
-            if not atlas_mapping_path.exists():
-                raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found")
-            atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
-        poly_mat_indices = assign_atlas_chunk_materials(
-            mesh=mesh,
-            uv_layer=uv_layer,
-            atlas_data=atlas_data,
-            atlas_dir=atlas_dir,
-            face_chunk_ids=face_chunk_ids,
-            atlas_uvs=None,
-            colormaps=colormaps,
-            manifest_fingerprint=manifest_fingerprint,
-        )
-    else:
-        poly_mat_indices = assign_standalone_materials(
-            mesh=mesh,
-            uv_layer=uv_layer,
-            standalone_mapping_path=standalone_dir / "standalone_mapping.json",
-            standalone_dir=standalone_dir,
-            face_source_keys=face_source_keys,
-            local_uvs=None,
-            colormaps=colormaps,
-            manifest_fingerprint=manifest_fingerprint,
-            prefs=prefs,
-        )
+    atlas_data = load_atlas_mapping_from_cache(prefs)
+    if atlas_data is None:
+        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
+        if not atlas_mapping_path.exists():
+            raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found")
+        atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
+    poly_mat_indices = assign_atlas_chunk_materials(
+        mesh=mesh,
+        uv_layer=uv_layer,
+        atlas_data=atlas_data,
+        atlas_dir=atlas_dir,
+        face_chunk_ids=face_chunk_ids,
+        atlas_uvs=None,
+        colormaps=colormaps,
+        manifest_fingerprint=manifest_fingerprint,
+    )
 
     # Step 3: Sync material slot attribute (delegated to bridge/mesh.py)
     inject_mesh_provenance_attributes(
@@ -776,7 +649,7 @@ def restore_materials_from_provenance(
         face_source_keys=face_source_keys,
         poly_mat_indices=poly_mat_indices,
         face_chunk_ids=face_chunk_ids,
-        mode=mode_upper,
+        mode="ATLAS",
     )
 
     # Step 4: Re-apply biome tint attributes

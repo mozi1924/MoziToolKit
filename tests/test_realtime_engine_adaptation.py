@@ -23,7 +23,6 @@ except ImportError:
 
 
 from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-from utils.materials.builder.standalone_builder import build_standalone_material
 from utils.materials.builder.adaptation import (
     update_materials_render_engine_adaptation,
     depsgraph_render_engine_adaptation_handler,
@@ -78,38 +77,6 @@ class TestRealtimeEngineAdaptation(unittest.TestCase):
 
         bpy.data.materials.remove(mat)
 
-    def test_standalone_material_transmission_realtime_switching(self):
-        """Verify that Standalone glass material transmission weight dynamically adapts to render engine."""
-        mat = build_standalone_material(
-            texture_key="block/glass",
-            albedo_path="TestAlbedo.png",
-            block_name="minecraft:glass",
-            render_engine="CYCLES",
-        )
-        self.assertIsNotNone(mat)
-
-        decoder_node = mat.node_tree.nodes.get("LabPBR Decoder")
-        if not decoder_node:
-            decoder_node = next((n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
-
-        self.assertIsNotNone(decoder_node)
-        self.assertAlmostEqual(decoder_node.inputs["Transmission Weight"].default_value, 1.0)
-
-        # Switch to EEVEE
-        scene = bpy.context.scene
-        scene.render.engine = "BLENDER_EEVEE"
-        depsgraph_render_engine_adaptation_handler(scene)
-
-        # Transmission should now be 0.0 in EEVEE for clean alpha blending
-        self.assertAlmostEqual(decoder_node.inputs["Transmission Weight"].default_value, 0.0)
-
-        # Switch back to CYCLES
-        scene.render.engine = "CYCLES"
-        depsgraph_render_engine_adaptation_handler(scene)
-        self.assertAlmostEqual(decoder_node.inputs["Transmission Weight"].default_value, 1.0)
-
-
-        bpy.data.materials.remove(mat)
 
 
 if __name__ == "__main__":

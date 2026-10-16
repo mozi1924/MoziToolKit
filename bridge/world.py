@@ -440,21 +440,16 @@ def mesh_voxel_storage(
     """
     mtk = require_libmtk("mesh_voxel_storage")
 
-    is_standalone = material_mode.strip().upper() == "STANDALONE"
-
-    # Auto-load cached assets if not explicitly passed
-    if is_standalone:
-        if model_db is None or biome_resolver is None:
-            cached_model_db, _, cached_biome_resolver = get_world_pipeline_assets(prefs)
-            model_db = model_db or cached_model_db
-            biome_resolver = biome_resolver or cached_biome_resolver
-        atlas = None
-    else:
+    # Auto-load cached assets if not explicitly passed and caller didn't opt out
+    if atlas is not False and material_mode != "STANDALONE":
         if model_db is None or atlas is None or biome_resolver is None:
             cached_model_db, cached_atlas, cached_biome_resolver = get_world_pipeline_assets(prefs)
             model_db = model_db or cached_model_db
             atlas = atlas or cached_atlas
             biome_resolver = biome_resolver or cached_biome_resolver
+    else:
+        if atlas is False:
+            atlas = None
 
     # Auto-resolve CTM solver from pack stack if available
     ctm_solver = ctm_solver or get_configured_ctm_solver(prefs)
@@ -644,19 +639,9 @@ def apply_voxel_mesh_to_blender(
         update_normals=True,
     )
 
-    # 3. Bind only used Atlas chunk materials & shaders (or Standalone materials if standalone mode)
-    if material_mode.strip().upper() == "STANDALONE":
-        try:
-            from ..utils.materials.pipeline import restore_materials_from_provenance
-        except (ImportError, ValueError):
-            from utils.materials.pipeline import restore_materials_from_provenance
-        try:
-            restore_materials_from_provenance(obj, mode="STANDALONE", prefs=prefs)
-        except Exception as e:
-            logger.warning("Failed to restore standalone materials for world mesh: %s", e)
-    else:
-        used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-        ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    # 3. Bind only used Atlas chunk materials & shaders
+    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+    ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
     # 4. Extract unculled VoxelPointCloud and ensure child companion object
     cloud_obj = ensure_voxel_child_cloud(

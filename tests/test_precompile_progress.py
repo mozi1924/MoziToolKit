@@ -111,7 +111,6 @@ class TestPrecompileProgress(unittest.TestCase):
             max_atlas_width=1024,
             max_atlas_height=1024,
             compile_atlas=True,
-            compile_standalone=True,
             compile_models=True,
             callback=on_progress,
         )
@@ -119,7 +118,6 @@ class TestPrecompileProgress(unittest.TestCase):
         self.assertTrue(res.success)
         self.assertEqual(res.pack_count, 1)
         self.assertGreaterEqual(res.atlas_chunks, 1)
-        self.assertEqual(res.standalone_textures, 1)
         self.assertGreaterEqual(res.baked_models, 1)
 
         # Verify progress reports were received
@@ -128,7 +126,6 @@ class TestPrecompileProgress(unittest.TestCase):
         stages = [r.get("stage") for r in reports]
         self.assertIn("prebake_biome", stages)
         self.assertIn("prebake_atlas", stages)
-        self.assertIn("prebake_standalone", stages)
         self.assertIn("prebake_models", stages)
         self.assertIn("prebake_manifest", stages)
 
@@ -164,14 +161,12 @@ class TestPrecompileProgress(unittest.TestCase):
         self.assertTrue(res["success"])
         self.assertEqual(res["pack_count"], 1)
         self.assertGreaterEqual(res["atlas_chunks"], 1)
-        self.assertEqual(res["standalone_textures"], 1)
         self.assertGreaterEqual(res["baked_models"], 1)
 
         self.assertGreater(len(reports), 0)
         stages = [r.stage for r in reports]
         self.assertIn("prebake_biome", stages)
         self.assertIn("prebake_atlas", stages)
-        self.assertIn("prebake_standalone", stages)
         self.assertIn("prebake_models", stages)
         self.assertIn("prebake_manifest", stages)
 

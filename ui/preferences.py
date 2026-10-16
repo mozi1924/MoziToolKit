@@ -255,7 +255,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         description="Choose how imported materials are structured and generated",
         items=[
             ('ATLAS', "Atlas", "Combine all textures into a single texture atlas material (Default)"),
-            ('STANDALONE', "Standalone", "Create individual materials for each texture"),
         ],
         default='ATLAS',
         update=on_material_setting_changed,

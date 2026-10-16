@@ -320,29 +320,6 @@ def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
     return None
 
 
-def load_standalone_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
-    """
-    Loads precompiled standalone mapping table as dictionary directly from memory.
-    Prioritizes reading from .mtkcache container, falls back to loose standalone_mapping.json.
-    """
-    cache = open_active_asset_cache(prefs)
-    if cache is not None and hasattr(cache, "load_standalone_mapping"):
-        try:
-            mapping_str = cache.load_standalone_mapping()
-            if mapping_str:
-                return json.loads(mapping_str)
-        except Exception:
-            pass
-
-    # Fallback to loose file if exists
-    base_cache = get_cache_dir(prefs)
-    loose_p = base_cache / "standalone" / "standalone_mapping.json"
-    if loose_p.exists() and loose_p.is_file():
-        try:
-            return json.loads(loose_p.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return None
 
 
 def get_cached_texture_rgba(chunk_id: str, prefs=None, flip_y: bool = True) -> Optional[Tuple[int, int, Any]]:
@@ -386,10 +363,6 @@ def ensure_atlas_textures_extracted(prefs=None) -> Path:
     return base_cache / "atlas"
 
 
-def ensure_standalone_textures_extracted(prefs=None) -> Path:
-    """Returns the standalone cache directory path reference."""
-    base_cache = get_cache_dir(prefs)
-    return base_cache / "standalone"
 
 
 def ensure_colormaps_extracted(prefs=None) -> Dict[str, Any]:
@@ -693,11 +666,9 @@ __all__ = [
     "get_active_cache_package_path",
     "open_active_asset_cache",
     "load_atlas_mapping_from_cache",
-    "load_standalone_mapping_from_cache",
     "get_cached_texture_rgba",
     "get_cached_texture_f32",
     "ensure_atlas_textures_extracted",
-    "ensure_standalone_textures_extracted",
     "ensure_colormaps_extracted",
     "load_baked_model_database",
     "load_model_database_from_cache",

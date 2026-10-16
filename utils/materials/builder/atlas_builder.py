@@ -37,7 +37,7 @@ try:
         ATTR_COLORMAP_UV,
         ATTR_MATERIAL_PROPS,
     )
-    from .standalone_builder import get_or_create_image, ensure_material_node_tree
+    from .image_utils import get_or_create_image, ensure_material_node_tree
     from .shading_config import resolve_material_shading_config
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
@@ -73,7 +73,7 @@ except (ImportError, ValueError):
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
         ATTR_MATERIAL_PROPS = "mtk_material_props"
-    from utils.materials.builder.standalone_builder import get_or_create_image, ensure_material_node_tree
+    from utils.materials.builder.image_utils import get_or_create_image, ensure_material_node_tree
     try:
         from .shading_config import resolve_material_shading_config
     except (ImportError, ValueError):

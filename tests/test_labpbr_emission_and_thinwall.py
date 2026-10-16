@@ -162,65 +162,6 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         self.assertEqual(len(alpha_links), 1)
         self.assertEqual(alpha_links[0].from_node, final_alpha)
 
-    @unittest.skipUnless(HAS_BPY, "Requires Blender bpy environment")
-    def test_standalone_builder_applies_catalog_properties(self):
-        """Verify build_standalone_material sets Transmission, Sticker Threshold, Emission, and Thin Wall."""
-        from utils.materials.builder.standalone_builder import build_standalone_material
-
-        # 1. Glass (CYCLES physical mode)
-        mat_glass = build_standalone_material(
-            texture_key="block/glass",
-            albedo_path="/tmp/fake_glass.png",
-            material_name="Test_Glass",
-            block_name="glass",
-            render_engine="CYCLES",
-        )
-        self.assertIsNotNone(mat_glass)
-        dec_glass = mat_glass.node_tree.nodes.get("LabPBR Decoder")
-        self.assertIsNotNone(dec_glass)
-        self.assertEqual(dec_glass.inputs["Transmission Weight"].default_value, 1.0)
-        self.assertAlmostEqual(dec_glass.inputs["Sticker Threshold"].default_value, 0.55, places=4)
-        self.assertEqual(dec_glass.inputs["Hardcoded Emission"].default_value, 0.0)
-        self.assertEqual(dec_glass.inputs["Thin Wall"].default_value, False)
-
-        # 2. Water (CYCLES physical mode)
-        mat_water = build_standalone_material(
-            texture_key="block/water_still",
-            albedo_path="/tmp/fake_water.png",
-            material_name="Test_Water",
-            block_name="water_still",
-            render_engine="CYCLES",
-        )
-        self.assertIsNotNone(mat_water)
-        dec_water = mat_water.node_tree.nodes.get("LabPBR Decoder")
-        self.assertIsNotNone(dec_water)
-        self.assertEqual(dec_water.inputs["Transmission Weight"].default_value, 1.0)
-        self.assertAlmostEqual(dec_water.inputs["Sticker Threshold"].default_value, 0.95, places=4)
-
-        # 3. Torch
-        mat_torch = build_standalone_material(
-            texture_key="block/torch",
-            albedo_path="/tmp/fake_torch.png",
-            material_name="Test_Torch",
-            block_name="torch",
-        )
-        self.assertIsNotNone(mat_torch)
-        dec_torch = mat_torch.node_tree.nodes.get("LabPBR Decoder")
-        self.assertIsNotNone(dec_torch)
-        self.assertEqual(dec_torch.inputs["Hardcoded Emission"].default_value, 14.0)
-        self.assertEqual(dec_torch.inputs["Transmission Weight"].default_value, 0.0)
-
-        # 4. Leaves
-        mat_leaves = build_standalone_material(
-            texture_key="block/oak_leaves",
-            albedo_path="/tmp/fake_leaves.png",
-            material_name="Test_Leaves",
-            block_name="oak_leaves",
-        )
-        self.assertIsNotNone(mat_leaves)
-        dec_leaves = mat_leaves.node_tree.nodes.get("LabPBR Decoder")
-        self.assertIsNotNone(dec_leaves)
-        self.assertEqual(dec_leaves.inputs["Thin Wall"].default_value, True)
 
     @unittest.skipUnless(HAS_BPY, "Requires Blender bpy environment")
     def test_atlas_builder_wires_material_props(self):

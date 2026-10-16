@@ -64,14 +64,13 @@ def precompile_stack(
                 max_atlas_width=4096,
                 max_atlas_height=4096,
                 compile_atlas=True,
-                compile_standalone=True,
                 compile_models=True,
                 num_threads=num_threads,
                 callback=wrapped_cb,
             )
         except TypeError:
             try:
-                # Fallback for bindings without callback keyword
+                # Fallback for older bindings with compile_standalone
                 res = mtk.precompile_all_assets(
                     stack,
                     str(base_cache.resolve()),
@@ -79,21 +78,34 @@ def precompile_stack(
                     max_atlas_width=4096,
                     max_atlas_height=4096,
                     compile_atlas=True,
-                    compile_standalone=True,
+                    compile_standalone=False,
                     compile_models=True,
                     num_threads=num_threads,
+                    callback=wrapped_cb,
                 )
             except TypeError:
-                res = mtk.precompile_all_assets(
-                    stack,
-                    str(base_cache.resolve()),
-                    atlas_category="blocks",
-                    max_atlas_width=4096,
-                    max_atlas_height=4096,
-                    compile_atlas=True,
-                    compile_standalone=True,
-                    compile_models=True,
-                )
+                try:
+                    # Fallback for bindings without callback keyword
+                    res = mtk.precompile_all_assets(
+                        stack,
+                        str(base_cache.resolve()),
+                        atlas_category="blocks",
+                        max_atlas_width=4096,
+                        max_atlas_height=4096,
+                        compile_atlas=True,
+                        compile_models=True,
+                        num_threads=num_threads,
+                    )
+                except TypeError:
+                    res = mtk.precompile_all_assets(
+                        stack,
+                        str(base_cache.resolve()),
+                        atlas_category="blocks",
+                        max_atlas_width=4096,
+                        max_atlas_height=4096,
+                        compile_atlas=True,
+                        compile_models=True,
+                    )
         package_path = getattr(res, "package_path", "")
         invalidate_asset_cache_memory()
         try:
@@ -112,7 +124,6 @@ def precompile_stack(
             "success": getattr(res, "success", True),
             "pack_count": getattr(res, "pack_count", 0),
             "atlas_chunks": getattr(res, "atlas_chunks", 0),
-            "standalone_textures": getattr(res, "standalone_textures", 0),
             "baked_models": getattr(res, "baked_models", 0),
             "models": getattr(res, "baked_models", 0),
             "duration_seconds": duration,

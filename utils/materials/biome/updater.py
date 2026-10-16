@@ -209,43 +209,10 @@ def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
 
 
 def detect_object_material_mode(obj: bpy.types.Object) -> str:
-    """Determine whether an object is currently configured in Atlas or Standalone mode."""
+    """Determine whether an object is currently configured in Atlas mode."""
     if not obj or obj.type != "MESH" or not obj.data:
         return "UNKNOWN"
-
-    # 1. Authoritative check on material slots first
-    has_atlas_mat = False
-    has_standalone_mat = False
-    for slot in obj.material_slots:
-        mat = slot.material
-        if not mat:
-            continue
-        mode_prop = mat.get("mtk_material_mode")
-        if mode_prop == "ATLAS":
-            return "ATLAS"
-        elif mode_prop == "STANDALONE":
-            return "STANDALONE"
-
-        name_lower = mat.name.lower()
-        if (
-            name_lower.startswith(("mtk:atlas:", "mtk_atlas_", "mc_atlas"))
-            or PROP_ATLAS_MAPPING in mat
-        ):
-            has_atlas_mat = True
-        elif name_lower.startswith(("mtk:", "mtk_")) or mat.get("mtk:material_id"):
-            has_standalone_mat = True
-
-    if has_atlas_mat:
-        return "ATLAS"
-    if has_standalone_mat:
-        return "STANDALONE"
-
-    # 2. Check mesh-level provenance attributes if material slots are generic/empty
-    mesh = obj.data
-    if ATTR_ATLAS_CHUNK_ID in mesh.attributes:
-        return "ATLAS"
-    if ATTR_BIOME_TINT_DATA in mesh.attributes or ATTR_SOURCE_TEXTURE_KEY in mesh.attributes or ATTR_SOURCE_TEXTURE_IDX in mesh.attributes:
-        return "ATLAS"
+    return "ATLAS"
 
 def resolve_and_apply_world_biome_tint(
     mesh_or_obj: Any,
@@ -608,102 +575,6 @@ def update_object_biome(
                             mesh["mtk:biome_tint_initialized"] = True
                         except Exception:
                             pass
-
-    # 2. Shader node trees update (Only needed for Standalone mode or if fast attribute path was bypassed)
-    if not fast_path_done or mode == "STANDALONE":
-        updated_materials = set()
-        for slot in obj.material_slots:
-            mat = slot.material
-            if not mat or not mat.node_tree or mat.name in updated_materials:
-                continue
-            updated_materials.add(mat.name)
-            nt = mat.node_tree
-            biome_tint_node = nt.nodes.get("MC Biome Tint") or nt.nodes.get("Biome Tint")
-            if not biome_tint_node:
-                continue
-
-            # Determine tint channel type from material identity or legacy colormap node
-            mat_lower = mat.name.lower()
-            key = str(mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or "").lower()
-            check_name = f"{mat_lower} {key}"
-
-            has_custom = False
-            resolved_col = (1.0, 1.0, 1.0, 1.0)
-
-            # Query Rust SSOT for hardcoded tint (e.g. spruce_leaves, birch_leaves, lily_pad, redstone_wire)
-            hc_tint = (get_hardcoded_tint(key) if key else None) or get_hardcoded_tint(mat_lower)
-            if hc_tint is not None:
-                has_custom = False
-                resolved_col = hc_tint
-            elif "water" in check_name:
-                has_custom = True
-                resolved_col = biome_colors["water_linear"]
-            elif "dry_foliage" in check_name or "leaf_litter" in check_name or "pale_hanging_moss" in check_name:
-                has_custom = bool(biome_colors.get("has_custom_dry_foliage", False))
-                resolved_col = biome_colors["dry_foliage_linear"]
-            elif any(w in check_name for w in ("cherry", "azalea", "pale_oak", "poplar", "notint", "dead_bush")):
-                # Untinted / Pre-dyed vanilla and custom leaf textures
-                has_custom = False
-                resolved_col = (1.0, 1.0, 1.0, 1.0)
-            elif any(w in check_name for w in ("leave", "foliage", "vine", "bush")):
-                has_custom = bool(biome_colors.get("has_custom_foliage", False))
-                resolved_col = biome_colors["foliage_linear"]
-            elif any(w in check_name for w in ("grass", "fern", "sugar_cane")):
-                has_custom = bool(biome_colors.get("has_custom_grass", False))
-                resolved_col = biome_colors["grass_linear"]
-            else:
-                # Fallback check for single colormap node in legacy materials
-                cm_nodes = [n for n in nt.nodes if n.type == "TEX_IMAGE" and n.name.startswith("Colormap ")]
-                if len(cm_nodes) == 1:
-                    tex_cm = cm_nodes[0]
-                    if "Grass" in tex_cm.name:
-                        has_custom = bool(biome_colors.get("has_custom_grass", False))
-                        resolved_col = biome_colors["grass_linear"]
-                    elif "Foliage" in tex_cm.name:
-                        has_custom = bool(biome_colors.get("has_custom_foliage", False))
-                        resolved_col = biome_colors["foliage_linear"]
-                    elif "Dry Foliage" in tex_cm.name:
-                        has_custom = bool(biome_colors.get("has_custom_dry_foliage", False))
-                        resolved_col = biome_colors["dry_foliage_linear"]
-
-            # 1. Update Sampler node temperature/humidity if present
-            sampler_node = nt.nodes.get("MC Biome Colormap Sampler")
-            if sampler_node:
-                t = float(biome_colors.get("temperature", 0.8))
-                h = float(biome_colors.get("humidity", 0.4))
-                if abs(sampler_node.inputs["Temperature"].default_value - t) > 1e-4:
-                    sampler_node.inputs["Temperature"].default_value = t
-                if abs(sampler_node.inputs["Humidity"].default_value - h) > 1e-4:
-                    sampler_node.inputs["Humidity"].default_value = h
-
-            # 2. Update Tint Color socket default value
-            if "Tint Color" in biome_tint_node.inputs:
-                current_val = tuple(biome_tint_node.inputs["Tint Color"].default_value)
-                if any(abs(a - b) > 1e-4 for a, b in zip(current_val, resolved_col)):
-                    biome_tint_node.inputs["Tint Color"].default_value = tuple(resolved_col)
-
-            # 3. Route links:
-            colormap_decoder = nt.nodes.get("MC Biome Colormap Decoder")
-            tint_input = biome_tint_node.inputs.get("Tint Color")
-            if colormap_decoder and tint_input:
-                # Modern attribute-driven architecture: ensure decoder is properly linked to tint node
-                if not any(l.to_socket == tint_input and l.from_node == colormap_decoder for l in nt.links):
-                    for l in list(nt.links):
-                        if l.to_socket == tint_input:
-                            nt.links.remove(l)
-                    nt.links.new(colormap_decoder.outputs["Color"], tint_input)
-            elif tint_input:
-                # Legacy direct colormap graph: disconnect when custom override is active
-                cm_nodes = [n for n in nt.nodes if n.type == "TEX_IMAGE" and n.name.startswith("Colormap ")]
-                tex_colormap = cm_nodes[0] if len(cm_nodes) == 1 else None
-                if has_custom and tex_colormap:
-                    for l in list(nt.links):
-                        if l.to_socket == tint_input:
-                            nt.links.remove(l)
-                elif not has_custom and tex_colormap:
-                    has_link = any(l.to_socket == tint_input and l.from_node == tex_colormap for l in nt.links)
-                    if not has_link:
-                        nt.links.new(tex_colormap.outputs["Color"], tint_input)
 
     obj["mtk:biome_preset"] = biome_name
     return True

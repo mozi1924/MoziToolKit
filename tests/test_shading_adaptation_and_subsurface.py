@@ -20,7 +20,6 @@ except ImportError:
 
 if HAS_BPY:
     from utils.node_groups.labpbr import ensure_labpbr_decoder
-    from utils.materials.builder.standalone_builder import build_standalone_material
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
 
@@ -108,34 +107,6 @@ def test_labpbr_decoder_uses_burley_subsurface():
     assert principled.subsurface_method == "BURLEY", f"Expected BURLEY, got {principled.subsurface_method}"
 
 
-@pytest.mark.skipif(not HAS_BPY, reason="Blender environment required")
-def test_build_standalone_material_eevee_vs_cycles_adaptation(tmp_path):
-    tex_path = tmp_path / "glass.png"
-    tex_path.write_bytes(b"dummy")
-
-    # Build for EEVEE: transmission 0, no raytrace refraction
-    mat_eevee = build_standalone_material(
-        texture_key="glass",
-        albedo_path=tex_path,
-        block_name="glass",
-        material_name="TestMat:EEVEE_Glass",
-        render_engine="EEVEE",
-    )
-    assert mat_eevee is not None
-    assert getattr(mat_eevee, "use_raytrace_refraction", False) is False
-    assert getattr(mat_eevee, "surface_render_method", "DITHERED") != "BLENDED"
-
-    # Build for CYCLES: transmission enabled
-    mat_cycles = build_standalone_material(
-        texture_key="glass",
-        albedo_path=tex_path,
-        block_name="glass",
-        material_name="TestMat:CYCLES_Glass",
-        render_engine="CYCLES",
-    )
-    assert mat_cycles is not None
-    assert getattr(mat_cycles, "use_raytrace_refraction", False) is True
-    assert getattr(mat_cycles, "surface_render_method", "BLENDED") == "BLENDED"
 
 
 @pytest.mark.skipif(not HAS_BPY, reason="Blender environment required")

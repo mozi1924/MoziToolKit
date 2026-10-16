@@ -2,7 +2,7 @@
 Materials utilities package.
 """
 
-from .builder import build_atlas_chunk_material, build_standalone_material
+from .builder import build_atlas_chunk_material
 from .pipeline import replace_materials, restore_materials_from_provenance
 try:
     from ...bridge.material import (
@@ -29,7 +29,6 @@ except (ImportError, ValueError):
 
 __all__ = [
     "build_atlas_chunk_material",
-    "build_standalone_material",
     "replace_materials",
     "restore_materials_from_provenance",
     "is_transmissive_block",

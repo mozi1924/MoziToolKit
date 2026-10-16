@@ -42,9 +42,8 @@
     - **`Mineways`**：深度解析 Mineways 材质映射逻辑与方块纹理。
     - **`Ice-Cube`**：智能匹配其材质别名与专属命名规范。
     - **`Generic` 通用模型**：智能去除材质前缀、版本别名映射与模糊匹配。
-- **双材质构建模式 (Dual Material Modes)**：
-  - **图集模式 (Atlas Mode)**：自动将所有方块贴图动态打包为一张紧凑高效的 Texture Atlas 图集，配合自定义 Atlas UV 变换节点组，大幅降低 Draw Call 与显存占用，完美支持平铺纹理（Tiling UV Wrapping）防溢色 Clamp 运算。
-  - **独立模式 (Standalone Mode)**：为每个方块创建独立的 PBR 材质节点树，针对逐帧动画贴图提供 UV 局部自动对齐重构。
+- **高性能图集分块材质体系 (Atlas Chunk Material Pipeline)**：
+  - 自动将所有方块贴图动态打包为紧凑高效的 Texture Atlas 图集分块，配合自定义 Atlas UV 变换节点组与几何属性驱动机制，大幅降低 Draw Call 与显存占用，完美支持平铺纹理（Tiling UV Wrapping）防溢色 Clamp 运算与 LabPBR 解码。
 - **材质来源追踪与无损复原 (`mtk_source_texture_key`)**：
   - 生成网格时自动写入面级来源属性 `mtk_source_texture_key`，支持基于面属性的一键材质原地无损复原与槽位自动自愈。
 - **🌿 生物群系颜色染色系统 (Biome Color Palettes & Colormap Tinting)**：

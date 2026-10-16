@@ -92,63 +92,27 @@ def update_materials_render_engine_adaptation(
             mat_name = getattr(mat, "name", "")
             mat_mode = mat.get("mtk_material_mode")
 
-            # Check if this is an MTK material
+            # Check if this is an MTK Atlas material
             is_atlas = (mat_mode == "ATLAS" or mat_name.startswith("MTK:Atlas:"))
-            is_standalone = (mat_mode == "STANDALONE" or (mat_name.startswith("MTK:") and not is_atlas))
-
-            if not is_atlas and not is_standalone and not mat_name.startswith("MTK:"):
+            if not is_atlas:
                 continue
 
             nodes = mat.node_tree.nodes
 
-            if is_atlas:
-                # Update Material Transmission Scale node
-                scale_node = nodes.get("Material Transmission Scale")
-                if scale_node and hasattr(scale_node, "inputs") and len(scale_node.inputs) > 1:
-                    if scale_node.inputs[1].default_value != atlas_trans_scale:
-                        scale_node.inputs[1].default_value = atlas_trans_scale
+            # Update Material Transmission Scale node
+            scale_node = nodes.get("Material Transmission Scale")
+            if scale_node and hasattr(scale_node, "inputs") and len(scale_node.inputs) > 1:
+                if scale_node.inputs[1].default_value != atlas_trans_scale:
+                    scale_node.inputs[1].default_value = atlas_trans_scale
+                    updated_count += 1
+
+            # Update LabPBR Decoder SSS
+            decoder_node = nodes.get("LabPBR Decoder")
+            if decoder_node and hasattr(decoder_node, "inputs"):
+                if "Disable Subsurface" in decoder_node.inputs:
+                    if decoder_node.inputs["Disable Subsurface"].default_value != bool(disable_sss):
+                        decoder_node.inputs["Disable Subsurface"].default_value = bool(disable_sss)
                         updated_count += 1
-
-                # Update LabPBR Decoder SSS
-                decoder_node = nodes.get("LabPBR Decoder")
-                if decoder_node and hasattr(decoder_node, "inputs"):
-                    if "Disable Subsurface" in decoder_node.inputs:
-                        if decoder_node.inputs["Disable Subsurface"].default_value != bool(disable_sss):
-                            decoder_node.inputs["Disable Subsurface"].default_value = bool(disable_sss)
-                            updated_count += 1
-
-            elif is_standalone:
-                tex_key = mat.get("mtk_source_texture_key")
-                clean_block = tex_key or mat_name.replace("MTK:", "")
-
-                if resolve_material_shading_config is not None:
-                    try:
-                        cfg = resolve_material_shading_config(
-                            clean_block=clean_block,
-                            texture_key=tex_key,
-                            render_engine=target_engine,
-                        )
-                        trans_weight = cfg.get("transmission_weight", 0.0)
-                        cfg_disable_sss = cfg.get("disable_subsurface", False)
-
-                        decoder_node = nodes.get("LabPBR Decoder")
-                        if decoder_node and hasattr(decoder_node, "inputs"):
-                            if "Transmission Weight" in decoder_node.inputs:
-                                if decoder_node.inputs["Transmission Weight"].default_value != trans_weight:
-                                    decoder_node.inputs["Transmission Weight"].default_value = trans_weight
-                                    updated_count += 1
-                            if "Disable Subsurface" in decoder_node.inputs:
-                                if decoder_node.inputs["Disable Subsurface"].default_value != bool(cfg_disable_sss):
-                                    decoder_node.inputs["Disable Subsurface"].default_value = bool(cfg_disable_sss)
-                                    updated_count += 1
-                        else:
-                            bsdf_node = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
-                            if bsdf_node and "Transmission Weight" in bsdf_node.inputs:
-                                if bsdf_node.inputs["Transmission Weight"].default_value != trans_weight:
-                                    bsdf_node.inputs["Transmission Weight"].default_value = trans_weight
-                                    updated_count += 1
-                    except Exception as e:
-                        logger.debug("Failed updating standalone shading config for %s: %s", mat_name, e)
 
     except Exception as e:
         logger.warning("Error during real-time render engine material adaptation: %s", e)

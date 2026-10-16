@@ -86,7 +86,7 @@ class PackEntry:
 class MaterialSettings:
     """Global material generation and replacement options."""
 
-    material_mode: str = "ATLAS"  # ATLAS | STANDALONE
+    material_mode: str = "ATLAS"  # ATLAS
     biome_preset: str = "PLAINS"
     pack_textures: bool = True
     render_engine: str = "AUTO"  # AUTO | CYCLES | EEVEE
@@ -113,9 +113,7 @@ class MaterialSettings:
     def from_dict(cls, data: Dict[str, Any]) -> MaterialSettings:
         if not isinstance(data, dict):
             return cls()
-        mode = data.get("material_mode", "ATLAS")
-        if mode not in {"ATLAS", "STANDALONE"}:
-            mode = "ATLAS"
+        mode = "ATLAS"
         r_engine = data.get("render_engine", "AUTO")
         if r_engine not in {"AUTO", "CYCLES", "EEVEE"}:
             r_engine = "AUTO"

@@ -49,7 +49,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         description="Target material organization mode",
         items=[
             ("ATLAS", "Atlas Mode", "Pack into single or few Atlas Chunk materials for maximum viewport performance"),
-            ("STANDALONE", "Standalone Mode", "Generate individual Principled BSDF / LabPBR materials for each block"),
         ],
         default="ATLAS",
     )
@@ -86,7 +85,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             layout.prop(self, "use_provenance")
             layout.separator()
 
-        layout.prop(self, "mode")
         layout.prop(self, "biome_preset")
 
         if not (has_prov and self.use_provenance):
@@ -165,7 +163,6 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
         description="Target material organization mode",
         items=[
             ("ATLAS", "Atlas Mode", "Reconstruct Atlas Chunk materials"),
-            ("STANDALONE", "Standalone Mode", "Reconstruct Standalone block materials"),
         ],
         default="ATLAS",
     )
