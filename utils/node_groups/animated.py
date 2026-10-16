@@ -14,10 +14,11 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 #   The UV is mapped into Frame 0 (top of strip) using Frame/Image dimensions.
 # In both modes, Current Frame and Next Frame subtract vertical frame steps
 # from the base Frame 0 coordinate.
-UV_TEMPLATE_VERSION = 9
-# Version 7 adds an explicit Scene frame_current driver variable so Blender's
-# dependency graph reliably evaluates animation time during scrubbing and renders.
-SCHEDULER_TEMPLATE_VERSION = 7
+# Version 10 adds defensive clamping to Frame Width/Height to protect against zero attributes.
+UV_TEMPLATE_VERSION = 10
+# Version 8 upgrades sockets to Float and dynamically clamps Frametime and Total Frames
+# to protect against uninitialized attributes and ensure smooth attribute-driven animation.
+SCHEDULER_TEMPLATE_VERSION = 8
 FRAME_BLEND_TEMPLATE_VERSION = 4
 
 
@@ -40,16 +41,23 @@ def ensure_animated_uv_mapping() -> bpy.types.NodeTree:
         ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ))
     nodes, links = group.nodes, group.links
-    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1000, 0))
+    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-1050, 0))
     group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(900, 0))
 
+    # Defensive clamping for Frame dimensions (minimum 1.0 to prevent division by zero)
+    safe_f_height = node(nodes, "ShaderNodeMath", "Safe Frame Height", location=(-880, -100), properties={"operation": "MAXIMUM"}, inputs={"Value[1]": 1.0})
+    link(links, group_input, "Frame Height", safe_f_height, "Value[0]")
+
+    safe_f_width = node(nodes, "ShaderNodeMath", "Safe Frame Width", location=(-880, 100), properties={"operation": "MAXIMUM"}, inputs={"Value[1]": 1.0})
+    link(links, group_input, "Frame Width", safe_f_width, "Value[0]")
+
     # Calculate normalized step size per frame
-    frame_step_v = node(nodes, "ShaderNodeMath", "Frame V Step", location=(-750, -100), properties={"operation": "DIVIDE"})
-    link(links, group_input, "Frame Height", frame_step_v, "Value[0]")
+    frame_step_v = node(nodes, "ShaderNodeMath", "Frame V Step", location=(-700, -100), properties={"operation": "DIVIDE"})
+    link(links, safe_f_height, "Value", frame_step_v, "Value[0]")
     link(links, group_input, "Image Height", frame_step_v, "Value[1]")
 
-    frame_step_u = node(nodes, "ShaderNodeMath", "Frame U Step", location=(-750, 100), properties={"operation": "DIVIDE"})
-    link(links, group_input, "Frame Width", frame_step_u, "Value[0]")
+    frame_step_u = node(nodes, "ShaderNodeMath", "Frame U Step", location=(-700, 100), properties={"operation": "DIVIDE"})
+    link(links, safe_f_width, "Value", frame_step_u, "Value[0]")
     link(links, group_input, "Image Width", frame_step_u, "Value[1]")
 
     # Standalone (Local UV) Branch: Map local 0..1 UV to Frame 0 at the top of the strip
@@ -104,9 +112,9 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
     if group.nodes and group.get("mozi_template_complete"):
         return group
     add_sockets(group, (
-        ("Total Frames", "INPUT", "NodeSocketInt", 16, 1, 100000),
-        ("Frametime", "INPUT", "NodeSocketInt", 1, 1, 100000),
-        ("Interpolate", "INPUT", "NodeSocketBool", False),
+        ("Total Frames", "INPUT", "NodeSocketFloat", 16.0, 1.0, 100000.0),
+        ("Frametime", "INPUT", "NodeSocketFloat", 1.0, 1.0, 100000.0),
+        ("Interpolate", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Current Frame", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
         ("Next Frame", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 100000.0),
         ("Blend Factor", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
@@ -137,26 +145,177 @@ def ensure_animation_scheduler() -> bpy.types.NodeTree:
         variable.targets[0].data_path = data_path
     tick_rate = nodes.new("ShaderNodeValue"); tick_rate.name = "Minecraft Tick Rate"; tick_rate.label = "Minecraft Tick Rate"; tick_rate.location = (-700, -100); tick_rate.outputs["Value"].default_value = 20.0
     elapsed = node(nodes, "ShaderNodeMath", "Elapsed Frames", location=(-500, 120), properties={"operation": "SUBTRACT"}); ticks = node(nodes, "ShaderNodeMath", "Ticks Numerator", location=(-320, 120), properties={"operation": "MULTIPLY"}); mc_tick = node(nodes, "ShaderNodeMath", "MC Tick", location=(-140, 120), properties={"operation": "DIVIDE"}); phase = node(nodes, "ShaderNodeMath", "Frame Phase", location=(40, 120), properties={"operation": "DIVIDE"})
+
+    # Defensive clamping for Frametime and Total Frames (minimum 1.0 to prevent division or wrap by zero)
+    safe_frametime = node(nodes, "ShaderNodeMath", "Safe Frametime", location=(-70, 20), properties={"operation": "MAXIMUM"}, inputs={"Value[1]": 1.0})
+    link(links, group_input, "Frametime", safe_frametime, "Value[0]")
+
+    safe_total = node(nodes, "ShaderNodeMath", "Safe Total Frames", location=(310, -50), properties={"operation": "MAXIMUM"}, inputs={"Value[1]": 1.0})
+    link(links, group_input, "Total Frames", safe_total, "Value[0]")
+
     current_raw = node(nodes, "ShaderNodeMath", "Current Unwrapped", location=(220, 170), properties={"operation": "FLOOR"}); fraction = node(nodes, "ShaderNodeMath", "Frame Fraction", location=(220, 50), properties={"operation": "FRACT"}); current = node(nodes, "ShaderNodeMath", "Current Frame", location=(400, 170), properties={"operation": "WRAP"}, inputs={"Value[2]": 0.0}); next_raw = node(nodes, "ShaderNodeMath", "Next Unwrapped", location=(400, 60), properties={"operation": "ADD"}, inputs={"Value[1]": 1.0}); next_frame = node(nodes, "ShaderNodeMath", "Next Frame", location=(570, 60), properties={"operation": "WRAP"}, inputs={"Value[2]": 0.0}); blend = node(nodes, "ShaderNodeMath", "Blend Factor", location=(400, -70), properties={"operation": "MULTIPLY"})
-    link(links, frame, "Value", elapsed, "Value[0]"); link(links, start, "Value", elapsed, "Value[1]"); link(links, elapsed, "Value", ticks, "Value[0]"); link(links, tick_rate, "Value", ticks, "Value[1]"); link(links, ticks, "Value", mc_tick, "Value[0]"); link(links, fps, "Value", mc_tick, "Value[1]"); link(links, mc_tick, "Value", phase, "Value[0]"); link(links, group_input, "Frametime", phase, "Value[1]")
-    link(links, phase, "Value", current_raw, "Value[0]"); link(links, phase, "Value", fraction, "Value[0]"); link(links, current_raw, "Value", current, "Value[0]"); link(links, group_input, "Total Frames", current, "Value[1]"); link(links, current_raw, "Value", next_raw, "Value[0]"); link(links, next_raw, "Value", next_frame, "Value[0]"); link(links, group_input, "Total Frames", next_frame, "Value[1]"); link(links, fraction, "Value", blend, "Value[0]"); link(links, group_input, "Interpolate", blend, "Value[1]")
+
+    link(links, frame, "Value", elapsed, "Value[0]"); link(links, start, "Value", elapsed, "Value[1]"); link(links, elapsed, "Value", ticks, "Value[0]"); link(links, tick_rate, "Value", ticks, "Value[1]"); link(links, ticks, "Value", mc_tick, "Value[0]"); link(links, fps, "Value", mc_tick, "Value[1]"); link(links, mc_tick, "Value", phase, "Value[0]"); link(links, safe_frametime, "Value", phase, "Value[1]")
+    link(links, phase, "Value", current_raw, "Value[0]"); link(links, phase, "Value", fraction, "Value[0]"); link(links, current_raw, "Value", current, "Value[0]"); link(links, safe_total, "Value", current, "Value[1]"); link(links, current_raw, "Value", next_raw, "Value[0]"); link(links, next_raw, "Value", next_frame, "Value[0]"); link(links, safe_total, "Value", next_frame, "Value[1]"); link(links, fraction, "Value", blend, "Value[0]"); link(links, group_input, "Interpolate", blend, "Value[1]")
     link(links, current, "Value", group_output, "Current Frame"); link(links, next_frame, "Value", group_output, "Next Frame"); link(links, blend, "Value", group_output, "Blend Factor")
     return finalize_group(group)
 
 
+FRAME_BLEND_TEMPLATE_VERSION = 5
+NORMAL_BLEND_TEMPLATE_VERSION = 1
+SPECULAR_BLEND_TEMPLATE_VERSION = 1
+PBR_BLEND_TEMPLATE_VERSION = 1
+
+
 def ensure_animated_frame_blend() -> bpy.types.NodeTree:
+    """Blends between Current Frame and Next Frame for Color (RGB) and Alpha channels."""
     group = ensure_group("MC_Animated_Frame_Blend", FRAME_BLEND_TEMPLATE_VERSION)
     if group.nodes and group.get("mozi_template_complete"):
         return group
     add_sockets(group, (
-        ("Current Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1)),
-        ("Next Color", "INPUT", "NodeSocketColor", (1, 1, 1, 1)),
+        ("Current Color", "INPUT", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
+        ("Next Color", "INPUT", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
         ("Current Alpha", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Next Alpha", "INPUT", "NodeSocketFloat", 1.0, 0.0, 1.0),
         ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
         ("Color", "OUTPUT", "NodeSocketColor", None),
         ("Alpha", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
     ))
-    nodes, links = group.nodes, group.links; group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-300, 0)); group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(400, 0)); color = node(nodes, "ShaderNodeMixRGB", "Frame Color Mix", location=(0, 100)); inverse = node(nodes, "ShaderNodeMath", "Inverse Blend", location=(-30, -100), properties={"operation": "SUBTRACT"}, inputs={"Value[0]": 1.0}); current_weight = node(nodes, "ShaderNodeMath", "Current Alpha Weight", location=(150, -100), properties={"operation": "MULTIPLY"}); next_weight = node(nodes, "ShaderNodeMath", "Next Alpha Weight", location=(150, -200), properties={"operation": "MULTIPLY"}); alpha = node(nodes, "ShaderNodeMath", "Frame Alpha Mix", location=(300, -150), properties={"operation": "ADD"})
-    link(links, group_input, "Blend Factor", color, "Factor"); link(links, group_input, "Current Color", color, "Color1"); link(links, group_input, "Next Color", color, "Color2"); link(links, color, "Color", group_output, "Color"); link(links, group_input, "Blend Factor", inverse, "Value[1]"); link(links, group_input, "Current Alpha", current_weight, "Value[0]"); link(links, inverse, "Value", current_weight, "Value[1]"); link(links, group_input, "Next Alpha", next_weight, "Value[0]"); link(links, group_input, "Blend Factor", next_weight, "Value[1]"); link(links, current_weight, "Value", alpha, "Value[0]"); link(links, next_weight, "Value", alpha, "Value[1]"); link(links, alpha, "Value", group_output, "Alpha")
+    nodes, links = group.nodes, group.links
+    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-350, 0))
+    group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(450, 0))
+
+    color_mix = node(nodes, "ShaderNodeMix", "Frame Color Mix", location=(0, 100), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    alpha_mix = node(nodes, "ShaderNodeMix", "Frame Alpha Mix", location=(0, -100), properties={"data_type": "FLOAT", "blend_type": "MIX"})
+
+    link(links, group_input, "Blend Factor", color_mix, "Factor[0]")
+    link(links, group_input, "Current Color", color_mix, "A[2]")
+    link(links, group_input, "Next Color", color_mix, "B[2]")
+    link(links, color_mix, "Result[2]", group_output, "Color")
+
+    link(links, group_input, "Blend Factor", alpha_mix, "Factor[0]")
+    link(links, group_input, "Current Alpha", alpha_mix, "A[0]")
+    link(links, group_input, "Next Alpha", alpha_mix, "B[0]")
+    link(links, alpha_mix, "Result[0]", group_output, "Alpha")
+
+    return finalize_group(group)
+
+
+def ensure_animated_normal_blend() -> bpy.types.NodeTree:
+    """Blends between Current Frame and Next Frame for Normal (_n) Vector and Height channels."""
+    group = ensure_group("MC_Animated_Normal_Blend", NORMAL_BLEND_TEMPLATE_VERSION)
+    if group.nodes and group.get("mozi_template_complete"):
+        return group
+    add_sockets(group, (
+        ("Current Normal", "INPUT", "NodeSocketColor", (0.5, 0.5, 1.0, 1.0)),
+        ("Next Normal", "INPUT", "NodeSocketColor", (0.5, 0.5, 1.0, 1.0)),
+        ("Current Height", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Next Height", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Normal", "OUTPUT", "NodeSocketColor", None),
+        ("Height", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+    ))
+    nodes, links = group.nodes, group.links
+    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-350, 0))
+    group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(450, 0))
+
+    norm_mix = node(nodes, "ShaderNodeMix", "Normal Mix", location=(0, 100), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    height_mix = node(nodes, "ShaderNodeMix", "Height Mix", location=(0, -100), properties={"data_type": "FLOAT", "blend_type": "MIX"})
+
+    link(links, group_input, "Blend Factor", norm_mix, "Factor[0]")
+    link(links, group_input, "Current Normal", norm_mix, "A[2]")
+    link(links, group_input, "Next Normal", norm_mix, "B[2]")
+    link(links, norm_mix, "Result[2]", group_output, "Normal")
+
+    link(links, group_input, "Blend Factor", height_mix, "Factor[0]")
+    link(links, group_input, "Current Height", height_mix, "A[0]")
+    link(links, group_input, "Next Height", height_mix, "B[0]")
+    link(links, height_mix, "Result[0]", group_output, "Height")
+
+    return finalize_group(group)
+
+
+def ensure_animated_specular_blend() -> bpy.types.NodeTree:
+    """Blends between Current Frame and Next Frame for Specular (_s) Map and Emission channels."""
+    group = ensure_group("MC_Animated_Specular_Blend", SPECULAR_BLEND_TEMPLATE_VERSION)
+    if group.nodes and group.get("mozi_template_complete"):
+        return group
+    add_sockets(group, (
+        ("Current Specular", "INPUT", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
+        ("Next Specular", "INPUT", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
+        ("Current Emission", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Next Emission", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Specular", "OUTPUT", "NodeSocketColor", None),
+        ("Emission", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+    ))
+    nodes, links = group.nodes, group.links
+    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-350, 0))
+    group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(450, 0))
+
+    spec_mix = node(nodes, "ShaderNodeMix", "Specular Mix", location=(0, 100), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    emission_mix = node(nodes, "ShaderNodeMix", "Emission Mix", location=(0, -100), properties={"data_type": "FLOAT", "blend_type": "MIX"})
+
+    link(links, group_input, "Blend Factor", spec_mix, "Factor[0]")
+    link(links, group_input, "Current Specular", spec_mix, "A[2]")
+    link(links, group_input, "Next Specular", spec_mix, "B[2]")
+    link(links, spec_mix, "Result[2]", group_output, "Specular")
+
+    link(links, group_input, "Blend Factor", emission_mix, "Factor[0]")
+    link(links, group_input, "Current Emission", emission_mix, "A[0]")
+    link(links, group_input, "Next Emission", emission_mix, "B[0]")
+    link(links, emission_mix, "Result[0]", group_output, "Emission")
+
+    return finalize_group(group)
+
+
+def ensure_animated_pbr_blend() -> bpy.types.NodeTree:
+    """Composite PBR frame blend combining Normal, Height, Specular, and Emission channels."""
+    group = ensure_group("MC_Animated_PBR_Blend", PBR_BLEND_TEMPLATE_VERSION)
+    if group.nodes and group.get("mozi_template_complete"):
+        return group
+    add_sockets(group, (
+        ("Current Normal", "INPUT", "NodeSocketColor", (0.5, 0.5, 1.0, 1.0)),
+        ("Next Normal", "INPUT", "NodeSocketColor", (0.5, 0.5, 1.0, 1.0)),
+        ("Current Height", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Next Height", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Current Specular", "INPUT", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
+        ("Next Specular", "INPUT", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
+        ("Current Emission", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Next Emission", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Blend Factor", "INPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Normal", "OUTPUT", "NodeSocketColor", None),
+        ("Height", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+        ("Specular", "OUTPUT", "NodeSocketColor", None),
+        ("Emission", "OUTPUT", "NodeSocketFloat", 0.0, 0.0, 1.0),
+    ))
+    nodes, links = group.nodes, group.links
+    group_input = node(nodes, "NodeGroupInput", "Group Input", location=(-350, 0))
+    group_output = node(nodes, "NodeGroupOutput", "Group Output", location=(450, 0))
+
+    norm_mix = node(nodes, "ShaderNodeMix", "Normal Mix", location=(0, 200), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    height_mix = node(nodes, "ShaderNodeMix", "Height Mix", location=(0, 50), properties={"data_type": "FLOAT", "blend_type": "MIX"})
+    spec_mix = node(nodes, "ShaderNodeMix", "Specular Mix", location=(0, -100), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    emission_mix = node(nodes, "ShaderNodeMix", "Emission Mix", location=(0, -250), properties={"data_type": "FLOAT", "blend_type": "MIX"})
+
+    link(links, group_input, "Blend Factor", norm_mix, "Factor[0]")
+    link(links, group_input, "Current Normal", norm_mix, "A[2]")
+    link(links, group_input, "Next Normal", norm_mix, "B[2]")
+    link(links, norm_mix, "Result[2]", group_output, "Normal")
+
+    link(links, group_input, "Blend Factor", height_mix, "Factor[0]")
+    link(links, group_input, "Current Height", height_mix, "A[0]")
+    link(links, group_input, "Next Height", height_mix, "B[0]")
+    link(links, height_mix, "Result[0]", group_output, "Height")
+
+    link(links, group_input, "Blend Factor", spec_mix, "Factor[0]")
+    link(links, group_input, "Current Specular", spec_mix, "A[2]")
+    link(links, group_input, "Next Specular", spec_mix, "B[2]")
+    link(links, spec_mix, "Result[2]", group_output, "Specular")
+
+    link(links, group_input, "Blend Factor", emission_mix, "Factor[0]")
+    link(links, group_input, "Current Emission", emission_mix, "A[0]")
+    link(links, group_input, "Next Emission", emission_mix, "B[0]")
+    link(links, emission_mix, "Result[0]", group_output, "Emission")
+
     return finalize_group(group)

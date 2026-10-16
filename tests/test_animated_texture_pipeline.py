@@ -102,6 +102,74 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
         self.assertNotIn("Animated Frame Blend", static_node_names)
         self.assertIn("Atlas Albedo Texture", static_node_names)
 
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_atlas_builder_animated_pbr_blend_node_structure(self):
+        try:
+            from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
+        except ImportError:
+            from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            alb = tmp / "test_pbr_albedo.png"
+            norm = tmp / "test_pbr_n.png"
+            spec = tmp / "test_pbr_s.png"
+            over = tmp / "test_pbr_overlay.png"
+            png_bytes = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x00\x10\x08\x06\x00\x00\x00\x1f\xf3\xffa\x00\x00\x00\x1fIDATh\x81\xed\xc1\x01\r\x00\x00\x00\xc2 \xfb\xa77\xc7\x0e\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x01\xa7\xeb\x99\x1e\x00\x00\x00\x00IEND\xaeB`\x82"
+            for p in [alb, norm, spec, over]:
+                p.write_bytes(png_bytes)
+
+            mat_pbr_anim = build_atlas_chunk_material(
+                chunk_id=2,
+                albedo_path=alb,
+                normal_path=norm,
+                specular_path=spec,
+                overlay_path=over,
+                category="blocks",
+                category_chunk_index=2,
+                is_animated=True,
+                atlas_width=1024.0,
+                atlas_height=1024.0,
+                tile_width=16.0,
+                tile_height=16.0,
+                force_rebuild=True,
+            )
+
+        self.assertIsNotNone(mat_pbr_anim)
+        nodes = {n.name: n for n in mat_pbr_anim.node_tree.nodes}
+
+        # Check node presence
+        for expected in [
+            "Atlas Albedo Texture (Current)", "Atlas Albedo Texture (Next)", "Animated Frame Blend",
+            "Atlas Normal Texture (Current)", "Atlas Normal Texture (Next)", "Animated Normal Blend",
+            "Atlas Specular Texture (Current)", "Atlas Specular Texture (Next)", "Animated Specular Blend",
+            "Atlas Overlay Texture (Current)", "Atlas Overlay Texture (Next)", "Animated Overlay Blend",
+            "LabPBR Decoder",
+        ]:
+            self.assertIn(expected, nodes, f"{expected} must be created for animated PBR material")
+
+        links = mat_pbr_anim.node_tree.links
+        decoder = nodes["LabPBR Decoder"]
+        tint = nodes["MC Biome Tint"]
+
+        # Check LabPBR connections from animated blends
+        dec_norm = [l for l in links if l.to_socket == decoder.inputs["Normal (_n) Color"]]
+        dec_height = [l for l in links if l.to_socket == decoder.inputs["Normal (_n) Alpha (Height)"]]
+        self.assertEqual(dec_norm[0].from_node.name, "Animated Normal Blend")
+        self.assertEqual(dec_height[0].from_node.name, "Animated Normal Blend")
+
+        dec_spec = [l for l in links if l.to_socket == decoder.inputs["Specular (_s) Color"]]
+        dec_emiss = [l for l in links if l.to_socket == decoder.inputs["Specular (_s) Alpha (Emission)"]]
+        self.assertEqual(dec_spec[0].from_node.name, "Animated Specular Blend")
+        self.assertEqual(dec_emiss[0].from_node.name, "Animated Specular Blend")
+
+        # Check Biome Tint overlay connections
+        tint_over_col = [l for l in links if l.to_socket == tint.inputs["Overlay Color"]]
+        tint_over_alpha = [l for l in links if l.to_socket == tint.inputs["Overlay Alpha"]]
+        self.assertEqual(tint_over_col[0].from_node.name, "Animated Overlay Blend")
+        self.assertEqual(tint_over_alpha[0].from_node.name, "Animated Overlay Blend")
+
 
 if __name__ == "__main__":
     unittest.main()
