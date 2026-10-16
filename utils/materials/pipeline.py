@@ -74,6 +74,25 @@ try:
     from .builder.atlas_builder import build_atlas_chunk_material
     from .builder.standalone_builder import build_standalone_material
     from .matching.presets.registry import build_matching_context
+    from .biome import (
+        get_or_load_biome_resolver,
+        compute_biome_tint_attributes,
+        apply_biome_tint_attributes,
+    )
+    from .constants import (
+        ATTR_SOURCE_TEXTURE_KEY,
+        ATTR_MATERIAL_SLOT,
+        ATTR_ATLAS_CHUNK_ID,
+        ATTR_ATLAS_TEXTURE_ID,
+        ATTR_UV_MODE,
+        ATTR_UV_TILING_TRANSFORM,
+        ATTR_UV_TRANSFORM,
+        ATTR_UV_ROTATION,
+        ATTR_BIOME_TINT_DATA,
+        ATTR_BIOME_TINT_COLOR,
+        ATTR_COLORMAP_UV,
+        ATTR_MATERIAL_PROPS,
+    )
 except (ImportError, ValueError):
     from bridge.assets import (
         get_cache_dir,
@@ -102,37 +121,6 @@ except (ImportError, ValueError):
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
     from utils.materials.builder.standalone_builder import build_standalone_material
     from utils.materials.matching.presets.registry import build_matching_context
-    from .biome import (
-        get_or_load_biome_resolver,
-        compute_biome_tint_attributes,
-        apply_biome_tint_attributes,
-    )
-    from .constants import (
-        ATTR_SOURCE_TEXTURE_KEY,
-        ATTR_MATERIAL_SLOT,
-        ATTR_ATLAS_CHUNK_ID,
-        ATTR_ATLAS_TEXTURE_ID,
-        ATTR_UV_MODE,
-        ATTR_UV_TILING_TRANSFORM,
-        ATTR_UV_TRANSFORM,
-        ATTR_UV_ROTATION,
-        ATTR_BIOME_TINT_DATA,
-        ATTR_BIOME_TINT_COLOR,
-        ATTR_COLORMAP_UV,
-        ATTR_MATERIAL_PROPS,
-    )
-except (ImportError, ValueError):
-    from bridge.assets import get_cache_dir, precompile_stack
-    from bridge.mesh import (
-        _get_mesh,
-        inject_face_attribute_string,
-        inject_face_attribute_int,
-        inject_face_attribute_float,
-        inject_face_attribute_float4,
-    )
-    from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-    from utils.materials.builder.standalone_builder import build_standalone_material
-    from utils.materials.matching.presets.registry import build_matching_context
     try:
         from utils.materials.biome import (
             get_or_load_biome_resolver,
@@ -155,6 +143,20 @@ except (ImportError, ValueError):
         )
     except Exception:
         pass
+
+if "ATTR_MATERIAL_PROPS" not in globals():
+    ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
+    ATTR_MATERIAL_SLOT = "mtk_material_slot"
+    ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
+    ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
+    ATTR_UV_MODE = "mtk_uv_mode"
+    ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"
+    ATTR_UV_TRANSFORM = "mtk_uv_transform"
+    ATTR_UV_ROTATION = "mtk_uv_rotation"
+    ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
+    ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
+    ATTR_COLORMAP_UV = "mtk_colormap_uv"
+    ATTR_MATERIAL_PROPS = "mtk_material_props"
 
 
 def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:

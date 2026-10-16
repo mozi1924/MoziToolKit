@@ -400,7 +400,9 @@ def compute_mesh_material_props(
     Compute packed material properties `[emission, thin_wall, transmission, sticker_threshold]`
     for a list of face texture keys in parallel Rayon in Rust.
     """
-    mtk = require_libmtk("compute_mesh_material_props")
+    mtk = get_libmtk()
+    if mtk is None or not hasattr(mtk, "compute_mesh_material_props"):
+        return [[0.0, 0.0, 0.0, 0.0]] * len(face_source_keys)
     return mtk.compute_mesh_material_props(
         list(face_source_keys),
         list(block_names) if block_names is not None else None,
@@ -415,7 +417,9 @@ def compute_flat_material_props(
     Compute flat packed material properties (float array of length len * 4)
     for zero-copy memoryview / foreach_set injection into Blender Mesh.
     """
-    mtk = require_libmtk("compute_flat_material_props")
+    mtk = get_libmtk()
+    if mtk is None or not hasattr(mtk, "compute_flat_material_props"):
+        return [0.0] * (len(face_source_keys) * 4)
     return mtk.compute_flat_material_props(
         list(face_source_keys),
         list(block_names) if block_names is not None else None,
