@@ -45,8 +45,9 @@ def precompile_stack(
         raise ValueError("No valid enabled resource packs or JARs found in the active stack.")
 
     if num_threads is None and prefs is not None:
-        num_threads = getattr(prefs, "thread_count", 0)
-    if num_threads == 0:
+        raw_threads = getattr(prefs, "thread_count", 0)
+        num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
+    elif num_threads == 0:
         num_threads = None
 
     start_time = time.time()

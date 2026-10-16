@@ -76,7 +76,6 @@ def main() -> int:
         max_atlas_width=4096,
         max_atlas_height=4096,
         compile_atlas=True,
-        compile_standalone=True,
         compile_models=True,
     )
     print(f"Precompiled asset cache into {out}: {result}")

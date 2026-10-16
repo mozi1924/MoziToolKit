@@ -100,13 +100,17 @@ def load_and_mesh_minecraft_save(
 
     # Thread count resolution
     if num_threads is None and prefs is not None:
-        num_threads = getattr(prefs, "thread_count", 0) or None
+        raw_threads = getattr(prefs, "thread_count", 0)
+        num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
 
     ctm_solver = get_configured_ctm_solver(prefs) if enable_ctm else None
 
     anim_tex_enabled = enable_animated_textures
     if anim_tex_enabled is None:
-        anim_tex_enabled = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
+    else:
+        anim_tex_enabled = bool(anim_tex_enabled)
 
     config_kwargs = {
         "enable_ao": enable_ao,
@@ -490,7 +494,10 @@ def import_save_to_blender(
     """
     anim_tex_enabled = enable_animated_textures
     if anim_tex_enabled is None:
-        anim_tex_enabled = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
+    else:
+        anim_tex_enabled = bool(anim_tex_enabled)
 
     mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
         world_dir=world_dir,

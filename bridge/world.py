@@ -463,11 +463,15 @@ def mesh_voxel_storage(
             except Exception:
                 pass
         if prefs is not None:
-            num_threads = getattr(prefs, "thread_count", 0) or None
+            raw_threads = getattr(prefs, "thread_count", 0)
+            num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
 
     anim_tex_enabled = enable_animated_textures
     if anim_tex_enabled is None:
-        anim_tex_enabled = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
+    else:
+        anim_tex_enabled = bool(anim_tex_enabled)
 
     if config is None:
         config_kwargs = {
