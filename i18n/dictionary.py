@@ -730,7 +730,15 @@ translations_dict = {
         ('*', 'Hide Voxel Cloud (Mask)'): '隐藏体素点云 (遮罩)',
         ('*', 'Show Voxel Cloud (Unmask)'): '显示体素点云 (解除遮罩)',
         ('*', 'Carve Mode'): '雕刻模式',
+        ('*', 'Exit Carve Mode'): '退出雕刻模式',
+        ('*', 'Carving (Edit Mode)'): '雕刻中 (编辑模式)',
+        ('*', 'Carve Voxel Point Cloud'): '雕刻体素点云',
+        ('Operator', 'Carve Voxel Point Cloud'): '雕刻体素点云',
+        ('*', 'Enter or exit Edit Mode on the voxel point cloud to select and delete blocks'): '进入或退出体素点云编辑模式以框选并删除方块',
+        ('*', 'Carve mode action to perform'): '要执行的雕刻模式动作',
+        ('*', 'Action to perform on point cloud visibility'): '针对点云可见性执行的动作',
         ('*', 'Toggle Voxel Point Cloud'): '切换体素点云',
         ('*', 'Carving Active: Delete vertices, then Remesh'): '雕刻中: 编辑模式删点后，点击下方重构',
     }
 }
+

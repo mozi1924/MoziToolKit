@@ -91,6 +91,15 @@ def set_voxel_cloud_visibility(
     """
     if not HAS_BPY or obj is None:
         return False
+    # Ensure object itself is not hidden in viewport so the mask can be seen
+    if hasattr(obj, "hide_set"):
+        try:
+            obj.hide_set(False)
+        except Exception:
+            pass
+    if hasattr(obj, "hide_viewport"):
+        obj.hide_viewport = False
+
     mod = obj.modifiers.get(modifier_name)
     if mod is None or mod.type != "MASK":
         return False
@@ -105,6 +114,15 @@ def is_voxel_cloud_visible(
     """Checks whether the voxel cloud is currently visible in the viewport."""
     if not HAS_BPY or obj is None:
         return False
+    if hasattr(obj, "hide_get"):
+        try:
+            if obj.hide_get():
+                return False
+        except Exception:
+            pass
+    if getattr(obj, "hide_viewport", False):
+        return False
+
     mod = obj.modifiers.get(modifier_name)
     if mod is None or mod.type != "MASK":
         return True
@@ -162,6 +180,10 @@ def get_associated_parent_mesh(cloud_or_mesh: Any) -> Optional[Any]:
     # Query parent hierarchy
     if obj.parent and obj.parent.type == "MESH":
         return obj.parent
+    if obj.parent and getattr(obj.parent, "type", "") == "EMPTY":
+        for sibling in getattr(obj.parent, "children", []):
+            if sibling != obj and getattr(sibling, "type", "") == "MESH" and not sibling.get("mtk_is_voxel_cloud"):
+                return sibling
 
     # Fallback to custom property pointer
     world_name = obj.get("mtk_world_mesh")

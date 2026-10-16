@@ -30,15 +30,33 @@ except (ImportError, ValueError):
 
 
 def _resolve_target_cloud(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:
-    active = context.active_object
-    if active is None or active.type != "MESH":
+    if context is None:
         return None, None
-    if active.get("mtk_is_voxel_cloud"):
-        world_name = active.get("mtk_world_mesh") or active.parent.name if active.parent else None
-        world_obj = bpy.data.objects.get(world_name) if world_name else None
-        return world_obj, active
-    cloud_obj = get_associated_voxel_cloud(active)
-    return active, cloud_obj
+    active = getattr(context, "active_object", None)
+    if active is None:
+        selected = getattr(context, "selected_objects", [])
+        active = selected[0] if selected else None
+    if active is None:
+        return None, None
+
+    if getattr(active, "type", "") == "MESH":
+        if active.get("mtk_is_voxel_cloud"):
+            world_name = active.get("mtk_world_mesh") or (active.parent.name if active.parent else None)
+            world_obj = bpy.data.objects.get(world_name) if world_name else None
+            return world_obj, active
+        cloud_obj = get_associated_voxel_cloud(active)
+        return active, cloud_obj
+
+    if getattr(active, "type", "") == "EMPTY":
+        cloud_obj = get_associated_voxel_cloud(active)
+        world_obj = None
+        for child in getattr(active, "children", []):
+            if getattr(child, "type", "") == "MESH" and not child.get("mtk_is_voxel_cloud"):
+                world_obj = child
+                break
+        return world_obj, cloud_obj
+
+    return None, None
 
 
 class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
@@ -77,42 +95,58 @@ class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
         if cloud_obj is not None:
             v_count = len(cloud_obj.data.vertices)
             visible = is_voxel_cloud_visible(cloud_obj)
-            mask_mod = cloud_obj.modifiers.get(MASK_MODIFIER_NAME)
+            is_carving = (
+                getattr(context, "mode", "OBJECT") == "EDIT_MESH"
+                and getattr(context, "active_object", None) == cloud_obj
+            )
 
             col_cloud = box_voxel.column(align=True)
             r_st = col_cloud.row(align=True)
             r_st.label(text=f"{tr('Voxel Count')}: {v_count}", icon="POINTCLOUD_DATA")
-            r_st.label(text=f"{tr('Status')}: {tr('Visible') if visible else tr('Masked (Hidden)')}")
+            if is_carving:
+                r_st.label(text=f"{tr('Status')}: {tr('Carving (Edit Mode)')}")
+            else:
+                r_st.label(text=f"{tr('Status')}: {tr('Visible') if visible else tr('Masked (Hidden)')}")
 
-            if context.mode == "EDIT_MESH" and context.active_object == cloud_obj:
+            if is_carving:
                 tip_box = box_voxel.box()
                 tip_box.alert = True
                 tip_box.label(text=tr("Carving Active: Delete vertices, then Remesh"), icon="COLORSET_01_VEC")
 
             r_toggle = box_voxel.row(align=True)
+            # Visibility Button: toggles Mask modifier unmask/mask
             if visible:
-                r_toggle.operator(
+                op_vis = r_toggle.operator(
                     "mozi.toggle_voxel_cloud",
                     text=tr("Hide Voxel Cloud (Mask)"),
                     icon="HIDE_ON",
                 )
+                op_vis.action = "HIDE"
             else:
-                r_toggle.operator(
+                op_vis = r_toggle.operator(
                     "mozi.toggle_voxel_cloud",
                     text=tr("Show Voxel Cloud (Unmask)"),
                     icon="HIDE_OFF",
                 )
+                op_vis.action = "SHOW"
 
-            op_edit = r_toggle.operator(
-                "mozi.toggle_voxel_cloud",
-                text=tr("Carve Mode"),
-                icon="EDITMODE_HLT",
-            )
-            op_edit.enter_edit_mode = True
-
-            if mask_mod and mask_mod.type == "MASK":
-                r_thresh = box_voxel.row(align=True)
-                r_thresh.prop(mask_mod, "threshold", text=tr("Mask Threshold"), slider=True)
+            # Carve Mode Button: switches to vertex edit mode or returns to object mode
+            if is_carving:
+                op_edit = r_toggle.operator(
+                    "mozi.carve_voxel_cloud",
+                    text=tr("Exit Carve Mode"),
+                    icon="CHECKMARK",
+                    depress=True,
+                )
+                op_edit.action = "EXIT"
+            else:
+                op_edit = r_toggle.operator(
+                    "mozi.carve_voxel_cloud",
+                    text=tr("Carve Mode"),
+                    icon="EDITMODE_HLT",
+                    depress=False,
+                )
+                op_edit.action = "ENTER"
         else:
             r_cloud_gen = box_voxel.row(align=True)
             r_cloud_gen.operator(
