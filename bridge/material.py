@@ -104,7 +104,7 @@ class _FallbackBiomeResolver:
             "base_tint_weight": wt,
             "overlay_tint_weight": 0.0,
             "is_hardcoded": is_hc,
-            "hardcoded_color": None,
+            "hardcoded_color": get_hardcoded_tint(full) if is_hc else None,
         }
 
     def get_overlay_texture(self, texture_stem: str) -> Optional[str]:
@@ -218,6 +218,43 @@ def get_all_biomes() -> List[Dict[str, Any]]:
     if mtk and hasattr(mtk, "get_all_biomes"):
         return mtk.get_all_biomes()
     return [{"id": "plains", "name": "Plains", "temperature": 0.8, "humidity": 0.4}]
+
+
+def get_hardcoded_tint(name: str) -> Optional[Tuple[float, float, float, float]]:
+    """Retrieve hardcoded linear RGBA tint for a vanilla block or texture stem from Rust SSOT."""
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(mtk, "get_hardcoded_tint"):
+        res = mtk.get_hardcoded_tint(name)
+        if res is not None:
+            return tuple(res)
+    # Safe fallback if native module is absent
+    clean = name.split("/")[-1].split("\\")[-1].replace(".png", "").lower()
+    _FALLBACK_HARDCODED = {
+        "spruce": (0.11697, 0.32168, 0.11697, 1.0),
+        "birch": (0.21586, 0.38643, 0.09084, 1.0),
+        "lily_pad": (0.01314, 0.21586, 0.02843, 1.0),
+    }
+    for k, v in _FALLBACK_HARDCODED.items():
+        if k in clean:
+            return v
+    return None
+
+
+def get_hardcoded_tint_hex(name: str) -> Optional[str]:
+    """Retrieve hardcoded hex string for a vanilla block or texture stem from Rust SSOT."""
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(mtk, "get_hardcoded_tint_hex"):
+        return mtk.get_hardcoded_tint_hex(name)
+    clean = name.split("/")[-1].split("\\")[-1].replace(".png", "").lower()
+    _FALLBACK_HEX = {
+        "spruce": "#619961",
+        "birch": "#80A755",
+        "lily_pad": "#208030",
+    }
+    for k, v in _FALLBACK_HEX.items():
+        if k in clean:
+            return v
+    return None
 
 
 def compute_biome_tint_attributes(
@@ -523,6 +560,8 @@ __all__ = [
     "get_biome_meta",
     "get_colormap_uv",
     "get_all_biomes",
+    "get_hardcoded_tint",
+    "get_hardcoded_tint_hex",
     "compute_biome_tint_attributes",
     "compute_mesh_biome_attributes_from_storage",
     "MaterialResolver",

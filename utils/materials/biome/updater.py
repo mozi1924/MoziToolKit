@@ -37,6 +37,7 @@ from .biome import (
     TINT_TYPE_WATER,
     TINT_TYPE_HARDCODED,
     TINT_TYPE_DRY_FOLIAGE,
+    get_hardcoded_tint,
 )
 
 # In-memory cache for original face tint types (to prevent RNA allocation overhead and preserve base categories)
@@ -629,7 +630,12 @@ def update_object_biome(
             has_custom = False
             resolved_col = (1.0, 1.0, 1.0, 1.0)
 
-            if "water" in check_name:
+            # Query Rust SSOT for hardcoded tint (e.g. spruce_leaves, birch_leaves, lily_pad, redstone_wire)
+            hc_tint = (get_hardcoded_tint(key) if key else None) or get_hardcoded_tint(mat_lower)
+            if hc_tint is not None:
+                has_custom = False
+                resolved_col = hc_tint
+            elif "water" in check_name:
                 has_custom = True
                 resolved_col = biome_colors["water_linear"]
             elif "dry_foliage" in check_name or "leaf_litter" in check_name or "pale_hanging_moss" in check_name:
@@ -639,18 +645,6 @@ def update_object_biome(
                 # Untinted / Pre-dyed vanilla and custom leaf textures
                 has_custom = False
                 resolved_col = (1.0, 1.0, 1.0, 1.0)
-            elif "spruce" in check_name:
-                # Spruce has fixed foliage color across all biomes (#619961)
-                has_custom = False
-                resolved_col = (0.11697, 0.32168, 0.11697, 1.0)
-            elif "birch" in check_name:
-                # Birch has fixed foliage color across all biomes (#80A755)
-                has_custom = False
-                resolved_col = (0.21586, 0.38643, 0.09084, 1.0)
-            elif "lily_pad" in check_name:
-                # Lily pad has fixed hardcoded green (#208030)
-                has_custom = False
-                resolved_col = (0.01314, 0.21586, 0.02843, 1.0)
             elif any(w in check_name for w in ("leave", "foliage", "vine", "bush")):
                 has_custom = bool(biome_colors.get("has_custom_foliage", False))
                 resolved_col = biome_colors["foliage_linear"]
