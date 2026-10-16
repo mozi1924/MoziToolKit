@@ -1,165 +1,151 @@
 # MoziToolKit
 
-**MoziToolKit** 是一套专为 Blender 艺术家、动画师与游戏资产开发者打造的高效生产力工具集。针对 **Minecraft 实时双向同步（Live Sync）**、**MC 方块模型烘焙引擎（MC Baker）**、**材质替换与纹理图集（Texture Atlas）烘焙**、**自适应像素网格切分**、**智能挤出与 UV 修复** 以及 **模块化自动化流水线** 进行了深度优化与自动化集成。
+[![Blender](https://img.shields.io/badge/Blender-5.0%2B%20LTS-orange.svg)](https://www.blender.org/)
+[![Platform](https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](blender_manifest.toml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Core: libmtk](https://img.shields.io/badge/Core-libmozitoolkit%20(Rust)-red.svg)](../libmozitoolkit)
 
-> 📖 **架构设计与防回归规范**：详细设计理念、数学原理、边界约束与防回归规范请参阅 [MoziToolKit 技术文档与设计规范导航](docs/README.md)。
+**MoziToolKit** 是面向 Blender 5.0+ (LTS) 扩展平台的高性能 Minecraft 资产处理、世界协同与着色器管线系统。
 
-> 由此插件，献给我的朋友 [白巧克力酱OvO](https://space.bilibili.com/475942905)
-
----
-
-## 🌟 核心功能一览 (Key Features)
-
-### 1. ⚡ Minecraft 实时双向同步系统 (Minecraft Live Sync)
-- **WebSocket 异步二进制高频流通信**：
-  - 基于高性能 WebSocket 二进制流与主线程高频事件泵（Event Pump），实现 Minecraft（Yefira Mod）与 Blender 之间亚毫秒级的方块数据实时双向协同与网格渲染。
-- **Direct Mesh 原生 16×16×16 Section 增量构建**：
-  - 采用 16×16×16 分块容器与 6 向邻域遮挡剔除算法（Face Culling），仅渲染暴露外表面，极大地降低多边形数量与视口渲染负载。
-- **0ms 瞬间握手校验与增量更新 (CRC32 Handshake & Delta Engine)**：
-  - 连接时自动比对服务端与本地 Section 的 CRC32 哈希，100% 一致时实现 0 毫秒瞬间连接与零重复流量；方块放置、破坏与红石更新实时增量重构（Delta Update）。
-- **动态选区移动与边界接缝自愈 (Seam Healing)**：
-  - 支持在游戏或 Blender 中动态缩放/移动同步选区，自动剪枝超出边界的体素，并在选区变动与流式传输结束瞬间自动执行跨 Section 接缝面剔除自愈（Seam Healing）。
-- **实时生物群系平滑混合与流体动力学**：
-  - 内存体素支持 5×5 邻域加权平滑群系色图（Colormap）采样；流体网格生成器支持水/岩浆表面张力、4 角高度插值与流动方向斜坡 UV 旋转。
+系统采用 **计算下沉与宿主解耦** 架构：几何重构、微观遮挡剔除、体素流解析、图集装箱与生物群系色彩数学均由底层通用 Rust 引擎（`libmtk`）无头处理；Blender 前端负责 UI 交互、视口渲染调度与材质节点树装配，并通过 Buffer Protocol 及 Blender DNA 裸指针实现硬件级零拷贝几何直写。
 
 ---
 
-### 2. 🧊 MC 方块模型烘焙引擎 (MC Baker Engine)
-- **JSON 方块模型继承树展开**：
-  - 深度解析 Minecraft 原版及 MOD 的方块模型 JSON 文件，支持 `#texture` 变量继承树展开与多重父模型递归解析。
-- **Blockstate 变体与 Multipart 复合条件解析**：
-  - 完美支持 `blockstates` 中的 `variants` 变体权重与 `multipart` 复合逻辑条件分支评估，准确还原复杂方块形态。
-- **原版遮挡算法与 Atlas Bridge 桥接**：
-  - 结合 `cullface` 标记与 3D 空间裁剪，自动过滤内部隐藏面；内置 Atlas Bridge 桥接器将 JSON 模型顶点动态映射至 Texture Atlas 图集。
+## 核心系统与功能规范 (Architecture & Features)
+
+### 1. 实时双向网络协同 (Minecraft Live Sync)
+- **传输协议**：基于全双工 WebSocket 二进制异步流，直连 Minecraft 客户端（Fabric `Yefira`）或服务端。
+- **增量网格重构 (Delta Meshing)**：以 16×16×16 Section 为空间单元，仅计算 6 向暴露外表面，提供平滑 4 角环境光遮蔽 (Smooth AO) 与拓扑微距焊接。
+- **状态校验与接缝自愈**：基于 CRC32 校验码实现零重复流量瞬时重连；选区变动或流传输完成时自动触发跨 Section 边界接缝面剔除自愈（Seam Healing）。
+- **复合方块解析**：支持定向方块、红石线动力学、流体表面张力四角高度插值及 CTM (Connected Textures Mod) 47-tile 状态解算。
+
+### 2. 存档直读与体素存储 (Anvil Save Pipeline & Voxel Storage)
+- **Anvil 区域文件直读**：支持直接解析 Minecraft 原版 `.mca` 区域文件，解包 384 高度世界方块状态与 3D 生物群系分布。
+- **空间切片与流式提取**：按需提取指定空间坐标范围的体素切片，无需运行游戏环境即可批量重构场景网格。
+- **体素容器与伴生点云 (Voxel Storage & Point Cloud)**：
+  - 网格生成时在子级自动挂载全量体素点云（`Voxel Point Cloud`），提供 Geometry Nodes 轻量化视口预览。
+  - 支持非破坏性体素编辑与双向无损重新网格化（Rebuild Mesh）。
+
+### 3. 方块模型烘焙与遮挡剔除 (MC Baker & Face Culling)
+- **JSON 模型继承展开**：递归解析 Minecraft 原版及模组方块模型 JSON 继承链，支持 `#texture` 变量解析与 `multipart` 复合条件评估。
+- **规范面剔除 (Face Culling)**：严格对齐 Minecraft 1.21+ `Block.shouldRenderFace` 与 `BlockBehaviour.skipRendering` 规范（实心不透明、半透玻璃、透空树叶组及台阶/楼梯 2D 矩形差集切分）。
+- **外部网格消重清洗 (`MeshSanitizer`)**：消除外部导入几何中的重叠面、共面自交与微观冗余几何。
+
+### 4. 材质、图集与着色器管线 (Material & Shader Pipeline)
+- **双材质构建体系**：
+  - **图集分块模式 (Atlas Chunk)**：采用二维装箱算法动态拼合，应用安全 Padding 与 UV Clamp 防溢色算法，通过面级属性（`mtk_atlas_chunk_id` / `mtk_source_texture_key`）驱动共享材质槽位。
+  - **独立材质模式 (Standalone PBR)**：预编译通道全栈融合，支持独立纹理展开。
+- **PBR 与实时渲染引擎适配**：
+  - 完整实现 LabPBR（法线、粗糙度、金属度、发光、次表面散射 Thin-Wall）与 OldPBR 规范。
+  - 自动适配 Eevee Next 与 Cycles 渲染器着色节点特性。
+- **权威生物群系调色板 (Biome Palette SSOT)**：
+  - 内置 66 种原版规范生物群系，提供温度/湿度双线性三角坐标采样与 Linear RGBA 色彩转换。
+  - 面级群系属性注入，实现视口亚毫秒级无缝群系切换。
+- **逐帧动态材质 (Animated Textures)**：解析 `.mcmeta` 动画元数据，生成由时间轴直接驱动的逐帧切换着色器节点组。
+- **导入生态兼容与材质自愈**：自适应兼容 `jmc2obj`、`Mineways`、`Ice-Cube` 与通用导出模型；支持基于面级来源属性的一键原地无损材质自愈。
+
+### 5. 几何、UV 与拓扑算子 (Mesh & UV Operators)
+- **自适应像素切分 (Adaptive Pixel Split)**：依据贴图像素密度自适应细分平面，实现 1 面 = 1 像素高精度网格，保持顶点组权重与多属性双线性插值。
+- **智能挤出与侧面 UV 修复 (Auto Extrude Repair)**：连续像素边界挤出，提供 `SMART`、`INWARD`、`OUTWARD` 修复模式与边缘折痕权重控制（Mean Crease = 1.0）；支持基于 3D 噪声的随机高度挤出 (Random Extrude)。
+- **UV 与法线工具**：局部中心独立缩放 (Scale UV Individual)、倾斜流体 UV 修复、贴图 Alpha 通道智能选面、Closest 最近邻插值批量切换、硬边与锐边选择、清除无效 `custom_normal` 属性。
+- **程序化植物摇摆 (Foliage Waving)**：一键构建风吹摇摆着色器节点组，支持顶点组权重掩码与风场参数调节。
+
+### 6. 流水线调度与界面架构 (Pipeline & Modular UI)
+- **非阻塞模态流水线 (Step Pipeline)**：解耦的 Step 调度机制，配备 3D 视口 Header 进度条与异步状态流反馈。
+- **动态上下文菜单**：偏好设置内完全可配置的 3D 视图与 UV 编辑器右键上下文菜单（支持添加/移除/移动/导入/导出/重置）。
+- **双语国际化 (i18n)**：全量界面支持简体中文 (`zh_CN`) 与英文 (`en_US`)。
 
 ---
 
-### 3. 🎨 材质替换与 Atlas 烘焙管线 (Material & Texture Pipeline)
-- **多格式与多来源无缝兼容**：
-  - 支持直接读取 Minecraft Java 资源包（`.zip`、`.jar` 或解压目录）。
-  - 智能适配多种常见地图导出工具模型：
-    - **`jmc2obj`**：原生支持保留连续平铺 UV，通过图集着色器安全映射，解决 UV 越界贴图拉伸问题。
-    - **`Mineways`**：深度解析 Mineways 材质映射逻辑与方块纹理。
-    - **`Ice-Cube`**：智能匹配其材质别名与专属命名规范。
-    - **`Generic` 通用模型**：智能去除材质前缀、版本别名映射与模糊匹配。
-- **高性能图集分块材质体系 (Atlas Chunk Material Pipeline)**：
-  - 自动将所有方块贴图动态打包为紧凑高效的 Texture Atlas 图集分块，配合自定义 Atlas UV 变换节点组与几何属性驱动机制，大幅降低 Draw Call 与显存占用，完美支持平铺纹理（Tiling UV Wrapping）防溢色 Clamp 运算与 LabPBR 解码。
-- **材质来源追踪与无损复原 (`mtk_source_texture_key`)**：
-  - 生成网格时自动写入面级来源属性 `mtk_source_texture_key`，支持基于面属性的一键材质原地无损复原与槽位自动自愈。
-- **🌿 生物群系颜色染色系统 (Biome Color Palettes & Colormap Tinting)**：
-  - 内置 **65+ 种原生生物群系配色预设**（平原、森林、苔原、沼泽、樱花树林、黑森林等）。
-  - 支持对草方块（Grass）、树叶（Foliage/Leaves）、水体（Water）、藤蔓（Vines）、甘蔗（Sugar Cane）等进行高精度色图（Colormap）双线性插值与颜色染色。
-- **🎬 动态动画材质 (Animated Textures)**：
-  - 自动解析 Minecraft `.mcmeta` 逐帧动画数据，自动生成由时间轴驱动的逐帧切换着色器节点组。
+## 运行架构与依赖规范 (Architecture & Runtime)
+
+### 纯净运行时与零外部 Python 依赖
+- 计算密集型算法与网络 IO 全部下沉至 Rust 内核。
+- 图像编解码、图集打包、NBT/Anvil 解析、WebSocket 传输均由原生二进制接管，无第三方 Python 运行时依赖（无需安装 Pillow 或 websockets）。
+- 内存直写：支持 Buffer Protocol、`foreach_set` 批量注入及 Blender DNA 裸指针直写。
+
+### 双态架构 (Dual-Mode Architecture)
+- **开发态 (Development Mode)**：
+  - 源码工作区内不预存静态 wheel 文件。
+  - 通过 `dev/loader.py` 动态加载 `dev/lib/libmtk_py.so`（直接软链至 Rust 编译产物），实现免重复打包的快速重载。
+- **发布态 (Release Packaging)**：
+  - 严格遵循 Blender 5.0+ Extensions Platform 隔离规范。
+  - 由 `python3 build.py` 统一拉取/构建符合 ABI3 规范的 wheel 包并封装至分发包内，禁止向 Blender 全局 Python 环境安装任何扩展。
 
 ---
 
-### 4. ✂️ 网格、建模与动画实用工具集 (Mesh, UV & Animation Tools)
-- **自适应像素网格切分 (Adaptive Pixel Split)**：
-  - 根据所贴材质纹理的分辨率与 UV 像素密度，自适应细分网格面（实现 **1 面 = 1 像素** 或指定像素网格比例），自动保持顶点组权重（Vertex Groups）与网格属性。
-- **自动挤出与 UV 修复 (Auto Extrude Repair)**：
-  - 彻底解决面挤出后侧面 UV 拉伸与错位问题。提供 **智能模式 (Smart)**、**向内模式 (Inward)** 与 **向外模式 (Outward)**，支持自动为挤出边缘添加折痕权重（**Mean Crease = 1.0**）。
-- **🎲 随机高度挤出 (Random Extrude)**：
-  - 沿法线以随机高度或 3D 噪声（Perlin Noise / Cell Noise / 伪随机 Seed）批量独立挤出选中面，自带侧面 UV 修复与 Crease 控制，快速营造自然的立体浮雕与高低层次。
-- **🍃 植物风吹摇摆程序化动画 (Foliage Waving)**：
-  - 一键为树叶、草丛等植物模型构建程序化风吹摇摆着色器节点组，支持顶点组权重控制与风速/风向/摆幅实时调节。
-- **🧊 UV 与选区工具**：
-  - **UV 原地独立缩放 (Scale UV Individual)**：每个面在自身 UV 局部中心独立微距缩放，轻松消除贴图边缘采样渗色。
-  - **修复流体 UV (Repair Fluid UV)**：自动检测并修复倾斜水流、岩浆侧面等流体网格 UV 上下颠倒与拉伸对齐问题。
-  - **基于 Alpha 透明度选择面 (Select Transparent Faces)**：采样贴图 Alpha 通道自动选出或剔除透明/半透明面。
-  - **一键邻近插值 (Texture Interpolation Closest)**：批量将选中物体材质中的图像贴图节点插值模式设置为 Closest（最近邻/邻近），呈现清爽锐利的像素画风。
-  - **清除自定义分割法线与硬边选择**：清理损坏法线与 `custom_normal` 属性，按角度阈值与锐边标记快速选区。
+## 支持平台 (Supported Platforms)
+
+遵循 Blender 5.0+ 扩展规范，支持以下 64 位平台架构：
+- **macOS ARM64** (Apple Silicon)
+- **Windows AMD64** (x86_64)
+- **Windows ARM64**
+- **Linux AMD64** (manylinux x86_64)
 
 ---
 
-### 5. 🔄 模块化流水线与动态 UI (Pipeline & Dynamic Context Menus)
-- **模块化流水线系统 (Modular Step Pipeline)**：基于解耦设计的 Step 架构，支持非阻塞模态进度条交互反馈与一键预设（Presets）批处理。
-- **菜单全自由定制**：在偏好设置中自由启用、禁用、拖拽排序、重命名 3D View（Object Mode, Edit Mode）和 UV Editor 的右键上下文菜单项，支持配置 JSON 导出与导入。
-- **🌐 完整双语支持 (i18n)**：深度支持简体中文（`zh_CN` / `zh_HANS`）与英文（`en_US`）。
+## 构建与分发 (Build & Packaging)
 
----
-
-## 📦 依赖管理与 Python Wheels (Python Wheels & Dependencies)
-
-MoziToolKit 基础建模与 UV 工具均为纯 Blender Python 实现，无需额外依赖。  
-- **Atlas 材质图集生成与图像像素采样** 依赖轻量图像处理库 `Pillow` (PIL)。
-- **Minecraft Live Sync 实时双向同步** 依赖高性能 WebSocket 库 `websockets`。
-
-根据 **Blender 4.2+ / 5.2+ 扩展平台 (Extensions Platform)** 规范，通过 **Python Wheels (`.whl`)** 打包依赖，实现环境完全隔离与离线即用，避免全局 Python 环境污染或依赖版本冲突。
-
-### 跨平台预置 Wheels 结构
-
-项目在 `wheels/` 目录下准备了对齐全平台的预编译 Wheels 包（兼容 Python 3.13 / Blender 4.2+ / 5.2+）：
-- **macOS ARM64 (Apple Silicon)**: `pillow-*-macosx_*_arm64.whl`, `websockets-*-py3-none-any.whl`
-- **Windows AMD64 (x86_64)**: `pillow-*-win_amd64.whl`, `websockets-*-py3-none-any.whl`
-- **Windows ARM64**: `pillow-*-win_arm64.whl`, `websockets-*-py3-none-any.whl`
-- **Linux AMD64 (x86_64)**: `pillow-*-manylinux_*.whl`, `websockets-*-py3-none-any.whl`
-
-在 `blender_manifest.toml` 中已完整配置：
-
-```toml
-platforms = ["windows-x64", "windows-arm64", "macos-arm64", "linux-x64"]
-
-wheels = [
-  "./wheels/pillow-12.3.0-cp313-cp313-macosx_11_0_arm64.whl",
-  "./wheels/pillow-12.3.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
-  "./wheels/pillow-12.3.0-cp313-cp313-win_amd64.whl",
-  "./wheels/pillow-12.3.0-cp313-cp313-win_arm64.whl",
-  "./wheels/websockets-15.0.1-py3-none-any.whl",
-]
-```
-
----
-
-## 🚀 构建与打包 (Build & Package)
-
-### 方式 A：使用内置多平台协调构建脚本（推荐）
-
-`build.py` 会自动定位系统中的 Blender，提取其内置 Python 与 pip，下载补齐依赖，校验扩展元数据并执行全平台独立分包：
-
+### 工程构建脚本 (推荐)
 ```bash
-# 默认协调 Blender Python 下载依赖、校验并分平台打包至 dist/
+# 全平台依赖补齐、元数据校验并打包至 dist/
 python3 build.py
 
-# 仅验证扩展元数据
+# 仅执行清单元数据校验
 python3 build.py --validate-only
 
-# 清理并重新下载全平台最新依赖 wheels
+# 清理并重新拉取全平台依赖 wheel
 python3 build.py --clean-wheels
 
-# 同时生成全量 Universal 独立安装包
+# 生成全量 Universal 安装包
 python3 build.py --universal
 
-# 指定特定 Blender 执行程序路径
-python3 build.py --blender /Applications/Blender.app/Contents/MacOS/blender
+# 指定外部 Blender 可执行文件路径
+python3 build.py --blender /path/to/blender
 ```
 
-### 方式 B：使用 Blender 官方命令行
-
+### 扩展命令行构建 (Blender CLI)
 ```bash
-# 校验 Manifest 格式
+# 校验扩展清单
 blender --command extension validate
 
-# 单包构建
-blender --command extension build --output-dir dist
-
-# 分平台构建（推荐）
+# 分平台独立构建
 blender --command extension build --split-platforms --output-dir dist
 ```
 
 ---
 
-## 🧪 自动化测试 (Testing)
+## 测试与质量门禁 (Testing & Quality Gate)
 
-项目配备了基于 Blender Python 环境的自动化测试用例，覆盖 Live Sync 握手与网格生成、MC Baker 解析、网格细分算法、UV 变换、材质解包与生物群系映射逻辑：
+工程采用分层测试体系，包含纯 Python Mock 快速模式与真实 Blender 宿主环境验证：
 
 ```bash
-# 在终端中通过 Blender 无头模式执行测试套件
-blender -b --python tests/run_tests.py
+# 1. 快速单元测试（无需 Blender 环境，CI 首选）
+python -m pytest tests/ -q
+
+# 2. Blender 宿主环境集成测试（全量真实 bpy、节点树与算子）
+blender --background --python tests/run_tests.py -- -q
 ```
+
+> 测试资产统一由 `tests/_assets.py` 定位（环境变量：`MTK_TEST_ASSETS` / `MTK_TEST_JAR` / `MTK_TEST_SAVE`）。资产缺失时相关测试自动跳过，保证测试密闭性。
 
 ---
 
-## 📄 开源许可 (License)
+## 技术文档与规范索引 (Documentation)
 
-本项目基于 **GNU General Public License v3.0 or later (SPDX: GPL-3.0-or-later)** 开源。
+- [MoziToolKit 技术文档与设计规范导航](docs/README.md)
+  - [分层架构设计与核心原则](docs/architecture/overview.md)
+  - [核心设计决策与防回归对照表](docs/architecture/faq_anti_regression.md)
+  - [材质解析与模型烘焙管线规范](docs/materials/material_pipeline.md)
+  - [实时同步协议与网络网格规范](docs/live_sync/live_sync_protocol.md)
+  - [面剔除与微观遮挡算法](docs/mesh/face_culling.md)
+  - [自适应像素切分与智能挤出规范](docs/mesh/pixel_split.md)
+  - [体素点云持久化与存储契约](docs/mesh/voxel_point_cloud.md)
+- [Rust 底层核心库 (`libmozitoolkit`)](../libmozitoolkit/README.md)
+- [版本变更日志 (CHANGELOG.md)](CHANGELOG.md)
+
+---
+
+## 开源许可 (License)
+
+本项目遵循 **GNU General Public License v3.0 or later (SPDX: GPL-3.0-or-later)** 开源协议。

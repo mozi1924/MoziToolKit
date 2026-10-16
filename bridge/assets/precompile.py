@@ -56,56 +56,17 @@ def precompile_stack(
 
     # Use unified high-performance Rust engine with thread pool control & progress callback
     if hasattr(mtk, "precompile_all_assets"):
-        try:
-            res = mtk.precompile_all_assets(
-                stack,
-                str(base_cache.resolve()),
-                atlas_category="blocks",
-                max_atlas_width=4096,
-                max_atlas_height=4096,
-                compile_atlas=True,
-                compile_models=True,
-                num_threads=num_threads,
-                callback=wrapped_cb,
-            )
-        except TypeError:
-            try:
-                # Fallback for older bindings with compile_standalone
-                res = mtk.precompile_all_assets(
-                    stack,
-                    str(base_cache.resolve()),
-                    atlas_category="blocks",
-                    max_atlas_width=4096,
-                    max_atlas_height=4096,
-                    compile_atlas=True,
-                    compile_standalone=False,
-                    compile_models=True,
-                    num_threads=num_threads,
-                    callback=wrapped_cb,
-                )
-            except TypeError:
-                try:
-                    # Fallback for bindings without callback keyword
-                    res = mtk.precompile_all_assets(
-                        stack,
-                        str(base_cache.resolve()),
-                        atlas_category="blocks",
-                        max_atlas_width=4096,
-                        max_atlas_height=4096,
-                        compile_atlas=True,
-                        compile_models=True,
-                        num_threads=num_threads,
-                    )
-                except TypeError:
-                    res = mtk.precompile_all_assets(
-                        stack,
-                        str(base_cache.resolve()),
-                        atlas_category="blocks",
-                        max_atlas_width=4096,
-                        max_atlas_height=4096,
-                        compile_atlas=True,
-                        compile_models=True,
-                    )
+        res = mtk.precompile_all_assets(
+            stack,
+            str(base_cache.resolve()),
+            atlas_category="blocks",
+            max_atlas_width=4096,
+            max_atlas_height=4096,
+            compile_atlas=True,
+            compile_models=True,
+            num_threads=num_threads,
+            callback=wrapped_cb,
+        )
         package_path = getattr(res, "package_path", "")
         invalidate_asset_cache_memory()
         try:

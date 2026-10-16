@@ -5,7 +5,7 @@ schema_version = "1.0.0"
 id = "mozitoolkit"
 version = "2.0.0"
 name = "MoziToolKit"
-tagline = "A suite of tools to enhance productivity of Blender artists"
+tagline = "High-performance Minecraft asset processing, live world sync, smart UV extrusion repair, and shader building"
 maintainer = "Mozi Arasaka"
 # Supported types: "add-on", "theme"
 type = "add-on"
@@ -15,7 +15,7 @@ website = "https://mozi1924.com/"
 
 # Optional list defined by Blender and server, see:
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
-tags = ["Modeling", "UV", "Mesh", "Material"]
+tags = ["Modeling", "UV", "Mesh", "Material", "Pipeline", "Import-Export"]
 
 blender_version_min = "5.0.0"
 # # Optional: Blender version that the extension does not support, earlier versions are supported.

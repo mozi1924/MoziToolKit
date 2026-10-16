@@ -47,6 +47,12 @@ _MESH_BASE_TINT_TYPES: dict[str, Any] = {}
 _STORAGE_CACHE: dict[str, Any] = {}
 
 
+def clear_biome_updater_cache() -> None:
+    """Clear in-memory caches for mesh tint types and voxel storage registry."""
+    _MESH_BASE_TINT_TYPES.clear()
+    _STORAGE_CACHE.clear()
+
+
 def register_object_storage(key: str, storage: Any) -> None:
     """Register native VoxelStorage in memory for a given container UUID or object name."""
     if key and storage is not None:

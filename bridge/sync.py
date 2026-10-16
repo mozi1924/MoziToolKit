@@ -184,51 +184,20 @@ class SyncBridgeSession:
 
         try:
             # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
-            try:
-                config_kwargs = {
-                    "enable_ao": enable_ao,
-                    "mesh_fluids": mesh_fluids,
-                    "z_up_coordinates": True,
-                    "origin_centered": True,
-                    "weld_vertices": True,
-                    "num_threads": num_threads,
-                    "atlas": atlas,
-                    "biome_resolver": biome_resolver,
-                    "custom_aliases": custom_aliases,
-                }
-                if ctm_solver is not None:
-                    config_kwargs["ctm_solver"] = ctm_solver
-                config = mtk.MesherConfig(**config_kwargs)
-            except (TypeError, AttributeError):
-                # Backwards-compatible fallback for older wheel binaries
-                try:
-                    config = mtk.MesherConfig(
-                        enable_ao=enable_ao,
-                        mesh_fluids=mesh_fluids,
-                        z_up_coordinates=True,
-                        origin_centered=True,
-                        weld_vertices=True,
-                        atlas=atlas,
-                        biome_resolver=biome_resolver,
-                        custom_aliases=custom_aliases,
-                    )
-                except (TypeError, AttributeError):
-                    config = mtk.MesherConfig(
-                        enable_ao=enable_ao,
-                        mesh_fluids=mesh_fluids,
-                        z_up_coordinates=True,
-                        atlas=atlas,
-                    )
-                if biome_resolver is not None and hasattr(config, "set_biome_resolver"):
-                    try:
-                        config.set_biome_resolver(biome_resolver)
-                    except Exception:
-                        pass
-                if custom_aliases is not None and hasattr(config, "set_custom_aliases"):
-                    try:
-                        config.set_custom_aliases(custom_aliases)
-                    except Exception:
-                        pass
+            config_kwargs = {
+                "enable_ao": enable_ao,
+                "mesh_fluids": mesh_fluids,
+                "z_up_coordinates": True,
+                "origin_centered": True,
+                "weld_vertices": True,
+                "num_threads": num_threads,
+                "atlas": atlas,
+                "biome_resolver": biome_resolver,
+                "custom_aliases": custom_aliases,
+            }
+            if ctm_solver is not None:
+                config_kwargs["ctm_solver"] = ctm_solver
+            config = mtk.MesherConfig(**config_kwargs)
 
             # Face culler instance
             culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
@@ -486,33 +455,21 @@ def reset_sync_bridge_session() -> SyncBridgeSession:
     return _global_sync_session
 
 
-def load_model_database_from_cache(prefs=None) -> Optional[Any]:
-    """
-    Attempts to deserialize prebaked BakedModelDatabase from compact binary bytes (bincode).
-    Returns None if cache is missing or corrupt.
-    """
-    if not is_sync_available():
-        return None
-    return load_baked_model_database(prefs)
+# Re-export cache loaders directly from bridge.assets to avoid duplicate wrappers
+from .assets import (
+    load_model_database_from_cache,
+    load_atlas_from_cache,
+    load_biome_resolver_from_cache,
+)
 
-
-def load_atlas_from_cache(prefs=None) -> Optional[Any]:
-    """
-    Loads precompiled BakedAtlas from cache into memory.
-    Returns None if cache is missing or libmtk is unavailable.
-    """
-    if not is_sync_available():
-        return None
-    return load_baked_atlas_from_cache(prefs)
-
-
-def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
-    """
-    Loads precompiled BiomeResolver from cache into memory.
-    Returns None if cache is missing or libmtk is unavailable.
-    """
-    if not is_sync_available():
-        return None
-    from .assets import load_biome_resolver_from_cache as _load
-    return _load(prefs)
+__all__ = [
+    "is_sync_available",
+    "require_sync",
+    "SyncBridgeSession",
+    "get_sync_bridge_session",
+    "reset_sync_bridge_session",
+    "load_model_database_from_cache",
+    "load_atlas_from_cache",
+    "load_biome_resolver_from_cache",
+]
 

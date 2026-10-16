@@ -125,7 +125,6 @@ class TestVoxelPointCloudBridge:
         import warnings
         from MoziToolKit.bridge.point_cloud import (
             ensure_voxel_child_cloud,
-            sync_voxel_point_cloud_for_world,
             get_associated_voxel_cloud,
             get_associated_parent_mesh,
         )
@@ -166,15 +165,6 @@ class TestVoxelPointCloudBridge:
             assert found_cloud == cloud_obj
             found_parent = get_associated_parent_mesh(cloud_obj)
             assert found_parent == parent_obj
-
-            # 4. Verify deprecated sync_voxel_point_cloud_for_world emits DeprecationWarning
-            with warnings.catch_warnings(record=True) as recorded_warnings:
-                warnings.simplefilter("always")
-                ret = sync_voxel_point_cloud_for_world(parent_obj, storage=storage)
-                assert ret == cloud_obj
-                deprecations = [w for w in recorded_warnings if issubclass(w.category, DeprecationWarning)]
-                assert len(deprecations) >= 1
-                assert "deprecated" in str(deprecations[0].message)
 
         finally:
             cloud_name = "Test_Parent_World_VoxelCloud"

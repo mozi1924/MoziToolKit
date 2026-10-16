@@ -35,132 +35,32 @@ def require_material_bridge() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Fallback Classes
+# Biome Tint Constants & Bridge Proxy
 # ---------------------------------------------------------------------------
 
-class _FallbackBiomeResolver:
-    """Fallback placeholder when libmtk is not loaded."""
-
-    def __init__(self):
-        pass
-
-    @classmethod
-    def from_file(cls, path: str):
-        return cls()
-
-    def load_from_pack_stack(self, stack: Any) -> None:
-        pass
-
-    def get_tint_info(
-        self,
-        texture_name: str,
-        block_name: Optional[str] = None,
-        tint_index: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        tex = str(texture_name or "").lower()
-        blk = str(block_name or "").lower()
-        full = f"{tex} {blk}"
-
-        if tint_index is not None and tint_index < 0:
-            tt = 0
-            cat = "none"
-            wt = 0.0
-            is_hc = False
-        elif any(w in full for w in ("spruce", "birch", "lily_pad", "redstone")):
-            tt = 4
-            cat = "hardcoded"
-            wt = 1.0
-            is_hc = True
-        elif any(w in full for w in ("leaf_litter", "dry_foliage", "pale_hanging_moss")):
-            tt = 5
-            cat = "dry_foliage"
-            wt = 1.0
-            is_hc = False
-        elif any(w in full for w in ("grass", "fern", "sugar_cane", "bush")):
-            tt = 1
-            cat = "grass"
-            wt = 1.0
-            is_hc = False
-        elif "water" in full:
-            tt = 3
-            cat = "water"
-            wt = 1.0
-            is_hc = False
-        elif any(w in full for w in ("leaf", "leaves", "foliage", "vine")):
-            tt = 2
-            cat = "foliage"
-            wt = 1.0
-            is_hc = False
-        else:
-            tt = 0
-            cat = "none"
-            wt = 0.0
-            is_hc = False
-
-        return {
-            "tint_type": tt,
-            "tint_category": cat,
-            "tint_weight": wt,
-            "base_tint_weight": wt,
-            "overlay_tint_weight": 0.0,
-            "is_hardcoded": is_hc,
-            "hardcoded_color": get_hardcoded_tint(full) if is_hc else None,
-        }
-
-    def get_overlay_texture(self, texture_stem: str) -> Optional[str]:
-        return None
-
-
-class _FallbackMaterialResolver:
-    """Fallback placeholder when libmtk is not loaded."""
-
-    @staticmethod
-    def clean_name(name: str) -> str:
-        clean = name.split("/")[-1].split("\\")[-1]
-        if "." in clean:
-            clean = clean.split(".")[0]
-        for suffix in ["_diffuse", "_d", "_albedo", "_col", "_basecolor"]:
-            if clean.endswith(suffix):
-                clean = clean[: -len(suffix)]
-        return clean
-
-
-class _FallbackGridAtlasSpec:
-    """Fallback GridAtlasSpec descriptor."""
-
-    def __init__(
-        self,
-        swatch_size: float = 18.0,
-        tile_size: float = 16.0,
-        border: float = 1.0,
-        image_width: int = 1024,
-        image_height: int = 1024,
-        atlas_name_patterns: Optional[List[str]] = None,
-        atlas_suffix_patterns: Optional[List[str]] = None,
-        swatch_to_candidates: Optional[Dict[int, List[str]]] = None,
-    ):
-        self.swatch_size = swatch_size
-        self.tile_size = tile_size
-        self.border = border
-        self.image_width = image_width
-        self.image_height = image_height
-        self.atlas_name_patterns = atlas_name_patterns or []
-        self.atlas_suffix_patterns = atlas_suffix_patterns or []
-        self.swatch_to_candidates = swatch_to_candidates or {}
+mtk_inst = get_libmtk()
+TINT_TYPE_NONE: int = getattr(mtk_inst, "TINT_TYPE_NONE", 0) if mtk_inst else 0
+TINT_TYPE_GRASS: int = getattr(mtk_inst, "TINT_TYPE_GRASS", 1) if mtk_inst else 1
+TINT_TYPE_FOLIAGE: int = getattr(mtk_inst, "TINT_TYPE_FOLIAGE", 2) if mtk_inst else 2
+TINT_TYPE_WATER: int = getattr(mtk_inst, "TINT_TYPE_WATER", 3) if mtk_inst else 3
+TINT_TYPE_HARDCODED: int = getattr(mtk_inst, "TINT_TYPE_HARDCODED", 4) if mtk_inst else 4
+TINT_TYPE_DRY_FOLIAGE: int = getattr(mtk_inst, "TINT_TYPE_DRY_FOLIAGE", 5) if mtk_inst else 5
 
 
 def __getattr__(name: str) -> Any:
     mtk = get_libmtk()
     if name == "HAS_LIBMTK":
         return is_material_bridge_available()
-    if name == "BiomeResolver":
-        return getattr(mtk, "BiomeResolver", _FallbackBiomeResolver) if mtk else _FallbackBiomeResolver
-    if name == "MaterialResolver":
-        return getattr(mtk, "MaterialResolver", _FallbackMaterialResolver) if mtk else _FallbackMaterialResolver
-    if name == "GridAtlasSpec":
-        return getattr(mtk, "GridAtlasSpec", _FallbackGridAtlasSpec) if mtk else _FallbackGridAtlasSpec
-    if name == "BakedAtlas":
-        return getattr(mtk, "BakedAtlas", None) if mtk else None
+    if name in ("BiomeResolver", "MaterialResolver", "GridAtlasSpec", "BakedAtlas"):
+        require_material_bridge()
+        val = getattr(mtk, name, None)
+        if val is None:
+            raise AttributeError(f"libmtk_py does not expose '{name}'")
+        return val
+    if name.startswith("TINT_TYPE_"):
+        if mtk and hasattr(mtk, name):
+            return getattr(mtk, name)
+        require_material_bridge()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -176,85 +76,39 @@ def load_biome_resolver_from_file(file_path: Union[str, Path]) -> Any:
 
 def get_biome_meta(biome_name: str) -> Dict[str, Any]:
     """Retrieve canonical metadata, temperature, humidity, and colors from Rust core."""
-    mtk = get_libmtk()
-    if mtk and hasattr(mtk, "get_biome_meta"):
-        return mtk.get_biome_meta(biome_name)
-
-    # Safe fallback if native module is absent
-    return {
-        "id": biome_name.lower(),
-        "name": biome_name,
-        "temperature": 0.8,
-        "humidity": 0.4,
-        "grass_hex": "#91BD59",
-        "foliage_hex": "#77AB2F",
-        "dry_foliage_hex": "#A37546",
-        "water_hex": "#3F76E4",
-        "grass_linear": [0.27, 0.50, 0.09, 1.0],
-        "foliage_linear": [0.18, 0.40, 0.03, 1.0],
-        "dry_foliage_linear": [0.36, 0.22, 0.06, 1.0],
-        "water_linear": [0.05, 0.18, 0.78, 1.0],
-        "colormap_uv": [0.2, 0.32],
-        "has_custom_grass": False,
-        "has_custom_foliage": False,
-        "has_custom_dry_foliage": False,
-    }
+    mtk = require_libmtk("get_biome_meta")
+    return mtk.get_biome_meta(biome_name)
 
 
 def get_colormap_uv(temperature: float, humidity: float) -> List[float]:
     """Compute 2D colormap UV coordinates for a given temperature and humidity."""
-    mtk = get_libmtk()
-    if mtk and hasattr(mtk, "get_colormap_uv"):
-        return mtk.get_colormap_uv(temperature, humidity)
-
-    t = max(0.0, min(1.0, temperature))
-    h = max(0.0, min(1.0, humidity)) * t
-    return [1.0 - t, h]
+    mtk = require_libmtk("get_colormap_uv")
+    return mtk.get_colormap_uv(temperature, humidity)
 
 
 def get_all_biomes() -> List[Dict[str, Any]]:
     """Retrieve all standard vanilla Minecraft biomes with canonical metadata."""
-    mtk = get_libmtk()
-    if mtk and hasattr(mtk, "get_all_biomes"):
-        return mtk.get_all_biomes()
-    return [{"id": "plains", "name": "Plains", "temperature": 0.8, "humidity": 0.4}]
+    mtk = require_libmtk("get_all_biomes")
+    return mtk.get_all_biomes()
 
 
 def get_hardcoded_tint(name: str) -> Optional[Tuple[float, float, float, float]]:
     """Retrieve hardcoded linear RGBA tint for a vanilla block or texture stem from Rust SSOT."""
-    mtk = get_libmtk()
-    if mtk is not None and hasattr(mtk, "get_hardcoded_tint"):
-        res = mtk.get_hardcoded_tint(name)
-        if res is not None:
-            return tuple(res)
-    # Safe fallback if native module is absent
-    clean = name.split("/")[-1].split("\\")[-1].replace(".png", "").lower()
-    _FALLBACK_HARDCODED = {
-        "spruce": (0.11697, 0.32168, 0.11697, 1.0),
-        "birch": (0.21586, 0.38643, 0.09084, 1.0),
-        "lily_pad": (0.01314, 0.21586, 0.02843, 1.0),
-    }
-    for k, v in _FALLBACK_HARDCODED.items():
-        if k in clean:
-            return v
-    return None
+    mtk = require_libmtk("get_hardcoded_tint")
+    res = mtk.get_hardcoded_tint(name)
+    return tuple(res) if res is not None else None
 
 
 def get_hardcoded_tint_hex(name: str) -> Optional[str]:
     """Retrieve hardcoded hex string for a vanilla block or texture stem from Rust SSOT."""
-    mtk = get_libmtk()
-    if mtk is not None and hasattr(mtk, "get_hardcoded_tint_hex"):
-        return mtk.get_hardcoded_tint_hex(name)
-    clean = name.split("/")[-1].split("\\")[-1].replace(".png", "").lower()
-    _FALLBACK_HEX = {
-        "spruce": "#619961",
-        "birch": "#80A755",
-        "lily_pad": "#208030",
-    }
-    for k, v in _FALLBACK_HEX.items():
-        if k in clean:
-            return v
-    return None
+    mtk = require_libmtk("get_hardcoded_tint_hex")
+    return mtk.get_hardcoded_tint_hex(name)
+
+
+def get_swamp_grass_color(x: float, z: float) -> Tuple[float, float, float, float]:
+    """Retrieve swamp grass linear RGBA color at (x, z) computed via authoritative Perlin noise in Rust SSOT."""
+    mtk = require_libmtk("get_swamp_grass_color")
+    return tuple(mtk.get_swamp_grass_color(float(x), float(z)))
 
 
 def compute_biome_tint_attributes(
@@ -354,10 +208,8 @@ def compute_mesh_biome_attributes_from_storage(
 
 def clean_material_name(name: str) -> str:
     """Normalize and clean a material or texture name into an identifier stem."""
-    mtk = get_libmtk()
-    if mtk and hasattr(mtk, "MaterialResolver"):
-        return mtk.MaterialResolver.clean_name(name)
-    return _FallbackMaterialResolver.clean_name(name)
+    mtk = require_libmtk("clean_material_name")
+    return mtk.MaterialResolver.clean_name(name)
 
 
 def remap_mesh_multi_uvs(
@@ -583,6 +435,13 @@ __all__ = [
     "get_block_transmission_weight",
     "get_block_sticker_threshold",
     "get_default_material_properties_path",
+    "TINT_TYPE_NONE",
+    "TINT_TYPE_GRASS",
+    "TINT_TYPE_FOLIAGE",
+    "TINT_TYPE_WATER",
+    "TINT_TYPE_HARDCODED",
+    "TINT_TYPE_DRY_FOLIAGE",
+    "get_swamp_grass_color",
     "load_material_properties_config",
     "reset_material_properties_config",
 ]

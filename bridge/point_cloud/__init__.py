@@ -44,7 +44,6 @@ from .hierarchy import (
     set_voxel_cloud_visibility,
     set_voxel_mask_threshold,
     setup_voxel_mask_modifier,
-    sync_voxel_point_cloud_for_world,
 )
 from .standard import inject_point_cloud_standard
 
@@ -157,5 +156,4 @@ __all__ = [
     "set_voxel_cloud_visibility",
     "set_voxel_mask_threshold",
     "setup_voxel_mask_modifier",
-    "sync_voxel_point_cloud_for_world",
 ]

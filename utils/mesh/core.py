@@ -111,25 +111,6 @@ def apply_selection(elements, target_elements, action: str = "SET"):
             elem.select = False
 
 
-def is_hard_edge(edge, sharp_angle_rad: float = math.radians(30.0)) -> bool:
-    """[DEPRECATED] Use bridge.mesh.analyze_mesh_hard_edges instead for vectorized Rust acceleration."""
-    import warnings
-    warnings.warn(
-        "is_hard_edge is deprecated. Use bridge.mesh.analyze_mesh_hard_edges instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if edge.is_boundary or not edge.smooth or edge.seam:
-        return True
-    if len(edge.link_faces) == 2:
-        try:
-            if edge.calc_face_angle(0) > sharp_angle_rad:
-                return True
-        except Exception:
-            pass
-    return False
-
-
 def get_connected_faces(bm, seed_faces):
     """Find all connected faces (linked mesh island) starting from seed_faces."""
     visited = set()

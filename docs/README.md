@@ -72,7 +72,7 @@
 - **[偏好设置、右键菜单与工程规范](system/preferences_and_ecosystem.md)**：
   - 右键上下文动态菜单注册与自由重排（支持添加/移除/移动/导入/导出/重置）。
   - 多存储后端配置引擎（`JsonBackend`, `MemoryBackend`, `BlenderBackend`）与原子持久化。
-  - Blender 4.2+ Extensions / Python Wheels 隔离管理、i18n 国际化字典、自动化构建与 54 个全量 CI 测试套件。
+  - Blender 5.0+ Extensions / 原生扩展隔离管理、i18n 国际化字典、自动化构建与双端自动化测试套件。
 
 ---
 

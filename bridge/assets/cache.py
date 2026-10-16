@@ -460,6 +460,9 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
     return None
 
 
+load_atlas_from_cache = load_baked_atlas_from_cache
+
+
 def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
     """Loads precompiled BiomeResolver from cache package into memory, reusing cached instance."""
     global _CACHED_BIOME_RESOLVER, _CACHED_BIOME_RESOLVER_PKG_PATH, _CACHED_BIOME_RESOLVER_MTIME

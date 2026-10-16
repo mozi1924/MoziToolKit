@@ -117,6 +117,15 @@ def _on_blend_file_pre_load(dummy=None):
     except Exception as e:
         logger.debug(f"Error resetting sync session on file pre-load: {e}")
 
+    try:
+        try:
+            from ...utils.materials.biome.updater import clear_biome_updater_cache
+        except (ImportError, ValueError):
+            from utils.materials.biome.updater import clear_biome_updater_cache
+        clear_biome_updater_cache()
+    except Exception as e:
+        logger.debug(f"Error clearing biome updater cache on file pre-load: {e}")
+
 
 def get_active_sync_container(scene: Optional[bpy.types.Scene] = None) -> Optional[bpy.types.Object]:
     """Resolves the currently active Live Sync Empty root container object."""
@@ -231,6 +240,15 @@ def unregister():
         except (ImportError, ValueError):
             from bridge.sync import reset_sync_bridge_session
         reset_sync_bridge_session()
+    except Exception:
+        pass
+
+    try:
+        try:
+            from ...utils.materials.biome.updater import clear_biome_updater_cache
+        except (ImportError, ValueError):
+            from utils.materials.biome.updater import clear_biome_updater_cache
+        clear_biome_updater_cache()
     except Exception:
         pass
 

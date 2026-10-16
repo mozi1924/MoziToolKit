@@ -14,7 +14,7 @@
 bl_info = {
     "name": "MoziToolKit",
     "author": "Mozi Arasaka",
-    "description": "Quick utility toolkit for Blender modelling & UV editing",
+    "description": "High-performance Minecraft asset processing, live world sync, smart UV extrusion repair, and shader building",
     "blender": (5, 0, 0),
     "version": (2, 0, 0),
     "location": "UV > Scale UV Faces / Select Transparent Faces, Edge > Select Hard & Sharp Edges, Object / Mesh > Set Image Interpolation to Closest / Clear Custom Normals",

@@ -53,13 +53,25 @@ from ..constants import (
     ATTR_SOURCE_TEXTURE_KEY,
 )
 
-# Canonical Tint Type Identifiers
-TINT_TYPE_NONE = 0
-TINT_TYPE_GRASS = 1
-TINT_TYPE_FOLIAGE = 2
-TINT_TYPE_WATER = 3
-TINT_TYPE_HARDCODED = 4
-TINT_TYPE_DRY_FOLIAGE = 5
+# Canonical Tint Type Identifiers imported from Rust SSOT via bridge.material
+try:
+    from ....bridge.material import (
+        TINT_TYPE_DRY_FOLIAGE,
+        TINT_TYPE_FOLIAGE,
+        TINT_TYPE_GRASS,
+        TINT_TYPE_HARDCODED,
+        TINT_TYPE_NONE,
+        TINT_TYPE_WATER,
+    )
+except (ImportError, ValueError):
+    from bridge.material import (
+        TINT_TYPE_DRY_FOLIAGE,
+        TINT_TYPE_FOLIAGE,
+        TINT_TYPE_GRASS,
+        TINT_TYPE_HARDCODED,
+        TINT_TYPE_NONE,
+        TINT_TYPE_WATER,
+    )
 
 
 def get_or_load_biome_resolver(

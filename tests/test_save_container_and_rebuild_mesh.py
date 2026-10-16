@@ -15,7 +15,7 @@ from bridge.save import (
     sanitize_save_privacy,
     _resolve_unique_save_container_name,
 )
-from operators.op_mesh import (
+from operators.mesh import (
     MOZI_OT_rebuild_mesh,
     resolve_mesh_rebuild_targets,
 )
@@ -358,10 +358,10 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         op = DummyRebuildOp()
 
-        with patch("operators.op_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
-             patch("operators.op_mesh.mesh_voxel_storage", return_value=(mock_new_mesh_data, 10.5)) as mock_mesh_fn, \
-             patch("operators.op_mesh.inject_mesh_data") as mock_inject, \
-             patch("operators.op_mesh.ensure_world_materials"):
+        with patch("operators.mesh.op_rebuild_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
+             patch("operators.mesh.op_rebuild_mesh.mesh_voxel_storage", return_value=(mock_new_mesh_data, 10.5)) as mock_mesh_fn, \
+             patch("operators.mesh.op_rebuild_mesh.inject_mesh_data") as mock_inject, \
+             patch("operators.mesh.op_rebuild_mesh.ensure_world_materials"):
 
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
@@ -415,7 +415,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         op = DummyRebuildOp()
 
-        with patch("operators.op_mesh.get_sync_bridge_session", return_value=mock_session), \
+        with patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
              patch("operators.sync.hierarchy.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
 
             res = op.execute(context)

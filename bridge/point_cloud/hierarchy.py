@@ -292,26 +292,3 @@ def ensure_voxel_child_cloud(
     )
 
     return cloud_obj
-
-
-def sync_voxel_point_cloud_for_world(
-    world_obj: Any,
-    storage: Optional[Any] = None,
-    cloud_data: Optional[Any] = None,
-    origin_centered: bool = True,
-    initial_hidden: bool = True,
-) -> Optional[Any]:
-    """Deprecated alias for `ensure_voxel_child_cloud`."""
-    import warnings
-    warnings.warn(
-        "sync_voxel_point_cloud_for_world is deprecated; use ensure_voxel_child_cloud instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return ensure_voxel_child_cloud(
-        parent_obj=world_obj,
-        storage=storage,
-        cloud_data=cloud_data,
-        origin_centered=origin_centered,
-        initial_hidden=initial_hidden,
-    )

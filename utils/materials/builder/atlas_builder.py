@@ -37,7 +37,12 @@ try:
         ATTR_COLORMAP_UV,
         ATTR_MATERIAL_PROPS,
     )
-    from .image_utils import get_or_create_image, ensure_material_node_tree
+    from .image_utils import (
+        ensure_material_node_tree,
+        get_or_create_image,
+        _create_frame,
+        set_material_displacement_method,
+    )
     from .shading_config import resolve_material_shading_config
 except (ImportError, ValueError):
     from utils.node_groups.labpbr import ensure_labpbr_decoder
@@ -73,7 +78,12 @@ except (ImportError, ValueError):
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
         ATTR_COLORMAP_UV = "mtk_colormap_uv"
         ATTR_MATERIAL_PROPS = "mtk_material_props"
-    from utils.materials.builder.image_utils import get_or_create_image, ensure_material_node_tree
+    from utils.materials.builder.image_utils import (
+        ensure_material_node_tree,
+        get_or_create_image,
+        _create_frame,
+        set_material_displacement_method,
+    )
     try:
         from .shading_config import resolve_material_shading_config
     except (ImportError, ValueError):
@@ -151,38 +161,6 @@ def add_packed_material_props_nodes(
             safe_thresh.parent = parent
         links.new(attr_props.outputs["Alpha"], safe_thresh.inputs[0])
         links.new(safe_thresh.outputs["Value"], decoder_node.inputs["Sticker Threshold"])
-
-
-def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
-    """Configure material displacement method for Cycles and EEVEE across Blender versions."""
-    if not mat:
-        return
-    if hasattr(mat, "displacement_method"):
-        try:
-            mat.displacement_method = method
-        except Exception:
-            pass
-    elif hasattr(mat, "cycles") and hasattr(mat.cycles, "displacement_method"):
-        try:
-            mat.cycles.displacement_method = method
-        except Exception:
-            pass
-
-
-def _create_frame(
-    nodes: Any,
-    name: str,
-    label: str,
-    color: tuple[float, float, float] | None = None,
-) -> Any:
-    """Helper to create and style a layout frame node."""
-    frame = nodes.new("NodeFrame")
-    frame.name = name
-    frame.label = label
-    if color is not None and hasattr(frame, "use_custom_color"):
-        frame.use_custom_color = True
-        frame.color = color
-    return frame
 
 
 def build_atlas_chunk_material(
