@@ -231,7 +231,10 @@ def _draw_live_sync_content(layout: bpy.types.UILayout, context: bpy.types.Conte
             pct = min(100.0, max(0.0, props.stream_progress_current / props.stream_progress_total * 100.0))
             row_p = box_prog.row(align=True)
             row_p.scale_y = 0.85
-            row_p.label(text=f"{tr('Progress')}: {pct:.1f}% ({props.stream_progress_current}/{props.stream_progress_total})")
+            if props.stream_progress_total == 100:
+                row_p.label(text=f"{tr('Progress')}: {pct:.0f}%")
+            else:
+                row_p.label(text=f"{tr('Progress')}: {pct:.1f}% ({props.stream_progress_current}/{props.stream_progress_total})")
 
     # 4. World Bounds & Unified Mesh Metrics
     if props.has_selection:

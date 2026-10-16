@@ -226,8 +226,6 @@ def _sync_timer_tick() -> Optional[float]:
                 _sync_prop("validation_info", f"Sync Handshake: {non_empty} active chunks ({tot} covered, {vol:,} blocks)")
 
         elif ev_type == "DELTA_APPLIED":
-            # Schedule debounced point cloud sync (350ms idle) to prevent blocking main thread
-            _pending_cloud_sync_time = time.time() + 0.35
             cnt = ev.get("change_count", 0)
             _sync_prop("last_update_info", f"Delta Applied: {cnt} block modification(s)")
 
@@ -247,8 +245,18 @@ def _sync_timer_tick() -> Optional[float]:
             msg = ev.get("message", "")
             _sync_prop("is_streaming", True)
             _sync_prop("stream_stage", stage)
-            _sync_prop("stream_progress_current", curr)
-            _sync_prop("stream_progress_total", tot)
+
+            # 2-Phase Monotonic Normalized Progress (Download 0~50%, Meshing 50~100%)
+            if stage == "sync_download":
+                pct = (curr / tot * 50.0) if tot > 0 else 0.0
+            elif stage == "sync_meshing":
+                pct = 50.0 + (curr / tot * 50.0) if tot > 0 else 50.0
+            else:
+                pct = (curr / tot * 100.0) if tot > 0 else 0.0
+
+            normalized_curr = int(min(100.0, max(0.0, pct)))
+            _sync_prop("stream_progress_current", normalized_curr)
+            _sync_prop("stream_progress_total", 100)
             _sync_prop("stream_message", msg)
 
             if tot > 0:
@@ -258,13 +266,15 @@ def _sync_timer_tick() -> Optional[float]:
                     else ("Live Sync: Request" if stage == "sync_request"
                     else "Live Sync"))
                 )
-                _get_progress_reporter(title=stage_title).update(curr, tot, message=msg)
+                _get_progress_reporter(title=stage_title).update(normalized_curr, 100, message=msg)
 
         elif ev_type == "STREAM_FINISHED":
             needs_voxel_sync = True
             _pending_cloud_sync_time = None
             built = ev.get("built_sections", 0)
             _sync_prop("last_update_info", f"Stream Complete ({built} active chunks)")
+            _sync_prop("stream_progress_current", 100)
+            _sync_prop("stream_progress_total", 100)
             _sync_prop("is_streaming", False)
 
         elif ev_type == "VERIFIED":
