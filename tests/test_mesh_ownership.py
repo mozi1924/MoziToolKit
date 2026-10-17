@@ -120,6 +120,8 @@ class TestMeshOwnership(unittest.TestCase):
 
     def test_external_mesh_with_provenance_stays_external(self):
         """Replace Material writes provenance; it must not change ownership."""
+        if IS_REAL_BLENDER:
+            self.skipTest("Uses a lightweight mock data block for provenance detection")
         mesh_data = types.SimpleNamespace(attributes={"mtk_source_texture_key": MagicMock()})
         obj = self._make_obj("Character_Hair", "MESH", data=mesh_data)
 
@@ -193,7 +195,7 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_Test_overworld_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        if isinstance(root.children, list):
+        if not IS_REAL_BLENDER:
             root.children = [cloud]
 
         self.assertIs(find_voxel_cloud(root), cloud)
@@ -249,7 +251,8 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_WithCloud_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        root.children = [mesh, cloud]
+        if not IS_REAL_BLENDER:
+            root.children = [mesh, cloud]
 
         self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
@@ -260,7 +263,8 @@ class TestMeshOwnership(unittest.TestCase):
         orphan_mesh = self._make_obj("Save_NoCloud_Mesh", "MESH")
         orphan_mesh.parent = orphan_root
         orphan_mesh["mtk:is_save_mesh"] = True
-        orphan_root.children = [orphan_mesh]
+        if not IS_REAL_BLENDER:
+            orphan_root.children = [orphan_mesh]
 
         self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(orphan_root)))
 
@@ -272,9 +276,10 @@ class TestMeshOwnership(unittest.TestCase):
         mesh = self._make_obj("Yefira_World_Mesh", "MESH")
         mesh.parent = root
         mesh["mtk:is_yefira_mesh"] = True
-        root.children = [mesh]
+        if not IS_REAL_BLENDER:
+            root.children = [mesh]
 
-        context = self._context(root, active_name="Yefira_World")
+        context = self._context(root, active_name=root.name)
 
         active_session = MagicMock()
         active_session.is_active = True
@@ -295,7 +300,8 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_Container_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        root.children = [external, cloud]
+        if not IS_REAL_BLENDER:
+            root.children = [external, cloud]
 
         self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
@@ -314,8 +320,8 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_Mixed_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-
-        root.children = [external, save_mesh, cloud]
+        if not IS_REAL_BLENDER:
+            root.children = [external, save_mesh, cloud]
 
         _, world, resolved_cloud, source_type = resolve_mesh_rebuild_targets(self._context(root))
         self.assertIs(world, save_mesh)

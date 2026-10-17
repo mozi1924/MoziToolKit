@@ -251,13 +251,19 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
 
         mock_container = MagicMock()
         mock_container.name = "Yefira_World"
+        import json
+        state_json = json.dumps({
+            "server_uuid": "12345678123456781234567812345678",
+            "epoch": 42,
+            "sequence": 105,
+            "min": [0, 64, 0],
+            "size": [16, 16, 16],
+            "dimension": "minecraft:overworld",
+            "state_hash": 0x1234567890ABCDEF,
+            "user_modified": False,
+        })
         props = {
-            "mtk_sync_server_uuid": "12345678123456781234567812345678",
-            "mtk_sync_epoch": 42,
-            "mtk_sync_sequence": 105,
-            "mtk_sync_bounds": [0, 64, 0, 16, 16, 16],
-            "mtk_sync_dimension": "minecraft:overworld",
-            "mtk_sync_state_hash": "0x1234567890abcdef",
+            "mtk_sync_state_json": state_json,
             "mtk_sync_user_modified": False,
         }
         mock_container.get.side_effect = lambda k, d=None: props.get(k, d)
@@ -315,11 +321,7 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 self.assertEqual(res, {'FINISHED'})
                 mock_session.start.assert_called_once()
                 kwargs = mock_session.start.call_args[1]
-                self.assertEqual(kwargs.get("cached_epoch"), 42)
-                self.assertEqual(kwargs.get("cached_seq"), 105)
-                self.assertEqual(kwargs.get("cached_min"), (0, 64, 0))
-                self.assertEqual(kwargs.get("cached_size"), (16, 16, 16))
-                self.assertEqual(kwargs.get("cached_state_hash"), 0x1234567890abcdef)
+                self.assertEqual(kwargs.get("cached_state_json"), state_json)
 
                 # Production default: zero-rebuild is disabled until native
                 # VoxelStorage persistence lands, so HELLO always requests a full
@@ -328,10 +330,7 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 res = op.execute(mock_context)
                 self.assertEqual(res, {'FINISHED'})
                 kwargs = mock_session.start.call_args[1]
-                self.assertEqual(kwargs.get("cached_epoch"), 0)
-                self.assertEqual(kwargs.get("cached_seq"), 0)
-                self.assertIsNone(kwargs.get("cached_uuid"))
-                self.assertEqual(kwargs.get("cached_state_hash"), 0)
+                self.assertIsNone(kwargs.get("cached_state_json"))
         finally:
             if has_real_bpy and real_obj is not None:
                 if real_mesh_obj is not None:

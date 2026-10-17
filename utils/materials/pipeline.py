@@ -298,12 +298,16 @@ def remap_face_materials_and_uvs(
     )
 
     face_texture_ids: List[int] = remap_result["face_texture_ids"]
-    sprites_dict = atlas_data.get("sprites", {})
+    # Build the texture-id -> canonical key table from BOTH the static Frame-0
+    # sprites and the dedicated animated sprites. Animated faces receive texture
+    # ids from `anim_sprites`, so omitting that map silently degrades their
+    # provenance to `mozi:fallback` and breaks later animation reconciliation.
     id_to_key: Dict[int, str] = {}
-    for key, sp in sprites_dict.items():
-        tid = sp.get("texture_id")
-        if tid is not None:
-            id_to_key[int(tid)] = key
+    for bucket_name in ("sprites", "anim_sprites"):
+        for key, sp in atlas_data.get(bucket_name, {}).items():
+            tid = sp.get("texture_id")
+            if tid is not None:
+                id_to_key[int(tid)] = key
 
     face_source_keys: List[str] = []
     for i, tex_id in enumerate(face_texture_ids):

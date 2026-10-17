@@ -361,44 +361,29 @@ def update_world_mesh(
 
 def persist_sync_session_state(
     root_obj: bpy.types.Object,
-    server_uuid: str,
-    epoch: int,
-    sequence: int,
-    bounds: list[int] | tuple[int, ...],
-    dimension: str,
-    state_hash: str,
+    state_json: str,
     user_modified: bool = False,
 ) -> None:
     """
-    Atomically writes live sync session state attributes to the root container empty.
-    Adheres to RFC v3.1 Section 6.2.
+    Atomically writes the Rust-produced, host-agnostic session state JSON to the
+    root container empty. The host never parses or normalizes UUID/bounds/hash.
     """
-    if not root_obj:
+    if not root_obj or not state_json:
         return
-    _safe_set_custom_prop(root_obj, "mtk_sync_server_uuid", server_uuid)
-    _safe_set_custom_prop(root_obj, "mtk_sync_epoch", int(epoch))
-    _safe_set_custom_prop(root_obj, "mtk_sync_sequence", int(sequence))
-    _safe_set_custom_prop(root_obj, "mtk_sync_bounds", list(bounds))
-    _safe_set_custom_prop(root_obj, "mtk_sync_dimension", str(dimension))
-    _safe_set_custom_prop(root_obj, "mtk_sync_state_hash", str(state_hash))
+    _safe_set_custom_prop(root_obj, "mtk_sync_state_json", str(state_json))
     _safe_set_custom_prop(root_obj, "mtk_sync_user_modified", bool(user_modified))
 
 
 def load_persisted_sync_session_state(root_obj: Optional[bpy.types.Object]) -> dict[str, Any]:
-    """
-    Reads persisted session attributes from the root container empty.
-    Returns dict containing cached parameters for 0ms reconnect verification.
-    """
+    """Reads the opaque persisted session-state JSON from the root container empty."""
     if not root_obj:
         return {}
+    state_json = _safe_get_custom_prop(root_obj, "mtk_sync_state_json", "")
+    if not isinstance(state_json, str) or not state_json.strip():
+        return {}
     return {
-        "server_uuid": _safe_get_custom_prop(root_obj, "mtk_sync_server_uuid", ""),
-        "epoch": _safe_get_custom_prop(root_obj, "mtk_sync_epoch", 0),
-        "sequence": _safe_get_custom_prop(root_obj, "mtk_sync_sequence", 0),
-        "bounds": _safe_get_custom_prop(root_obj, "mtk_sync_bounds", None),
-        "dimension": _safe_get_custom_prop(root_obj, "mtk_sync_dimension", "minecraft:overworld"),
-        "state_hash": _safe_get_custom_prop(root_obj, "mtk_sync_state_hash", ""),
-        "user_modified": _safe_get_custom_prop(root_obj, "mtk_sync_user_modified", False),
+        "state_json": state_json,
+        "user_modified": bool(_safe_get_custom_prop(root_obj, "mtk_sync_user_modified", False)),
     }
 
 

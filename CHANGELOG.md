@@ -15,6 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **重建体素网格收紧来源要求**：存档容器与离线 Live Sync 必须存在伴生体素点云；活跃 Live Sync 会话仍可直接从内存 storage 重建，无需等待点云；仅有材质来源属性（provenance）的外部网格不再被误判为可重建对象。
 - 修复存档复用已有网格时未补齐 `mtk:is_save_mesh` 标记的问题，并同步写入来源标记。
 
+### 🎞️ 外部网格动画材质修复 (Animated Materials for Imported Meshes)
+- **修复外部导入网格即使启用 `enable_animated_textures` 也始终使用静态图集的问题**：
+  动画偏好现在会传入 Rust 图集路由；动画面映射到 `MTK:Atlas:*:anim:*`，静态面保留 Frame-0 基线。
+- 外部网格现在注入完整的 `mtk_anim_timing` / `mtk_anim_frame_size` /
+  `mtk_anim_total_frames` / `mtk_anim_frametime` / `mtk_anim_interpolate` /
+  `mtk_anim_frame_width` / `mtk_anim_frame_height` face 属性，动画调度器与帧混合节点可获得真实帧数/帧时长。
+- **动画偏好切换可逆**：Restore 路径新增 `reconcile_animation`，在静态/动画 chunk 之间
+  反解并重投影已有 Atlas UV，无需重新导入外部网格。
+- 修复 provenance 只索引静态 `sprites` 导致动画面 source key 退化为 `mozi:fallback` 的问题；
+  现在同时索引 `anim_sprites`，后续 Restore / Biome 解析保持正确。
+- 新增 Blender 宿主回归测试 `tests/test_external_material_animation.py`，覆盖 开→关→开 与关闭动画两种路径。
+
+### 🧬 Host-Agnostic 胶水下沉 (Rust Core Downshift)
+- **Rust 统一图集动画路由**：`mtk-material` 新增 `resolve_animated_sprite` /
+  `resolve_routed_sprite` / `extract_animation_metrics` /
+  `remap_mesh_multi_uvs_parallel_with_options`，`mtk-voxel` mesher 改为复用同一策略。
+- **静态↔动画 UV 重路由**：新增 `resolve_mesh_material_routes` 与 `reroute_mesh_animation`，
+  供 Blender / C4D 等宿主复用，不再依赖宿主侧保留原始局部 UV。
+- **Live Sync 持久化状态下沉**：`mtk-sync::PersistedSessionState` 负责 JSON、UUID hex、bounds 与
+  HELLO 构造；Blender 仅存 `mtk_sync_state_json` 不透明字符串，删除 Python 侧手写解析。
+- **进度语义下沉**：新增 `normalize_stream_progress`，修正 meshing 阶段被二次加 50% 的问题；
+  Python 只显示 Rust 返回的 `percent`。
+- **握手决策语义修复**：`SyncEvent::Handshake` 新增 `decision_code`，修复 Python 将字符串
+  `VERIFIED_SKIP_REBUILD` 与数字 `0` 比较导致 0ms 重连分支永不触发的问题。
+- 修复 3 个 Live Sync timer 测试在真实 Blender 下的顺序隔离失败。
+
 ### 🐛 Live Sync 稳定性修复 (Realtime Sync Stability)
 - **修复大选区/多生物群系基线永久校验失败（卡在 75%）**：Rust 基线组装器此前使用全局 Quart 索引 `qx & 3` 写入 Section-local 生物群系，未考虑选区 `min_pos` 非 16 对齐的情况，导致 Canonical State Hash 与 Minecraft 端失配并无限重同步。现改为按 `(world >> 2) & 3` 的 Section-local Quart 坐标写入，并新增非对齐选区回归测试。
 - **修复刷新后偶发提示“未连接”**：终态 `DISCONNECTED` 事件不再因原生 worker 已退出而被丢弃；Blender 面板连接状态统一以原生 `LiveSyncSession` 的 `is_connected` / `status` 为准，中间态传输告警（解码/发送错误）不再误判为断线。Refresh 会先同步真实状态并给出精确提示。

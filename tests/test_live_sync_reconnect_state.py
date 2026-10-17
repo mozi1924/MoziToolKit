@@ -45,21 +45,7 @@ def _run_tick(mock_session):
 
 
 class TestLiveSyncPersistedIdentity(unittest.TestCase):
-    def test_identity_helper_formats_native_fields(self):
-        class FakeSession:
-            server_uuid = "00112233445566778899aabbccddeeff"
-            state_hash = 0x1234
-
-        uuid_hex, state_hash = op_sync_connect._session_persist_identity(FakeSession())
-        self.assertEqual(uuid_hex, "00112233445566778899aabbccddeeff")
-        self.assertEqual(state_hash, "0x0000000000001234")
-
-    def test_identity_helper_degrades_on_mocks(self):
-        uuid_hex, state_hash = op_sync_connect._session_persist_identity(MagicMock())
-        self.assertEqual(uuid_hex, "")
-        self.assertEqual(state_hash, "")
-
-    def test_native_session_exposes_identity_getters(self):
+    def test_native_session_exports_persisted_state_json(self):
         try:
             from bridge.engine import get_libmtk
         except Exception:
@@ -69,9 +55,19 @@ class TestLiveSyncPersistedIdentity(unittest.TestCase):
         if mtk is None or not hasattr(mtk, "LiveSyncSession"):
             self.skipTest("LiveSyncSession unavailable")
 
+        import json
+
         session = mtk.LiveSyncSession()
-        self.assertEqual(session.state_hash, 0)
-        self.assertEqual(session.server_uuid, "0" * 32)
+        raw = session.export_persisted_state_json(False)
+        state = json.loads(raw)
+        self.assertEqual(state["server_uuid"], "0" * 32)
+        self.assertEqual(state["state_hash"], 0)
+        self.assertEqual(state["size"], [0, 0, 0])
+        self.assertFalse(state["user_modified"])
+
+    def test_bridge_exposes_persisted_state_json(self):
+        session = SyncBridgeSession()
+        self.assertIsNone(session.export_persisted_state_json())
 
 
 class TestLiveSyncConnectionState(unittest.TestCase):

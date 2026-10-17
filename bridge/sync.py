@@ -183,6 +183,7 @@ class SyncBridgeSession:
         cached_state_hash: int = 0,
         auth_token: Optional[str] = None,
         cached_dimension: Optional[str] = None,
+        cached_state_json: Optional[str] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -253,6 +254,19 @@ class SyncBridgeSession:
                 "cached_dimension": cached_dimension,
             }
 
+            def _start_native(session: Any) -> None:
+                """Prefer the host-agnostic persisted-state entry point when available."""
+                if cached_state_json and hasattr(session, "start_with_persisted_state"):
+                    session.start_with_persisted_state(
+                        url=url,
+                        auto_reconnect=auto_reconnect,
+                        max_reconnect_attempts=max_reconnect_attempts,
+                        state_json=cached_state_json,
+                        auth_token=auth_token,
+                    )
+                else:
+                    session.start(**start_kwargs)
+
             # If native session already exists, reuse it to preserve cached voxel storage & mesh cache
             if self._session is not None:
                 try:
@@ -260,7 +274,7 @@ class SyncBridgeSession:
                         self._session.hot_reload(config, model_db)
                     if hasattr(self._session, "set_unified_mesh"):
                         self._session.set_unified_mesh(unified_mesh)
-                    self._session.start(**start_kwargs)
+                    _start_native(self._session)
                     self._is_active = True
                     self._is_connected = False
                     self._connection_status = "CONNECTING..."
@@ -281,7 +295,7 @@ class SyncBridgeSession:
                 unified_mesh=unified_mesh,
             )
 
-            self._session.start(**start_kwargs)
+            _start_native(self._session)
             self._is_active = True
             self._is_connected = False
             self._connection_status = "CONNECTING..."
@@ -511,6 +525,16 @@ class SyncBridgeSession:
     def send_sync_config(self, throttle_mode: int = 0, target_fps: int = 60, is_active: bool = True) -> bool:
         """Deprecated in RFC v3.1."""
         return True
+
+    def export_persisted_state_json(self, user_modified: bool = False) -> Optional[str]:
+        """Exports host-agnostic session state JSON (UUID/epoch/seq/bounds/hash) from Rust."""
+        if self._session is None or not hasattr(self._session, "export_persisted_state_json"):
+            return None
+        try:
+            return self._session.export_persisted_state_json(bool(user_modified))
+        except Exception as e:
+            logger.warning("Failed exporting persisted sync state: %s", e)
+            return None
 
     def export_manifest(self) -> Optional[str]:
         """Exports manifest metadata (bounds, section CRCs) as JSON string for scene persistence."""

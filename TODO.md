@@ -15,6 +15,33 @@
 
 ---
 
+## 🧭 当前工作清单 (2026-10-18)
+
+> 详细根因、API 设计与剩余迁移项见
+> [`docs/planning/2026-10-18_material_animation_and_rust_downshift.md`](docs/planning/2026-10-18_material_animation_and_rust_downshift.md)。
+
+### ✅ 本轮已完成
+- [x] **修复外部导入网格不启用动画材质**：`enable_animated_textures` 现已传入 Rust 图集路由，
+      动画面进入 `MTK:Atlas:*:anim:*`，并注入 `mtk_anim_timing` / `mtk_anim_frame_size` 等 face 属性。
+- [x] **动画偏好切换可逆**：Restore 路径支持 `reconcile_animation`，在静态/动画 chunk 之间
+      重投影已有 Atlas UV，无需重新导入网格。
+- [x] **Source key 修复**：provenance 同时索引 `sprites` 与 `anim_sprites`，动画面不再退化为
+      `mozi:fallback`。
+- [x] **Live Sync 持久化状态下沉 Rust**：`PersistedSessionState` JSON 由 `mtk-sync` 解析/构造，
+      Blender 只存一个不透明字符串。
+- [x] **进度与握手语义下沉 Rust**：`normalize_stream_progress` 修正 meshing 阶段二次加 50% 的 bug；
+      `decision_code` 修复 Python 用字符串和 `0` 比较导致 0ms reconnect 分支永不触发的问题。
+
+### 📋 下一批（按优先级）
+- [ ] **P1 Biome 即时更新下沉**：`resolve_base_tint_types` + `reapply_uniform_biome_tint` 移入
+      `mtk-material::biome`，Python 只做 `foreach_get/set`。
+- [ ] **P1 外部网格材质提取批量化**：把逐 polygon 的 slot/source-key 解析改为 Rust 调色板化批处理。
+- [ ] **P2 Live Sync 事件合并**：最新 generation 的 `WORLD_MESH_READY` 合并与 stale 丢弃移入 Rust。
+- [ ] **P2 资产缓存解析下沉**：`mtk-package::CacheResolver`，供 C4D 复用 `.mtkcache` 选择逻辑。
+- [ ] **P2 C-ABI 导出**：为 `mtk-ffi` 增加 material route 与 persisted-state 函数。
+
+---
+
 ## 🎯 v2.0 正式版：核心世界资产与材质渲染基石 (✅ 已完成)
 
 > **2.0 发版铁律**：严守核心世界与材质闭环，不留半成品。未完成的扩展性需求坚决推迟至 2.1。

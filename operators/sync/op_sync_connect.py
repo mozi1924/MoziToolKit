@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from typing import Any, Optional
 import bpy
 
@@ -144,23 +143,6 @@ def _close_progress_reporter(delay_sec: float = 0.0):
             rep.close()
 
 
-def _session_persist_identity(session: Any) -> tuple[str, str]:
-    """Returns (server_uuid_hex, "0x..." state_hash) from the native session.
-
-    These values enable the RFC v3.1 zero-rebuild fast path on the next connect.
-    Non-native / mocked sessions degrade to empty strings.
-    """
-    raw_uuid = getattr(session, "server_uuid", "")
-    server_uuid = raw_uuid if isinstance(raw_uuid, str) else ""
-
-    raw_hash = getattr(session, "state_hash", 0)
-    if isinstance(raw_hash, int) and not isinstance(raw_hash, bool) and raw_hash > 0:
-        state_hash = f"0x{raw_hash:016x}"
-    else:
-        state_hash = ""
-    return server_uuid, state_hash
-
-
 def _get_active_props(context: Optional[bpy.types.Context] = None, root_container: Optional[bpy.types.Object] = None) -> Optional[bpy.types.PropertyGroup]:
     """Resolves active live sync properties bound to container or scene."""
     if root_container is not None and hasattr(root_container, "mozi_sync"):
@@ -260,7 +242,7 @@ def _sync_timer_tick() -> Optional[float]:
             dimension = ev.get("dimension", "minecraft:overworld")
             _sync_prop("dimension", dimension)
             _sync_prop("validation_info", f"Sync Handshake: decision={decision}, epoch={epoch}, seq={seq}")
-            if decision == 0:  # VERIFIED_SKIP_REBUILD
+            if ev.get("decision_code") == 0 or decision == "VERIFIED_SKIP_REBUILD":
                 _sync_prop("sync_verified", True)
                 _sync_prop("validation_info", "0ms Instant Reconnect Verified: 100% in sync with scene")
                 _sync_prop("is_streaming", False)
@@ -284,21 +266,13 @@ def _sync_timer_tick() -> Optional[float]:
 
         elif ev_type == "STREAM_PROGRESS":
             stage = ev.get("stage", "sync")
-            curr = ev.get("current", 0)
             tot = ev.get("total", 0)
             msg = ev.get("message", "")
             _sync_prop("is_streaming", True)
             _sync_prop("stream_stage", stage)
 
-            # 2-Phase Monotonic Normalized Progress (Download 0~50%, Meshing 50~100%)
-            if stage == "sync_download":
-                pct = (curr / tot * 50.0) if tot > 0 else 0.0
-            elif stage == "sync_meshing":
-                pct = 50.0 + (curr / tot * 50.0) if tot > 0 else 50.0
-            else:
-                pct = (curr / tot * 100.0) if tot > 0 else 0.0
-
-            normalized_curr = int(min(100.0, max(0.0, pct)))
+            # Rust owns the two-phase phase weighting; the host only displays it.
+            normalized_curr = int(min(100.0, max(0.0, float(ev.get("percent", 0.0)))))
             _sync_prop("stream_progress_current", normalized_curr)
             _sync_prop("stream_progress_total", 100)
             _sync_prop("stream_message", msg)
@@ -343,7 +317,7 @@ def _sync_timer_tick() -> Optional[float]:
     # string comparison against an intermediate status message.
     if session_active:
         native_status = getattr(session, "connection_status", "") or ""
-        if native_status:
+        if isinstance(native_status, str) and native_status:
             _sync_prop("connection_status", native_status)
         _sync_prop("is_connected", bool(getattr(session, "is_connected", False)))
 
@@ -376,26 +350,11 @@ def _sync_timer_tick() -> Optional[float]:
                 _sync_prop("last_update_info", f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces")
                 _sync_prop("is_streaming", False)
 
-                # Atomically persist live sync session state into root container
-                if active_container and props:
-                    bounds = [
-                        getattr(props, "min_x", 0),
-                        getattr(props, "min_y", 0),
-                        getattr(props, "min_z", 0),
-                        getattr(props, "size_x", 0),
-                        getattr(props, "size_y", 0),
-                        getattr(props, "size_z", 0),
-                    ]
-                    server_uuid, state_hash = _session_persist_identity(session)
-                    persist_sync_session_state(
-                        active_container,
-                        server_uuid=server_uuid,
-                        epoch=session.current_epoch,
-                        sequence=session.current_sequence,
-                        bounds=bounds,
-                        dimension=getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
-                        state_hash=state_hash,
-                    )
+                # Atomically persist the Rust-produced session state into the root container.
+                if active_container:
+                    state_json = session.export_persisted_state_json(user_modified=False)
+                    if isinstance(state_json, str) and state_json:
+                        persist_sync_session_state(active_container, state_json)
 
                 if _progress_reporter is not None:
                     _progress_reporter.update(_progress_reporter.total, _progress_reporter.total, message=f"Mesh ready ({v_count:,} v, {f_count:,} f)")
@@ -574,34 +533,9 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         )
         if not _ZERO_REBUILD_FAST_PATH_ENABLED or not has_local_mesh:
             cached_state = {}
-        cached_uuid_bytes = None
-        cached_epoch = 0
-        cached_seq = 0
-        cached_min = None
-        cached_size = None
-        cached_state_hash = 0
-        cached_dim = None
-
+        cached_state_json = None
         if cached_state and not cached_state.get("user_modified", False):
-            uuid_str = cached_state.get("server_uuid", "")
-            if uuid_str:
-                try:
-                    cached_uuid_bytes = uuid.UUID(hex=uuid_str).bytes
-                except Exception:
-                    pass
-            cached_epoch = cached_state.get("epoch", 0)
-            cached_seq = cached_state.get("sequence", 0)
-            b = cached_state.get("bounds")
-            if b and len(b) == 6:
-                cached_min = (b[0], b[1], b[2])
-                cached_size = (b[3], b[4], b[5])
-            hash_str = cached_state.get("state_hash", "")
-            if hash_str:
-                try:
-                    cached_state_hash = int(hash_str, 16) if hash_str.startswith("0x") else int(hash_str)
-                except Exception:
-                    pass
-            cached_dim = cached_state.get("dimension")
+            cached_state_json = cached_state.get("state_json") or None
 
         success = session.start(
             url=url,
@@ -611,13 +545,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             atlas=atlas,
             biome_resolver=biome_resolver,
             unified_mesh=True,
-            cached_uuid=cached_uuid_bytes,
-            cached_epoch=cached_epoch,
-            cached_seq=cached_seq,
-            cached_min=cached_min,
-            cached_size=cached_size,
-            cached_state_hash=cached_state_hash,
-            cached_dimension=cached_dim,
+            cached_state_json=cached_state_json,
         )
 
         if not success:
@@ -667,26 +595,9 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             target_obj = get_active_sync_container(context.scene) or resolve_world_root_object(getattr(context, "active_object", None))
 
         if target_obj:
-            props = getattr(target_obj, "mozi_sync", None)
-            if props:
-                bounds = [
-                    getattr(props, "min_x", 0),
-                    getattr(props, "min_y", 0),
-                    getattr(props, "min_z", 0),
-                    getattr(props, "size_x", 0),
-                    getattr(props, "size_y", 0),
-                    getattr(props, "size_z", 0),
-                ]
-                server_uuid, state_hash = _session_persist_identity(session)
-                persist_sync_session_state(
-                    target_obj,
-                    server_uuid=server_uuid,
-                    epoch=session.current_epoch,
-                    sequence=session.current_sequence,
-                    bounds=bounds,
-                    dimension=getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
-                    state_hash=state_hash,
-                )
+            state_json = session.export_persisted_state_json(user_modified=False)
+            if isinstance(state_json, str) and state_json:
+                persist_sync_session_state(target_obj, state_json)
 
         session.stop()
 
