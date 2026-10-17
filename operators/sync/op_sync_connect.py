@@ -39,6 +39,8 @@ except (ImportError, ValueError):
         reload_atlas_images,
     )
 from .hierarchy import (
+    _safe_get_custom_prop,
+    _safe_set_custom_prop,
     get_or_create_world_container,
     get_or_create_world_mesh_object,
     resolve_world_root_object,
@@ -178,6 +180,7 @@ def _sync_timer_tick() -> Optional[float]:
 
     events = session.poll_events()
     latest_world_mesh = None
+    section_meshes: list[tuple[tuple[int, int, int], Any]] = []
     needs_voxel_sync = False
 
     for ev in events:
@@ -188,6 +191,15 @@ def _sync_timer_tick() -> Optional[float]:
         if ev_type == "WORLD_MESH_READY":
             # Coalesce: only keep newest mesh to prevent Blender event queue choke and OOM
             latest_world_mesh = ev.get("mesh")
+            continue
+
+        if ev_type == "SECTION_MESH_READY":
+            coord = ev.get("coord")
+            if coord is None:
+                coord = (ev.get("sec_x", 0), ev.get("sec_y", 0), ev.get("sec_z", 0))
+            mesh_data = ev.get("mesh")
+            if mesh_data is not None:
+                section_meshes.append((coord, mesh_data))
             continue
 
         if ev_type == "STATUS_CHANGE":
@@ -238,6 +250,9 @@ def _sync_timer_tick() -> Optional[float]:
                 if len(props.delta_history) > 50:
                     props.delta_history.remove(0)
 
+            # Schedule debounced voxel point cloud synchronization (coalesce rapid block changes)
+            _pending_cloud_sync_time = time.time() + 0.35
+
         elif ev_type == "STREAM_PROGRESS":
             stage = ev.get("stage", "sync")
             curr = ev.get("current", 0)
@@ -276,6 +291,9 @@ def _sync_timer_tick() -> Optional[float]:
             _sync_prop("stream_progress_current", 100)
             _sync_prop("stream_progress_total", 100)
             _sync_prop("is_streaming", False)
+            manifest_json = session.export_manifest()
+            if manifest_json and active_container:
+                _safe_set_custom_prop(active_container, "mtk:sync_manifest", manifest_json)
 
         elif ev_type == "VERIFIED":
             is_ver = ev.get("is_verified", False)
@@ -284,6 +302,9 @@ def _sync_timer_tick() -> Optional[float]:
             if is_ver:
                 _sync_prop("validation_info", msg or "100% in sync with scene")
                 _sync_prop("is_streaming", False)
+                manifest_json = session.export_manifest()
+                if manifest_json and active_container:
+                    _safe_set_custom_prop(active_container, "mtk:sync_manifest", manifest_json)
             else:
                 _sync_prop("validation_info", f"Out of sync: {msg}" if msg else "Detected out-of-sync sections")
 
@@ -316,6 +337,31 @@ def _sync_timer_tick() -> Optional[float]:
             logger.error(f"Failed to inject WorldMesh into Blender for container '{active_container.name}': {e}")
         finally:
             _close_progress_reporter(delay_sec=1.5)
+    elif section_meshes:
+        try:
+            from .hierarchy import get_or_create_section_mesh_object, update_section_mesh
+            atlas = getattr(session, "atlas", None)
+            total_sec_v = 0
+            total_sec_f = 0
+            for (sx, sy, sz), s_mesh in section_meshes:
+                sec_obj = get_or_create_section_mesh_object(
+                    bpy.context,
+                    root_container=active_container,
+                    sec_x=sx,
+                    sec_y=sy,
+                    sec_z=sz,
+                )
+                v_cnt, f_cnt = update_section_mesh(
+                    sec_obj,
+                    s_mesh,
+                    skip_string_attributes=True,
+                    atlas=atlas,
+                )
+                total_sec_v += v_cnt
+                total_sec_f += f_cnt
+            _sync_prop("last_update_info", f"Updated {len(section_meshes)} chunk section(s) ({total_sec_v:,} v)")
+        except Exception as e:
+            logger.error(f"Failed updating section meshes for container '{active_container.name}': {e}")
     elif needs_voxel_sync:
         try:
             storage = session.get_storage()
@@ -462,6 +508,13 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             self.report({'ERROR'}, f"Failed to initiate connection to {url}: {err}")
             return {'CANCELLED'}
 
+        # Restore known manifest from container object to allow 0ms instant reconnect verification
+        stored_manifest = _safe_get_custom_prop(target_obj, "mtk:sync_manifest")
+        if stored_manifest:
+            restored = session.import_manifest(stored_manifest)
+            if restored:
+                logger.info(f"Restored persistent sync manifest from '{target_obj.name}' into native session")
+
         if props:
             props.is_connected = False
             props.connection_status = "CONNECTING..."
@@ -496,13 +549,19 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
     def execute(self, context):
         stop_sync_timer()
         session = get_sync_bridge_session()
-        session.stop()
 
         target_obj = None
         if self.target_container and self.target_container in bpy.data.objects:
             target_obj = bpy.data.objects[self.target_container]
         else:
             target_obj = get_active_sync_container(context.scene) or resolve_world_root_object(getattr(context, "active_object", None))
+
+        if target_obj:
+            manifest_json = session.export_manifest()
+            if manifest_json:
+                _safe_set_custom_prop(target_obj, "mtk:sync_manifest", manifest_json)
+
+        session.stop()
 
         if target_obj and hasattr(target_obj, "mozi_sync"):
             props = target_obj.mozi_sync

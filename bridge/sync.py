@@ -437,6 +437,35 @@ class SyncBridgeSession:
             logger.error(f"Failed to send Sync Config: {e}")
             return False
 
+    def export_manifest(self) -> Optional[str]:
+        """Exports manifest metadata (bounds, section CRCs) as JSON string for scene persistence."""
+        if self._session is None or not hasattr(self._session, "export_manifest_metadata"):
+            return None
+        try:
+            return self._session.export_manifest_metadata()
+        except Exception as e:
+            logger.warning("Failed exporting sync manifest: %s", e)
+            return None
+
+    def import_manifest(self, manifest_data: Any) -> bool:
+        """Imports manifest metadata into active session to enable 0ms reconnect verification."""
+        if self._session is None or not hasattr(self._session, "import_manifest_metadata"):
+            return False
+        try:
+            import json
+            if isinstance(manifest_data, dict):
+                manifest_str = json.dumps(manifest_data)
+            elif isinstance(manifest_data, str):
+                manifest_str = manifest_data.strip()
+            else:
+                return False
+            if not manifest_str or manifest_str == "{}":
+                return False
+            return bool(self._session.import_manifest_metadata(manifest_str))
+        except Exception as e:
+            logger.warning("Failed importing sync manifest into native session: %s", e)
+            return False
+
 
 # Global singleton bridge instance
 _global_sync_session = SyncBridgeSession()

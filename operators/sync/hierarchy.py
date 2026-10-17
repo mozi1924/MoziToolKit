@@ -72,7 +72,11 @@ def is_yefira_child_object(obj: Optional[bpy.types.Object]) -> bool:
     """Identify whether a Blender object is a child section or point cloud of a Yefira container."""
     if not obj:
         return False
-    if _safe_get_custom_prop(obj, "mtk:is_yefira_mesh") or _safe_get_custom_prop(obj, "mtk_is_voxel_cloud"):
+    if (
+        _safe_get_custom_prop(obj, "mtk:is_yefira_mesh")
+        or _safe_get_custom_prop(obj, "mtk:is_section_mesh")
+        or _safe_get_custom_prop(obj, "mtk_is_voxel_cloud")
+    ):
         return True
     parent = getattr(obj, "parent", None)
     if parent and is_yefira_root_object(parent):
@@ -335,4 +339,77 @@ def update_world_mesh(
     v_count = len(mesh.vertices)
     f_count = len(mesh.polygons)
     return v_count, f_count
+
+
+def get_or_create_section_mesh_object(
+    context: Optional[bpy.types.Context],
+    root_container: bpy.types.Object,
+    sec_x: int,
+    sec_y: int,
+    sec_z: int,
+) -> bpy.types.Object:
+    """Acquires or creates an isolated child section mesh object under the root container."""
+    root_name = root_container.name
+    sec_obj_name = f"{root_name}_Section_{sec_x}_{sec_y}_{sec_z}"
+    sec_mesh_name = f"Mesh_{root_name}_{sec_x}_{sec_y}_{sec_z}"
+
+    obj = bpy.data.objects.get(sec_obj_name)
+    if obj and getattr(obj, "type", "") == 'MESH':
+        return obj
+
+    mesh = bpy.data.meshes.new(sec_mesh_name)
+    obj = bpy.data.objects.new(sec_obj_name, mesh)
+    _safe_set_custom_prop(obj, "mtk:is_section_mesh", True)
+    _safe_set_custom_prop(obj, "mtk:section_pos", [sec_x, sec_y, sec_z])
+    obj.parent = root_container
+    if hasattr(obj, "matrix_parent_inverse"):
+        obj.matrix_parent_inverse.identity()
+    obj.location = (0.0, 0.0, 0.0)
+
+    target_coll = root_container.users_collection[0] if getattr(root_container, "users_collection", None) else None
+    if target_coll is None and bpy.context and hasattr(bpy.context, "scene"):
+        target_coll = bpy.context.scene.collection
+    if target_coll and hasattr(target_coll, "objects"):
+        try:
+            target_coll.objects.link(obj)
+        except Exception:
+            pass
+
+    return obj
+
+
+def update_section_mesh(
+    section_obj: bpy.types.Object,
+    mesh_data: Any,
+    skip_string_attributes: bool = True,
+    atlas: Optional[Any] = None,
+) -> Tuple[int, int]:
+    """Updates or prunes an individual section mesh child object."""
+    if not section_obj or getattr(section_obj, "type", "") != "MESH":
+        return 0, 0
+
+    mesh = section_obj.data
+    is_empty = getattr(mesh_data, "is_empty", None)
+    if callable(is_empty) and is_empty():
+        # Remove empty section object from scene and mesh datablocks
+        try:
+            bpy.data.objects.remove(section_obj, do_unlink=True)
+            if mesh:
+                bpy.data.meshes.remove(mesh, do_unlink=True)
+        except Exception:
+            pass
+        return 0, 0
+
+    inject_mesh_data(
+        mesh,
+        mesh_data,
+        update_topology=True,
+        update_normals=True,
+        skip_string_attributes=skip_string_attributes,
+    )
+
+    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+    ensure_world_materials(section_obj, atlas=atlas, used_chunk_ids=used_chunk_ids)
+
+    return len(mesh.vertices), len(mesh.polygons)
 

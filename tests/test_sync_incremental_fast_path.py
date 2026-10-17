@@ -213,6 +213,71 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 mock_obj.mozi_sync.delta_history.clear.assert_called_once()
                 mock_context.scene.mozi_sync.delta_history.clear.assert_called_once()
 
+    def test_delta_applied_schedules_debounced_point_cloud_update(self):
+        """Verify DELTA_APPLIED schedules debounced point cloud synchronization."""
+        import time
+        from MoziToolKit.operators.sync import op_sync_connect
+        from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
+
+        mock_session = MagicMock(spec=SyncBridgeSession)
+        mock_session.is_active = True
+        mock_session.atlas = MagicMock()
+        mock_session.poll_events.return_value = [
+            {"type": "DELTA_APPLIED", "change_count": 3},
+        ]
+
+        with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
+             patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=MagicMock()):
+
+            op_sync_connect._pending_cloud_sync_time = None
+            _sync_timer_tick()
+
+            # Must have set a debounced timestamp in future
+            self.assertIsNotNone(op_sync_connect._pending_cloud_sync_time)
+            self.assertGreater(op_sync_connect._pending_cloud_sync_time, time.time())
+
+    def test_stored_manifest_imported_on_connect(self):
+        """Verify MOZI_OT_sync_connect restores persistent sync manifest into native session."""
+        from MoziToolKit.operators.sync.op_sync_connect import MOZI_OT_sync_connect
+
+        mock_session = MagicMock(spec=SyncBridgeSession)
+        mock_session.is_active = False
+        mock_session.start.return_value = True
+
+        mock_container = MagicMock()
+        mock_container.name = "Yefira_World"
+        mock_container.get.return_value = '{"size_x": 16, "section_crcs": {}}'
+
+        class DummyConnectOp:
+            def __init__(self):
+                self.target_container = "Yefira_World"
+                self.report = MagicMock()
+
+            def execute(self, ctx):
+                return MOZI_OT_sync_connect.execute(self, ctx)
+
+        op = DummyConnectOp()
+        mock_context = MagicMock()
+
+        import bpy
+        orig_objects = getattr(bpy.data, "objects", None)
+        try:
+            with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.is_sync_available", return_value=True), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.check_asset_cache_status", return_value="READY"), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.load_model_database_from_cache", return_value=None), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.load_atlas_from_cache", return_value=None), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.load_biome_resolver_from_cache", return_value=None), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.start_sync_timer"):
+
+                bpy.data.objects = {"Yefira_World": mock_container}
+                res = op.execute(mock_context)
+                self.assertEqual(res, {'FINISHED'})
+                mock_session.import_manifest.assert_called_once_with('{"size_x": 16, "section_crcs": {}}')
+        finally:
+            bpy.data.objects = orig_objects
+
 
 if __name__ == "__main__":
     unittest.main()
+
