@@ -100,11 +100,14 @@ def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.t
         return None
 
     # 1. Climb up parent chain looking for an Empty root container
+    #    (depth guard protects against cyclic parenting created by scripts).
     curr = obj
-    while curr:
+    depth = 0
+    while curr is not None and depth < 256:
         if is_yefira_root_object(curr):
             return curr
         curr = getattr(curr, "parent", None)
+        depth += 1
 
     # 2. If object is a child mesh named <Root>_Mesh, try to find root by name
     obj_name = getattr(obj, "name", "")

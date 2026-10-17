@@ -1,5 +1,11 @@
 # 模块：实时同步系统架构与数据规范 (Live Sync Architecture & Data Specifications)
 
+> **协议权威声明**：本文档描述 Live Sync 的材质/场景/线程侧架构约定。
+> 网络帧格式、`state_hash`、同步状态机与错误恢复的权威事实源为
+> **[RFC v3.1 实时同步协议与架构规范](live_sync_protocol.md)**。
+> 本文中提及的旧版 Section 流式包（`SECTION_SNAPSHOT` / `STREAM_BEGIN` 等）
+> 仅作为历史设计背景保留，现行协议以 RFC v3.1 为准。
+
 MoziToolKit 实时同步模块（Live Sync）基于高性能异步 WebSocket 二进制流与主线程高频事件泵（Event Pump），实现 Minecraft (Yefira Mod) 与 Blender 之间亚毫秒级的方块数据实时双向协同与网格渲染。
 
 ---

@@ -44,6 +44,7 @@ from .hierarchy import (
     _safe_set_custom_prop,
     get_or_create_world_container,
     get_or_create_world_mesh_object,
+    find_world_mesh_child,
     resolve_world_root_object,
     update_world_mesh,
     persist_sync_session_state,
@@ -60,6 +61,14 @@ _timer_registered = False
 _progress_reporter = None
 _delayed_close_callback = None
 _pending_cloud_sync_time = None
+
+# RFC v3.1 §6.2 zero-rebuild fast path.
+# The protocol/server support VERIFIED_SKIP_REBUILD, but the Blender client cannot
+# use it yet: the native VoxelStorage is not persisted into the .blend, so entering
+# LIVE with an empty Rust storage would make the next delta remesh only the changed
+# blocks and wipe the viewport. Keep HELLO cached_* fields zeroed (full baseline)
+# until VoxelStorage persistence/restore is implemented.
+_ZERO_REBUILD_FAST_PATH_ENABLED = False
 
 
 def is_sync_timer_running() -> bool:
@@ -135,6 +144,23 @@ def _close_progress_reporter(delay_sec: float = 0.0):
             rep.close()
 
 
+def _session_persist_identity(session: Any) -> tuple[str, str]:
+    """Returns (server_uuid_hex, "0x..." state_hash) from the native session.
+
+    These values enable the RFC v3.1 zero-rebuild fast path on the next connect.
+    Non-native / mocked sessions degrade to empty strings.
+    """
+    raw_uuid = getattr(session, "server_uuid", "")
+    server_uuid = raw_uuid if isinstance(raw_uuid, str) else ""
+
+    raw_hash = getattr(session, "state_hash", 0)
+    if isinstance(raw_hash, int) and not isinstance(raw_hash, bool) and raw_hash > 0:
+        state_hash = f"0x{raw_hash:016x}"
+    else:
+        state_hash = ""
+    return server_uuid, state_hash
+
+
 def _get_active_props(context: Optional[bpy.types.Context] = None, root_container: Optional[bpy.types.Object] = None) -> Optional[bpy.types.PropertyGroup]:
     """Resolves active live sync properties bound to container or scene."""
     if root_container is not None and hasattr(root_container, "mozi_sync"):
@@ -162,9 +188,13 @@ def _sync_timer_tick() -> Optional[float]:
     """
     global _pending_cloud_sync_time
     session = get_sync_bridge_session()
-    if not session.is_active:
-        stop_sync_timer()
-        return None
+
+    # Drain pending events BEFORE checking is_active. The terminal DISCONNECTED
+    # event is queued just before the worker exits; checking is_active first would
+    # discard it and leave the panel stuck showing "CONNECTED" while the native
+    # session is already dead (clicking Refresh then reports "not connected").
+    events = session.poll_events() if session is not None else []
+    session_active = bool(session is not None and session.is_active)
 
     scene = getattr(bpy.context, "scene", None) if bpy.context else None
     active_container = get_active_sync_container(scene)
@@ -181,10 +211,10 @@ def _sync_timer_tick() -> Optional[float]:
         if scene_props and hasattr(scene_props, name):
             setattr(scene_props, name, val)
 
-    events = session.poll_events()
     latest_world_mesh = None
     latest_generation = 0
     needs_voxel_sync = False
+    terminal_status: Optional[str] = None
 
     for ev in events:
         ev_type = ev.get("type")
@@ -199,14 +229,16 @@ def _sync_timer_tick() -> Optional[float]:
 
         if ev_type == "STATUS_CHANGE":
             status = ev.get("status", "DISCONNECTED")
-            if status != "CONNECTED":
-                _close_progress_reporter()
             _sync_prop("connection_status", status)
-            _sync_prop("is_connected", (status == "CONNECTED"))
             if status == "CONNECTED":
                 _sync_prop("validation_info", "Connected to Live Sync")
             elif status.startswith("DISCONNECTED"):
+                terminal_status = status
+                _sync_prop("is_streaming", False)
                 _sync_prop("validation_info", status)
+                _close_progress_reporter()
+            # Intermediate statuses (CONNECTING/RECONNECTING/transport errors) are
+            # surfaced by connection_status but must not be treated as "disconnected".
 
         elif ev_type == "SELECTION_UPDATED":
             _sync_prop("has_selection", True)
@@ -226,6 +258,7 @@ def _sync_timer_tick() -> Optional[float]:
             seq = ev.get("sequence", 0)
             decision = ev.get("decision", 2)
             dimension = ev.get("dimension", "minecraft:overworld")
+            _sync_prop("dimension", dimension)
             _sync_prop("validation_info", f"Sync Handshake: decision={decision}, epoch={epoch}, seq={seq}")
             if decision == 0:  # VERIFIED_SKIP_REBUILD
                 _sync_prop("sync_verified", True)
@@ -303,6 +336,16 @@ def _sync_timer_tick() -> Optional[float]:
 
         elif ev_type == "ERROR":
             _sync_prop("validation_info", f"Error: {ev.get('message', '')}")
+            _sync_prop("is_streaming", False)
+            _close_progress_reporter()
+
+    # Authoritative connection state comes from the native session, never from a
+    # string comparison against an intermediate status message.
+    if session_active:
+        native_status = getattr(session, "connection_status", "") or ""
+        if native_status:
+            _sync_prop("connection_status", native_status)
+        _sync_prop("is_connected", bool(getattr(session, "is_connected", False)))
 
     if latest_world_mesh is not None:
         try:
@@ -343,14 +386,15 @@ def _sync_timer_tick() -> Optional[float]:
                         getattr(props, "size_y", 0),
                         getattr(props, "size_z", 0),
                     ]
+                    server_uuid, state_hash = _session_persist_identity(session)
                     persist_sync_session_state(
                         active_container,
-                        server_uuid=_safe_get_custom_prop(active_container, "mtk_sync_server_uuid", ""),
+                        server_uuid=server_uuid,
                         epoch=session.current_epoch,
                         sequence=session.current_sequence,
                         bounds=bounds,
                         dimension=getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
-                        state_hash=_safe_get_custom_prop(active_container, "mtk_sync_state_hash", ""),
+                        state_hash=state_hash,
                     )
 
                 if _progress_reporter is not None:
@@ -394,8 +438,19 @@ def _sync_timer_tick() -> Optional[float]:
         except Exception as e:
             logger.debug(f"Failed debounced voxel cloud sync: {e}")
 
-    # If session is disconnected or ended, unregister timer cleanly
-    if not session.is_active or (props and not props.is_connected and props.connection_status.startswith("DISCONNECTED")):
+    # If the session ended (fatal disconnect or explicit stop), clear stale UI state
+    # and unregister the timer cleanly. This runs after event processing so the final
+    # DISCONNECTED event can never be lost.
+    if not session_active:
+        _close_progress_reporter()
+        _sync_prop("is_connected", False)
+        _sync_prop("connection_status", "DISCONNECTED")
+        _sync_prop("is_streaming", False)
+        if terminal_status:
+            _sync_prop("validation_info", terminal_status)
+        else:
+            last_err = getattr(session, "last_error", "") if session is not None else ""
+            _sync_prop("validation_info", last_err or "Disconnected")
         stop_sync_timer()
         return None
 
@@ -471,6 +526,12 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         set_active_sync_container(context.scene, target_obj)
 
+        # A new native session restarts its mesh generation counter at 1. Clear any
+        # generation persisted in the .blend from a previous session, otherwise
+        # every WORLD_MESH_READY would be treated as stale and silently discarded
+        # (the viewport then never receives voxel data until the file is recreated).
+        _safe_set_custom_prop(target_obj, "mtk:client_generation", 0)
+
         props = getattr(target_obj, "mozi_sync", None) or _get_active_props(context, target_obj)
         url = props.url if props and props.url else "ws://127.0.0.1:8765"
 
@@ -500,6 +561,19 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
         # Check persisted session state on active container to attempt 0ms reconnect verification
         cached_state = load_persisted_sync_session_state(target_obj)
+
+        # The zero-rebuild fast path may only be used when the scene already holds
+        # a populated world mesh. Persisted custom properties survive even if the
+        # user deleted the mesh object, so verify the local geometry first.
+        local_mesh = find_world_mesh_child(target_obj)
+        has_local_mesh = bool(
+            local_mesh is not None
+            and getattr(local_mesh, "type", "") == "MESH"
+            and getattr(getattr(local_mesh, "data", None), "vertices", None) is not None
+            and len(local_mesh.data.vertices) > 0
+        )
+        if not _ZERO_REBUILD_FAST_PATH_ENABLED or not has_local_mesh:
+            cached_state = {}
         cached_uuid_bytes = None
         cached_epoch = 0
         cached_seq = 0
@@ -603,14 +677,15 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
                     getattr(props, "size_y", 0),
                     getattr(props, "size_z", 0),
                 ]
+                server_uuid, state_hash = _session_persist_identity(session)
                 persist_sync_session_state(
                     target_obj,
-                    server_uuid=_safe_get_custom_prop(target_obj, "mtk_sync_server_uuid", ""),
+                    server_uuid=server_uuid,
                     epoch=session.current_epoch,
                     sequence=session.current_sequence,
                     bounds=bounds,
                     dimension=getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
-                    state_hash=_safe_get_custom_prop(target_obj, "mtk_sync_state_hash", ""),
+                    state_hash=state_hash,
                 )
 
         session.stop()
@@ -649,9 +724,6 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
 
     def execute(self, context):
         session = get_sync_bridge_session()
-        if not session.is_active:
-            self.report({'WARNING'}, "Live Sync is not connected.")
-            return {'CANCELLED'}
 
         target_obj = None
         if self.target_container and self.target_container in bpy.data.objects:
@@ -660,6 +732,35 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
             target_obj = get_active_sync_container(context.scene) or resolve_world_root_object(getattr(context, "active_object", None))
 
         props = getattr(target_obj, "mozi_sync", None) or getattr(context.scene, "mozi_sync", None)
+
+        # Refresh the UI state from the native session before deciding, so a stale
+        # panel (e.g. leftover CONNECTED text after a silent disconnect) cannot
+        # produce a misleading "not connected" report.
+        session.poll_events()
+        is_active = bool(getattr(session, "is_active", False))
+        is_connected = bool(getattr(session, "is_connected", False))
+        status = str(getattr(session, "connection_status", "") or "DISCONNECTED")
+
+        if not is_active:
+            stop_sync_timer()
+            if props:
+                props.is_connected = False
+                props.connection_status = "DISCONNECTED"
+                props.is_streaming = False
+                props.validation_info = "Disconnected"
+            self.report({'WARNING'}, "Live Sync is not connected.")
+            return {'CANCELLED'}
+
+        if not is_connected:
+            if props:
+                props.connection_status = status
+                props.is_connected = False
+            self.report(
+                {'WARNING'},
+                f"Live Sync is not ready yet ({status}). Please wait for the connection to be restored.",
+            )
+            return {'CANCELLED'}
+
         if props:
             props.is_streaming = True
             props.stream_stage = "sync_request"
@@ -670,7 +771,14 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
         reporter = _get_progress_reporter(title="Live Sync: Request")
         reporter.update(0, 100, message="Requesting snapshot from server...")
 
-        session.request_resync()
+        if not session.request_resync():
+            _close_progress_reporter()
+            if props:
+                props.is_streaming = False
+                props.validation_info = "Failed to send snapshot request"
+            self.report({'ERROR'}, "Failed to request a snapshot from the server.")
+            return {'CANCELLED'}
+
         self.report({'INFO'}, "Full snapshot requested from server.")
         return {'FINISHED'}
 

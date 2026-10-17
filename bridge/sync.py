@@ -439,7 +439,10 @@ class SyncBridgeSession:
         Polls all pending events from the background Rust engine (non-blocking).
         Updates internal connection status accordingly.
         """
-        if self._session is None or not self.is_active:
+        # Poll even when the worker has already stopped: the terminal DISCONNECTED
+        # event is queued right before the worker exits, and dropping it leaves the
+        # UI stuck on a stale "CONNECTED" state.
+        if self._session is None:
             return []
         try:
             events = self._session.poll_events()
@@ -447,9 +450,15 @@ class SyncBridgeSession:
                 if ev.get("type") == "STATUS_CHANGE":
                     status = ev.get("status", "DISCONNECTED")
                     self._connection_status = status
-                    self._is_connected = (status == "CONNECTED")
-                    if status == "DISCONNECTED" or status.startswith("DISCONNECTED"):
+                    if status == "CONNECTED":
+                        self._is_connected = True
+                    elif status.startswith("DISCONNECTED"):
+                        self._is_connected = False
                         self._is_active = False
+                    else:
+                        # Intermediate states (CONNECTING/RECONNECTING/errors) mean
+                        # the socket is not usable, but the worker is still alive.
+                        self._is_connected = False
             return events
         except Exception as e:
             logger.error(f"Error polling Live Sync events: {e}")

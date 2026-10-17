@@ -34,10 +34,12 @@
   - 连接握手 CRC32 差异校验与已有场景物体智能免重刷机制。
   - “刷新数据 (Refresh Data)” 与 “重建网格 (Rebuild Mesh)” 行为边界划分。
   - 内存体素模型（`VoxelStorage`）、场景持久化层级容器（`hierarchy.py`）与操作符全景。
-- **[实时同步网络传输协议规范 (Live Sync Protocol)](live_sync/live_sync_protocol.md)**：
-  - Minecraft <-> DCC 完整的二进制帧头、数据包类型清单（S2C/C2S）。
-  - 选区拖拽释放时提交（Commit-on-Release）与握手时序。
-  - 单方块微操作与大批量更新自动分流规范。
+- **[实时同步协议与架构 RFC v3.1 (Live Sync RFC)](live_sync/live_sync_protocol.md)**：
+  - Minecraft ↔ Rust ↔ Blender 三端权威协议：帧头、资源硬限、全部 Opcode 与负载布局。
+  - Canonical `state_hash`（xxHash64）、X→Z→Y 扫描顺序与 Section-local Quart Biome 契约。
+  - HELLO/WELCOME 决策矩阵、Baseline→Delta 栅栏、Staging/Replay、缺口检测与 RESYNC。
+  - Per-client 基线代际、协作取消、Delta 16,384 分片、快速重连持久化与失效规则。
+  - 连接状态权威同步、看门狗/限流/失败熔断，以及 10 项已知实现偏差与 v2.0 修复索引。
 - **[原生网格实时同步构建体系 (Direct Mesh)](mesh/direct_mesh.md)**：
   - 16x16x16 Section 分块容器、6 向邻域遮挡剔除、拓扑微距焊接。
   - 毫秒级增量更新（Delta Update）与原生多图集 UVMap 写入。

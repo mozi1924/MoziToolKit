@@ -55,6 +55,12 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
         default="DISCONNECTED",
     )
 
+    dimension: StringProperty(
+        name="Dimension",
+        description="Minecraft dimension identifier of the active selection",
+        default="minecraft:overworld",
+    )
+
     has_selection: BoolProperty(
         name="Has Selection",
         default=False,

@@ -242,6 +242,7 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
 
     def test_stored_manifest_imported_on_connect(self):
         """Verify MOZI_OT_sync_connect restores persistent sync manifest into native session."""
+        from MoziToolKit.operators.sync import op_sync_connect
         from MoziToolKit.operators.sync.op_sync_connect import MOZI_OT_sync_connect
 
         mock_session = MagicMock(spec=SyncBridgeSession)
@@ -260,6 +261,10 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
             "mtk_sync_user_modified": False,
         }
         mock_container.get.side_effect = lambda k, d=None: props.get(k, d)
+        mock_mesh = MagicMock()
+        mock_mesh.type = "MESH"
+        mock_mesh.data.vertices = [object()]
+        mock_container.children = [mock_mesh]
 
         class DummyConnectOp:
             def __init__(self):
@@ -277,6 +282,7 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         has_real_bpy = hasattr(bpy, "data") and hasattr(bpy.data, "objects") and not isinstance(bpy, MagicMock)
 
         real_obj = None
+        real_mesh_obj = None
         orig_objects = getattr(bpy.data, "objects", None)
         try:
             with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
@@ -292,10 +298,20 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                     for k, v in props.items():
                         real_obj[k] = v
                     bpy.context.collection.objects.link(real_obj)
+
+                    mesh = bpy.data.meshes.new("Yefira_World_Mesh")
+                    mesh.from_pydata([(0.0, 0.0, 0.0)], [], [])
+                    real_mesh_obj = bpy.data.objects.new("Yefira_World_Mesh", mesh)
+                    real_mesh_obj["mtk:is_yefira_mesh"] = True
+                    real_mesh_obj.parent = real_obj
+                    bpy.context.collection.objects.link(real_mesh_obj)
                 else:
                     bpy.data.objects = {"Yefira_World": mock_container}
 
-                res = op.execute(mock_context)
+                # Fast path plumbing: when explicitly enabled, persisted identity is
+                # forwarded to HELLO.
+                with patch.object(op_sync_connect, "_ZERO_REBUILD_FAST_PATH_ENABLED", True):
+                    res = op.execute(mock_context)
                 self.assertEqual(res, {'FINISHED'})
                 mock_session.start.assert_called_once()
                 kwargs = mock_session.start.call_args[1]
@@ -304,8 +320,22 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 self.assertEqual(kwargs.get("cached_min"), (0, 64, 0))
                 self.assertEqual(kwargs.get("cached_size"), (16, 16, 16))
                 self.assertEqual(kwargs.get("cached_state_hash"), 0x1234567890abcdef)
+
+                # Production default: zero-rebuild is disabled until native
+                # VoxelStorage persistence lands, so HELLO always requests a full
+                # baseline and the cached fields stay zeroed.
+                mock_session.start.reset_mock()
+                res = op.execute(mock_context)
+                self.assertEqual(res, {'FINISHED'})
+                kwargs = mock_session.start.call_args[1]
+                self.assertEqual(kwargs.get("cached_epoch"), 0)
+                self.assertEqual(kwargs.get("cached_seq"), 0)
+                self.assertIsNone(kwargs.get("cached_uuid"))
+                self.assertEqual(kwargs.get("cached_state_hash"), 0)
         finally:
             if has_real_bpy and real_obj is not None:
+                if real_mesh_obj is not None:
+                    bpy.data.objects.remove(real_mesh_obj, do_unlink=True)
                 bpy.data.objects.remove(real_obj, do_unlink=True)
             elif not has_real_bpy:
                 bpy.data.objects = orig_objects

@@ -137,7 +137,7 @@ blender --background --python tests/run_tests.py -- -q
   - [分层架构设计与核心原则](docs/architecture/overview.md)
   - [核心设计决策与防回归对照表](docs/architecture/faq_anti_regression.md)
   - [材质解析与模型烘焙管线规范](docs/materials/material_pipeline.md)
-  - [实时同步协议与网络网格规范](docs/live_sync/live_sync_protocol.md)
+  - [RFC v3.1 实时同步协议与架构规范](docs/live_sync/live_sync_protocol.md)
   - [面剔除与微观遮挡算法](docs/mesh/face_culling.md)
   - [自适应像素切分与智能挤出规范](docs/mesh/pixel_split.md)
   - [体素点云持久化与存储契约](docs/mesh/voxel_point_cloud.md)
