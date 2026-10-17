@@ -117,37 +117,64 @@
 
 ---
 
+### 2.3 P1 Biome 即时更新下沉（✅ 本轮完成）
+
+- [x] `mtk-material::biome::reapply_uniform_biome_tint_flat`：
+  - 输入 `base_tint_types`、现有 packed tint data、旧 hardcoded 颜色、目标群系颜色；
+  - Rayon 并行输出扁平 `packed_tint_data` / `tint_colors` / `colormap_uvs`；
+  - 自定义 grass/foliage/dry 覆盖仍按原语义路由到 `TINT_TYPE_HARDCODED`，但保留新颜色。
+- [x] PyO3 `reapply_uniform_biome_tint`：
+  - 接受 C-contiguous `uint8` / `float32` buffer；
+  - 返回 3 个零拷贝 memoryview（Rust 持有 Vec）；
+  - Python 直接 `foreach_set`，没有逐面 Python 对象。
+- [x] `utils/materials/biome/updater.py`：
+  - fast path 改为 Rust 计算；
+  - 仅当存在 `TINT_TYPE_HARDCODED` 面时才读取旧颜色；
+  - 属性写入仍用 `foreach_set`（实测与 DNA 等价，见 §2.4）。
+- [x] 实测（Blender 5.2.1，498,436 faces）：
+  - 原 Python 快速路径：**6.3–8.0 ms**
+  - 新 Rust 路径：**~2.1 ms**（约 3 倍）
+
+### 2.4 DNA vs `foreach_set` 实测结论
+
+- 500k faces、3 个 face 属性：
+  - `foreach_set` 0.53 ms；
+  - DNA `copy_buffer_to_ptr` 0.52 ms；
+  - **没有可测性能差异**。
+- DNA 直写后 evaluated mesh 仍是旧值，必须显式 `mesh.update()`；
+  `foreach_set` 会自动标记更新。
+- 结论：DNA 继续用于拓扑/位置/法线/UV/顶点色/点云；通用 face 属性继续
+  `foreach_set`；即时 Biome 的收益来自 **Rust 并行计算 + 扁平 buffer**，不是 DNA。
+- 详细基准与适用范围见 [`docs/mesh/direct_mesh.md`](../mesh/direct_mesh.md) §7。
+
+---
+
 ## 3. 剩余待办（按优先级）
 
-### P1 — 把 Biome 即时更新继续下沉（性能收益最大）
+### P1 — 外部网格材质提取批量化（部分完成，剩余 palette-native 改造）
 
-当前 `utils/materials/biome/updater.py`（约 586 行）仍包含：
+`utils/materials/pipeline.py::extract_face_material_context` 原先逐 polygon 读取
+`poly.material_index` / `loop_start` / `loop_total`，并逐面拼 `clean_keys`。
 
-- `resolve_mesh_base_tint_types`：多策略（palette idx / string key / material slot / raw fallback）
-  的逐面分类；
-- `update_object_biome` 的 fast path：在 Python 里按 `base_tt` 组合 grass/foliage/water/dry/hardcoded
-  颜色、重写 `mtk_biome_tint_data` / `mtk_biome_tint_color` / `mtk_colormap_uv`；
-- 多处 `for poly in mesh.polygons` 的 fallback。
+本轮已完成：
 
-建议新增 `mtk-material::biome::inplace`：
+- [x] `extract_face_material_context` 改为 `foreach_get` + NumPy object-array 索引；
+  159k faces 从 **0.317 s → 0.050 s**。
+- [x] `face_source_keys` 改为 texture-id → key 稠密表 + NumPy 索引；
+- [x] `inject_mesh_provenance_attributes` 删除逐面 `clean_keys` decode/str 循环；
+- [x] `compute_flat_material_props_memoryview`：Rust 直接返回零拷贝 memoryview，
+  `inject_face_attribute_float4` 识别 buffer，不再 `np.ascontiguousarray` 复制；
+- [x] UV transform 由 Python 逐面 `extend` 改为 `np.asarray(...).ravel()`；
+- [x] 500k faces 外部 replace 实测 **2.65 s → 1.70–1.85 s**（约 1.5 倍）。
 
-- [ ] `resolve_base_tint_types(palette_keys, face_indices, raw_tint_types, slot_tint_types) -> Vec<u8>`；
-- [ ] `reapply_uniform_biome_tint(base_tint_types, existing_tint_data, biome_colors, flags) -> flat buffers`；
-- [ ] PyO3 暴露为 `BiomeResolver.resolve_base_tint_types` / `reapply_biome_tint`；
-- [ ] Python 只负责 `foreach_get` / `foreach_set` 与 hardcoded 颜色回填；
-- [ ] 以 100 万面网格做基准，目标：base tint 解析 < 5 ms，uniform recolor < 3 ms。
+仍待完成：
 
-### P1 — 外部网格材质提取批量化（避免逐面 Python 循环）
-
-`utils/materials/pipeline.py::extract_face_material_context` 仍逐 polygon 读取
-`poly.material_index`、拼 `face_materials` / `face_loop_ranges`；`inject_mesh_provenance_attributes`
-仍逐面生成 `clean_keys`。大网格（>50 万面）上这部分会成为新的瓶颈。
-
-- [ ] 新增 Rust `resolve_face_material_keys(face_slot_indices, slot_names, slot_source_keys, existing_keys)`
-      返回 `unique_keys + face_key_indices`（调色板化，避免 Vec<String> 每面复制）；
-- [ ] `extract_face_material_context` 用 `foreach_get` 取 slot index，再调用 Rust；
-- [ ] provenance 注入直接使用 palette + indices，避免 `clean_keys` 逐面列表；
-- [ ] 增加 100 万面外部网格基准（replace 总耗时目标 < 1.2 s，当前 Python 循环占比待测）。
+- [ ] **palette-native remap**：`face_materials` 仍以 `Vec<String>` 传入 Rust，
+  且 `face_texture_ids` / `face_chunk_ids` 仍以 Python list 返回；应改为
+  `palette + u32 indices`，避免每面字符串与 list 转换。
+- [ ] `compute_biome_tint_attributes` 增加 palette 版本，避免逐面 `Vec<String>`。
+- [ ] `face_chunk_ids` / `face_texture_ids` 以 memoryview 返回，直接喂给 `foreach_set`。
+- [ ] 目标：1M faces 外部 replace < 1.2 s（当前 500k ~1.7 s，尚未达标）。
 
 ### P2 — Live Sync 事件合并/代际栅栏下沉
 
@@ -214,7 +241,7 @@ cd MoziToolKit
 ../libmozitoolkit/.venv/bin/python -m pytest tests/ -q
 ```
 
-结果：**240 passed / 71 skipped**（新增 Blender-only 用例在 mock 下 skip）。
+结果：**241 passed / 71 skipped**（新增 Blender-only 用例在 mock 下 skip）。
 
 ### Blender 5.2.1 LTS
 
@@ -224,7 +251,7 @@ MTK_TEST_SITE_PACKAGES="$(../libmozitoolkit/.venv/bin/python -c 'import site; pr
   blender --background --factory-startup --python tests/run_tests.py -- -q
 ```
 
-结果：**301 passed / 10 skipped**（修复了 3 个已知的 sync timer 隔离失败与
+结果：**302 passed / 10 skipped**（修复了 3 个已知的 sync timer 隔离失败与
 `tests/test_mesh_ownership.py` 中 5 个 `root.children = [...]` 非法赋值 / fake datablock
 造成的测试自身失败）。
 

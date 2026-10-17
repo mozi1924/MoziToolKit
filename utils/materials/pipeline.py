@@ -31,6 +31,7 @@ try:
         resolve_mesh_material_routes,
         reroute_mesh_animation,
         compute_flat_material_props,
+        compute_flat_material_props_buffer,
         BiomeResolver,
     )
 except (ImportError, ValueError):
@@ -41,6 +42,7 @@ except (ImportError, ValueError):
         resolve_mesh_material_routes,
         reroute_mesh_animation,
         compute_flat_material_props,
+        compute_flat_material_props_buffer,
         BiomeResolver,
     )
 
@@ -224,6 +226,10 @@ def extract_face_material_context(
 ) -> Tuple[List[str], List[Tuple[int, int]], array.array, Any, Optional[List[str]]]:
     """
     Step 2: Extract face materials, loop ranges, loop UVs, and existing provenance keys from mesh.
+
+    Uses bulk `foreach_get` plus NumPy object-array indexing instead of per-polygon
+    RNA access. This is the hot path for large external meshes (hundreds of
+    thousands of faces).
     """
     num_polys = len(mesh.polygons)
     num_loops = len(mesh.loops)
@@ -239,34 +245,65 @@ def extract_face_material_context(
     if not existing_prov_keys or len(existing_prov_keys) != num_polys:
         existing_prov_keys = None
 
-    face_materials: List[str] = []
-    face_loop_ranges: List[Tuple[int, int]] = []
+    # Bulk-extract polygon slot indices and loop ranges.
+    poly_mats = np.empty(num_polys, dtype=np.int32)
+    mesh.polygons.foreach_get("material_index", poly_mats)
+    loop_starts = np.empty(num_polys, dtype=np.int32)
+    loop_totals = np.empty(num_polys, dtype=np.int32)
+    mesh.polygons.foreach_get("loop_start", loop_starts)
+    mesh.polygons.foreach_get("loop_total", loop_totals)
 
-    for idx, poly in enumerate(mesh.polygons):
-        mat_name = "default"
-        mat_slot = None
-        if poly.material_index < len(mesh.materials):
-            mat_slot = mesh.materials[poly.material_index]
-            if mat_slot:
-                mat_name = mat_slot.name
+    # Read each material slot once (there are usually only a handful).
+    slot_names: List[str] = []
+    slot_is_mtk: List[bool] = []
+    slot_source_ids: List[str] = []
+    for mat_slot in mesh.materials:
+        if not mat_slot:
+            slot_names.append("default")
+            slot_is_mtk.append(True)
+            slot_source_ids.append("")
+            continue
 
+        mat_name = str(getattr(mat_slot, "name", "default") or "default")
         mat_lower = mat_name.strip().lower()
-        is_mtk_mat = (
-            mat_lower.startswith(("mtk:", "mtk_", "mc_atlas", "default"))
-            or (mat_slot and bool(mat_slot.get("mtk:material_id") or mat_slot.get("mtk_source_texture_key") or mat_slot.get("mtk_material_mode")))
+        slot_id = (
+            mat_slot.get("mtk_source_texture_key")
+            or mat_slot.get("mtk:material_id")
+            or mat_slot.get("mtk:source_texture")
+            or ""
         )
+        is_mtk = mat_lower.startswith(("mtk:", "mtk_", "mc_atlas", "default")) or bool(
+            mat_slot.get("mtk:material_id")
+            or mat_slot.get("mtk_source_texture_key")
+            or mat_slot.get("mtk_material_mode")
+        )
+        slot_names.append(mat_name)
+        slot_is_mtk.append(is_mtk)
+        slot_source_ids.append(str(slot_id) if slot_id else "")
 
-        if is_mtk_mat and existing_prov_keys:
-            candidate = existing_prov_keys[idx]
-            if candidate and candidate != "mozi:fallback":
-                mat_name = candidate
-        elif is_mtk_mat and mat_slot:
-            mat_id = mat_slot.get("mtk_source_texture_key") or mat_slot.get("mtk:material_id") or mat_slot.get("mtk:source_texture")
-            if mat_id and mat_id != "mozi:fallback":
-                mat_name = mat_id
+    num_slots = len(slot_names)
+    if num_slots > 0:
+        valid_slot = (poly_mats >= 0) & (poly_mats < num_slots)
+        safe_mats = np.where(valid_slot, poly_mats, 0)
+        slot_names_arr = np.array(slot_names, dtype=object)
+        face_names = slot_names_arr[safe_mats]
+        face_is_mtk = np.array(slot_is_mtk, dtype=bool)[safe_mats] & valid_slot
+        face_names = np.where(valid_slot, face_names, "default")
 
-        face_materials.append(mat_name)
-        face_loop_ranges.append((poly.loop_start, poly.loop_total))
+        if existing_prov_keys is not None:
+            existing_arr = np.array(existing_prov_keys, dtype=object)
+            valid_prov = (existing_arr != "") & (existing_arr != "mozi:fallback")
+            face_names = np.where(face_is_mtk & valid_prov, existing_arr, face_names)
+        else:
+            slot_ids_arr = np.array(slot_source_ids, dtype=object)
+            slot_ids = slot_ids_arr[safe_mats]
+            valid_ids = slot_ids != ""
+            face_names = np.where(face_is_mtk & valid_ids, slot_ids, face_names)
+    else:
+        face_names = np.full(num_polys, "default", dtype=object)
+
+    face_materials: List[str] = face_names.tolist()
+    face_loop_ranges: List[Tuple[int, int]] = list(zip(loop_starts.tolist(), loop_totals.tolist()))
 
     return face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_prov_keys
 
@@ -310,11 +347,32 @@ def remap_face_materials_and_uvs(
                 id_to_key[int(tid)] = key
 
     face_source_keys: List[str] = []
-    for i, tex_id in enumerate(face_texture_ids):
-        resolved_key = id_to_key.get(tex_id)
-        if not resolved_key and existing_prov_keys and existing_prov_keys[i] and existing_prov_keys[i] != "mozi:fallback":
-            resolved_key = existing_prov_keys[i]
-        face_source_keys.append(resolved_key or "mozi:fallback")
+    if face_texture_ids:
+        tex_ids = np.asarray(face_texture_ids, dtype=np.int64)
+        max_id = int(tex_ids.max()) if tex_ids.size else -1
+        if id_to_key and 0 <= max_id <= 1_000_000:
+            table = np.full(max_id + 1, "", dtype=object)
+            for tid, key in id_to_key.items():
+                if 0 <= tid <= max_id:
+                    table[tid] = key
+            keys_arr = table[tex_ids]
+        elif id_to_key:
+            keys_arr = np.fromiter(
+                (id_to_key.get(int(tid), "") for tid in tex_ids),
+                dtype=object,
+                count=len(tex_ids),
+            )
+        else:
+            keys_arr = np.full(len(tex_ids), "", dtype=object)
+
+        if existing_prov_keys and len(existing_prov_keys) == len(tex_ids):
+            existing_arr = np.asarray(existing_prov_keys, dtype=object)
+            missing = keys_arr == ""
+            valid_fallback = missing & (existing_arr != "") & (existing_arr != "mozi:fallback")
+            keys_arr = np.where(valid_fallback, existing_arr, keys_arr)
+
+        keys_arr[keys_arr == ""] = "mozi:fallback"
+        face_source_keys = keys_arr.tolist()
 
     remap_result["face_source_keys"] = face_source_keys
     return remap_result
@@ -427,9 +485,7 @@ def inject_mesh_provenance_attributes(
         inject_face_attribute_int(mesh, "mtk_uv_mode", [0 if mode_upper == "ATLAS" else 1] * num_polys)
 
     if face_uv_transforms is not None:
-        flat_transforms: List[float] = []
-        for tf in face_uv_transforms:
-            flat_transforms.extend(tf)
+        flat_transforms = np.asarray(face_uv_transforms, dtype=np.float32).ravel()
         inject_face_attribute_float4(mesh, "mtk_uv_tiling_transform", flat_transforms)
         inject_face_attribute_float4(mesh, "mtk_uv_transform", flat_transforms)
 
@@ -456,11 +512,12 @@ def inject_mesh_provenance_attributes(
 
     # Inject packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
     if face_source_keys:
-        clean_keys = [
-            k.decode("utf-8", errors="ignore") if isinstance(k, (bytes, bytearray)) else str(k or "")
-            for k in (face_source_keys[:num_polys] if len(face_source_keys) >= num_polys else face_source_keys + [""] * (num_polys - len(face_source_keys)))
-        ]
-        flat_props = compute_flat_material_props(clean_keys)
+        keys = (
+            face_source_keys[:num_polys]
+            if len(face_source_keys) >= num_polys
+            else face_source_keys + [""] * (num_polys - len(face_source_keys))
+        )
+        flat_props = compute_flat_material_props_buffer(keys)
         inject_face_attribute_float4(mesh, ATTR_MATERIAL_PROPS, flat_props)
 
 

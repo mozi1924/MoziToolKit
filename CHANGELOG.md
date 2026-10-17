@@ -41,6 +41,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `VERIFIED_SKIP_REBUILD` 与数字 `0` 比较导致 0ms 重连分支永不触发的问题。
 - 修复 3 个 Live Sync timer 测试在真实 Blender 下的顺序隔离失败。
 
+### ⚡ 即时 Biome 更新下沉与 DNA/foreach 边界（Instant Biome Recolor）
+- **Biome 即时切换下沉 Rust**：新增 `mtk-material::reapply_uniform_biome_tint_flat`，
+  并行计算逐面 tint type / color / colormap UV，并以扁平 `Vec<f32>` 输出。
+- **零拷贝 memoryview**：PyO3 返回 3 个 Rust 持有的 memoryview，Python 直接 `foreach_set`，
+  不再构造逐面 Python 对象，也不额外复制。
+- **避免无谓读取**：仅当网格存在 `TINT_TYPE_HARDCODED` 面时才读取旧 `mtk_biome_tint_color`。
+- 实测 498,436 faces：即时群系切换 **6.3–8.0 ms → ~2.1 ms**（约 3 倍）。
+- **DNA 与 `foreach_set` 实测结论**：500k faces 三个 face 属性写入均为 ~0.52 ms，DNA 无实质收益；
+  且 DNA 直写不会被 evaluated mesh 感知，必须手动 `mesh.update()`。因此 DNA 继续用于
+  拓扑/位置/法线/UV/顶点色/体素点云，通用 face 属性继续 `foreach_set`。
+  详见 [`docs/mesh/direct_mesh.md`](docs/mesh/direct_mesh.md) §7。
+
+### 🧵 外部网格材质提取向量化（External Mesh Extraction）
+- `extract_face_material_context` 改为 `foreach_get` + NumPy object-array 索引，
+  移除逐 polygon RNA 访问；159k faces 从 0.317 s 降到 0.050 s。
+- `face_source_keys` 改为 texture-id 稠密表 + NumPy 索引，移除逐面 dict/append 循环。
+- 删除 `inject_mesh_provenance_attributes` 的逐面 `clean_keys` decode/str 循环。
+- 新增 `compute_flat_material_props_memoryview`：Rust 直接返回零拷贝 memoryview；
+  `inject_face_attribute_float4` 识别 buffer，跳过 `np.ascontiguousarray` 复制。
+- UV transform 改为 `np.asarray(...).ravel()`，避免逐面 Python `extend`。
+- 500k faces 外部 replace 实测 **2.65 s → 1.70–1.85 s**。
+
 ### 🐛 Live Sync 稳定性修复 (Realtime Sync Stability)
 - **修复大选区/多生物群系基线永久校验失败（卡在 75%）**：Rust 基线组装器此前使用全局 Quart 索引 `qx & 3` 写入 Section-local 生物群系，未考虑选区 `min_pos` 非 16 对齐的情况，导致 Canonical State Hash 与 Minecraft 端失配并无限重同步。现改为按 `(world >> 2) & 3` 的 Section-local Quart 坐标写入，并新增非对齐选区回归测试。
 - **修复刷新后偶发提示“未连接”**：终态 `DISCONNECTED` 事件不再因原生 worker 已退出而被丢弃；Blender 面板连接状态统一以原生 `LiveSyncSession` 的 `is_connected` / `status` 为准，中间态传输告警（解码/发送错误）不再误判为断线。Refresh 会先同步真实状态并给出精确提示。

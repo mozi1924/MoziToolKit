@@ -258,6 +258,19 @@ class TestMaterialPipeline(unittest.TestCase):
 
 
 
+    def test_material_props_memoryview_is_flat_f32_buffer(self):
+        """Rust-owned material props memoryview must expose exactly len(keys) * 4 floats."""
+        from bridge.material import compute_flat_material_props_buffer
+        import numpy as np
+
+        keys = ["minecraft:block/glowstone", "minecraft:block/stone"]
+        buf = compute_flat_material_props_buffer(keys)
+        arr = np.frombuffer(buf, dtype=np.float32)
+        self.assertEqual(arr.size, len(keys) * 4)
+        # Glowstone emission is expected to be non-zero; stone is zero.
+        self.assertGreater(float(arr[0]), 0.0)
+        self.assertEqual(float(arr[4]), 0.0)
+
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_secondary_replacement_with_hashed_mtk_materials(self):
         # Create a test cube in Blender with hashed MTK material (mimicking previously processed map)

@@ -136,11 +136,22 @@ def inject_face_attribute_float(mesh: Any, name: str, values: Any) -> None:
 
 
 def inject_face_attribute_float4(mesh: Any, name: str, flat_values: Any) -> None:
-    """Inject a Face-domain Float4/Color attribute into Blender Mesh."""
+    """Inject a Face-domain Float4/Color attribute into Blender Mesh.
+
+    Accepts both Python sequences and buffer-protocol objects (numpy arrays /
+    memoryviews). Buffers are consumed without an extra `np.ascontiguousarray`
+    copy, which matters for Rust-owned flat property/recolor buffers.
+    """
     attr = get_or_create_attribute(mesh, name, "FLOAT_COLOR", "FACE")
-    if attr and len(attr.data) * 4 == len(flat_values):
+    if not attr:
+        return
+    if isinstance(flat_values, (list, tuple)):
         arr = np.ascontiguousarray(flat_values, dtype=np.float32)
-        attr.data.foreach_set("color", arr)
+    else:
+        arr = np.frombuffer(flat_values, dtype=np.float32)
+    if arr.size != len(attr.data) * 4:
+        return
+    attr.data.foreach_set("color", arr)
 
 
 def inject_face_attribute_vector(mesh: Any, name: str, flat_values: Any) -> None:

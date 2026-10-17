@@ -111,3 +111,61 @@ Direct Mesh 直接向 Blender 原生数据层写入渲染元数据，无需任�
 > 1. **坐标系 Y/Z 翻转与中心偏移**：Blender $Y$ 对应 Minecraft $-Z$，Blender $Z$ 对应 Minecraft $+Y$，计算顶点时必须维持此刚性映射。
 > 2. **Delta 更新边界 Section 同步刷新**：在方块位于 Section 边缘（$0$ 或 $15$）时，放置/破坏操作必须同时将跨界相邻 Section 标记为 Dirty 并重构，否则跨区块边界的面剔除状态会出现残留黑面或孔洞。
 > 3. **BMesh 材质插槽索引安全约束**：向面赋予 `bm_face.material_index` 前，必须确保目标物体材质槽数量已扩充至包含该 `chunk_id`，防止越界崩溃。
+
+---
+
+## 7. DNA 直写与 `foreach_get/set` 的适用边界（2026-10-18 实测）
+
+> 结论：**不要为了“统一走 DNA”而改掉通用 face 属性写入。**
+> 即时 Biome 更新的瓶颈在 Rust 侧逐面颜色组合，不在 Blender 属性写入。
+
+### 7.1 基准数据（Blender 5.2.1 LTS，498,436 faces）
+
+测试目标：一次更新 `mtk_biome_tint_data` (FloatColor x4)、
+`mtk_biome_tint_color` (FloatColor x4)、`mtk_colormap_uv` (FloatVector x3) 三个 face 属性。
+
+| 写入方式 | 中位耗时 | 说明 |
+| :--- | ---: | :--- |
+| `foreach_set` | **0.53 ms** | 3 次 C 级批量写入；Blender 自动标记数据更新 |
+| DNA `copy_buffer_to_ptr` | **0.52 ms** | 3 次 memcpy；**无实质收益** |
+| `foreach_set` + `mesh.update()` | **0.52 ms** | `mesh.update()` 在本场景约 0 ms |
+| DNA + `mesh.update()` | **0.51 ms** | 必须显式 update 才能被 evaluated mesh 看到 |
+
+### 7.2 关键差异：更新标记
+
+实测 DNA 直写后：
+
+- 原始 `mesh.attributes[...]` 已变；
+- **`obj.evaluated_get(depsgraph).data.attributes[...]` 仍是旧值**；
+- 只有调用 `mesh.update()` 后才同步到 evaluated mesh。
+
+而 `foreach_set` 会自动触发 Blender 的 RNA 更新标记。因此 DNA 直写必须额外维护：
+
+```python
+mesh.update()
+# 必要时再 view_layer.update() / 标记重绘
+```
+
+这等于把“Blender 数据更新契约”重新实现一遍，增加版本耦合，却换不到可测的写入性能收益。
+
+### 7.3 当前分工
+
+| 数据 | 通道 | 原因 |
+| :--- | :--- | :--- |
+| 顶点位置 / 法线 / 拓扑 / Loop UV / 顶点色 | **DNA** | 单块大缓冲、布局稳定、已有成熟指针解析与边界防护 |
+| 体素点云位置 / 坐标 / 调色板索引 | **DNA** | 同上，且是导入主瓶颈 |
+| Face 通用属性（Biome / Anim / Material Props / Provenance） | **`foreach_set`** | 写入 < 1 ms；自动 update；避免 DNA 布局耦合 |
+| Polygon `material_index` | **`foreach_set`** | Blender 内部为窄整型，DNA 直写需严格匹配位宽与槽位重映射，风险高于收益 |
+| 字符串 face 属性 | **调色板 + INT attribute** | 避免逐面 Python 字符串写入；保留 legacy STRING 兼容 |
+
+### 7.4 即时 Biome 更新的正确优化方向
+
+已落地：
+
+1. Rust `reapply_uniform_biome_tint_flat` 并行完成逐面 tint type / color 组合，输出扁平 `Vec<f32>`；
+2. PyO3 返回零拷贝 memoryview，Python 直接 `foreach_set`，不做逐面对象转换；
+3. 仅当存在 `TINT_TYPE_HARDCODED` 面时才读取旧 `mtk_biome_tint_color`，避免无谓 4 MB 读取。
+
+实测 498k faces：**6~8 ms → 2.1 ms**（约 3 倍）。
+600k~1M faces 仍落在 60 FPS 预算内；继续优化应优先减少 Rust 侧分配/复制，
+而不是替换 `foreach_set`。

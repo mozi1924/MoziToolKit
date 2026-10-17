@@ -451,10 +451,11 @@ def update_object_biome(
             try:
                 raw_data = np.empty(num_polys * 4, dtype=np.float32)
                 tint_data_attr.data.foreach_get("color", raw_data)
-                raw_data_2d = raw_data.reshape(num_polys, 4)
 
                 # Maintain cached base tint type (original 0..5 categories decoupled from biome hardcoded overrides)
-                base_tt = resolve_mesh_base_tint_types(mesh, obj, raw_data_2d, pack_stack=effective_stack)
+                base_tt = resolve_mesh_base_tint_types(
+                    mesh, obj, raw_data.reshape(num_polys, 4), pack_stack=effective_stack
+                )
 
                 is_init = bool(mesh.get("mtk:biome_tint_initialized", False)) if hasattr(mesh, "get") else False
                 if not np.any(base_tt > 0) and not is_init:
@@ -465,56 +466,67 @@ def update_object_biome(
                     water_col = biome_colors.get("water_linear", [0.05, 0.18, 0.78, 1.0])
                     dry_foliage_col = biome_colors.get("dry_foliage_linear", [0.37, 0.18, 0.06, 1.0])
                     cm_uv = biome_colors.get("colormap_uv", [0.2, 0.32])
-                    base_uv_3 = [float(cm_uv[0]), float(cm_uv[1]), 0.0]
 
-                    # Determine target tint type per face:
-                    # When custom override is checked, route to HARDCODED (4.0).
-                    # When unchecked, route to standard categories (1.0 for grass, 2.0 for foliage, etc.)
-                    target_tt = base_tt.astype(np.float32).copy()
-                    if has_custom_grass:
-                        target_tt[base_tt == TINT_TYPE_GRASS] = float(TINT_TYPE_HARDCODED)
-                    if has_custom_foliage:
-                        target_tt[base_tt == TINT_TYPE_FOLIAGE] = float(TINT_TYPE_HARDCODED)
-                    if has_custom_dry_foliage:
-                        target_tt[base_tt == TINT_TYPE_DRY_FOLIAGE] = float(TINT_TYPE_HARDCODED)
-
-                    # 1. Update ATTR_BIOME_TINT_DATA only if tint types actually changed
-                    if not np.array_equal(raw_data_2d[:, 3], target_tt):
-                        raw_data_2d[:, 3] = target_tt
-                        tint_data_attr.data.foreach_set("color", raw_data_2d.ravel())
-
-                    # 2. Update ATTR_BIOME_TINT_COLOR
-                    attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
-                    if attr_col and len(attr_col.data) == num_polys and hasattr(attr_col.data, "foreach_set"):
-                        new_tint_colors = np.ones((num_polys, 4), dtype=np.float32)
-                        new_tint_colors[base_tt == TINT_TYPE_GRASS] = grass_col
-                        new_tint_colors[base_tt == TINT_TYPE_FOLIAGE] = foliage_col
-                        new_tint_colors[base_tt == TINT_TYPE_WATER] = water_col
-                        new_tint_colors[base_tt == TINT_TYPE_DRY_FOLIAGE] = dry_foliage_col
-
-                        if hasattr(attr_col.data, "foreach_get"):
-                            old_cols_arr = np.empty(num_polys * 4, dtype=np.float32)
-                            attr_col.data.foreach_get("color", old_cols_arr)
-                            old_cols_2d = old_cols_arr.reshape(num_polys, 4)
-                            hc_mask = (base_tt == TINT_TYPE_HARDCODED)
-                            if np.any(hc_mask):
-                                new_tint_colors[hc_mask] = old_cols_2d[hc_mask]
-
-                        attr_col.data.foreach_set("color", new_tint_colors.ravel())
-
-                    # 3. Update ATTR_COLORMAP_UV (temperature/downfall)
-                    attr_uv = mesh.attributes.get(ATTR_COLORMAP_UV)
-                    if attr_uv and len(attr_uv.data) == num_polys and hasattr(attr_uv.data, "foreach_set"):
-                        new_cm_uvs = np.empty((num_polys, 3), dtype=np.float32)
-                        new_cm_uvs[:] = base_uv_3
-                        attr_uv.data.foreach_set("vector", new_cm_uvs.ravel())
-
-                    if hasattr(mesh, "__setitem__"):
+                    # Rust owns the per-face category/color composition. Python only
+                    # reads/writes flat buffers, so slider drags stay memory-bandwidth bound.
+                    try:
+                        from ....bridge.material import reapply_uniform_biome_tint
+                    except (ImportError, ValueError):
                         try:
-                            mesh["mtk:biome_tint_initialized"] = True
+                            from bridge.material import reapply_uniform_biome_tint
                         except Exception:
-                            pass
-                    fast_path_done = True
+                            reapply_uniform_biome_tint = None
+
+                    if reapply_uniform_biome_tint is not None and len(base_tt) == num_polys:
+                        attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+                        # Only hardcoded faces need the previous colors. Avoid a
+                        # 4-byte-per-face read when the mesh has none.
+                        needs_existing_colors = bool(np.any(base_tt == TINT_TYPE_HARDCODED))
+                        if (
+                            needs_existing_colors
+                            and attr_col is not None
+                            and len(attr_col.data) == num_polys
+                            and hasattr(attr_col.data, "foreach_get")
+                        ):
+                            old_cols = np.empty(num_polys * 4, dtype=np.float32)
+                            attr_col.data.foreach_get("color", old_cols)
+                        else:
+                            old_cols = np.empty(0, dtype=np.float32)
+
+                        packed_mv, colors_mv, uvs_mv = reapply_uniform_biome_tint(
+                            np.ascontiguousarray(base_tt, dtype=np.uint8),
+                            np.ascontiguousarray(raw_data, dtype=np.float32),
+                            np.ascontiguousarray(old_cols, dtype=np.float32),
+                            grass_col,
+                            foliage_col,
+                            dry_foliage_col,
+                            water_col,
+                            cm_uv,
+                            has_custom_grass=has_custom_grass,
+                            has_custom_foliage=has_custom_foliage,
+                            has_custom_dry_foliage=has_custom_dry_foliage,
+                        )
+
+                        tint_data_attr.data.foreach_set(
+                            "color", np.frombuffer(packed_mv, dtype=np.float32)
+                        )
+                        if attr_col is not None and len(attr_col.data) == num_polys and hasattr(attr_col.data, "foreach_set"):
+                            attr_col.data.foreach_set(
+                                "color", np.frombuffer(colors_mv, dtype=np.float32)
+                            )
+
+                        attr_uv = mesh.attributes.get(ATTR_COLORMAP_UV)
+                        if attr_uv is not None and len(attr_uv.data) == num_polys and hasattr(attr_uv.data, "foreach_set"):
+                            attr_uv.data.foreach_set(
+                                "vector", np.frombuffer(uvs_mv, dtype=np.float32)
+                            )
+
+                        if hasattr(mesh, "__setitem__"):
+                            try:
+                                mesh["mtk:biome_tint_initialized"] = True
+                            except Exception:
+                                pass
+                        fast_path_done = True
             except Exception:
                 fast_path_done = False
 
@@ -583,4 +595,8 @@ def update_object_biome(
                             pass
 
     obj["mtk:biome_preset"] = biome_name
+    # Attribute writes via foreach_set already tag the mesh; update() is cheap and
+    # guarantees the evaluated mesh / shader Attribute nodes see the new buffers.
+    if hasattr(mesh, "update"):
+        mesh.update()
     return True

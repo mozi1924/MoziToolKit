@@ -31,11 +31,15 @@
       Blender 只存一个不透明字符串。
 - [x] **进度与握手语义下沉 Rust**：`normalize_stream_progress` 修正 meshing 阶段二次加 50% 的 bug；
       `decision_code` 修复 Python 用字符串和 `0` 比较导致 0ms reconnect 分支永不触发的问题。
+- [x] **P1 Biome 即时更新下沉**：Rust `reapply_uniform_biome_tint_flat` + 零拷贝 memoryview；
+      498k faces 从 6~8 ms 降到 **~2.1 ms**。DNA 与 `foreach_set` 写入实测等价，
+      通用 face 属性继续 `foreach_set`（详见 [`direct_mesh.md`](docs/mesh/direct_mesh.md) §7）。
 
 ### 📋 下一批（按优先级）
-- [ ] **P1 Biome 即时更新下沉**：`resolve_base_tint_types` + `reapply_uniform_biome_tint` 移入
-      `mtk-material::biome`，Python 只做 `foreach_get/set`。
-- [ ] **P1 外部网格材质提取批量化**：把逐 polygon 的 slot/source-key 解析改为 Rust 调色板化批处理。
+- [x] **P1 外部网格材质提取批量化（部分）**：`foreach_get` + NumPy 索引、删除逐面 `clean_keys`、
+      zero-copy material props memoryview；500k faces replace 2.65 s → ~1.7 s。
+- [ ] **P1 外部网格 palette-native remap（剩余）**：`face_materials` / chunk-texture ids 改为
+      palette + u32 indices / memoryview，目标 1M faces < 1.2 s。
 - [ ] **P2 Live Sync 事件合并**：最新 generation 的 `WORLD_MESH_READY` 合并与 stale 丢弃移入 Rust。
 - [ ] **P2 资产缓存解析下沉**：`mtk-package::CacheResolver`，供 C4D 复用 `.mtkcache` 选择逻辑。
 - [ ] **P2 C-ABI 导出**：为 `mtk-ffi` 增加 material route 与 persisted-state 函数。

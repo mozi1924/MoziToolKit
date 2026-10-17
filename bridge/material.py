@@ -175,6 +175,45 @@ def compute_biome_tint_attributes(
     )
 
 
+def reapply_uniform_biome_tint(
+    base_tint_types: Any,
+    packed_tint_data: Any,
+    existing_tint_colors: Any,
+    grass_color: Sequence[float],
+    foliage_color: Sequence[float],
+    dry_foliage_color: Sequence[float],
+    water_color: Sequence[float],
+    colormap_uv: Sequence[float],
+    has_custom_grass: bool = False,
+    has_custom_foliage: bool = False,
+    has_custom_dry_foliage: bool = False,
+) -> Any:
+    """
+    Re-apply a uniform biome palette using Rust parallel math.
+
+    Inputs are flat buffers:
+      - base_tint_types: uint8 per face
+      - packed_tint_data: float32 x 4 per face
+      - existing_tint_colors: float32 x 4 per face (may be empty)
+
+    Returns zero-copy memoryviews for (packed_tint_data, tint_colors, colormap_uvs).
+    """
+    mtk = require_libmtk("reapply_uniform_biome_tint")
+    return mtk.reapply_uniform_biome_tint(
+        base_tint_types,
+        packed_tint_data,
+        existing_tint_colors,
+        tuple(grass_color),
+        tuple(foliage_color),
+        tuple(dry_foliage_color),
+        tuple(water_color),
+        tuple(colormap_uv),
+        bool(has_custom_grass),
+        bool(has_custom_foliage),
+        bool(has_custom_dry_foliage),
+    )
+
+
 def compute_mesh_biome_attributes_from_storage(
     face_texture_keys: List[str],
     block_xs: List[int],
@@ -317,6 +356,20 @@ def compute_flat_material_props(
     if mtk is None or not hasattr(mtk, "compute_flat_material_props"):
         return [0.0] * (len(face_source_keys) * 4)
     return mtk.compute_flat_material_props(
+        list(face_source_keys),
+        list(block_names) if block_names is not None else None,
+    )
+
+
+def compute_flat_material_props_buffer(
+    face_source_keys: Sequence[str],
+    block_names: Optional[Sequence[str]] = None,
+) -> Any:
+    """Compute flat material properties as a zero-copy memoryview over Rust-owned floats."""
+    mtk = get_libmtk()
+    if mtk is None or not hasattr(mtk, "compute_flat_material_props_memoryview"):
+        return np.zeros(len(face_source_keys) * 4, dtype=np.float32)
+    return mtk.compute_flat_material_props_memoryview(
         list(face_source_keys),
         list(block_names) if block_names is not None else None,
     )
