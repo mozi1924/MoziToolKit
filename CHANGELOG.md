@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧭 材质替换与网格重构边界收紧
+- 新增 `mtk:geometry_origin` 网格来源标记（`EXTERNAL` / `SAVE` / `SYNC_WORLD` / `SYNC_SECTION` / `VOXEL` / `POINT_CLOUD`），在存档导入、Live Sync 世界网格与独立体素网格创建时写入；旧文件按 `mtk:is_save_mesh`、`mtk:is_yefira_mesh`、`mtk:is_section_mesh`、`mtk_is_voxel_cloud` 与命名约定回退推断。
+- **替换材质仅对外部导入网格可用**：MTK 生成的网格（存档 / Live Sync / 体素）在右键菜单与 Voxel & Mesh Tools 面板中自动置灰，并显示“请编辑点云后重建”的上下文提示。
+- **重建体素网格收紧来源要求**：存档容器与离线 Live Sync 必须存在伴生体素点云；活跃 Live Sync 会话仍可直接从内存 storage 重建，无需等待点云；仅有材质来源属性（provenance）的外部网格不再被误判为可重建对象。
+- 修复存档复用已有网格时未补齐 `mtk:is_save_mesh` 标记的问题，并同步写入来源标记。
+
 ### 🐛 Live Sync 稳定性修复 (Realtime Sync Stability)
 - **修复大选区/多生物群系基线永久校验失败（卡在 75%）**：Rust 基线组装器此前使用全局 Quart 索引 `qx & 3` 写入 Section-local 生物群系，未考虑选区 `min_pos` 非 16 对齐的情况，导致 Canonical State Hash 与 Minecraft 端失配并无限重同步。现改为按 `(world >> 2) & 3` 的 Section-local Quart 坐标写入，并新增非对齐选区回归测试。
 - **修复刷新后偶发提示“未连接”**：终态 `DISCONNECTED` 事件不再因原生 worker 已退出而被丢弃；Blender 面板连接状态统一以原生 `LiveSyncSession` 的 `is_connected` / `status` 为准，中间态传输告警（解码/发送错误）不再误判为断线。Refresh 会先同步真实状态并给出精确提示。

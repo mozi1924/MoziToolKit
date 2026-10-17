@@ -357,6 +357,9 @@ translations_dict = {
         ('*', 'Location'): '存储路径',
         ('*', 'MTK Dev'): 'MTK 调试',
         ('*', 'MTK Dev Tools'): 'MTK 开发调试工具',
+        ('*', 'MTK mesh: geometry is derived from the voxel source.'): 'MTK 网格：几何由体素源派生。',
+        ('*', 'MTK mesh — use Rebuild Voxel Mesh (edit the Voxel Cloud)'): 'MTK 网格 — 请用“重建体素网格”（编辑点云）',
+        ('*', 'Edit the Voxel Cloud, then Rebuild. Direct mesh edits will be overwritten.'): '请编辑体素点云后重建；直接编辑网格会在重构时被覆盖。',
         ('*', 'Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking'): '管理具备优先级的材质包、原版 JAR 以及模组 JAR 堆叠，用于材质回退检索与模型烘焙',
         ('*', 'Manual Resolution'): '手动分辨率',
         ('*', 'Map each side UV strip into its adjacent face pixel'): '将每个侧面的 UV 窄条映射到其相邻面的像素上',
@@ -544,6 +547,8 @@ translations_dict = {
         ('*', 'Replace'): '替换选择',
         ('*', 'Replace Material'): '替换材质',
         ('Operator', 'Replace Material'): '替换材质',
+        ('*', 'Replace Material is only available for external imported meshes.'): '替换材质仅适用于外部导入的网格。',
+        ('*', 'Replace and upgrade materials on external imported meshes using the native material pipeline.'): '使用原生材质管线替换并升级外部导入网格的材质。',
         ('*', 'Replace and upgrade Minecraft materials using native material pipeline.'): '使用原生材质管线替换并升级 Minecraft 材质。',
         ('*', 'Replace current selection'): '替换当前选择',
         ('*', "Replace selected objects' materials using a Minecraft Java Edition Resource Pack (ZIP)"): '使用 Minecraft Java 版材质包 (ZIP) 批量替换/重构选中物体的材质',
@@ -739,6 +744,9 @@ translations_dict = {
         ('*', 'Action to perform on point cloud visibility'): '针对点云可见性执行的动作',
         ('*', 'Toggle Voxel Point Cloud'): '切换体素点云',
         ('*', 'Carving Active: Delete vertices, then Remesh'): '雕刻中: 编辑模式删点后，点击下方重构',
+        ('*', 'Voxel Cloud — use Rebuild Voxel Mesh'): '体素点云 — 请用“重建体素网格”',
+        ('*', 'Voxel Cloud: use Rebuild Voxel Mesh to regenerate the surface.'): '体素点云：请使用“重建体素网格”重新生成表面。',
+        ('*', 'Voxel Cloud missing: re-import the save to enable Rebuild.'): '缺少体素点云：请重新导入存档以启用重建。',
     }
 }
 

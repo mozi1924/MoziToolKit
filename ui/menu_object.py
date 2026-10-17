@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import bpy
 
+from .ownership_hint import draw_mesh_origin_hint
+
 try:
     from ..utils.system import draw_dynamic_menu
 except (ImportError, ValueError):
@@ -20,6 +22,7 @@ class MOZI_MT_object_menu(bpy.types.Menu):
         layout = self.layout
         layout.operator("mozi.rebuild_mesh", icon="MOD_REMESH")
         layout.operator("mozi.replace_material")
+        draw_mesh_origin_hint(layout, context, compact=True)
         layout.operator("mozi.toggle_voxel_cloud")
         layout.separator()
         layout.operator("mozi.clear_custom_normals")

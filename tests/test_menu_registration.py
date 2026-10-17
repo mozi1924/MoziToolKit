@@ -161,7 +161,9 @@ class TestMenuRegistration(unittest.TestCase):
         root, world, cloud, stype = resolve_mesh_rebuild_targets(mock_context)
         self.assertEqual(stype, "ATTRIBUTES")
         self.assertEqual(world, mock_obj_prov)
-        self.assertTrue(MOZI_OT_rebuild_mesh.poll(mock_context))
+        # Provenance alone no longer grants Rebuild access: such meshes are
+        # external imports and belong to Replace Material.
+        self.assertFalse(MOZI_OT_rebuild_mesh.poll(mock_context))
 
     def test_replace_material_provenance_predetection(self):
         from operators.op_materials import _has_provenance_attributes

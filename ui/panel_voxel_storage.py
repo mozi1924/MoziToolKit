@@ -9,6 +9,8 @@ from __future__ import annotations
 import bpy
 from bpy.props import FloatProperty
 
+from .ownership_hint import draw_mesh_origin_hint
+
 try:
     from ..bridge.point_cloud import (
         get_associated_voxel_cloud,
@@ -16,6 +18,7 @@ try:
         MASK_MODIFIER_NAME,
     )
     from ..i18n import tr
+    from ..utils.mesh.ownership import ORIGIN_SAVE, classify_origin
 except (ImportError, ValueError):
     from bridge.point_cloud import (
         get_associated_voxel_cloud,
@@ -27,6 +30,13 @@ except (ImportError, ValueError):
     except (ImportError, ValueError):
         def tr(msgid: str, msgctxt: str | None = None) -> str:
             return msgid
+    try:
+        from utils.mesh.ownership import ORIGIN_SAVE, classify_origin
+    except (ImportError, ValueError):
+        ORIGIN_SAVE = "SAVE"
+
+        def classify_origin(obj):
+            return "EXTERNAL"
 
 
 def _resolve_target_cloud(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:
@@ -91,6 +101,14 @@ class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
             text=tr("Rebuild Voxel Mesh"),
             icon="MOD_REMESH",
         )
+
+        if cloud_obj is None and classify_origin(getattr(context, "active_object", None)) == ORIGIN_SAVE:
+            warn = box_voxel.column(align=True)
+            warn.alert = True
+            warn.label(
+                text=tr("Voxel Cloud missing: re-import the save to enable Rebuild."),
+                icon="ERROR",
+            )
 
         if cloud_obj is not None:
             v_count = len(cloud_obj.data.vertices)
@@ -182,6 +200,8 @@ class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
         box_mat = layout.box()
         mat_head = box_mat.row(align=True)
         mat_head.label(text=tr("UV & Material Tools:"), icon="MATERIAL")
+
+        draw_mesh_origin_hint(box_mat, context)
 
         col_mat_ops = box_mat.column(align=True)
         r_mat1 = col_mat_ops.row(align=True)

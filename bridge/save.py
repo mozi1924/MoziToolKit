@@ -30,6 +30,15 @@ except (ImportError, ValueError):
 logger = logging.getLogger("MoziToolKit.Bridge.Save")
 
 
+def _stamp_save_mesh_origin(obj: Any) -> None:
+    """Stamp a save-imported mesh with the explicit MTK save origin."""
+    try:
+        from ..utils.mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
+    except (ImportError, ValueError):
+        from utils.mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
+    stamp_geometry_origin(obj, ORIGIN_SAVE, overwrite=True)
+
+
 def inspect_minecraft_save(path: str | Path) -> Dict[str, Any]:
     """
     Inspects a Minecraft save folder or level.dat path, returning world metadata
@@ -351,7 +360,6 @@ def apply_imported_save_to_blender(
         mesh_obj = bpy.data.objects.new(mesh_child_name, b_mesh)
         if hasattr(mesh_obj, "parent"):
             mesh_obj.parent = root_obj
-        _safe_set_custom_prop(mesh_obj, "mtk:is_save_mesh", True)
         if target_coll is not None and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
             try:
                 target_coll.objects.link(mesh_obj)
@@ -361,6 +369,11 @@ def apply_imported_save_to_blender(
         b_mesh = mesh_obj.data
         if hasattr(mesh_obj, "parent") and mesh_obj.parent != root_obj:
             mesh_obj.parent = root_obj
+
+    # Ownership marker applies to reused meshes too: legacy files only had the
+    # creation-time marker, which made reused meshes look external.
+    _safe_set_custom_prop(mesh_obj, "mtk:is_save_mesh", True)
+    _stamp_save_mesh_origin(mesh_obj)
 
     # 3. Inject mesh geometry
     inject_mesh_data(

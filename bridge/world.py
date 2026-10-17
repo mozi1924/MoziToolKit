@@ -35,6 +35,15 @@ logger = logging.getLogger("MoziToolKit.Bridge.World")
 from .engine import get_libmtk, has_libmtk, require_libmtk
 
 
+def _stamp_voxel_mesh_origin(obj: Any) -> None:
+    """Mark a standalone voxel-generated mesh as MTK-owned."""
+    try:
+        from ..utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
+    except (ImportError, ValueError):
+        from utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
+    stamp_geometry_origin(obj, ORIGIN_VOXEL, overwrite=True)
+
+
 def _get_libmtk():
     return get_libmtk()
 
@@ -634,6 +643,8 @@ def apply_voxel_mesh_to_blender(
         target_coll.objects.link(obj)
     else:
         b_mesh = obj.data
+
+    _stamp_voxel_mesh_origin(obj)
 
     # 2. Inject topology, positions, UVs, normals, materials
     inject_mesh_data(

@@ -219,9 +219,14 @@ def remap_mesh_multi_uvs(
     atlas: Any,
     alias_map: Optional[Dict[str, List[str]]] = None,
     grid_spec: Optional[Any] = None,
+    enable_animated_textures: bool = False,
 ) -> Any:
     """
     Execute high-performance multi-threaded UV remapping and material slot resolution in Rust.
+
+    When ``enable_animated_textures`` is True, multi-frame sprites are routed to
+    their dedicated animated atlas chunk and per-face animation timing metadata
+    is returned together with the UVs.
     """
     mtk = require_libmtk("remap_mesh_multi_uvs")
     return mtk.MaterialResolver.remap_mesh_multi_uvs(
@@ -231,6 +236,45 @@ def remap_mesh_multi_uvs(
         atlas,
         alias_map,
         grid_spec,
+        bool(enable_animated_textures),
+    )
+
+
+def resolve_mesh_material_routes(
+    face_texture_keys: Sequence[str],
+    atlas: Any,
+    alias_map: Optional[Dict[str, List[str]]] = None,
+    enable_animated_textures: bool = False,
+) -> Any:
+    """Resolve atlas chunk/texture routing and animation metadata for face keys in Rust."""
+    mtk = require_libmtk("resolve_mesh_material_routes")
+    return mtk.MaterialResolver.resolve_mesh_routes(
+        list(face_texture_keys),
+        atlas,
+        alias_map,
+        bool(enable_animated_textures),
+    )
+
+
+def reroute_mesh_animation(
+    loop_uvs: Sequence[float],
+    face_loop_ranges: Sequence[Tuple[int, int]],
+    face_texture_keys: Sequence[str],
+    face_old_chunk_ids: Sequence[int],
+    atlas: Any,
+    alias_map: Optional[Dict[str, List[str]]] = None,
+    enable_animated_textures: bool = False,
+) -> Any:
+    """Re-project existing atlas UVs from the previous chunk routing to a new animation policy."""
+    mtk = require_libmtk("reroute_mesh_animation")
+    return mtk.MaterialResolver.reroute_mesh_animation(
+        loop_uvs if isinstance(loop_uvs, (list, np.ndarray)) else list(loop_uvs),
+        face_loop_ranges if isinstance(face_loop_ranges, list) else list(face_loop_ranges),
+        list(face_texture_keys),
+        [int(x) for x in face_old_chunk_ids],
+        atlas,
+        alias_map,
+        bool(enable_animated_textures),
     )
 
 

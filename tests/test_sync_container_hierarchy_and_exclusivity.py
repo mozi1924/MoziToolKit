@@ -156,6 +156,7 @@ class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
         child_mesh = get_or_create_world_mesh_object(context, root_container=root_container)
         self.assertEqual(child_mesh.type, "MESH")
         self.assertEqual(child_mesh.parent, root_container)
+        self.assertEqual(child_mesh["mtk:geometry_origin"], "SYNC_WORLD")
         if isinstance(getattr(root_container, "children", None), list):
             root_container.children.append(child_mesh)
 

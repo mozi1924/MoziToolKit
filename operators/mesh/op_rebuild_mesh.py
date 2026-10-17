@@ -29,6 +29,12 @@ try:
         reload_atlas_images,
         run_task_with_asset_guard,
     )
+    from ...utils.mesh.ownership import (
+        ORIGIN_EXTERNAL,
+        ORIGIN_VOXEL,
+        classify_origin,
+        stamp_geometry_origin,
+    )
 except (ImportError, ValueError):
     from utils.system import get_prefs, register_menu_item
     from utils.async_task import AsyncTask, ModalTaskRunner
@@ -49,6 +55,12 @@ except (ImportError, ValueError):
         invalidate_asset_cache_memory,
         reload_atlas_images,
         run_task_with_asset_guard,
+    )
+    from utils.mesh.ownership import (
+        ORIGIN_EXTERNAL,
+        ORIGIN_VOXEL,
+        classify_origin,
+        stamp_geometry_origin,
     )
 
 
@@ -80,7 +92,14 @@ def _resolve_mesh_rebuild_targets_from_root(
             if is_cloud:
                 cloud_child = ch
             else:
+                # Prefer an MTK-generated mesh when a user has parented an
+                # external mesh under the same container.
                 if mesh_child is None:
+                    mesh_child = ch
+                elif (
+                    classify_origin(mesh_child) == ORIGIN_EXTERNAL
+                    and classify_origin(ch) != ORIGIN_EXTERNAL
+                ):
                     mesh_child = ch
 
     if mesh_child is None and hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
@@ -198,6 +217,25 @@ def resolve_mesh_rebuild_targets(
     return None, None, None, "NONE"
 
 
+def _live_session_matches_container(
+    context: Optional[Any],
+    root_container: Optional[bpy.types.Object],
+) -> bool:
+    """Return True when an active Live Sync session owns this container."""
+    session = get_sync_bridge_session() if callable(get_sync_bridge_session) else None
+    if not session or not getattr(session, "is_active", False):
+        return False
+
+    scene = getattr(context, "scene", None) if context is not None else None
+    active_name = getattr(scene, "mozi_active_sync_container_name", "") if scene is not None else ""
+    if not isinstance(active_name, str):
+        active_name = ""
+
+    if root_container is not None and active_name:
+        return getattr(root_container, "name", "") == active_name
+    return True
+
+
 @register_menu_item(views=["object", "mesh"], label="Rebuild Voxel Mesh")
 class MOZI_OT_rebuild_mesh(bpy.types.Operator):
     """
@@ -248,10 +286,35 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         if not context:
             return False
         root_container, world_mesh, cloud_obj, source_type = resolve_mesh_rebuild_targets(context)
-        if source_type in ("SYNC", "ATTRIBUTES"):
-            return True
-        if source_type in ("SAVE", "CLOUD") and (cloud_obj is not None or world_mesh is not None):
-            return True
+        if source_type == "NONE":
+            return False
+
+        # Provenance-only meshes are external imports whose materials were
+        # replaced. They belong to Replace Material, not to Rebuild.
+        if source_type == "ATTRIBUTES":
+            return False
+
+        # An external mesh parented under an MTK container must not be
+        # overwritten with voxel-generated geometry.
+        if source_type in ("SAVE", "SYNC") and world_mesh is not None:
+            if classify_origin(world_mesh) == ORIGIN_EXTERNAL:
+                return False
+
+        if source_type == "SYNC":
+            # Active sessions rebuild from in-memory storage; offline sessions
+            # require the persistent companion point cloud.
+            if _live_session_matches_container(context, root_container):
+                return True
+            return cloud_obj is not None
+
+        if source_type == "SAVE":
+            # Offline rebuild requires the persistent voxel point cloud.
+            return cloud_obj is not None
+
+        if source_type == "CLOUD":
+            # A standalone cloud needs an existing surface mesh to receive geometry.
+            return cloud_obj is not None and world_mesh is not None
+
         return False
 
     def execute(self, context):
@@ -468,6 +531,13 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 )
                 if target_coll and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
                     target_coll.objects.link(world_mesh_obj)
+
+                # The new mesh inherits the container's origin so it is not
+                # mistaken for an external import.
+                root_origin = classify_origin(root_container)
+                if root_origin == ORIGIN_EXTERNAL:
+                    root_origin = ORIGIN_VOXEL
+                stamp_geometry_origin(world_mesh_obj, root_origin, overwrite=True)
 
             if world_mesh_obj and hasattr(world_mesh_obj, "data"):
                 inject_mesh_data(

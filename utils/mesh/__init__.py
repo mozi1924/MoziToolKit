@@ -37,6 +37,22 @@ from .fluid_uv import (
 from .random_extrude import (
     process_random_extrude,
 )
+from .ownership import (
+    ALL_ORIGINS,
+    ORIGIN_EXTERNAL,
+    ORIGIN_POINT_CLOUD,
+    ORIGIN_PROP,
+    ORIGIN_SAVE,
+    ORIGIN_SYNC_SECTION,
+    ORIGIN_SYNC_WORLD,
+    ORIGIN_VOXEL,
+    classify_origin,
+    find_voxel_cloud,
+    has_voxel_source,
+    is_external_mesh,
+    is_point_cloud,
+    stamp_geometry_origin,
+)
 
 __all__ = [
     "SELECTION_ACTION_ITEMS",
@@ -63,5 +79,19 @@ __all__ = [
     "process_bmesh_fluid_uv_repairs",
     "process_raw_mesh_fluid_uv_repairs",
     "process_random_extrude",
+    "ORIGIN_PROP",
+    "ORIGIN_EXTERNAL",
+    "ORIGIN_SAVE",
+    "ORIGIN_SYNC_WORLD",
+    "ORIGIN_SYNC_SECTION",
+    "ORIGIN_VOXEL",
+    "ORIGIN_POINT_CLOUD",
+    "ALL_ORIGINS",
+    "is_point_cloud",
+    "stamp_geometry_origin",
+    "classify_origin",
+    "is_external_mesh",
+    "find_voxel_cloud",
+    "has_voxel_source",
 ]
 

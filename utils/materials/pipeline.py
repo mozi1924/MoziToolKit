@@ -28,6 +28,8 @@ try:
         is_material_bridge_available,
         load_baked_atlas_from_json,
         remap_mesh_multi_uvs,
+        resolve_mesh_material_routes,
+        reroute_mesh_animation,
         compute_flat_material_props,
         BiomeResolver,
     )
@@ -36,6 +38,8 @@ except (ImportError, ValueError):
         is_material_bridge_available,
         load_baked_atlas_from_json,
         remap_mesh_multi_uvs,
+        resolve_mesh_material_routes,
+        reroute_mesh_animation,
         compute_flat_material_props,
         BiomeResolver,
     )
@@ -66,6 +70,7 @@ try:
         inject_face_attribute_int,
         inject_face_attribute_float,
         inject_face_attribute_float4,
+        inject_face_attribute_vector,
         resolve_source_texture_keys,
         inject_face_source_texture_keys,
     )
@@ -110,6 +115,7 @@ except (ImportError, ValueError):
         inject_face_attribute_int,
         inject_face_attribute_float,
         inject_face_attribute_float4,
+        inject_face_attribute_vector,
         resolve_source_texture_keys,
         inject_face_source_texture_keys,
     )
@@ -153,6 +159,12 @@ if "ATTR_MATERIAL_PROPS" not in globals():
     ATTR_MATERIAL_PROPS = "mtk_material_props"
 
 
+def animated_textures_enabled(prefs: Optional[Any] = None) -> bool:
+    """Read the animated-texture preference with a safe True fallback."""
+    raw = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+    return raw if isinstance(raw, bool) else True
+
+
 def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
     """Ensure asset caches exist in persistent storage and match configured pack stack."""
     base_cache = get_cache_dir(prefs)
@@ -174,6 +186,24 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
 # =============================================================================
 # Pipeline Step Processors
 # =============================================================================
+
+def _load_atlas_data_and_baked_atlas(atlas_dir: Path, prefs: Optional[Any] = None) -> Tuple[Dict[str, Any], Any]:
+    """Load atlas mapping JSON plus the native BakedAtlas used for Rust routing."""
+    atlas_data = load_atlas_mapping_from_cache(prefs)
+    baked_atlas = load_baked_atlas_from_cache(prefs)
+    if atlas_data is None:
+        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
+        if not atlas_mapping_path.exists():
+            raise FileNotFoundError(
+                f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found"
+            )
+        atlas_json_str = atlas_mapping_path.read_text(encoding="utf-8")
+        atlas_data = json.loads(atlas_json_str)
+        baked_atlas = load_baked_atlas_from_json(atlas_json_str)
+    elif baked_atlas is None:
+        baked_atlas = load_baked_atlas_from_json(json.dumps(atlas_data))
+    return atlas_data, baked_atlas
+
 
 def load_material_cache_context(
     prefs: Optional[Any] = None,
@@ -249,6 +279,7 @@ def remap_face_materials_and_uvs(
     face_loop_ranges: List[Tuple[int, int]],
     origin: str,
     existing_prov_keys: Optional[List[str]],
+    enable_animated_textures: bool = False,
 ) -> Dict[str, Any]:
     """
     Step 3: Execute pure Rust multi-UV remapping and resolve source texture keys for all faces.
@@ -263,6 +294,7 @@ def remap_face_materials_and_uvs(
         atlas=baked_atlas,
         alias_map=alias_map,
         grid_spec=grid_spec,
+        enable_animated_textures=enable_animated_textures,
     )
 
     face_texture_ids: List[int] = remap_result["face_texture_ids"]
@@ -372,6 +404,8 @@ def inject_mesh_provenance_attributes(
     face_texture_ids: Optional[List[int]] = None,
     face_uv_transforms: Optional[List[List[float]]] = None,
     face_uv_rotations: Optional[List[float]] = None,
+    face_anim_timing: Optional[List[List[float]]] = None,
+    face_anim_frame_size: Optional[List[List[float]]] = None,
     mode: str = "ATLAS",
 ) -> None:
     """
@@ -397,6 +431,24 @@ def inject_mesh_provenance_attributes(
 
     if face_uv_rotations is not None:
         inject_face_attribute_float(mesh, "mtk_uv_rotation", face_uv_rotations)
+
+    # Inject per-face animation timing/metrics consumed by MC_Animation_Scheduler_Default
+    # and MC_Animated_UV_Mapping. Static faces receive safe neutral defaults so the
+    # attributes are never absent on an animated-capable material.
+    if face_anim_timing is not None and len(face_anim_timing) >= num_polys:
+        timing = face_anim_timing[:num_polys]
+        sizes = face_anim_frame_size[:num_polys] if face_anim_frame_size is not None and len(face_anim_frame_size) >= num_polys else [[16.0, 16.0, 0.0]] * num_polys
+        inject_face_attribute_vector(
+            mesh, "mtk_anim_timing", [float(v) for t in timing for v in t]
+        )
+        inject_face_attribute_vector(
+            mesh, "mtk_anim_frame_size", [float(v) for s in sizes for v in s]
+        )
+        inject_face_attribute_float(mesh, "mtk_anim_total_frames", [float(t[0]) for t in timing])
+        inject_face_attribute_float(mesh, "mtk_anim_frametime", [float(t[1]) for t in timing])
+        inject_face_attribute_float(mesh, "mtk_anim_interpolate", [float(t[2]) for t in timing])
+        inject_face_attribute_float(mesh, "mtk_anim_frame_width", [float(s[0]) for s in sizes])
+        inject_face_attribute_float(mesh, "mtk_anim_frame_height", [float(s[1]) for s in sizes])
 
     # Inject packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
     if face_source_keys:
@@ -515,17 +567,8 @@ def replace_materials(
     # Step 1: Load cache context & precompiled assets
     base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
 
-    atlas_data = load_atlas_mapping_from_cache(prefs)
-    baked_atlas = load_baked_atlas_from_cache(prefs)
-    if atlas_data is None:
-        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
-        if not atlas_mapping_path.exists():
-            raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found")
-        atlas_json_str = atlas_mapping_path.read_text(encoding="utf-8")
-        atlas_data = json.loads(atlas_json_str)
-        baked_atlas = load_baked_atlas_from_json(atlas_json_str)
-    elif baked_atlas is None:
-        baked_atlas = load_baked_atlas_from_json(json.dumps(atlas_data))
+    atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
+    anim_enabled = animated_textures_enabled(prefs)
 
     # Step 2: Extract face materials & UVs
     face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_prov_keys = extract_face_material_context(mesh)
@@ -539,6 +582,7 @@ def replace_materials(
         face_loop_ranges=face_loop_ranges,
         origin=origin,
         existing_prov_keys=existing_prov_keys,
+        enable_animated_textures=anim_enabled,
     )
 
     # Step 4: Construct and assign materials
@@ -562,13 +606,22 @@ def replace_materials(
         face_texture_ids=remap["face_texture_ids"],
         face_uv_transforms=remap["face_uv_transforms"],
         face_uv_rotations=remap.get("face_uv_rotations", [0.0] * len(mesh.polygons)),
+        face_anim_timing=remap.get("face_anim_timing"),
+        face_anim_frame_size=remap.get("face_anim_frame_size"),
         mode=mode_upper,
     )
 
     # Step 6: Compute & apply biome tint attributes
     resolve_and_apply_biome_tint(mesh_or_obj, mesh, remap["face_source_keys"], biome, base_cache, prefs)
 
+    if hasattr(mesh, "__setitem__"):
+        try:
+            mesh["mtk_enable_animated_textures"] = bool(anim_enabled)
+        except Exception:
+            pass
+
     mesh.update()
+    animated_faces = sum(1 for flag in remap.get("face_is_animated", []) if flag)
     return {
         "success": True,
         "mode": mode_upper,
@@ -576,6 +629,8 @@ def replace_materials(
         "face_count": len(mesh.polygons),
         "materials_count": len(mesh.materials),
         "unmapped_faces": remap["unmapped_faces"],
+        "animated_faces": animated_faces,
+        "enable_animated_textures": bool(anim_enabled),
     }
 
 
@@ -584,16 +639,22 @@ def restore_materials_from_provenance(
     mode: str = "ATLAS",
     biome: Optional[str] = None,
     prefs: Optional[Any] = None,
+    reconcile_animation: bool = False,
+    enable_animated_textures: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Reconstructs Blender material slots, nodes, and assignments purely from mesh face provenance attributes.
-    Bypasses UV remapping, texture matching, and pack parsing entirely.
 
     Args:
         mesh_or_obj: Blender mesh or object with mtk_source_texture_key attributes.
         mode: Target reconstruction mode ("ATLAS").
         biome: Optional biome preset to restore. Defaults to object property or "PLAINS".
         prefs: Add-on preferences reference.
+        reconcile_animation: When True, re-resolve static/animated chunk routing from
+            source keys and re-project existing atlas UVs to the new sprite. This is
+            required when the user toggles animated textures after a previous replacement.
+        enable_animated_textures: Optional explicit animation preference override.
+            Defaults to the add-on preference.
     """
     if not HAS_BPY:
         raise RuntimeError("Blender (bpy) is required to execute restore_materials_from_provenance.")
@@ -607,10 +668,10 @@ def restore_materials_from_provenance(
     num_polys = len(mesh.polygons)
     face_source_keys = resolve_source_texture_keys(mesh)
     if not face_source_keys or len(face_source_keys) != num_polys:
-        return {"success": False, "message": "Mesh lacks required mtk_source_texture_key / mtk_source_texture_idx attribute for provenance."}
-
-    chunk_attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
-    face_chunk_ids = [elem.value for elem in chunk_attr.data] if chunk_attr else [0] * num_polys
+        return {
+            "success": False,
+            "message": "Mesh lacks required mtk_source_texture_key / mtk_source_texture_idx attribute for provenance.",
+        }
 
     effective_biome = biome
     if not effective_biome and hasattr(mesh_or_obj, "get"):
@@ -618,49 +679,111 @@ def restore_materials_from_provenance(
     if not effective_biome:
         effective_biome = "PLAINS"
 
-    # Step 1: Load cache context
+    anim_enabled = (
+        bool(enable_animated_textures)
+        if enable_animated_textures is not None
+        else animated_textures_enabled(prefs)
+    )
+
+    # Step 1: Load cache context and atlas routing data
     base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
+    atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
 
     uv_layer = mesh.uv_layers.active if hasattr(mesh, "uv_layers") and mesh.uv_layers else None
     if uv_layer is None and hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
         uv_layer = mesh.uv_layers[0]
 
-    # Step 2: Reconstruct material slots
-    atlas_data = load_atlas_mapping_from_cache(prefs)
-    if atlas_data is None:
-        atlas_mapping_path = atlas_dir / "atlas_mapping.json"
-        if not atlas_mapping_path.exists():
-            raise FileNotFoundError(f"Atlas mapping missing at {atlas_mapping_path} and no active .mtkcache found")
-        atlas_data = json.loads(atlas_mapping_path.read_text(encoding="utf-8"))
+    chunk_attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
+    if chunk_attr is not None and len(chunk_attr.data) == num_polys:
+        if hasattr(chunk_attr.data, "foreach_get"):
+            chunk_ids_np = np.empty(num_polys, dtype=np.int32)
+            chunk_attr.data.foreach_get("value", chunk_ids_np)
+            face_chunk_ids = [int(x) for x in chunk_ids_np]
+        else:
+            face_chunk_ids = [int(elem.value) for elem in chunk_attr.data]
+    else:
+        face_chunk_ids = [0] * num_polys
+
+    face_texture_ids: Optional[List[int]] = None
+    atlas_uvs: Optional[List[float]] = None
+    face_anim_timing: Optional[List[List[float]]] = None
+    face_anim_frame_size: Optional[List[List[float]]] = None
+    animation_reconciled = False
+
+    if reconcile_animation and uv_layer is not None:
+        # Existing UVs are Atlas UVs, so decode them from the previous sprite and
+        # re-project them into the new static/animated sprite in Rust.
+        num_loops = len(mesh.loops)
+        loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
+        uv_layer.data.foreach_get("uv", loop_uvs)
+
+        if hasattr(mesh.polygons, "foreach_get"):
+            starts = np.empty(num_polys, dtype=np.int32)
+            totals = np.empty(num_polys, dtype=np.int32)
+            mesh.polygons.foreach_get("loop_start", starts)
+            mesh.polygons.foreach_get("loop_total", totals)
+            face_loop_ranges = list(zip(starts.tolist(), totals.tolist()))
+        else:
+            face_loop_ranges = [(int(p.loop_start), int(p.loop_total)) for p in mesh.polygons]
+
+        reroute = reroute_mesh_animation(
+            loop_uvs=loop_uvs,
+            face_loop_ranges=face_loop_ranges,
+            face_texture_keys=face_source_keys,
+            face_old_chunk_ids=face_chunk_ids,
+            atlas=baked_atlas,
+            enable_animated_textures=anim_enabled,
+        )
+        face_chunk_ids = [int(x) for x in reroute["face_chunk_ids"]]
+        face_texture_ids = [int(x) for x in reroute["face_texture_ids"]]
+        atlas_uvs = reroute["atlas_uvs"]
+        face_anim_timing = reroute.get("face_anim_timing")
+        face_anim_frame_size = reroute.get("face_anim_frame_size")
+        animation_reconciled = True
+
+    # Step 2: Reconstruct material slots (optionally reusing re-projected atlas UVs)
     poly_mat_indices = assign_atlas_chunk_materials(
         mesh=mesh,
         uv_layer=uv_layer,
         atlas_data=atlas_data,
         atlas_dir=atlas_dir,
         face_chunk_ids=face_chunk_ids,
-        atlas_uvs=None,
+        atlas_uvs=atlas_uvs,
         colormaps=colormaps,
         manifest_fingerprint=manifest_fingerprint,
     )
 
-    # Step 3: Sync material slot attribute (delegated to bridge/mesh.py)
+    # Step 3: Sync material slot / animation attributes (delegated to bridge/mesh.py)
     inject_mesh_provenance_attributes(
         mesh=mesh,
         face_source_keys=face_source_keys,
         poly_mat_indices=poly_mat_indices,
         face_chunk_ids=face_chunk_ids,
+        face_texture_ids=face_texture_ids,
+        face_anim_timing=face_anim_timing,
+        face_anim_frame_size=face_anim_frame_size,
         mode="ATLAS",
     )
+
+    if animation_reconciled and hasattr(mesh, "__setitem__"):
+        try:
+            mesh["mtk_enable_animated_textures"] = bool(anim_enabled)
+        except Exception:
+            pass
 
     # Step 4: Re-apply biome tint attributes
     resolve_and_apply_biome_tint(mesh_or_obj, mesh, face_source_keys, effective_biome, base_cache, prefs)
 
     mesh.update()
+    animated_faces = sum(1 for flag in (face_anim_timing or []) if flag and flag[0] > 1.0)
     return {
         "success": True,
         "restored_faces": num_polys,
         "biome": effective_biome,
         "materials_count": len(mesh.materials),
+        "animated_faces": animated_faces,
+        "animation_reconciled": animation_reconciled,
+        "enable_animated_textures": bool(anim_enabled),
     }
 
 

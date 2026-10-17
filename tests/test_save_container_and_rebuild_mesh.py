@@ -203,6 +203,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             mesh1 = bpy.data.objects[mesh_name]
             self.assertEqual(mesh1.parent, root1)
             self.assertTrue(mesh1["mtk:is_save_mesh"])
+            self.assertEqual(mesh1["mtk:geometry_origin"], "SAVE")
 
             # 2. Second import of same world: must auto-increment to avoid overwriting!
             root2, stats2 = apply_imported_save_to_blender(

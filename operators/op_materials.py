@@ -5,6 +5,7 @@ Operators for Material Replacement and Provenance Recovery.
 from __future__ import annotations
 
 import logging
+from typing import Any
 import bpy
 from bpy.props import BoolProperty, EnumProperty
 
@@ -14,11 +15,13 @@ try:
     from ..bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
     from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from ..utils.mesh.ownership import is_external_mesh
     from ..utils.system import get_prefs, register_menu_item
 except (ImportError, ValueError):
     from bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from utils.materials.biome import BIOME_ENUM_ITEMS
     from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from utils.mesh.ownership import is_external_mesh
     from utils.system import get_prefs, register_menu_item
 
 
@@ -30,9 +33,31 @@ def _has_provenance_attributes(obj: bpy.types.Object | None) -> bool:
     return bool(hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes))
 
 
+def _animation_preference(prefs: Any) -> bool:
+    """Read the animated-texture preference with a safe True fallback."""
+    raw = getattr(prefs, "enable_animated_textures", True)
+    return raw if isinstance(raw, bool) else True
+
+
+def _needs_animation_reconcile(obj: bpy.types.Object | None, prefs: Any) -> bool:
+    """
+    Decide whether stored material routing must be re-resolved for the current
+    animation preference. Legacy external meshes have no routing marker and no
+    animation attributes; MTK voxel meshes already carry native animation timing.
+    """
+    if not obj or obj.type != "MESH" or not obj.data:
+        return False
+    mesh = obj.data
+    stored = mesh.get("mtk_enable_animated_textures", None) if hasattr(mesh, "get") else None
+    pref = _animation_preference(prefs)
+    if stored is not None:
+        return bool(stored) != pref
+    return not (hasattr(mesh, "attributes") and "mtk_anim_timing" in mesh.attributes)
+
+
 @register_menu_item(views=["object", "mesh"], label="Replace Material")
 class MOZI_OT_replace_material(bpy.types.Operator):
-    """Replace and upgrade Minecraft materials using native material pipeline (auto-detects provenance)."""
+    """Replace and upgrade materials on external imported meshes using the native material pipeline."""
 
     bl_idname = "mozi.replace_material"
     bl_label = "Replace Material"
@@ -75,7 +100,9 @@ class MOZI_OT_replace_material(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.active_object and context.active_object.type == "MESH"
+        # Replace Material only accepts external imports. MTK-generated meshes
+        # derive their materials from a voxel source and must be rebuilt.
+        return is_external_mesh(getattr(context, "active_object", None))
 
     def draw(self, context):
         layout = self.layout
@@ -109,17 +136,25 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         # Pre-detection mechanism: if object has provenance attributes, directly restore!
         if self.use_provenance and _has_provenance_attributes(obj):
             try:
+                anim_pref = _animation_preference(prefs)
+                needs_reconcile = _needs_animation_reconcile(obj, prefs)
+
                 res = restore_materials_from_provenance(
                     obj,
                     mode=self.mode,
                     biome=self.biome_preset,
                     prefs=prefs,
+                    reconcile_animation=needs_reconcile,
+                    enable_animated_textures=anim_pref,
                 )
                 if res.get("success"):
-                    self.report(
-                        {'INFO'},
-                        f"Successfully restored {res['materials_count']} materials for {res['restored_faces']} faces from attributes (biome: {res.get('biome', self.biome_preset)})."
+                    msg = (
+                        f"Successfully restored {res['materials_count']} materials for "
+                        f"{res['restored_faces']} faces from attributes "
+                        f"(biome: {res.get('biome', self.biome_preset)}, "
+                        f"animated faces: {res.get('animated_faces', 0)})."
                     )
+                    self.report({'INFO'}, msg)
                     return {'FINISHED'}
                 else:
                     logger.warning("Attribute restoration failed (%s), falling back to full replacement.", res.get("message"))
@@ -139,6 +174,8 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                     f"Replaced materials for {res['face_count']} faces "
                     f"({res['materials_count']} {self.mode.lower()} materials assigned, biome: {res.get('biome', self.biome_preset)})."
                 )
+                if res.get("animated_faces", 0) > 0:
+                    msg += f" [{res['animated_faces']} animated faces]"
                 if res.get("unmapped_faces", 0) > 0:
                     msg += f" [{res['unmapped_faces']} faces unmapped/fallback]"
                 self.report({'INFO'}, msg)
@@ -203,6 +240,8 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
                 mode=self.mode,
                 biome=self.biome_preset,
                 prefs=prefs,
+                reconcile_animation=_needs_animation_reconcile(obj, prefs),
+                enable_animated_textures=_animation_preference(prefs),
             )
             if res.get("success"):
                 self.report(

@@ -13,10 +13,12 @@ try:
     from ...bridge.mesh import inject_mesh_data
     from ...bridge.world import ensure_world_materials
     from ...bridge.point_cloud import ensure_voxel_child_cloud
+    from ...utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
 except (ImportError, ValueError):
     from bridge.mesh import inject_mesh_data
     from bridge.world import ensure_world_materials
     from bridge.point_cloud import ensure_voxel_child_cloud
+    from utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
 
 logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")
 
@@ -33,6 +35,11 @@ def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
             setattr(obj, key, val)
         except Exception:
             pass
+
+
+def _stamp_world_mesh_origin(mesh_obj: Any) -> None:
+    """Mark a Live Sync world mesh as MTK-generated (not an external import)."""
+    stamp_geometry_origin(mesh_obj, ORIGIN_SYNC_WORLD, overwrite=True)
 
 
 def _safe_get_custom_prop(obj: Any, key: str, default: Any = None) -> Any:
@@ -225,6 +232,7 @@ def get_or_create_world_mesh_object(
     # 1. Check active object if it is already a valid mesh
     active = getattr(ctx, "active_object", None) if ctx else None
     if active and active.type == "MESH" and is_yefira_world_object(active):
+        _stamp_world_mesh_origin(active)
         return active
 
     # 2. Acquire or create root container
@@ -235,11 +243,13 @@ def get_or_create_world_mesh_object(
     if getattr(root_container, "type", "") == "MESH":
         _safe_set_custom_prop(root_container, "mtk:is_yefira_world", True)
         _safe_set_custom_prop(root_container, "mtk:is_yefira_mesh", True)
+        _stamp_world_mesh_origin(root_container)
         return root_container
 
     # 3. Check if root container already has a child mesh
     existing_mesh = find_world_mesh_child(root_container)
     if existing_mesh:
+        _stamp_world_mesh_origin(existing_mesh)
         return existing_mesh
 
     # 4. Check if a mesh named <root>_Mesh or target_name already exists
@@ -252,6 +262,7 @@ def get_or_create_world_mesh_object(
             _safe_set_custom_prop(mesh_obj, "mtk:is_yefira_mesh", True)
             if getattr(mesh_obj, "parent", None) != root_container and hasattr(mesh_obj, "parent"):
                 mesh_obj.parent = root_container
+            _stamp_world_mesh_origin(mesh_obj)
             return mesh_obj
 
     # 5. Create new child mesh object
@@ -277,6 +288,7 @@ def get_or_create_world_mesh_object(
         except Exception:
             pass
 
+    _stamp_world_mesh_origin(world_obj)
     logger.info("Created child world mesh object: %s under container: %s", getattr(world_obj, "name", mesh_child_name), root_name)
     return world_obj
 
@@ -315,6 +327,9 @@ def update_world_mesh(
     """
     if not world_obj or world_obj.type != "MESH":
         return 0, 0
+
+    # Upgrade legacy meshes that predate explicit origin stamping.
+    stamp_geometry_origin(world_obj, ORIGIN_SYNC_WORLD, overwrite=False)
 
     mesh = world_obj.data
     inject_mesh_data(
