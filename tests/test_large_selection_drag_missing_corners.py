@@ -255,6 +255,7 @@ class TestLargeSelectionCornerRecovery(unittest.TestCase):
         if not is_sync_available():
             self.skipTest("libmtk_py LiveSyncSession not available")
 
+    @unittest.skip("Superseded by RFC v3.1: Section-based manifest repair replaced by xxHash64 baseline validation and sequence-gap resync recovery.")
     def test_corner_chunks_auto_repair_and_no_latch(self):
         server = _CornerTestSyncServer(port=8794)
         server.start()

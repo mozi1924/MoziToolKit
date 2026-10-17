@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
+import uuid
+from typing import Any, Optional
 import bpy
 
 try:
@@ -45,6 +46,8 @@ from .hierarchy import (
     get_or_create_world_mesh_object,
     resolve_world_root_object,
     update_world_mesh,
+    persist_sync_session_state,
+    load_persisted_sync_session_state,
 )
 from .properties import (
     get_active_sync_container,
@@ -180,7 +183,7 @@ def _sync_timer_tick() -> Optional[float]:
 
     events = session.poll_events()
     latest_world_mesh = None
-    section_meshes: list[tuple[tuple[int, int, int], Any]] = []
+    latest_generation = 0
     needs_voxel_sync = False
 
     for ev in events:
@@ -191,15 +194,7 @@ def _sync_timer_tick() -> Optional[float]:
         if ev_type == "WORLD_MESH_READY":
             # Coalesce: only keep newest mesh to prevent Blender event queue choke and OOM
             latest_world_mesh = ev.get("mesh")
-            continue
-
-        if ev_type == "SECTION_MESH_READY":
-            coord = ev.get("coord")
-            if coord is None:
-                coord = (ev.get("sec_x", 0), ev.get("sec_y", 0), ev.get("sec_z", 0))
-            mesh_data = ev.get("mesh")
-            if mesh_data is not None:
-                section_meshes.append((coord, mesh_data))
+            latest_generation = ev.get("generation", 0)
             continue
 
         if ev_type == "STATUS_CHANGE":
@@ -227,15 +222,16 @@ def _sync_timer_tick() -> Optional[float]:
             _sync_prop("total_blocks", sx * sy * sz)
 
         elif ev_type == "HANDSHAKE":
-            tot = ev.get("total_sections", 0)
-            non_empty = ev.get("non_empty_sections", 0)
-            vol = ev.get("total_volume", 0)
-            _sync_prop("total_sections", tot)
-            _sync_prop("non_empty_sections", non_empty)
-            if tot == non_empty or non_empty == 0:
-                _sync_prop("validation_info", f"Sync Handshake: {tot} chunks ({vol:,} blocks)")
-            else:
-                _sync_prop("validation_info", f"Sync Handshake: {non_empty} active chunks ({tot} covered, {vol:,} blocks)")
+            epoch = ev.get("epoch", 0)
+            seq = ev.get("sequence", 0)
+            decision = ev.get("decision", 2)
+            dimension = ev.get("dimension", "minecraft:overworld")
+            _sync_prop("validation_info", f"Sync Handshake: decision={decision}, epoch={epoch}, seq={seq}")
+            if decision == 0:  # VERIFIED_SKIP_REBUILD
+                _sync_prop("sync_verified", True)
+                _sync_prop("validation_info", "0ms Instant Reconnect Verified: 100% in sync with scene")
+                _sync_prop("is_streaming", False)
+                _close_progress_reporter()
 
         elif ev_type == "DELTA_APPLIED":
             cnt = ev.get("change_count", 0)
@@ -291,9 +287,6 @@ def _sync_timer_tick() -> Optional[float]:
             _sync_prop("stream_progress_current", 100)
             _sync_prop("stream_progress_total", 100)
             _sync_prop("is_streaming", False)
-            manifest_json = session.export_manifest()
-            if manifest_json and active_container:
-                _safe_set_custom_prop(active_container, "mtk:sync_manifest", manifest_json)
 
         elif ev_type == "VERIFIED":
             is_ver = ev.get("is_verified", False)
@@ -302,9 +295,6 @@ def _sync_timer_tick() -> Optional[float]:
             if is_ver:
                 _sync_prop("validation_info", msg or "100% in sync with scene")
                 _sync_prop("is_streaming", False)
-                manifest_json = session.export_manifest()
-                if manifest_json and active_container:
-                    _safe_set_custom_prop(active_container, "mtk:sync_manifest", manifest_json)
             else:
                 _sync_prop("validation_info", f"Out of sync: {msg}" if msg else "Detected out-of-sync sections")
 
@@ -316,52 +306,61 @@ def _sync_timer_tick() -> Optional[float]:
 
     if latest_world_mesh is not None:
         try:
-            world_obj = get_or_create_world_mesh_object(bpy.context, root_container=active_container)
-            storage = session.get_storage() if needs_voxel_sync else None
-            v_count, f_count = update_world_mesh(
-                world_obj,
-                latest_world_mesh,
-                skip_string_attributes=True,
-                storage=storage,
-                sync_point_cloud=needs_voxel_sync,
-                atlas=getattr(session, "atlas", None),
-            )
-            _sync_prop("point_count", v_count)
-            _sync_prop("faces_count", f_count)
-            _sync_prop("last_update_info", f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces")
-            _sync_prop("is_streaming", False)
+            curr_gen_raw = _safe_get_custom_prop(active_container, "mtk:client_generation", 0)
+            if isinstance(curr_gen_raw, (int, float)):
+                curr_gen = int(curr_gen_raw)
+            elif isinstance(curr_gen_raw, str):
+                try:
+                    curr_gen = int(curr_gen_raw)
+                except ValueError:
+                    curr_gen = 0
+            else:
+                curr_gen = 0
+            if latest_generation >= curr_gen:
+                world_obj = get_or_create_world_mesh_object(bpy.context, root_container=active_container)
+                storage = session.get_storage() if needs_voxel_sync else None
+                v_count, f_count = update_world_mesh(
+                    world_obj,
+                    latest_world_mesh,
+                    skip_string_attributes=True,
+                    storage=storage,
+                    sync_point_cloud=needs_voxel_sync,
+                    atlas=getattr(session, "atlas", None),
+                )
+                _safe_set_custom_prop(active_container, "mtk:client_generation", latest_generation)
+                _sync_prop("point_count", v_count)
+                _sync_prop("faces_count", f_count)
+                _sync_prop("last_update_info", f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces")
+                _sync_prop("is_streaming", False)
 
-            if _progress_reporter is not None:
-                _progress_reporter.update(_progress_reporter.total, _progress_reporter.total, message=f"Mesh ready ({v_count:,} v, {f_count:,} f)")
+                # Atomically persist live sync session state into root container
+                if active_container and props:
+                    bounds = [
+                        getattr(props, "min_x", 0),
+                        getattr(props, "min_y", 0),
+                        getattr(props, "min_z", 0),
+                        getattr(props, "size_x", 0),
+                        getattr(props, "size_y", 0),
+                        getattr(props, "size_z", 0),
+                    ]
+                    persist_sync_session_state(
+                        active_container,
+                        server_uuid=_safe_get_custom_prop(active_container, "mtk_sync_server_uuid", ""),
+                        epoch=session.current_epoch,
+                        sequence=session.current_sequence,
+                        bounds=bounds,
+                        dimension=getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
+                        state_hash=_safe_get_custom_prop(active_container, "mtk_sync_state_hash", ""),
+                    )
+
+                if _progress_reporter is not None:
+                    _progress_reporter.update(_progress_reporter.total, _progress_reporter.total, message=f"Mesh ready ({v_count:,} v, {f_count:,} f)")
+            else:
+                logger.debug(f"Skipping stale world mesh generation {latest_generation} < {curr_gen}")
         except Exception as e:
             logger.error(f"Failed to inject WorldMesh into Blender for container '{active_container.name}': {e}")
         finally:
             _close_progress_reporter(delay_sec=1.5)
-    elif section_meshes:
-        try:
-            from .hierarchy import get_or_create_section_mesh_object, update_section_mesh
-            atlas = getattr(session, "atlas", None)
-            total_sec_v = 0
-            total_sec_f = 0
-            for (sx, sy, sz), s_mesh in section_meshes:
-                sec_obj = get_or_create_section_mesh_object(
-                    bpy.context,
-                    root_container=active_container,
-                    sec_x=sx,
-                    sec_y=sy,
-                    sec_z=sz,
-                )
-                v_cnt, f_cnt = update_section_mesh(
-                    sec_obj,
-                    s_mesh,
-                    skip_string_attributes=True,
-                    atlas=atlas,
-                )
-                total_sec_v += v_cnt
-                total_sec_f += f_cnt
-            _sync_prop("last_update_info", f"Updated {len(section_meshes)} chunk section(s) ({total_sec_v:,} v)")
-        except Exception as e:
-            logger.error(f"Failed updating section meshes for container '{active_container.name}': {e}")
     elif needs_voxel_sync:
         try:
             storage = session.get_storage()
@@ -374,18 +373,24 @@ def _sync_timer_tick() -> Optional[float]:
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
 
-    # Check debounced point cloud sync
+    # Check debounced point cloud sync (only update if storage is fully populated to avoid wiping existing cloud)
     if _pending_cloud_sync_time is not None and time.time() >= _pending_cloud_sync_time:
         _pending_cloud_sync_time = None
         try:
             storage = session.get_storage()
-            if storage is not None:
-                try:
-                    from ...bridge.point_cloud import ensure_voxel_child_cloud
-                except (ImportError, ValueError):
-                    from bridge.point_cloud import ensure_voxel_child_cloud
-                ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
-                logger.debug("Debounced voxel child cloud updated successfully")
+            non_empty_count = getattr(props, "non_empty_sections", 0) if props else 0
+            if storage is not None and hasattr(storage, "get_all_non_empty_sections"):
+                storage_non_empty = len(storage.get_all_non_empty_sections())
+                # Safety barrier: Do NOT overwrite an existing large point cloud if in-memory storage is sparse/unpopulated
+                if storage_non_empty > 0 and (non_empty_count == 0 or storage_non_empty >= non_empty_count):
+                    try:
+                        from ...bridge.point_cloud import ensure_voxel_child_cloud
+                    except (ImportError, ValueError):
+                        from bridge.point_cloud import ensure_voxel_child_cloud
+                    ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
+                    logger.debug("Debounced voxel child cloud updated successfully")
+                else:
+                    logger.debug(f"Skipping point cloud sync: sparse storage ({storage_non_empty}/{non_empty_count} sections)")
         except Exception as e:
             logger.debug(f"Failed debounced voxel cloud sync: {e}")
 
@@ -493,6 +498,37 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         atlas = load_atlas_from_cache(prefs)
         biome_resolver = load_biome_resolver_from_cache(prefs)
 
+        # Check persisted session state on active container to attempt 0ms reconnect verification
+        cached_state = load_persisted_sync_session_state(target_obj)
+        cached_uuid_bytes = None
+        cached_epoch = 0
+        cached_seq = 0
+        cached_min = None
+        cached_size = None
+        cached_state_hash = 0
+        cached_dim = None
+
+        if cached_state and not cached_state.get("user_modified", False):
+            uuid_str = cached_state.get("server_uuid", "")
+            if uuid_str:
+                try:
+                    cached_uuid_bytes = uuid.UUID(hex=uuid_str).bytes
+                except Exception:
+                    pass
+            cached_epoch = cached_state.get("epoch", 0)
+            cached_seq = cached_state.get("sequence", 0)
+            b = cached_state.get("bounds")
+            if b and len(b) == 6:
+                cached_min = (b[0], b[1], b[2])
+                cached_size = (b[3], b[4], b[5])
+            hash_str = cached_state.get("state_hash", "")
+            if hash_str:
+                try:
+                    cached_state_hash = int(hash_str, 16) if hash_str.startswith("0x") else int(hash_str)
+                except Exception:
+                    pass
+            cached_dim = cached_state.get("dimension")
+
         success = session.start(
             url=url,
             auto_reconnect=True,
@@ -501,19 +537,19 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             atlas=atlas,
             biome_resolver=biome_resolver,
             unified_mesh=True,
+            cached_uuid=cached_uuid_bytes,
+            cached_epoch=cached_epoch,
+            cached_seq=cached_seq,
+            cached_min=cached_min,
+            cached_size=cached_size,
+            cached_state_hash=cached_state_hash,
+            cached_dimension=cached_dim,
         )
 
         if not success:
             err = session.last_error or "Check system console for details"
             self.report({'ERROR'}, f"Failed to initiate connection to {url}: {err}")
             return {'CANCELLED'}
-
-        # Restore known manifest from container object to allow 0ms instant reconnect verification
-        stored_manifest = _safe_get_custom_prop(target_obj, "mtk:sync_manifest")
-        if stored_manifest:
-            restored = session.import_manifest(stored_manifest)
-            if restored:
-                logger.info(f"Restored persistent sync manifest from '{target_obj.name}' into native session")
 
         if props:
             props.is_connected = False
@@ -557,9 +593,25 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             target_obj = get_active_sync_container(context.scene) or resolve_world_root_object(getattr(context, "active_object", None))
 
         if target_obj:
-            manifest_json = session.export_manifest()
-            if manifest_json:
-                _safe_set_custom_prop(target_obj, "mtk:sync_manifest", manifest_json)
+            props = getattr(target_obj, "mozi_sync", None)
+            if props:
+                bounds = [
+                    getattr(props, "min_x", 0),
+                    getattr(props, "min_y", 0),
+                    getattr(props, "min_z", 0),
+                    getattr(props, "size_x", 0),
+                    getattr(props, "size_y", 0),
+                    getattr(props, "size_z", 0),
+                ]
+                persist_sync_session_state(
+                    target_obj,
+                    server_uuid=_safe_get_custom_prop(target_obj, "mtk_sync_server_uuid", ""),
+                    epoch=session.current_epoch,
+                    sequence=session.current_sequence,
+                    bounds=bounds,
+                    dimension=getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
+                    state_hash=_safe_get_custom_prop(target_obj, "mtk_sync_state_hash", ""),
+                )
 
         session.stop()
 
@@ -618,7 +670,7 @@ class MOZI_OT_sync_refresh(bpy.types.Operator):
         reporter = _get_progress_reporter(title="Live Sync: Request")
         reporter.update(0, 100, message="Requesting snapshot from server...")
 
-        session.send_full_sync_request()
+        session.request_resync()
         self.report({'INFO'}, "Full snapshot requested from server.")
         return {'FINISHED'}
 

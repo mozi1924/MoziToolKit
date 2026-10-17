@@ -134,7 +134,7 @@ def get_active_sync_container(scene: Optional[bpy.types.Scene] = None) -> Option
     if not scene:
         return None
     container_name = getattr(scene, "mozi_active_sync_container_name", "")
-    if container_name and container_name in bpy.data.objects:
+    if isinstance(container_name, str) and container_name and container_name in bpy.data.objects:
         obj = bpy.data.objects[container_name]
         try:
             from .hierarchy import is_yefira_root_object

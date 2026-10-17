@@ -11,7 +11,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -214,25 +214,28 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         session = get_sync_bridge_session()
         world = mtk.VoxelWorld.create_debug_world()
         real_mesh = world.rebuild_all()
-        session._session = MagicMock()
-        session._session.is_active = True
-        session._is_active = True
-        session._cached_manifest_fingerprint = "old_fp"
-        session._cached_manifest_timestamp = 100.0
 
-        session.get_world_mesh = MagicMock(return_value=real_mesh)
-        session.get_storage = MagicMock(return_value=world.get_storage())
+        try:
+            session._session = MagicMock()
+            session._session.is_active = True
+            session._is_active = True
+            session._cached_manifest_fingerprint = "old_fp"
+            session._cached_manifest_timestamp = 100.0
 
-        # Write new package to simulate rebaking
-        self._create_package("new_recompiled_fp", 200)
+            with patch.object(session, "get_world_mesh", return_value=real_mesh), \
+                 patch.object(session, "get_storage", return_value=world.get_storage()):
+                # Write new package to simulate rebaking
+                self._create_package("new_recompiled_fp", 200)
 
-        # Run operator synchronously
-        res = bpy.ops.mozi.sync_rebuild_world("EXEC_DEFAULT", run_async=False)
-        self.assertEqual(res, {'FINISHED'})
+                # Run operator synchronously
+                res = bpy.ops.mozi.sync_rebuild_world("EXEC_DEFAULT", run_async=False)
+                self.assertEqual(res, {'FINISHED'})
 
-        # Verify dirty cache was detected and reloaded
-        self.assertEqual(session._cached_manifest_fingerprint, "new_recompiled_fp")
-        self.assertEqual(session._cached_manifest_timestamp, 200.0)
+                # Verify dirty cache was detected and reloaded
+                self.assertEqual(session._cached_manifest_fingerprint, "new_recompiled_fp")
+                self.assertEqual(session._cached_manifest_timestamp, 200.0)
+        finally:
+            reset_sync_bridge_session()
 
     def test_pack_stack_enable_disable_fingerprint_matching(self):
         """

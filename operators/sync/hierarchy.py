@@ -341,75 +341,46 @@ def update_world_mesh(
     return v_count, f_count
 
 
-def get_or_create_section_mesh_object(
-    context: Optional[bpy.types.Context],
-    root_container: bpy.types.Object,
-    sec_x: int,
-    sec_y: int,
-    sec_z: int,
-) -> bpy.types.Object:
-    """Acquires or creates an isolated child section mesh object under the root container."""
-    root_name = root_container.name
-    sec_obj_name = f"{root_name}_Section_{sec_x}_{sec_y}_{sec_z}"
-    sec_mesh_name = f"Mesh_{root_name}_{sec_x}_{sec_y}_{sec_z}"
-
-    obj = bpy.data.objects.get(sec_obj_name)
-    if obj and getattr(obj, "type", "") == 'MESH':
-        return obj
-
-    mesh = bpy.data.meshes.new(sec_mesh_name)
-    obj = bpy.data.objects.new(sec_obj_name, mesh)
-    _safe_set_custom_prop(obj, "mtk:is_section_mesh", True)
-    _safe_set_custom_prop(obj, "mtk:section_pos", [sec_x, sec_y, sec_z])
-    obj.parent = root_container
-    if hasattr(obj, "matrix_parent_inverse"):
-        obj.matrix_parent_inverse.identity()
-    obj.location = (0.0, 0.0, 0.0)
-
-    target_coll = root_container.users_collection[0] if getattr(root_container, "users_collection", None) else None
-    if target_coll is None and bpy.context and hasattr(bpy.context, "scene"):
-        target_coll = bpy.context.scene.collection
-    if target_coll and hasattr(target_coll, "objects"):
-        try:
-            target_coll.objects.link(obj)
-        except Exception:
-            pass
-
-    return obj
+def persist_sync_session_state(
+    root_obj: bpy.types.Object,
+    server_uuid: str,
+    epoch: int,
+    sequence: int,
+    bounds: list[int] | tuple[int, ...],
+    dimension: str,
+    state_hash: str,
+    user_modified: bool = False,
+) -> None:
+    """
+    Atomically writes live sync session state attributes to the root container empty.
+    Adheres to RFC v3.1 Section 6.2.
+    """
+    if not root_obj:
+        return
+    _safe_set_custom_prop(root_obj, "mtk_sync_server_uuid", server_uuid)
+    _safe_set_custom_prop(root_obj, "mtk_sync_epoch", int(epoch))
+    _safe_set_custom_prop(root_obj, "mtk_sync_sequence", int(sequence))
+    _safe_set_custom_prop(root_obj, "mtk_sync_bounds", list(bounds))
+    _safe_set_custom_prop(root_obj, "mtk_sync_dimension", str(dimension))
+    _safe_set_custom_prop(root_obj, "mtk_sync_state_hash", str(state_hash))
+    _safe_set_custom_prop(root_obj, "mtk_sync_user_modified", bool(user_modified))
 
 
-def update_section_mesh(
-    section_obj: bpy.types.Object,
-    mesh_data: Any,
-    skip_string_attributes: bool = True,
-    atlas: Optional[Any] = None,
-) -> Tuple[int, int]:
-    """Updates or prunes an individual section mesh child object."""
-    if not section_obj or getattr(section_obj, "type", "") != "MESH":
-        return 0, 0
+def load_persisted_sync_session_state(root_obj: Optional[bpy.types.Object]) -> dict[str, Any]:
+    """
+    Reads persisted session attributes from the root container empty.
+    Returns dict containing cached parameters for 0ms reconnect verification.
+    """
+    if not root_obj:
+        return {}
+    return {
+        "server_uuid": _safe_get_custom_prop(root_obj, "mtk_sync_server_uuid", ""),
+        "epoch": _safe_get_custom_prop(root_obj, "mtk_sync_epoch", 0),
+        "sequence": _safe_get_custom_prop(root_obj, "mtk_sync_sequence", 0),
+        "bounds": _safe_get_custom_prop(root_obj, "mtk_sync_bounds", None),
+        "dimension": _safe_get_custom_prop(root_obj, "mtk_sync_dimension", "minecraft:overworld"),
+        "state_hash": _safe_get_custom_prop(root_obj, "mtk_sync_state_hash", ""),
+        "user_modified": _safe_get_custom_prop(root_obj, "mtk_sync_user_modified", False),
+    }
 
-    mesh = section_obj.data
-    is_empty = getattr(mesh_data, "is_empty", None)
-    if callable(is_empty) and is_empty():
-        # Remove empty section object from scene and mesh datablocks
-        try:
-            bpy.data.objects.remove(section_obj, do_unlink=True)
-            if mesh:
-                bpy.data.meshes.remove(mesh, do_unlink=True)
-        except Exception:
-            pass
-        return 0, 0
-
-    inject_mesh_data(
-        mesh,
-        mesh_data,
-        update_topology=True,
-        update_normals=True,
-        skip_string_attributes=skip_string_attributes,
-    )
-
-    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(section_obj, atlas=atlas, used_chunk_ids=used_chunk_ids)
-
-    return len(mesh.vertices), len(mesh.polygons)
 

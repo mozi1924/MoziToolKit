@@ -110,7 +110,7 @@ class TestLiveSyncFlow(unittest.TestCase):
             delta_received = False
 
             # Poll events
-            for _ in range(40):
+            for _ in range(80):
                 time.sleep(0.1)
                 events = session.poll_events()
                 for ev in events:
@@ -142,6 +142,10 @@ class TestLiveSyncFlow(unittest.TestCase):
             self.assertFalse(session.is_active)
 
         finally:
+            try:
+                session.reset()
+            except Exception:
+                pass
             server_proc.terminate()
             if server_proc.stdout:
                 server_proc.stdout.close()

@@ -207,11 +207,15 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
             mock_context = MagicMock()
             mock_context.scene.mozi_sync.delta_history = MagicMock()
             op = DummyClearOp()
-            with patch.dict(bpy.data.objects, {"World_Container_Test": mock_obj}):
+            orig_objects = getattr(bpy.data, "objects", None)
+            try:
+                bpy.data.objects = {"World_Container_Test": mock_obj}
                 res = op.execute(mock_context)
                 self.assertEqual(res, {'FINISHED'})
                 mock_obj.mozi_sync.delta_history.clear.assert_called_once()
                 mock_context.scene.mozi_sync.delta_history.clear.assert_called_once()
+            finally:
+                bpy.data.objects = orig_objects
 
     def test_delta_applied_schedules_debounced_point_cloud_update(self):
         """Verify DELTA_APPLIED schedules debounced point cloud synchronization."""
@@ -246,7 +250,16 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
 
         mock_container = MagicMock()
         mock_container.name = "Yefira_World"
-        mock_container.get.return_value = '{"size_x": 16, "section_crcs": {}}'
+        props = {
+            "mtk_sync_server_uuid": "12345678123456781234567812345678",
+            "mtk_sync_epoch": 42,
+            "mtk_sync_sequence": 105,
+            "mtk_sync_bounds": [0, 64, 0, 16, 16, 16],
+            "mtk_sync_dimension": "minecraft:overworld",
+            "mtk_sync_state_hash": "0x1234567890abcdef",
+            "mtk_sync_user_modified": False,
+        }
+        mock_container.get.side_effect = lambda k, d=None: props.get(k, d)
 
         class DummyConnectOp:
             def __init__(self):
@@ -258,8 +271,12 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
 
         op = DummyConnectOp()
         mock_context = MagicMock()
+        mock_context.scene.mozi_active_sync_container_name = "Yefira_World"
 
         import bpy
+        has_real_bpy = hasattr(bpy, "data") and hasattr(bpy.data, "objects") and not isinstance(bpy, MagicMock)
+
+        real_obj = None
         orig_objects = getattr(bpy.data, "objects", None)
         try:
             with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
@@ -270,12 +287,28 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                  patch("MoziToolKit.operators.sync.op_sync_connect.load_biome_resolver_from_cache", return_value=None), \
                  patch("MoziToolKit.operators.sync.op_sync_connect.start_sync_timer"):
 
-                bpy.data.objects = {"Yefira_World": mock_container}
+                if has_real_bpy:
+                    real_obj = bpy.data.objects.new("Yefira_World", None)
+                    for k, v in props.items():
+                        real_obj[k] = v
+                    bpy.context.collection.objects.link(real_obj)
+                else:
+                    bpy.data.objects = {"Yefira_World": mock_container}
+
                 res = op.execute(mock_context)
                 self.assertEqual(res, {'FINISHED'})
-                mock_session.import_manifest.assert_called_once_with('{"size_x": 16, "section_crcs": {}}')
+                mock_session.start.assert_called_once()
+                kwargs = mock_session.start.call_args[1]
+                self.assertEqual(kwargs.get("cached_epoch"), 42)
+                self.assertEqual(kwargs.get("cached_seq"), 105)
+                self.assertEqual(kwargs.get("cached_min"), (0, 64, 0))
+                self.assertEqual(kwargs.get("cached_size"), (16, 16, 16))
+                self.assertEqual(kwargs.get("cached_state_hash"), 0x1234567890abcdef)
         finally:
-            bpy.data.objects = orig_objects
+            if has_real_bpy and real_obj is not None:
+                bpy.data.objects.remove(real_obj, do_unlink=True)
+            elif not has_real_bpy:
+                bpy.data.objects = orig_objects
 
 
 if __name__ == "__main__":

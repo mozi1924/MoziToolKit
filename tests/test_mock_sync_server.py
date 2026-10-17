@@ -69,9 +69,30 @@ class TestMockSyncServer(unittest.TestCase):
         self.assertEqual(decoded_cfg["target_fps"], 60)
         self.assertTrue(decoded_cfg["is_active"])
 
-        # Unsupported version (v3)
-        pkt_unsupported = PROTOCOL_MAGIC + bytes([0x03, 0x80])
+        # Unsupported version (e.g. v4 or v0)
+        pkt_unsupported = PROTOCOL_MAGIC + bytes([0x04, 0x80])
         self.assertIsNone(decode_client_packet(pkt_unsupported))
+
+    def test_v3_protocol_packet_decoding(self):
+        import libmtk_py
+        welcome_bytes = libmtk_py.encode_welcome(
+            epoch=1,
+            server_uuid=b"\x01" * 16,
+            sequence=10,
+            decision=0,  # VerifiedSkipRebuild
+            current_min=(0, 64, 0),
+            current_size=(16, 16, 16),
+            current_state_hash=0x12345678,
+            dimension="minecraft:overworld",
+            negotiated_version=3,
+        )
+        decoded = libmtk_py.decode_packet(welcome_bytes)
+        self.assertEqual(decoded["type"], "WELCOME")
+        self.assertEqual(decoded["epoch"], 1)
+        self.assertEqual(decoded["server_seq"], 10)
+        self.assertEqual(decoded["decision"], "VERIFIED_SKIP_REBUILD")
+        self.assertEqual(decoded["min_x"], 0)
+
 
 
 if __name__ == "__main__":

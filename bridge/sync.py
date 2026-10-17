@@ -57,6 +57,11 @@ def is_sync_available() -> bool:
     return bool(mtk and hasattr(mtk, "LiveSyncSession"))
 
 
+def require_sync() -> None:
+    """Ensures native libmtk Live Sync backend is loaded, raising RuntimeError otherwise."""
+    require_libmtk("Live Sync")
+
+
 class SyncBridgeSession:
     """
     Session wrapper managing the native background LiveSyncSession client thread
@@ -82,13 +87,17 @@ class SyncBridgeSession:
     @property
     def is_active(self) -> bool:
         """Whether a background synchronization session is running."""
+        if not self._is_active:
+            return False
         if self._session is not None and hasattr(self._session, "is_active"):
             return bool(self._session.is_active)
-        return self._is_active and self._session is not None
+        return self._session is not None
 
     @property
     def is_connected(self) -> bool:
         """Whether the session is currently connected to the server."""
+        if not self.is_active:
+            return False
         if self._session is not None and hasattr(self._session, "is_connected"):
             return bool(self._session.is_connected)
         return self._is_connected
@@ -96,6 +105,8 @@ class SyncBridgeSession:
     @property
     def connection_status(self) -> str:
         """Current connection status string ('DISCONNECTED', 'CONNECTING...', 'CONNECTED', etc.)."""
+        if not self.is_active:
+            return "DISCONNECTED"
         if self._session is not None and hasattr(self._session, "status"):
             return str(self._session.status)
         return self._connection_status
@@ -130,6 +141,27 @@ class SyncBridgeSession:
         """Fingerprint of the active asset cache package associated with this session."""
         return self._cached_manifest_fingerprint
 
+    @property
+    def client_generation(self) -> int:
+        """Current client generation counter from native session."""
+        if self._session is not None and hasattr(self._session, "client_generation"):
+            return int(self._session.client_generation)
+        return 0
+
+    @property
+    def current_sequence(self) -> int:
+        """Current monotonic sequence ID from native session."""
+        if self._session is not None and hasattr(self._session, "current_sequence"):
+            return int(self._session.current_sequence)
+        return 0
+
+    @property
+    def current_epoch(self) -> int:
+        """Current server epoch counter from native session."""
+        if self._session is not None and hasattr(self._session, "current_epoch"):
+            return int(self._session.current_epoch)
+        return 0
+
     def start(
         self,
         url: str = "ws://127.0.0.1:8765",
@@ -143,6 +175,14 @@ class SyncBridgeSession:
         biome_resolver: Optional[Any] = None,
         custom_aliases: Optional[Any] = None,
         num_threads: Optional[int] = None,
+        cached_uuid: Optional[bytes] = None,
+        cached_epoch: int = 0,
+        cached_seq: int = 0,
+        cached_min: Optional[Tuple[int, int, int]] = None,
+        cached_size: Optional[Tuple[int, int, int]] = None,
+        cached_state_hash: int = 0,
+        auth_token: Optional[str] = None,
+        cached_dimension: Optional[str] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -199,6 +239,37 @@ class SyncBridgeSession:
                 config_kwargs["ctm_solver"] = ctm_solver
             config = mtk.MesherConfig(**config_kwargs)
 
+            start_kwargs = {
+                "url": url,
+                "auto_reconnect": auto_reconnect,
+                "max_reconnect_attempts": max_reconnect_attempts,
+                "cached_uuid": cached_uuid,
+                "cached_epoch": cached_epoch,
+                "cached_seq": cached_seq,
+                "cached_min": cached_min,
+                "cached_size": cached_size,
+                "cached_state_hash": cached_state_hash,
+                "auth_token": auth_token,
+                "cached_dimension": cached_dimension,
+            }
+
+            # If native session already exists, reuse it to preserve cached voxel storage & mesh cache
+            if self._session is not None:
+                try:
+                    if hasattr(self._session, "hot_reload"):
+                        self._session.hot_reload(config, model_db)
+                    if hasattr(self._session, "set_unified_mesh"):
+                        self._session.set_unified_mesh(unified_mesh)
+                    self._session.start(**start_kwargs)
+                    self._is_active = True
+                    self._is_connected = False
+                    self._connection_status = "CONNECTING..."
+                    logger.info(f"Reused existing LiveSyncSession connecting to {url} (unified_mesh={unified_mesh})")
+                    return True
+                except Exception as e:
+                    logger.debug(f"Failed reusing existing session, creating new: {e}")
+                    self._session = None
+
             # Face culler instance
             culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
@@ -210,7 +281,7 @@ class SyncBridgeSession:
                 unified_mesh=unified_mesh,
             )
 
-            self._session.start(url, auto_reconnect, max_reconnect_attempts)
+            self._session.start(**start_kwargs)
             self._is_active = True
             self._is_connected = False
             self._connection_status = "CONNECTING..."
@@ -225,14 +296,15 @@ class SyncBridgeSession:
             self._connection_status = "DISCONNECTED"
             return False
 
-    def stop(self) -> None:
-        """Cleanly stops background sync client and frees session resources."""
+    def stop(self, keep_session: bool = True) -> None:
+        """Cleanly stops background sync client and pauses networking."""
         if self._session is not None:
             try:
                 self._session.stop()
             except Exception as e:
                 logger.debug(f"Error during LiveSyncSession shutdown: {e}")
-        self._session = None
+        if not keep_session:
+            self._session = None
         self._is_active = False
         self._is_connected = False
         self._connection_status = "DISCONNECTED"
@@ -243,7 +315,7 @@ class SyncBridgeSession:
         Stops the session and thoroughly frees references (model_db, atlas, errors),
         preventing memory leaks or stale scene references across file operations.
         """
-        self.stop()
+        self.stop(keep_session=False)
         self._current_url = ""
         self._model_db = None
         self._atlas = None
@@ -253,6 +325,9 @@ class SyncBridgeSession:
         self._cached_manifest_fingerprint = None
         self._cached_manifest_timestamp = 0.0
         self._last_error = ""
+        for attr in ("get_world_mesh", "get_storage", "poll_events"):
+            if attr in self.__dict__:
+                del self.__dict__[attr]
 
     def clear_cache(self) -> bool:
         """
@@ -404,38 +479,29 @@ class SyncBridgeSession:
             logger.error(f"Error querying get_storage: {e}")
             return None
 
-    def send_full_sync_request(self) -> bool:
-        """Requests server to resend the entire active selection snapshot (0x80)."""
+    def request_resync(self) -> bool:
+        """Sends RESYNC_REQUEST (opcode 0x0D) to request state recovery."""
         if self._session is None:
             return False
         try:
-            self._session.send_full_sync_request()
+            if hasattr(self._session, "request_resync"):
+                self._session.request_resync()
             return True
         except Exception as e:
-            logger.error(f"Failed to send Full Sync Request: {e}")
+            logger.error(f"Failed to send Resync Request: {e}")
             return False
+
+    def send_full_sync_request(self) -> bool:
+        """Backwards compatibility alias for requesting resynchronization."""
+        return self.request_resync()
 
     def send_repair_request(self, sections: List[Tuple[int, int, int]]) -> bool:
-        """Requests server to resend specific chunk sections (0x81)."""
-        if self._session is None:
-            return False
-        try:
-            self._session.send_repair_request(sections)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send Repair Request: {e}")
-            return False
+        """Deprecated: Section-level repair is superseded by v3.1 continuous recovery."""
+        return self.request_resync()
 
     def send_sync_config(self, throttle_mode: int = 0, target_fps: int = 60, is_active: bool = True) -> bool:
-        """Sends client synchronization configuration packet (0x82)."""
-        if self._session is None:
-            return False
-        try:
-            self._session.send_sync_config(throttle_mode, target_fps, is_active)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send Sync Config: {e}")
-            return False
+        """Deprecated in RFC v3.1."""
+        return True
 
     def export_manifest(self) -> Optional[str]:
         """Exports manifest metadata (bounds, section CRCs) as JSON string for scene persistence."""
@@ -467,21 +533,25 @@ class SyncBridgeSession:
             return False
 
 
-# Global singleton bridge instance
-_global_sync_session = SyncBridgeSession()
+# Global singleton bridge instance (anchored in builtins to prevent dual-import split brain across packages)
+import builtins
+_GLOBAL_SESSION_ATTR = "_mozi_global_sync_bridge_session"
+if not hasattr(builtins, _GLOBAL_SESSION_ATTR):
+    setattr(builtins, _GLOBAL_SESSION_ATTR, SyncBridgeSession())
+
+_global_sync_session = getattr(builtins, _GLOBAL_SESSION_ATTR)
 
 
 def get_sync_bridge_session() -> SyncBridgeSession:
     """Returns the shared global SyncBridgeSession singleton."""
-    return _global_sync_session
+    return getattr(builtins, _GLOBAL_SESSION_ATTR, _global_sync_session)
 
 
 def reset_sync_bridge_session() -> SyncBridgeSession:
     """Stops and resets the global singleton session, returning the cleaned instance."""
-    global _global_sync_session
-    if _global_sync_session is not None:
-        _global_sync_session.reset()
-    return _global_sync_session
+    session = get_sync_bridge_session()
+    session.reset()
+    return session
 
 
 # Re-export cache loaders directly from bridge.assets to avoid duplicate wrappers

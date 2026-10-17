@@ -71,7 +71,7 @@ if not HAS_BPY:
     HAS_BPY = False
 
 import libmtk_py
-from bridge.sync import get_sync_bridge_session, is_sync_available
+from bridge.sync import get_sync_bridge_session, is_sync_available, reset_sync_bridge_session
 from operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
 
@@ -92,6 +92,9 @@ class TestComplexModelsSync(unittest.TestCase):
                 self.skipTest(f"Failed to open .mtkcache: {e}")
         else:
             self.skipTest(f"No .mtkcache package found at {cache_root}")
+
+    def tearDown(self):
+        reset_sync_bridge_session()
 
     def test_smart_blockstate_lookup_non_cubic(self):
         """Tests that BlockState property stripping and variant matching resolves non-cubic models."""
@@ -163,6 +166,7 @@ class TestComplexModelsSync(unittest.TestCase):
 
             session.stop()
         finally:
+            reset_sync_bridge_session()
             server_proc.terminate()
             server_proc.wait()
 
