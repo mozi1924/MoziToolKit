@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **重建体素网格收紧来源要求**：存档容器与离线 Live Sync 必须存在伴生体素点云；活跃 Live Sync 会话仍可直接从内存 storage 重建，无需等待点云；仅有材质来源属性（provenance）的外部网格不再被误判为可重建对象。
 - 修复存档复用已有网格时未补齐 `mtk:is_save_mesh` 标记的问题，并同步写入来源标记。
 
+### 🐛 草方块侧面 Overlay 染色修复
+- 图集基色与其 `_overlay` 伴生层共享同一个 `texture_id`；反向 id→key 表此前是 last-write-wins，会把 `grass_block_side` 解析成 `grass_block_side_overlay`，使该面拿到 base tint weight = 1，整个泥土侧面被草色染色。
+- 现在反向解析优先选择非 `_overlay` 的基色 key（与 sprite 顺序无关）；再次执行替换材质时会自动纠正旧网格中被写错的 provenance。
+- 新增回归测试覆盖纹理顺序、`remap_face_materials_and_uvs` 的 key 解析与 `[0, 1, 1, 1]` overlay-only tint 权重。
+
 ### 🎞️ 外部网格动画材质修复 (Animated Materials for Imported Meshes)
 - **修复外部导入网格即使启用 `enable_animated_textures` 也始终使用静态图集的问题**：
   动画偏好现在会传入 Rust 图集路由；动画面映射到 `MTK:Atlas:*:anim:*`，静态面保留 Frame-0 基线。

@@ -3,6 +3,7 @@ Tests for Material Pipeline and Shader Builders.
 Can be executed under standard Python (with mocks) or headless Blender.
 """
 
+import array
 import json
 import os
 import sys
@@ -32,7 +33,12 @@ except ImportError:
     HAS_BPY = False
 
 from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+from utils.materials.pipeline import (
+    _register_texture_id_key,
+    remap_face_materials_and_uvs,
+    replace_materials,
+    restore_materials_from_provenance,
+)
 from utils.materials.biome.updater import update_object_biome
 from utils.materials.constants import (
     ATTR_BIOME_TINT_DATA,
@@ -68,6 +74,48 @@ class TestMaterialPipeline(unittest.TestCase):
                 ui.panel_biome.unregister()
             except Exception:
                 pass
+
+    def test_overlay_companion_texture_id_prefers_base_key(self):
+        """Overlay companions share the base texture id; provenance must stay on the base key."""
+        base_key = "minecraft:block/grass_block_side"
+        overlay_key = "minecraft:block/grass_block_side_overlay"
+
+        # Order must not matter: the base sprite always wins over its overlay.
+        for keys in ((base_key, overlay_key), (overlay_key, base_key)):
+            id_to_key = {}
+            for key in keys:
+                _register_texture_id_key(id_to_key, 1147, key)
+            self.assertEqual(id_to_key[1147], base_key)
+
+    def test_remap_keeps_grass_side_base_key(self):
+        """A grass side face must not be re-provenanced as its overlay layer."""
+        atlas_data = {
+            "sprites": {
+                "minecraft:block/grass_block_side": {"texture_id": 1147},
+                "minecraft:block/grass_block_side_overlay": {"texture_id": 1147},
+            }
+        }
+        remap_result = {
+            "face_texture_ids": [1147],
+            "face_chunk_ids": [0],
+            "atlas_uvs": [0.0] * 8,
+            "face_uv_transforms": [[1.0, 1.0, 0.0, 0.0]],
+            "face_uv_rotations": [0.0],
+            "unmapped_faces": 0,
+        }
+
+        with patch("utils.materials.pipeline.remap_mesh_multi_uvs", return_value=remap_result):
+            res = remap_face_materials_and_uvs(
+                baked_atlas=None,
+                atlas_data=atlas_data,
+                face_materials=["minecraft:block/grass_block_side"],
+                loop_uvs=array.array("f", [0.0] * 8),
+                face_loop_ranges=[(0, 4)],
+                origin="GENERIC",
+                existing_prov_keys=None,
+            )
+
+        self.assertEqual(res["face_source_keys"], ["minecraft:block/grass_block_side"])
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_construction_in_blender(self):

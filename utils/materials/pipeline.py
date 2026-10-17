@@ -308,6 +308,24 @@ def extract_face_material_context(
     return face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_prov_keys
 
 
+def _register_texture_id_key(id_to_key: Dict[int, str], texture_id: int, key: str) -> None:
+    """
+    Register one sprite key for an atlas texture id, preferring base sprites over
+    their ``*_overlay`` companions.
+
+    Base and overlay companion sprites share the same texture id and UV slot
+    (the overlay lives in a parallel atlas layer). A naive last-write-wins map
+    resolves ``grass_block_side`` to ``grass_block_side_overlay``; the face then
+    receives full-face tint weights instead of overlay-only weights, tinting the
+    entire dirt/mud side.
+    """
+    existing = id_to_key.get(texture_id)
+    if existing is None:
+        id_to_key[texture_id] = key
+    elif existing.endswith("_overlay") and not key.endswith("_overlay"):
+        id_to_key[texture_id] = key
+
+
 def remap_face_materials_and_uvs(
     baked_atlas: Any,
     atlas_data: Dict[str, Any],
@@ -344,7 +362,7 @@ def remap_face_materials_and_uvs(
         for key, sp in atlas_data.get(bucket_name, {}).items():
             tid = sp.get("texture_id")
             if tid is not None:
-                id_to_key[int(tid)] = key
+                _register_texture_id_key(id_to_key, int(tid), key)
 
     face_source_keys: List[str] = []
     if face_texture_ids:
