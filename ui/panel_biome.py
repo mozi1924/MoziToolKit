@@ -17,6 +17,8 @@ try:
         detect_object_material_mode,
         update_object_biome,
     )
+    from ..utils.materials.constants import ATTR_BIOME_TINT_DATA
+    from ..utils.mesh.ownership import classify_origin
     from ..i18n import tr
 except (ImportError, ValueError):
     from utils.materials.biome import (
@@ -27,14 +29,49 @@ except (ImportError, ValueError):
         update_object_biome,
     )
     try:
+        from utils.materials.constants import ATTR_BIOME_TINT_DATA
+    except (ImportError, ValueError):
+        ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
+    try:
+        from utils.mesh.ownership import classify_origin
+    except (ImportError, ValueError):
+        def classify_origin(obj):
+            return "EXTERNAL"
+    try:
         from i18n import tr
     except (ImportError, ValueError):
         def tr(msgid: str, msgctxt: str | None = None) -> str:
             return msgid
 
+#: Mesh origins whose tint attributes are baked from real voxel world biomes.
+_WORLD_ORIGINS = {"SAVE", "SYNC_WORLD", "SYNC_SECTION", "VOXEL"}
+
+
+def _resolve_biome_preset(obj) -> str:
+    """
+    Resolve the biome preset shown by the panel.
+
+    Objects created by the save/sync/voxel pipelines carry real 3D biome tints but
+    older files (and sync meshes created before the WORLD tag was written) have no
+    ``mtk:biome_preset``. Infer WORLD from the mesh origin + baked tint attribute
+    instead of blindly reporting Plains; external meshes keep the PLAINS default.
+    """
+    preset = obj.get("mtk:biome_preset") if hasattr(obj, "get") else None
+    if isinstance(preset, str) and preset:
+        return preset
+
+    mesh = getattr(obj, "data", None)
+    if mesh is not None and hasattr(mesh, "attributes"):
+        try:
+            if ATTR_BIOME_TINT_DATA in mesh.attributes and classify_origin(obj) in _WORLD_ORIGINS:
+                return "WORLD"
+        except Exception:
+            pass
+    return "PLAINS"
+
 
 def _get_object_biome(self) -> int:
-    preset = self.get("mtk:biome_preset", "PLAINS")
+    preset = _resolve_biome_preset(self)
     for idx, item in enumerate(BIOME_ENUM_ITEMS):
         if item[0] == preset:
             return idx
@@ -49,7 +86,7 @@ def _set_object_biome(self, value: int):
 
 def _on_custom_param_changed(self, context):
     """Real-time update callback when custom biome temperature, humidity, or colors change."""
-    if self.get("mtk:biome_preset", "PLAINS") == "CUSTOM":
+    if _resolve_biome_preset(self) == "CUSTOM":
         update_object_biome(self, "CUSTOM")
 
 
@@ -106,7 +143,7 @@ class MOZI_OT_set_object_biome(bpy.types.Operator):
 
 def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     mode = detect_object_material_mode(obj)
-    current_biome = obj.get("mtk:biome_preset", "PLAINS")
+    current_biome = _resolve_biome_preset(obj)
     is_custom = current_biome == "CUSTOM"
 
     box = layout.box()
@@ -156,6 +193,15 @@ def _draw_biome_ui(layout, context, obj: bpy.types.Object):
         row_w = box_colors.row(align=True)
         row_w.label(text=tr("Water Color"))
         row_w.prop(obj, "mtk_biome_water_color", text="")
+    elif current_biome == "WORLD":
+        # WORLD is a per-face 3D sampler, not a uniform palette: showing the
+        # Plains temperature/colors here would be misleading.
+        col_world = box.column(align=True)
+        row_world = col_world.row(align=True)
+        row_world.label(text=tr("True 3D Minecraft biomes"), icon="WORLD")
+        row_world_info = col_world.row(align=True)
+        row_world_info.scale_y = 0.8
+        row_world_info.label(text=tr("Per-face sampling from voxel storage, 5x5 smooth blending"))
     else:
         # Standard Biome Preset Info
         biome_info = get_biome_colors(current_biome)

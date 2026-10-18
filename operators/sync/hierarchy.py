@@ -343,6 +343,25 @@ def update_world_mesh(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(world_obj, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
+    # Live Sync meshes bake true 3D Quart biomes into their tint attributes. Tag the
+    # object (and its root container) so the biome panel shows "World Biome (3D)"
+    # instead of falling back to Plains, and cache storage for later re-tints.
+    try:
+        from ...utils.materials.biome.updater import mark_world_biome
+    except (ImportError, ValueError):
+        try:
+            from utils.materials.biome.updater import mark_world_biome
+        except Exception:
+            mark_world_biome = None
+    if mark_world_biome is not None:
+        root_container = resolve_world_root_object(world_obj)
+        aliases = []
+        if root_container is not None and root_container is not world_obj:
+            aliases.append(getattr(root_container, "name", ""))
+            aliases.append(_safe_get_custom_prop(root_container, "mtk:container_id", ""))
+            mark_world_biome(root_container, storage)
+        mark_world_biome(world_obj, storage, aliases=aliases)
+
     # Ensure unculled voxel storage point cloud is attached under root container or world_obj as sibling
     if sync_point_cloud and storage is not None:
         try:

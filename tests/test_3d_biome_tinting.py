@@ -19,7 +19,13 @@ from bridge.material import (
     compute_mesh_biome_attributes_from_storage,
 )
 from utils.materials.biome.biome import BIOME_ENUM_ITEMS
-from utils.materials.biome.updater import update_object_biome
+from utils.materials.biome.updater import (
+    clear_biome_updater_cache,
+    get_object_storage,
+    mark_world_biome,
+    update_object_biome,
+)
+from ui.panel_biome import _get_object_biome, _resolve_biome_preset
 from utils.materials.constants import (
     ATTR_BIOME_TINT_COLOR,
     ATTR_BIOME_TINT_DATA,
@@ -257,6 +263,58 @@ class Test3DBiomeTinting(unittest.TestCase):
         world_col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[0].color)
         world_col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[1].color)
         self.assertNotEqual(world_col0, world_col1)
+
+    def test_mark_world_biome_tags_object_and_caches_storage(self):
+        """Voxel meshes must advertise WORLD and expose their storage for later re-tints."""
+        self.addCleanup(clear_biome_updater_cache)
+        storage = self.lib.VoxelStorage()
+        mesh = _MockMesh(1)
+        mesh.name = "Yefira_World_Mesh"
+        obj = _MockObject(mesh)
+        obj.name = "Yefira_World_Mesh"
+
+        mark_world_biome(obj, storage)
+
+        self.assertEqual(obj["mtk:biome_preset"], "WORLD")
+        self.assertIs(get_object_storage("Yefira_World_Mesh"), storage)
+
+    def test_ui_infers_world_for_untagged_world_mesh(self):
+        """Legacy sync meshes without mtk:biome_preset should display World Biome (3D)."""
+        mesh = _MockMesh(1)
+        mesh.attributes.new(name=ATTR_BIOME_TINT_DATA, type="FLOAT_COLOR", domain="FACE")
+        obj = _MockObject(mesh)
+        obj["mtk:geometry_origin"] = "SYNC_WORLD"
+
+        self.assertEqual(_resolve_biome_preset(obj), "WORLD")
+        idx = _get_object_biome(obj)
+        self.assertEqual(BIOME_ENUM_ITEMS[idx][0], "WORLD")
+
+    def test_ui_keeps_plains_for_external_untinted_mesh(self):
+        """External meshes must not inherit the WORLD default from tint attributes."""
+        mesh = _MockMesh(1)
+        mesh.attributes.new(name=ATTR_BIOME_TINT_DATA, type="FLOAT_COLOR", domain="FACE")
+        obj = _MockObject(mesh)
+        obj["mtk:geometry_origin"] = "EXTERNAL"
+
+        self.assertEqual(_resolve_biome_preset(obj), "PLAINS")
+        idx = _get_object_biome(obj)
+        self.assertEqual(BIOME_ENUM_ITEMS[idx][0], "PLAINS")
+
+    def test_world_without_storage_does_not_repaint_plains(self):
+        """Refuse WORLD when a uniform preset overwrote the tint and no storage exists."""
+        self.addCleanup(clear_biome_updater_cache)
+        mesh = _MockMesh(1)
+        mesh.name = "Detached_World_Mesh"
+        mesh.attributes.new(name=ATTR_BIOME_TINT_DATA, type="FLOAT_COLOR", domain="FACE")
+        col_attr = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+        col_attr.data[0].color = [0.27, 0.50, 0.09, 1.0]
+        obj = _MockObject(mesh)
+        obj.name = "Detached_World_Mesh"
+        obj["mtk:biome_preset"] = "PLAINS"
+
+        self.assertFalse(update_object_biome(obj, "WORLD"))
+        self.assertEqual(obj["mtk:biome_preset"], "PLAINS")
+        self.assertEqual(list(col_attr.data[0].color), [0.27, 0.50, 0.09, 1.0])
 
     def test_real_save_3d_biome_loading(self):
         """Verify 3D section biome ingestion from a real Minecraft Anvil save when MTK_TEST_SAVE is available."""

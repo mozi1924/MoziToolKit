@@ -335,6 +335,8 @@ def _sync_timer_tick() -> Optional[float]:
                 curr_gen = 0
             if latest_generation >= curr_gen:
                 world_obj = get_or_create_world_mesh_object(bpy.context, root_container=active_container)
+                # Delta updates deliberately avoid copying the native storage; the
+                # initial baseline/point-cloud sync registers it for biome re-tints.
                 storage = session.get_storage() if needs_voxel_sync else None
                 v_count, f_count = update_world_mesh(
                     world_obj,
@@ -373,6 +375,32 @@ def _sync_timer_tick() -> Optional[float]:
                 except (ImportError, ValueError):
                     from bridge.point_cloud import ensure_voxel_child_cloud
                 ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
+
+                # Cache the storage under the container/mesh names so the biome
+                # panel can restore WORLD even if the initial mesh event arrived
+                # before this STREAM_FINISHED event.
+                try:
+                    from ...utils.materials.biome.updater import (
+                        mark_world_biome,
+                        register_object_storage,
+                    )
+                except (ImportError, ValueError):
+                    try:
+                        from utils.materials.biome.updater import (
+                            mark_world_biome,
+                            register_object_storage,
+                        )
+                    except Exception:
+                        mark_world_biome = None
+                if mark_world_biome is not None:
+                    container_name = getattr(active_container, "name", "")
+                    if isinstance(container_name, str) and container_name:
+                        register_object_storage(container_name, storage)
+                        register_object_storage(f"{container_name}_Mesh", storage)
+                    container_id = active_container.get("mtk:container_id") if hasattr(active_container, "get") else None
+                    if isinstance(container_id, str) and container_id:
+                        register_object_storage(container_id, storage)
+                    mark_world_biome(active_container, storage)
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
 

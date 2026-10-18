@@ -30,6 +30,7 @@ if HAS_BPY:
         detect_object_material_mode,
         update_object_biome,
         resolve_and_apply_world_biome_tint,
+        mark_world_biome,
         clear_biome_updater_cache,
     )
 else:
@@ -37,6 +38,7 @@ else:
     detect_object_material_mode = None
     update_object_biome = None
     resolve_and_apply_world_biome_tint = None
+    mark_world_biome = None
     clear_biome_updater_cache = None
 
 __all__ = [
@@ -56,5 +58,6 @@ __all__ = [
     "detect_object_material_mode",
     "update_object_biome",
     "resolve_and_apply_world_biome_tint",
+    "mark_world_biome",
     "clear_biome_updater_cache",
 ]

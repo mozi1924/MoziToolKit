@@ -663,6 +663,18 @@ def apply_voxel_mesh_to_blender(
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
 
+    # Voxel meshes always bake true 3D biomes; tag them so the biome panel's
+    # WORLD preset is selected instead of the uniform Plains fallback.
+    try:
+        from ..utils.materials.biome.updater import mark_world_biome
+    except (ImportError, ValueError):
+        try:
+            from utils.materials.biome.updater import mark_world_biome
+        except Exception:
+            mark_world_biome = None
+    if mark_world_biome is not None:
+        mark_world_biome(obj, storage)
+
     # 4. Extract unculled VoxelPointCloud and ensure child companion object
     cloud_obj = ensure_voxel_child_cloud(
         parent_obj=obj,

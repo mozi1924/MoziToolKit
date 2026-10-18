@@ -66,6 +66,41 @@ def get_object_storage(key: str) -> Any:
     return _STORAGE_CACHE.get(str(key))
 
 
+def mark_world_biome(obj: Any, storage: Any = None, aliases: Any = ()) -> bool:
+    """
+    Tag an MTK voxel mesh as using true 3D World Biome tinting and cache its storage.
+
+    Every voxel-derived surface mesh (save import, Live Sync, rebuild) bakes real 3D
+    biome colors into its tint attributes. Tagging ``mtk:biome_preset`` here keeps the
+    biome panel from falling back to the uniform ``PLAINS`` default, while registering
+    the storage lets a later WORLD re-selection recompute colors without a live session.
+
+    ``aliases`` may contain extra lookup keys (root container name, container UUID)
+    that should resolve to the same storage.
+    """
+    if obj is None:
+        return False
+
+    try:
+        obj["mtk:biome_preset"] = "WORLD"
+    except (TypeError, AttributeError, KeyError):
+        try:
+            setattr(obj, "mtk:biome_preset", "WORLD")
+        except Exception:
+            pass
+
+    if storage is not None:
+        mesh = getattr(obj, "data", None)
+        for key in (getattr(obj, "name", ""), getattr(mesh, "name", "")):
+            if isinstance(key, str) and key:
+                register_object_storage(key, storage)
+        for key in aliases:
+            if isinstance(key, str) and key:
+                register_object_storage(key, storage)
+
+    return True
+
+
 def resolve_mesh_base_tint_types(
     mesh: Any,
     obj: Optional[Any] = None,
@@ -267,13 +302,16 @@ def resolve_and_apply_world_biome_tint(
     if storage is None and hasattr(target_mesh, "get"):
         storage = target_mesh.get("mtk:storage", None)
     if storage is None:
+        # Fallback for a freshly opened file while a Live Sync session is still
+        # running: the in-memory storage has not been registered under the object
+        # names yet, but the active session owns the same 3D biomes.
         try:
             try:
-                from ....bridge.sync import get_live_sync_session
+                from ....bridge.sync import get_sync_bridge_session
             except (ImportError, ValueError):
-                from bridge.sync import get_live_sync_session
-            session = get_live_sync_session()
-            if session:
+                from bridge.sync import get_sync_bridge_session
+            session = get_sync_bridge_session()
+            if session is not None and getattr(session, "is_active", False):
                 storage = session.get_storage()
         except Exception:
             storage = None
@@ -342,6 +380,14 @@ def resolve_and_apply_world_biome_tint(
         return True
 
     if hasattr(target_mesh, "attributes") and ATTR_BIOME_TINT_DATA in target_mesh.attributes:
+        # Existing tint attributes are only trustworthy as 3D world data when no
+        # uniform preset has overwritten them. Without storage we cannot restore
+        # real biome colors, so refuse instead of silently relabeling Plains.
+        current_preset = None
+        if hasattr(mesh_or_obj, "get"):
+            current_preset = mesh_or_obj.get("mtk:biome_preset")
+        if isinstance(current_preset, str) and current_preset and current_preset.upper() != "WORLD":
+            return False
         if hasattr(mesh_or_obj, "__setitem__"):
             try:
                 mesh_or_obj["mtk:biome_preset"] = "WORLD"
@@ -439,6 +485,10 @@ def update_object_biome(
                 effective_stack=effective_stack,
             ):
                 return True
+
+            # A uniform "WORLD" preset has no colormap entry and resolves to Plains
+            # in Rust. Refuse instead of silently repainting 3D-biome faces as Plains.
+            return False
 
         # FAST IN-PLACE VECTORIZED UPDATE PATH (< 1.5ms):
         # When ATTR_BIOME_TINT_DATA is already present on the mesh, tint categories (grass/foliage/water/dry/hardcoded/none)

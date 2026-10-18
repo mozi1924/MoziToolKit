@@ -307,17 +307,20 @@ class TestDualMeshApi(unittest.TestCase):
         self.assertIsInstance(uv_mv, memoryview)
 
     def test_blender_direct_pointer_api(self):
-        """Suite A: Dedicated Blender Direct Pointer API via ctypes buffer addresses."""
-        # 1. Dedicated blender_direct accessor sub-interface
-        self.assertTrue(hasattr(self.mesh, "blender_direct"))
-        blender_direct = self.mesh.blender_direct
+        """Suite A: DNA direct writes via the canonical unstable.blender_dna entry point."""
+        mtk = get_libmtk()
+        dna = getattr(getattr(mtk, "unstable", None), "blender_dna", None)
+        if dna is None or not hasattr(dna, "copy_positions_to_ptr"):
+            self.skipTest("libmtk_py.unstable.blender_dna is not available")
+        self.assertFalse(hasattr(self.mesh, "blender_direct"))
 
+        # 1. Canonical DNA entry point
         buf = (ctypes.c_float * 12)()
         ptr = ctypes.addressof(buf)
-        written = blender_direct.copy_positions(ptr, max_bytes=48)
+        written = dna.copy_positions_to_ptr(self.mesh, ptr, max_bytes=48)
         self.assertEqual(written, 48)
 
-        # 2. Legacy direct pointer methods backward-compatibility
+        # 2. Per-mesh direct pointer methods remain as the Python-only fallback
         self.assertTrue(hasattr(self.mesh, "direct_copy_positions_to_ptr"))
         buf2 = (ctypes.c_float * 12)()
         ptr2 = ctypes.addressof(buf2)

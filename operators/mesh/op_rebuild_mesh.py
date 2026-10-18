@@ -474,16 +474,25 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 world_session_key=session_key,
                 force_rebuild=did_precompile,
             )
-            return mesh_data, elapsed_ms
+            # Keep the rebuilt storage so the success handler can cache it for
+            # later WORLD biome re-tints.
+            return mesh_data, elapsed_ms, storage
 
         def on_cloud_success(result_tuple):
+            storage = None
             if isinstance(result_tuple, tuple) and len(result_tuple) == 2 and isinstance(result_tuple[1], bool):
-                (mesh_data, elapsed_ms), did_precompile = result_tuple
+                inner, did_precompile = result_tuple
+                if len(inner) == 3:
+                    mesh_data, elapsed_ms, storage = inner
+                else:
+                    mesh_data, elapsed_ms = inner
                 if did_precompile:
                     try:
                         reload_atlas_images(prefs)
                     except Exception:
                         pass
+            elif isinstance(result_tuple, tuple) and len(result_tuple) == 3:
+                mesh_data, elapsed_ms, storage = result_tuple
             else:
                 mesh_data, elapsed_ms = result_tuple
 
@@ -516,6 +525,27 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 )
                 used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
                 ensure_world_materials(world_mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+
+                # Offline rebuilds resample the 3D biomes from the point cloud, so
+                # the object must advertise the WORLD preset (and keep that storage
+                # available for later panel edits).
+                try:
+                    from ...utils.materials.biome.updater import mark_world_biome
+                except (ImportError, ValueError):
+                    try:
+                        from utils.materials.biome.updater import mark_world_biome
+                    except Exception:
+                        mark_world_biome = None
+                if mark_world_biome is not None:
+                    aliases = []
+                    if root_container is not None:
+                        aliases.append(getattr(root_container, "name", ""))
+                        container_id = root_container.get("mtk:container_id", "") if hasattr(root_container, "get") else ""
+                        if isinstance(container_id, str) and container_id:
+                            aliases.append(container_id)
+                        mark_world_biome(root_container, storage)
+                    mark_world_biome(world_mesh_obj, storage, aliases=aliases)
+
                 poly_cnt = len(world_mesh_obj.data.polygons) if hasattr(world_mesh_obj.data, "polygons") else 0
                 self.report({"INFO"}, f"Rebuilt voxel mesh: {poly_cnt:,} faces in {round(elapsed_ms, 1)}ms")
             else:

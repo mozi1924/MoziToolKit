@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🌍 3D World Biome 预设与面板显示修复
+- 存档导入、Live Sync 与体素重建现在统一写入 `mtk:biome_preset="WORLD"`，并把 `VoxelStorage` 缓存到内存注册表；修复实时同步完成后生物群系面板回落 Plains、与网格真实 3D 群系染色不一致的问题。
+- 生物群系面板在对象缺少预设属性时会根据 `mtk:geometry_origin`（`SAVE` / `SYNC_WORLD` / `SYNC_SECTION` / `VOXEL`）与 `mtk_biome_tint_data` 推断 `WORLD`，兼容旧 `.blend`；外部导入网格仍保持 Plains 默认。
+- `WORLD` 不再复用 Plains 的温度/草地/树叶信息行，改为显示真实的逐面 3D 采样说明，避免“下拉框是 World Biome、数值却是 Plains”的误导。
+- 无 storage 且 tint 属性已被统一预设覆盖时，拒绝把对象伪标为 `WORLD`，避免把 Plains 颜色静默当成 3D 群系颜色。
+- 修复 Live Sync storage 回退调用了不存在的 `get_live_sync_session` 的死代码，改为使用 `get_sync_bridge_session()` 的活跃会话。
+
 ### 🧭 材质替换与网格重构边界收紧
 - 新增 `mtk:geometry_origin` 网格来源标记（`EXTERNAL` / `SAVE` / `SYNC_WORLD` / `SYNC_SECTION` / `VOXEL` / `POINT_CLOUD`），在存档导入、Live Sync 世界网格与独立体素网格创建时写入；旧文件按 `mtk:is_save_mesh`、`mtk:is_yefira_mesh`、`mtk:is_section_mesh`、`mtk_is_voxel_cloud` 与命名约定回退推断。
 - **替换材质仅对外部导入网格可用**：MTK 生成的网格（存档 / Live Sync / 体素）在右键菜单与 Voxel & Mesh Tools 面板中自动置灰，并显示“请编辑点云后重建”的上下文提示。
