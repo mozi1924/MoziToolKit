@@ -17,7 +17,6 @@ from ..dna import (
     resolve_colors_ptr,
     resolve_corner_verts_ptr,
     resolve_loop_uvs_ptr,
-    resolve_materials_ptr,
     resolve_positions_ptr,
 )
 from ..engine import get_libmtk_dna
@@ -209,14 +208,6 @@ def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = Non
     except Exception as e:
         logger.debug("DNA direct copy UVs failed: %s", e)
 
-    return False
-
-
-def inject_face_materials_dna(mesh: Any, mesh_data: Any) -> bool:
-    """
-    Polygon material indices are intentionally handled in Phase 2 standard API
-    (inject_face_materials_standard) for 100% crash immunity and material slot binding.
-    """
     return False
 
 

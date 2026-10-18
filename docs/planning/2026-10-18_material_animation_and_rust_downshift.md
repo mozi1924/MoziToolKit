@@ -204,6 +204,26 @@
 - [x] FFI 单元测试覆盖 material route、persisted state 与 biome recolor。
 - [ ] 后续按 C4D 实际调用约定补充 opaque session/asset-cache handle 与头文件示例。
 
+### 2.5 代码库清理（✅ 本轮完成）
+
+删除 / 收敛的陈旧入口：
+
+- [x] 删除 `operators/op_mesh.py` 兼容 stub（仅测试引用），测试改用 `operators.mesh`。
+- [x] 删除 `ui/panel_voxel_storage.py` / `ui/panel_sync.py` 的旧类名别名。
+- [x] 删除 `operators/op_materials.py` 的旧 Operator 别名。
+- [x] 删除无引用的 `utils/extrude_repair/` 包（挤出修复已完全走 `bridge/extrude.py` + Rust `mtk-core::extrude`）。
+- [x] 删除无引用的 `utils/mesh/subdivide.py`（像素切分已走 `bridge/subdivide.py` + Rust `mtk-core::subdivide`）。
+- [x] 删除 `bridge/mesh/dna.py::inject_face_materials_dna` 死分支；`material_index` 始终走标准 RNA 路径。
+- [x] 删除 `bridge/sync.py` 的废弃 API：
+  `send_full_sync_request` / `send_repair_request` / `send_sync_config` / `export_manifest` / `import_manifest`，
+  以及旧 `cached_uuid` / `cached_epoch` / ... 参数；统一使用 `cached_state_json`。
+- [x] 删除 Python 侧旧的 list-based `extract_face_material_context` /
+  `remap_face_materials_and_uvs` / `_register_texture_id_key`；只保留 palette-native 路径。
+- [x] 简化 `bridge/assets/cache.py`：移除旧 glob/direct 搜索；Rust resolver 优先，
+  仅保留旧 native 的 direct-name 兼容与测试沙箱 fallback。
+- [x] 修正 41 处文档死链至 0；重写已失效的 `docs/pipeline/step_pipeline.md` 为当前
+  `AsyncTask` / `ModalTaskRunner` 架构；同步 `docs/mesh`、`docs/materials`、`GEMINI.md` 中的旧路径。
+
 ### P3 — 文档/一致性
 
 - [x] `mtk-material/README.md` 公共 API 表补新函数；
@@ -236,7 +256,7 @@ cd MoziToolKit
 ../libmozitoolkit/.venv/bin/python -m pytest tests/ -q
 ```
 
-结果：**245 passed / 71 skipped**（新增 Blender-only 用例在 mock 下 skip）。
+结果：**243 passed / 71 skipped**（新增 Blender-only 用例在 mock 下 skip）。
 
 ### Blender 5.2.1 LTS
 
@@ -246,7 +266,7 @@ MTK_TEST_SITE_PACKAGES="$(../libmozitoolkit/.venv/bin/python -c 'import site; pr
   blender --background --factory-startup --python tests/run_tests.py -- -q
 ```
 
-结果：**306 passed / 10 skipped**（修复了 3 个已知的 sync timer 隔离失败与
+结果：**304 passed / 10 skipped**（修复了 3 个已知的 sync timer 隔离失败与
 `tests/test_mesh_ownership.py` 中 5 个 `root.children = [...]` 非法赋值 / fake datablock
 造成的测试自身失败）。
 

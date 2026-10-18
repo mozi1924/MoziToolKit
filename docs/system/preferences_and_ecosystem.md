@@ -80,7 +80,7 @@ graph TD
   - macOS Apple Silicon & Intel (`Pillow-...-macosx_11_0_arm64.whl`, `macosx_10_10_x86_64.whl`)
   - Linux x86_64 (`Pillow-...-manylinux_2_28_x86_64.whl`)
 - **隔离加载与优雅降级**：
-  在 [`op_dependencies.py`](../../operators/misc/op_dependencies.py) 与 `utils/system/` 中，插件启动时优先将自带 `wheels/` 目录挂载到隔离 `sys.path`，绝不污染全局 Blender Python 环境；若宿主环境缺失 Pillow，基础网格清洗与 UV 工具依然可 100% 独立正常运行。
+  在 [`bridge/engine.py`](../../bridge/engine.py) 与 `blender_manifest.toml` 中，插件启动时优先将自带 `wheels/` 目录挂载到隔离 `sys.path`，绝不污染全局 Blender Python 环境；若宿主环境缺失 Pillow，基础网格清洗与 UV 工具依然可 100% 独立正常运行。
 
 ---
 

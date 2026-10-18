@@ -37,12 +37,12 @@ class TestLiveSyncProgress(unittest.TestCase):
         # Let's verify poll_events receives STREAM_PROGRESS
         # Send full sync request
         try:
-            session.send_full_sync_request()
+            session.request_resync()
         except Exception:
             pass
 
         events = session.poll_events()
-        # Even if not connected, send_full_sync_request emits a sync_request progress event before error
+        # Even if not connected, request_resync emits a sync_request progress event before error
         req_events = [e for e in events if e.get("type") == "STREAM_PROGRESS" and e.get("stage") == "sync_request"]
         if req_events:
             ev = req_events[0]

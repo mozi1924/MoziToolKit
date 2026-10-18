@@ -7,7 +7,6 @@ direct vertex carving, and mesh/material reconstruction.
 from __future__ import annotations
 
 import bpy
-from bpy.props import FloatProperty
 
 from .ownership_hint import draw_mesh_origin_hint
 
@@ -212,9 +211,6 @@ class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
         r_mat2.operator("mozi.clear_custom_normals", text=tr("Clear Custom Normals"), icon="NORMALS_VERTEX")
         r_mat2.operator("mozi.set_texture_interpolation_closest", text=tr("Interpolation: Closest"), icon="IMAGE_DATA")
 
-
-# Backward compatibility alias
-MOZI_PT_view3d_voxel_storage = MOZI_PT_view3d_voxel_tools
 
 classes = (
     MOZI_PT_view3d_voxel_tools,

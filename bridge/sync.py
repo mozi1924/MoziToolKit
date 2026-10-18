@@ -9,12 +9,11 @@ operators and panels.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("MoziToolKit.Bridge.Sync")
 
-from .engine import get_libmtk, has_libmtk, require_libmtk
+from .engine import get_libmtk, require_libmtk
 
 
 def __getattr__(name: str) -> Any:
@@ -27,9 +26,6 @@ def __getattr__(name: str) -> Any:
 
 try:
     from .assets import (
-        get_cache_dir,
-        load_baked_model_database,
-        load_baked_atlas_from_cache,
         load_biome_resolver_from_cache,
         check_cache_dirty,
         get_cache_fingerprint,
@@ -39,9 +35,6 @@ try:
     )
 except (ImportError, ValueError):
     from bridge.assets import (
-        get_cache_dir,
-        load_baked_model_database,
-        load_baked_atlas_from_cache,
         load_biome_resolver_from_cache,
         check_cache_dirty,
         get_cache_fingerprint,
@@ -175,14 +168,7 @@ class SyncBridgeSession:
         biome_resolver: Optional[Any] = None,
         custom_aliases: Optional[Any] = None,
         num_threads: Optional[int] = None,
-        cached_uuid: Optional[bytes] = None,
-        cached_epoch: int = 0,
-        cached_seq: int = 0,
-        cached_min: Optional[Tuple[int, int, int]] = None,
-        cached_size: Optional[Tuple[int, int, int]] = None,
-        cached_state_hash: int = 0,
         auth_token: Optional[str] = None,
-        cached_dimension: Optional[str] = None,
         cached_state_json: Optional[str] = None,
     ) -> bool:
         """
@@ -240,20 +226,6 @@ class SyncBridgeSession:
                 config_kwargs["ctm_solver"] = ctm_solver
             config = mtk.MesherConfig(**config_kwargs)
 
-            start_kwargs = {
-                "url": url,
-                "auto_reconnect": auto_reconnect,
-                "max_reconnect_attempts": max_reconnect_attempts,
-                "cached_uuid": cached_uuid,
-                "cached_epoch": cached_epoch,
-                "cached_seq": cached_seq,
-                "cached_min": cached_min,
-                "cached_size": cached_size,
-                "cached_state_hash": cached_state_hash,
-                "auth_token": auth_token,
-                "cached_dimension": cached_dimension,
-            }
-
             def _start_native(session: Any) -> None:
                 """Prefer the host-agnostic persisted-state entry point when available."""
                 if cached_state_json and hasattr(session, "start_with_persisted_state"):
@@ -265,7 +237,7 @@ class SyncBridgeSession:
                         auth_token=auth_token,
                     )
                 else:
-                    session.start(**start_kwargs)
+                    session.start(url, auto_reconnect, max_reconnect_attempts)
 
             # If native session already exists, reuse it to preserve cached voxel storage & mesh cache
             if self._session is not None:
@@ -517,18 +489,6 @@ class SyncBridgeSession:
             logger.error(f"Failed to send Resync Request: {e}")
             return False
 
-    def send_full_sync_request(self) -> bool:
-        """Backwards compatibility alias for requesting resynchronization."""
-        return self.request_resync()
-
-    def send_repair_request(self, sections: List[Tuple[int, int, int]]) -> bool:
-        """Deprecated: Section-level repair is superseded by v3.1 continuous recovery."""
-        return self.request_resync()
-
-    def send_sync_config(self, throttle_mode: int = 0, target_fps: int = 60, is_active: bool = True) -> bool:
-        """Deprecated in RFC v3.1."""
-        return True
-
     def export_persisted_state_json(self, user_modified: bool = False) -> Optional[str]:
         """Exports host-agnostic session state JSON (UUID/epoch/seq/bounds/hash) from Rust."""
         if self._session is None or not hasattr(self._session, "export_persisted_state_json"):
@@ -539,34 +499,6 @@ class SyncBridgeSession:
             logger.warning("Failed exporting persisted sync state: %s", e)
             return None
 
-    def export_manifest(self) -> Optional[str]:
-        """Exports manifest metadata (bounds, section CRCs) as JSON string for scene persistence."""
-        if self._session is None or not hasattr(self._session, "export_manifest_metadata"):
-            return None
-        try:
-            return self._session.export_manifest_metadata()
-        except Exception as e:
-            logger.warning("Failed exporting sync manifest: %s", e)
-            return None
-
-    def import_manifest(self, manifest_data: Any) -> bool:
-        """Imports manifest metadata into active session to enable 0ms reconnect verification."""
-        if self._session is None or not hasattr(self._session, "import_manifest_metadata"):
-            return False
-        try:
-            import json
-            if isinstance(manifest_data, dict):
-                manifest_str = json.dumps(manifest_data)
-            elif isinstance(manifest_data, str):
-                manifest_str = manifest_data.strip()
-            else:
-                return False
-            if not manifest_str or manifest_str == "{}":
-                return False
-            return bool(self._session.import_manifest_metadata(manifest_str))
-        except Exception as e:
-            logger.warning("Failed importing sync manifest into native session: %s", e)
-            return False
 
 
 # Global singleton bridge instance (anchored in builtins to prevent dual-import split brain across packages)

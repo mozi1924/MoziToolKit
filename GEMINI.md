@@ -95,7 +95,7 @@ MoziToolKit/
 ├── operators/            -> Blender 操作符 (UI 事件响应)
 │   ├── extrude/          -> 智能挤出与实时修复模块包 (Watcher, Properties, Ops)
 │   ├── sync/             -> 原生 Live Sync 实时协同模块包
-│   └── ...               -> 独立单算子文件 (op_cull, op_mesh, op_uv 等)
+│   └── ...               -> 独立单算子文件 (op_cull, op_uv 等)
 ├── ui/                   -> 3D 视图侧边栏面板与菜单
 ├── utils/                -> 节点树生成、BMesh 辅助、材质管线、日志工具
 ├── wheels/               -> libmtk_py 动态轮子二进制

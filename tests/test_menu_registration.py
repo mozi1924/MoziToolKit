@@ -146,7 +146,7 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertEqual(zh_dict.get(('*', 'Set Image Interpolation to Closest')), '图像纹理插值设为最近')
 
     def test_rebuild_mesh_provenance_predetection(self):
-        from operators.op_mesh import resolve_mesh_rebuild_targets, MOZI_OT_rebuild_mesh
+        from operators.mesh import resolve_mesh_rebuild_targets, MOZI_OT_rebuild_mesh
 
         # Mesh with provenance attributes
         mock_obj_prov = MagicMock(type="MESH")

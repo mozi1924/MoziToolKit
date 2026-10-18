@@ -81,6 +81,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **C-ABI 首批**：`mtk-ffi` 新增 `mtk_resolve_material_routes`、
   `mtk_sync_state_is_reconnect_candidate`、`mtk_biome_reapply_uniform_tint`。
 
+### 🧹 代码库与文档清理
+- 删除陈旧兼容层：`operators/op_mesh.py`、`utils/extrude_repair/`、
+  `utils/mesh/subdivide.py`，以及 `ui/panel_voxel_storage.py` / `ui/panel_sync.py` /
+  `operators/op_materials.py` 中的旧类名别名。
+- 删除 `inject_face_materials_dna` 死分支；`material_index` 统一走标准 RNA 写入。
+- 删除废弃 Live Sync API：`send_full_sync_request` / `send_repair_request` /
+  `send_sync_config` / `export_manifest` / `import_manifest` 及旧 `cached_*` 启动参数；
+  统一使用 `cached_state_json`。
+- 删除 Python 侧旧 list-based 材质提取/重映射路径，只保留 palette-native 管线。
+- 简化 `bridge/assets/cache.py` 的旧 glob/direct 搜索，保留 Rust resolver 与测试沙箱 fallback。
+- 修复 `docs/` 下 41 处死链至 0，重写失效的 Step Pipeline 文档为当前
+  `AsyncTask` / `ModalTaskRunner` 架构。
+
 ### 🐛 Live Sync 稳定性修复 (Realtime Sync Stability)
 - **修复大选区/多生物群系基线永久校验失败（卡在 75%）**：Rust 基线组装器此前使用全局 Quart 索引 `qx & 3` 写入 Section-local 生物群系，未考虑选区 `min_pos` 非 16 对齐的情况，导致 Canonical State Hash 与 Minecraft 端失配并无限重同步。现改为按 `(world >> 2) & 3` 的 Section-local Quart 坐标写入，并新增非对齐选区回归测试。
 - **修复刷新后偶发提示“未连接”**：终态 `DISCONNECTED` 事件不再因原生 worker 已退出而被丢弃；Blender 面板连接状态统一以原生 `LiveSyncSession` 的 `is_connected` / `status` 为准，中间态传输告警（解码/发送错误）不再误判为断线。Refresh 会先同步真实状态并给出精确提示。

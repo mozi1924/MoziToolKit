@@ -63,10 +63,9 @@
 ---
 
 ### 4. 调度与流水线系统 (Modular Step Pipeline)
-- **[模块化流水线系统 (Step Pipeline)](pipeline/step_pipeline.md)**：
-  - `Step ↔ Context ↔ Pipeline` 契约模型与结构化 `StepResult`。
-  - 通用模态调度算子（`mozi.modal_pipeline_runner`）、3D 视口 Header 进度条与状态栏双通道反馈。
-  - 预设流水线编排（Presets，含预编译缓存 `StepPrecompileCache`）。
+- **[异步任务与进度调度 (Async Tasks & Progress)](pipeline/step_pipeline.md)**：
+  - `AsyncTask` / `ModalTaskRunner` 主线程步进与取消模型。
+  - 资产门禁、预编译与状态栏/`wm.progress_*` 双通道进度反馈。
 
 ---
 
@@ -79,16 +78,10 @@
 ---
 
 ### 6. 底层几何与网络内核 API (libmozitoolkit / libmtk_py)
-- **`libmozitoolkit/docs/API_REFERENCE.md`**：高性能体素/网格/纹理 Rust 内核与 Python 绑定 API 体系：
-  - **[API 总览与零拷贝规范](../../libmozitoolkit/docs/api/index.md)**
-  - **[网格与几何缓冲 (PyMeshData)](../../libmozitoolkit/docs/api/mesh.md)**
-  - **[体素存储与配置 (PyVoxelStorage)](../../libmozitoolkit/docs/api/voxel.md)**
-  - **[网格生成与增量重构 (PySectionMesher)](../../libmozitoolkit/docs/api/mesher.md)**
-  - **[模型解析与烘焙 (PyModelBaker)](../../libmozitoolkit/docs/api/model.md)**
-  - **[纹理图集与独立材质预编译 (PyAtlasBuilder, PyBakedAtlas)](../../libmozitoolkit/docs/api/texture.md)**
-  - **[资源包栈 (PyResourcePackStack)](../../libmozitoolkit/docs/api/resource.md)**
-  - **[材质匹配与 UV 重映射 (PyMaterialResolver)](../../libmozitoolkit/docs/api/material.md)**
-  - **[实时同步与协议编解码 (PyLiveSyncSession)](../../libmozitoolkit/docs/api/sync_and_protocol.md)**
-  - **[面剔除引擎 (PyFaceCuller)](../../libmozitoolkit/docs/api/cull.md)**
-
-
+- **[Rust 内核 API 总览](../../libmozitoolkit/docs/API_REFERENCE.md)**：跨 crate 的公共 API、错误类型与数据布局。
+- **[Python 绑定设计](../../libmozitoolkit/docs/BINDINGS_DESIGN.md)**：`libmtk_py` 的 Buffer Protocol、零拷贝与 DNA 直写契约。
+- **Crate 级参考**：
+  - [mtk-core](../../libmozitoolkit/crates/mtk-core/README.md)、[mtk-voxel](../../libmozitoolkit/crates/mtk-voxel/README.md)、[mtk-cull](../../libmozitoolkit/crates/mtk-cull/README.md)
+  - [mtk-model](../../libmozitoolkit/crates/mtk-model/README.md)、[mtk-texture](../../libmozitoolkit/crates/mtk-texture/README.md)、[mtk-resource](../../libmozitoolkit/crates/mtk-resource/README.md)
+  - [mtk-material](../../libmozitoolkit/crates/mtk-material/README.md)、[mtk-sync](../../libmozitoolkit/crates/mtk-sync/README.md)、[mtk-save](../../libmozitoolkit/crates/mtk-save/README.md)
+  - [libmtk facade](../../libmozitoolkit/crates/libmtk/README.md)、[mtk-py bindings](../../libmozitoolkit/bindings/mtk-py/README.md)、[mtk-ffi](../../libmozitoolkit/bindings/mtk-ffi/README.md)

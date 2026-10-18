@@ -10,7 +10,7 @@ import array
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -27,27 +27,19 @@ try:
     from ...bridge.material import (
         is_material_bridge_available,
         load_baked_atlas_from_json,
-        remap_mesh_multi_uvs,
         remap_mesh_multi_uvs_paletted,
-        resolve_mesh_material_routes,
         reroute_mesh_animation,
-        compute_flat_material_props,
         compute_flat_material_props_buffer,
         compute_flat_material_props_paletted_buffer,
-        BiomeResolver,
     )
 except (ImportError, ValueError):
     from bridge.material import (
         is_material_bridge_available,
         load_baked_atlas_from_json,
-        remap_mesh_multi_uvs,
         remap_mesh_multi_uvs_paletted,
-        resolve_mesh_material_routes,
         reroute_mesh_animation,
-        compute_flat_material_props,
         compute_flat_material_props_buffer,
         compute_flat_material_props_paletted_buffer,
-        BiomeResolver,
     )
 
 
@@ -59,7 +51,6 @@ def __getattr__(name: str) -> Any:
 try:
     from ...bridge.assets import (
         get_cache_dir,
-        get_active_cache_package_path,
         get_cache_fingerprint,
         precompile_stack,
         check_asset_cache_status,
@@ -79,7 +70,6 @@ try:
         inject_face_attribute_vector,
         resolve_source_texture_keys,
         resolve_source_texture_keys_paletted,
-        inject_face_source_texture_keys,
         inject_face_source_texture_palette,
     )
     from .builder.atlas_builder import build_atlas_chunk_material
@@ -106,7 +96,6 @@ try:
 except (ImportError, ValueError):
     from bridge.assets import (
         get_cache_dir,
-        get_active_cache_package_path,
         get_cache_fingerprint,
         precompile_stack,
         check_asset_cache_status,
@@ -126,7 +115,6 @@ except (ImportError, ValueError):
         inject_face_attribute_vector,
         resolve_source_texture_keys,
         resolve_source_texture_keys_paletted,
-        inject_face_source_texture_keys,
         inject_face_source_texture_palette,
     )
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
@@ -339,112 +327,6 @@ def extract_face_material_palette_context(
         existing_key_palette,
         existing_key_indices,
     )
-
-
-def extract_face_material_context(
-    mesh: Any,
-) -> Tuple[List[str], List[Tuple[int, int]], array.array, Any, Optional[List[str]]]:
-    """Backward-compatible list-based wrapper around the palette extractor."""
-    (
-        palette,
-        indices,
-        face_loop_ranges,
-        loop_uvs,
-        uv_layer,
-        existing_key_palette,
-        existing_key_indices,
-    ) = extract_face_material_palette_context(mesh)
-    face_materials = [palette[int(i)] for i in indices]
-    existing_keys: Optional[List[str]] = None
-    if len(existing_key_indices) == len(indices):
-        existing_keys = [existing_key_palette[int(i)] for i in existing_key_indices]
-    return face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_keys
-
-
-def _register_texture_id_key(id_to_key: Dict[int, str], texture_id: int, key: str) -> None:
-    """Register texture-id -> key, preferring the base sprite over an overlay companion."""
-    current = id_to_key.get(int(texture_id))
-    if current is None:
-        id_to_key[int(texture_id)] = key
-        return
-    if current == key:
-        return
-    current_is_overlay = "overlay" in current
-    new_is_overlay = "overlay" in key
-    if current_is_overlay and not new_is_overlay:
-        id_to_key[int(texture_id)] = key
-    elif current_is_overlay == new_is_overlay and len(key) < len(current):
-        id_to_key[int(texture_id)] = key
-
-
-def remap_face_materials_and_uvs(
-    baked_atlas: Any,
-    atlas_data: Dict[str, Any],
-    face_materials: List[str],
-    loop_uvs: array.array,
-    face_loop_ranges: List[Tuple[int, int]],
-    origin: str,
-    existing_prov_keys: Optional[List[str]],
-    enable_animated_textures: bool = False,
-) -> Dict[str, Any]:
-    """
-    Step 3: Execute pure Rust multi-UV remapping and resolve source texture keys for all faces.
-    """
-    unique_names = list(dict.fromkeys(face_materials))
-    alias_map, grid_spec = build_matching_context(unique_names, origin=origin)
-
-    remap_result = remap_mesh_multi_uvs(
-        loop_uvs=loop_uvs,
-        face_materials=face_materials,
-        face_loop_ranges=face_loop_ranges,
-        atlas=baked_atlas,
-        alias_map=alias_map,
-        grid_spec=grid_spec,
-        enable_animated_textures=enable_animated_textures,
-    )
-
-    face_texture_ids: List[int] = remap_result["face_texture_ids"]
-    # Build the texture-id -> canonical key table from BOTH the static Frame-0
-    # sprites and the dedicated animated sprites. Animated faces receive texture
-    # ids from `anim_sprites`, so omitting that map silently degrades their
-    # provenance to `mozi:fallback` and breaks later animation reconciliation.
-    id_to_key: Dict[int, str] = {}
-    for bucket_name in ("sprites", "anim_sprites"):
-        for key, sp in atlas_data.get(bucket_name, {}).items():
-            tid = sp.get("texture_id")
-            if tid is not None:
-                _register_texture_id_key(id_to_key, int(tid), key)
-
-    face_source_keys: List[str] = []
-    if face_texture_ids:
-        tex_ids = np.asarray(face_texture_ids, dtype=np.int64)
-        max_id = int(tex_ids.max()) if tex_ids.size else -1
-        if id_to_key and 0 <= max_id <= 1_000_000:
-            table = np.full(max_id + 1, "", dtype=object)
-            for tid, key in id_to_key.items():
-                if 0 <= tid <= max_id:
-                    table[tid] = key
-            keys_arr = table[tex_ids]
-        elif id_to_key:
-            keys_arr = np.fromiter(
-                (id_to_key.get(int(tid), "") for tid in tex_ids),
-                dtype=object,
-                count=len(tex_ids),
-            )
-        else:
-            keys_arr = np.full(len(tex_ids), "", dtype=object)
-
-        if existing_prov_keys and len(existing_prov_keys) == len(tex_ids):
-            existing_arr = np.asarray(existing_prov_keys, dtype=object)
-            missing = keys_arr == ""
-            valid_fallback = missing & (existing_arr != "") & (existing_arr != "mozi:fallback")
-            keys_arr = np.where(valid_fallback, existing_arr, keys_arr)
-
-        keys_arr[keys_arr == ""] = "mozi:fallback"
-        face_source_keys = keys_arr.tolist()
-
-    remap_result["face_source_keys"] = face_source_keys
-    return remap_result
 
 
 def remap_face_materials_and_uvs_paletted(

@@ -171,57 +171,40 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
         if stack is not None and hasattr(stack, "get_pack_count") and stack.get_pack_count() > 0:
             if hasattr(stack, "compute_stack_fingerprint"):
                 fp = stack.compute_stack_fingerprint()
-                # Host-agnostic Rust resolver: directory scan + header fingerprint validation.
-                if mtk is not None and hasattr(mtk, "resolve_active_cache_package"):
-                    resolved = mtk.resolve_active_cache_package(str(cache_dir), fp)
-                    if resolved:
-                        return Path(resolved)
-                    if os.environ.get("MOZI_CACHE_DIR"):
-                        candidates = sorted(
-                            cache_dir.glob("*.mtkcache"),
-                            key=lambda p: p.stat().st_mtime,
-                            reverse=True,
-                        )
-                        if candidates:
-                            return candidates[0]
-                    invalidate_asset_cache_memory()
-                    return None
 
-                # Fast-path check: in-memory active package matches expected fingerprint
+                # O(1) fast path: current package already matches the stack fingerprint.
                 if _ACTIVE_CACHE_PKG_PATH is not None:
                     p = Path(_ACTIVE_CACHE_PKG_PATH)
                     if p.parent == cache_dir and p.exists() and p.is_file():
                         cached_fp = getattr(_ACTIVE_ASSET_CACHE, "fingerprint", None)
                         if cached_fp == fp or p.stem == fp or p.stem == f"mtk_fp_{fp}":
                             return p
-                    # Memory cache mismatched current stack configuration: invalidate
                     invalidate_asset_cache_memory()
 
-                # Search by direct name
-                for cand_name in (f"{fp}.mtkcache", f"mtk_fp_{fp}.mtkcache", f"{fp}"):
-                    direct_pkg = cache_dir / cand_name
-                    if direct_pkg.exists() and direct_pkg.is_file():
-                        if mtk and hasattr(mtk, "is_valid_cache_package"):
-                            if mtk.is_valid_cache_package(str(direct_pkg), fp):
+                # Host-agnostic Rust resolver: header fingerprint validation + mtime fallback.
+                if mtk is not None and hasattr(mtk, "resolve_active_cache_package"):
+                    resolved = mtk.resolve_active_cache_package(str(cache_dir), fp)
+                    if resolved:
+                        return Path(resolved)
+                else:
+                    # Minimal compatibility for a native library predating the resolver.
+                    for cand_name in (f"{fp}.mtkcache", f"mtk_fp_{fp}.mtkcache", f"{fp}"):
+                        direct_pkg = cache_dir / cand_name
+                        if direct_pkg.exists() and direct_pkg.is_file():
+                            if hasattr(mtk, "is_valid_cache_package"):
+                                if mtk.is_valid_cache_package(str(direct_pkg), fp):
+                                    return direct_pkg
+                            else:
                                 return direct_pkg
-                        else:
-                            return direct_pkg
 
-                # Search all packages for matching fingerprint
-                for pkg in cache_dir.glob("*.mtkcache"):
-                    if mtk and hasattr(mtk, "is_valid_cache_package"):
-                        try:
-                            if mtk.is_valid_cache_package(str(pkg), fp):
-                                return pkg
-                        except Exception:
-                            pass
-                    elif pkg.stem == fp or pkg.stem == f"mtk_fp_{fp}":
-                        return pkg
-
-                # If stack is configured but no matching cache package exists in cache_dir:
-                # In test sandboxes (MOZI_CACHE_DIR set), fallback to synthetic packages in sandbox
+                # Test sandboxes may contain synthetic packages whose header does not
+                # match the host-level stack fingerprint.
                 if os.environ.get("MOZI_CACHE_DIR"):
-                    candidates = sorted(cache_dir.glob("*.mtkcache"), key=lambda p: p.stat().st_mtime, reverse=True)
+                    candidates = sorted(
+                        cache_dir.glob("*.mtkcache"),
+                        key=lambda p: p.stat().st_mtime,
+                        reverse=True,
+                    )
                     if candidates:
                         return candidates[0]
 

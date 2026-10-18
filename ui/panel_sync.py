@@ -373,9 +373,6 @@ PANEL_CLASSES = (
     MOZI_PT_view3d_live_sync,
 )
 
-# Backward compatibility alias
-MOZI_PT_live_sync_properties = MOZI_PT_live_sync_data
-
 
 def register():
     for cls in PANEL_CLASSES:

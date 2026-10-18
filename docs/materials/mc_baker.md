@@ -1,6 +1,6 @@
 # 模块二：Minecraft 方块模型烘焙引擎 (MC Baker)
 
-`utils/mc_baker/` 实现了 Minecraft 原生模型与 BlockState 的无头逆向解析与 3D 几何烘焙，将数据驱动的 Minecraft JSON 资产与 BlockState 状态机精准转化为标准的 Blender 3D 网格与原生 UV 映射。
+`bridge/assets/precompile.py` + Rust `mtk-model` 实现了 Minecraft 原生模型与 BlockState 的无头逆向解析与 3D 几何烘焙，将数据驱动的 Minecraft JSON 资产与 BlockState 状态机精准转化为标准的 Blender 3D 网格与原生 UV 映射。
 
 ```mermaid
 graph TD
@@ -21,7 +21,7 @@ graph TD
 ## 1. BlockState 状态机与变体条件组合解析
 
 ### 1.1 状态字符串规范化解析 (`blockstate_resolver.py`)
-- **函数**：[`parse_block_state_string(state_str)`](../../utils/mc_baker/blockstate_resolver.py)
+- **函数**：[`mtk-model` BlockState 解析](../../../libmozitoolkit/crates/mtk-model/README.md)
 - **输入示例**：`"minecraft:observer[facing=north,powered=false]"`
 - **输出元组**：`("minecraft:observer", {"facing": "north", "powered": "false"})`
 - 自动补充缺失的 `minecraft:` 命名空间，严格剥离属性方括号并解析为属性键值字典。
@@ -104,7 +104,7 @@ Minecraft 26.2 原版 `FaceInfo` 严格定义了 6 个面的标准顶点缠绕�
 
 ### 5.1 Atlas 坐标空间映射 (`AtlasBridge`)
 - 通过 `AtlasAddressResolver` 将烘焙模型各面的贴图标识（`"minecraft:block/oak_planks"`）换算为全局 Atlas 的 Chunk 材质槽位索引（`chunk_id`）与归一化 UV 矩阵。
-- 输出结构体 [`ResolvedAtlasFace`](../../utils/mc_baker/atlas_bridge.py) 包含：
+- 输出结构体 Rust `AtlasAddressMap`（[mtk-texture](../../../libmozitoolkit/crates/mtk-texture/README.md)） 包含：
   - `direction`: 对应 6 向面名称。
   - `material_id`: 目标材质槽位。
   - `tile_col` / `tile_row`: 图集瓦片行列索引。

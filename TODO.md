@@ -31,6 +31,9 @@
       Blender 只存一个不透明字符串。
 - [x] **进度与握手语义下沉 Rust**：`normalize_stream_progress` 修正 meshing 阶段二次加 50% 的 bug；
       `decision_code` 修复 Python 用字符串和 `0` 比较导致 0ms reconnect 分支永不触发的问题。
+- [x] **代码库清理**：删除 `operators/op_mesh.py`、`utils/extrude_repair/`、
+      `utils/mesh/subdivide.py`、旧 UI/Operator 别名、死 DNA 材质分支与废弃 Live Sync API；
+      移除旧 list-based 材质管线；修正文档死链至 0。
 - [x] **P1 Biome 即时更新下沉**：Rust `reapply_uniform_biome_tint_flat` + 零拷贝 memoryview；
       498k faces 从 6~8 ms 降到 **~2.1 ms**。DNA 与 `foreach_set` 写入实测等价，
       通用 face 属性继续 `foreach_set`（详见 [`direct_mesh.md`](docs/mesh/direct_mesh.md) §7）。

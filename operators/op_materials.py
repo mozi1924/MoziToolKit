@@ -328,10 +328,6 @@ class MOZI_OT_update_material_shading_adaptation(bpy.types.Operator):
         return {'FINISHED'}
 
 
-# Backwards compatibility aliases
-MOZI_OT_replace_materials = MOZI_OT_replace_material
-MOZI_OT_restore_materials_from_provenance = MOZI_OT_restore_materials_from_attributes
-
 OPERATOR_CLASSES = (
     MOZI_OT_replace_material,
     MOZI_OT_restore_materials_from_attributes,
