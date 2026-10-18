@@ -101,7 +101,9 @@ Direct Mesh 直接向 Blender 原生数据层写入渲染元数据，无需任�
 | **`mtk_biome_tint_color`** | Face / Loop | Color (RGBA) | 生物群系双线性插值烘焙的漫反射染色（草地绿、树叶绿、水体蓝）。 |
 | **`mtk_anim_timing`** | Face | 3D Float Vector | 动画总帧数、帧时长与插值元数据（纯矢量直通驱动着色器逐帧跳跃，杜绝色彩空间精度偏差）。 |
 | **`mtk_anim_frame_size`** | Face | 3D Float Vector | 动画单帧宽高尺寸元数据（X=帧宽, Y=帧高）。 |
-| **`mtk_source_texture_key`** | Face | String | 来源贴图键（如 `minecraft:block/stone`），支持无损材质替换与逆向材质恢复。 |
+| **`mtk_source_textures`** | Mesh | String List | 来源贴图键紧凑调色板；与 `mtk_source_texture_idx` 组成 palette 索引，任意规模的网格都可无损恢复来源。 |
+| **`mtk_source_texture_idx`** | Face | Integer | 调色板索引；Live Sync 网格跳过逐面字符串时仍会写入此项，保证 Biome/材质路径与存档导入一致。 |
+| **`mtk_source_texture_key`** | Face | String | 旧版逐面来源贴图键（如 `minecraft:block/stone`）；小网格保留以兼容旧工具，读取时优先使用 palette。 |
 
 ---
 

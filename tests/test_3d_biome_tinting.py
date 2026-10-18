@@ -23,6 +23,7 @@ from utils.materials.biome.updater import (
     clear_biome_updater_cache,
     get_object_storage,
     mark_world_biome,
+    register_object_storage,
     update_object_biome,
 )
 from ui.panel_biome import _get_object_biome, _resolve_biome_preset
@@ -300,6 +301,45 @@ class Test3DBiomeTinting(unittest.TestCase):
         idx = _get_object_biome(obj)
         self.assertEqual(BIOME_ENUM_ITEMS[idx][0], "PLAINS")
 
+    def test_world_restores_storage_from_companion_point_cloud(self):
+        """Re-selecting WORLD after a uniform preset must rebuild storage from the point cloud."""
+        from unittest.mock import patch
+        from bridge.point_cloud.constants import ATTR_BIOME
+
+        self.addCleanup(clear_biome_updater_cache)
+
+        storage = self.lib.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_block(0, 0, 0, "minecraft:grass_block", "minecraft:jungle")
+
+        mesh = _MockMesh(1)
+        mesh.name = "Yefira_World_Mesh"
+        mesh.attributes.new(name=ATTR_BIOME_TINT_DATA, type="FLOAT_COLOR", domain="FACE")
+        mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+        for name in ("mtk_block_x", "mtk_block_y", "mtk_block_z"):
+            attr = mesh.attributes.new(name=name, type="INT", domain="FACE")
+            attr.data[0].value = 0
+        key_attr = mesh.attributes.new(name=ATTR_SOURCE_TEXTURE_KEY, type="STRING", domain="FACE")
+        key_attr.data[0].value = "minecraft:block/grass_block_top"
+
+        obj = _MockObject(mesh)
+        obj.name = "Yefira_World_Mesh"
+        obj["mtk:biome_preset"] = "PLAINS"
+
+        cloud = MagicMock()
+        cloud.name = "Yefira_World_VoxelCloud"
+        cloud.data = MagicMock()
+        cloud.data.attributes = {ATTR_BIOME: MagicMock()}
+        cloud_data = MagicMock()
+        cloud_data.to_storage.return_value = storage
+
+        with patch("bridge.point_cloud.get_associated_voxel_cloud", return_value=cloud), \
+             patch("bridge.point_cloud.extract_voxel_point_cloud", return_value=cloud_data):
+            self.assertTrue(update_object_biome(obj, "WORLD"))
+
+        self.assertEqual(obj["mtk:biome_preset"], "WORLD")
+        self.assertIs(get_object_storage("Yefira_World_Mesh"), storage)
+
     def test_world_without_storage_does_not_repaint_plains(self):
         """Refuse WORLD when a uniform preset overwrote the tint and no storage exists."""
         self.addCleanup(clear_biome_updater_cache)
@@ -315,6 +355,46 @@ class Test3DBiomeTinting(unittest.TestCase):
         self.assertFalse(update_object_biome(obj, "WORLD"))
         self.assertEqual(obj["mtk:biome_preset"], "PLAINS")
         self.assertEqual(list(col_attr.data[0].color), [0.27, 0.50, 0.09, 1.0])
+
+    def test_world_switch_without_source_keys_does_not_zero_tint(self):
+        """Legacy sync meshes without provenance must not get all tint types zeroed."""
+        self.addCleanup(clear_biome_updater_cache)
+
+        storage = self.lib.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 16, 16, 16)
+        storage.set_block(0, 0, 0, "minecraft:grass_block", "minecraft:jungle")
+
+        mesh = _MockMesh(1)
+        mesh.name = "Legacy_World_Mesh"
+        tint_attr = mesh.attributes.new(name=ATTR_BIOME_TINT_DATA, type="FLOAT_COLOR", domain="FACE")
+        # [base_weight, overlay_weight, tint_weight, tint_type] -> grass tinted.
+        tint_attr.data[0].color = [1.0, 0.0, 1.0, 1.0]
+        mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+        mesh.attributes.new(name=ATTR_COLORMAP_UV, type="VECTOR", domain="FACE")
+        for name in ("mtk_block_x", "mtk_block_y", "mtk_block_z"):
+            attr = mesh.attributes.new(name=name, type="INT", domain="FACE")
+            attr.data[0].value = 0
+
+        obj = _MockObject(mesh)
+        obj.name = "Legacy_World_Mesh"
+        obj["mtk:biome_preset"] = "WORLD"
+        register_object_storage(obj.name, storage)
+
+        # Atlas chunk material: no per-material source key, only a chunk name.
+        mat = MagicMock()
+        mat.name = "MTK:Atlas:blocks:0"
+        mat.get = lambda key, default=None: default
+        mat.node_tree = None
+        obj.material_slots = [MagicMock(material=mat)]
+
+        self.assertTrue(update_object_biome(obj, "CUSTOM"))
+        self.assertAlmostEqual(mesh.attributes[ATTR_BIOME_TINT_DATA].data[0].color[3], 1.0)
+
+        # WORLD re-selection cannot resolve provenance; it must refuse instead of
+        # overwriting the still-valid tint categories with "none" (0.0).
+        self.assertFalse(update_object_biome(obj, "WORLD"))
+        self.assertAlmostEqual(mesh.attributes[ATTR_BIOME_TINT_DATA].data[0].color[3], 1.0)
+        self.assertEqual(obj["mtk:biome_preset"], "CUSTOM")
 
     def test_real_save_3d_biome_loading(self):
         """Verify 3D section biome ingestion from a real Minecraft Anvil save when MTK_TEST_SAVE is available."""

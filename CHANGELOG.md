@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### 🌍 3D World Biome 预设与面板显示修复
+- **修复 WORLD → 其他预设 → WORLD 后草方块永久失去染色**：Live Sync 网格此前为省内存跳过逐面 `mtk_source_texture_key`，但调色板注入也藏在该字符串分支里，导致网格既没有字符串也没有 `mtk_source_textures` + `mtk_source_texture_idx`；Biome 重算只能从 Atlas Chunk 材质名反推来源，把所有面的 tint type 写成 `0`。现在来源贴图统一为 palette 契约：Rust 新增 `MeshData.source_texture_palette_indices()`，`inject_custom_attributes` 无论 `skip_string_attributes` 取值都会写入调色板 + INT 索引，逐面字符串仅保留为 ≤256 面的兼容层。存档导入与 Live Sync 的属性集合因此完全一致。
+- 删除“从 Atlas Chunk 材质名推导来源键”的破坏性回退；当网格没有任何真实 provenance 时拒绝覆盖 tint，避免旧文件被二次写坏。
 - 存档导入、Live Sync 与体素重建现在统一写入 `mtk:biome_preset="WORLD"`，并把 `VoxelStorage` 缓存到内存注册表；修复实时同步完成后生物群系面板回落 Plains、与网格真实 3D 群系染色不一致的问题。
 - 生物群系面板在对象缺少预设属性时会根据 `mtk:geometry_origin`（`SAVE` / `SYNC_WORLD` / `SYNC_SECTION` / `VOXEL`）与 `mtk_biome_tint_data` 推断 `WORLD`，兼容旧 `.blend`；外部导入网格仍保持 Plains 默认。
 - `WORLD` 不再复用 Plains 的温度/草地/树叶信息行，改为显示真实的逐面 3D 采样说明，避免“下拉框是 World Biome、数值却是 Plains”的误导。
-- 无 storage 且 tint 属性已被统一预设覆盖时，拒绝把对象伪标为 `WORLD`，避免把 Plains 颜色静默当成 3D 群系颜色。
+- **从伴生点云恢复 WORLD**：内存缓存失效后（重开 `.blend`、Live Sync 断开且无存档），重新选择 `WORLD` 会从 `.blend` 内持久化的体素点云重建 `VoxelStorage`（保留逐体素 3D biome），存档导入与实时同步离线场景均可恢复，不再需要重读 `.mca`。
+- 无 storage 且 tint 属性已被统一预设覆盖时，拒绝把对象伪标为 `WORLD`，避免把 Plains 颜色静默当成 3D 群系颜色；没有 biome 数据的旧点云也不会被当成 Plains 静默回填。
 - 修复 Live Sync storage 回退调用了不存在的 `get_live_sync_session` 的死代码，改为使用 `get_sync_bridge_session()` 的活跃会话。
 
 ### 🧭 材质替换与网格重构边界收紧

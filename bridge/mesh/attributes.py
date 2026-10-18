@@ -164,10 +164,12 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
         np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
         attr_idx.data.foreach_set("value", np_indices)
 
-    # 3. Legacy STRING attribute compatibility
-    attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
-    if attr_str is not None and len(attr_str.data) == num_polys:
-        if num_polys <= 256:
+    # 3. Legacy STRING compatibility for small meshes only. Large meshes must
+    # stay palette-only: an empty per-face string layer costs memory and makes
+    # save imports look different from Live Sync meshes.
+    if num_polys <= 256:
+        attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+        if attr_str is not None and len(attr_str.data) == num_polys:
             for i, val in enumerate(values):
                 b_val = val.encode("utf-8") if isinstance(val, str) else bytes(val)
                 try:
@@ -307,6 +309,38 @@ def inject_attribute(
         attr.data.foreach_set("value", np.ascontiguousarray(values, dtype=np.float32))
 
 
+def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> bool:
+    """
+    Inject compact palette provenance for a skipped string attribute.
+
+    Live Sync meshes skip per-face strings to keep large baselines light, but the
+    biome/material paths still need the original texture keys. The Rust mesher keeps
+    those values, so we rebuild the palette + INT index attribute instead of losing
+    provenance. Falls back to the legacy string path for older native builds.
+    """
+    if attr_name != "mtk_source_texture_key":
+        return False
+
+    builder = getattr(mesh_data, "source_texture_palette_indices", None)
+    if callable(builder):
+        try:
+            palette, indices = builder()
+            if palette:
+                inject_face_source_texture_palette(mesh, palette, indices)
+                return True
+        except Exception as e:
+            logger.debug("Palette provenance fast path failed: %s", e)
+
+    try:
+        values = mesh_data.get_string_attribute(attr_name)
+    except Exception:
+        values = None
+    if values:
+        inject_face_source_texture_keys(mesh, values)
+        return True
+    return False
+
+
 def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: bool = False) -> None:
     """Generic custom attributes synchronization into mesh.attributes."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh_data, "attribute_names"):
@@ -319,10 +353,18 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
                 continue
 
             domain_str, dtype_name, elem_count = info
-            if skip_string_attributes and dtype_name.lower() == "string":
-                continue
-
             b_domain = MTK_TO_BLENDER_DOMAIN.get(domain_str.lower(), "POINT")
+
+            # Source-texture provenance is always palette-based. Per-face strings
+            # remain only as a <=256-face compatibility shim inside the helper, so
+            # save imports and Live Sync meshes expose the exact same attributes.
+            if dtype_name.lower() == "string":
+                if attr_name == "mtk_source_texture_key" and b_domain == "FACE":
+                    _inject_palette_provenance(mesh, mesh_data, attr_name)
+                    continue
+                if skip_string_attributes:
+                    continue
+
             type_tuple = MTK_TO_BLENDER_TYPE.get(dtype_name)
             if type_tuple is None:
                 continue
@@ -349,9 +391,7 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
             if dtype_name.lower() == "string":
                 str_vals = mesh_data.get_string_attribute(attr_name)
                 if str_vals and len(str_vals) == len(b_attr.data):
-                    if attr_name == "mtk_source_texture_key" and b_domain == "FACE":
-                        inject_face_source_texture_keys(mesh, str_vals)
-                    elif len(str_vals) <= 256:
+                    if len(str_vals) <= 256:
                         for i, val in enumerate(str_vals):
                             b_val = val.encode("utf-8") if isinstance(val, str) else bytes(val)
                             try:

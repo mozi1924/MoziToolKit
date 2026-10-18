@@ -24,6 +24,10 @@ if "mathutils" not in sys.modules:
     sys.modules["mathutils"] = MagicMock()
 
 
+import bpy
+
+HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
+
 from bridge.engine import get_libmtk
 from bridge.mesh import (
     BLENDER_TO_MTK_DOMAIN,
@@ -327,6 +331,24 @@ class TestDualMeshApi(unittest.TestCase):
         written2 = self.mesh.direct_copy_positions_to_ptr(ptr2, max_bytes=48)
         self.assertEqual(written2, 48)
 
+    def test_source_texture_palette_indices(self):
+        """Rust builds palette + u32 indices without materializing per-face strings."""
+        if not hasattr(self.mesh, "source_texture_palette_indices"):
+            self.skipTest("source_texture_palette_indices not available in this libmtk build")
+        keys = [
+            "minecraft:block/grass_block_top",
+            "minecraft:block/dirt",
+            "minecraft:block/grass_block_top",
+        ]
+        mesh = get_libmtk().MeshData()
+        for direction in (1, 0, 1):
+            mesh.append_unit_cube_face(direction, 0, -1)
+        mesh.add_string_attribute("mtk_source_texture_key", "face", keys)
+
+        palette, indices = mesh.source_texture_palette_indices()
+        self.assertEqual(palette, ["minecraft:block/grass_block_top", "minecraft:block/dirt"])
+        self.assertEqual(np.frombuffer(indices, dtype=np.uint32).tolist(), [0, 1, 0])
+
 
 class TestPaletteSourceTextureKeys(unittest.TestCase):
     def test_resolve_from_palette_int(self):
@@ -382,6 +404,43 @@ class TestPaletteSourceTextureKeys(unittest.TestCase):
         mesh = MockMeshObj()
         resolved = resolve_source_texture_keys(mesh)
         self.assertEqual(resolved, ["stone", "dirt"])
+
+
+@unittest.skipUnless(HAS_BPY, "Requires real Blender bpy")
+class TestPaletteProvenanceParity(unittest.TestCase):
+    """Save imports and Live Sync must expose identical palette provenance."""
+
+    def test_skip_string_flag_does_not_change_provenance(self):
+        keys = ["minecraft:block/grass_block_top", "minecraft:block/dirt"]
+        resolved_by_mode = {}
+        for skip in (False, True):
+            mtk = get_libmtk()
+            mesh_data = mtk.MeshData()
+            mesh_data.append_unit_cube_face(1, 0, -1)
+            mesh_data.append_unit_cube_face(0, 0, -1)
+            mesh_data.add_string_attribute("mtk_source_texture_key", "face", keys)
+
+            name = f"mtk_palette_parity_{int(skip)}"
+            b_mesh = bpy.data.meshes.new(name)
+            obj = bpy.data.objects.new(name, b_mesh)
+            bpy.context.scene.collection.objects.link(obj)
+            try:
+                inject_mesh_data(
+                    mesh_data,
+                    b_mesh,
+                    update_topology=True,
+                    update_normals=True,
+                    skip_string_attributes=skip,
+                )
+                self.assertIn("mtk_source_textures", b_mesh)
+                self.assertIn("mtk_source_texture_idx", b_mesh.attributes)
+                resolved_by_mode[skip] = resolve_source_texture_keys(b_mesh)
+            finally:
+                bpy.data.objects.remove(obj, do_unlink=True)
+                bpy.data.meshes.remove(b_mesh)
+
+        self.assertEqual(resolved_by_mode[False], keys)
+        self.assertEqual(resolved_by_mode[True], keys)
 
 
 if __name__ == "__main__":

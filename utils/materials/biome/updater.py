@@ -5,6 +5,7 @@ Updates mesh face attributes or material shader nodes in < 1ms without rerunning
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional, Any
 import bpy
@@ -39,6 +40,8 @@ from .biome import (
     TINT_TYPE_DRY_FOLIAGE,
     get_hardcoded_tint,
 )
+
+logger = logging.getLogger("MoziToolKit.Materials.Biome.Updater")
 
 # In-memory cache for original face tint types (to prevent RNA allocation overhead and preserve base categories)
 _MESH_BASE_TINT_TYPES: dict[str, Any] = {}
@@ -99,6 +102,71 @@ def mark_world_biome(obj: Any, storage: Any = None, aliases: Any = ()) -> bool:
                 register_object_storage(key, storage)
 
     return True
+
+
+def _rehydrate_storage_from_point_cloud(obj: Any, target_mesh: Any = None) -> Any:
+    """
+    Rebuild a VoxelStorage from the companion point cloud persisted in the .blend.
+
+    This is the offline fallback for save imports and disconnected Live Sync
+    containers: the point cloud keeps per-voxel block states and 3D biomes, so a
+    later WORLD selection can restore the exact tint instead of refusing or
+    repainting with the uniform Plains fallback.
+    """
+    if obj is None:
+        return None
+
+    try:
+        from ....bridge.point_cloud import extract_voxel_point_cloud, get_associated_voxel_cloud
+        from ....bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
+    except (ImportError, ValueError):
+        try:
+            from bridge.point_cloud import extract_voxel_point_cloud, get_associated_voxel_cloud
+            from bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
+        except Exception:
+            return None
+
+    try:
+        cloud = get_associated_voxel_cloud(obj)
+        if cloud is None:
+            return None
+
+        cloud_mesh = getattr(cloud, "data", None)
+        attrs = getattr(cloud_mesh, "attributes", None)
+        if attrs is None:
+            return None
+        has_biomes = ATTR_BIOME in attrs
+        if not has_biomes and ATTR_BIOME_IDX in attrs:
+            has_biomes = hasattr(cloud, "__contains__") and PROP_BIOME_PALETTE in cloud
+        if not has_biomes:
+            # Legacy point clouds without biome data would silently become Plains.
+            return None
+
+        cloud_data = extract_voxel_point_cloud(cloud)
+        if cloud_data is None:
+            return None
+        storage = cloud_data.to_storage()
+    except Exception:
+        return None
+
+    if storage is None:
+        return None
+
+    for target in (obj, cloud):
+        name = getattr(target, "name", "")
+        if isinstance(name, str) and name:
+            register_object_storage(name, storage)
+    if target_mesh is not None:
+        name = getattr(target_mesh, "name", "")
+        if isinstance(name, str) and name:
+            register_object_storage(name, storage)
+    if hasattr(obj, "get"):
+        for prop in ("mtk:container_id", "mozi_save_uuid"):
+            key = obj.get(prop)
+            if isinstance(key, str) and key:
+                register_object_storage(key, storage)
+
+    return storage
 
 
 def resolve_mesh_base_tint_types(
@@ -315,6 +383,10 @@ def resolve_and_apply_world_biome_tint(
                 storage = session.get_storage()
         except Exception:
             storage = None
+    if storage is None:
+        # Offline fallback: the .blend-persisted companion point cloud carries
+        # per-voxel 3D biomes for both save imports and disconnected sync worlds.
+        storage = _rehydrate_storage_from_point_cloud(obj, target_mesh)
 
     source_keys = list(face_source_keys) if face_source_keys else []
     if not any(source_keys) and hasattr(target_mesh, "attributes"):
@@ -322,11 +394,16 @@ def resolve_and_apply_world_biome_tint(
             source_keys = read_face_string_attribute(target_mesh, ATTR_SOURCE_TEXTURE_KEY)
 
     if not any(source_keys) and obj and len(getattr(obj, "material_slots", [])) > 0:
+        derived = []
         for poly in target_mesh.polygons:
             m_idx = poly.material_index
             mat = obj.material_slots[m_idx].material if m_idx < len(obj.material_slots) else None
-            key = (mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or (mat.name if mat else "")) if mat else ""
-            source_keys.append(str(key))
+            key = (mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or "") if mat else ""
+            derived.append(str(key))
+        # Atlas chunk materials carry no source key. Falling back to their names
+        # would classify every face as "none" and permanently zero the tint types.
+        if derived and all(derived):
+            source_keys = derived
 
     has_coords = (
         hasattr(target_mesh, "attributes")
@@ -488,6 +565,11 @@ def update_object_biome(
 
             # A uniform "WORLD" preset has no colormap entry and resolves to Plains
             # in Rust. Refuse instead of silently repainting 3D-biome faces as Plains.
+            logger.warning(
+                "Cannot restore WORLD biome for '%s': no voxel storage or source-texture "
+                "provenance. Rebuild the voxel mesh from its point cloud/storage.",
+                getattr(obj, "name", "<unnamed>"),
+            )
             return False
 
         # FAST IN-PLACE VECTORIZED UPDATE PATH (< 1.5ms):
@@ -613,10 +695,12 @@ def update_object_biome(
                 for poly in mesh.polygons:
                     m_idx = poly.material_index
                     mat = obj.material_slots[m_idx].material if m_idx < len(obj.material_slots) else None
-                    key = (mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or (mat.name if mat else "")) if mat else ""
+                    key = (mat.get("mtk_source_texture_key") or mat.get("mtk:material_id") or "") if mat else ""
                     derived_keys.append(str(key))
 
-                if any(derived_keys):
+                # Never derive provenance from atlas chunk material names: that
+                # would zero every face's tint type and break later presets.
+                if derived_keys and all(derived_keys):
                     try:
                         from bridge.mesh import inject_face_attribute_string
                         inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
