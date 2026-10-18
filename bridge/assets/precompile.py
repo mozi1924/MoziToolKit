@@ -15,7 +15,6 @@ from ..engine import get_libmtk
 from ..progress import ProgressCallback, wrap_progress_callback
 from .cache import (
     get_cache_dir,
-    get_cache_stats,
     invalidate_asset_cache_memory,
 )
 from .pack import get_configured_pack_stack
@@ -27,6 +26,10 @@ def precompile_stack(
     prefs=None,
     num_threads: Optional[int] = None,
     progress_callback: Optional[ProgressCallback] = None,
+    stack: Optional[Any] = None,
+    cache_dir: Optional[str] = None,
+    reload_images: bool = True,
+    resolve_prefs: bool = True,
 ) -> Dict[str, Any]:
     """
     Executes end-to-end asset precompilation via libmtk:
@@ -40,18 +43,21 @@ def precompile_stack(
     if mtk is None:
         raise RuntimeError("libmtk_py (Rust backend) is not installed or available.")
 
-    stack = get_configured_pack_stack(prefs)
+    if stack is None:
+        stack = get_configured_pack_stack(prefs)
     if stack is None or stack.get_pack_count() == 0:
         raise ValueError("No valid enabled resource packs or JARs found in the active stack.")
 
-    if num_threads is None and prefs is not None:
+    if resolve_prefs and num_threads is None and prefs is not None:
         raw_threads = getattr(prefs, "thread_count", 0)
         num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
     elif num_threads == 0:
         num_threads = None
 
     start_time = time.time()
-    base_cache = get_cache_dir(prefs)
+    # cache_dir is resolved on the Blender main thread by the caller when this
+    # function runs in an AsyncTask worker (resolve/precompile split).
+    base_cache = Path(cache_dir) if cache_dir else get_cache_dir(prefs)
 
     wrapped_cb = wrap_progress_callback(progress_callback)
 
@@ -75,11 +81,15 @@ def precompile_stack(
             clear_world_sessions()
         except Exception:
             pass
-        get_cache_stats(prefs, force_refresh=True)
-        try:
-            reload_atlas_images(prefs)
-        except Exception:
-            pass
+        # Never touch bpy from a worker thread. The main-thread caller refreshes
+        # image datablocks after this function returns (synchronous call sites
+        # keep reload_images=True; AsyncTask call sites pass False and run the
+        # reload in on_success).
+        if reload_images:
+            try:
+                reload_atlas_images(prefs)
+            except Exception:
+                pass
         duration = time.time() - start_time
 
         return {
@@ -103,6 +113,9 @@ def precompile_stack_async(
     on_complete=None,
     on_error=None,
     progress_callback: Optional[ProgressCallback] = None,
+    stack: Optional[Any] = None,
+    cache_dir: Optional[str] = None,
+    resolve_prefs: bool = False,
 ):
     """
     Executes precompile_stack asynchronously in a background worker thread.
@@ -114,7 +127,17 @@ def precompile_stack_async(
 
     def worker():
         try:
-            res = precompile_stack(prefs, num_threads=num_threads, progress_callback=progress_callback)
+            # Worker thread: never touch bpy. on_complete runs on this worker too;
+            # callers that need image reload must schedule it on the main thread.
+            res = precompile_stack(
+                prefs,
+                num_threads=num_threads,
+                progress_callback=progress_callback,
+                stack=stack,
+                cache_dir=cache_dir,
+                reload_images=False,
+                resolve_prefs=resolve_prefs,
+            )
             if on_complete:
                 on_complete(res)
             return res

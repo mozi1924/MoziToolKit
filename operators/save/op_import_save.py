@@ -20,11 +20,13 @@ except ImportError:
 
 try:
     from ...bridge.assets import (
+        prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
         reload_atlas_images,
         run_task_with_asset_guard,
     )
+    from ...bridge.world import prepare_world_mesh_context
     from ...bridge.save import (
         apply_imported_save_to_blender,
         import_save_to_blender,
@@ -35,11 +37,13 @@ try:
     from ...utils.progress import BlenderProgressReporter
 except (ImportError, ValueError):
     from bridge.assets import (
+        prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
         reload_atlas_images,
         run_task_with_asset_guard,
     )
+    from bridge.world import prepare_world_mesh_context
     from bridge.save import (
         apply_imported_save_to_blender,
         import_save_to_blender,
@@ -201,8 +205,29 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         except Exception:
             prefs = None
 
-        # Asset readiness gate
+        # Asset readiness gate. Precompilation and asset loading touch bpy, so they
+        # must run here on the main thread; the AsyncTask below receives only
+        # resolved Python/Rust objects.
         status = check_asset_cache_status(prefs)
+        if status == "NO_PACKS":
+            # Keep the legacy behaviour here: the underlying pipeline raises a
+            # descriptive error if it truly cannot resolve assets. A dedicated
+            # first-run wizard is tracked separately from the P0 stability fixes.
+            self.report({"WARNING"}, "No enabled resource packs configured. Configure a Minecraft pack in Preferences if import fails.")
+        if status in ("MISSING", "STALE"):
+            try:
+                self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before importing...")
+                success, _ = ensure_pipeline_assets_ready_sync(prefs)
+            except Exception as e:
+                self.report({"ERROR"}, f"Failed to precompile assets: {e}")
+                return {"CANCELLED"}
+            if not success:
+                self.report({"ERROR"}, "Failed to precompile assets.")
+                return {"CANCELLED"}
+            status = "READY"
+
+        asset_context = prepare_asset_context(prefs)
+        mesh_context = prepare_world_mesh_context(prefs)
 
         min_c = tuple(self.min_coord)
         max_c = tuple(self.max_coord)
@@ -210,10 +235,6 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         # Synchronous fallback for CLI / tests when run_async is explicitly False
         if not self.run_async:
             try:
-                if status in ("MISSING", "STALE"):
-                    self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before importing...")
-                    ensure_pipeline_assets_ready_sync(prefs)
-
                 try:
                     from ...utils.progress import blender_progress_scope
                 except (ImportError, ValueError):
@@ -264,10 +285,18 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                     "weld_vertices": self.weld_vertices,
                     "origin_centered": self.origin_centered,
                     "enable_ctm": self.enable_ctm,
-                    "enable_animated_textures": self.enable_animated_textures,
+                    "enable_animated_textures": mesh_context["enable_animated_textures"],
+                    "model_db": mesh_context["model_db"],
+                    "atlas": mesh_context["atlas"],
+                    "biome_resolver": mesh_context["biome_resolver"],
+                    "ctm_solver": mesh_context["ctm_solver"] if self.enable_ctm else None,
+                    "num_threads": mesh_context["num_threads"],
+                    "resolve_prefs": False,
+                    "resolve_ctm": False,
                 },
                 "prefs": prefs,
                 "task_title": f"Import {self.dimension}",
+                "asset_context": asset_context,
             },
         )
 

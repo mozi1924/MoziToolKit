@@ -18,10 +18,12 @@ try:
         ensure_world_materials,
         get_world_pipeline_assets,
         mesh_voxel_storage,
+        prepare_world_mesh_context,
     )
     from ...bridge.mesh import inject_mesh_data
     from ...bridge.sync import get_sync_bridge_session
     from ...bridge.assets import (
+        prepare_asset_context,
         check_asset_cache_status,
         check_cache_dirty,
         ensure_pipeline_assets_ready_sync,
@@ -45,10 +47,12 @@ except (ImportError, ValueError):
         ensure_world_materials,
         get_world_pipeline_assets,
         mesh_voxel_storage,
+        prepare_world_mesh_context,
     )
     from bridge.mesh import inject_mesh_data
     from bridge.sync import get_sync_bridge_session
     from bridge.assets import (
+        prepare_asset_context,
         check_asset_cache_status,
         check_cache_dirty,
         ensure_pipeline_assets_ready_sync,
@@ -391,6 +395,8 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             return self._runner.start()
 
         # Branch B: Remesh from companion Voxel Point Cloud (Save container, offline Sync, or Carved cloud)
+        if status == "NO_PACKS":
+            self.report({"WARNING"}, "No enabled resource packs configured. Configure a Minecraft pack in Preferences if rebuild fails.")
         if cloud_obj is None:
             self.report({"WARNING"}, "Associated Voxel Point Cloud is required for offline mesh reconstruction.")
             return {"CANCELLED"}
@@ -444,10 +450,26 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         prefs = get_prefs(context)
         did_precompile = False
         if status in ("MISSING", "STALE"):
-            ensure_pipeline_assets_ready_sync(prefs)
+            try:
+                ensure_pipeline_assets_ready_sync(prefs)
+            except Exception as e:
+                self.report({"ERROR"}, f"Failed to precompile assets: {e}")
+                return {"CANCELLED"}
             did_precompile = True
+            status = "READY"
 
-        model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
+        # Resolve every bpy-backed value before launching the worker. The worker
+        # only receives plain Python/Rust objects and never touches bpy.
+        asset_context = prepare_asset_context(prefs)
+        mesh_context = prepare_world_mesh_context(prefs)
+        model_db = mesh_context["model_db"]
+        atlas = mesh_context["atlas"]
+        biome_resolver = mesh_context["biome_resolver"]
+        ctm_solver = mesh_context["ctm_solver"]
+        num_threads = mesh_context["num_threads"]
+        anim_tex_enabled = mesh_context["enable_animated_textures"]
+        cache_fingerprint = mesh_context["cache_fingerprint"]
+        cache_timestamp = mesh_context["cache_timestamp"]
 
         session_key = (
             getattr(root_container, "name", None)
@@ -457,22 +479,27 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         )
 
         def do_cloud_rebuild(progress_callback=None):
-            nonlocal model_db, atlas, biome_resolver
-            if model_db is None or atlas is None:
-                model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
             storage = cloud_data.to_storage()
             mesh_data, elapsed_ms = mesh_voxel_storage(
                 storage=storage,
                 model_db=model_db,
                 atlas=atlas,
                 biome_resolver=biome_resolver,
+                ctm_solver=ctm_solver,
                 prefs=prefs,
                 enable_ao=enable_ao,
                 mesh_fluids=mesh_fluids,
                 weld_vertices=weld_vertices,
                 origin_centered=origin_centered,
+                num_threads=num_threads,
+                progress_callback=progress_callback,
                 world_session_key=session_key,
                 force_rebuild=did_precompile,
+                enable_animated_textures=anim_tex_enabled,
+                cache_fingerprint=cache_fingerprint,
+                cache_timestamp=cache_timestamp,
+                resolve_prefs=False,
+                resolve_ctm=False,
             )
             # Keep the rebuilt storage so the success handler can cache it for
             # later WORLD biome re-tints.
@@ -574,6 +601,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 "target_kwargs": {},
                 "prefs": prefs,
                 "task_title": "Rebuilding Voxel Mesh",
+                "asset_context": asset_context,
             },
         )
         reporter = BlenderProgressReporter(context=context, total=100, title="Rebuilding Voxel Mesh")

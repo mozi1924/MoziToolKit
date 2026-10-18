@@ -19,11 +19,13 @@ except ImportError:
 
 try:
     from ...bridge.assets import (
+        prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
         reload_atlas_images,
         run_task_with_asset_guard,
     )
+    from ...bridge.world import prepare_world_mesh_context
     from ...bridge.save import (
         apply_imported_save_to_blender,
         load_and_mesh_minecraft_save,
@@ -34,11 +36,13 @@ try:
     from ...utils.system.save_registry import get_save_registry
 except (ImportError, ValueError):
     from bridge.assets import (
+        prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
         reload_atlas_images,
         run_task_with_asset_guard,
     )
+    from bridge.world import prepare_world_mesh_context
     from bridge.save import (
         apply_imported_save_to_blender,
         load_and_mesh_minecraft_save,
@@ -119,16 +123,32 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
         level_name = str(target.get("mtk_world_name", "Minecraft World"))
         prefs = get_prefs(context)
 
-        # Asset readiness gate
+        # Asset readiness gate. All bpy-touching work stays on this main thread;
+        # the worker below only receives resolved assets and plain values.
         status = check_asset_cache_status(prefs)
+        if status == "NO_PACKS":
+            # Keep the legacy behaviour here: the underlying pipeline raises a
+            # descriptive error if it truly cannot resolve assets. A dedicated
+            # first-run wizard is tracked separately from the P0 stability fixes.
+            self.report({"WARNING"}, "No enabled resource packs configured. Configure a Minecraft pack in Preferences if import fails.")
+        if status in ("MISSING", "STALE"):
+            try:
+                self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before refreshing...")
+                success, _ = ensure_pipeline_assets_ready_sync(prefs)
+            except Exception as e:
+                self.report({"ERROR"}, f"Failed to precompile assets: {e}")
+                return {"CANCELLED"}
+            if not success:
+                self.report({"ERROR"}, "Failed to precompile assets.")
+                return {"CANCELLED"}
+            status = "READY"
+
+        asset_context = prepare_asset_context(prefs)
+        mesh_context = prepare_world_mesh_context(prefs)
 
         # Synchronous mode (headless / tests)
         if not self.run_async:
             try:
-                if status in ("MISSING", "STALE"):
-                    self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before refreshing...")
-                    ensure_pipeline_assets_ready_sync(prefs)
-
                 with blender_progress_scope(context, total=100, title=f"Refreshing {level_name}") as reporter:
                     mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
                         world_dir=world_dir,
@@ -194,10 +214,18 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     "weld_vertices": weld_vertices,
                     "origin_centered": origin_centered,
                     "enable_ctm": enable_ctm,
-                    "enable_animated_textures": enable_animated_textures,
+                    "enable_animated_textures": mesh_context["enable_animated_textures"],
+                    "model_db": mesh_context["model_db"],
+                    "atlas": mesh_context["atlas"],
+                    "biome_resolver": mesh_context["biome_resolver"],
+                    "ctm_solver": mesh_context["ctm_solver"] if enable_ctm else None,
+                    "num_threads": mesh_context["num_threads"],
+                    "resolve_prefs": False,
+                    "resolve_ctm": False,
                 },
                 "prefs": prefs,
                 "task_title": f"Refreshing {level_name}",
+                "asset_context": asset_context,
             },
         )
 

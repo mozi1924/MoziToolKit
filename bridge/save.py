@@ -92,6 +92,9 @@ def load_and_mesh_minecraft_save(
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
     enable_animated_textures: Optional[bool] = None,
+    ctm_solver: Optional[Any] = None,
+    resolve_prefs: bool = True,
+    resolve_ctm: bool = True,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -100,23 +103,25 @@ def load_and_mesh_minecraft_save(
     mtk = require_libmtk("load_and_mesh_minecraft_save")
     target_path = str(Path(world_dir).resolve())
 
-    # Auto-resolve pipeline assets if not supplied
-    if model_db is None or atlas is None or biome_resolver is None:
+    # Auto-resolve pipeline assets if not supplied. AsyncTask callers pass all
+    # three explicitly and set resolve_prefs=False so this worker never touches bpy.
+    if resolve_prefs and (model_db is None or atlas is None or biome_resolver is None):
         cached_mdb, cached_atlas, cached_resolver = get_world_pipeline_assets(prefs)
         model_db = model_db or cached_mdb
         atlas = atlas or cached_atlas
         biome_resolver = biome_resolver or cached_resolver
 
     # Thread count resolution
-    if num_threads is None and prefs is not None:
+    if resolve_prefs and num_threads is None and prefs is not None:
         raw_threads = getattr(prefs, "thread_count", 0)
         num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
 
-    ctm_solver = get_configured_ctm_solver(prefs) if enable_ctm else None
+    if resolve_ctm and ctm_solver is None and enable_ctm:
+        ctm_solver = get_configured_ctm_solver(prefs)
 
     anim_tex_enabled = enable_animated_textures
     if anim_tex_enabled is None:
-        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        raw_val = getattr(prefs, "enable_animated_textures", True) if (resolve_prefs and prefs) else True
         anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
     else:
         anim_tex_enabled = bool(anim_tex_enabled)

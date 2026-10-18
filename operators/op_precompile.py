@@ -6,12 +6,30 @@ import time
 from typing import Optional
 import bpy
 try:
-    from ..bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
+    from ..bridge import (
+        check_asset_cache_status,
+        clear_cache,
+        get_cache_stats,
+        open_cache_folder,
+        precompile_stack,
+        precompile_stack_async,
+        prepare_asset_context,
+        reload_atlas_images,
+    )
     from ..utils.system import get_prefs
     from ..utils.async_task import AsyncTask, ModalTaskRunner
     from ..utils.progress import BlenderProgressReporter, blender_progress_scope
 except (ImportError, ValueError):
-    from bridge import clear_cache, open_cache_folder, precompile_stack, precompile_stack_async
+    from bridge import (
+        check_asset_cache_status,
+        clear_cache,
+        get_cache_stats,
+        open_cache_folder,
+        precompile_stack,
+        precompile_stack_async,
+        prepare_asset_context,
+        reload_atlas_images,
+    )
     from utils.system import get_prefs
     from utils.async_task import AsyncTask, ModalTaskRunner
     from utils.progress import BlenderProgressReporter, blender_progress_scope
@@ -40,11 +58,28 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
         prefs = get_prefs(context)
         title = "Precompiling Assets"
 
+        status = check_asset_cache_status(prefs)
+        if status == "NO_PACKS":
+            self.report({'WARNING'}, "No enabled resource packs configured. Please configure a Minecraft pack in Preferences.")
+            return {'CANCELLED'}
+
+        # Resolve stack/cache dir/thread count on the main thread; the worker must
+        # not read bpy RNA or call get_cache_dir().
+        asset_context = prepare_asset_context(prefs)
+        raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
+        num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
+
         # Synchronous fallback for CLI / tests when run_async is explicitly False
         if not self.run_async:
             try:
                 with blender_progress_scope(context, total=100, title=title) as reporter:
-                    res = precompile_stack(prefs, progress_callback=reporter.on_progress)
+                    res = precompile_stack(
+                        prefs,
+                        num_threads=num_threads,
+                        progress_callback=reporter.on_progress,
+                        stack=asset_context["stack"],
+                        cache_dir=asset_context["cache_dir"],
+                    )
 
                 models_cnt = res.get("models", res.get("baked_models", 0))
                 duration = res.get("duration_seconds", 0.0)
@@ -63,10 +98,26 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
         # Asynchronous non-blocking modal execution (UI mode)
         task = AsyncTask(
             target=precompile_stack,
-            kwargs={"prefs": prefs},
+            kwargs={
+                "prefs": prefs,
+                "num_threads": num_threads,
+                "stack": asset_context["stack"],
+                "cache_dir": asset_context["cache_dir"],
+                "reload_images": False,
+                "resolve_prefs": False,
+            },
         )
 
         def on_success(res):
+            # bpy image reload and stats refresh must happen on the main thread.
+            try:
+                reload_atlas_images(prefs)
+            except Exception:
+                pass
+            try:
+                get_cache_stats(prefs, force_refresh=True)
+            except Exception:
+                pass
             models_cnt = res.get("models", res.get("baked_models", 0))
             duration = res.get("duration_seconds", 0.0)
             summary_msg = (

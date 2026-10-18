@@ -10,6 +10,7 @@ from .engine import (
     require_libmtk,
 )
 from .assets import (
+    prepare_asset_context,
     check_asset_cache_status,
     clear_cache,
     ensure_pipeline_assets_ready_sync,
@@ -20,6 +21,7 @@ from .assets import (
     open_cache_folder,
     precompile_stack,
     precompile_stack_async,
+    reload_atlas_images,
     run_task_with_asset_guard,
 )
 from .mesh import (
@@ -56,6 +58,7 @@ from .world import (
     get_world_pipeline_assets,
     ingest_voxel_world,
     mesh_voxel_storage,
+    prepare_world_mesh_context,
 )
 from .save import (
     apply_imported_save_to_blender,

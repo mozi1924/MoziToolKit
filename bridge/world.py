@@ -93,6 +93,31 @@ def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any],
     return _WORLD_PIPELINE_ASSETS_CACHE
 
 
+def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
+    """Resolve every asset/config value a background mesher needs, on the main thread.
+
+    The returned dict is plain Python/Rust data: it contains no Blender RNA
+    objects, so it is safe to pass into an AsyncTask worker. Call this only after
+    the asset cache has been verified/precompiled on the main thread.
+    """
+    model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
+    ctm_solver = get_configured_ctm_solver(prefs)
+    raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
+    num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
+    raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+    enable_animated_textures = raw_anim if isinstance(raw_anim, bool) else True
+    return {
+        "model_db": model_db,
+        "atlas": atlas,
+        "biome_resolver": biome_resolver,
+        "ctm_solver": ctm_solver,
+        "num_threads": num_threads,
+        "enable_animated_textures": enable_animated_textures,
+        "cache_fingerprint": get_cache_fingerprint(prefs),
+        "cache_timestamp": get_cache_timestamp(prefs),
+    }
+
+
 def ensure_world_materials(
     world_obj: Any,
     prefs=None,
@@ -446,6 +471,10 @@ def mesh_voxel_storage(
     material_mode: str = "ATLAS",
     force_rebuild: bool = False,
     enable_animated_textures: Optional[bool] = None,
+    cache_fingerprint: Optional[str] = None,
+    cache_timestamp: Optional[float] = None,
+    resolve_prefs: bool = True,
+    resolve_ctm: bool = True,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -455,7 +484,7 @@ def mesh_voxel_storage(
     mtk = require_libmtk("mesh_voxel_storage")
 
     # Auto-load cached assets if not explicitly passed and caller didn't opt out
-    if atlas is not False and material_mode != "STANDALONE":
+    if resolve_prefs and atlas is not False and material_mode != "STANDALONE":
         if model_db is None or atlas is None or biome_resolver is None:
             cached_model_db, cached_atlas, cached_biome_resolver = get_world_pipeline_assets(prefs)
             model_db = model_db or cached_model_db
@@ -466,10 +495,11 @@ def mesh_voxel_storage(
             atlas = None
 
     # Auto-resolve CTM solver from pack stack if available
-    ctm_solver = ctm_solver or get_configured_ctm_solver(prefs)
+    if resolve_ctm:
+        ctm_solver = ctm_solver or get_configured_ctm_solver(prefs)
 
     # Auto-resolve thread count from preferences if not explicitly set
-    if num_threads is None:
+    if resolve_prefs and num_threads is None:
         if prefs is None:
             try:
                 from ..utils.system.dependencies import get_prefs
@@ -482,7 +512,7 @@ def mesh_voxel_storage(
 
     anim_tex_enabled = enable_animated_textures
     if anim_tex_enabled is None:
-        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        raw_val = getattr(prefs, "enable_animated_textures", True) if (resolve_prefs and prefs) else True
         anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
     else:
         anim_tex_enabled = bool(anim_tex_enabled)
@@ -513,8 +543,14 @@ def mesh_voxel_storage(
     culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
 
     t0 = time.perf_counter()
-    current_fp = get_cache_fingerprint(prefs)
-    current_ts = get_cache_timestamp(prefs)
+    # AsyncTask callers precompute fingerprint/timestamp on the main thread; only
+    # synchronous callers fall back to the bpy-backed cache readers here.
+    if cache_timestamp is not None:
+        current_fp = cache_fingerprint
+        current_ts = float(cache_timestamp)
+    else:
+        current_fp = get_cache_fingerprint(prefs)
+        current_ts = get_cache_timestamp(prefs)
 
     if world_session_key and hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
         cached_world = _WORLD_SESSIONS.get(world_session_key)

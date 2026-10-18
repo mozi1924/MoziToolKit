@@ -35,6 +35,7 @@ from .cache import (
     open_cache_folder,
 )
 from .guard import (
+    prepare_asset_context,
     check_asset_cache_status,
     ensure_pipeline_assets_ready_sync,
     run_task_with_asset_guard,
@@ -71,6 +72,7 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = [
+    "prepare_asset_context",
     "get_cache_dir",
     "get_configured_pack_stack",
     "precompile_stack",

@@ -95,6 +95,25 @@ def check_asset_cache_status(prefs=None) -> str:
     return "MISSING"
 
 
+def prepare_asset_context(prefs=None) -> Dict[str, Any]:
+    """Resolve cache status/stack/path on the Blender main thread.
+
+    check_asset_cache_status reads Blender preferences/RNA and resolves the
+    cache directory through bpy. Doing that inside an AsyncTask worker is not
+    thread-safe. Operators call this helper before launching a worker and pass
+    the resulting dict to run_task_with_asset_guard.
+    """
+    status = check_asset_cache_status(prefs)
+    stack = get_configured_pack_stack(prefs)
+    try:
+        cache_dir = str(get_cache_dir(prefs))
+    except Exception:
+        cache_dir = None
+    raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
+    num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
+    return {"status": status, "stack": stack, "cache_dir": cache_dir, "num_threads": num_threads}
+
+
 def ensure_pipeline_assets_ready_sync(
     prefs=None,
     progress_callback: Optional[ProgressCallback] = None,
@@ -134,6 +153,7 @@ def run_task_with_asset_guard(
     prefs: Optional[Any] = None,
     progress_callback: Optional[ProgressCallback] = None,
     task_title: str = "Voxel Operation",
+    asset_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, bool]:
     """
     Executes a heavy voxel or meshing background worker with an automated asset precompilation guard.
@@ -141,7 +161,12 @@ def run_task_with_asset_guard(
     then chains into target_func as Stage 2.
     Returns (result, did_precompile).
     """
-    status = check_asset_cache_status(prefs)
+    # asset_context must be prepared on the Blender main thread. When it is
+    # provided, this worker only reads plain Python values and never touches bpy.
+    if asset_context is not None:
+        status = str(asset_context.get("status", "READY"))
+    else:
+        status = check_asset_cache_status(prefs)
     did_precompile = False
 
     if status in ("MISSING", "STALE"):
@@ -164,7 +189,15 @@ def run_task_with_asset_guard(
                 )
                 progress_callback(stage_report)
 
-        precompile_stack(prefs, progress_callback=stage1_cb)
+        precompile_stack(
+            prefs,
+            num_threads=asset_context.get("num_threads") if asset_context else None,
+            progress_callback=stage1_cb,
+            stack=asset_context.get("stack") if asset_context else None,
+            cache_dir=asset_context.get("cache_dir") if asset_context else None,
+            reload_images=False,
+            resolve_prefs=asset_context is None,
+        )
         invalidate_asset_cache_memory()
 
     # Stage 2: Target Function
@@ -194,6 +227,7 @@ def run_task_with_asset_guard(
 
 
 __all__ = [
+    "prepare_asset_context",
     "check_asset_cache_status",
     "ensure_pipeline_assets_ready_sync",
     "run_task_with_asset_guard",
