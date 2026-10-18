@@ -459,7 +459,10 @@ class SyncBridgeSession:
         if self._session is None:
             return []
         try:
-            events = self._session.poll_events()
+            try:
+                events = self._session.poll_events(coalesce_meshes=True)
+            except TypeError:
+                events = self._session.poll_events()
             for ev in events:
                 if ev.get("type") == "STATUS_CHANGE":
                     status = ev.get("status", "DISCONNECTED")

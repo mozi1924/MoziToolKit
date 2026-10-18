@@ -171,6 +171,22 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
         if stack is not None and hasattr(stack, "get_pack_count") and stack.get_pack_count() > 0:
             if hasattr(stack, "compute_stack_fingerprint"):
                 fp = stack.compute_stack_fingerprint()
+                # Host-agnostic Rust resolver: directory scan + header fingerprint validation.
+                if mtk is not None and hasattr(mtk, "resolve_active_cache_package"):
+                    resolved = mtk.resolve_active_cache_package(str(cache_dir), fp)
+                    if resolved:
+                        return Path(resolved)
+                    if os.environ.get("MOZI_CACHE_DIR"):
+                        candidates = sorted(
+                            cache_dir.glob("*.mtkcache"),
+                            key=lambda p: p.stat().st_mtime,
+                            reverse=True,
+                        )
+                        if candidates:
+                            return candidates[0]
+                    invalidate_asset_cache_memory()
+                    return None
+
                 # Fast-path check: in-memory active package matches expected fingerprint
                 if _ACTIVE_CACHE_PKG_PATH is not None:
                     p = Path(_ACTIVE_CACHE_PKG_PATH)

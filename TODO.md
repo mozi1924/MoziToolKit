@@ -36,13 +36,15 @@
       通用 face 属性继续 `foreach_set`（详见 [`direct_mesh.md`](docs/mesh/direct_mesh.md) §7）。
 
 ### 📋 下一批（按优先级）
-- [x] **P1 外部网格材质提取批量化（部分）**：`foreach_get` + NumPy 索引、删除逐面 `clean_keys`、
-      zero-copy material props memoryview；500k faces replace 2.65 s → ~1.7 s。
-- [ ] **P1 外部网格 palette-native remap（剩余）**：`face_materials` / chunk-texture ids 改为
-      palette + u32 indices / memoryview，目标 1M faces < 1.2 s。
-- [ ] **P2 Live Sync 事件合并**：最新 generation 的 `WORLD_MESH_READY` 合并与 stale 丢弃移入 Rust。
-- [ ] **P2 资产缓存解析下沉**：`mtk-package::CacheResolver`，供 C4D 复用 `.mtkcache` 选择逻辑。
-- [ ] **P2 C-ABI 导出**：为 `mtk-ffi` 增加 material route 与 persisted-state 函数。
+- [x] **P1 外部网格材质提取批量化**：`foreach_get` + NumPy 索引、删除逐面 `clean_keys`、
+      zero-copy material props memoryview、palette-native remap；500k faces replace **2.65 s → ~0.95 s**。
+- [ ] **P1 1M faces 进一步优化**：当前按线性估算约 1.9 s，目标 < 1.2 s；
+      下一步优先 palette-native biome + 减少 source-key 展开。
+- [x] **P2 Live Sync 事件合并**：`poll_events_coalesced` + `coalesce_meshes=True`，只保留最新 generation。
+- [x] **P2 资产缓存解析下沉**：`libmtk::resolve_active_cache_package` + PyO3，Python 已切换。
+- [x] **P2 C-ABI 首批导出**：`mtk_resolve_material_routes` / `mtk_sync_state_is_reconnect_candidate` /
+      `mtk_biome_reapply_uniform_tint`。
+- [ ] **P2 C-ABI 后续**：按 C4D 实际调用约定补 opaque session/cache handle 与头文件示例。
 
 ---
 

@@ -5,7 +5,7 @@ Mesh attribute injection utilities (source texture keys, custom attributes, pale
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -61,6 +61,84 @@ def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
     return []
 
 
+def resolve_source_texture_keys_paletted(mesh_or_obj: Any) -> Tuple[List[str], Any]:
+    """
+    Return `(palette, indices)` for per-face source texture keys.
+
+    Prefers the INT palette attribute (`mtk_source_textures` +
+    `mtk_source_texture_idx`); falls back to a legacy STRING attribute. Returns an
+    empty palette and empty int32 array when no provenance exists.
+    """
+    mesh = get_mesh(mesh_or_obj)
+    if not mesh or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
+        return [], np.empty(0, dtype=np.uint32)
+
+    num_polys = len(mesh.polygons)
+    palette = None
+    if hasattr(mesh, "keys") and "mtk_source_textures" in mesh:
+        palette = list(mesh["mtk_source_textures"])
+    elif hasattr(mesh_or_obj, "get") and "mtk_source_textures" in mesh_or_obj:
+        palette = list(mesh_or_obj["mtk_source_textures"])
+
+    attr_idx = mesh.attributes.get("mtk_source_texture_idx") if hasattr(mesh, "attributes") else None
+    if attr_idx is not None and palette is not None and len(attr_idx.data) == num_polys:
+        idx_arr = np.empty(num_polys, dtype=np.uint32)
+        attr_idx.data.foreach_get("value", idx_arr)
+        return palette, idx_arr
+
+    # Legacy STRING fallback: build a compact palette once.
+    attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
+    if attr_str is not None and len(attr_str.data) == num_polys:
+        values = []
+        for elem in attr_str.data:
+            val = elem.value
+            if isinstance(val, (bytes, bytearray)):
+                values.append(val.decode("utf-8", errors="replace"))
+            else:
+                values.append(str(val))
+        palette = list(dict.fromkeys(values))
+        key_to_idx = {k: i for i, k in enumerate(palette)}
+        indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
+        return palette, indices
+
+    return [], np.empty(0, dtype=np.uint32)
+
+
+def inject_face_source_texture_palette(
+    mesh: Any,
+    palette: Sequence[str],
+    indices: Any,
+) -> None:
+    """Write source texture provenance directly as palette + INT indices."""
+    if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
+        return
+    num_polys = len(mesh.polygons)
+    if num_polys == 0:
+        return
+    if isinstance(indices, (list, tuple)):
+        arr = np.ascontiguousarray(indices, dtype=np.int32)
+    else:
+        arr = np.frombuffer(indices, dtype=np.int32)
+    if arr.size != num_polys:
+        return
+    mesh["mtk_source_textures"] = list(palette)
+    attr_idx = get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
+    if attr_idx is not None and len(attr_idx.data) == num_polys:
+        attr_idx.data.foreach_set("value", arr)
+        # Legacy STRING compatibility for small meshes (tests / older tools).
+        if num_polys <= 256:
+            attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+            if attr_str is not None and len(attr_str.data) == num_polys:
+                for i in range(num_polys):
+                    idx = int(arr[i])
+                    val = palette[idx] if 0 <= idx < len(palette) else ""
+                    b_val = str(val).encode("utf-8")
+                    try:
+                        attr_str.data[i].value = b_val
+                    except Exception:
+                        pass
+
+
 def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     """
     Inject face source texture keys via palette indexing (sub-millisecond throughput).
@@ -83,7 +161,7 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     # 2. Write INT attribute in bulk
     attr_idx = get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
     if attr_idx is not None and len(attr_idx.data) == num_polys:
-        np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.int32, count=num_polys)
+        np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
         attr_idx.data.foreach_set("value", np_indices)
 
     # 3. Legacy STRING attribute compatibility
@@ -120,18 +198,28 @@ def inject_face_attribute_string(mesh: Any, name: str, values: List[str]) -> Non
 
 
 def inject_face_attribute_int(mesh: Any, name: str, values: Any) -> None:
-    """Inject a Face-domain Int attribute into Blender Mesh."""
+    """Inject a Face-domain Int attribute into Blender Mesh (list or buffer)."""
     attr = get_or_create_attribute(mesh, name, "INT", "FACE")
-    if attr and len(attr.data) == len(values):
+    if not attr:
+        return
+    if isinstance(values, (list, tuple)):
         arr = np.ascontiguousarray(values, dtype=np.int32)
+    else:
+        arr = np.frombuffer(values, dtype=np.int32)
+    if arr.size == len(attr.data):
         attr.data.foreach_set("value", arr)
 
 
 def inject_face_attribute_float(mesh: Any, name: str, values: Any) -> None:
-    """Inject a Face-domain Float attribute into Blender Mesh."""
+    """Inject a Face-domain Float attribute into Blender Mesh (list or buffer)."""
     attr = get_or_create_attribute(mesh, name, "FLOAT", "FACE")
-    if attr and len(attr.data) == len(values):
+    if not attr:
+        return
+    if isinstance(values, (list, tuple)):
         arr = np.ascontiguousarray(values, dtype=np.float32)
+    else:
+        arr = np.frombuffer(values, dtype=np.float32)
+    if arr.size == len(attr.data):
         attr.data.foreach_set("value", arr)
 
 
@@ -155,10 +243,15 @@ def inject_face_attribute_float4(mesh: Any, name: str, flat_values: Any) -> None
 
 
 def inject_face_attribute_vector(mesh: Any, name: str, flat_values: Any) -> None:
-    """Inject a Face-domain Float Vector attribute into Blender Mesh."""
+    """Inject a Face-domain Float Vector attribute into Blender Mesh (list or buffer)."""
     attr = get_or_create_attribute(mesh, name, "FLOAT_VECTOR", "FACE")
-    if attr and len(attr.data) * 3 == len(flat_values):
+    if not attr:
+        return
+    if isinstance(flat_values, (list, tuple)):
         arr = np.ascontiguousarray(flat_values, dtype=np.float32)
+    else:
+        arr = np.frombuffer(flat_values, dtype=np.float32)
+    if arr.size == len(attr.data) * 3:
         attr.data.foreach_set("vector", arr)
 
 

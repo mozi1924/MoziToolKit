@@ -167,54 +167,49 @@
 - [x] UV transform 由 Python 逐面 `extend` 改为 `np.asarray(...).ravel()`；
 - [x] 500k faces 外部 replace 实测 **2.65 s → 1.70–1.85 s**（约 1.5 倍）。
 
-仍待完成：
+- [x] **palette-native remap**：新增 `remap_mesh_multi_uvs_paletted_with_options`；
+  输入 `palette + u32 indices`，Rust 返回 source-key palette + u32 index 与所有 id/metric 的零拷贝 memoryview。
+- [x] `face_material_indices` / `existing_key_indices` 直接从 numpy uint32 buffer 读取，
+  不再逐面 list 转换。
+- [x] `assign_atlas_chunk_materials` 改为 `np.unique` + `searchsorted` 向量化槽位映射。
+- [x] `inject_mesh_provenance_attributes` 支持 palette + indices / buffer / memoryview；
+  `inject_face_attribute_int/float/float4/vector` 均识别 buffer。
+- [x] 500k faces 外部 replace 实测 **2.65 s → 0.95–1.01 s**。
+- [ ] 1M faces 目标 < 1.2 s 尚未达成；当前按线性估算约 1.9 s。下一步可继续：
+  palette-native biome + 减少 numpy object 数组与 `source_key_palette` 展开。
 
-- [ ] **palette-native remap**：`face_materials` 仍以 `Vec<String>` 传入 Rust，
-  且 `face_texture_ids` / `face_chunk_ids` 仍以 Python list 返回；应改为
-  `palette + u32 indices`，避免每面字符串与 list 转换。
-- [ ] `compute_biome_tint_attributes` 增加 palette 版本，避免逐面 `Vec<String>`。
-- [ ] `face_chunk_ids` / `face_texture_ids` 以 memoryview 返回，直接喂给 `foreach_set`。
-- [ ] 目标：1M faces 外部 replace < 1.2 s（当前 500k ~1.7 s，尚未达标）。
+### P2 — Live Sync 事件合并/代际栅栏（✅ 完成）
 
-### P2 — Live Sync 事件合并/代际栅栏下沉
+- [x] `LiveSyncSession::poll_events_coalesced()`：只保留最新 `WORLD_MESH_READY` generation；
+  非网格事件保持顺序，最新网格追加在末尾。
+- [x] PyO3 `poll_events(coalesce_meshes=False)`；Blender bridge 默认使用
+  `coalesce_meshes=True`。
+- [x] Rust 单元测试覆盖 generation 1/3/2 乱序到达时只保留 3。
 
-`_sync_timer_tick` 目前仍在 Python 侧做：
+### P2 — 资产缓存解析下沉（✅ 完成）
 
-- `WORLD_MESH_READY` 只保留最新 generation；
-- 与 container 上 `mtk:client_generation` 比较并丢弃 stale mesh；
-- 点云 sparse/storage 安全屏障。
+- [x] `libmtk::prebake::resolve_active_cache_package(cache_dir, fingerprint)`：
+  direct-name 优先、header fingerprint 校验、mtime 最新回退。
+- [x] PyO3 `resolve_active_cache_package(cache_dir, fingerprint=None)`。
+- [x] `bridge/assets/cache.py` 优先使用 Rust resolver，并保留 `MOZI_CACHE_DIR`
+  测试沙箱的 synthetic fallback。
+- [x] Python 测试覆盖匹配 fingerprint / 缺失 fingerprint / 无 fingerprint / 不存在目录。
 
-建议：
+### P2 — C-ABI / C4D 导出面（✅ 首批完成）
 
-- [ ] `LiveSyncSession::poll_latest_world_mesh()` 或在 `poll_events` 内合并旧 generation，
-      只向宿主交付最新 mesh；
-- [ ] 事件批量结构体 `SyncEventBatch { events, latest_world_mesh, latest_generation }`，
-      宿主一次轮询即可拿到“状态事件 + 最新网格”；
-- [ ] Python 只保留 UI 文案与 Blender 对象注入。
-
-### P2 — 资产缓存解析下沉
-
-`bridge/assets/cache.py` 的 `get_active_cache_package_path` 仍包含指纹匹配、glob、mtime、
-测试沙箱 fallback 等策略。C4D 需要同样的 `.mtkcache` 选择逻辑。
-
-- [ ] `mtk-package::CacheResolver::resolve(cache_dir, fingerprint) -> Option<PathBuf>`；
-- [ ] PyO3 暴露 `AssetCache.resolve_active`；
-- [ ] Python 只负责读取 prefs 并传入 cache_dir/fingerprint；
-- [ ] 保留 `MOZI_CACHE_DIR` 测试隔离语义在宿主侧。
-
-### P2 — C-ABI / C4D 导出面
-
-本次新增的 Rust API 目前只通过 PyO3 暴露；C4D 若走 C++/C-ABI，需要：
-
-- [ ] `bindings/mtk-ffi` 增加 `MtkMaterialRoute` / `mtk_resolve_mesh_material_routes`；
-- [ ] `mtk_sync_export_persisted_state_json` / `mtk_sync_start_with_state`；
-- [ ] 在 `bindings/mtk-ffi/README.md` 更新函数表与调用示例。
+- [x] `bindings/mtk-ffi` 新增：
+  - `MtkMaterialRoute` + `mtk_resolve_material_routes(atlas_json, keys_json, enable_anim, out_routes, capacity)`；
+  - `mtk_sync_state_is_reconnect_candidate(state_json)`；
+  - `mtk_biome_reapply_uniform_tint(...)` 扁平 C 缓冲版本。
+- [x] FFI 单元测试覆盖 material route、persisted state 与 biome recolor。
+- [ ] 后续按 C4D 实际调用约定补充 opaque session/asset-cache handle 与头文件示例。
 
 ### P3 — 文档/一致性
 
-- [ ] `mtk-material/README.md` 公共 API 表补新函数；
-- [ ] `mtk-sync/README.md` 补 `PersistedSessionState` 与 `decision_code`；
-- [ ] `bindings/mtk-py/README.md` 补新 PyO3 方法；
+- [x] `mtk-material/README.md` 公共 API 表补新函数；
+- [x] `mtk-sync/README.md` 补 `PersistedSessionState`、`decision_code` 与 coalesced polling；
+- [x] `bindings/mtk-py/README.md` 补新 PyO3 方法；
+- [x] `bindings/mtk-ffi/README.md` 补 `MtkMaterialRoute` 与新增 C-ABI 函数；
 - [ ] 评估是否为旧场景做 `mtk_sync_server_uuid` → `mtk_sync_state_json` 迁移；
       当前旧属性不再参与快速重连，旧场景会自动走全量基线（安全但慢一次）。
 
@@ -241,7 +236,7 @@ cd MoziToolKit
 ../libmozitoolkit/.venv/bin/python -m pytest tests/ -q
 ```
 
-结果：**241 passed / 71 skipped**（新增 Blender-only 用例在 mock 下 skip）。
+结果：**245 passed / 71 skipped**（新增 Blender-only 用例在 mock 下 skip）。
 
 ### Blender 5.2.1 LTS
 
@@ -251,7 +246,7 @@ MTK_TEST_SITE_PACKAGES="$(../libmozitoolkit/.venv/bin/python -c 'import site; pr
   blender --background --factory-startup --python tests/run_tests.py -- -q
 ```
 
-结果：**302 passed / 10 skipped**（修复了 3 个已知的 sync timer 隔离失败与
+结果：**306 passed / 10 skipped**（修复了 3 个已知的 sync timer 隔离失败与
 `tests/test_mesh_ownership.py` 中 5 个 `root.children = [...]` 非法赋值 / fake datablock
 造成的测试自身失败）。
 

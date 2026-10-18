@@ -279,6 +279,34 @@ def remap_mesh_multi_uvs(
     )
 
 
+def remap_mesh_multi_uvs_paletted(
+    loop_uvs: Sequence[float],
+    face_material_palette: Sequence[str],
+    face_material_indices: Sequence[int],
+    face_loop_ranges: Sequence[Tuple[int, int]],
+    atlas: Any,
+    alias_map: Optional[Dict[str, List[str]]] = None,
+    grid_spec: Optional[Any] = None,
+    existing_key_palette: Optional[Sequence[str]] = None,
+    existing_key_indices: Optional[Sequence[int]] = None,
+    enable_animated_textures: bool = False,
+) -> Any:
+    """Palette-native multi-UV remap returning zero-copy id/metric buffers."""
+    mtk = require_libmtk("remap_mesh_multi_uvs_paletted")
+    return mtk.MaterialResolver.remap_mesh_multi_uvs_paletted(
+        loop_uvs if isinstance(loop_uvs, (list, np.ndarray)) else list(loop_uvs),
+        list(face_material_palette),
+        face_material_indices,
+        face_loop_ranges if isinstance(face_loop_ranges, list) else list(face_loop_ranges),
+        atlas,
+        alias_map,
+        grid_spec,
+        list(existing_key_palette) if existing_key_palette is not None else None,
+        existing_key_indices,
+        bool(enable_animated_textures),
+    )
+
+
 def resolve_mesh_material_routes(
     face_texture_keys: Sequence[str],
     atlas: Any,
@@ -371,6 +399,22 @@ def compute_flat_material_props_buffer(
         return np.zeros(len(face_source_keys) * 4, dtype=np.float32)
     return mtk.compute_flat_material_props_memoryview(
         list(face_source_keys),
+        list(block_names) if block_names is not None else None,
+    )
+
+
+def compute_flat_material_props_paletted_buffer(
+    palette: Sequence[str],
+    face_indices: Sequence[int],
+    block_names: Optional[Sequence[str]] = None,
+) -> Any:
+    """Compute flat material properties for a palette + per-face indices as a memoryview."""
+    mtk = get_libmtk()
+    if mtk is None or not hasattr(mtk, "compute_flat_material_props_paletted_memoryview"):
+        return np.zeros(len(face_indices) * 4, dtype=np.float32)
+    return mtk.compute_flat_material_props_paletted_memoryview(
+        list(palette),
+        face_indices,
         list(block_names) if block_names is not None else None,
     )
 

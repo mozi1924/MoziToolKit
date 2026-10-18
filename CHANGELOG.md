@@ -68,6 +68,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UV transform 改为 `np.asarray(...).ravel()`，避免逐面 Python `extend`。
 - 500k faces 外部 replace 实测 **2.65 s → 1.70–1.85 s**。
 
+### 🚀 Palette-Native 材质管线与 P2 基础设施
+- **Palette-native 外部网格 remap**：`remap_mesh_multi_uvs_paletted_with_options` 直接消费
+  `palette + u32 indices`，返回 source-key palette/indices 与全部 id/metric 的零拷贝 memoryview；
+  500k faces replace **2.65 s → ~0.95 s**。
+- **提取与槽位向量化**：`extract_face_material_palette_context`、`np.unique` + `searchsorted`
+  材质槽映射、buffer-aware 的 `inject_face_attribute_*`。
+- **Live Sync 事件合并**：`LiveSyncSession::poll_events_coalesced()` 在 Rust 侧只保留最新
+  `WORLD_MESH_READY` generation；Blender bridge 默认使用 `coalesce_meshes=True`。
+- **资产缓存解析下沉**：`libmtk::prebake::resolve_active_cache_package` + PyO3；
+  Python 优先使用 Rust 的 fingerprint/header/mtime 解析，保留测试沙箱 fallback。
+- **C-ABI 首批**：`mtk-ffi` 新增 `mtk_resolve_material_routes`、
+  `mtk_sync_state_is_reconnect_candidate`、`mtk_biome_reapply_uniform_tint`。
+
 ### 🐛 Live Sync 稳定性修复 (Realtime Sync Stability)
 - **修复大选区/多生物群系基线永久校验失败（卡在 75%）**：Rust 基线组装器此前使用全局 Quart 索引 `qx & 3` 写入 Section-local 生物群系，未考虑选区 `min_pos` 非 16 对齐的情况，导致 Canonical State Hash 与 Minecraft 端失配并无限重同步。现改为按 `(world >> 2) & 3` 的 Section-local Quart 坐标写入，并新增非对齐选区回归测试。
 - **修复刷新后偶发提示“未连接”**：终态 `DISCONNECTED` 事件不再因原生 worker 已退出而被丢弃；Blender 面板连接状态统一以原生 `LiveSyncSession` 的 `is_connected` / `status` 为准，中间态传输告警（解码/发送错误）不再误判为断线。Refresh 会先同步真实状态并给出精确提示。

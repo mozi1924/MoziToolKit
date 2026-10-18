@@ -167,5 +167,7 @@ mesh.update()
 3. 仅当存在 `TINT_TYPE_HARDCODED` 面时才读取旧 `mtk_biome_tint_color`，避免无谓 4 MB 读取。
 
 实测 498k faces：**6~8 ms → 2.1 ms**（约 3 倍）。
+
+外部网格 replace 的 palette-native 管线见计划文档；500k faces 已从 2.65 s 降到 ~0.95 s。
 600k~1M faces 仍落在 60 FPS 预算内；继续优化应优先减少 Rust 侧分配/复制，
 而不是替换 `foreach_set`。

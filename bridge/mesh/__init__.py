@@ -22,7 +22,9 @@ from .attributes import (
     inject_face_attribute_string,
     inject_face_attribute_vector,
     inject_face_source_texture_keys,
+    inject_face_source_texture_palette,
     resolve_source_texture_keys,
+    resolve_source_texture_keys_paletted,
 )
 from .constants import (
     BLENDER_TO_MTK_DOMAIN,
@@ -196,6 +198,8 @@ __all__ = [
     "inject_face_attribute_string",
     "inject_face_attribute_vector",
     "inject_face_source_texture_keys",
+    "inject_face_source_texture_palette",
     "inject_mesh_data",
     "resolve_source_texture_keys",
+    "resolve_source_texture_keys_paletted",
 ]

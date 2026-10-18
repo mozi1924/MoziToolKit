@@ -28,10 +28,12 @@ try:
         is_material_bridge_available,
         load_baked_atlas_from_json,
         remap_mesh_multi_uvs,
+        remap_mesh_multi_uvs_paletted,
         resolve_mesh_material_routes,
         reroute_mesh_animation,
         compute_flat_material_props,
         compute_flat_material_props_buffer,
+        compute_flat_material_props_paletted_buffer,
         BiomeResolver,
     )
 except (ImportError, ValueError):
@@ -39,10 +41,12 @@ except (ImportError, ValueError):
         is_material_bridge_available,
         load_baked_atlas_from_json,
         remap_mesh_multi_uvs,
+        remap_mesh_multi_uvs_paletted,
         resolve_mesh_material_routes,
         reroute_mesh_animation,
         compute_flat_material_props,
         compute_flat_material_props_buffer,
+        compute_flat_material_props_paletted_buffer,
         BiomeResolver,
     )
 
@@ -74,7 +78,9 @@ try:
         inject_face_attribute_float4,
         inject_face_attribute_vector,
         resolve_source_texture_keys,
+        resolve_source_texture_keys_paletted,
         inject_face_source_texture_keys,
+        inject_face_source_texture_palette,
     )
     from .builder.atlas_builder import build_atlas_chunk_material
     from .matching.presets.registry import build_matching_context
@@ -119,7 +125,9 @@ except (ImportError, ValueError):
         inject_face_attribute_float4,
         inject_face_attribute_vector,
         resolve_source_texture_keys,
+        resolve_source_texture_keys_paletted,
         inject_face_source_texture_keys,
+        inject_face_source_texture_palette,
     )
     from utils.materials.builder.atlas_builder import build_atlas_chunk_material
     from utils.materials.matching.presets.registry import build_matching_context
@@ -221,15 +229,25 @@ def load_material_cache_context(
     return base_cache, atlas_dir, colormaps, manifest_fingerprint
 
 
-def extract_face_material_context(
+def extract_face_material_palette_context(
     mesh: Any,
-) -> Tuple[List[str], List[Tuple[int, int]], array.array, Any, Optional[List[str]]]:
+) -> Tuple[
+    List[str],
+    Any,
+    List[Tuple[int, int]],
+    array.array,
+    Any,
+    List[str],
+    Any,
+]:
     """
-    Step 2: Extract face materials, loop ranges, loop UVs, and existing provenance keys from mesh.
+    Extract face material names as a compact palette + per-face indices.
 
-    Uses bulk `foreach_get` plus NumPy object-array indexing instead of per-polygon
-    RNA access. This is the hot path for large external meshes (hundreds of
-    thousands of faces).
+    Returns:
+        (palette, indices, face_loop_ranges, loop_uvs, uv_layer,
+         existing_key_palette, existing_key_indices)
+
+    Uses bulk `foreach_get` plus NumPy indexing; no per-polygon RNA access.
     """
     num_polys = len(mesh.polygons)
     num_loops = len(mesh.loops)
@@ -241,9 +259,9 @@ def extract_face_material_context(
     loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
     uv_layer.data.foreach_get("uv", loop_uvs)
 
-    existing_prov_keys: Optional[List[str]] = resolve_source_texture_keys(mesh)
-    if not existing_prov_keys or len(existing_prov_keys) != num_polys:
-        existing_prov_keys = None
+    existing_key_palette, existing_key_indices = resolve_source_texture_keys_paletted(mesh)
+    if len(existing_key_indices) != num_polys:
+        existing_key_palette, existing_key_indices = [], np.empty(0, dtype=np.uint32)
 
     # Bulk-extract polygon slot indices and loop ranges.
     poly_mats = np.empty(num_polys, dtype=np.int32)
@@ -253,7 +271,7 @@ def extract_face_material_context(
     mesh.polygons.foreach_get("loop_start", loop_starts)
     mesh.polygons.foreach_get("loop_total", loop_totals)
 
-    # Read each material slot once (there are usually only a handful).
+    # Read each material slot once (usually only a handful).
     slot_names: List[str] = []
     slot_is_mtk: List[bool] = []
     slot_source_ids: List[str] = []
@@ -290,8 +308,8 @@ def extract_face_material_context(
         face_is_mtk = np.array(slot_is_mtk, dtype=bool)[safe_mats] & valid_slot
         face_names = np.where(valid_slot, face_names, "default")
 
-        if existing_prov_keys is not None:
-            existing_arr = np.array(existing_prov_keys, dtype=object)
+        if len(existing_key_indices) == num_polys:
+            existing_arr = np.array(existing_key_palette, dtype=object)[existing_key_indices]
             valid_prov = (existing_arr != "") & (existing_arr != "mozi:fallback")
             face_names = np.where(face_is_mtk & valid_prov, existing_arr, face_names)
         else:
@@ -302,28 +320,61 @@ def extract_face_material_context(
     else:
         face_names = np.full(num_polys, "default", dtype=object)
 
-    face_materials: List[str] = face_names.tolist()
+    face_names_list = face_names.tolist()
+    palette = list(dict.fromkeys(face_names_list))
+    key_to_idx = {k: i for i, k in enumerate(palette)}
+    indices = np.fromiter(
+        (key_to_idx[k] for k in face_names_list),
+        dtype=np.uint32,
+        count=num_polys,
+    )
     face_loop_ranges: List[Tuple[int, int]] = list(zip(loop_starts.tolist(), loop_totals.tolist()))
 
-    return face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_prov_keys
+    return (
+        palette,
+        indices,
+        face_loop_ranges,
+        loop_uvs,
+        uv_layer,
+        existing_key_palette,
+        existing_key_indices,
+    )
+
+
+def extract_face_material_context(
+    mesh: Any,
+) -> Tuple[List[str], List[Tuple[int, int]], array.array, Any, Optional[List[str]]]:
+    """Backward-compatible list-based wrapper around the palette extractor."""
+    (
+        palette,
+        indices,
+        face_loop_ranges,
+        loop_uvs,
+        uv_layer,
+        existing_key_palette,
+        existing_key_indices,
+    ) = extract_face_material_palette_context(mesh)
+    face_materials = [palette[int(i)] for i in indices]
+    existing_keys: Optional[List[str]] = None
+    if len(existing_key_indices) == len(indices):
+        existing_keys = [existing_key_palette[int(i)] for i in existing_key_indices]
+    return face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_keys
 
 
 def _register_texture_id_key(id_to_key: Dict[int, str], texture_id: int, key: str) -> None:
-    """
-    Register one sprite key for an atlas texture id, preferring base sprites over
-    their ``*_overlay`` companions.
-
-    Base and overlay companion sprites share the same texture id and UV slot
-    (the overlay lives in a parallel atlas layer). A naive last-write-wins map
-    resolves ``grass_block_side`` to ``grass_block_side_overlay``; the face then
-    receives full-face tint weights instead of overlay-only weights, tinting the
-    entire dirt/mud side.
-    """
-    existing = id_to_key.get(texture_id)
-    if existing is None:
-        id_to_key[texture_id] = key
-    elif existing.endswith("_overlay") and not key.endswith("_overlay"):
-        id_to_key[texture_id] = key
+    """Register texture-id -> key, preferring the base sprite over an overlay companion."""
+    current = id_to_key.get(int(texture_id))
+    if current is None:
+        id_to_key[int(texture_id)] = key
+        return
+    if current == key:
+        return
+    current_is_overlay = "overlay" in current
+    new_is_overlay = "overlay" in key
+    if current_is_overlay and not new_is_overlay:
+        id_to_key[int(texture_id)] = key
+    elif current_is_overlay == new_is_overlay and len(key) < len(current):
+        id_to_key[int(texture_id)] = key
 
 
 def remap_face_materials_and_uvs(
@@ -396,6 +447,33 @@ def remap_face_materials_and_uvs(
     return remap_result
 
 
+def remap_face_materials_and_uvs_paletted(
+    baked_atlas: Any,
+    face_material_palette: List[str],
+    face_material_indices: Any,
+    loop_uvs: array.array,
+    face_loop_ranges: List[Tuple[int, int]],
+    origin: str,
+    existing_key_palette: Optional[List[str]],
+    existing_key_indices: Any,
+    enable_animated_textures: bool = False,
+) -> Dict[str, Any]:
+    """Palette-native Step 3: Rust remap + compact source-key provenance."""
+    alias_map, grid_spec = build_matching_context(face_material_palette, origin=origin)
+    return remap_mesh_multi_uvs_paletted(
+        loop_uvs=loop_uvs,
+        face_material_palette=face_material_palette,
+        face_material_indices=face_material_indices,
+        face_loop_ranges=face_loop_ranges,
+        atlas=baked_atlas,
+        alias_map=alias_map,
+        grid_spec=grid_spec,
+        existing_key_palette=existing_key_palette if existing_key_palette else None,
+        existing_key_indices=existing_key_indices if len(existing_key_indices) else None,
+        enable_animated_textures=enable_animated_textures,
+    )
+
+
 def assign_atlas_chunk_materials(
     mesh: Any,
     uv_layer: Optional[Any],
@@ -410,9 +488,14 @@ def assign_atlas_chunk_materials(
     Step 4A: Construct Atlas Chunk materials, assign to mesh material slots, and optionally set Atlas UVs.
     """
     num_polys = len(mesh.polygons)
-    poly_mat_indices = array.array("H", [0]) * num_polys
+    if isinstance(face_chunk_ids, (list, tuple)):
+        chunk_arr = np.asarray(face_chunk_ids, dtype=np.int32)
+    else:
+        chunk_arr = np.frombuffer(face_chunk_ids, dtype=np.int32)
+    if chunk_arr.size != num_polys:
+        chunk_arr = np.resize(chunk_arr, num_polys)
 
-    unique_chunks = sorted(list(set(face_chunk_ids)))
+    unique_chunks = np.unique(chunk_arr)
     chunk_to_slot: Dict[int, int] = {}
     mesh.materials.clear()
 
@@ -421,7 +504,8 @@ def assign_atlas_chunk_materials(
         c.get("chunk_id", idx): c for idx, c in enumerate(chunk_meta_list)
     }
 
-    for slot_idx, chunk_id in enumerate(unique_chunks):
+    for slot_idx, chunk_id_raw in enumerate(unique_chunks):
+        chunk_id = int(chunk_id_raw)
         cm = chunk_meta_map.get(chunk_id, {})
         cat = cm.get("category", "blocks")
         c_idx = cm.get("category_chunk_index", chunk_id + 1)
@@ -455,20 +539,23 @@ def assign_atlas_chunk_materials(
         mesh.materials.append(mat)
         chunk_to_slot[chunk_id] = slot_idx
 
-    for i, cid in enumerate(face_chunk_ids):
-        poly_mat_indices[i] = chunk_to_slot.get(cid, 0)
+    # `unique_chunks` is sorted, so searchsorted yields exactly the slot index.
+    poly_mat_indices = np.searchsorted(unique_chunks, chunk_arr).astype(np.int32)
 
     if atlas_uvs is not None and uv_layer is not None:
-        atlas_uv_np = np.ascontiguousarray(atlas_uvs, dtype=np.float32)
+        if isinstance(atlas_uvs, (list, tuple)):
+            atlas_uv_np = np.ascontiguousarray(atlas_uvs, dtype=np.float32)
+        else:
+            atlas_uv_np = np.frombuffer(atlas_uvs, dtype=np.float32)
         uv_attr = mesh.attributes.get(uv_layer.name) if hasattr(mesh, "attributes") else None
-        if uv_attr is not None and len(uv_attr.data) * 2 == len(atlas_uv_np):
+        if uv_attr is not None and len(uv_attr.data) * 2 == atlas_uv_np.size:
             uv_attr.data.foreach_set("vector", atlas_uv_np)
         else:
             uv_layer.data.foreach_set("uv", atlas_uv_np)
 
     mat_attr = mesh.attributes.get("material_index") if hasattr(mesh, "attributes") else None
-    if mat_attr is not None and len(mat_attr.data) == len(poly_mat_indices):
-        mat_attr.data.foreach_set("value", np.ascontiguousarray(poly_mat_indices, dtype=np.int32))
+    if mat_attr is not None and len(mat_attr.data) == poly_mat_indices.size:
+        mat_attr.data.foreach_set("value", poly_mat_indices)
     else:
         mesh.polygons.foreach_set("material_index", poly_mat_indices)
     return poly_mat_indices
@@ -478,58 +565,97 @@ def assign_atlas_chunk_materials(
 
 def inject_mesh_provenance_attributes(
     mesh: Any,
-    face_source_keys: List[str],
-    poly_mat_indices: array.array,
-    face_chunk_ids: List[int],
-    face_texture_ids: Optional[List[int]] = None,
-    face_uv_transforms: Optional[List[List[float]]] = None,
-    face_uv_rotations: Optional[List[float]] = None,
-    face_anim_timing: Optional[List[List[float]]] = None,
-    face_anim_frame_size: Optional[List[List[float]]] = None,
+    face_source_keys: Optional[List[str]] = None,
+    poly_mat_indices: Any = None,
+    face_chunk_ids: Any = None,
+    face_texture_ids: Optional[Any] = None,
+    face_uv_transforms: Optional[Any] = None,
+    face_uv_rotations: Optional[Any] = None,
+    face_anim_timing: Optional[Any] = None,
+    face_anim_frame_size: Optional[Any] = None,
+    face_source_key_palette: Optional[List[str]] = None,
+    face_source_key_indices: Optional[Any] = None,
     mode: str = "ATLAS",
 ) -> None:
-    """
-    Step 5: Delegate provenance and shader driver attribute injection directly to bridge/mesh.py.
+    """Step 5: Inject provenance and shader-driver attributes.
+
+    Accepts either legacy per-face string lists or compact palette + indices and
+    buffer-protocol id/metric arrays (numpy arrays / Rust memoryviews).
     """
     num_polys = len(mesh.polygons)
     mode_upper = mode.strip().upper()
 
-    inject_face_attribute_string(mesh, "mtk_source_texture_key", face_source_keys)
-    inject_face_attribute_int(mesh, "mtk_material_slot", poly_mat_indices)
-    inject_face_attribute_int(mesh, "mtk_atlas_chunk_id", face_chunk_ids)
+    if face_source_key_palette is not None and face_source_key_indices is not None:
+        inject_face_source_texture_palette(
+            mesh, face_source_key_palette, face_source_key_indices
+        )
+    elif face_source_keys is not None:
+        inject_face_attribute_string(mesh, "mtk_source_texture_key", face_source_keys)
+
+    if poly_mat_indices is not None:
+        inject_face_attribute_int(mesh, "mtk_material_slot", poly_mat_indices)
+    if face_chunk_ids is not None:
+        inject_face_attribute_int(mesh, "mtk_atlas_chunk_id", face_chunk_ids)
 
     if face_texture_ids is not None:
-        inject_face_attribute_int(mesh, "mtk_atlas_texture_id", [int(x) for x in face_texture_ids])
-        inject_face_attribute_int(mesh, "mtk_uv_mode", [0 if mode_upper == "ATLAS" else 1] * num_polys)
+        inject_face_attribute_int(mesh, "mtk_atlas_texture_id", face_texture_ids)
+        inject_face_attribute_int(
+            mesh, "mtk_uv_mode", [0 if mode_upper == "ATLAS" else 1] * num_polys
+        )
 
     if face_uv_transforms is not None:
-        flat_transforms = np.asarray(face_uv_transforms, dtype=np.float32).ravel()
+        if isinstance(face_uv_transforms, (list, tuple)):
+            flat_transforms = np.ascontiguousarray(face_uv_transforms, dtype=np.float32).ravel()
+        else:
+            flat_transforms = np.frombuffer(face_uv_transforms, dtype=np.float32)
         inject_face_attribute_float4(mesh, "mtk_uv_tiling_transform", flat_transforms)
         inject_face_attribute_float4(mesh, "mtk_uv_transform", flat_transforms)
 
     if face_uv_rotations is not None:
         inject_face_attribute_float(mesh, "mtk_uv_rotation", face_uv_rotations)
 
-    # Inject per-face animation timing/metrics consumed by MC_Animation_Scheduler_Default
-    # and MC_Animated_UV_Mapping. Static faces receive safe neutral defaults so the
-    # attributes are never absent on an animated-capable material.
-    if face_anim_timing is not None and len(face_anim_timing) >= num_polys:
-        timing = face_anim_timing[:num_polys]
-        sizes = face_anim_frame_size[:num_polys] if face_anim_frame_size is not None and len(face_anim_frame_size) >= num_polys else [[16.0, 16.0, 0.0]] * num_polys
-        inject_face_attribute_vector(
-            mesh, "mtk_anim_timing", [float(v) for t in timing for v in t]
-        )
-        inject_face_attribute_vector(
-            mesh, "mtk_anim_frame_size", [float(v) for s in sizes for v in s]
-        )
-        inject_face_attribute_float(mesh, "mtk_anim_total_frames", [float(t[0]) for t in timing])
-        inject_face_attribute_float(mesh, "mtk_anim_frametime", [float(t[1]) for t in timing])
-        inject_face_attribute_float(mesh, "mtk_anim_interpolate", [float(t[2]) for t in timing])
-        inject_face_attribute_float(mesh, "mtk_anim_frame_width", [float(s[0]) for s in sizes])
-        inject_face_attribute_float(mesh, "mtk_anim_frame_height", [float(s[1]) for s in sizes])
+    # Per-face animation timing/metrics consumed by MC_Animation_Scheduler_Default
+    # and MC_Animated_UV_Mapping.
+    if face_anim_timing is not None:
+        if isinstance(face_anim_timing, (list, tuple)):
+            timing = np.ascontiguousarray(face_anim_timing, dtype=np.float32).ravel()
+        else:
+            timing = np.frombuffer(face_anim_timing, dtype=np.float32)
+        if timing.size >= num_polys * 3:
+            timing = timing[: num_polys * 3]
+            if face_anim_frame_size is None:
+                sizes = np.tile(np.array([16.0, 16.0, 0.0], dtype=np.float32), num_polys)
+            elif isinstance(face_anim_frame_size, (list, tuple)):
+                sizes = np.ascontiguousarray(face_anim_frame_size, dtype=np.float32).ravel()
+            else:
+                sizes = np.frombuffer(face_anim_frame_size, dtype=np.float32)
+            if sizes.size >= num_polys * 3:
+                sizes = sizes[: num_polys * 3]
+                inject_face_attribute_vector(mesh, "mtk_anim_timing", timing)
+                inject_face_attribute_vector(mesh, "mtk_anim_frame_size", sizes)
+                inject_face_attribute_float(
+                    mesh, "mtk_anim_total_frames", np.ascontiguousarray(timing[0::3])
+                )
+                inject_face_attribute_float(
+                    mesh, "mtk_anim_frametime", np.ascontiguousarray(timing[1::3])
+                )
+                inject_face_attribute_float(
+                    mesh, "mtk_anim_interpolate", np.ascontiguousarray(timing[2::3])
+                )
+                inject_face_attribute_float(
+                    mesh, "mtk_anim_frame_width", np.ascontiguousarray(sizes[0::3])
+                )
+                inject_face_attribute_float(
+                    mesh, "mtk_anim_frame_height", np.ascontiguousarray(sizes[1::3])
+                )
 
-    # Inject packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
-    if face_source_keys:
+    # Packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold).
+    if face_source_key_palette is not None and face_source_key_indices is not None:
+        flat_props = compute_flat_material_props_paletted_buffer(
+            face_source_key_palette, face_source_key_indices
+        )
+        inject_face_attribute_float4(mesh, ATTR_MATERIAL_PROPS, flat_props)
+    elif face_source_keys:
         keys = (
             face_source_keys[:num_polys]
             if len(face_source_keys) >= num_polys
@@ -649,18 +775,27 @@ def replace_materials(
     atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
     anim_enabled = animated_textures_enabled(prefs)
 
-    # Step 2: Extract face materials & UVs
-    face_materials, face_loop_ranges, loop_uvs, uv_layer, existing_prov_keys = extract_face_material_context(mesh)
+    # Step 2: Extract face materials & UVs as palette + indices
+    (
+        face_material_palette,
+        face_material_indices,
+        face_loop_ranges,
+        loop_uvs,
+        uv_layer,
+        existing_key_palette,
+        existing_key_indices,
+    ) = extract_face_material_palette_context(mesh)
 
-    # Step 3: Multi-UV remapping & source key resolution
-    remap = remap_face_materials_and_uvs(
+    # Step 3: Palette-native Rust multi-UV remapping + source-key provenance
+    remap = remap_face_materials_and_uvs_paletted(
         baked_atlas=baked_atlas,
-        atlas_data=atlas_data,
-        face_materials=face_materials,
+        face_material_palette=face_material_palette,
+        face_material_indices=face_material_indices,
         loop_uvs=loop_uvs,
         face_loop_ranges=face_loop_ranges,
         origin=origin,
-        existing_prov_keys=existing_prov_keys,
+        existing_key_palette=existing_key_palette,
+        existing_key_indices=existing_key_indices,
         enable_animated_textures=anim_enabled,
     )
 
@@ -676,22 +811,29 @@ def replace_materials(
         manifest_fingerprint=manifest_fingerprint,
     )
 
-    # Step 5: Inject mesh provenance attributes (delegated to bridge/mesh.py)
+    # Step 5: Inject mesh provenance attributes (palette + zero-copy buffers)
     inject_mesh_provenance_attributes(
         mesh=mesh,
-        face_source_keys=remap["face_source_keys"],
+        face_source_key_palette=remap["source_key_palette"],
+        face_source_key_indices=remap["face_source_key_indices"],
         poly_mat_indices=poly_mat_indices,
         face_chunk_ids=remap["face_chunk_ids"],
         face_texture_ids=remap["face_texture_ids"],
         face_uv_transforms=remap["face_uv_transforms"],
-        face_uv_rotations=remap.get("face_uv_rotations", [0.0] * len(mesh.polygons)),
+        face_uv_rotations=remap.get("face_uv_rotations"),
         face_anim_timing=remap.get("face_anim_timing"),
         face_anim_frame_size=remap.get("face_anim_frame_size"),
         mode=mode_upper,
     )
 
-    # Step 6: Compute & apply biome tint attributes
-    resolve_and_apply_biome_tint(mesh_or_obj, mesh, remap["face_source_keys"], biome, base_cache, prefs)
+    # Step 6: Compute & apply biome tint attributes. The palette is expanded to a
+    # flat key list once for the legacy biome API; a palette-native biome path is
+    # the next optimization.
+    source_key_indices = np.frombuffer(remap["face_source_key_indices"], dtype=np.int32)
+    source_key_arr = np.asarray(remap["source_key_palette"], dtype=object)[source_key_indices]
+    resolve_and_apply_biome_tint(
+        mesh_or_obj, mesh, source_key_arr.tolist(), biome, base_cache, prefs
+    )
 
     if hasattr(mesh, "__setitem__"):
         try:
