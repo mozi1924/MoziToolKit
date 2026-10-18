@@ -92,7 +92,7 @@
 # 全平台依赖补齐、元数据校验并打包至 dist/
 python3 build.py
 
-# 仅执行清单元数据校验
+# 仅执行清单元数据校验（不校验 wheel 完整性）
 python3 build.py --validate-only
 
 # 清理并重新拉取全平台依赖 wheel
@@ -104,6 +104,10 @@ python3 build.py --universal
 # 指定外部 Blender 可执行文件路径
 python3 build.py --blender /path/to/blender
 ```
+
+> **发布硬性要求**：`build.py` 会为每个声明平台校验 `wheels/` 中是否存在匹配的 `libmtk_py` abi3 wheel，
+> 并在打包后检查每个 zip 是否真的带上了该 wheel；缺失时构建直接失败。发布 CI 会先通过
+> `.github/workflows/build-release.yml` 的矩阵构建四个平台 wheel，再执行打包。
 
 ### 扩展命令行构建 (Blender CLI)
 ```bash

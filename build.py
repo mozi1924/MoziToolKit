@@ -458,6 +458,57 @@ def is_wheel_for_platform(whl_name: str, platform_id: str) -> bool:
     return False
 
 
+def validate_libmtk_wheels(wheels_dir: Path, platforms: list[str]) -> list[str]:
+    """Return platform ids that do not have a matching libmtk_py native wheel.
+
+    The extension has no pure-Python fallback for its Rust core, so shipping a
+    platform package without its wheel produces an add-on that installs but cannot
+    import live sync, save import, or any mesh/material operation.
+    """
+    wheels = sorted(wheels_dir.glob("*.whl")) if wheels_dir.exists() else []
+    libmtk_wheels = [w for w in wheels if w.name.lower().startswith("libmtk_py")]
+    missing: list[str] = []
+    for platform_id in platforms:
+        if not any(is_wheel_for_platform(w.name, platform_id) for w in libmtk_wheels):
+            missing.append(platform_id)
+    return missing
+
+
+def verify_output_packages(
+    output_dir: Path,
+    ext_id: str,
+    ext_version: str,
+    platforms: list[str],
+) -> list[str]:
+    """Verify that every produced platform zip contains its own libmtk_py wheel."""
+    problems: list[str] = []
+    for platform_id in platforms:
+        zip_name = f"{ext_id}-{ext_version}-{platform_id.replace('-', '_')}.zip"
+        zip_path = output_dir / zip_name
+        if not zip_path.exists():
+            problems.append(f"{platform_id}: missing package {zip_name}")
+            continue
+        try:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                bundled = [
+                    os.path.basename(n)
+                    for n in zf.namelist()
+                    if n.startswith("wheels/") and n.endswith(".whl")
+                ]
+        except Exception as e:
+            problems.append(f"{platform_id}: cannot inspect {zip_name}: {e}")
+            continue
+        if not any(
+            name.lower().startswith("libmtk_py") and is_wheel_for_platform(name, platform_id)
+            for name in bundled
+        ):
+            problems.append(
+                f"{platform_id}: {zip_name} has no matching libmtk_py wheel "
+                f"(bundled={bundled or 'none'})"
+            )
+    return problems
+
+
 def build_fallback_split_packages(project_dir: str, output_dir: str, ext_id: str, ext_version: str, platforms: list[str], exclude_patterns: list[str]):
     """Pure Python fallback for splitting packages per platform if Blender CLI is not present."""
     base_files = get_files_to_package_fallback(project_dir, exclude_patterns)
@@ -520,6 +571,11 @@ def main():
     parser.add_argument("--universal", action="store_true", help="Also build universal package containing all wheels")
     parser.add_argument("--validate-only", action="store_true", help="Validate manifest only without building")
     parser.add_argument("--fallback-only", action="store_true", help="Force pure Python packaging without Blender CLI")
+    parser.add_argument(
+        "--allow-missing-wheels",
+        action="store_true",
+        help="Development only: allow packaging platforms without a matching libmtk_py wheel",
+    )
     args = parser.parse_args()
 
     project_dir = Path(__file__).parent.resolve()
@@ -570,6 +626,27 @@ def main():
 
     # Step 2: Synchronize Manifest wheels list
     sync_manifest_wheels(project_dir, wheels_dir)
+
+    # Step 2b: Every declared platform must have a native libmtk_py wheel.
+    # --validate-only intentionally checks the manifest only; wheel completeness is
+    # a packaging gate because a source checkout has no generated wheels.
+    if not args.validate_only:
+        missing_wheels = validate_libmtk_wheels(wheels_dir, platforms)
+        if missing_wheels:
+            message = (
+                "No matching libmtk_py wheel for declared platform(s): "
+                + ", ".join(missing_wheels)
+            )
+            if args.allow_missing_wheels:
+                print(f"⚠️ {message} (allowed by --allow-missing-wheels)")
+            else:
+                print(f"❌ {message}")
+                print(
+                    "   Put the platform abi3 wheels into MoziToolKit/wheels/ before packaging. "
+                    "Use --build-libmtk for the host platform, or let the release workflow "
+                    "download the cross-platform wheel artifacts."
+                )
+                sys.exit(1)
 
     # Step 3: Validate Extension
     if blender_bin and not args.fallback_only:
@@ -625,6 +702,16 @@ def main():
 
     # Step 5: Summary
     summarize_output(str(output_dir))
+
+    # Step 6: Fail the build if any platform zip is missing its native wheel.
+    if not args.allow_missing_wheels:
+        package_problems = verify_output_packages(output_dir, ext_id, ext_version, platforms)
+        if package_problems:
+            print("❌ Output package validation failed:")
+            for problem in package_problems:
+                print(f"   - {problem}")
+            sys.exit(1)
+        print("✅ Every platform package contains its matching libmtk_py wheel.")
 
 
 if __name__ == "__main__":

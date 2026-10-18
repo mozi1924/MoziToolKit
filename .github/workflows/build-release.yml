@@ -17,6 +17,11 @@ on:
         type: string
         required: false
         default: ''
+      libmtk_ref:
+        description: 'libmozitoolkit git ref used to build the native wheels'
+        type: string
+        required: true
+        default: 'main'
 
 env:
   # Temporary CI mirror (see .github/workflows/ci.yml). Falls back to blender.org.
@@ -27,15 +32,77 @@ permissions:
   contents: write
 
 jobs:
+  build-libmtk-wheels:
+    name: Build libmtk_py wheel (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    steps:
+      - name: Checkout libmozitoolkit
+        uses: actions/checkout@v4
+        with:
+          repository: mozi1924/libmozitoolkit
+          ref: ${{ inputs.libmtk_ref || 'main' }}
+          path: libmozitoolkit
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install maturin
+        shell: bash
+        run: python -m pip install --upgrade pip maturin
+
+      - name: Build abi3 wheel
+        shell: bash
+        working-directory: libmozitoolkit
+        run: |
+          mkdir -p "${{ github.workspace }}/wheel-out"
+          maturin build --release \
+            --target "${{ matrix.target }}" \
+            --out "${{ github.workspace }}/wheel-out" \
+            -m bindings/mtk-py/Cargo.toml
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: libmtk-wheel-${{ matrix.target }}
+          path: wheel-out/*.whl
+          if-no-files-found: error
+
   build-and-release:
     name: Build Multi-Platform Packages & Release
+    needs: build-libmtk-wheels
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout MoziToolKit
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download all native wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: libmtk-wheel-*
+          path: wheels
+          merge-multiple: true
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -56,7 +123,8 @@ jobs:
             libxrender1 \
             libxkbcommon0 \
             libsm6 \
-            libxext6
+            libxext6 \
+            unzip
 
       - name: Download & Install Blender
         run: |
@@ -75,18 +143,22 @@ jobs:
 
       - name: Build & Package Extension
         run: |
-          python3 build.py --blender /opt/blender/blender --clean-wheels --download-deps
+          set -euo pipefail
+          # build.py validates that every declared platform has its native wheel
+          # and verifies the produced zips afterwards.
+          python3 build.py --blender /opt/blender/blender
 
-      - name: Install Rust (libmtk wheel fallback)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Fetch libmtk_py wheel & test dependencies
+      - name: Prepare Linux test environment
         run: |
           set -euo pipefail
-          python3 -m pip install --upgrade pip pytest maturin
-          bash .github/scripts/fetch_libmtk_wheel.sh wheel ""
           python3 -m venv .venv-test
-          .venv-test/bin/pip install --upgrade pip pytest wheel/*.whl
+          .venv-test/bin/pip install --upgrade pip pytest
+          linux_wheel="$(ls wheels/libmtk_py-*manylinux*.whl | head -n 1)"
+          if [ -z "$linux_wheel" ]; then
+            echo "::error::No Linux libmtk_py wheel was downloaded"
+            exit 1
+          fi
+          .venv-test/bin/pip install "$linux_wheel"
           echo "SITE_PACKAGES=$(.venv-test/bin/python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_ENV"
 
       - name: Download real Minecraft assets

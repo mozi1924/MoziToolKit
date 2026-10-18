@@ -65,4 +65,10 @@ paths_exclude_pattern = [
   "docs/",
   "build.py",
   ".gitignore",
+  ".github/",
+  ".pytest_cache/",
+  ".blender-test-config/",
+  "MagicMock/",
+  "tools/",
+  "*.md",
 ]
