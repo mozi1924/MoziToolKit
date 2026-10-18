@@ -395,12 +395,16 @@ def compute_flat_material_props_buffer(
 ) -> Any:
     """Compute flat material properties as a zero-copy memoryview over Rust-owned floats."""
     mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "compute_flat_material_props_memoryview"):
-        return np.zeros(len(face_source_keys) * 4, dtype=np.float32)
-    return mtk.compute_flat_material_props_memoryview(
-        list(face_source_keys),
-        list(block_names) if block_names is not None else None,
-    )
+    keys = list(face_source_keys)
+    names = list(block_names) if block_names is not None else None
+    if mtk is not None and hasattr(mtk, "compute_flat_material_props_memoryview"):
+        return mtk.compute_flat_material_props_memoryview(keys, names)
+    # Older native builds (e.g. a stale ci-latest wheel) lack the memoryview entry
+    # point. Do not silently zero emission/thin-wall/transmission: use the list API
+    # and expose it as a contiguous f32 array, which also supports the buffer protocol.
+    if mtk is not None and hasattr(mtk, "compute_flat_material_props"):
+        return np.asarray(mtk.compute_flat_material_props(keys, names), dtype=np.float32)
+    return np.zeros(len(keys) * 4, dtype=np.float32)
 
 
 def compute_flat_material_props_paletted_buffer(
@@ -410,13 +414,30 @@ def compute_flat_material_props_paletted_buffer(
 ) -> Any:
     """Compute flat material properties for a palette + per-face indices as a memoryview."""
     mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "compute_flat_material_props_paletted_memoryview"):
-        return np.zeros(len(face_indices) * 4, dtype=np.float32)
-    return mtk.compute_flat_material_props_paletted_memoryview(
-        list(palette),
-        face_indices,
-        list(block_names) if block_names is not None else None,
-    )
+    palette_list = list(palette)
+    names = list(block_names) if block_names is not None else None
+    if mtk is not None and hasattr(mtk, "compute_flat_material_props_paletted_memoryview"):
+        # Keep the indices buffer (numpy / memoryview) zero-copy on the fast path.
+        return mtk.compute_flat_material_props_paletted_memoryview(
+            palette_list,
+            face_indices,
+            names,
+        )
+    if mtk is not None and hasattr(mtk, "compute_flat_material_props"):
+        indices = [int(i) for i in face_indices]
+        expanded = [
+            palette_list[i] if 0 <= i < len(palette_list) else "" for i in indices
+        ]
+        flat_block_names = None
+        if names is not None:
+            flat_block_names = [
+                names[i] if i < len(names) else "" for i in range(len(expanded))
+            ]
+        return np.asarray(
+            mtk.compute_flat_material_props(expanded, flat_block_names),
+            dtype=np.float32,
+        )
+    return np.zeros(len(face_indices) * 4, dtype=np.float32)
 
 
 def get_material_props(

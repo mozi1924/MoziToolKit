@@ -28,8 +28,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Rust is only a fallback for building libmtk_py when the ci-latest wheel is
+      # unavailable. Do not use Swatinem/rust-cache here: this repository has no
+      # Cargo.toml, so its cargo metadata probe fails with exit code 101.
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
 
       - uses: actions/setup-python@v5
         with:
@@ -64,8 +66,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Rust is only a fallback for building libmtk_py when the ci-latest wheel is
+      # unavailable. Do not use Swatinem/rust-cache here: this repository has no
+      # Cargo.toml, so its cargo metadata probe fails with exit code 101.
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
 
       - uses: actions/setup-python@v5
         with:

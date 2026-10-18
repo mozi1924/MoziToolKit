@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 CI 与发布校验修复
+- 修复 `blender_manifest.toml` 的 `tagline` 超过 Blender 扩展规范 64 字符上限，导致 `build.py --validate-only` 与发布构建失败；`bl_info.description` 同步收敛为同一文案。
+- `compute_flat_material_props_buffer` / `compute_flat_material_props_paletted_buffer` 在旧版 `libmtk_py` 缺少 memoryview 入口时不再静默返回全零，而是回退到列表 API（paletted 路径展开为逐面 key），保留 emission / thin wall / transmission 等物理属性。
+- CI 移除无效的 `Swatinem/rust-cache`：MoziToolKit 仓库没有 `Cargo.toml`，该 action 的 `cargo metadata` 探测会以 101 退出；Rust 工具链仍保留，用于 `ci-latest` wheel 不可用时的源码回退构建。
+- 材质属性测试显式加载 `configs/material_properties.json`，不再依赖前序测试留下的全局注册表状态。
+
 ### 🌍 3D World Biome 预设与面板显示修复
 - **修复 WORLD → 其他预设 → WORLD 后草方块永久失去染色**：Live Sync 网格此前为省内存跳过逐面 `mtk_source_texture_key`，但调色板注入也藏在该字符串分支里，导致网格既没有字符串也没有 `mtk_source_textures` + `mtk_source_texture_idx`；Biome 重算只能从 Atlas Chunk 材质名反推来源，把所有面的 tint type 写成 `0`。现在来源贴图统一为 palette 契约：Rust 新增 `MeshData.source_texture_palette_indices()`，`inject_custom_attributes` 无论 `skip_string_attributes` 取值都会写入调色板 + INT 索引，逐面字符串仅保留为 ≤256 面的兼容层。存档导入与 Live Sync 的属性集合因此完全一致。
 - 删除“从 Atlas Chunk 材质名推导来源键”的破坏性回退；当网格没有任何真实 provenance 时拒绝覆盖 tint，避免旧文件被二次写坏。
