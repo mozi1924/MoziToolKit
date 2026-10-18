@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **重建体素网格收紧来源要求**：存档容器与离线 Live Sync 必须存在伴生体素点云；活跃 Live Sync 会话仍可直接从内存 storage 重建，无需等待点云；仅有材质来源属性（provenance）的外部网格不再被误判为可重建对象。
 - 修复存档复用已有网格时未补齐 `mtk:is_save_mesh` 标记的问题，并同步写入来源标记。
 
+### 🧵 外部网格多 UV 与无损重贴
+- 外部导入网格首次替换材质时保留原始 `UVMap`，新建 `MTK_Atlas` 并自动切换为活动/渲染 UV；Atlas 材质只引用 `MTK_Atlas`，原始 local UV 不再被覆盖。
+- 新增 `mtk:local_uv_layer` / `mtk:atlas_uv_layer` / `mtk:atlas_layout_hash` 网格属性。布局哈希只覆盖 UV 相关字段（sprite `uv_bounds`、atlas 路由、chunk 几何），贴图像素变化不会使 UV 失效。
+- **复用优先**：图集布局未变化时直接复用现有 `MTK_Atlas` UV，仅重绑材质/重载贴图；布局变化时才从保留的 local UV 重新映射。`Reuse Atlas UVs` 开关可强制重贴。
+- 旧版单 UV 外部网格自动识别为 legacy atlas-only 并复用现有 UV；若检测到材质包变化则提示重新导入，避免用错误 UV 静默重贴。
+- 材质新增 `mtk_uv_map_name` 校验，旧材质在 UV Map 名称变化时自动重建 UV Map 节点，避免继续采样错误的 UV 层。
+- 外部网格的 Atlas 材质使用独立命名空间 `MTK:Atlas:Ext:*`，避免与 MTK 网格共享的 `MTK:Atlas:*` 材质因 UV Map 名称不同而互相覆盖。
+- 新增 `tests/test_uv_layers.py` 与 Blender 宿主多 UV 回归测试。
+
 ### 🐛 草方块侧面 Overlay 染色修复
 - 图集基色与其 `_overlay` 伴生层共享同一个 `texture_id`；反向 id→key 表此前是 last-write-wins，会把 `grass_block_side` 解析成 `grass_block_side_overlay`，使该面拿到 base tint weight = 1，整个泥土侧面被草色染色。
 - 现在反向解析优先选择非 `_overlay` 的基色 key（与 sprite 顺序无关）；再次执行替换材质时会自动纠正旧网格中被写错的 provenance。

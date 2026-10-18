@@ -204,13 +204,17 @@ def build_atlas_chunk_material(
         mat_name = f"MTK:Atlas:{category}:{category_chunk_index:03}"
 
     mat = bpy.data.materials.get(mat_name)
+    target_uv_map = uv_map_name or "UVMap"
     is_stale_fingerprint = bool(
         mat is not None
         and stack_fingerprint
         and mat.get("mtk_stack_fingerprint") != stack_fingerprint
     )
     if not force_rebuild and not is_stale_fingerprint and mat is not None and getattr(mat, "node_tree", None) and len(mat.node_tree.nodes) > 0:
-        if mat.get("mtk_atlas_chunk_id") == chunk_id:
+        if (
+            mat.get("mtk_atlas_chunk_id") == chunk_id
+            and mat.get("mtk_uv_map_name", "UVMap") == target_uv_map
+        ):
             return mat
 
     image_reload_needed = force_rebuild or is_stale_fingerprint
@@ -224,6 +228,7 @@ def build_atlas_chunk_material(
     mat["mtk_atlas_chunk_id"] = chunk_id
     mat["mtk_atlas_chunk_index"] = category_chunk_index
     mat["mtk_is_animated"] = is_animated
+    mat["mtk_uv_map_name"] = target_uv_map
     mat["mtk_has_overlay"] = bool(overlay_path and os.path.exists(str(overlay_path)))
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
@@ -259,7 +264,7 @@ def build_atlas_chunk_material(
     uv_node = nodes.new("ShaderNodeUVMap")
     uv_node.name = "UV Map"
     uv_node.location = (-2200, 150)
-    uv_node.uv_map = uv_map_name or "UVMap"
+    uv_node.uv_map = target_uv_map
     uv_node.parent = frame_uv
 
     target_uv_output = uv_node.outputs["UV"]

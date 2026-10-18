@@ -57,6 +57,11 @@ def _write_dummy_png(path: Path):
         path.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
 
 
+def _read_loop_uvs(layer):
+    """Read a UV layer as rounded per-loop tuples."""
+    return [tuple(round(float(v), 6) for v in loop.uv) for loop in layer.data]
+
+
 class TestMaterialPipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -173,6 +178,13 @@ class TestMaterialPipeline(unittest.TestCase):
         # Give it a material slot named "grass_block_top"
         src_mat = bpy.data.materials.new(name="minecraft:block/grass_block_top")
         mesh.materials.append(src_mat)
+        self.addCleanup(lambda: bpy.data.objects.remove(obj, do_unlink=True) if obj.name in bpy.data.objects else None)
+        self.addCleanup(lambda: bpy.data.materials.remove(src_mat) if src_mat.name in bpy.data.materials else None)
+        self.addCleanup(
+            lambda: bpy.data.materials.remove(bpy.data.materials["MTK:Atlas:Ext:blocks:001"])
+            if "MTK:Atlas:Ext:blocks:001" in bpy.data.materials
+            else None
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"
@@ -237,7 +249,7 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
                 self.assertIn(ATTR_COLORMAP_UV, mesh.attributes)
                 self.assertIn(ATTR_MATERIAL_PROPS, mesh.attributes)
-                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
 
                 # Verify Badlands Biome attributes
@@ -256,11 +268,114 @@ class TestMaterialPipeline(unittest.TestCase):
                 restore_res = restore_materials_from_provenance(obj, mode="ATLAS")
                 self.assertTrue(restore_res["success"])
                 self.assertEqual(len(mesh.materials), 1)
-                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
 
 
+
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_multi_uv_atlas_layer_roundtrip(self):
+        """Local UVs stay untouched; atlas UVs live in MTK_Atlas and are reused when the layout is unchanged."""
+        bpy.ops.mesh.primitive_cube_add(size=2.0)
+        obj = bpy.context.active_object
+        mesh = obj.data
+        for loop in mesh.uv_layers["UVMap"].data:
+            loop.uv = (0.25, 0.75)
+        local_before = _read_loop_uvs(mesh.uv_layers["UVMap"])
+
+        src_mat = bpy.data.materials.new(name="mtk:minecraft:block/stone:0badf00d")
+        mesh.materials.append(src_mat)
+        self.addCleanup(lambda: bpy.data.objects.remove(obj, do_unlink=True) if obj.name in bpy.data.objects else None)
+        self.addCleanup(lambda: bpy.data.materials.remove(src_mat) if src_mat.name in bpy.data.materials else None)
+        for atlmat_name in ("MTK:Atlas:Ext:blocks:001", "MTK:Atlas:Ext:anim:blocks:001"):
+            self.addCleanup(
+                lambda n=atlmat_name: bpy.data.materials.remove(bpy.data.materials[n])
+                if n in bpy.data.materials
+                else None
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            atlas_dir = cache_dir / "atlas"
+            colormaps_dir = cache_dir / "colormaps"
+            atlas_dir.mkdir(parents=True, exist_ok=True)
+            colormaps_dir.mkdir(parents=True, exist_ok=True)
+            _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
+            _write_dummy_png(colormaps_dir / "grass.png")
+
+            from bridge.engine import get_libmtk
+            mtk = get_libmtk()
+            if mtk and hasattr(mtk, "create_test_cache_package"):
+                mtk.create_test_cache_package(str(cache_dir / "multiuvfp.mtkcache"), "multiuvfp", 0)
+
+            atlas_mapping = {
+                "chunks": [{
+                    "chunk_id": 0, "category": "blocks", "is_animated": False,
+                    "category_chunk_index": 1, "width": 64, "height": 64,
+                    "has_normal": False, "has_specular": False,
+                }],
+                "sprites": {
+                    "minecraft:block/stone": {
+                        "chunk_id": 0, "category": "blocks", "is_animated": False,
+                        "texture_id": 1,
+                        "uv_bounds": [0.0, 0.0, 0.25, 0.25],
+                        "frame_0_uv_bounds": [0.0, 0.0, 0.25, 0.25],
+                        "local_uv_bounds": [0.0, 0.0, 1.0, 1.0],
+                        "pixel_rect": [0, 0, 16, 16],
+                        "frame_size": [16, 16],
+                        "frame_count": 1,
+                        "has_normal": False, "has_specular": False,
+                    }
+                },
+            }
+            (atlas_dir / "atlas_mapping.json").write_text(json.dumps(atlas_mapping), encoding="utf-8")
+
+            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), \
+                 patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+                res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
+                self.assertTrue(res["success"])
+                self.assertFalse(res["reused_atlas_uvs"])
+
+                mesh = obj.data
+                self.assertEqual([layer.name for layer in mesh.uv_layers], ["UVMap", "MTK_Atlas"])
+                self.assertEqual(mesh.uv_layers.active.name, "MTK_Atlas")
+                self.assertEqual(mesh["mtk:local_uv_layer"], "UVMap")
+                self.assertEqual(mesh["mtk:atlas_uv_layer"], "MTK_Atlas")
+                self.assertTrue(mesh.get("mtk:atlas_layout_hash"))
+                self.assertEqual(_read_loop_uvs(mesh.uv_layers["UVMap"]), local_before)
+
+                atlas_uvs = [tuple(loop.uv) for loop in mesh.uv_layers["MTK_Atlas"].data]
+                self.assertTrue(all(0.0 <= u <= 0.25 and 0.0 <= v <= 0.25 for u, v in atlas_uvs))
+                self.assertNotEqual(atlas_uvs[0], (0.25, 0.75))
+
+                atlas_mat = mesh.materials[0]
+                uv_nodes = [node for node in atlas_mat.node_tree.nodes if node.type == "UVMAP"]
+                self.assertEqual(len(uv_nodes), 1)
+                self.assertEqual(uv_nodes[0].uv_map, "MTK_Atlas")
+                self.assertEqual(atlas_mat["mtk_uv_map_name"], "MTK_Atlas")
+
+                # Same atlas layout: reuse the atlas map and only rebind materials.
+                res_reuse = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
+                self.assertTrue(res_reuse.get("reused_atlas_uvs"))
+                self.assertEqual(_read_loop_uvs(obj.data.uv_layers["UVMap"]), local_before)
+
+                # Forced remap: re-project from local UVs, local layer still untouched.
+                res_force = replace_materials(
+                    obj, mode="ATLAS", origin="AUTO", biome="PLAINS", force_remap=True
+                )
+                self.assertFalse(res_force.get("reused_atlas_uvs"))
+                self.assertEqual(_read_loop_uvs(obj.data.uv_layers["UVMap"]), local_before)
+
+                # Layout change: never reuse the old atlas UVs.
+                with patch(
+                    "utils.materials.pipeline.compute_atlas_layout_hash",
+                    return_value="v1:layout-changed",
+                ):
+                    res_changed = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
+                self.assertFalse(res_changed.get("reused_atlas_uvs"))
+                self.assertEqual(_read_loop_uvs(obj.data.uv_layers["UVMap"]), local_before)
+                self.assertEqual(obj.data["mtk:atlas_layout_hash"], "v1:layout-changed")
 
     def test_material_props_memoryview_is_flat_f32_buffer(self):
         """Rust-owned material props memoryview must expose exactly len(keys) * 4 floats."""
@@ -285,6 +400,13 @@ class TestMaterialPipeline(unittest.TestCase):
 
         hashed_mat = bpy.data.materials.new(name="mtk:minecraft:grass_block_top:8d09ec43b668")
         mesh.materials.append(hashed_mat)
+        self.addCleanup(lambda: bpy.data.objects.remove(obj, do_unlink=True) if obj.name in bpy.data.objects else None)
+        self.addCleanup(lambda: bpy.data.materials.remove(hashed_mat) if hashed_mat.name in bpy.data.materials else None)
+        self.addCleanup(
+            lambda: bpy.data.materials.remove(bpy.data.materials["MTK:Atlas:Ext:blocks:001"])
+            if "MTK:Atlas:Ext:blocks:001" in bpy.data.materials
+            else None
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = Path(tmpdir) / "cache"

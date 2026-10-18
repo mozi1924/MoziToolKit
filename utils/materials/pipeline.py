@@ -156,6 +156,16 @@ if "ATTR_MATERIAL_PROPS" not in globals():
     ATTR_COLORMAP_UV = "mtk_colormap_uv"
     ATTR_MATERIAL_PROPS = "mtk_material_props"
 
+from .uv_layers import (
+    compute_atlas_layout_hash,
+    detect_legacy_atlas_mesh,
+    find_local_uv_layer,
+    get_stored_layout_hash,
+    read_uv_layer,
+    resolve_uv_layers,
+    set_stored_layout_hash,
+)
+
 
 def animated_textures_enabled(prefs: Optional[Any] = None) -> bool:
     """Read the animated-texture preference with a safe True fallback."""
@@ -219,6 +229,7 @@ def load_material_cache_context(
 
 def extract_face_material_palette_context(
     mesh: Any,
+    uv_layer: Optional[Any] = None,
 ) -> Tuple[
     List[str],
     Any,
@@ -231,6 +242,9 @@ def extract_face_material_palette_context(
     """
     Extract face material names as a compact palette + per-face indices.
 
+    ``uv_layer`` must be the preserved local UV map for external meshes. When
+    omitted, the local map is resolved without creating an atlas map.
+
     Returns:
         (palette, indices, face_loop_ranges, loop_uvs, uv_layer,
          existing_key_palette, existing_key_indices)
@@ -240,12 +254,12 @@ def extract_face_material_palette_context(
     num_polys = len(mesh.polygons)
     num_loops = len(mesh.loops)
 
-    uv_layer = mesh.uv_layers.active or (mesh.uv_layers[0] if len(mesh.uv_layers) > 0 else None)
+    if uv_layer is None:
+        uv_layer = find_local_uv_layer(mesh)
     if uv_layer is None:
         uv_layer = mesh.uv_layers.new(name="UVMap")
 
-    loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
-    uv_layer.data.foreach_get("uv", loop_uvs)
+    loop_uvs = read_uv_layer(uv_layer, num_loops)
 
     existing_key_palette, existing_key_indices = resolve_source_texture_keys_paletted(mesh)
     if len(existing_key_indices) != num_polys:
@@ -365,6 +379,8 @@ def assign_atlas_chunk_materials(
     atlas_uvs: Optional[List[float]],
     colormaps: Dict[str, Path],
     manifest_fingerprint: Optional[str],
+    force_rebuild_materials: bool = False,
+    material_namespace: Optional[str] = None,
 ) -> array.array:
     """
     Step 4A: Construct Atlas Chunk materials, assign to mesh material slots, and optionally set Atlas UVs.
@@ -400,6 +416,16 @@ def assign_atlas_chunk_materials(
         overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
         chunk_width = float(cm.get("width", 1024))
         chunk_height = float(cm.get("height", 512))
+        uv_map_name = uv_layer.name if uv_layer else "UVMap"
+        material_name = None
+        if material_namespace == "EXT" or uv_map_name != "UVMap":
+            # External meshes sample MTK_Atlas instead of the native UVMap. Use a
+            # separate material namespace so they never share (and fight over) the
+            # global chunk materials used by MTK-generated meshes.
+            if is_anim:
+                material_name = f"MTK:Atlas:Ext:anim:{cat}:{c_idx:03}"
+            else:
+                material_name = f"MTK:Atlas:Ext:{cat}:{c_idx:03}"
 
         mat = build_atlas_chunk_material(
             chunk_id=chunk_id,
@@ -416,7 +442,9 @@ def assign_atlas_chunk_materials(
             atlas_height=chunk_height,
             tile_width=16.0,
             tile_height=16.0,
-            uv_map_name=uv_layer.name if uv_layer else "UVMap",
+            uv_map_name=uv_map_name,
+            material_name=material_name,
+            force_rebuild=force_rebuild_materials,
         )
         mesh.materials.append(mat)
         chunk_to_slot[chunk_id] = slot_idx
@@ -620,15 +648,60 @@ def resolve_and_apply_biome_tint(
 # Primary Public Pipeline Orchestrators
 # =============================================================================
 
+def _needs_animation_reconcile(mesh: Any, prefs: Optional[Any] = None) -> bool:
+    """Decide whether static/animated routing must be re-resolved."""
+    anim_enabled = animated_textures_enabled(prefs)
+    stored = mesh.get("mtk_enable_animated_textures", None) if hasattr(mesh, "get") else None
+    if stored is not None:
+        return bool(stored) != anim_enabled
+    return not (hasattr(mesh, "attributes") and "mtk_anim_timing" in mesh.attributes)
+
+
+def _material_stack_fingerprint(mesh: Any) -> Optional[str]:
+    """Read the stack fingerprint recorded on the first Atlas material."""
+    for material in getattr(mesh, "materials", []) or []:
+        if material is None:
+            continue
+        value = material.get("mtk_stack_fingerprint") if hasattr(material, "get") else None
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _is_external_object(obj: Any) -> bool:
+    """Best-effort ownership check used to pick the external material namespace."""
+    if obj is None:
+        return False
+    try:
+        from ..mesh.ownership import ORIGIN_EXTERNAL, classify_origin
+    except (ImportError, ValueError):
+        try:
+            from utils.mesh.ownership import ORIGIN_EXTERNAL, classify_origin
+        except (ImportError, ValueError):
+            return False
+    try:
+        return classify_origin(obj) == ORIGIN_EXTERNAL
+    except Exception:
+        return False
+
+
 def replace_materials(
     mesh_or_obj: Any,
     mode: str = "ATLAS",
     origin: str = "AUTO",
     biome: str = "PLAINS",
     prefs: Optional[Any] = None,
+    force_remap: bool = False,
+    reconcile_animation: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Executes end-to-end material replacement on a Blender mesh object using libmtk Rust backend.
+
+    External meshes keep their original local UV map and receive a separate
+    ``MTK_Atlas`` UV map. When the atlas layout is unchanged (same sprite rects,
+    routing and chunk geometry), the existing atlas UVs are reused and only the
+    materials/textures are rebound. When the layout changes, atlas UVs are
+    re-mapped from the preserved local UVs.
 
     Args:
         mesh_or_obj: A `bpy.types.Object` (type MESH) or `bpy.types.Mesh`.
@@ -636,6 +709,9 @@ def replace_materials(
         origin: Format heuristic - "AUTO", "MINEWAYS", "JMC2OBJ", "ICE_CUBE", "GENERIC".
         biome: Biome preset name (e.g. "PLAINS", "BADLANDS", "DESERT").
         prefs: Add-on preferences reference.
+        force_remap: Re-map atlas UVs from local UVs even when the layout matches.
+        reconcile_animation: Override animation routing reconciliation. Defaults
+            to comparing the stored routing marker with the current preference.
 
     Returns:
         Summary dict containing processed face count, material slots, unmapped count, etc.
@@ -656,19 +732,111 @@ def replace_materials(
 
     atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
     anim_enabled = animated_textures_enabled(prefs)
+    num_polys = len(mesh.polygons)
+    current_layout_hash = compute_atlas_layout_hash(atlas_data)
+    stored_layout_hash = get_stored_layout_hash(mesh)
 
-    # Step 2: Extract face materials & UVs as palette + indices
+    # Step 2: Resolve the preserved local UV map and the atlas UV map.
+    legacy_atlas = detect_legacy_atlas_mesh(mesh)
+    local_uv_layer, atlas_uv_layer, atlas_created = resolve_uv_layers(
+        mesh,
+        create_atlas=not legacy_atlas,
+        activate=True,
+        legacy_atlas=legacy_atlas,
+    )
+    if local_uv_layer is None and not legacy_atlas:
+        # A mesh may have lost its local layer after an earlier atlas-only run.
+        legacy_atlas = True
+    if atlas_uv_layer is None:
+        return {"success": False, "message": "Mesh has no UV map to store Atlas coordinates."}
+
+    provenance_palette, provenance_indices = resolve_source_texture_keys_paletted(mesh)
+    has_provenance = len(provenance_indices) == num_polys and len(provenance_palette) > 0
+    same_layout = bool(stored_layout_hash) and stored_layout_hash == current_layout_hash
+
+    # Fast path: keep the existing atlas UVs and only rebind materials.
+    if (
+        not force_remap
+        and has_provenance
+        and atlas_uv_layer is not None
+        and not atlas_created
+        and (same_layout or legacy_atlas)
+    ):
+        if legacy_atlas and not same_layout:
+            material_fp = _material_stack_fingerprint(mesh)
+            if (
+                not material_fp
+                or not manifest_fingerprint
+                or material_fp != manifest_fingerprint
+            ):
+                return {
+                    "success": False,
+                    "message": (
+                        "Material pack changed but this mesh has no preserved local UV map. "
+                        "Re-import the mesh before replacing materials."
+                    ),
+                }
+
+        needs_reconcile = (
+            _needs_animation_reconcile(mesh, prefs)
+            if reconcile_animation is None
+            else bool(reconcile_animation)
+        )
+        try:
+            restored = restore_materials_from_provenance(
+                mesh_or_obj,
+                mode=mode,
+                biome=biome,
+                prefs=prefs,
+                reconcile_animation=needs_reconcile,
+                enable_animated_textures=anim_enabled,
+                atlas_uv_layer=atlas_uv_layer,
+                layout_hash=current_layout_hash,
+                material_namespace="EXT",
+            )
+        except Exception as exc:
+            logger.warning("Atlas UV reuse raised %s; re-mapping from local UVs.", exc)
+            restored = {"success": False, "message": str(exc)}
+        if restored.get("success"):
+            set_stored_layout_hash(mesh, current_layout_hash)
+            # Normalize the restore summary to the replace_materials contract.
+            restored["face_count"] = num_polys
+            restored["materials_count"] = len(mesh.materials)
+            restored["unmapped_faces"] = 0
+            restored["mode"] = mode_upper
+            restored["reused_atlas_uvs"] = True
+            restored["legacy_atlas_only"] = bool(legacy_atlas)
+            restored["atlas_uv_layer"] = getattr(atlas_uv_layer, "name", "")
+            if local_uv_layer is not None:
+                restored["local_uv_layer"] = getattr(local_uv_layer, "name", "")
+            return restored
+
+        logger.warning(
+            "Atlas UV reuse failed (%s); re-mapping from local UVs.",
+            restored.get("message"),
+        )
+
+    if local_uv_layer is None:
+        return {
+            "success": False,
+            "message": (
+                "This mesh has no preserved local UV map. Re-import the external mesh "
+                "to enable lossless atlas re-mapping."
+            ),
+        }
+
+    # Step 3: Extract face materials & local UVs as palette + indices
     (
         face_material_palette,
         face_material_indices,
         face_loop_ranges,
         loop_uvs,
-        uv_layer,
+        _local_uv_layer,
         existing_key_palette,
         existing_key_indices,
-    ) = extract_face_material_palette_context(mesh)
+    ) = extract_face_material_palette_context(mesh, uv_layer=local_uv_layer)
 
-    # Step 3: Palette-native Rust multi-UV remapping + source-key provenance
+    # Step 4: Palette-native Rust multi-UV remapping + source-key provenance
     remap = remap_face_materials_and_uvs_paletted(
         baked_atlas=baked_atlas,
         face_material_palette=face_material_palette,
@@ -681,19 +849,23 @@ def replace_materials(
         enable_animated_textures=anim_enabled,
     )
 
-    # Step 4: Construct and assign materials
+    # Step 5: Construct and assign materials into the atlas UV map
+    layout_changed = bool(stored_layout_hash) and stored_layout_hash != current_layout_hash
     poly_mat_indices = assign_atlas_chunk_materials(
         mesh=mesh,
-        uv_layer=uv_layer,
+        uv_layer=atlas_uv_layer,
         atlas_data=atlas_data,
         atlas_dir=atlas_dir,
         face_chunk_ids=remap["face_chunk_ids"],
         atlas_uvs=remap["atlas_uvs"],
         colormaps=colormaps,
         manifest_fingerprint=manifest_fingerprint,
+        force_rebuild_materials=layout_changed,
+        material_namespace="EXT",
     )
+    set_stored_layout_hash(mesh, current_layout_hash)
 
-    # Step 5: Inject mesh provenance attributes (palette + zero-copy buffers)
+    # Step 6: Inject mesh provenance attributes (palette + zero-copy buffers)
     inject_mesh_provenance_attributes(
         mesh=mesh,
         face_source_key_palette=remap["source_key_palette"],
@@ -708,7 +880,7 @@ def replace_materials(
         mode=mode_upper,
     )
 
-    # Step 6: Compute & apply biome tint attributes. The palette is expanded to a
+    # Step 7: Compute & apply biome tint attributes. The palette is expanded to a
     # flat key list once for the legacy biome API; a palette-native biome path is
     # the next optimization.
     source_key_indices = np.frombuffer(remap["face_source_key_indices"], dtype=np.int32)
@@ -734,6 +906,10 @@ def replace_materials(
         "unmapped_faces": remap["unmapped_faces"],
         "animated_faces": animated_faces,
         "enable_animated_textures": bool(anim_enabled),
+        "reused_atlas_uvs": False,
+        "legacy_atlas_only": bool(legacy_atlas),
+        "local_uv_layer": getattr(local_uv_layer, "name", ""),
+        "atlas_uv_layer": getattr(atlas_uv_layer, "name", ""),
     }
 
 
@@ -744,6 +920,9 @@ def restore_materials_from_provenance(
     prefs: Optional[Any] = None,
     reconcile_animation: bool = False,
     enable_animated_textures: Optional[bool] = None,
+    atlas_uv_layer: Optional[Any] = None,
+    layout_hash: Optional[str] = None,
+    material_namespace: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Reconstructs Blender material slots, nodes, and assignments purely from mesh face provenance attributes.
@@ -758,6 +937,13 @@ def restore_materials_from_provenance(
             required when the user toggles animated textures after a previous replacement.
         enable_animated_textures: Optional explicit animation preference override.
             Defaults to the add-on preference.
+        atlas_uv_layer: Optional pre-resolved Atlas UV layer. Resolved automatically
+            when omitted.
+        layout_hash: Optional precomputed atlas layout hash. Computed from the active
+            cache when omitted.
+        material_namespace: Optional material-name namespace. ``"EXT"`` selects the
+            external ``MTK:Atlas:Ext:*`` materials; resolved from mesh ownership
+            when omitted.
     """
     if not HAS_BPY:
         raise RuntimeError("Blender (bpy) is required to execute restore_materials_from_provenance.")
@@ -792,9 +978,44 @@ def restore_materials_from_provenance(
     base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
     atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
 
-    uv_layer = mesh.uv_layers.active if hasattr(mesh, "uv_layers") and mesh.uv_layers else None
-    if uv_layer is None and hasattr(mesh, "uv_layers") and len(mesh.uv_layers) > 0:
-        uv_layer = mesh.uv_layers[0]
+    current_layout_hash = layout_hash or compute_atlas_layout_hash(atlas_data)
+    stored_layout_hash = get_stored_layout_hash(mesh)
+    if stored_layout_hash and current_layout_hash and stored_layout_hash != current_layout_hash:
+        return {
+            "success": False,
+            "message": (
+                "Atlas layout changed since the last replacement. Re-run Replace Material "
+                "to re-map atlas UVs from the preserved local UV map."
+            ),
+        }
+
+    if not hasattr(mesh, "uv_layers") or len(mesh.uv_layers) == 0:
+        return {"success": False, "message": "Mesh has no UV map to restore Atlas coordinates into."}
+
+    legacy_atlas = detect_legacy_atlas_mesh(mesh)
+    if legacy_atlas and not stored_layout_hash:
+        material_fp = _material_stack_fingerprint(mesh)
+        if material_fp and manifest_fingerprint and material_fp != manifest_fingerprint:
+            return {
+                "success": False,
+                "message": (
+                    "Material pack changed but this mesh has no preserved local UV map. "
+                    "Re-import the mesh before restoring materials."
+                ),
+            }
+    _local_uv_layer, resolved_atlas_uv, _ = resolve_uv_layers(
+        mesh, create_atlas=False, activate=True, legacy_atlas=legacy_atlas
+    )
+    if atlas_uv_layer is None:
+        atlas_uv_layer = resolved_atlas_uv
+    if atlas_uv_layer is None and legacy_atlas:
+        # Legacy atlas-only meshes keep their baked atlas UVs in the sole layer.
+        atlas_uv_layer = mesh.uv_layers[0]
+    if atlas_uv_layer is None:
+        return {"success": False, "message": "Mesh has no Atlas UV map to restore materials into."}
+
+    if material_namespace is None and _is_external_object(mesh_or_obj):
+        material_namespace = "EXT"
 
     chunk_attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
     if chunk_attr is not None and len(chunk_attr.data) == num_polys:
@@ -813,12 +1034,11 @@ def restore_materials_from_provenance(
     face_anim_frame_size: Optional[List[List[float]]] = None
     animation_reconciled = False
 
-    if reconcile_animation and uv_layer is not None:
+    if reconcile_animation and atlas_uv_layer is not None:
         # Existing UVs are Atlas UVs, so decode them from the previous sprite and
         # re-project them into the new static/animated sprite in Rust.
         num_loops = len(mesh.loops)
-        loop_uvs = array.array("f", [0.0]) * (num_loops * 2)
-        uv_layer.data.foreach_get("uv", loop_uvs)
+        loop_uvs = read_uv_layer(atlas_uv_layer, num_loops)
 
         if hasattr(mesh.polygons, "foreach_get"):
             starts = np.empty(num_polys, dtype=np.int32)
@@ -847,13 +1067,14 @@ def restore_materials_from_provenance(
     # Step 2: Reconstruct material slots (optionally reusing re-projected atlas UVs)
     poly_mat_indices = assign_atlas_chunk_materials(
         mesh=mesh,
-        uv_layer=uv_layer,
+        uv_layer=atlas_uv_layer,
         atlas_data=atlas_data,
         atlas_dir=atlas_dir,
         face_chunk_ids=face_chunk_ids,
         atlas_uvs=atlas_uvs,
         colormaps=colormaps,
         manifest_fingerprint=manifest_fingerprint,
+        material_namespace=material_namespace,
     )
 
     # Step 3: Sync material slot / animation attributes (delegated to bridge/mesh.py)
@@ -877,6 +1098,7 @@ def restore_materials_from_provenance(
     # Step 4: Re-apply biome tint attributes
     resolve_and_apply_biome_tint(mesh_or_obj, mesh, face_source_keys, effective_biome, base_cache, prefs)
 
+    set_stored_layout_hash(mesh, current_layout_hash)
     mesh.update()
     animated_faces = sum(1 for flag in (face_anim_timing or []) if flag and flag[0] > 1.0)
     return {
@@ -887,6 +1109,7 @@ def restore_materials_from_provenance(
         "animated_faces": animated_faces,
         "animation_reconciled": animation_reconciled,
         "enable_animated_textures": bool(anim_enabled),
+        "atlas_uv_layer": getattr(atlas_uv_layer, "name", ""),
     }
 
 

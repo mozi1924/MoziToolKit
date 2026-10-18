@@ -5,7 +5,6 @@ Operators for Material Replacement and Provenance Recovery.
 from __future__ import annotations
 
 import logging
-from typing import Any
 import bpy
 from bpy.props import BoolProperty, EnumProperty
 
@@ -33,28 +32,6 @@ def _has_provenance_attributes(obj: bpy.types.Object | None) -> bool:
     return bool(hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes))
 
 
-def _animation_preference(prefs: Any) -> bool:
-    """Read the animated-texture preference with a safe True fallback."""
-    raw = getattr(prefs, "enable_animated_textures", True)
-    return raw if isinstance(raw, bool) else True
-
-
-def _needs_animation_reconcile(obj: bpy.types.Object | None, prefs: Any) -> bool:
-    """
-    Decide whether stored material routing must be re-resolved for the current
-    animation preference. Legacy external meshes have no routing marker and no
-    animation attributes; MTK voxel meshes already carry native animation timing.
-    """
-    if not obj or obj.type != "MESH" or not obj.data:
-        return False
-    mesh = obj.data
-    stored = mesh.get("mtk_enable_animated_textures", None) if hasattr(mesh, "get") else None
-    pref = _animation_preference(prefs)
-    if stored is not None:
-        return bool(stored) != pref
-    return not (hasattr(mesh, "attributes") and "mtk_anim_timing" in mesh.attributes)
-
-
 @register_menu_item(views=["object", "mesh"], label="Replace Material")
 class MOZI_OT_replace_material(bpy.types.Operator):
     """Replace and upgrade materials on external imported meshes using the native material pipeline."""
@@ -64,8 +41,11 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     use_provenance: BoolProperty(
-        name="Restore from Attributes",
-        description="Restore materials directly from existing mesh attributes if available (faster, preserves provenance)",
+        name="Reuse Atlas UVs",
+        description=(
+            "Reuse the existing MTK_Atlas UV map when the atlas layout is unchanged; "
+            "disable to force re-mapping from the preserved local UVs"
+        ),
         default=True,
     )
 
@@ -133,34 +113,15 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                 self.report({'ERROR'}, "Failed to precompile assets.")
                 return {'CANCELLED'}
 
-        # Pre-detection mechanism: if object has provenance attributes, directly restore!
-        if self.use_provenance and _has_provenance_attributes(obj):
+        # UV layer creation and bulk UV writes target the mesh data; leave Edit Mode first.
+        if getattr(context, "mode", "OBJECT") != "OBJECT":
             try:
-                anim_pref = _animation_preference(prefs)
-                needs_reconcile = _needs_animation_reconcile(obj, prefs)
+                bpy.ops.object.mode_set(mode="OBJECT")
+            except Exception:
+                pass
 
-                res = restore_materials_from_provenance(
-                    obj,
-                    mode=self.mode,
-                    biome=self.biome_preset,
-                    prefs=prefs,
-                    reconcile_animation=needs_reconcile,
-                    enable_animated_textures=anim_pref,
-                )
-                if res.get("success"):
-                    msg = (
-                        f"Successfully restored {res['materials_count']} materials for "
-                        f"{res['restored_faces']} faces from attributes "
-                        f"(biome: {res.get('biome', self.biome_preset)}, "
-                        f"animated faces: {res.get('animated_faces', 0)})."
-                    )
-                    self.report({'INFO'}, msg)
-                    return {'FINISHED'}
-                else:
-                    logger.warning("Attribute restoration failed (%s), falling back to full replacement.", res.get("message"))
-            except Exception as e:
-                logger.warning("Attribute restoration raised %s, falling back to full replacement.", e)
-
+        # The pipeline decides between reusing the existing atlas UV map (layout
+        # unchanged) and re-mapping from the preserved local UV map (layout changed).
         try:
             res = replace_materials(
                 obj,
@@ -168,21 +129,31 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                 origin=self.origin,
                 biome=self.biome_preset,
                 prefs=prefs,
+                force_remap=not self.use_provenance,
             )
             if res.get("success"):
+                if res.get("reused_atlas_uvs"):
+                    uv_note = f"reused {res.get('atlas_uv_layer', 'MTK_Atlas')} UVs"
+                else:
+                    uv_note = (
+                        f"re-mapped atlas UVs from "
+                        f"{res.get('local_uv_layer', 'local UV map')}"
+                    )
                 msg = (
                     f"Replaced materials for {res['face_count']} faces "
-                    f"({res['materials_count']} {self.mode.lower()} materials assigned, biome: {res.get('biome', self.biome_preset)})."
+                    f"({res['materials_count']} {self.mode.lower()} materials assigned, "
+                    f"biome: {res.get('biome', self.biome_preset)}; {uv_note})."
                 )
+                if res.get("legacy_atlas_only"):
+                    msg += " [legacy atlas-only mesh: re-import to enable lossless re-mapping]"
                 if res.get("animated_faces", 0) > 0:
                     msg += f" [{res['animated_faces']} animated faces]"
                 if res.get("unmapped_faces", 0) > 0:
                     msg += f" [{res['unmapped_faces']} faces unmapped/fallback]"
                 self.report({'INFO'}, msg)
                 return {'FINISHED'}
-            else:
-                self.report({'WARNING'}, res.get("message", "Material replacement failed."))
-                return {'CANCELLED'}
+            self.report({'WARNING'}, res.get("message", "Material replacement failed."))
+            return {'CANCELLED'}
         except Exception as e:
             self.report({'ERROR'}, f"Material replacement error: {e}")
             return {'CANCELLED'}
@@ -213,9 +184,12 @@ class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        if not context.active_object or context.active_object.type != "MESH":
+        # Legacy provenance repair is an external-mesh operation. MTK-generated
+        # meshes must be rebuilt from their voxel source instead.
+        obj = getattr(context, "active_object", None)
+        if not is_external_mesh(obj):
             return False
-        mesh = context.active_object.data
+        mesh = obj.data
         return hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes)
 
     def execute(self, context):

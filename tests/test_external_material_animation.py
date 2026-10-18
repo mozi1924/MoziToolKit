@@ -156,7 +156,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                 self.assertTrue(res["success"])
                 self.assertTrue(res["enable_animated_textures"])
                 self.assertEqual(res["animated_faces"], len(mesh.polygons))
-                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:anim:001")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:anim:blocks:001")
                 self.assertTrue(mesh["mtk_enable_animated_textures"])
 
                 timing = mesh.attributes["mtk_anim_timing"]
@@ -178,7 +178,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                 )
                 self.assertTrue(restored["success"])
                 self.assertTrue(restored["animation_reconciled"])
-                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertFalse(mesh["mtk_enable_animated_textures"])
                 chunk_ids = [d.value for d in mesh.attributes["mtk_atlas_chunk_id"].data]
                 self.assertTrue(all(cid == 0 for cid in chunk_ids))
@@ -196,7 +196,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                     enable_animated_textures=True,
                 )
                 self.assertTrue(restored_on["success"])
-                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:anim:001")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:anim:blocks:001")
                 self.assertTrue(mesh["mtk_enable_animated_textures"])
                 timing = mesh.attributes["mtk_anim_timing"]
                 self.assertEqual(tuple(timing.data[0].vector), (4.0, 2.0, 1.0))
@@ -226,7 +226,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                 self.assertTrue(res["success"])
                 self.assertFalse(res["enable_animated_textures"])
                 self.assertEqual(res["animated_faces"], 0)
-                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:blocks:001")
+                self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertFalse(mesh["mtk_enable_animated_textures"])
                 timing = mesh.attributes["mtk_anim_timing"]
                 self.assertEqual(tuple(timing.data[0].vector), (1.0, 1.0, 0.0))
