@@ -182,6 +182,9 @@ def _draw_live_sync_content(layout: bpy.types.UILayout, context: bpy.types.Conte
     row_url = box_conn.row(align=True)
     row_url.prop(props, "url", text="")
 
+    row_token = box_conn.row(align=True)
+    row_token.prop(props, "auth_token", text=tr("Auth Token"))
+
     row_btn = box_conn.row(align=True)
     row_btn.scale_y = 1.25
 

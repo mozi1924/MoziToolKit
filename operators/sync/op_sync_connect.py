@@ -309,7 +309,12 @@ def _sync_timer_tick() -> Optional[float]:
             _sync_prop("validation_info", f"Warning: {ev.get('message', '')}")
 
         elif ev_type == "ERROR":
-            _sync_prop("validation_info", f"Error: {ev.get('message', '')}")
+            message = ev.get("message", "")
+            # Make the #1 failure mode actionable: the token field is not persisted
+            # into .blend, so a blank field after reopening looks "identical".
+            if "Authentication failed" in message:
+                message = f"{message} (fill 'Auth Token' with the value of /yefira config token, then reconnect)"
+            _sync_prop("validation_info", f"Error: {message}")
             _sync_prop("is_streaming", False)
             _close_progress_reporter()
 
@@ -573,6 +578,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             atlas=atlas,
             biome_resolver=biome_resolver,
             unified_mesh=True,
+            auth_token=(getattr(props, "auth_token", "") or None) if props else None,
             cached_state_json=cached_state_json,
         )
 

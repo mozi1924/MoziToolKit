@@ -183,6 +183,11 @@ class SyncBridgeSession:
         self.stop()
         self._last_error = ""
 
+        # The Yefira config parser trims auth tokens. Normalise here as well so a
+        # token pasted with a trailing space/newline cannot look "identical" yet
+        # still be rejected with "Authentication failed".
+        auth_token = (auth_token or "").strip() or None
+
         self._model_db = model_db
         self._atlas = atlas
         self._biome_resolver = biome_resolver
@@ -237,7 +242,14 @@ class SyncBridgeSession:
                         auth_token=auth_token,
                     )
                 else:
-                    session.start(url, auto_reconnect, max_reconnect_attempts)
+                    # Never silently fall back to a tokenless HELLO: a server with
+                    # an auth token would reject the connection and the user only
+                    # sees "Authentication failed". An outdated native build now
+                    # fails loudly instead.
+                    if auth_token:
+                        session.start(url, auto_reconnect, max_reconnect_attempts, auth_token=auth_token)
+                    else:
+                        session.start(url, auto_reconnect, max_reconnect_attempts)
 
             # If native session already exists, reuse it to preserve cached voxel storage & mesh cache
             if self._session is not None:

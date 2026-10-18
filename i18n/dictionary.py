@@ -602,6 +602,7 @@ translations_dict = {
         ('*', 'Selection Action'): '选择操作',
         ('*', 'Selection Bounds'): '选区范围',
         ('*', 'Selection Scope'): '作用范围',
+        ('*', 'Auth Token'): '认证令牌',
         ('*', 'Server URL'): '服务器地址',
         ('*', 'Set Image Interpolation to Closest'): '图像纹理插值设为最近',
         ('Operator', 'Set Image Interpolation to Closest'): '图像纹理插值设为最近',

@@ -244,6 +244,26 @@ Offset | Type     | Description
 > **实现备注**：当前 Yefira 服务端解析并保存 HELLO 全部字段，但 `Client Request Flags`
 > 尚未参与决策（`FORCE_FULL_BASELINE` / `NO_CACHE` 为预留位，📋）。
 
+#### 4.1.1 认证令牌语义（v3.1 安全加固）
+
+* **服务端**：共享密钥存于 `config/yefira.json` 的 `authToken`，或用
+  `/yefira config token <secret>` 设置。`authToken` 为空时服务端只允许绑定回环地址；
+  绑定非回环地址但未配置令牌时 `startServer` 直接拒绝启动。
+* **校验**：服务端对配置值与 HELLO 中的 `auth_token` **两侧都做 `trim`** 后按字节比较
+  （`MessageDigest.isEqual`）。不匹配 → 回 `WELCOME(decision = 0xFF)`
+  且 `message = "Authentication failed"`，随后以关闭码 `1008` 断开。
+* **客户端**：令牌必须出现在**每一个** HELLO 中，包括重连、以及没有缓存状态时构造的
+  默认 HELLO（`cached_*` 全 0）。缓存 HELLO 不得省略令牌，也不得携带过期令牌：
+  `LiveSyncSession` 一旦通过 `set_auth_token` 设置令牌，就以会话令牌为准覆盖 HELLO 中的值。
+* **Blender**：面板 `Auth Token`（`properties.auth_token`，`subtype=PASSWORD`，
+  `SKIP_SAVE`，不写入 `.blend`）→ `bridge/sync.py`（`strip()` 归一化）→
+  `LiveSyncSession.start(..., auth_token=...)` / `start_with_persisted_state(...)`。
+  token 为空时不传参，等价于空令牌。
+
+> **历史缺陷（v2.0.x 修复）**：`LiveSyncSession` 的默认 HELLO 曾把 `auth_token` 硬编码为空串，
+> 只有构造缓存 HELLO 的分支才会带上令牌。Blender 默认禁用快速重连、始终走默认 HELLO，
+> 因此服务端一旦配置令牌，即使两端令牌完全相同也会被判为 `Authentication failed`。
+
 ### 4.2 `0x02` WELCOME（服务端握手应答 S → C）
 
 ```
@@ -725,6 +745,7 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
 | Canonical `state_hash` | `hasher.rs`, `CanonicalVoxelScanner.java` | ✅ |
 | Section-local Quart Biome 映射 | `session/assembler.rs` | ✅（v2.0 修复） |
 | HELLO / WELCOME / 决策矩阵 | `codec.rs`, `handleClientHello` | ✅（`REPLAY_DELTAS` 未产生） |
+| HELLO `auth_token` 认证 | `session/hello.rs`（默认/缓存 HELLO）、`mtk-py` 绑定、`isAuthorized` | ✅（v2.0.x 修复：默认 HELLO 曾丢失令牌） |
 | BASELINE_BEGIN / CHUNK / END | `assembler.rs`, `streamBaseline` | ✅ |
 | BASELINE_ACK | 客户端发送，服务端记录 | ⚠️ 无 ACK 超时 |
 | Delta 16,384 分片 | `broadcastDeltaUpdate` | ✅（v2.0 修复） |
@@ -786,7 +807,8 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
 * Baseline Watchdog、Resync 限流、失败熔断；
 * 连接状态权威同步、Worker 终态保证；
 * 快速重连持久化与失效规则；
-* Delta 16,384 分片。
+* Delta 16,384 分片；
+* HELLO 认证令牌（默认/缓存 HELLO 统一携带，两端 trim 归一化）。
 
 ### 阶段 C：后续优化（📋 规划）
 
@@ -807,3 +829,4 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
 | 日期 | 变更 |
 | :--- | :--- |
 | 2026-10 | 将 RFC 初稿纳入代码文档；按 v2.0 实现修正 75% 卡死、连接状态、重连无数据等章节；补充 Section-local Quart 契约、Delta 分片、快速重连失效规则、代际栅栏与可恢复性守护；记录 10 项已知偏差。 |
+| 2026-10 | 新增 §4.1.1 `auth_token` 认证语义；修复 Rust 默认 HELLO 丢失令牌导致的“令牌相同仍认证失败”，三端统一 trim 归一化。 |

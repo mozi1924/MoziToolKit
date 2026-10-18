@@ -44,6 +44,15 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
         default="ws://127.0.0.1:8765",
     )
 
+    auth_token: StringProperty(
+        name="Auth Token",
+        description="Shared secret required by non-loopback Yefira servers",
+        default="",
+        subtype="PASSWORD",
+        # Never persist this secret into .blend files.
+        options={"SKIP_SAVE"},
+    )
+
     is_connected: BoolProperty(
         name="Is Connected",
         description="Whether Live Sync client is actively connected",
