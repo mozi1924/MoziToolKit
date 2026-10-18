@@ -71,7 +71,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         - mtk_material_slot
         - mtk_atlas_chunk_id
         - mtk_atlas_texture_id
-        - mtk_uv_tiling_transform
+        - mtk_uv_transform
         - mtk_biome_tint_data
         - mtk_biome_tint_color
         - mtk_face_dir
@@ -189,7 +189,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         self.assertTrue(mesh.has_attribute("mtk_material_slot"))
         self.assertTrue(mesh.has_attribute("mtk_atlas_chunk_id"))
         self.assertTrue(mesh.has_attribute("mtk_atlas_texture_id"))
-        self.assertTrue(mesh.has_attribute("mtk_uv_tiling_transform"))
+        self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
         self.assertTrue(mesh.has_attribute("mtk_face_dir"))

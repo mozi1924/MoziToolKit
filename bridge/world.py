@@ -312,6 +312,11 @@ def ensure_world_materials(
                         except Exception:
                             pass
 
+                    # World meshes are greedy-meshed per block face, so every face maps 1:1 to
+                    # its atlas sprite and the UVMap can drive the texture directly. The
+                    # `mtk_uv_transform` / `mtk_uv_rotation` attribute path below is reserved for
+                    # imported external meshes, where UVs must be tiled in the shader
+                    # (see utils/materials/pipeline.py, use_attribute_node=True).
                     mat = build_atlas_chunk_material(
                         chunk_id=chunk_id,
                         albedo_path=albedo_file,

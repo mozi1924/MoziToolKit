@@ -79,16 +79,17 @@ def get_libmtk_blender() -> Optional[Any]:
     """
     Returns the loaded blender accelerator submodule from unified libmtk_py, or None if unavailable.
     Hardware accelerator for direct Blender memory/DNA manipulation.
-    Prioritizes libmtk_py.unstable.blender_dna with fallback to legacy libmtk_py.blender.
+
+    The legacy top-level ``libmtk_py.blender`` alias was removed in the 2026-10 API
+    prune; ``libmtk_py.unstable.blender_dna`` is the only supported entry point.
     """
     mtk = get_libmtk()
     if mtk is None:
         return None
-    if hasattr(mtk, "unstable") and hasattr(mtk.unstable, "blender_dna"):
-        return getattr(mtk.unstable, "blender_dna")
-    if hasattr(mtk, "blender"):
-        return getattr(mtk, "blender")
-    return None
+    unstable = getattr(mtk, "unstable", None)
+    if unstable is None:
+        return None
+    return getattr(unstable, "blender_dna", None)
 
 
 def has_libmtk_blender() -> bool:

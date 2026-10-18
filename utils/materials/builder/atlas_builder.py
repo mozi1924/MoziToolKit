@@ -30,7 +30,7 @@ try:
         ensure_animated_specular_blend,
     )
     from ..constants import (
-        ATTR_UV_TILING_TRANSFORM,
+        ATTR_UV_TRANSFORM,
         ATTR_UV_ROTATION,
         ATTR_BIOME_TINT_DATA,
         ATTR_BIOME_TINT_COLOR,
@@ -64,7 +64,7 @@ except (ImportError, ValueError):
         ensure_animated_specular_blend = None
     try:
         from utils.materials.constants import (
-            ATTR_UV_TILING_TRANSFORM,
+            ATTR_UV_TRANSFORM,
             ATTR_UV_ROTATION,
             ATTR_BIOME_TINT_DATA,
             ATTR_BIOME_TINT_COLOR,
@@ -72,7 +72,7 @@ except (ImportError, ValueError):
             ATTR_MATERIAL_PROPS,
         )
     except (ImportError, ValueError):
-        ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"
+        ATTR_UV_TRANSFORM = "mtk_uv_transform"
         ATTR_UV_ROTATION = "mtk_uv_rotation"
         ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
         ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
@@ -276,7 +276,7 @@ def build_atlas_chunk_material(
             attr_transform = nodes.new("ShaderNodeAttribute")
             attr_transform.name = "MTK UV Transform"
             attr_transform.location = (-2200, -50)
-            attr_transform.attribute_name = ATTR_UV_TILING_TRANSFORM
+            attr_transform.attribute_name = ATTR_UV_TRANSFORM
             attr_transform.attribute_type = "GEOMETRY"
             attr_transform.parent = frame_uv
 

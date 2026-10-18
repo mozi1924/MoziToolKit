@@ -120,7 +120,7 @@ class TestLiveSyncFlow(unittest.TestCase):
                         self.assertGreater(mesh.vertex_count, 0)
                         self.assertTrue(mesh.has_attribute("mtk_source_texture_key"))
                         self.assertTrue(mesh.has_attribute("mtk_material_slot"))
-                        self.assertTrue(mesh.has_attribute("mtk_uv_tiling_transform"))
+                        self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
                         self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))
                         self.assertTrue(mesh.has_attribute("mtk_face_dir"))
                         world_mesh_received = True

@@ -66,8 +66,21 @@ def register():
     except Exception:
         pass
 
+    # Repair material datablocks that still reference retired attribute names
+    try:
+        from .utils.materials.migrations import register_migration_handlers
+        register_migration_handlers()
+    except Exception:
+        pass
+
 
 def unregister():
+    try:
+        from .utils.materials.migrations import unregister_migration_handlers
+        unregister_migration_handlers()
+    except Exception:
+        pass
+
     try:
         from .utils.materials.builder.adaptation import unregister_render_engine_adaptation_handlers
         unregister_render_engine_adaptation_handlers()

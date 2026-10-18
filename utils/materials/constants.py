@@ -43,6 +43,9 @@ ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
 ATTR_FACE_MATERIAL_ID = "mtk_material_id"
 ATTR_MATERIAL_SLOT = "mtk_material_slot"
 ATTR_UV_MODE = "mtk_uv_mode"
+# Pseudo-UV affine transform (scale_u, scale_v, offset_u, offset_v) applied in the shader.
+# Required for greedy-meshed / imported external meshes: faces merged into one quad cannot
+# carry per-block atlas UVs, so tiling is reconstructed at render time instead.
 ATTR_UV_TRANSFORM = "mtk_uv_transform"
 ATTR_IS_OPAQUE = "mtk_is_opaque"
 ATTR_ALPHA_MODE = "mtk_alpha_mode"
@@ -82,7 +85,7 @@ ATTR_ANIM_FRAME_HEIGHT = "mtk_anim_frame_height"
 
 # Atlas UV Rotation & Tiling Mesh Attributes
 ATTR_UV_ROTATION = "mtk_uv_rotation"
-ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"  # RGBA: scale XY, location XY
+ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"  # LEGACY: no longer written; cleaned up on compact
 ATTR_UV_TILING_SCALE = "mtk_uv_tiling_scale"
 ATTR_UV_TILING_LOCATION = "mtk_uv_tiling_location"
 

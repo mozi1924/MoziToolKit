@@ -85,7 +85,6 @@ try:
         ATTR_ATLAS_CHUNK_ID,
         ATTR_ATLAS_TEXTURE_ID,
         ATTR_UV_MODE,
-        ATTR_UV_TILING_TRANSFORM,
         ATTR_UV_TRANSFORM,
         ATTR_UV_ROTATION,
         ATTR_BIOME_TINT_DATA,
@@ -131,7 +130,6 @@ except (ImportError, ValueError):
             ATTR_ATLAS_CHUNK_ID,
             ATTR_ATLAS_TEXTURE_ID,
             ATTR_UV_MODE,
-            ATTR_UV_TILING_TRANSFORM,
             ATTR_UV_TRANSFORM,
             ATTR_UV_ROTATION,
             ATTR_BIOME_TINT_DATA,
@@ -148,7 +146,6 @@ if "ATTR_MATERIAL_PROPS" not in globals():
     ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
     ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
     ATTR_UV_MODE = "mtk_uv_mode"
-    ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"
     ATTR_UV_TRANSFORM = "mtk_uv_transform"
     ATTR_UV_ROTATION = "mtk_uv_rotation"
     ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
@@ -517,7 +514,6 @@ def inject_mesh_provenance_attributes(
             flat_transforms = np.ascontiguousarray(face_uv_transforms, dtype=np.float32).ravel()
         else:
             flat_transforms = np.frombuffer(face_uv_transforms, dtype=np.float32)
-        inject_face_attribute_float4(mesh, "mtk_uv_tiling_transform", flat_transforms)
         inject_face_attribute_float4(mesh, "mtk_uv_transform", flat_transforms)
 
     if face_uv_rotations is not None:
