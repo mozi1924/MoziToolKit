@@ -13,13 +13,13 @@ logger = logging.getLogger("MoziToolKit.Operators.Materials")
 try:
     from ..bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
-    from ..utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from ..utils.materials.pipeline import replace_materials
     from ..utils.mesh.ownership import is_external_mesh
     from ..utils.system import get_prefs, register_menu_item
 except (ImportError, ValueError):
     from bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from utils.materials.biome import BIOME_ENUM_ITEMS
-    from utils.materials.pipeline import replace_materials, restore_materials_from_provenance
+    from utils.materials.pipeline import replace_materials
     from utils.mesh.ownership import is_external_mesh
     from utils.system import get_prefs, register_menu_item
 
@@ -40,7 +40,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     bl_label = "Replace Material"
     bl_options = {"REGISTER", "UNDO"}
 
-    use_provenance: BoolProperty(
+    reuse_atlas_uvs: BoolProperty(
         name="Reuse Atlas UVs",
         description=(
             "Reuse the existing MTK_Atlas UV map when the atlas layout is unchanged; "
@@ -89,12 +89,12 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         obj = context.active_object
         has_prov = _has_provenance_attributes(obj)
         if has_prov:
-            layout.prop(self, "use_provenance")
+            layout.prop(self, "reuse_atlas_uvs")
             layout.separator()
 
         layout.prop(self, "biome_preset")
 
-        if not (has_prov and self.use_provenance):
+        if not (has_prov and self.reuse_atlas_uvs):
             layout.prop(self, "origin")
 
     def execute(self, context):
@@ -129,7 +129,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                 origin=self.origin,
                 biome=self.biome_preset,
                 prefs=prefs,
-                force_remap=not self.use_provenance,
+                force_remap=not self.reuse_atlas_uvs,
             )
             if res.get("success"):
                 if res.get("reused_atlas_uvs"):
@@ -144,8 +144,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                     f"({res['materials_count']} {self.mode.lower()} materials assigned, "
                     f"biome: {res.get('biome', self.biome_preset)}; {uv_note})."
                 )
-                if res.get("legacy_atlas_only"):
-                    msg += " [legacy atlas-only mesh: re-import to enable lossless re-mapping]"
                 if res.get("animated_faces", 0) > 0:
                     msg += f" [{res['animated_faces']} animated faces]"
                 if res.get("unmapped_faces", 0) > 0:
@@ -156,78 +154,6 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             return {'CANCELLED'}
         except Exception as e:
             self.report({'ERROR'}, f"Material replacement error: {e}")
-            return {'CANCELLED'}
-
-
-class MOZI_OT_restore_materials_from_attributes(bpy.types.Operator):
-    """Restore and reconstruct material slots and shader trees from mesh provenance attributes."""
-
-    bl_idname = "mozi.restore_materials_from_attributes"
-    bl_label = "Restore Materials from Attributes"
-    bl_options = {"REGISTER", "UNDO"}
-
-    mode: EnumProperty(
-        name="Material Mode",
-        description="Target material organization mode",
-        items=[
-            ("ATLAS", "Atlas Mode", "Reconstruct Atlas Chunk materials"),
-        ],
-        default="ATLAS",
-    )
-
-    biome_preset: EnumProperty(
-        name="Biome",
-        description="Optional biome preset override (defaults to current object biome or PLAINS)",
-        items=BIOME_ENUM_ITEMS,
-        default="PLAINS",
-    )
-
-    @classmethod
-    def poll(cls, context):
-        # Legacy provenance repair is an external-mesh operation. MTK-generated
-        # meshes must be rebuilt from their voxel source instead.
-        obj = getattr(context, "active_object", None)
-        if not is_external_mesh(obj):
-            return False
-        mesh = obj.data
-        return hasattr(mesh, "attributes") and ("mtk_source_texture_key" in mesh.attributes or "mtk_source_texture_idx" in mesh.attributes)
-
-    def execute(self, context):
-        obj = context.active_object
-        prefs = get_prefs(context)
-
-        # Asset readiness gate
-        status = check_asset_cache_status(prefs)
-        if status == "NO_PACKS":
-            self.report({'WARNING'}, "No enabled resource packs configured. Please configure a Minecraft pack in Preferences.")
-            return {'CANCELLED'}
-        if status in ("MISSING", "STALE"):
-            self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before restoring materials...")
-            success, _ = ensure_pipeline_assets_ready_sync(prefs)
-            if not success:
-                self.report({'ERROR'}, "Failed to precompile assets.")
-                return {'CANCELLED'}
-
-        try:
-            res = restore_materials_from_provenance(
-                obj,
-                mode=self.mode,
-                biome=self.biome_preset,
-                prefs=prefs,
-                reconcile_animation=_needs_animation_reconcile(obj, prefs),
-                enable_animated_textures=_animation_preference(prefs),
-            )
-            if res.get("success"):
-                self.report(
-                    {'INFO'},
-                    f"Successfully restored {res['materials_count']} materials for {res['restored_faces']} faces (biome: {res.get('biome', self.biome_preset)})."
-                )
-                return {'FINISHED'}
-            else:
-                self.report({'WARNING'}, res.get("message", "Restoration failed."))
-                return {'CANCELLED'}
-        except Exception as e:
-            self.report({'ERROR'}, f"Restoration error: {e}")
             return {'CANCELLED'}
 
 
@@ -304,7 +230,6 @@ class MOZI_OT_update_material_shading_adaptation(bpy.types.Operator):
 
 OPERATOR_CLASSES = (
     MOZI_OT_replace_material,
-    MOZI_OT_restore_materials_from_attributes,
     MOZI_OT_clean_empty_material_slots,
     MOZI_OT_update_material_shading_adaptation,
 )

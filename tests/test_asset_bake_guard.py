@@ -270,7 +270,7 @@ class TestAssetBakeGuard(unittest.TestCase):
         class DummyReplaceOp:
             def __init__(self):
                 self.report = MagicMock()
-                self.use_provenance = False
+                self.reuse_atlas_uvs = True
                 self.mode = "ATLAS"
                 self.biome_preset = "PLAINS"
                 self.origin = "AUTO"

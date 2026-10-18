@@ -148,15 +148,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "is_legacy": False,
     },
-    "mozi.restore_materials_from_attributes": {
-        "canonical_id": "mozi.restore_materials_from_attributes",
-        "label": "Restore Materials from Attributes",
-        "default_label": "Restore Materials from Attributes",
-        "icon": "MATERIAL_DATA",
-        "views": ["object", "mesh"],
-        "enabled": False,
-        "is_legacy": True,
-    },
 
     # Backwards compatibility legacy aliases
     "mozi.replace_materials": {
@@ -164,15 +155,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "label": "Replace Material",
         "default_label": "Replace Material",
         "icon": "MATERIAL",
-        "views": ["object", "mesh"],
-        "enabled": True,
-        "is_legacy": True,
-    },
-    "mozi.restore_materials_from_provenance": {
-        "canonical_id": "mozi.restore_materials_from_attributes",
-        "label": "Restore Materials from Attributes",
-        "default_label": "Restore Materials from Attributes",
-        "icon": "MATERIAL_DATA",
         "views": ["object", "mesh"],
         "enabled": True,
         "is_legacy": True,

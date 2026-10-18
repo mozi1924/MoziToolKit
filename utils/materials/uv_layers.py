@@ -122,37 +122,6 @@ def find_local_uv_layer(mesh: Any) -> Optional[Any]:
     return _find_local_layer(mesh)
 
 
-def detect_legacy_atlas_mesh(mesh: Any) -> bool:
-    """
-    Detect external meshes produced before multi-UV support.
-
-    These have a single UV layer containing already-baked atlas UVs, plus
-    provenance/chunk attributes. Their original local UV layout was overwritten
-    and cannot be recovered, so they may only reuse the current atlas UVs.
-    """
-    if mesh is None or not hasattr(mesh, "uv_layers"):
-        return False
-    try:
-        if len(mesh.uv_layers) != 1:
-            return False
-    except Exception:
-        return False
-    if _safe_get(mesh, LOCAL_UV_LAYER_PROP) or _safe_get(mesh, ATLAS_UV_LAYER_PROP):
-        return False
-    attributes = getattr(mesh, "attributes", None)
-    if attributes is None:
-        return False
-    try:
-        has_provenance = (
-            "mtk_source_texture_key" in attributes
-            or "mtk_source_texture_idx" in attributes
-        )
-        has_atlas_routing = "mtk_atlas_chunk_id" in attributes
-    except Exception:
-        return False
-    return bool(has_provenance and has_atlas_routing)
-
-
 def activate_uv_layer(mesh: Any, layer: Any) -> None:
     """Make *layer* the active (and active-render) UV map."""
     if mesh is None or layer is None or not hasattr(mesh, "uv_layers"):
@@ -202,31 +171,15 @@ def resolve_uv_layers(
     *,
     create_atlas: bool = True,
     activate: bool = True,
-    legacy_atlas: bool = False,
 ) -> Tuple[Optional[Any], Optional[Any], bool]:
     """
     Resolve ``(local_layer, atlas_layer, created_atlas)`` for *mesh*.
 
-    On a fresh external mesh the original UV layer is preserved as the local
-    layer and a new ``MTK_Atlas`` layer is created and activated. On a legacy
-    atlas-only mesh (``legacy_atlas=True``) the single existing layer is treated
-    as the atlas layer and no local layer is reported.
+    The original UV layer is preserved as the local layer and a new
+    ``MTK_Atlas`` layer is created and activated when no atlas layer exists.
     """
     if mesh is None or not hasattr(mesh, "uv_layers"):
         return None, None, False
-
-    if legacy_atlas:
-        atlas = None
-        try:
-            if len(mesh.uv_layers) > 0:
-                atlas = mesh.uv_layers[0]
-        except Exception:
-            atlas = None
-        if atlas is not None:
-            _safe_set(mesh, ATLAS_UV_LAYER_PROP, getattr(atlas, "name", ""))
-            if activate:
-                activate_uv_layer(mesh, atlas)
-        return None, atlas, False
 
     try:
         layer_count = len(mesh.uv_layers)
@@ -353,7 +306,6 @@ __all__ = [
     "ATLAS_UV_LAYER_PROP",
     "ATLAS_LAYOUT_HASH_PROP",
     "ATLAS_LAYOUT_HASH_VERSION",
-    "detect_legacy_atlas_mesh",
     "find_local_uv_layer",
     "resolve_uv_layers",
     "activate_uv_layer",

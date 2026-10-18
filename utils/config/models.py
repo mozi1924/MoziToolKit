@@ -17,8 +17,8 @@ def normalize_operator_id(op_id: str) -> str:
         return ""
     if op_id == "mozi.replace_materials":
         return "mozi.replace_material"
-    if op_id == "mozi.restore_materials_from_provenance":
-        return "mozi.restore_materials_from_attributes"
+    if op_id in ("mozi.restore_materials_from_provenance", "mozi.restore_materials_from_attributes"):
+        return ""
     if op_id.startswith("mozi."):
         return op_id
     if "." in op_id:

@@ -158,7 +158,6 @@ if "ATTR_MATERIAL_PROPS" not in globals():
 
 from .uv_layers import (
     compute_atlas_layout_hash,
-    detect_legacy_atlas_mesh,
     find_local_uv_layer,
     get_stored_layout_hash,
     read_uv_layer,
@@ -418,7 +417,7 @@ def assign_atlas_chunk_materials(
         chunk_height = float(cm.get("height", 512))
         uv_map_name = uv_layer.name if uv_layer else "UVMap"
         material_name = None
-        if material_namespace == "EXT" or uv_map_name != "UVMap":
+        if material_namespace == "EXT":
             # External meshes sample MTK_Atlas instead of the native UVMap. Use a
             # separate material namespace so they never share (and fight over) the
             # global chunk materials used by MTK-generated meshes.
@@ -657,15 +656,37 @@ def _needs_animation_reconcile(mesh: Any, prefs: Optional[Any] = None) -> bool:
     return not (hasattr(mesh, "attributes") and "mtk_anim_timing" in mesh.attributes)
 
 
-def _material_stack_fingerprint(mesh: Any) -> Optional[str]:
-    """Read the stack fingerprint recorded on the first Atlas material."""
-    for material in getattr(mesh, "materials", []) or []:
-        if material is None:
-            continue
-        value = material.get("mtk_stack_fingerprint") if hasattr(material, "get") else None
-        if isinstance(value, str) and value:
-            return value
-    return None
+def _is_legacy_single_uv_atlas_mesh(mesh: Any) -> bool:
+    """
+    Detect meshes produced by the removed single-UV atlas pipeline.
+
+    They keep already-baked atlas UVs in their sole UV layer and have no
+    recoverable local layout, so they must be re-imported.
+    """
+    if mesh is None or not hasattr(mesh, "uv_layers"):
+        return False
+    try:
+        if len(mesh.uv_layers) != 1:
+            return False
+    except Exception:
+        return False
+    try:
+        if mesh.get(LOCAL_UV_LAYER_PROP) or mesh.get(ATLAS_UV_LAYER_PROP):
+            return False
+    except Exception:
+        pass
+    attributes = getattr(mesh, "attributes", None)
+    if attributes is None:
+        return False
+    try:
+        has_provenance = (
+            "mtk_source_texture_key" in attributes
+            or "mtk_source_texture_idx" in attributes
+        )
+        has_atlas_routing = "mtk_atlas_chunk_id" in attributes
+    except Exception:
+        return False
+    return bool(has_provenance and has_atlas_routing)
 
 
 def _is_external_object(obj: Any) -> bool:
@@ -736,19 +757,32 @@ def replace_materials(
     current_layout_hash = compute_atlas_layout_hash(atlas_data)
     stored_layout_hash = get_stored_layout_hash(mesh)
 
-    # Step 2: Resolve the preserved local UV map and the atlas UV map.
-    legacy_atlas = detect_legacy_atlas_mesh(mesh)
+    # Step 2: Reject meshes from the removed single-UV atlas pipeline and resolve
+    # the preserved local UV map plus the atlas UV map.
+    if _is_legacy_single_uv_atlas_mesh(mesh):
+        return {
+            "success": False,
+            "message": (
+                "Mesh uses the removed single-UV atlas layout. Re-import external imports "
+                "to preserve their local UV map; MTK voxel meshes must use Rebuild Voxel Mesh."
+            ),
+        }
+
     local_uv_layer, atlas_uv_layer, atlas_created = resolve_uv_layers(
         mesh,
-        create_atlas=not legacy_atlas,
+        create_atlas=True,
         activate=True,
-        legacy_atlas=legacy_atlas,
     )
-    if local_uv_layer is None and not legacy_atlas:
-        # A mesh may have lost its local layer after an earlier atlas-only run.
-        legacy_atlas = True
     if atlas_uv_layer is None:
         return {"success": False, "message": "Mesh has no UV map to store Atlas coordinates."}
+    if local_uv_layer is None:
+        return {
+            "success": False,
+            "message": (
+                "Mesh has no preserved local UV map. Re-import external imports to enable "
+                "lossless re-mapping; MTK voxel meshes must use Rebuild Voxel Mesh."
+            ),
+        }
 
     provenance_palette, provenance_indices = resolve_source_texture_keys_paletted(mesh)
     has_provenance = len(provenance_indices) == num_polys and len(provenance_palette) > 0
@@ -760,23 +794,8 @@ def replace_materials(
         and has_provenance
         and atlas_uv_layer is not None
         and not atlas_created
-        and (same_layout or legacy_atlas)
+        and same_layout
     ):
-        if legacy_atlas and not same_layout:
-            material_fp = _material_stack_fingerprint(mesh)
-            if (
-                not material_fp
-                or not manifest_fingerprint
-                or material_fp != manifest_fingerprint
-            ):
-                return {
-                    "success": False,
-                    "message": (
-                        "Material pack changed but this mesh has no preserved local UV map. "
-                        "Re-import the mesh before replacing materials."
-                    ),
-                }
-
         needs_reconcile = (
             _needs_animation_reconcile(mesh, prefs)
             if reconcile_animation is None
@@ -805,25 +824,14 @@ def replace_materials(
             restored["unmapped_faces"] = 0
             restored["mode"] = mode_upper
             restored["reused_atlas_uvs"] = True
-            restored["legacy_atlas_only"] = bool(legacy_atlas)
             restored["atlas_uv_layer"] = getattr(atlas_uv_layer, "name", "")
-            if local_uv_layer is not None:
-                restored["local_uv_layer"] = getattr(local_uv_layer, "name", "")
+            restored["local_uv_layer"] = getattr(local_uv_layer, "name", "")
             return restored
 
         logger.warning(
             "Atlas UV reuse failed (%s); re-mapping from local UVs.",
             restored.get("message"),
         )
-
-    if local_uv_layer is None:
-        return {
-            "success": False,
-            "message": (
-                "This mesh has no preserved local UV map. Re-import the external mesh "
-                "to enable lossless atlas re-mapping."
-            ),
-        }
 
     # Step 3: Extract face materials & local UVs as palette + indices
     (
@@ -907,7 +915,6 @@ def replace_materials(
         "animated_faces": animated_faces,
         "enable_animated_textures": bool(anim_enabled),
         "reused_atlas_uvs": False,
-        "legacy_atlas_only": bool(legacy_atlas),
         "local_uv_layer": getattr(local_uv_layer, "name", ""),
         "atlas_uv_layer": getattr(atlas_uv_layer, "name", ""),
     }
@@ -926,6 +933,9 @@ def restore_materials_from_provenance(
 ) -> Dict[str, Any]:
     """
     Reconstructs Blender material slots, nodes, and assignments purely from mesh face provenance attributes.
+
+    This is the same-layout fast path used by :func:`replace_materials`; it requires
+    an existing ``MTK_Atlas`` UV map and never re-maps UVs from local coordinates.
 
     Args:
         mesh_or_obj: Blender mesh or object with mtk_source_texture_key attributes.
@@ -992,27 +1002,16 @@ def restore_materials_from_provenance(
     if not hasattr(mesh, "uv_layers") or len(mesh.uv_layers) == 0:
         return {"success": False, "message": "Mesh has no UV map to restore Atlas coordinates into."}
 
-    legacy_atlas = detect_legacy_atlas_mesh(mesh)
-    if legacy_atlas and not stored_layout_hash:
-        material_fp = _material_stack_fingerprint(mesh)
-        if material_fp and manifest_fingerprint and material_fp != manifest_fingerprint:
-            return {
-                "success": False,
-                "message": (
-                    "Material pack changed but this mesh has no preserved local UV map. "
-                    "Re-import the mesh before restoring materials."
-                ),
-            }
     _local_uv_layer, resolved_atlas_uv, _ = resolve_uv_layers(
-        mesh, create_atlas=False, activate=True, legacy_atlas=legacy_atlas
+        mesh, create_atlas=False, activate=True
     )
     if atlas_uv_layer is None:
         atlas_uv_layer = resolved_atlas_uv
-    if atlas_uv_layer is None and legacy_atlas:
-        # Legacy atlas-only meshes keep their baked atlas UVs in the sole layer.
-        atlas_uv_layer = mesh.uv_layers[0]
     if atlas_uv_layer is None:
-        return {"success": False, "message": "Mesh has no Atlas UV map to restore materials into."}
+        return {
+            "success": False,
+            "message": "Mesh has no MTK_Atlas UV map. Run Replace Material to create it.",
+        }
 
     if material_namespace is None and _is_external_object(mesh_or_obj):
         material_namespace = "EXT"

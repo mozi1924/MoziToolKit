@@ -110,9 +110,8 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertIn("mozi.repair_fluid_uv", mesh_op_ids)
         self.assertIn("mozi.clear_custom_normals", mesh_op_ids)
         self.assertIn("mozi.set_texture_interpolation_closest", mesh_op_ids)
-        # cull_mesh_faces and restore_materials_from_attributes should not be in mesh preset
+        # cull_mesh_faces is intentionally excluded from the context menu preset
         self.assertNotIn("mozi.cull_mesh_faces", mesh_op_ids)
-        self.assertNotIn("mozi.restore_materials_from_attributes", mesh_op_ids)
 
         # Default preset for object
         obj_op_ids = [item["operator"] for item in presets["object"]]
@@ -140,15 +139,14 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertEqual(zh_dict.get(('*', 'Rebuild Voxel Mesh')), '重建体素网格')
         self.assertEqual(zh_dict.get(('*', 'Toggle Voxel Point Cloud Visibility')), '切换体素点云可见性')
         self.assertEqual(zh_dict.get(('*', 'Toggle Voxel Cloud Visibility')), '切换体素点云可见性')
-        self.assertEqual(zh_dict.get(('*', 'Restore from Attributes')), '从属性还原')
         self.assertEqual(zh_dict.get(('*', 'Select Transparent Faces')), '选择透明面')
         self.assertEqual(zh_dict.get(('*', 'Clear Custom Normals')), '删除自定义法向')
         self.assertEqual(zh_dict.get(('*', 'Set Image Interpolation to Closest')), '图像纹理插值设为最近')
 
-    def test_rebuild_mesh_provenance_predetection(self):
+    def test_rebuild_mesh_rejects_provenance_only_mesh(self):
         from operators.mesh import resolve_mesh_rebuild_targets, MOZI_OT_rebuild_mesh
 
-        # Mesh with provenance attributes
+        # A standalone external mesh with provenance has no voxel source.
         mock_obj_prov = MagicMock(type="MESH")
         mock_obj_prov.name = "Character_Hair"
         mock_obj_prov.get.return_value = None
@@ -159,10 +157,8 @@ class TestMenuRegistration(unittest.TestCase):
         mock_context.selected_objects = [mock_obj_prov]
 
         root, world, cloud, stype = resolve_mesh_rebuild_targets(mock_context)
-        self.assertEqual(stype, "ATTRIBUTES")
-        self.assertEqual(world, mock_obj_prov)
-        # Provenance alone no longer grants Rebuild access: such meshes are
-        # external imports and belong to Replace Material.
+        self.assertEqual(stype, "NONE")
+        self.assertIsNone(world)
         self.assertFalse(MOZI_OT_rebuild_mesh.poll(mock_context))
 
     def test_replace_material_provenance_predetection(self):

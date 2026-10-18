@@ -15,7 +15,6 @@ from utils.materials.uv_layers import (
     ATLAS_UV_LAYER_PROP,
     LOCAL_UV_LAYER_PROP,
     compute_atlas_layout_hash,
-    detect_legacy_atlas_mesh,
     get_stored_layout_hash,
     read_uv_layer,
     resolve_uv_layers,
@@ -175,23 +174,6 @@ class TestUVLayerResolution(unittest.TestCase):
         self.assertFalse(created_2)
         self.assertEqual(len(mesh.uv_layers), 2)
         self.assertEqual(local.data.uvs, [0.25, 0.75] * 4)
-
-    def test_legacy_atlas_detection_and_resolution(self):
-        mesh = _FakeMesh()
-        layer = mesh.uv_layers.new("UVMap")
-        mesh.attributes = {
-            "mtk_source_texture_key": object(),
-            "mtk_atlas_chunk_id": object(),
-        }
-        self.assertTrue(detect_legacy_atlas_mesh(mesh))
-
-        local_layer, atlas_layer, created = resolve_uv_layers(mesh, legacy_atlas=True)
-        self.assertIsNone(local_layer)
-        self.assertIs(atlas_layer, layer)
-        self.assertFalse(created)
-        self.assertEqual(mesh[ATLAS_UV_LAYER_PROP], "UVMap")
-        self.assertNotIn(LOCAL_UV_LAYER_PROP, mesh)
-        self.assertEqual(len(mesh.uv_layers), 1)
 
     def test_no_layers_creates_local_uvmap(self):
         mesh = _FakeMesh()
