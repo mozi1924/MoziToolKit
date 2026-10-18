@@ -42,6 +42,15 @@ if DEV_LIB not in sys.path:
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+# Blender's bundled Python is used as sys.executable by the test suite. In CI the
+# abi3 wheel lives in the host interpreter's site-packages, which is injected into
+# the Blender test process via MTK_TEST_SITE_PACKAGES but is not inherited by
+# subprocesses through sys.path. Mirror that path here so the mock server can import
+# libmtk_py when the local dev/lib symlink is absent.
+_TEST_SITE_PACKAGES = os.environ.get("MTK_TEST_SITE_PACKAGES")
+if _TEST_SITE_PACKAGES and _TEST_SITE_PACKAGES not in sys.path:
+    sys.path.append(_TEST_SITE_PACKAGES)
+
 try:
     import libmtk_py
 except ImportError:
