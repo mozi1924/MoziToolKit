@@ -58,6 +58,37 @@ _WORLD_PIPELINE_ASSETS_CACHE: Optional[Tuple[Any, Any, Any]] = None
 _WORLD_PIPELINE_FP_CACHE: Optional[str] = None
 _WORLD_PIPELINE_TS_CACHE: float = 0.0
 
+# Reused across rebuilds: the Rust `FaceCuller` owns a state-string keyed metadata
+# cache, so constructing a fresh instance per call forces it to re-derive cull
+# metadata for every unique blockstate. The cull modes are fixed here, so a single
+# instance is safe for the whole session.
+_SHARED_FACE_CULLER: Optional[Any] = None
+_SHARED_FACE_CULLER_OWNER: Optional[Any] = None
+
+
+def get_shared_face_culler(mtk: Optional[Any] = None) -> Optional[Any]:
+    """Returns a process-wide `FaceCuller` instance (or None when unavailable).
+
+    The instance is tied to the native module that created it, so reloading the
+    extension produces a fresh culler instead of reusing a stale native object.
+    """
+    global _SHARED_FACE_CULLER, _SHARED_FACE_CULLER_OWNER
+    mtk = mtk or get_libmtk()
+    if mtk is None or not hasattr(mtk, "FaceCuller"):
+        return None
+    if _SHARED_FACE_CULLER is not None and _SHARED_FACE_CULLER_OWNER is mtk:
+        return _SHARED_FACE_CULLER
+    _SHARED_FACE_CULLER = mtk.FaceCuller()
+    _SHARED_FACE_CULLER_OWNER = mtk
+    return _SHARED_FACE_CULLER
+
+
+def reset_shared_face_culler() -> None:
+    """Drops the shared culler so the next call rebuilds (and re-warms) its cache."""
+    global _SHARED_FACE_CULLER, _SHARED_FACE_CULLER_OWNER
+    _SHARED_FACE_CULLER = None
+    _SHARED_FACE_CULLER_OWNER = None
+
 
 def invalidate_world_pipeline_assets() -> None:
     """Invalidates in-memory cached pipeline assets tuple."""
@@ -540,17 +571,23 @@ def mesh_voxel_storage(
         if hasattr(config, "enable_animated_textures"):
             config.enable_animated_textures = anim_tex_enabled
 
-    culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
+    culler = get_shared_face_culler(mtk)
 
     t0 = time.perf_counter()
-    # AsyncTask callers precompute fingerprint/timestamp on the main thread; only
-    # synchronous callers fall back to the bpy-backed cache readers here.
-    if cache_timestamp is not None:
-        current_fp = cache_fingerprint
-        current_ts = float(cache_timestamp)
-    else:
-        current_fp = get_cache_fingerprint(prefs)
-        current_ts = get_cache_timestamp(prefs)
+    # The fingerprint/timestamp pair only guards the incremental world session cache
+    # below. Reading it is filesystem-backed and costs ~1 ms, so skip it entirely when
+    # no session key is active (single-shot rebuilds never consume the value).
+    current_fp = None
+    current_ts = None
+    if world_session_key:
+        # AsyncTask callers precompute these on the main thread; synchronous callers
+        # fall back to the bpy-backed cache readers here.
+        if cache_timestamp is not None:
+            current_fp = cache_fingerprint
+            current_ts = float(cache_timestamp)
+        else:
+            current_fp = get_cache_fingerprint(prefs)
+            current_ts = get_cache_timestamp(prefs)
 
     if world_session_key and hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
         cached_world = _WORLD_SESSIONS.get(world_session_key)
