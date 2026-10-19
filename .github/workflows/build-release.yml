@@ -4,24 +4,23 @@ on:
   push:
     tags:
       - 'v*'
-      - '*'
   workflow_dispatch:
     inputs:
       prerelease:
-        description: 'Publish as Pre-Release (Yellow Tag)'
+        description: 'Publish as Pre-Release'
         type: boolean
         required: true
-        default: true
+        default: false
       tag_name:
         description: 'Custom Tag Name (optional, defaults to Git tag or manifest version)'
         type: string
         required: false
         default: ''
-      libmtk_ref:
-        description: 'libmozitoolkit git ref used to build the native wheels'
+      libmtk_release:
+        description: 'libmozitoolkit release to fetch wheels from (default: latest stable, or tag e.g. v0.1.0, or ci-latest)'
         type: string
-        required: true
-        default: 'main'
+        required: false
+        default: 'latest'
 
 env:
   # Temporary CI mirror (see .github/workflows/ci.yml). Falls back to blender.org.
@@ -32,63 +31,8 @@ permissions:
   contents: write
 
 jobs:
-  build-libmtk-wheels:
-    name: Build libmtk_py wheel (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: macos-14
-            target: aarch64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-          - os: windows-11-arm
-            target: aarch64-pc-windows-msvc
-    steps:
-      - name: Checkout libmozitoolkit
-        uses: actions/checkout@v4
-        with:
-          repository: mozi1924/libmozitoolkit
-          ref: ${{ inputs.libmtk_ref || 'main' }}
-          path: libmozitoolkit
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install maturin
-        shell: bash
-        run: python -m pip install --upgrade pip maturin
-
-      - name: Build abi3 wheel
-        shell: bash
-        working-directory: libmozitoolkit
-        run: |
-          mkdir -p "${{ github.workspace }}/wheel-out"
-          maturin build --release \
-            --target "${{ matrix.target }}" \
-            --out "${{ github.workspace }}/wheel-out" \
-            -m bindings/mtk-py/Cargo.toml
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: libmtk-wheel-${{ matrix.target }}
-          path: wheel-out/*.whl
-          if-no-files-found: error
-
   build-and-release:
     name: Build Multi-Platform Packages & Release
-    needs: build-libmtk-wheels
     runs-on: ubuntu-latest
 
     steps:
@@ -97,17 +41,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all native wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: libmtk-wheel-*
-          path: wheels
-          merge-multiple: true
-
-      - name: Set up Python 3.13
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.11'
 
       - name: Install System Dependencies
         run: |
@@ -141,7 +78,16 @@ jobs:
           echo "/opt/blender" >> $GITHUB_PATH
           /opt/blender/blender --version
 
-      - name: Build & Package Extension
+      - name: Fetch precompiled wheels from libmozitoolkit release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_REF="${{ inputs.libmtk_release || 'latest' }}"
+          echo "Fetching 6 platform wheels from libmozitoolkit release: $RELEASE_REF"
+          python3 tools/fetch_wheels.py --release "$RELEASE_REF" --all --out wheels/
+
+      - name: Build & Package Extension (6 platforms)
         run: |
           set -euo pipefail
           # build.py validates that every declared platform has its native wheel
@@ -153,9 +99,9 @@ jobs:
           set -euo pipefail
           python3 -m venv .venv-test
           .venv-test/bin/pip install --upgrade pip pytest
-          linux_wheel="$(ls wheels/libmtk_py-*manylinux*.whl | head -n 1)"
+          linux_wheel="$(ls wheels/libmtk_py-*manylinux*x86_64*.whl | head -n 1)"
           if [ -z "$linux_wheel" ]; then
-            echo "::error::No Linux libmtk_py wheel was downloaded"
+            echo "::error::No Linux x86_64 libmtk_py wheel found in wheels/"
             exit 1
           fi
           .venv-test/bin/pip install "$linux_wheel"
@@ -184,7 +130,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             IS_PRERELEASE="${{ inputs.prerelease }}"
           else
-            IS_PRERELEASE="true"
+            IS_PRERELEASE="false"
           fi
 
           echo "tag=$TAG" >> $GITHUB_OUTPUT

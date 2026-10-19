@@ -48,6 +48,11 @@ TARGET_PLATFORMS = [
         "pip_platforms": ["macosx_11_0_arm64", "macosx_12_0_arm64"],
     },
     {
+        "id": "macos-x64",
+        "label": "macOS AMD64 (x86_64)",
+        "pip_platforms": ["macosx_10_9_x86_64", "macosx_10_15_x86_64", "macosx_11_0_x86_64"],
+    },
+    {
         "id": "windows-x64",
         "label": "Windows AMD64 (x86_64)",
         "pip_platforms": ["win_amd64"],
@@ -61,6 +66,11 @@ TARGET_PLATFORMS = [
         "id": "linux-x64",
         "label": "Linux AMD64 (x86_64)",
         "pip_platforms": ["manylinux_2_28_x86_64", "manylinux2014_x86_64"],
+    },
+    {
+        "id": "linux-arm64",
+        "label": "Linux ARM64 (aarch64)",
+        "pip_platforms": ["manylinux_2_28_aarch64", "manylinux2014_aarch64"],
     },
 ]
 
@@ -205,9 +215,14 @@ def parse_manifest(project_dir: str):
                     if ver_match:
                         ext_version = ".".join([v.strip() for v in ver_match.group(1).split(",")])
 
-    ext_id = ext_id or "mozitoolkit"
-    ext_version = ext_version or "1.0.0"
-    platforms = platforms or ["windows-x64", "windows-arm64", "macos-arm64", "linux-x64"]
+    platforms = platforms or [
+        "windows-x64",
+        "windows-arm64",
+        "macos-arm64",
+        "macos-x64",
+        "linux-x64",
+        "linux-arm64",
+    ]
     return ext_id, ext_version, platforms, wheels, exclude_patterns
 
 
@@ -444,7 +459,7 @@ def is_wheel_for_platform(whl_name: str, platform_id: str) -> bool:
         return True
 
     if platform_id == "macos-arm64":
-        return "macosx" in name and "arm64" in name
+        return "macosx" in name and ("arm64" in name or "universal2" in name)
     elif platform_id == "macos-x64":
         return "macosx" in name and ("x86_64" in name or "universal2" in name)
     elif platform_id == "windows-x64":
@@ -572,6 +587,13 @@ def main():
     parser.add_argument("--validate-only", action="store_true", help="Validate manifest only without building")
     parser.add_argument("--fallback-only", action="store_true", help="Force pure Python packaging without Blender CLI")
     parser.add_argument(
+        "--fetch-wheels",
+        nargs="?",
+        const="latest",
+        default=None,
+        help="Fetch precompiled libmtk_py wheels from libmozitoolkit release (default: latest, or pass ci-latest/<tag>)",
+    )
+    parser.add_argument(
         "--allow-missing-wheels",
         action="store_true",
         help="Development only: allow packaging platforms without a matching libmtk_py wheel",
@@ -613,6 +635,30 @@ def main():
                 sys.exit(res.returncode)
         else:
             print(f"⚠️ libmozitoolkit build script not found at: {libmtk_script}")
+
+    # Step 0b: Optionally fetch precompiled wheels from libmozitoolkit release
+    if args.fetch_wheels:
+        fetch_script = project_dir / "tools" / "fetch_wheels.py"
+        if fetch_script.exists():
+            print(f"\n🌐 Fetching precompiled wheels from libmozitoolkit ({args.fetch_wheels})...")
+            fetch_cmd = [
+                sys.executable,
+                str(fetch_script),
+                "--release",
+                args.fetch_wheels,
+                "--all",
+                "--out",
+                str(wheels_dir),
+            ]
+            if args.clean_wheels:
+                fetch_cmd.append("--clean")
+            res = subprocess.run(fetch_cmd, check=False)
+            if res.returncode != 0:
+                print("❌ Failed fetching libmtk_py wheels!")
+                sys.exit(res.returncode)
+        else:
+            print(f"⚠️ fetch_wheels script not found at: {fetch_script}")
+            sys.exit(1)
 
     # Step 1: Optional third-party wheels download
     if args.download_deps:

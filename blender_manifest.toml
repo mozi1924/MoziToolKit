@@ -33,8 +33,14 @@ copyright = [
 ]
 
 # Optional list of supported platforms. If omitted, the extension will be available in all operating systems.
-platforms = ["windows-x64", "windows-arm64", "macos-arm64", "linux-x64"]
-# Other supported platforms: "windows-arm64", "macos-x64"
+platforms = [
+  "windows-x64",
+  "windows-arm64",
+  "macos-arm64",
+  "macos-x64",
+  "linux-x64",
+  "linux-arm64",
+]
 
 # Optional: bundle 3rd party Python modules.
 # In development, native extensions are loaded dynamically from dev/lib/.

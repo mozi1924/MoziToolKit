@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 #
 # Fetch the `libmtk_py` abi3 wheel for MoziToolKit CI.
-#
-# Priority:
-#   1. If a git ref is given, build libmozitoolkit from source at that ref.
-#   2. Otherwise download the wheel published to the rolling `ci-latest` pre-release
-#      of mozi1924/libmozitoolkit (fast GitHub-internal download).
-#   3. Fallback: build libmozitoolkit `main` from source.
-#
-# Usage: fetch_libmtk_wheel.sh <output-dir> [git-ref]
+# Usage: fetch_libmtk_wheel.sh <output-dir> [git-ref-or-tag] [platform-id]
 set -euo pipefail
 
-out_dir="${1:?usage: fetch_libmtk_wheel.sh <output-dir> [git-ref]}"
-ref="${2:-}"
+out_dir="${1:?usage: fetch_libmtk_wheel.sh <output-dir> [git-ref-or-tag] [platform-id]}"
+ref="${2:-ci-latest}"
+platform_id="${3:-linux-x64}"
 
 mkdir -p "$out_dir"
 out_dir="$(cd "$out_dir" && pwd)"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 PYTHON="$(command -v python || command -v python3 || true)"
 if [ -z "$PYTHON" ]; then
@@ -41,29 +38,11 @@ build_from_source() {
   (cd "$src" && "$PYTHON" -m maturin build --release --out "$out_dir" -m bindings/mtk-py/Cargo.toml)
 }
 
-if [ -n "$ref" ]; then
-  build_from_source "$ref"
+# Try fetching via fetch_wheels.py first
+if "$PYTHON" "$ROOT_DIR/tools/fetch_wheels.py" --release "${ref:-ci-latest}" --platform "$platform_id" --out "$out_dir"; then
+  echo "Successfully resolved $platform_id wheel from release '${ref:-ci-latest}'"
   exit 0
 fi
 
-api="https://api.github.com/repos/mozi1924/libmozitoolkit/releases/tags/ci-latest"
-wheel_url="$(curl -sL "$api" | "$PYTHON" -c '
-import json, sys
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    data = {}
-assets = data.get("assets", []) if isinstance(data, dict) else []
-print(next((a["browser_download_url"] for a in assets if a["name"].endswith(".whl")), ""))
-' 2>/dev/null || true)"
-
-if [ -n "$wheel_url" ]; then
-  asset_name="$(basename "${wheel_url%%\?*}")"
-  if curl -fL -o "$out_dir/$asset_name" "$wheel_url"; then
-    echo "Using published ci-latest wheel: $asset_name"
-    exit 0
-  fi
-fi
-
-echo "::warning::ci-latest wheel unavailable; building libmtk_py from source (main)"
-build_from_source ""
+echo "::warning::Could not fetch precompiled wheel from release; attempting fallback build from source"
+build_from_source "${ref:-main}"

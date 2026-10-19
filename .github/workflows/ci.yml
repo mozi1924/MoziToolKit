@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
     inputs:
       libmtk_ref:
-        description: "Build libmozitoolkit from this git ref (empty = use the ci-latest wheel)"
+        description: "Build or fetch libmozitoolkit from this git ref/tag (empty = use the ci-latest wheel)"
         required: false
         default: ""
 
@@ -38,7 +39,7 @@ jobs:
           python-version: "3.11"
 
       - name: Resolve libmtk_py wheel
-        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}"
+        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" linux-x64
 
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip pytest numpy wheel/*.whl
@@ -76,7 +77,7 @@ jobs:
           python-version: "3.11"
 
       - name: Resolve libmtk_py wheel
-        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}"
+        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" linux-x64
 
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip pytest wheel/*.whl
@@ -121,3 +122,67 @@ jobs:
           SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
           MTK_TEST_SITE_PACKAGES="$SITE_PACKAGES" \
             blender --background --python tests/run_tests.py -- -q -rs
+
+  rolling-build:
+    name: Build & Publish Rolling Packages
+    needs: [pytest-mock, blender]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies & Blender
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl xz-utils libgl1 libegl1 libxi6 libxxf86vm1 libxfixes3 \
+            libxrender1 libxkbcommon0 libsm6 libxext6 unzip
+          work="$RUNNER_TEMP/blender"
+          tar_name="blender-${{ env.BLENDER_VERSION }}-linux-x64.tar.xz"
+          mkdir -p "$work"
+          if ! curl -fL --retry 3 -o "$work/$tar_name" "$MTK_CI_ASSETS_BASE/$tar_name"; then
+            echo "::warning::Blender mirror unavailable; falling back to download.blender.org"
+            curl -fL --retry 3 -o "$work/$tar_name" \
+              "https://download.blender.org/release/Blender5.2/$tar_name"
+          fi
+          mkdir -p "$work/opt"
+          tar -xJf "$work/$tar_name" -C "$work/opt" --strip-components=1
+          echo "$work/opt" >> "$GITHUB_PATH"
+          "$work/opt/blender" --version
+
+      - name: Fetch all 6 platform wheels from libmozitoolkit
+        run: |
+          python3 tools/fetch_wheels.py --release ci-latest --all --out wheels/
+
+      - name: Build & Package Extension (all platforms)
+        run: |
+          set -euo pipefail
+          python3 build.py --blender "$RUNNER_TEMP/blender/opt/blender"
+
+      - name: Upload Rolling Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mozitoolkit-rolling-packages
+          path: dist/*.zip
+          retention-days: 14
+
+      - name: Publish to rolling GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          COMMIT_SHA="$(git rev-parse --short HEAD)"
+          gh release view rolling --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create rolling --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "MoziToolKit Rolling Build (main)" \
+              --notes "Continuous rolling build of MoziToolKit from main branch."
+          gh release upload rolling dist/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Successfully updated rolling release for commit $COMMIT_SHA"
