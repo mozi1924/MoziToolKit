@@ -10,7 +10,14 @@ from __future__ import annotations
 
 
 def test_shared_face_culler_is_reused():
+    from MoziToolKit.bridge.engine import get_libmtk
     from MoziToolKit.bridge.world import get_shared_face_culler, reset_shared_face_culler
+
+    mtk = get_libmtk()
+    if mtk is None or not hasattr(mtk, "FaceCuller"):
+        import pytest
+
+        pytest.skip("native FaceCuller unavailable")
 
     reset_shared_face_culler()
     first = get_shared_face_culler()
