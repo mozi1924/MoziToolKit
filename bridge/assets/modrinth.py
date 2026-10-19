@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -19,6 +21,19 @@ logger = logging.getLogger("MoziToolKit.Bridge.Assets.Modrinth")
 
 MODRINTH_API_BASE = "https://api.modrinth.com/v2"
 USER_AGENT = "MoziToolKit/1.0.0 (https://github.com/mozi1924/MoziToolKit)"
+
+
+def default_cache_dir() -> Path:
+    """Platform-appropriate per-user cache directory for downloaded packs."""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base) / "MoziToolKit" / "resourcepacks"
+        return Path.home() / "AppData" / "Local" / "MoziToolKit" / "resourcepacks"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Caches" / "MoziToolKit" / "resourcepacks"
+    base = os.environ.get("XDG_CACHE_HOME")
+    return (Path(base) if base else Path.home() / ".cache") / "mozitoolkit" / "resourcepacks"
 
 # Curated high-quality CTM resource packs on Modrinth
 RECOMMENDED_CTM_PACKS = [
@@ -159,7 +174,7 @@ def fetch_modrinth_pack(
     filename = target_file.get("filename") or f"{slug_or_id}.zip"
     file_size = target_file.get("size")
 
-    out_dir = target_dir or (Path.home() / ".cache" / "mozitoolkit" / "resourcepacks")
+    out_dir = target_dir or default_cache_dir()
     dest_file = out_dir / filename
 
     if dest_file.exists() and dest_file.stat().st_size == file_size:

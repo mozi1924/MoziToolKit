@@ -22,6 +22,12 @@ import sys
 import urllib.error
 import urllib.request
 
+# The status output uses emoji; Windows pipes default to the legacy ANSI code
+# page and would raise UnicodeEncodeError when CI captures stdout.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 SUPPORTED_PLATFORMS = [
     "linux-x64",
     "linux-arm64",

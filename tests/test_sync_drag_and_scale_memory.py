@@ -86,23 +86,70 @@ from tools.mock_sync_server import (
 
 
 def _get_rss_mb() -> float:
-    try:
-        with open("/proc/self/status") as f:
-            for line in f:
-                if line.startswith("VmRSS:"):
-                    return float(line.split()[1]) / 1024.0
-    except Exception:
-        pass
-
+    """Current resident set size in MiB (best effort, cross-platform)."""
     import platform
-    if platform.system() == "Darwin":
+
+    system = platform.system()
+
+    if system == "Linux":
+        try:
+            with open("/proc/self/status", encoding="ascii") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        return float(line.split()[1]) / 1024.0
+        except Exception:
+            pass
+
+    if system == "Windows":
         try:
             import ctypes
+            from ctypes import wintypes
+
+            class _ProcessMemoryCounters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            kernel32 = ctypes.WinDLL("kernel32.dll")
+            psapi = ctypes.WinDLL("psapi.dll")
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(_ProcessMemoryCounters),
+                wintypes.DWORD,
+            ]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+            counters = _ProcessMemoryCounters()
+            counters.cb = ctypes.sizeof(counters)
+            if psapi.GetProcessMemoryInfo(
+                kernel32.GetCurrentProcess(),
+                ctypes.byref(counters),
+                counters.cb,
+            ):
+                return counters.WorkingSetSize / (1024.0 * 1024.0)
+        except Exception:
+            pass
+
+    if system == "Darwin":
+        try:
+            import ctypes
+
             class _ProcTaskinfo(ctypes.Structure):
                 _fields_ = [
                     ("pti_virtual_size", ctypes.c_uint64),
                     ("pti_resident_size", ctypes.c_uint64),
                 ]
+
             info = _ProcTaskinfo()
             lib = ctypes.CDLL(None)
             if lib.proc_pidinfo(os.getpid(), 4, 0, ctypes.byref(info), ctypes.sizeof(info)) > 0:
@@ -110,12 +157,16 @@ def _get_rss_mb() -> float:
         except Exception:
             pass
 
-    import resource
-    max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # macOS reports `ru_maxrss` in bytes; Linux reports it in kibibytes.
-    if platform.system() == "Darwin":
-        return max_rss / (1024.0 * 1024.0)
-    return max_rss / 1024.0
+    try:
+        import resource
+
+        max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # macOS reports `ru_maxrss` in bytes; Linux reports it in kibibytes.
+        if system == "Darwin":
+            return max_rss / (1024.0 * 1024.0)
+        return max_rss / 1024.0
+    except ImportError:
+        return 0.0
 
 
 class _TestControllableSyncServer:

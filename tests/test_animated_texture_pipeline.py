@@ -1,5 +1,7 @@
 import unittest
 import sys
+import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -44,8 +46,10 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
         except ImportError:
             from utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
-        # Create temporary dummy image for test
-        test_img_path = Path("/tmp/test_anim_strip.png")
+        # Create temporary dummy image for test (platform-independent temp dir)
+        tmpdir = tempfile.mkdtemp(prefix="mtk-anim-")
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        test_img_path = Path(tmpdir) / "test_anim_strip.png"
         if not test_img_path.exists():
             test_img_path.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x10\x00\x00\x01\x00\x08\x06\x00\x00\x00")
 

@@ -23,6 +23,8 @@ on:
         default: 'latest'
 
 env:
+  # Force UTF-8 for all Python processes (Windows-safe if packaging ever moves).
+  PYTHONUTF8: "1"
   # Temporary CI mirror (see .github/workflows/ci.yml). Falls back to blender.org.
   MTK_CI_ASSETS_BASE: https://github.com/mozi1924/mtk-ci-assets/releases/download/ci-assets-v1
   BLENDER_VERSION: "5.2.1"
@@ -107,10 +109,10 @@ jobs:
             exit 1
           fi
           .venv-test/bin/pip install "$linux_wheel"
-          echo "SITE_PACKAGES=$(.venv-test/bin/python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_ENV"
+          echo "SITE_PACKAGES=$(.venv-test/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" >> "$GITHUB_ENV"
 
       - name: Download real Minecraft assets
-        run: bash .github/scripts/fetch_test_assets.sh
+        run: python .github/scripts/fetch_test_assets.py
 
       - name: Run Test Suite
         run: |

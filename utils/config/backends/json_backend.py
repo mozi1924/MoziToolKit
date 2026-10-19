@@ -66,14 +66,18 @@ class JsonConfigBackend(ConfigBackend):
                 fp.flush()
                 os.fsync(fp.fileno())
             os.replace(tmp_name, filepath)
-            try:
-                dir_fd = os.open(filepath.parent, os.O_RDONLY)
+            if os.name == "posix":
+                # POSIX only: fsync the directory so the rename is durable.
+                # Windows cannot open a directory handle this way, and NTFS
+                # journals the rename on its own.
                 try:
-                    os.fsync(dir_fd)
-                finally:
-                    os.close(dir_fd)
-            except OSError:
-                pass
+                    dir_fd = os.open(filepath.parent, os.O_RDONLY)
+                    try:
+                        os.fsync(dir_fd)
+                    finally:
+                        os.close(dir_fd)
+                except OSError:
+                    pass
         except Exception:
             try:
                 os.unlink(tmp_name)

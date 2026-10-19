@@ -14,6 +14,13 @@ out_dir="$(cd "$out_dir" && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Git Bash reports POSIX paths (/d/a/...) while native Python/maturin on Windows
+# expect drive-qualified paths (D:\a\...).
+if command -v cygpath >/dev/null 2>&1; then
+  out_dir="$(cygpath -w "$out_dir")"
+  ROOT_DIR="$(cygpath -w "$ROOT_DIR")"
+fi
+
 PYTHON="$(command -v python || command -v python3 || true)"
 if [ -z "$PYTHON" ]; then
   echo "::error::python interpreter not found on PATH"
