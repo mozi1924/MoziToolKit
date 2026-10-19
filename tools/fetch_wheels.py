@@ -7,6 +7,10 @@ Supports:
   - Downloading a specific platform wheel (e.g. for CI testing: linux-x64)
   - Downloading all 6 supported platform wheels (for packaging: --all)
   - Fetching from the latest stable release, rolling 'ci-latest', or a specific tag
+  - Falling back to 'ci-latest' when 'latest' has no stable release yet
+    (opt out with --no-fallback)
+  - Picking the newest matching wheel when a release still carries stale
+    duplicates from earlier builds
 """
 
 import argparse
@@ -14,7 +18,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import shutil
 import sys
 import urllib.error
 import urllib.request
@@ -97,6 +100,44 @@ def get_release_data(repo: str, release_tag: str, token: str | None = None) -> d
         raise RuntimeError(f"Failed to connect to GitHub API: {e}") from e
 
 
+def asset_recency_key(asset: dict) -> tuple[str, int]:
+    """Sort key that prefers the most recently uploaded release asset.
+
+    `created_at` is an ISO-8601 timestamp, so lexical ordering is chronological.
+    `id` is used as a tie-breaker for assets uploaded within the same second.
+    """
+    try:
+        asset_id = int(asset.get("id") or 0)
+    except (TypeError, ValueError):
+        asset_id = 0
+    return (str(asset.get("created_at") or ""), asset_id)
+
+
+def resolve_release_data(
+    repo: str,
+    release: str,
+    token: str | None = None,
+    allow_prerelease_fallback: bool = True,
+) -> tuple[str, dict]:
+    """Resolve release metadata, optionally falling back from `latest` to `ci-latest`.
+
+    Returns the release tag that was actually used together with its metadata.
+    The fallback exists so upstream CI is not blocked before the first stable
+    libmozitoolkit release has been tagged; pass `allow_prerelease_fallback=False`
+    (CLI: `--no-fallback`) for a strict official build.
+    """
+    try:
+        return release, get_release_data(repo, release, token)
+    except RuntimeError as exc:
+        if release == "latest" and allow_prerelease_fallback:
+            print(
+                f"⚠️  No stable release resolved ({exc}); "
+                "falling back to the rolling 'ci-latest' release."
+            )
+            return "ci-latest", get_release_data(repo, "ci-latest", token)
+        raise
+
+
 def download_file(url: str, dest_path: Path, token: str | None = None) -> None:
     """Download a file with streaming and progress reporting."""
     headers = {
@@ -138,20 +179,26 @@ def fetch_wheels(
     out_dir: Path = Path("wheels"),
     clean: bool = False,
     token: str | None = None,
+    allow_prerelease_fallback: bool = True,
 ) -> list[Path]:
     """Fetch matching wheels from GitHub Releases."""
     token = token or os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     target_platforms = target_platforms or [detect_current_platform()]
 
     print(f"🔍 Querying {repo} release '{release}' for platform(s): {', '.join(target_platforms)}...")
-    rel_data = get_release_data(repo, release, token)
+    release, rel_data = resolve_release_data(
+        repo,
+        release,
+        token,
+        allow_prerelease_fallback=allow_prerelease_fallback,
+    )
 
     assets = rel_data.get("assets", [])
     if not assets:
         raise RuntimeError(f"No release assets found in {repo} release '{release}'.")
 
     whl_assets = [a for a in assets if a.get("name", "").endswith(".whl")]
-    print(f"📦 Release contains {len(whl_assets)} wheel asset(s).")
+    print(f"📦 Release '{release}' contains {len(whl_assets)} wheel asset(s).")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     if clean:
@@ -168,7 +215,17 @@ def fetch_wheels(
             missing_platforms.append(platform_id)
             continue
 
+        # Releases are append-only in practice: stale wheels from earlier runs
+        # under a different manylinux tag are not overwritten by `--clobber`.
+        # Always take the newest matching asset instead of relying on API order.
+        matched.sort(key=asset_recency_key, reverse=True)
         target_asset = matched[0]
+        if len(matched) > 1:
+            print(
+                f"  ℹ️  [{platform_id}] {len(matched)} candidate wheels in release; "
+                f"using newest: {target_asset['name']}"
+            )
+
         dest = out_dir / target_asset["name"]
 
         # Skip download if already exists with matching size
@@ -230,6 +287,14 @@ def main():
         default=None,
         help="GitHub personal access token (optional, falls back to GITHUB_TOKEN or GH_TOKEN env)",
     )
+    parser.add_argument(
+        "--no-fallback",
+        action="store_true",
+        help=(
+            "Fail when '--release latest' has no stable release instead of "
+            "falling back to the rolling 'ci-latest' release"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -254,6 +319,7 @@ def main():
             out_dir=Path(args.out),
             clean=args.clean,
             token=args.token,
+            allow_prerelease_fallback=not args.no_fallback,
         )
     except Exception as e:
         print(f"❌ Wheel fetch failed: {e}")

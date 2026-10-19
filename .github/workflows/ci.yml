@@ -17,6 +17,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Authenticate GitHub API calls (release resolution) and `gh` commands.
+  # Unauthenticated calls are limited to 60/hour per IP, which shared runner
+  # egress IPs exhaust easily.
+  GH_TOKEN: ${{ github.token }}
   # Temporary real-pack / Blender mirror. Downloads are non-fatal: if the mirror is
   # removed, the suite falls back to blender.org and skips asset-dependent tests.
   MTK_CI_ASSETS_BASE: https://github.com/mozi1924/mtk-ci-assets/releases/download/ci-assets-v1
@@ -160,7 +164,7 @@ jobs:
 
       - name: Fetch all 6 platform wheels from libmozitoolkit
         run: |
-          python3 tools/fetch_wheels.py --release ci-latest --all --out wheels/
+          python3 tools/fetch_wheels.py --release ci-latest --all --clean --out wheels/
 
       - name: Build & Package Extension (all platforms)
         run: |

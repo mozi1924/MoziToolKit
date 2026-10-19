@@ -17,7 +17,7 @@ on:
         required: false
         default: ''
       libmtk_release:
-        description: 'libmozitoolkit release to fetch wheels from (default: latest stable, or tag e.g. v0.1.0, or ci-latest)'
+        description: 'libmozitoolkit release to fetch wheels from (latest stable, tag e.g. v0.1.0, or ci-latest). "latest" falls back to ci-latest with a warning while no stable release exists.'
         type: string
         required: false
         default: 'latest'
@@ -85,7 +85,9 @@ jobs:
           set -euo pipefail
           RELEASE_REF="${{ inputs.libmtk_release || 'latest' }}"
           echo "Fetching 6 platform wheels from libmozitoolkit release: $RELEASE_REF"
-          python3 tools/fetch_wheels.py --release "$RELEASE_REF" --all --out wheels/
+          # `latest` falls back to `ci-latest` with a warning while libmozitoolkit
+          # has no stable release yet (see tools/fetch_wheels.py --no-fallback).
+          python3 tools/fetch_wheels.py --release "$RELEASE_REF" --all --clean --out wheels/
 
       - name: Build & Package Extension (6 platforms)
         run: |
@@ -99,7 +101,7 @@ jobs:
           set -euo pipefail
           python3 -m venv .venv-test
           .venv-test/bin/pip install --upgrade pip pytest
-          linux_wheel="$(ls wheels/libmtk_py-*manylinux*x86_64*.whl | head -n 1)"
+          linux_wheel="$(ls wheels/libmtk_py-*manylinux*x86_64*.whl 2>/dev/null | head -n 1 || true)"
           if [ -z "$linux_wheel" ]; then
             echo "::error::No Linux x86_64 libmtk_py wheel found in wheels/"
             exit 1

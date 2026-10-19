@@ -39,10 +39,15 @@ build_from_source() {
 }
 
 # Try fetching via fetch_wheels.py first
-if "$PYTHON" "$ROOT_DIR/tools/fetch_wheels.py" --release "${ref:-ci-latest}" --platform "$platform_id" --out "$out_dir"; then
+if "$PYTHON" "$ROOT_DIR/tools/fetch_wheels.py" --release "${ref:-ci-latest}" --platform "$platform_id" --out "$out_dir" --clean; then
   echo "Successfully resolved $platform_id wheel from release '${ref:-ci-latest}'"
   exit 0
 fi
 
 echo "::warning::Could not fetch precompiled wheel from release; attempting fallback build from source"
-build_from_source "${ref:-main}"
+# `ci-latest` / `latest` are release aliases, not git refs: clone `main` instead.
+case "$ref" in
+  ""|ci-latest|latest) build_ref="main" ;;
+  *) build_ref="$ref" ;;
+esac
+build_from_source "$build_ref"
