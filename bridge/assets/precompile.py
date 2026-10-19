@@ -61,6 +61,12 @@ def precompile_stack(
 
     wrapped_cb = wrap_progress_callback(progress_callback)
 
+    # Release any memory-mapped .mtkcache handle *before* the Rust writer opens
+    # the target path. Windows refuses to truncate a file that still has a mapped
+    # view (ERROR_USER_MAPPED_FILE); the same package name is reused whenever the
+    # pack-stack fingerprint is unchanged, so a second precompile would fail.
+    invalidate_asset_cache_memory()
+
     # Use unified high-performance Rust engine with thread pool control & progress callback
     if hasattr(mtk, "precompile_all_assets"):
         res = mtk.precompile_all_assets(

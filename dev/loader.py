@@ -75,6 +75,8 @@ def reload_dev_binary() -> bool:
         rust_release_dir / "libmtk_py.so",
         rust_release_dir / "liblibmtk_py.dylib",
         rust_release_dir / "libmtk_py.dylib",
+        rust_release_dir / "liblibmtk_py.dll",
+        rust_release_dir / "libmtk_py.dll",
         rust_release_dir / "libmtk_py.pyd",
     ]
     rust_bin = next((p for p in rust_candidates if p.exists()), None)
@@ -84,7 +86,9 @@ def reload_dev_binary() -> bool:
     import shutil
     import importlib.machinery
     mtime = int(rust_bin.stat().st_mtime)
-    ext = ".pyd" if rust_bin.suffix == ".pyd" else ".so"
+    # CPython only imports extension modules named ``*.pyd`` on Windows, while
+    # cargo emits ``*.dll``; normalise the timestamped hot-reload copy.
+    ext = ".pyd" if rust_bin.suffix in (".pyd", ".dll") else ".so"
     dest = DEV_LIB_DIR / f"libmtk_py_hot_{mtime}{ext}"
     if not dest.exists():
         shutil.copy2(rust_bin, dest)

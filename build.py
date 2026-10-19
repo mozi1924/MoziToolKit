@@ -34,6 +34,12 @@ try:
 except ImportError:
     tomllib = None
 
+# Windows consoles/pipes default to the legacy ANSI code page, which cannot
+# encode the emoji progress output. Force UTF-8 so build logs never crash.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 
 # External dependencies for MoziToolKit are provided entirely by the libmtk_py native wheel.
 # Optional third-party specs can still be specified explicitly via command-line arguments.

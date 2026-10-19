@@ -34,6 +34,13 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+# Tests spawn this server with piped stdout. On Windows the default pipe encoding
+# is the legacy ANSI code page, which cannot encode the status emoji, so force
+# UTF-8 to keep the subprocess alive.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 DEV_LIB = os.path.join(PROJECT_ROOT, "dev", "lib")

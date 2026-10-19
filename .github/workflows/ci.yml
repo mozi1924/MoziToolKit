@@ -17,6 +17,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Force UTF-8 for all Python processes (including test-spawned mock servers).
+  # Windows pipes otherwise default to the legacy ANSI code page.
+  PYTHONUTF8: "1"
   # Authenticate GitHub API calls (release resolution) and `gh` commands.
   # Unauthenticated calls are limited to 60/hour per IP, which shared runner
   # egress IPs exhaust easily.
@@ -28,8 +31,21 @@ env:
 
 jobs:
   pytest-mock:
-    name: Pytest (mocked bpy, no Blender)
-    runs-on: ubuntu-latest
+    name: Pytest (mocked bpy, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: windows-latest
+            platform: windows-x64
+    env:
+      # Sandbox config/cache so tests never touch the runner's user profile.
+      MOZI_CACHE_DIR: ${{ github.workspace }}/.ci-cache
+      MTK_TEST_CACHE: ${{ github.workspace }}/.ci-cache
+      MOZI_CONFIG_DIR: ${{ github.workspace }}/.ci-config
     steps:
       - uses: actions/checkout@v4
 
@@ -43,24 +59,18 @@ jobs:
           python-version: "3.11"
 
       - name: Resolve libmtk_py wheel
-        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" linux-x64
+        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" ${{ matrix.platform }}
 
       - name: Install Python dependencies
-        run: python -m pip install --upgrade pip pytest numpy wheel/*.whl
-
-      - name: Install unzip
-        run: sudo apt-get update && sudo apt-get install -y unzip
+        run: |
+          python -m pip install --upgrade pip pytest numpy
+          python -m pip install --no-index --find-links wheel libmtk_py
 
       - name: Download real Minecraft assets
-        run: bash .github/scripts/fetch_test_assets.sh
+        run: python .github/scripts/fetch_test_assets.py
 
       - name: Precompile asset cache
-        run: |
-          set -euo pipefail
-          cache_dir="$RUNNER_TEMP/mtk-cache"
-          echo "MOZI_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
-          echo "MTK_TEST_CACHE=$cache_dir" >> "$GITHUB_ENV"
-          MOZI_CACHE_DIR="$cache_dir" python .github/scripts/precompile_cache.py
+        run: python .github/scripts/precompile_cache.py
 
       - name: Run test suite (mocked bpy)
         run: python -m pytest tests/ -q -rs
@@ -68,6 +78,10 @@ jobs:
   blender:
     name: Blender headless suite (bpy integration)
     runs-on: ubuntu-latest
+    env:
+      MOZI_CACHE_DIR: ${{ github.workspace }}/.ci-cache
+      MTK_TEST_CACHE: ${{ github.workspace }}/.ci-cache
+      MOZI_CONFIG_DIR: ${{ github.workspace }}/.ci-config
     steps:
       - uses: actions/checkout@v4
 
@@ -84,7 +98,9 @@ jobs:
         run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" linux-x64
 
       - name: Install Python dependencies
-        run: python -m pip install --upgrade pip pytest wheel/*.whl
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install --no-index --find-links wheel libmtk_py
 
       - name: Install system dependencies & unzip
         run: |
@@ -110,22 +126,77 @@ jobs:
           "$work/opt/blender" --version
 
       - name: Download real Minecraft assets
-        run: bash .github/scripts/fetch_test_assets.sh
+        run: python .github/scripts/fetch_test_assets.py
 
       - name: Precompile asset cache
-        run: |
-          set -euo pipefail
-          cache_dir="$RUNNER_TEMP/mtk-cache"
-          echo "MOZI_CACHE_DIR=$cache_dir" >> "$GITHUB_ENV"
-          echo "MTK_TEST_CACHE=$cache_dir" >> "$GITHUB_ENV"
-          MOZI_CACHE_DIR="$cache_dir" python .github/scripts/precompile_cache.py
+        run: python .github/scripts/precompile_cache.py
 
       - name: Run Blender host suite
         run: |
           set -euo pipefail
-          SITE_PACKAGES="$(python -c 'import site; print(site.getsitepackages()[0])')"
+          SITE_PACKAGES="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
           MTK_TEST_SITE_PACKAGES="$SITE_PACKAGES" \
             blender --background --python tests/run_tests.py -- -q -rs
+
+  blender-windows:
+    name: Blender headless suite (Windows)
+    runs-on: windows-latest
+    env:
+      MOZI_CACHE_DIR: ${{ github.workspace }}/.ci-cache
+      MTK_TEST_CACHE: ${{ github.workspace }}/.ci-cache
+      MOZI_CONFIG_DIR: ${{ github.workspace }}/.ci-config
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve libmtk_py wheel
+        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" windows-x64
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install --no-index --find-links wheel libmtk_py
+
+      - name: Download & extract Blender
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+          $work = Join-Path $env:RUNNER_TEMP "blender"
+          $zip = Join-Path $work "blender.zip"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          $name = "blender-${{ env.BLENDER_VERSION }}-windows-x64.zip"
+          try {
+            Invoke-WebRequest -Uri "$env:MTK_CI_ASSETS_BASE/$name" -OutFile $zip -UseBasicParsing -TimeoutSec 600
+          } catch {
+            Write-Warning "Blender mirror unavailable; falling back to download.blender.org"
+            Invoke-WebRequest -Uri "https://download.blender.org/release/Blender5.2/$name" -OutFile $zip -UseBasicParsing -TimeoutSec 600
+          }
+          $opt = Join-Path $work "opt"
+          Expand-Archive -Path $zip -DestinationPath $opt -Force
+          $blender_dir = Join-Path $opt "blender-${{ env.BLENDER_VERSION }}-windows-x64"
+          $exe = Join-Path $blender_dir "blender.exe"
+          & $exe --version
+          Split-Path $exe | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Download real Minecraft assets
+        run: python .github/scripts/fetch_test_assets.py
+
+      - name: Precompile asset cache
+        run: python .github/scripts/precompile_cache.py
+
+      - name: Run Blender host suite
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $site = python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])"
+          $env:MTK_TEST_SITE_PACKAGES = $site
+          blender --background --python tests/run_tests.py -- -q -rs
 
   rolling-build:
     name: Build & Publish Rolling Packages
