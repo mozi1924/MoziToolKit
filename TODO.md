@@ -10,7 +10,7 @@
 | :--- | :--- | :--- | :--- |
 | **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | ✅ **正式发版 (Released / Code Frozen)** |
 | **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为参考底座，深度重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体。 | 📋 **规划排期中** |
-| **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
+| **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；轻量场景交换包 (`.mtkscene`) 导出与现场重构导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
 | **v2.3+** | **万能工作流** | **创作者全能生态 (Universal Creator Suite)**<br>角色皮肤 3D 立体挤出与预设 Rig 库、Mine-imator HLSL 渲染特性 1:1 复刻、原版环境日夜天空盒与渲染预设。 | 🔮 **远景规划** |
 
 ---
@@ -214,6 +214,14 @@
 - [ ] **蓝图一键转网格**
   - [ ] 无需先将建筑导入世界存档，直接在 Blender 中单选 `.litematic` 文件；
   - [ ] 现场生成带完整材质、CTM 与 Biome 的自包含建筑网格。
+
+### 5. 自包含轻量场景交换包前端交互 (`.mtkscene`) (P2)
+- [ ] **场景导出端 (`Export -> MTK Scene Interchange (.mtkscene)`)**
+  - [ ] 交互式框选或根据当前选中世界容器导出；
+  - [ ] 调用 Rust 核心按需提取最小依赖模型与独立贴图闭包（Tree-shaking），稀疏体素打包为单文件。
+- [ ] **场景导入端与现场重构 (`Import -> MTK Scene Interchange (.mtkscene)`)**
+  - [ ] 极速读取 `.mtkscene` 单文件，根据用户设置实时重构网格；
+  - [ ] 支持用户在导入时现场决定采用“紧凑小图集”还是“独立 Principled BSDF 材质槽”。
 
 ---
 

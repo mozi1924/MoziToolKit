@@ -113,7 +113,7 @@ PY
 | R-08 | `bindings/mtk-py/src/mesh/mod.rs` | 6 个 `direct_copy_*` method 级 DNA 入口 | 无 | B3 |
 | R-09 | `bindings/mtk-py/src/point_cloud.rs` | `direct_copy_*` method 级 DNA 入口 | 无 | B3 |
 | R-10 | `bindings/mtk-ffi/` | 整个 crate、workspace member、CI 引用、文档 | 无 | B3 |
-| R-12 | `crates/mtk-package/src/header.rs` | `SceneInterchange`、`CompressionType::Lz4`、`ChecksumType::XxHash64`、`HeaderFlags::EXTERNAL_REF` 及 writer/reader 分支 | 无 | B4 |
+| R-12 | `crates/mtk-package/src/header.rs` | `CompressionType::Lz4`、`ChecksumType::XxHash64`、`HeaderFlags::EXTERNAL_REF`（注：`SceneInterchange` 作为轻量场景交换包 `.mtkscene` 的核心规划予以保留） | 无 | B4 |
 | R-13 | `crates/mtk-model/src/baker/baked_model/legacy.rs` | 未压缩 bincode、models-only HashMap 两种回退；文件改名 `binary.rs` | 无 | B4 |
 | R-14 | `crates/mtk-model/src/baker/baked_model/database.rs` | `#[serde(alias = "multi_variants")]` 旧字段别名 | R-13 | B4 |
 | R-15 | `crates/libmtk/src/prebake/reader.rs` | `ASSET_CACHE_FORMAT_VERSION` 2 → 3；旧缓存不再兼容 | R-13 | B4 |
@@ -259,7 +259,7 @@ PY
 
 - [x] 全仓库无 `unified_mesh=False` 调用。
 - [x] `ASSET_CACHE_FORMAT_VERSION = 3`；旧 models.bin 加载失败并给出明确错误。
-- [x] `mtk-package` 不再声明 Lz4/XxHash64/SceneInterchange。
+- [x] `mtk-package` 不再声明 Lz4/XxHash64（保留 `SceneInterchange` 作为 `.mtkscene` 核心规划）。
 - [x] `mtk-save` 不再寻找 `DIM-1`/`DIM1`；Gzip chunk 测试保留。
 - [x] `mtk-sync` 不再接受 0x01 decision / tokenless HELLO。
 - [x] `cargo test --workspace` 通过。
@@ -329,7 +329,7 @@ cd /Volumes/Data/mtk/MoziToolKit
 ```bash
 cd /Volumes/Data/mtk
 rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
-  'process_mesh_extrude_repair|process_random_extrude_mesh|SectionMesher|process_mesh\(|direct_copy_|unified_mesh|remesh_from_voxel_cloud|rematerialize_from_voxel_cloud|update_material_shading_adaptation|mozi\.replace_materials|MENU_SCHEMA_VERSION|Lz4|XxHash64|SceneInterchange|DIM-1|DIM1|REPLAY_DELTAS'
+  'process_mesh_extrude_repair|process_random_extrude_mesh|SectionMesher|process_mesh\(|direct_copy_|unified_mesh|remesh_from_voxel_cloud|rematerialize_from_voxel_cloud|update_material_shading_adaptation|mozi\.replace_materials|MENU_SCHEMA_VERSION|Lz4|XxHash64|DIM-1|DIM1|REPLAY_DELTAS'
 ```
 
 预期：B3 后只剩 `mtk-core` 内部合法的 nested extrude、`mtk-voxel::SectionMesher` 内部调用；B4 后旧格式/协议全部消失；B6 后菜单/文档不再命中。
