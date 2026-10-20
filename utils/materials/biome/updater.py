@@ -232,26 +232,6 @@ def resolve_mesh_base_tint_types(
                     _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
                 return base_tt
 
-    # Strategy B: Legacy STRING attribute ('mtk_source_texture_key')
-    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY) if hasattr(mesh, "attributes") else None
-    if attr_str is not None and len(attr_str.data) == num_polys:
-        keys = read_face_string_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY)
-        if any(keys):
-            unique_keys = set(keys)
-            key_to_tt = {
-                k: (resolver.get_tint_info(k).get("tint_type", 0) if hasattr(resolver, "get_tint_info") else 0)
-                for k in unique_keys
-            }
-            base_tt = np.fromiter((key_to_tt.get(k, 0) for k in keys), dtype=np.int32, count=num_polys)
-            if raw_tint_data_2d is not None and len(raw_tint_data_2d) == num_polys:
-                raw_zero_mask = (raw_tint_data_2d[:, 3] == float(TINT_TYPE_NONE))
-                base_tt[raw_zero_mask] = TINT_TYPE_NONE
-
-            if np.any(base_tt > 0):
-                if mesh_name:
-                    _MESH_BASE_TINT_TYPES[mesh_name] = base_tt
-                return base_tt
-
     # Strategy C: Material slots on object
     if obj is not None and len(getattr(obj, "material_slots", [])) > 0:
         slot_tt = []
@@ -295,7 +275,7 @@ def resolve_mesh_base_tint_types(
 
 def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
     """Check if the given object has MoziToolKit materials or face metadata."""
-    if not obj or obj.type != "MESH" or not obj.data:
+    if not obj or obj.type != "MESH" or obj.data is None:
         return False
     if obj.get("mtk:provenance_schema_version") is not None or obj.get("mtk:biome_preset") is not None:
         return True

@@ -129,8 +129,9 @@ class TestExternalMaterialAnimation(unittest.TestCase):
         from bridge.engine import get_libmtk
 
         mtk = get_libmtk()
-        if mtk and hasattr(mtk, "create_test_cache_package"):
-            mtk.create_test_cache_package(
+        testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
+        if testing is not None and hasattr(testing, "create_test_cache_package"):
+            testing.create_test_cache_package(
                 str(cache_dir / "animstackfp.mtkcache"), "animstackfp", 0
             )
         return cache_dir

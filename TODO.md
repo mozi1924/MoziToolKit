@@ -9,7 +9,7 @@
 | 版本 | 阶段定位 | 核心主题与边界 | 状态 |
 | :--- | :--- | :--- | :--- |
 | **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | ✅ **正式发版 (Released / Code Frozen)** |
-| **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为参考底座，深度重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体与 `.mtkscene`。 | 📋 **规划排期中** |
+| **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为参考底座，深度重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体。 | 📋 **规划排期中** |
 | **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
 | **v2.3+** | **万能工作流** | **创作者全能生态 (Universal Creator Suite)**<br>角色皮肤 3D 立体挤出与预设 Rig 库、Mine-imator HLSL 渲染特性 1:1 复刻、原版环境日夜天空盒与渲染预设。 | 🔮 **远景规划** |
 
@@ -179,17 +179,6 @@
   - [ ] 提供“分离可动部件”选项：门（Door）、栅栏门（Fence Gate）、箱子顶盖（Chest Lid）、钟体（Bell Body）生成为独立子物体；
   - [ ] 精确放置铰链旋转中心（Pivot Point），方便动画师直接设置旋转关键帧。
 
-### 5. 自包含轻量场景交换包 (`.mtkscene`) (P2)
-- [ ] **场景交换格式导入导出算子 (`operators/package/`)**
-  - [ ] 顶部菜单集成：`File -> Import/Export -> MoziToolKit Scene Package (.mtkscene)`；
-  - [ ] 导出端自动 Tree-shaking 剪枝，仅打包选区内实际引用的独立贴图与方块模型；
-  - [ ] 导入端现场动态重构世界几何与材质节点树。
-
----
-
-## 🛠️ v2.2 版本：从资产到代码：通用面部绑定与高级创作者工具 (规划排期中 📋)
-
-> **2.2 版本主题**：将 `rig2_addons` 沉淀的资产能力抽象为通用代码规范；构建多模型适配的面部绑定系统；Rust 处理网络与滤波；提供 2D 小地图与建筑蓝图支持。
 
 ### 1. 通用 Minecraft 面部绑定与驱动系统 (Universal Facial Engine - P1 核心 🌟)
 - [ ] **从资产强绑定解耦为通用代码规范**

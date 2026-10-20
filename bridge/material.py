@@ -165,6 +165,48 @@ def compute_biome_tint_attributes(
     )
 
 
+def compute_biome_tint_attributes_paletted(
+    palette: Sequence[str],
+    face_indices: Sequence[int],
+    biome_preset: Union[str, List[Tuple[str, float]]] = "PLAINS",
+    resolver: Optional[Any] = None,
+    custom_temp: Optional[float] = None,
+    custom_humidity: Optional[float] = None,
+    custom_grass: Optional[List[float]] = None,
+    custom_foliage: Optional[List[float]] = None,
+    custom_dry_foliage: Optional[List[float]] = None,
+    custom_water: Optional[List[float]] = None,
+    has_custom_grass: bool = False,
+    has_custom_foliage: bool = False,
+    has_custom_dry_foliage: bool = False,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Palette-native biome tint computation returning zero-copy flat arrays."""
+    mtk = require_libmtk("compute_biome_tint_attributes_paletted")
+    multi = list(biome_preset) if isinstance(biome_preset, list) else None
+    name = "PLAINS" if multi is not None else str(biome_preset)
+    packed, colors, uvs = mtk.compute_biome_tint_attributes_paletted(
+        list(palette),
+        face_indices,
+        name,
+        multi_biomes=multi,
+        resolver=resolver,
+        custom_temp=custom_temp,
+        custom_humidity=custom_humidity,
+        custom_grass=custom_grass,
+        custom_foliage=custom_foliage,
+        custom_dry_foliage=custom_dry_foliage,
+        custom_water=custom_water,
+        has_custom_grass=has_custom_grass,
+        has_custom_foliage=has_custom_foliage,
+        has_custom_dry_foliage=has_custom_dry_foliage,
+    )
+    return (
+        np.frombuffer(packed, dtype=np.float32).reshape(-1, 4),
+        np.frombuffer(colors, dtype=np.float32).reshape(-1, 4),
+        np.frombuffer(uvs, dtype=np.float32).reshape(-1, 3),
+    )
+
+
 def reapply_uniform_biome_tint(
     base_tint_types: Any,
     packed_tint_data: Any,
@@ -482,6 +524,7 @@ __all__ = [
     "get_hardcoded_tint",
     "get_hardcoded_tint_hex",
     "compute_biome_tint_attributes",
+    "compute_biome_tint_attributes_paletted",
     "compute_mesh_biome_attributes_from_storage",
     "MaterialResolver",
     "clean_material_name",

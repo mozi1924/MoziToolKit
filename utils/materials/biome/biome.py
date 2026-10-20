@@ -253,6 +253,44 @@ def compute_biome_tint_attributes(
     return res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"]
 
 
+def compute_biome_tint_attributes_paletted(
+    palette: List[str],
+    face_indices: Any,
+    biome_preset: Union[str, List[Tuple[str, float]]] = "PLAINS",
+    resolver: Optional[Any] = None,
+    custom_temp: Optional[float] = None,
+    custom_humidity: Optional[float] = None,
+    custom_grass: Optional[List[float]] = None,
+    custom_foliage: Optional[List[float]] = None,
+    custom_dry_foliage: Optional[List[float]] = None,
+    custom_water: Optional[List[float]] = None,
+    has_custom_grass: bool = False,
+    has_custom_foliage: bool = False,
+    has_custom_dry_foliage: bool = False,
+) -> Tuple[Any, Any, Any]:
+    """Palette-native biome tint computation; never expands per-face strings."""
+    try:
+        from ....bridge.material import compute_biome_tint_attributes_paletted as _native
+    except (ImportError, ValueError):
+        from bridge.material import compute_biome_tint_attributes_paletted as _native
+
+    return _native(
+        palette,
+        face_indices,
+        biome_preset=biome_preset,
+        resolver=resolver,
+        custom_temp=custom_temp,
+        custom_humidity=custom_humidity,
+        custom_grass=custom_grass,
+        custom_foliage=custom_foliage,
+        custom_dry_foliage=custom_dry_foliage,
+        custom_water=custom_water,
+        has_custom_grass=has_custom_grass,
+        has_custom_foliage=has_custom_foliage,
+        has_custom_dry_foliage=has_custom_dry_foliage,
+    )
+
+
 def apply_biome_tint_attributes(
     mesh: Any,
     packed_tint_data: List[List[float]],
@@ -348,10 +386,8 @@ def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
                 from bridge.mesh import resolve_source_texture_keys
             except (ImportError, ValueError):
                 resolve_source_texture_keys = None
-        if resolve_source_texture_keys is not None:
-            resolved = resolve_source_texture_keys(mesh)
-            if resolved and len(resolved) == num_polys:
-                return resolved
+        resolved = resolve_source_texture_keys(mesh) if resolve_source_texture_keys is not None else []
+        return resolved if len(resolved) == num_polys else [""] * num_polys
 
     attr = mesh.attributes.get(name)
     if not attr or attr.domain != "FACE":

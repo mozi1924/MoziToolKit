@@ -37,8 +37,8 @@
 │      - 一键显现/进入雕刻模式 (mozi.toggle_voxel_cloud)        │
 │  - 挂载点级属性 (Point Attributes):                          │
 │      - mtk_block_x, mtk_block_y, mtk_block_z (INT)          │
-│      - mtk_block_state (STRING)                             │
-│      - mtk_biome (STRING)                                   │
+│      - mtk_source_texture_idx (INT) + mtk_source_textures   │
+│      - mtk_biome_idx (INT) + mtk_biome_palette              │
 │  - 自定义属性:                                               │
 │      - mtk_is_voxel_cloud = True                            │
 │      - mtk_world_mesh = parent.name                         │
@@ -69,8 +69,6 @@ def ensure_voxel_child_cloud(
 - **`get_associated_voxel_cloud(parent_or_mesh)`**：解析主物体关联的体素点云子物体。
 - **`get_associated_parent_mesh(cloud_or_mesh)`**：解析体素点云对应的父级主世界物体。
 
-### 3.3 废弃接口声明
-- `sync_voxel_point_cloud_for_world` 已标记为 `@deprecated`，因其 `sync` 命名前缀具有误导性（让人误以为只属于 Live Sync）。当前保留别名并自动转发至 `ensure_voxel_child_cloud`，同时抛出 `DeprecationWarning`。
 
 ---
 

@@ -10,7 +10,7 @@ import array
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -77,6 +77,7 @@ try:
     from .biome import (
         get_or_load_biome_resolver,
         compute_biome_tint_attributes,
+        compute_biome_tint_attributes_paletted,
         apply_biome_tint_attributes,
     )
     from .constants import (
@@ -122,6 +123,7 @@ except (ImportError, ValueError):
         from utils.materials.biome import (
             get_or_load_biome_resolver,
             compute_biome_tint_attributes,
+            compute_biome_tint_attributes_paletted,
             apply_biome_tint_attributes,
         )
         from utils.materials.constants import (
@@ -297,35 +299,21 @@ def extract_face_material_palette_context(
         slot_is_mtk.append(is_mtk)
         slot_source_ids.append(str(slot_id) if slot_id else "")
 
-    num_slots = len(slot_names)
-    if num_slots > 0:
-        valid_slot = (poly_mats >= 0) & (poly_mats < num_slots)
-        safe_mats = np.where(valid_slot, poly_mats, 0)
-        slot_names_arr = np.array(slot_names, dtype=object)
-        face_names = slot_names_arr[safe_mats]
-        face_is_mtk = np.array(slot_is_mtk, dtype=bool)[safe_mats] & valid_slot
-        face_names = np.where(valid_slot, face_names, "default")
-
-        if len(existing_key_indices) == num_polys:
-            existing_arr = np.array(existing_key_palette, dtype=object)[existing_key_indices]
-            valid_prov = (existing_arr != "") & (existing_arr != "mozi:fallback")
-            face_names = np.where(face_is_mtk & valid_prov, existing_arr, face_names)
-        else:
-            slot_ids_arr = np.array(slot_source_ids, dtype=object)
-            slot_ids = slot_ids_arr[safe_mats]
-            valid_ids = slot_ids != ""
-            face_names = np.where(face_is_mtk & valid_ids, slot_ids, face_names)
-    else:
-        face_names = np.full(num_polys, "default", dtype=object)
-
-    face_names_list = face_names.tolist()
-    palette = list(dict.fromkeys(face_names_list))
-    key_to_idx = {k: i for i, k in enumerate(palette)}
-    indices = np.fromiter(
-        (key_to_idx[k] for k in face_names_list),
-        dtype=np.uint32,
-        count=num_polys,
+    try:
+        from ....bridge.engine import require_libmtk
+    except (ImportError, ValueError):
+        from bridge.engine import require_libmtk
+    mtk = require_libmtk("build_material_palette")
+    palette, indices_mv = mtk.build_material_palette(
+        slot_names,
+        slot_is_mtk,
+        slot_source_ids,
+        poly_mats,
+        existing_key_palette,
+        existing_key_indices,
     )
+    indices = np.frombuffer(indices_mv, dtype=np.uint32)
+
     face_loop_ranges: List[Tuple[int, int]] = list(zip(loop_starts.tolist(), loop_totals.tolist()))
 
     return (
@@ -573,22 +561,31 @@ def inject_mesh_provenance_attributes(
 def resolve_and_apply_biome_tint(
     mesh_or_obj: Any,
     mesh: Any,
-    face_source_keys: List[str],
+    face_source_keys: Optional[List[str]],
     biome: str,
     base_cache: Path,
     prefs: Optional[Any] = None,
+    source_key_palette: Optional[Sequence[str]] = None,
+    source_key_indices: Optional[Any] = None,
 ) -> None:
     """
     Step 6: Compute and apply biome tint attributes and colormap UVs based on current preset.
+
+    Palette + index inputs keep the 1M-face path free of per-face Python strings.
+    The list-based path remains only for WORLD (per-voxel 3D biome sampling) and
+    callers that have not migrated yet.
     """
     biome_resolver = get_or_load_biome_resolver(cache_dir=base_cache, prefs=prefs)
+    is_world = biome.upper() == "WORLD"
 
-    if biome.upper() == "WORLD":
+    if is_world:
+        if face_source_keys is None and source_key_palette is not None and source_key_indices is not None:
+            face_source_keys = np.asarray(source_key_palette, dtype=object)[source_key_indices].tolist()
         from .biome.updater import resolve_and_apply_world_biome_tint
         if resolve_and_apply_world_biome_tint(
             mesh_or_obj=mesh_or_obj,
             mesh=mesh,
-            face_source_keys=face_source_keys,
+            face_source_keys=face_source_keys or [],
             prefs=prefs,
             base_cache=base_cache,
         ):
@@ -616,20 +613,39 @@ def resolve_and_apply_biome_tint(
         custom_dry_foliage = None
         custom_water = None
 
-    packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
-        face_source_keys,
-        biome_preset=biome,
-        resolver=biome_resolver,
-        custom_temp=custom_temp,
-        custom_humidity=custom_humidity,
-        custom_grass=custom_grass,
-        custom_foliage=custom_foliage,
-        custom_dry_foliage=custom_dry_foliage,
-        custom_water=custom_water,
-        has_custom_grass=has_custom_grass,
-        has_custom_foliage=has_custom_foliage,
-        has_custom_dry_foliage=has_custom_dry_foliage,
-    )
+    if not is_world and source_key_palette is not None and source_key_indices is not None:
+        packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes_paletted(
+            source_key_palette,
+            source_key_indices,
+            biome_preset=biome,
+            resolver=biome_resolver,
+            custom_temp=custom_temp,
+            custom_humidity=custom_humidity,
+            custom_grass=custom_grass,
+            custom_foliage=custom_foliage,
+            custom_dry_foliage=custom_dry_foliage,
+            custom_water=custom_water,
+            has_custom_grass=has_custom_grass,
+            has_custom_foliage=has_custom_foliage,
+            has_custom_dry_foliage=has_custom_dry_foliage,
+        )
+    else:
+        if face_source_keys is None:
+            return
+        packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+            face_source_keys,
+            biome_preset=biome,
+            resolver=biome_resolver,
+            custom_temp=custom_temp,
+            custom_humidity=custom_humidity,
+            custom_grass=custom_grass,
+            custom_foliage=custom_foliage,
+            custom_dry_foliage=custom_dry_foliage,
+            custom_water=custom_water,
+            has_custom_grass=has_custom_grass,
+            has_custom_foliage=has_custom_foliage,
+            has_custom_dry_foliage=has_custom_dry_foliage,
+        )
     apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
 
     if hasattr(mesh_or_obj, "__setitem__"):
@@ -638,10 +654,6 @@ def resolve_and_apply_biome_tint(
         except Exception:
             pass
 
-
-# =============================================================================
-# Primary Public Pipeline Orchestrators
-# =============================================================================
 
 def _needs_animation_reconcile(mesh: Any, prefs: Optional[Any] = None) -> bool:
     """Decide whether static/animated routing must be re-resolved."""
@@ -884,13 +896,19 @@ def replace_materials(
         mode=mode_upper,
     )
 
-    # Step 7: Compute & apply biome tint attributes. The palette is expanded to a
-    # flat key list once for the legacy biome API; a palette-native biome path is
-    # the next optimization.
-    source_key_indices = np.frombuffer(remap["face_source_key_indices"], dtype=np.int32)
-    source_key_arr = np.asarray(remap["source_key_palette"], dtype=object)[source_key_indices]
+    # Step 7: Compute & apply biome tint attributes through the palette-native
+    # path. No per-face Python strings are materialized for uniform presets.
     resolve_and_apply_biome_tint(
-        mesh_or_obj, mesh, source_key_arr.tolist(), biome, base_cache, prefs
+        mesh_or_obj,
+        mesh,
+        None,
+        biome,
+        base_cache,
+        prefs,
+        source_key_palette=remap["source_key_palette"],
+        source_key_indices=np.frombuffer(
+            remap["face_source_key_indices"], dtype=np.uint32
+        ),
     )
 
     if hasattr(mesh, "__setitem__"):

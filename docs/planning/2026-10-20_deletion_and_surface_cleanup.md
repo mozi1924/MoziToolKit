@@ -1,6 +1,6 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
-> 状态：**B1–B5 已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B6+ 未开始**
+> 状态：**B1–B6 已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B7 未开始**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库
 > 前提：2.0 与 1.0 的网格激活/数据模型不兼容；2.0 没有第三方用户；不再为不存在的旧 wheel、旧 `.blend`、旧菜单配置保留兼容层。
@@ -170,7 +170,7 @@ PY
 | D-03 | 两套 weld 合并 + loop 展开上收 | `MeshData::weld_spatial_vertices`（位置）与 `subdivide::weld_mesh_vertices`（UV 接缝）统一为显式策略；`loop_uvs` / `loop_starts` / `loop_totals` 展开上收到 `mtk-core`，`memoryview.rs` 与 `mtk-blender-dna` 不再各写一份 |
 | D-04 | 暴露 `compute_mesh_biome_attributes_paletted_flat` | core 已有实现（`mtk-material/src/biome/batch.rs`），只差 PyO3 + 扁平 memoryview 输出 |
 | D-05 | 材质 palette/provenance builder | 把 `extract_face_material_palette_context` 的逐面 object 数组 / `.tolist()` 收进 Rust |
-| D-06 | random extrude flat 通道 | 现有 Rust 只吃嵌套 `Vec<Vec<_>>`；要么补 flat，要么删掉 Python 侧 nested 入口 |
+| D-06 | random extrude flat 通道 | nested `process_random_extrude_mesh` 入口已在 B3 删除；Python 仅调用 `generate_random_extrude_heights` + flat repair |
 | D-07 | `PyMeshData.from_flat_polygons` | 复用 `FlatPolygonMesh`，共享顶点 + 逐 loop UV，替代 `from_raw_buffers` 的 4 倍角点复制 |
 | D-08 | `API_VERSION` / 能力握手 | `libmtk_py` 暴露整数 API 版本；`bridge/engine.py` 启动时校验，失败给出重装/重编译提示 |
 | D-09 | DNA leaf-crate 化 | `mtk-blender-dna` 移除 `mtk-core`/`mtk-voxel` 依赖，只保留 raw slice/pointer copy（`&[f32]`/`&[u32]`/`&[u8]` + dst_ptr + max_bytes）；`mtk-py` 负责从 `MeshData`/`VoxelPointCloud` 取 slice 后调用。目标：独立 wheel 只含 Blender 写入适配，不打包第二套核心 |
@@ -282,12 +282,12 @@ PY
 
 验收：
 
-- [ ] Python 1M 面 biome 路径使用 palette + flat memoryview，不再逐面字符串。
-- [ ] `ensure_world_materials` 只剩桥接职责；材质编排在 `utils/materials/builder/`。
-- [ ] `apply_imported_save_to_blender` 的场景层级/UUID/隐私清洗在 `operators/save/` 或 `utils/save/`。
-- [ ] README/API 文档不再列出不存在的符号。
-- [ ] `API_VERSION` 校验生效。
-- [ ] WASM CI 仍为绿；Gzip chunk 测试通过。
+- [x] Python 1M 面 biome 路径使用 palette + flat memoryview，不再逐面字符串（`compute_biome_tint_attributes_paletted` + `build_material_palette`）。
+- [x] `ensure_world_materials` 只剩桥接职责；材质编排在 `utils/materials/builder/world_binding.py`。
+- [x] `apply_imported_save_to_blender` 的场景层级/UUID/隐私清洗在 `utils/save/hierarchy.py`。
+- [x] README/API 文档不再列出不存在的符号；新增 native API surface contract 测试。
+- [x] `API_VERSION` 校验生效（native `api_version()` + `bridge/engine.py` 握手）。
+- [x] WASM CI 仍为绿；Gzip chunk 测试通过。
 
 ### B7：DNA leaf 库与分发（2–3 天）
 
@@ -398,7 +398,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 | B3 Rust 零调用方 | 已完成（自动化；少量零引用方法延后 B6） | 删 SectionMesher/process_mesh/FFI/direct_copy/嵌套 extrude/字符串材质 API；WASM 保留 | Rust 317 / Py 268 |
 | B4 旧格式/协议 | 已完成（自动化） | 删 unified_mesh、旧 package 枚举、pre-v3 models、DIM 路径、0x01/tokenless HELLO、extrude 别名与 storage 再导出 | Rust 321 / Py 268 |
 | B5 数据模型 | 已完成（自动化；Blender 冒烟待 B0） | 点云 palette/indices、`UvLayout`、统一 weld、`from_flat_polygons` 共享顶点 | Rust 323 / Py 267 / 1M 点 ~85 MB |
-| B6 架构/文档 | 待开始 | biome/material 接出、模块归位、docs | 全量回归 |
+| B6 架构/文档 | 已完成（自动化；Blender 冒烟待 B0） | palette biome、material palette builder、API_VERSION、A-01/A-02 归位、R-25/R-28、docs | Rust 323 / Py 270 / WASM 绿 |
 | B7 DNA leaf | 待开始 | 去核心依赖、独立小 wheel、体积门禁、回退 parity | cargo tree + Blender |
 
 ---

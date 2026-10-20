@@ -381,23 +381,6 @@ class TestPaletteSourceTextureKeys(unittest.TestCase):
         resolved = resolve_source_texture_keys(mesh)
         self.assertEqual(resolved, ["stone", "grass_block_top", "stone", "dirt"])
 
-    def test_resolve_from_legacy_string(self):
-        class MockStringElem:
-            def __init__(self, val):
-                self.value = val
-
-        class MockAttr:
-            def __init__(self, values):
-                self.data = [MockStringElem(v) for v in values]
-
-        class MockMeshObj:
-            def __init__(self):
-                self.polygons = [object(), object()]
-                self.attributes = {"mtk_source_texture_key": MockAttr([b"stone", "dirt"])}
-
-        mesh = MockMeshObj()
-        resolved = resolve_source_texture_keys(mesh)
-        self.assertEqual(resolved, ["stone", "dirt"])
 
 
 @unittest.skipUnless(HAS_BPY, "Requires real Blender bpy")

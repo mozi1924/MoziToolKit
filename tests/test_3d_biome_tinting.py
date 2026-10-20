@@ -31,7 +31,7 @@ from utils.materials.constants import (
     ATTR_BIOME_TINT_COLOR,
     ATTR_BIOME_TINT_DATA,
     ATTR_COLORMAP_UV,
-    ATTR_SOURCE_TEXTURE_KEY,
+    ATTR_SOURCE_TEXTURE_IDX,
 )
 from utils.materials.pipeline import resolve_and_apply_biome_tint
 
@@ -90,8 +90,9 @@ class _MockAttributeGroup(dict):
         self.pop(attr.name, None)
 
 
-class _MockMesh:
+class _MockMesh(dict):
     def __init__(self, poly_count):
+        super().__init__()
         self.polygons = [MagicMock(material_index=0) for _ in range(poly_count)]
         self.attributes = _MockAttributeGroup(poly_count)
         self.materials = []
@@ -151,6 +152,35 @@ class Test3DBiomeTinting(unittest.TestCase):
 
         # Badlands: hardcoded custom grass override -> routed to TINT_TYPE_HARDCODED (4.0)
         self.assertAlmostEqual(packed[2][3], 4.0)
+
+    def test_palette_biome_tint_matches_face_keys(self):
+        """Palette + indices must produce byte-identical flat buffers to per-face keys."""
+        import numpy as np
+
+        keys = [
+            "minecraft:block/grass_block_top",
+            "minecraft:block/dirt",
+            "minecraft:block/grass_block_top",
+        ]
+        palette = ["minecraft:block/grass_block_top", "minecraft:block/dirt"]
+        indices = np.array([0, 1, 0], dtype=np.uint32)
+        resolver = BiomeResolver()
+
+        expected = compute_biome_tint_attributes(
+            keys,
+            biome_preset="JUNGLE",
+            resolver=resolver,
+        )
+        expected = (expected["packed_tint_data"], expected["tint_colors"], expected["colormap_uvs"])
+        packed, colors, uvs = self.lib.compute_biome_tint_attributes_paletted(
+            palette,
+            indices,
+            "JUNGLE",
+            resolver=resolver,
+        )
+        np.testing.assert_allclose(np.frombuffer(packed, dtype=np.float32).reshape(-1, 4), expected[0])
+        np.testing.assert_allclose(np.frombuffer(colors, dtype=np.float32).reshape(-1, 4), expected[1])
+        np.testing.assert_allclose(np.frombuffer(uvs, dtype=np.float32).reshape(-1, 3), expected[2])
 
     def test_3d_biome_attributes_from_storage(self):
         """Verify 3D vertical biome difference (lush_caves at y=2 vs dark_forest at y=14) in same X/Z column."""
@@ -319,9 +349,10 @@ class Test3DBiomeTinting(unittest.TestCase):
         for name in ("mtk_block_x", "mtk_block_y", "mtk_block_z"):
             attr = mesh.attributes.new(name=name, type="INT", domain="FACE")
             attr.data[0].value = 0
-        key_attr = mesh.attributes.new(name=ATTR_SOURCE_TEXTURE_KEY, type="STRING", domain="FACE")
-        key_attr.data[0].value = "minecraft:block/grass_block_top"
+        idx_attr = mesh.attributes.new(name=ATTR_SOURCE_TEXTURE_IDX, type="INT", domain="FACE")
+        idx_attr.data[0].value = 0
 
+        mesh["mtk_source_textures"] = ["minecraft:block/grass_block_top"]
         obj = _MockObject(mesh)
         obj.name = "Yefira_World_Mesh"
         obj["mtk:biome_preset"] = "PLAINS"
