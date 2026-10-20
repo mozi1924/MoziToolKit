@@ -577,7 +577,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             model_db=model_db,
             atlas=atlas,
             biome_resolver=biome_resolver,
-            unified_mesh=True,
             auth_token=(getattr(props, "auth_token", "") or None) if props else None,
             cached_state_json=cached_state_json,
         )

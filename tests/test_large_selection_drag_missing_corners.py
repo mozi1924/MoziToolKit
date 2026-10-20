@@ -261,7 +261,7 @@ class TestLargeSelectionCornerRecovery(unittest.TestCase):
         server.start()
 
         session = get_sync_bridge_session()
-        connected = session.start("ws://127.0.0.1:8794", auto_reconnect=False, unified_mesh=True)
+        connected = session.start("ws://127.0.0.1:8794", auto_reconnect=False)
         self.assertTrue(connected)
 
         # Wait for initial stream completion (where corner chunks were omitted)

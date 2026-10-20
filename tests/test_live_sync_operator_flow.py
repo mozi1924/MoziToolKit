@@ -101,7 +101,6 @@ class TestLiveSyncFlow(unittest.TestCase):
                 url="ws://127.0.0.1:8798",
                 auto_reconnect=True,
                 max_reconnect_attempts=3,
-                unified_mesh=True,
             )
             self.assertTrue(connected)
             self.assertTrue(session.is_active)

@@ -1,6 +1,6 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
-> 状态：**B1 UI/菜单已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B2+ 未开始**
+> 状态：**B1–B4 已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B5+ 未开始**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库
 > 前提：2.0 与 1.0 的网格激活/数据模型不兼容；2.0 没有第三方用户；不再为不存在的旧 wheel、旧 `.blend`、旧菜单配置保留兼容层。
@@ -257,12 +257,12 @@ PY
 
 验收：
 
-- [ ] 全仓库无 `unified_mesh=False` 调用。
-- [ ] `ASSET_CACHE_FORMAT_VERSION = 3`；旧 models.bin 加载失败并给出明确错误。
-- [ ] `mtk-package` 不再声明 Lz4/XxHash64/SceneInterchange。
-- [ ] `mtk-save` 不再寻找 `DIM-1`/`DIM1`。
-- [ ] `mtk-sync` 不再接受 0x01 decision / tokenless HELLO。
-- [ ] `cargo test --workspace` 通过。
+- [x] 全仓库无 `unified_mesh=False` 调用。
+- [x] `ASSET_CACHE_FORMAT_VERSION = 3`；旧 models.bin 加载失败并给出明确错误。
+- [x] `mtk-package` 不再声明 Lz4/XxHash64/SceneInterchange。
+- [x] `mtk-save` 不再寻找 `DIM-1`/`DIM1`；Gzip chunk 测试保留。
+- [x] `mtk-sync` 不再接受 0x01 decision / tokenless HELLO。
+- [x] `cargo test --workspace` 通过。
 
 ### B5：数据模型收敛（3–5 天，风险最高）
 
@@ -396,7 +396,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 | B1 UI/菜单 | 已完成（自动化） | 删 4 个算子 + 空菜单 + 旧 registry；Python 271 passed / 70 skipped | menu 测试 |
 | B2 Python 胶水 | 已完成（自动化） | 删 extrude/material/point-cloud/mesh/save/world 假回退与 TypeError 重试 | 全量 pytest |
 | B3 Rust 零调用方 | 已完成（自动化；少量零引用方法延后 B6） | 删 SectionMesher/process_mesh/FFI/direct_copy/嵌套 extrude/字符串材质 API；WASM 保留 | Rust 317 / Py 268 |
-| B4 旧格式/协议 | 待开始 | cache/package/save/sync/unified_mesh | cargo test |
+| B4 旧格式/协议 | 已完成（自动化） | 删 unified_mesh、旧 package 枚举、pre-v3 models、DIM 路径、0x01/tokenless HELLO、extrude 别名与 storage 再导出 | Rust 321 / Py 268 |
 | B5 数据模型 | 待开始 | 点云 palette、UV 布局、weld | 1M 基准 + Blender |
 | B6 架构/文档 | 待开始 | biome/material 接出、模块归位、docs | 全量回归 |
 | B7 DNA leaf | 待开始 | 去核心依赖、独立小 wheel、体积门禁、回退 parity | cargo tree + Blender |

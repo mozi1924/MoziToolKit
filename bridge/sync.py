@@ -74,7 +74,6 @@ class SyncBridgeSession:
         self._config_params: Dict[str, Any] = {}
         self._cached_manifest_fingerprint: Optional[str] = None
         self._cached_manifest_timestamp: float = 0.0
-        self._unified_mesh: bool = True
         self._last_error: str = ""
 
     @property
@@ -162,7 +161,6 @@ class SyncBridgeSession:
         max_reconnect_attempts: int = 5,
         model_db: Optional[Any] = None,
         atlas: Optional[Any] = None,
-        unified_mesh: bool = True,
         enable_ao: bool = True,
         mesh_fluids: bool = True,
         biome_resolver: Optional[Any] = None,
@@ -199,7 +197,6 @@ class SyncBridgeSession:
         }
         self._cached_manifest_fingerprint = get_cache_fingerprint()
         self._cached_manifest_timestamp = get_cache_timestamp()
-        self._unified_mesh = unified_mesh
         self._current_url = url
 
         prefs = None
@@ -256,13 +253,11 @@ class SyncBridgeSession:
                 try:
                     if hasattr(self._session, "hot_reload"):
                         self._session.hot_reload(config, model_db)
-                    if hasattr(self._session, "set_unified_mesh"):
-                        self._session.set_unified_mesh(unified_mesh)
                     _start_native(self._session)
                     self._is_active = True
                     self._is_connected = False
                     self._connection_status = "CONNECTING..."
-                    logger.info(f"Reused existing LiveSyncSession connecting to {url} (unified_mesh={unified_mesh})")
+                    logger.info(f"Reused existing LiveSyncSession connecting to {url}")
                     return True
                 except Exception as e:
                     logger.debug(f"Failed reusing existing session, creating new: {e}")
@@ -276,14 +271,13 @@ class SyncBridgeSession:
                 config=config,
                 culler=culler,
                 model_db=model_db,
-                unified_mesh=unified_mesh,
             )
 
             _start_native(self._session)
             self._is_active = True
             self._is_connected = False
             self._connection_status = "CONNECTING..."
-            logger.info(f"LiveSyncSession started connecting to {url} (unified_mesh={unified_mesh})")
+            logger.info(f"LiveSyncSession started connecting to {url}")
             return True
         except Exception as e:
             self._last_error = str(e)
