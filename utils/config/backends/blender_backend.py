@@ -110,6 +110,8 @@ class BlenderPreferencesConfigBackend(ConfigBackend):
                         path=getattr(p, "path", ""),
                         enabled=getattr(p, "enabled", True),
                         pack_type=getattr(p, "pack_type", "RESOURCE_PACK"),
+                        pack_type_source=getattr(p, "pack_type_source", "AUTO"),
+                        detected_kind=getattr(p, "detected_kind", ""),
                     )
                 )
 

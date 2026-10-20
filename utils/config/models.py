@@ -37,6 +37,10 @@ class PackEntry:
     path: str = ""
     enabled: bool = True
     pack_type: str = "RESOURCE_PACK"  # RESOURCE_PACK | MOD_JAR | VANILLA
+    # AUTO: pack_type may be replaced by content detection. MANUAL: user override, never touched.
+    pack_type_source: str = "AUTO"
+    # Last content-detection verdict (utils.pack_detect.KIND_*), empty when never probed.
+    detected_kind: str = ""
 
     @property
     def tier_priority(self) -> int:
@@ -56,6 +60,8 @@ class PackEntry:
             "path": self.path,
             "enabled": self.enabled,
             "pack_type": self.pack_type,
+            "pack_type_source": self.pack_type_source,
+            "detected_kind": self.detected_kind,
         }
 
     @classmethod
@@ -65,11 +71,16 @@ class PackEntry:
         pt = data.get("pack_type", "RESOURCE_PACK")
         if pt not in {"RESOURCE_PACK", "MOD_JAR", "VANILLA"}:
             pt = "RESOURCE_PACK"
+        source = str(data.get("pack_type_source", "AUTO")).upper()
+        if source not in {"AUTO", "MANUAL"}:
+            source = "AUTO"
         return cls(
             name=str(data.get("name", "Resource Pack")),
             path=str(data.get("path", "")),
             enabled=bool(data.get("enabled", True)),
             pack_type=pt,
+            pack_type_source=source,
+            detected_kind=str(data.get("detected_kind", "")),
         )
 
 

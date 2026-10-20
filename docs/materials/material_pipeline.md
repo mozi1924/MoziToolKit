@@ -13,6 +13,8 @@ MoziToolKit 遵循 Minecraft 原生资源包堆叠思想并进行了工程化升
    - Minecraft 官方客户端原版 JAR 包（如 `1.21.jar` / `26.2-Fabric.jar`）。
    - 作为整个渲染系统的 **绝对基底锚点（Fallback Anchor）**，提供全量标准方块/物品的基础漫反射贴图（Albedo）、默认 Model JSON 继承树与 Blockstate 变体定义。
 
+> **类型判定来源**：三个层级不再由文件名猜测，而是由压缩包内容决定（只读 ZIP 中央目录）——详见 [资源包 / JAR 内容识别与自动分类](../packs/pack_type_detection.md)。
+
 > **与 Minecraft 原版的关系**：Minecraft 原版本质上只有一条“有序资源提供者列表”，并不认识本项目的三种包类型。`RESOURCE_PACK → MOD_JAR → VANILLA` 是 MoziToolKit 为保证用户包、模组资源和原版基底稳定共存而定义的**排序策略**，不是另一套覆盖语义。无论资源来自哪一种类型，解析时都必须遵循同一条自顶向下的资源路径查找规则；同层内允许用户调整顺序，跨层排序由系统保护，不得由解析器根据包类型改变单个资源的优先级。
 
 ```mermaid

@@ -307,6 +307,10 @@ class ConfigManager:
                             elem.path = p_data.path
                             elem.enabled = p_data.enabled
                             elem.pack_type = p_data.pack_type
+                            if hasattr(elem, "pack_type_source"):
+                                elem.pack_type_source = p_data.pack_type_source
+                            if hasattr(elem, "detected_kind"):
+                                elem.detected_kind = p_data.detected_kind
                     elif isinstance(prefs.resource_packs, list):
                         for p_data in data.resource_packs:
                             prefs.resource_packs.append(p_data.to_dict())
@@ -445,6 +449,8 @@ class ConfigManager:
                                 path=getattr(p_elem, "path", ""),
                                 enabled=getattr(p_elem, "enabled", True),
                                 pack_type=getattr(p_elem, "pack_type", "RESOURCE_PACK"),
+                                pack_type_source=getattr(p_elem, "pack_type_source", "AUTO"),
+                                detected_kind=getattr(p_elem, "detected_kind", ""),
                             )
                         )
 

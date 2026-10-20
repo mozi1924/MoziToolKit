@@ -22,6 +22,10 @@
   - **面属性来源追踪与材质自愈 (`mozi.restore_materials_from_provenance`)**：基于 `mtk_source_texture_key` 与 `mtk_atlas_chunk_id` 的一键材质原地无损复原。
   - **生物群系高精度染色与 UI 控制面板 (`ui/panel_biome.py`)**：65+ 种原生群系预设库、双线性三角坐标采样、Linear RGBA 转换及 `mtk_biome` 物体覆盖。
   - **着色器节点组模板库 (`utils/node_groups/`)**：`atlas_uv_decoder`, `atlas_uv_tiling`, `animated`, `biome`, `labpbr`, `parallax` 节点组。
+- **[资源包 / JAR 内容识别与自动分类 (Pack Type Detection)](packs/pack_type_detection.md)**：
+  - 只读 ZIP 中央目录的内容判定：原版客户端/服务端、模组（Fabric/Quilt/Forge/NeoForge）、资源包、数据包、整合包。
+  - 根路径精确匹配 + 加权打分（含 Forge universal、原版 JAR 内嵌数据包等对抗样本）。
+  - `AUTO` / `MANUAL` 可纠正策略、防抖 + 工作线程调度、缓存契约，以及「何时才该下沉 Rust」的判定依据。
 - **[MC 方块模型烘焙引擎 (MC Baker)](materials/mc_baker.md)**：
   - Blockstate 变体与 Multipart 复合条件解析。
   - Block Model JSON 继承树展开、`#texture` 变量解析、Cullface 标记、UV 旋转与 Atlas Bridge 桥接。

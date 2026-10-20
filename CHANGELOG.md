@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧩 资源包 / JAR 内容识别与自动分类
+- 新增 `utils/pack_detect.py`：只读 ZIP 中央目录（元数据读取上限 64KB，不解压任何资源）判定输入是**原版客户端 / 原版服务端 / 模组（Fabric/Quilt/Forge/NeoForge）/ 资源包 / 数据包 / 整合包**，取代原先仅凭扩展名与 `fabric`/`forge`/`mod` 关键字的启发式。`26.2-Fabric.jar`（内容实为原版客户端）不再被判为 `MOD_JAR`，以 `.jar` 分发的 CTM 材质包不再被判为 `VANILLA`。
+- 判定采用**根路径精确匹配 + 加权打分**：原版 JAR 内部的 `data/minecraft/datapacks/*/pack.mcmeta` 与根 `pack.png` 不参与资源包计分；Forge universal JAR 的 `pack.mcmeta` 不会盖过 `META-INF/mods.toml`。单层包裹目录（`MyPack/...`）可被识别并提示 Minecraft 无法直接加载。
+- 偏好设置新增 `pack_type_source`（AUTO/MANUAL）与 `detected_kind`：用户手动改过类型后自动识别不再覆盖；新增 `mozi.pack_detect`「重新识别」按钮，详情面板展示识别结果、置信度与「不提供贴图」告警。配置模型、JSON 后端、Blender Preferences 后端与导出/导入均持久化这两个字段，旧配置缺省为 AUTO。
+- 调度采用「150ms 防抖 + 工作线程判定 + `bpy.app.timers` 主线程写回」：路径回调实测 1.3 ms 返回，31,709 条目的 39 MB 原版 JAR 判定约 37–49 ms 且不阻塞 UI；结果按 `(realpath, size, mtime_ns)` 缓存，面板 `draw` 只查内存缓存。无 `bpy.app.timers` 的宿主自动退化为同步执行。
+- 新增 `tests/test_pack_detect.py`、`tests/test_pack_type_autodetect.py`，以及设计文档 `docs/packs/pack_type_detection.md`。
+
 ### 🧪 CI 与发布校验修复
 - 修复 `blender_manifest.toml` 的 `tagline` 超过 Blender 扩展规范 64 字符上限，导致 `build.py --validate-only` 与发布构建失败；`bl_info.description` 同步收敛为同一文案。
 - `compute_flat_material_props_buffer` / `compute_flat_material_props_paletted_buffer` 在旧版 `libmtk_py` 缺少 memoryview 入口时不再静默返回全零，而是回退到列表 API（paletted 路径展开为逐面 key），保留 emission / thin wall / transmission 等物理属性。

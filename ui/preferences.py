@@ -69,6 +69,10 @@ from .preferences_packs import (
     MOZI_OT_pack_add,
     MOZI_OT_pack_remove,
     MOZI_OT_pack_move,
+    MOZI_OT_pack_detect,
+    describe_detected_kind,
+    detected_kind_warning,
+    schedule_pending_pack_detection,
     reorder_resource_packs_by_tier,
     populate_resource_packs,
     on_pack_entry_changed,
@@ -110,6 +114,8 @@ __all__ = [
     "MOZI_OT_pack_add",
     "MOZI_OT_pack_remove",
     "MOZI_OT_pack_move",
+    "MOZI_OT_pack_detect",
+    "schedule_pending_pack_detection",
     "MOZI_OT_menu_add_item",
     "MOZI_OT_menu_remove_item",
     "MOZI_OT_menu_move_item",
@@ -401,6 +407,8 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             if b_name in {"JSON", "BLENDER_PREFS"}:
                 self.backend_type = b_name
             self.is_initialized = True
+            # Lazily classify pre-existing entries (non-blocking, debounced off the main thread).
+            schedule_pending_pack_detection(self)
 
         layout = self.layout
 
@@ -502,6 +510,20 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             else:
                 st_row = d_col.row(align=True)
                 st_row.label(text=f"{tr('File Valid')}: {Path(p_val).name}", icon="CHECKMARK")
+
+            detect_row = d_col.row(align=True)
+            detect_row.prop(item, "pack_type_source", text=tr("Type Source"))
+            detect_row.operator("mozi.pack_detect", text=tr("Re-detect"), icon="FILE_REFRESH")
+
+            kind_text, kind_icon = describe_detected_kind(item)
+            kind_row = d_col.row(align=True)
+            kind_row.label(text=f"{tr('Detected')}: {kind_text}", icon=kind_icon)
+
+            kind_warning = detected_kind_warning(item)
+            if kind_warning:
+                warn_row = d_col.row(align=True)
+                warn_row.alert = True
+                warn_row.label(text=kind_warning, icon="ERROR")
 
         # Material Replacement & Atlas Options Box
         layout.separator()
