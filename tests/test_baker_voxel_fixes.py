@@ -1,3 +1,4 @@
+from _mtk_helpers import mesh_world
 import unittest
 import libmtk_py
 from pathlib import Path
@@ -70,7 +71,7 @@ class TestBakerVoxelFixes(unittest.TestCase):
         self.assertEqual(lc_mesh.face_count, 59, "Lava cauldron must have 59 faces (body + lava surface)")
         self.assertIn("minecraft:block/lava_still", lc_tex)
 
-        # 2. Voxel SectionMesher construction
+        # 2. VoxelWorld construction
         atlas = libmtk_py.AtlasBuilder().build(self.stack, "blocks")
         db = self.baker.bake_all(self.stack, atlas)
         culler = libmtk_py.FaceCuller()
@@ -81,8 +82,8 @@ class TestBakerVoxelFixes(unittest.TestCase):
         storage.set_block(1, 1, 1, "minecraft:water_cauldron[level=3]")
         storage.set_block(4, 1, 1, "minecraft:lava_cauldron")
 
-        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, culler, db)
-        self.assertEqual(mesh.quad_count, 59 * 2, "SectionMesher must construct both cauldrons without omitting liquid content")
+        mesh = mesh_world(storage, config, culler, db)
+        self.assertEqual(mesh.quad_count, 59 * 2, "VoxelWorld must construct both cauldrons without omitting liquid content")
 
 
 if __name__ == "__main__":

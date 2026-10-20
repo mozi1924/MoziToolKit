@@ -12,8 +12,6 @@ try:
         is_thin_wall_block,
         get_block_emission_strength,
         get_material_props,
-        compute_mesh_material_props,
-        compute_flat_material_props,
     )
 except (ImportError, ValueError):
     from bridge.material import (
@@ -23,8 +21,6 @@ except (ImportError, ValueError):
         is_thin_wall_block,
         get_block_emission_strength,
         get_material_props,
-        compute_mesh_material_props,
-        compute_flat_material_props,
     )
 
 __all__ = [
@@ -37,6 +33,4 @@ __all__ = [
     "is_thin_wall_block",
     "get_block_emission_strength",
     "get_material_props",
-    "compute_mesh_material_props",
-    "compute_flat_material_props",
 ]

@@ -88,7 +88,7 @@ def generate_debug_world_mesh(
     progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, float]:
     """
-    Meshes the debug world using SectionMesher and returns (MeshData, elapsed_time_ms).
+    Meshes the debug world using VoxelWorld and returns (MeshData, elapsed_time_ms).
     When with_models is True (default), resolves baked models, atlas UVs, and biome tinting.
     """
     if storage is None:
@@ -120,7 +120,15 @@ def generate_debug_world_mesh(
         elif num_threads is not None and hasattr(config, "num_threads"):
             config.num_threads = num_threads
         t0 = time.perf_counter()
-        mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, None)
+        world = mtk.VoxelWorld.from_storage(
+            storage=storage,
+            config=config,
+            culler=culler,
+            model_db=None,
+            unified_mesh=True,
+            num_threads=num_threads,
+        )
+        mesh_data = world.rebuild_all()
         t1 = time.perf_counter()
         return mesh_data, (t1 - t0) * 1000.0
 

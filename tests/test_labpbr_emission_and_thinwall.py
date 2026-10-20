@@ -32,8 +32,6 @@ from bridge.material import (
     get_block_sticker_threshold,
     is_transmissive_block,
     get_material_props,
-    compute_flat_material_props,
-    compute_mesh_material_props,
 )
 
 

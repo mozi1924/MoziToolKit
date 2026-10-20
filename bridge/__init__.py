@@ -122,7 +122,6 @@ from .material import (
     is_material_bridge_available,
     load_baked_atlas_from_json,
     load_biome_resolver_from_file,
-    remap_mesh_multi_uvs,
     require_material_bridge,
 )
 
@@ -179,7 +178,6 @@ __all__ = [
     "compute_mesh_biome_attributes_from_storage",
     "MaterialResolver",
     "clean_material_name",
-    "remap_mesh_multi_uvs",
     "GridAtlasSpec",
     "BakedAtlas",
     "load_baked_atlas_from_json",

@@ -238,34 +238,6 @@ def clean_material_name(name: str) -> str:
     return mtk.MaterialResolver.clean_name(name)
 
 
-def remap_mesh_multi_uvs(
-    loop_uvs: Sequence[float],
-    face_materials: Sequence[str],
-    face_loop_ranges: Sequence[Tuple[int, int]],
-    atlas: Any,
-    alias_map: Optional[Dict[str, List[str]]] = None,
-    grid_spec: Optional[Any] = None,
-    enable_animated_textures: bool = False,
-) -> Any:
-    """
-    Execute high-performance multi-threaded UV remapping and material slot resolution in Rust.
-
-    When ``enable_animated_textures`` is True, multi-frame sprites are routed to
-    their dedicated animated atlas chunk and per-face animation timing metadata
-    is returned together with the UVs.
-    """
-    mtk = require_libmtk("remap_mesh_multi_uvs")
-    return mtk.MaterialResolver.remap_mesh_multi_uvs(
-        loop_uvs if isinstance(loop_uvs, (list, np.ndarray)) else list(loop_uvs),
-        face_materials if isinstance(face_materials, list) else list(face_materials),
-        face_loop_ranges if isinstance(face_loop_ranges, list) else list(face_loop_ranges),
-        atlas,
-        alias_map,
-        grid_spec,
-        bool(enable_animated_textures),
-    )
-
-
 def remap_mesh_multi_uvs_paletted(
     loop_uvs: Sequence[float],
     face_material_palette: Sequence[str],
@@ -341,36 +313,6 @@ def load_baked_atlas_from_json(json_str: str) -> Any:
 # ---------------------------------------------------------------------------
 # Material Physical Properties & Catalog API (Pure Rust libmtk_py)
 # ---------------------------------------------------------------------------
-
-def compute_mesh_material_props(
-    face_source_keys: Sequence[str],
-    block_names: Optional[Sequence[str]] = None,
-) -> List[List[float]]:
-    """
-    Compute packed material properties `[emission, thin_wall, transmission, sticker_threshold]`
-    for a list of face texture keys in parallel Rayon in Rust.
-    """
-    mtk = require_libmtk("compute_mesh_material_props")
-    return mtk.compute_mesh_material_props(
-        list(face_source_keys),
-        list(block_names) if block_names is not None else None,
-    )
-
-
-def compute_flat_material_props(
-    face_source_keys: Sequence[str],
-    block_names: Optional[Sequence[str]] = None,
-) -> List[float]:
-    """
-    Compute flat packed material properties (float array of length len * 4)
-    for zero-copy memoryview / foreach_set injection into Blender Mesh.
-    """
-    mtk = require_libmtk("compute_flat_material_props")
-    return mtk.compute_flat_material_props(
-        list(face_source_keys),
-        list(block_names) if block_names is not None else None,
-    )
-
 
 def compute_flat_material_props_buffer(
     face_source_keys: Sequence[str],
@@ -543,12 +485,9 @@ __all__ = [
     "compute_mesh_biome_attributes_from_storage",
     "MaterialResolver",
     "clean_material_name",
-    "remap_mesh_multi_uvs",
     "GridAtlasSpec",
     "BakedAtlas",
     "load_baked_atlas_from_json",
-    "compute_mesh_material_props",
-    "compute_flat_material_props",
     "get_material_props",
     "get_block_emission_strength",
     "is_thin_wall_block",

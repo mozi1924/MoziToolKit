@@ -13,6 +13,8 @@ Comprehensive regression test suite for model fixes:
 
 from __future__ import annotations
 
+from _mtk_helpers import mesh_world
+
 import os
 import sys
 import unittest
@@ -317,7 +319,7 @@ class TestModelRegressionFixes(unittest.TestCase):
             "minecraft:oak_slab[type=bottom,waterlogged=true]",
         )
         config = libmtk_py.MesherConfig(enable_ao=False, mesh_fluids=True, z_up_coordinates=True)
-        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, None, self.db)
+        mesh = mesh_world(storage, config, None, self.db)
 
         # Wall: 6 solid + 6 water = 12
         # Stairs: 11 solid + 6 water = 17

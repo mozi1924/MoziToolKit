@@ -1,3 +1,4 @@
+from _mtk_helpers import mesh_world
 """
 Integration and regression test suite for Biome Tinting fixes:
 - Dead bush (dead_bush) must NOT be tinted (tint_type=0, tint_weight=0.0).
@@ -120,7 +121,7 @@ class TestBiomeTintingFix(unittest.TestCase):
         assert cfg_no_res.has_biome_resolver() is False
 
         # 1. With BiomeResolver
-        mesh_res = libmtk_py.SectionMesher.mesh_world(storage, cfg_res, None)
+        mesh_res = mesh_world(storage, cfg_res, None)
         assert mesh_res is not None
         assert mesh_res.face_count > 0
         assert mesh_res.has_attribute("mtk_biome_tint_data")
@@ -136,7 +137,7 @@ class TestBiomeTintingFix(unittest.TestCase):
         assert 1.0 in tint_types, "short_grass grass tint_type 1.0 must be present"
 
         # 2. Fallback without resolver: dead_bush and leaf_litter must still be classified properly
-        mesh_no_res = libmtk_py.SectionMesher.mesh_world(storage, cfg_no_res, None)
+        mesh_no_res = mesh_world(storage, cfg_no_res, None)
         assert mesh_no_res is not None
         mv_no_res = mesh_no_res.attribute_memoryview("mtk_biome_tint_data")
         floats_no_res = struct.unpack(f"{len(mv_no_res)//4}f", bytes(mv_no_res))
@@ -179,7 +180,7 @@ class TestBiomeTintingFix(unittest.TestCase):
                 storage.set_block(x, 0, z, "minecraft:grass_block", biome)
 
         config = libmtk_py.MesherConfig()
-        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, None)
+        mesh = mesh_world(storage, config, None)
         self.assertIsNotNone(mesh)
         self.assertTrue(mesh.has_attribute("mtk_colormap_uv"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))

@@ -324,12 +324,6 @@ class TestDualMeshApi(unittest.TestCase):
         written = dna.copy_positions_to_ptr(self.mesh, ptr, max_bytes=48)
         self.assertEqual(written, 48)
 
-        # 2. Per-mesh direct pointer methods remain as the Python-only fallback
-        self.assertTrue(hasattr(self.mesh, "direct_copy_positions_to_ptr"))
-        buf2 = (ctypes.c_float * 12)()
-        ptr2 = ctypes.addressof(buf2)
-        written2 = self.mesh.direct_copy_positions_to_ptr(ptr2, max_bytes=48)
-        self.assertEqual(written2, 48)
 
     def test_source_texture_palette_indices(self):
         """Rust builds palette + u32 indices without materializing per-face strings."""

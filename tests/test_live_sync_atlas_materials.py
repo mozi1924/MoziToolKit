@@ -1,6 +1,7 @@
+from _mtk_helpers import mesh_world
 """
 Integration tests for Live Sync Atlas Material binding and internal addressing.
-Tests that VoxelStorage / SectionMesher with Atlas & BiomeResolver generates
+Tests that VoxelStorage / VoxelWorld with Atlas & BiomeResolver generates
 the correct face attributes (UVs, tiling, biome tint, source texture key)
 and that ensure_world_materials correctly assigns the Atlas Chunk materials.
 """
@@ -66,7 +67,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
 
     def test_voxel_mesher_atlas_and_face_attributes(self):
         """
-        Verify that SectionMesher with AtlasAddressMap produces face attributes:
+        Verify that VoxelWorld with AtlasAddressMap produces face attributes:
         - mtk_source_texture_key
         - mtk_material_slot
         - mtk_atlas_chunk_id
@@ -179,7 +180,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         storage.set_block(0, 2, 0, "minecraft:water")
 
         culler = mtk_py.FaceCuller() if hasattr(mtk_py, "FaceCuller") else None
-        mesh = mtk_py.SectionMesher.mesh_world(storage, config, culler)
+        mesh = mesh_world(storage, config, culler)
         self.assertIsNotNone(mesh)
         self.assertGreater(mesh.face_count, 0)
         self.assertGreater(mesh.face_count, 0)
@@ -281,7 +282,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
 
     def test_update_world_mesh_atlas_injection_end_to_end(self):
         """
-        Verify that update_world_mesh successfully injects real SectionMesher geometry,
+        Verify that update_world_mesh successfully injects real VoxelWorld geometry,
         all 15 custom attributes (including string and multi-component floats/ints),
         binds Atlas materials with use_attribute_node=False, and connects UVMap directly.
         """
@@ -308,7 +309,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         storage.set_bounds(0, 0, 0, 16, 16, 16)
         storage.set_block(0, 0, 0, "minecraft:grass_block")
         culler = mtk_py.FaceCuller() if hasattr(mtk_py, "FaceCuller") else None
-        mesh_data = mtk_py.SectionMesher.mesh_world(storage, config, culler)
+        mesh_data = mesh_world(storage, config, culler)
 
         test_mesh = bpy.data.meshes.new("E2EWorldMesh")
         test_obj = bpy.data.objects.new("E2EWorldMesh", test_mesh)

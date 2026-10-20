@@ -7,6 +7,8 @@ conventions (V=0 at bottom, V=1 at top) and are never vertically or horizontally
 
 from __future__ import annotations
 
+from _mtk_helpers import mesh_world
+
 import json
 import os
 import sys
@@ -105,7 +107,7 @@ class TestUvOrientationSync(unittest.TestCase):
             origin_centered=False,
             weld_vertices=False,
         )
-        mesh_no_atlas = libmtk_py.SectionMesher.mesh_world(storage, config_no_atlas, None, None)
+        mesh_no_atlas = mesh_world(storage, config_no_atlas, None, None)
         quad_indices = mesh_no_atlas.get_quad_indices()
         uvs = mesh_no_atlas.get_flat_uvs()
         positions = mesh_no_atlas.get_flat_positions()
@@ -149,7 +151,7 @@ class TestUvOrientationSync(unittest.TestCase):
             weld_vertices=False,
             atlas=self.atlas,
         )
-        mesh = libmtk_py.SectionMesher.mesh_world(storage, config, None, self.model_db)
+        mesh = mesh_world(storage, config, None, self.model_db)
         quad_indices = mesh.get_quad_indices()
         uvs = mesh.get_flat_uvs()
         positions = mesh.get_flat_positions()
