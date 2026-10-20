@@ -1,0 +1,18 @@
+{
+  "addon_version": "2.0.0",
+  "generated_at": "2026-10-20T12:20:47.389099+00:00",
+  "operators": [
+    "mozi.adaptive_pixel_split",
+    "mozi.auto_extrude_repair",
+    "mozi.clear_custom_normals",
+    "mozi.random_extrude",
+    "mozi.rebuild_mesh",
+    "mozi.repair_fluid_uv",
+    "mozi.replace_material",
+    "mozi.scale_uv",
+    "mozi.select_hard_edges",
+    "mozi.select_transparent_faces",
+    "mozi.set_texture_interpolation_closest",
+    "mozi.toggle_voxel_cloud"
+  ]
+}
