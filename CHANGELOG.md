@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 偏好设置新增 `pack_type_source`（AUTO/MANUAL）与 `detected_kind`：用户手动改过类型后自动识别不再覆盖；新增 `mozi.pack_detect`「重新识别」按钮，详情面板展示识别结果、置信度与「不提供贴图」告警。配置模型、JSON 后端、Blender Preferences 后端与导出/导入均持久化这两个字段，旧配置缺省为 AUTO。
 - 调度采用「150ms 防抖 + 工作线程判定 + `bpy.app.timers` 主线程写回」：路径回调实测 1.3 ms 返回，31,709 条目的 39 MB 原版 JAR 判定约 37–49 ms 且不阻塞 UI；结果按 `(realpath, size, mtime_ns)` 缓存，面板 `draw` 只查内存缓存。无 `bpy.app.timers` 的宿主自动退化为同步执行。
 - 新增 `tests/test_pack_detect.py`、`tests/test_pack_type_autodetect.py`，以及设计文档 `docs/packs/pack_type_detection.md`。
+- 「默认材质替换设置」（Pack Textures / Connected Textures / Animated Textures）从「资源包与基础包」选项卡迁移到「材质与着色」选项卡；资源包页仅保留堆栈缓存维护按钮，避免同一组开关出现在两处。
+- 新增包条目改为插入列表**最顶部**（最高优先级）并自动选中，不再追加到同层末尾，与 Minecraft 原版「新包覆盖其下所有包」的堆叠模型一致；检测出为原版/模组后仍按三层规则自动归位。
 
 ### 🧪 CI 与发布校验修复
 - 修复 `blender_manifest.toml` 的 `tagline` 超过 Blender 扩展规范 64 字符上限，导致 `build.py --validate-only` 与发布构建失败；`bl_info.description` 同步收敛为同一文案。

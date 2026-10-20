@@ -673,22 +673,23 @@ class MOZI_OT_pack_add(bpy.types.Operator):
 
         _set_is_probing(True)
         try:
-            elem = prefs.resource_packs.add()
-            elem.name = f"Resource Pack #{len(prefs.resource_packs)}"
+            coll = prefs.resource_packs
+            elem = coll.add()
+            elem.name = f"Resource Pack #{len(coll)}"
             elem.enabled = True
             elem.pack_type = "RESOURCE_PACK"
             if hasattr(elem, "pack_type_source"):
                 elem.pack_type_source = TYPE_SOURCE_AUTO
             if hasattr(elem, "detected_kind"):
                 elem.detected_kind = ""
+            # New packs enter at the very top of the stack (highest resolution priority),
+            # matching Minecraft's "newly added pack overrides everything below it" model.
+            if len(coll) > 1:
+                coll.move(len(coll) - 1, 0)
         finally:
             _set_is_probing(False)
         reorder_resource_packs_by_tier(prefs)
-
-        for i, p in enumerate(prefs.resource_packs):
-            if p.name == elem.name and not p.path:
-                prefs.resource_packs_index = i
-                break
+        prefs.resource_packs_index = 0
 
         get_config_manager().sync_from_preferences(prefs)
         refresh_ui_and_menus(context)

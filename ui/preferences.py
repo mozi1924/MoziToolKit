@@ -525,21 +525,11 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
                 warn_row.alert = True
                 warn_row.label(text=kind_warning, icon="ERROR")
 
-        # Material Replacement & Atlas Options Box
+        # Stack cache maintenance (material replacement defaults live in the Material tab).
         layout.separator()
-        mat_box = layout.box()
-        m_head = mat_box.row(align=True)
-        m_head.label(text=tr("Default Material Replacement Settings:"), icon="MATERIAL")
-
-        m_col = mat_box.column(align=False)
-        row_opts = m_col.row(align=True)
-        row_opts.prop(self, "pack_textures")
-        row_opts.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
-        row_opts.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
-
-        row_precompile = mat_box.row(align=True)
-        row_precompile.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")
-        row_precompile.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
+        cache_row = layout.row(align=True)
+        cache_row.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")
+        cache_row.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
 
     def draw_material(self, layout, context):
         from ..i18n import tr
@@ -558,7 +548,18 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         layout.separator()
 
-        # Group 1: Render Engine Adaptation & Presets
+        # Group 1: Default Material Replacement Settings
+        box_repl = layout.box()
+        b_repl_head = box_repl.row(align=True)
+        b_repl_head.label(text=tr("Default Material Replacement Settings:"), icon="MATERIAL")
+        col_repl = box_repl.column(align=False)
+        col_repl.prop(self, "pack_textures")
+        repl_row = col_repl.row(align=True)
+        repl_row.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
+        repl_row.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
+
+        # Group 2: Render Engine Adaptation & Presets
+        layout.separator()
         box_engine = layout.box()
         b1_head = box_engine.row(align=True)
         b1_head.label(text=tr("Render Engine Adaptation & Presets:"), icon="SCENE")
@@ -573,7 +574,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         else:
             hint_eng.label(text=tr("• Cycles Mode: Preserves full physical dielectric transmission and path-traced scattering."))
 
-        # Group 2: Game Semantics & PBR Rules
+        # Group 3: Game Semantics & PBR Rules
         layout.separator()
         box_sem = layout.box()
         b2_head = box_sem.row(align=True)
@@ -587,7 +588,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         tip_row2.scale_y = 0.85
         tip_row2.label(text=tr("• LabPBR: Uniform emission is bypassed; emission is controlled strictly per-pixel by _s texture."))
 
-        # Group 3: Transmission & Refraction (Glass / Water)
+        # Group 4: Transmission & Refraction (Glass / Water)
         layout.separator()
         box_trans = layout.box()
         b3_head = box_trans.row(align=True)
@@ -598,7 +599,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         tip_trans.scale_y = 0.85
         tip_trans.label(text=tr("• Auto: Cycles uses physical refraction; EEVEE falls back to Alpha blend to avoid black overlap artifacts."))
 
-        # Group 4: Subsurface Scattering & Thin Wall
+        # Group 5: Subsurface Scattering & Thin Wall
         layout.separator()
         box_sss = layout.box()
         b4_head = box_sss.row(align=True)
