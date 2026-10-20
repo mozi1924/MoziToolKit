@@ -2,7 +2,7 @@
 High-Throughput Zero-Copy Blender DNA Direct Pointer Ingestion Channel.
 
 Resolves CustomData memory pointers through bridge.dna and writes directly
-into host memory using libmtk_py.unstable.blender_dna.
+into host memory using the standalone `libmtk_blender_dna` adapter.
 """
 
 from __future__ import annotations
@@ -23,6 +23,11 @@ from ..engine import get_libmtk_dna
 from .standard import clean_zombie_attributes
 
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh.DNA")
+
+
+def _byte_view(mv: Any) -> memoryview:
+    """Normalizes a typed/raw core memoryview to a C-contiguous byte view."""
+    return memoryview(mv).cast("B")
 
 
 def inject_topology_dna(
@@ -55,7 +60,12 @@ def inject_topology_dna(
         return False
 
     try:
-        blender_dna.copy_positions_to_ptr(mesh_data, pos_ptr, max_bytes=v_count * 12)
+        blender_dna.copy_f32(
+            _byte_view(mesh_data.positions_memoryview()),
+            pos_ptr,
+            v_count * 3,
+            max_bytes=v_count * 12,
+        )
     except Exception as e:
         logger.debug("DNA direct position copy failed: %s", e)
         return False
@@ -72,9 +82,14 @@ def inject_topology_dna(
 
     try:
         if is_quad:
-            blender_dna.copy_quad_indices_to_ptr(mesh_data, cvert_ptr, max_bytes=total_loops * 4)
+            src = mesh_data.quad_indices_memoryview()
         else:
-            blender_dna.copy_indices_to_ptr(mesh_data, cvert_ptr, max_bytes=total_loops * 4)
+            src = mesh_data.indices_memoryview()
+        if src is None:
+            return False
+        blender_dna.copy_u32(
+            _byte_view(src), cvert_ptr, total_loops, max_bytes=total_loops * 4
+        )
     except Exception as e:
         logger.debug("DNA direct corner vert copy failed: %s", e)
         return False
@@ -104,7 +119,12 @@ def inject_vertex_positions_dna(mesh: Any, mesh_data: Any) -> bool:
         return False
 
     try:
-        blender_dna.copy_positions_to_ptr(mesh_data, pos_ptr, max_bytes=v_count * 12)
+        blender_dna.copy_f32(
+            _byte_view(mesh_data.positions_memoryview()),
+            pos_ptr,
+            v_count * 3,
+            max_bytes=v_count * 12,
+        )
         return True
     except Exception as e:
         logger.debug("DNA direct copy positions failed: %s", e)
@@ -134,7 +154,12 @@ def inject_vertex_normals_dna(mesh: Any, mesh_data: Any) -> bool:
         norm_ptr = p0()
         if norm_ptr == 0:
             return False
-        blender_dna.copy_normals_to_ptr(mesh_data, norm_ptr, max_bytes=v_count * 12)
+        blender_dna.copy_f32(
+            _byte_view(mesh_data.normals_memoryview()),
+            norm_ptr,
+            v_count * 3,
+            max_bytes=v_count * 12,
+        )
         return True
     except Exception as e:
         logger.debug("DNA direct copy normals failed: %s", e)
@@ -176,7 +201,12 @@ def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = Non
         return False
 
     try:
-        blender_dna.copy_loop_uvs_to_ptr(mesh_data, uv_ptr, max_bytes=num_loops * 8)
+        blender_dna.copy_f32(
+            _byte_view(mesh_data.loop_uvs_memoryview()),
+            uv_ptr,
+            num_loops * 2,
+            max_bytes=num_loops * 8,
+        )
         return True
     except Exception as e:
         logger.debug("DNA direct copy UVs failed: %s", e)
@@ -221,7 +251,9 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
         return False
 
     try:
-        blender_dna.copy_colors_to_ptr(mesh_data, col_ptr, max_bytes=len(col_mv))
+        blender_dna.copy_f32(
+            _byte_view(col_mv), col_ptr, num_color_elems * 4, max_bytes=len(col_mv)
+        )
         return True
     except Exception as e:
         logger.debug("DNA direct copy colors failed: %s", e)

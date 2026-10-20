@@ -64,7 +64,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip pytest numpy
-          python -m pip install --no-index --find-links wheel libmtk_py
+          python -m pip install --no-index --find-links wheel libmtk_py libmtk_blender_dna
 
       - name: Download real Minecraft assets
         run: python .github/scripts/fetch_test_assets.py
@@ -100,7 +100,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip pytest
-          python -m pip install --no-index --find-links wheel libmtk_py
+          python -m pip install --no-index --find-links wheel libmtk_py libmtk_blender_dna
 
       - name: Install system dependencies & unzip
         run: |
@@ -160,7 +160,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip pytest
-          python -m pip install --no-index --find-links wheel libmtk_py
+          python -m pip install --no-index --find-links wheel libmtk_py libmtk_blender_dna
 
       - name: Download & extract Blender
         shell: pwsh

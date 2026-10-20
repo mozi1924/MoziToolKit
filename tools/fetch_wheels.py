@@ -2,7 +2,7 @@
 """
 Wheel Fetcher for MoziToolKit.
 
-Downloads precompiled libmtk_py abi3 wheels from libmozitoolkit GitHub Releases.
+Downloads precompiled libmtk_py + libmtk_blender_dna abi3 wheels from libmozitoolkit GitHub Releases.
 Supports:
   - Downloading a specific platform wheel (e.g. for CI testing: linux-x64)
   - Downloading all 6 supported platform wheels (for packaging: --all)
@@ -27,6 +27,8 @@ import urllib.request
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
+
+REQUIRED_WHEEL_DISTRIBUTIONS = ("libmtk_py", "libmtk_blender_dna")
 
 SUPPORTED_PLATFORMS = [
     "linux-x64",
@@ -209,45 +211,50 @@ def fetch_wheels(
     out_dir.mkdir(parents=True, exist_ok=True)
     if clean:
         print(f"🧹 Cleaning existing wheels in {out_dir}...")
-        for existing in out_dir.glob("libmtk_py*.whl"):
-            existing.unlink()
+        for prefix in REQUIRED_WHEEL_DISTRIBUTIONS:
+            for existing in out_dir.glob(f"{prefix}*.whl"):
+                existing.unlink()
 
     downloaded: list[Path] = []
     missing_platforms: list[str] = []
 
     for platform_id in target_platforms:
-        matched = [a for a in whl_assets if matches_platform(a["name"], platform_id)]
-        if not matched:
-            missing_platforms.append(platform_id)
-            continue
+        for distribution in REQUIRED_WHEEL_DISTRIBUTIONS:
+            matched = [
+                a
+                for a in whl_assets
+                if a["name"].lower().startswith(distribution)
+                and matches_platform(a["name"], platform_id)
+            ]
+            if not matched:
+                missing_platforms.append(f"{platform_id}/{distribution}")
+                continue
 
-        # Releases are append-only in practice: stale wheels from earlier runs
-        # under a different manylinux tag are not overwritten by `--clobber`.
-        # Always take the newest matching asset instead of relying on API order.
-        matched.sort(key=asset_recency_key, reverse=True)
-        target_asset = matched[0]
-        if len(matched) > 1:
-            print(
-                f"  ℹ️  [{platform_id}] {len(matched)} candidate wheels in release; "
-                f"using newest: {target_asset['name']}"
-            )
+            # Releases are append-only in practice: stale wheels from earlier runs
+            # under a different manylinux tag are not overwritten by `--clobber`.
+            # Always take the newest matching asset instead of relying on API order.
+            matched.sort(key=asset_recency_key, reverse=True)
+            target_asset = matched[0]
+            if len(matched) > 1:
+                print(
+                    f"  ℹ️  [{platform_id}/{distribution}] {len(matched)} candidate wheels; "
+                    f"using newest: {target_asset['name']}"
+                )
 
-        dest = out_dir / target_asset["name"]
+            dest = out_dir / target_asset["name"]
+            if dest.exists() and dest.stat().st_size == target_asset.get("size", -1):
+                print(f"  • {dest.name} already cached ({dest.stat().st_size / 1024 / 1024:.2f} MB)")
+                downloaded.append(dest)
+                continue
 
-        # Skip download if already exists with matching size
-        if dest.exists() and dest.stat().st_size == target_asset.get("size", -1):
-            print(f"  • {dest.name} already cached ({dest.stat().st_size / 1024 / 1024:.2f} MB)")
+            print(f"  ⬇️ Downloading for [{platform_id}]: {target_asset['name']}...")
+            download_file(target_asset["browser_download_url"], dest, token)
             downloaded.append(dest)
-            continue
-
-        print(f"  ⬇️ Downloading for [{platform_id}]: {target_asset['name']}...")
-        download_file(target_asset["browser_download_url"], dest, token)
-        downloaded.append(dest)
 
     if missing_platforms:
         available_names = [a["name"] for a in whl_assets]
         raise RuntimeError(
-            f"Release '{release}' is missing wheels for platform(s): {', '.join(missing_platforms)}. "
+            f"Release '{release}' is missing wheel(s) for: {', '.join(missing_platforms)}. "
             f"Available assets: {available_names}"
         )
 

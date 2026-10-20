@@ -479,19 +479,22 @@ def is_wheel_for_platform(whl_name: str, platform_id: str) -> bool:
     return False
 
 
-def validate_libmtk_wheels(wheels_dir: Path, platforms: list[str]) -> list[str]:
-    """Return platform ids that do not have a matching libmtk_py native wheel.
+def validate_native_wheels(wheels_dir: Path, platforms: list[str]) -> list[str]:
+    """Return missing (platform, distribution) native wheel pairs.
 
-    The extension has no pure-Python fallback for its Rust core, so shipping a
-    platform package without its wheel produces an add-on that installs but cannot
-    import live sync, save import, or any mesh/material operation.
+    The extension needs both the core (`libmtk_py`) and the standalone Blender
+    raw-memory adapter (`libmtk_blender_dna`) for each platform.
     """
     wheels = sorted(wheels_dir.glob("*.whl")) if wheels_dir.exists() else []
-    libmtk_wheels = [w for w in wheels if w.name.lower().startswith("libmtk_py")]
+    distributions = ("libmtk_py", "libmtk_blender_dna")
     missing: list[str] = []
     for platform_id in platforms:
-        if not any(is_wheel_for_platform(w.name, platform_id) for w in libmtk_wheels):
-            missing.append(platform_id)
+        for distribution in distributions:
+            candidates = [
+                w for w in wheels if w.name.lower().startswith(distribution)
+            ]
+            if not any(is_wheel_for_platform(w.name, platform_id) for w in candidates):
+                missing.append(f"{platform_id}/{distribution}")
     return missing
 
 
@@ -501,7 +504,7 @@ def verify_output_packages(
     ext_version: str,
     platforms: list[str],
 ) -> list[str]:
-    """Verify that every produced platform zip contains its own libmtk_py wheel."""
+    """Verify that every produced platform zip contains both native wheels."""
     problems: list[str] = []
     for platform_id in platforms:
         zip_name = f"{ext_id}-{ext_version}-{platform_id.replace('-', '_')}.zip"
@@ -519,14 +522,16 @@ def verify_output_packages(
         except Exception as e:
             problems.append(f"{platform_id}: cannot inspect {zip_name}: {e}")
             continue
-        if not any(
-            name.lower().startswith("libmtk_py") and is_wheel_for_platform(name, platform_id)
-            for name in bundled
-        ):
-            problems.append(
-                f"{platform_id}: {zip_name} has no matching libmtk_py wheel "
-                f"(bundled={bundled or 'none'})"
-            )
+        for distribution in ("libmtk_py", "libmtk_blender_dna"):
+            if not any(
+                name.lower().startswith(distribution)
+                and is_wheel_for_platform(name, platform_id)
+                for name in bundled
+            ):
+                problems.append(
+                    f"{platform_id}: {zip_name} has no matching {distribution} wheel "
+                    f"(bundled={bundled or 'none'})"
+                )
     return problems
 
 
@@ -683,10 +688,10 @@ def main():
     # --validate-only intentionally checks the manifest only; wheel completeness is
     # a packaging gate because a source checkout has no generated wheels.
     if not args.validate_only:
-        missing_wheels = validate_libmtk_wheels(wheels_dir, platforms)
+        missing_wheels = validate_native_wheels(wheels_dir, platforms)
         if missing_wheels:
             message = (
-                "No matching libmtk_py wheel for declared platform(s): "
+                "No matching native wheel for declared platform(s): "
                 + ", ".join(missing_wheels)
             )
             if args.allow_missing_wheels:
@@ -694,7 +699,7 @@ def main():
             else:
                 print(f"❌ {message}")
                 print(
-                    "   Put the platform abi3 wheels into MoziToolKit/wheels/ before packaging. "
+                    "   Put libmtk_py + libmtk_blender_dna abi3 wheels into MoziToolKit/wheels/ before packaging. "
                     "Use --build-libmtk for the host platform, or let the release workflow "
                     "download the cross-platform wheel artifacts."
                 )

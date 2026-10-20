@@ -28,6 +28,11 @@ NEW_LINUX = _asset(
     "2026-10-19T05:51:52Z",
     2,
 )
+NEW_LINUX_DNA = _asset(
+    "libmtk_blender_dna-0.1.0-cp311-abi3-manylinux_2_28_x86_64.whl",
+    "2026-10-19T05:51:53Z",
+    3,
+)
 
 
 class TestMatchesPlatform(unittest.TestCase):
@@ -75,13 +80,14 @@ class TestFetchWheels(unittest.TestCase):
 
     def test_prefers_newest_matching_asset(self):
         downloaded, download = self._run(
-            {"assets": [OLD_LINUX, NEW_LINUX]},
+            {"assets": [OLD_LINUX, NEW_LINUX, NEW_LINUX_DNA]},
             release="ci-latest",
         )
-        self.assertEqual(len(downloaded), 1)
-        self.assertEqual(downloaded[0].name, NEW_LINUX["name"])
-        download.assert_called_once()
-        self.assertIn(NEW_LINUX["name"], download.call_args.args[0])
+        self.assertEqual({p.name for p in downloaded}, {NEW_LINUX["name"], NEW_LINUX_DNA["name"]})
+        self.assertEqual(download.call_count, 2)
+        downloaded_urls = {call.args[0] for call in download.call_args_list}
+        self.assertIn(NEW_LINUX["name"], " ".join(downloaded_urls))
+        self.assertIn(NEW_LINUX_DNA["name"], " ".join(downloaded_urls))
 
     def test_latest_falls_back_to_ci_latest(self):
         calls = []
@@ -90,7 +96,7 @@ class TestFetchWheels(unittest.TestCase):
             calls.append(release_tag)
             if release_tag == "latest":
                 raise RuntimeError("Release 'latest' not found in repo 'owner/repo'.")
-            return {"assets": [NEW_LINUX]}
+            return {"assets": [NEW_LINUX, NEW_LINUX_DNA]}
 
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -105,7 +111,7 @@ class TestFetchWheels(unittest.TestCase):
             )
 
         self.assertEqual(calls, ["latest", "ci-latest"])
-        self.assertEqual(downloaded[0].name, NEW_LINUX["name"])
+        self.assertEqual({p.name for p in downloaded}, {NEW_LINUX["name"], NEW_LINUX_DNA["name"]})
 
     def test_no_fallback_propagates_error(self):
         tmp = tempfile.TemporaryDirectory()
@@ -126,7 +132,7 @@ class TestFetchWheels(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         with mock.patch.object(
-            fw, "get_release_data", return_value={"assets": [NEW_LINUX]}
+            fw, "get_release_data", return_value={"assets": [NEW_LINUX, NEW_LINUX_DNA]}
         ), mock.patch.object(fw, "download_file"):
             with self.assertRaises(RuntimeError) as ctx:
                 fw.fetch_wheels(
@@ -142,9 +148,11 @@ class TestFetchWheels(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         stale = Path(tmp.name) / "libmtk_py-0.1.0-cp311-abi3-win_amd64.whl"
         stale.write_bytes(b"stale")
+        stale_dna = Path(tmp.name) / "libmtk_blender_dna-0.1.0-cp311-abi3-win_amd64.whl"
+        stale_dna.write_bytes(b"stale")
 
         with mock.patch.object(
-            fw, "get_release_data", return_value={"assets": [NEW_LINUX]}
+            fw, "get_release_data", return_value={"assets": [NEW_LINUX, NEW_LINUX_DNA]}
         ), mock.patch.object(fw, "download_file"):
             fw.fetch_wheels(
                 repo="owner/repo",
@@ -155,6 +163,7 @@ class TestFetchWheels(unittest.TestCase):
             )
 
         self.assertFalse(stale.exists())
+        self.assertFalse(stale_dna.exists())
 
 
 if __name__ == "__main__":

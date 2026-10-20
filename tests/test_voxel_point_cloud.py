@@ -333,6 +333,45 @@ class TestVoxelPointCloudBridge:
             bpy.data.meshes.remove(b_mesh, do_unlink=True)
 
     @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
+    def test_direct_pointer_matches_foreach_set(self):
+        """DNA and standard attribute writes produce identical mesh data."""
+        from MoziToolKit.bridge.dna import set_dna_enabled
+        from MoziToolKit.bridge.point_cloud import (
+            ATTR_BIOME_IDX,
+            ATTR_BLOCK_STATE_IDX,
+            ATTR_BLOCK_X,
+            inject_voxel_point_cloud,
+        )
+
+        cloud = libmtk_py.VoxelPointCloud()
+        cloud.push([1.5, 2.5, 3.5], [10, 20, 30], "minecraft:stone", "minecraft:plains", 15)
+        cloud.push([4.5, 5.5, 6.5], [40, 50, 60], "minecraft:dirt", "minecraft:desert", 8)
+
+        dna_mesh = bpy.data.meshes.new("DNA_Parity")
+        std_mesh = bpy.data.meshes.new("Std_Parity")
+        dna_obj = bpy.data.objects.new("DNA_Parity_Obj", dna_mesh)
+        std_obj = bpy.data.objects.new("Std_Parity_Obj", std_mesh)
+        try:
+            assert inject_voxel_point_cloud(dna_obj, cloud, update_mask=False)
+            set_dna_enabled(False)
+            assert inject_voxel_point_cloud(std_obj, cloud, update_mask=False)
+
+            assert [tuple(v.co) for v in dna_mesh.vertices] == [
+                tuple(v.co) for v in std_mesh.vertices
+            ]
+            for name in (ATTR_BLOCK_X, ATTR_BLOCK_STATE_IDX, ATTR_BIOME_IDX):
+                dna_attr = dna_mesh.attributes.get(name)
+                std_attr = std_mesh.attributes.get(name)
+                assert dna_attr is not None and std_attr is not None
+                assert [d.value for d in dna_attr.data] == [d.value for d in std_attr.data]
+        finally:
+            set_dna_enabled(None)
+            bpy.data.objects.remove(dna_obj, do_unlink=True)
+            bpy.data.objects.remove(std_obj, do_unlink=True)
+            bpy.data.meshes.remove(dna_mesh, do_unlink=True)
+            bpy.data.meshes.remove(std_mesh, do_unlink=True)
+
+    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_direct_pointer_zero_copy_injection_mesh_and_native_pointcloud(self):
         """Verifies hardware-accelerated direct DNA raw pointer zero-copy injection on Mesh and PointCloud."""
         from MoziToolKit.bridge.point_cloud import (

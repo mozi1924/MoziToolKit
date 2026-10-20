@@ -58,7 +58,7 @@ def is_version_supported() -> bool:
 def is_dna_available() -> bool:
     """
     Returns True if:
-    1. The native Rust accelerator (libmtk_py.unstable.blender_dna) is loaded;
+    1. The standalone `libmtk_blender_dna` raw-memory adapter is loaded;
     2. The current Blender version is supported;
     3. DNA mode is not disabled via environment variable or override.
     """

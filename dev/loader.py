@@ -64,6 +64,11 @@ def ensure_dev_binary() -> Path | None:
     return _ensure_module_binary("libmtk_py")
 
 
+def ensure_dna_binary() -> Path | None:
+    """Locates or symlinks the standalone Blender DNA adapter library."""
+    return _ensure_module_binary("libmtk_blender_dna")
+
+
 def reload_dev_binary() -> bool:
     """
     Forces hot-reloading of the latest compiled Rust binary into running Python process.
@@ -120,6 +125,7 @@ def setup_dev_environment() -> bool:
     Returns True if libmtk_py is successfully available.
     """
     dev_bin = ensure_dev_binary()
+    ensure_dna_binary()
     if dev_bin and str(DEV_LIB_DIR) not in sys.path:
         sys.path.insert(0, str(DEV_LIB_DIR))
 

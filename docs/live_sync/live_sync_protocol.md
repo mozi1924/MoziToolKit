@@ -685,7 +685,7 @@ Delta 调色板一致性：
 
 ### 6.1 MeshData 与 Blender CustomData 内存对齐规范
 
-DNA 裸指针写入（`inject_topology_dna` / `copy_positions_to_ptr` 等）必须严格遵守
+DNA 裸指针写入（`inject_topology_dna` / 独立 `libmtk_blender_dna.copy_f32` 等）必须严格遵守
 Blender 4.2+ / 5.0 的 C 内存布局规范：
 
 * **顶点位置 (Positions)**：连续 `float32[3]`，步长 12 字节；
