@@ -13,6 +13,7 @@ remains precisely at the bottom center of the bounding volume:
 And crucially: vertices NEVER fly up into the sky (Z >= 64).
 """
 
+import _mesh_arrays as ma
 import asyncio
 import os
 import sys
@@ -333,7 +334,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
             self.assertGreater(v_cnt, 0)
 
             # Check vertex bounds of initial build
-            pos1 = initial_mesh.get_flat_positions()
+            pos1 = ma.positions(initial_mesh)
             xs1 = [pos1[i * 3] for i in range(initial_mesh.vertex_count)]
             ys1 = [pos1[i * 3 + 1] for i in range(initial_mesh.vertex_count)]
             zs1 = [pos1[i * 3 + 2] for i in range(initial_mesh.vertex_count)]
@@ -373,7 +374,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
             v_cnt2, f_cnt2 = update_world_mesh(world_obj, delta_mesh)
             self.assertEqual(tuple(world_obj.location), (0.0, 0.0, 0.0), "Scenario 2: Object location should remain (0,0,0)")
 
-            pos2 = delta_mesh.get_flat_positions()
+            pos2 = ma.positions(delta_mesh)
             xs2 = [pos2[i * 3] for i in range(delta_mesh.vertex_count)]
             ys2 = [pos2[i * 3 + 1] for i in range(delta_mesh.vertex_count)]
             zs2 = [pos2[i * 3 + 2] for i in range(delta_mesh.vertex_count)]
@@ -403,7 +404,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
             self.assertIsNotNone(full_rebuild_mesh, "Scenario 3: Should receive WORLD_MESH_READY on full scene rebuild")
 
             v_cnt3, f_cnt3 = update_world_mesh(world_obj, full_rebuild_mesh)
-            pos3 = full_rebuild_mesh.get_flat_positions()
+            pos3 = ma.positions(full_rebuild_mesh)
             xs3 = [pos3[i * 3] for i in range(full_rebuild_mesh.vertex_count)]
             ys3 = [pos3[i * 3 + 1] for i in range(full_rebuild_mesh.vertex_count)]
             zs3 = [pos3[i * 3 + 2] for i in range(full_rebuild_mesh.vertex_count)]
@@ -416,7 +417,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
             direct_mesh = session.get_world_mesh()
             self.assertIsNotNone(direct_mesh)
             self.assertGreater(direct_mesh.vertex_count, 0)
-            d_pos = direct_mesh.get_flat_positions()
+            d_pos = ma.positions(direct_mesh)
             d_zs = [d_pos[i * 3 + 2] for i in range(direct_mesh.vertex_count)]
             self.assertAlmostEqual(min(d_zs), 0.0, places=3, msg="Scenario 3: get_world_mesh() min Z must be 0.0")
 
@@ -447,7 +448,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
             self.assertIsNotNone(resized_mesh, "Scenario 4: WORLD_MESH_READY should be received for resized world")
 
             v_cnt4, f_cnt4 = update_world_mesh(world_obj, resized_mesh)
-            pos4 = resized_mesh.get_flat_positions()
+            pos4 = ma.positions(resized_mesh)
             xs4 = [pos4[i * 3] for i in range(resized_mesh.vertex_count)]
             ys4 = [pos4[i * 3 + 1] for i in range(resized_mesh.vertex_count)]
             zs4 = [pos4[i * 3 + 2] for i in range(resized_mesh.vertex_count)]
@@ -477,7 +478,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
                     break
 
             self.assertIsNotNone(delta4_mesh)
-            pos4d = delta4_mesh.get_flat_positions()
+            pos4d = ma.positions(delta4_mesh)
             zs4d = [pos4d[i * 3 + 2] for i in range(delta4_mesh.vertex_count)]
             self.assertAlmostEqual(min(zs4d), 0.0, places=3, msg="Scenario 4: Delta on resized world must maintain min Z=0.0")
 

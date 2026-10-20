@@ -27,6 +27,20 @@ except ImportError:
     HAS_REAL_BPY = False
 
 
+def _states(cloud):
+    import numpy as np
+    palette = cloud.get_state_palette()
+    indices = np.frombuffer(cloud.state_indices_memoryview(), dtype=np.int32)
+    return [palette[int(i)] for i in indices]
+
+
+def _biomes(cloud):
+    import numpy as np
+    palette = cloud.get_biome_palette()
+    indices = np.frombuffer(cloud.biome_indices_memoryview(), dtype=np.int32)
+    return [palette[int(i)] for i in indices]
+
+
 @pytest.mark.skipif(not HAS_LIBMTK, reason="libmtk_py not available")
 class TestVoxelPointCloudBridge:
     def test_point_cloud_python_roundtrip(self):
@@ -41,7 +55,7 @@ class TestVoxelPointCloudBridge:
         assert len(cloud) == 3
         assert not cloud.is_empty()
 
-        states = cloud.get_block_states()
+        states = _states(cloud)
         assert "minecraft:stone" in states
         assert "minecraft:oak_stairs[facing=east]" in states
         assert "minecraft:gold_block" in states
@@ -111,7 +125,7 @@ class TestVoxelPointCloudBridge:
             extracted_cloud = extract_voxel_point_cloud(b_obj)
             assert extracted_cloud is not None
             assert len(extracted_cloud) == 2
-            extracted_states = extracted_cloud.get_block_states()
+            extracted_states = _states(extracted_cloud)
             assert "minecraft:iron_block" in extracted_states
             assert "minecraft:diamond_block" in extracted_states
 
@@ -221,8 +235,8 @@ class TestVoxelPointCloudBridge:
                 bx = extracted_cloud.block_x_memoryview().cast("i")[i]
                 by = extracted_cloud.block_y_memoryview().cast("i")[i]
                 bz = extracted_cloud.block_z_memoryview().cast("i")[i]
-                st = extracted_cloud.get_block_states()[i]
-                bm = extracted_cloud.get_biomes()[i]
+                st = _states(extracted_cloud)[i]
+                bm = _biomes(extracted_cloud)[i]
                 if not (bx == 1 and by == 1 and bz == 1):
                     p_off = i * 3
                     carved_cloud.push(
@@ -310,7 +324,7 @@ class TestVoxelPointCloudBridge:
             extracted = extract_voxel_point_cloud(b_obj)
             assert extracted is not None
             assert len(extracted) == 1000
-            extracted_states = extracted.get_block_states()
+            extracted_states = _states(extracted)
             assert len(extracted_states) == 1000
             # All extracted states must match the palette states
             assert set(extracted_states) == {"minecraft:stone", "minecraft:redstone_block"}

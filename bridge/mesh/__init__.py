@@ -95,9 +95,7 @@ def inject_mesh_data(
     needs_topology = update_topology or len(getattr(mesh, "vertices", [])) != v_count
 
     if needs_topology:
-        face_count = getattr(mesh_data, "face_count", None)
-        if face_count is None:
-            face_count = len(mesh_data.get_face_materials()) if hasattr(mesh_data, "get_face_materials") else 0
+        face_count = getattr(mesh_data, "face_count", 0)
         tri_count = getattr(mesh_data, "triangle_count", 0)
         total_indices = tri_count * 3
         is_quad = (

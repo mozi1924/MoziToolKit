@@ -2,6 +2,7 @@
 Tests for MoziToolKit Bridge and Material Presets.
 """
 
+import _mesh_arrays as ma
 import sys
 import unittest
 from pathlib import Path
@@ -273,9 +274,11 @@ class TestMeshBridge(unittest.TestCase):
         mesh_data = extract_mesh_data(mock_mesh)
         self.assertEqual(mesh_data.vertex_count, 4)
         self.assertEqual(mesh_data.triangle_count, 2)
-        indices = mesh_data.get_indices()
+        indices = ma.indices(mesh_data)
         self.assertEqual(len(indices), 6)
-        face_mats = mesh_data.get_face_materials()
+        self.assertEqual(mesh_data.uv_layout, "per_loop")
+        self.assertEqual(len(ma.loop_uvs(mesh_data)), 8)
+        face_mats = ma.face_materials(mesh_data)
         self.assertEqual(len(face_mats), 1)
         self.assertEqual(face_mats[0], 1)
 
@@ -287,8 +290,7 @@ class TestDualMeshApi(unittest.TestCase):
         mtk = get_libmtk()
         if mtk is None or not hasattr(mtk, "MeshData"):
             self.skipTest("libmtk MeshData not available")
-        self.mesh = mtk.MeshData()
-        self.mesh.append_unit_cube_face(1, 0, -1)  # Top face: 4 vertices, 2 triangles, 1 quad
+        self.mesh = ma.unit_quad()
 
     def test_universal_python_zero_copy_api(self):
         """Suite B: Universal Python memoryview & buffer protocol API."""
@@ -334,9 +336,7 @@ class TestDualMeshApi(unittest.TestCase):
             "minecraft:block/dirt",
             "minecraft:block/grass_block_top",
         ]
-        mesh = get_libmtk().MeshData()
-        for direction in (1, 0, 1):
-            mesh.append_unit_cube_face(direction, 0, -1)
+        mesh = ma.unit_quads(3)
         mesh.add_string_attribute("mtk_source_texture_key", "face", keys)
 
         palette, indices = mesh.source_texture_palette_indices()
@@ -409,9 +409,7 @@ class TestPaletteProvenanceParity(unittest.TestCase):
         resolved_by_mode = {}
         for skip in (False, True):
             mtk = get_libmtk()
-            mesh_data = mtk.MeshData()
-            mesh_data.append_unit_cube_face(1, 0, -1)
-            mesh_data.append_unit_cube_face(0, 0, -1)
+            mesh_data = ma.unit_quads(2)
             mesh_data.add_string_attribute("mtk_source_texture_key", "face", keys)
 
             name = f"mtk_palette_parity_{int(skip)}"

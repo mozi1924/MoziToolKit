@@ -12,6 +12,5 @@ def mesh_world(storage, config=None, culler=None, model_db=None):
         config,
         culler,
         model_db,
-        True,
     )
     return world.rebuild_all()

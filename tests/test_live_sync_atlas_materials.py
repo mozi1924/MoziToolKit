@@ -1,3 +1,4 @@
+import _mesh_arrays as ma
 from _mtk_helpers import mesh_world
 """
 Integration tests for Live Sync Atlas Material binding and internal addressing.
@@ -213,7 +214,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         self.assertTrue(has_water, f"Expected water_still in keys: {keys}")
 
         # Check material slots
-        mat_slots = mesh.get_face_materials()
+        mat_slots = ma.face_materials(mesh)
         self.assertEqual(len(mat_slots), mesh.face_count)
         # Water was chunk 1, grass was chunk 0
         self.assertIn(0, mat_slots)

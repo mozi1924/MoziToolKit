@@ -8,6 +8,7 @@ Integration and regression test suite for directional blocks and state transitio
 """
 
 from __future__ import annotations
+import _mesh_arrays as ma
 
 import asyncio
 import os
@@ -198,7 +199,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
         # Floor standing torch
         m_floor, tex_floor = self.model_db.get_mesh("minecraft:torch", False)
         self.assertEqual(m_floor.face_count, 6)
-        pos_floor = m_floor.get_flat_positions()
+        pos_floor = ma.positions(m_floor)
         min_y_floor = min(pos_floor[1::3])
         max_y_floor = max(pos_floor[1::3])
         self.assertAlmostEqual(min_y_floor, 0.0, places=2)
@@ -207,7 +208,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
         # Wall torch
         m_wall, tex_wall = self.model_db.get_mesh("minecraft:wall_torch[facing=north]", False)
         self.assertEqual(m_wall.face_count, 6)
-        pos_wall = m_wall.get_flat_positions()
+        pos_wall = ma.positions(m_wall)
         min_y_wall = min(pos_wall[1::3])
         max_y_wall = max(pos_wall[1::3])
         # Wall torch is lifted off floor (min_y around 0.19)
@@ -217,7 +218,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
         # Alias: torch[facing=north] must resolve to wall torch geometry!
         m_alias, tex_alias = self.model_db.get_mesh("minecraft:torch[facing=north]", False)
         self.assertIsNotNone(m_alias)
-        pos_alias = m_alias.get_flat_positions()
+        pos_alias = ma.positions(m_alias)
         self.assertAlmostEqual(min(pos_alias[1::3]), min_y_wall, places=2)
         self.assertAlmostEqual(max(pos_alias[1::3]), max_y_wall, places=2)
 
@@ -369,7 +370,7 @@ class TestDirectionalAndStateBlocksSync(unittest.TestCase):
             )
 
             # Verify no coordinates are NaN or infinite
-            flat_pos = delta2_mesh.get_flat_positions()
+            flat_pos = ma.positions(delta2_mesh)
             for coord in flat_pos:
                 self.assertFalse(
                     coord != coord or abs(coord) > 1e6,

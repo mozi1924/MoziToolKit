@@ -12,6 +12,7 @@ Comprehensive regression test suite for model fixes:
 """
 
 from __future__ import annotations
+import _mesh_arrays as ma
 
 from _mtk_helpers import mesh_world
 
@@ -131,10 +132,10 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertIsNotNone(res_e)
         self.assertIsNotNone(res_w)
 
-        pn = res_n[0].get_flat_positions()
-        ps = res_s[0].get_flat_positions()
-        pe = res_e[0].get_flat_positions()
-        pw = res_w[0].get_flat_positions()
+        pn = ma.positions(res_n[0])
+        ps = ma.positions(res_s[0])
+        pe = ma.positions(res_e[0])
+        pw = ma.positions(res_w[0])
 
         self.assertNotEqual(pn, ps, "North and south chests must have distinct vertex coordinates")
         self.assertNotEqual(pn, pe, "North and east chests must have distinct vertex coordinates")
@@ -159,9 +160,9 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertIsNotNone(shelf_one)
         self.assertIsNotNone(shelf_full)
 
-        p_empty = shelf_empty[0].get_flat_positions()
-        p_one = shelf_one[0].get_flat_positions()
-        p_full = shelf_full[0].get_flat_positions()
+        p_empty = ma.positions(shelf_empty[0])
+        p_one = ma.positions(shelf_one[0])
+        p_full = ma.positions(shelf_full[0])
 
         self.assertNotEqual(p_empty, p_one, "Empty and 1-book bookshelf must have different geometry")
         self.assertNotEqual(p_empty, p_full, "Empty and full bookshelf must have different geometry")
@@ -182,13 +183,13 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertIsNotNone(head_r8)
 
         self.assertNotEqual(
-            head_r0[0].get_flat_positions(),
-            head_r4[0].get_flat_positions(),
+            ma.positions(head_r0[0]),
+            ma.positions(head_r4[0]),
             "rotation=0 and rotation=4 must produce rotated skull vertices",
         )
         self.assertNotEqual(
-            head_r0[0].get_flat_positions(),
-            head_r8[0].get_flat_positions(),
+            ma.positions(head_r0[0]),
+            ma.positions(head_r8[0]),
             "rotation=0 and rotation=8 must produce rotated skull vertices",
         )
 
@@ -238,7 +239,7 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertIsNotNone(res_iso, "Isolated wall state must resolve")
         mesh_iso, _ = res_iso
         self.assertEqual(mesh_iso.face_count, 6, "Isolated wall must have 6 faces (post only, NOT cross)")
-        pos_iso = mesh_iso.get_flat_positions()
+        pos_iso = ma.positions(mesh_iso)
         min_x, max_x = min(pos_iso[0::3]), max(pos_iso[0::3])
         min_z, max_z = min(pos_iso[2::3]), max(pos_iso[2::3])
         self.assertAlmostEqual(min_x, 0.25, places=2)
@@ -257,7 +258,7 @@ class TestModelRegressionFixes(unittest.TestCase):
             False,
         )
         self.assertIsNotNone(res_z)
-        pos_z = res_z[0].get_flat_positions()
+        pos_z = ma.positions(res_z[0])
         min_z_c, max_z_c = min(pos_z[2::3]), max(pos_z[2::3])
         min_x_c, max_x_c = min(pos_z[0::3]), max(pos_z[0::3])
         self.assertAlmostEqual(min_z_c, 0.0, places=2, msg="Z-connected wall must reach boundary 0.0")
@@ -270,7 +271,7 @@ class TestModelRegressionFixes(unittest.TestCase):
             False,
         )
         self.assertIsNotNone(res_x)
-        pos_x = res_x[0].get_flat_positions()
+        pos_x = ma.positions(res_x[0])
         min_x_c2, max_x_c2 = min(pos_x[0::3]), max(pos_x[0::3])
         min_z_c2, max_z_c2 = min(pos_x[2::3]), max(pos_x[2::3])
         self.assertAlmostEqual(min_x_c2, 0.0, places=2, msg="X-connected wall must reach boundary 0.0")
@@ -299,7 +300,7 @@ class TestModelRegressionFixes(unittest.TestCase):
             False,
         )
         self.assertIsNotNone(res_ew)
-        pos_ew = res_ew[0].get_flat_positions()
+        pos_ew = ma.positions(res_ew[0])
         self.assertAlmostEqual(min(pos_ew[0::3]), 0.0, places=2)
         self.assertAlmostEqual(max(pos_ew[0::3]), 1.0, places=2)
 
@@ -356,9 +357,9 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertEqual(mesh_l.quad_count, 18)
         self.assertIn("minecraft:entity/chest/normal_left", tex_l)
         # Left chest outer wall is West (min_x) and must be solid (U: ~0.45..0.67 in UV)
-        uvs_l = mesh_l.get_flat_uvs()
-        pos_l = mesh_l.get_flat_positions()
-        idxs_l = mesh_l.get_quad_indices()
+        uvs_l = ma.loop_uvs(mesh_l)
+        pos_l = ma.positions(mesh_l)
+        idxs_l = ma.quad_indices(mesh_l)
         west_quad_found = False
         for q in range(len(idxs_l) // 4):
             q_idxs = idxs_l[q*4 : (q+1)*4]
@@ -381,9 +382,9 @@ class TestModelRegressionFixes(unittest.TestCase):
         self.assertEqual(mesh_r.quad_count, 18)
         self.assertIn("minecraft:entity/chest/normal_right", tex_r)
         # Right chest outer wall is East (max_x) and must be solid (U: 0.0..0.22 in UV)
-        uvs_r = mesh_r.get_flat_uvs()
-        pos_r = mesh_r.get_flat_positions()
-        idxs_r = mesh_r.get_quad_indices()
+        uvs_r = ma.loop_uvs(mesh_r)
+        pos_r = ma.positions(mesh_r)
+        idxs_r = ma.quad_indices(mesh_r)
         east_quad_found = False
         for q in range(len(idxs_r) // 4):
             q_idxs = idxs_r[q*4 : (q+1)*4]

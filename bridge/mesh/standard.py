@@ -80,7 +80,9 @@ def inject_topology_standard(
             try:
                 if is_quad:
                     quad_mv = mesh_data.quad_indices_memoryview()
-                    arr = np.frombuffer(quad_mv, dtype=np.int32) if quad_mv is not None else np.ascontiguousarray(mesh_data.get_quad_indices(), dtype=np.int32)
+                    if quad_mv is None:
+                        raise RuntimeError("Quad mesh is missing quad_indices")
+                    arr = np.frombuffer(quad_mv, dtype=np.int32)
                 else:
                     arr = np.frombuffer(mesh_data.indices_memoryview(), dtype=np.int32)
                 cvert_attr.data.foreach_set("value", arr)
@@ -92,14 +94,11 @@ def inject_topology_standard(
             try:
                 if is_quad:
                     quad_mv = mesh_data.quad_indices_memoryview()
-                    if quad_mv is not None:
-                        if hasattr(quad_mv, "cast") and quad_mv.format == "B":
-                            quad_mv = quad_mv.cast("i")
-                        mesh.loops.foreach_set("vertex_index", quad_mv)
-                    else:
-                        mesh.loops.foreach_set(
-                            "vertex_index", np.ascontiguousarray(mesh_data.get_quad_indices(), dtype=np.int32)
-                        )
+                    if quad_mv is None:
+                        raise RuntimeError("Quad mesh is missing quad_indices")
+                    if hasattr(quad_mv, "cast") and quad_mv.format == "B":
+                        quad_mv = quad_mv.cast("i")
+                    mesh.loops.foreach_set("vertex_index", quad_mv)
                 else:
                     indices_mv = mesh_data.indices_memoryview()
                     if hasattr(indices_mv, "cast") and indices_mv.format == "B":
@@ -115,25 +114,6 @@ def inject_topology_standard(
 
         mesh.polygons.foreach_set("loop_start", np.arange(0, total_loops, stride, dtype=np.int32))
         mesh.polygons.foreach_set("loop_total", np.full(poly_count, stride, dtype=np.int32))
-        return True
-
-    elif hasattr(mesh, "from_pydata"):
-        pos_list = mesh_data.get_flat_positions()
-        verts = [(pos_list[i * 3], pos_list[i * 3 + 1], pos_list[i * 3 + 2]) for i in range(v_count)]
-        if is_quad:
-            quad_count = total_indices // 6
-            quad_indices = mesh_data.get_quad_indices()
-            quads = [
-                (quad_indices[q * 4], quad_indices[q * 4 + 1], quad_indices[q * 4 + 2], quad_indices[q * 4 + 3])
-                for q in range(quad_count)
-            ]
-            mesh.clear_geometry()
-            mesh.from_pydata(verts, [], quads)
-        else:
-            tri_indices = mesh_data.get_indices()
-            tris = [(tri_indices[i], tri_indices[i + 1], tri_indices[i + 2]) for i in range(0, len(tri_indices), 3)]
-            mesh.clear_geometry()
-            mesh.from_pydata(verts, [], tris)
         return True
 
     return False
