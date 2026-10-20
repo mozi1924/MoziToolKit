@@ -98,31 +98,8 @@ def process_flat_mesh_extrude_repair(
     )
 
 
-# Host-level BMesh and shader analysis functions are forwarded from utils.mesh.random_extrude
-try:
-    from ..utils.mesh.random_extrude import (
-        get_face_pixel_step,
-        process_random_extrude,
-        process_random_extrude_mesh_batch,
-        repair_extruded_side_faces,
-        repair_mesh_extruded_side_faces_batch,
-    )
-except (ImportError, ValueError):
-    from utils.mesh.random_extrude import (
-        get_face_pixel_step,
-        process_random_extrude,
-        process_random_extrude_mesh_batch,
-        repair_extruded_side_faces,
-        repair_mesh_extruded_side_faces_batch,
-    )
-
 __all__ = [
     "repair_extruded_side_uv",
     "generate_random_extrude_heights",
     "process_flat_mesh_extrude_repair",
-    "get_face_pixel_step",
-    "repair_mesh_extruded_side_faces_batch",
-    "process_random_extrude_mesh_batch",
-    "repair_extruded_side_faces",
-    "process_random_extrude",
 ]

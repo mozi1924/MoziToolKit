@@ -39,7 +39,8 @@ def load_debug_world(
     into the active Blender scene with full model resolution, atlas UV remapping,
     and Atlas chunk PBR materials. Returns the created/updated bpy.types.Object.
     """
-    obj, stats = bridge.create_debug_world_object(
+    from ..utils.world import create_debug_world_object
+    obj, stats = create_debug_world_object(
         context=context,
         name=name,
         enable_ao=enable_ao,

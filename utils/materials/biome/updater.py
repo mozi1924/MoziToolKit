@@ -117,11 +117,13 @@ def _rehydrate_storage_from_point_cloud(obj: Any, target_mesh: Any = None) -> An
         return None
 
     try:
-        from ....bridge.point_cloud import extract_voxel_point_cloud, get_associated_voxel_cloud
+        from ....bridge.point_cloud import extract_voxel_point_cloud
+        from ....utils.point_cloud import get_associated_voxel_cloud
         from ....bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
     except (ImportError, ValueError):
         try:
-            from bridge.point_cloud import extract_voxel_point_cloud, get_associated_voxel_cloud
+            from bridge.point_cloud import extract_voxel_point_cloud
+            from utils.point_cloud import get_associated_voxel_cloud
             from bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
         except Exception:
             return None

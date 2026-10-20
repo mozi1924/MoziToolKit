@@ -11,7 +11,7 @@ import bpy
 from .ownership_hint import draw_mesh_origin_hint
 
 try:
-    from ..bridge.point_cloud import (
+    from ..utils.point_cloud import (
         get_associated_voxel_cloud,
         is_voxel_cloud_visible,
         MASK_MODIFIER_NAME,
@@ -19,7 +19,7 @@ try:
     from ..i18n import tr
     from ..utils.mesh.ownership import ORIGIN_SAVE, classify_origin
 except (ImportError, ValueError):
-    from bridge.point_cloud import (
+    from utils.point_cloud import (
         get_associated_voxel_cloud,
         is_voxel_cloud_visible,
         MASK_MODIFIER_NAME,

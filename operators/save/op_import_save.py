@@ -19,36 +19,40 @@ except ImportError:
     ImportHelper = object
 
 try:
-    from ...bridge.assets import (
+    from ...bridge.assets import reload_atlas_images
+    from ...bridge.world import prepare_world_mesh_context
+    from ...bridge.save import (
+        inspect_minecraft_save,
+        load_and_mesh_minecraft_save,
+    )
+    from ...utils.assets import (
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
-        reload_atlas_images,
         run_task_with_asset_guard,
     )
-    from ...bridge.world import prepare_world_mesh_context
-    from ...bridge.save import (
+    from ...utils.save import (
         apply_imported_save_to_blender,
         import_save_to_blender,
-        inspect_minecraft_save,
-        load_and_mesh_minecraft_save,
     )
     from ...utils.async_task import AsyncTask, ModalTaskRunner
     from ...utils.progress import BlenderProgressReporter
 except (ImportError, ValueError):
-    from bridge.assets import (
+    from bridge.assets import reload_atlas_images
+    from bridge.world import prepare_world_mesh_context
+    from bridge.save import (
+        inspect_minecraft_save,
+        load_and_mesh_minecraft_save,
+    )
+    from utils.assets import (
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
-        reload_atlas_images,
         run_task_with_asset_guard,
     )
-    from bridge.world import prepare_world_mesh_context
-    from bridge.save import (
+    from utils.save import (
         apply_imported_save_to_blender,
         import_save_to_blender,
-        inspect_minecraft_save,
-        load_and_mesh_minecraft_save,
     )
     from utils.async_task import AsyncTask, ModalTaskRunner
     from utils.progress import BlenderProgressReporter

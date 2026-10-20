@@ -19,10 +19,12 @@ try:
         load_biome_resolver_from_cache,
     )
     from ...bridge.assets import (
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
         invalidate_asset_cache_memory,
         reload_atlas_images,
+    )
+    from ...utils.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
     )
 except (ImportError, ValueError):
     from bridge.sync import (
@@ -33,10 +35,12 @@ except (ImportError, ValueError):
         load_biome_resolver_from_cache,
     )
     from bridge.assets import (
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
         invalidate_asset_cache_memory,
         reload_atlas_images,
+    )
+    from utils.assets import (
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
     )
 from .hierarchy import (
     _safe_get_custom_prop,
@@ -376,9 +380,9 @@ def _sync_timer_tick() -> Optional[float]:
             storage = session.get_storage()
             if storage is not None:
                 try:
-                    from ...bridge.point_cloud import ensure_voxel_child_cloud
+                    from ...utils.point_cloud import ensure_voxel_child_cloud
                 except (ImportError, ValueError):
-                    from bridge.point_cloud import ensure_voxel_child_cloud
+                    from utils.point_cloud import ensure_voxel_child_cloud
                 ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
 
                 # Cache the storage under the container/mesh names so the biome
@@ -420,9 +424,9 @@ def _sync_timer_tick() -> Optional[float]:
                 # Safety barrier: Do NOT overwrite an existing large point cloud if in-memory storage is sparse/unpopulated
                 if storage_non_empty > 0 and (non_empty_count == 0 or storage_non_empty >= non_empty_count):
                     try:
-                        from ...bridge.point_cloud import ensure_voxel_child_cloud
+                        from ...utils.point_cloud import ensure_voxel_child_cloud
                     except (ImportError, ValueError):
-                        from bridge.point_cloud import ensure_voxel_child_cloud
+                        from utils.point_cloud import ensure_voxel_child_cloud
                     ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
                     logger.debug("Debounced voxel child cloud updated successfully")
                 else:

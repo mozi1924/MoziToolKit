@@ -6,29 +6,33 @@ import time
 from typing import Optional
 import bpy
 try:
-    from ..bridge import (
+    from ..bridge.assets import (
+        precompile_stack,
+        precompile_stack_async,
+        reload_atlas_images,
+    )
+    from ..utils.assets import (
         check_asset_cache_status,
         clear_cache,
         get_cache_stats,
         open_cache_folder,
-        precompile_stack,
-        precompile_stack_async,
         prepare_asset_context,
-        reload_atlas_images,
     )
     from ..utils.system import get_prefs
     from ..utils.async_task import AsyncTask, ModalTaskRunner
     from ..utils.progress import BlenderProgressReporter, blender_progress_scope
 except (ImportError, ValueError):
-    from bridge import (
+    from bridge.assets import (
+        precompile_stack,
+        precompile_stack_async,
+        reload_atlas_images,
+    )
+    from utils.assets import (
         check_asset_cache_status,
         clear_cache,
         get_cache_stats,
         open_cache_folder,
-        precompile_stack,
-        precompile_stack_async,
         prepare_asset_context,
-        reload_atlas_images,
     )
     from utils.system import get_prefs
     from utils.async_task import AsyncTask, ModalTaskRunner

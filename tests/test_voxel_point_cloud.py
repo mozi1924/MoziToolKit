@@ -82,11 +82,13 @@ class TestVoxelPointCloudBridge:
         from MoziToolKit.bridge.point_cloud import (
             inject_voxel_point_cloud,
             extract_voxel_point_cloud,
+            MASK_MODIFIER_NAME,
+            VOXEL_VERTEX_GROUP,
+        )
+        from MoziToolKit.utils.point_cloud import (
             setup_voxel_mask_modifier,
             set_voxel_cloud_visibility,
             is_voxel_cloud_visible,
-            MASK_MODIFIER_NAME,
-            VOXEL_VERTEX_GROUP,
         )
 
         storage = libmtk_py.VoxelStorage()
@@ -137,7 +139,7 @@ class TestVoxelPointCloudBridge:
     def test_ensure_voxel_child_cloud_hierarchy_contract(self):
         """Verifies the unified ensure_voxel_child_cloud contract and deprecation of old API."""
         import warnings
-        from MoziToolKit.bridge.point_cloud import (
+        from MoziToolKit.utils.point_cloud import (
             ensure_voxel_child_cloud,
             get_associated_voxel_cloud,
             get_associated_parent_mesh,
@@ -190,7 +192,7 @@ class TestVoxelPointCloudBridge:
     @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_ingest_and_user_carving_remesh_flow(self):
         """Simulates end-to-end user carving workflow in Blender."""
-        from MoziToolKit.bridge.world import ingest_voxel_world
+        from MoziToolKit.utils.world import ingest_voxel_world
         from MoziToolKit.bridge.point_cloud import extract_voxel_point_cloud, inject_voxel_point_cloud
 
         # 1. Ingest a 3x3x3 solid stone cube

@@ -468,45 +468,6 @@ def reset_material_properties() -> bool:
     return True
 
 
-def get_default_material_properties_path() -> Path:
-    """
-    DEPRECATED: Configuration path resolution belongs to `utils.materials.properties_config`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.materials.properties_config import get_default_material_properties_path as _get_path
-    except (ImportError, ValueError):
-        from utils.materials.properties_config import get_default_material_properties_path as _get_path
-    return _get_path()
-
-
-def load_material_properties_config(
-    config: Optional[Union[str, Path, Dict[str, Any]]] = None,
-    replace: bool = False,
-) -> bool:
-    """
-    DEPRECATED: File loading and JSON parsing belong to `utils.materials.properties_config`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.materials.properties_config import load_material_properties_config as _load_cfg
-    except (ImportError, ValueError):
-        from utils.materials.properties_config import load_material_properties_config as _load_cfg
-    return _load_cfg(config=config, replace=replace)
-
-
-def reset_material_properties_config() -> bool:
-    """
-    DEPRECATED: Configuration reset belongs to `utils.materials.properties_config`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.materials.properties_config import reset_material_properties_config as _reset_cfg
-    except (ImportError, ValueError):
-        from utils.materials.properties_config import reset_material_properties_config as _reset_cfg
-    return _reset_cfg()
-
-
 __all__ = [
     "HAS_LIBMTK",
     "is_material_bridge_available",
@@ -532,7 +493,6 @@ __all__ = [
     "is_transmissive_block",
     "get_block_transmission_weight",
     "get_block_sticker_threshold",
-    "get_default_material_properties_path",
     "TINT_TYPE_NONE",
     "TINT_TYPE_GRASS",
     "TINT_TYPE_FOLIAGE",
@@ -542,8 +502,6 @@ __all__ = [
     "get_swamp_grass_color",
     "register_material_properties",
     "reset_material_properties",
-    "load_material_properties_config",
-    "reset_material_properties_config",
 ]
 
 

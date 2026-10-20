@@ -9,8 +9,6 @@ fully modeled, textured, and shaded objects with Atlas PBR materials.
 from typing import Optional, Tuple, Any, Dict
 import logging
 
-from .mesh import inject_mesh_data
-
 logger = logging.getLogger("MoziToolKit.Bridge.Debug")
 
 from .engine import get_libmtk, has_libmtk, require_libmtk
@@ -170,48 +168,9 @@ def build_debug_world_data(
     return mesh_data, storage, elapsed_ms
 
 
-def create_debug_world_object(
-    context=None,
-    name: str = "MTK_Debug_World",
-    prefs=None,
-    model_db=None,
-    atlas=None,
-    biome_resolver=None,
-    enable_ao: bool = True,
-    mesh_fluids: bool = True,
-    weld_vertices: bool = True,
-    origin_centered: bool = True,
-    reuse_existing: bool = True,
-    config=None,
-    culler=None,
-    states=None,
-    stack=None,
-    progress_callback: Optional[Any] = None,
-) -> Tuple[Any, Dict[str, Any]]:
-    """
-    DEPRECATED: Scene object creation belongs to `utils.world.injector`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.world.injector import create_debug_world_object as _create
-    except (ImportError, ValueError):
-        from utils.world.injector import create_debug_world_object as _create
-
-    return _create(
-        context=context,
-        name=name,
-        prefs=prefs,
-        model_db=model_db,
-        atlas=atlas,
-        biome_resolver=biome_resolver,
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        weld_vertices=weld_vertices,
-        origin_centered=origin_centered,
-        reuse_existing=reuse_existing,
-        config=config,
-        culler=culler,
-        states=states,
-        stack=stack,
-        progress_callback=progress_callback,
-    )
+__all__ = [
+    "is_debug_world_available",
+    "load_debug_world_storage",
+    "generate_debug_world_mesh",
+    "build_debug_world_data",
+]

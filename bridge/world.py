@@ -15,10 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from .mesh import inject_mesh_data
-from .point_cloud import ensure_voxel_child_cloud, inject_voxel_point_cloud
 from .assets import (
-    get_cache_dir,
     get_cache_fingerprint,
     get_cache_timestamp,
     ensure_atlas_textures_extracted,
@@ -33,20 +30,6 @@ from .assets import (
 logger = logging.getLogger("MoziToolKit.Bridge.World")
 
 from .engine import get_libmtk, has_libmtk, require_libmtk
-
-try:
-    from ..utils.materials.builder.world_binding import ensure_world_materials
-except (ImportError, ValueError):
-    from utils.materials.builder.world_binding import ensure_world_materials
-
-
-def _stamp_voxel_mesh_origin(obj: Any) -> None:
-    """Mark a standalone voxel-generated mesh as MTK-owned."""
-    try:
-        from ..utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
-    except (ImportError, ValueError):
-        from utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
-    stamp_geometry_origin(obj, ORIGIN_VOXEL, overwrite=True)
 
 
 def _get_libmtk():
@@ -348,82 +331,12 @@ def mesh_voxel_storage(
     return mesh_data, elapsed_ms
 
 
-def apply_voxel_mesh_to_blender(
-    mesh_data: Any,
-    storage: Any,
-    elapsed_ms: float = 0.0,
-    context: Optional[Any] = None,
-    name: str = "MTK_World",
-    prefs=None,
-    atlas: Optional[Any] = None,
-    origin_centered: bool = True,
-    reuse_existing: bool = True,
-    material_mode: str = "ATLAS",
-) -> Tuple[Any, Dict[str, Any]]:
-    """
-    DEPRECATED: Scene object injection belongs to `utils.world.injector`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.world.injector import apply_voxel_mesh_to_blender as _apply
-    except (ImportError, ValueError):
-        from utils.world.injector import apply_voxel_mesh_to_blender as _apply
-    return _apply(
-        mesh_data=mesh_data,
-        storage=storage,
-        elapsed_ms=elapsed_ms,
-        context=context,
-        name=name,
-        prefs=prefs,
-        atlas=atlas,
-        origin_centered=origin_centered,
-        reuse_existing=reuse_existing,
-        material_mode=material_mode,
-        inject_mesh_func=globals().get("inject_mesh_data"),
-        ensure_materials_func=globals().get("ensure_world_materials"),
-        ensure_cloud_func=globals().get("ensure_voxel_child_cloud"),
-    )
-
-
-def ingest_voxel_world(
-    storage: Any,
-    context: Optional[Any] = None,
-    name: str = "MTK_World",
-    prefs=None,
-    model_db: Optional[Any] = None,
-    atlas: Optional[Any] = None,
-    biome_resolver: Optional[Any] = None,
-    ctm_solver: Optional[Any] = None,
-    material_mode: str = "ATLAS",
-    enable_ao: bool = True,
-    mesh_fluids: bool = True,
-    weld_vertices: bool = True,
-    origin_centered: bool = True,
-    reuse_existing: bool = True,
-    progress_callback: Optional[Any] = None,
-) -> Tuple[Any, Dict[str, Any]]:
-    """
-    DEPRECATED: End-to-end scene ingestion belongs to `utils.world.injector`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.world.injector import ingest_voxel_world as _ingest
-    except (ImportError, ValueError):
-        from utils.world.injector import ingest_voxel_world as _ingest
-    return _ingest(
-        storage=storage,
-        context=context,
-        name=name,
-        prefs=prefs,
-        model_db=model_db,
-        atlas=atlas,
-        biome_resolver=biome_resolver,
-        ctm_solver=ctm_solver,
-        material_mode=material_mode,
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        weld_vertices=weld_vertices,
-        origin_centered=origin_centered,
-        reuse_existing=reuse_existing,
-        progress_callback=progress_callback,
-    )
+__all__ = [
+    "get_shared_face_culler",
+    "reset_shared_face_culler",
+    "invalidate_world_pipeline_assets",
+    "get_world_pipeline_assets",
+    "prepare_world_mesh_context",
+    "clear_world_sessions",
+    "mesh_voxel_storage",
+]

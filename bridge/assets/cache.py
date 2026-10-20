@@ -535,23 +535,7 @@ def check_cache_dirty(
     return False, current_fp, current_ts
 
 
-def get_cache_stats(prefs=None, force_refresh: bool = False) -> Dict[str, Any]:
-    """Computes total storage footprint and file count for the asset cache."""
-    from ...utils.assets.cache_utils import get_cache_stats as _utils_get_cache_stats
-    return _utils_get_cache_stats(prefs=prefs, force_refresh=force_refresh)
-
-
-def clear_cache(prefs=None) -> int:
-    """Empties all compiled caches in the cache directory and returns the total bytes freed."""
-    invalidate_asset_cache_memory()
-    return _utils_clear_cache(prefs=prefs)
-
-
-# open_cache_folder is imported from utils.assets.cache_utils above
-
-
 __all__ = [
-    "get_cache_dir",
     "invalidate_asset_cache_memory",
     "get_active_cache_package_path",
     "open_active_asset_cache",
@@ -568,7 +552,4 @@ __all__ = [
     "get_cache_fingerprint",
     "get_cache_timestamp",
     "check_cache_dirty",
-    "get_cache_stats",
-    "clear_cache",
-    "open_cache_folder",
 ]

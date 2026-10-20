@@ -1,9 +1,8 @@
 """
 MoziToolKit Voxel Point Cloud Bridge Module.
 
-Manages lossless persistent 3D voxel point clouds, bidirectional conversion
-with Rust libmtk_py.VoxelPointCloud, native Mask Modifier hiding/showing
-with configurable weight thresholds, and user-driven voxel carving/remeshing.
+Manages bidirectional data transfer between Blender Mesh/PointCloud geometry buffers
+and native Rust libmtk_py.VoxelPointCloud geometry streams.
 """
 
 from __future__ import annotations
@@ -36,15 +35,6 @@ from .constants import (
 )
 from .dna import inject_point_cloud_dna
 from .extract import extract_voxel_point_cloud
-from .hierarchy import (
-    ensure_voxel_child_cloud,
-    get_associated_parent_mesh,
-    get_associated_voxel_cloud,
-    is_voxel_cloud_visible,
-    set_voxel_cloud_visibility,
-    set_voxel_mask_threshold,
-    setup_voxel_mask_modifier,
-)
 from .standard import inject_point_cloud_standard
 
 logger = logging.getLogger("MoziToolKit.Bridge.PointCloud")
@@ -124,9 +114,17 @@ def inject_voxel_point_cloud(
             attr_biome_idx=attr_biome_idx,
         )
 
-    # 5. Configure Mask Modifier
+    # 5. Configure Mask Modifier via utils
     if update_mask and obj is not None and getattr(obj, "type", "") == "MESH":
-        setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
+        try:
+            from ...utils.point_cloud.hierarchy import setup_voxel_mask_modifier
+            setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
+        except (ImportError, ValueError):
+            try:
+                from utils.point_cloud.hierarchy import setup_voxel_mask_modifier
+                setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
+            except Exception:
+                pass
 
     if hasattr(target_data, "update"):
         target_data.update()
@@ -147,13 +145,6 @@ __all__ = [
     "PROP_BIOME_PALETTE",
     "PROP_BLOCK_PALETTE",
     "VOXEL_VERTEX_GROUP",
-    "ensure_voxel_child_cloud",
     "extract_voxel_point_cloud",
-    "get_associated_parent_mesh",
-    "get_associated_voxel_cloud",
     "inject_voxel_point_cloud",
-    "is_voxel_cloud_visible",
-    "set_voxel_cloud_visibility",
-    "set_voxel_mask_threshold",
-    "setup_voxel_mask_modifier",
 ]

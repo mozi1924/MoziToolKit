@@ -11,13 +11,13 @@ import bpy
 
 try:
     from ...bridge.mesh import inject_mesh_data
-    from ...bridge.world import ensure_world_materials
-    from ...bridge.point_cloud import ensure_voxel_child_cloud
+    from ...utils.materials.builder.world_binding import ensure_world_materials
+    from ...utils.point_cloud import ensure_voxel_child_cloud
     from ...utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
 except (ImportError, ValueError):
     from bridge.mesh import inject_mesh_data
-    from bridge.world import ensure_world_materials
-    from bridge.point_cloud import ensure_voxel_child_cloud
+    from utils.materials.builder.world_binding import ensure_world_materials
+    from utils.point_cloud import ensure_voxel_child_cloud
     from utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
 
 logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")

@@ -127,7 +127,7 @@ def main() -> None:
         )
 
         # Debug world ingestion.
-        from MoziToolKit.bridge.debug import create_debug_world_object
+        from MoziToolKit.utils.world import create_debug_world_object
 
         debug_obj, debug_stats = create_debug_world_object(
             name="B0_Debug_World",
@@ -155,7 +155,7 @@ def main() -> None:
             extract_voxel_point_cloud,
             inject_voxel_point_cloud,
         )
-        from MoziToolKit.bridge.world import ingest_voxel_world
+        from MoziToolKit.utils.world import ingest_voxel_world
 
         storage = libmtk_py.VoxelStorage()
         storage.set_bounds(0, 0, 0, 16, 16, 16)

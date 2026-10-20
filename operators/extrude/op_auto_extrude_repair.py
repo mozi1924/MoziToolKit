@@ -21,16 +21,16 @@ if bpy is None:
 from .properties import UV_MODE_ITEMS
 
 try:
-    from ...bridge.extrude import repair_extruded_side_faces
+    from ...utils.mesh.random_extrude import repair_extruded_side_faces
     from ...utils.mesh.core import bmesh_context, poll_edit_mesh
     from ...utils.system.menu_registry import register_menu_item
 except (ImportError, ValueError):
     try:
-        from ..bridge.extrude import repair_extruded_side_faces
+        from ..utils.mesh.random_extrude import repair_extruded_side_faces
         from ..utils.mesh.core import bmesh_context, poll_edit_mesh
         from ..utils.system.menu_registry import register_menu_item
     except (ImportError, ValueError):
-        from bridge.extrude import repair_extruded_side_faces
+        from utils.mesh.random_extrude import repair_extruded_side_faces
         from utils.mesh.core import bmesh_context, poll_edit_mesh
         from utils.system.menu_registry import register_menu_item
 

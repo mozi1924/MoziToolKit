@@ -12,7 +12,7 @@ from bpy.props import BoolProperty
 logger = logging.getLogger("MoziToolKit.Operators.VoxelCloud")
 
 try:
-    from ..bridge.point_cloud import (
+    from ..utils.point_cloud import (
         get_associated_parent_mesh,
         get_associated_voxel_cloud,
         is_voxel_cloud_visible,
@@ -20,7 +20,7 @@ try:
     )
     from ..utils.system import register_menu_item
 except (ImportError, ValueError):
-    from bridge.point_cloud import (
+    from utils.point_cloud import (
         get_associated_parent_mesh,
         get_associated_voxel_cloud,
         is_voxel_cloud_visible,

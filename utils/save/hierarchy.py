@@ -10,12 +10,12 @@ from typing import Any, Dict, Optional, Tuple
 
 try:
     from ...bridge.mesh import inject_mesh_data
-    from ...bridge.point_cloud import ensure_voxel_child_cloud
-    from ...bridge.world import ensure_world_materials
+    from ...utils.point_cloud import ensure_voxel_child_cloud
+    from ..materials.builder.world_binding import ensure_world_materials
 except (ImportError, ValueError):
     from bridge.mesh import inject_mesh_data
-    from bridge.point_cloud import ensure_voxel_child_cloud
-    from bridge.world import ensure_world_materials
+    from utils.point_cloud import ensure_voxel_child_cloud
+    from utils.materials.builder.world_binding import ensure_world_materials
 
 try:
     from ..system.save_registry import get_save_registry

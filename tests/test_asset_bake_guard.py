@@ -17,13 +17,15 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from bridge.assets import (
+    get_cache_fingerprint,
+    invalidate_asset_cache_memory,
+    precompile_stack,
+)
+from utils.assets import (
     check_asset_cache_status,
     clear_cache,
     ensure_pipeline_assets_ready_sync,
     get_cache_dir,
-    get_cache_fingerprint,
-    invalidate_asset_cache_memory,
-    precompile_stack,
     run_task_with_asset_guard,
 )
 from bridge.engine import has_libmtk

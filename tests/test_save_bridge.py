@@ -83,9 +83,9 @@ def test_cold_cache_save_import_binds_textures(tmp_path, monkeypatch):
     sandbox_cache.mkdir()
     monkeypatch.setenv("MOZI_CACHE_DIR", str(sandbox_cache))
 
-    from bridge.assets import check_asset_cache_status, invalidate_asset_cache_memory
-    from bridge.assets.guard import run_task_with_asset_guard
-    from bridge.save import apply_imported_save_to_blender
+    from bridge.assets import invalidate_asset_cache_memory
+    from utils.assets import check_asset_cache_status, run_task_with_asset_guard
+    from utils.save import apply_imported_save_to_blender
 
     from unittest.mock import MagicMock
     mock_prefs = MagicMock()

@@ -16,23 +16,6 @@ from .assets import get_configured_ctm_solver
 from .engine import get_libmtk, has_libmtk, require_libmtk
 from .world import get_world_pipeline_assets
 
-try:
-    from ..utils.save.hierarchy import (
-        _resolve_unique_save_container_name,
-        _safe_set_custom_prop,
-        _stamp_save_mesh_origin,
-        apply_imported_save_to_blender,
-        sanitize_save_privacy,
-    )
-except (ImportError, ValueError):
-    from utils.save.hierarchy import (
-        _resolve_unique_save_container_name,
-        _safe_set_custom_prop,
-        _stamp_save_mesh_origin,
-        apply_imported_save_to_blender,
-        sanitize_save_privacy,
-    )
-
 logger = logging.getLogger("MoziToolKit.Bridge.Save")
 
 
@@ -164,55 +147,7 @@ def load_and_mesh_minecraft_save(
     return mesh_data, meta_dict, storage, elapsed_ms
 
 
-
-
-
-def import_save_to_blender(
-    world_dir: str | Path,
-    dimension: str = "overworld",
-    min_block: Tuple[int, int, int] = (-64, -64, -64),
-    max_block: Tuple[int, int, int] = (64, 320, 64),
-    context: Optional[Any] = None,
-    prefs=None,
-    model_db: Optional[Any] = None,
-    atlas: Optional[Any] = None,
-    biome_resolver: Optional[Any] = None,
-    enable_ao: bool = True,
-    mesh_fluids: bool = True,
-    weld_vertices: bool = True,
-    origin_centered: bool = True,
-    reuse_existing: bool = False,
-    progress_callback: Optional[Any] = None,
-    material_mode: str = "ATLAS",
-    enable_ctm: bool = True,
-    enable_animated_textures: Optional[bool] = None,
-) -> Tuple[Any, Dict[str, Any]]:
-    """
-    DEPRECATED: Full Blender save import pipeline belongs to `utils.save.hierarchy`.
-    Forwarded for backwards compatibility.
-    """
-    try:
-        from ..utils.save.hierarchy import import_save_to_blender as _import_save
-    except (ImportError, ValueError):
-        from utils.save.hierarchy import import_save_to_blender as _import_save
-
-    return _import_save(
-        world_dir=world_dir,
-        dimension=dimension,
-        min_block=min_block,
-        max_block=max_block,
-        context=context,
-        prefs=prefs,
-        model_db=model_db,
-        atlas=atlas,
-        biome_resolver=biome_resolver,
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        weld_vertices=weld_vertices,
-        origin_centered=origin_centered,
-        reuse_existing=reuse_existing,
-        progress_callback=progress_callback,
-        material_mode=material_mode,
-        enable_ctm=enable_ctm,
-        enable_animated_textures=enable_animated_textures,
-    )
+__all__ = [
+    "inspect_minecraft_save",
+    "load_and_mesh_minecraft_save",
+]

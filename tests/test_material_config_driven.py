@@ -9,6 +9,8 @@ from bridge.material import (
     get_material_props,
     is_thin_wall_block,
     is_transmissive_block,
+)
+from utils.materials.properties_config import (
     load_material_properties_config,
     reset_material_properties_config,
     get_default_material_properties_path,

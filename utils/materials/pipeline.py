@@ -49,11 +49,13 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 try:
-    from ...bridge.assets import (
+    from ...utils.assets import (
         get_cache_dir,
+        check_asset_cache_status,
+    )
+    from ...bridge.assets import (
         get_cache_fingerprint,
         precompile_stack,
-        check_asset_cache_status,
         invalidate_asset_cache_memory,
         reload_atlas_images,
         load_atlas_mapping_from_cache,
@@ -94,11 +96,13 @@ try:
         ATTR_MATERIAL_PROPS,
     )
 except (ImportError, ValueError):
-    from bridge.assets import (
+    from utils.assets import (
         get_cache_dir,
+        check_asset_cache_status,
+    )
+    from bridge.assets import (
         get_cache_fingerprint,
         precompile_stack,
-        check_asset_cache_status,
         invalidate_asset_cache_memory,
         reload_atlas_images,
         load_atlas_mapping_from_cache,

@@ -11,13 +11,13 @@ from bpy.props import BoolProperty, EnumProperty
 logger = logging.getLogger("MoziToolKit.Operators.Materials")
 
 try:
-    from ..bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
+    from ..utils.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
     from ..utils.materials.pipeline import replace_materials
     from ..utils.mesh.ownership import is_external_mesh
     from ..utils.system import get_prefs, register_menu_item
 except (ImportError, ValueError):
-    from bridge.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
+    from utils.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from utils.materials.biome import BIOME_ENUM_ITEMS
     from utils.materials.pipeline import replace_materials
     from utils.mesh.ownership import is_external_mesh

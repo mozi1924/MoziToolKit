@@ -127,6 +127,16 @@ def get_cache_stats(prefs=None, force_refresh: bool = False) -> Dict[str, Any]:
 def clear_cache(prefs=None, on_invalidate_callback=None) -> int:
     """Empties all compiled caches in the cache directory and returns the total bytes freed."""
     global _cached_cache_stats, _cached_cache_stats_path
+    try:
+        from ...bridge.assets import invalidate_asset_cache_memory
+        invalidate_asset_cache_memory()
+    except (ImportError, ValueError):
+        try:
+            from bridge.assets import invalidate_asset_cache_memory
+            invalidate_asset_cache_memory()
+        except Exception:
+            pass
+
     if on_invalidate_callback is not None:
         try:
             on_invalidate_callback()

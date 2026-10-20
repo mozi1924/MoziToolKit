@@ -364,7 +364,7 @@ class Test3DBiomeTinting(unittest.TestCase):
         cloud_data = MagicMock()
         cloud_data.to_storage.return_value = storage
 
-        with patch("bridge.point_cloud.get_associated_voxel_cloud", return_value=cloud), \
+        with patch("utils.point_cloud.get_associated_voxel_cloud", return_value=cloud), \
              patch("bridge.point_cloud.extract_voxel_point_cloud", return_value=cloud_data):
             self.assertTrue(update_object_biome(obj, "WORLD"))
 

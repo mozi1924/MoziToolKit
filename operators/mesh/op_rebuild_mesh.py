@@ -15,20 +15,22 @@ try:
     from ...bridge.point_cloud import extract_voxel_point_cloud
     from ...bridge.world import (
         clear_world_sessions,
-        ensure_world_materials,
         get_world_pipeline_assets,
         mesh_voxel_storage,
         prepare_world_mesh_context,
     )
+    from ...utils.materials.builder.world_binding import ensure_world_materials
     from ...bridge.mesh import inject_mesh_data
     from ...bridge.sync import get_sync_bridge_session
     from ...bridge.assets import (
-        prepare_asset_context,
-        check_asset_cache_status,
         check_cache_dirty,
-        ensure_pipeline_assets_ready_sync,
         invalidate_asset_cache_memory,
         reload_atlas_images,
+    )
+    from ...utils.assets import (
+        prepare_asset_context,
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
         run_task_with_asset_guard,
     )
     from ...utils.mesh.ownership import (
@@ -44,20 +46,22 @@ except (ImportError, ValueError):
     from bridge.point_cloud import extract_voxel_point_cloud
     from bridge.world import (
         clear_world_sessions,
-        ensure_world_materials,
         get_world_pipeline_assets,
         mesh_voxel_storage,
         prepare_world_mesh_context,
     )
+    from utils.materials.builder.world_binding import ensure_world_materials
     from bridge.mesh import inject_mesh_data
     from bridge.sync import get_sync_bridge_session
     from bridge.assets import (
-        prepare_asset_context,
-        check_asset_cache_status,
         check_cache_dirty,
-        ensure_pipeline_assets_ready_sync,
         invalidate_asset_cache_memory,
         reload_atlas_images,
+    )
+    from utils.assets import (
+        prepare_asset_context,
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
         run_task_with_asset_guard,
     )
     from utils.mesh.ownership import (

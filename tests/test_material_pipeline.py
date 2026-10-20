@@ -384,10 +384,8 @@ class TestMaterialPipeline(unittest.TestCase):
 
     def test_material_props_memoryview_is_flat_f32_buffer(self):
         """Rust-owned material props memoryview must expose exactly len(keys) * 4 floats."""
-        from bridge.material import (
-            compute_flat_material_props_buffer,
-            load_material_properties_config,
-        )
+        from bridge.material import compute_flat_material_props_buffer
+        from utils.materials.properties_config import load_material_properties_config
         import numpy as np
 
         # Do not depend on test order or on whichever registry state a previous

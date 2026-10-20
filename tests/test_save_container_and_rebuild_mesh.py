@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import bpy
-from bridge.save import (
+from utils.save.hierarchy import (
     apply_imported_save_to_blender,
     sanitize_save_privacy,
     _resolve_unique_save_container_name,

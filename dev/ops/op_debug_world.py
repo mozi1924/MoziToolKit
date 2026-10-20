@@ -69,7 +69,8 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
         # Synchronous fallback for CLI / tests when run_async is explicitly False
         if not self.run_async:
             try:
-                obj, stats = bridge.create_debug_world_object(
+                from ...utils.world import create_debug_world_object
+                obj, stats = create_debug_world_object(
                     context=context,
                     name="MTK_Debug_World",
                     prefs=prefs,
@@ -105,7 +106,8 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
 
         def on_success(result):
             mesh_data, storage, elapsed_ms = result
-            obj, stats = bridge.apply_voxel_mesh_to_blender(
+            from ...utils.world import apply_voxel_mesh_to_blender
+            obj, stats = apply_voxel_mesh_to_blender(
                 mesh_data=mesh_data,
                 storage=storage,
                 elapsed_ms=elapsed_ms,

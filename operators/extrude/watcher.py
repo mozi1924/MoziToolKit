@@ -32,12 +32,12 @@ if bpy is None:
     bpy = _DummyBpy()
 
 try:
-    from ...bridge.extrude import repair_extruded_side_faces
+    from ...utils.mesh.random_extrude import repair_extruded_side_faces
 except (ImportError, ValueError):
     try:
-        from ..bridge.extrude import repair_extruded_side_faces
+        from ..utils.mesh.random_extrude import repair_extruded_side_faces
     except (ImportError, ValueError):
-        from bridge.extrude import repair_extruded_side_faces
+        from utils.mesh.random_extrude import repair_extruded_side_faces
 
 logger = logging.getLogger("MoziToolKit.AutoExtrudeRepair.Watcher")
 

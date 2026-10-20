@@ -112,7 +112,7 @@ class TestWorldBridgePipeline:
         import tempfile
         import json
         from unittest.mock import patch, MagicMock
-        from MoziToolKit.bridge.world import ensure_world_materials
+        from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
@@ -198,7 +198,7 @@ class TestWorldBridgePipeline:
     def test_apply_voxel_mesh_to_blender_routes_to_atlas_when_atlas_arg_is_none(self):
         """Regression test: apply_voxel_mesh_to_blender with atlas=None must call ensure_world_materials in ATLAS mode."""
         from unittest.mock import patch, MagicMock
-        from MoziToolKit.bridge.world import apply_voxel_mesh_to_blender
+        from MoziToolKit.utils.world import apply_voxel_mesh_to_blender
 
         mock_mesh_data = MagicMock()
         mock_mesh_data.used_materials.return_value = [0]
@@ -207,9 +207,9 @@ class TestWorldBridgePipeline:
         mock_obj.type = "MESH"
         mock_obj.data = MagicMock()
 
-        with patch("MoziToolKit.bridge.world.inject_mesh_data"), \
-             patch("MoziToolKit.bridge.world.ensure_voxel_child_cloud"), \
-             patch("MoziToolKit.bridge.world.ensure_world_materials") as mock_ensure_atlas, \
+        with patch("MoziToolKit.utils.world.injector.inject_mesh_data"), \
+             patch("MoziToolKit.utils.world.injector.ensure_voxel_child_cloud"), \
+             patch("MoziToolKit.utils.world.injector.ensure_world_materials") as mock_ensure_atlas, \
              patch("MoziToolKit.utils.materials.pipeline.restore_materials_from_provenance") as mock_standalone:
 
             obj, stats = apply_voxel_mesh_to_blender(

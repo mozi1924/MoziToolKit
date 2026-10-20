@@ -34,12 +34,12 @@ except ImportError:
 
 from bridge.assets import (
     check_cache_dirty,
-    get_cache_dir,
     get_cache_fingerprint,
     get_cache_manifest,
     get_cache_timestamp,
     reload_atlas_images,
 )
+from utils.assets import get_cache_dir
 from bridge.sync import (
     SyncBridgeSession,
     get_sync_bridge_session,
@@ -314,7 +314,8 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         so geometry and materials are reconstructed with fresh atlas data.
         """
         from bridge.world import _WORLD_SESSIONS, _WORLD_SESSION_META, clear_world_sessions
-        from bridge.assets import clear_cache, invalidate_asset_cache_memory
+        from bridge.assets import invalidate_asset_cache_memory
+        from utils.assets import clear_cache
 
         # Insert dummy mock session
         mock_world = MagicMock()
