@@ -47,30 +47,17 @@ def inspect_minecraft_save(path: str | Path) -> Dict[str, Any]:
     mtk = require_libmtk("inspect_minecraft_save")
     target_path = str(Path(path).resolve())
 
-    if hasattr(mtk, "inspect_minecraft_save"):
-        meta = mtk.inspect_minecraft_save(target_path)
-        return {
-            "level_name": meta.level_name,
-            "version_name": meta.version_name,
-            "data_version": meta.data_version,
-            "spawn": meta.spawn,
-            "time": meta.time,
-            "day_time": meta.day_time,
-            "hardcore": meta.hardcore,
-            "game_type": meta.game_type,
-            "dimensions": meta.dimensions,
-        }
-
+    meta = mtk.inspect_minecraft_save(target_path)
     return {
-        "level_name": "Minecraft World",
-        "version_name": "Unknown",
-        "data_version": 0,
-        "spawn": (0, 64, 0),
-        "time": 0,
-        "day_time": 0,
-        "hardcore": False,
-        "game_type": 0,
-        "dimensions": ["overworld"],
+        "level_name": meta.level_name,
+        "version_name": meta.version_name,
+        "data_version": meta.data_version,
+        "spawn": meta.spawn,
+        "time": meta.time,
+        "day_time": meta.day_time,
+        "hardcore": meta.hardcore,
+        "game_type": meta.game_type,
+        "dimensions": meta.dimensions,
     }
 
 
@@ -150,29 +137,17 @@ def load_and_mesh_minecraft_save(
         wrapped_cb = wrap_progress_callback(progress_callback)
 
     t0 = time.perf_counter()
-    try:
-        mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
-            world_dir=target_path,
-            dimension=dimension,
-            min_block=min_block,
-            max_block=max_block,
-            config=config,
-            culler=culler,
-            model_db=model_db,
-            num_threads=num_threads,
-            callback=wrapped_cb,
-        )
-    except TypeError:
-        mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
-            world_dir=target_path,
-            dimension=dimension,
-            min_block=min_block,
-            max_block=max_block,
-            config=config,
-            culler=culler,
-            model_db=model_db,
-            num_threads=num_threads,
-        )
+    mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
+        world_dir=target_path,
+        dimension=dimension,
+        min_block=min_block,
+        max_block=max_block,
+        config=config,
+        culler=culler,
+        model_db=model_db,
+        num_threads=num_threads,
+        callback=wrapped_cb,
+    )
     t1 = time.perf_counter()
     elapsed_ms = (t1 - t0) * 1000.0
 
