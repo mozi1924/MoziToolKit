@@ -618,7 +618,6 @@ def mesh_voxel_storage(
                 config=config,
                 culler=culler,
                 model_db=model_db,
-                unified_mesh=True,
                 num_threads=num_threads,
             )
             _WORLD_SESSIONS[world_session_key] = cached_world
@@ -638,7 +637,6 @@ def mesh_voxel_storage(
             config=config,
             culler=culler,
             model_db=model_db,
-            unified_mesh=True,
             num_threads=num_threads,
         )
         if progress_callback is not None:

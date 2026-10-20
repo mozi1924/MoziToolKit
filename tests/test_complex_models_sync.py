@@ -149,7 +149,6 @@ class TestComplexModelsSync(unittest.TestCase):
                 url=f"ws://127.0.0.1:{port}",
                 auto_reconnect=False,
                 model_db=self.model_db,
-                unified_mesh=True,
             )
             self.assertTrue(connected, "Session should connect to mock server")
 

@@ -286,7 +286,7 @@ class TestSyncDragAndScaleMemory(unittest.TestCase):
         server.start()
 
         session = get_sync_bridge_session()
-        connected = session.start("ws://127.0.0.1:8797", auto_reconnect=False, unified_mesh=True)
+        connected = session.start("ws://127.0.0.1:8797", auto_reconnect=False)
         self.assertTrue(connected, "LiveSyncSession must successfully connect")
 
         time.sleep(0.3)

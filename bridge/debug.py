@@ -125,7 +125,6 @@ def generate_debug_world_mesh(
             config=config,
             culler=culler,
             model_db=None,
-            unified_mesh=True,
             num_threads=num_threads,
         )
         mesh_data = world.rebuild_all()

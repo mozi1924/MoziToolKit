@@ -311,7 +311,6 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
             connected = session.start(
                 url="ws://127.0.0.1:8796",
                 auto_reconnect=False,
-                unified_mesh=True,
             )
             self.assertTrue(connected, "Client should connect to mock server")
 
