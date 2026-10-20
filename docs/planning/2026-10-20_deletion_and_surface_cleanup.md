@@ -1,6 +1,6 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
-> 状态：**B1–B6 已执行，B7 独立宿主内存适配层实施中；B0 分支/快照与 Blender 冒烟待做**
+> 状态：**B1–B7 已执行，6 平台双 wheel 发布与滚动包验证通过；B0 分支/快照与 Blender 冒烟待做**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库
 > 前提：2.0 与 1.0 的网格激活/数据模型不兼容；2.0 没有第三方用户；不再为不存在的旧 wheel、旧 `.blend`、旧菜单配置保留兼容层。
@@ -312,7 +312,7 @@ PY
 - [x] `libmtk_blender_dna` 独立 wheel < 1.5 MB（本机 187 KB）。
 - [x] 核心 wheel 不再包含 `unstable.blender_dna`，也不链接适配器。
 - [x] 成功路径与 `foreach_set` 结果一致；模块缺失/API 不匹配自动回退。
-- [ ] 6 平台 CI 产出两枚 wheel，Mozi 滚动包同时包含两枚 wheel 并通过 Blender 冒烟。
+- [x] 6 平台 CI 产出两枚 wheel，Mozi 滚动包同时包含两枚 wheel 并通过 Blender 冒烟。
 
 ---
 
@@ -407,7 +407,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 | B4 旧格式/协议 | 已完成（自动化） | 删 unified_mesh、旧 package 枚举、pre-v3 models、DIM 路径、0x01/tokenless HELLO、extrude 别名与 storage 再导出 | Rust 321 / Py 268 |
 | B5 数据模型 | 已完成（自动化；Blender 冒烟待 B0） | 点云 palette/indices、`UvLayout`、统一 weld、`from_flat_polygons` 共享顶点 | Rust 323 / Py 267 / 1M 点 ~85 MB |
 | B6 架构/文档 | 已完成（自动化；Blender 冒烟待 B0） | palette biome、material palette builder、API_VERSION、A-01/A-02 归位、R-25/R-28、docs | Rust 323 / Py 270 / WASM 绿 |
-| B7 独立适配层 | 实施中（本机通过） | `mtk-host-memory`、`mtk-blender-dna` 无核心依赖、独立 `libmtk_blender_dna` wheel、Python bridge 重接、打包/CI 双 wheel | Rust 323+ / Py 272 / Blender 331 |
+| B7 独立适配层 | 已完成 | `mtk-host-memory`、`mtk-blender-dna` 无核心依赖、独立 `libmtk_blender_dna` wheel、Python bridge 重接、打包/CI 双 wheel | Rust 323 / Py 274 / Blender 335 / 6 平台双 wheel 绿 |
 
 ---
 
