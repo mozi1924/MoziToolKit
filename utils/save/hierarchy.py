@@ -330,3 +330,83 @@ def apply_imported_save_to_blender(
     return root_obj, stats
 
 
+def import_save_to_blender(
+    world_dir: str | Path,
+    dimension: str = "overworld",
+    min_block: Tuple[int, int, int] = (-64, -64, -64),
+    max_block: Tuple[int, int, int] = (64, 320, 64),
+    context: Optional[Any] = None,
+    prefs=None,
+    model_db: Optional[Any] = None,
+    atlas: Optional[Any] = None,
+    biome_resolver: Optional[Any] = None,
+    enable_ao: bool = True,
+    mesh_fluids: bool = True,
+    weld_vertices: bool = True,
+    origin_centered: bool = True,
+    reuse_existing: bool = False,
+    progress_callback: Optional[Any] = None,
+    material_mode: str = "ATLAS",
+    enable_ctm: bool = True,
+    enable_animated_textures: Optional[bool] = None,
+) -> Tuple[Any, Dict[str, Any]]:
+    """
+    Full synchronous end-to-end Minecraft save importer pipeline for Blender:
+    1. Loads and meshes voxel selection via bridge.save.load_and_mesh_minecraft_save
+    2. Injects geometry, binds materials, creates companion point cloud via apply_imported_save_to_blender.
+    """
+    try:
+        from ...bridge.save import load_and_mesh_minecraft_save
+    except (ImportError, ValueError):
+        from bridge.save import load_and_mesh_minecraft_save
+
+    anim_tex_enabled = enable_animated_textures
+    if anim_tex_enabled is None:
+        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
+        anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
+    else:
+        anim_tex_enabled = bool(anim_tex_enabled)
+
+    mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
+        world_dir=world_dir,
+        dimension=dimension,
+        min_block=min_block,
+        max_block=max_block,
+        prefs=prefs,
+        model_db=model_db,
+        atlas=atlas,
+        biome_resolver=biome_resolver,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        origin_centered=origin_centered,
+        progress_callback=progress_callback,
+        material_mode=material_mode,
+        enable_ctm=enable_ctm,
+        enable_animated_textures=anim_tex_enabled,
+    )
+
+    return apply_imported_save_to_blender(
+        mesh_data=mesh_data,
+        meta=meta,
+        storage=storage,
+        elapsed_ms=elapsed_ms,
+        world_dir=world_dir,
+        dimension=dimension,
+        min_block=min_block,
+        max_block=max_block,
+        context=context,
+        prefs=prefs,
+        atlas=atlas,
+        origin_centered=origin_centered,
+        reuse_existing=reuse_existing,
+        enable_ao=enable_ao,
+        mesh_fluids=mesh_fluids,
+        weld_vertices=weld_vertices,
+        material_mode=material_mode,
+        enable_ctm=enable_ctm,
+        enable_animated_textures=anim_tex_enabled,
+    )
+
+
+

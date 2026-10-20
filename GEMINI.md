@@ -82,22 +82,32 @@
 MoziToolKit/
 ├── blender_manifest.toml -> Blender 4.2+ 扩展清单元数据
 ├── __init__.py           -> 插件入口，注册/注销生命周期
-├── bridge/               -> 核心胶水桥梁，封装 libmtk_py 调用
-│   ├── mesh.py           -> 几何网格拓扑转换、NumPy 批量提取与 Quad 保留
-│   ├── extrude.py        -> 批量 Data In Data Out 挤出修复桥接
+├── bridge/               -> 核心胶水桥梁，封装与 libmtk_py 的纯数据交互与转换
+│   ├── mesh/             -> 几何网格拓扑转换、NumPy 批量提取、DNA 指针直灌与属性注入
+│   ├── point_cloud/      -> 体素点云几何流提取与回灌 (DNA/Standard)
+│   ├── extrude.py        -> 批量 Data In Data Out 挤出修复与噪声计算桥接
 │   ├── subdivide.py      -> 自适应像素切分桥接
 │   ├── cull.py           -> 遮挡剔除桥接
-│   ├── texture.py        -> 贴图与图集桥接
-│   ├── material.py       -> 材质与 BiomeResolver 桥接
-│   ├── assets.py         -> 预编译资产与缓存加载
+│   ├── texture.py        -> 贴图采样与透明度分析桥接
+│   ├── material.py       -> 材质与 BiomeResolver 数据桥接
+│   ├── assets/           -> 预编译资产包 (.mtkcache) 容器打开与数据加载桥接
 │   ├── sync.py           -> 原生 Live Sync 会话生命周期桥接
-│   └── uv.py             -> UV 重映射与清洗
+│   ├── world.py          -> 体素存储网格化 (mesh_voxel_storage) 与 FaceCuller 缓存
+│   ├── save.py           -> 存档 Anvil 解包与网格化纯数据桥接
+│   └── uv.py             -> UV 几何数学与重映射桥接
 ├── operators/            -> Blender 操作符 (UI 事件响应)
 │   ├── extrude/          -> 智能挤出与实时修复模块包 (Watcher, Properties, Ops)
 │   ├── sync/             -> 原生 Live Sync 实时协同模块包
 │   └── ...               -> 独立单算子文件 (op_cull, op_uv 等)
 ├── ui/                   -> 3D 视图侧边栏面板与菜单
-├── utils/                -> 节点树生成、BMesh 辅助、材质管线、日志工具
+├── utils/                -> DCC 上层业务工具、流程编排、节点树与材质管线
+│   ├── assets/           -> 资产缓存目录解析、系统文件夹管理、Modrinth 下载、任务守卫
+│   ├── world/            -> VoxelWorld 场景对象注入器 (apply_voxel_mesh_to_blender)
+│   ├── point_cloud/      -> 点云层级、Mask 修改器与父子对象管理
+│   ├── materials/        -> 材质节点树构建、物理属性配置 (properties_config)、Biome 更新
+│   ├── mesh/             -> BMesh 遍历、高阶挤出算子 (random_extrude)、选区与归属标记
+│   ├── save/             -> 存档场景层级组织与导入编排 (hierarchy)
+│   └── system/           -> 偏好设置、菜单注册、系统依赖与 SaveRegistry
 ├── wheels/               -> libmtk_py 动态轮子二进制
 ├── docs/                 -> 详细的架构与功能设计手册
 └── tests/                -> 自动化测试用例

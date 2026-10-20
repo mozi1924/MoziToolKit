@@ -189,16 +189,15 @@ def create_debug_world_object(
     progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Meshes the canonical debug world and creates/updates a Blender Mesh Object in the active scene,
-    binding all precompiled Atlas chunk PBR materials and shaders.
-    Returns (bpy_object, stats_dict).
+    DEPRECATED: Scene object creation belongs to `utils.world.injector`.
+    Forwarded for backwards compatibility.
     """
-    from .world import ingest_voxel_world
+    try:
+        from ..utils.world.injector import create_debug_world_object as _create
+    except (ImportError, ValueError):
+        from utils.world.injector import create_debug_world_object as _create
 
-    storage = load_debug_world_storage(prefs=prefs, states=states, stack=stack)
-
-    obj, stats = ingest_voxel_world(
-        storage=storage,
+    return _create(
         context=context,
         name=name,
         prefs=prefs,
@@ -210,11 +209,9 @@ def create_debug_world_object(
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
         reuse_existing=reuse_existing,
+        config=config,
+        culler=culler,
+        states=states,
+        stack=stack,
         progress_callback=progress_callback,
     )
-
-    # Ensure backwards compatibility for dict keys
-    if "elapsed_ms" not in stats and "meshing_time_ms" in stats:
-        stats["elapsed_ms"] = stats["meshing_time_ms"]
-
-    return obj, stats

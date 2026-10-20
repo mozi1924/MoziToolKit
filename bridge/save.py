@@ -188,20 +188,20 @@ def import_save_to_blender(
     enable_animated_textures: Optional[bool] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Full synchronous end-to-end Minecraft save importer for Blender.
+    DEPRECATED: Full Blender save import pipeline belongs to `utils.save.hierarchy`.
+    Forwarded for backwards compatibility.
     """
-    anim_tex_enabled = enable_animated_textures
-    if anim_tex_enabled is None:
-        raw_val = getattr(prefs, "enable_animated_textures", True) if prefs else True
-        anim_tex_enabled = raw_val if isinstance(raw_val, bool) else True
-    else:
-        anim_tex_enabled = bool(anim_tex_enabled)
+    try:
+        from ..utils.save.hierarchy import import_save_to_blender as _import_save
+    except (ImportError, ValueError):
+        from utils.save.hierarchy import import_save_to_blender as _import_save
 
-    mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
+    return _import_save(
         world_dir=world_dir,
         dimension=dimension,
         min_block=min_block,
         max_block=max_block,
+        context=context,
         prefs=prefs,
         model_db=model_db,
         atlas=atlas,
@@ -210,30 +210,9 @@ def import_save_to_blender(
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
+        reuse_existing=reuse_existing,
         progress_callback=progress_callback,
         material_mode=material_mode,
         enable_ctm=enable_ctm,
-        enable_animated_textures=anim_tex_enabled,
-    )
-
-    return apply_imported_save_to_blender(
-        mesh_data=mesh_data,
-        meta=meta,
-        storage=storage,
-        elapsed_ms=elapsed_ms,
-        world_dir=world_dir,
-        dimension=dimension,
-        min_block=min_block,
-        max_block=max_block,
-        context=context,
-        prefs=prefs,
-        atlas=atlas,
-        origin_centered=origin_centered,
-        reuse_existing=reuse_existing,
-        enable_ao=enable_ao,
-        mesh_fluids=mesh_fluids,
-        weld_vertices=weld_vertices,
-        material_mode=material_mode,
-        enable_ctm=enable_ctm,
-        enable_animated_textures=anim_tex_enabled,
+        enable_animated_textures=enable_animated_textures,
     )

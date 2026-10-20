@@ -35,7 +35,11 @@ from .fluid_uv import (
 )
 
 from .random_extrude import (
+    get_face_pixel_step,
     process_random_extrude,
+    process_random_extrude_mesh_batch,
+    repair_extruded_side_faces,
+    repair_mesh_extruded_side_faces_batch,
 )
 from .ownership import (
     ALL_ORIGINS,
@@ -78,7 +82,11 @@ __all__ = [
     "process_mesh_fluid_uv_repairs",
     "process_bmesh_fluid_uv_repairs",
     "process_raw_mesh_fluid_uv_repairs",
+    "get_face_pixel_step",
     "process_random_extrude",
+    "process_random_extrude_mesh_batch",
+    "repair_mesh_extruded_side_faces_batch",
+    "repair_extruded_side_faces",
     "ORIGIN_PROP",
     "ORIGIN_EXTERNAL",
     "ORIGIN_SAVE",

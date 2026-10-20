@@ -361,85 +361,28 @@ def apply_voxel_mesh_to_blender(
     material_mode: str = "ATLAS",
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Main-thread Blender scene injector for pre-meshed voxel world geometry.
-    Instantiates or updates target Blender Mesh object, binds Atlas PBR chunk shaders
-    or Standalone Principled/LabPBR materials, and synchronizes companion unculled VoxelPointCloud.
+    DEPRECATED: Scene object injection belongs to `utils.world.injector`.
+    Forwarded for backwards compatibility.
     """
     try:
-        import bpy
-    except ImportError:
-        raise RuntimeError("bpy is not available.")
-
-    if context is None:
-        context = bpy.context
-
-    # 1. Acquire or create Blender object
-    obj = None
-    if reuse_existing and name in bpy.data.objects:
-        cand = bpy.data.objects[name]
-        if cand.type == "MESH":
-            obj = cand
-
-    if obj is None:
-        b_mesh = bpy.data.meshes.new(name)
-        obj = bpy.data.objects.new(name, b_mesh)
-        target_coll = context.collection if context and context.collection else bpy.context.scene.collection
-        target_coll.objects.link(obj)
-    else:
-        b_mesh = obj.data
-
-    _stamp_voxel_mesh_origin(obj)
-
-    # 2. Inject topology, positions, UVs, normals, materials
-    inject_mesh_data(
-        b_mesh,
-        mesh_data,
-        update_topology=True,
-        update_normals=True,
-    )
-
-    # 3. Bind only used Atlas chunk materials & shaders
-    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
-
-    # Voxel meshes always bake true 3D biomes; tag them so the biome panel's
-    # WORLD preset is selected instead of the uniform Plains fallback.
-    try:
-        from ..utils.materials.biome.updater import mark_world_biome
+        from ..utils.world.injector import apply_voxel_mesh_to_blender as _apply
     except (ImportError, ValueError):
-        try:
-            from utils.materials.biome.updater import mark_world_biome
-        except Exception:
-            mark_world_biome = None
-    if mark_world_biome is not None:
-        mark_world_biome(obj, storage)
-
-    # 4. Extract unculled VoxelPointCloud and ensure child companion object
-    cloud_obj = ensure_voxel_child_cloud(
-        parent_obj=obj,
+        from utils.world.injector import apply_voxel_mesh_to_blender as _apply
+    return _apply(
+        mesh_data=mesh_data,
         storage=storage,
+        elapsed_ms=elapsed_ms,
+        context=context,
+        name=name,
+        prefs=prefs,
+        atlas=atlas,
         origin_centered=origin_centered,
-        initial_hidden=True,
+        reuse_existing=reuse_existing,
+        material_mode=material_mode,
+        inject_mesh_func=globals().get("inject_mesh_data"),
+        ensure_materials_func=globals().get("ensure_world_materials"),
+        ensure_cloud_func=globals().get("ensure_voxel_child_cloud"),
     )
-    cloud_count = len(cloud_obj.data.vertices) if cloud_obj and cloud_obj.data else 0
-
-    # 5. Set active in viewport
-    if context and hasattr(context, "view_layer"):
-        obj.select_set(True)
-        context.view_layer.objects.active = obj
-
-    stats = {
-        "object_name": obj.name,
-        "vertex_count": len(b_mesh.vertices),
-        "quad_count": mesh_data.quad_count,
-        "polygon_count": len(b_mesh.polygons),
-        "materials_count": len(b_mesh.materials),
-        "voxel_count": cloud_count,
-        "voxel_cloud_name": cloud_obj.name if cloud_obj else None,
-        "meshing_time_ms": round(elapsed_ms, 2),
-    }
-
-    return obj, stats
 
 
 def ingest_voxel_world(
@@ -460,36 +403,27 @@ def ingest_voxel_world(
     progress_callback: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
-    Complete synchronous end-to-end Voxel World Ingestion Pipeline:
-    1. Meshes VoxelStorage using cached Model Database, Atlas/Standalone, CTM Solver, and Biome Resolver
-    2. Injects high-throughput geometry into a Blender Mesh object
-    3. Builds and binds full Atlas Chunk PBR Materials or Standalone BSDF Materials
-    Returns (bpy_object, stats_dict).
+    DEPRECATED: End-to-end scene ingestion belongs to `utils.world.injector`.
+    Forwarded for backwards compatibility.
     """
-    mesh_data, elapsed_ms = mesh_voxel_storage(
+    try:
+        from ..utils.world.injector import ingest_voxel_world as _ingest
+    except (ImportError, ValueError):
+        from utils.world.injector import ingest_voxel_world as _ingest
+    return _ingest(
         storage=storage,
+        context=context,
+        name=name,
+        prefs=prefs,
         model_db=model_db,
         atlas=atlas,
         biome_resolver=biome_resolver,
         ctm_solver=ctm_solver,
-        prefs=prefs,
+        material_mode=material_mode,
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
-        progress_callback=progress_callback,
-        material_mode=material_mode,
-    )
-
-    return apply_voxel_mesh_to_blender(
-        mesh_data=mesh_data,
-        storage=storage,
-        elapsed_ms=elapsed_ms,
-        context=context,
-        name=name,
-        prefs=prefs,
-        atlas=atlas,
-        origin_centered=origin_centered,
         reuse_existing=reuse_existing,
-        material_mode=material_mode,
+        progress_callback=progress_callback,
     )

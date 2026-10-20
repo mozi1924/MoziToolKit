@@ -54,7 +54,7 @@ def register():
 
     # Inject canonical material properties configuration into Rust core
     try:
-        from .bridge.material import load_material_properties_config
+        from .utils.materials.properties_config import load_material_properties_config
         load_material_properties_config()
     except Exception:
         pass
