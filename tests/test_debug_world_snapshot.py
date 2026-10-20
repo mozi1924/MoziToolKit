@@ -1,3 +1,4 @@
+from _mtk_helpers import mesh_world
 import os
 import sys
 from pathlib import Path
@@ -80,7 +81,7 @@ class TestDebugWorldSnapshot(unittest.TestCase):
         self.assertGreater(storage.dirty_section_count(), 50)
 
         config = libmtk_py.MesherConfig(enable_ao=True, mesh_fluids=True, z_up_coordinates=True)
-        mesh = libmtk_py.SectionMesher.mesh_world(storage, config)
+        mesh = mesh_world(storage, config)
 
         self.assertGreater(mesh.quad_count, 10000, "Should generate >10000 quads for debug world")
         self.assertGreater(mesh.vertex_count, 10000, "Should generate >10000 vertices for debug world")

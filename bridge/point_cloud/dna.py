@@ -47,29 +47,16 @@ def inject_point_cloud_dna(
         return False
 
     try:
-        if hasattr(blender_dna, "copy_point_cloud_to_ptrs"):
-            state_palette, biome_palette = blender_dna.copy_point_cloud_to_ptrs(
-                cloud_data,
-                pos_ptr=pos_ptr,
-                block_x_ptr=bx_ptr,
-                block_y_ptr=by_ptr,
-                block_z_ptr=bz_ptr,
-                state_idx_ptr=st_ptr,
-                biome_idx_ptr=bm_ptr,
-                light_ptr=None,
-            )
-        elif hasattr(cloud_data, "direct_copy_to_ptrs"):
-            state_palette, biome_palette = cloud_data.direct_copy_to_ptrs(
-                pos_ptr=pos_ptr,
-                block_x_ptr=bx_ptr,
-                block_y_ptr=by_ptr,
-                block_z_ptr=bz_ptr,
-                state_idx_ptr=st_ptr,
-                biome_idx_ptr=bm_ptr,
-                light_ptr=None,
-            )
-        else:
-            return False
+        state_palette, biome_palette = blender_dna.copy_point_cloud_to_ptrs(
+            cloud_data,
+            pos_ptr=pos_ptr,
+            block_x_ptr=bx_ptr,
+            block_y_ptr=by_ptr,
+            block_z_ptr=bz_ptr,
+            state_idx_ptr=st_ptr,
+            biome_idx_ptr=bm_ptr,
+            light_ptr=None,
+        )
 
         if state_palette is not None:
             target_data[PROP_BLOCK_PALETTE] = state_palette

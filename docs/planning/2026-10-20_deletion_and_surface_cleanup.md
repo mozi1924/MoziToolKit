@@ -126,10 +126,10 @@ PY
 | R-22 | `bindings/mtk-py/src/material/biome.rs`、`lib.rs` | `compute_mesh_material_props`、`compute_flat_material_props`（list 版）；保留 memoryview/paletted | P-16 | B3 |
 | R-23 | `bindings/mtk-py/src/material/resolver.rs`、`lib.rs` | `remap_mesh_multi_uvs` 逐面字符串入口；保留 paletted | P-15 | B3 |
 | R-24 | `bindings/mtk-py/src/point_cloud.rs` | `from_arrays`、`get_block_states`、`get_biomes`、`to_mesh_data`/`from_mesh_data` 的字符串路径 | D-01 | B5 |
-| R-25 | `bindings/mtk-py/src/voxel/storage.rs` | 零调用 snapshot/CRC/manifest 方法（`set_full_snapshot`、`apply_delta_update`、`validate_manifest`、`calculate_and_store_section_crc` 等） | 无 | B3 |
-| R-26 | `bindings/mtk-py/src/voxel/world.rs` | 零调用 `set_full_snapshot`、`apply_delta_update`、`compact_world_mesh_materials`、`load_from_point_cloud` 等 | 无 | B3 |
+| R-25 | `bindings/mtk-py/src/voxel/storage.rs` | 零调用 snapshot/CRC/manifest 方法（`set_full_snapshot`、`apply_delta_update`、`validate_manifest`、`calculate_and_store_section_crc` 等） | 无 | B6（延后，先做测试审计） |
+| R-26 | `bindings/mtk-py/src/voxel/world.rs` | 零调用 `set_full_snapshot`、`apply_delta_update`、`compact_world_mesh_materials`、`load_from_point_cloud` | 无 | B3（已完成） |
 | R-27 | `bindings/mtk-blender-dna/src/mesh.rs`、`lib.rs` | 无生产调用的 `copy_face_materials_to_ptr`、`copy_loop_starts_to_ptr`、`copy_loop_totals_to_ptr`、`copy_buffer_to_ptr`（`copy_buffer` 仅测试） | 无 | B3 |
-| R-28 | `bindings/mtk-py/src/resource.rs`、`lib.rs` | `create_test_cache_package` 生产导出；移到 `mtk-testkit` / dev 或 feature gate | 无 | B3 |
+| R-28 | `bindings/mtk-py/src/resource.rs`、`lib.rs` | `create_test_cache_package` 生产导出；移到 `mtk-testkit` / dev 或 feature gate | 无 | B6（延后，测试仍在使用） |
 | R-29 | `bindings/mtk-py/README.md` | 不存在的 `tint_indices_memoryview`、`flags_memoryview`、`get_face_tints`、`list_attributes`，错误的 extrude/process_mesh/SectionMesher 签名 | 全部 | B6 |
 | R-30 | `docs/BINDINGS_DESIGN.md`、`docs/ARCHITECTURE.md` | `mtk.h`/cbindgen、`.mtkscene`、`mtk-blender` 独立扩展等未实现描述 | 全部 | B6 |
 | R-31 | `bindings/mtk-py/src/mesh/mod.rs` | 仅测试/旧 fallback 使用的 `get_flat_positions/normals/uvs`、`get_indices`、`get_quad_indices`、`get_face_materials`、`set_buffers`、`append_unit_cube_face`、`weld_spatial_vertices`；迁移测试后删除或 feature gate | P-09/D-07 | B5 |
@@ -241,14 +241,15 @@ PY
 
 ### B3：Rust 零调用方 API（1–2 天）
 
-删除 R-01…R-03、R-08…R-10、R-21…R-23、R-25…R-28；同步 P-10/P-15/P-16/P-17。WASM 不删。
+删除 R-01…R-03、R-08…R-10、R-21…R-23、R-26、R-27；R-25/R-28 延后到 B6。同步 P-10/P-15/P-16/P-17。WASM 不删。
 
 验收：
 
-- [ ] `libmtk_py` 不再导出 `SectionMesher`、`process_mesh`、`direct_copy_*`、嵌套 extrude。
-- [ ] `cargo clippy -D warnings` 无 dead_code/未使用告警。
-- [ ] Python 测试中 `SectionMesher` 全部迁移到 `VoxelWorld`。
-- [ ] `rg "SectionMesher|process_mesh\\(|direct_copy_"` 只剩 core/internal 合法引用。
+- [x] `libmtk_py` 不再导出 `SectionMesher`、`process_mesh`、`direct_copy_*`、嵌套 extrude。
+- [x] `cargo check --workspace` 通过；Rust 测试 317 passed。
+- [x] Python 测试中 `SectionMesher` 全部迁移到 `VoxelWorld` 测试 helper。
+- [x] 全量 Python 测试 268 passed / 70 skipped。
+- [ ] `PyVoxelStorage` 零引用方法与 `create_test_cache_package` 延后到 B6。
 
 ### B4：旧格式 / 旧协议 / unified_mesh（1 天）
 
@@ -394,7 +395,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 | B0 基线 | 进行中 | 基线测试已跑通（Rust 323 / Python 271+73skip）；分支、API/菜单快照待做 | 测试全绿 |
 | B1 UI/菜单 | 已完成（自动化） | 删 4 个算子 + 空菜单 + 旧 registry；Python 271 passed / 70 skipped | menu 测试 |
 | B2 Python 胶水 | 已完成（自动化） | 删 extrude/material/point-cloud/mesh/save/world 假回退与 TypeError 重试 | 全量 pytest |
-| B3 Rust 零调用方 | 待开始 | 删 SectionMesher/process_mesh/FFI/direct_copy；WASM 保留 | cargo test |
+| B3 Rust 零调用方 | 已完成（自动化；少量零引用方法延后 B6） | 删 SectionMesher/process_mesh/FFI/direct_copy/嵌套 extrude/字符串材质 API；WASM 保留 | Rust 317 / Py 268 |
 | B4 旧格式/协议 | 待开始 | cache/package/save/sync/unified_mesh | cargo test |
 | B5 数据模型 | 待开始 | 点云 palette、UV 布局、weld | 1M 基准 + Blender |
 | B6 架构/文档 | 待开始 | biome/material 接出、模块归位、docs | 全量回归 |

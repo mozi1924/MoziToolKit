@@ -1,3 +1,4 @@
+from _mtk_helpers import mesh_world
 import concurrent.futures
 import unittest
 
@@ -52,47 +53,8 @@ class TestGilConcurrency(unittest.TestCase):
             results = [f.result() for f in concurrent.futures.as_completed(futures)]
             self.assertEqual(len(results), 16)
 
-    def test_concurrent_extrude_repair(self):
-        """Verify that multiple threads can call process_random_extrude_mesh concurrently."""
-        def worker(idx):
-            positions = [
-                [-1.0, -1.0, 0.0],
-                [ 1.0, -1.0, 0.0],
-                [ 1.0,  1.0, 0.0],
-                [-1.0,  1.0, 0.0],
-            ]
-            face_vertices = [[0, 1, 2, 3]]
-            face_uvs = [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]]
-            face_materials = [0]
-            selected_faces = [0]
-            pixel_steps = [[1.0 / 16.0, 1.0 / 16.0]]
-
-            out = libmtk_py.process_random_extrude_mesh(
-                positions,
-                face_vertices,
-                face_uvs,
-                face_materials,
-                selected_faces,
-                pixel_steps,
-                min_height=0.1,
-                max_height=0.2,
-                seed=idx,
-                noise_type="RANDOM",
-                noise_scale=1.0,
-                repair_uv=True,
-                uv_mode="SMART",
-                add_crease=False,
-                crease_val=1.0,
-            )
-            return idx, len(out[0])
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(worker, i) for i in range(16)]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
-            self.assertEqual(len(results), 16)
-
     def test_concurrent_voxel_mesher(self):
-        """Verify SectionMesher.mesh_world in concurrent threads."""
+        """Verify VoxelWorld.rebuild_all in concurrent threads."""
         def worker(idx):
             storage = libmtk_py.VoxelStorage()
             storage.set_bounds(0, 0, 0, 16, 16, 16)
@@ -100,7 +62,7 @@ class TestGilConcurrency(unittest.TestCase):
             storage.set_block(1, 0, 0, "minecraft:dirt")
 
             cfg = libmtk_py.MesherConfig()
-            mesh = libmtk_py.SectionMesher.mesh_world(storage, config=cfg)
+            mesh = mesh_world(storage, config=cfg)
             return idx, mesh.vertex_count
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -138,7 +100,7 @@ class TestGilConcurrency(unittest.TestCase):
             storage.set_block(idx % 16, 0, 0, "minecraft:stone")
 
             cfg = libmtk_py.MesherConfig(num_threads=2)
-            mesh = libmtk_py.SectionMesher.mesh_world(storage, config=cfg)
+            mesh = mesh_world(storage, config=cfg)
             return mesh.vertex_count
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:

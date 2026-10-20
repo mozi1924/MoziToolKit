@@ -55,12 +55,7 @@ def inject_topology_dna(
         return False
 
     try:
-        if hasattr(blender_dna, "copy_positions_to_ptr"):
-            blender_dna.copy_positions_to_ptr(mesh_data, pos_ptr, max_bytes=v_count * 12)
-        elif hasattr(mesh_data, "direct_copy_positions_to_ptr"):
-            mesh_data.direct_copy_positions_to_ptr(pos_ptr, max_bytes=v_count * 12)
-        else:
-            return False
+        blender_dna.copy_positions_to_ptr(mesh_data, pos_ptr, max_bytes=v_count * 12)
     except Exception as e:
         logger.debug("DNA direct position copy failed: %s", e)
         return False
@@ -77,19 +72,9 @@ def inject_topology_dna(
 
     try:
         if is_quad:
-            if hasattr(blender_dna, "copy_quad_indices_to_ptr"):
-                blender_dna.copy_quad_indices_to_ptr(mesh_data, cvert_ptr, max_bytes=total_loops * 4)
-            elif hasattr(mesh_data, "direct_copy_quad_indices_to_ptr"):
-                mesh_data.direct_copy_quad_indices_to_ptr(cvert_ptr, max_bytes=total_loops * 4)
-            else:
-                return False
+            blender_dna.copy_quad_indices_to_ptr(mesh_data, cvert_ptr, max_bytes=total_loops * 4)
         else:
-            if hasattr(blender_dna, "copy_indices_to_ptr"):
-                blender_dna.copy_indices_to_ptr(mesh_data, cvert_ptr, max_bytes=total_loops * 4)
-            elif hasattr(mesh_data, "direct_copy_indices_to_ptr"):
-                mesh_data.direct_copy_indices_to_ptr(cvert_ptr, max_bytes=total_loops * 4)
-            else:
-                return False
+            blender_dna.copy_indices_to_ptr(mesh_data, cvert_ptr, max_bytes=total_loops * 4)
     except Exception as e:
         logger.debug("DNA direct corner vert copy failed: %s", e)
         return False
@@ -119,12 +104,8 @@ def inject_vertex_positions_dna(mesh: Any, mesh_data: Any) -> bool:
         return False
 
     try:
-        if hasattr(blender_dna, "copy_positions_to_ptr"):
-            blender_dna.copy_positions_to_ptr(mesh_data, pos_ptr, max_bytes=v_count * 12)
-            return True
-        elif hasattr(mesh_data, "direct_copy_positions_to_ptr"):
-            mesh_data.direct_copy_positions_to_ptr(pos_ptr, max_bytes=v_count * 12)
-            return True
+        blender_dna.copy_positions_to_ptr(mesh_data, pos_ptr, max_bytes=v_count * 12)
+        return True
     except Exception as e:
         logger.debug("DNA direct copy positions failed: %s", e)
 
@@ -153,12 +134,8 @@ def inject_vertex_normals_dna(mesh: Any, mesh_data: Any) -> bool:
         norm_ptr = p0()
         if norm_ptr == 0:
             return False
-        if hasattr(blender_dna, "copy_normals_to_ptr"):
-            blender_dna.copy_normals_to_ptr(mesh_data, norm_ptr, max_bytes=v_count * 12)
-            return True
-        elif hasattr(mesh_data, "direct_copy_normals_to_ptr"):
-            mesh_data.direct_copy_normals_to_ptr(norm_ptr, max_bytes=v_count * 12)
-            return True
+        blender_dna.copy_normals_to_ptr(mesh_data, norm_ptr, max_bytes=v_count * 12)
+        return True
     except Exception as e:
         logger.debug("DNA direct copy normals failed: %s", e)
 
@@ -199,12 +176,8 @@ def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = Non
         return False
 
     try:
-        if hasattr(blender_dna, "copy_loop_uvs_to_ptr"):
-            blender_dna.copy_loop_uvs_to_ptr(mesh_data, uv_ptr, max_bytes=num_loops * 8)
-            return True
-        elif hasattr(mesh_data, "direct_copy_loop_uvs_to_ptr"):
-            mesh_data.direct_copy_loop_uvs_to_ptr(uv_ptr, max_bytes=num_loops * 8)
-            return True
+        blender_dna.copy_loop_uvs_to_ptr(mesh_data, uv_ptr, max_bytes=num_loops * 8)
+        return True
     except Exception as e:
         logger.debug("DNA direct copy UVs failed: %s", e)
 
@@ -248,12 +221,8 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
         return False
 
     try:
-        if hasattr(blender_dna, "copy_colors_to_ptr"):
-            blender_dna.copy_colors_to_ptr(mesh_data, col_ptr, max_bytes=len(col_mv))
-            return True
-        elif hasattr(mesh_data, "direct_copy_colors_to_ptr"):
-            mesh_data.direct_copy_colors_to_ptr(col_ptr, max_bytes=len(col_mv))
-            return True
+        blender_dna.copy_colors_to_ptr(mesh_data, col_ptr, max_bytes=len(col_mv))
+        return True
     except Exception as e:
         logger.debug("DNA direct copy colors failed: %s", e)
 

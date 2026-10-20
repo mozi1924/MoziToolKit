@@ -589,7 +589,7 @@ def mesh_voxel_storage(
             current_fp = get_cache_fingerprint(prefs)
             current_ts = get_cache_timestamp(prefs)
 
-    if world_session_key and hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
+    if world_session_key:
         cached_world = _WORLD_SESSIONS.get(world_session_key)
         cached_meta = _WORLD_SESSION_META.get(world_session_key)
 
@@ -601,7 +601,7 @@ def mesh_voxel_storage(
             and not force_rebuild
         )
 
-        if is_cache_valid and hasattr(cached_world, "sync_from_storage"):
+        if is_cache_valid:
             dirty_count = cached_world.sync_from_storage(storage)
             if dirty_count == 0:
                 mesh_data = cached_world.get_world_mesh()
@@ -611,11 +611,8 @@ def mesh_voxel_storage(
             else:
                 mesh_data = cached_world.rebuild_all()
         else:
-            if cached_world is not None and hasattr(cached_world, "clear_cache"):
-                try:
-                    cached_world.clear_cache()
-                except Exception:
-                    pass
+            if cached_world is not None:
+                cached_world.clear_cache()
             cached_world = mtk.VoxelWorld.from_storage(
                 storage=storage,
                 config=config,
@@ -635,7 +632,7 @@ def mesh_voxel_storage(
                 mesh_data = cached_world.rebuild_all(callback=wrapped_cb)
             else:
                 mesh_data = cached_world.rebuild_all()
-    elif hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
+    else:
         world = mtk.VoxelWorld.from_storage(
             storage=storage,
             config=config,
@@ -650,8 +647,6 @@ def mesh_voxel_storage(
             mesh_data = world.rebuild_all(callback=wrapped_cb)
         else:
             mesh_data = world.rebuild_all()
-    else:
-        mesh_data = mtk.SectionMesher.mesh_world(storage, config, culler, model_db)
     t1 = time.perf_counter()
 
     elapsed_ms = (t1 - t0) * 1000.0

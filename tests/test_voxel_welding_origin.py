@@ -1,3 +1,4 @@
+from _mtk_helpers import mesh_world
 """
 Unit and integration tests for voxel mesh vertex welding and bottom-center origin alignment.
 Verifies that libmtk voxel meshing matches MoziToolKit requirements:
@@ -61,7 +62,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
             weld_vertices=True,
             z_up_coordinates=True,
         )
-        mesh_welded = mtk_py.SectionMesher.mesh_world(storage, cfg_welded)
+        mesh_welded = mesh_world(storage, cfg_welded)
         self.assertEqual(mesh_welded.vertex_count, 8)
         self.assertEqual(mesh_welded.face_count, 6)
         self.assertEqual(mesh_welded.quad_count, 6)
@@ -75,7 +76,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
             weld_vertices=False,
             z_up_coordinates=True,
         )
-        mesh_unwelded = mtk_py.SectionMesher.mesh_world(storage, cfg_unwelded)
+        mesh_unwelded = mesh_world(storage, cfg_unwelded)
         self.assertEqual(mesh_unwelded.vertex_count, 24)
         self.assertEqual(mesh_unwelded.face_count, 6)
 
@@ -91,7 +92,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
             weld_vertices=True,
             z_up_coordinates=True,
         )
-        mesh_welded = mtk_py.SectionMesher.mesh_world(storage, cfg_welded)
+        mesh_welded = mesh_world(storage, cfg_welded)
         self.assertEqual(mesh_welded.vertex_count, 12)
         self.assertEqual(mesh_welded.face_count, 10)
         self.assertEqual(mesh_welded.quad_count, 10)
@@ -103,7 +104,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
             weld_vertices=False,
             z_up_coordinates=True,
         )
-        mesh_unwelded = mtk_py.SectionMesher.mesh_world(storage, cfg_unwelded)
+        mesh_unwelded = mesh_world(storage, cfg_unwelded)
         self.assertEqual(mesh_unwelded.vertex_count, 40)
         self.assertEqual(mesh_unwelded.face_count, 10)
 
@@ -124,7 +125,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
             weld_vertices=True,
             z_up_coordinates=True,
         )
-        mesh = mtk_py.SectionMesher.mesh_world(storage, cfg)
+        mesh = mesh_world(storage, cfg)
 
         pos = mesh.get_flat_positions()
         xs = [pos[i * 3] for i in range(mesh.vertex_count)]
@@ -142,7 +143,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
         storage2.set_block(100, 50, 200, "minecraft:stone")
         storage2.set_block(103, 57, 203, "minecraft:stone")
 
-        mesh2 = mtk_py.SectionMesher.mesh_world(storage2, cfg)
+        mesh2 = mesh_world(storage2, cfg)
         pos2 = mesh2.get_flat_positions()
         xs2 = [pos2[i * 3] for i in range(mesh2.vertex_count)]
         ys2 = [pos2[i * 3 + 1] for i in range(mesh2.vertex_count)]

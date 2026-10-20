@@ -1,3 +1,4 @@
+from _mtk_helpers import mesh_world
 import sys
 import unittest
 from pathlib import Path
@@ -118,7 +119,7 @@ class TestCullBridge(unittest.TestCase):
 
         culler = libmtk_py.FaceCuller()
         config = libmtk_py.MesherConfig()
-        mesh = libmtk_py.SectionMesher.mesh_world(storage, config=config, culler=culler)
+        mesh = mesh_world(storage, config=config, culler=culler)
 
         # Stone top face under kelp must NOT be culled (stone must have all 6 faces rendered)
         self.assertGreaterEqual(mesh.face_count, 6)

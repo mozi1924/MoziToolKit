@@ -19,7 +19,6 @@ from bridge.material import (
     get_colormap_uv,
     is_material_bridge_available,
     load_baked_atlas_from_json,
-    remap_mesh_multi_uvs,
 )
 
 
