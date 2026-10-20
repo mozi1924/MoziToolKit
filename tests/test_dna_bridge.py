@@ -182,7 +182,9 @@ class TestDnaBridge(unittest.TestCase):
 
         blender_dna = get_libmtk_blender()
         self.assertIsNotNone(blender_dna)
-        self.assertTrue(hasattr(blender_dna, "copy_positions_to_ptr"))
+        self.assertEqual(blender_dna.api_version(), 1)
+        self.assertTrue(hasattr(blender_dna, "copy_f32"))
+        self.assertTrue(hasattr(blender_dna, "copy_u32"))
 
 
 if __name__ == "__main__":

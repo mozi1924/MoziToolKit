@@ -313,17 +313,18 @@ class TestDualMeshApi(unittest.TestCase):
         self.assertIsInstance(uv_mv, memoryview)
 
     def test_blender_direct_pointer_api(self):
-        """Suite A: DNA direct writes via the canonical unstable.blender_dna entry point."""
-        mtk = get_libmtk()
-        dna = getattr(getattr(mtk, "unstable", None), "blender_dna", None)
-        if dna is None or not hasattr(dna, "copy_positions_to_ptr"):
-            self.skipTest("libmtk_py.unstable.blender_dna is not available")
+        """Suite A: standalone Blender DNA adapter writes typed core views."""
+        from bridge.engine import get_libmtk_dna
+
+        dna = get_libmtk_dna()
+        if dna is None or not hasattr(dna, "copy_f32"):
+            self.skipTest("libmtk_blender_dna is not available")
         self.assertFalse(hasattr(self.mesh, "blender_direct"))
 
-        # 1. Canonical DNA entry point
         buf = (ctypes.c_float * 12)()
         ptr = ctypes.addressof(buf)
-        written = dna.copy_positions_to_ptr(self.mesh, ptr, max_bytes=48)
+        src = memoryview(self.mesh.positions_memoryview()).cast("B")
+        written = dna.copy_f32(src, ptr, 12, max_bytes=48)
         self.assertEqual(written, 48)
 
 

@@ -15,12 +15,15 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger("MoziToolKit.Bridge.Engine")
 
 _libmtk: Optional[Any] = None
+_libmtk_dna: Optional[Any] = None
 _api_error: Optional[str] = None
+_dna_api_error: Optional[str] = None
 
 # Integer ABI/API contract expected from libmtk_py. Bump together with
 # `bindings/mtk-py/src/lib.rs::API_VERSION` whenever the Python surface changes
 # incompatibly.
 REQUIRED_API_VERSION = 1
+REQUIRED_DNA_API_VERSION = 1
 
 
 def _validate_native_api(module: Any) -> bool:
@@ -125,35 +128,77 @@ def has_libmtk() -> bool:
     return get_libmtk() is not None
 
 
-def get_libmtk_blender() -> Optional[Any]:
-    """
-    Returns the loaded blender accelerator submodule from unified libmtk_py, or None if unavailable.
-    Hardware accelerator for direct Blender memory/DNA manipulation.
-
-    The legacy top-level ``libmtk_py.blender`` alias was removed in the 2026-10 API
-    prune; ``libmtk_py.unstable.blender_dna`` is the only supported entry point.
-    """
-    mtk = get_libmtk()
-    if mtk is None:
-        return None
-    unstable = getattr(mtk, "unstable", None)
-    if unstable is None:
-        return None
-    return getattr(unstable, "blender_dna", None)
-
-
-def has_libmtk_blender() -> bool:
-    """Returns True if the embedded blender hardware accelerator submodule is active."""
-    return get_libmtk_blender() is not None
+def _validate_dna_api(module: Any) -> bool:
+    """Checks the standalone host-memory adapter API version."""
+    global _dna_api_error
+    version = getattr(module, "api_version", None)
+    if version is None:
+        _dna_api_error = (
+            "libmtk_blender_dna is missing api_version(); reinstall the matching "
+            "host adapter wheel."
+        )
+        return False
+    try:
+        actual = int(version())
+    except Exception as exc:
+        _dna_api_error = f"libmtk_blender_dna api_version() failed: {exc}"
+        return False
+    if actual != REQUIRED_DNA_API_VERSION:
+        _dna_api_error = (
+            f"libmtk_blender_dna API version {actual} is incompatible with this addon "
+            f"(required {REQUIRED_DNA_API_VERSION}). Reinstall the matching adapter wheel."
+        )
+        return False
+    _dna_api_error = None
+    return True
 
 
 def get_libmtk_dna() -> Optional[Any]:
-    """Returns the loaded libmtk_py.unstable.blender_dna native DNA adapter submodule."""
-    return get_libmtk_blender()
+    """
+    Returns the standalone Blender raw-memory adapter, or None if unavailable.
+
+    The adapter is deliberately independent from ``libmtk_py``. The addon mounts
+    it from the extension ``wheels/`` directory or from the development
+    ``dev/lib`` directory; it never needs the core wheel to know about it.
+    """
+    global _libmtk_dna
+    if _libmtk_dna is not None:
+        return _libmtk_dna
+
+    try:
+        import libmtk_blender_dna
+    except ImportError:
+        try:
+            from ..dev import loader
+            loader.setup_dev_environment()
+            import libmtk_blender_dna
+        except (ImportError, ValueError, AttributeError):
+            return None
+
+    if not _validate_dna_api(libmtk_blender_dna):
+        logger.warning("Standalone Blender DNA adapter disabled: %s", _dna_api_error)
+        return None
+    _libmtk_dna = libmtk_blender_dna
+    return _libmtk_dna
+
+
+def get_dna_api_error() -> Optional[str]:
+    """Returns the last adapter API validation error, if any."""
+    return _dna_api_error
+
+
+def get_libmtk_blender() -> Optional[Any]:
+    """Compatibility alias for the standalone Blender raw-memory adapter."""
+    return get_libmtk_dna()
+
+
+def has_libmtk_blender() -> bool:
+    """Returns True if the standalone Blender raw-memory adapter is active."""
+    return get_libmtk_blender() is not None
 
 
 def has_libmtk_dna() -> bool:
-    """Returns True if the embedded blender DNA hardware accelerator submodule is active."""
+    """Returns True if the standalone Blender raw-memory adapter is loaded."""
     return get_libmtk_dna() is not None
 
 
@@ -204,6 +249,12 @@ def get_engine_info() -> Dict[str, Any]:
         "path": "None",
         "version": "Unknown",
         "api_version": None,
+        "dna_available": get_libmtk_dna() is not None,
+        "dna_api_version": (
+            getattr(get_libmtk_dna(), "api_version", lambda: None)()
+            if get_libmtk_dna() is not None
+            else None
+        ),
         "is_dev": False,
     }
 

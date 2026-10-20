@@ -51,8 +51,20 @@ def test_removed_native_symbols_do_not_return():
     assert hasattr(mtk, "unstable")
     assert hasattr(mtk.unstable, "testing")
     assert hasattr(mtk.unstable.testing, "create_test_cache_package")
+    assert not hasattr(mtk.unstable, "blender_dna")
 
     cloud = mtk.VoxelPointCloud()
     for name in ("from_arrays", "get_block_states", "get_biomes"):
         assert not hasattr(mtk.VoxelPointCloud, name), f"removed VoxelPointCloud API {name} leaked back"
         assert not hasattr(cloud, name)
+
+
+
+def test_standalone_dna_adapter_contract():
+    import pytest
+
+    dna = pytest.importorskip("libmtk_blender_dna")
+    assert dna.api_version() == 1
+    for name in ("copy_f32", "copy_i32", "copy_u32", "copy_u8"):
+        assert hasattr(dna, name)
+    assert not hasattr(dna, "copy_positions_to_ptr")

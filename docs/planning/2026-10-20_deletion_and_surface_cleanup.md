@@ -1,6 +1,6 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
-> 状态：**B1–B6 已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B7 未开始**
+> 状态：**B1–B6 已执行，B7 独立宿主内存适配层实施中；B0 分支/快照与 Blender 冒烟待做**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库
 > 前提：2.0 与 1.0 的网格激活/数据模型不兼容；2.0 没有第三方用户；不再为不存在的旧 wheel、旧 `.blend`、旧菜单配置保留兼容层。
@@ -79,7 +79,7 @@ PY
 | P-14 | `bridge/sync.py` / `bridge/world.py` / `operators/sync/*` | `set_unified_mesh` / `unified_mesh` 传参（sync L259–L260、world from_storage 调用等） | R-05/R-06 | B4 |
 | P-15 | `bridge/material.py` | 无调用方的 `remap_mesh_multi_uvs`、`resolve_mesh_material_routes` 包装 | R-23 | B3 |
 | P-16 | `bridge/material.py` | `compute_mesh_material_props` / `compute_flat_material_props` 包装（保留 memoryview/paletted） | R-22 | B3 |
-| P-17 | `bridge/mesh/dna.py` / `bridge/point_cloud/dna.py` | `direct_copy_*` method 级 DNA 兜底 `elif` 分支；只保留 `unstable.blender_dna` | R-08/R-09 | B3 |
+| P-17 | `bridge/mesh/dna.py` / `bridge/point_cloud/dna.py` | `direct_copy_*` method 级 DNA 兜底 `elif` 分支；只保留独立 `libmtk_blender_dna` 适配器 | R-08/R-09 | B3/B7 |
 
 ### 3.2 Python UI / 右键菜单
 
@@ -173,31 +173,36 @@ PY
 | D-06 | random extrude flat 通道 | nested `process_random_extrude_mesh` 入口已在 B3 删除；Python 仅调用 `generate_random_extrude_heights` + flat repair |
 | D-07 | `PyMeshData.from_flat_polygons` | 复用 `FlatPolygonMesh`，共享顶点 + 逐 loop UV，替代 `from_raw_buffers` 的 4 倍角点复制 |
 | D-08 | `API_VERSION` / 能力握手 | `libmtk_py` 暴露整数 API 版本；`bridge/engine.py` 启动时校验，失败给出重装/重编译提示 |
-| D-09 | DNA leaf-crate 化 | `mtk-blender-dna` 移除 `mtk-core`/`mtk-voxel` 依赖，只保留 raw slice/pointer copy（`&[f32]`/`&[u32]`/`&[u8]` + dst_ptr + max_bytes）；`mtk-py` 负责从 `MeshData`/`VoxelPointCloud` 取 slice 后调用。目标：独立 wheel 只含 Blender 写入适配，不打包第二套核心 |
+| D-09 | 宿主内存适配层独立 | 通用复制下沉到 `mtk-host-memory`，`mtk-blender-dna` 只保留 raw slice 语义包装；独立 `libmtk_blender_dna` wheel 通过 Buffer Protocol 接收核心 `memoryview`。核心 `libmtk_py` 不依赖也不认识适配器 |
 | A-01 | `ensure_world_materials` 归位 | 从 `bridge/world.py` 移到 `utils/materials/builder/world_binding.py`；`bridge` 只保留取 metadata / texture buffer 的职责 |
 | A-02 | `apply_imported_save_to_blender` 归位 | 从 `bridge/save.py` 移到 `operators/save/hierarchy.py` 或 `utils/save/`；`bridge/save.py` 只保留 `mtk-save` 调用中继 |
 | A-03 | 文档单一事实源 | README/API 清单从代码生成或加符号存在性测试；删除 `mtk.h`、`.mtkscene`、独立 `mtk-blender` 等未实现描述 |
 
 ### 4.1 DNA 独立库方案（D-09 细化）
 
-现状问题：`mtk-blender-dna` 的 `Cargo.toml` 依赖 `mtk-core` + `mtk-voxel`；而 `mtk-voxel` 又拉入 `mtk-material`、`mtk-model`、`mtk-resource`、`mtk-texture`、`rayon` 等。结果就是这个“DNA 库”实际上把大半套核心静态链接了进去，和 `libmtk_py` 形成“两个核心”。
+现状问题（已解决）：`mtk-blender-dna` 曾依赖 `mtk-core` + `mtk-voxel`；而 `mtk-voxel` 又拉入 `mtk-material`、`mtk-model`、`mtk-resource`、`mtk-texture`、`rayon` 等。结果这个“DNA 库”实际把大半套核心静态链接了进去，和 `libmtk_py` 形成“两个核心”。
 
 目标形态：
 
-- **leaf crate**：`mtk-blender-dna` 只依赖 `std`（可选 `thiserror`），不依赖任何 `mtk-*` crate。
-- **纯指针/切片 API**：
-  - `copy_f32_to_ptr(src: &[f32], dst_ptr, max_bytes)`
-  - `copy_u32_to_ptr(src: &[u32], dst_ptr, max_bytes)`
-  - `copy_u8_to_ptr(src: &[u8], dst_ptr, max_bytes)`
-  - 点云按列拆分：`copy_point_cloud_column_to_ptr(src: &[i32], dst_ptr, max_bytes)` 等。
-- **数据切片由 `mtk-py` 提供**：`PyMeshData` / `PyVoxelPointCloud` 已经有 `positions`、`indices`、`loop_uvs` 等切片；wrapper 只负责把 slice + 目标指针传给 DNA crate。DNA crate 不认识 `MeshData`/`VoxelPointCloud`。
-- **打包**：
-  - 方案 A（优先）：保留为 `mtk-py` 的可选 feature；因为 crate 已无核心依赖，wheel 增量只有几十 KB。
-  - 方案 B：独立 `libmtk_blender_dna` wheel，PyO3 wrapper 只依赖 leaf DNA crate；Python bridge 先尝试独立模块，再尝试 `libmtk_py.unstable.blender_dna`，最后回退 `foreach_set`。
-- **体积门禁**：CI 检查 DNA 独立 wheel/动态库体积（例如压缩后 < 500 KB），并断言 `cargo tree -p mtk-blender-dna` 中不出现 `mtk-core` / `mtk-voxel`。
-- **回退**：Blender 版本不匹配、模块缺失、指针校验失败、写入异常时，Python bridge 捕获后回退标准 `foreach_set`；不把 DNA 作为唯一路径。
+- **`crates/mtk-host-memory`**：宿主无关的 raw slice → pointer 复制原语，只依赖 `thiserror`；负责空指针、对齐、`max_bytes` 容量守卫。
+- **`bindings/mtk-blender-dna`**：Blender 语义包装（positions / indices / UV / colors / point cloud），只接受 `&[f32]` / `&[u32]` / `&[i32]` / `&[u8]`，不依赖任何 `mtk-*` 核心 crate。
+- **`bindings/mtk-blender-dna-py`**：独立 `libmtk_blender_dna` ABI3 wheel，通过 Python Buffer Protocol 从核心 `memoryview` 取指针，再调用 Blender 适配层。
+- **核心 `libmtk_py`**：只导出 `memoryview`；不链接、不导入、不知道 `libmtk_blender_dna` 的存在。
+- **组合根**：`bridge/engine.py` + `bridge/mesh/dna.py` / `bridge/point_cloud/dna.py` 负责选择适配器；缺失或版本不匹配时回退标准 `foreach_set`。
+- **未来宿主**：可替换为 `libmtk_maya_dna` 等独立适配器，核心与 `.mtkscene` / `.mtkstate` 不变。
 
----
+安全边界：
+
+- 适配器不缓存源或目标指针；只在一次调用内使用。
+- 源 `memoryview` 在调用期间保活，核心 buffer 不可扩容/修改。
+- 目标指针必须在 Blender 拓扑分配后解析；适配器只做 `copy_nonoverlapping`。
+- 第一版保持 GIL，优先正确性；后续有数据再评估 `allow_threads`。
+
+体积与依赖门禁：
+
+- `cargo tree -p mtk-blender-dna` / `-p mtk-host-memory` 不得出现 `mtk-core` / `mtk-voxel`。
+- `libmtk_blender_dna` 独立 wheel 体积 < 1.5 MB（当前约 187 KB）。
+- CI 同时校验 6 平台 `libmtk_py` 与 `libmtk_blender_dna` wheel。
 
 ## 5. 执行批次（B0–B7）
 
@@ -289,22 +294,25 @@ PY
 - [x] `API_VERSION` 校验生效（native `api_version()` + `bridge/engine.py` 握手）。
 - [x] WASM CI 仍为绿；Gzip chunk 测试通过。
 
-### B7：DNA leaf 库与分发（2–3 天）
+### B7：独立宿主内存适配层（2–3 天）
 
 执行 D-09 与 §4.1：
 
-1. 移除 `mtk-blender-dna` 对 `mtk-core` / `mtk-voxel` 的依赖；把 API 改为 raw slice + `dst_ptr`。
-2. `mtk-py` 的 wrapper 负责从 `MeshData` / `VoxelPointCloud` 取 slice；DNA crate 不再认识核心类型。
-3. 选择方案 A（`mtk-py` optional feature）或方案 B（独立小 wheel）；两种都保留 `unstable.blender_dna` / 独立模块入口。
-4. 增加 `cargo tree` 断言与 wheel/动态库体积门禁。
-5. 增加 DNA 写入与标准 `foreach_set` 的逐字节 parity 测试；模拟 Blender 版本不匹配/指针失败，确认回退路径。
+1. 新增 `crates/mtk-host-memory`，提供无核心依赖的 typed raw copy + 边界守卫。
+2. `mtk-blender-dna` 改为 raw slice 语义包装，移除 `mtk-core` / `mtk-voxel` 依赖。
+3. 新增独立 `bindings/mtk-blender-dna-py` wheel（`libmtk_blender_dna`），只依赖 `mtk-blender-dna` + `pyo3`。
+4. 从 `mtk-py` 删除 `unstable.blender_dna`，核心不再包含任何宿主指针写入代码。
+5. Python bridge 改为从核心取 typed `memoryview`，调用独立适配器；缺失/API 不匹配时回退 `foreach_set`。
+6. 更新 wheel 构建、发布、打包与下载：6 平台同时产出/验证/打包两枚 wheel。
+7. 增加依赖树、wheel 体积与逐字节 parity 门禁。
 
 验收：
 
-- [ ] `cargo tree -p mtk-blender-dna` 不含 `mtk-core` / `mtk-voxel` / `mtk-material` / `mtk-model` / `mtk-texture`。
-- [ ] 独立 DNA 产物体积在预算内（压缩后数百 KB 量级）。
-- [ ] 成功路径与 `foreach_set` 结果一致；失败路径自动回退且不崩溃。
-- [ ] Python bridge 不再有 `direct_copy_*` method 级兜底；只保留 DNA 模块 → 标准写入两级。
+- [x] `cargo tree -p mtk-blender-dna` 不含 `mtk-core` / `mtk-voxel` / `mtk-material` / `mtk-model` / `mtk-texture`。
+- [x] `libmtk_blender_dna` 独立 wheel < 1.5 MB（本机 187 KB）。
+- [x] 核心 wheel 不再包含 `unstable.blender_dna`，也不链接适配器。
+- [x] 成功路径与 `foreach_set` 结果一致；模块缺失/API 不匹配自动回退。
+- [ ] 6 平台 CI 产出两枚 wheel，Mozi 滚动包同时包含两枚 wheel 并通过 Blender 冒烟。
 
 ---
 
@@ -377,7 +385,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 执行前仍需确认：
 
 1. **`toggle_voxel_cloud`**：保留在右键默认预设，还是只留在 Voxel 面板？
-2. **DNA 分发形态**：leaf crate 直接作为 `mtk-py` 的可选 feature，还是额外构建一个独立小 wheel？（两种都必须零 `mtk-core`/`mtk-voxel` 依赖）
+2. **DNA 分发形态**：已选定独立 `libmtk_blender_dna` wheel；核心 `mtk-py` 不包含宿主适配器。
 3. **WASM 2.0 覆盖范围**：先保证现有 `WasmMeshData`/`WasmSectionMesher` 编译与 CI，还是本轮就补 `WasmVoxelWorld` / palette point cloud？
 
 ### 8.1 保留项维护
@@ -399,7 +407,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 | B4 旧格式/协议 | 已完成（自动化） | 删 unified_mesh、旧 package 枚举、pre-v3 models、DIM 路径、0x01/tokenless HELLO、extrude 别名与 storage 再导出 | Rust 321 / Py 268 |
 | B5 数据模型 | 已完成（自动化；Blender 冒烟待 B0） | 点云 palette/indices、`UvLayout`、统一 weld、`from_flat_polygons` 共享顶点 | Rust 323 / Py 267 / 1M 点 ~85 MB |
 | B6 架构/文档 | 已完成（自动化；Blender 冒烟待 B0） | palette biome、material palette builder、API_VERSION、A-01/A-02 归位、R-25/R-28、docs | Rust 323 / Py 270 / WASM 绿 |
-| B7 DNA leaf | 待开始 | 去核心依赖、独立小 wheel、体积门禁、回退 parity | cargo tree + Blender |
+| B7 独立适配层 | 实施中（本机通过） | `mtk-host-memory`、`mtk-blender-dna` 无核心依赖、独立 `libmtk_blender_dna` wheel、Python bridge 重接、打包/CI 双 wheel | Rust 323+ / Py 272 / Blender 331 |
 
 ---
 

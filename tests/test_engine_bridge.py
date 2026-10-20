@@ -21,6 +21,8 @@ class TestEngineBridge:
         assert "path" in info
         assert "version" in info
         assert info["api_version"] == 1
+        assert info["dna_available"] is True
+        assert info["dna_api_version"] == 1
 
     def test_dynamic_attributes_on_bridges(self):
         """Verifies PEP 562 dynamic attributes resolve correctly without static freeze."""
@@ -70,6 +72,42 @@ class TestEngineBridge:
 
         assert engine._validate_native_api(Matching()) is True
         assert engine.get_api_error() is None
+
+    def test_standalone_dna_adapter_is_separate(self):
+        from MoziToolKit.bridge.engine import get_libmtk, get_libmtk_dna, has_libmtk_dna
+
+        assert has_libmtk_dna() is True
+        dna = get_libmtk_dna()
+        assert dna is not None
+        assert dna.api_version() == 1
+        core = get_libmtk()
+        assert core is not None
+        assert not hasattr(getattr(core, "unstable", None), "blender_dna")
+
+    def test_rejects_mismatched_dna_api(self):
+        from MoziToolKit.bridge import engine
+
+        class Missing:
+            pass
+
+        class Mismatched:
+            @staticmethod
+            def api_version():
+                return 99
+
+        assert engine._validate_dna_api(Missing()) is False
+        assert "api_version" in (engine.get_dna_api_error() or "")
+
+        assert engine._validate_dna_api(Mismatched()) is False
+        assert "incompatible" in (engine.get_dna_api_error() or "")
+
+        class Matching:
+            @staticmethod
+            def api_version():
+                return engine.REQUIRED_DNA_API_VERSION
+
+        assert engine._validate_dna_api(Matching()) is True
+        assert engine.get_dna_api_error() is None
 
     def test_system_dependencies_has_libmtk(self):
         """Verifies utils.system.dependencies routes through bridge.engine."""

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Fetch the `libmtk_py` abi3 wheel for MoziToolKit CI.
+# Fetch the `libmtk_py` + `libmtk_blender_dna` abi3 wheels for MoziToolKit CI.
 # Usage: fetch_libmtk_wheel.sh <output-dir> [git-ref-or-tag] [platform-id]
 set -euo pipefail
 
@@ -43,6 +43,7 @@ build_from_source() {
   fi
   "$PYTHON" -m pip install --upgrade maturin >/dev/null
   (cd "$src" && "$PYTHON" -m maturin build --release --out "$out_dir" -m bindings/mtk-py/Cargo.toml)
+  (cd "$src" && "$PYTHON" -m maturin build --release --out "$out_dir" -m bindings/mtk-blender-dna-py/Cargo.toml)
 }
 
 # Try fetching via fetch_wheels.py first
