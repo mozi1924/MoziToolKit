@@ -424,6 +424,53 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             mock_session.get_world_mesh.assert_called_once()
             mock_update_fn.assert_called_once()
 
+    def test_rebuild_mesh_live_sync_async_path_resolves_async_task(self):
+        """Regression: a later local import must not shadow module-level AsyncTask."""
+        sync_root = self._make_obj("Yefira_World_Async", "EMPTY")
+        sync_root["mtk:is_container"] = True
+        sync_root["mtk:container_type"] = "SYNC"
+        sync_root["mtk:is_yefira_world"] = True
+
+        sync_mesh = self._make_obj("Yefira_World_Async_Mesh", "MESH", mesh_data=MagicMock())
+        sync_mesh.parent = sync_root
+        if isinstance(getattr(sync_root, "children", None), list):
+            sync_root.children = [sync_mesh]
+
+        context = types.SimpleNamespace(
+            active_object=sync_root,
+            selected_objects=[sync_root],
+            mode="OBJECT",
+            collection=MagicMock(),
+            scene=types.SimpleNamespace(mozi_active_sync_container_name="Yefira_World_Async"),
+        )
+
+        mock_session = MagicMock()
+        mock_session.is_active = True
+        mock_session.get_world_mesh.return_value = MagicMock()
+        mock_session.get_storage.return_value = MagicMock()
+
+        class DummyRebuildOp:
+            def __init__(self):
+                self.report = MagicMock()
+                self.run_async = True
+                self.enable_ao = True
+                self.mesh_fluids = True
+                self.weld_vertices = True
+                self.origin_centered = True
+                self._runner = None
+
+            def execute(self, ctx):
+                return MOZI_OT_rebuild_mesh.execute(self, ctx)
+
+        op = DummyRebuildOp()
+        with patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
+             patch("operators.mesh.op_rebuild_mesh.AsyncTask") as mock_task, \
+             patch("operators.mesh.op_rebuild_mesh.ModalTaskRunner") as mock_runner:
+            mock_runner.return_value.start.return_value = {"RUNNING_MODAL"}
+            self.assertEqual(op.execute(context), {"RUNNING_MODAL"})
+            mock_task.assert_called_once()
+            mock_runner.return_value.start.assert_called_once()
+
     def test_save_container_privacy_and_uuid_registry(self):
         """Verifies that local filesystem absolute paths are scrubbed and registered to privacy UUID registry."""
         meta = {

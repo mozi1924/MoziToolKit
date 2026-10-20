@@ -587,13 +587,6 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 self.report({"ERROR"}, f"Remeshing failed: {e}")
                 return {"CANCELLED"}
 
-        try:
-            from ...utils.async_task import AsyncTask, ModalTaskRunner
-            from ...utils.progress import BlenderProgressReporter
-        except Exception:
-            from utils.async_task import AsyncTask, ModalTaskRunner
-            from utils.progress import BlenderProgressReporter
-
         task = AsyncTask(
             target=run_task_with_asset_guard,
             kwargs={
