@@ -1,3 +1,4 @@
+import _mesh_arrays as ma
 from _mtk_helpers import mesh_world
 import concurrent.futures
 import unittest
@@ -17,9 +18,7 @@ class TestGilConcurrency(unittest.TestCase):
 
     def test_concurrent_cull_mesh_faces(self):
         """Verify that multiple threads can call cull_mesh_faces concurrently with zero contention."""
-        mesh = libmtk_py.MeshData()
-        for i in range(1000):
-            mesh.append_unit_cube_face(i % 6, 0, -1)
+        mesh = ma.unit_quads(1000)
 
         def worker(worker_id):
             culled, stats = libmtk_py.cull_mesh_faces(mesh)
@@ -33,9 +32,7 @@ class TestGilConcurrency(unittest.TestCase):
 
     def test_concurrent_adaptive_pixel_split_mesh(self):
         """Verify that multiple threads can call adaptive_pixel_split_mesh concurrently."""
-        quad_mesh = libmtk_py.MeshData()
-        for i in range(10):
-            quad_mesh.append_unit_cube_face(i % 6, 0, -1)
+        quad_mesh = ma.unit_quads(10)
 
         def worker(worker_id):
             subdivided = libmtk_py.adaptive_pixel_split_mesh(
@@ -74,8 +71,7 @@ class TestGilConcurrency(unittest.TestCase):
 
     def test_loop_memoryviews_zero_copy(self):
         """Verify loop_uvs_memoryview, loop_starts_memoryview, and loop_totals_memoryview."""
-        mesh = libmtk_py.MeshData()
-        mesh.append_unit_cube_face(1, 0, -1)  # 1 quad: 4 vertices, 4 loop UVs
+        mesh = ma.unit_quad()  # 1 quad: 4 vertices, 4 loop UVs
 
         self.assertEqual(mesh.vertex_count, 4)
         self.assertEqual(mesh.face_count, 1)

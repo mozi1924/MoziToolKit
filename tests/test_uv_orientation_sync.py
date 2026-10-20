@@ -6,6 +6,7 @@ conventions (V=0 at bottom, V=1 at top) and are never vertically or horizontally
 """
 
 from __future__ import annotations
+import _mesh_arrays as ma
 
 from _mtk_helpers import mesh_world
 
@@ -108,9 +109,9 @@ class TestUvOrientationSync(unittest.TestCase):
             weld_vertices=False,
         )
         mesh_no_atlas = mesh_world(storage, config_no_atlas, None, None)
-        quad_indices = mesh_no_atlas.get_quad_indices()
-        uvs = mesh_no_atlas.get_flat_uvs()
-        positions = mesh_no_atlas.get_flat_positions()
+        quad_indices = ma.quad_indices(mesh_no_atlas)
+        uvs = ma.loop_uvs(mesh_no_atlas)
+        positions = ma.positions(mesh_no_atlas)
 
         # Each quad has 4 vertices: [v0, v1, v2, v3]
         # v0 is top-left, v1 is bottom-left, v2 is bottom-right, v3 is top-right
@@ -152,9 +153,9 @@ class TestUvOrientationSync(unittest.TestCase):
             atlas=self.atlas,
         )
         mesh = mesh_world(storage, config, None, self.model_db)
-        quad_indices = mesh.get_quad_indices()
-        uvs = mesh.get_flat_uvs()
-        positions = mesh.get_flat_positions()
+        quad_indices = ma.quad_indices(mesh)
+        uvs = ma.loop_uvs(mesh)
+        positions = ma.positions(mesh)
 
         checked_vertical_quads = 0
         for q in range(len(quad_indices) // 4):
@@ -188,7 +189,7 @@ class TestUvOrientationSync(unittest.TestCase):
         mesh_tuple = self.model_db.get_mesh("minecraft:stone")
         if mesh_tuple is not None:
             mesh, textures = mesh_tuple
-            flat_uvs = mesh.get_flat_uvs()
+            flat_uvs = ma.loop_uvs(mesh)
             self.assertGreater(len(flat_uvs), 0)
 
 

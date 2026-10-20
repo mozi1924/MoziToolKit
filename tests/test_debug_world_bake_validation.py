@@ -1,3 +1,4 @@
+import _mesh_arrays as ma
 import os
 import sys
 import gzip
@@ -125,7 +126,7 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
                 if f"facing={facing}" in s:
                     res = self.db.get_mesh(s, False)
                     self.assertIsNotNone(res)
-                    facings[facing] = res[0].get_flat_positions()
+                    facings[facing] = ma.positions(res[0])
 
         self.assertEqual(len(facings), 4, "Must find all 4 horizontal facings for chest in dump")
         self.assertNotEqual(facings["north"], facings["south"])
@@ -176,8 +177,8 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
             mesh_name = f"Test_{s.split('[')[0].replace('minecraft:', '')}"
             b_mesh = bpy.data.meshes.new(mesh_name)
 
-            positions = mesh_data.get_flat_positions()
-            q_indices = mesh_data.get_quad_indices()
+            positions = ma.positions(mesh_data)
+            q_indices = ma.quad_indices(mesh_data)
 
             verts = [(positions[i], positions[i+1], positions[i+2]) for i in range(0, len(positions), 3)]
             faces = [q_indices[i:i+4] for i in range(0, len(q_indices), 4)]

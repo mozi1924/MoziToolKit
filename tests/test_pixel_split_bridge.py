@@ -1,3 +1,4 @@
+import _mesh_arrays as ma
 import sys
 import unittest
 from pathlib import Path
@@ -22,17 +23,19 @@ class TestPixelSplitBridge(unittest.TestCase):
         self.assertEqual(rows, 16, "Animated water strip must be clamped to single frame square 16x16")
 
     def test_adaptive_pixel_split_quad_subdivision(self):
-        mesh = MeshData()
         positions = [
             (-0.5, -0.5, 0.0),
             (0.5, -0.5, 0.0),
             (0.5, 0.5, 0.0),
             (-0.5, 0.5, 0.0),
         ]
-        normals = [(0.0, 0.0, 1.0)] * 4
-        uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        indices = [0, 1, 2, 0, 2, 3]
-        mesh.set_buffers(positions, normals, uvs, indices, [0], [-1])
+        quad_uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+        mesh = ma.mesh_from_quads(
+            [c for p in positions for c in p],
+            [[0, 1, 2, 3]],
+            [quad_uvs],
+            [0],
+        )
 
 
         # Subdivide 2x2 grid

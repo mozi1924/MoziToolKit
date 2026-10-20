@@ -1,3 +1,4 @@
+import _mesh_arrays as ma
 from _mtk_helpers import mesh_world
 """
 Unit and integration tests for voxel mesh vertex welding and bottom-center origin alignment.
@@ -68,7 +69,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
         self.assertEqual(mesh_welded.quad_count, 6)
         self.assertEqual(mesh_welded.triangle_count, 12)
         # 6 quads * 4 loop corners = 24 loop UVs
-        self.assertEqual(len(mesh_welded.get_flat_uvs()), 48)
+        self.assertEqual(len(ma.loop_uvs(mesh_welded)), 48)
 
         # Unwelded
         cfg_unwelded = mtk_py.MesherConfig(
@@ -127,7 +128,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
         )
         mesh = mesh_world(storage, cfg)
 
-        pos = mesh.get_flat_positions()
+        pos = ma.positions(mesh)
         xs = [pos[i * 3] for i in range(mesh.vertex_count)]
         ys = [pos[i * 3 + 1] for i in range(mesh.vertex_count)]
         zs = [pos[i * 3 + 2] for i in range(mesh.vertex_count)]
@@ -144,7 +145,7 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
         storage2.set_block(103, 57, 203, "minecraft:stone")
 
         mesh2 = mesh_world(storage2, cfg)
-        pos2 = mesh2.get_flat_positions()
+        pos2 = ma.positions(mesh2)
         xs2 = [pos2[i * 3] for i in range(mesh2.vertex_count)]
         ys2 = [pos2[i * 3 + 1] for i in range(mesh2.vertex_count)]
         zs2 = [pos2[i * 3 + 2] for i in range(mesh2.vertex_count)]

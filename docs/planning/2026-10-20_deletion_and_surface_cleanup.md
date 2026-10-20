@@ -1,6 +1,6 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
-> 状态：**B1–B4 已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B5+ 未开始**
+> 状态：**B1–B5 已执行，自动化回归通过；B0 分支/快照与 Blender 冒烟待做；B6+ 未开始**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库
 > 前提：2.0 与 1.0 的网格激活/数据模型不兼容；2.0 没有第三方用户；不再为不存在的旧 wheel、旧 `.blend`、旧菜单配置保留兼容层。
@@ -270,11 +270,11 @@ PY
 
 验收：
 
-- [ ] 1M 点云 `from_indexed_arrays` 不再分配逐点 `String`；峰值内存回落到“位置 + 索引”量级。
-- [ ] `to_mesh_data` / `from_mesh_data` 只使用 `mtk_state_idx` + `mtk_palette`。
-- [ ] `MeshData` 的 UV 布局有显式字段/枚举，不再用 `uvs.len()` 猜。
-- [ ] `MeshData::weld_spatial_vertices` 与 `weld_mesh_vertices` 合并为一个显式策略 API。
-- [ ] 外部网格导入不再 4 倍顶点复制，且 UV 接缝保留。
+- [x] 1M 点云 `from_indexed_arrays` 不再分配逐点 `String`；峰值内存回落到“位置 + 索引”量级（本机 1M 点进程峰值 ~85 MB）。
+- [x] `to_mesh_data` / `from_mesh_data` 只使用 `mtk_state_idx` + `mtk_palette`。
+- [x] `MeshData` 的 UV 布局有显式字段/枚举，不再用 `uvs.len()` 猜。
+- [x] `MeshData::weld_spatial_vertices` 与 `weld_mesh_vertices` 合并为一个显式策略 API（`weld_vertices` + `UvLayout`）。
+- [x] 外部网格导入不再 4 倍顶点复制，且 UV 接缝保留（`from_flat_polygons`）。
 
 ### B6：能力接出与架构归位（2–3 天）
 
@@ -397,7 +397,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 | B2 Python 胶水 | 已完成（自动化） | 删 extrude/material/point-cloud/mesh/save/world 假回退与 TypeError 重试 | 全量 pytest |
 | B3 Rust 零调用方 | 已完成（自动化；少量零引用方法延后 B6） | 删 SectionMesher/process_mesh/FFI/direct_copy/嵌套 extrude/字符串材质 API；WASM 保留 | Rust 317 / Py 268 |
 | B4 旧格式/协议 | 已完成（自动化） | 删 unified_mesh、旧 package 枚举、pre-v3 models、DIM 路径、0x01/tokenless HELLO、extrude 别名与 storage 再导出 | Rust 321 / Py 268 |
-| B5 数据模型 | 待开始 | 点云 palette、UV 布局、weld | 1M 基准 + Blender |
+| B5 数据模型 | 已完成（自动化；Blender 冒烟待 B0） | 点云 palette/indices、`UvLayout`、统一 weld、`from_flat_polygons` 共享顶点 | Rust 323 / Py 267 / 1M 点 ~85 MB |
 | B6 架构/文档 | 待开始 | biome/material 接出、模块归位、docs | 全量回归 |
 | B7 DNA leaf | 待开始 | 去核心依赖、独立小 wheel、体积门禁、回退 parity | cargo tree + Blender |
 

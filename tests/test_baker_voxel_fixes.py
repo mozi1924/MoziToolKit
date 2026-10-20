@@ -1,3 +1,4 @@
+import _mesh_arrays as ma
 from _mtk_helpers import mesh_world
 import unittest
 import libmtk_py
@@ -28,7 +29,7 @@ class TestBakerVoxelFixes(unittest.TestCase):
             self.stack, "minecraft:vault[facing=north,ominous=false,vault_state=inactive]"
         )
         self.assertGreaterEqual(mesh.face_count, 7, "Vault must keep outer and inner cage faces")
-        normals = mesh.get_flat_normals()
+        normals = ma.normals(mesh)
         has_up = any(normals[i * 3 + 1] > 0.99 for i in range(len(normals) // 3))
         self.assertTrue(has_up, "Vault must keep top face with normal (0, 1, 0)")
         self.assertTrue(any("vault_top" in t for t in textures), "vault_top texture must be present")

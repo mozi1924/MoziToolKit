@@ -60,20 +60,18 @@ def inject_point_cloud_standard(
 
     # 3. Block states palette & indices
     if attr_state_idx is not None:
-        palette, indices = cloud_data.build_state_palette_indices()
-        attr_state_idx.data.foreach_set(
-            "value", np.ascontiguousarray(indices, dtype=np.int32)
-        )
+        palette = cloud_data.get_state_palette()
+        indices = np.frombuffer(cloud_data.state_indices_memoryview(), dtype=np.int32)
+        attr_state_idx.data.foreach_set("value", np.ascontiguousarray(indices))
         target_data[PROP_BLOCK_PALETTE] = palette
         if obj is not None:
             obj[PROP_BLOCK_PALETTE] = palette
 
     # 4. Biome palette & indices
     if attr_biome_idx is not None:
-        b_palette, b_indices = cloud_data.build_biome_palette_indices()
-        attr_biome_idx.data.foreach_set(
-            "value", np.ascontiguousarray(b_indices, dtype=np.int32)
-        )
+        b_palette = cloud_data.get_biome_palette()
+        b_indices = np.frombuffer(cloud_data.biome_indices_memoryview(), dtype=np.int32)
+        attr_biome_idx.data.foreach_set("value", np.ascontiguousarray(b_indices))
         target_data[PROP_BIOME_PALETTE] = b_palette
         if obj is not None:
             obj[PROP_BIOME_PALETTE] = b_palette

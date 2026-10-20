@@ -5,15 +5,13 @@ Extraction of Voxel Point Cloud from Blender Mesh into Rust VoxelPointCloud.
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 import numpy as np
 
 from ..engine import require_libmtk
 from .constants import (
-    ATTR_BIOME,
     ATTR_BIOME_IDX,
-    ATTR_BLOCK_STATE,
     ATTR_BLOCK_STATE_IDX,
     ATTR_BLOCK_X,
     ATTR_BLOCK_Y,
@@ -49,7 +47,6 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
     attr_x = mesh.attributes.get(ATTR_BLOCK_X)
     attr_y = mesh.attributes.get(ATTR_BLOCK_Y)
     attr_z = mesh.attributes.get(ATTR_BLOCK_Z)
-    attr_state = mesh.attributes.get(ATTR_BLOCK_STATE)
     attr_state_idx = mesh.attributes.get(ATTR_BLOCK_STATE_IDX)
 
     palette = None
@@ -64,12 +61,14 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
         except Exception:
             pass
 
-    has_state = (attr_state is not None) or (attr_state_idx is not None and palette is not None)
-    if not (attr_x and attr_y and attr_z and has_state):
+    if not (attr_x and attr_y and attr_z and attr_state_idx is not None and palette is not None):
         logger.warning(
-            "Mesh lacks required voxel point cloud attributes (%s, %s, %s, %s/%s)",
-            ATTR_BLOCK_X, ATTR_BLOCK_Y, ATTR_BLOCK_Z, ATTR_BLOCK_STATE, ATTR_BLOCK_STATE_IDX,
+            "Mesh lacks required voxel point cloud attributes (%s, %s, %s, %s + palette)",
+            ATTR_BLOCK_X, ATTR_BLOCK_Y, ATTR_BLOCK_Z, ATTR_BLOCK_STATE_IDX,
         )
+        return None
+    if len(attr_state_idx.data) != v_count:
+        logger.warning("Voxel point cloud state index attribute length does not match vertices")
         return None
 
     # Extract 3D positions
@@ -85,7 +84,6 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
     attr_z.data.foreach_get("value", bz_arr)
 
     # Extract biomes palette
-    attr_biome = mesh.attributes.get(ATTR_BIOME)
     attr_biome_idx = mesh.attributes.get(ATTR_BIOME_IDX)
     b_palette = None
     if obj is not None and PROP_BIOME_PALETTE in obj:
@@ -109,78 +107,24 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
         except Exception:
             pass
 
-    # Fast Path: Zero-copy NumPy buffer ingestion using indexed palette
-    if (
-        hasattr(mtk.VoxelPointCloud, "from_indexed_arrays")
-        and attr_state_idx is not None
-        and palette is not None
-        and len(attr_state_idx.data) == v_count
-    ):
-        idx_arr = np.empty(v_count, dtype=np.int32)
-        attr_state_idx.data.foreach_get("value", idx_arr)
+    # Palette-indexed ingestion: never materialize per-point Python strings.
+    idx_arr = np.empty(v_count, dtype=np.int32)
+    attr_state_idx.data.foreach_get("value", idx_arr)
 
-        b_idx_arr = None
-        if attr_biome_idx is not None and b_palette is not None and len(attr_biome_idx.data) == v_count:
-            b_idx_arr = np.empty(v_count, dtype=np.int32)
-            attr_biome_idx.data.foreach_get("value", b_idx_arr)
-
-        return mtk.VoxelPointCloud.from_indexed_arrays(
-            pos_arr,
-            bx_arr,
-            by_arr,
-            bz_arr,
-            idx_arr,
-            palette,
-            b_idx_arr,
-            b_palette,
-            None,
-            bounds,
-        )
-
-    # Fallback Path: Materialize full Python string lists for legacy meshes
-    block_states: List[str] = []
-    if attr_state_idx is not None and palette is not None and len(attr_state_idx.data) == v_count:
-        idx_arr = np.empty(v_count, dtype=np.int32)
-        attr_state_idx.data.foreach_get("value", idx_arr)
-        pal_len = len(palette)
-        block_states = [
-            palette[idx] if 0 <= idx < pal_len else (palette[0] if pal_len > 0 else "minecraft:air")
-            for idx in idx_arr
-        ]
-    elif attr_state is not None:
-        for elem in attr_state.data:
-            val = elem.value
-            if isinstance(val, (bytes, bytearray)):
-                block_states.append(val.decode("utf-8", errors="replace"))
-            else:
-                block_states.append(str(val))
-
-    biomes: Optional[List[str]] = None
+    b_idx_arr = None
     if attr_biome_idx is not None and b_palette is not None and len(attr_biome_idx.data) == v_count:
         b_idx_arr = np.empty(v_count, dtype=np.int32)
         attr_biome_idx.data.foreach_get("value", b_idx_arr)
-        b_pal_len = len(b_palette)
-        biomes = [
-            b_palette[idx] if 0 <= idx < b_pal_len else (b_palette[0] if b_pal_len > 0 else "minecraft:plains")
-            for idx in b_idx_arr
-        ]
-    elif attr_biome and len(attr_biome.data) == v_count:
-        b_list: List[str] = []
-        for elem in attr_biome.data:
-            val = elem.value
-            if isinstance(val, (bytes, bytearray)):
-                b_list.append(val.decode("utf-8", errors="replace"))
-            else:
-                b_list.append(str(val))
-        biomes = b_list
 
-    return mtk.VoxelPointCloud.from_arrays(
+    return mtk.VoxelPointCloud.from_indexed_arrays(
         pos_arr,
         bx_arr,
         by_arr,
         bz_arr,
-        block_states,
-        biomes,
+        idx_arr,
+        palette,
+        b_idx_arr,
+        b_palette,
         None,
         bounds,
     )
