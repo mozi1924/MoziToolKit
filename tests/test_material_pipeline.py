@@ -200,8 +200,9 @@ class TestMaterialPipeline(unittest.TestCase):
             # Create .mtkcache package
             from bridge.engine import get_libmtk
             mtk = get_libmtk()
-            if mtk and hasattr(mtk, "create_test_cache_package"):
-                mtk.create_test_cache_package(str(cache_dir / "abc123stackfp.mtkcache"), "abc123stackfp", 0)
+            testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
+            if testing is not None and hasattr(testing, "create_test_cache_package"):
+                testing.create_test_cache_package(str(cache_dir / "abc123stackfp.mtkcache"), "abc123stackfp", 0)
 
             # Write atlas_mapping.json
             atlas_mapping = {
@@ -242,7 +243,8 @@ class TestMaterialPipeline(unittest.TestCase):
                 res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="BADLANDS")
                 self.assertTrue(res["success"])
                 self.assertEqual(res["face_count"], len(mesh.polygons))
-                self.assertIn("mtk_source_texture_key", mesh.attributes)
+                self.assertIn("mtk_source_texture_idx", mesh.attributes)
+                self.assertIn("mtk_source_textures", mesh)
                 self.assertIn("mtk_atlas_chunk_id", mesh.attributes)
                 self.assertIn("mtk_uv_transform", mesh.attributes)
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
@@ -280,9 +282,11 @@ class TestMaterialPipeline(unittest.TestCase):
         bpy.ops.mesh.primitive_cube_add(size=2.0)
         obj = bpy.context.active_object
         mesh = obj.data
-        for loop in mesh.uv_layers["UVMap"].data:
+        uv_layer = mesh.uv_layers.get("UVMap") or mesh.uv_layers.active or mesh.uv_layers.new(name="UVMap")
+        uv_layer.name = "UVMap"
+        for loop in uv_layer.data:
             loop.uv = (0.25, 0.75)
-        local_before = _read_loop_uvs(mesh.uv_layers["UVMap"])
+        local_before = _read_loop_uvs(uv_layer)
 
         src_mat = bpy.data.materials.new(name="mtk:minecraft:block/stone:0badf00d")
         mesh.materials.append(src_mat)
@@ -306,8 +310,9 @@ class TestMaterialPipeline(unittest.TestCase):
 
             from bridge.engine import get_libmtk
             mtk = get_libmtk()
-            if mtk and hasattr(mtk, "create_test_cache_package"):
-                mtk.create_test_cache_package(str(cache_dir / "multiuvfp.mtkcache"), "multiuvfp", 0)
+            testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
+            if testing is not None and hasattr(testing, "create_test_cache_package"):
+                testing.create_test_cache_package(str(cache_dir / "multiuvfp.mtkcache"), "multiuvfp", 0)
 
             atlas_mapping = {
                 "chunks": [{
@@ -427,8 +432,9 @@ class TestMaterialPipeline(unittest.TestCase):
 
             from bridge.engine import get_libmtk
             mtk = get_libmtk()
-            if mtk and hasattr(mtk, "create_test_cache_package"):
-                mtk.create_test_cache_package(str(cache_dir / "xyz987stackfp.mtkcache"), "xyz987stackfp", 0)
+            testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
+            if testing is not None and hasattr(testing, "create_test_cache_package"):
+                testing.create_test_cache_package(str(cache_dir / "xyz987stackfp.mtkcache"), "xyz987stackfp", 0)
 
             atlas_mapping = {
                 "chunks": [

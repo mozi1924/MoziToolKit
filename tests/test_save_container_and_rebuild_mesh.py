@@ -173,7 +173,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 mode="OBJECT",
             )
 
-        with patch("bridge.save.inject_mesh_data"), patch("bridge.save.ensure_world_materials"):
+        with patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
             # 1. First import
             root1, stats1 = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
@@ -445,7 +445,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 mode="OBJECT",
             )
 
-        with patch("bridge.save.inject_mesh_data"), patch("bridge.save.ensure_world_materials"):
+        with patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
             root, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
                 meta=meta,
@@ -546,7 +546,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 "spawn": (0, 64, 0),
             }
             with patch("operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
-                 patch("bridge.save.inject_mesh_data"), patch("bridge.save.ensure_world_materials"):
+                 patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
                 res = op.execute(ctx)
                 self.assertEqual(res, {"FINISHED"})
                 self.assertIn("mtk_last_refreshed", save_root)

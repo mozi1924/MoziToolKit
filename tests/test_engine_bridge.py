@@ -20,6 +20,7 @@ class TestEngineBridge:
         assert "mode" in info
         assert "path" in info
         assert "version" in info
+        assert info["api_version"] == 1
 
     def test_dynamic_attributes_on_bridges(self):
         """Verifies PEP 562 dynamic attributes resolve correctly without static freeze."""
@@ -42,6 +43,33 @@ class TestEngineBridge:
         assert hasattr(subdivide, "mtk_py")
         assert hasattr(cull, "mtk_py")
         assert hasattr(extrude, "mtk_py")
+
+    def test_rejects_missing_or_mismatched_native_api(self, monkeypatch):
+        from MoziToolKit.bridge import engine
+
+        class Missing:
+            pass
+
+        class Mismatched:
+            @staticmethod
+            def api_version():
+                return 99
+
+        monkeypatch.setattr(engine, "_libmtk", None)
+        monkeypatch.setattr(engine, "_api_error", None)
+        assert engine._validate_native_api(Missing()) is False
+        assert "api_version" in (engine.get_api_error() or "")
+
+        assert engine._validate_native_api(Mismatched()) is False
+        assert "incompatible" in (engine.get_api_error() or "")
+
+        class Matching:
+            @staticmethod
+            def api_version():
+                return engine.REQUIRED_API_VERSION
+
+        assert engine._validate_native_api(Matching()) is True
+        assert engine.get_api_error() is None
 
     def test_system_dependencies_has_libmtk(self):
         """Verifies utils.system.dependencies routes through bridge.engine."""

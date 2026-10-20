@@ -85,8 +85,9 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         from bridge.engine import get_libmtk
         mtk = get_libmtk()
         pkg_path = self.cache_dir / f"{fingerprint}.mtkcache"
-        if mtk and hasattr(mtk, "create_test_cache_package"):
-            mtk.create_test_cache_package(str(pkg_path), fingerprint, created_at)
+        testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
+        if testing is not None and hasattr(testing, "create_test_cache_package"):
+            testing.create_test_cache_package(str(pkg_path), fingerprint, created_at)
         return pkg_path
 
     def test_cache_fingerprint_and_timestamp_extraction(self):

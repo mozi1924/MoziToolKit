@@ -84,4 +84,4 @@
   - [mtk-core](../../libmozitoolkit/crates/mtk-core/README.md)、[mtk-voxel](../../libmozitoolkit/crates/mtk-voxel/README.md)、[mtk-cull](../../libmozitoolkit/crates/mtk-cull/README.md)
   - [mtk-model](../../libmozitoolkit/crates/mtk-model/README.md)、[mtk-texture](../../libmozitoolkit/crates/mtk-texture/README.md)、[mtk-resource](../../libmozitoolkit/crates/mtk-resource/README.md)
   - [mtk-material](../../libmozitoolkit/crates/mtk-material/README.md)、[mtk-sync](../../libmozitoolkit/crates/mtk-sync/README.md)、[mtk-save](../../libmozitoolkit/crates/mtk-save/README.md)
-  - [libmtk facade](../../libmozitoolkit/crates/libmtk/README.md)、[mtk-py bindings](../../libmozitoolkit/bindings/mtk-py/README.md)、[mtk-ffi](../../libmozitoolkit/bindings/mtk-ffi/README.md)
+  - [libmtk facade](../../libmozitoolkit/crates/libmtk/README.md)、[mtk-py bindings](../../libmozitoolkit/bindings/mtk-py/README.md)
