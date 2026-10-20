@@ -79,7 +79,8 @@ def ensure_voxel_child_cloud(
 1. **显隐切换与雕刻 (`mozi.toggle_voxel_cloud`)**：
    - 切换子物体 Mask Modifier 的反转状态。
    - 可一键进入 Edit Mode 并开启透视（X-Ray），方便框选删除内部/外部体素。
-2. **体素反向重构表面网格 (`mozi.remesh_from_voxel_cloud`)**：
-   - 从子物体的点云属性中零拷贝提取 `VoxelPointCloud`；
-   - 转化为 `VoxelStorage` 重新调用 Rust 端网格化核心（`SectionMesher` / `VoxelWorld`）；
-   - 将重新计算的外露多边形直接灌回父级主物体，保留雕刻空腔。
+2. **体素反向重构表面网格 (`mozi.rebuild_mesh`)**：
+   - 右键菜单保留统一的 `Rebuild Voxel Mesh` 入口；雕刻完成后直接执行；
+   - 从子物体的点云属性提取 `VoxelPointCloud`，再转化为 `VoxelStorage`，调用 Rust `VoxelWorld` 网格化；
+   - 将重新计算的外露多边形灌回父级主物体，保留雕刻空腔；
+   - 旧的 `mozi.remesh_from_voxel_cloud` / `mozi.rematerialize_from_voxel_cloud` 重复入口已删除。

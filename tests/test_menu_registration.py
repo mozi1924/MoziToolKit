@@ -5,7 +5,7 @@ Tests for Context Menu Registration and Dynamic Rendering.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -87,6 +87,14 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertNotIn("mozi.precompile_cache", all_ops)
         # cull_mesh_faces is misleading in right-click context menu and strictly excluded
         self.assertNotIn("mozi.cull_mesh_faces", all_ops)
+        # Internal/duplicate/operator-wrapper entries must never be exposed
+        for internal_id in (
+            "mozi.remesh_from_voxel_cloud",
+            "mozi.rematerialize_from_voxel_cloud",
+            "mozi.clean_empty_material_slots",
+            "mozi.update_material_shading_adaptation",
+        ):
+            self.assertNotIn(internal_id, all_ops)
         # Optional operators for preference pool
         self.assertIn("mozi.repair_fluid_uv", all_ops)
         self.assertIn("mozi.auto_extrude_repair", all_ops)
@@ -180,78 +188,27 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertTrue(_has_provenance_attributes(mock_obj_prov))
 
 
-    def test_reconcile_views_with_canonical_presets(self):
-        from utils.config.models import MenuItem, reconcile_views_with_canonical_presets, ConfigData, MENU_SCHEMA_VERSION
+    def test_unknown_operator_ids_are_filtered(self):
+        from utils.config.models import ConfigData
 
-        # Simulate user with legacy v1 config who customized labels and removed clear_custom_normals
-        legacy_views = {
-            "object": [
-                MenuItem(operator="mozi.replace_material", label="My Custom Material", enabled=False),
-            ],
-            "mesh": [
-                MenuItem(operator="mozi.random_extrude", label="Top Priority Extrude", enabled=True),
-                MenuItem(operator="mozi.auto_extrude_repair", label="My Ultra Extrude", enabled=True),
-            ],
-            "uv": [],
-        }
-
-        reconciled, changed = reconcile_views_with_canonical_presets(legacy_views, user_schema_version=1)
-        self.assertTrue(changed)
-
-        # In object view:
-        # 1. User's customized item at index 0 remains at index 0 with custom label and enabled=False
-        self.assertEqual(reconciled["object"][0].operator, "mozi.replace_material")
-        self.assertEqual(reconciled["object"][0].label, "My Custom Material")
-        self.assertFalse(reconciled["object"][0].enabled)
-        # 2. Only v2 brand-new operators (rebuild_mesh, toggle_voxel_cloud) are appended
-        obj_ops = [it.operator for it in reconciled["object"]]
-        self.assertIn("mozi.rebuild_mesh", obj_ops)
-        self.assertIn("mozi.toggle_voxel_cloud", obj_ops)
-        # 3. clear_custom_normals was NOT in legacy_views and NOT in v2 changelog, so it must NOT be resurrected!
-        self.assertNotIn("mozi.clear_custom_normals", obj_ops)
-
-        # In mesh view:
-        # 1. User's custom order is preserved: random_extrude is still #0
-        self.assertEqual(reconciled["mesh"][0].operator, "mozi.random_extrude")
-        self.assertEqual(reconciled["mesh"][0].label, "Top Priority Extrude")
-        self.assertEqual(reconciled["mesh"][1].operator, "mozi.auto_extrude_repair")
-        self.assertEqual(reconciled["mesh"][1].label, "My Ultra Extrude")
-        # 2. v2 new operators are appended to the end
-        mesh_ops = [it.operator for it in reconciled["mesh"]]
-        self.assertIn("mozi.rebuild_mesh", mesh_ops)
-        self.assertIn("mozi.toggle_voxel_cloud", mesh_ops)
-
-        # Test ConfigData roundtrip with legacy dictionary missing menu_schema_version
-        raw_dict = {
+        raw = {
             "version": 1,
             "views": {
-                "object": [
-                    {"operator": "mozi.replace_material", "label": "Custom Mat", "enabled": True}
+                "mesh": [
+                    {"operator": "mozi.ghost", "label": "Ghost", "enabled": True},
+                    {"operator": "mozi.rebuild_mesh", "label": "Rebuild", "enabled": True},
                 ]
-            }
+            },
         }
-        cfg = ConfigData.from_dict(raw_dict)
-        self.assertEqual(cfg.menu_schema_version, MENU_SCHEMA_VERSION)
-        cfg_ops = [it.operator for it in cfg.views["object"]]
-        self.assertIn("mozi.rebuild_mesh", cfg_ops)
-        self.assertIn("mozi.replace_material", cfg_ops)
-        # Custom label preserved
-        self.assertEqual(cfg.views["object"][0].label, "Custom Mat")
-        # Items not in v2 changelog must NOT be added
-        self.assertNotIn("mozi.clear_custom_normals", cfg_ops)
+        cfg = ConfigData.from_dict(raw)
+        self.assertEqual([it.operator for it in cfg.views["mesh"]], ["mozi.rebuild_mesh"])
 
-    def test_user_customizations_never_overwritten_on_same_version(self):
-        """
-        Verify that once a user is on the current schema version (v2),
-        removing an operator, reordering, changing labels, or disabling items
-        will NEVER be overwritten or re-injected by subsequent normalizations or reloads.
-        """
-        from utils.config.models import MenuItem, ConfigData, MENU_SCHEMA_VERSION
+    def test_user_customizations_preserved(self):
+        """Custom labels, ordering, disabled flags, and removals survive normalization/reload."""
+        from utils.config.models import ConfigData
 
-        # User on v2 customized object menu to have only 1 item and disabled it
-        user_v2_dict = {
+        user_dict = {
             "version": 1,
-            "menu_schema_version": MENU_SCHEMA_VERSION,
             "views": {
                 "object": [
                     {"operator": "mozi.rebuild_mesh", "label": "One and Only", "enabled": False}
@@ -259,22 +216,17 @@ class TestMenuRegistration(unittest.TestCase):
                 "mesh": [
                     {"operator": "mozi.random_extrude", "label": "Solo Extrude", "enabled": True}
                 ],
-                "uv": []
-            }
+                "uv": [],
+            },
         }
 
-        # 1. Load from dict
-        cfg = ConfigData.from_dict(user_v2_dict)
-        # Verify object menu has ONLY 1 item
+        cfg = ConfigData.from_dict(user_dict)
         self.assertEqual(len(cfg.views["object"]), 1)
         self.assertEqual(cfg.views["object"][0].operator, "mozi.rebuild_mesh")
         self.assertEqual(cfg.views["object"][0].label, "One and Only")
         self.assertFalse(cfg.views["object"][0].enabled)
-        # Verify mesh menu has ONLY 1 item
         self.assertEqual(len(cfg.views["mesh"]), 1)
-        self.assertEqual(cfg.views["mesh"][0].operator, "mozi.random_extrude")
 
-        # 2. Repeated normalizations should NEVER re-inject removed items
         for _ in range(5):
             cfg.normalize()
             self.assertEqual(len(cfg.views["object"]), 1)
@@ -282,13 +234,28 @@ class TestMenuRegistration(unittest.TestCase):
             self.assertFalse(cfg.views["object"][0].enabled)
             self.assertEqual(len(cfg.views["mesh"]), 1)
 
-        # 3. Export to dict and re-import
-        exported = cfg.to_dict()
-        cfg2 = ConfigData.from_dict(exported)
+        cfg2 = ConfigData.from_dict(cfg.to_dict())
         self.assertEqual(len(cfg2.views["object"]), 1)
         self.assertEqual(cfg2.views["object"][0].label, "One and Only")
         self.assertFalse(cfg2.views["object"][0].enabled)
         self.assertEqual(len(cfg2.views["mesh"]), 1)
+
+    def test_draw_dynamic_menu_skips_unregistered(self):
+        with patch(
+            "utils.system.menu_registry.load_config",
+            return_value={
+                "mesh": [
+                    {"operator": "mozi.ghost", "label": "Ghost", "enabled": True},
+                    {"operator": "mozi.rebuild_mesh", "label": "Rebuild", "enabled": True},
+                ]
+            },
+        ):
+            layout = MagicMock()
+            draw_dynamic_menu(layout, "mesh")
+
+        called_ids = [call.args[0] for call in layout.operator.call_args_list if call.args]
+        self.assertIn("mozi.rebuild_mesh", called_ids)
+        self.assertNotIn("mozi.ghost", called_ids)
 
     def test_config_manager_reset_single_view(self):
         from utils.config import get_config_manager

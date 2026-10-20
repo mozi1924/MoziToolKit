@@ -9,33 +9,24 @@ from typing import Any, Dict, List, Optional, Union
 
 
 def normalize_operator_id(op_id: str) -> str:
-    """
-    Normalize legacy or category-prefixed operator IDs (e.g. 'object.mozi_adaptive_pixel_split')
-    to canonical registered operator bl_idnames (e.g. 'mozi.adaptive_pixel_split').
-    """
+    """Return the trimmed canonical operator ID; no legacy alias rewriting."""
     if not op_id or not isinstance(op_id, str):
         return ""
-    if op_id == "mozi.replace_materials":
-        return "mozi.replace_material"
-    if op_id in ("mozi.restore_materials_from_provenance", "mozi.restore_materials_from_attributes"):
-        return ""
-    if op_id.startswith("mozi."):
-        return op_id
-    if "." in op_id:
-        prefix, name = op_id.split(".", 1)
-        if name.startswith("mozi_"):
-            return f"mozi.{name[5:]}"
-    return op_id
+    return op_id.strip()
 
 
 def is_valid_operator_id(op_id: str) -> bool:
-    """Validate that an operator ID belongs to the MoziToolKit namespace or known whitelist."""
+    """Return True only if the ID is an exact, currently registered menu operator."""
     if not op_id or not isinstance(op_id, str):
         return False
-    norm = normalize_operator_id(op_id)
-    if norm.startswith("mozi.") or norm.startswith("mozi_"):
-        return True
-    return False
+    try:
+        from ..system.menu_registry import is_registered_menu_operator
+    except (ImportError, ValueError):
+        try:
+            from utils.system.menu_registry import is_registered_menu_operator
+        except (ImportError, ValueError):
+            return False
+    return is_registered_menu_operator(op_id.strip())
 
 
 @dataclass
@@ -222,104 +213,11 @@ def get_default_menu_views() -> Dict[str, List[MenuItem]]:
     return views
 
 
-MENU_SCHEMA_VERSION: int = 2
-
-# Tracks which operators were introduced in each schema version upgrade.
-# This prevents overwriting user deletions from earlier versions while still seamlessly
-# injecting truly brand-new operators upon upgrade.
-MENU_SCHEMA_CHANGELOG: Dict[int, Dict[str, List[str]]] = {
-    2: {
-        "mesh": ["mozi.rebuild_mesh", "mozi.toggle_voxel_cloud"],
-        "object": ["mozi.rebuild_mesh", "mozi.toggle_voxel_cloud"],
-        "uv": [],
-    },
-}
-
-
-def reconcile_views_with_canonical_presets(
-    views: Dict[str, List[MenuItem]],
-    user_schema_version: int = 1,
-) -> tuple[Dict[str, List[MenuItem]], bool]:
-    """
-    Intelligently reconcile and merge canonical default operators into user's saved menu views.
-
-    Guarantees:
-    - If user_schema_version >= MENU_SCHEMA_VERSION, no automatic injection is performed,
-      preserving all user customizations (including user deletions, custom labels, and ordering).
-    - If user_schema_version < MENU_SCHEMA_VERSION, only operators introduced in newer schema
-      versions (per MENU_SCHEMA_CHANGELOG) will be appended if not already present.
-    - User-configured order, custom labels, disabled flags, and user removals from earlier
-      versions are 100% preserved.
-    """
-    if user_schema_version >= MENU_SCHEMA_VERSION:
-        return views, False
-
-    presets = {}
-    try:
-        from ..system.menu_registry import get_default_presets, ALL_OPERATORS
-        presets = get_default_presets()
-    except Exception:
-        try:
-            from utils.system.menu_registry import get_default_presets, ALL_OPERATORS
-            presets = get_default_presets()
-        except Exception:
-            presets = {}
-            ALL_OPERATORS = {}
-
-    # Collect newly introduced operators across versions (user_schema_version + 1 .. MENU_SCHEMA_VERSION)
-    new_ops_by_view: Dict[str, List[str]] = {"mesh": [], "object": [], "uv": []}
-    for ver in range(user_schema_version + 1, MENU_SCHEMA_VERSION + 1):
-        ver_changes = MENU_SCHEMA_CHANGELOG.get(ver, {})
-        for v_name, op_list in ver_changes.items():
-            for op in op_list:
-                if op not in new_ops_by_view[v_name]:
-                    new_ops_by_view[v_name].append(op)
-
-    changed = False
-    reconciled_views: Dict[str, List[MenuItem]] = {}
-
-    for view_name in ["mesh", "object", "uv"]:
-        user_items = list(views.get(view_name, []))
-        canonical_items = presets.get(view_name) or CANONICAL_DEFAULT_PRESETS.get(view_name, [])
-
-        preset_map = {}
-        for c_item in canonical_items:
-            c_op = normalize_operator_id(c_item.get("operator", "") if isinstance(c_item, dict) else getattr(c_item, "operator", ""))
-            if c_op:
-                preset_map[c_op] = c_item
-
-        existing_ops = set()
-        for it in user_items:
-            op_id = it.operator if isinstance(it, MenuItem) else (it.get("operator", "") if isinstance(it, dict) else "")
-            norm = normalize_operator_id(op_id)
-            if norm:
-                existing_ops.add(norm)
-
-        # Only inject operators newly introduced in versions higher than user's current schema
-        target_new_ops = new_ops_by_view.get(view_name, [])
-        for new_op in target_new_ops:
-            norm_op = normalize_operator_id(new_op)
-            if norm_op and is_valid_operator_id(norm_op) and norm_op not in existing_ops:
-                c_item = preset_map.get(norm_op, {})
-                c_label = c_item.get("label", "") if isinstance(c_item, dict) else getattr(c_item, "label", "")
-                if not c_label and 'ALL_OPERATORS' in locals() and ALL_OPERATORS:
-                    c_label = ALL_OPERATORS.get(norm_op, {}).get("label", norm_op)
-                c_enabled = c_item.get("enabled", True) if isinstance(c_item, dict) else getattr(c_item, "enabled", True)
-                user_items.append(MenuItem(operator=norm_op, label=c_label or norm_op, enabled=c_enabled))
-                existing_ops.add(norm_op)
-                changed = True
-
-        reconciled_views[view_name] = user_items
-
-    return reconciled_views, changed
-
-
 @dataclass
 class ConfigData:
     """Full MoziToolKit root configuration data model."""
 
     version: int = 1
-    menu_schema_version: int = MENU_SCHEMA_VERSION
     backend_type: str = "JSON"  # JSON | BLENDER_PREFS | MEMORY
     views: Dict[str, List[MenuItem]] = field(default_factory=get_default_menu_views)
     resource_packs: List[PackEntry] = field(default_factory=list)
@@ -343,15 +241,9 @@ class ConfigData:
                         norm_items.append(m_item)
             norm_views[view_name] = norm_items
 
-        # 2. Reconcile views with canonical default presets for schema migration (only if older version)
-        if self.menu_schema_version < MENU_SCHEMA_VERSION:
-            reconciled_views, _ = reconcile_views_with_canonical_presets(norm_views, self.menu_schema_version)
-            self.views = reconciled_views
-            self.menu_schema_version = MENU_SCHEMA_VERSION
-        else:
-            self.views = norm_views
+        self.views = norm_views
 
-        # 3. Enforce 3-tier ordering on resource_packs
+        # 2. Enforce 3-tier ordering on resource_packs
         norm_packs = []
         for p in self.resource_packs:
             norm_packs.append(p if isinstance(p, PackEntry) else PackEntry.from_dict(p))
@@ -366,7 +258,6 @@ class ConfigData:
         packs_list = [pack.to_dict() for pack in self.resource_packs]
         return {
             "version": self.version,
-            "menu_schema_version": self.menu_schema_version,
             "backend_type": self.backend_type,
             "views": views_dict,
             "resource_packs": packs_list,
@@ -379,7 +270,6 @@ class ConfigData:
             return cls()
 
         version = int(data.get("version", 1))
-        menu_schema_version = int(data.get("menu_schema_version", 1 if ("views" in data or any(k in data for k in ["mesh", "object", "uv"])) else MENU_SCHEMA_VERSION))
         backend_type = str(data.get("backend_type", "JSON"))
 
         # Views: Extract if present, otherwise populate from default presets
@@ -419,7 +309,6 @@ class ConfigData:
 
         cfg = cls(
             version=version,
-            menu_schema_version=menu_schema_version,
             backend_type=backend_type,
             views=views,
             resource_packs=resource_packs,

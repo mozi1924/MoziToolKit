@@ -237,8 +237,8 @@ class TestVoxelPointCloudBridge:
             # Write carved cloud back to cloud object
             inject_voxel_point_cloud(cloud_obj, carved_cloud)
 
-            # 3. Execute Remesh Operator
-            if not hasattr(bpy.types, "MOZI_OT_remesh_from_voxel_cloud"):
+            # 3. Execute the unified Rebuild Voxel Mesh operator (CLOUD/SAVE branch)
+            if not hasattr(bpy.types, "MOZI_OT_rebuild_mesh"):
                 try:
                     import MoziToolKit.operators as ops_mod
                     ops_mod.register()
@@ -248,7 +248,7 @@ class TestVoxelPointCloudBridge:
 
             bpy.context.view_layer.objects.active = obj
             obj.select_set(True)
-            res = bpy.ops.mozi.remesh_from_voxel_cloud()
+            res = bpy.ops.mozi.rebuild_mesh(run_async=False)
             assert res == {"FINISHED"}
 
             # After removing center block, the 6 interior cavity faces are newly exposed!
