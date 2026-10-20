@@ -1,6 +1,6 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
-> 状态：**B1–B7 已执行，6 平台双 wheel 发布与滚动包验证通过；B0 分支/快照与 Blender 冒烟待做**
+> 状态：**B0–B7 已全部执行；Baseline 快照、Blender 冒烟、6 平台双 wheel 与滚动包验证通过**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库
 > 前提：2.0 与 1.0 的网格激活/数据模型不兼容；2.0 没有第三方用户；不再为不存在的旧 wheel、旧 `.blend`、旧菜单配置保留兼容层。
@@ -208,10 +208,12 @@ PY
 
 ### B0：基线与护栏（0.5 天）
 
-- [ ] 记录 `get_all_operators()` 与原生 API 快照（可保存为 `tests/fixtures/` 或临时文件）。
-- [x] 跑一遍 Rust/Python 基线测试并记录结果（Rust 323 passed；Python 271 passed / 73 skipped）。
-- [ ] 建两个仓库的 `refactor/2.0-delete-b*` 分支。
-- [ ] 准备 `rg` 检查脚本（见 §6）。
+- [x] 记录 `get_all_operators()` 与原生 API 快照（`tests/fixtures/b0_operators.json`、`b0_native_api.json`）。
+- [x] 跑一遍 Rust/Python 基线测试并记录结果（Rust 全绿；Python 274 passed / 70 skipped；Blender 335 passed / 10 skipped）。
+- [x] 建两个仓库的批次分支；B0 分支为 `refactor/2.0-b0-baseline`，B1–B7 分支已合并删除。
+- [x] 准备零残留检查脚本 `tools/check_legacy_symbols.py`（见 §6）。
+
+证据：[`b0_baseline_report.md`](b0_baseline_report.md)。
 
 ### B1：UI / 右键菜单收敛（0.5–1 天，独立；即此前讨论的 P0.5）
 
@@ -335,26 +337,31 @@ cd /Volumes/Data/mtk/MoziToolKit
 ### 6.2 符号零残留检查
 
 ```bash
-cd /Volumes/Data/mtk
-rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
-  'process_mesh_extrude_repair|process_random_extrude_mesh|SectionMesher|process_mesh\(|direct_copy_|unified_mesh|remesh_from_voxel_cloud|rematerialize_from_voxel_cloud|update_material_shading_adaptation|mozi\.replace_materials|MENU_SCHEMA_VERSION|Lz4|XxHash64|DIM-1|DIM1|REPLAY_DELTAS'
+cd /Volumes/Data/mtk/MoziToolKit
+python3 tools/check_legacy_symbols.py
 ```
+
+脚本排除历史 docs/TODO、断言缺失的 tests、导入面板的 DIM 文案，以及
+`mtk-core` / `mtk-voxel` / `mtk-wasm` / `mtk-bench` 内部合法的 nested extrude 与
+`SectionMesher`；其余命中直接失败。B0 收尾扫描 715 个文件，0 violation / 29 allowed。
 
 预期：B3 后只剩 `mtk-core` 内部合法的 nested extrude、`mtk-voxel::SectionMesher` 内部调用；B4 后旧格式/协议全部消失；B6 后菜单/文档不再命中。
 
 ### 6.3 Blender 冒烟
 
-- [ ] 安装/链接插件，打开 Blender，注册无异常。
-- [ ] 对象模式右键 → MoziToolKit：无空项、无未知算子。
-- [ ] 网格编辑模式右键：同上。
-- [ ] UV 编辑器右键/选择菜单：不再出现空子菜单。
-- [ ] 加载 debug world → `Rebuild Voxel Mesh` → 正常出网格。
-- [ ] 点云雕刻 → `Rebuild Voxel Mesh` → 空腔保留。
-- [ ] 偏好设置 → Context Menu：Available 列表不含内部算子。
+- [x] 安装/链接插件，打开 Blender，注册无异常。
+- [x] 对象模式右键 → MoziToolKit：无空项、无未知算子。
+- [x] 网格编辑模式右键：同上。
+- [x] UV 编辑器右键/选择菜单：不再出现空子菜单。
+- [x] 加载 debug world → `Rebuild Voxel Mesh` → 正常出网格。
+- [x] 点云雕刻 → `Rebuild Voxel Mesh` → 空腔保留。
+- [x] 偏好设置 → Context Menu：Available 列表不含内部算子。
 
 ### 6.4 原生 API 快照
 
 每批后重复 §2.1 的 API 列表，对比预期：`SectionMesher`、`process_mesh`、`direct_copy_*`、`from_arrays`、`get_block_states`、`get_biomes` 消失；`compute_mesh_biome_attributes_paletted_flat`、`from_flat_polygons` 在 B6 出现。
+
+B0 收尾已生成 [`tests/fixtures/b0_native_api.json`](../../tests/fixtures/b0_native_api.json)，并由 `tools/b0_native_snapshot.py` 复现。
 
 ---
 
@@ -400,7 +407,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 
 | 批次 | 状态 | 主要产出 | 验证 |
 |---|---|---|---|
-| B0 基线 | 进行中 | 基线测试已跑通（Rust 323 / Python 271+73skip）；分支、API/菜单快照待做 | 测试全绿 |
+| B0 基线 | 已完成 | 分支、API/菜单/Blender 快照、debug world、雕刻空腔重建、零残留扫描 | Rust 全绿 / Python 274 / Blender 335 |
 | B1 UI/菜单 | 已完成（自动化） | 删 4 个算子 + 空菜单 + 旧 registry；Python 271 passed / 70 skipped | menu 测试 |
 | B2 Python 胶水 | 已完成（自动化） | 删 extrude/material/point-cloud/mesh/save/world 假回退与 TypeError 重试 | 全量 pytest |
 | B3 Rust 零调用方 | 已完成（自动化；少量零引用方法延后 B6） | 删 SectionMesher/process_mesh/FFI/direct_copy/嵌套 extrude/字符串材质 API；WASM 保留 | Rust 317 / Py 268 |

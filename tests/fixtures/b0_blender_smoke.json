@@ -1,0 +1,207 @@
+{
+  "addon_version": "2.0.0",
+  "blender_version": "5.2.1 LTS",
+  "carve": {
+    "carved_polygons": 60,
+    "initial_polygons": 54,
+    "result": [
+      "FINISHED"
+    ]
+  },
+  "checks": {
+    "carve_exposes_cavity": true,
+    "carve_operator_finished": true,
+    "debug_world_mesh": true,
+    "menus_only_registered": true,
+    "mesh_menu_nonempty": true,
+    "no_empty_uv_menu": true,
+    "no_internal_menu_items": true,
+    "no_internal_operators": true,
+    "object_menu_nonempty": true,
+    "rebuild_in_mesh_menu": true,
+    "rebuild_in_object_menu": true,
+    "rebuild_operator_registered": true,
+    "registration": true
+  },
+  "debug_world": {
+    "object": "B0_Debug_World",
+    "polygons": 4066,
+    "stats": {
+      "elapsed_ms": 7.5,
+      "meshing_time_ms": 7.5,
+      "voxel_count": 385
+    },
+    "vertices": 5448
+  },
+  "failures": [],
+  "generated_at": "2026-10-20T12:20:47.389099+00:00",
+  "menus": {
+    "mesh": [
+      "mozi.adaptive_pixel_split",
+      "mozi.replace_material",
+      "mozi.rebuild_mesh",
+      "mozi.toggle_voxel_cloud",
+      "mozi.auto_extrude_repair",
+      "mozi.random_extrude",
+      "mozi.select_hard_edges",
+      "mozi.select_transparent_faces",
+      "mozi.repair_fluid_uv",
+      "mozi.clear_custom_normals",
+      "mozi.set_texture_interpolation_closest"
+    ],
+    "object": [
+      "mozi.rebuild_mesh",
+      "mozi.replace_material",
+      "mozi.toggle_voxel_cloud",
+      "mozi.clear_custom_normals",
+      "mozi.set_texture_interpolation_closest"
+    ]
+  },
+  "operator_count": 12,
+  "operator_details": {
+    "mozi.adaptive_pixel_split": {
+      "canonical_id": "mozi.adaptive_pixel_split",
+      "default_label": "Adaptive Pixel Split",
+      "enabled": true,
+      "icon": "GRID",
+      "label": "Adaptive Pixel Split",
+      "views": [
+        "mesh",
+        "object",
+        "uv"
+      ]
+    },
+    "mozi.auto_extrude_repair": {
+      "canonical_id": "mozi.auto_extrude_repair",
+      "default_label": "Auto Extrude Repair",
+      "enabled": true,
+      "icon": "NORMALS_FACE",
+      "label": "Auto Extrude Repair",
+      "views": [
+        "mesh"
+      ]
+    },
+    "mozi.clear_custom_normals": {
+      "canonical_id": "mozi.clear_custom_normals",
+      "default_label": "Clear Custom Normals",
+      "enabled": true,
+      "icon": "NORMALS_VERTEX",
+      "label": "Clear Custom Normals",
+      "views": [
+        "mesh",
+        "object"
+      ]
+    },
+    "mozi.random_extrude": {
+      "canonical_id": "mozi.random_extrude",
+      "default_label": "Random Extrude",
+      "enabled": true,
+      "icon": "MOD_EXPLODE",
+      "label": "Random Extrude",
+      "views": [
+        "mesh"
+      ]
+    },
+    "mozi.rebuild_mesh": {
+      "canonical_id": "mozi.rebuild_mesh",
+      "default_label": "Rebuild Voxel Mesh",
+      "enabled": true,
+      "icon": "MOD_REMESH",
+      "label": "Rebuild Voxel Mesh",
+      "views": [
+        "object",
+        "mesh"
+      ]
+    },
+    "mozi.repair_fluid_uv": {
+      "canonical_id": "mozi.repair_fluid_uv",
+      "default_label": "Repair Fluid UV",
+      "enabled": true,
+      "icon": "UV_DATA",
+      "label": "Repair Fluid UV",
+      "views": [
+        "uv",
+        "mesh"
+      ]
+    },
+    "mozi.replace_material": {
+      "canonical_id": "mozi.replace_material",
+      "default_label": "Replace Material",
+      "enabled": true,
+      "icon": "MATERIAL",
+      "label": "Replace Material",
+      "views": [
+        "object",
+        "mesh"
+      ]
+    },
+    "mozi.scale_uv": {
+      "canonical_id": "mozi.scale_uv",
+      "default_label": "Scale UV Faces",
+      "enabled": true,
+      "icon": "CON_SIZELIKE",
+      "label": "Scale UV Faces",
+      "views": [
+        "uv"
+      ]
+    },
+    "mozi.select_hard_edges": {
+      "canonical_id": "mozi.select_hard_edges",
+      "default_label": "Select Hard & Sharp Edges",
+      "enabled": true,
+      "icon": "EDGESEL",
+      "label": "Select Hard & Sharp Edges",
+      "views": [
+        "mesh"
+      ]
+    },
+    "mozi.select_transparent_faces": {
+      "canonical_id": "mozi.select_transparent_faces",
+      "default_label": "Select Transparent Faces",
+      "enabled": true,
+      "icon": "IMAGE_ALPHA",
+      "label": "Select Transparent Faces",
+      "views": [
+        "mesh",
+        "uv"
+      ]
+    },
+    "mozi.set_texture_interpolation_closest": {
+      "canonical_id": "mozi.set_texture_interpolation_closest",
+      "default_label": "Set Image Interpolation to Closest",
+      "enabled": true,
+      "icon": "IMAGE_DATA",
+      "label": "Set Image Interpolation to Closest",
+      "views": [
+        "object",
+        "mesh"
+      ]
+    },
+    "mozi.toggle_voxel_cloud": {
+      "canonical_id": "mozi.toggle_voxel_cloud",
+      "default_label": "Toggle Voxel Point Cloud Visibility",
+      "enabled": true,
+      "icon": "POINTCLOUD_DATA",
+      "label": "Toggle Voxel Point Cloud Visibility",
+      "views": [
+        "object",
+        "mesh"
+      ]
+    }
+  },
+  "operators": [
+    "mozi.adaptive_pixel_split",
+    "mozi.auto_extrude_repair",
+    "mozi.clear_custom_normals",
+    "mozi.random_extrude",
+    "mozi.rebuild_mesh",
+    "mozi.repair_fluid_uv",
+    "mozi.replace_material",
+    "mozi.scale_uv",
+    "mozi.select_hard_edges",
+    "mozi.select_transparent_faces",
+    "mozi.set_texture_interpolation_closest",
+    "mozi.toggle_voxel_cloud"
+  ],
+  "status": "pass"
+}
