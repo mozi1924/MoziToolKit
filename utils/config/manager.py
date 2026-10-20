@@ -21,7 +21,6 @@ from .models import (
     MenuItem,
     normalize_operator_id,
     get_default_menu_views,
-    MENU_SCHEMA_VERSION,
 )
 
 logger = logging.getLogger("MoziToolKit.Config")
@@ -114,15 +113,8 @@ class ConfigManager:
         with self._lock:
             if self._cache is None or force_reload:
                 loaded = self._backend.load()
-                initial_schema = getattr(loaded, "menu_schema_version", 1)
                 loaded.normalize()
                 self._cache = loaded
-                # If schema was upgraded during normalize, quietly persist the migration
-                if initial_schema < getattr(self._cache, "menu_schema_version", MENU_SCHEMA_VERSION):
-                    try:
-                        self._backend.save(self._cache)
-                    except Exception:
-                        pass
             return self._cache
 
     def save(self) -> bool:
@@ -382,8 +374,6 @@ class ConfigManager:
 
                     if ALL_OPERATORS:
                         for op_id, op_info in ALL_OPERATORS.items():
-                            if op_info.get("is_legacy", False):
-                                continue
                             views = op_info.get("views", [])
                             if view not in views:
                                 continue

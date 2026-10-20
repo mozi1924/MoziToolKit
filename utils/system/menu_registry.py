@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
-from ..config.models import normalize_operator_id, is_valid_operator_id
+from ..config.models import normalize_operator_id
 from ..config import load_config
 
 CANONICAL_DEFAULT_PRESETS: Dict[str, List[Dict[str, Any]]] = {
@@ -47,7 +47,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "MOD_REMESH",
         "views": ["object", "mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.replace_material": {
         "canonical_id": "mozi.replace_material",
@@ -56,7 +55,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "MATERIAL",
         "views": ["object", "mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.toggle_voxel_cloud": {
         "canonical_id": "mozi.toggle_voxel_cloud",
@@ -65,7 +63,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "POINTCLOUD_DATA",
         "views": ["object", "mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.adaptive_pixel_split": {
         "canonical_id": "mozi.adaptive_pixel_split",
@@ -74,7 +71,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "GRID",
         "views": ["mesh", "object", "uv"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.auto_extrude_repair": {
         "canonical_id": "mozi.auto_extrude_repair",
@@ -83,7 +79,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "NORMALS_FACE",
         "views": ["mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.clear_custom_normals": {
         "canonical_id": "mozi.clear_custom_normals",
@@ -92,7 +87,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "NORMALS_VERTEX",
         "views": ["mesh", "object"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.random_extrude": {
         "canonical_id": "mozi.random_extrude",
@@ -101,7 +95,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "MOD_EXPLODE",
         "views": ["mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.select_hard_edges": {
         "canonical_id": "mozi.select_hard_edges",
@@ -110,7 +103,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "EDGESEL",
         "views": ["mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.set_texture_interpolation_closest": {
         "canonical_id": "mozi.set_texture_interpolation_closest",
@@ -119,7 +111,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "IMAGE_DATA",
         "views": ["object", "mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.repair_fluid_uv": {
         "canonical_id": "mozi.repair_fluid_uv",
@@ -128,7 +119,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "UV_DATA",
         "views": ["uv", "mesh"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.scale_uv": {
         "canonical_id": "mozi.scale_uv",
@@ -137,7 +127,6 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "CON_SIZELIKE",
         "views": ["uv"],
         "enabled": True,
-        "is_legacy": False,
     },
     "mozi.select_transparent_faces": {
         "canonical_id": "mozi.select_transparent_faces",
@@ -146,19 +135,8 @@ CANONICAL_OPERATORS: Dict[str, Dict[str, Any]] = {
         "icon": "IMAGE_ALPHA",
         "views": ["mesh", "uv"],
         "enabled": True,
-        "is_legacy": False,
     },
 
-    # Backwards compatibility legacy aliases
-    "mozi.replace_materials": {
-        "canonical_id": "mozi.replace_material",
-        "label": "Replace Material",
-        "default_label": "Replace Material",
-        "icon": "MATERIAL",
-        "views": ["object", "mesh"],
-        "enabled": True,
-        "is_legacy": True,
-    },
 }
 
 # Central Registry Dictionary for Registered Menu Items initialized with Canonical Operators
@@ -177,20 +155,8 @@ def register_operator_menu_item(op_id: str, label: str, views: Optional[List[str
         "icon": icon,
         "views": list(views),
         "enabled": enabled,
-        "is_legacy": False,
     }
     _REGISTERED_MENU_ITEMS[op_id] = item_info
-
-    # Support legacy category-prefixed IDs for backward compatibility
-    if op_id.startswith("mozi."):
-        suffix = op_id[len("mozi."):]
-        for v in views:
-            legacy_id = f"{v}.mozi_{suffix}"
-            if legacy_id not in _REGISTERED_MENU_ITEMS:
-                _REGISTERED_MENU_ITEMS[legacy_id] = {
-                    **item_info,
-                    "is_legacy": True,
-                }
 
 
 def register_menu_item(views: Optional[List[str]] = None, label: Optional[str] = None, enabled: bool = True):
@@ -213,11 +179,14 @@ def register_menu_item(views: Optional[List[str]] = None, label: Optional[str] =
     return decorator
 
 
-def get_all_operators(include_legacy: bool = False) -> Dict[str, Any]:
-    """Return dictionary of available operators registered for context menus."""
-    if include_legacy:
-        return _REGISTERED_MENU_ITEMS
-    return {k: v for k, v in _REGISTERED_MENU_ITEMS.items() if not v.get("is_legacy", False)}
+def get_all_operators() -> Dict[str, Any]:
+    """Return a snapshot of all user-facing operators registered for context menus."""
+    return dict(_REGISTERED_MENU_ITEMS)
+
+
+def is_registered_menu_operator(op_id: str) -> bool:
+    """Return True only for an exact, currently registered menu operator ID."""
+    return bool(op_id) and op_id in _REGISTERED_MENU_ITEMS
 
 
 def get_default_presets() -> Dict[str, List[Dict[str, Any]]]:
@@ -292,7 +261,7 @@ def draw_dynamic_menu(layout, view_name: str):
     for item in items:
         if isinstance(item, dict) and item.get("enabled", True):
             op_id = normalize_operator_id(item.get("operator", ""))
-            if op_id and is_valid_operator_id(op_id):
+            if is_registered_menu_operator(op_id):
                 valid_items.append((op_id, item.get("label")))
 
     if not valid_items:

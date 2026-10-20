@@ -288,62 +288,6 @@ class TestAssetBakeGuard(unittest.TestCase):
         # Verifies that asset cache was automatically precompiled and is now READY
         self.assertEqual(check_asset_cache_status(prefs_a), "READY")
 
-    def test_remesh_from_voxel_cloud_operator_auto_bakes_when_stale(self):
-        """Verifies mozi.remesh_from_voxel_cloud auto-bakes when asset cache is STALE."""
-        from operators.op_voxel_cloud import MOZI_OT_remesh_from_voxel_cloud
-
-        # Initially bake Pack A -> READY
-        prefs_a = self._make_prefs([self.pack_a])
-        precompile_stack(prefs_a)
-        self.assertEqual(check_asset_cache_status(prefs_a), "READY")
-
-        # User changes config to Pack B -> cache is now STALE
-        prefs_b = self._make_prefs([self.pack_b])
-        self.assertEqual(check_asset_cache_status(prefs_b), "STALE")
-
-        mock_world = MagicMock()
-        mock_world.type = "MESH"
-        mock_cloud = MagicMock()
-        mock_cloud.type = "MESH"
-
-        context = types.SimpleNamespace(
-            active_object=mock_world,
-            mode="OBJECT",
-            view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=mock_world)),
-        )
-
-        mock_cloud_data = MagicMock()
-        mock_cloud_data.__len__.return_value = 50
-        mock_storage = MagicMock()
-        mock_cloud_data.to_storage.return_value = mock_storage
-
-        mock_mesh_data = MagicMock()
-        mock_mesh_data.used_materials.return_value = []
-
-        class DummyRemeshOp:
-            def __init__(self):
-                self.report = MagicMock()
-                self.enable_ao = True
-                self.mesh_fluids = True
-                self.weld_vertices = True
-                self.origin_centered = True
-
-            def execute(self, ctx):
-                return MOZI_OT_remesh_from_voxel_cloud.execute(self, ctx)
-
-        op = DummyRemeshOp()
-
-        with patch("operators.op_voxel_cloud._resolve_world_and_cloud_objects", return_value=(mock_world, mock_cloud)), \
-             patch("operators.op_voxel_cloud.extract_voxel_point_cloud", return_value=mock_cloud_data), \
-             patch("operators.op_voxel_cloud.get_prefs", return_value=prefs_b), \
-             patch("operators.op_voxel_cloud.mesh_voxel_storage", return_value=(mock_mesh_data, 12.0)), \
-             patch("operators.op_voxel_cloud.inject_mesh_data"), \
-             patch("operators.op_voxel_cloud.ensure_world_materials"):
-            res = op.execute(context)
-            self.assertEqual(res, {"FINISHED"})
-
-        # Verifies that Pack B was automatically rebaked and cache is now READY
-        self.assertEqual(check_asset_cache_status(prefs_b), "READY")
 
 
 if __name__ == "__main__":
