@@ -53,11 +53,7 @@ def inject_topology_standard(
         pos_attr = safe_get_attribute(mesh, "position")
         if pos_attr is not None and len(pos_attr.data) == v_count:
             try:
-                pos_mv = mesh_data.positions_memoryview() if hasattr(mesh_data, "positions_memoryview") else None
-                if pos_mv is not None:
-                    pos_arr = np.frombuffer(pos_mv, dtype=np.float32)
-                else:
-                    pos_arr = np.ascontiguousarray(mesh_data.get_flat_positions(), dtype=np.float32)
+                pos_arr = np.frombuffer(mesh_data.positions_memoryview(), dtype=np.float32)
                 pos_attr.data.foreach_set("vector", pos_arr)
                 pos_injected = True
             except Exception as e:
@@ -65,15 +61,10 @@ def inject_topology_standard(
 
         if not pos_injected:
             try:
-                pos_mv = mesh_data.positions_memoryview() if hasattr(mesh_data, "positions_memoryview") else None
-                if pos_mv is not None:
-                    if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-                        pos_mv = pos_mv.cast("f")
-                    mesh.vertices.foreach_set("co", pos_mv)
-                else:
-                    mesh.vertices.foreach_set(
-                        "co", np.ascontiguousarray(mesh_data.get_flat_positions(), dtype=np.float32)
-                    )
+                pos_mv = mesh_data.positions_memoryview()
+                if hasattr(pos_mv, "cast") and pos_mv.format == "B":
+                    pos_mv = pos_mv.cast("f")
+                mesh.vertices.foreach_set("co", pos_mv)
             except Exception as e:
                 logger.debug("Standard vertex.co foreach_set failed: %s", e)
 
@@ -88,11 +79,10 @@ def inject_topology_standard(
         if cvert_attr is not None and len(cvert_attr.data) == total_loops:
             try:
                 if is_quad:
-                    quad_mv = mesh_data.quad_indices_memoryview() if hasattr(mesh_data, "quad_indices_memoryview") else None
+                    quad_mv = mesh_data.quad_indices_memoryview()
                     arr = np.frombuffer(quad_mv, dtype=np.int32) if quad_mv is not None else np.ascontiguousarray(mesh_data.get_quad_indices(), dtype=np.int32)
                 else:
-                    idx_mv = mesh_data.indices_memoryview() if hasattr(mesh_data, "indices_memoryview") else None
-                    arr = np.frombuffer(idx_mv, dtype=np.int32) if idx_mv is not None else np.ascontiguousarray(mesh_data.get_indices(), dtype=np.int32)
+                    arr = np.frombuffer(mesh_data.indices_memoryview(), dtype=np.int32)
                 cvert_attr.data.foreach_set("value", arr)
                 loop_injected = True
             except Exception as e:
@@ -101,7 +91,7 @@ def inject_topology_standard(
         if not loop_injected:
             try:
                 if is_quad:
-                    quad_mv = mesh_data.quad_indices_memoryview() if hasattr(mesh_data, "quad_indices_memoryview") else None
+                    quad_mv = mesh_data.quad_indices_memoryview()
                     if quad_mv is not None:
                         if hasattr(quad_mv, "cast") and quad_mv.format == "B":
                             quad_mv = quad_mv.cast("i")
@@ -111,15 +101,10 @@ def inject_topology_standard(
                             "vertex_index", np.ascontiguousarray(mesh_data.get_quad_indices(), dtype=np.int32)
                         )
                 else:
-                    indices_mv = mesh_data.indices_memoryview() if hasattr(mesh_data, "indices_memoryview") else None
-                    if indices_mv is not None:
-                        if hasattr(indices_mv, "cast") and indices_mv.format == "B":
-                            indices_mv = indices_mv.cast("i")
-                        mesh.loops.foreach_set("vertex_index", indices_mv)
-                    else:
-                        mesh.loops.foreach_set(
-                            "vertex_index", np.ascontiguousarray(mesh_data.get_indices(), dtype=np.int32)
-                        )
+                    indices_mv = mesh_data.indices_memoryview()
+                    if hasattr(indices_mv, "cast") and indices_mv.format == "B":
+                        indices_mv = indices_mv.cast("i")
+                    mesh.loops.foreach_set("vertex_index", indices_mv)
             except Exception as e:
                 logger.debug("Standard loops.vertex_index foreach_set failed: %s", e)
 
@@ -159,26 +144,17 @@ def inject_vertex_positions_standard(mesh: Any, mesh_data: Any) -> None:
     pos_attr = safe_get_attribute(mesh, "position")
     if pos_attr is not None and len(pos_attr.data) > 0:
         try:
-            pos_mv = mesh_data.positions_memoryview() if hasattr(mesh_data, "positions_memoryview") else None
-            if pos_mv is not None:
-                pos_arr = np.frombuffer(pos_mv, dtype=np.float32)
-            else:
-                pos_arr = np.ascontiguousarray(mesh_data.get_flat_positions(), dtype=np.float32)
+            pos_arr = np.frombuffer(mesh_data.positions_memoryview(), dtype=np.float32)
             pos_attr.data.foreach_set("vector", pos_arr)
             return
         except Exception:
             pass
 
     try:
-        pos_mv = mesh_data.positions_memoryview() if hasattr(mesh_data, "positions_memoryview") else None
-        if pos_mv is not None:
-            if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-                pos_mv = pos_mv.cast("f")
-            mesh.vertices.foreach_set("co", pos_mv)
-        else:
-            mesh.vertices.foreach_set(
-                "co", np.ascontiguousarray(mesh_data.get_flat_positions(), dtype=np.float32)
-            )
+        pos_mv = mesh_data.positions_memoryview()
+        if hasattr(pos_mv, "cast") and pos_mv.format == "B":
+            pos_mv = pos_mv.cast("f")
+        mesh.vertices.foreach_set("co", pos_mv)
     except Exception:
         pass
 
@@ -188,26 +164,17 @@ def inject_vertex_normals_standard(mesh: Any, mesh_data: Any) -> None:
     norm_attr = safe_get_attribute(mesh, "normal")
     if norm_attr is not None and len(norm_attr.data) > 0:
         try:
-            norm_mv = mesh_data.normals_memoryview() if hasattr(mesh_data, "normals_memoryview") else None
-            if norm_mv is not None:
-                norm_arr = np.frombuffer(norm_mv, dtype=np.float32)
-            else:
-                norm_arr = np.ascontiguousarray(mesh_data.get_flat_normals(), dtype=np.float32)
+            norm_arr = np.frombuffer(mesh_data.normals_memoryview(), dtype=np.float32)
             norm_attr.data.foreach_set("vector", norm_arr)
             return
         except Exception:
             pass
 
     try:
-        norm_mv = mesh_data.normals_memoryview() if hasattr(mesh_data, "normals_memoryview") else None
-        if norm_mv is not None:
-            if hasattr(norm_mv, "cast") and norm_mv.format == "B":
-                norm_mv = norm_mv.cast("f")
-            mesh.vertices.foreach_set("normal", norm_mv)
-        else:
-            mesh.vertices.foreach_set(
-                "normal", np.ascontiguousarray(mesh_data.get_flat_normals(), dtype=np.float32)
-            )
+        norm_mv = mesh_data.normals_memoryview()
+        if hasattr(norm_mv, "cast") and norm_mv.format == "B":
+            norm_mv = norm_mv.cast("f")
+        mesh.vertices.foreach_set("normal", norm_mv)
     except Exception:
         pass
 
@@ -244,27 +211,21 @@ def inject_uvs_standard(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] 
         return
 
     # Priority 1: Fast loop UVs memoryview
-    if hasattr(mesh_data, "loop_uvs_memoryview"):
-        try:
-            loop_uv_mv = mesh_data.loop_uvs_memoryview()
-            if len(loop_uv_mv) == num_loops * 2 * 4:
-                loop_uv_arr = np.frombuffer(loop_uv_mv, dtype=np.float32)
-                if uv_attr is not None and len(uv_attr.data) == num_loops:
-                    uv_attr.data.foreach_set("vector", loop_uv_arr)
-                    return
-                elif hasattr(uv_layer, "data") and hasattr(uv_layer.data, "foreach_set"):
-                    uv_layer.data.foreach_set("uv", loop_uv_arr)
-                    return
-        except Exception:
-            pass
+    try:
+        loop_uv_mv = mesh_data.loop_uvs_memoryview()
+        if len(loop_uv_mv) == num_loops * 2 * 4:
+            loop_uv_arr = np.frombuffer(loop_uv_mv, dtype=np.float32)
+            if uv_attr is not None and len(uv_attr.data) == num_loops:
+                uv_attr.data.foreach_set("vector", loop_uv_arr)
+                return
+            elif hasattr(uv_layer, "data") and hasattr(uv_layer.data, "foreach_set"):
+                uv_layer.data.foreach_set("uv", loop_uv_arr)
+                return
+    except Exception:
+        pass
 
     # Priority 2: Standard UV flat array
-    uv_mv = mesh_data.uvs_memoryview() if hasattr(mesh_data, "uvs_memoryview") else None
-    if uv_mv is not None:
-        uv_np = np.frombuffer(uv_mv, dtype=np.float32)
-    else:
-        uv_flat = mesh_data.get_flat_uvs() if hasattr(mesh_data, "get_flat_uvs") else None
-        uv_np = np.ascontiguousarray(uv_flat, dtype=np.float32) if uv_flat else None
+    uv_np = np.frombuffer(mesh_data.uvs_memoryview(), dtype=np.float32)
 
     if uv_np is not None:
         if len(uv_np) == num_loops * 2:
@@ -294,7 +255,7 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
     if not hasattr(mesh, "color_attributes") or not hasattr(mesh.color_attributes, "get"):
         return
     try:
-        col_mv = mesh_data.colors_memoryview() if hasattr(mesh_data, "colors_memoryview") else None
+        col_mv = mesh_data.colors_memoryview()
         if col_mv is None:
             return
 
@@ -336,7 +297,7 @@ def inject_face_materials_standard(mesh: Any, mesh_data: Any) -> None:
 
     # 1. If an existing material_index attribute is present, populate it
     mat_attr = safe_get_attribute(mesh, "material_index")
-    if mat_attr is not None and len(mat_attr.data) == num_polys and hasattr(mesh_data, "face_materials_memoryview"):
+    if mat_attr is not None and len(mat_attr.data) == num_polys:
         try:
             mats_mv = mesh_data.face_materials_memoryview()
             if len(mats_mv) == num_polys * 2:
@@ -347,18 +308,11 @@ def inject_face_materials_standard(mesh: Any, mesh_data: Any) -> None:
 
     # 2. Directly set built-in polygon material indices (never create illegal duplicate attribute)
     try:
-        mats_mv = mesh_data.face_materials_memoryview() if hasattr(mesh_data, "face_materials_memoryview") else None
-        if mats_mv is not None:
-            if hasattr(mats_mv, "cast") and mats_mv.format == "B":
-                mats_mv = mats_mv.cast("H")
-            if len(mats_mv) == num_polys:
-                mesh.polygons.foreach_set("material_index", mats_mv)
-                return
-
-        face_mats = mesh_data.get_face_materials() if hasattr(mesh_data, "get_face_materials") else None
-        if face_mats and len(face_mats) == num_polys:
-            mat_arr = np.ascontiguousarray(face_mats, dtype=np.uint16)
-            mesh.polygons.foreach_set("material_index", mat_arr)
+        mats_mv = mesh_data.face_materials_memoryview()
+        if hasattr(mats_mv, "cast") and mats_mv.format == "B":
+            mats_mv = mats_mv.cast("H")
+        if len(mats_mv) == num_polys:
+            mesh.polygons.foreach_set("material_index", mats_mv)
     except Exception as e:
         logger.debug("Standard material_index foreach_set error: %s", e)
 

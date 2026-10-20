@@ -234,10 +234,10 @@ PY
 
 验收：
 
-- [ ] `rg "compute_flat_material_props_buffer|expanded = \\["` 无命中。
-- [ ] 无 `mtk is None or not hasattr` 的假数据分支。
-- [ ] `pytest tests/test_material_pipeline.py tests/test_mesh_bridge.py tests/test_save_bridge.py -q` 通过。
-- [ ] Python bridge 导入时缺 native API 直接报 `RuntimeError`，不再返回假数据。
+- [x] `rg "expanded = \\["` 无命中；`compute_flat_material_props_buffer` 只剩直接 native 调用。
+- [x] compute/save/extrude 路径不再返回假数据；缺失 native API 直接抛 `RuntimeError`。
+- [x] 全量 Python 测试通过（271 passed / 70 skipped）。
+- [x] `bridge/world.py` 不再吞 `TypeError`，参数错误会直接暴露。
 
 ### B3：Rust 零调用方 API（1–2 天）
 
@@ -393,7 +393,7 @@ rg -n --glob '!**/target/**' --glob '!**/__pycache__/**' \
 |---|---|---|---|
 | B0 基线 | 进行中 | 基线测试已跑通（Rust 323 / Python 271+73skip）；分支、API/菜单快照待做 | 测试全绿 |
 | B1 UI/菜单 | 已完成（自动化） | 删 4 个算子 + 空菜单 + 旧 registry；Python 271 passed / 70 skipped | menu 测试 |
-| B2 Python 胶水 | 待开始 | 删假回退/旧 wheel 回退 | pytest 子集 |
+| B2 Python 胶水 | 已完成（自动化） | 删 extrude/material/point-cloud/mesh/save/world 假回退与 TypeError 重试 | 全量 pytest |
 | B3 Rust 零调用方 | 待开始 | 删 SectionMesher/process_mesh/FFI/direct_copy；WASM 保留 | cargo test |
 | B4 旧格式/协议 | 待开始 | cache/package/save/sync/unified_mesh | cargo test |
 | B5 数据模型 | 待开始 | 点云 palette、UV 布局、weld | 1M 基准 + Blender |

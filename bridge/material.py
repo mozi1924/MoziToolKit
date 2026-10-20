@@ -130,17 +130,7 @@ def compute_biome_tint_attributes(
     Compute packed tint weights, colors, and colormap UV coordinates using Rust core.
     Returns dictionary with keys: 'packed_tint_data', 'tint_colors', 'colormap_uvs'.
     """
-    mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "compute_biome_tint_attributes"):
-        n = len(face_texture_keys)
-        temp = custom_temp if custom_temp is not None else 0.8
-        hum = custom_humidity if custom_humidity is not None else 0.4
-        uv = get_colormap_uv(temp, hum)
-        return {
-            "packed_tint_data": [[0.0, 0.0, 0.0, 0.0]] * n,
-            "tint_colors": [[1.0, 1.0, 1.0, 1.0]] * n,
-            "colormap_uvs": [[uv[0], uv[1], 0.0]] * n,
-        }
+    mtk = require_libmtk("compute_biome_tint_attributes")
 
     if face_biomes is not None:
         return mtk.compute_biome_tint_attributes(
@@ -226,10 +216,7 @@ def compute_mesh_biome_attributes_from_storage(
     """
     Compute coordinate-aware 3D biome tint attributes from VoxelStorage container.
     """
-    mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "compute_mesh_biome_attributes_from_storage"):
-        return compute_biome_tint_attributes(face_texture_keys, "PLAINS", resolver=resolver)
-
+    mtk = require_libmtk("compute_mesh_biome_attributes_from_storage")
     return mtk.compute_mesh_biome_attributes_from_storage(
         face_texture_keys,
         block_xs,
@@ -363,9 +350,7 @@ def compute_mesh_material_props(
     Compute packed material properties `[emission, thin_wall, transmission, sticker_threshold]`
     for a list of face texture keys in parallel Rayon in Rust.
     """
-    mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "compute_mesh_material_props"):
-        return [[0.0, 0.0, 0.0, 0.0]] * len(face_source_keys)
+    mtk = require_libmtk("compute_mesh_material_props")
     return mtk.compute_mesh_material_props(
         list(face_source_keys),
         list(block_names) if block_names is not None else None,
@@ -380,9 +365,7 @@ def compute_flat_material_props(
     Compute flat packed material properties (float array of length len * 4)
     for zero-copy memoryview / foreach_set injection into Blender Mesh.
     """
-    mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "compute_flat_material_props"):
-        return [0.0] * (len(face_source_keys) * 4)
+    mtk = require_libmtk("compute_flat_material_props")
     return mtk.compute_flat_material_props(
         list(face_source_keys),
         list(block_names) if block_names is not None else None,
@@ -394,17 +377,10 @@ def compute_flat_material_props_buffer(
     block_names: Optional[Sequence[str]] = None,
 ) -> Any:
     """Compute flat material properties as a zero-copy memoryview over Rust-owned floats."""
-    mtk = get_libmtk()
+    mtk = require_libmtk("compute_flat_material_props_memoryview")
     keys = list(face_source_keys)
     names = list(block_names) if block_names is not None else None
-    if mtk is not None and hasattr(mtk, "compute_flat_material_props_memoryview"):
-        return mtk.compute_flat_material_props_memoryview(keys, names)
-    # Older native builds (e.g. a stale ci-latest wheel) lack the memoryview entry
-    # point. Do not silently zero emission/thin-wall/transmission: use the list API
-    # and expose it as a contiguous f32 array, which also supports the buffer protocol.
-    if mtk is not None and hasattr(mtk, "compute_flat_material_props"):
-        return np.asarray(mtk.compute_flat_material_props(keys, names), dtype=np.float32)
-    return np.zeros(len(keys) * 4, dtype=np.float32)
+    return mtk.compute_flat_material_props_memoryview(keys, names)
 
 
 def compute_flat_material_props_paletted_buffer(
@@ -413,31 +389,14 @@ def compute_flat_material_props_paletted_buffer(
     block_names: Optional[Sequence[str]] = None,
 ) -> Any:
     """Compute flat material properties for a palette + per-face indices as a memoryview."""
-    mtk = get_libmtk()
+    mtk = require_libmtk("compute_flat_material_props_paletted_memoryview")
     palette_list = list(palette)
     names = list(block_names) if block_names is not None else None
-    if mtk is not None and hasattr(mtk, "compute_flat_material_props_paletted_memoryview"):
-        # Keep the indices buffer (numpy / memoryview) zero-copy on the fast path.
-        return mtk.compute_flat_material_props_paletted_memoryview(
-            palette_list,
-            face_indices,
-            names,
-        )
-    if mtk is not None and hasattr(mtk, "compute_flat_material_props"):
-        indices = [int(i) for i in face_indices]
-        expanded = [
-            palette_list[i] if 0 <= i < len(palette_list) else "" for i in indices
-        ]
-        flat_block_names = None
-        if names is not None:
-            flat_block_names = [
-                names[i] if i < len(names) else "" for i in range(len(expanded))
-            ]
-        return np.asarray(
-            mtk.compute_flat_material_props(expanded, flat_block_names),
-            dtype=np.float32,
-        )
-    return np.zeros(len(face_indices) * 4, dtype=np.float32)
+    return mtk.compute_flat_material_props_paletted_memoryview(
+        palette_list,
+        face_indices,
+        names,
+    )
 
 
 def get_material_props(

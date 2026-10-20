@@ -616,23 +616,14 @@ def mesh_voxel_storage(
                     cached_world.clear_cache()
                 except Exception:
                     pass
-            try:
-                cached_world = mtk.VoxelWorld.from_storage(
-                    storage=storage,
-                    config=config,
-                    culler=culler,
-                    model_db=model_db,
-                    unified_mesh=True,
-                    num_threads=num_threads,
-                )
-            except TypeError:
-                cached_world = mtk.VoxelWorld.from_storage(
-                    storage=storage,
-                    config=config,
-                    culler=culler,
-                    model_db=model_db,
-                    unified_mesh=True,
-                )
+            cached_world = mtk.VoxelWorld.from_storage(
+                storage=storage,
+                config=config,
+                culler=culler,
+                model_db=model_db,
+                unified_mesh=True,
+                num_threads=num_threads,
+            )
             _WORLD_SESSIONS[world_session_key] = cached_world
             _WORLD_SESSION_META[world_session_key] = {
                 "fingerprint": current_fp,
@@ -641,37 +632,22 @@ def mesh_voxel_storage(
             if progress_callback is not None:
                 from .progress import wrap_progress_callback
                 wrapped_cb = wrap_progress_callback(progress_callback)
-                try:
-                    mesh_data = cached_world.rebuild_all(callback=wrapped_cb)
-                except TypeError:
-                    mesh_data = cached_world.rebuild_all()
+                mesh_data = cached_world.rebuild_all(callback=wrapped_cb)
             else:
                 mesh_data = cached_world.rebuild_all()
     elif hasattr(mtk, "VoxelWorld") and hasattr(mtk.VoxelWorld, "from_storage"):
-        try:
-            world = mtk.VoxelWorld.from_storage(
-                storage=storage,
-                config=config,
-                culler=culler,
-                model_db=model_db,
-                unified_mesh=True,
-                num_threads=num_threads,
-            )
-        except TypeError:
-            world = mtk.VoxelWorld.from_storage(
-                storage=storage,
-                config=config,
-                culler=culler,
-                model_db=model_db,
-                unified_mesh=True,
-            )
+        world = mtk.VoxelWorld.from_storage(
+            storage=storage,
+            config=config,
+            culler=culler,
+            model_db=model_db,
+            unified_mesh=True,
+            num_threads=num_threads,
+        )
         if progress_callback is not None:
             from .progress import wrap_progress_callback
             wrapped_cb = wrap_progress_callback(progress_callback)
-            try:
-                mesh_data = world.rebuild_all(callback=wrapped_cb)
-            except TypeError:
-                mesh_data = world.rebuild_all()
+            mesh_data = world.rebuild_all(callback=wrapped_cb)
         else:
             mesh_data = world.rebuild_all()
     else:
