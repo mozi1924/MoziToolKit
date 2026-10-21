@@ -8,6 +8,7 @@ Strictly host-agnostic, zero scene-orchestration, and zero-computation.
 from .cull import cull_mesh_faces
 from .debug import (
     build_debug_world_data,
+    clear_debug_world_cache,
     generate_debug_world_mesh,
     is_debug_world_available,
     load_debug_world_storage,
@@ -247,6 +248,7 @@ __all__ = [
     "reset_material_properties",
     # Debug
     "is_debug_world_available",
+    "clear_debug_world_cache",
     "load_debug_world_storage",
     "generate_debug_world_mesh",
     "build_debug_world_data",

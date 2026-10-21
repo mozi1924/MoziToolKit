@@ -223,4 +223,29 @@ class TestWorldBridgePipeline:
             assert mock_ensure_atlas.called, "ensure_world_materials must be called for ATLAS mode even if atlas is None"
             assert not mock_standalone.called, "restore_materials_from_provenance must NOT be called when material_mode is ATLAS"
 
+    def test_debug_world_gate_rejection_without_assets(self, monkeypatch):
+        from MoziToolKit.bridge.debug import (
+            is_debug_world_available,
+            load_debug_world_storage,
+            build_debug_world_data,
+        )
+
+        # Clear asset environment variables
+        for key in ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS", "MTK_TEST_JAR"):
+            monkeypatch.delenv(key, raising=False)
+
+        empty_prefs = type("MockPrefs", (), {"resource_packs": [], "resource_pack_path": ""})()
+
+        # Gate 1: is_debug_world_available must return False when no assets are present
+        assert not is_debug_world_available(prefs=empty_prefs)
+
+        # Gate 2: load_debug_world_storage must raise ValueError / RuntimeError rejecting generation
+        with pytest.raises((ValueError, RuntimeError)):
+            load_debug_world_storage(prefs=empty_prefs)
+
+        # Gate 3: build_debug_world_data must raise ValueError rejecting generation
+        with pytest.raises((ValueError, RuntimeError)):
+            build_debug_world_data(prefs=empty_prefs)
+
+
 

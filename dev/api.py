@@ -19,7 +19,7 @@ except (ImportError, ValueError):
         from MoziToolKit import bridge
 
 
-def get_diagnostics() -> Dict[str, Any]:
+def get_diagnostics(prefs=None) -> Dict[str, Any]:
     """Returns runtime diagnostic information including native engine status and cache state."""
     info = get_engine_status()
     try:
@@ -28,7 +28,7 @@ def get_diagnostics() -> Dict[str, Any]:
     except Exception as e:
         info["cache_error"] = str(e)
 
-    info["debug_world_available"] = bridge.is_debug_world_available()
+    info["debug_world_available"] = bridge.is_debug_world_available(prefs)
     return info
 
 
@@ -78,9 +78,6 @@ def run_mesher_benchmark(
     When with_models is True (default), runs full block model baking + atlas UV remapping.
     Returns timing statistics and polygon generation rate.
     """
-    if not bridge.is_debug_world_available():
-        raise RuntimeError("Native libmtk_py embedded debug world is unavailable.")
-
     if prefs is None:
         try:
             from ..utils.system.dependencies import get_prefs
@@ -90,9 +87,12 @@ def run_mesher_benchmark(
                 from utils.system.dependencies import get_prefs
                 prefs = get_prefs()
             except Exception:
-                pass
+                prefs = None
 
-    storage = bridge.load_debug_world_storage()
+    if not bridge.is_debug_world_available(prefs):
+        raise RuntimeError("Native libmtk_py debug world capability is unavailable or vanilla client assets not configured.")
+
+    storage = bridge.load_debug_world_storage(prefs=prefs)
 
     durations = []
     mesh_data = None

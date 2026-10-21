@@ -55,16 +55,80 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
 
     _runner: Optional[ModalTaskRunner] = None
 
-    def execute(self, context):
-        if not bridge.is_debug_world_available():
-            self.report({"ERROR"}, "libmtk_py debug world capability is unavailable")
-            return {"CANCELLED"}
-
+    @classmethod
+    def poll(cls, context):
         try:
             from ...utils.system.dependencies import get_prefs
-            prefs = get_prefs()
+            from ...utils.assets.guard import can_execute_asset_pipeline
+            prefs = get_prefs(context)
         except Exception:
-            prefs = None
+            try:
+                from utils.system.dependencies import get_prefs
+                from utils.assets.guard import can_execute_asset_pipeline
+                prefs = get_prefs(context)
+            except Exception:
+                prefs = None
+
+        if not bridge.is_debug_world_available(prefs):
+            if prefs:
+                try:
+                    can_run, reason = can_execute_asset_pipeline(prefs)
+                    if not can_run and hasattr(cls, "poll_message_set"):
+                        cls.poll_message_set(reason)
+                except Exception:
+                    pass
+            return False
+        return True
+
+    def execute(self, context):
+        try:
+            from ...utils.system.dependencies import get_prefs
+            from ...utils.assets.guard import (
+                can_execute_asset_pipeline,
+                check_asset_cache_status,
+                ensure_pipeline_assets_ready_sync,
+            )
+            prefs = get_prefs(context)
+        except Exception:
+            try:
+                from utils.system.dependencies import get_prefs
+                from utils.assets.guard import (
+                    can_execute_asset_pipeline,
+                    check_asset_cache_status,
+                    ensure_pipeline_assets_ready_sync,
+                )
+                prefs = get_prefs(context)
+            except Exception:
+                prefs = None
+
+        # 1. Base pack gate: verify valid vanilla client base pack before proceeding
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({"WARNING"}, reason or "Valid Minecraft Vanilla Client JAR base pack is required.")
+            return {"CANCELLED"}
+
+        # 2. Asset cache gate: verify and ensure precompiled .mtkcache is ready on main thread
+        status = check_asset_cache_status(prefs)
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({"WARNING"}, reason or "Valid Minecraft Vanilla Client JAR base pack is required.")
+            return {"CANCELLED"}
+        if status in ("MISSING", "STALE"):
+            try:
+                self.report(
+                    {"INFO"},
+                    f"Asset cache is {status.lower()}; automatically precompiling before loading debug world...",
+                )
+                success, err_msg = ensure_pipeline_assets_ready_sync(prefs)
+                if not success:
+                    self.report({"ERROR"}, f"Asset precompilation failed: {err_msg}")
+                    return {"CANCELLED"}
+            except Exception as e:
+                self.report({"ERROR"}, f"Failed to precompile asset cache: {e}")
+                return {"CANCELLED"}
+
+        if not bridge.is_debug_world_available(prefs):
+            self.report({"ERROR"}, "libmtk_py debug world capability is unavailable")
+            return {"CANCELLED"}
 
         # Synchronous fallback for CLI / tests when run_async is explicitly False
         if not self.run_async:

@@ -23,14 +23,27 @@ class MOZI_OT_dev_mesh_benchmark(bpy.types.Operator):
         max=10,
     )
 
-    def execute(self, context):
-        if not bridge.is_debug_world_available():
-            self.report({"ERROR"}, "libmtk_py debug world capability is unavailable")
-            return {"CANCELLED"}
-
+    @classmethod
+    def poll(cls, context):
         try:
             from ...utils.system.dependencies import get_prefs
             prefs = get_prefs(context)
+        except Exception:
+            prefs = None
+        return bridge.is_debug_world_available(prefs)
+
+    def execute(self, context):
+        try:
+            from ...utils.system.dependencies import get_prefs
+            prefs = get_prefs(context)
+        except Exception:
+            prefs = None
+
+        if not bridge.is_debug_world_available(prefs):
+            self.report({"ERROR"}, "libmtk_py debug world capability is unavailable or vanilla client assets not configured")
+            return {"CANCELLED"}
+
+        try:
             stats = run_mesher_benchmark(iterations=self.iterations, prefs=prefs)
             msg = (
                 f"Benchmark: {stats['avg_ms']}ms avg ({stats['quads_per_second']:,} quads/sec) "

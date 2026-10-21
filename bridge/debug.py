@@ -20,20 +20,54 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-def is_debug_world_available() -> bool:
-    """Checks if libmtk_py has the embedded debug world capability."""
+def is_debug_world_available(prefs=None) -> bool:
+    """
+    Checks if libmtk_py has the debug world capability and valid Minecraft client
+    assets are configured (via preferences or environment variables).
+    """
     mtk = get_libmtk()
-    return mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world")
+    if mtk is None or not hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world"):
+        return False
+
+    # Check if vanilla client pack is configured in preferences or test environment
+    try:
+        from ..utils.assets.guard import has_valid_vanilla_pack
+        return has_valid_vanilla_pack(prefs)
+    except Exception:
+        try:
+            from utils.assets.guard import has_valid_vanilla_pack
+            return has_valid_vanilla_pack(prefs)
+        except Exception:
+            pass
+
+    # Fallback to checking environment variables (for non-Blender / test scripts)
+    import os
+    from pathlib import Path
+
+    for env_key in ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS", "MTK_TEST_JAR"):
+        val = os.environ.get(env_key)
+        if val and Path(val).exists():
+            return True
+    return False
+
+
+def clear_debug_world_cache() -> None:
+    """Clears the internally cached debug storage in libmtk_py."""
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "clear_debug_world_cache"):
+        mtk.VoxelStorage.clear_debug_world_cache()
 
 
 def load_debug_world_storage(prefs=None, states=None, stack=None):
     """
     Loads or dynamically generates the canonical Minecraft debug world into a VoxelStorage instance.
-    Supports pure-code layout from:
-    1. Explicit blockstates list;
-    2. Active configured resource pack stack (including any mod packs);
-    3. Configured unpack directory (`MC_DIR` / `MC_ASSETS_DIR` / `MTK_TEST_ASSETS`);
-    4. Builtin pure-code fallback generator.
+    Fully driven by precompiled asset cache and configured resource pack stack:
+    1. Explicit blockstates list (if provided);
+    2. Active precompiled model database from cache (`.mtkcache`);
+    3. Active configured resource pack stack containing a Vanilla Client base pack;
+    4. Directory/JAR unpack environment fallback.
+
+    Strictly rejects generation with ValueError if no valid vanilla client assets are found.
     """
     mtk = require_libmtk("load_debug_world_storage")
     voxel_storage = getattr(mtk, "VoxelStorage", None)
@@ -45,6 +79,32 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
             return voxel_storage.create_debug_world_from_states(states)
         return voxel_storage.create_debug_world(states=states)
 
+    # Base pack gate: when preferences are explicitly supplied, reject if no vanilla client base pack is active
+    if prefs is not None:
+        try:
+            from ..utils.assets.guard import has_valid_vanilla_pack
+            valid = has_valid_vanilla_pack(prefs)
+        except Exception:
+            try:
+                from utils.assets.guard import has_valid_vanilla_pack
+                valid = has_valid_vanilla_pack(prefs)
+            except Exception:
+                valid = True
+        if not valid:
+            clear_debug_world_cache()
+            raise ValueError("Cannot load debug world: no Minecraft Vanilla Client base pack configured in preferences")
+
+    # 1. Prefer driving directly from active precompiled asset cache (.mtkcache)
+    try:
+        from .assets.cache import load_model_database_from_cache
+        cached_db = load_model_database_from_cache(prefs)
+        if cached_db is not None and not cached_db.is_empty():
+            if hasattr(voxel_storage, "create_debug_world_from_model_db"):
+                return voxel_storage.create_debug_world_from_model_db(cached_db)
+    except Exception as e:
+        logger.debug(f"Could not load model_db from cache for debug world: {e}")
+
+    # 2. Drive from active configured resource pack stack
     if stack is None:
         try:
             from .assets import get_configured_pack_stack
@@ -54,10 +114,11 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
 
     if stack is not None and hasattr(voxel_storage, "create_debug_world_from_pack_stack"):
         pack_count = getattr(stack, "get_pack_count", lambda: 0)()
-        if pack_count > 0:
+        has_base = getattr(stack, "has_vanilla_client_base", lambda: False)()
+        if pack_count > 0 and has_base:
             return voxel_storage.create_debug_world_from_pack_stack(stack)
 
-        # Fallback to a configured unpack directory when the active stack has no packs.
+        # Fallback to configured unpack directory when stack has no packs or lacks vanilla base
         import os
         from pathlib import Path
 
@@ -68,8 +129,10 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
             mc_path = Path(env_val)
             if mc_path.exists() and (mc_path / "assets").exists():
                 stack.add_directory_pack(str(mc_path.resolve()), "VanillaMC")
-                return voxel_storage.create_debug_world_from_pack_stack(stack)
+                if getattr(stack, "has_vanilla_client_base", lambda: False)():
+                    return voxel_storage.create_debug_world_from_pack_stack(stack)
 
+    # 3. Direct backend debug world creation (enforces rejection gate if no vanilla assets found)
     return voxel_storage.create_debug_world()
 
 
@@ -152,6 +215,20 @@ def build_debug_world_data(
     from .world import mesh_voxel_storage
 
     storage = load_debug_world_storage(prefs=prefs, states=states, stack=stack)
+
+    # Asset cache gate: resolve and strictly require model_db and atlas
+    if model_db is None or atlas is None or biome_resolver is None:
+        from .world import get_world_pipeline_assets
+        cached_mdb, cached_atlas, cached_resolver = get_world_pipeline_assets(prefs)
+        model_db = model_db or cached_mdb
+        atlas = atlas or cached_atlas
+        biome_resolver = biome_resolver or cached_resolver
+
+    if model_db is None:
+        raise ValueError("Active asset cache (model_db) is strictly required to mesh Minecraft debug world")
+    if atlas is None:
+        raise ValueError("Active asset cache (atlas) is strictly required to mesh Minecraft debug world")
+
     mesh_data, elapsed_ms = mesh_voxel_storage(
         storage=storage,
         model_db=model_db,
@@ -170,6 +247,7 @@ def build_debug_world_data(
 
 __all__ = [
     "is_debug_world_available",
+    "clear_debug_world_cache",
     "load_debug_world_storage",
     "generate_debug_world_mesh",
     "build_debug_world_data",

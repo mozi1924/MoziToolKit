@@ -107,6 +107,13 @@ def invalidate_asset_cache_memory() -> None:
         except Exception:
             pass
 
+    try:
+        mtk = get_libmtk()
+        if mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "clear_debug_world_cache"):
+            mtk.VoxelStorage.clear_debug_world_cache()
+    except Exception:
+        pass
+
 
 def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) -> Optional[Path]:
     """
