@@ -32,10 +32,8 @@ def sample_uv_alpha(
     invert_y: bool = False,
 ) -> float:
     """Sample alpha value [0.0, 1.0] at normalized UV coordinate."""
-    x = max(0, min(width - 1, int(u * width)))
-    y = max(0, min(height - 1, int((1.0 - v if invert_y else v) * height)))
-    idx = (y * width + x) * 4 + 3
-    return float(pixels[idx]) if idx < len(pixels) else 1.0
+    mtk = require_libmtk("sample_uv_alpha")
+    return mtk.sample_uv_alpha_f32(u, v, width, height, _as_pixel_buffer(pixels), invert_y)
 
 
 def is_face_transparent(
@@ -48,10 +46,11 @@ def is_face_transparent(
     invert_y: bool = False,
 ) -> bool:
     """Check if a single face is transparent against texture pixels."""
-    res = batch_analyze_transparent_faces(
-        [face_uvs], width, height, pixels, mode, threshold, invert_y
+    mtk = require_libmtk("is_face_transparent")
+    uv_list = [tuple(p) for p in face_uvs]
+    return mtk.is_face_transparent_f32(
+        uv_list, width, height, _as_pixel_buffer(pixels), mode, threshold, invert_y
     )
-    return bool(res[0]) if res else False
 
 
 def batch_analyze_transparent_faces(

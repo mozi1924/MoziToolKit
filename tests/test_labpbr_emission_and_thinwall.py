@@ -97,6 +97,25 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         self.assertEqual(get_block_emission_strength("candle", {"lit": "true", "candles": 3}), 9.0)
         self.assertEqual(get_block_emission_strength("candle", {"lit": "false", "candles": 3}), 0.0)
 
+    def test_state_dependent_emissions_come_from_the_rust_registry(self):
+        """Stateful emission rules must be resolved by the Rust registry, never by a Python copy.
+
+        These cases are deliberately outside the common ``campfire/furnace/candle`` trio, so a
+        hand-written Python re-implementation silently returning 0 (or the wrong value) fails here.
+        """
+        self.assertEqual(get_block_emission_strength("soul_campfire", {"lit": "true"}), 10.0)
+        self.assertEqual(get_block_emission_strength("redstone_lamp", {"lit": "true"}), 15.0)
+        self.assertEqual(get_block_emission_strength("copper_bulb", {"lit": "true"}), 15.0)
+        self.assertEqual(get_block_emission_strength("respawn_anchor", {"charges": "4"}), 15.0)
+        self.assertEqual(get_block_emission_strength("respawn_anchor", {"charges": "0"}), 0.0)
+        self.assertEqual(get_block_emission_strength("sea_pickle", {"pickles": "4"}), 15.0)
+        self.assertEqual(get_block_emission_strength("sea_pickle", {"waterlogged": "false"}), 0.0)
+        self.assertEqual(get_block_emission_strength("cave_vines", {"berries": "true"}), 14.0)
+        self.assertEqual(get_block_emission_strength("light", {"level": "7"}), 7.0)
+        self.assertEqual(get_block_emission_strength("redstone_wire", {"power": "12"}), 12.0)
+        # Texture-level emissions are part of the same registry lookup path.
+        self.assertEqual(get_block_emission_strength("", None, "glowstone"), 15.0)
+
     def test_vanilla_catalog_thin_wall(self):
         """Verify thin wall whitelist for foliage and vegetation."""
         self.assertTrue(is_thin_wall_block("oak_leaves"))

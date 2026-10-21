@@ -108,24 +108,35 @@ class TestFluidUVBridge(unittest.TestCase):
         self.assertAlmostEqual(out_uvs[3][1], 0.8, places=5)
 
     def test_top_uvs_generation_and_rotation(self):
-        # Flowing top with 0 rotation
-        top_0 = get_fluid_top_uvs(is_flowing=True, rotation=0.0)
-        self.assertEqual(len(top_0), 4)
-        self.assertAlmostEqual(top_0[0][0], 0.25, places=5)
-        self.assertAlmostEqual(top_0[0][1], 0.25, places=5)
-        self.assertAlmostEqual(top_0[2][0], 0.75, places=5)
-        self.assertAlmostEqual(top_0[2][1], 0.75, places=5)
+        # Corner order is [p0, p1, p2, p3] and must match Minecraft's sprite orientation.
+        # Flowing: 16x16 window inside a 32x32 animated sprite.
+        self.assertEqual(
+            get_fluid_top_uvs(is_flowing=True, rotation=0.0),
+            [(0.25, 0.25), (0.25, 0.75), (0.75, 0.75), (0.75, 0.25)],
+        )
 
-        # Still pool
-        still = get_fluid_top_uvs(is_flowing=False)
-        self.assertEqual(still[0], (0.0, 0.0))
-        self.assertEqual(still[2], (1.0, 1.0))
+        # Still pool: full sprite, NOT the same winding as the flowing window.
+        self.assertEqual(
+            get_fluid_top_uvs(is_flowing=False, rotation=0.0),
+            [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)],
+        )
+
+        # Rotation is applied as -angle (MC Y-down UV space). A Python re-implementation
+        # that rotates by +angle yields a different corner order and must fail here.
+        self.assertEqual(
+            [(round(u, 6), round(v, 6)) for u, v in get_fluid_top_uvs(True, math.pi / 2.0)],
+            [(0.25, 0.75), (0.75, 0.75), (0.75, 0.25), (0.25, 0.25)],
+        )
 
     def test_side_uvs_generation(self):
+        # Side faces sample the [0.0, 0.5] quadrant of the 32x32 sprite.
         side = get_fluid_side_uvs(0.8, 0.2)
-        self.assertEqual(len(side), 4)
-        self.assertAlmostEqual(side[0][1], (1.0 - 0.8) * 0.5, places=5)
-        self.assertAlmostEqual(side[3][1], (1.0 - 0.2) * 0.5, places=5)
+        self.assertEqual(
+            [(round(u, 6), round(v, 6)) for u, v in side],
+            [(0.0, 0.1), (0.0, 0.5), (0.5, 0.5), (0.5, 0.4)],
+        )
+        # A collapsed/degenerate quad (duplicate corners) would break the fluid wall UVs.
+        self.assertEqual(len({(round(u, 6)) for u, _ in side}), 2)
 
     def test_batch_repair_fluid_uv(self):
         verts_flat = []

@@ -30,9 +30,19 @@ def repair_extruded_side_uv(
     adjacent_uv_strip: Optional[Sequence[Tuple[float, float]]] = None,
 ) -> List[Tuple[float, float]]:
     """Reconstruct 4 UV corner coordinates for an extruded side quad polygon."""
-    ua, va = uv_base_a
-    ub, vb = uv_base_b
-    return [(ua, va), (ub, vb), (ub, vb + step_v), (ua, va + step_v)]
+    mtk = require_libmtk("repair_extruded_side_uv")
+    adj = list(adjacent_uv_strip) if adjacent_uv_strip is not None else None
+    return mtk.repair_extruded_side_uv(
+        tuple(uv_base_a),
+        tuple(uv_base_b),
+        tuple(top_normal),
+        tuple(extrude_vec),
+        mode,
+        step_u,
+        step_v,
+        top_uv_bounds,
+        adj,
+    )
 
 
 def generate_random_extrude_heights(

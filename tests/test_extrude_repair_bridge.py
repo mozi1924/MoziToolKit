@@ -13,27 +13,74 @@ from bridge.extrude import repair_extruded_side_uv, generate_random_extrude_heig
 
 class TestExtrudeRepairBridge(unittest.TestCase):
 
-    def test_repair_extruded_side_uv_inward(self):
-        uv_base_a = (0.0, 0.0)
-        uv_base_b = (1.0 / 16.0, 0.0)
-        top_normal = (0.0, 0.0, 1.0)
-        extrude_vec = (0.0, 0.0, 0.1)
+    # Shared inputs: a 1-pixel wide horizontal base edge on a 16x16 sprite.
+    BASE_KWARGS = dict(
+        uv_base_a=(0.0, 0.0),
+        uv_base_b=(1.0 / 16.0, 0.0),
+        top_normal=(0.0, 0.0, 1.0),
+        step_u=1.0 / 16.0,
+        step_v=1.0 / 16.0,
+        top_uv_bounds=(0.0, 0.0, 1.0, 1.0),
+    )
 
-        uvs = repair_extruded_side_uv(
-            uv_base_a=uv_base_a,
-            uv_base_b=uv_base_b,
-            top_normal=top_normal,
-            extrude_vec=extrude_vec,
-            mode="SMART",
-            step_u=1.0 / 16.0,
-            step_v=1.0 / 16.0,
-            top_uv_bounds=(0.0, 0.0, 1.0, 1.0),
+    def assert_uvs(self, actual, expected):
+        self.assertEqual(len(actual), len(expected))
+        for (au, av), (eu, ev) in zip(actual, expected):
+            self.assertAlmostEqual(au, eu, places=5)
+            self.assertAlmostEqual(av, ev, places=5)
+
+    def test_repair_extruded_side_uv_outward(self):
+        """Outward extrusion must push the top corners one 1/10-pixel step out of the base edge."""
+        uvs = repair_extruded_side_uv(extrude_vec=(0.0, 0.0, 0.1), mode="OUTWARD", **self.BASE_KWARGS)
+        # Order is [base_a, base_b, top_b, top_a]; base edge is pixel-snapped and padded by 5% of a pixel.
+        self.assert_uvs(
+            uvs,
+            [
+                (0.003125, 0.003125),
+                (0.0625, 0.003125),
+                (0.0625, 0.00625),
+                (0.003125, 0.00625),
+            ],
         )
 
-        self.assertEqual(len(uvs), 4)
-        for u, v in uvs:
-            self.assertTrue(0.0 <= u <= 1.0)
-            self.assertTrue(0.0 <= v <= 1.0)
+    def test_repair_extruded_side_uv_inward_collapses_top(self):
+        """Inward extrusion folds the top corners back onto the base edge (no visible side UV)."""
+        uvs = repair_extruded_side_uv(extrude_vec=(0.0, 0.0, 0.1), mode="INWARD", **self.BASE_KWARGS)
+        self.assert_uvs(
+            uvs,
+            [
+                (0.003125, 0.003125),
+                (0.0625, 0.003125),
+                (0.0625, 0.003125),
+                (0.003125, 0.003125),
+            ],
+        )
+
+    def test_repair_extruded_side_uv_smart_uses_extrude_direction(self):
+        """SMART resolves to OUTWARD for negative dot(extrude_vec, top_normal) and INWARD otherwise."""
+        outward = repair_extruded_side_uv(extrude_vec=(0.0, 0.0, -0.1), mode="SMART", **self.BASE_KWARGS)
+        inward = repair_extruded_side_uv(extrude_vec=(0.0, 0.0, 0.1), mode="SMART", **self.BASE_KWARGS)
+        self.assertNotEqual(outward, inward)
+        self.assert_uvs(
+            outward,
+            [
+                (0.003125, 0.003125),
+                (0.0625, 0.003125),
+                (0.0625, 0.00625),
+                (0.003125, 0.00625),
+            ],
+        )
+
+    def test_repair_extruded_side_uv_reuses_adjacent_strip_when_outward(self):
+        """Outward extrusion must reuse the neighbouring strip verbatim instead of inventing UVs."""
+        strip = [(0.2, 0.2), (0.3, 0.2), (0.3, 0.3), (0.2, 0.3)]
+        uvs = repair_extruded_side_uv(
+            extrude_vec=(0.0, 0.0, -0.1),
+            mode="OUTWARD",
+            adjacent_uv_strip=strip,
+            **self.BASE_KWARGS,
+        )
+        self.assert_uvs(uvs, strip)
 
     def test_generate_random_extrude_heights(self):
         centers = [(0.0, 0.0, 0.0), (1.0, 2.0, 3.0), (4.0, 5.0, 6.0)]

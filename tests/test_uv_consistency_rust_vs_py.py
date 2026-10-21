@@ -99,9 +99,24 @@ class TestUvBridge(unittest.TestCase):
 
         norm, scale, loc = uv_bridge.normalize_uv_for_atlas_tiling(large_quad)
         self.assertEqual(len(norm), 4)
+        # Normalization must actually normalize (an identity no-op would pass a round-trip
+        # check on its own, so pin the intermediate values).
+        self.assertEqual(
+            [(round(u, 6), round(v, 6)) for u, v in norm],
+            [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+        )
+        self.assertEqual([round(c, 6) for c in scale], [3.0, 3.0, 1.0])
+        self.assertEqual([round(c, 6) for c in loc], [0.5, 0.5, 0.0])
+
         restored = uv_bridge.restore_atlas_tiling_uv(norm[0][0], norm[0][1], scale, loc, 0.0)
         self.assertAlmostEqual(restored[0], large_quad[0][0], places=5)
         self.assertAlmostEqual(restored[1], large_quad[0][1], places=5)
+
+        # Rotation must be honoured by restore_atlas_tiling_uv; ignoring it would return
+        # (0.5, 0.5) instead of the rotated position of the normalized origin.
+        rotated = uv_bridge.restore_atlas_tiling_uv(0.0, 0.0, scale, loc, math.pi / 2.0)
+        self.assertAlmostEqual(rotated[0], 2.5, places=5)
+        self.assertAlmostEqual(rotated[1], -0.5, places=5)
 
 
 if __name__ == "__main__":
