@@ -124,22 +124,12 @@ def apply_voxel_mesh_to_blender(
     cloud_count = len(cloud_obj.data.vertices) if cloud_obj and getattr(cloud_obj, "data", None) and hasattr(cloud_obj.data, "vertices") else 0
     cloud_ms = (time.perf_counter() - t0_cloud) * 1000.0
 
-    try:
-        from ...dev.profile_tracker import append_stage_to_last_profile
-    except (ImportError, ValueError):
-        try:
-            from dev.profile_tracker import append_stage_to_last_profile
-        except Exception:
-            append_stage_to_last_profile = None
+    from ..diagnostics import append_stage_to_last_profile
 
-    if append_stage_to_last_profile is not None:
-        try:
-            append_stage_to_last_profile("blender_mesh_injection", inject_ms, getattr(mesh_data, "vertex_count", None))
-            append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
-            if cloud_obj is not None:
-                append_stage_to_last_profile("blender_voxel_cloud_sync", cloud_ms, cloud_count)
-        except Exception:
-            pass
+    append_stage_to_last_profile("blender_mesh_injection", inject_ms, getattr(mesh_data, "vertex_count", None))
+    append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
+    if cloud_obj is not None:
+        append_stage_to_last_profile("blender_voxel_cloud_sync", cloud_ms, cloud_count)
 
     # 5. Set active in viewport
     if context and hasattr(context, "view_layer"):

@@ -328,11 +328,9 @@ def mesh_voxel_storage(
     t1 = time.perf_counter()
 
     if getattr(mesh_data, "profile", None) is not None:
-        try:
-            from ..dev.profile_tracker import record_operation_profile
-            record_operation_profile("Mesh Voxel Storage", mesh_data.profile)
-        except Exception:
-            pass
+        from .diagnostics import record_operation_profile
+
+        record_operation_profile("Mesh Voxel Storage", mesh_data.profile)
 
     elapsed_ms = (t1 - t0) * 1000.0
     return mesh_data, elapsed_ms

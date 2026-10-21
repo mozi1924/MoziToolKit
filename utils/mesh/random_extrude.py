@@ -158,17 +158,15 @@ def repair_mesh_extruded_side_faces_batch(
     )
     rep_ms = (time.perf_counter() - t0_rep) * 1000.0
 
-    try:
-        from ...dev.profile_tracker import record_operation_profile
-        record_operation_profile(
-            "Extrude Repair",
-            None,
-            host_stages=[
-                {"name": "process_flat_mesh_extrude_repair", "duration_ms": rep_ms, "items_count": repaired_count}
-            ],
-        )
-    except Exception:
-        pass
+    from ..diagnostics import record_operation_profile
+
+    record_operation_profile(
+        "Extrude Repair",
+        None,
+        host_stages=[
+            {"name": "process_flat_mesh_extrude_repair", "duration_ms": rep_ms, "items_count": repaired_count}
+        ],
+    )
 
     # 3. Apply Data Out updates back to BMesh
     if uv_layer and modified_uvs:

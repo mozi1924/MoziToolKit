@@ -29,9 +29,7 @@ def cull_mesh_faces(
         mesh_data, tolerance, cull_coplanar_opposite, cull_duplicates
     )
     if getattr(culled_mesh, "profile", None) is not None:
-        try:
-            from ..dev.profile_tracker import record_operation_profile
-            record_operation_profile("Cull Mesh Faces", culled_mesh.profile)
-        except Exception:
-            pass
+        from .diagnostics import record_operation_profile
+
+        record_operation_profile("Cull Mesh Faces", culled_mesh.profile)
     return culled_mesh, stats

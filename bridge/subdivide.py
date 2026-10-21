@@ -111,9 +111,7 @@ def adaptive_pixel_split_mesh(
         weld_dist,
     )
     if getattr(result, "profile", None) is not None:
-        try:
-            from ..dev.profile_tracker import record_operation_profile
-            record_operation_profile("Adaptive Pixel Split", result.profile)
-        except Exception:
-            pass
+        from .diagnostics import record_operation_profile
+
+        record_operation_profile("Adaptive Pixel Split", result.profile)
     return result

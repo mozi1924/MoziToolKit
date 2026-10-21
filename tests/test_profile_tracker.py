@@ -1,10 +1,10 @@
 """
-Test suite for MoziToolKit Dev Profile Tracker.
-Validates profile recording, stage extraction, and lifecycle.
+Test suite for the host-side execution profile tracker.
+Validates profile recording, stage extraction, total-duration handling, and lifecycle.
 """
 
 import unittest
-from dev.profile_tracker import (
+from utils.diagnostics import (
     record_operation_profile,
     append_stage_to_last_profile,
     get_last_profile,
@@ -77,7 +77,11 @@ class TestProfileTracker(unittest.TestCase):
         self.assertIsNotNone(last)
         self.assertEqual(last["operation"], "DictOp")
         self.assertEqual(last["stages"][0]["name"], "dict_stage")
-        self.assertEqual(last["stages"][0]["percent"], 100.0)
+        # The Rust-reported total (10 ms) is authoritative: 2.5 ms of instrumented
+        # stages plus 7.5 ms of uninstrumented work must not be reported as 100%.
+        self.assertEqual(last["total_ms"], 10.0)
+        self.assertEqual(last["stages"][0]["percent"], 25.0)
+        self.assertLessEqual(sum(s["percent"] for s in last["stages"]), 100.0)
 
     def test_append_stage_to_profile(self):
         stages = [MockStage("rust_meshing", 4.0, 10)]

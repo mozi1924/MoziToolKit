@@ -133,11 +133,9 @@ def load_and_mesh_minecraft_save(
     elapsed_ms = (t1 - t0) * 1000.0
 
     if getattr(mesh_data, "profile", None) is not None:
-        try:
-            from ..dev.profile_tracker import record_operation_profile
-            record_operation_profile(f"Import Save ({dimension})", mesh_data.profile)
-        except Exception:
-            pass
+        from .diagnostics import record_operation_profile
+
+        record_operation_profile(f"Import Save ({dimension})", mesh_data.profile)
 
     meta_dict = {
         "level_name": level_meta.level_name,
