@@ -37,9 +37,6 @@ _ACTIVE_CACHE_PKG_PATH: Optional[str] = None
 _ACTIVE_CACHE_MTIME: float = 0.0
 _ACTIVE_CACHE_MANIFEST: Optional[Dict[str, Any]] = None
 
-_cached_cache_stats: Optional[Dict[str, Any]] = None
-_cached_cache_stats_path: Optional[str] = None
-
 _CACHED_BIOME_RESOLVER: Optional[Any] = None
 _CACHED_BIOME_RESOLVER_PKG_PATH: Optional[str] = None
 _CACHED_BIOME_RESOLVER_MTIME: float = 0.0
