@@ -357,8 +357,69 @@ class TestAssetBakeGuard(unittest.TestCase):
         can_run, _ = can_execute_asset_pipeline(empty_prefs)
         self.assertFalse(can_run)
 
-    def test_operators_poll_and_execute_blocked_when_no_vanilla(self):
-        """Verifies operator poll and execute return False / CANCELLED when no vanilla client base pack exists."""
+        # 3. A pack stays configured but no longer provides client assets: NO_VANILLA, NOT READY!
+        mod_only = os.path.join(self.temp_dir, "mod_only")
+        os.makedirs(os.path.join(mod_only, "assets", "mymod", "textures"), exist_ok=True)
+        prefs_mod_only = self._make_prefs([mod_only])
+        self.assertEqual(check_asset_cache_status(prefs_mod_only), "NO_VANILLA")
+        self.assertFalse(has_valid_vanilla_pack(prefs_mod_only))
+
+    def test_gate_rejects_partial_or_mislabeled_vanilla_entries(self):
+        """The gate must be content-based: metadata and partial asset trees are not evidence."""
+        import zipfile
+
+        # Partial tree: textures only (no models/blockstates) cannot back the bake pipeline.
+        partial_dir = os.path.join(self.temp_dir, "partial")
+        os.makedirs(os.path.join(partial_dir, "assets", "minecraft", "textures", "block"), exist_ok=True)
+        self.assertFalse(has_valid_vanilla_pack(self._make_prefs([partial_dir])))
+
+        # Empty directory merely tagged VANILLA must be rejected.
+        empty_dir = os.path.join(self.temp_dir, "empty_vanilla")
+        os.makedirs(empty_dir, exist_ok=True)
+        empty_entry = types.SimpleNamespace(
+            path=empty_dir, enabled=True, pack_type="VANILLA", detected_kind="", name="Empty"
+        )
+        self.assertFalse(has_valid_vanilla_pack(types.SimpleNamespace(resource_packs=[empty_entry])))
+
+        # A mod JAR tagged VANILLA must be rejected by content classification.
+        mod_jar = os.path.join(self.temp_dir, "mod.jar")
+        with zipfile.ZipFile(mod_jar, "w") as zf:
+            zf.writestr("fabric.mod.json", b"{}")
+            zf.writestr("assets/mymod/textures/block.png", b"x")
+        mod_entry = types.SimpleNamespace(
+            path=mod_jar, enabled=True, pack_type="VANILLA", detected_kind="", name="ModJAR"
+        )
+        self.assertFalse(has_valid_vanilla_pack(types.SimpleNamespace(resource_packs=[mod_entry])))
+
+    def test_gate_accepts_full_asset_tree_and_client_jar(self):
+        """A complete unpacked asset tree or a content-classified client JAR is a valid base."""
+        import zipfile
+
+        # Complete unpacked tree (pack.mcmeta is irrelevant; content is what counts).
+        self.assertTrue(has_valid_vanilla_pack(self._make_prefs([self.pack_a])))
+
+        client_jar = os.path.join(self.temp_dir, "client.jar")
+        with zipfile.ZipFile(client_jar, "w") as zf:
+            zf.writestr("version.json", json.dumps({"id": "1.21.1"}))
+            zf.writestr("assets/.mcassetsroot", b"")
+            zf.writestr("net/minecraft/client/Main.class", b"class")
+            for sub in ("blockstates", "models", "textures"):
+                zf.writestr(f"assets/minecraft/{sub}/x.json", b"{}")
+        client_entry = types.SimpleNamespace(
+            path=client_jar, enabled=True, pack_type="VANILLA", detected_kind="", name="ClientJAR"
+        )
+        self.assertTrue(has_valid_vanilla_pack(types.SimpleNamespace(resource_packs=[client_entry])))
+
+    def test_gate_ignores_environment_when_a_stack_is_configured(self):
+        """Environment variables are a CLI fallback, never a rescue for a configured wrong stack."""
+        partial_dir = os.path.join(self.temp_dir, "partial_env")
+        os.makedirs(os.path.join(partial_dir, "assets", "minecraft", "textures"), exist_ok=True)
+        prefs = self._make_prefs([partial_dir])
+        with patch.dict(os.environ, {"MC_DIR": self.pack_a, "MTK_TEST_ASSETS": self.pack_a}):
+            self.assertFalse(has_valid_vanilla_pack(prefs))
+
+    def test_operators_poll_blocked_when_no_vanilla(self):
+        """Verifies operator poll returns False / execute returns CANCELLED without a vanilla base pack."""
         from operators.op_materials import MOZI_OT_replace_material
         from operators.op_precompile import MOZI_OT_precompile_cache
 
@@ -382,6 +443,15 @@ class TestAssetBakeGuard(unittest.TestCase):
 
         with patch("operators.op_precompile.get_prefs", return_value=empty_prefs):
             self.assertFalse(MOZI_OT_precompile_cache.poll(context))
+
+        class _DummyOp:
+            def report(self, level, message):
+                self.reported = (level, message)
+
+        op = _DummyOp()
+        with patch("operators.op_precompile.get_prefs", return_value=empty_prefs):
+            self.assertEqual(MOZI_OT_precompile_cache.execute(op, context), {"CANCELLED"})
+        self.assertEqual(op.reported[0], {"WARNING"})
 
 
 

@@ -20,35 +20,25 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
+def _has_valid_vanilla_pack(prefs=None) -> bool:
+    """Resolves the host-side vanilla-client gate, failing closed if the guard is unavailable."""
+    try:
+        from ..utils.assets.guard import has_valid_vanilla_pack
+    except (ImportError, ValueError):
+        try:
+            from utils.assets.guard import has_valid_vanilla_pack
+        except (ImportError, ValueError):
+            logger.warning("Asset guard unavailable; refusing debug world generation")
+            return False
+    return has_valid_vanilla_pack(prefs)
+
+
 def is_debug_world_available(prefs=None) -> bool:
-    """
-    Checks if libmtk_py has the debug world capability and valid Minecraft client
-    assets are configured (via preferences or environment variables).
-    """
+    """True when libmtk_py supports debug worlds and client assets are actually available."""
     mtk = get_libmtk()
     if mtk is None or not hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world"):
         return False
-
-    # Check if vanilla client pack is configured in preferences or test environment
-    try:
-        from ..utils.assets.guard import has_valid_vanilla_pack
-        return has_valid_vanilla_pack(prefs)
-    except Exception:
-        try:
-            from utils.assets.guard import has_valid_vanilla_pack
-            return has_valid_vanilla_pack(prefs)
-        except Exception:
-            pass
-
-    # Fallback to checking environment variables (for non-Blender / test scripts)
-    import os
-    from pathlib import Path
-
-    for env_key in ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS", "MTK_TEST_JAR"):
-        val = os.environ.get(env_key)
-        if val and Path(val).exists():
-            return True
-    return False
+    return _has_valid_vanilla_pack(prefs)
 
 
 def clear_debug_world_cache() -> None:
@@ -65,7 +55,7 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
     1. Explicit blockstates list (if provided);
     2. Active precompiled model database from cache (`.mtkcache`);
     3. Active configured resource pack stack containing a Vanilla Client base pack;
-    4. Directory/JAR unpack environment fallback.
+    4. Host-level asset root/archive validated by the same content gate.
 
     Strictly rejects generation with ValueError if no valid vanilla client assets are found.
     """
@@ -79,20 +69,11 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
             return voxel_storage.create_debug_world_from_states(states)
         return voxel_storage.create_debug_world(states=states)
 
-    # Base pack gate: when preferences are explicitly supplied, reject if no vanilla client base pack is active
-    if prefs is not None:
-        try:
-            from ..utils.assets.guard import has_valid_vanilla_pack
-            valid = has_valid_vanilla_pack(prefs)
-        except Exception:
-            try:
-                from utils.assets.guard import has_valid_vanilla_pack
-                valid = has_valid_vanilla_pack(prefs)
-            except Exception:
-                valid = True
-        if not valid:
-            clear_debug_world_cache()
-            raise ValueError("Cannot load debug world: no Minecraft Vanilla Client base pack configured in preferences")
+    if not _has_valid_vanilla_pack(prefs):
+        clear_debug_world_cache()
+        raise ValueError(
+            "Cannot load debug world: no Minecraft Vanilla Client assets are configured"
+        )
 
     # 1. Prefer driving directly from active precompiled asset cache (.mtkcache)
     try:
@@ -118,21 +99,7 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
         if pack_count > 0 and has_base:
             return voxel_storage.create_debug_world_from_pack_stack(stack)
 
-        # Fallback to configured unpack directory when stack has no packs or lacks vanilla base
-        import os
-        from pathlib import Path
-
-        for env_key in ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS"):
-            env_val = os.environ.get(env_key)
-            if not env_val:
-                continue
-            mc_path = Path(env_val)
-            if mc_path.exists() and (mc_path / "assets").exists():
-                stack.add_directory_pack(str(mc_path.resolve()), "VanillaMC")
-                if getattr(stack, "has_vanilla_client_base", lambda: False)():
-                    return voxel_storage.create_debug_world_from_pack_stack(stack)
-
-    # 3. Direct backend debug world creation (enforces rejection gate if no vanilla assets found)
+    # 3. Direct backend creation; libmtk re-validates the host-level asset roots itself.
     return voxel_storage.create_debug_world()
 
 

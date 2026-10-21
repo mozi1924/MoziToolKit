@@ -16,8 +16,7 @@ try:
     from ...bridge.progress import ProgressCallback, ProgressReport
     from ...utils.system import get_prefs
     from ...utils.pack_detect import (
-        KIND_VANILLA_CLIENT,
-        KIND_VANILLA_SERVER,
+        VALID_BASE_PACK_KINDS,
         peek_cached_probe,
         detect_pack_kind,
     )
@@ -32,14 +31,12 @@ except (ImportError, ValueError):
             return None
     try:
         from utils.pack_detect import (
-            KIND_VANILLA_CLIENT,
-            KIND_VANILLA_SERVER,
+            VALID_BASE_PACK_KINDS,
             peek_cached_probe,
             detect_pack_kind,
         )
     except (ImportError, ValueError):
-        KIND_VANILLA_CLIENT = "VANILLA_CLIENT"
-        KIND_VANILLA_SERVER = "VANILLA_SERVER"
+        VALID_BASE_PACK_KINDS = frozenset({"VANILLA_CLIENT"})
         def peek_cached_probe(path):
             return None
         def detect_pack_kind(path):
@@ -95,65 +92,76 @@ from .cache_utils import get_cache_dir
 logger = logging.getLogger("MoziToolKit.Utils.Assets.Guard")
 
 
+#: Subdirectories a pack must provide to be able to back the whole client asset pipeline.
+CLIENT_ASSET_ROOTS = ("blockstates", "models", "textures")
+
+#: Host-level asset roots / archives honoured when no preferences are registered (CLI, CI).
+ENV_ASSET_ROOTS = ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS")
+ENV_ASSET_ARCHIVES = ("MTK_TEST_JAR", "MC_JAR")
+
+
+def _probe_archive(path: Path) -> Any:
+    """Returns a cached probe when available, otherwise classifies the archive once."""
+    probe = peek_cached_probe(str(path.resolve()))
+    return probe if probe is not None else detect_pack_kind(path)
+
+
+def _path_provides_vanilla_client(path: Path) -> bool:
+    """Single source of truth for "can this path serve as the vanilla client foundation".
+
+    - An unpacked client tree must expose ``assets/minecraft/{blockstates,models,textures}``.
+    - An archive must be content-classified as a vanilla *client* jar. A server jar,
+      mod jar, or plain resource pack is rejected regardless of how the user tagged it.
+    - ``pack_type`` / ``detected_kind`` metadata is never trusted: both are user-editable.
+    """
+    if path.is_dir():
+        root = path / "assets" / "minecraft"
+        return all((root / part).is_dir() for part in CLIENT_ASSET_ROOTS)
+
+    if path.is_file() and path.suffix.lower() in (".jar", ".zip"):
+        probe = _probe_archive(path)
+        return probe is not None and probe.kind in VALID_BASE_PACK_KINDS
+
+    return False
+
+
 def _is_entry_valid_vanilla_client(entry: Any) -> bool:
-    """Evaluates whether a single resource pack entry is an active and valid Minecraft Vanilla Client pack."""
+    """Whether a resource-pack entry is enabled and provides vanilla client assets."""
     if not getattr(entry, "enabled", True):
         return False
     raw_path = getattr(entry, "path", "")
     if not raw_path or not isinstance(raw_path, str):
         return False
-    path = Path(raw_path.strip())
-    if not path.exists():
-        return False
+    return _path_provides_vanilla_client(Path(raw_path.strip()))
 
-    # Explicit server exclusion: vanilla server JARs lack textures and client models
-    detected = getattr(entry, "detected_kind", "")
-    if detected == KIND_VANILLA_SERVER:
-        return False
 
-    pack_type = getattr(entry, "pack_type", "")
-
-    # Directory pack inspection
-    if path.is_dir():
-        # Check standard vanilla assets hierarchy
-        if (
-            (path / "assets" / "minecraft" / "textures").exists()
-            or (path / "assets" / "minecraft" / "models").exists()
-            or (path / "assets" / "minecraft").exists()
-        ):
+def _has_configured_packs(prefs: Any) -> bool:
+    """True when the preferences actually configure at least one pack entry."""
+    for entry in getattr(prefs, "resource_packs", None) or []:
+        raw_path = getattr(entry, "path", "")
+        if isinstance(raw_path, str) and raw_path.strip():
             return True
-        if pack_type == "VANILLA":
-            return True
-
-    # Archive pack inspection (.jar / .zip)
-    if path.is_file() and path.suffix.lower() in (".jar", ".zip"):
-        if detected == KIND_VANILLA_CLIENT:
-            return True
-
-        probe = peek_cached_probe(str(path.resolve()))
-        if probe is not None:
-            if probe.kind == KIND_VANILLA_SERVER:
-                return False
-            if probe.kind == KIND_VANILLA_CLIENT:
-                return True
-
-        if pack_type == "VANILLA":
-            # Guard against server JAR masquerading as Vanilla JAR
-            try:
-                probe_res = detect_pack_kind(path)
-                if probe_res.kind == KIND_VANILLA_SERVER:
-                    return False
-            except Exception:
-                pass
-            return True
-
-    return False
+    single_path = getattr(prefs, "resource_pack_path", None)
+    return isinstance(single_path, str) and bool(single_path.strip())
 
 
 def has_valid_vanilla_pack(prefs=None) -> bool:
     """
-    Checks if preferences contain at least one enabled and reachable Minecraft Vanilla Client pack.
-    Third-party resource packs, mod JARs, or vanilla server JARs do NOT qualify as foundation base packs.
+    Checks whether the active configuration can provide Minecraft client assets.
+
+    Accepted sources, in order:
+    1. An enabled entry in ``prefs.resource_packs`` (JAR classified as vanilla client,
+       or an unpacked tree with the full client asset roots).
+    2. The legacy single ``prefs.resource_pack_path``.
+    3. A host-level asset root/archive from the environment (CLI/CI/dev), which must
+       satisfy the exact same content check.
+
+    Environment variables only apply while **no packs are configured at all**. Once the
+    user has configured a stack, a non-qualifying stack is a hard failure -- the
+    environment can never rescue a wrong configuration.
+
+    Resource packs that only override a namespace, mod JARs, vanilla server JARs, and
+    empty directories do NOT qualify.
     """
     if prefs is None:
         try:
@@ -162,37 +170,25 @@ def has_valid_vanilla_pack(prefs=None) -> bool:
             prefs = None
 
     if prefs is not None:
-        # 1. Check entries in resource_packs
-        if hasattr(prefs, "resource_packs") and prefs.resource_packs:
-            for entry in prefs.resource_packs:
-                if _is_entry_valid_vanilla_client(entry):
-                    return True
-
-        # 2. Check legacy / single resource_pack_path if present
-        single_path = getattr(prefs, "resource_pack_path", None)
-        if single_path and isinstance(single_path, str) and single_path.strip():
-            p = Path(single_path.strip())
-            if p.exists():
-                mock_entry = type(
-                    "MockEntry",
-                    (),
-                    {"enabled": True, "path": str(p), "pack_type": "VANILLA", "detected_kind": ""},
-                )()
-                if _is_entry_valid_vanilla_client(mock_entry):
-                    return True
-
-    # 3. Test isolation / CI environment variable fallback (e.g. MTK_TEST_JAR, MTK_TEST_ASSETS)
-    for env_var in ("MTK_TEST_JAR", "MTK_TEST_ASSETS"):
-        val = os.environ.get(env_var)
-        if val and Path(val).exists():
-            p = Path(val)
-            mock_entry = type(
-                "MockEntry",
-                (),
-                {"enabled": True, "path": str(p), "pack_type": "VANILLA", "detected_kind": ""},
-            )()
-            if _is_entry_valid_vanilla_client(mock_entry):
+        for entry in getattr(prefs, "resource_packs", None) or []:
+            if _is_entry_valid_vanilla_client(entry):
                 return True
+
+        single_path = getattr(prefs, "resource_pack_path", None)
+        if isinstance(single_path, str) and single_path.strip():
+            if _path_provides_vanilla_client(Path(single_path.strip())):
+                return True
+
+        # A stack is configured but none of it can back the pipeline: fail closed.
+        if _has_configured_packs(prefs):
+            return False
+
+    # No packs configured (CLI / CI / first run): the host environment may point at
+    # unpacked client assets or a client JAR, still subject to the content check.
+    for env_var in ENV_ASSET_ROOTS + ENV_ASSET_ARCHIVES:
+        val = os.environ.get(env_var)
+        if val and _path_provides_vanilla_client(Path(val)):
+            return True
 
     return False
 
