@@ -234,7 +234,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
             mesh_data, meta, storage, elapsed_ms = result
             if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
                 try:
-                    from ...dev.profile_tracker import record_operation_profile
+                    from ...bridge.diagnostics import record_operation_profile
                     record_operation_profile(f"Refresh Save ({dimension})", mesh_data.profile)
                 except Exception:
                     pass

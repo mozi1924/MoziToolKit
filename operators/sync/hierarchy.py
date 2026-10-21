@@ -367,7 +367,7 @@ def update_world_mesh(
             logger.warning("Failed ensuring voxel child cloud during live sync mesh update: %s", e)
 
     try:
-        from ...dev.profile_tracker import append_stage_to_last_profile
+        from ...bridge.diagnostics import append_stage_to_last_profile
         append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(mesh_data, "vertex_count", None))
         append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
     except Exception:

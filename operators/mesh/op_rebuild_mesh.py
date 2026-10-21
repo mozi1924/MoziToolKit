@@ -510,7 +510,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
             if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
                 try:
-                    from ...dev.profile_tracker import record_operation_profile
+                    from ...bridge.diagnostics import record_operation_profile
                     record_operation_profile("Rebuild World Mesh", mesh_data.profile)
                 except Exception:
                     pass
@@ -552,7 +552,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
                 try:
-                    from ...dev.profile_tracker import append_stage_to_last_profile
+                    from ...bridge.diagnostics import append_stage_to_last_profile
                     append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(mesh_data, "vertex_count", None))
                     append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
                 except Exception:

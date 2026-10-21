@@ -111,7 +111,7 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
 
             if getattr(mesh_data, "profile", None) is not None:
                 try:
-                    from ...dev.profile_tracker import record_operation_profile
+                    from ...bridge.diagnostics import record_operation_profile
                     record_operation_profile("Sync Rebuild Mesh", mesh_data.profile)
                 except Exception:
                     pass
