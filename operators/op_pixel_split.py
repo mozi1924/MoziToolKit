@@ -18,6 +18,7 @@ from ..utils.mesh.core import (
     poll_edit_mesh,
     poll_mesh_object,
 )
+from ..utils.mesh.quadify import quadify_mesh
 from ..utils.system.menu_registry import register_menu_item
 
 import numpy as np
@@ -111,6 +112,15 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
         max=1e-2,
     )
 
+    quadify: BoolProperty(
+        name="Convert to Quads",
+        description=(
+            "Merge coplanar triangle pairs produced by rotated/skewed UV slicing back into quads "
+            "(preserves UVs, materials and pixel cell boundaries)"
+        ),
+        default=True,
+    )
+
     @classmethod
     def poll(cls, context):
         return poll_edit_mesh(context) or poll_mesh_object(context)
@@ -133,6 +143,8 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
 
         total_in_faces = 0
         total_out_faces = 0
+        total_quads_created = 0
+        total_triangles_left = 0
         def_res = (int(self.manual_resolution[0]), int(self.manual_resolution[1]))
 
         try:
@@ -207,6 +219,20 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
                 except Exception:
                     pass
 
+                # 6. Rotated/skewed slicing emits triangles; merge the coplanar pairs
+                #    back into quads so extrusion/selection get editable topology.
+                if self.quadify:
+                    t0_quad = time.perf_counter()
+                    quads_before, quads_after, tris_left = quadify_mesh(mesh)
+                    quad_ms = (time.perf_counter() - t0_quad) * 1000.0
+                    total_quads_created += max(0, quads_after - quads_before)
+                    total_triangles_left += tris_left
+                    try:
+                        from ..bridge.diagnostics import append_stage_to_last_profile
+                        append_stage_to_last_profile("blender_tris_to_quads", quad_ms, quads_after)
+                    except Exception:
+                        pass
+
                 total_out_faces += getattr(subdivided, "face_count", len(mesh.polygons))
 
         finally:
@@ -216,10 +242,13 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
                 except Exception:
                     pass
 
-        self.report(
-            {"INFO"},
-            f"Adaptive Pixel Split: {total_in_faces} face(s) -> {total_out_faces} subdivided face(s) across {len(target_objs)} object(s).",
+        message = (
+            f"Adaptive Pixel Split: {total_in_faces} face(s) -> {total_out_faces} subdivided face(s) "
+            f"across {len(target_objs)} object(s)."
         )
+        if self.quadify:
+            message += f" Quads created: {total_quads_created}, triangles left: {total_triangles_left}."
+        self.report({"INFO"}, message)
         return {"FINISHED"}
 
 

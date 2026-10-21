@@ -87,6 +87,8 @@ translations_dict = {
         ('*', 'Adaptation Mode'): '自适应模式',
         ('*', 'Adaptive Pixel Split'): '自适应像素切分',
         ('Operator', 'Adaptive Pixel Split'): '自适应像素切分',
+        ('*', 'Convert to Quads'): '转换为四边面',
+        ('*', 'Merge coplanar triangle pairs produced by rotated/skewed UV slicing back into quads (preserves UVs, materials and pixel cell boundaries)'): '将旋转/斜切 UV 切分产生的共面三角形对合并回四边面（保留 UV、材质与像素格边界）',
         ('*', 'Add'): '追加选择',
         ('*', 'Add Mean Crease'): '添加 Mean Crease 边折痕',
         ('*', 'Add Pack or JAR'): '添加材质包或 JAR',

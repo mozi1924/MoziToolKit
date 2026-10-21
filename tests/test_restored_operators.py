@@ -304,6 +304,72 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
+    def _make_diamond_object(self, name: str):
+        mesh = bpy.data.meshes.new(name)
+        bm = bmesh.new()
+        uv_layer = bm.loops.layers.uv.verify()
+        verts = [
+            bm.verts.new((-0.5, -0.5, 0.0)),
+            bm.verts.new((0.5, -0.5, 0.0)),
+            bm.verts.new((0.5, 0.5, 0.0)),
+            bm.verts.new((-0.5, 0.5, 0.0)),
+        ]
+        face = bm.faces.new(verts)
+        face.select = True
+        for loop, uv in zip(face.loops, [(0.5, 0.0), (1.0, 0.5), (0.5, 1.0), (0.0, 0.5)]):
+            loop[uv_layer].uv = uv
+        bm.to_mesh(mesh)
+        bm.free()
+
+        obj = bpy.data.objects.new(name, mesh)
+        bpy.context.collection.objects.link(obj)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        return obj, mesh
+
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_adaptive_pixel_split_quadifies_rotated_uvs(self):
+        """Rotated UV slicing must be recoverable to quads for extrusion workflows."""
+        obj, mesh = self._make_diamond_object("TestSplitDiamond")
+        bpy.ops.object.mode_set(mode="EDIT")
+        res = bpy.ops.mozi.adaptive_pixel_split(
+            manual_resolution=(8, 8),
+            pixels_per_face=1.0,
+            auto_resolution=False,
+            selection_scope="ALL",
+            quadify=True,
+        )
+        self.assertEqual(res, {"FINISHED"})
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        sizes = [len(p.vertices) for p in mesh.polygons]
+        self.assertGreater(sizes.count(4), 0, "expected recovered quads")
+        self.assertLess(sizes.count(3), len(sizes), "expected most triangles to be paired")
+        self.assertEqual(sizes.count(5), 0)
+
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(mesh)
+
+    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
+    def test_adaptive_pixel_split_can_keep_triangles(self):
+        """Disabling quadify must leave the raw triangulated slicing output."""
+        obj, mesh = self._make_diamond_object("TestSplitDiamondRaw")
+        bpy.ops.object.mode_set(mode="EDIT")
+        res = bpy.ops.mozi.adaptive_pixel_split(
+            manual_resolution=(4, 4),
+            pixels_per_face=1.0,
+            auto_resolution=False,
+            selection_scope="ALL",
+            quadify=False,
+        )
+        self.assertEqual(res, {"FINISHED"})
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        self.assertTrue(all(len(p.vertices) == 3 for p in mesh.polygons))
+
+        bpy.data.objects.remove(obj)
+        bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     import sys
