@@ -16,20 +16,6 @@ class TestGilConcurrency(unittest.TestCase):
         if not HAS_LIBMTK:
             self.skipTest("libmtk_py not available")
 
-    def test_concurrent_cull_mesh_faces(self):
-        """Verify that multiple threads can call cull_mesh_faces concurrently with zero contention."""
-        mesh = ma.unit_quads(1000)
-
-        def worker(worker_id):
-            culled, stats = libmtk_py.cull_mesh_faces(mesh)
-            self.assertGreater(culled.vertex_count, 0)
-            return worker_id, culled.face_count
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(worker, i) for i in range(16)]
-            results = [f.result() for f in concurrent.futures.as_completed(futures)]
-            self.assertEqual(len(results), 16)
-
     def test_concurrent_adaptive_pixel_split_mesh(self):
         """Verify that multiple threads can call adaptive_pixel_split_mesh concurrently."""
         quad_mesh = ma.unit_quads(10)

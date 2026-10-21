@@ -105,7 +105,6 @@ MoziToolKit/
 │   ├── point_cloud/      -> 体素点云几何流提取与回灌 (DNA / Standard Palette)
 │   ├── extrude.py        -> 原生 C++/Rust 挤出修复与噪声计算桥接
 │   ├── subdivide.py      -> 原生像素网格切分与任意旋转 UV 修复桥接
-│   ├── cull.py           -> 6 向邻域遮挡剔除桥接
 │   ├── texture.py        -> 贴图采样与透明度分析桥接
 │   ├── material.py       -> 规范 PBR 材质路由与 Palette Biome 数据桥接
 │   ├── assets.py         -> 权威原版资产门禁与缓存包解析桥接
@@ -122,7 +121,7 @@ MoziToolKit/
 │   ├── extrude/          -> 智能挤出与实时修复模块包 (Watcher, Properties, Ops)
 │   ├── sync/             -> 原生 Live Sync 实时协同模块包 (Watcher, Properties, Ops)
 │   ├── save/             -> 存档导入与模型原地刷新算子
-│   └── ...               -> 像素切分 (op_pixel_split)、遮挡剔除 (op_cull) 等独立算子
+│   └── ...               -> 像素切分 (op_pixel_split) 等独立算子
 ├── ui/                   -> 3D 视图侧边栏面板、状态指示卡片与上下文菜单
 ├── utils/                -> DCC 宿主业务装配、流程编排、节点树与材质管线
 │   ├── assets/           -> 资产缓存目录解析、系统文件夹管理、Modrinth 下载、任务守卫

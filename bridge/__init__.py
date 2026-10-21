@@ -5,7 +5,6 @@ Pure data marshalling and communication layer between Blender and native Rust en
 Strictly host-agnostic, zero scene-orchestration, and zero-computation.
 """
 
-from .cull import cull_mesh_faces
 from .debug import (
     build_debug_world_data,
     clear_debug_world_cache,
@@ -187,8 +186,6 @@ __all__ = [
     # Subdivide
     "calculate_face_target_grid",
     "adaptive_pixel_split_mesh",
-    # Cull
-    "cull_mesh_faces",
     # Texture
     "batch_analyze_transparent_faces",
     "is_face_transparent",

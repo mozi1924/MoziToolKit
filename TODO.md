@@ -97,7 +97,7 @@
 ### 6. 小三样核心网格与 UV 工具库 (✅ 已完成)
 - [x] 自适应像素网格切分 (`op_pixel_split.py`)；
 - [x] 智能挤出与 UV 修复系统 (`operators/extrude/`)；
-- [x] 外部网格面遮挡剔除 (`op_cull.py`)。
+- [x] 外部网格面遮挡剔除（`op_cull.py` 已彻底废弃并移除，面遮挡判定全面收敛至权威体素级 `FaceCuller`）。
 
 ---
 

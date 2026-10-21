@@ -26,7 +26,7 @@ class TestEngineBridge:
 
     def test_dynamic_attributes_on_bridges(self):
         """Verifies PEP 562 dynamic attributes resolve correctly without static freeze."""
-        from MoziToolKit.bridge import material, mesh, uv, subdivide, cull, extrude
+        from MoziToolKit.bridge import material, mesh, uv, subdivide, texture, extrude
 
         # Dynamic classes in material bridge
         assert hasattr(material, "BiomeResolver")
@@ -43,7 +43,7 @@ class TestEngineBridge:
         # Dynamic mtk_py references in other bridges
         assert hasattr(uv, "mtk_py")
         assert hasattr(subdivide, "mtk_py")
-        assert hasattr(cull, "mtk_py")
+        assert hasattr(texture, "mtk_py")
         assert hasattr(extrude, "mtk_py")
 
     def test_rejects_missing_or_mismatched_native_api(self, monkeypatch):

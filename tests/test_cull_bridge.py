@@ -1,5 +1,7 @@
-import _mesh_arrays as ma
-from _mtk_helpers import mesh_world
+"""
+Tests for canonical voxel-level FaceCuller and VoxelStorage integration.
+"""
+
 import sys
 import unittest
 from pathlib import Path
@@ -8,51 +10,10 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from MoziToolKit.bridge.cull import cull_mesh_faces
-from MoziToolKit.bridge.mesh import MeshData
+from _mtk_helpers import mesh_world
 
 
-
-
-class TestCullBridge(unittest.TestCase):
-
-    def test_cull_coplanar_opposite_faces(self):
-        # Face 1 (+Z) and Face 2 (-Z, touching same plane)
-        positions = [
-            (-0.5, -0.5, 0.0),
-            (0.5, -0.5, 0.0),
-            (0.5, 0.5, 0.0),
-            (-0.5, 0.5, 0.0),
-            (-0.5, -0.5, 0.0),
-            (-0.5, 0.5, 0.0),
-            (0.5, 0.5, 0.0),
-            (0.5, -0.5, 0.0),
-        ]
-        quad_uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
-        mesh = ma.mesh_from_quads(
-            [c for p in positions for c in p],
-            [[0, 1, 2, 3], [4, 5, 6, 7]],
-            [quad_uvs, quad_uvs],
-            [0, 0],
-            normals_flat=[0.0, 0.0, 1.0] * 4 + [0.0, 0.0, -1.0] * 4,
-        )
-
-
-        culled_mesh, stats = cull_mesh_faces(mesh)
-        self.assertEqual(stats["initial_faces"], 2)
-        self.assertEqual(stats["culled_faces"], 2, "Interior touching faces must be culled")
-        self.assertEqual(stats["remaining_faces"], 0)
-        self.assertEqual(culled_mesh.face_count, 0)
-
-    def test_i18n_cull_entries(self):
-        from MoziToolKit.i18n.dictionary import translations_dict
-        hans = translations_dict.get("zh_HANS", {})
-        self.assertIn(("*", "Cull Occluded Faces"), hans)
-        self.assertEqual(hans[("*", "Cull Occluded Faces")], "剔除遮挡面")
-        self.assertIn(("Operator", "Cull Occluded Faces"), hans)
-        self.assertIn(("*", "Distance Tolerance"), hans)
-        self.assertIn(("*", "Cull Interior Contacting Faces"), hans)
-        self.assertIn(("*", "Cull Duplicate Overlapping Faces"), hans)
+class TestVoxelCullBridge(unittest.TestCase):
 
     def test_vegetation_culling_rules(self):
         try:

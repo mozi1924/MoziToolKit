@@ -101,7 +101,6 @@
       "compute_biome_tint_attributes_paletted",
       "compute_canonical_state_hash",
       "compute_mesh_biome_attributes_from_storage",
-      "cull_mesh_faces",
       "decode_packet",
       "detect_uv_rotation",
       "encode_baseline_begin",

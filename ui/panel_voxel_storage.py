@@ -173,7 +173,6 @@ class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
 
         row_geo = box_mesh.row(align=True)
         row_geo.operator("mozi.adaptive_pixel_split", text=tr("Adaptive Pixel Split"), icon="GRID")
-        row_geo.operator("mozi.cull_mesh_faces", text=tr("Cull Occluded Faces"), icon="MOD_BOOLEAN")
 
         props_extrude = getattr(context.scene, "mozi_auto_extrude_repair", None)
         row_ext = box_mesh.row(align=True)

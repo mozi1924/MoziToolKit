@@ -7,7 +7,6 @@ try:
 except ImportError:
     bpy = None
 
-from .op_cull import OPERATOR_CLASSES as CULL_CLASSES
 from .extrude import OPERATOR_CLASSES as EXTRUDE_CLASSES
 from .op_materials import OPERATOR_CLASSES as MATERIAL_CLASSES
 from .mesh import OPERATOR_CLASSES as MESH_CLASSES
@@ -26,7 +25,6 @@ ALL_OPERATORS = (
     + TEXTURE_CLASSES
     + PIXEL_SPLIT_CLASSES
     + EXTRUDE_CLASSES
-    + CULL_CLASSES
     + VOXEL_CLOUD_CLASSES
     + SAVE_CLASSES
 )
