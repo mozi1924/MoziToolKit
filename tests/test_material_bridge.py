@@ -64,6 +64,45 @@ class TestMaterialBridge(unittest.TestCase):
         )
         self.assertIsNotNone(spec)
 
+    def test_build_material_palette(self):
+        """Verify building material palette and face indices via bridge.material."""
+        import numpy as np
+        from bridge.material import build_material_palette
+        slot_names = ["stone", "dirt"]
+        slot_is_mtk = [False, False]
+        slot_source_ids = ["", ""]
+        poly_mats = np.array([0, 1, 0, 1], dtype=np.int32)
+        palette, indices = build_material_palette(
+            slot_names,
+            slot_is_mtk,
+            slot_source_ids,
+            poly_mats,
+        )
+        self.assertEqual(palette, ["stone", "dirt"])
+        self.assertEqual(list(indices), [0, 1, 0, 1])
+
+    def test_no_invalid_relative_imports_in_source(self):
+        """Rule compliance check: ensure no relative import exceeds package boundary."""
+        toolkit_root = Path(__file__).parent.parent
+        for folder in ("bridge", "operators", "ui", "utils", "dev"):
+            source_dir = toolkit_root / folder
+            if not source_dir.exists():
+                continue
+            for py_file in source_dir.rglob("*.py"):
+                rel_parts = py_file.relative_to(toolkit_root).parts
+                depth = len(rel_parts) - 1
+                source = py_file.read_text(encoding="utf-8")
+                tree = ast.parse(source, filename=str(py_file))
+
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ImportFrom) and node.level > 0:
+                        self.assertLessEqual(
+                            node.level,
+                            depth + 1,
+                            f"Over-dotted relative import (level {node.level} > max {depth + 1}) "
+                            f"in {py_file.relative_to(toolkit_root)} at line {node.lineno}: from {'.' * node.level}{node.module or ''}",
+                        )
+
     def test_no_direct_libmtk_py_in_utils_materials(self):
         """Rule compliance check: ensure utils/materials does not directly import libmtk_py."""
         toolkit_root = Path(__file__).parent.parent

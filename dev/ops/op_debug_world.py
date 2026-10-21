@@ -9,9 +9,14 @@ try:
     from ...utils.async_task import AsyncTask, ModalTaskRunner
     from ...utils.progress import BlenderProgressReporter
 except (ImportError, ValueError):
-    import bridge
-    from utils.async_task import AsyncTask, ModalTaskRunner
-    from utils.progress import BlenderProgressReporter
+    try:
+        from MoziToolKit import bridge
+        from MoziToolKit.utils.async_task import AsyncTask, ModalTaskRunner
+        from MoziToolKit.utils.progress import BlenderProgressReporter
+    except (ImportError, ValueError):
+        import bridge
+        from utils.async_task import AsyncTask, ModalTaskRunner
+        from utils.progress import BlenderProgressReporter
 
 
 class MOZI_OT_dev_load_debug_world(bpy.types.Operator):

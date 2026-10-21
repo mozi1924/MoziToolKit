@@ -518,8 +518,18 @@ def update_object_biome(
     effective_stack = pack_stack
     if effective_stack is None:
         try:
-            from bridge.assets import get_configured_pack_stack
+            from ....bridge.assets import get_configured_pack_stack
             effective_stack = get_configured_pack_stack()
+        except (ImportError, ValueError):
+            try:
+                from MoziToolKit.bridge.assets import get_configured_pack_stack
+                effective_stack = get_configured_pack_stack()
+            except (ImportError, ValueError):
+                try:
+                    from bridge.assets import get_configured_pack_stack
+                    effective_stack = get_configured_pack_stack()
+                except Exception:
+                    effective_stack = None
         except Exception:
             effective_stack = None
 
@@ -684,8 +694,18 @@ def update_object_biome(
                 # would zero every face's tint type and break later presets.
                 if derived_keys and all(derived_keys):
                     try:
-                        from bridge.mesh import inject_face_attribute_string
+                        from ....bridge.mesh import inject_face_attribute_string
                         inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
+                    except (ImportError, ValueError):
+                        try:
+                            from MoziToolKit.bridge.mesh import inject_face_attribute_string
+                            inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
+                        except (ImportError, ValueError):
+                            try:
+                                from bridge.mesh import inject_face_attribute_string
+                                inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
+                            except Exception:
+                                pass
                     except Exception:
                         pass
                     biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)

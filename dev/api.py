@@ -9,19 +9,30 @@ import time
 
 try:
     from .loader import get_engine_status
-    from .. import bridge
 except (ImportError, ValueError):
     try:
-        from dev.loader import get_engine_status
-        import bridge
-    except (ImportError, ValueError):
         from MoziToolKit.dev.loader import get_engine_status
-        from MoziToolKit import bridge
+    except (ImportError, ValueError):
+        from dev.loader import get_engine_status
+
+
+def _get_bridge():
+    try:
+        from .. import bridge
+        return bridge
+    except (ImportError, ValueError):
+        try:
+            from MoziToolKit import bridge
+            return bridge
+        except (ImportError, ValueError):
+            import bridge
+            return bridge
 
 
 def get_diagnostics(prefs=None) -> Dict[str, Any]:
     """Returns runtime diagnostic information including native engine status and cache state."""
     info = get_engine_status()
+    bridge = _get_bridge()
     try:
         cache_stats = bridge.get_cache_stats()
         info["cache"] = cache_stats
@@ -89,6 +100,7 @@ def run_mesher_benchmark(
             except Exception:
                 prefs = None
 
+    bridge = _get_bridge()
     if not bridge.is_debug_world_available(prefs):
         raise RuntimeError("Native libmtk_py debug world capability is unavailable or vanilla client assets not configured.")
 
@@ -133,10 +145,10 @@ def run_mesher_benchmark(
 
 def clear_material_cache(prefs=None) -> int:
     """Clears all precompiled material and model caches via bridge."""
-    return bridge.clear_cache(prefs)
+    return _get_bridge().clear_cache(prefs)
 
 
 def precompile_material_cache(prefs=None, num_threads: Optional[int] = None) -> Dict[str, Any]:
     """Precompiles and rebuilds complete material atlas, standalone textures, and model caches via bridge."""
-    return bridge.precompile_stack(prefs, num_threads=num_threads)
+    return _get_bridge().precompile_stack(prefs, num_threads=num_threads)
 

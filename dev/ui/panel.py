@@ -5,7 +5,13 @@ Provides quick visual verification, scenario loading, and native engine diagnost
 
 import bpy
 from ..loader import get_engine_status
-from ... import bridge
+try:
+    from ... import bridge
+except (ImportError, ValueError):
+    try:
+        from MoziToolKit import bridge
+    except (ImportError, ValueError):
+        import bridge
 
 
 class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):

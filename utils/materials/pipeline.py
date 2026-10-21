@@ -31,16 +31,29 @@ try:
         reroute_mesh_animation,
         compute_flat_material_props_buffer,
         compute_flat_material_props_paletted_buffer,
+        build_material_palette,
     )
 except (ImportError, ValueError):
-    from bridge.material import (
-        is_material_bridge_available,
-        load_baked_atlas_from_json,
-        remap_mesh_multi_uvs_paletted,
-        reroute_mesh_animation,
-        compute_flat_material_props_buffer,
-        compute_flat_material_props_paletted_buffer,
-    )
+    try:
+        from MoziToolKit.bridge.material import (
+            is_material_bridge_available,
+            load_baked_atlas_from_json,
+            remap_mesh_multi_uvs_paletted,
+            reroute_mesh_animation,
+            compute_flat_material_props_buffer,
+            compute_flat_material_props_paletted_buffer,
+            build_material_palette,
+        )
+    except (ImportError, ValueError):
+        from bridge.material import (
+            is_material_bridge_available,
+            load_baked_atlas_from_json,
+            remap_mesh_multi_uvs_paletted,
+            reroute_mesh_animation,
+            compute_flat_material_props_buffer,
+            compute_flat_material_props_paletted_buffer,
+            build_material_palette,
+        )
 
 
 def __getattr__(name: str) -> Any:
@@ -96,41 +109,41 @@ try:
         ATTR_MATERIAL_PROPS,
     )
 except (ImportError, ValueError):
-    from utils.assets import (
-        get_cache_dir,
-        check_asset_cache_status,
-    )
-    from bridge.assets import (
-        get_cache_fingerprint,
-        precompile_stack,
-        invalidate_asset_cache_memory,
-        reload_atlas_images,
-        load_atlas_mapping_from_cache,
-        load_baked_atlas_from_cache,
-        ensure_atlas_textures_extracted,
-        ensure_colormaps_extracted,
-    )
-    from bridge.mesh import (
-        _get_mesh,
-        inject_face_attribute_string,
-        inject_face_attribute_int,
-        inject_face_attribute_float,
-        inject_face_attribute_float4,
-        inject_face_attribute_vector,
-        resolve_source_texture_keys,
-        resolve_source_texture_keys_paletted,
-        inject_face_source_texture_palette,
-    )
-    from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-    from utils.materials.matching.presets.registry import build_matching_context
     try:
-        from utils.materials.biome import (
+        from MoziToolKit.utils.assets import (
+            get_cache_dir,
+            check_asset_cache_status,
+        )
+        from MoziToolKit.bridge.assets import (
+            get_cache_fingerprint,
+            precompile_stack,
+            invalidate_asset_cache_memory,
+            reload_atlas_images,
+            load_atlas_mapping_from_cache,
+            load_baked_atlas_from_cache,
+            ensure_atlas_textures_extracted,
+            ensure_colormaps_extracted,
+        )
+        from MoziToolKit.bridge.mesh import (
+            _get_mesh,
+            inject_face_attribute_string,
+            inject_face_attribute_int,
+            inject_face_attribute_float,
+            inject_face_attribute_float4,
+            inject_face_attribute_vector,
+            resolve_source_texture_keys,
+            resolve_source_texture_keys_paletted,
+            inject_face_source_texture_palette,
+        )
+        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
+        from MoziToolKit.utils.materials.matching.presets.registry import build_matching_context
+        from MoziToolKit.utils.materials.biome import (
             get_or_load_biome_resolver,
             compute_biome_tint_attributes,
             compute_biome_tint_attributes_paletted,
             apply_biome_tint_attributes,
         )
-        from utils.materials.constants import (
+        from MoziToolKit.utils.materials.constants import (
             ATTR_SOURCE_TEXTURE_KEY,
             ATTR_MATERIAL_SLOT,
             ATTR_ATLAS_CHUNK_ID,
@@ -143,8 +156,56 @@ except (ImportError, ValueError):
             ATTR_COLORMAP_UV,
             ATTR_MATERIAL_PROPS,
         )
-    except Exception:
-        pass
+    except (ImportError, ValueError):
+        from utils.assets import (
+            get_cache_dir,
+            check_asset_cache_status,
+        )
+        from bridge.assets import (
+            get_cache_fingerprint,
+            precompile_stack,
+            invalidate_asset_cache_memory,
+            reload_atlas_images,
+            load_atlas_mapping_from_cache,
+            load_baked_atlas_from_cache,
+            ensure_atlas_textures_extracted,
+            ensure_colormaps_extracted,
+        )
+        from bridge.mesh import (
+            _get_mesh,
+            inject_face_attribute_string,
+            inject_face_attribute_int,
+            inject_face_attribute_float,
+            inject_face_attribute_float4,
+            inject_face_attribute_vector,
+            resolve_source_texture_keys,
+            resolve_source_texture_keys_paletted,
+            inject_face_source_texture_palette,
+        )
+        from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+        from utils.materials.matching.presets.registry import build_matching_context
+        try:
+            from utils.materials.biome import (
+                get_or_load_biome_resolver,
+                compute_biome_tint_attributes,
+                compute_biome_tint_attributes_paletted,
+                apply_biome_tint_attributes,
+            )
+            from utils.materials.constants import (
+                ATTR_SOURCE_TEXTURE_KEY,
+                ATTR_MATERIAL_SLOT,
+                ATTR_ATLAS_CHUNK_ID,
+                ATTR_ATLAS_TEXTURE_ID,
+                ATTR_UV_MODE,
+                ATTR_UV_TRANSFORM,
+                ATTR_UV_ROTATION,
+                ATTR_BIOME_TINT_DATA,
+                ATTR_BIOME_TINT_COLOR,
+                ATTR_COLORMAP_UV,
+                ATTR_MATERIAL_PROPS,
+            )
+        except Exception:
+            pass
 
 if "ATTR_MATERIAL_PROPS" not in globals():
     ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
@@ -303,12 +364,7 @@ def extract_face_material_palette_context(
         slot_is_mtk.append(is_mtk)
         slot_source_ids.append(str(slot_id) if slot_id else "")
 
-    try:
-        from ....bridge.engine import require_libmtk
-    except (ImportError, ValueError):
-        from bridge.engine import require_libmtk
-    mtk = require_libmtk("build_material_palette")
-    palette, indices_mv = mtk.build_material_palette(
+    palette, indices = build_material_palette(
         slot_names,
         slot_is_mtk,
         slot_source_ids,
@@ -316,7 +372,6 @@ def extract_face_material_palette_context(
         existing_key_palette,
         existing_key_indices,
     )
-    indices = np.frombuffer(indices_mv, dtype=np.uint32)
 
     face_loop_ranges: List[Tuple[int, int]] = list(zip(loop_starts.tolist(), loop_totals.tolist()))
 

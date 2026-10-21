@@ -610,6 +610,43 @@ class TestMaterialPipeline(unittest.TestCase):
         self.assertTrue(hasattr(pipe, "compute_biome_tint_attributes"))
         self.assertTrue(hasattr(pipe, "apply_biome_tint_attributes"))
 
+    def test_extract_face_material_palette_context(self):
+        """Verify extract_face_material_palette_context builds palette via bridge."""
+        from utils.materials.pipeline import extract_face_material_palette_context
+        import numpy as np
+
+        mesh = MagicMock()
+        class Polys:
+            def __len__(self): return 2
+            def foreach_get(self, attr, buf):
+                if attr == "material_index":
+                    buf[:] = [0, 1]
+                elif attr == "loop_start":
+                    buf[:] = [0, 4]
+                elif attr == "loop_total":
+                    buf[:] = [4, 4]
+        mesh.polygons = Polys()
+        class Loops:
+            def __len__(self): return 8
+        mesh.loops = Loops()
+
+        slot0 = MagicMock()
+        slot0.name = "minecraft:stone"
+        slot0.get.return_value = ""
+        slot1 = MagicMock()
+        slot1.name = "minecraft:dirt"
+        slot1.get.return_value = ""
+        mesh.materials = [slot0, slot1]
+        mesh.uv_layers = MagicMock()
+        mesh.attributes = {}
+
+        palette, indices, face_loop_ranges, loop_uvs, uv_layer, existing_key_palette, existing_key_indices = (
+            extract_face_material_palette_context(mesh)
+        )
+        self.assertEqual(palette, ["minecraft:stone", "minecraft:dirt"])
+        self.assertEqual(list(indices), [0, 1])
+        self.assertEqual(face_loop_ranges, [(0, 4), (4, 4)])
+
 
 if __name__ == "__main__":
     if "--" in sys.argv:

@@ -35,6 +35,10 @@ except ImportError:
 if __name__ not in ("MoziToolKit", "__main__"):
     sys.modules.setdefault("MoziToolKit", sys.modules[__name__])
 
+from . import bridge
+if __name__ not in ("MoziToolKit", "__main__"):
+    sys.modules.setdefault("MoziToolKit.bridge", bridge)
+
 from . import i18n
 from . import operators
 from . import ui

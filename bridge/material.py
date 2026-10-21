@@ -352,6 +352,30 @@ def load_baked_atlas_from_json(json_str: str) -> Any:
     return mtk.BakedAtlas.from_mapping_json(json_str)
 
 
+def build_material_palette(
+    slot_names: Sequence[str],
+    slot_is_mtk: Sequence[bool],
+    slot_source_ids: Sequence[str],
+    poly_mats: Any,
+    existing_key_palette: Optional[Sequence[str]] = None,
+    existing_key_indices: Optional[Any] = None,
+) -> Tuple[List[str], np.ndarray]:
+    """Wrap libmtk.build_material_palette to construct a deduplicated material palette
+    and per-face index buffer from mesh material slots and provenance data.
+    """
+    mtk = require_libmtk("build_material_palette")
+    palette, indices_mv = mtk.build_material_palette(
+        list(slot_names),
+        list(slot_is_mtk),
+        list(slot_source_ids),
+        poly_mats,
+        list(existing_key_palette) if existing_key_palette is not None else None,
+        existing_key_indices,
+    )
+    indices = np.frombuffer(indices_mv, dtype=np.uint32)
+    return palette, indices
+
+
 # ---------------------------------------------------------------------------
 # Material Physical Properties & Catalog API (Pure Rust libmtk_py)
 # ---------------------------------------------------------------------------
@@ -492,6 +516,7 @@ __all__ = [
     "GridAtlasSpec",
     "BakedAtlas",
     "load_baked_atlas_from_json",
+    "build_material_palette",
     "get_material_props",
     "get_block_emission_strength",
     "is_thin_wall_block",
