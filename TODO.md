@@ -1,6 +1,6 @@
 # 📋 MoziToolKit (Blender Addon) 开发计划与版本路线图 (Roadmap)
 
-本文档为 `MoziToolKit` Blender 插件前端的功能演进与版本规划清单。底层核心算法、体素流与几何计算见 [`libmozitoolkit/TODO.md`](../libmozitoolkit/TODO.md)。
+本文档为 `MoziToolKit` Blender 插件前端的功能演进与版本规划清单。底层核心算法、体素流与几何计算见 [`libmozitoolkit/TODO.md`](../libmozitoolkit/TODO.md)。实时协同服务端见 [`yefira/GEMINI.md`](../yefira/GEMINI.md)。
 
 ---
 
@@ -8,230 +8,165 @@
 
 | 版本 | 阶段定位 | 核心主题与边界 | 状态 |
 | :--- | :--- | :--- | :--- |
-| **v2.0 正式版** | **里程碑发版** | **核心世界资产与材质渲染基石 (Production Release)**<br>聚焦世界存档导入、Live Sync 实时同步、小三样网格工具、Biome 3D 染色、CTM 规则与**动画材质端到端闭环**，交付 100% 稳定开箱即用的高保真视觉与极速体验。 | ✅ **正式发版 (Released / Code Frozen)** |
-| **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为参考底座，深度重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体。 | 📋 **规划排期中** |
-| **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；轻量场景交换包 (`.mtkscene`) 导出与现场重构导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
+| **v2.0 基础发版** | **核心基石** | **核心世界资产与材质渲染基石 (Production Release)**<br>世界存档导入、Live Sync 实时同步、小三样核心工具、Biome 3D 染色、CTM 规则与静态/动态双图集端到端闭环。 | ✅ **完成交付 (2026-10-18)** |
+| **v2.0 架构淬炼** | **纯净化里程碑** | **B0–B7 架构大收敛、预解码 PBR 材质与原生三端闭环 (Hardened Milestone)**<br>完成系统级 B0–B7 架构大清理；剥离独立 `libmtk_blender_dna` 适配器；原生 C++/Rust 像素切分（Quads 重构）；PBR 图集预解码全面上线，彻底物理清除 LabPBR 运行时生成器与 `mtk_material_props`；打通全链路诊断探针；强制原版客户端资产门禁；Yefira Protocol v3 闭环与 6 平台 Wheels 构建矩阵。 | ✅ **全面达成 (2026-10-21)** |
+| **v2.1** | **次级大版本** | **Mine-imator 深度集成、通用动作重定向与高级实体 (Animation Ecosystem)**<br>以 Mine-imator 2.0 官方源码为底座，重构 `mi2bl`；构建**临时参考骨骼 + 通用动作重定向引擎**（直通 Rig2 / Ice Cube / BPS / Thomas）；攻坚 1.21.4+ 铜像 Special Renderers 模型、原版悬挂实体与自包含场景交换包 (`.mtkscene`)。 | 📋 **启动推进中** |
+| **v2.2** | **高级生产力** | **从资产到代码：通用面部绑定系统与全能创作套件 (Universal Rigging & Tools)**<br>将 Blend shapes 映射解耦为通用代码规范（支持 Rig2 / Ice Cube / BPS / Thomas 等人模）；Rust 后端处理网络与滤波；交互式 2D 俯视微缩地图选区器；建筑蓝图 (`.litematic` / `.schematic`) 导入；GeckoLib 双向动画协同。 | 📋 **规划排期中** |
 | **v2.3+** | **万能工作流** | **创作者全能生态 (Universal Creator Suite)**<br>角色皮肤 3D 立体挤出与预设 Rig 库、Mine-imator HLSL 渲染特性 1:1 复刻、原版环境日夜天空盒与渲染预设。 | 🔮 **远景规划** |
 
 ---
 
-## 🧭 当前工作清单 (2026-10-18)
+## 🏆 近期重大架构跃迁：v2.0 架构淬炼战役 (2026-10-18 ~ 2026-10-21)
 
-> 详细根因、API 设计与剩余迁移项见
-> [`docs/planning/2026-10-18_material_animation_and_rust_downshift.md`](docs/planning/2026-10-18_material_animation_and_rust_downshift.md)。
+> 详细设计与执行记录参见：
+> - [`docs/planning/2026-10-20_deletion_and_surface_cleanup.md`](docs/planning/2026-10-20_deletion_and_surface_cleanup.md) (B0–B7 计划)
+> - [`docs/planning/2026-10-21_legacy_material_isolation.md`](docs/planning/2026-10-21_legacy_material_isolation.md) (材质清洗记录)
 
-### ✅ 本轮已完成
-- [x] **修复外部导入网格不启用动画材质**：`enable_animated_textures` 现已传入 Rust 图集路由，
-      动画面进入 `MTK:Atlas:*:anim:*`，并注入 `mtk_anim_timing` / `mtk_anim_frame_size` 等 face 属性。
-- [x] **动画偏好切换可逆**：Restore 路径支持 `reconcile_animation`，在静态/动画 chunk 之间
-      重投影已有 Atlas UV，无需重新导入网格。
-- [x] **Source key 修复**：provenance 同时索引 `sprites` 与 `anim_sprites`，动画面不再退化为
-      `mozi:fallback`。
-- [x] **Live Sync 持久化状态下沉 Rust**：`PersistedSessionState` JSON 由 `mtk-sync` 解析/构造，
-      Blender 只存一个不透明字符串。
-- [x] **进度与握手语义下沉 Rust**：`normalize_stream_progress` 修正 meshing 阶段二次加 50% 的 bug；
-      `decision_code` 修复 Python 用字符串和 `0` 比较导致 0ms reconnect 分支永不触发的问题。
-- [x] **代码库清理**：删除 `operators/op_mesh.py`、`utils/extrude_repair/`、
-      `utils/mesh/subdivide.py`、旧 UI/Operator 别名、死 DNA 材质分支与废弃 Live Sync API；
-      移除旧 list-based 材质管线；修正文档死链至 0。
-- [x] **P1 Biome 即时更新下沉**：Rust `reapply_uniform_biome_tint_flat` + 零拷贝 memoryview；
-      498k faces 从 6~8 ms 降到 **~2.1 ms**。DNA 与 `foreach_set` 写入实测等价，
-      通用 face 属性继续 `foreach_set`（详见 [`direct_mesh.md`](docs/mesh/direct_mesh.md) §7）。
+### 1. B0–B7 架构大清理战役 (✅ 全部通过验证)
+- [x] **B0：基准快照与自动化冒烟守护**：记录 184 原生 API 与 344 项测试基线，建立零回归守护网。
+- [x] **B1：剔除废弃菜单操作符与注册表垫片**：清除无用操作符与 legacy registry shims。
+- [x] **B2：胶水层虚假降级与旧轮子回退彻底归零**：删除 Python bridge fake 分支，杜绝运行时“静默吞错”与假数据污染。
+- [x] **B3：Rust 核心零调用方绑定与废弃管线收敛**：删除 Python 未消费的 47 个绑定方法，`libmtk` 从 175 符号收敛至 9 个核心符号，彻底废弃 `mtk-ffi`。
+- [x] **B4：物理剔除遗留 `unified_mesh` 胶水与废弃格式**。
+- [x] **B5：收敛网格与体素点云数据模型**：全面统一为基于调色板索引（Palette）的内存高效表达。
+- [x] **B6：API 握手契约与业务编排彻底归位**：网格创建、集合装配、材质节点生成等宿主逻辑全部移入 `utils/`，`bridge/` 彻底纯化为纯数据转换桥梁；全面暴露 Palette Biome APIs。
+- [x] **B7：拆分宿主内存适配器为独立 Wheel**：Blender C++ 内存直写被剥离为独立的 `libmtk_blender_dna` wheel，计算核保持 100% 宿主无关。
 
-### 📋 下一批（按优先级）
-- [x] **P1 外部网格材质提取批量化**：`foreach_get` + NumPy 索引、删除逐面 `clean_keys`、
-      zero-copy material props memoryview、palette-native remap；500k faces replace **2.65 s → ~0.95 s**。
-- [ ] **P1 1M faces 进一步优化**：当前按线性估算约 1.9 s，目标 < 1.2 s；
-      下一步优先 palette-native biome + 减少 source-key 展开。
-- [x] **P2 Live Sync 事件合并**：`poll_events_coalesced` + `coalesce_meshes=True`，只保留最新 generation。
-- [x] **P2 资产缓存解析下沉**：`libmtk::resolve_active_cache_package` + PyO3，Python 已切换。
-- [x] **P2 C-ABI 首批导出**：`mtk_resolve_material_routes` / `mtk_sync_state_is_reconnect_candidate` /
-      `mtk_biome_reapply_uniform_tint`。
-- [ ] **P2 C-ABI 后续**：按 C4D 实际调用约定补 opaque session/cache handle 与头文件示例。
+### 2. 材质管线现代化与旧实现物理清除 (✅ 全部完成)
+- [x] **PBR 图集预解码全面接管**：Rust 预编译期（`ASSET_CACHE_FORMAT_VERSION = 4`）将 LabPBR 解码为规范图集通道（Albedo, Normal_GL, Roughness, Metallic, Aux/Emission），丢弃原始 `_n` / `_s`。
+- [x] **彻底删除 `mtk_material_props`**：移除物理属性注册表、`properties_config.py` 与外部 JSON，移除逐面材质属性字符串展开，每面少存一份 Float4。
+- [x] **着色器现代化**：前端着色器全面适配原生 Principled BSDF，节点图全面迁移至现代 `ShaderNodeMix`（彻底消除过时的 `ShaderNodeMixRGB` 与 `use_nodes = True` 警告）。
+- [x] **材质视觉回归测试框架**：增加 `test(material): add legacy-vs-baked visual regression harness`，保障材质渲染 100% 视觉对齐。
+
+### 3. 原生 C++/Rust 几何切分与拓扑修复 (✅ 全部完成)
+- [x] **移除 Python 切分降级**：自适应像素网格切分 (`op_pixel_split.py`) 全面交由原生底层驱动。
+- [x] **切片三角形转 Quads**：像素切分后的网格三角面自动重构为规范四边形，优化视口与着色。
+- [x] **任意旋转像素切片与 UV 修复**：解决带旋转网格切片时的 UV 扭曲问题；统一动画长条贴图截断。
+
+### 4. 全链路执行诊断与探针体系 (✅ 全部完成)
+- [x] Rust 核心与 Python 前端 (`bridge/diagnostics.py`) 全链路接入执行探针。
+- [x] 操作符报告中拆分并输出 Rust 耗时与 Blender 宿主耗时，消除黑盒。
+
+### 5. 权威原版客户端资产门禁 (✅ 全部完成)
+- [x] 强制校验真正的 Minecraft 原版客户端资产（JAR / 解包目录），杜绝因资产缺失导致的无 UV 灰模。
+
+### 6. Live Sync 实时协同 Protocol v3 闭环 (✅ 全部完成)
+- [x] 与 `yefira` 伴生模组全面对接 Protocol v3：XXHash64 校验自愈、增量分片批量推送、选区原子化与软限制。
+- [x] 客户端支持安全 Token 鉴权与 Loopback 本地连接免密直连。
+- [x] 握手决策码 (`decision_code`) 与进度归一化由 Rust 权威掌控。
+
+### 7. 6 平台 Native Wheels 自动化构建与发布矩阵 (✅ 全部完成)
+- [x] Windows x64, macOS (arm64/x64), Linux (glibc/musl) CI 验证全绿，支持 rolling release 自动注入。
 
 ---
 
-## 🎯 v2.0 正式版：核心世界资产与材质渲染基石 (✅ 已完成)
+## 🧭 当前待办与持续优化清单
 
-> **2.0 发版铁律**：严守核心世界与材质闭环，不留半成品。未完成的扩展性需求坚决推迟至 2.1。
+### 📋 性能持续微调
+- [ ] **1M faces 渲染与导入进一步优化**：进一步减少 source-key 展开，推进全流程 Palette-native 优化。
+- [ ] **C-ABI 独立头文件（可选/按需）**：按 C4D 或独立查看器实际需求提供轻量级 C-ABI 头文件示例。
 
-### 1. 动画材质系统端到端串联 (P0 - ✅ 已完成)
-- [x] **导入与偏好设置开关集成**
-  - [x] 插件偏好设置 (Preferences) 增加全局默认开关 `enable_animated_textures: BoolProperty(name="Animated Textures", default=True)`；
-  - [x] 存档导入操作符 (`mtk.import_minecraft_save`) 弹窗面板增加 `enable_animated_textures` 局部覆盖选项；
-- [x] **“静态图集保底 + 动态材质专用寻址”双通道路由机制**
-  - [x] **静态图集全覆盖保底 (Fallback Baseline)**：
-    - 预烘焙静态图集已包含全部材质（包括动态纹理的 Frame 0 静态表示）；
-    - 当用户禁用动画材质时：网格全量映射至静态图集材质（`MTK:Atlas:blocks:001` 等），Shader 零额外计算开销，保证极致视口流畅度；
-  - [x] **动态材质专用寻址 (Dynamic Material Routing)**：
-    - 当用户启用动画材质时：识别带动画元数据（`is_animated: true`）的方块面（如水流、熔岩、火、下界传送门、海晶石等）；
-    - 专门将其材质槽与 UV 重定向至动态材质（`MTK:Atlas:blocks:anim:001`）；
-    - 在该材质节点树中自动连通 [utils/node_groups/animated.py](utils/node_groups/animated.py) 的 `MC_Animated_UV_Mapping`、`MC_Animation_Scheduler_Default` 与 `MC_Animated_Frame_Blend` 节点组；
-    - 绑定 Blender 时间线驱动（`frame_current`），实现与 MC Tick Rate (20 TPS) 对齐的实时帧播放与双帧插值混合。
+---
+
+## 🎯 v2.0 正式版：核心世界资产与材质渲染基石 (✅ 已交付并淬炼)
+
+### 1. 动画材质系统端到端串联 (✅ 已完成)
+- [x] 偏好设置与导入面板提供 `enable_animated_textures` 选项；
+- [x] “静态图集保底 + 动态图集专用寻址”双通道机制；
+- [x] 时间线驱动与双帧插值混合。
 
 ### 2. 存档导入容器化与稳定性闭环 (✅ 已完成)
-- [x] **Minecraft 存档端到端导入前端 (`operators/save/op_import_save.py`, `bridge/save.py`)**
-  - [x] 顶部主菜单接入（`File -> Import -> Minecraft World / Save (.mca / level.dat)`）；
-  - [x] 修复导入按钮调用 ID (`mtk.import_minecraft_save`)；
-  - [x] 世界路径选取、维度选择（主世界/下界/末地）与 `level.dat` 元数据探测；
-  - [x] 3D 轴对齐选区坐标输入与方块体积统计；
-  - [x] 独立 Empty 根容器化（`Save_WorldName_Dimension_01`），多选区自动递增序号新建容器；
-  - [x] 本地隐私注册表管理器（`save_registry.json`），工程内仅存 UUID，杜绝本地路径随工程泄露；
-  - [x] 专属信息面板卡片与“🔄 刷新模型 (Refresh Model)”原地无感重构算子。
+- [x] 顶部主菜单接入（`File -> Import -> Minecraft World / Save (.mca / level.dat)`）；
+- [x] 3D 轴对齐选区坐标输入与方块体积统计；
+- [x] 独立 Empty 根容器化与多选区自动递增；
+- [x] 本地隐私注册表（UUID 存储，防工程泄漏本地路径）；
+- [x] “🔄 刷新模型 (Refresh Model)”原地无感重构算子。
 
-### 3. 胶水层智能按需预烘焙门禁 (✅ 已完成)
-- [x] **自动前置资产校验与热重载 (`bridge/assets.py`)**
-  - [x] 门禁机制：未就绪或材质包变更时，自动两阶段流水线先烘焙再执行导入/同步；
-  - [x] 涵盖存档导入、刷新、Live Sync 连接/重构、通用网格重构各核心入口；
-  - [x] 彻底杜绝首次导入出现无 UV 灰模问题。
+### 3. 真实生态 3D Biome 染色与平滑过渡管线 (✅ 已完成)
+- [x] 真实 3D Quart Biome 染色采样（沼泽特异水色、双色草、热带雨林、黑森林等）；
+- [x] 5×5 原版均匀盒式平滑滤波；
+- [x] Rust 扁平 memoryview 零拷贝直写（498k faces 耗时降至 ~2.1 ms）。
 
-### 4. 真实生态 3D Biome 染色与平滑过渡管线 (✅ 已完成)
-- [x] **真实 3D Quart Biome 染色采样**
-  - [x] 接入 Rust 核心 3D 生物群系面域 Tint（沼泽特异水色/斑驳双色草、热带雨林、黑森林、恶地等）；
-  - [x] 5×5 (R=2) 原版均匀盒式平滑过渡核（Uniform Box Filter）与 Colormap UV 插值；
-  - [x] 着色器节点树自适应适配 Cycles 与 Eevee Next。
+### 4. CTM 连接纹理端到端验证 (✅ 已完成)
+- [x] OptiFine / Continuity 47-tile 拓扑解算与 UV 渲染。
 
-### 5. CTM 连接纹理端到端验证 (✅ 已完成)
-- [x] **OptiFine / Continuity CTM 规则与图集解算**
-  - [x] 偏好设置与导入选项提供 `enable_ctm` 复选框；
-  - [x] 验证连续玻璃、连续书架、平滑石材的 47-tile 拓扑解算与 UV 渲染，杜绝单像素塌陷。
+### 5. 现代 Blender 5.0+ 零拷贝内存直写 (✅ 已完成)
+- [x] 独立 `libmtk_blender_dna` 实现硬件带宽级连续内存拷贝；
+- [x] 通用属性（Generic Attributes）向量化批量灌入与 Palette 调色板化。
 
-### 6. 现代 Blender 5.0+ 零拷贝与批写入现代化 (✅ 已完成)
-- [x] **Rust $\leftrightarrow$ Blender 内存直接写入管道**
-  - [x] Tier 1 直接指针直写 (`direct_copy_*_to_ptr`)；
-  - [x] Tier 2 通用属性（Generic Attributes）向量化批量灌入；
-  - [x] 字符串面属性“调色板化（Palette Indexing）”改造；
-  - [x] 几何写入总耗时提速 38x~900x。
-
-### 7. 小三样核心网格与 UV 工具库 (✅ 已完成)
+### 6. 小三样核心网格与 UV 工具库 (✅ 已完成)
 - [x] 自适应像素网格切分 (`op_pixel_split.py`)；
-- [x] 智能挤出与 UV 修复系统 (`operators/extrude/`，SMART / INWARD / OUTWARD 模式，实时 Depsgraph 监听)；
-- [x] 外部网格面遮挡剔除 (`op_cull.py`，6 向邻域分析)。
-
-### 8. 实时网络同步 (Live Sync) 会话生命周期 (✅ 已完成)
-- [x] 伴生体素点云子物体结构与 Empty 根容器平铺统一层级；
-- [x] 跨工程深度清理钩子（`load_pre` / `load_post`，切断 TCP 并清理定时器）；
-- [x] 多会话并行隔离与防串流。
-
-### 9. v2.0 正式发版验证与打包测试 (P0 - ✅ 已完成)
-- [x] 运行 `python3 build.py` 验证发布包：
-  - [x] 确保自动物理剔除 `dev/` 开发模块；
-  - [x] 确保 `blender_manifest.toml` 包含正确的 abi3 wheel 声明；
-  - [x] 验证发布包安装于全新纯净 Blender 4.2+ / 5.2+ 宿主无报错；
-- [x] Mock 测试门禁通过（206 passed / 72 skipped）；
-- [x] Blender 宿主测试门禁验证通过（271 passed / 7 skipped in 20.62s）。
+- [x] 智能挤出与 UV 修复系统 (`operators/extrude/`)；
+- [x] 外部网格面遮挡剔除 (`op_cull.py`)。
 
 ---
 
-## 🚀 v2.1 版本：Mine-imator 深度集成、通用动作重定向与高级实体 (规划排期中 📋)
+## 🚀 v2.1 版本：Mine-imator 深度集成、通用动作重定向与高级实体 (📋 启动推进中)
 
-> **2.1 版本主题**：以官方停更的 Mine-imator 2.0 源码为权威参考，构建“临时参考骨骼 + 通用动作重定向”管道，将角色动作自由映射到 Rig2 / Ice Cube / BPS / Thomas 等主流人模，并攻坚 1.21.4+ 客户端特殊模型与场景交换。
+> **2.1 版本主题**：以官方停更的 Mine-imator 2.0 源码为权威参考，构建“临时参考骨骼 + 通用动作重定向”管道，将角色动作自由映射到 Rig2 / Ice Cube / BPS / Thomas 等主流人模，并攻坚 1.21.4+ 客户端特殊模型与场景交换包。
 
-### 1. Mine-imator 深度集成与全能动作重定向管线 (`mi2bl` Retargeting Pipeline - P1 核心 🌟)
+### 1. Mine-imator 深度集成与全能动作重定向管线 (`mi2bl` - P1 核心 🌟)
 - [ ] **Mine-imator 2.0 官方源码参考与逆向分析**
-  - [ ] 基于已克隆的稳定 Mine-imator 2.0 源码，提取核心数学与渲染规范；
-  - [ ] 剖析 MI 着色器特性（HLSL/GLSL 自发光、卡通描边、次表面散射、高光粗糙度换算、Alpha Blend/Hash）；
   - [ ] 剖析关键帧过渡曲线（Linear, Instant, Bézier 速度与张力参数算法）；
   - [ ] 剖析摄像机物理参数（FOV、景深焦距/光圈、散景叶片、Camera Shake 随机噪声）；
   - [ ] 剖析灯光能量换算（Strength × Range² × 4π 物理辐射照度映射）；
 - [ ] **MI 标准临时参考骨骼 (Template Intermediate Armature)**
-  - [ ] 导入 `.miproject` / `.miobject` / `.miframes` 时，在 Blender 现场动态构建 1:1 对齐 Mine-imator 关节命名与层级的标准临时骨骼；
-  - [ ] 将 MI 原始关键帧无损灌入该参考骨骼，原汁原味还原动作与时间线；
+  - [ ] 导入 `.miproject` / `.miobject` / `.miframes` 时现场动态构建 1:1 对齐 Mine-imator 关节命名与层级的标准临时骨骼；
+  - [ ] 将 MI 原始关键帧无损灌入该参考骨骼；
 - [ ] **通用动作重定向引擎 (Universal Minecraft Action Retargeting Engine)**
-  - [ ] 建立基于中间标准的**骨骼重定向映射表 (Bone Retargeting Profiles)**；
-  - [ ] 预置主流人模映射 Profile：
-    - **Rig2** (Mozi 家族专属 Rig)
-    - **Ice Cube** (经典传奇人模)
-    - **BPS** (Black Plasma Studios 人模)
-    - **Thomas** (Thomas's Rig 系列)
-    - **Custom Armature** (用户自定义骨骼交互式配准)；
-  - [ ] 支持一键将临时参考骨骼的 Action 动作重定向、解算轴心偏移并烘焙为目标人模的 FK/IK 动作；
-  - [ ] 动作重定向完成后支持一键安全清理/隐藏临时中介骨骼；
+  - [ ] 预置主流人模映射 Profile：**Rig2**, **Ice Cube**, **BPS**, **Thomas**, **Custom Armature**；
+  - [ ] 一键重定向、解算轴心偏移并烘焙为目标人模的 FK/IK 动作；
+  - [ ] 动作重定向完成后一键安全清理/隐藏临时中介骨骼；
 - [ ] **场景材质与物理相机一键映射**
-  - [ ] 将 MI 的材质轨道（`alpha`, `emissive`, `metallic`, `roughness`, `subsurface`）转换为 Blender Principled BSDF 节点树；
+  - [ ] 将 MI 材质轨道转换为标准 Principled BSDF 节点树；
   - [ ] 生成对齐 MI 渲染特性的物理摄像机与 Cycles/Eevee 灯光阵列。
 
 ### 2. 1.21.4+ 客户端特殊模型攻坚 (Special Renderers & Copper Golem Statue) (P1)
 - [ ] **解析客户端模型新规范 (`mtk-model::special`)**
-  - [ ] 攻坚 Minecraft 1.21.4+ Item/Block Model Definitions 中的 `"type": "minecraft:special"` 与 `"type": "minecraft:select"` 语法；
+  - [ ] 支持 `"type": "minecraft:special"` 与 `"type": "minecraft:select"` 语法；
 - [ ] **铜像 / 铜傀儡像 (Copper Golem Statue) 网格重构**
-  - [ ] 解决铜像在缺少传统 `"elements"` 字段时的网格丢失问题；
-  - [ ] 内置铜傀儡像 4 种氧化态（未氧化、斑驳、锈蚀、完全氧化）与各姿态（standing, sitting, running, star）的盒模型几何拓扑与贴图映射。
+  - [ ] 解决铜像在缺少传统 `"elements"` 字段时的网格丢失；
+  - [ ] 内置铜傀儡像 4 种氧化态与各姿态盒模型几何与贴图映射。
 
 ### 3. 原版静态与悬挂实体导入系统 (P1)
-- [ ] **艺术画 (Painting) 前端构建器 (`bridge/entity.py`, `operators/save/`)**
-  - [ ] 从存档数据读取 `PaintingEntity`（`variant`, `facing`, `pos`）；
-  - [ ] 生成规整的 1x1 ~ 4x4 原版三维画框带木质背板，绑定对应画作贴图；
-- [ ] **物品展示框 (Item Frame & Glow Item Frame)**
-  - [ ] 解析展示框外壳与发光边框，处理 45° `ItemRotation` 与 `Invisible` 隐形状态；
-  - [ ] 内容物自适应装配：方块模型、平面切分挤出物品模型、或地图无框平坦面；
-- [ ] **填充地图 (Filled Map Data) 像素图像解码**
-  - [ ] 对接 Rust 导出的 128×128 RGBA8 像素缓冲，现场生成 Blender Image Datablock 并赋材质；
-- [ ] **盔甲架 (Armor Stand) 支架与装备挂载**
-  - [ ] 导入木质支架骨架与 `Pose` 姿态角度，挂载手持与穿戴装备。
+- [ ] **艺术画 (Painting) 前端构建器 (`bridge/entity.py`)**：生成带木质背板的三维画框网格；
+- [ ] **物品展示框 (Item Frame & Glow Item Frame)**：支持 45° 旋转、隐形状态与内部物品装配；
+- [ ] **填充地图 (Filled Map Data) 像素图像解码**：对接 Rust 导出的 128×128 RGBA8 像素流，现场生成贴图并赋材质；
+- [ ] **盔甲架 (Armor Stand)**：导入支架骨架与 `Pose` 姿态角度，挂载装备。
 
 ### 4. 复杂方块实体 NBT 图元与动画分体铰链装配 (P2)
-- [ ] **告示牌与悬挂告示牌文字生成器 (Sign Text)**
-  - [ ] 读取 `front_text` / `back_text`，生成文字网格或高保真纹理投影，支持 16 色染料与发光墨囊；
-- [ ] **旗帜多层花纹合成 (Banner Patterns)**
-  - [ ] 依照原版 40+ 种图案公式与 16 种颜色按 NBT 顺位合成多层 Alpha 纹理；
-- [ ] **动画铰链分体装配选项 (Animation-Ready Hierarchy)**
-  - [ ] 提供“分离可动部件”选项：门（Door）、栅栏门（Fence Gate）、箱子顶盖（Chest Lid）、钟体（Bell Body）生成为独立子物体；
-  - [ ] 精确放置铰链旋转中心（Pivot Point），方便动画师直接设置旋转关键帧。
+- [ ] **告示牌与悬挂告示牌文字生成器 (Sign Text)**：支持 16 色染料与发光墨囊；
+- [ ] **旗帜多层花纹合成 (Banner Patterns)**：按原版公式进行多层 Alpha 顺位合成；
+- [ ] **动画铰链分体装配选项**：门、栅栏门、箱子顶盖、钟体生成为独立子物体并预留精确轴心。
 
+### 5. 自包含轻量场景交换包交互 (`.mtkscene`) (P2)
+- [ ] **导出端 (`Export -> MTK Scene Interchange (.mtkscene)`)**：按需提取最小依赖模型与独立贴图闭包（Tree-shaking），稀疏体素单文件打包；
+- [ ] **导入端与现场重构 (`Import -> MTK Scene Interchange (.mtkscene)`)**：极速读取单文件并重构世界几何。
+
+---
+
+## 🛠️ v2.2 版本：通用面部绑定系统与全能创作套件 (📋 规划排期中)
 
 ### 1. 通用 Minecraft 面部绑定与驱动系统 (Universal Facial Engine - P1 核心 🌟)
-- [ ] **从资产强绑定解耦为通用代码规范**
-  - [ ] 彻底摆脱对特定 Rig 内部 Driver 资产的硬依赖，将 ARKit 52 Blendshapes 映射抽象为代码层可配置的骨骼变换映射表 (Mapping Schema)；
-  - [ ] 建立标准数据流：`Blendshape Weights (0..1) -> Mapping Rules (Translation/Rotation/Scale) -> Bone Pose Channels`；
-- [ ] **主流人模全覆盖预设 Profile (Universal Rig Support)**
-  - [ ] 预置 **Rig2** 面部骨骼映射 Profile；
-  - [ ] 预置 **Ice Cube** 面部骨骼映射 Profile；
-  - [ ] 预置 **BPS** 面部骨骼映射 Profile；
-  - [ ] 预置 **Thomas** 面部骨骼映射 Profile；
-  - [ ] 提供可视化映射编辑器：允许用户针对任意自定义 Minecraft 骨骼拾取骨骼并标定极值偏移行程；
-- [ ] **一键装配模式 vs 实时驱动模式**
-  - [ ] **一键装配模式 (Generate Drivers)**：根据选定 Profile，一键在目标 Armature 上生成原生 Blender Driver，永久脱离插件独立工作；
-  - [ ] **实时驱动模式 (Live Motion Stream)**：无需修改绑定，实时将面部动作直接写入 PoseBone，支持一键烘焙关键帧；
-- [ ] **Rust 高性能网络与平滑滤波后端 (`mtk-face` / `mtk-net`)**
-  - [ ] 原生 Rust 实现 LiveLinkFace (UDP 11111) 与 WebSocket 高并发无锁数据包监听；
-  - [ ] 集成 One Euro Filter 与卡尔曼滤波，消除面捕抖动与网络丢包卡顿；
-  - [ ] 头部姿态四元数解算与零延迟桥接进 Blender。
+- [ ] **从资产强绑定解耦为通用代码规范**：将 ARKit 52 Blendshapes 抽象为通用骨骼变换映射表；
+- [ ] **主流人模全覆盖预设 Profile**：Rig2, Ice Cube, BPS, Thomas 及可视化映射编辑器；
+- [ ] **一键装配模式 vs 实时驱动模式**：生成原生 Blender Driver 或实时写入 PoseBone；
+- [ ] **Rust 高性能网络与平滑滤波后端 (`mtk-face` / `mtk-net`)**：LiveLinkFace (UDP 11111) 与 WebSocket 异步接收，One Euro Filter 抗抖动。
 
 ### 2. GeckoLib 动画双向协同 (`.animation.json`) (P2)
-- [ ] **Rig2 / 通用骨骼导出至 Blockbench / GeckoLib**
-  - [ ] 继承并重构 `rig2_addons` 的 R2BB 引擎，支持将 Blender Action 导出为标准 GeckoLib 1.8.0 格式；
-  - [ ] 支持轴向反转、关键帧去重压缩与时间线归一化；
-- [ ] **GeckoLib 动画导入至 Blender**
-  - [ ] 支持读取 `.animation.json` 并重定向至 Rig2 / Thomas / BPS 骨骼。
+- [ ] Rig2 / 通用骨骼导出至 Blockbench / GeckoLib；
+- [ ] GeckoLib 动画导入至 Blender 并重定向至主流骨骼。
 
 ### 3. 交互式 2D 俯视微型地图选区器 (Interactive 2D Minimap Selector) (P1)
-- [ ] **可视化世界选区面板**
-  - [ ] 告别纯数字 AABB 坐标输入；
-  - [ ] 基于 Rust 后端快速渲染 2D 俯视地形与群系切片，提供视口弹窗点击拖拽框选。
+- [ ] 基于 Rust 后端渲染 2D 俯视地形与群系切片，提供视口拖拽框选。
 
 ### 4. 建筑投影与蓝图文件直接导入 (`.litematic` / `.schematic` / `.nbt`) (P1)
-- [ ] **蓝图一键转网格**
-  - [ ] 无需先将建筑导入世界存档，直接在 Blender 中单选 `.litematic` 文件；
-  - [ ] 现场生成带完整材质、CTM 与 Biome 的自包含建筑网格。
-
-### 5. 自包含轻量场景交换包前端交互 (`.mtkscene`) (P2)
-- [ ] **场景导出端 (`Export -> MTK Scene Interchange (.mtkscene)`)**
-  - [ ] 交互式框选或根据当前选中世界容器导出；
-  - [ ] 调用 Rust 核心按需提取最小依赖模型与独立贴图闭包（Tree-shaking），稀疏体素打包为单文件。
-- [ ] **场景导入端与现场重构 (`Import -> MTK Scene Interchange (.mtkscene)`)**
-  - [ ] 极速读取 `.mtkscene` 单文件，根据用户设置实时重构网格；
-  - [ ] 支持用户在导入时现场决定采用“紧凑小图集”还是“独立 Principled BSDF 材质槽”。
+- [ ] 直接解包 Litematica 区域并现场生成带完整材质、CTM 与 Biome 的建筑网格。
 
 ---
 
 ## 🔮 v2.3+ 远景：万能创作者全能生态 (Future Vision)
 
-- [ ] **玩家角色与原版生物绑定库 (Character Rig & Skin Tools)**
-  - 玩家皮肤一键贴图与 64×64 双层外皮 3D 立体切分挤出；
-  - 内置经典角色与常用原版生物（苦力怕、僵尸、骷髅、末影人）基础 FK/IK 骨骼绑定。
-- [ ] **Mine-imator 渲染特性 1:1 深度复刻预设**
-  - 深入 Mine-imator 2.0 官方源码的 HLSL 着色器，精确复刻其光影衰减、高光反光率与卡通轮廓。
-- [ ] **环境氛围与渲染辅助工具集 (Atmosphere & Render Presets)**
-  - 原版日夜循环天空盒节点树（动态太阳、月相与体积云朵方块层）；
-  - Cycles / Eevee Next 一键渲染优化预设（AgX 色彩管理、景深与采样率自动化）。
+- [ ] 玩家角色与原版生物绑定库（皮肤 3D 双层立体挤出与预设 Rig）；
+- [ ] Mine-imator 渲染特性 1:1 深度复刻预设（光影衰减、高光反光率、卡通描边）；
+- [ ] 原版环境日夜循环天空盒节点树与渲染优化预设。
