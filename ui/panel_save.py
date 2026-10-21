@@ -270,7 +270,10 @@ def register():
     if not bpy:
         return
     for cls in PANEL_CLASSES:
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError:
+            pass
 
 
 def unregister():

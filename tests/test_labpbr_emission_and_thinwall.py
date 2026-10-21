@@ -111,7 +111,7 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         """Verify LabPBR 1.3 Decoder public interface and sockets."""
         ng = ensure_labpbr_decoder()
         self.assertIsNotNone(ng)
-        self.assertEqual(ng.get("mozi_template_version"), 19)
+        self.assertEqual(ng.get("mozi_template_version"), LABPBR_TEMPLATE_VERSION)
         self.assertEqual(reference_shape_errors(ng), ())
         assert_reference_shape(ng)
 

@@ -219,7 +219,10 @@ CLASSES = (
 
 def register():
     for cls in CLASSES:
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError:
+            pass
     bpy.types.Scene.mozi_sync = PointerProperty(type=MoziSyncProperties)
     bpy.types.Scene.mozi_active_sync_container_name = StringProperty(
         name="Active Sync Container",

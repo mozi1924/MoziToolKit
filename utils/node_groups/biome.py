@@ -10,7 +10,7 @@ import bpy
 from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
-BIOME_TINT_VERSION = 3
+BIOME_TINT_VERSION = 4
 COLORMAP_SAMPLER_VERSION = 2
 
 
@@ -77,63 +77,63 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     # 4. Effective Base Tint = Mix(White, Tint Color, Base Factor)
     mix_base_tint = node(
         nodes,
-        "ShaderNodeMixRGB",
+        "ShaderNodeMix",
         "Effective Base Tint",
         location=(-460, 200),
-        properties={"blend_type": "MIX"},
-        inputs={"Color1": (1.0, 1.0, 1.0, 1.0)},
+        properties={"data_type": "RGBA", "blend_type": "MIX"},
+        inputs={"A[2]": (1.0, 1.0, 1.0, 1.0)},
     )
-    link(links, mult_base_fac, "Value", mix_base_tint, "Factor")
-    link(links, group_in, "Tint Color", mix_base_tint, "Color2")
+    link(links, mult_base_fac, "Value", mix_base_tint, "Factor[0]")
+    link(links, group_in, "Tint Color", mix_base_tint, "B[2]")
 
     # 5. Effective Overlay Tint = Mix(White, Tint Color, Overlay Factor)
     mix_overlay_tint = node(
         nodes,
-        "ShaderNodeMixRGB",
+        "ShaderNodeMix",
         "Effective Overlay Tint",
         location=(-460, -50),
-        properties={"blend_type": "MIX"},
-        inputs={"Color1": (1.0, 1.0, 1.0, 1.0)},
+        properties={"data_type": "RGBA", "blend_type": "MIX"},
+        inputs={"A[2]": (1.0, 1.0, 1.0, 1.0)},
     )
-    link(links, mult_overlay_fac, "Value", mix_overlay_tint, "Factor")
-    link(links, group_in, "Tint Color", mix_overlay_tint, "Color2")
+    link(links, mult_overlay_fac, "Value", mix_overlay_tint, "Factor[0]")
+    link(links, group_in, "Tint Color", mix_overlay_tint, "B[2]")
 
     # 6. Tinted Base RGB = Base Color * Effective Base Tint
     mult_base_col = node(
         nodes,
-        "ShaderNodeMixRGB",
+        "ShaderNodeMix",
         "Tinted Base Color",
         location=(-220, 200),
-        properties={"blend_type": "MULTIPLY"},
-        inputs={"Factor": 1.0},
+        properties={"data_type": "RGBA", "blend_type": "MULTIPLY"},
+        inputs={"Factor[0]": 1.0},
     )
-    link(links, group_in, "Base Color", mult_base_col, "Color1")
-    link(links, mix_base_tint, "Color", mult_base_col, "Color2")
+    link(links, group_in, "Base Color", mult_base_col, "A[2]")
+    link(links, mix_base_tint, "Result[2]", mult_base_col, "B[2]")
 
     # 7. Tinted Overlay RGB = Overlay Color * Effective Overlay Tint
     mult_overlay_col = node(
         nodes,
-        "ShaderNodeMixRGB",
+        "ShaderNodeMix",
         "Tinted Overlay Color",
         location=(-220, -50),
-        properties={"blend_type": "MULTIPLY"},
-        inputs={"Factor": 1.0},
+        properties={"data_type": "RGBA", "blend_type": "MULTIPLY"},
+        inputs={"Factor[0]": 1.0},
     )
-    link(links, group_in, "Overlay Color", mult_overlay_col, "Color1")
-    link(links, mix_overlay_tint, "Color", mult_overlay_col, "Color2")
+    link(links, group_in, "Overlay Color", mult_overlay_col, "A[2]")
+    link(links, mix_overlay_tint, "Result[2]", mult_overlay_col, "B[2]")
 
     # 8. Composite Final Color = Mix(Tinted Base, Tinted Overlay, Overlay Alpha)
     comp_color = node(
         nodes,
-        "ShaderNodeMixRGB",
+        "ShaderNodeMix",
         "Composite Color",
         location=(150, 100),
-        properties={"blend_type": "MIX"},
+        properties={"data_type": "RGBA", "blend_type": "MIX"},
     )
-    link(links, group_in, "Overlay Alpha", comp_color, "Factor")
-    link(links, mult_base_col, "Color", comp_color, "Color1")
-    link(links, mult_overlay_col, "Color", comp_color, "Color2")
-    link(links, comp_color, "Color", group_out, "Color")
+    link(links, group_in, "Overlay Alpha", comp_color, "Factor[0]")
+    link(links, mult_base_col, "Result[2]", comp_color, "A[2]")
+    link(links, mult_overlay_col, "Result[2]", comp_color, "B[2]")
+    link(links, comp_color, "Result[2]", group_out, "Color")
 
     # 9. Composite Final Alpha = Max(Base Alpha, Overlay Alpha)
     max_alpha = node(
@@ -245,7 +245,7 @@ def ensure_colormap_sampler() -> bpy.types.NodeTree:
     return finalize_group(tree)
 
 
-COLORMAP_DECODER_VERSION = 2
+COLORMAP_DECODER_VERSION = 3
 
 
 def ensure_colormap_decoder() -> bpy.types.NodeTree:
@@ -302,31 +302,31 @@ def ensure_colormap_decoder() -> bpy.types.NodeTree:
     mask_dry = create_range_mask("Dry Foliage", 4.5, None, -900, -400)
 
     # Chain Mix nodes
-    mix1 = node(nodes, "ShaderNodeMixRGB", "Mix Grass", location=(-400, 200), properties={"blend_type": "MIX"})
-    link(links, mask_grass, "Value", mix1, "Factor")
-    link(links, group_in, "Fallback Color", mix1, "Color1")
-    link(links, group_in, "Grass Color", mix1, "Color2")
+    mix1 = node(nodes, "ShaderNodeMix", "Mix Grass", location=(-400, 200), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    link(links, mask_grass, "Value", mix1, "Factor[0]")
+    link(links, group_in, "Fallback Color", mix1, "A[2]")
+    link(links, group_in, "Grass Color", mix1, "B[2]")
 
-    mix2 = node(nodes, "ShaderNodeMixRGB", "Mix Foliage", location=(-200, 200), properties={"blend_type": "MIX"})
-    link(links, mask_foliage, "Value", mix2, "Factor")
-    link(links, mix1, "Color", mix2, "Color1")
-    link(links, group_in, "Foliage Color", mix2, "Color2")
+    mix2 = node(nodes, "ShaderNodeMix", "Mix Foliage", location=(-200, 200), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    link(links, mask_foliage, "Value", mix2, "Factor[0]")
+    link(links, mix1, "Result[2]", mix2, "A[2]")
+    link(links, group_in, "Foliage Color", mix2, "B[2]")
 
-    mix3 = node(nodes, "ShaderNodeMixRGB", "Mix Water", location=(0, 200), properties={"blend_type": "MIX"})
-    link(links, mask_water, "Value", mix3, "Factor")
-    link(links, mix2, "Color", mix3, "Color1")
-    link(links, group_in, "Water Color", mix3, "Color2")
+    mix3 = node(nodes, "ShaderNodeMix", "Mix Water", location=(0, 200), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    link(links, mask_water, "Value", mix3, "Factor[0]")
+    link(links, mix2, "Result[2]", mix3, "A[2]")
+    link(links, group_in, "Water Color", mix3, "B[2]")
 
-    mix4 = node(nodes, "ShaderNodeMixRGB", "Mix Hardcoded", location=(200, 200), properties={"blend_type": "MIX"})
-    link(links, mask_hardcoded, "Value", mix4, "Factor")
-    link(links, mix3, "Color", mix4, "Color1")
-    link(links, group_in, "Hardcoded Color", mix4, "Color2")
+    mix4 = node(nodes, "ShaderNodeMix", "Mix Hardcoded", location=(200, 200), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    link(links, mask_hardcoded, "Value", mix4, "Factor[0]")
+    link(links, mix3, "Result[2]", mix4, "A[2]")
+    link(links, group_in, "Hardcoded Color", mix4, "B[2]")
 
-    mix5 = node(nodes, "ShaderNodeMixRGB", "Mix Dry Foliage", location=(400, 200), properties={"blend_type": "MIX"})
-    link(links, mask_dry, "Value", mix5, "Factor")
-    link(links, mix4, "Color", mix5, "Color1")
-    link(links, group_in, "Dry Foliage Color", mix5, "Color2")
+    mix5 = node(nodes, "ShaderNodeMix", "Mix Dry Foliage", location=(400, 200), properties={"data_type": "RGBA", "blend_type": "MIX"})
+    link(links, mask_dry, "Value", mix5, "Factor[0]")
+    link(links, mix4, "Result[2]", mix5, "A[2]")
+    link(links, group_in, "Dry Foliage Color", mix5, "B[2]")
 
-    link(links, mix5, "Color", group_out, "Color")
+    link(links, mix5, "Result[2]", group_out, "Color")
 
     return finalize_group(tree)

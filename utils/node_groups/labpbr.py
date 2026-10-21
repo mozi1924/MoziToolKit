@@ -8,7 +8,7 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 LABPBR_GROUP_NAME = "LabPBR 1.3 Decoder"
-LABPBR_TEMPLATE_VERSION = 19
+LABPBR_TEMPLATE_VERSION = 20
 
 # Captured from the verified in-Blender decoder and its appended reference.
 # The graph contains functional nodes and effective links with Christensen-Burley SSS,
@@ -197,7 +197,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
 
     has_color_data = _math(nodes, "Has Color Data", "GREATER_THAN", (-800, 820), {"Value[1]": 0.001})
     clean_albedo = node(nodes, "ShaderNodeMix", "Clean Albedo Color", location=(-600, 950), properties={"data_type": "RGBA", "blend_type": "MIX"}, inputs={"A[2]": (1.0, 1.0, 1.0, 1.0)})
-    albedo_ao = node(nodes, "ShaderNodeMixRGB", "Albedo × Material AO", location=(-350, 820), properties={"blend_type": "MULTIPLY"}, inputs={"Factor": 1.0})
+    albedo_ao = node(nodes, "ShaderNodeMix", "Albedo × Material AO", location=(-350, 820), properties={"data_type": "RGBA", "blend_type": "MULTIPLY"}, inputs={"Factor[0]": 1.0})
     normal_x = _math(nodes, "Normal X: 2R − 1", "MULTIPLY_ADD", (-780, 620), {"Value[1]": 2.0, "Value[2]": -1.0})
     normal_y = _math(nodes, "Normal Y: 1 − 2G", "MULTIPLY_ADD", (-780, 420), {"Value[1]": -2.0, "Value[2]": 1.0})
     x_squared = _math(nodes, "X²", "MULTIPLY", (-560, 620))
@@ -265,8 +265,8 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
     link(links, group_input, "Albedo Color", clean_albedo, "B[2]")
 
     link(links, group_input, "Normal (_n) Color", decode_normal, "Color")
-    link(links, decode_normal, "Blue", albedo_ao, "Color2")
-    link(links, clean_albedo, "Result[2]", albedo_ao, "Color1")
+    link(links, clean_albedo, "Result[2]", albedo_ao, "A[2]")
+    link(links, decode_normal, "Blue", albedo_ao, "B[2]")
     link(links, decode_normal, "Red", normal_x, "Value[0]"); link(links, decode_normal, "Green", normal_y, "Value[0]")
     link(links, normal_x, "Value", x_squared, "Value[0]"); link(links, normal_x, "Value", x_squared, "Value[1]")
     link(links, normal_y, "Value", y_squared, "Value[0]"); link(links, normal_y, "Value", y_squared, "Value[1]")
@@ -288,7 +288,7 @@ def ensure_labpbr_decoder() -> bpy.types.NodeTree:
 
     # Feature gating and public outputs.
     link(links, group_input, "Enable PBR (0-1)", enable_labpbr, "Value[0]")
-    link(links, enable_labpbr, "Value", enable_ao, "Factor[0]"); link(links, clean_albedo, "Result[2]", enable_ao, "A[2]"); link(links, albedo_ao, "Color", enable_ao, "B[2]")
+    link(links, enable_labpbr, "Value", enable_ao, "Factor[0]"); link(links, clean_albedo, "Result[2]", enable_ao, "A[2]"); link(links, albedo_ao, "Result[2]", enable_ao, "B[2]")
     link(links, group_input, "Transmission Weight", non_pbr_roughness, "Factor[0]")
     link(links, non_pbr_roughness, "Result[0]", enable_roughness, "A[0]")
     link(links, enable_labpbr, "Value", enable_roughness, "Factor[0]"); link(links, smoothness_inverse, "Value", enable_roughness, "B[0]")

@@ -7,8 +7,16 @@ and visual benchmarking inside a running Blender instance.
 from typing import Any, Dict, Optional
 import time
 
-from .loader import get_engine_status
-from .. import bridge
+try:
+    from .loader import get_engine_status
+    from .. import bridge
+except (ImportError, ValueError):
+    try:
+        from dev.loader import get_engine_status
+        import bridge
+    except (ImportError, ValueError):
+        from MoziToolKit.dev.loader import get_engine_status
+        from MoziToolKit import bridge
 
 
 def get_diagnostics() -> Dict[str, Any]:
@@ -39,7 +47,13 @@ def load_debug_world(
     into the active Blender scene with full model resolution, atlas UV remapping,
     and Atlas chunk PBR materials. Returns the created/updated bpy.types.Object.
     """
-    from ..utils.world import create_debug_world_object
+    try:
+        from ..utils.world import create_debug_world_object
+    except (ImportError, ValueError):
+        try:
+            from utils.world import create_debug_world_object
+        except (ImportError, ValueError):
+            from MoziToolKit.utils.world import create_debug_world_object
     obj, stats = create_debug_world_object(
         context=context,
         name=name,
@@ -72,7 +86,11 @@ def run_mesher_benchmark(
             from ..utils.system.dependencies import get_prefs
             prefs = get_prefs()
         except Exception:
-            pass
+            try:
+                from utils.system.dependencies import get_prefs
+                prefs = get_prefs()
+            except Exception:
+                pass
 
     storage = bridge.load_debug_world_storage()
 

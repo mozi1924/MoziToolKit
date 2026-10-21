@@ -30,7 +30,10 @@ def _stamp_save_mesh_origin(obj: Any) -> None:
     try:
         from ..mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
     except (ImportError, ValueError):
-        from ..mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
+        try:
+            from ...utils.mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
+        except (ImportError, ValueError):
+            from utils.mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
     stamp_geometry_origin(obj, ORIGIN_SAVE, overwrite=True)
 
 

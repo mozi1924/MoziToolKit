@@ -269,7 +269,10 @@ classes = (
 
 def register():
     for cls in classes:
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError:
+            pass
 
     bpy.types.Object.mtk_biome = EnumProperty(
         name="Biome",

@@ -31,7 +31,10 @@ def register():
     register_watcher()
     for cls in OPERATOR_CLASSES:
         import bpy
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+        except ValueError:
+            pass
 
 
 def unregister():
