@@ -26,31 +26,12 @@ def calculate_face_target_grid(
     max_subdivisions: int = 64,
 ) -> Tuple[int, int]:
     """Calculate target (cols, rows) subdivisions based on UV span and texture pixel density."""
-    mtk = get_libmtk()
-    if mtk and hasattr(mtk, "calculate_face_target_grid") and uvs:
-        try:
-            return mtk.calculate_face_target_grid(
-                [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
-            )
-        except Exception:
-            pass
-
+    mtk = require_libmtk("calculate_face_target_grid")
     if not uvs:
         return (1, 1)
-    min_u = min(p[0] for p in uvs)
-    max_u = max(p[0] for p in uvs)
-    min_v = min(p[1] for p in uvs)
-    max_v = max(p[1] for p in uvs)
-    du = max(1e-6, max_u - min_u)
-    dv = max(1e-6, max_v - min_v)
-
-    is_vertical_anim = (tex_h >= 2 * tex_w) and (tex_h % tex_w == 0) and (dv > 0.9)
-    effective_h = tex_w if is_vertical_anim else tex_h
-    effective_w = tex_w
-
-    cols = max(1, min(max_subdivisions, int(round(du * effective_w / pixels_per_face))))
-    rows = max(1, min(max_subdivisions, int(round(dv * effective_h / pixels_per_face))))
-    return (cols, rows)
+    return mtk.calculate_face_target_grid(
+        [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+    )
 
 
 def calculate_pixel_grid_cut_factors(
@@ -61,18 +42,12 @@ def calculate_pixel_grid_cut_factors(
     max_subdivisions: int = 64,
 ) -> Tuple[List[float], List[float]]:
     """Calculate non-uniform cut factors [0, 1] snapping strictly to integer pixel grid lines."""
-    mtk = get_libmtk()
-    if mtk and hasattr(mtk, "calculate_pixel_grid_cut_factors") and uvs:
-        try:
-            return mtk.calculate_pixel_grid_cut_factors(
-                [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
-            )
-        except Exception:
-            pass
-    cols, rows = calculate_face_target_grid(uvs, tex_w, tex_h, pixels_per_face, max_subdivisions)
-    u_factors = [i / cols for i in range(1, cols)]
-    v_factors = [i / rows for i in range(1, rows)]
-    return (u_factors, v_factors)
+    mtk = require_libmtk("calculate_pixel_grid_cut_factors")
+    if not uvs:
+        return ([], [])
+    return mtk.calculate_pixel_grid_cut_factors(
+        [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+    )
 
 
 def slice_face_by_pixel_grid(
