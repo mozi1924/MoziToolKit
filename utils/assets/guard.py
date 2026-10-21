@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -92,12 +93,19 @@ from .cache_utils import get_cache_dir
 logger = logging.getLogger("MoziToolKit.Utils.Assets.Guard")
 
 
-#: Subdirectories a pack must provide to be able to back the whole client asset pipeline.
-CLIENT_ASSET_ROOTS = ("blockstates", "models", "textures")
-
 #: Host-level asset roots / archives honoured when no preferences are registered (CLI, CI).
 ENV_ASSET_ROOTS = ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS")
 ENV_ASSET_ARCHIVES = ("MTK_TEST_JAR", "MC_JAR")
+
+
+#: Blocks that must be resolvable through blockstates -> models -> textures for a pack to
+#: qualify as the client foundation. Resource packs routinely override one of these, but a
+#: pack that *only* overrides textures (or ships incomplete/misspelled models) will miss at
+#: least one leg and is therefore treated as an overlay, not a base.
+BASE_PROBE_BLOCKS = ("stone", "dirt", "oak_planks")
+
+#: Archive asset probes keyed by (resolved path, mtime_ns, size) so UI redraws stay cheap.
+_ARCHIVE_ASSET_CACHE: Dict[Tuple[str, int, int], bool] = {}
 
 
 def _probe_archive(path: Path) -> Any:
@@ -106,21 +114,63 @@ def _probe_archive(path: Path) -> Any:
     return probe if probe is not None else detect_pack_kind(path)
 
 
+def _dir_has_client_assets(root: Path) -> bool:
+    """Cheap, version-stable proof that a directory can back the whole bake pipeline."""
+    mc = root / "assets" / "minecraft"
+    for block in BASE_PROBE_BLOCKS:
+        if not (mc / "blockstates" / f"{block}.json").is_file():
+            return False
+        if not (mc / "models" / "block" / f"{block}.json").is_file():
+            return False
+        if not (mc / "textures" / "block" / f"{block}.png").is_file():
+            return False
+    return True
+
+
+def _archive_has_client_assets(path: Path) -> bool:
+    """Same probe for JAR/ZIP bases, including future assets-only "slim" packs."""
+    try:
+        stat = path.stat()
+        key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return False
+    if key in _ARCHIVE_ASSET_CACHE:
+        return _ARCHIVE_ASSET_CACHE[key]
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+        ok = all(
+            f"assets/minecraft/blockstates/{block}.json" in names
+            and f"assets/minecraft/models/block/{block}.json" in names
+            and f"assets/minecraft/textures/block/{block}.png" in names
+            for block in BASE_PROBE_BLOCKS
+        )
+    except (OSError, zipfile.BadZipFile):
+        ok = False
+
+    _ARCHIVE_ASSET_CACHE[key] = ok
+    return ok
+
+
 def _path_provides_vanilla_client(path: Path) -> bool:
     """Single source of truth for "can this path serve as the vanilla client foundation".
 
-    - An unpacked client tree must expose ``assets/minecraft/{blockstates,models,textures}``.
-    - An archive must be content-classified as a vanilla *client* jar. A server jar,
-      mod jar, or plain resource pack is rejected regardless of how the user tagged it.
+    - An unpacked client tree must contain the canonical vanilla block assets across
+      blockstates, models and textures, so texture-only or model-less packs cannot pose
+      as a base.
+    - An archive must either be content-classified as a vanilla *client* jar, or carry the
+      same canonical asset set (future assets-only "slim" packs).
     - ``pack_type`` / ``detected_kind`` metadata is never trusted: both are user-editable.
     """
     if path.is_dir():
-        root = path / "assets" / "minecraft"
-        return all((root / part).is_dir() for part in CLIENT_ASSET_ROOTS)
+        return _dir_has_client_assets(path)
 
     if path.is_file() and path.suffix.lower() in (".jar", ".zip"):
         probe = _probe_archive(path)
-        return probe is not None and probe.kind in VALID_BASE_PACK_KINDS
+        if probe is not None and probe.kind in VALID_BASE_PACK_KINDS:
+            return True
+        return _archive_has_client_assets(path)
 
     return False
 

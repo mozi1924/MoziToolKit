@@ -55,7 +55,11 @@ def create_tiny_png(width: int = 16, height: int = 16, color: tuple[int, int, in
     return png
 
 
-def setup_mock_pack(pack_dir: str, block_name: str = "stone", color: tuple[int, int, int, int] = (255, 0, 0, 255)) -> None:
+#: Blocks the guard probes for to decide whether a pack can back the bake pipeline.
+CANONICAL_BLOCKS = ("stone", "dirt", "oak_planks")
+
+
+def write_block_assets(pack_dir: str, block_name: str, color: tuple[int, int, int, int]) -> None:
     tex_dir = os.path.join(pack_dir, "assets", "minecraft", "textures", "block")
     models_dir = os.path.join(pack_dir, "assets", "minecraft", "models", "block")
     bs_dir = os.path.join(pack_dir, "assets", "minecraft", "blockstates")
@@ -89,6 +93,14 @@ def setup_mock_pack(pack_dir: str, block_name: str = "stone", color: tuple[int, 
     bs_json = {"variants": {"": {"model": f"minecraft:block/{block_name}"}}}
     with open(os.path.join(bs_dir, f"{block_name}.json"), "w", encoding="utf-8") as f:
         json.dump(bs_json, f)
+
+
+def setup_mock_pack(pack_dir: str, block_name: str = "stone", color: tuple[int, int, int, int] = (255, 0, 0, 255)) -> None:
+    # A realistic client dump resolves the canonical probe blocks; ``block_name`` is the
+    # pack-specific override used by fingerprint/cache assertions.
+    for canonical in CANONICAL_BLOCKS:
+        write_block_assets(pack_dir, canonical, (128, 128, 128, 255))
+    write_block_assets(pack_dir, block_name, color)
 
     with open(os.path.join(pack_dir, "pack.mcmeta"), "w", encoding="utf-8") as f:
         json.dump({"pack": {"pack_format": 15, "description": "Mock Pack"}}, f)
@@ -373,6 +385,21 @@ class TestAssetBakeGuard(unittest.TestCase):
         os.makedirs(os.path.join(partial_dir, "assets", "minecraft", "textures", "block"), exist_ok=True)
         self.assertFalse(has_valid_vanilla_pack(self._make_prefs([partial_dir])))
 
+        # The classic buggy resource pack: all three roots exist, but only a custom block is
+        # defined. Without the canonical vanilla probe assets it cannot be a base.
+        custom_only = os.path.join(self.temp_dir, "custom_only")
+        write_block_assets(custom_only, "arcane_lamp", (10, 20, 30, 255))
+        with open(os.path.join(custom_only, "pack.mcmeta"), "w") as f:
+            json.dump({"pack": {"pack_format": 15, "description": "Overlay only"}}, f)
+        self.assertFalse(has_valid_vanilla_pack(self._make_prefs([custom_only])))
+
+        # Same complete tree but with a missing/misspelled model file: the blockstate cannot
+        # resolve, so the pack must not qualify as a base.
+        broken = os.path.join(self.temp_dir, "broken_models")
+        setup_mock_pack(broken, block_name="stone", color=(1, 2, 3, 255))
+        os.remove(os.path.join(broken, "assets", "minecraft", "models", "block", "oak_planks.json"))
+        self.assertFalse(has_valid_vanilla_pack(self._make_prefs([broken])))
+
         # Empty directory merely tagged VANILLA must be rejected.
         empty_dir = os.path.join(self.temp_dir, "empty_vanilla")
         os.makedirs(empty_dir, exist_ok=True)
@@ -409,6 +436,19 @@ class TestAssetBakeGuard(unittest.TestCase):
             path=client_jar, enabled=True, pack_type="VANILLA", detected_kind="", name="ClientJAR"
         )
         self.assertTrue(has_valid_vanilla_pack(types.SimpleNamespace(resource_packs=[client_entry])))
+
+        # Future assets-only "slim" pack: no class files, no version.json, just the client
+        # asset tree. It must still qualify through the canonical asset probe.
+        slim_jar = os.path.join(self.temp_dir, "slim.zip")
+        with zipfile.ZipFile(slim_jar, "w") as zf:
+            for block in CANONICAL_BLOCKS:
+                zf.writestr(f"assets/minecraft/blockstates/{block}.json", b"{}")
+                zf.writestr(f"assets/minecraft/models/block/{block}.json", b"{}")
+                zf.writestr(f"assets/minecraft/textures/block/{block}.png", b"x")
+        slim_entry = types.SimpleNamespace(
+            path=slim_jar, enabled=True, pack_type="RESOURCE_PACK", detected_kind="", name="Slim"
+        )
+        self.assertTrue(has_valid_vanilla_pack(types.SimpleNamespace(resource_packs=[slim_entry])))
 
     def test_gate_ignores_environment_when_a_stack_is_configured(self):
         """Environment variables are a CLI fallback, never a rescue for a configured wrong stack."""
