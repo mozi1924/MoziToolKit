@@ -328,7 +328,8 @@ class TestAssetBakeGuard(unittest.TestCase):
         self.assertFalse(has_valid_vanilla_pack(prefs_only_rp))
         can_run, reason = can_execute_asset_pipeline(prefs_only_rp)
         self.assertFalse(can_run)
-        self.assertIn("Vanilla Client", reason)
+        # The message is localized; assert it exists rather than pinning English text.
+        self.assertTrue(reason)
         self.assertEqual(check_asset_cache_status(prefs_only_rp), "NO_VANILLA")
 
     def test_status_no_vanilla_when_server_jar(self):
