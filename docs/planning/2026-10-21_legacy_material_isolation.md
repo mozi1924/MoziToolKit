@@ -1,10 +1,9 @@
-# 2026-10-21 旧材质实现隔离与删除计划
+# 2026-10-21 旧材质实现清除执行记录
 
-> 状态：**草案，待评审**。确认后再拆分到具体版本任务。
-> 基线：`MoziToolKit@aa7fcbe`、`libmozitoolkit@df06886`（canonical PBR 路径已提交）。
+> 状态：**已完成直接清除**。因工具尚未正式发布且处于纯开发态，跳过了中间隔离/迁移器过渡版本，直接完成了双端旧材质实现、数据结构与过时 API 的彻底物理删除。
+> 基线：`MoziToolKit`、`libmozitoolkit`（全量测试通过）。
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库。
-> 前提：新 `MtkPackedV1` 路径已上线；没有已知第三方消费者；旧 `.blend` 里的
-> `LabPBR 1.3 Decoder` 是**嵌入的 node group datablock**，删除 Python 生成器不会让它失效。
+> 前提：新 `MtkPackedV1` 标准 PBR 路径已全面接管；旧材质生成器、外部配置与 `mtk_material_props` 彻底移除。
 
 ---
 

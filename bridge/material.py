@@ -374,122 +374,6 @@ def build_material_palette(
     return palette, indices
 
 
-# ---------------------------------------------------------------------------
-# Material Physical Properties & Catalog API (Pure Rust libmtk_py)
-# ---------------------------------------------------------------------------
-
-def compute_flat_material_props_buffer(
-    face_source_keys: Sequence[str],
-    block_names: Optional[Sequence[str]] = None,
-) -> Any:
-    """Compute flat material properties as a zero-copy memoryview over Rust-owned floats."""
-    mtk = require_libmtk("compute_flat_material_props_memoryview")
-    keys = list(face_source_keys)
-    names = list(block_names) if block_names is not None else None
-    return mtk.compute_flat_material_props_memoryview(keys, names)
-
-
-def compute_flat_material_props_paletted_buffer(
-    palette: Sequence[str],
-    face_indices: Sequence[int],
-    block_names: Optional[Sequence[str]] = None,
-) -> Any:
-    """Compute flat material properties for a palette + per-face indices as a memoryview."""
-    mtk = require_libmtk("compute_flat_material_props_paletted_memoryview")
-    palette_list = list(palette)
-    names = list(block_names) if block_names is not None else None
-    return mtk.compute_flat_material_props_paletted_memoryview(
-        palette_list,
-        face_indices,
-        names,
-    )
-
-
-def get_material_props(
-    block_name: str = "",
-    texture_name: Optional[str] = None,
-) -> Tuple[float, float, float, float]:
-    """Query individual block material physical properties `[emission, thin_wall, transmission, sticker_threshold]`."""
-    mtk = require_libmtk("get_material_props")
-    props = mtk.get_material_props(block_name, texture_name)
-    return (float(props[0]), float(props[1]), float(props[2]), float(props[3]))
-
-
-def get_block_emission_strength(
-    block_name: str = "",
-    properties: Optional[Dict[str, Any]] = None,
-    texture_name: Optional[str] = None,
-) -> float:
-    """Query canonical emission strength for a block / texture (0.0 .. 15.0)."""
-    mtk = require_libmtk("get_block_emission_strength")
-    str_props = {str(k): str(v) for k, v in properties.items()} if properties else None
-    return float(mtk.get_block_emission_strength(block_name, str_props, texture_name))
-
-
-def is_thin_wall_block(
-    block_name: str = "",
-    texture_name: Optional[str] = None,
-) -> bool:
-    """Query whether a block or texture is thin wall foliage / vegetation."""
-    mtk = require_libmtk("is_thin_wall_block")
-    return bool(mtk.is_thin_wall_block(block_name, texture_name))
-
-
-def is_transmissive_block(
-    block_name: str = "",
-    texture_name: Optional[str] = None,
-) -> bool:
-    """Query whether a block or texture is a dielectric transmissive medium (glass, water, ice, etc.)."""
-    mtk = require_libmtk("is_transmissive_block")
-    return bool(mtk.is_transmissive_block(block_name, texture_name))
-
-
-def get_block_transmission_weight(
-    block_name: str = "",
-    texture_name: Optional[str] = None,
-) -> float:
-    """Query transmission weight (1.0 for glass/water/ice, 0.0 otherwise)."""
-    mtk = require_libmtk("get_block_transmission_weight")
-    return float(mtk.get_block_transmission_weight(block_name, texture_name))
-
-
-def get_block_sticker_threshold(
-    block_name: str = "",
-    texture_name: Optional[str] = None,
-) -> float:
-    """Query alpha sticker threshold (0.55 for glass, 0.95 for water/ice/slime/honey)."""
-    mtk = require_libmtk("get_block_sticker_threshold")
-    return float(mtk.get_block_sticker_threshold(block_name, texture_name))
-
-
-def register_material_properties(
-    payload: Dict[str, Any],
-    replace: bool = False,
-) -> bool:
-    """Send physical material properties dict directly into the Rust core registry."""
-    mtk = get_libmtk()
-    if not mtk or not hasattr(mtk, "register_material_properties"):
-        return False
-    try:
-        if replace and hasattr(mtk, "load_material_properties_replace"):
-            mtk.load_material_properties_replace(payload)
-        else:
-            mtk.register_material_properties(payload)
-        return True
-    except Exception as e:
-        logger.error(f"Failed to inject material properties into Rust core: {e}")
-        return False
-
-
-def reset_material_properties() -> bool:
-    """Reset Rust core material properties to built-in vanilla defaults."""
-    mtk = get_libmtk()
-    if not mtk or not hasattr(mtk, "reset_material_properties_to_default"):
-        return False
-    mtk.reset_material_properties_to_default()
-    return True
-
-
 __all__ = [
     "HAS_LIBMTK",
     "is_material_bridge_available",
@@ -510,12 +394,6 @@ __all__ = [
     "BakedAtlas",
     "load_baked_atlas_from_json",
     "build_material_palette",
-    "get_material_props",
-    "get_block_emission_strength",
-    "is_thin_wall_block",
-    "is_transmissive_block",
-    "get_block_transmission_weight",
-    "get_block_sticker_threshold",
     "TINT_TYPE_NONE",
     "TINT_TYPE_GRASS",
     "TINT_TYPE_FOLIAGE",
@@ -523,8 +401,6 @@ __all__ = [
     "TINT_TYPE_HARDCODED",
     "TINT_TYPE_DRY_FOLIAGE",
     "get_swamp_grass_color",
-    "register_material_properties",
-    "reset_material_properties",
 ]
 
 

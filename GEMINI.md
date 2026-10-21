@@ -104,7 +104,7 @@ MoziToolKit/
 │   ├── assets/           -> 资产缓存目录解析、系统文件夹管理、Modrinth 下载、任务守卫
 │   ├── world/            -> VoxelWorld 场景对象注入器 (apply_voxel_mesh_to_blender)
 │   ├── point_cloud/      -> 点云层级、Mask 修改器与父子对象管理
-│   ├── materials/        -> 材质节点树构建、物理属性配置 (properties_config)、Biome 更新
+│   ├── materials/        -> 材质节点树构建、标准 PBR 着色图、Biome 更新
 │   ├── mesh/             -> BMesh 遍历、高阶挤出算子 (random_extrude)、选区与归属标记
 │   ├── save/             -> 存档场景层级组织与导入编排 (hierarchy)
 │   └── system/           -> 偏好设置、菜单注册、系统依赖与 SaveRegistry

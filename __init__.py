@@ -54,20 +54,6 @@ def register():
     operators.register()
     ui.register()
 
-    # Inject canonical material properties configuration into Rust core
-    try:
-        from .utils.materials.properties_config import load_material_properties_config
-        load_material_properties_config()
-    except Exception:
-        pass
-
-    # Register persistent real-time render engine adaptation listeners
-    try:
-        from .utils.materials.builder.adaptation import register_render_engine_adaptation_handlers
-        register_render_engine_adaptation_handlers()
-    except Exception:
-        pass
-
     # Repair material datablocks that still reference retired attribute names
     try:
         from .utils.materials.migrations import register_migration_handlers
@@ -80,12 +66,6 @@ def unregister():
     try:
         from .utils.materials.migrations import unregister_migration_handlers
         unregister_migration_handlers()
-    except Exception:
-        pass
-
-    try:
-        from .utils.materials.builder.adaptation import unregister_render_engine_adaptation_handlers
-        unregister_render_engine_adaptation_handlers()
     except Exception:
         pass
 

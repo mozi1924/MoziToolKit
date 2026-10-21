@@ -68,9 +68,17 @@ def _load_decoder():
     """Import the legacy decoder from its current or legacy location."""
     try:
         from MoziToolKit.utils.legacy.materials.labpbr_decoder import ensure_labpbr_decoder
+        return ensure_labpbr_decoder
     except ImportError:
+        pass
+    try:
         from MoziToolKit.utils.node_groups.labpbr import ensure_labpbr_decoder
-    return ensure_labpbr_decoder
+        return ensure_labpbr_decoder
+    except ImportError:
+        raise RuntimeError(
+            "Legacy LabPBR decoder generator has been removed. "
+            "Visual regression oracle against live generator is no longer available."
+        )
 
 
 def _read_pack_texture(pack_path: Path, relative: str) -> bytes:

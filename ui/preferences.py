@@ -166,11 +166,6 @@ def on_material_setting_changed(self, context):
         if prefs:
             get_config_manager().sync_from_preferences(prefs)
             refresh_ui_and_menus(context)
-            try:
-                from ..utils.materials.builder.adaptation import update_materials_render_engine_adaptation
-                update_materials_render_engine_adaptation(context=context)
-            except Exception:
-                pass
     finally:
         _is_updating_material_settings = False
 
@@ -204,7 +199,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         description="Select preferences category",
         items=[
             ("RESOURCE_PACKS", "Resource Packs & Base JARs", "Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking"),
-            ("MATERIAL", "Material & Shading", "Configure standard PBR shading, render engine adaptation, and subsurface options"),
+            ("MATERIAL", "Material & Shading", "Configure standard PBR shading and subsurface options"),
             ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
             ("MISC", "Performance & Storage", "Storage backend, worker thread concurrency, and persistent cache settings"),
         ],

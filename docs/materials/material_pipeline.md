@@ -313,7 +313,6 @@ MoziToolKit 提供了从底层色彩插值到交互式 UI 的全套生物群系�
 - **`atlas_uv_tiling.py`**：防溢色平铺映射节点组（Anti-Bleed UV Tiling）。
 - **`animated.py`**：逐帧动态材质时间轴驱动器节点组。
 - **`biome.py`**：生物群系平滑混合色图解码器（`MC_Biome_Colormap_Decoder`）。
-- **`labpbr.py`**：Legacy 参考实现；运行时材质不再实例化。新材质由 `pbr_channel_spec.md` 定义的预编译通道直接驱动。
 - **`parallax.py`**：POM（Parallax Occlusion Mapping）视差遮挡贴图 UV 位移节点组。
 
 ### 8.4 材质替换与逆向恢复管线 (`utils/materials/pipeline/`)

@@ -380,24 +380,6 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertEqual(_read_loop_uvs(obj.data.uv_layers["UVMap"]), local_before)
                 self.assertEqual(obj.data["mtk:atlas_layout_hash"], "v1:layout-changed")
 
-    def test_material_props_memoryview_is_flat_f32_buffer(self):
-        """Rust-owned material props memoryview must expose exactly len(keys) * 4 floats."""
-        from MoziToolKit.bridge.material import compute_flat_material_props_buffer
-        from MoziToolKit.utils.materials.properties_config import load_material_properties_config
-        import numpy as np
-
-        # Do not depend on test order or on whichever registry state a previous
-        # case left behind: production registers this file on add-on startup.
-        self.assertTrue(load_material_properties_config())
-
-        keys = ["minecraft:block/glowstone", "minecraft:block/stone"]
-        buf = compute_flat_material_props_buffer(keys)
-        arr = np.frombuffer(buf, dtype=np.float32)
-        self.assertEqual(arr.size, len(keys) * 4)
-        # Glowstone emission is expected to be non-zero; stone is zero.
-        self.assertGreater(float(arr[0]), 0.0)
-        self.assertEqual(float(arr[4]), 0.0)
-
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_secondary_replacement_with_hashed_mtk_materials(self):
         # Create a test cube in Blender with hashed MTK material (mimicking previously processed map)

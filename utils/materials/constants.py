@@ -89,9 +89,6 @@ ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"  # LEGACY: no longer writte
 ATTR_UV_TILING_SCALE = "mtk_uv_tiling_scale"
 ATTR_UV_TILING_LOCATION = "mtk_uv_tiling_location"
 
-# Material Physical Properties Attribute (Packed FLOAT_COLOR)
-ATTR_MATERIAL_PROPS = "mtk_material_props"
-
 # Known Block Texture Suffixes
 TEXTURE_SUFFIXES = (
     "_n", "_s",
@@ -127,7 +124,6 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_UV_TILING_TRANSFORM,
     ATTR_ANIM_TIMING,
     ATTR_ANIM_FRAME_SIZE,
-    ATTR_MATERIAL_PROPS,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
     "atlas_chunk_id",
@@ -139,7 +135,6 @@ ANIM_AND_ATLAS_ATTR_NAMES = (
     "mtk_anim_interpolate",
     "mtk_anim_frame_width",
     "mtk_anim_frame_height",
-    "mtk_material_props",
     "mtk_biome_tint_data",
     "mtk_biome_tint_color",
 )
