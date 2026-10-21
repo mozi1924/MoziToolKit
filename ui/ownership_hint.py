@@ -9,20 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-try:
-    from ..i18n import tr
-    from ..utils.mesh.ownership import (
-        ORIGIN_EXTERNAL,
-        ORIGIN_POINT_CLOUD,
-        classify_origin,
-    )
-except (ImportError, ValueError):
-    from i18n import tr
-    from utils.mesh.ownership import (
-        ORIGIN_EXTERNAL,
-        ORIGIN_POINT_CLOUD,
-        classify_origin,
-    )
+from ..i18n import tr
+from ..utils.mesh.ownership import (
+    ORIGIN_EXTERNAL,
+    ORIGIN_POINT_CLOUD,
+    classify_origin,
+)
 
 
 def draw_mesh_origin_hint(layout: Any, context: Any, compact: bool = False) -> None:

@@ -11,22 +11,13 @@ from bpy.props import BoolProperty
 
 logger = logging.getLogger("MoziToolKit.Operators.VoxelCloud")
 
-try:
-    from ..utils.point_cloud import (
-        get_associated_parent_mesh,
-        get_associated_voxel_cloud,
-        is_voxel_cloud_visible,
-        set_voxel_cloud_visibility,
-    )
-    from ..utils.system import register_menu_item
-except (ImportError, ValueError):
-    from utils.point_cloud import (
-        get_associated_parent_mesh,
-        get_associated_voxel_cloud,
-        is_voxel_cloud_visible,
-        set_voxel_cloud_visibility,
-    )
-    from utils.system import register_menu_item
+from ..utils.point_cloud import (
+    get_associated_parent_mesh,
+    get_associated_voxel_cloud,
+    is_voxel_cloud_visible,
+    set_voxel_cloud_visibility,
+)
+from ..utils.system import register_menu_item
 
 
 def _resolve_world_and_cloud_objects(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:

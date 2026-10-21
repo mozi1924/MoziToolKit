@@ -20,19 +20,9 @@ if bpy is None:
 
 from .properties import NOISE_TYPE_ITEMS, UV_MODE_ITEMS
 
-try:
-    from ...utils.mesh.random_extrude import process_random_extrude
-    from ...utils.mesh.core import bmesh_context, poll_edit_mesh
-    from ...utils.system.menu_registry import register_menu_item
-except (ImportError, ValueError):
-    try:
-        from ..utils.mesh.random_extrude import process_random_extrude
-        from ..utils.mesh.core import bmesh_context, poll_edit_mesh
-        from ..utils.system.menu_registry import register_menu_item
-    except (ImportError, ValueError):
-        from utils.mesh.random_extrude import process_random_extrude
-        from utils.mesh.core import bmesh_context, poll_edit_mesh
-        from utils.system.menu_registry import register_menu_item
+from ...utils.mesh.random_extrude import process_random_extrude
+from ...utils.mesh.core import bmesh_context, poll_edit_mesh
+from ...utils.system.menu_registry import register_menu_item
 
 
 @register_menu_item(views=["mesh"], label="Random Extrude")
@@ -116,10 +106,7 @@ class MOZI_OT_random_extrude(bpy.types.Operator):
         return poll_edit_mesh(context)
 
     def draw(self, context):
-        try:
-            from ...i18n import tr
-        except (ImportError, ValueError):
-            from i18n import tr
+        from ...i18n import tr
         layout = self.layout
         box_ext = layout.box()
         box_ext.label(text=tr("Random Extrude Options"), icon="MOD_DISPLACE")

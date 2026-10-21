@@ -13,16 +13,10 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
-try:
-    from ...bridge.material import (
-        register_material_properties as _bridge_register,
-        reset_material_properties as _bridge_reset,
-    )
-except (ImportError, ValueError):
-    from bridge.material import (
-        register_material_properties as _bridge_register,
-        reset_material_properties as _bridge_reset,
-    )
+from ...bridge.material import (
+    register_material_properties as _bridge_register,
+    reset_material_properties as _bridge_reset,
+)
 
 logger = logging.getLogger("MoziToolKit.Utils.Materials.Config")
 

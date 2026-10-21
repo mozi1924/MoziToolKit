@@ -6,7 +6,7 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from bridge.extrude import repair_extruded_side_uv, generate_random_extrude_heights
+from MoziToolKit.bridge.extrude import repair_extruded_side_uv, generate_random_extrude_heights
 
 
 
@@ -153,7 +153,7 @@ class TestExtrudeRepairBridge(unittest.TestCase):
                 self.assertTrue(0.0 <= v <= 0.6)
 
     def test_uv_editing_and_extrude_progress_guards(self):
-        from operators.extrude.watcher import (
+        from MoziToolKit.operators.extrude.watcher import (
             _is_uv_editing_active,
             _is_extrude_operator_identifier,
             _is_extrude_in_progress,
@@ -226,8 +226,8 @@ class TestExtrudeRepairBridge(unittest.TestCase):
 
     def test_extrude_subpackage_modular_structure(self):
         """Verify the modular separation of operators/extrude subpackage."""
-        from operators.extrude import properties, watcher, op_auto_extrude_repair, op_random_extrude
-        from operators import extrude
+        from MoziToolKit.operators.extrude import properties, watcher, op_auto_extrude_repair, op_random_extrude
+        from MoziToolKit.operators import extrude
 
         # Verify properties isolation
         self.assertTrue(hasattr(properties, "MOZI_PG_auto_extrude_repair"))

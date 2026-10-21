@@ -15,10 +15,7 @@ from ..engine import get_libmtk
 
 logger = logging.getLogger("MoziToolKit.Bridge.Assets.Pack")
 
-try:
-    from ...utils.system import get_prefs
-except (ImportError, ValueError):
-    from utils.system import get_prefs
+from ...utils.system import get_prefs
 
 
 _CACHED_PACK_STACK: Optional[Any] = None

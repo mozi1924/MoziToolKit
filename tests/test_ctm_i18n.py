@@ -17,8 +17,8 @@ try:
 except ImportError:
     HAS_BPY = False
 
-from i18n import tr, _get_expanded_translations_dict
-from i18n.dictionary import translations_dict
+from MoziToolKit.i18n import tr, _get_expanded_translations_dict
+from MoziToolKit.i18n.dictionary import translations_dict
 
 
 class TestCtmI18n(unittest.TestCase):
@@ -54,7 +54,7 @@ class TestCtmI18n(unittest.TestCase):
         saved_ui = False
         if HAS_BPY and hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
             try:
-                import i18n
+                import MoziToolKit.i18n as i18n
                 i18n.register()
             except Exception:
                 pass
@@ -92,7 +92,7 @@ class TestCtmI18n(unittest.TestCase):
         if not HAS_BPY:
             self.skipTest("Requires real Blender host environment")
 
-        import i18n
+        import MoziToolKit.i18n as i18n
         i18n.register()
 
         # Configure Blender view to Simplified Chinese
@@ -116,7 +116,7 @@ class TestCtmI18n(unittest.TestCase):
             )
 
             # Test operator RNA property translation
-            from operators.save.op_import_save import MTK_OT_import_minecraft_save
+            from MoziToolKit.operators.save.op_import_save import MTK_OT_import_minecraft_save
             was_registered = False
             try:
                 bpy.utils.register_class(MTK_OT_import_minecraft_save)

@@ -21,8 +21,8 @@ if "bpy" not in sys.modules:
 if "mathutils" not in sys.modules:
     sys.modules["mathutils"] = MagicMock()
 
-from bridge.mesh.topology import analyze_mesh_hard_edges
-from bridge.engine import has_libmtk
+from MoziToolKit.bridge.mesh.topology import analyze_mesh_hard_edges
+from MoziToolKit.bridge.engine import has_libmtk
 
 
 class MockMeshAttribute:

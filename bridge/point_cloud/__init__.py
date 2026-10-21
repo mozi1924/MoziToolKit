@@ -119,12 +119,8 @@ def inject_voxel_point_cloud(
         try:
             from ...utils.point_cloud.hierarchy import setup_voxel_mask_modifier
             setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
-        except (ImportError, ValueError):
-            try:
-                from utils.point_cloud.hierarchy import setup_voxel_mask_modifier
-                setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     if hasattr(target_data, "update"):
         target_data.update()

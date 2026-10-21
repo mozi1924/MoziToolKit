@@ -8,7 +8,7 @@ import os
 import unittest
 from unittest.mock import MagicMock
 
-from bridge.dna import (
+from MoziToolKit.bridge.dna import (
     BaseDnaResolver,
     check_pointer_alignment,
     get_blender_version,
@@ -27,7 +27,7 @@ from bridge.dna import (
     safe_as_pointer,
     set_dna_enabled,
 )
-from bridge.engine import get_libmtk_blender, has_libmtk_dna
+from MoziToolKit.bridge.engine import get_libmtk_blender, has_libmtk_dna
 
 
 class TestDnaBridge(unittest.TestCase):

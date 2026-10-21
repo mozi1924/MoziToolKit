@@ -7,32 +7,13 @@ and visual benchmarking inside a running Blender instance.
 from typing import Any, Dict, Optional
 import time
 
-try:
-    from .loader import get_engine_status
-except (ImportError, ValueError):
-    try:
-        from MoziToolKit.dev.loader import get_engine_status
-    except (ImportError, ValueError):
-        from dev.loader import get_engine_status
-
-
-def _get_bridge():
-    try:
-        from .. import bridge
-        return bridge
-    except (ImportError, ValueError):
-        try:
-            from MoziToolKit import bridge
-            return bridge
-        except (ImportError, ValueError):
-            import bridge
-            return bridge
+from .. import bridge
+from .loader import get_engine_status
 
 
 def get_diagnostics(prefs=None) -> Dict[str, Any]:
     """Returns runtime diagnostic information including native engine status and cache state."""
     info = get_engine_status()
-    bridge = _get_bridge()
     try:
         cache_stats = bridge.get_cache_stats()
         info["cache"] = cache_stats
@@ -58,13 +39,7 @@ def load_debug_world(
     into the active Blender scene with full model resolution, atlas UV remapping,
     and Atlas chunk PBR materials. Returns the created/updated bpy.types.Object.
     """
-    try:
-        from ..utils.world import create_debug_world_object
-    except (ImportError, ValueError):
-        try:
-            from utils.world import create_debug_world_object
-        except (ImportError, ValueError):
-            from MoziToolKit.utils.world import create_debug_world_object
+    from ..utils.world import create_debug_world_object
     obj, stats = create_debug_world_object(
         context=context,
         name=name,
@@ -94,13 +69,8 @@ def run_mesher_benchmark(
             from ..utils.system.dependencies import get_prefs
             prefs = get_prefs()
         except Exception:
-            try:
-                from utils.system.dependencies import get_prefs
-                prefs = get_prefs()
-            except Exception:
-                prefs = None
+            prefs = None
 
-    bridge = _get_bridge()
     if not bridge.is_debug_world_available(prefs):
         raise RuntimeError("Native libmtk_py debug world capability is unavailable or vanilla client assets not configured.")
 
@@ -145,10 +115,10 @@ def run_mesher_benchmark(
 
 def clear_material_cache(prefs=None) -> int:
     """Clears all precompiled material and model caches via bridge."""
-    return _get_bridge().clear_cache(prefs)
+    return bridge.clear_cache(prefs)
 
 
 def precompile_material_cache(prefs=None, num_threads: Optional[int] = None) -> Dict[str, Any]:
     """Precompiles and rebuilds complete material atlas, standalone textures, and model caches via bridge."""
-    return _get_bridge().precompile_stack(prefs, num_threads=num_threads)
+    return bridge.precompile_stack(prefs, num_threads=num_threads)
 

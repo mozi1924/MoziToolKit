@@ -22,13 +22,13 @@ try:
 except ImportError:
     HAS_BPY = False
 
-from bridge.sync import (
+from MoziToolKit.bridge.sync import (
     SyncBridgeSession,
     get_sync_bridge_session,
     reset_sync_bridge_session,
     is_sync_available,
 )
-from operators.sync.op_sync_connect import (
+from MoziToolKit.operators.sync.op_sync_connect import (
     is_sync_timer_running,
     start_sync_timer,
     stop_sync_timer,
@@ -36,7 +36,7 @@ from operators.sync.op_sync_connect import (
     MOZI_OT_sync_connect,
     MOZI_OT_sync_disconnect,
 )
-from operators.sync.properties import (
+from MoziToolKit.operators.sync.properties import (
     _on_blend_file_pre_load,
     _on_blend_file_loaded,
 )

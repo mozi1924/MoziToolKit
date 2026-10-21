@@ -4,7 +4,7 @@ Validates profile recording, stage extraction, total-duration handling, and life
 """
 
 import unittest
-from utils.diagnostics import (
+from MoziToolKit.utils.diagnostics import (
     record_operation_profile,
     append_stage_to_last_profile,
     get_last_profile,

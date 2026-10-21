@@ -61,7 +61,7 @@ if _TEST_SITE_PACKAGES and _TEST_SITE_PACKAGES not in sys.path:
 try:
     import libmtk_py
 except ImportError:
-    from bridge.engine import get_libmtk
+    from MoziToolKit.bridge.engine import get_libmtk
     libmtk_py = get_libmtk()
 
 # ---------------------------------------------------------------------------

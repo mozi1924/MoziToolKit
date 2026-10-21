@@ -12,11 +12,11 @@ import unittest
 import zlib
 from unittest.mock import MagicMock
 
-from bridge.progress import ProgressReport
-from bridge.assets import precompile_stack
-from bridge.engine import get_libmtk
-from utils.async_task import AsyncTask, ModalTaskRunner
-from utils.progress import BlenderProgressReporter
+from MoziToolKit.bridge.progress import ProgressReport
+from MoziToolKit.bridge.assets import precompile_stack
+from MoziToolKit.bridge.engine import get_libmtk
+from MoziToolKit.utils.async_task import AsyncTask, ModalTaskRunner
+from MoziToolKit.utils.progress import BlenderProgressReporter
 
 
 def create_tiny_png(width: int = 16, height: int = 16) -> bytes:

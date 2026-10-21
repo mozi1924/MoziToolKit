@@ -16,10 +16,7 @@ try:
 except ImportError:
     bpy = None
 
-try:
-    from ..bridge.progress import ProgressReport
-except (ImportError, ValueError):
-    from bridge.progress import ProgressReport
+from ..bridge.progress import ProgressReport
 
 logger = logging.getLogger("MoziToolKit.Utils.Progress")
 

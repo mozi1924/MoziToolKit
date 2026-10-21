@@ -20,10 +20,7 @@ except ImportError:
     bpy = None
     ImportHelper = object
 
-try:
-    from ...utils.system.save_registry import get_save_registry
-except (ImportError, ValueError):
-    from utils.system.save_registry import get_save_registry
+from ...utils.system.save_registry import get_save_registry
 
 from .utils import resolve_save_container
 

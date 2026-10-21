@@ -7,10 +7,7 @@ from __future__ import annotations
 import bpy
 from bpy.props import EnumProperty
 
-try:
-    from ..utils.system import register_menu_item
-except (ImportError, ValueError):
-    from utils.system import register_menu_item
+from ..utils.system import register_menu_item
 
 
 @register_menu_item(views=["object", "mesh"], label="Set Image Interpolation to Closest")

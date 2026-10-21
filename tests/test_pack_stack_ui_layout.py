@@ -15,7 +15,7 @@ import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-import ui.preferences_packs as packs_ui
+import MoziToolKit.ui.preferences_packs as packs_ui
 from MoziToolKit.i18n import tr
 from MoziToolKit.ui.preferences import MOZI_AddonPreferences
 

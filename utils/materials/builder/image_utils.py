@@ -280,14 +280,7 @@ def get_or_create_image(
                     pass
             return existing_img
 
-        try:
-            from ....bridge.assets import get_cached_texture_f32, get_cached_texture_rgba
-        except (ImportError, ValueError):
-            try:
-                from bridge.assets import get_cached_texture_f32, get_cached_texture_rgba
-            except Exception:
-                get_cached_texture_f32 = None
-                get_cached_texture_rgba = None
+        from ....bridge.assets import get_cached_texture_f32, get_cached_texture_rgba
 
         # Tier 1: Zero-copy float32 streaming directly from native Rust (pre-flipped & converted)
         if get_cached_texture_f32 is not None:

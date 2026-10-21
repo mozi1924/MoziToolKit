@@ -10,40 +10,22 @@ import time
 from typing import Any, Optional
 import bpy
 
-try:
-    from ...bridge.sync import (
-        get_sync_bridge_session,
-        is_sync_available,
-        load_atlas_from_cache,
-        load_model_database_from_cache,
-        load_biome_resolver_from_cache,
-    )
-    from ...bridge.assets import (
-        invalidate_asset_cache_memory,
-        reload_atlas_images,
-    )
-    from ...utils.assets import (
-        can_execute_asset_pipeline,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-    )
-except (ImportError, ValueError):
-    from bridge.sync import (
-        get_sync_bridge_session,
-        is_sync_available,
-        load_atlas_from_cache,
-        load_model_database_from_cache,
-        load_biome_resolver_from_cache,
-    )
-    from bridge.assets import (
-        invalidate_asset_cache_memory,
-        reload_atlas_images,
-    )
-    from utils.assets import (
-        can_execute_asset_pipeline,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-    )
+from ...bridge.sync import (
+    get_sync_bridge_session,
+    is_sync_available,
+    load_atlas_from_cache,
+    load_model_database_from_cache,
+    load_biome_resolver_from_cache,
+)
+from ...bridge.assets import (
+    invalidate_asset_cache_memory,
+    reload_atlas_images,
+)
+from ...utils.assets import (
+    can_execute_asset_pipeline,
+    check_asset_cache_status,
+    ensure_pipeline_assets_ready_sync,
+)
 from .hierarchy import (
     _safe_get_custom_prop,
     _safe_set_custom_prop,
@@ -113,10 +95,7 @@ def stop_sync_timer() -> None:
 def _get_progress_reporter(title: str = "Mozi Live Sync"):
     global _progress_reporter
     if _progress_reporter is None:
-        try:
-            from ...utils.progress import BlenderProgressReporter
-        except (ImportError, ValueError):
-            from utils.progress import BlenderProgressReporter
+        from ...utils.progress import BlenderProgressReporter
         _progress_reporter = BlenderProgressReporter(bpy.context, title=title)
         _progress_reporter.start()
     else:
@@ -387,28 +366,16 @@ def _sync_timer_tick() -> Optional[float]:
         try:
             storage = session.get_storage()
             if storage is not None:
-                try:
-                    from ...utils.point_cloud import ensure_voxel_child_cloud
-                except (ImportError, ValueError):
-                    from utils.point_cloud import ensure_voxel_child_cloud
+                from ...utils.point_cloud import ensure_voxel_child_cloud
                 ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
 
                 # Cache the storage under the container/mesh names so the biome
                 # panel can restore WORLD even if the initial mesh event arrived
                 # before this STREAM_FINISHED event.
-                try:
-                    from ...utils.materials.biome.updater import (
-                        mark_world_biome,
-                        register_object_storage,
-                    )
-                except (ImportError, ValueError):
-                    try:
-                        from utils.materials.biome.updater import (
-                            mark_world_biome,
-                            register_object_storage,
-                        )
-                    except Exception:
-                        mark_world_biome = None
+                from ...utils.materials.biome.updater import (
+                    mark_world_biome,
+                    register_object_storage,
+                )
                 if mark_world_biome is not None:
                     container_name = getattr(active_container, "name", "")
                     if isinstance(container_name, str) and container_name:
@@ -431,10 +398,7 @@ def _sync_timer_tick() -> Optional[float]:
                 storage_non_empty = len(storage.get_all_non_empty_sections())
                 # Safety barrier: Do NOT overwrite an existing large point cloud if in-memory storage is sparse/unpopulated
                 if storage_non_empty > 0 and (non_empty_count == 0 or storage_non_empty >= non_empty_count):
-                    try:
-                        from ...utils.point_cloud import ensure_voxel_child_cloud
-                    except (ImportError, ValueError):
-                        from utils.point_cloud import ensure_voxel_child_cloud
+                    from ...utils.point_cloud import ensure_voxel_child_cloud
                     ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
                     logger.debug("Debounced voxel child cloud updated successfully")
                 else:
@@ -476,12 +440,9 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        try:
-            from ...utils.system import get_prefs
-            prefs = get_prefs(context)
-        except (ImportError, ValueError):
-            from utils.system import get_prefs
-            prefs = get_prefs(context)
+        from ...utils.system import get_prefs
+
+        prefs = get_prefs(context)
         can_run, reason = can_execute_asset_pipeline(prefs)
         if not can_run:
             if hasattr(cls, "poll_message_set"):
@@ -554,10 +515,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         props = getattr(target_obj, "mozi_sync", None) or _get_active_props(context, target_obj)
         url = props.url if props and props.url else "ws://127.0.0.1:8765"
 
-        try:
-            from ...utils.system import get_prefs
-        except (ImportError, ValueError):
-            from utils.system import get_prefs
+        from ...utils.system import get_prefs
         prefs = get_prefs(context)
 
         # Asset readiness gate: verify valid vanilla client base pack before proceeding

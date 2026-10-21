@@ -4,19 +4,9 @@ MoziToolKit Dev Operator: Load Embedded Debug World.
 
 from typing import Optional
 import bpy
-try:
-    from ... import bridge
-    from ...utils.async_task import AsyncTask, ModalTaskRunner
-    from ...utils.progress import BlenderProgressReporter
-except (ImportError, ValueError):
-    try:
-        from MoziToolKit import bridge
-        from MoziToolKit.utils.async_task import AsyncTask, ModalTaskRunner
-        from MoziToolKit.utils.progress import BlenderProgressReporter
-    except (ImportError, ValueError):
-        import bridge
-        from utils.async_task import AsyncTask, ModalTaskRunner
-        from utils.progress import BlenderProgressReporter
+from ... import bridge
+from ...utils.async_task import AsyncTask, ModalTaskRunner
+from ...utils.progress import BlenderProgressReporter
 
 
 class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
@@ -62,17 +52,10 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        try:
-            from ...utils.system.dependencies import get_prefs
-            from ...utils.assets.guard import can_execute_asset_pipeline
-            prefs = get_prefs(context)
-        except Exception:
-            try:
-                from utils.system.dependencies import get_prefs
-                from utils.assets.guard import can_execute_asset_pipeline
-                prefs = get_prefs(context)
-            except Exception:
-                prefs = None
+        from ...utils.system.dependencies import get_prefs
+        from ...utils.assets.guard import can_execute_asset_pipeline
+
+        prefs = get_prefs(context)
 
         if not bridge.is_debug_world_available(prefs):
             if prefs:
@@ -86,25 +69,14 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
         return True
 
     def execute(self, context):
-        try:
-            from ...utils.system.dependencies import get_prefs
-            from ...utils.assets.guard import (
-                can_execute_asset_pipeline,
-                check_asset_cache_status,
-                ensure_pipeline_assets_ready_sync,
-            )
-            prefs = get_prefs(context)
-        except Exception:
-            try:
-                from utils.system.dependencies import get_prefs
-                from utils.assets.guard import (
-                    can_execute_asset_pipeline,
-                    check_asset_cache_status,
-                    ensure_pipeline_assets_ready_sync,
-                )
-                prefs = get_prefs(context)
-            except Exception:
-                prefs = None
+        from ...utils.system.dependencies import get_prefs
+        from ...utils.assets.guard import (
+            can_execute_asset_pipeline,
+            check_asset_cache_status,
+            ensure_pipeline_assets_ready_sync,
+        )
+
+        prefs = get_prefs(context)
 
         # 1. Base pack gate: verify valid vanilla client base pack before proceeding
         can_run, reason = can_execute_asset_pipeline(prefs)

@@ -33,16 +33,16 @@ except ImportError:
     sys.modules["bpy"] = bpy
     HAS_BPY = False
 
-from bridge.engine import get_libmtk
-from utils.assets.modrinth import (
+from MoziToolKit.bridge.engine import get_libmtk
+from MoziToolKit.utils.assets.modrinth import (
     RECOMMENDED_CTM_PACKS,
     search_modrinth_packs,
     get_project_versions,
     fetch_modrinth_pack,
 )
-from bridge.assets.pack import get_configured_ctm_solver
-from bridge.world import mesh_voxel_storage
-from utils.world import apply_voxel_mesh_to_blender
+from MoziToolKit.bridge.assets.pack import get_configured_ctm_solver
+from MoziToolKit.bridge.world import mesh_voxel_storage
+from MoziToolKit.utils.world import apply_voxel_mesh_to_blender
 from tests._assets import require_ctm_resource_pack, ctm_resource_pack_zip
 
 

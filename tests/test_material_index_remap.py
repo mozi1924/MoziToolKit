@@ -7,7 +7,7 @@ try:
 except ImportError:
     np = None
 
-from utils.materials.cleaner import remap_indices_lut
+from MoziToolKit.utils.materials.cleaner import remap_indices_lut
 
 
 class TestRemapIndicesLUT(unittest.TestCase):

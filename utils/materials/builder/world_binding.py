@@ -10,22 +10,13 @@ import json
 import logging
 from typing import Any, Optional
 
-try:
-    from ....bridge.assets import (
-        ensure_atlas_textures_extracted,
-        ensure_colormaps_extracted,
-        get_cache_fingerprint,
-        load_atlas_mapping_from_cache,
-        load_baked_atlas_from_cache,
-    )
-except (ImportError, ValueError):
-    from bridge.assets import (
-        ensure_atlas_textures_extracted,
-        ensure_colormaps_extracted,
-        get_cache_fingerprint,
-        load_atlas_mapping_from_cache,
-        load_baked_atlas_from_cache,
-    )
+from ....bridge.assets import (
+    ensure_atlas_textures_extracted,
+    ensure_colormaps_extracted,
+    get_cache_fingerprint,
+    load_atlas_mapping_from_cache,
+    load_baked_atlas_from_cache,
+)
 
 logger = logging.getLogger("MoziToolKit.Materials.WorldBinding")
 
@@ -50,24 +41,9 @@ def ensure_world_materials(
     if not world_obj or world_obj.type != "MESH":
         return
 
-    try:
-        from .atlas_builder import build_atlas_chunk_material
-        from . import ensure_material_node_tree
-    except (ImportError, ValueError):
-        try:
-            from .atlas_builder import build_atlas_chunk_material
-            from . import ensure_material_node_tree
-        except (ImportError, ValueError):
-            build_atlas_chunk_material = None
-            ensure_material_node_tree = lambda m: getattr(m, "node_tree", None)
-
-    try:
-        from ..cleaner import remap_indices_lut
-    except (ImportError, ValueError):
-        try:
-            from ..cleaner import remap_indices_lut
-        except (ImportError, ValueError):
-            remap_indices_lut = None
+    from .atlas_builder import build_atlas_chunk_material
+    from . import ensure_material_node_tree
+    from ..cleaner import remap_indices_lut
 
     mesh = world_obj.data
 

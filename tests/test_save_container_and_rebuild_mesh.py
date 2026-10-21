@@ -10,22 +10,22 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import bpy
-from utils.save.hierarchy import (
+from MoziToolKit.utils.save.hierarchy import (
     apply_imported_save_to_blender,
     sanitize_save_privacy,
     _resolve_unique_save_container_name,
 )
-from operators.mesh import (
+from MoziToolKit.operators.mesh import (
     MOZI_OT_rebuild_mesh,
     resolve_mesh_rebuild_targets,
 )
-from operators.save import (
+from MoziToolKit.operators.save import (
     MOZI_OT_refresh_save_mesh,
     MOZI_OT_relink_save_folder,
     resolve_save_container,
 )
-from utils.system.menu_registry import CANONICAL_DEFAULT_PRESETS, CANONICAL_OPERATORS
-from utils.system.save_registry import get_save_registry
+from MoziToolKit.utils.system.menu_registry import CANONICAL_DEFAULT_PRESETS, CANONICAL_OPERATORS
+from MoziToolKit.utils.system.save_registry import get_save_registry
 
 
 class _MockObject:
@@ -173,7 +173,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 mode="OBJECT",
             )
 
-        with patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
+        with patch("MoziToolKit.utils.save.hierarchy.inject_mesh_data"), patch("MoziToolKit.utils.save.hierarchy.ensure_world_materials"):
             # 1. First import
             root1, stats1 = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
@@ -304,16 +304,16 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         ctx_valid = types.SimpleNamespace(active_object=save_root, selected_objects=[save_root])
         # Gating check: returns False when pipeline assets are not ready
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(False, "No vanilla pack")):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(False, "No vanilla pack")):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(ctx_valid))
         # When assets ready: returns True
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(ctx_valid))
 
         # Poll with normal Cube: False even when pipeline is ready
         cube = self._make_obj("Cube", "MESH")
         ctx_invalid = types.SimpleNamespace(active_object=cube, selected_objects=[cube])
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(ctx_invalid))
 
     def test_rebuild_mesh_execution_with_companion_cloud(self):
@@ -365,12 +365,12 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         op = DummyRebuildOp()
 
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
-             patch("operators.mesh.op_rebuild_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
-             patch("operators.mesh.op_rebuild_mesh.mesh_voxel_storage", return_value=(mock_new_mesh_data, 10.5)) as mock_mesh_fn, \
-             patch("operators.mesh.op_rebuild_mesh.inject_mesh_data") as mock_inject, \
-             patch("operators.mesh.op_rebuild_mesh.ensure_world_materials"):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.mesh_voxel_storage", return_value=(mock_new_mesh_data, 10.5)) as mock_mesh_fn, \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.inject_mesh_data") as mock_inject, \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.ensure_world_materials"):
 
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
@@ -424,10 +424,10 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         op = DummyRebuildOp()
 
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
-             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
-             patch("operators.sync.hierarchy.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
+             patch("MoziToolKit.operators.sync.hierarchy.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
 
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
@@ -473,11 +473,11 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 return MOZI_OT_rebuild_mesh.execute(self, ctx)
 
         op = DummyRebuildOp()
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
-             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
-             patch("operators.mesh.op_rebuild_mesh.AsyncTask") as mock_task, \
-             patch("operators.mesh.op_rebuild_mesh.ModalTaskRunner") as mock_runner:
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.AsyncTask") as mock_task, \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.ModalTaskRunner") as mock_runner:
             mock_runner.return_value.start.return_value = {"RUNNING_MODAL"}
             self.assertEqual(op.execute(context), {"RUNNING_MODAL"})
             mock_task.assert_called_once()
@@ -504,7 +504,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 mode="OBJECT",
             )
 
-        with patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
+        with patch("MoziToolKit.utils.save.hierarchy.inject_mesh_data"), patch("MoziToolKit.utils.save.hierarchy.ensure_world_materials"):
             root, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
                 meta=meta,
@@ -604,10 +604,10 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 "data_version": 4189,
                 "spawn": (0, 64, 0),
             }
-            with patch("operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
-                 patch("operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
-                 patch("operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
-                 patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
+            with patch("MoziToolKit.operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
+                 patch("MoziToolKit.utils.save.hierarchy.inject_mesh_data"), patch("MoziToolKit.utils.save.hierarchy.ensure_world_materials"):
                 res = op.execute(ctx)
                 self.assertEqual(res, {"FINISHED"})
                 self.assertIn("mtk_last_refreshed", save_root)

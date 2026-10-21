@@ -20,56 +20,29 @@ from typing import Any, Dict, Optional, Tuple
 import bpy
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 
-try:
-    from ..utils.config import get_config_manager
-    from ..utils.system import get_prefs
-    from ..utils.pack_detect import (
-        KIND_DATA_PACK,
-        KIND_LABELS,
-        KIND_MOD,
-        KIND_MODPACK,
-        KIND_RESOURCE_PACK,
-        KIND_UNKNOWN,
-        KIND_VANILLA_CLIENT,
-        KIND_VANILLA_SERVER,
-        TYPE_SOURCE_AUTO,
-        TYPE_SOURCE_MANUAL,
-        PackProbe,
-        detect_pack_kind,
-        invalidate_pack_probe,
-        peek_cached_probe,
-        resolve_pack_type,
-    )
-except (ImportError, ValueError):
-    from utils.config import get_config_manager
-    from utils.system import get_prefs
-    from utils.pack_detect import (
-        KIND_DATA_PACK,
-        KIND_LABELS,
-        KIND_MOD,
-        KIND_MODPACK,
-        KIND_RESOURCE_PACK,
-        KIND_UNKNOWN,
-        KIND_VANILLA_CLIENT,
-        KIND_VANILLA_SERVER,
-        TYPE_SOURCE_AUTO,
-        TYPE_SOURCE_MANUAL,
-        PackProbe,
-        detect_pack_kind,
-        invalidate_pack_probe,
-        peek_cached_probe,
-        resolve_pack_type,
-    )
+from ..utils.config import get_config_manager
+from ..utils.system import get_prefs
+from ..utils.pack_detect import (
+    KIND_DATA_PACK,
+    KIND_LABELS,
+    KIND_MOD,
+    KIND_MODPACK,
+    KIND_RESOURCE_PACK,
+    KIND_UNKNOWN,
+    KIND_VANILLA_CLIENT,
+    KIND_VANILLA_SERVER,
+    TYPE_SOURCE_AUTO,
+    TYPE_SOURCE_MANUAL,
+    PackProbe,
+    detect_pack_kind,
+    invalidate_pack_probe,
+    peek_cached_probe,
+    resolve_pack_type,
+)
 
-try:
-    from .preferences_utils import _safe_get_prefs, refresh_ui_and_menus
-except (ImportError, ValueError):
-    from ui.preferences_utils import _safe_get_prefs, refresh_ui_and_menus
+from .preferences_utils import _safe_get_prefs, refresh_ui_and_menus
 
-try:
-    from ..i18n import tr
-except (ImportError, ValueError):
-    from i18n import tr
+from ..i18n import tr
 
 logger = logging.getLogger("MoziToolKit.UI.PreferencesPacks")
 
@@ -434,14 +407,7 @@ def on_pack_entry_changed(self, context):
             invalidate_asset_cache_memory()
             clear_world_sessions()
         except Exception:
-            try:
-                from bridge.assets import invalidate_asset_cache_memory
-                from bridge.world import clear_world_sessions
-
-                invalidate_asset_cache_memory()
-                clear_world_sessions()
-            except Exception:
-                pass
+            pass
 
 
 def on_pack_type_changed(self, context):

@@ -12,80 +12,39 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-try:
-    from ...bridge.engine import get_libmtk
-    from ...bridge.progress import ProgressCallback, ProgressReport
-    from ...utils.system import get_prefs
-    from ...utils.pack_detect import (
-        VALID_BASE_PACK_KINDS,
-        peek_cached_probe,
-        detect_pack_kind,
-    )
-    from ...i18n import tr
-except (ImportError, ValueError):
-    from bridge.engine import get_libmtk
-    from bridge.progress import ProgressCallback, ProgressReport
-    try:
-        from utils.system import get_prefs
-    except (ImportError, ValueError):
-        def get_prefs(context=None):
-            return None
-    try:
-        from utils.pack_detect import (
-            VALID_BASE_PACK_KINDS,
-            peek_cached_probe,
-            detect_pack_kind,
-        )
-    except (ImportError, ValueError):
-        VALID_BASE_PACK_KINDS = frozenset({"VANILLA_CLIENT"})
-        def peek_cached_probe(path):
-            return None
-        def detect_pack_kind(path):
-            return type("PackProbe", (), {"kind": "UNKNOWN"})()
-    try:
-        from i18n import tr
-    except (ImportError, ValueError):
-        def tr(msgid: str, msgctxt: str | None = None) -> str:
-            return msgid
+from ...bridge.engine import get_libmtk
+from ...bridge.progress import ProgressCallback, ProgressReport
+from ...utils.system import get_prefs
+from ...utils.pack_detect import (
+    VALID_BASE_PACK_KINDS,
+    peek_cached_probe,
+    detect_pack_kind,
+)
+from ...i18n import tr
 
 
 def _get_configured_pack_stack(prefs=None):
-    try:
-        from ...bridge.assets.pack import get_configured_pack_stack
-    except (ImportError, ValueError):
-        from bridge.assets.pack import get_configured_pack_stack
+    from ...bridge.assets.pack import get_configured_pack_stack
     return get_configured_pack_stack(prefs)
 
 
 def _open_active_asset_cache(prefs=None):
-    try:
-        from ...bridge.assets.cache import open_active_asset_cache
-    except (ImportError, ValueError):
-        from bridge.assets.cache import open_active_asset_cache
+    from ...bridge.assets.cache import open_active_asset_cache
     return open_active_asset_cache(prefs)
 
 
 def _invalidate_asset_cache_memory():
-    try:
-        from ...bridge.assets.cache import invalidate_asset_cache_memory
-    except (ImportError, ValueError):
-        from bridge.assets.cache import invalidate_asset_cache_memory
+    from ...bridge.assets.cache import invalidate_asset_cache_memory
     return invalidate_asset_cache_memory()
 
 
 def _precompile_stack(*args, **kwargs):
-    try:
-        from ...bridge.assets.precompile import precompile_stack
-    except (ImportError, ValueError):
-        from bridge.assets.precompile import precompile_stack
+    from ...bridge.assets.precompile import precompile_stack
     return precompile_stack(*args, **kwargs)
 
 
 def _reload_atlas_images(*args, **kwargs):
-    try:
-        from ...bridge.assets.precompile import reload_atlas_images
-    except (ImportError, ValueError):
-        from bridge.assets.precompile import reload_atlas_images
+    from ...bridge.assets.precompile import reload_atlas_images
     return reload_atlas_images(*args, **kwargs)
 
 from .cache_utils import get_cache_dir

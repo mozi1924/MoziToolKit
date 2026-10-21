@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from bridge.material import (
+from MoziToolKit.bridge.material import (
     HAS_LIBMTK,
     get_block_emission_strength,
     get_block_sticker_threshold,
@@ -10,7 +10,7 @@ from bridge.material import (
     is_thin_wall_block,
     is_transmissive_block,
 )
-from utils.materials.properties_config import (
+from MoziToolKit.utils.materials.properties_config import (
     load_material_properties_config,
     reset_material_properties_config,
     get_default_material_properties_path,

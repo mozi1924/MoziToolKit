@@ -9,16 +9,10 @@ import uuid
 from typing import Any, Optional, Tuple
 import bpy
 
-try:
-    from ...bridge.mesh import inject_mesh_data
-    from ...utils.materials.builder.world_binding import ensure_world_materials
-    from ...utils.point_cloud import ensure_voxel_child_cloud
-    from ...utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
-except (ImportError, ValueError):
-    from bridge.mesh import inject_mesh_data
-    from utils.materials.builder.world_binding import ensure_world_materials
-    from utils.point_cloud import ensure_voxel_child_cloud
-    from utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
+from ...bridge.mesh import inject_mesh_data
+from ...utils.materials.builder.world_binding import ensure_world_materials
+from ...utils.point_cloud import ensure_voxel_child_cloud
+from ...utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
 
 logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")
 
@@ -351,13 +345,7 @@ def update_world_mesh(
     # Live Sync meshes bake true 3D Quart biomes into their tint attributes. Tag the
     # object (and its root container) so the biome panel shows "World Biome (3D)"
     # instead of falling back to Plains, and cache storage for later re-tints.
-    try:
-        from ...utils.materials.biome.updater import mark_world_biome
-    except (ImportError, ValueError):
-        try:
-            from utils.materials.biome.updater import mark_world_biome
-        except Exception:
-            mark_world_biome = None
+    from ...utils.materials.biome.updater import mark_world_biome
     if mark_world_biome is not None:
         root_container = resolve_world_root_object(world_obj)
         aliases = []

@@ -8,70 +8,37 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 import bpy
 
-try:
-    from ...utils.system import get_prefs, register_menu_item
-    from ...utils.async_task import AsyncTask, ModalTaskRunner
-    from ...utils.progress import BlenderProgressReporter
-    from ...bridge.point_cloud import extract_voxel_point_cloud
-    from ...bridge.world import (
-        clear_world_sessions,
-        get_world_pipeline_assets,
-        mesh_voxel_storage,
-        prepare_world_mesh_context,
-    )
-    from ...utils.materials.builder.world_binding import ensure_world_materials
-    from ...bridge.mesh import inject_mesh_data
-    from ...bridge.sync import get_sync_bridge_session
-    from ...bridge.assets import (
-        check_cache_dirty,
-        invalidate_asset_cache_memory,
-        reload_atlas_images,
-    )
-    from ...utils.assets import (
-        can_execute_asset_pipeline,
-        prepare_asset_context,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-        run_task_with_asset_guard,
-    )
-    from ...utils.mesh.ownership import (
-        ORIGIN_EXTERNAL,
-        ORIGIN_VOXEL,
-        classify_origin,
-        stamp_geometry_origin,
-    )
-except (ImportError, ValueError):
-    from utils.system import get_prefs, register_menu_item
-    from utils.async_task import AsyncTask, ModalTaskRunner
-    from utils.progress import BlenderProgressReporter
-    from bridge.point_cloud import extract_voxel_point_cloud
-    from bridge.world import (
-        clear_world_sessions,
-        get_world_pipeline_assets,
-        mesh_voxel_storage,
-        prepare_world_mesh_context,
-    )
-    from utils.materials.builder.world_binding import ensure_world_materials
-    from bridge.mesh import inject_mesh_data
-    from bridge.sync import get_sync_bridge_session
-    from bridge.assets import (
-        check_cache_dirty,
-        invalidate_asset_cache_memory,
-        reload_atlas_images,
-    )
-    from utils.assets import (
-        can_execute_asset_pipeline,
-        prepare_asset_context,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-        run_task_with_asset_guard,
-    )
-    from utils.mesh.ownership import (
-        ORIGIN_EXTERNAL,
-        ORIGIN_VOXEL,
-        classify_origin,
-        stamp_geometry_origin,
-    )
+from ...utils.system import get_prefs, register_menu_item
+from ...utils.async_task import AsyncTask, ModalTaskRunner
+from ...utils.progress import BlenderProgressReporter
+from ...bridge.point_cloud import extract_voxel_point_cloud
+from ...bridge.world import (
+    clear_world_sessions,
+    get_world_pipeline_assets,
+    mesh_voxel_storage,
+    prepare_world_mesh_context,
+)
+from ...utils.materials.builder.world_binding import ensure_world_materials
+from ...bridge.mesh import inject_mesh_data
+from ...bridge.sync import get_sync_bridge_session
+from ...bridge.assets import (
+    check_cache_dirty,
+    invalidate_asset_cache_memory,
+    reload_atlas_images,
+)
+from ...utils.assets import (
+    can_execute_asset_pipeline,
+    prepare_asset_context,
+    check_asset_cache_status,
+    ensure_pipeline_assets_ready_sync,
+    run_task_with_asset_guard,
+)
+from ...utils.mesh.ownership import (
+    ORIGIN_EXTERNAL,
+    ORIGIN_VOXEL,
+    classify_origin,
+    stamp_geometry_origin,
+)
 
 
 def _resolve_mesh_rebuild_targets_from_root(
@@ -358,10 +325,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 use_live_session = True
 
         if use_live_session:
-            try:
-                from ..sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
-            except Exception:
-                from operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
+            from ..sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
             prefs = get_prefs(context)
             if status in ("MISSING", "STALE"):
@@ -597,13 +561,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 # Offline rebuilds resample the 3D biomes from the point cloud, so
                 # the object must advertise the WORLD preset (and keep that storage
                 # available for later panel edits).
-                try:
-                    from ...utils.materials.biome.updater import mark_world_biome
-                except (ImportError, ValueError):
-                    try:
-                        from utils.materials.biome.updater import mark_world_biome
-                    except Exception:
-                        mark_world_biome = None
+                from ...utils.materials.biome.updater import mark_world_biome
                 if mark_world_biome is not None:
                     aliases = []
                     if root_container is not None:

@@ -47,12 +47,12 @@ except ImportError:
     mtk_py = None
     HAS_LIBMTK = False
 
-from operators.sync.hierarchy import (
+from MoziToolKit.operators.sync.hierarchy import (
     ensure_world_materials,
     get_or_create_world_mesh_object,
     update_world_mesh,
 )
-from bridge.mesh import inject_mesh_data
+from MoziToolKit.bridge.mesh import inject_mesh_data
 
 
 def _write_dummy_png(path: Path):

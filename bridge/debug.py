@@ -22,14 +22,7 @@ def __getattr__(name: str) -> Any:
 
 def _has_valid_vanilla_pack(prefs=None) -> bool:
     """Resolves the host-side vanilla-client gate, failing closed if the guard is unavailable."""
-    try:
-        from ..utils.assets.guard import has_valid_vanilla_pack
-    except (ImportError, ValueError):
-        try:
-            from utils.assets.guard import has_valid_vanilla_pack
-        except (ImportError, ValueError):
-            logger.warning("Asset guard unavailable; refusing debug world generation")
-            return False
+    from ..utils.assets.guard import has_valid_vanilla_pack
     return has_valid_vanilla_pack(prefs)
 
 

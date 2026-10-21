@@ -9,7 +9,7 @@ from __future__ import annotations
 import array
 import unittest
 
-from utils.materials.uv_layers import (
+from MoziToolKit.utils.materials.uv_layers import (
     ATLAS_LAYOUT_HASH_PROP,
     ATLAS_UV_LAYER_NAME,
     ATLAS_UV_LAYER_PROP,

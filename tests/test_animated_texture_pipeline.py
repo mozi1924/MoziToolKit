@@ -22,8 +22,8 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
             from MoziToolKit.ui.preferences import MOZI_AddonPreferences
             from MoziToolKit.operators.save.op_import_save import MTK_OT_import_minecraft_save
         except ImportError:
-            from ui.preferences import MOZI_AddonPreferences
-            from operators.save.op_import_save import MTK_OT_import_minecraft_save
+            from MoziToolKit.ui.preferences import MOZI_AddonPreferences
+            from MoziToolKit.operators.save.op_import_save import MTK_OT_import_minecraft_save
 
         # Verify preference property definition (either through RNA descriptor or annotation)
         has_pref = (
@@ -44,7 +44,7 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
         try:
             from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
         except ImportError:
-            from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+            from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         # Create temporary dummy image for test (platform-independent temp dir)
         tmpdir = tempfile.mkdtemp(prefix="mtk-anim-")
@@ -111,7 +111,7 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
         try:
             from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
         except ImportError:
-            from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+            from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from bridge.progress import ProgressReport
-from utils.async_task import AsyncTask, ModalTaskRunner
-from utils.progress import BlenderProgressReporter
+from MoziToolKit.bridge.progress import ProgressReport
+from MoziToolKit.utils.async_task import AsyncTask, ModalTaskRunner
+from MoziToolKit.utils.progress import BlenderProgressReporter
 
 
 def dummy_heavy_worker(count: int, progress_callback=None):

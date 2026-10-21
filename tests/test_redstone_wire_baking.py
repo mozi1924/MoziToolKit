@@ -21,7 +21,7 @@ try:
 except ImportError:
     HAS_LIBMTK = False
 
-from bridge.material import BiomeResolver, is_material_bridge_available
+from MoziToolKit.bridge.material import BiomeResolver, is_material_bridge_available
 
 
 class TestRedstoneWireBakingAndAddressing(unittest.TestCase):

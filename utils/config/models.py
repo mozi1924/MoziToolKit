@@ -19,13 +19,7 @@ def is_valid_operator_id(op_id: str) -> bool:
     """Return True only if the ID is an exact, currently registered menu operator."""
     if not op_id or not isinstance(op_id, str):
         return False
-    try:
-        from ..system.menu_registry import is_registered_menu_operator
-    except (ImportError, ValueError):
-        try:
-            from utils.system.menu_registry import is_registered_menu_operator
-        except (ImportError, ValueError):
-            return False
+    from ..system.menu_registry import is_registered_menu_operator
     return is_registered_menu_operator(op_id.strip())
 
 
@@ -205,11 +199,7 @@ def get_default_menu_views() -> Dict[str, List[MenuItem]]:
         from ..system.menu_registry import get_default_presets
         presets = get_default_presets()
     except Exception:
-        try:
-            from utils.system.menu_registry import get_default_presets
-            presets = get_default_presets()
-        except Exception:
-            presets = {}
+        presets = {}
 
     views: Dict[str, List[MenuItem]] = {}
     for view_name in ["mesh", "object", "uv"]:

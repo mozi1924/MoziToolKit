@@ -8,8 +8,8 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from bridge.cull import cull_mesh_faces
-from bridge.mesh import MeshData
+from MoziToolKit.bridge.cull import cull_mesh_faces
+from MoziToolKit.bridge.mesh import MeshData
 
 
 
@@ -45,7 +45,7 @@ class TestCullBridge(unittest.TestCase):
         self.assertEqual(culled_mesh.face_count, 0)
 
     def test_i18n_cull_entries(self):
-        from i18n.dictionary import translations_dict
+        from MoziToolKit.i18n.dictionary import translations_dict
         hans = translations_dict.get("zh_HANS", {})
         self.assertIn(("*", "Cull Occluded Faces"), hans)
         self.assertEqual(hans[("*", "Cull Occluded Faces")], "剔除遮挡面")

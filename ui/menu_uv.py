@@ -6,10 +6,7 @@ from __future__ import annotations
 
 import bpy
 
-try:
-    from ..utils.system import draw_dynamic_menu
-except (ImportError, ValueError):
-    from utils.system import draw_dynamic_menu
+from ..utils.system import draw_dynamic_menu
 
 
 class MOZI_MT_uv_menu(bpy.types.Menu):

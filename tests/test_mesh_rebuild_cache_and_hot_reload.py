@@ -32,15 +32,15 @@ except ImportError:
     sys.modules["bpy.app"] = MagicMock()
     HAS_BPY = False
 
-from bridge.assets import (
+from MoziToolKit.bridge.assets import (
     check_cache_dirty,
     get_cache_fingerprint,
     get_cache_manifest,
     get_cache_timestamp,
     reload_atlas_images,
 )
-from utils.assets import get_cache_dir
-from bridge.sync import (
+from MoziToolKit.utils.assets import get_cache_dir
+from MoziToolKit.bridge.sync import (
     SyncBridgeSession,
     get_sync_bridge_session,
     is_sync_available,
@@ -52,7 +52,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if HAS_BPY:
-            import operators
+            import MoziToolKit.operators as operators
             try:
                 operators.register()
             except Exception:
@@ -61,7 +61,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         if HAS_BPY:
-            import operators
+            import MoziToolKit.operators as operators
             try:
                 operators.unregister()
             except Exception:
@@ -82,7 +82,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         reset_sync_bridge_session()
 
     def _create_package(self, fingerprint: str, created_at: int = 0) -> Path:
-        from bridge.engine import get_libmtk
+        from MoziToolKit.bridge.engine import get_libmtk
         mtk = get_libmtk()
         pkg_path = self.cache_dir / f"{fingerprint}.mtkcache"
         testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
@@ -162,7 +162,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         if not is_sync_available():
             self.skipTest("libmtk_py is not loaded")
 
-        from bridge.engine import get_libmtk
+        from MoziToolKit.bridge.engine import get_libmtk
         mtk = get_libmtk()
         if not hasattr(mtk, "VoxelWorld"):
             self.skipTest("VoxelWorld not available in bindings")
@@ -207,7 +207,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         if not HAS_BPY:
             self.skipTest("Requires Blender environment")
 
-        from bridge.engine import get_libmtk
+        from MoziToolKit.bridge.engine import get_libmtk
         mtk = get_libmtk()
         if not mtk or not hasattr(mtk, "LiveSyncSession"):
             self.skipTest("LiveSyncSession not available")
@@ -245,7 +245,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         and never mistakenly picks an older or newer mtime package from a different configuration.
         """
         import types
-        from bridge.assets import (
+        from MoziToolKit.bridge.assets import (
             get_active_cache_package_path,
             invalidate_asset_cache_memory,
         )
@@ -265,7 +265,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         )
 
         # 1. With PackAddon disabled: fingerprint is vanilla only
-        from bridge.assets.pack import get_configured_pack_stack
+        from MoziToolKit.bridge.assets.pack import get_configured_pack_stack
         stack_vanilla = get_configured_pack_stack(mock_prefs)
         fp_vanilla = stack_vanilla.compute_stack_fingerprint()
 
@@ -313,9 +313,9 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         Verifies that clearing cache or invalidating memory drops cached VoxelWorld sessions
         so geometry and materials are reconstructed with fresh atlas data.
         """
-        from bridge.world import _WORLD_SESSIONS, _WORLD_SESSION_META, clear_world_sessions
-        from bridge.assets import invalidate_asset_cache_memory
-        from utils.assets import clear_cache
+        from MoziToolKit.bridge.world import _WORLD_SESSIONS, _WORLD_SESSION_META, clear_world_sessions
+        from MoziToolKit.bridge.assets import invalidate_asset_cache_memory
+        from MoziToolKit.utils.assets import clear_cache
 
         # Insert dummy mock session
         mock_world = MagicMock()

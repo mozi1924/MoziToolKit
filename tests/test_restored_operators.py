@@ -20,7 +20,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from utils.materials.builder import ensure_material_node_tree
+from MoziToolKit.utils.materials.builder import ensure_material_node_tree
 
 try:
     import bpy
@@ -73,10 +73,10 @@ except ImportError:
     sys.modules["bpy_extras.io_utils"] = io_utils_mod
     HAS_BPY = False
 
-import operators
-import ui
+import MoziToolKit.operators as operators
+import MoziToolKit.ui as ui
 
-from utils.system.menu_registry import (
+from MoziToolKit.utils.system.menu_registry import (
     draw_dynamic_menu,
     get_all_operators,
     get_default_presets,

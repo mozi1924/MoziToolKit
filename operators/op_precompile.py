@@ -5,40 +5,22 @@ Operators for Asset Precompilation, Cache Management, and Environment checks.
 import time
 from typing import Optional
 import bpy
-try:
-    from ..bridge.assets import (
-        precompile_stack,
-        precompile_stack_async,
-        reload_atlas_images,
-    )
-    from ..utils.assets import (
-        can_execute_asset_pipeline,
-        check_asset_cache_status,
-        clear_cache,
-        get_cache_stats,
-        open_cache_folder,
-        prepare_asset_context,
-    )
-    from ..utils.system import get_prefs
-    from ..utils.async_task import AsyncTask, ModalTaskRunner
-    from ..utils.progress import BlenderProgressReporter, blender_progress_scope
-except (ImportError, ValueError):
-    from bridge.assets import (
-        precompile_stack,
-        precompile_stack_async,
-        reload_atlas_images,
-    )
-    from utils.assets import (
-        can_execute_asset_pipeline,
-        check_asset_cache_status,
-        clear_cache,
-        get_cache_stats,
-        open_cache_folder,
-        prepare_asset_context,
-    )
-    from utils.system import get_prefs
-    from utils.async_task import AsyncTask, ModalTaskRunner
-    from utils.progress import BlenderProgressReporter, blender_progress_scope
+from ..bridge.assets import (
+    precompile_stack,
+    precompile_stack_async,
+    reload_atlas_images,
+)
+from ..utils.assets import (
+    can_execute_asset_pipeline,
+    check_asset_cache_status,
+    clear_cache,
+    get_cache_stats,
+    open_cache_folder,
+    prepare_asset_context,
+)
+from ..utils.system import get_prefs
+from ..utils.async_task import AsyncTask, ModalTaskRunner
+from ..utils.progress import BlenderProgressReporter, blender_progress_scope
 
 
 class MOZI_OT_precompile_cache(bpy.types.Operator):

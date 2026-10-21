@@ -212,8 +212,8 @@ if not HAS_BPY:
 
     bpy.context = _MockContext()
 
-from bridge.sync import SyncBridgeSession, is_sync_available
-from operators.sync.hierarchy import (
+from MoziToolKit.bridge.sync import SyncBridgeSession, is_sync_available
+from MoziToolKit.operators.sync.hierarchy import (
     DEFAULT_WORLD_OBJECT_NAME,
     get_or_create_world_mesh_object,
     update_world_mesh,

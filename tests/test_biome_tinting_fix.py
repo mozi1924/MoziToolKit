@@ -21,10 +21,10 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from bridge.assets import load_biome_resolver_from_cache
+from MoziToolKit.bridge.assets import load_biome_resolver_from_cache
 
 if HAS_BPY:
-    from utils.node_groups.biome import ensure_colormap_decoder, COLORMAP_DECODER_VERSION
+    from MoziToolKit.utils.node_groups.biome import ensure_colormap_decoder, COLORMAP_DECODER_VERSION
 else:
     ensure_colormap_decoder = None
     COLORMAP_DECODER_VERSION = None
@@ -200,7 +200,7 @@ class TestBiomeTintingFix(unittest.TestCase):
     def test_update_object_biome_live_sync_mesh_without_source_keys(self):
         """Verifies update_object_biome successfully updates colors and colormap UVs on meshes lacking string attributes."""
         import array
-        from utils.materials.biome.updater import update_object_biome
+        from MoziToolKit.utils.materials.biome.updater import update_object_biome
 
         b_mesh = bpy.data.meshes.new("TestLiveSyncMesh")
         b_mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])
@@ -240,7 +240,7 @@ class TestBiomeTintingFix(unittest.TestCase):
     def test_update_object_biome_unlocks_hardcoded_save_faces(self):
         """Verifies that faces baked as TINT_TYPE_HARDCODED (4.0) from Dark Forest save imports unlock to 1.0/custom colors."""
         import array
-        from utils.materials.biome.updater import update_object_biome
+        from MoziToolKit.utils.materials.biome.updater import update_object_biome
 
         b_mesh = bpy.data.meshes.new("TestDarkForestSaveMesh")
         b_mesh.from_pydata([(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)], [], [(0, 1, 2, 3)])

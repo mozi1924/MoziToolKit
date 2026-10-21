@@ -8,10 +8,7 @@ import bpy
 
 from .ownership_hint import draw_mesh_origin_hint
 
-try:
-    from ..utils.system import draw_dynamic_menu
-except (ImportError, ValueError):
-    from utils.system import draw_dynamic_menu
+from ..utils.system import draw_dynamic_menu
 
 
 class MOZI_MT_object_menu(bpy.types.Menu):
@@ -40,10 +37,7 @@ def draw_object_menu_func(self, context):
 
 
 def draw_add_menu_func(self, context):
-    try:
-        from ..i18n import tr
-    except (ImportError, ValueError):
-        from i18n import tr
+    from ..i18n import tr
     self.layout.separator()
     self.layout.operator("mozi.add_yefira_world", text=tr("Yefira World"), icon="WORLD")
 

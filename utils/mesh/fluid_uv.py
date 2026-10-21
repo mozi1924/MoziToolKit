@@ -22,18 +22,11 @@ except ImportError:
     bmesh = None
     Vector = None
 
-try:
-    from ...bridge.uv import (
-        repair_mesh_fluid_uv_inplace,
-        get_fluid_top_uvs,
-        get_fluid_side_uvs,
-    )
-except (ImportError, ValueError):
-    from bridge.uv import (
-        repair_mesh_fluid_uv_inplace,
-        get_fluid_top_uvs,
-        get_fluid_side_uvs,
-    )
+from ...bridge.uv import (
+    repair_mesh_fluid_uv_inplace,
+    get_fluid_top_uvs,
+    get_fluid_side_uvs,
+)
 
 
 def is_fluid_texture_name(name: Optional[str]) -> bool:

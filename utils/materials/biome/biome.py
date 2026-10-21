@@ -17,28 +17,16 @@ except ImportError:
     np = None
     HAS_NUMPY = False
 
-try:
-    from ....bridge.material import (
-        BiomeResolver,
-        get_biome_meta,
-        get_colormap_uv,
-        get_all_biomes,
-        get_hardcoded_tint,
-        get_hardcoded_tint_hex,
-        compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
-    )
-    from ....bridge.engine import has_libmtk
-except (ImportError, ValueError):
-    from bridge.material import (
-        BiomeResolver,
-        get_biome_meta,
-        get_colormap_uv,
-        get_all_biomes,
-        get_hardcoded_tint,
-        get_hardcoded_tint_hex,
-        compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
-    )
-    from bridge.engine import has_libmtk
+from ....bridge.material import (
+    BiomeResolver,
+    get_biome_meta,
+    get_colormap_uv,
+    get_all_biomes,
+    get_hardcoded_tint,
+    get_hardcoded_tint_hex,
+    compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
+)
+from ....bridge.engine import has_libmtk
 
 
 def __getattr__(name: str) -> Any:
@@ -54,24 +42,14 @@ from ..constants import (
 )
 
 # Canonical Tint Type Identifiers imported from Rust SSOT via bridge.material
-try:
-    from ....bridge.material import (
-        TINT_TYPE_DRY_FOLIAGE,
-        TINT_TYPE_FOLIAGE,
-        TINT_TYPE_GRASS,
-        TINT_TYPE_HARDCODED,
-        TINT_TYPE_NONE,
-        TINT_TYPE_WATER,
-    )
-except (ImportError, ValueError):
-    from bridge.material import (
-        TINT_TYPE_DRY_FOLIAGE,
-        TINT_TYPE_FOLIAGE,
-        TINT_TYPE_GRASS,
-        TINT_TYPE_HARDCODED,
-        TINT_TYPE_NONE,
-        TINT_TYPE_WATER,
-    )
+from ....bridge.material import (
+    TINT_TYPE_DRY_FOLIAGE,
+    TINT_TYPE_FOLIAGE,
+    TINT_TYPE_GRASS,
+    TINT_TYPE_HARDCODED,
+    TINT_TYPE_NONE,
+    TINT_TYPE_WATER,
+)
 
 
 def get_or_load_biome_resolver(
@@ -88,13 +66,7 @@ def get_or_load_biome_resolver(
         return BiomeResolver()
 
     # 1. Prioritize instant in-memory loading from .mtkcache package
-    try:
-        from ....bridge.assets import load_biome_resolver_from_cache
-    except (ImportError, ValueError):
-        try:
-            from bridge.assets import load_biome_resolver_from_cache
-        except Exception:
-            load_biome_resolver_from_cache = None
+    from ....bridge.assets import load_biome_resolver_from_cache
 
     if load_biome_resolver_from_cache is not None:
         cached_resolver = load_biome_resolver_from_cache(prefs)
@@ -109,12 +81,6 @@ def get_or_load_biome_resolver(
         try:
             from ....bridge.assets import get_cache_dir
             target_cache = get_cache_dir(prefs)
-        except (ImportError, ValueError):
-            try:
-                from bridge.assets import get_cache_dir
-                target_cache = get_cache_dir(prefs)
-            except Exception:
-                target_cache = None
         except Exception:
             target_cache = None
 
@@ -137,12 +103,6 @@ def get_or_load_biome_resolver(
         try:
             from ....bridge.assets import get_configured_pack_stack
             effective_stack = get_configured_pack_stack(prefs)
-        except (ImportError, ValueError):
-            try:
-                from bridge.assets import get_configured_pack_stack
-                effective_stack = get_configured_pack_stack(prefs)
-            except Exception:
-                effective_stack = None
         except Exception:
             effective_stack = None
 
@@ -269,10 +229,7 @@ def compute_biome_tint_attributes_paletted(
     has_custom_dry_foliage: bool = False,
 ) -> Tuple[Any, Any, Any]:
     """Palette-native biome tint computation; never expands per-face strings."""
-    try:
-        from ....bridge.material import compute_biome_tint_attributes_paletted as _native
-    except (ImportError, ValueError):
-        from bridge.material import compute_biome_tint_attributes_paletted as _native
+    from ....bridge.material import compute_biome_tint_attributes_paletted as _native
 
     return _native(
         palette,
@@ -379,13 +336,7 @@ def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
         return []
     num_polys = len(mesh.polygons)
     if name == ATTR_SOURCE_TEXTURE_KEY:
-        try:
-            from ....bridge.mesh import resolve_source_texture_keys
-        except (ImportError, ValueError):
-            try:
-                from bridge.mesh import resolve_source_texture_keys
-            except (ImportError, ValueError):
-                resolve_source_texture_keys = None
+        from ....bridge.mesh import resolve_source_texture_keys
         resolved = resolve_source_texture_keys(mesh) if resolve_source_texture_keys is not None else []
         return resolved if len(resolved) == num_polys else [""] * num_polys
 

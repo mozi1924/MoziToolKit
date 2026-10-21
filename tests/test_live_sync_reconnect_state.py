@@ -47,7 +47,7 @@ def _run_tick(mock_session):
 class TestLiveSyncPersistedIdentity(unittest.TestCase):
     def test_native_session_exports_persisted_state_json(self):
         try:
-            from bridge.engine import get_libmtk
+            from MoziToolKit.bridge.engine import get_libmtk
         except Exception:
             self.skipTest("libmtk_py unavailable")
 

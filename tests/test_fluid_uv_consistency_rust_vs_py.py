@@ -36,14 +36,14 @@ except ImportError:
     Vector = None
     HAS_REAL_BPY = False
 
-from bridge.uv import (
+from MoziToolKit.bridge.uv import (
     repair_mesh_fluid_uv_inplace,
     repair_quad_fluid_uv,
     batch_repair_fluid_uv,
     get_fluid_top_uvs,
     get_fluid_side_uvs,
 )
-from utils.mesh.fluid_uv import repair_face_fluid_uv, process_mesh_fluid_uv_repairs
+from MoziToolKit.utils.mesh.fluid_uv import repair_face_fluid_uv, process_mesh_fluid_uv_repairs
 
 
 class TestFluidUVBridge(unittest.TestCase):

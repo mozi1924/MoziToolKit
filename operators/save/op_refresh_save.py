@@ -17,38 +17,21 @@ try:
 except ImportError:
     bpy = None
 
-try:
-    from ...bridge.assets import reload_atlas_images
-    from ...bridge.world import prepare_world_mesh_context
-    from ...bridge.save import load_and_mesh_minecraft_save
-    from ...utils.assets import (
-        can_execute_asset_pipeline,
-        prepare_asset_context,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-        run_task_with_asset_guard,
-    )
-    from ...utils.save import apply_imported_save_to_blender
-    from ...utils.async_task import AsyncTask, ModalTaskRunner
-    from ...utils.progress import BlenderProgressReporter, blender_progress_scope
-    from ...utils.system.dependencies import get_prefs
-    from ...utils.system.save_registry import get_save_registry
-except (ImportError, ValueError):
-    from bridge.assets import reload_atlas_images
-    from bridge.world import prepare_world_mesh_context
-    from bridge.save import load_and_mesh_minecraft_save
-    from utils.assets import (
-        can_execute_asset_pipeline,
-        prepare_asset_context,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-        run_task_with_asset_guard,
-    )
-    from utils.save import apply_imported_save_to_blender
-    from utils.async_task import AsyncTask, ModalTaskRunner
-    from utils.progress import BlenderProgressReporter, blender_progress_scope
-    from utils.system.dependencies import get_prefs
-    from utils.system.save_registry import get_save_registry
+from ...bridge.assets import reload_atlas_images
+from ...bridge.world import prepare_world_mesh_context
+from ...bridge.save import load_and_mesh_minecraft_save
+from ...utils.assets import (
+    can_execute_asset_pipeline,
+    prepare_asset_context,
+    check_asset_cache_status,
+    ensure_pipeline_assets_ready_sync,
+    run_task_with_asset_guard,
+)
+from ...utils.save import apply_imported_save_to_blender
+from ...utils.async_task import AsyncTask, ModalTaskRunner
+from ...utils.progress import BlenderProgressReporter, blender_progress_scope
+from ...utils.system.dependencies import get_prefs
+from ...utils.system.save_registry import get_save_registry
 
 from .utils import resolve_save_container
 

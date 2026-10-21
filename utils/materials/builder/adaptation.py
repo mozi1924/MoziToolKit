@@ -16,16 +16,8 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-try:
-    from .shading_config import resolve_material_shading_config
-    from ...config import get_config_manager
-except (ImportError, ValueError):
-    try:
-        from utils.materials.builder.shading_config import resolve_material_shading_config
-        from utils.config import get_config_manager
-    except Exception:
-        resolve_material_shading_config = None
-        get_config_manager = None
+from .shading_config import resolve_material_shading_config
+from ...config import get_config_manager
 
 logger = logging.getLogger(__name__)
 

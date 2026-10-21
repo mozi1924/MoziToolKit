@@ -64,11 +64,11 @@ except ImportError:
     HAS_BPY = False
 
 if HAS_BPY:
-    import ui
+    import MoziToolKit.ui as ui
 else:
     ui = None
 
-from utils.system.menu_registry import (
+from MoziToolKit.utils.system.menu_registry import (
     draw_dynamic_menu,
     get_all_operators,
     get_default_presets,
@@ -140,8 +140,8 @@ class TestMenuRegistration(unittest.TestCase):
         ])
 
     def test_i18n_right_click_menu_labels(self):
-        from i18n import tr
-        from i18n.dictionary import translations_dict
+        from MoziToolKit.i18n import tr
+        from MoziToolKit.i18n.dictionary import translations_dict
 
         zh_dict = translations_dict.get("zh_HANS", {})
         self.assertEqual(zh_dict.get(('*', 'Rebuild Voxel Mesh')), '重建体素网格')
@@ -152,7 +152,7 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertEqual(zh_dict.get(('*', 'Set Image Interpolation to Closest')), '图像纹理插值设为最近')
 
     def test_rebuild_mesh_rejects_provenance_only_mesh(self):
-        from operators.mesh import resolve_mesh_rebuild_targets, MOZI_OT_rebuild_mesh
+        from MoziToolKit.operators.mesh import resolve_mesh_rebuild_targets, MOZI_OT_rebuild_mesh
 
         # A standalone external mesh with provenance has no voxel source.
         mock_obj_prov = MagicMock(type="MESH")
@@ -170,7 +170,7 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertFalse(MOZI_OT_rebuild_mesh.poll(mock_context))
 
     def test_replace_material_provenance_predetection(self):
-        from operators.op_materials import _has_provenance_attributes
+        from MoziToolKit.operators.op_materials import _has_provenance_attributes
 
         # None or non-mesh
         self.assertFalse(_has_provenance_attributes(None))
@@ -189,7 +189,7 @@ class TestMenuRegistration(unittest.TestCase):
 
 
     def test_unknown_operator_ids_are_filtered(self):
-        from utils.config.models import ConfigData
+        from MoziToolKit.utils.config.models import ConfigData
 
         raw = {
             "version": 1,
@@ -205,7 +205,7 @@ class TestMenuRegistration(unittest.TestCase):
 
     def test_user_customizations_preserved(self):
         """Custom labels, ordering, disabled flags, and removals survive normalization/reload."""
-        from utils.config.models import ConfigData
+        from MoziToolKit.utils.config.models import ConfigData
 
         user_dict = {
             "version": 1,
@@ -242,7 +242,7 @@ class TestMenuRegistration(unittest.TestCase):
 
     def test_draw_dynamic_menu_skips_unregistered(self):
         with patch(
-            "utils.system.menu_registry.load_config",
+            "MoziToolKit.utils.system.menu_registry.load_config",
             return_value={
                 "mesh": [
                     {"operator": "mozi.ghost", "label": "Ghost", "enabled": True},
@@ -258,8 +258,8 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertNotIn("mozi.ghost", called_ids)
 
     def test_config_manager_reset_single_view(self):
-        from utils.config import get_config_manager
-        from utils.config.models import MenuItem
+        from MoziToolKit.utils.config import get_config_manager
+        from MoziToolKit.utils.config.models import MenuItem
 
         mgr = get_config_manager()
         # Set custom views

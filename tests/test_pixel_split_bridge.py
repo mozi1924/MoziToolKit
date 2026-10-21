@@ -7,8 +7,8 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from bridge.mesh import MeshData
-from bridge.subdivide import (
+from MoziToolKit.bridge.mesh import MeshData
+from MoziToolKit.bridge.subdivide import (
     calculate_face_target_grid,
     calculate_pixel_grid_cut_factors,
     slice_face_by_pixel_grid,

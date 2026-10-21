@@ -9,28 +9,16 @@ import numpy as np
 import bpy
 from bpy.props import EnumProperty, FloatProperty
 
-try:
-    from ...utils.mesh import (
-        SELECTION_ACTION_ITEMS,
-        apply_selection,
-        bmesh_context,
-        poll_edit_mesh,
-        poll_mesh_object,
-        set_select_mode,
-    )
-    from ...utils.system import register_menu_item
-    from ...bridge.mesh import analyze_mesh_hard_edges
-except (ImportError, ValueError):
-    from utils.mesh import (
-        SELECTION_ACTION_ITEMS,
-        apply_selection,
-        bmesh_context,
-        poll_edit_mesh,
-        poll_mesh_object,
-        set_select_mode,
-    )
-    from utils.system import register_menu_item
-    from bridge.mesh import analyze_mesh_hard_edges
+from ...utils.mesh import (
+    SELECTION_ACTION_ITEMS,
+    apply_selection,
+    bmesh_context,
+    poll_edit_mesh,
+    poll_mesh_object,
+    set_select_mode,
+)
+from ...utils.system import register_menu_item
+from ...bridge.mesh import analyze_mesh_hard_edges
 
 
 @register_menu_item(views=["mesh"], label="Select Hard & Sharp Edges")

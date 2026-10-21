@@ -75,7 +75,7 @@ if not HAS_BPY:
     HAS_BPY = False
 
 import libmtk_py
-from bridge.sync import get_sync_bridge_session, is_sync_available, reset_sync_bridge_session
+from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available, reset_sync_bridge_session
 from tools.mock_sync_server import MockLiveSyncServer
 
 

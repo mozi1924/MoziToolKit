@@ -11,24 +11,14 @@ from typing import Any, List, Optional, Tuple
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, IntVectorProperty
 
-try:
-    from ..bridge.mesh import extract_mesh_data, inject_mesh_data
-    from ..bridge.subdivide import adaptive_pixel_split_mesh
-    from ..utils.mesh.core import (
-        SELECTION_SCOPE_ITEMS,
-        poll_edit_mesh,
-        poll_mesh_object,
-    )
-    from ..utils.system.menu_registry import register_menu_item
-except (ImportError, ValueError):
-    from bridge.mesh import extract_mesh_data, inject_mesh_data
-    from bridge.subdivide import adaptive_pixel_split_mesh
-    from utils.mesh.core import (
-        SELECTION_SCOPE_ITEMS,
-        poll_edit_mesh,
-        poll_mesh_object,
-    )
-    from utils.system.menu_registry import register_menu_item
+from ..bridge.mesh import extract_mesh_data, inject_mesh_data
+from ..bridge.subdivide import adaptive_pixel_split_mesh
+from ..utils.mesh.core import (
+    SELECTION_SCOPE_ITEMS,
+    poll_edit_mesh,
+    poll_mesh_object,
+)
+from ..utils.system.menu_registry import register_menu_item
 
 import numpy as np
 

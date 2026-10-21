@@ -10,37 +10,15 @@ import bpy
 
 from .ownership_hint import draw_mesh_origin_hint
 
-try:
-    from ..utils.point_cloud import (
-        get_associated_voxel_cloud,
-        is_voxel_cloud_visible,
-        MASK_MODIFIER_NAME,
-    )
-    from ..i18n import tr
-    from ..utils.mesh.ownership import ORIGIN_SAVE, classify_origin
-    from ..utils.assets import has_valid_vanilla_pack
-    from ..utils.system import get_prefs
-except (ImportError, ValueError):
-    from utils.point_cloud import (
-        get_associated_voxel_cloud,
-        is_voxel_cloud_visible,
-        MASK_MODIFIER_NAME,
-    )
-    try:
-        from i18n import tr
-    except (ImportError, ValueError):
-        def tr(msgid: str, msgctxt: str | None = None) -> str:
-            return msgid
-    try:
-        from utils.mesh.ownership import ORIGIN_SAVE, classify_origin
-    except (ImportError, ValueError):
-        ORIGIN_SAVE = "SAVE"
-
-        def classify_origin(obj):
-            return "EXTERNAL"
-
-    from utils.assets import has_valid_vanilla_pack
-    from utils.system import get_prefs
+from ..utils.point_cloud import (
+    get_associated_voxel_cloud,
+    is_voxel_cloud_visible,
+    MASK_MODIFIER_NAME,
+)
+from ..i18n import tr
+from ..utils.mesh.ownership import ORIGIN_SAVE, classify_origin
+from ..utils.assets import has_valid_vanilla_pack
+from ..utils.system import get_prefs
 
 
 def _resolve_target_cloud(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:

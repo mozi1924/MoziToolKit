@@ -4,13 +4,7 @@ MoziToolKit Dev Operator: Mesher Benchmark.
 
 import bpy
 from ..api import run_mesher_benchmark
-try:
-    from ... import bridge
-except (ImportError, ValueError):
-    try:
-        from MoziToolKit import bridge
-    except (ImportError, ValueError):
-        import bridge
+from ... import bridge
 
 
 class MOZI_OT_dev_mesh_benchmark(bpy.types.Operator):

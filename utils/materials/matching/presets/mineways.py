@@ -129,13 +129,7 @@ def build_mineways_grid_spec(image_width: int = 1024, image_height: int = 1024):
     """
     from .mineways_table import MINEWAYS_ATLAS_NAME_PATTERNS, MINEWAYS_ATLAS_SUFFIX_PATTERNS
 
-    try:
-        from .....bridge.material import GridAtlasSpec
-    except (ImportError, ValueError):
-        try:
-            from bridge.material import GridAtlasSpec
-        except Exception:
-            GridAtlasSpec = None
+    from .....bridge.material import GridAtlasSpec
 
     if GridAtlasSpec is not None:
         try:

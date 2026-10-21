@@ -10,14 +10,14 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import bpy
-from operators.op_voxel_cloud import (
+from MoziToolKit.operators.op_voxel_cloud import (
     MOZI_OT_carve_voxel_cloud,
     MOZI_OT_toggle_voxel_cloud,
     _resolve_world_and_cloud_objects,
     _enter_carve_mode,
     _exit_carve_mode,
 )
-from ui.panel_voxel_storage import MOZI_PT_view3d_voxel_tools, _resolve_target_cloud
+from MoziToolKit.ui.panel_voxel_storage import MOZI_PT_view3d_voxel_tools, _resolve_target_cloud
 
 
 class MockModifier:
@@ -228,7 +228,7 @@ class TestVoxelToolsPanelUI(unittest.TestCase):
         mock_panel = MagicMock()
         mock_panel.layout = mock_layout
 
-        with patch("ui.panel_voxel_storage._resolve_target_cloud", return_value=(self.world_obj, self.cloud_obj)):
+        with patch("MoziToolKit.ui.panel_voxel_storage._resolve_target_cloud", return_value=(self.world_obj, self.cloud_obj)):
             MOZI_PT_view3d_voxel_tools.draw(mock_panel, ctx)
 
         # Verify prop() was never called with threshold

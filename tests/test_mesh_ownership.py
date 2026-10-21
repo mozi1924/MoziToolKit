@@ -16,9 +16,9 @@ from unittest.mock import MagicMock, patch
 
 import bpy
 
-from operators.op_materials import MOZI_OT_replace_material
-from operators.mesh import MOZI_OT_rebuild_mesh, resolve_mesh_rebuild_targets
-from utils.mesh.ownership import (
+from MoziToolKit.operators.op_materials import MOZI_OT_replace_material
+from MoziToolKit.operators.mesh import MOZI_OT_rebuild_mesh, resolve_mesh_rebuild_targets
+from MoziToolKit.utils.mesh.ownership import (
     ORIGIN_EXTERNAL,
     ORIGIN_POINT_CLOUD,
     ORIGIN_SAVE,
@@ -220,15 +220,15 @@ class TestMeshOwnership(unittest.TestCase):
 
     def test_replace_material_poll_external_only(self):
         external = self._make_obj("Cube", "MESH")
-        with patch("operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertTrue(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=external)))
 
         save_mesh = self._make_obj("Save_World_overworld_Mesh", "MESH")
-        with patch("operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=save_mesh)))
 
         cloud = self._make_obj("Save_World_overworld_VoxelCloud", "MESH")
-        with patch("operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=cloud)))
 
         self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=None)))
@@ -257,7 +257,7 @@ class TestMeshOwnership(unittest.TestCase):
         if not IS_REAL_BLENDER:
             root.children = [mesh, cloud]
 
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
         # A save container without a companion cloud cannot rebuild offline.
@@ -270,7 +270,7 @@ class TestMeshOwnership(unittest.TestCase):
         if not IS_REAL_BLENDER:
             orphan_root.children = [orphan_mesh]
 
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(orphan_root)))
 
     def test_rebuild_poll_live_session_bypasses_cloud(self):
@@ -288,14 +288,14 @@ class TestMeshOwnership(unittest.TestCase):
 
         active_session = MagicMock()
         active_session.is_active = True
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=active_session):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=active_session):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(context))
 
         inactive_session = MagicMock()
         inactive_session.is_active = False
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=inactive_session):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=inactive_session):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(context))
 
     def test_rebuild_poll_rejects_external_mesh_under_container(self):
@@ -334,7 +334,7 @@ class TestMeshOwnership(unittest.TestCase):
         self.assertIs(world, save_mesh)
         self.assertIs(resolved_cloud, cloud)
         self.assertEqual(source_type, "SAVE")
-        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+        with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
     def test_rebuild_poll_rejects_provenance_only_external_mesh(self):

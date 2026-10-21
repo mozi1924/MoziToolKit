@@ -31,14 +31,12 @@ try:
 except ImportError:
     pass
 
-# Aliasing for Blender 4.2+ extension repos (e.g. bl_ext.vscode_development.MoziToolKit)
+# Aliasing for Blender 4.2+ extension repos (e.g. bl_ext.vscode_development.MoziToolKit).
+# Submodules intentionally use relative imports only, so no per-module alias is needed.
 if __name__ not in ("MoziToolKit", "__main__"):
     sys.modules.setdefault("MoziToolKit", sys.modules[__name__])
 
 from . import bridge
-if __name__ not in ("MoziToolKit", "__main__"):
-    sys.modules.setdefault("MoziToolKit.bridge", bridge)
-
 from . import i18n
 from . import operators
 from . import ui

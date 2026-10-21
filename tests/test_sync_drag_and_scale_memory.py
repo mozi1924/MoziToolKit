@@ -72,9 +72,9 @@ if not HAS_BPY:
     sys.modules["bpy.app"] = bpy.app
     sys.modules["bmesh"] = MagicMock()
 
-from bridge.sync import get_sync_bridge_session, is_sync_available
-from operators.sync.hierarchy import get_or_create_world_mesh_object
-from operators.sync.op_sync_connect import _sync_timer_tick
+from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available
+from MoziToolKit.operators.sync.hierarchy import get_or_create_world_mesh_object
+from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
 from tools.mock_sync_server import (
     MinimalWebSocketClient,
     encode_selection_info,

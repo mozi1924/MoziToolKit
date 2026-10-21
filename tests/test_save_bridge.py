@@ -5,8 +5,8 @@ Unit and integration tests for Minecraft Save Bridge and Importer.
 import pytest
 
 from _assets import save_world
-from bridge.save import inspect_minecraft_save, load_and_mesh_minecraft_save
-from operators.save.op_import_save import MTK_OT_import_minecraft_save
+from MoziToolKit.bridge.save import inspect_minecraft_save, load_and_mesh_minecraft_save
+from MoziToolKit.operators.save.op_import_save import MTK_OT_import_minecraft_save
 
 SAMPLE_WORLD_PATH = save_world()
 
@@ -83,9 +83,9 @@ def test_cold_cache_save_import_binds_textures(tmp_path, monkeypatch):
     sandbox_cache.mkdir()
     monkeypatch.setenv("MOZI_CACHE_DIR", str(sandbox_cache))
 
-    from bridge.assets import invalidate_asset_cache_memory
-    from utils.assets import check_asset_cache_status, run_task_with_asset_guard
-    from utils.save import apply_imported_save_to_blender
+    from MoziToolKit.bridge.assets import invalidate_asset_cache_memory
+    from MoziToolKit.utils.assets import check_asset_cache_status, run_task_with_asset_guard
+    from MoziToolKit.utils.save import apply_imported_save_to_blender
 
     from unittest.mock import MagicMock
     mock_prefs = MagicMock()

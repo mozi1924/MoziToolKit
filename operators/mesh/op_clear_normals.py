@@ -6,12 +6,8 @@ from __future__ import annotations
 
 import bpy
 
-try:
-    from ...utils.mesh import poll_mesh_object
-    from ...utils.system import register_menu_item
-except (ImportError, ValueError):
-    from utils.mesh import poll_mesh_object
-    from utils.system import register_menu_item
+from ...utils.mesh import poll_mesh_object
+from ...utils.system import register_menu_item
 
 
 @register_menu_item(views=["mesh", "object"], label="Clear Custom Normals")

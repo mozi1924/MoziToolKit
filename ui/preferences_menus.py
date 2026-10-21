@@ -6,30 +6,17 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-try:
-    from ..utils.config import (
-        get_config_manager,
-        export_config,
-        import_config,
-        normalize_operator_id,
-    )
-    from ..utils.system import ALL_OPERATORS, get_prefs
-    from ..utils.system.menu_registry import sort_unadded_items
-except (ImportError, ValueError):
-    from utils.config import (
-        get_config_manager,
-        export_config,
-        import_config,
-        normalize_operator_id,
-    )
-    from utils.system import ALL_OPERATORS, get_prefs
-    from utils.system.menu_registry import sort_unadded_items
+from ..utils.config import (
+    get_config_manager,
+    export_config,
+    import_config,
+    normalize_operator_id,
+)
+from ..utils.system import ALL_OPERATORS, get_prefs
+from ..utils.system.menu_registry import sort_unadded_items
 
 
-try:
-    from .preferences_utils import _safe_get_prefs, refresh_ui_and_menus
-except (ImportError, ValueError):
-    from ui.preferences_utils import _safe_get_prefs, refresh_ui_and_menus
+from .preferences_utils import _safe_get_prefs, refresh_ui_and_menus
 
 def on_item_label_changed(self, context):
     """Callback when an item's custom label is edited."""

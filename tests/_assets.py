@@ -129,7 +129,7 @@ def blender_datafiles_cache() -> Optional[Path]:
         return path if path.exists() else None
 
     try:
-        from bridge.assets import get_cache_dir
+        from MoziToolKit.bridge.assets import get_cache_dir
 
         return get_cache_dir()
     except Exception:

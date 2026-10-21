@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from utils.system.save_registry import SaveRegistryManager
+from MoziToolKit.utils.system.save_registry import SaveRegistryManager
 
 
 class TestSaveRegistryManager(unittest.TestCase):
@@ -82,7 +82,7 @@ class TestSaveRegistryManager(unittest.TestCase):
     def test_aligned_with_context_menus_dir(self):
         """Verifies default registry path resides in same directory as context_menus.json."""
         import os
-        from utils.config.backends.json_backend import JsonConfigBackend
+        from MoziToolKit.utils.config.backends.json_backend import JsonConfigBackend
         with tempfile.TemporaryDirectory() as env_tmp:
             old_env = os.environ.get("MOZI_CONFIG_DIR")
             try:

@@ -24,24 +24,14 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-try:
-    from .assets import (
-        load_biome_resolver_from_cache,
-        check_cache_dirty,
-        get_cache_fingerprint,
-        get_cache_timestamp,
-        reload_atlas_images,
-        get_configured_ctm_solver,
-    )
-except (ImportError, ValueError):
-    from bridge.assets import (
-        load_biome_resolver_from_cache,
-        check_cache_dirty,
-        get_cache_fingerprint,
-        get_cache_timestamp,
-        reload_atlas_images,
-        get_configured_ctm_solver,
-    )
+from .assets import (
+    load_biome_resolver_from_cache,
+    check_cache_dirty,
+    get_cache_fingerprint,
+    get_cache_timestamp,
+    reload_atlas_images,
+    get_configured_ctm_solver,
+)
 
 
 def is_sync_available() -> bool:

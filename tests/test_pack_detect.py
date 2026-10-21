@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from utils.pack_detect import (
+from MoziToolKit.utils.pack_detect import (
     ALL_KINDS,
     KIND_DATA_PACK,
     KIND_MOD,
@@ -280,7 +280,7 @@ class TestFailureModes(PackDetectTestBase):
         self.assertKind(probe, KIND_RESOURCE_PACK)
 
     def test_never_raises_on_unexpected_error(self) -> None:
-        with patch("utils.pack_detect._classify_file", side_effect=RuntimeError("boom")):
+        with patch("MoziToolKit.utils.pack_detect._classify_file", side_effect=RuntimeError("boom")):
             probe = detect_pack_kind(self.make("any.zip", _resource_pack_files()))
         self.assertEqual(probe.kind, KIND_UNKNOWN)
         self.assertIn("boom", probe.error)
@@ -387,14 +387,14 @@ class TestResolvePolicy(unittest.TestCase):
 
 class TestKindCatalog(unittest.TestCase):
     def test_all_kinds_are_labeled(self) -> None:
-        from utils.pack_detect import KIND_LABELS, KIND_TO_PACK_TYPE
+        from MoziToolKit.utils.pack_detect import KIND_LABELS, KIND_TO_PACK_TYPE
 
         for kind in ALL_KINDS:
             self.assertIn(kind, KIND_LABELS)
             self.assertIn(kind, KIND_TO_PACK_TYPE)
 
     def test_three_tier_mapping_matches_ui_enum(self) -> None:
-        from utils.pack_detect import KIND_TO_PACK_TYPE
+        from MoziToolKit.utils.pack_detect import KIND_TO_PACK_TYPE
 
         allowed = {None, "RESOURCE_PACK", "MOD_JAR", "VANILLA"}
         for value in KIND_TO_PACK_TYPE.values():

@@ -269,14 +269,7 @@ def draw_dynamic_menu(layout, view_name: str):
 
     layout.separator()
     layout.operator_context = "INVOKE_DEFAULT"
-    try:
-        from ...i18n import tr
-    except (ImportError, ValueError):
-        try:
-            from i18n import tr
-        except Exception:
-            def tr(s, ctx=None):
-                return s
+    from ...i18n import tr
 
     layout.label(text=tr("MoziToolKit"))
     for op_id, label in valid_items:

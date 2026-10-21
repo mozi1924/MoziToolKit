@@ -115,28 +115,19 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
 def _on_blend_file_pre_load(dummy=None):
     """Disconnect Live Sync client, cancel timers, and reset session before loading a new blend file."""
     try:
-        try:
-            from .op_sync_connect import stop_sync_timer
-        except (ImportError, ValueError):
-            from operators.sync.op_sync_connect import stop_sync_timer
+        from .op_sync_connect import stop_sync_timer
         stop_sync_timer()
     except Exception as e:
         logger.debug(f"Error stopping sync timer on file pre-load: {e}")
 
     try:
-        try:
-            from ...bridge.sync import reset_sync_bridge_session
-        except (ImportError, ValueError):
-            from bridge.sync import reset_sync_bridge_session
+        from ...bridge.sync import reset_sync_bridge_session
         reset_sync_bridge_session()
     except Exception as e:
         logger.debug(f"Error resetting sync session on file pre-load: {e}")
 
     try:
-        try:
-            from ...utils.materials.biome.updater import clear_biome_updater_cache
-        except (ImportError, ValueError):
-            from utils.materials.biome.updater import clear_biome_updater_cache
+        from ...utils.materials.biome.updater import clear_biome_updater_cache
         clear_biome_updater_cache()
     except Exception as e:
         logger.debug(f"Error clearing biome updater cache on file pre-load: {e}")
@@ -244,28 +235,19 @@ def unregister():
         bpy.app.handlers.load_post.remove(_on_blend_file_loaded)
 
     try:
-        try:
-            from .op_sync_connect import stop_sync_timer
-        except (ImportError, ValueError):
-            from operators.sync.op_sync_connect import stop_sync_timer
+        from .op_sync_connect import stop_sync_timer
         stop_sync_timer()
     except Exception:
         pass
 
     try:
-        try:
-            from ...bridge.sync import reset_sync_bridge_session
-        except (ImportError, ValueError):
-            from bridge.sync import reset_sync_bridge_session
+        from ...bridge.sync import reset_sync_bridge_session
         reset_sync_bridge_session()
     except Exception:
         pass
 
     try:
-        try:
-            from ...utils.materials.biome.updater import clear_biome_updater_cache
-        except (ImportError, ValueError):
-            from utils.materials.biome.updater import clear_biome_updater_cache
+        from ...utils.materials.biome.updater import clear_biome_updater_cache
         clear_biome_updater_cache()
     except Exception:
         pass

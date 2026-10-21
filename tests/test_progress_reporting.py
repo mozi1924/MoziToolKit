@@ -5,10 +5,10 @@ Unit tests for unified progress reporting across bridge, voxel meshing, and Blen
 import unittest
 from unittest.mock import MagicMock
 
-from bridge.progress import ProgressReport, wrap_progress_callback
-from bridge.world import mesh_voxel_storage
-from bridge.debug import generate_debug_world_mesh
-from utils.progress import BlenderProgressReporter, blender_progress_scope
+from MoziToolKit.bridge.progress import ProgressReport, wrap_progress_callback
+from MoziToolKit.bridge.world import mesh_voxel_storage
+from MoziToolKit.bridge.debug import generate_debug_world_mesh
+from MoziToolKit.utils.progress import BlenderProgressReporter, blender_progress_scope
 
 
 class TestProgressReporting(unittest.TestCase):
@@ -71,7 +71,7 @@ class TestProgressReporting(unittest.TestCase):
         mock_ws.status_text_set.assert_called_with(None)
 
     def test_voxel_meshing_with_real_physical_progress(self):
-        from bridge.engine import get_libmtk
+        from MoziToolKit.bridge.engine import get_libmtk
         mtk = get_libmtk()
         if mtk is None:
             self.skipTest("libmtk not available")

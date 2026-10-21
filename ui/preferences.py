@@ -9,61 +9,32 @@ import sys
 from pathlib import Path
 from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 
-try:
-    from ..utils.config import (
-        get_config_manager,
-        load_config,
-        load_full_config,
-        save_config,
-        save_full_config,
-        load_pack_stack_config,
-        save_pack_stack_config,
-        load_material_settings_config,
-        save_material_settings_config,
-        get_enabled_pack_entries,
-        reset_config,
-        reset_views_config,
-        export_config,
-        import_config,
-        normalize_operator_id,
-    )
-    from ..utils.system import (
-        ALL_OPERATORS,
-        DEFAULT_PRESETS,
-        get_prefs,
-        sort_unadded_items,
-    )
-    from ..utils.assets import has_valid_vanilla_pack
-except (ImportError, ValueError):
-    from utils.config import (
-        get_config_manager,
-        load_config,
-        load_full_config,
-        save_config,
-        save_full_config,
-        load_pack_stack_config,
-        save_pack_stack_config,
-        load_material_settings_config,
-        save_material_settings_config,
-        get_enabled_pack_entries,
-        reset_config,
-        reset_views_config,
-        export_config,
-        import_config,
-        normalize_operator_id,
-    )
-    from utils.system import (
-        ALL_OPERATORS,
-        DEFAULT_PRESETS,
-        get_prefs,
-        sort_unadded_items,
-    )
-    from utils.assets import has_valid_vanilla_pack
+from ..utils.config import (
+    get_config_manager,
+    load_config,
+    load_full_config,
+    save_config,
+    save_full_config,
+    load_pack_stack_config,
+    save_pack_stack_config,
+    load_material_settings_config,
+    save_material_settings_config,
+    get_enabled_pack_entries,
+    reset_config,
+    reset_views_config,
+    export_config,
+    import_config,
+    normalize_operator_id,
+)
+from ..utils.system import (
+    ALL_OPERATORS,
+    DEFAULT_PRESETS,
+    get_prefs,
+    sort_unadded_items,
+)
+from ..utils.assets import has_valid_vanilla_pack
 
-try:
-    from ..utils.materials.biome import BIOME_ENUM_ITEMS
-except (ImportError, ValueError):
-    from utils.materials.biome import BIOME_ENUM_ITEMS
+from ..utils.materials.biome import BIOME_ENUM_ITEMS
 
 from .preferences_packs import (
     MOZI_PG_resource_pack_entry,
@@ -199,11 +170,7 @@ def on_material_setting_changed(self, context):
                 from ..utils.materials.builder.adaptation import update_materials_render_engine_adaptation
                 update_materials_render_engine_adaptation(context=context)
             except Exception:
-                try:
-                    from utils.materials.builder.adaptation import update_materials_render_engine_adaptation
-                    update_materials_render_engine_adaptation(context=context)
-                except Exception:
-                    pass
+                pass
     finally:
         _is_updating_material_settings = False
 

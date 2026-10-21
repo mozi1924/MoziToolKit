@@ -8,10 +8,7 @@ import bpy
 
 from .ownership_hint import draw_mesh_origin_hint
 
-try:
-    from ..utils.system import draw_dynamic_menu
-except (ImportError, ValueError):
-    from utils.system import draw_dynamic_menu
+from ..utils.system import draw_dynamic_menu
 
 
 class MOZI_MT_mesh_menu(bpy.types.Menu):
@@ -84,10 +81,7 @@ class MOZI_PT_auto_extrude_repair_settings(bpy.types.Panel):
     bl_region_type = "HEADER"
 
     def draw(self, context):
-        try:
-            from ..i18n import tr
-        except (ImportError, ValueError):
-            from i18n import tr
+        from ..i18n import tr
         layout = self.layout
         props = getattr(context.scene, "mozi_auto_extrude_repair", None)
         if not props:

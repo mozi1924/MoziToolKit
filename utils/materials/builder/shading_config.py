@@ -15,13 +15,7 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-try:
-    from ...config import get_config_manager
-except (ImportError, ValueError):
-    try:
-        from utils.config import get_config_manager
-    except Exception:
-        get_config_manager = None
+from ...config import get_config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +79,7 @@ def resolve_material_shading_config(
             from ....bridge.material import get_material_props
             props = get_material_props(clean_block, texture_name=texture_key)
         except Exception:
-            try:
-                from bridge.material import get_material_props
-                props = get_material_props(clean_block, texture_name=texture_key)
-            except Exception:
-                props = (0.0, 0.0, 0.0, 0.55)
+            props = (0.0, 0.0, 0.0, 0.55)
     if not props or not isinstance(props, (tuple, list)) or len(props) < 4:
         props = (0.0, 0.0, 0.0, 0.55)
 

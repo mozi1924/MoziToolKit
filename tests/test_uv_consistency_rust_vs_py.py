@@ -18,7 +18,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import bridge.uv as uv_bridge
+import MoziToolKit.bridge.uv as uv_bridge
 
 
 class TestUvBridge(unittest.TestCase):

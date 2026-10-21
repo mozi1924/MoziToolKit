@@ -12,28 +12,28 @@ from pathlib import Path
 import unittest
 from unittest.mock import MagicMock
 
-from bridge.engine import get_libmtk, has_libmtk
-from bridge.material import (
+from MoziToolKit.bridge.engine import get_libmtk, has_libmtk
+from MoziToolKit.bridge.material import (
     BiomeResolver,
     compute_biome_tint_attributes,
     compute_mesh_biome_attributes_from_storage,
 )
-from utils.materials.biome.biome import BIOME_ENUM_ITEMS
-from utils.materials.biome.updater import (
+from MoziToolKit.utils.materials.biome.biome import BIOME_ENUM_ITEMS
+from MoziToolKit.utils.materials.biome.updater import (
     clear_biome_updater_cache,
     get_object_storage,
     mark_world_biome,
     register_object_storage,
     update_object_biome,
 )
-from ui.panel_biome import _get_object_biome, _resolve_biome_preset
-from utils.materials.constants import (
+from MoziToolKit.ui.panel_biome import _get_object_biome, _resolve_biome_preset
+from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_COLOR,
     ATTR_BIOME_TINT_DATA,
     ATTR_COLORMAP_UV,
     ATTR_SOURCE_TEXTURE_IDX,
 )
-from utils.materials.pipeline import resolve_and_apply_biome_tint
+from MoziToolKit.utils.materials.pipeline import resolve_and_apply_biome_tint
 
 
 class _MockAttrElement:
@@ -334,7 +334,7 @@ class Test3DBiomeTinting(unittest.TestCase):
     def test_world_restores_storage_from_companion_point_cloud(self):
         """Re-selecting WORLD after a uniform preset must rebuild storage from the point cloud."""
         from unittest.mock import patch
-        from bridge.point_cloud.constants import ATTR_BIOME
+        from MoziToolKit.bridge.point_cloud.constants import ATTR_BIOME
 
         self.addCleanup(clear_biome_updater_cache)
 
@@ -364,8 +364,8 @@ class Test3DBiomeTinting(unittest.TestCase):
         cloud_data = MagicMock()
         cloud_data.to_storage.return_value = storage
 
-        with patch("utils.point_cloud.get_associated_voxel_cloud", return_value=cloud), \
-             patch("bridge.point_cloud.extract_voxel_point_cloud", return_value=cloud_data):
+        with patch("MoziToolKit.utils.point_cloud.get_associated_voxel_cloud", return_value=cloud), \
+             patch("MoziToolKit.bridge.point_cloud.extract_voxel_point_cloud", return_value=cloud_data):
             self.assertTrue(update_object_biome(obj, "WORLD"))
 
         self.assertEqual(obj["mtk:biome_preset"], "WORLD")
@@ -430,7 +430,7 @@ class Test3DBiomeTinting(unittest.TestCase):
     def test_real_save_3d_biome_loading(self):
         """Verify 3D section biome ingestion from a real Minecraft Anvil save when MTK_TEST_SAVE is available."""
         from _assets import save_world
-        from bridge.save import load_and_mesh_minecraft_save
+        from MoziToolKit.bridge.save import load_and_mesh_minecraft_save
 
         world_path = save_world()
         if world_path is None:

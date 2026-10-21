@@ -7,20 +7,12 @@ from __future__ import annotations
 import logging
 import bpy
 
-try:
-    from ...bridge.sync import get_sync_bridge_session
-    from ...utils.assets import (
-        can_execute_asset_pipeline,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-    )
-except (ImportError, ValueError):
-    from bridge.sync import get_sync_bridge_session
-    from utils.assets import (
-        can_execute_asset_pipeline,
-        check_asset_cache_status,
-        ensure_pipeline_assets_ready_sync,
-    )
+from ...bridge.sync import get_sync_bridge_session
+from ...utils.assets import (
+    can_execute_asset_pipeline,
+    check_asset_cache_status,
+    ensure_pipeline_assets_ready_sync,
+)
 from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
 logger = logging.getLogger("MoziToolKit.Sync.Rebuild")
@@ -28,12 +20,8 @@ logger = logging.getLogger("MoziToolKit.Sync.Rebuild")
 
 from typing import Optional
 
-try:
-    from ...utils.async_task import AsyncTask, ModalTaskRunner
-    from ...utils.progress import BlenderProgressReporter
-except (ImportError, ValueError):
-    from utils.async_task import AsyncTask, ModalTaskRunner
-    from utils.progress import BlenderProgressReporter
+from ...utils.async_task import AsyncTask, ModalTaskRunner
+from ...utils.progress import BlenderProgressReporter
 
 
 class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
@@ -60,15 +48,8 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         prefs = None
-        try:
-            from ...utils.system import get_prefs
-            prefs = get_prefs(context)
-        except Exception:
-            try:
-                from utils.system import get_prefs
-                prefs = get_prefs(context)
-            except Exception:
-                pass
+        from ...utils.system import get_prefs
+        prefs = get_prefs(context)
         can_run, reason = can_execute_asset_pipeline(prefs)
         if not can_run:
             if hasattr(cls, "poll_message_set"):
@@ -78,15 +59,8 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
 
     def execute(self, context):
         prefs = None
-        try:
-            from ...utils.system import get_prefs
-            prefs = get_prefs(context)
-        except Exception:
-            try:
-                from utils.system import get_prefs
-                prefs = get_prefs(context)
-            except Exception:
-                pass
+        from ...utils.system import get_prefs
+        prefs = get_prefs(context)
 
         can_run, reason = can_execute_asset_pipeline(prefs)
         if not can_run:

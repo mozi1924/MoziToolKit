@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from bridge.engine import get_libmtk
+from MoziToolKit.bridge.engine import get_libmtk
 
 
 def test_required_native_symbols_exist():

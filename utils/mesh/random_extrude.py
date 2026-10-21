@@ -21,16 +21,10 @@ except ImportError:
     mathutils = None
     HAS_BPY = False
 
-try:
-    from ...bridge.extrude import (
-        generate_random_extrude_heights,
-        process_flat_mesh_extrude_repair,
-    )
-except (ImportError, ValueError):
-    from bridge.extrude import (
-        generate_random_extrude_heights,
-        process_flat_mesh_extrude_repair,
-    )
+from ...bridge.extrude import (
+    generate_random_extrude_heights,
+    process_flat_mesh_extrude_repair,
+)
 
 logger = logging.getLogger("MoziToolKit.Utils.Mesh.RandomExtrude")
 

@@ -16,12 +16,12 @@ import zlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from bridge.assets import (
+from MoziToolKit.bridge.assets import (
     get_cache_fingerprint,
     invalidate_asset_cache_memory,
     precompile_stack,
 )
-from utils.assets import (
+from MoziToolKit.utils.assets import (
     can_execute_asset_pipeline,
     check_asset_cache_status,
     clear_cache,
@@ -30,8 +30,8 @@ from utils.assets import (
     has_valid_vanilla_pack,
     run_task_with_asset_guard,
 )
-from bridge.engine import has_libmtk
-from bridge.progress import ProgressReport
+from MoziToolKit.bridge.engine import has_libmtk
+from MoziToolKit.bridge.progress import ProgressReport
 
 
 def create_tiny_png(width: int = 16, height: int = 16, color: tuple[int, int, int, int] = (255, 0, 0, 255)) -> bytes:
@@ -249,7 +249,7 @@ class TestAssetBakeGuard(unittest.TestCase):
 
     def test_material_pipeline_ensure_stack_precompiled(self):
         """Verifies ensure_stack_precompiled in material pipeline triggers precompilation when STALE."""
-        from utils.materials.pipeline import ensure_stack_precompiled
+        from MoziToolKit.utils.materials.pipeline import ensure_stack_precompiled
 
         prefs_a = self._make_prefs([self.pack_a])
         self.assertEqual(check_asset_cache_status(prefs_a), "MISSING")
@@ -267,7 +267,7 @@ class TestAssetBakeGuard(unittest.TestCase):
 
     def test_replace_material_operator_auto_bakes_when_missing(self):
         """Verifies mozi.replace_material operator auto-bakes when asset cache is MISSING."""
-        from operators.op_materials import MOZI_OT_replace_material
+        from MoziToolKit.operators.op_materials import MOZI_OT_replace_material
 
         prefs_a = self._make_prefs([self.pack_a])
         self.assertEqual(check_asset_cache_status(prefs_a), "MISSING")
@@ -296,8 +296,8 @@ class TestAssetBakeGuard(unittest.TestCase):
 
         op = DummyReplaceOp()
 
-        with patch("operators.op_materials.get_prefs", return_value=prefs_a), \
-             patch("operators.op_materials.replace_materials", return_value={"success": True, "face_count": 10, "materials_count": 1}):
+        with patch("MoziToolKit.operators.op_materials.get_prefs", return_value=prefs_a), \
+             patch("MoziToolKit.operators.op_materials.replace_materials", return_value={"success": True, "face_count": 10, "materials_count": 1}):
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
 
@@ -460,8 +460,8 @@ class TestAssetBakeGuard(unittest.TestCase):
 
     def test_operators_poll_blocked_when_no_vanilla(self):
         """Verifies operator poll returns False / execute returns CANCELLED without a vanilla base pack."""
-        from operators.op_materials import MOZI_OT_replace_material
-        from operators.op_precompile import MOZI_OT_precompile_cache
+        from MoziToolKit.operators.op_materials import MOZI_OT_replace_material
+        from MoziToolKit.operators.op_precompile import MOZI_OT_precompile_cache
 
         empty_prefs = types.SimpleNamespace(resource_packs=[], cache_dir=self.cache_dir, thread_count=0)
 
@@ -477,11 +477,11 @@ class TestAssetBakeGuard(unittest.TestCase):
             preferences=types.SimpleNamespace(addons={"MoziToolKit": types.SimpleNamespace(preferences=empty_prefs)}),
         )
 
-        with patch("operators.op_materials.get_prefs", return_value=empty_prefs), \
-             patch("operators.op_materials.is_external_mesh", return_value=True):
+        with patch("MoziToolKit.operators.op_materials.get_prefs", return_value=empty_prefs), \
+             patch("MoziToolKit.operators.op_materials.is_external_mesh", return_value=True):
             self.assertFalse(MOZI_OT_replace_material.poll(context))
 
-        with patch("operators.op_precompile.get_prefs", return_value=empty_prefs):
+        with patch("MoziToolKit.operators.op_precompile.get_prefs", return_value=empty_prefs):
             self.assertFalse(MOZI_OT_precompile_cache.poll(context))
 
         class _DummyOp:
@@ -489,7 +489,7 @@ class TestAssetBakeGuard(unittest.TestCase):
                 self.reported = (level, message)
 
         op = _DummyOp()
-        with patch("operators.op_precompile.get_prefs", return_value=empty_prefs):
+        with patch("MoziToolKit.operators.op_precompile.get_prefs", return_value=empty_prefs):
             self.assertEqual(MOZI_OT_precompile_cache.execute(op, context), {"CANCELLED"})
         self.assertEqual(op.reported[0], {"WARNING"})
 

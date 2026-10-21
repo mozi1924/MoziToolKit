@@ -22,8 +22,8 @@ except ImportError:
     HAS_BPY = False
 
 
-from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-from utils.materials.builder.adaptation import (
+from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
+from MoziToolKit.utils.materials.builder.adaptation import (
     update_materials_render_engine_adaptation,
     depsgraph_render_engine_adaptation_handler,
 )

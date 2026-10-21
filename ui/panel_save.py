@@ -15,33 +15,16 @@ try:
 except ImportError:
     bpy = None
 
-try:
-    from ..i18n import tr
-except (ImportError, ValueError):
-    try:
-        from i18n import tr
-    except (ImportError, ValueError):
-        def tr(msgid: str, msgctxt: str | None = None) -> str:
-            return msgid
+from ..i18n import tr
 
-try:
-    from ..operators.save.utils import (
-        is_save_child_object,
-        is_save_root_container,
-        resolve_save_container,
-    )
-    from ..utils.system.save_registry import get_save_registry
-    from ..utils.assets import has_valid_vanilla_pack
-    from ..utils.system import get_prefs
-except (ImportError, ValueError):
-    from operators.save.utils import (
-        is_save_child_object,
-        is_save_root_container,
-        resolve_save_container,
-    )
-    from utils.system.save_registry import get_save_registry
-    from utils.assets import has_valid_vanilla_pack
-    from utils.system import get_prefs
+from ..operators.save.utils import (
+    is_save_child_object,
+    is_save_root_container,
+    resolve_save_container,
+)
+from ..utils.system.save_registry import get_save_registry
+from ..utils.assets import has_valid_vanilla_pack
+from ..utils.system import get_prefs
 
 
 def _draw_save_container_ui(layout: bpy.types.UILayout, context: bpy.types.Context):

@@ -71,8 +71,8 @@ if not HAS_BPY:
     HAS_BPY = False
 
 import libmtk_py
-from bridge.sync import get_sync_bridge_session, is_sync_available, reset_sync_bridge_session
-from operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
+from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available, reset_sync_bridge_session
+from MoziToolKit.operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
 
 class TestComplexModelsSync(unittest.TestCase):

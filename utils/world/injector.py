@@ -20,16 +20,10 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-try:
-    from ...bridge.mesh import inject_mesh_data
-    from ...utils.point_cloud.hierarchy import ensure_voxel_child_cloud
-    from ...utils.materials.builder.world_binding import ensure_world_materials
-    from ...utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
-except (ImportError, ValueError):
-    from bridge.mesh import inject_mesh_data
-    from utils.point_cloud.hierarchy import ensure_voxel_child_cloud
-    from utils.materials.builder.world_binding import ensure_world_materials
-    from utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
+from ...bridge.mesh import inject_mesh_data
+from ...utils.point_cloud.hierarchy import ensure_voxel_child_cloud
+from ...utils.materials.builder.world_binding import ensure_world_materials
+from ...utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
 
 
 def _stamp_voxel_mesh_origin(obj: Any) -> None:
@@ -102,13 +96,7 @@ def apply_voxel_mesh_to_blender(
 
     # Voxel meshes always bake true 3D biomes; tag them so the biome panel's
     # WORLD preset is selected instead of the uniform Plains fallback.
-    try:
-        from ..materials.biome.updater import mark_world_biome
-    except (ImportError, ValueError):
-        try:
-            from utils.materials.biome.updater import mark_world_biome
-        except Exception:
-            mark_world_biome = None
+    from ..materials.biome.updater import mark_world_biome
     if mark_world_biome is not None:
         mark_world_biome(obj, storage)
 
@@ -174,10 +162,7 @@ def ingest_voxel_world(
     3. Builds and binds full Atlas Chunk PBR Materials or Standalone BSDF Materials
     Returns (bpy_object, stats_dict).
     """
-    try:
-        from ...bridge.world import mesh_voxel_storage
-    except (ImportError, ValueError):
-        from bridge.world import mesh_voxel_storage
+    from ...bridge.world import mesh_voxel_storage
 
     mesh_data, elapsed_ms = mesh_voxel_storage(
         storage=storage,
@@ -231,10 +216,7 @@ def create_debug_world_object(
     binding all precompiled Atlas chunk PBR materials and shaders.
     Returns (bpy_object, stats_dict).
     """
-    try:
-        from ...bridge.debug import load_debug_world_storage
-    except (ImportError, ValueError):
-        from bridge.debug import load_debug_world_storage
+    from ...bridge.debug import load_debug_world_storage
 
     storage = load_debug_world_storage(prefs=prefs, states=states, stack=stack)
 

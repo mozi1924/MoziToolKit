@@ -32,13 +32,13 @@ except ImportError:
     sys.modules["bpy.app"] = MagicMock()
     HAS_BPY = False
 
-from utils.materials.builder.atlas_builder import build_atlas_chunk_material
-from utils.materials.pipeline import (
+from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
+from MoziToolKit.utils.materials.pipeline import (
     replace_materials,
     restore_materials_from_provenance,
 )
-from utils.materials.biome.updater import update_object_biome
-from utils.materials.constants import (
+from MoziToolKit.utils.materials.biome.updater import update_object_biome
+from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
     ATTR_COLORMAP_UV,
@@ -66,13 +66,15 @@ class TestMaterialPipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         if HAS_BPY:
-            import ui.panel_biome
+            import MoziToolKit.ui as ui
+            import MoziToolKit.ui.panel_biome
             ui.panel_biome.register()
 
     @classmethod
     def tearDownClass(cls):
         if HAS_BPY:
-            import ui.panel_biome
+            import MoziToolKit.ui as ui
+            import MoziToolKit.ui.panel_biome
             try:
                 ui.panel_biome.unregister()
             except Exception:
@@ -198,7 +200,7 @@ class TestMaterialPipeline(unittest.TestCase):
             _write_dummy_png(colormaps_dir / "foliage.png")
 
             # Create .mtkcache package
-            from bridge.engine import get_libmtk
+            from MoziToolKit.bridge.engine import get_libmtk
             mtk = get_libmtk()
             testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
             if testing is not None and hasattr(testing, "create_test_cache_package"):
@@ -238,7 +240,7 @@ class TestMaterialPipeline(unittest.TestCase):
             (atlas_dir / "atlas_mapping.json").write_text(json.dumps(atlas_mapping), encoding="utf-8")
 
             # Mock get_cache_dir and MOZI_CACHE_DIR to return our temporary test cache
-            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch("MoziToolKit.utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
                 # 1. Replace Materials (Atlas Mode)
                 res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="BADLANDS")
                 self.assertTrue(res["success"])
@@ -308,7 +310,7 @@ class TestMaterialPipeline(unittest.TestCase):
             _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
             _write_dummy_png(colormaps_dir / "grass.png")
 
-            from bridge.engine import get_libmtk
+            from MoziToolKit.bridge.engine import get_libmtk
             mtk = get_libmtk()
             testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
             if testing is not None and hasattr(testing, "create_test_cache_package"):
@@ -337,7 +339,7 @@ class TestMaterialPipeline(unittest.TestCase):
             (atlas_dir / "atlas_mapping.json").write_text(json.dumps(atlas_mapping), encoding="utf-8")
 
             with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), \
-                 patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+                 patch("MoziToolKit.utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
                 res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
                 self.assertTrue(res["success"])
                 self.assertFalse(res["reused_atlas_uvs"])
@@ -374,7 +376,7 @@ class TestMaterialPipeline(unittest.TestCase):
 
                 # Layout change: never reuse the old atlas UVs.
                 with patch(
-                    "utils.materials.pipeline.compute_atlas_layout_hash",
+                    "MoziToolKit.utils.materials.pipeline.compute_atlas_layout_hash",
                     return_value="v1:layout-changed",
                 ):
                     res_changed = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
@@ -384,8 +386,8 @@ class TestMaterialPipeline(unittest.TestCase):
 
     def test_material_props_memoryview_is_flat_f32_buffer(self):
         """Rust-owned material props memoryview must expose exactly len(keys) * 4 floats."""
-        from bridge.material import compute_flat_material_props_buffer
-        from utils.materials.properties_config import load_material_properties_config
+        from MoziToolKit.bridge.material import compute_flat_material_props_buffer
+        from MoziToolKit.utils.materials.properties_config import load_material_properties_config
         import numpy as np
 
         # Do not depend on test order or on whichever registry state a previous
@@ -428,7 +430,7 @@ class TestMaterialPipeline(unittest.TestCase):
             _write_dummy_png(atlas_dir / "blocks_chunk_001.png")
             _write_dummy_png(colormaps_dir / "grass.png")
 
-            from bridge.engine import get_libmtk
+            from MoziToolKit.bridge.engine import get_libmtk
             mtk = get_libmtk()
             testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
             if testing is not None and hasattr(testing, "create_test_cache_package"):
@@ -466,7 +468,7 @@ class TestMaterialPipeline(unittest.TestCase):
             }
             (atlas_dir / "atlas_mapping.json").write_text(json.dumps(atlas_mapping), encoding="utf-8")
 
-            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch("utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
+            with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch("MoziToolKit.utils.materials.pipeline.get_cache_dir", return_value=cache_dir):
                 # 1. Replace Materials in ATLAS mode from hashed MTK material name
                 res_atlas = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
                 self.assertTrue(res_atlas["success"])
@@ -492,7 +494,7 @@ class TestMaterialPipeline(unittest.TestCase):
         """
         import struct
         import zlib
-        from utils.materials.builder.image_utils import get_or_create_image_from_rgba, get_or_create_image
+        from MoziToolKit.utils.materials.builder.image_utils import get_or_create_image_from_rgba, get_or_create_image
 
         def make_png(width, height, raw_rgba):
             line_bytes = width * 4
@@ -555,7 +557,7 @@ class TestMaterialPipeline(unittest.TestCase):
         """
         import struct
         import zlib
-        from utils.materials.builder.image_utils import get_or_create_image_from_f32
+        from MoziToolKit.utils.materials.builder.image_utils import get_or_create_image_from_f32
 
         def make_png(width, height, raw_rgba):
             line_bytes = width * 4
@@ -603,7 +605,7 @@ class TestMaterialPipeline(unittest.TestCase):
 
     def test_pipeline_exports_and_constants(self):
         """Verify that pipeline module always exposes ATTR_MATERIAL_PROPS and biome helpers."""
-        import utils.materials.pipeline as pipe
+        import MoziToolKit.utils.materials.pipeline as pipe
         self.assertTrue(hasattr(pipe, "ATTR_MATERIAL_PROPS"))
         self.assertEqual(pipe.ATTR_MATERIAL_PROPS, "mtk_material_props")
         self.assertTrue(hasattr(pipe, "get_or_load_biome_resolver"))
@@ -612,7 +614,7 @@ class TestMaterialPipeline(unittest.TestCase):
 
     def test_extract_face_material_palette_context(self):
         """Verify extract_face_material_palette_context builds palette via bridge."""
-        from utils.materials.pipeline import extract_face_material_palette_context
+        from MoziToolKit.utils.materials.pipeline import extract_face_material_palette_context
         import numpy as np
 
         mesh = MagicMock()

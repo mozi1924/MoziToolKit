@@ -8,36 +8,20 @@ import bpy
 from bpy.props import FloatProperty, EnumProperty, BoolProperty
 import numpy as np
 
-try:
-    from ..bridge import batch_analyze_transparent_faces
-    from ..bridge.uv import scale_uv as rust_scale_uv
-    from ..utils.mesh import (
-        SELECTION_ACTION_ITEMS,
-        SELECTION_SCOPE_ITEMS,
-        apply_selection,
-        bmesh_context,
-        find_face_image,
-        get_target_faces,
-        poll_edit_mesh,
-        set_select_mode,
-        process_mesh_fluid_uv_repairs,
-    )
-    from ..utils.system import register_menu_item
-except (ImportError, ValueError):
-    from bridge import batch_analyze_transparent_faces
-    from bridge.uv import scale_uv as rust_scale_uv
-    from utils.mesh import (
-        SELECTION_ACTION_ITEMS,
-        SELECTION_SCOPE_ITEMS,
-        apply_selection,
-        bmesh_context,
-        find_face_image,
-        get_target_faces,
-        poll_edit_mesh,
-        set_select_mode,
-        process_mesh_fluid_uv_repairs,
-    )
-    from utils.system import register_menu_item
+from ..bridge import batch_analyze_transparent_faces
+from ..bridge.uv import scale_uv as rust_scale_uv
+from ..utils.mesh import (
+    SELECTION_ACTION_ITEMS,
+    SELECTION_SCOPE_ITEMS,
+    apply_selection,
+    bmesh_context,
+    find_face_image,
+    get_target_faces,
+    poll_edit_mesh,
+    set_select_mode,
+    process_mesh_fluid_uv_repairs,
+)
+from ..utils.system import register_menu_item
 
 
 

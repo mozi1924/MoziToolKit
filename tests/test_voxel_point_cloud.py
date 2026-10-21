@@ -259,17 +259,13 @@ class TestVoxelPointCloudBridge:
                     import MoziToolKit.operators as ops_mod
                     ops_mod.register()
                 except Exception:
-                    import operators as ops_mod
+                    import MoziToolKit.operators as ops_mod
                     ops_mod.register()
 
             bpy.context.view_layer.objects.active = obj
             obj.select_set(True)
             from unittest.mock import patch
-            mod_name = (
-                "MoziToolKit.operators.mesh.op_rebuild_mesh"
-                if "MoziToolKit.operators.mesh.op_rebuild_mesh" in sys.modules
-                else "operators.mesh.op_rebuild_mesh"
-            )
+            mod_name = "MoziToolKit.operators.mesh.op_rebuild_mesh"
             with patch(f"{mod_name}.can_execute_asset_pipeline", return_value=(True, "")), \
                  patch(f"{mod_name}.check_asset_cache_status", return_value="READY"):
                 res = bpy.ops.mozi.rebuild_mesh(run_async=False)

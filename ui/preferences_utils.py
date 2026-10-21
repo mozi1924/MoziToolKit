@@ -7,10 +7,7 @@ from __future__ import annotations
 import bpy
 from typing import Any, Optional
 
-try:
-    from ..utils.system import get_prefs
-except (ImportError, ValueError):
-    from utils.system import get_prefs
+from ..utils.system import get_prefs
 
 
 def _safe_get_prefs(self_or_context: Any = None) -> Optional[Any]:

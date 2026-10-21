@@ -1,8 +1,8 @@
 import pytest
 from pathlib import Path
 
-from utils.config.models import MaterialSettings
-from utils.materials.builder.shading_config import resolve_material_shading_config
+from MoziToolKit.utils.config.models import MaterialSettings
+from MoziToolKit.utils.materials.builder.shading_config import resolve_material_shading_config
 
 from unittest.mock import MagicMock
 
@@ -19,8 +19,8 @@ except ImportError:
     HAS_BPY = False
 
 if HAS_BPY:
-    from utils.node_groups.labpbr import ensure_labpbr_decoder
-    from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+    from MoziToolKit.utils.node_groups.labpbr import ensure_labpbr_decoder
+    from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
 
 def test_material_settings_model_serialization():

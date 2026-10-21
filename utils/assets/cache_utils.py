@@ -14,10 +14,7 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger("MoziToolKit.Utils.Assets.Cache")
 
-try:
-    from ..system import get_prefs
-except (ImportError, ValueError):
-    from utils.system import get_prefs
+from ..system import get_prefs
 
 _cached_cache_stats: Optional[Dict[str, Any]] = None
 _cached_cache_stats_path: Optional[str] = None
@@ -130,12 +127,8 @@ def clear_cache(prefs=None, on_invalidate_callback=None) -> int:
     try:
         from ...bridge.assets import invalidate_asset_cache_memory
         invalidate_asset_cache_memory()
-    except (ImportError, ValueError):
-        try:
-            from bridge.assets import invalidate_asset_cache_memory
-            invalidate_asset_cache_memory()
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     if on_invalidate_callback is not None:
         try:

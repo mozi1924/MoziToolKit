@@ -9,39 +9,16 @@ from __future__ import annotations
 import bpy
 from bpy.props import EnumProperty
 
-try:
-    from ..utils.materials.biome import (
-        BIOME_ENUM_ITEMS,
-        get_biome_colors,
-        is_mtk_object,
-        detect_object_material_mode,
-        update_object_biome,
-    )
-    from ..utils.materials.constants import ATTR_BIOME_TINT_DATA
-    from ..utils.mesh.ownership import classify_origin
-    from ..i18n import tr
-except (ImportError, ValueError):
-    from utils.materials.biome import (
-        BIOME_ENUM_ITEMS,
-        get_biome_colors,
-        is_mtk_object,
-        detect_object_material_mode,
-        update_object_biome,
-    )
-    try:
-        from utils.materials.constants import ATTR_BIOME_TINT_DATA
-    except (ImportError, ValueError):
-        ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
-    try:
-        from utils.mesh.ownership import classify_origin
-    except (ImportError, ValueError):
-        def classify_origin(obj):
-            return "EXTERNAL"
-    try:
-        from i18n import tr
-    except (ImportError, ValueError):
-        def tr(msgid: str, msgctxt: str | None = None) -> str:
-            return msgid
+from ..utils.materials.biome import (
+    BIOME_ENUM_ITEMS,
+    get_biome_colors,
+    is_mtk_object,
+    detect_object_material_mode,
+    update_object_biome,
+)
+from ..utils.materials.constants import ATTR_BIOME_TINT_DATA
+from ..utils.mesh.ownership import classify_origin
+from ..i18n import tr
 
 #: Mesh origins whose tint attributes are baked from real voxel world biomes.
 _WORLD_ORIGINS = {"SAVE", "SYNC_WORLD", "SYNC_SECTION", "VOXEL"}

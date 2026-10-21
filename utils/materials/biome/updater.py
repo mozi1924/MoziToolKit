@@ -116,17 +116,9 @@ def _rehydrate_storage_from_point_cloud(obj: Any, target_mesh: Any = None) -> An
     if obj is None:
         return None
 
-    try:
-        from ....bridge.point_cloud import extract_voxel_point_cloud
-        from ....utils.point_cloud import get_associated_voxel_cloud
-        from ....bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
-    except (ImportError, ValueError):
-        try:
-            from bridge.point_cloud import extract_voxel_point_cloud
-            from utils.point_cloud import get_associated_voxel_cloud
-            from bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
-        except Exception:
-            return None
+    from ....bridge.point_cloud import extract_voxel_point_cloud
+    from ....utils.point_cloud import get_associated_voxel_cloud
+    from ....bridge.point_cloud.constants import ATTR_BIOME, ATTR_BIOME_IDX, PROP_BIOME_PALETTE
 
     try:
         cloud = get_associated_voxel_cloud(obj)
@@ -356,10 +348,7 @@ def resolve_and_apply_world_biome_tint(
         # running: the in-memory storage has not been registered under the object
         # names yet, but the active session owns the same 3D biomes.
         try:
-            try:
-                from ....bridge.sync import get_sync_bridge_session
-            except (ImportError, ValueError):
-                from bridge.sync import get_sync_bridge_session
+            from ....bridge.sync import get_sync_bridge_session
             session = get_sync_bridge_session()
             if session is not None and getattr(session, "is_active", False):
                 storage = session.get_storage()
@@ -395,10 +384,7 @@ def resolve_and_apply_world_biome_tint(
     )
 
     if storage is not None and has_coords and any(source_keys):
-        try:
-            from ....bridge.material import compute_mesh_biome_attributes_from_storage
-        except (ImportError, ValueError):
-            from bridge.material import compute_mesh_biome_attributes_from_storage
+        from ....bridge.material import compute_mesh_biome_attributes_from_storage
 
         biome_resolver = get_or_load_biome_resolver(cache_dir=base_cache, prefs=prefs, pack_stack=effective_stack)
         num_polys = len(target_mesh.polygons)
@@ -520,16 +506,6 @@ def update_object_biome(
         try:
             from ....bridge.assets import get_configured_pack_stack
             effective_stack = get_configured_pack_stack()
-        except (ImportError, ValueError):
-            try:
-                from MoziToolKit.bridge.assets import get_configured_pack_stack
-                effective_stack = get_configured_pack_stack()
-            except (ImportError, ValueError):
-                try:
-                    from bridge.assets import get_configured_pack_stack
-                    effective_stack = get_configured_pack_stack()
-                except Exception:
-                    effective_stack = None
         except Exception:
             effective_stack = None
 
@@ -593,13 +569,7 @@ def update_object_biome(
 
                     # Rust owns the per-face category/color composition. Python only
                     # reads/writes flat buffers, so slider drags stay memory-bandwidth bound.
-                    try:
-                        from ....bridge.material import reapply_uniform_biome_tint
-                    except (ImportError, ValueError):
-                        try:
-                            from bridge.material import reapply_uniform_biome_tint
-                        except Exception:
-                            reapply_uniform_biome_tint = None
+                    from ....bridge.material import reapply_uniform_biome_tint
 
                     if reapply_uniform_biome_tint is not None and len(base_tt) == num_polys:
                         attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
@@ -696,16 +666,6 @@ def update_object_biome(
                     try:
                         from ....bridge.mesh import inject_face_attribute_string
                         inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
-                    except (ImportError, ValueError):
-                        try:
-                            from MoziToolKit.bridge.mesh import inject_face_attribute_string
-                            inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
-                        except (ImportError, ValueError):
-                            try:
-                                from bridge.mesh import inject_face_attribute_string
-                                inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
-                            except Exception:
-                                pass
                     except Exception:
                         pass
                     biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)

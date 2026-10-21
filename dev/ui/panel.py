@@ -5,13 +5,7 @@ Provides quick visual verification, scenario loading, and native engine diagnost
 
 import bpy
 from ..loader import get_engine_status
-try:
-    from ... import bridge
-except (ImportError, ValueError):
-    try:
-        from MoziToolKit import bridge
-    except (ImportError, ValueError):
-        import bridge
+from ... import bridge
 
 
 class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):
@@ -24,10 +18,7 @@ class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):
     bl_category = "MTK Dev"
 
     def draw(self, context):
-        try:
-            from ...i18n import tr
-        except (ImportError, ValueError):
-            from i18n import tr
+        from ...i18n import tr
         layout = self.layout
 
         # 1. Native Engine Status

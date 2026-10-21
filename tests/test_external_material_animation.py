@@ -126,7 +126,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
             json.dumps(ATLAS_MAPPING), encoding="utf-8"
         )
 
-        from bridge.engine import get_libmtk
+        from MoziToolKit.bridge.engine import get_libmtk
 
         mtk = get_libmtk()
         testing = getattr(getattr(mtk, "unstable", None), "testing", None) if mtk else None
@@ -137,7 +137,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
         return cache_dir
 
     def test_external_replace_and_restore_animation_toggle(self):
-        from utils.materials.pipeline import (
+        from MoziToolKit.utils.materials.pipeline import (
             replace_materials,
             restore_materials_from_provenance,
         )
@@ -151,7 +151,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = self._make_cache(Path(tmpdir))
             with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch(
-                "utils.materials.pipeline.get_cache_dir", return_value=cache_dir
+                "MoziToolKit.utils.materials.pipeline.get_cache_dir", return_value=cache_dir
             ):
                 res = replace_materials(obj, mode="ATLAS", origin="AUTO", biome="PLAINS")
                 self.assertTrue(res["success"])
@@ -203,7 +203,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                 self.assertEqual(tuple(timing.data[0].vector), (4.0, 2.0, 1.0))
 
     def test_external_replace_with_animation_disabled(self):
-        from utils.materials.pipeline import replace_materials
+        from MoziToolKit.utils.materials.pipeline import replace_materials
 
         bpy.ops.mesh.primitive_cube_add(size=2.0)
         obj = bpy.context.active_object
@@ -215,7 +215,7 @@ class TestExternalMaterialAnimation(unittest.TestCase):
             cache_dir = self._make_cache(Path(tmpdir))
             prefs_off = SimpleNamespace(enable_animated_textures=False)
             with patch.dict(os.environ, {"MOZI_CACHE_DIR": str(cache_dir)}), patch(
-                "utils.materials.pipeline.get_cache_dir", return_value=cache_dir
+                "MoziToolKit.utils.materials.pipeline.get_cache_dir", return_value=cache_dir
             ):
                 res = replace_materials(
                     obj,

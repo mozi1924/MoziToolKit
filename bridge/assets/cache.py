@@ -18,29 +18,18 @@ from typing import Any, Dict, Optional, Tuple
 from ..engine import get_libmtk
 from .pack import get_configured_pack_stack
 
-try:
-    from ...utils.assets.cache_utils import (
-        clear_cache as _utils_clear_cache,
-        get_cache_dir,
-        get_cache_stats,
-        open_cache_folder,
-    )
-except (ImportError, ValueError):
-    from utils.assets.cache_utils import (
-        clear_cache as _utils_clear_cache,
-        get_cache_dir,
-        get_cache_stats,
-        open_cache_folder,
-    )
+from ...utils.assets.cache_utils import (
+    clear_cache as _utils_clear_cache,
+    get_cache_dir,
+    get_cache_stats,
+    open_cache_folder,
+)
 
 clear_cache = _utils_clear_cache
 
 logger = logging.getLogger("MoziToolKit.Bridge.Assets.Cache")
 
-try:
-    from ...utils.system import get_prefs
-except (ImportError, ValueError):
-    from utils.system import get_prefs
+from ...utils.system import get_prefs
 
 # In-memory session memoization to eliminate redundant disk hashing & package reopening
 _ACTIVE_ASSET_CACHE: Optional[Any] = None
@@ -90,22 +79,13 @@ def invalidate_asset_cache_memory() -> None:
         from .pack import invalidate_pack_stack_cache
         invalidate_pack_stack_cache()
     except Exception:
-        try:
-            from bridge.assets.pack import invalidate_pack_stack_cache
-            invalidate_pack_stack_cache()
-        except Exception:
-            pass
+        pass
     try:
         from ..world import invalidate_world_pipeline_assets, clear_world_sessions
         invalidate_world_pipeline_assets()
         clear_world_sessions()
     except Exception:
-        try:
-            from bridge.world import invalidate_world_pipeline_assets, clear_world_sessions
-            invalidate_world_pipeline_assets()
-            clear_world_sessions()
-        except Exception:
-            pass
+        pass
 
     try:
         mtk = get_libmtk()

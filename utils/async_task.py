@@ -18,12 +18,8 @@ try:
 except ImportError:
     bpy = None
 
-try:
-    from ..bridge.progress import ProgressReport
-    from .progress import BlenderProgressReporter
-except (ImportError, ValueError):
-    from bridge.progress import ProgressReport
-    from utils.progress import BlenderProgressReporter
+from ..bridge.progress import ProgressReport
+from .progress import BlenderProgressReporter
 
 logger = logging.getLogger("MoziToolKit.Utils.AsyncTask")
 

@@ -18,9 +18,9 @@ from unittest.mock import MagicMock, patch
 
 import bpy
 
-import ui.preferences_packs as packs_ui
-from utils.config.models import PackEntry
-from utils.pack_detect import (
+import MoziToolKit.ui.preferences_packs as packs_ui
+from MoziToolKit.utils.config.models import PackEntry
+from MoziToolKit.utils.pack_detect import (
     KIND_DATA_PACK,
     KIND_MOD,
     KIND_RESOURCE_PACK,

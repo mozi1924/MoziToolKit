@@ -31,18 +31,11 @@ class UVBounds:
         return self.max_v - self.min_v
 
 
-try:
-    from ...bridge.uv import (
-        calculate_uv_area as _rust_calculate_uv_area,
-        get_uv_bounds as _rust_get_uv_bounds,
-        get_uv_center as _rust_get_uv_center,
-    )
-except (ImportError, ValueError):
-    from bridge.uv import (
-        calculate_uv_area as _rust_calculate_uv_area,
-        get_uv_bounds as _rust_get_uv_bounds,
-        get_uv_center as _rust_get_uv_center,
-    )
+from ...bridge.uv import (
+    calculate_uv_area as _rust_calculate_uv_area,
+    get_uv_bounds as _rust_get_uv_bounds,
+    get_uv_center as _rust_get_uv_center,
+)
 
 
 def get_face_uv_bounds(face, uv_layer) -> UVBounds:

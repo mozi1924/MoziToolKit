@@ -29,8 +29,8 @@ import bpy
 
 HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
 
-from bridge.engine import get_libmtk
-from bridge.mesh import (
+from MoziToolKit.bridge.engine import get_libmtk
+from MoziToolKit.bridge.mesh import (
     BLENDER_TO_MTK_DOMAIN,
     BLENDER_TO_MTK_TYPE,
     MTK_TO_BLENDER_DOMAIN,
@@ -40,15 +40,15 @@ from bridge.mesh import (
     resolve_source_texture_keys,
     inject_face_source_texture_keys,
 )
-from utils.materials.matching.presets.registry import (
+from MoziToolKit.utils.materials.matching.presets.registry import (
     build_matching_context,
     build_material_alias_map,
     clean_mtk_material_name,
     detect_material_origin,
     generate_candidates_for_name,
 )
-from utils.materials.matching.presets.mineways import build_mineways_grid_spec
-from utils.materials.matching.presets.mineways_table import MINEWAYS_TILES_TABLE
+from MoziToolKit.utils.materials.matching.presets.mineways import build_mineways_grid_spec
+from MoziToolKit.utils.materials.matching.presets.mineways_table import MINEWAYS_TILES_TABLE
 
 
 class TestMaterialPresets(unittest.TestCase):
@@ -314,7 +314,7 @@ class TestDualMeshApi(unittest.TestCase):
 
     def test_blender_direct_pointer_api(self):
         """Suite A: standalone Blender DNA adapter writes typed core views."""
-        from bridge.engine import get_libmtk_dna
+        from MoziToolKit.bridge.engine import get_libmtk_dna
 
         dna = get_libmtk_dna()
         if dna is None or not hasattr(dna, "copy_f32"):

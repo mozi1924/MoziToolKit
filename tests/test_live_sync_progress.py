@@ -6,9 +6,9 @@ and verification of N-panel removal (Scene properties panel retention).
 import unittest
 from unittest.mock import MagicMock
 
-from bridge.engine import get_libmtk
-from operators.sync.op_sync_connect import _sync_timer_tick
-from ui.panel_sync import PANEL_CLASSES, MOZI_PT_live_sync_data, MOZI_PT_live_sync
+from MoziToolKit.bridge.engine import get_libmtk
+from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
+from MoziToolKit.ui.panel_sync import PANEL_CLASSES, MOZI_PT_live_sync_data, MOZI_PT_live_sync
 
 
 class TestLiveSyncProgress(unittest.TestCase):

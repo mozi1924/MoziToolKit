@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import types
 
 import bpy
-from operators.sync.hierarchy import (
+from MoziToolKit.operators.sync.hierarchy import (
     DEFAULT_WORLD_OBJECT_NAME,
     get_or_create_world_container,
     get_or_create_world_mesh_object,
@@ -17,11 +17,11 @@ from operators.sync.hierarchy import (
     is_yefira_world_object,
     find_world_mesh_child,
 )
-from operators.sync.properties import (
+from MoziToolKit.operators.sync.properties import (
     get_active_sync_container,
     set_active_sync_container,
 )
-from ui.panel_sync import (
+from MoziToolKit.ui.panel_sync import (
     MOZI_PT_live_sync_data,
     MOZI_PT_live_sync,
 )
@@ -63,7 +63,7 @@ IS_REAL_BLENDER = (
 class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
     def setUp(self):
         if IS_REAL_BLENDER:
-            from operators.sync.properties import register as register_sync_props
+            from MoziToolKit.operators.sync.properties import register as register_sync_props
             try:
                 register_sync_props()
             except Exception:
@@ -235,7 +235,7 @@ class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
 
     def test_sync_container_rename_cascades_to_children(self):
         """Verifies that renaming Empty container propagates new prefix to child mesh and point cloud."""
-        from operators.sync.hierarchy import sync_container_child_names
+        from MoziToolKit.operators.sync.hierarchy import sync_container_child_names
 
         root = self._make_obj("OldWorld", "EMPTY")
         root["mtk:is_container"] = True
@@ -272,7 +272,7 @@ class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
 
     def test_watcher_depsgraph_listener_triggers_deferred_rename(self):
         """Verifies that watcher catches rename in depsgraph updates and queues deferred sync."""
-        from operators.sync.watcher import on_sync_depsgraph_update_post, _deferred_sync_renamed_roots, _get_pending_rename_roots
+        from MoziToolKit.operators.sync.watcher import on_sync_depsgraph_update_post, _deferred_sync_renamed_roots, _get_pending_rename_roots
 
         scene = types.SimpleNamespace(mozi_active_sync_container_name="City_A")
         root = self._make_obj("City_A", "EMPTY")

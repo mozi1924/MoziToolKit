@@ -340,11 +340,8 @@ class ConfigManager:
                 try:
                     from ..system.menu_registry import ALL_OPERATORS, sort_unadded_items
                 except Exception:
-                    try:
-                        from utils.system.menu_registry import ALL_OPERATORS, sort_unadded_items
-                    except Exception:
-                        ALL_OPERATORS = {}
-                        sort_unadded_items = lambda coll: None
+                    ALL_OPERATORS = {}
+                    sort_unadded_items = lambda coll: None
 
                 for view in ["mesh", "object", "uv"]:
                     added_coll = getattr(prefs, f"added_{view}", None)

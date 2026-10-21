@@ -11,7 +11,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from bridge.assets import precompile as precompile_mod
+from MoziToolKit.bridge.assets import precompile as precompile_mod
 
 
 class TestPrecompileReleasesMappedCache(unittest.TestCase):

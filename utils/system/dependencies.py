@@ -11,16 +11,12 @@ def has_libmtk() -> bool:
     try:
         from ...bridge import has_libmtk as _engine_has_libmtk
         return _engine_has_libmtk()
-    except (ImportError, ValueError):
+    except Exception:
         try:
-            from bridge import has_libmtk as _engine_has_libmtk
-            return _engine_has_libmtk()
-        except (ImportError, ValueError):
-            try:
-                import libmtk_py
-                return True
-            except ImportError:
-                return False
+            import libmtk_py
+            return True
+        except ImportError:
+            return False
 
 
 def get_prefs(context=None):

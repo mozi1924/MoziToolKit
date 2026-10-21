@@ -10,18 +10,11 @@ import logging
 from typing import Set
 import bpy
 
-try:
-    from .hierarchy import (
-        is_yefira_root_object,
-        sync_container_child_names,
-    )
-    from .properties import get_active_sync_container, set_active_sync_container
-except (ImportError, ValueError):
-    from operators.sync.hierarchy import (
-        is_yefira_root_object,
-        sync_container_child_names,
-    )
-    from operators.sync.properties import get_active_sync_container, set_active_sync_container
+from .hierarchy import (
+    is_yefira_root_object,
+    sync_container_child_names,
+)
+from .properties import get_active_sync_container, set_active_sync_container
 
 logger = logging.getLogger("MoziToolKit.Sync.Watcher")
 

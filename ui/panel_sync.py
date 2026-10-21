@@ -7,33 +7,18 @@ from __future__ import annotations
 import re
 import bpy
 
-try:
-    from ..i18n import tr
-except (ImportError, ValueError):
-    from i18n import tr
+from ..i18n import tr
 
-try:
-    from ..operators.sync.hierarchy import (
-        is_yefira_root_object,
-        is_yefira_world_object,
-        resolve_world_root_object,
-        find_world_mesh_child,
-        find_voxel_cloud_child,
-    )
-    from ..operators.sync.properties import get_active_sync_container
-    from ..utils.assets import has_valid_vanilla_pack
-    from ..utils.system import get_prefs
-except (ImportError, ValueError):
-    from operators.sync.hierarchy import (
-        is_yefira_root_object,
-        is_yefira_world_object,
-        resolve_world_root_object,
-        find_world_mesh_child,
-        find_voxel_cloud_child,
-    )
-    from operators.sync.properties import get_active_sync_container
-    from utils.assets import has_valid_vanilla_pack
-    from utils.system import get_prefs
+from ..operators.sync.hierarchy import (
+    is_yefira_root_object,
+    is_yefira_world_object,
+    resolve_world_root_object,
+    find_world_mesh_child,
+    find_voxel_cloud_child,
+)
+from ..operators.sync.properties import get_active_sync_container
+from ..utils.assets import has_valid_vanilla_pack
+from ..utils.system import get_prefs
 
 
 class MOZI_UL_sync_palette_list(bpy.types.UIList):

@@ -17,7 +17,7 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from utils.node_groups.labpbr import (
+from MoziToolKit.utils.node_groups.labpbr import (
     LABPBR_GROUP_NAME,
     LABPBR_TEMPLATE_VERSION,
     LABPBR_INTERFACE,
@@ -25,7 +25,7 @@ from utils.node_groups.labpbr import (
     assert_reference_shape,
     reference_shape_errors,
 )
-from bridge.material import (
+from MoziToolKit.bridge.material import (
     get_block_emission_strength,
     is_thin_wall_block,
     get_block_transmission_weight,
@@ -183,7 +183,7 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
     @unittest.skipUnless(HAS_BPY, "Requires Blender bpy environment")
     def test_atlas_builder_wires_material_props(self):
         """Verify build_atlas_chunk_material wires Attr Material Props (Emission, Thin Wall, Transmission, Sticker)."""
-        from utils.materials.builder.atlas_builder import build_atlas_chunk_material
+        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         mat_atlas = build_atlas_chunk_material(
             chunk_id=0,

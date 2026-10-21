@@ -14,12 +14,8 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-try:
-    from ...bridge.engine import get_libmtk
-    from ...bridge.point_cloud.constants import MASK_MODIFIER_NAME, VOXEL_VERTEX_GROUP
-except (ImportError, ValueError):
-    from bridge.engine import get_libmtk
-    from bridge.point_cloud.constants import MASK_MODIFIER_NAME, VOXEL_VERTEX_GROUP
+from ...bridge.engine import get_libmtk
+from ...bridge.point_cloud.constants import MASK_MODIFIER_NAME, VOXEL_VERTEX_GROUP
 
 logger = logging.getLogger("MoziToolKit.Utils.PointCloud.Hierarchy")
 
@@ -286,10 +282,7 @@ def ensure_voxel_child_cloud(
         cloud_obj["mtk_bounds"] = list(cloud_data.bounds)
 
     # 5. Inject points and configure Mask modifier via bridge
-    try:
-        from ...bridge.point_cloud import inject_voxel_point_cloud
-    except (ImportError, ValueError):
-        from bridge.point_cloud import inject_voxel_point_cloud
+    from ...bridge.point_cloud import inject_voxel_point_cloud
 
     inject_voxel_point_cloud(
         cloud_obj,

@@ -9,22 +9,13 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty, FloatProperty
 
-try:
-    from ..bridge.cull import cull_mesh_faces
-    from ..bridge.mesh import extract_mesh_data, inject_mesh_data
-    from ..utils.mesh.core import (
-        poll_edit_mesh,
-        poll_mesh_object,
-    )
-    from ..utils.system.menu_registry import register_menu_item
-except (ImportError, ValueError):
-    from bridge.cull import cull_mesh_faces
-    from bridge.mesh import extract_mesh_data, inject_mesh_data
-    from utils.mesh.core import (
-        poll_edit_mesh,
-        poll_mesh_object,
-    )
-    from utils.system.menu_registry import register_menu_item
+from ..bridge.cull import cull_mesh_faces
+from ..bridge.mesh import extract_mesh_data, inject_mesh_data
+from ..utils.mesh.core import (
+    poll_edit_mesh,
+    poll_mesh_object,
+)
+from ..utils.system.menu_registry import register_menu_item
 
 
 class MOZI_OT_cull_mesh_faces(bpy.types.Operator):

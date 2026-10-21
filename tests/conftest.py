@@ -80,9 +80,5 @@ try:
 
     get_libmtk()
 except Exception:
-    try:
-        from bridge.engine import get_libmtk
-
-        get_libmtk()
-    except Exception:
-        pass
+    # The native engine is optional for the mock suite; tests that need it skip explicitly.
+    pass

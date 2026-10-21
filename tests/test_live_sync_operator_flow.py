@@ -67,14 +67,14 @@ if not HAS_BPY:
     sys.modules["bmesh"] = MagicMock()
     HAS_BPY = False
 
-from bridge.sync import get_sync_bridge_session, is_sync_available
-from operators.sync.hierarchy import (
+from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available
+from MoziToolKit.operators.sync.hierarchy import (
     DEFAULT_WORLD_OBJECT_NAME,
     is_yefira_world_object,
     get_or_create_world_mesh_object,
     update_world_mesh,
 )
-from operators.sync.op_sync_connect import _sync_timer_tick
+from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
 
 
 class TestLiveSyncFlow(unittest.TestCase):

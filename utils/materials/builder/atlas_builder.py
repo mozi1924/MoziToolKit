@@ -18,76 +18,31 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-try:
-    from ...node_groups.labpbr import ensure_labpbr_decoder
-    from ...node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
-    from ...node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
-    from ...node_groups.animated import (
-        ensure_animation_scheduler,
-        ensure_animated_uv_mapping,
-        ensure_animated_frame_blend,
-        ensure_animated_normal_blend,
-        ensure_animated_specular_blend,
-    )
-    from ..constants import (
-        ATTR_UV_TRANSFORM,
-        ATTR_UV_ROTATION,
-        ATTR_BIOME_TINT_DATA,
-        ATTR_BIOME_TINT_COLOR,
-        ATTR_COLORMAP_UV,
-        ATTR_MATERIAL_PROPS,
-    )
-    from .image_utils import (
-        ensure_material_node_tree,
-        get_or_create_image,
-        _create_frame,
-        set_material_displacement_method,
-    )
-    from .shading_config import resolve_material_shading_config
-except (ImportError, ValueError):
-    from utils.node_groups.labpbr import ensure_labpbr_decoder
-    from utils.node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
-    from utils.node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
-    try:
-        from utils.node_groups.animated import (
-            ensure_animation_scheduler,
-            ensure_animated_uv_mapping,
-            ensure_animated_frame_blend,
-            ensure_animated_normal_blend,
-            ensure_animated_specular_blend,
-        )
-    except (ImportError, ValueError):
-        ensure_animation_scheduler = None
-        ensure_animated_uv_mapping = None
-        ensure_animated_frame_blend = None
-        ensure_animated_normal_blend = None
-        ensure_animated_specular_blend = None
-    try:
-        from utils.materials.constants import (
-            ATTR_UV_TRANSFORM,
-            ATTR_UV_ROTATION,
-            ATTR_BIOME_TINT_DATA,
-            ATTR_BIOME_TINT_COLOR,
-            ATTR_COLORMAP_UV,
-            ATTR_MATERIAL_PROPS,
-        )
-    except (ImportError, ValueError):
-        ATTR_UV_TRANSFORM = "mtk_uv_transform"
-        ATTR_UV_ROTATION = "mtk_uv_rotation"
-        ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
-        ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
-        ATTR_COLORMAP_UV = "mtk_colormap_uv"
-        ATTR_MATERIAL_PROPS = "mtk_material_props"
-    from utils.materials.builder.image_utils import (
-        ensure_material_node_tree,
-        get_or_create_image,
-        _create_frame,
-        set_material_displacement_method,
-    )
-    try:
-        from .shading_config import resolve_material_shading_config
-    except (ImportError, ValueError):
-        from utils.materials.builder.shading_config import resolve_material_shading_config
+from ...node_groups.labpbr import ensure_labpbr_decoder
+from ...node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
+from ...node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
+from ...node_groups.animated import (
+    ensure_animation_scheduler,
+    ensure_animated_uv_mapping,
+    ensure_animated_frame_blend,
+    ensure_animated_normal_blend,
+    ensure_animated_specular_blend,
+)
+from ..constants import (
+    ATTR_UV_TRANSFORM,
+    ATTR_UV_ROTATION,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BIOME_TINT_COLOR,
+    ATTR_COLORMAP_UV,
+    ATTR_MATERIAL_PROPS,
+)
+from .image_utils import (
+    ensure_material_node_tree,
+    get_or_create_image,
+    _create_frame,
+    set_material_displacement_method,
+)
+from .shading_config import resolve_material_shading_config
 
 
 def add_packed_material_props_nodes(

@@ -8,34 +8,19 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-try:
-    from ...bridge.mesh import inject_mesh_data
-    from ...utils.point_cloud import ensure_voxel_child_cloud
-    from ..materials.builder.world_binding import ensure_world_materials
-except (ImportError, ValueError):
-    from bridge.mesh import inject_mesh_data
-    from utils.point_cloud import ensure_voxel_child_cloud
-    from utils.materials.builder.world_binding import ensure_world_materials
-
-try:
-    from ..system.save_registry import get_save_registry
-except (ImportError, ValueError):
-    get_save_registry = None
+from ...bridge.mesh import inject_mesh_data
+from ...utils.point_cloud import ensure_voxel_child_cloud
+from ..materials.builder.world_binding import ensure_world_materials
+from ..system.save_registry import get_save_registry
 
 logger = logging.getLogger("MoziToolKit.Save.Hierarchy")
 
 
 def _stamp_save_mesh_origin(obj: Any) -> None:
     """Stamp a save-imported mesh with the explicit MTK save origin."""
-    try:
-        from ..mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
-    except (ImportError, ValueError):
-        try:
-            from ...utils.mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
-        except (ImportError, ValueError):
-            from utils.mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
-    stamp_geometry_origin(obj, ORIGIN_SAVE, overwrite=True)
+    from ..mesh.ownership import ORIGIN_SAVE, stamp_geometry_origin
 
+    stamp_geometry_origin(obj, ORIGIN_SAVE, overwrite=True)
 
 
 def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
@@ -276,13 +261,8 @@ def apply_imported_save_to_blender(
 
     # 7. Register VoxelStorage in memory cache for instant WORLD biome restores
     if storage is not None:
-        try:
-            from ..materials.biome.updater import register_object_storage
-        except (ImportError, ValueError):
-            try:
-                from ..materials.biome.updater import register_object_storage
-            except Exception:
-                register_object_storage = None
+        from ..materials.biome.updater import register_object_storage
+
         if register_object_storage is not None:
             if save_uuid:
                 register_object_storage(str(save_uuid), storage)
@@ -292,13 +272,7 @@ def apply_imported_save_to_blender(
                 register_object_storage(mesh_obj.name, storage)
 
     # 8. Prime base tint types for the newly created mesh
-    try:
-        from ..materials.biome.updater import resolve_mesh_base_tint_types
-    except (ImportError, ValueError):
-        try:
-            from ..materials.biome.updater import resolve_mesh_base_tint_types
-        except Exception:
-            resolve_mesh_base_tint_types = None
+    from ..materials.biome.updater import resolve_mesh_base_tint_types
     if resolve_mesh_base_tint_types is not None:
         try:
             resolve_mesh_base_tint_types(b_mesh, mesh_obj)
@@ -358,10 +332,7 @@ def import_save_to_blender(
     1. Loads and meshes voxel selection via bridge.save.load_and_mesh_minecraft_save
     2. Injects geometry, binds materials, creates companion point cloud via apply_imported_save_to_blender.
     """
-    try:
-        from ...bridge.save import load_and_mesh_minecraft_save
-    except (ImportError, ValueError):
-        from bridge.save import load_and_mesh_minecraft_save
+    from ...bridge.save import load_and_mesh_minecraft_save
 
     anim_tex_enabled = enable_animated_textures
     if anim_tex_enabled is None:

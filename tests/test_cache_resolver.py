@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from bridge.engine import get_libmtk
+from MoziToolKit.bridge.engine import get_libmtk
 
 
 class TestCacheResolver(unittest.TestCase):

@@ -17,8 +17,8 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import bridge.texture as tex_bridge
-from utils.materials.builder import ensure_material_node_tree
+import MoziToolKit.bridge.texture as tex_bridge
+from MoziToolKit.utils.materials.builder import ensure_material_node_tree
 
 from unittest.mock import MagicMock
 
@@ -70,8 +70,8 @@ class TestTextureAlphaBridge(unittest.TestCase):
 
     @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_select_transparent_faces_operator_end_to_end(self):
-        import operators
-        import ui
+        import MoziToolKit.operators as operators
+        import MoziToolKit.ui as ui
         operators.register()
         ui.register()
 
