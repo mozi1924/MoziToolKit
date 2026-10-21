@@ -109,6 +109,51 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
         self.assertEqual(mesh_unwelded.vertex_count, 40)
         self.assertEqual(mesh_unwelded.face_count, 10)
 
+    def test_incremental_rebuild_keeps_section_seams_welded(self):
+        """Live Sync's dirty rebuild path must keep cross-Section seams manifold.
+
+        Regression: `VoxelWorld::rebuild_dirty` used to bypass cross-Section welding, so the
+        first delta after a baseline silently split every previously welded chunk seam.
+        """
+        storage = mtk_py.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 32, 16, 16)
+        # Two cubes facing each other across the x = 16 Section boundary.
+        storage.set_block(15, 0, 0, "minecraft:stone")
+        storage.set_block(16, 0, 0, "minecraft:stone")
+
+        cfg = mtk_py.MesherConfig(
+            origin_centered=True,
+            weld_vertices=True,
+            z_up_coordinates=True,
+        )
+        world = mtk_py.VoxelWorld.from_storage(storage, cfg, None, None)
+
+        full = world.rebuild_all()
+        self.assertEqual(full.vertex_count, 12)
+        self._assert_unique_positions(full)
+
+        # Unrelated edit in Section 0: the Live Sync debounce takes the dirty path.
+        world.set_block(0, 5, 5, "minecraft:dirt")
+        world.rebuild_dirty()
+        incremental = world.get_world_mesh()
+
+        # Two welded cubes (12) + one welded dirt cube (8).
+        self.assertEqual(incremental.vertex_count, 20)
+        self.assertEqual(incremental.face_count, 16)
+        self._assert_unique_positions(incremental)
+
+        # A from-scratch rebuild must produce the same welded topology.
+        rebuilt = world.rebuild_all()
+        self.assertEqual(rebuilt.vertex_count, incremental.vertex_count)
+        self.assertEqual(rebuilt.face_count, incremental.face_count)
+
+    @staticmethod
+    def _assert_unique_positions(mesh):
+        pos = ma.positions(mesh)
+        coords = [tuple(pos[i : i + 3]) for i in range(0, len(pos), 3)]
+        duplicates = len(coords) - len(set(coords))
+        assert duplicates == 0, f"{duplicates} duplicate vertex position(s) survived welding"
+
     def test_bottom_center_origin_alignment(self):
         """
         In Blender coordinates (Z-Up), the object origin should be at the bottom center:
