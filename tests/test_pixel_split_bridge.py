@@ -8,7 +8,13 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from bridge.mesh import MeshData
-from bridge.subdivide import calculate_face_target_grid, adaptive_pixel_split_mesh
+from bridge.subdivide import (
+    calculate_face_target_grid,
+    calculate_pixel_grid_cut_factors,
+    slice_face_by_pixel_grid,
+    adaptive_pixel_split_mesh,
+)
+import numpy as np
 
 
 
@@ -74,6 +80,88 @@ class TestPixelSplitBridge(unittest.TestCase):
         cols, rows = calculate_face_target_grid(uvs, 32, 16, pixels_per_face=1.0, max_subdivisions=64)
         self.assertEqual(cols, 32)
         self.assertEqual(rows, 16)
+
+    def test_adaptive_pixel_split_shared_vertices_preserves_per_loop_uvs(self):
+        # 2 adjacent quads sharing 2 vertices with distinct per-loop UVs
+        positions = [
+            (-1.0, -1.0, 0.0),
+            (0.0, -1.0, 0.0),
+            (0.0, 0.0, 0.0),
+            (-1.0, 0.0, 0.0),
+            (1.0, -1.0, 0.0),
+            (1.0, 0.0, 0.0),
+        ]
+        face0_uvs = [(0.0, 0.0), (0.5, 0.0), (0.5, 1.0), (0.0, 1.0)]
+        face1_uvs = [(0.5, 0.0), (1.0, 0.0), (1.0, 1.0), (0.5, 1.0)]
+
+        mesh = ma.mesh_from_quads(
+            [c for p in positions for c in p],
+            [[0, 1, 2, 3], [1, 4, 5, 2]],
+            [face0_uvs, face1_uvs],
+            [0, 0],
+        )
+
+        subdivided = adaptive_pixel_split_mesh(
+            mesh,
+            face_resolutions=[(4, 2), (4, 2)],
+            default_resolution=(4, 2),
+            pixels_per_face=1.0,
+            max_subdivisions=64,
+            weld_dist=1e-4,
+        )
+
+        # 2 faces subdivided 2x2 = 8 quads
+        self.assertEqual(subdivided.face_count, 8)
+        self.assertEqual(subdivided.vertex_count, 15)  # 18 - 3 welded boundary vertices = 15
+        loop_uvs = np.frombuffer(subdivided.loop_uvs_memoryview(), dtype=np.float32).reshape(-1, 2)
+        self.assertEqual(len(loop_uvs), 32)  # Exactly 4 UVs per quad
+
+        # Verify Face 0 UVs stay in [0.0, 0.5] and Face 1 UVs stay in [0.5, 1.0] (no pretzel tangling)
+        self.assertTrue(np.all(loop_uvs[:16, 0] <= 0.5 + 1e-4))
+        self.assertTrue(np.all(loop_uvs[16:, 0] >= 0.5 - 1e-4))
+
+    def test_adaptive_pixel_split_rotated_45_uv(self):
+        # 45-degree diamond UV on a 3D quad
+        positions = [
+            (-1.0, -1.0, 0.0),
+            (1.0, -1.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (-1.0, 1.0, 0.0),
+        ]
+        diamond_uv = [(0.5, 0.0), (1.0, 0.5), (0.5, 1.0), (0.0, 0.5)]
+        mesh = ma.mesh_from_quads(
+            [c for p in positions for c in p],
+            [[0, 1, 2, 3]],
+            [diamond_uv],
+            [0],
+        )
+
+        subdivided = adaptive_pixel_split_mesh(
+            mesh,
+            face_resolutions=[(16, 16)],
+            default_resolution=(16, 16),
+            pixels_per_face=1.0,
+            max_subdivisions=64,
+            weld_dist=0.0,
+        )
+
+        self.assertGreater(subdivided.face_count, 20)
+        loop_uvs = np.frombuffer(subdivided.loop_uvs_memoryview(), dtype=np.float32).reshape(-1, 2)
+        self.assertEqual(len(loop_uvs), len(subdivided.indices_memoryview()) // 4)
+
+    def test_slice_face_by_pixel_grid_bridge(self):
+        positions = [
+            (-1.0, -1.0, 0.0),
+            (1.0, -1.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (-1.0, 1.0, 0.0),
+        ]
+        diamond_uv = [(0.5, 0.0), (1.0, 0.5), (0.5, 1.0), (0.0, 0.5)]
+        pos_out, uv_out, faces_out, param_out = slice_face_by_pixel_grid(
+            positions, diamond_uv, 16, 16, 1.0, 64
+        )
+        self.assertGreater(len(faces_out), 10)
+        self.assertEqual(len(pos_out), len(uv_out))
 
 
 if __name__ == "__main__":

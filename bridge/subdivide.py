@@ -26,6 +26,15 @@ def calculate_face_target_grid(
     max_subdivisions: int = 64,
 ) -> Tuple[int, int]:
     """Calculate target (cols, rows) subdivisions based on UV span and texture pixel density."""
+    mtk = get_libmtk()
+    if mtk and hasattr(mtk, "calculate_face_target_grid") and uvs:
+        try:
+            return mtk.calculate_face_target_grid(
+                [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+            )
+        except Exception:
+            pass
+
     if not uvs:
         return (1, 1)
     min_u = min(p[0] for p in uvs)
@@ -52,6 +61,14 @@ def calculate_pixel_grid_cut_factors(
     max_subdivisions: int = 64,
 ) -> Tuple[List[float], List[float]]:
     """Calculate non-uniform cut factors [0, 1] snapping strictly to integer pixel grid lines."""
+    mtk = get_libmtk()
+    if mtk and hasattr(mtk, "calculate_pixel_grid_cut_factors") and uvs:
+        try:
+            return mtk.calculate_pixel_grid_cut_factors(
+                [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+            )
+        except Exception:
+            pass
     cols, rows = calculate_face_target_grid(uvs, tex_w, tex_h, pixels_per_face, max_subdivisions)
     u_factors = [i / cols for i in range(1, cols)]
     v_factors = [i / rows for i in range(1, rows)]
@@ -67,7 +84,12 @@ def slice_face_by_pixel_grid(
     max_subdivisions: int = 64,
 ) -> Tuple[List[Tuple[float, float, float]], List[Tuple[float, float]], List[List[int]], List[Tuple[float, float]]]:
     """Slice a 3D/2D polygon strictly along the 2D texture pixel grid lines."""
-    return (list(positions), list(uvs), [[i for i in range(len(positions))]], list(uvs))
+    mtk = require_libmtk("slice_face_by_pixel_grid")
+    pos_list = [list(p) for p in positions]
+    uv_list = [list(u) for u in uvs]
+    return mtk.slice_face_by_pixel_grid(
+        pos_list, uv_list, tex_w, tex_h, pixels_per_face, max_subdivisions
+    )
 
 
 def adaptive_pixel_split_mesh(
