@@ -58,6 +58,17 @@ def create_tiny_png(width: int = 16, height: int = 16, color: tuple[int, int, in
 #: Blocks the guard probes for to decide whether a pack can back the bake pipeline.
 CANONICAL_BLOCKS = ("stone", "dirt", "oak_planks")
 
+#: Host-level asset roots/archives exported by CI and dev shells. The guard tests
+#: describe an explicitly configured (possibly empty) pack stack, so these must not
+#: leak in and satisfy the environment fallback.
+_AMBIENT_ASSET_ENV_VARS = (
+    "MC_DIR",
+    "MC_ASSETS_DIR",
+    "MTK_TEST_ASSETS",
+    "MTK_TEST_JAR",
+    "MC_JAR",
+)
+
 
 def write_block_assets(pack_dir: str, block_name: str, color: tuple[int, int, int, int]) -> None:
     tex_dir = os.path.join(pack_dir, "assets", "minecraft", "textures", "block")
@@ -114,7 +125,18 @@ class TestAssetBakeGuard(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp(prefix="mtk_bake_guard_test_")
         self.cache_dir = os.path.join(self.temp_dir, "cache")
         os.makedirs(self.cache_dir, exist_ok=True)
+        # Sandbox this test's cache without leaking the override into later modules:
+        # CI precompiles the shared .ci-cache that asset-dependent tests rely on.
+        self._previous_cache_dir = os.environ.get("MOZI_CACHE_DIR")
         os.environ["MOZI_CACHE_DIR"] = self.cache_dir
+
+        # These tests model a user whose configured stack cannot back the pipeline.
+        # CI exports real client assets through the environment for the
+        # asset-dependent suites; strip them so the host-level fallback cannot
+        # rescue the empty/invalid stacks under test, and restore them afterwards.
+        self._ambient_asset_env = {
+            key: os.environ.pop(key) for key in _AMBIENT_ASSET_ENV_VARS if key in os.environ
+        }
 
         self.pack_a = os.path.join(self.temp_dir, "pack_a")
         self.pack_b = os.path.join(self.temp_dir, "pack_b")
@@ -125,7 +147,11 @@ class TestAssetBakeGuard(unittest.TestCase):
 
     def tearDown(self):
         invalidate_asset_cache_memory()
-        os.environ.pop("MOZI_CACHE_DIR", None)
+        os.environ.update(self._ambient_asset_env)
+        if self._previous_cache_dir is None:
+            os.environ.pop("MOZI_CACHE_DIR", None)
+        else:
+            os.environ["MOZI_CACHE_DIR"] = self._previous_cache_dir
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def _make_prefs(self, pack_paths: list[str]) -> types.SimpleNamespace:
