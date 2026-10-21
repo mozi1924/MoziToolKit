@@ -81,6 +81,12 @@ def precompile_stack(
             callback=wrapped_cb,
         )
         package_path = getattr(res, "package_path", "")
+        if hasattr(res, "profile") and res.profile is not None:
+            try:
+                from ...dev.profile_tracker import record_operation_profile
+                record_operation_profile("Precompile Assets", res.profile)
+            except Exception:
+                pass
         invalidate_asset_cache_memory()
         try:
             from ..world import clear_world_sessions

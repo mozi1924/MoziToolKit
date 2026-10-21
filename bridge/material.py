@@ -399,9 +399,18 @@ def get_block_emission_strength(
     texture_name: Optional[str] = None,
 ) -> float:
     """Query canonical emission strength for a block / texture (0.0 .. 15.0)."""
-    mtk = require_libmtk("get_block_emission_strength")
-    str_props = {str(k): str(v) for k, v in properties.items()} if properties else None
-    return float(mtk.get_block_emission_strength(block_name, str_props, texture_name))
+    if properties:
+        lit = str(properties.get("lit", "")).lower()
+        if lit == "false":
+            return 0.0
+        if "campfire" in block_name and lit == "true":
+            return 15.0
+        if "furnace" in block_name and lit == "true":
+            return 13.0
+        if "candle" in block_name and lit == "true":
+            candles = int(properties.get("candles", 1))
+            return float(candles * 3)
+    return get_material_props(block_name, texture_name)[0]
 
 
 def is_thin_wall_block(
@@ -409,8 +418,7 @@ def is_thin_wall_block(
     texture_name: Optional[str] = None,
 ) -> bool:
     """Query whether a block or texture is thin wall foliage / vegetation."""
-    mtk = require_libmtk("is_thin_wall_block")
-    return bool(mtk.is_thin_wall_block(block_name, texture_name))
+    return get_material_props(block_name, texture_name)[1] > 0.5
 
 
 def is_transmissive_block(
@@ -418,8 +426,7 @@ def is_transmissive_block(
     texture_name: Optional[str] = None,
 ) -> bool:
     """Query whether a block or texture is a dielectric transmissive medium (glass, water, ice, etc.)."""
-    mtk = require_libmtk("is_transmissive_block")
-    return bool(mtk.is_transmissive_block(block_name, texture_name))
+    return get_material_props(block_name, texture_name)[2] > 0.0
 
 
 def get_block_transmission_weight(
@@ -427,8 +434,7 @@ def get_block_transmission_weight(
     texture_name: Optional[str] = None,
 ) -> float:
     """Query transmission weight (1.0 for glass/water/ice, 0.0 otherwise)."""
-    mtk = require_libmtk("get_block_transmission_weight")
-    return float(mtk.get_block_transmission_weight(block_name, texture_name))
+    return get_material_props(block_name, texture_name)[2]
 
 
 def get_block_sticker_threshold(
@@ -436,8 +442,7 @@ def get_block_sticker_threshold(
     texture_name: Optional[str] = None,
 ) -> float:
     """Query alpha sticker threshold (0.55 for glass, 0.95 for water/ice/slime/honey)."""
-    mtk = require_libmtk("get_block_sticker_threshold")
-    return float(mtk.get_block_sticker_threshold(block_name, texture_name))
+    return get_material_props(block_name, texture_name)[3]
 
 
 def register_material_properties(

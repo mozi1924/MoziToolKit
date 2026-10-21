@@ -544,6 +544,13 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             else:
                 mesh_data, elapsed_ms = result_tuple
 
+            if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
+                try:
+                    from ...dev.profile_tracker import record_operation_profile
+                    record_operation_profile("Rebuild World Mesh", mesh_data.profile)
+                except Exception:
+                    pass
+
             nonlocal world_mesh_obj
             if world_mesh_obj is None and root_container is not None:
                 mesh_name = f"{root_container.name}_Mesh"
@@ -565,14 +572,27 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 stamp_geometry_origin(world_mesh_obj, root_origin, overwrite=True)
 
             if world_mesh_obj and hasattr(world_mesh_obj, "data"):
+                import time
+                t0_inj = time.perf_counter()
                 inject_mesh_data(
                     world_mesh_obj.data,
                     mesh_data,
                     update_topology=True,
                     update_normals=True,
                 )
+                inj_ms = (time.perf_counter() - t0_inj) * 1000.0
+
+                t0_mat = time.perf_counter()
                 used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
                 ensure_world_materials(world_mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+                mat_ms = (time.perf_counter() - t0_mat) * 1000.0
+
+                try:
+                    from ...dev.profile_tracker import append_stage_to_last_profile
+                    append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(mesh_data, "vertex_count", None))
+                    append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
+                except Exception:
+                    pass
 
                 # Offline rebuilds resample the 3D biomes from the point cloud, so
                 # the object must advertise the WORLD preset (and keep that storage

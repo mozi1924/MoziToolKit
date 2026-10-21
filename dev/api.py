@@ -112,6 +112,13 @@ def run_mesher_benchmark(
 
     quads_per_sec = (quads / (avg_ms / 1000.0)) if avg_ms > 0 else 0
 
+    if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
+        try:
+            from .profile_tracker import record_operation_profile
+            record_operation_profile("Mesher Benchmark", mesh_data.profile)
+        except Exception:
+            pass
+
     return {
         "iterations": iterations,
         "with_models": with_models,

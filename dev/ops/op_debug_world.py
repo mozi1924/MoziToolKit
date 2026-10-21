@@ -170,6 +170,12 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
 
         def on_success(result):
             mesh_data, storage, elapsed_ms = result
+            if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
+                try:
+                    from ..profile_tracker import record_operation_profile
+                    record_operation_profile("Load Debug World", mesh_data.profile)
+                except Exception:
+                    pass
             from ...utils.world import apply_voxel_mesh_to_blender
             obj, stats = apply_voxel_mesh_to_blender(
                 mesh_data=mesh_data,

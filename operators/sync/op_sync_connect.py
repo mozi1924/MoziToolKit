@@ -345,6 +345,12 @@ def _sync_timer_tick() -> Optional[float]:
             else:
                 curr_gen = 0
             if latest_generation >= curr_gen:
+                if getattr(latest_world_mesh, "profile", None) is not None:
+                    try:
+                        from ...dev.profile_tracker import record_operation_profile
+                        record_operation_profile("Live Sync Mesh", latest_world_mesh.profile)
+                    except Exception:
+                        pass
                 world_obj = get_or_create_world_mesh_object(bpy.context, root_container=active_container)
                 # Delta updates deliberately avoid copying the native storage; the
                 # initial baseline/point-cloud sync registers it for biome re-tints.

@@ -114,9 +114,24 @@ class MOZI_OT_cull_mesh_faces(bpy.types.Operator):
                         cull_duplicates=self.cull_duplicates,
                     )
 
+                    if getattr(culled_mesh, "profile", None) is not None:
+                        try:
+                            from ..dev.profile_tracker import record_operation_profile
+                            record_operation_profile("Cull Mesh Faces", culled_mesh.profile)
+                        except Exception:
+                            pass
+
                     culled_count = stats.get("culled_faces", 0)
                     if culled_count > 0:
+                        import time
+                        t0_inj = time.perf_counter()
                         inject_mesh_data(culled_mesh, obj, update_topology=True)
+                        inj_ms = (time.perf_counter() - t0_inj) * 1000.0
+                        try:
+                            from ..dev.profile_tracker import append_stage_to_last_profile
+                            append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(culled_mesh, "vertex_count", None))
+                        except Exception:
+                            pass
                     total_in += stats.get("initial_faces", 0)
                     total_culled += culled_count
                     total_out += stats.get("remaining_faces", 0)

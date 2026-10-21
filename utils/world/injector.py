@@ -80,7 +80,10 @@ def apply_voxel_mesh_to_blender(
 
     _stamp_voxel_mesh_origin(obj)
 
+    import time
+
     # 2. Inject topology, positions, UVs, normals, materials
+    t0_inject = time.perf_counter()
     _inject = inject_mesh_func or inject_mesh_data
     _inject(
         b_mesh,
@@ -88,11 +91,14 @@ def apply_voxel_mesh_to_blender(
         update_topology=True,
         update_normals=True,
     )
+    inject_ms = (time.perf_counter() - t0_inject) * 1000.0
 
     # 3. Bind only used Atlas chunk materials & shaders
+    t0_mat = time.perf_counter()
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     _ensure_mat = ensure_materials_func or ensure_world_materials
     _ensure_mat(obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
     # Voxel meshes always bake true 3D biomes; tag them so the biome panel's
     # WORLD preset is selected instead of the uniform Plains fallback.
@@ -107,6 +113,7 @@ def apply_voxel_mesh_to_blender(
         mark_world_biome(obj, storage)
 
     # 4. Extract unculled VoxelPointCloud and ensure child companion object
+    t0_cloud = time.perf_counter()
     _ensure_cloud = ensure_cloud_func or ensure_voxel_child_cloud
     cloud_obj = _ensure_cloud(
         parent_obj=obj,
@@ -115,6 +122,24 @@ def apply_voxel_mesh_to_blender(
         initial_hidden=True,
     )
     cloud_count = len(cloud_obj.data.vertices) if cloud_obj and getattr(cloud_obj, "data", None) and hasattr(cloud_obj.data, "vertices") else 0
+    cloud_ms = (time.perf_counter() - t0_cloud) * 1000.0
+
+    try:
+        from ...dev.profile_tracker import append_stage_to_last_profile
+    except (ImportError, ValueError):
+        try:
+            from dev.profile_tracker import append_stage_to_last_profile
+        except Exception:
+            append_stage_to_last_profile = None
+
+    if append_stage_to_last_profile is not None:
+        try:
+            append_stage_to_last_profile("blender_mesh_injection", inject_ms, getattr(mesh_data, "vertex_count", None))
+            append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
+            if cloud_obj is not None:
+                append_stage_to_last_profile("blender_voxel_cloud_sync", cloud_ms, cloud_count)
+        except Exception:
+            pass
 
     # 5. Set active in viewport
     if context and hasattr(context, "view_layer"):

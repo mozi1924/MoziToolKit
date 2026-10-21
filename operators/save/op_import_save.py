@@ -332,6 +332,12 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                 except Exception:
                     pass
             mesh_data, meta, storage, elapsed_ms = result
+            if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
+                try:
+                    from ...dev.profile_tracker import record_operation_profile
+                    record_operation_profile(f"Import Save ({self.dimension})", mesh_data.profile)
+                except Exception:
+                    pass
             obj, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
                 meta=meta,

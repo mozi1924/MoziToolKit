@@ -134,6 +134,14 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                 target_root = bpy.data.objects[target_container_name]
             world_obj = get_or_create_world_mesh_object(context, root_container=target_root)
             storage = session.get_storage()
+
+            if getattr(mesh_data, "profile", None) is not None:
+                try:
+                    from ...dev.profile_tracker import record_operation_profile
+                    record_operation_profile("Sync Rebuild Mesh", mesh_data.profile)
+                except Exception:
+                    pass
+
             v_count, f_count = update_world_mesh(
                 world_obj,
                 mesh_data,

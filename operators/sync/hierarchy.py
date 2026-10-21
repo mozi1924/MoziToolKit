@@ -331,6 +331,8 @@ def update_world_mesh(
     # Upgrade legacy meshes that predate explicit origin stamping.
     stamp_geometry_origin(world_obj, ORIGIN_SYNC_WORLD, overwrite=False)
 
+    import time
+    t0_inj = time.perf_counter()
     mesh = world_obj.data
     inject_mesh_data(
         mesh,
@@ -339,9 +341,12 @@ def update_world_mesh(
         update_normals=True,
         skip_string_attributes=skip_string_attributes,
     )
+    inj_ms = (time.perf_counter() - t0_inj) * 1000.0
 
+    t0_mat = time.perf_counter()
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(world_obj, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
     # Live Sync meshes bake true 3D Quart biomes into their tint attributes. Tag the
     # object (and its root container) so the biome panel shows "World Biome (3D)"
@@ -372,6 +377,13 @@ def update_world_mesh(
                 world_obj["mtk_voxel_cloud"] = cloud_obj.name
         except Exception as e:
             logger.warning("Failed ensuring voxel child cloud during live sync mesh update: %s", e)
+
+    try:
+        from ...dev.profile_tracker import append_stage_to_last_profile
+        append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(mesh_data, "vertex_count", None))
+        append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
+    except Exception:
+        pass
 
     v_count = len(mesh.vertices)
     f_count = len(mesh.polygons)

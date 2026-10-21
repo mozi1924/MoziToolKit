@@ -54,3 +54,19 @@ class MOZI_OT_dev_mesh_benchmark(bpy.types.Operator):
         except Exception as e:
             self.report({"ERROR"}, f"Benchmark failed: {e}")
             return {"CANCELLED"}
+
+
+class MOZI_OT_dev_clear_profile(bpy.types.Operator):
+    """Clear cached operation profile"""
+
+    bl_idname = "mozi.dev_clear_profile"
+    bl_label = "Clear Execution Profile"
+    bl_options = {"INTERNAL"}
+
+    def execute(self, context):
+        try:
+            from ..profile_tracker import clear_last_profile
+            clear_last_profile()
+        except Exception:
+            pass
+        return {"FINISHED"}

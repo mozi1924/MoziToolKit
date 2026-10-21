@@ -197,9 +197,26 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
                     weld_dist=float(self.weld_dist),
                 )
 
+                if getattr(subdivided, "profile", None) is not None:
+                    try:
+                        from ..dev.profile_tracker import record_operation_profile
+                        record_operation_profile("Adaptive Pixel Split", subdivided.profile)
+                    except Exception:
+                        pass
+
                 # 5. Inject back into Blender mesh with vectorized batch buffers
+                import time
+                t0_inj = time.perf_counter()
                 inject_mesh_data(mesh, subdivided, update_topology=True, update_normals=True)
                 mesh.update()
+                inj_ms = (time.perf_counter() - t0_inj) * 1000.0
+
+                try:
+                    from ..dev.profile_tracker import append_stage_to_last_profile
+                    append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(subdivided, "vertex_count", None))
+                except Exception:
+                    pass
+
                 total_out_faces += getattr(subdivided, "face_count", len(mesh.polygons))
 
         finally:
