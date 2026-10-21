@@ -5,6 +5,7 @@ Operators for Material Replacement and Provenance Recovery.
 from __future__ import annotations
 
 import logging
+import time
 import bpy
 from bpy.props import BoolProperty, EnumProperty
 
@@ -12,6 +13,7 @@ logger = logging.getLogger("MoziToolKit.Operators.Materials")
 
 from ..utils.assets import can_execute_asset_pipeline, check_asset_cache_status, ensure_pipeline_assets_ready_sync
 from ..utils.materials.biome import BIOME_ENUM_ITEMS
+from ..utils.diagnostics import format_timing, record_operation_profile
 from ..utils.materials.pipeline import replace_materials
 from ..utils.mesh.ownership import is_external_mesh
 from ..utils.system import get_prefs, register_menu_item
@@ -129,6 +131,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         # The pipeline decides between reusing the existing atlas UV map (layout
         # unchanged) and re-mapping from the preserved local UV map (layout changed).
         try:
+            t_materials = time.perf_counter()
             res = replace_materials(
                 obj,
                 mode=self.mode,
@@ -136,6 +139,18 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                 biome=self.biome_preset,
                 prefs=prefs,
                 force_remap=not self.reuse_atlas_uvs,
+            )
+            material_ms = (time.perf_counter() - t_materials) * 1000.0
+            record_operation_profile(
+                "Replace Materials",
+                None,
+                host_stages=[
+                    {
+                        "name": "material_pipeline",
+                        "duration_ms": material_ms,
+                        "items_count": res.get("face_count"),
+                    }
+                ],
             )
             if res.get("success"):
                 if res.get("reused_atlas_uvs"):
@@ -154,6 +169,7 @@ class MOZI_OT_replace_material(bpy.types.Operator):
                     msg += f" [{res['animated_faces']} animated faces]"
                 if res.get("unmapped_faces", 0) > 0:
                     msg += f" [{res['unmapped_faces']} faces unmapped/fallback]"
+                msg += f" in {format_timing(operation='Replace Materials')}"
                 self.report({'INFO'}, msg)
                 return {'FINISHED'}
             self.report({'WARNING'}, res.get("message", "Material replacement failed."))

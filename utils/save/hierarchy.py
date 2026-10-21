@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from ...bridge.mesh import inject_mesh_data
 from ...utils.point_cloud import ensure_voxel_child_cloud
+from ..diagnostics import append_stage_to_last_profile
 from ..materials.builder.world_binding import ensure_world_materials
 from ..system.save_registry import get_save_registry
 
@@ -212,25 +213,43 @@ def apply_imported_save_to_blender(
     _stamp_save_mesh_origin(mesh_obj)
 
     # 3. Inject mesh geometry
+    t_inject = time.perf_counter()
     inject_mesh_data(
         b_mesh,
         mesh_data,
         update_topology=True,
         update_normals=True,
     )
+    inject_ms = (time.perf_counter() - t_inject) * 1000.0
 
     # 4. Bind Atlas materials and shaders
+    t_materials = time.perf_counter()
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     ensure_world_materials(mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    materials_ms = (time.perf_counter() - t_materials) * 1000.0
 
     # 5. Extract unculled VoxelPointCloud and ensure child companion object under root Empty
+    t_cloud = time.perf_counter()
     cloud_obj = ensure_voxel_child_cloud(
         parent_obj=root_obj,
         storage=storage,
         origin_centered=origin_centered,
         initial_hidden=True,
     )
+    cloud_ms = (time.perf_counter() - t_cloud) * 1000.0
     cloud_count = len(cloud_obj.data.vertices) if cloud_obj and hasattr(cloud_obj, "data") and hasattr(cloud_obj.data, "vertices") else 0
+
+    host_ms = inject_ms + materials_ms + cloud_ms
+    append_stage_to_last_profile(
+        "blender_mesh_injection", inject_ms, getattr(mesh_data, "vertex_count", None)
+    )
+    append_stage_to_last_profile(
+        "blender_material_binding",
+        materials_ms,
+        len(used_chunk_ids) if used_chunk_ids else None,
+    )
+    if cloud_obj is not None:
+        append_stage_to_last_profile("blender_voxel_cloud_sync", cloud_ms, cloud_count)
 
     if cloud_obj:
         _safe_set_custom_prop(root_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
@@ -301,6 +320,8 @@ def apply_imported_save_to_blender(
         "polygon_count": len(b_mesh.polygons) if hasattr(b_mesh, "polygons") else 0,
         "voxel_count": cloud_count,
         "elapsed_ms": round(elapsed_ms, 2),
+        "host_ms": round(host_ms, 2),
+        "total_ms": round(elapsed_ms + host_ms, 2),
         "save_uuid": save_uuid,
     }
 

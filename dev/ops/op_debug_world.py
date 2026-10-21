@@ -7,6 +7,7 @@ import bpy
 from ... import bridge
 from ...utils.async_task import AsyncTask, ModalTaskRunner
 from ...utils.progress import BlenderProgressReporter
+from ...utils.diagnostics import format_timing_parts
 
 
 class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
@@ -126,7 +127,9 @@ class MOZI_OT_dev_load_debug_world(bpy.types.Operator):
 
                 self.report(
                     {"INFO"},
-                    f"Loaded Debug World: {poly_count:,} faces, {stats['vertex_count']:,} verts, {mat_count} materials in {elapsed_ms:.1f}ms",
+                    f"Loaded Debug World: {poly_count:,} faces, {stats['vertex_count']:,} verts, "
+                    f"{mat_count} materials in "
+                    f"{format_timing_parts(elapsed_ms, stats.get('host_ms', 0.0))}",
                 )
                 return {"FINISHED"}
             except Exception as e:

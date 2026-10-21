@@ -36,6 +36,7 @@ from ...utils.save import (
     import_save_to_blender,
 )
 from ...utils.async_task import AsyncTask, ModalTaskRunner
+from ...utils.diagnostics import format_timing_parts
 from ...utils.progress import BlenderProgressReporter
 
 logger = logging.getLogger("MoziToolKit.Operators.Save")
@@ -258,7 +259,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                     {"INFO"},
                     f"Imported '{stats['level_name']}' ({self.dimension}): "
                     f"{stats['polygon_count']:,} faces, {stats['voxel_count']:,} voxels "
-                    f"in {stats['elapsed_ms']}ms",
+                    f"in {format_timing_parts(stats.get('elapsed_ms', 0.0), stats.get('host_ms', 0.0))}",
                 )
                 return {"FINISHED"}
             except Exception as e:
@@ -305,12 +306,6 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                 except Exception:
                     pass
             mesh_data, meta, storage, elapsed_ms = result
-            if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
-                try:
-                    from ...bridge.diagnostics import record_operation_profile
-                    record_operation_profile(f"Import Save ({self.dimension})", mesh_data.profile)
-                except Exception:
-                    pass
             obj, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
                 meta=meta,
@@ -333,7 +328,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                 {"INFO"},
                 f"Imported '{stats['level_name']}' ({self.dimension}): "
                 f"{stats['polygon_count']:,} faces, {stats['voxel_count']:,} voxels "
-                f"in {stats['elapsed_ms']}ms",
+                f"in {format_timing_parts(stats.get('elapsed_ms', 0.0), stats.get('host_ms', 0.0))}",
             )
 
         reporter = BlenderProgressReporter(context=context, total=100, title=f"Import {self.dimension}")

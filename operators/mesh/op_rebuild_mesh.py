@@ -11,6 +11,7 @@ import bpy
 from ...utils.system import get_prefs, register_menu_item
 from ...utils.async_task import AsyncTask, ModalTaskRunner
 from ...utils.progress import BlenderProgressReporter
+from ...utils.diagnostics import format_timing
 from ...bridge.point_cloud import extract_voxel_point_cloud
 from ...bridge.world import (
     clear_world_sessions,
@@ -573,7 +574,11 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                     mark_world_biome(world_mesh_obj, storage, aliases=aliases)
 
                 poly_cnt = len(world_mesh_obj.data.polygons) if hasattr(world_mesh_obj.data, "polygons") else 0
-                self.report({"INFO"}, f"Rebuilt voxel mesh: {poly_cnt:,} faces in {round(elapsed_ms, 1)}ms")
+                self.report(
+                    {"INFO"},
+                    f"Rebuilt voxel mesh: {poly_cnt:,} faces in "
+                    f"{format_timing(elapsed_ms, operation='Rebuild World Mesh')}",
+                )
             else:
                 self.report({"WARNING"}, "No mesh object available to receive geometry.")
 

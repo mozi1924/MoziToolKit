@@ -133,6 +133,8 @@ def apply_voxel_mesh_to_blender(
         "voxel_count": cloud_count,
         "voxel_cloud_name": cloud_obj.name if cloud_obj else None,
         "meshing_time_ms": round(elapsed_ms, 2),
+        "host_ms": round(inject_ms + mat_ms + cloud_ms, 2),
+        "total_ms": round(elapsed_ms + inject_ms + mat_ms + cloud_ms, 2),
     }
 
     return obj, stats

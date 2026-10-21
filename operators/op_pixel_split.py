@@ -18,6 +18,7 @@ from ..utils.mesh.core import (
     poll_edit_mesh,
     poll_mesh_object,
 )
+from ..utils.diagnostics import format_timing
 from ..utils.mesh.quadify import quadify_mesh
 from ..utils.system.menu_registry import register_menu_item
 
@@ -199,13 +200,6 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
                     weld_dist=float(self.weld_dist),
                 )
 
-                if getattr(subdivided, "profile", None) is not None:
-                    try:
-                        from ..bridge.diagnostics import record_operation_profile
-                        record_operation_profile("Adaptive Pixel Split", subdivided.profile)
-                    except Exception:
-                        pass
-
                 # 5. Inject back into Blender mesh with vectorized batch buffers
                 import time
                 t0_inj = time.perf_counter()
@@ -244,7 +238,8 @@ class MOZI_OT_adaptive_pixel_split(bpy.types.Operator):
 
         message = (
             f"Adaptive Pixel Split: {total_in_faces} face(s) -> {total_out_faces} subdivided face(s) "
-            f"across {len(target_objs)} object(s)."
+            f"across {len(target_objs)} object(s) in "
+            f"{format_timing(operation='Adaptive Pixel Split')}."
         )
         if self.quadify:
             message += f" Quads created: {total_quads_created}, triangles left: {total_triangles_left}."

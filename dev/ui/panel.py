@@ -71,6 +71,12 @@ class VIEW3D_PT_mtk_dev_panel(bpy.types.Panel):
 
             sub = prof_box.column(align=True)
             sub.label(text=op_label, icon="SORTTIME")
+            core_ms = float(profile.get("core_ms", 0.0) or 0.0)
+            host_ms = float(profile.get("host_ms", 0.0) or 0.0)
+            if host_ms > 0.0 and core_ms > 0.0:
+                sub.label(
+                    text=f"{tr('Rust')} {core_ms:.1f} ms   |   {tr('Blender')} {host_ms:.1f} ms"
+                )
             sub.separator(factor=0.5)
 
             stages = profile.get("stages", [])

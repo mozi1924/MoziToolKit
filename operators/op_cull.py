@@ -105,13 +105,6 @@ class MOZI_OT_cull_mesh_faces(bpy.types.Operator):
                         cull_duplicates=self.cull_duplicates,
                     )
 
-                    if getattr(culled_mesh, "profile", None) is not None:
-                        try:
-                            from ..bridge.diagnostics import record_operation_profile
-                            record_operation_profile("Cull Mesh Faces", culled_mesh.profile)
-                        except Exception:
-                            pass
-
                     culled_count = stats.get("culled_faces", 0)
                     if culled_count > 0:
                         import time

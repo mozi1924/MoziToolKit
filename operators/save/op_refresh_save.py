@@ -29,6 +29,7 @@ from ...utils.assets import (
 )
 from ...utils.save import apply_imported_save_to_blender
 from ...utils.async_task import AsyncTask, ModalTaskRunner
+from ...utils.diagnostics import format_timing_parts
 from ...utils.progress import BlenderProgressReporter, blender_progress_scope
 from ...utils.system.dependencies import get_prefs
 from ...utils.system.save_registry import get_save_registry
@@ -185,7 +186,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     {"INFO"},
                     f"Refreshed '{stats['level_name']}': "
                     f"{stats['polygon_count']:,} faces, {stats['voxel_count']:,} voxels "
-                    f"in {stats['elapsed_ms']}ms",
+                    f"in {format_timing_parts(stats.get('elapsed_ms', 0.0), stats.get('host_ms', 0.0))}",
                 )
                 return {"FINISHED"}
             except Exception as e:
@@ -232,12 +233,6 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                 except Exception:
                     pass
             mesh_data, meta, storage, elapsed_ms = result
-            if mesh_data is not None and getattr(mesh_data, "profile", None) is not None:
-                try:
-                    from ...bridge.diagnostics import record_operation_profile
-                    record_operation_profile(f"Refresh Save ({dimension})", mesh_data.profile)
-                except Exception:
-                    pass
             obj, stats = apply_imported_save_to_blender(
                 mesh_data=mesh_data,
                 meta=meta,
@@ -262,7 +257,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                 {"INFO"},
                 f"Refreshed '{stats['level_name']}': "
                 f"{stats['polygon_count']:,} faces, {stats['voxel_count']:,} voxels "
-                f"in {stats['elapsed_ms']}ms",
+                f"in {format_timing_parts(stats.get('elapsed_ms', 0.0), stats.get('host_ms', 0.0))}",
             )
 
         reporter = BlenderProgressReporter(context=context, total=100, title=f"Refreshing {level_name}")
