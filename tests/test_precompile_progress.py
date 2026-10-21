@@ -134,6 +134,52 @@ class TestPrecompileProgress(unittest.TestCase):
         self.assertEqual(last.get("stage"), "prebake_manifest")
         self.assertEqual(last.get("percent"), 100.0)
 
+    def test_precompile_writes_decoded_pbr_layers(self):
+        """Verify _n/_orm/_aux are written, mapping flags are updated, and pbr meta is present."""
+        mtk = get_libmtk()
+        if mtk is None:
+            self.skipTest("libmtk_py not available")
+
+        tex_dir = os.path.join(self.pack_dir, "assets", "minecraft", "textures", "block")
+        with open(os.path.join(tex_dir, "stone_n.png"), "wb") as f:
+            f.write(create_tiny_png())
+        with open(os.path.join(tex_dir, "stone_s.png"), "wb") as f:
+            f.write(create_tiny_png())
+
+        stack = mtk.ResourcePackStack()
+        stack.add_directory_pack(self.pack_dir, "test_pack")
+        res = mtk.precompile_all_assets(
+            stack,
+            self.cache_dir,
+            atlas_category="blocks",
+            max_atlas_width=1024,
+            max_atlas_height=1024,
+            compile_atlas=True,
+            compile_models=False,
+        )
+        self.assertTrue(res.success)
+        self.assertTrue(res.package_path)
+
+        cache = mtk.AssetCache.open(str(res.package_path))
+        atlas = cache.load_atlas()
+        infos = atlas.get_all_chunks_info()
+        pbr_chunks = [chunk for chunk in infos if chunk.get("has_orm") or chunk.get("has_aux")]
+        self.assertTrue(pbr_chunks, "at least one chunk should carry decoded PBR layers")
+        chunk = pbr_chunks[0]
+        self.assertTrue(chunk.get("has_orm"))
+        self.assertTrue(chunk.get("has_aux"))
+        self.assertIsNotNone(chunk.get("pbr"))
+        self.assertIn("mtk_packed_v1", str(chunk.get("pbr")))
+
+        stem = chunk["file_stem"]
+        for suffix in ("_n", "_orm", "_aux"):
+            width, height, pixels = cache.read_texture_f32(
+                f"atlas/textures/{stem}{suffix}.png", flip_v=False
+            )
+            self.assertGreater(width, 0)
+            self.assertGreater(height, 0)
+            self.assertGreater(len(pixels), 0)
+
     def test_bridge_precompile_stack_with_progress_callback(self):
         # Create a mock prefs object with resource_packs pointing to self.pack_dir
         mock_entry = MagicMock()

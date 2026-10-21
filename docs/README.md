@@ -21,7 +21,8 @@
   - 图集防溢色数学模型（Padding & Safe Clamp）、逐帧动态动画（MCMETA）驱动及验收矩阵。
   - **面属性来源追踪与材质自愈 (`mozi.restore_materials_from_provenance`)**：基于 `mtk_source_texture_key` 与 `mtk_atlas_chunk_id` 的一键材质原地无损复原。
   - **生物群系高精度染色与 UI 控制面板 (`ui/panel_biome.py`)**：65+ 种原生群系预设库、双线性三角坐标采样、Linear RGBA 转换及 `mtk_biome` 物体覆盖。
-  - **着色器节点组模板库 (`utils/node_groups/`)**：`atlas_uv_decoder`, `atlas_uv_tiling`, `animated`, `biome`, `labpbr`, `parallax` 节点组。
+  - **着色器节点组模板库 (`utils/node_groups/`)**：`atlas_uv_tiling`, `animated`, `biome`, `parallax`；`labpbr` 仅保留为 legacy 参考，运行时不再使用。
+  - **[PBR 通道规范 (MtkSurface / MtkPackedV1)](materials/pbr_channel_spec.md)**：预编译期把 LabPBR `_n`/`_s` 解码为标准通道（`_n` 法线+高度、`_orm`、`_aux`），Blender 只消费标准 Principled。
 - **[资源包 / JAR 内容识别与自动分类 (Pack Type Detection)](packs/pack_type_detection.md)**：
   - 只读 ZIP 中央目录的内容判定：原版客户端/服务端、模组（Fabric/Quilt/Forge/NeoForge）、资源包、数据包、整合包。
   - 根路径精确匹配 + 加权打分（含 Forge universal、原版 JAR 内嵌数据包等对抗样本）。

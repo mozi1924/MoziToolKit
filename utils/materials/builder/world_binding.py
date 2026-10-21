@@ -41,7 +41,7 @@ def ensure_world_materials(
     if not world_obj or world_obj.type != "MESH":
         return
 
-    from .atlas_builder import build_atlas_chunk_material
+    from .atlas_builder import PBR_LAYOUT_VERSION, build_atlas_chunk_material
     from . import ensure_material_node_tree
     from ..cleaner import remap_indices_lut
 
@@ -187,9 +187,14 @@ def ensure_world_materials(
                         and manifest_fp
                         and existing_mat.get("mtk_stack_fingerprint") != manifest_fp
                     )
+                    is_stale_layout = bool(
+                        existing_mat is not None
+                        and existing_mat.get("mtk_pbr_layout") != PBR_LAYOUT_VERSION
+                    )
                     if (
                         existing_mat is not None
                         and not is_stale_fp
+                        and not is_stale_layout
                         and getattr(existing_mat, "node_tree", None)
                         and len(existing_mat.node_tree.nodes) > 0
                         and existing_mat.get("mtk_atlas_chunk_id") == chunk_id
@@ -200,7 +205,8 @@ def ensure_world_materials(
 
                     albedo_file: Any = atlas_dir / f"{stem}.png"
                     normal_file: Any = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
-                    specular_file: Any = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+                    orm_file: Any = atlas_dir / f"{stem}_orm.png" if cm.get("has_orm") else None
+                    aux_file: Any = atlas_dir / f"{stem}_aux.png" if cm.get("has_aux") else None
                     overlay_file: Any = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
 
                     # If file doesn't exist on disk, stream in-memory from active BakedAtlas if available
@@ -214,10 +220,14 @@ def ensure_world_materials(
                                 n_f32 = active_atlas.get_chunk_normal_f32(c_order_idx, flip_v=True)
                                 if n_f32 is not None:
                                     normal_file = (int(chunk_width), int(chunk_height), n_f32)
-                            if specular_file and hasattr(active_atlas, "get_chunk_specular_f32"):
-                                s_f32 = active_atlas.get_chunk_specular_f32(c_order_idx, flip_v=True)
-                                if s_f32 is not None:
-                                    specular_file = (int(chunk_width), int(chunk_height), s_f32)
+                            if orm_file and hasattr(active_atlas, "get_chunk_orm_f32"):
+                                orm_f32 = active_atlas.get_chunk_orm_f32(c_order_idx, flip_v=True)
+                                if orm_f32 is not None:
+                                    orm_file = (int(chunk_width), int(chunk_height), orm_f32)
+                            if aux_file and hasattr(active_atlas, "get_chunk_aux_f32"):
+                                aux_f32 = active_atlas.get_chunk_aux_f32(c_order_idx, flip_v=True)
+                                if aux_f32 is not None:
+                                    aux_file = (int(chunk_width), int(chunk_height), aux_f32)
                             if overlay_file and hasattr(active_atlas, "get_chunk_overlay_f32"):
                                 o_f32 = active_atlas.get_chunk_overlay_f32(c_order_idx, flip_v=True)
                                 if o_f32 is not None:
@@ -234,7 +244,8 @@ def ensure_world_materials(
                         chunk_id=chunk_id,
                         albedo_path=albedo_file,
                         normal_path=normal_file,
-                        specular_path=specular_file,
+                        orm_path=orm_file,
+                        aux_path=aux_file,
                         overlay_path=overlay_file,
                         colormaps=colormaps,
                         category=cat,

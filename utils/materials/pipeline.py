@@ -28,8 +28,6 @@ from ...bridge.material import (
     load_baked_atlas_from_json,
     remap_mesh_multi_uvs_paletted,
     reroute_mesh_animation,
-    compute_flat_material_props_buffer,
-    compute_flat_material_props_paletted_buffer,
     build_material_palette,
 )
 
@@ -83,7 +81,6 @@ from .constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
     ATTR_COLORMAP_UV,
-    ATTR_MATERIAL_PROPS,
 )
 
 if "ATTR_MATERIAL_PROPS" not in globals():
@@ -97,7 +94,6 @@ if "ATTR_MATERIAL_PROPS" not in globals():
     ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
     ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
     ATTR_COLORMAP_UV = "mtk_colormap_uv"
-    ATTR_MATERIAL_PROPS = "mtk_material_props"
 
 from .uv_layers import (
     compute_atlas_layout_hash,
@@ -334,7 +330,8 @@ def assign_atlas_chunk_materials(
 
         albedo_file = atlas_dir / f"{stem}.png"
         normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
-        specular_file = atlas_dir / f"{stem}_s.png" if cm.get("has_specular") else None
+        orm_file = atlas_dir / f"{stem}_orm.png" if cm.get("has_orm") else None
+        aux_file = atlas_dir / f"{stem}_aux.png" if cm.get("has_aux") else None
         overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
         chunk_width = float(cm.get("width", 1024))
         chunk_height = float(cm.get("height", 512))
@@ -353,7 +350,8 @@ def assign_atlas_chunk_materials(
             chunk_id=chunk_id,
             albedo_path=albedo_file,
             normal_path=normal_file,
-            specular_path=specular_file,
+            orm_path=orm_file,
+            aux_path=aux_file,
             overlay_path=overlay_file,
             colormaps=colormaps,
             category=cat,
@@ -479,21 +477,6 @@ def inject_mesh_provenance_attributes(
                 inject_face_attribute_float(
                     mesh, "mtk_anim_frame_height", np.ascontiguousarray(sizes[1::3])
                 )
-
-    # Packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold).
-    if face_source_key_palette is not None and face_source_key_indices is not None:
-        flat_props = compute_flat_material_props_paletted_buffer(
-            face_source_key_palette, face_source_key_indices
-        )
-        inject_face_attribute_float4(mesh, ATTR_MATERIAL_PROPS, flat_props)
-    elif face_source_keys:
-        keys = (
-            face_source_keys[:num_polys]
-            if len(face_source_keys) >= num_polys
-            else face_source_keys + [""] * (num_polys - len(face_source_keys))
-        )
-        flat_props = compute_flat_material_props_buffer(keys)
-        inject_face_attribute_float4(mesh, ATTR_MATERIAL_PROPS, flat_props)
 
 
 def resolve_and_apply_biome_tint(

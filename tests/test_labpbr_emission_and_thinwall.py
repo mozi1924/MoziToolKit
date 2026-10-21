@@ -180,57 +180,9 @@ class TestLabPBRCatalogAndDecoders(unittest.TestCase):
         self.assertEqual(alpha_links[0].from_node, final_alpha)
 
 
-    @unittest.skipUnless(HAS_BPY, "Requires Blender bpy environment")
-    def test_atlas_builder_wires_material_props(self):
-        """Verify build_atlas_chunk_material wires Attr Material Props (Emission, Thin Wall, Transmission, Sticker)."""
-        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
-
-        mat_atlas = build_atlas_chunk_material(
-            chunk_id=0,
-            albedo_path="/tmp/fake_atlas.png",
-        )
-        self.assertIsNotNone(mat_atlas)
-        nodes = mat_atlas.node_tree.nodes
-        links = mat_atlas.node_tree.links
-
-        decoder = nodes.get("LabPBR Decoder")
-        self.assertIsNotNone(decoder)
-
-        attr_node = nodes.get("Attr Material Props")
-        self.assertIsNotNone(attr_node)
-        self.assertEqual(attr_node.attribute_name, "mtk_material_props")
-
-        split_node = nodes.get("Split Material Props")
-        self.assertIsNotNone(split_node)
-
-        clamp_node = nodes.get("Clamp Thin Wall")
-        self.assertIsNotNone(clamp_node)
-
-        safe_thresh = nodes.get("Safe Sticker Threshold")
-        self.assertIsNotNone(safe_thresh)
-
-        # Verify links to decoder
-        emit_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Hardcoded Emission"]
-        self.assertEqual(len(emit_link), 1)
-        self.assertEqual(emit_link[0].from_node, split_node)
-
-        thin_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Thin Wall"]
-        self.assertEqual(len(thin_link), 1)
-        self.assertEqual(thin_link[0].from_node, clamp_node)
-
-        scale_node = nodes.get("Material Transmission Scale")
-        self.assertIsNotNone(scale_node)
-
-        trans_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Transmission Weight"]
-        self.assertEqual(len(trans_link), 1)
-        self.assertEqual(trans_link[0].from_node, scale_node)
-
-        scale_in_link = [l for l in links if l.to_node == scale_node and l.from_node == split_node]
-        self.assertEqual(len(scale_in_link), 1)
-
-        thresh_link = [l for l in links if l.to_node == decoder and l.to_socket.name == "Sticker Threshold"]
-        self.assertEqual(len(thresh_link), 1)
-        self.assertEqual(thresh_link[0].from_node, safe_thresh)
+    # The atlas builder no longer consumes the legacy decoder or
+    # ``mtk_material_props``; the standard-PBR graph is covered by
+    # ``tests/test_shading_adaptation_and_subsurface.py``.
 
 
 if __name__ == "__main__":

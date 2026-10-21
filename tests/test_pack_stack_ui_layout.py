@@ -149,9 +149,6 @@ class TestMaterialSettingsPlacement(unittest.TestCase):
             enable_ctm=True,
             enable_animated_textures=True,
             material_render_engine="AUTO",
-            enable_game_semantics=True,
-            material_transmission_mode="AUTO",
-            material_thin_wall_mode="AUTO",
             material_subsurface_method="BURLEY",
             material_disable_subsurface=False,
         )

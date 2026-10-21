@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎨 PBR 预编译与材质图简化（v2.1）
+- **LabPBR 改为预编译解码**：Rust `mtk-material::pbr` 在生成图集时把 `_n` / `_s` 解码为 `MtkPackedV1`：`_n`（OpenGL 法线 + 高度）、`_orm`（AO/roughness/metallic/emission）、`_aux`（encoded IOR/porosity/SSS/transmission）。缓存格式版本升至 `ASSET_CACHE_FORMAT_VERSION = 4`，旧缓存自动失效重建。
+- **移除运行时 `LabPBR 1.3 Decoder`**：Blender 图集材质只接标准 Principled 输入，不再做 DX→GL、F0→IOR、smoothness→roughness 等逐像素解码；新增 `utils/materials/builder/pbr_graph.py` 承载标准 PBR 图。
+- **移除逐面游戏语义**：`thin wall` / `transmission` / `sticker threshold` / `hardcoded emission` 不再从 `mtk_material_props` 读取，也不再写入网格；`pipeline.py` 停止注入该属性。玻璃/水在 v1 仅使用 albedo alpha；`aux.A` 预留为未来的 transmission 通道，内部 fallback PBR 贴图后续补自发光。
+- **配置与 UI 收敛**：移除 `enable_game_semantics`、`transmission_mode`、`thin_wall_mode` 偏好与序列化字段；剩余材质适配只有 `disable_subsurface` 与 `emission_strength`。
+- **规范**：新增 `docs/materials/pbr_channel_spec.md`，定义 canonical 通道、packed 布局、LabPBR 解码公式与 Blender/OpenPBR/UsdPreviewSurface/Bedrock 映射。
+
 ### 🧩 资源包 / JAR 内容识别与自动分类
 - 新增 `utils/pack_detect.py`：只读 ZIP 中央目录（元数据读取上限 64KB，不解压任何资源）判定输入是**原版客户端 / 原版服务端 / 模组（Fabric/Quilt/Forge/NeoForge）/ 资源包 / 数据包 / 整合包**，取代原先仅凭扩展名与 `fabric`/`forge`/`mod` 关键字的启发式。`26.2-Fabric.jar`（内容实为原版客户端）不再被判为 `MOD_JAR`，以 `.jar` 分发的 CTM 材质包不再被判为 `VANILLA`。
 - 判定采用**根路径精确匹配 + 加权打分**：原版 JAR 内部的 `data/minecraft/datapacks/*/pack.mcmeta` 与根 `pack.png` 不参与资源包计分；Forge universal JAR 的 `pack.mcmeta` 不会盖过 `META-INF/mods.toml`。单层包裹目录（`MyPack/...`）可被识别并提示 Minecraft 无法直接加载。

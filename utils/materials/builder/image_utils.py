@@ -248,9 +248,12 @@ def get_or_create_image(
     if isinstance(image_path_or_source, (tuple, list)) and len(image_path_or_source) == 3:
         w, h, buf = image_path_or_source
         img_name = os.path.basename(chunk_id) if chunk_id else "MTK_Memory_Image"
-        nbytes = getattr(buf, "nbytes", len(buf))
+        try:
+            nbytes = memoryview(buf).nbytes
+        except TypeError:
+            nbytes = getattr(buf, "nbytes", len(buf))
         is_f32 = (nbytes == w * h * 16) or (hasattr(buf, "format") and buf.format == "f" and len(buf) == w * h * 4)
-        if isinstance(buf, (bytes, bytearray, memoryview)) and is_f32:
+        if is_f32:
             img = get_or_create_image_from_f32(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload)
             if img is not None:
                 return img

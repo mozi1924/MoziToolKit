@@ -223,6 +223,9 @@ def _canonical_chunk(chunk: Dict[str, Any]) -> Dict[str, Any]:
         "has_normal",
         "has_specular",
         "has_overlay",
+        "has_orm",
+        "has_aux",
+        "pbr",
     )
     return {key: chunk.get(key) for key in keys}
 

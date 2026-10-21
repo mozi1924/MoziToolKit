@@ -788,6 +788,16 @@ translations_dict = {
         ('*', 'Clear Profile'): '清除性能记录',
         ('*', 'No operations profiled yet'): '尚无操作性能记录',
         ('*', 'Run benchmark or load world to inspect steps'): '运行基准测试或加载世界以查看各阶段耗时',
+        # --- Standard PBR (MtkPackedV1) ---
+        ('*', 'Configure standard PBR shading, render engine adaptation, and subsurface options'): '配置标准 PBR 着色、渲染引擎自适应与次表面散射选项',
+        ('*', 'Choose how standard PBR shading adapts to the active render engine'): '选择标准 PBR 着色如何适配当前渲染引擎',
+        ('*', 'Automatically optimize alpha and subsurface settings for the active engine'): '根据当前渲染引擎自动优化 Alpha 与次表面散射设置',
+        ('*', 'Use full physical subsurface scattering where the material provides it'): '在材质提供次表面数据时使用完整物理次表面散射',
+        ('*', 'Use realtime-friendly alpha blending; subsurface can be disabled below'): '使用适合实时渲染的 Alpha 混合；可在下方禁用次表面散射',
+        ('*', '• Auto Mode: Optimizes alpha and subsurface settings for the active engine.'): '• 自动模式：根据当前渲染引擎优化 Alpha 与次表面散射设置。',
+        ('*', '• EEVEE Mode: Realtime-friendly alpha blending and optional subsurface override.'): '• EEVEE 模式：使用实时友好的 Alpha 混合，并可选择覆盖次表面散射。',
+        ('*', '• Cycles Mode: Full physical subsurface scattering where the material provides it.'): '• Cycles 模式：在材质提供次表面数据时使用完整物理次表面散射。',
+        ('*', 'Subsurface Scattering (Leaves / Plants / Crops):'): '次表面散射（树叶 / 植物 / 农作物）：',
     }
 }
 

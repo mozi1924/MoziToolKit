@@ -324,12 +324,6 @@ class ConfigManager:
                     prefs.pack_textures = data.material_settings.pack_textures
                 if hasattr(prefs, "material_render_engine"):
                     prefs.material_render_engine = data.material_settings.render_engine
-                if hasattr(prefs, "enable_game_semantics"):
-                    prefs.enable_game_semantics = data.material_settings.enable_game_semantics
-                if hasattr(prefs, "material_transmission_mode"):
-                    prefs.material_transmission_mode = data.material_settings.transmission_mode
-                if hasattr(prefs, "material_thin_wall_mode"):
-                    prefs.material_thin_wall_mode = data.material_settings.thin_wall_mode
                 if hasattr(prefs, "material_disable_subsurface"):
                     prefs.material_disable_subsurface = data.material_settings.disable_subsurface
                 if hasattr(prefs, "material_subsurface_method"):
@@ -457,9 +451,6 @@ class ConfigManager:
                     biome_preset=getattr(prefs, "biome_preset", "PLAINS"),
                     pack_textures=getattr(prefs, "pack_textures", True),
                     render_engine=getattr(prefs, "material_render_engine", "AUTO"),
-                    enable_game_semantics=getattr(prefs, "enable_game_semantics", True),
-                    transmission_mode=getattr(prefs, "material_transmission_mode", "AUTO"),
-                    thin_wall_mode=getattr(prefs, "material_thin_wall_mode", "AUTO"),
                     disable_subsurface=getattr(prefs, "material_disable_subsurface", False),
                     subsurface_method=getattr(prefs, "material_subsurface_method", "BURLEY"),
                 )

@@ -42,7 +42,6 @@ from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
     ATTR_COLORMAP_UV,
-    ATTR_MATERIAL_PROPS,
 )
 
 def _write_dummy_png(path: Path):
@@ -95,7 +94,6 @@ class TestMaterialPipeline(unittest.TestCase):
                     category_chunk_index=1,
                     stack_fingerprint="test_fp_456",
                     use_attribute_node=True,
-                    use_labpbr=True,
                 )
 
                 self.assertIsNotNone(mat)
@@ -112,11 +110,9 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn("MTK UV Transform", node_names)
                 self.assertIn("MTK UV Rotation", node_names)
                 self.assertIn("Atlas UV Tiling", node_names)
-                self.assertIn("LabPBR Decoder", node_names)
-                self.assertIn("Attr Material Props", node_names)
-                self.assertIn("Split Material Props", node_names)
-                self.assertIn("Clamp Thin Wall", node_names)
-                self.assertIn("Safe Sticker Threshold", node_names)
+                self.assertIn("Principled BSDF", node_names)
+                self.assertNotIn("LabPBR Decoder", node_names)
+                self.assertNotIn("Attr Material Props", node_names)
         finally:
             if "MTK:Atlas:blocks:001" in bpy.data.materials:
                 bpy.data.materials.remove(bpy.data.materials["MTK:Atlas:blocks:001"])
@@ -144,7 +140,6 @@ class TestMaterialPipeline(unittest.TestCase):
                     category_chunk_index=1,
                     stack_fingerprint="test_fp_overlay",
                     use_attribute_node=True,
-                    use_labpbr=True,
                 )
 
                 self.assertIsNotNone(mat)
@@ -157,7 +152,8 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn("MC Biome Tint", node_names)
                 self.assertIn("MC Biome Colormap Decoder", node_names)
                 self.assertIn("Colormap Grass", node_names)
-                self.assertIn("LabPBR Decoder", node_names)
+                self.assertIn("Principled BSDF", node_names)
+                self.assertNotIn("LabPBR Decoder", node_names)
 
                 cm_grass_node = mat.node_tree.nodes["Colormap Grass"]
                 self.assertEqual(cm_grass_node.interpolation, "Linear")
@@ -252,7 +248,7 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
                 self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
                 self.assertIn(ATTR_COLORMAP_UV, mesh.attributes)
-                self.assertIn(ATTR_MATERIAL_PROPS, mesh.attributes)
+                self.assertNotIn("mtk_material_props", mesh.attributes)
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
 
@@ -604,10 +600,9 @@ class TestMaterialPipeline(unittest.TestCase):
             bpy.data.images.remove(f32_img)
 
     def test_pipeline_exports_and_constants(self):
-        """Verify that pipeline module always exposes ATTR_MATERIAL_PROPS and biome helpers."""
+        """The pipeline no longer exposes the removed mtk_material_props contract."""
         import MoziToolKit.utils.materials.pipeline as pipe
-        self.assertTrue(hasattr(pipe, "ATTR_MATERIAL_PROPS"))
-        self.assertEqual(pipe.ATTR_MATERIAL_PROPS, "mtk_material_props")
+        self.assertFalse(hasattr(pipe, "ATTR_MATERIAL_PROPS"))
         self.assertTrue(hasattr(pipe, "get_or_load_biome_resolver"))
         self.assertTrue(hasattr(pipe, "compute_biome_tint_attributes"))
         self.assertTrue(hasattr(pipe, "apply_biome_tint_attributes"))

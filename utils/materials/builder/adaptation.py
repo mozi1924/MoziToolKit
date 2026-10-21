@@ -1,12 +1,14 @@
 """
-Real-time Render Engine Adaptation Service.
-Monitors scene render engine changes (Cycles <-> EEVEE) and updates material shader
-trees (Transmission scale, Thin Wall, Subsurface Scattering) dynamically in real time.
+Render Engine Adaptation Hooks (standard PBR).
+
+The v2.1 material graph has no per-engine transmission / thin-wall / sticker branches,
+so there is nothing to rewrite when the scene switches between Cycles and EEVEE. These
+handlers are kept as add-on lifecycle hooks for future standard-PBR adaptations
+(for example an optional global subsurface override).
 """
 
 from __future__ import annotations
 
-import logging
 from typing import Any, Dict, Optional
 
 try:
@@ -16,12 +18,6 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from .shading_config import resolve_material_shading_config
-from ...config import get_config_manager
-
-logger = logging.getLogger(__name__)
-
-_is_updating_adaptation: bool = False
 _last_known_engine_by_scene: Dict[int, str] = {}
 
 
@@ -30,88 +26,11 @@ def update_materials_render_engine_adaptation(
     detected_engine: Optional[str] = None,
     context: Optional[Any] = None,
 ) -> int:
+    """No-op placeholder for future standard-PBR engine adaptations.
+
+    Returns the number of updated materials (currently always 0).
     """
-    Updates all MTK materials in the blend file according to the active scene render engine.
-    Returns the number of updated materials.
-    """
-    if not HAS_BPY or not hasattr(bpy, "data") or not hasattr(bpy.data, "materials"):
-        return 0
-
-    global _is_updating_adaptation
-    if _is_updating_adaptation:
-        return 0
-
-    _is_updating_adaptation = True
-    updated_count = 0
-
-    try:
-        # 1. Fetch user material preferences
-        settings = None
-        if get_config_manager is not None:
-            try:
-                settings = get_config_manager().get_material_settings()
-            except Exception:
-                settings = None
-
-        pref_engine = getattr(settings, "render_engine", "AUTO") if settings else "AUTO"
-        trans_mode = getattr(settings, "transmission_mode", "AUTO") if settings else "AUTO"
-        disable_sss = getattr(settings, "disable_subsurface", False) if settings else False
-
-        # 2. Determine target engine
-        active_scene = scene or (bpy.context.scene if bpy.context else None)
-        engine_str = detected_engine
-        if not engine_str and active_scene and hasattr(active_scene, "render"):
-            engine_str = getattr(active_scene.render, "engine", "CYCLES")
-
-        if pref_engine == "AUTO":
-            is_eevee = bool(engine_str in {"BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"})
-            target_engine = "EEVEE" if is_eevee else "CYCLES"
-        else:
-            target_engine = pref_engine.upper()
-            is_eevee = (target_engine == "EEVEE")
-
-        # 3. Calculate target transmission scale for Atlas materials
-        if is_eevee or trans_mode == "DISABLED":
-            atlas_trans_scale = 0.0
-        else:
-            atlas_trans_scale = 1.0
-
-        # 4. Iterate over all MTK materials and apply adaptations
-        for mat in bpy.data.materials:
-            if not mat or not getattr(mat, "node_tree", None):
-                continue
-
-            mat_name = getattr(mat, "name", "")
-            mat_mode = mat.get("mtk_material_mode")
-
-            # Check if this is an MTK Atlas material
-            is_atlas = (mat_mode == "ATLAS" or mat_name.startswith("MTK:Atlas:"))
-            if not is_atlas:
-                continue
-
-            nodes = mat.node_tree.nodes
-
-            # Update Material Transmission Scale node
-            scale_node = nodes.get("Material Transmission Scale")
-            if scale_node and hasattr(scale_node, "inputs") and len(scale_node.inputs) > 1:
-                if scale_node.inputs[1].default_value != atlas_trans_scale:
-                    scale_node.inputs[1].default_value = atlas_trans_scale
-                    updated_count += 1
-
-            # Update LabPBR Decoder SSS
-            decoder_node = nodes.get("LabPBR Decoder")
-            if decoder_node and hasattr(decoder_node, "inputs"):
-                if "Disable Subsurface" in decoder_node.inputs:
-                    if decoder_node.inputs["Disable Subsurface"].default_value != bool(disable_sss):
-                        decoder_node.inputs["Disable Subsurface"].default_value = bool(disable_sss)
-                        updated_count += 1
-
-    except Exception as e:
-        logger.warning("Error during real-time render engine material adaptation: %s", e)
-    finally:
-        _is_updating_adaptation = False
-
-    return updated_count
+    return 0
 
 
 @bpy.app.handlers.persistent

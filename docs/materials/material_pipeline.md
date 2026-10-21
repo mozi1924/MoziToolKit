@@ -133,10 +133,12 @@ graph LR
     MatGen --> AlignUV[局部 UV 自动对齐重构]
 ```
 
+> **v2.1 PBR 变更**：PBR 伴生图在 Rust 预编译期解码为 `MtkPackedV1`（`_n` = OpenGL 法线 + 高度，`_orm` = AO/粗糙度/金属度/发光，`_aux` = IOR/孔隙度/SSS/透射），运行时 `LabPBR 1.3 Decoder` 已从材质图移除。详见 [PBR 通道规范](pbr_channel_spec.md)。
+
 ### 3.1 图集预编译与视口替换生命周期解耦 (Decoupled Precompilation)
 MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部收拢在 **预编译烘焙阶段（Precompilation Bake）**：
 - **预编译执行时机**：通过 `mozi.precompile_cache` 算子触发，或在用户首次对场景执行材质替换且当前材质栈尚未烘焙时自动执行。
-- **预编译产物**：为整个材质栈生成唯一的 `stack_hash`，并在磁盘上构建由 `atlas_mapping.json`、`*_albedo.png` 以及按需生成的伴生 `*_normal.png` / `*_specular.png` 构成的完整图集切片库。
+- **预编译产物**：为整个材质栈生成唯一的 `stack_hash`，并在磁盘上构建由 `atlas_mapping.json`、`*_albedo.png` 以及按需生成的 `*_n.png`（GL 法线 + 高度）/ `*_orm.png` / `*_aux.png` 构成的完整图集切片库。
 - **视口替换（Instant Binding）**：当用户在 3D 视口中点击“替换材质”时，算子直接读取已持久化的 `atlas_mapping.json`，在毫秒级内完成网格 Loop UV 重映射与 Material Slot 赋予，**杜绝在视口操作时发生重复的磁盘扫描或图像重重组**。
 
 ### 3.2 图集零透明占位与融合装箱契约 (Zero-Placeholder Packing Contract)
@@ -148,7 +150,7 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 2. **全量材质包覆盖机制（如 Faithful 32x）**：
    - 若用户添加了一个覆盖全量 Minecraft 方块的材质包，所有方块的漫反射贴图均在顶层被直接命中，烘焙出的图集整张完全呈现该材质包的高清纹理。
 3. **PBR 伴生图集按需分配机制（On-Demand Companion Sheets）**：
-   - 图集以 `Chunk` 为单位进行空间划分。只有当某一个 Chunk 内所包含的方块中至少有一个方块具有 `_n` 或 `_s` 伴生贴图时，系统才会为该 Chunk 分配并保存对应的 `normal` / `specular` 伴生大图；
+   - 图集以 `Chunk` 为单位进行空间划分。只有当某一个 Chunk 内所包含的方块中至少有一个方块具有 `_n` 或 `_s` 伴生贴图时，系统才会为该 Chunk 分配并保存解码后的 `_n` / `_orm` / `_aux` 伴生大图；
    - 对于纯原版方块构成的无 PBR Chunk，**严禁生成无意义的全尺寸法线/高光空白大图**，从而大幅节省显存占用与磁盘缓存空间。
 
 ### 3.3 独立模式：全栈融合单方块资产库 (Standalone Mode: Stack-Synthesized Asset Library)
@@ -311,7 +313,7 @@ MoziToolKit 提供了从底层色彩插值到交互式 UI 的全套生物群系�
 - **`atlas_uv_tiling.py`**：防溢色平铺映射节点组（Anti-Bleed UV Tiling）。
 - **`animated.py`**：逐帧动态材质时间轴驱动器节点组。
 - **`biome.py`**：生物群系平滑混合色图解码器（`MC_Biome_Colormap_Decoder`）。
-- **`labpbr.py`**：LabPBR 1.3 格式（法线、粗糙度、金属性、自发光、次表面散射）解析着色器节点组。
+- **`labpbr.py`**：Legacy 参考实现；运行时材质不再实例化。新材质由 `pbr_channel_spec.md` 定义的预编译通道直接驱动。
 - **`parallax.py`**：POM（Parallax Occlusion Mapping）视差遮挡贴图 UV 位移节点组。
 
 ### 8.4 材质替换与逆向恢复管线 (`utils/materials/pipeline/`)

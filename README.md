@@ -36,7 +36,8 @@
   - **图集分块模式 (Atlas Chunk)**：采用二维装箱算法动态拼合，应用安全 Padding 与 UV Clamp 防溢色算法，通过面级属性（`mtk_atlas_chunk_id` / `mtk_source_texture_key`）驱动共享材质槽位。
   - **独立材质模式 (Standalone PBR)**：预编译通道全栈融合，支持独立纹理展开。
 - **PBR 与实时渲染引擎适配**：
-  - 完整实现 LabPBR（法线、粗糙度、金属度、发光、次表面散射 Thin-Wall）与 OldPBR 规范。
+  - 预编译期将 LabPBR `_n`/`_s` 解码为标准通道（`_n` 法线+高度、`_orm`、`_aux`）；Blender 材质只使用标准 Principled，不再运行时解码。
+  - 玻璃/水/自发光等逐面游戏语义已移除；后续由内部 fallback PBR 贴图与 `aux.A` transmission 通道补齐。
   - 自动适配 Eevee Next 与 Cycles 渲染器着色节点特性。
 - **权威生物群系调色板 (Biome Palette SSOT)**：
   - 内置 66 种原版规范生物群系，提供温度/湿度双线性三角坐标采样与 Linear RGBA 色彩转换。

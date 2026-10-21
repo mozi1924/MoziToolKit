@@ -1,8 +1,16 @@
 """
-Atlas Chunk Material Builder.
-Constructs Principled BSDF / LabPBR 1.3 shader node trees for Atlas Chunk materials,
-with structured Frame organization, neat node layout coordinates, overlay blending,
-and dynamic Biome Tinting integration.
+Atlas Chunk Material Builder (MtkPackedV1 standard PBR).
+
+Builds a standard Principled BSDF material from the Rust-predecoded atlas sheets:
+
+- ``{stem}.png``      albedo (sRGB, alpha = opacity)
+- ``{stem}_n.png``    OpenGL normal RGB + height A (Non-Color)
+- ``{stem}_orm.png``  AO / roughness / metallic / emission mask (Non-Color)
+- ``{stem}_aux.png``  encoded IOR / porosity / SSS / transmission (Non-Color)
+- ``{stem}_overlay.png`` albedo overlay (sRGB)
+
+There is no LabPBR decoder and no per-face game-semantic branch here. The only
+Minecraft-specific stages that remain are UV tiling, biome tinting and animation.
 """
 
 from __future__ import annotations
@@ -18,7 +26,6 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from ...node_groups.labpbr import ensure_labpbr_decoder
 from ...node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
 from ...node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
 from ...node_groups.animated import (
@@ -34,7 +41,6 @@ from ..constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
     ATTR_COLORMAP_UV,
-    ATTR_MATERIAL_PROPS,
 )
 from .image_utils import (
     ensure_material_node_tree,
@@ -42,87 +48,18 @@ from .image_utils import (
     _create_frame,
     set_material_displacement_method,
 )
+from .pbr_graph import build_pbr_shading
 from .shading_config import resolve_material_shading_config
 
-
-def add_packed_material_props_nodes(
-    nodes: Any,
-    links: Any,
-    decoder_node: Any,
-    location: tuple[float, float] = (150, -250),
-    parent: Optional[Any] = None,
-    cfg: Optional[Dict[str, Any]] = None,
-) -> None:
-    """Connect packed material properties attribute (Hardcoded Emission, Thin Wall, Transmission, Sticker Threshold) to decoder."""
-    attr_props = nodes.new("ShaderNodeAttribute")
-    attr_props.name = "Attr Material Props"
-    attr_props.attribute_type = "GEOMETRY"
-    attr_props.attribute_name = ATTR_MATERIAL_PROPS
-    attr_props.location = location
-    if parent:
-        attr_props.parent = parent
-
-    split_props = nodes.new("ShaderNodeSeparateColor")
-    split_props.name = "Split Material Props"
-    split_props.location = (location[0] + 180, location[1])
-    if parent:
-        split_props.parent = parent
-    links.new(attr_props.outputs["Color"], split_props.inputs["Color"])
-
-    # Red: Hardcoded Emission
-    if "Hardcoded Emission" in decoder_node.inputs:
-        links.new(split_props.outputs["Red"], decoder_node.inputs["Hardcoded Emission"])
-
-    # Green: Thin Wall (clamped with Greater Than 0.5 to prevent float jitter)
-    if "Thin Wall" in decoder_node.inputs:
-        clamp_thin = nodes.new("ShaderNodeMath")
-        clamp_thin.name = "Clamp Thin Wall"
-        clamp_thin.operation = 'GREATER_THAN'
-        clamp_thin.inputs[1].default_value = 0.5
-        clamp_thin.location = (location[0] + 360, location[1] - 50)
-        if parent:
-            clamp_thin.parent = parent
-        links.new(split_props.outputs["Green"], clamp_thin.inputs[0])
-        links.new(clamp_thin.outputs["Value"], decoder_node.inputs["Thin Wall"])
-
-    # Blue: Transmission Weight
-    # Controlled by engine adaptation: In EEVEE or disabled transmission, scale is 0.0 to prevent black rendering artifacts
-    if "Transmission Weight" in decoder_node.inputs:
-        trans_scale = 1.0
-        if cfg:
-            if cfg.get("is_eevee", False) or cfg.get("transmission_mode") == "DISABLED":
-                trans_scale = 0.0
-            else:
-                trans_scale = 1.0
-
-        scale_trans = nodes.new("ShaderNodeMath")
-        scale_trans.name = "Material Transmission Scale"
-        scale_trans.operation = 'MULTIPLY'
-        scale_trans.inputs[1].default_value = trans_scale
-        scale_trans.location = (location[0] + 360, location[1] - 100)
-        if parent:
-            scale_trans.parent = parent
-        links.new(split_props.outputs["Blue"], scale_trans.inputs[0])
-        links.new(scale_trans.outputs["Value"], decoder_node.inputs["Transmission Weight"])
-
-    # Alpha: Sticker Threshold (Safe fallback to 0.55 if 0.0 / uninitialized)
-    if "Sticker Threshold" in decoder_node.inputs:
-        safe_thresh = nodes.new("ShaderNodeMath")
-        safe_thresh.name = "Safe Sticker Threshold"
-        safe_thresh.operation = 'MAXIMUM'
-        safe_thresh.inputs[1].default_value = 0.55
-        safe_thresh.location = (location[0] + 360, location[1] - 150)
-        if parent:
-            safe_thresh.parent = parent
-        links.new(attr_props.outputs["Alpha"], safe_thresh.inputs[0])
-        links.new(safe_thresh.outputs["Value"], decoder_node.inputs["Sticker Threshold"])
+PBR_LAYOUT_VERSION = "mtk_packed_v1"
 
 
 def build_atlas_chunk_material(
     chunk_id: int,
     albedo_path: str | Path,
     normal_path: Optional[str | Path] = None,
-    specular_path: Optional[str | Path] = None,
+    orm_path: Optional[str | Path] = None,
+    aux_path: Optional[str | Path] = None,
     overlay_path: Optional[str | Path] = None,
     colormaps: Optional[Dict[str, str | Path]] = None,
     category: str = "blocks",
@@ -131,7 +68,6 @@ def build_atlas_chunk_material(
     stack_fingerprint: Optional[str] = None,
     material_name: Optional[str] = None,
     use_attribute_node: bool = True,
-    use_labpbr: bool = True,
     atlas_width: float = 4096.0,
     atlas_height: float = 4096.0,
     tile_width: float = 16.0,
@@ -139,15 +75,10 @@ def build_atlas_chunk_material(
     force_rebuild: bool = False,
     uv_map_name: Optional[str] = None,
     render_engine: Optional[str] = None,
-    enable_game_semantics: Optional[bool] = None,
-    enable_transmission: Optional[bool] = None,
-    enable_thin_wall: Optional[bool] = None,
     disable_subsurface: Optional[bool] = None,
     chunk_stem: Optional[str] = None,
 ) -> Optional[Any]:
-    """
-    Builds or updates an Atlas Chunk Minecraft material in Blender with structured Frames.
-    """
+    """Build or update an Atlas Chunk material with standard Principled PBR."""
     if not HAS_BPY:
         return None
 
@@ -165,20 +96,32 @@ def build_atlas_chunk_material(
         and stack_fingerprint
         and mat.get("mtk_stack_fingerprint") != stack_fingerprint
     )
-    if not force_rebuild and not is_stale_fingerprint and mat is not None and getattr(mat, "node_tree", None) and len(mat.node_tree.nodes) > 0:
+    is_stale_layout = bool(
+        mat is not None and mat.get("mtk_pbr_layout") != PBR_LAYOUT_VERSION
+    )
+    if (
+        not force_rebuild
+        and not is_stale_fingerprint
+        and not is_stale_layout
+        and mat is not None
+        and getattr(mat, "node_tree", None)
+        and len(mat.node_tree.nodes) > 0
+    ):
         if (
             mat.get("mtk_atlas_chunk_id") == chunk_id
             and mat.get("mtk_uv_map_name", "UVMap") == target_uv_map
         ):
             return mat
 
-    image_reload_needed = force_rebuild or is_stale_fingerprint
+    image_reload_needed = force_rebuild or is_stale_fingerprint or is_stale_layout
 
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
 
-    # Set authoritative lightweight custom properties
+    # Authoritative lightweight custom properties.
     mat["mtk_material_mode"] = "ATLAS"
+    mat["mtk_pbr_layout"] = PBR_LAYOUT_VERSION
+    mat["mtk_has_pbr"] = bool(normal_path or orm_path or aux_path)
     mat["mtk_atlas_category"] = category
     mat["mtk_atlas_chunk_id"] = chunk_id
     mat["mtk_atlas_chunk_index"] = category_chunk_index
@@ -197,24 +140,21 @@ def build_atlas_chunk_material(
     nodes.clear()
 
     # -------------------------------------------------------------------------
-    # 0. Layout Frames (Logical Responsibility Subgraphs)
+    # 0. Layout frames
     # -------------------------------------------------------------------------
     frame_uv = _create_frame(nodes, "Frame_UV", "UV Coordinates & Tiling", (0.15, 0.25, 0.40))
     frame_tex = _create_frame(nodes, "Frame_Textures", "Texture Maps Input", (0.15, 0.35, 0.25))
     frame_biome = _create_frame(nodes, "Frame_Biome", "Biome Tint & Colormap Decoding", (0.35, 0.25, 0.15))
-    frame_shading = _create_frame(nodes, "Frame_Shading", "LabPBR 1.3 Material Shading", (0.30, 0.20, 0.35))
+    frame_shading = _create_frame(nodes, "Frame_Shading", "Standard PBR Shading", (0.30, 0.20, 0.35))
     frame_output = _create_frame(nodes, "Frame_Output", "Material Output", (0.20, 0.20, 0.20))
 
-    # -------------------------------------------------------------------------
-    # 1. Output Node (X: 1400)
-    # -------------------------------------------------------------------------
     output_node = nodes.new("ShaderNodeOutputMaterial")
     output_node.name = "Material Output"
     output_node.location = (1400, 0)
     output_node.parent = frame_output
 
     # -------------------------------------------------------------------------
-    # 2. UV & Coordinate Pipeline (X: -2200 to -1400)
+    # 1. UV & coordinate pipeline
     # -------------------------------------------------------------------------
     uv_node = nodes.new("ShaderNodeUVMap")
     uv_node.name = "UV Map"
@@ -227,7 +167,6 @@ def build_atlas_chunk_material(
     if use_attribute_node:
         tiling_group = ensure_atlas_uv_tiling()
         if tiling_group:
-            # Attribute for UV transform: [scale_u, scale_v, loc_u, loc_v]
             attr_transform = nodes.new("ShaderNodeAttribute")
             attr_transform.name = "MTK UV Transform"
             attr_transform.location = (-2200, -50)
@@ -235,7 +174,6 @@ def build_atlas_chunk_material(
             attr_transform.attribute_type = "GEOMETRY"
             attr_transform.parent = frame_uv
 
-            # Attribute for UV rotation: float angle in radians
             attr_rotation = nodes.new("ShaderNodeAttribute")
             attr_rotation.name = "MTK UV Rotation"
             attr_rotation.location = (-2200, -280)
@@ -243,7 +181,6 @@ def build_atlas_chunk_material(
             attr_rotation.attribute_type = "GEOMETRY"
             attr_rotation.parent = frame_uv
 
-            # Separate Transform Color (R=scale_u, G=scale_v, B=loc_u, A=loc_v)
             sep_tf = nodes.new("ShaderNodeSeparateColor")
             sep_tf.name = "Separate UV Transform"
             sep_tf.location = (-1950, -50)
@@ -254,7 +191,6 @@ def build_atlas_chunk_material(
             green_sock = sep_tf.outputs.get("Green") or sep_tf.outputs[1]
             blue_sock = sep_tf.outputs.get("Blue") or sep_tf.outputs[2]
 
-            # Scale CombineXYZ: (scale_u, scale_v, 1.0)
             scale_comb = nodes.new("ShaderNodeCombineXYZ")
             scale_comb.name = "Combine Scale"
             scale_comb.location = (-1720, 100)
@@ -263,7 +199,6 @@ def build_atlas_chunk_material(
             links.new(red_sock, scale_comb.inputs["X"])
             links.new(green_sock, scale_comb.inputs["Y"])
 
-            # Location CombineXYZ: (loc_u, loc_v, 0.0)
             loc_comb = nodes.new("ShaderNodeCombineXYZ")
             loc_comb.name = "Combine Location"
             loc_comb.location = (-1720, -70)
@@ -272,7 +207,6 @@ def build_atlas_chunk_material(
             links.new(blue_sock, loc_comb.inputs["X"])
             links.new(attr_transform.outputs["Alpha"], loc_comb.inputs["Y"])
 
-            # Rotation CombineXYZ: (0.0, 0.0, rotation)
             rot_comb = nodes.new("ShaderNodeCombineXYZ")
             rot_comb.name = "Combine Rotation"
             rot_comb.location = (-1720, -240)
@@ -282,7 +216,6 @@ def build_atlas_chunk_material(
             rot_factor = attr_rotation.outputs.get("Factor") or attr_rotation.outputs.get("Fac") or attr_rotation.outputs[2]
             links.new(rot_factor, rot_comb.inputs["Z"])
 
-            # MC_Atlas_UV_Tiling Group Node
             tiling_node = nodes.new("ShaderNodeGroup")
             tiling_node.name = "Atlas UV Tiling"
             tiling_node.node_tree = tiling_group
@@ -301,10 +234,9 @@ def build_atlas_chunk_material(
             target_uv_output = tiling_node.outputs["Atlas UV"]
 
     # -------------------------------------------------------------------------
-    # 2.5 Animated UV Mapping Pipeline (if animated chunk)
+    # 2. Animated UV mapping (all maps share one frame clock)
     # -------------------------------------------------------------------------
     anim_uv_node = None
-    anim_blend_node = None
     anim_curr_uv = target_uv_output
     anim_next_uv = target_uv_output
     blend_factor_sock = None
@@ -313,49 +245,37 @@ def build_atlas_chunk_material(
         sched_group = ensure_animation_scheduler()
         uv_map_group = ensure_animated_uv_mapping()
         if sched_group and uv_map_group:
-            # Attribute node for face animation timing:
-            # X: Total Frames, Y: Frametime, Z: Interpolate
             attr_anim = nodes.new("ShaderNodeAttribute")
             attr_anim.name = "Face Anim Timing"
             attr_anim.attribute_type = "GEOMETRY"
             attr_anim.attribute_name = "mtk_anim_timing"
             attr_anim.location = (-2150, 350)
-            if frame_uv:
-                attr_anim.parent = frame_uv
+            attr_anim.parent = frame_uv
 
             sep_anim = nodes.new("ShaderNodeSeparateXYZ")
             sep_anim.name = "Separate Anim Timing"
             sep_anim.location = (-1920, 350)
-            if frame_uv:
-                sep_anim.parent = frame_uv
-
+            sep_anim.parent = frame_uv
             links.new(attr_anim.outputs["Vector"], sep_anim.inputs["Vector"])
 
-            # Attribute node for face animation frame size:
-            # X: Frame Width, Y: Frame Height
             attr_fsize = nodes.new("ShaderNodeAttribute")
             attr_fsize.name = "Face Anim Frame Size"
             attr_fsize.attribute_type = "GEOMETRY"
             attr_fsize.attribute_name = "mtk_anim_frame_size"
             attr_fsize.location = (-2150, 100)
-            if frame_uv:
-                attr_fsize.parent = frame_uv
+            attr_fsize.parent = frame_uv
 
             sep_fsize = nodes.new("ShaderNodeSeparateXYZ")
             sep_fsize.name = "Separate Anim Frame Size"
             sep_fsize.location = (-1920, 100)
-            if frame_uv:
-                sep_fsize.parent = frame_uv
-
+            sep_fsize.parent = frame_uv
             links.new(attr_fsize.outputs["Vector"], sep_fsize.inputs["Vector"])
 
             sched_node = nodes.new("ShaderNodeGroup")
             sched_node.name = "Animation Scheduler"
             sched_node.node_tree = sched_group
             sched_node.location = (-1700, 350)
-            if frame_uv:
-                sched_node.parent = frame_uv
-
+            sched_node.parent = frame_uv
             links.new(sep_anim.outputs["X"], sched_node.inputs["Total Frames"])
             links.new(sep_anim.outputs["Y"], sched_node.inputs["Frametime"])
             links.new(sep_anim.outputs["Z"], sched_node.inputs["Interpolate"])
@@ -369,12 +289,10 @@ def build_atlas_chunk_material(
             anim_uv_node.inputs["Image Width"].default_value = float(atlas_width)
             anim_uv_node.inputs["Image Height"].default_value = float(atlas_height)
             anim_uv_node.inputs["Atlas Mode"].default_value = 1.0
-            if frame_uv:
-                anim_uv_node.parent = frame_uv
+            anim_uv_node.parent = frame_uv
 
             links.new(sep_fsize.outputs["X"], anim_uv_node.inputs["Frame Width"])
             links.new(sep_fsize.outputs["Y"], anim_uv_node.inputs["Frame Height"])
-
             links.new(target_uv_output, anim_uv_node.inputs["Vector"])
             links.new(sched_node.outputs["Current Frame"], anim_uv_node.inputs["Current Frame"])
             links.new(sched_node.outputs["Next Frame"], anim_uv_node.inputs["Next Frame"])
@@ -384,11 +302,16 @@ def build_atlas_chunk_material(
             anim_next_uv = anim_uv_node.outputs["Next UV"]
             blend_factor_sock = anim_uv_node.outputs["Blend Factor"]
 
-    # -------------------------------------------------------------------------
-    # 3. Texture Maps Input (X: -1150)
-    # -------------------------------------------------------------------------
     active_sample_uv = anim_curr_uv if is_animated else target_uv_output
-    c_stem = chunk_stem or (f"{category}_anim_chunk_{category_chunk_index:03}" if is_animated else f"{category}_chunk_{category_chunk_index:03}")
+    c_stem = chunk_stem or (
+        f"{category}_anim_chunk_{category_chunk_index:03}"
+        if is_animated
+        else f"{category}_chunk_{category_chunk_index:03}"
+    )
+
+    # -------------------------------------------------------------------------
+    # 3. Albedo + overlay
+    # -------------------------------------------------------------------------
     albedo_img = get_or_create_image(
         albedo_path,
         colorspace="sRGB",
@@ -425,14 +348,12 @@ def build_atlas_chunk_material(
                 anim_blend_node.node_tree = blend_group
                 anim_blend_node.location = (-880, 300)
                 anim_blend_node.parent = frame_tex
-
                 links.new(albedo_node.outputs["Color"], anim_blend_node.inputs["Current Color"])
                 links.new(albedo_next_node.outputs["Color"], anim_blend_node.inputs["Next Color"])
                 links.new(albedo_node.outputs["Alpha"], anim_blend_node.inputs["Current Alpha"])
                 links.new(albedo_next_node.outputs["Alpha"], anim_blend_node.inputs["Next Alpha"])
                 if blend_factor_sock:
                     links.new(blend_factor_sock, anim_blend_node.inputs["Blend Factor"])
-
                 albedo_out_color = anim_blend_node.outputs["Color"]
                 albedo_out_alpha = anim_blend_node.outputs["Alpha"]
             else:
@@ -487,14 +408,12 @@ def build_atlas_chunk_material(
                     anim_overlay_blend.node_tree = blend_group
                     anim_overlay_blend.location = (-880, 810)
                     anim_overlay_blend.parent = frame_tex
-
                     links.new(overlay_node.outputs["Color"], anim_overlay_blend.inputs["Current Color"])
                     links.new(overlay_next_node.outputs["Color"], anim_overlay_blend.inputs["Next Color"])
                     links.new(overlay_node.outputs["Alpha"], anim_overlay_blend.inputs["Current Alpha"])
                     links.new(overlay_next_node.outputs["Alpha"], anim_overlay_blend.inputs["Next Alpha"])
                     if blend_factor_sock:
                         links.new(blend_factor_sock, anim_overlay_blend.inputs["Blend Factor"])
-
                     overlay_out_color = anim_overlay_blend.outputs["Color"]
                     overlay_out_alpha = anim_overlay_blend.outputs["Alpha"]
                 else:
@@ -512,9 +431,10 @@ def build_atlas_chunk_material(
                 overlay_out_color = overlay_node.outputs["Color"]
                 overlay_out_alpha = overlay_node.outputs["Alpha"]
 
-    normal_node = None
+    # -------------------------------------------------------------------------
+    # 4. Canonical PBR maps: normal+height, ORM+emission, aux
+    # -------------------------------------------------------------------------
     normal_out_color = None
-    normal_out_height = None
     if normal_path:
         normal_img = get_or_create_image(
             normal_path,
@@ -529,7 +449,7 @@ def build_atlas_chunk_material(
                 normal_node.image = normal_img
                 normal_node.interpolation = "Closest"
                 normal_node.extension = "CLIP"
-                normal_node.location = (-1150, -100)
+                normal_node.location = (-1150, 20)
                 normal_node.parent = frame_tex
                 links.new(anim_curr_uv, normal_node.inputs["Vector"])
 
@@ -538,7 +458,7 @@ def build_atlas_chunk_material(
                 normal_next_node.image = normal_img
                 normal_next_node.interpolation = "Closest"
                 normal_next_node.extension = "CLIP"
-                normal_next_node.location = (-1150, -360)
+                normal_next_node.location = (-1150, -240)
                 normal_next_node.parent = frame_tex
                 links.new(anim_next_uv, normal_next_node.inputs["Vector"])
 
@@ -547,21 +467,17 @@ def build_atlas_chunk_material(
                     anim_norm_blend = nodes.new("ShaderNodeGroup")
                     anim_norm_blend.name = "Animated Normal Blend"
                     anim_norm_blend.node_tree = norm_blend_group
-                    anim_norm_blend.location = (-880, -230)
+                    anim_norm_blend.location = (-880, -100)
                     anim_norm_blend.parent = frame_tex
-
                     links.new(normal_node.outputs["Color"], anim_norm_blend.inputs["Current Normal"])
                     links.new(normal_next_node.outputs["Color"], anim_norm_blend.inputs["Next Normal"])
                     links.new(normal_node.outputs["Alpha"], anim_norm_blend.inputs["Current Height"])
                     links.new(normal_next_node.outputs["Alpha"], anim_norm_blend.inputs["Next Height"])
                     if blend_factor_sock:
                         links.new(blend_factor_sock, anim_norm_blend.inputs["Blend Factor"])
-
                     normal_out_color = anim_norm_blend.outputs["Normal"]
-                    normal_out_height = anim_norm_blend.outputs["Height"]
                 else:
                     normal_out_color = normal_node.outputs["Color"]
-                    normal_out_height = normal_node.outputs["Alpha"]
             else:
                 normal_node = nodes.new("ShaderNodeTexImage")
                 normal_node.name = "Atlas Normal Texture"
@@ -572,72 +488,125 @@ def build_atlas_chunk_material(
                 normal_node.parent = frame_tex
                 links.new(active_sample_uv, normal_node.inputs["Vector"])
                 normal_out_color = normal_node.outputs["Color"]
-                normal_out_height = normal_node.outputs["Alpha"]
 
-    spec_node = None
-    spec_out_color = None
-    spec_out_emission = None
-    if specular_path:
-        spec_img = get_or_create_image(
-            specular_path,
+    orm_out_color = None
+    orm_out_alpha = None
+    if orm_path:
+        orm_img = get_or_create_image(
+            orm_path,
             colorspace="Non-Color",
             force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_s.png",
+            chunk_id=f"atlas/textures/{c_stem}_orm.png",
         )
-        if spec_img:
+        if orm_img:
             if is_animated and anim_uv_node is not None and ensure_animated_specular_blend is not None:
-                spec_node = nodes.new("ShaderNodeTexImage")
-                spec_node.name = "Atlas Specular Texture (Current)"
-                spec_node.image = spec_img
-                spec_node.interpolation = "Closest"
-                spec_node.extension = "CLIP"
-                spec_node.location = (-1150, -620)
-                spec_node.parent = frame_tex
-                links.new(anim_curr_uv, spec_node.inputs["Vector"])
+                orm_node = nodes.new("ShaderNodeTexImage")
+                orm_node.name = "Atlas ORM Texture (Current)"
+                orm_node.image = orm_img
+                orm_node.interpolation = "Closest"
+                orm_node.extension = "CLIP"
+                orm_node.location = (-1150, -520)
+                orm_node.parent = frame_tex
+                links.new(anim_curr_uv, orm_node.inputs["Vector"])
 
-                spec_next_node = nodes.new("ShaderNodeTexImage")
-                spec_next_node.name = "Atlas Specular Texture (Next)"
-                spec_next_node.image = spec_img
-                spec_next_node.interpolation = "Closest"
-                spec_next_node.extension = "CLIP"
-                spec_next_node.location = (-1150, -880)
-                spec_next_node.parent = frame_tex
-                links.new(anim_next_uv, spec_next_node.inputs["Vector"])
+                orm_next_node = nodes.new("ShaderNodeTexImage")
+                orm_next_node.name = "Atlas ORM Texture (Next)"
+                orm_next_node.image = orm_img
+                orm_next_node.interpolation = "Closest"
+                orm_next_node.extension = "CLIP"
+                orm_next_node.location = (-1150, -780)
+                orm_next_node.parent = frame_tex
+                links.new(anim_next_uv, orm_next_node.inputs["Vector"])
 
-                spec_blend_group = ensure_animated_specular_blend()
-                if spec_blend_group:
-                    anim_spec_blend = nodes.new("ShaderNodeGroup")
-                    anim_spec_blend.name = "Animated Specular Blend"
-                    anim_spec_blend.node_tree = spec_blend_group
-                    anim_spec_blend.location = (-880, -750)
-                    anim_spec_blend.parent = frame_tex
-
-                    links.new(spec_node.outputs["Color"], anim_spec_blend.inputs["Current Specular"])
-                    links.new(spec_next_node.outputs["Color"], anim_spec_blend.inputs["Next Specular"])
-                    links.new(spec_node.outputs["Alpha"], anim_spec_blend.inputs["Current Emission"])
-                    links.new(spec_next_node.outputs["Alpha"], anim_spec_blend.inputs["Next Emission"])
+                # The legacy Specular Blend group is a generic RGB+alpha frame blend;
+                # reuse it for ORM/Aux instead of introducing another node group.
+                orm_blend_group = ensure_animated_specular_blend()
+                if orm_blend_group:
+                    anim_orm_blend = nodes.new("ShaderNodeGroup")
+                    anim_orm_blend.name = "Animated ORM Blend"
+                    anim_orm_blend.node_tree = orm_blend_group
+                    anim_orm_blend.location = (-880, -650)
+                    anim_orm_blend.parent = frame_tex
+                    links.new(orm_node.outputs["Color"], anim_orm_blend.inputs["Current Specular"])
+                    links.new(orm_next_node.outputs["Color"], anim_orm_blend.inputs["Next Specular"])
+                    links.new(orm_node.outputs["Alpha"], anim_orm_blend.inputs["Current Emission"])
+                    links.new(orm_next_node.outputs["Alpha"], anim_orm_blend.inputs["Next Emission"])
                     if blend_factor_sock:
-                        links.new(blend_factor_sock, anim_spec_blend.inputs["Blend Factor"])
-
-                    spec_out_color = anim_spec_blend.outputs["Specular"]
-                    spec_out_emission = anim_spec_blend.outputs["Emission"]
+                        links.new(blend_factor_sock, anim_orm_blend.inputs["Blend Factor"])
+                    orm_out_color = anim_orm_blend.outputs["Specular"]
+                    orm_out_alpha = anim_orm_blend.outputs["Emission"]
                 else:
-                    spec_out_color = spec_node.outputs["Color"]
-                    spec_out_emission = spec_node.outputs["Alpha"]
+                    orm_out_color = orm_node.outputs["Color"]
+                    orm_out_alpha = orm_node.outputs["Alpha"]
             else:
-                spec_node = nodes.new("ShaderNodeTexImage")
-                spec_node.name = "Atlas Specular Texture"
-                spec_node.image = spec_img
-                spec_node.interpolation = "Closest"
-                spec_node.extension = "CLIP"
-                spec_node.location = (-1150, -260)
-                spec_node.parent = frame_tex
-                links.new(active_sample_uv, spec_node.inputs["Vector"])
-                spec_out_color = spec_node.outputs["Color"]
-                spec_out_emission = spec_node.outputs["Alpha"]
+                orm_node = nodes.new("ShaderNodeTexImage")
+                orm_node.name = "Atlas ORM Texture"
+                orm_node.image = orm_img
+                orm_node.interpolation = "Closest"
+                orm_node.extension = "CLIP"
+                orm_node.location = (-1150, -520)
+                orm_node.parent = frame_tex
+                links.new(active_sample_uv, orm_node.inputs["Vector"])
+                orm_out_color = orm_node.outputs["Color"]
+                orm_out_alpha = orm_node.outputs["Alpha"]
+
+    aux_out_color = None
+    if aux_path:
+        aux_img = get_or_create_image(
+            aux_path,
+            colorspace="Non-Color",
+            force_reload=image_reload_needed,
+            chunk_id=f"atlas/textures/{c_stem}_aux.png",
+        )
+        if aux_img:
+            if is_animated and anim_uv_node is not None and ensure_animated_specular_blend is not None:
+                aux_node = nodes.new("ShaderNodeTexImage")
+                aux_node.name = "Atlas Aux Texture (Current)"
+                aux_node.image = aux_img
+                aux_node.interpolation = "Closest"
+                aux_node.extension = "CLIP"
+                aux_node.location = (-1150, -1040)
+                aux_node.parent = frame_tex
+                links.new(anim_curr_uv, aux_node.inputs["Vector"])
+
+                aux_next_node = nodes.new("ShaderNodeTexImage")
+                aux_next_node.name = "Atlas Aux Texture (Next)"
+                aux_next_node.image = aux_img
+                aux_next_node.interpolation = "Closest"
+                aux_next_node.extension = "CLIP"
+                aux_next_node.location = (-1150, -1300)
+                aux_next_node.parent = frame_tex
+                links.new(anim_next_uv, aux_next_node.inputs["Vector"])
+
+                aux_blend_group = ensure_animated_specular_blend()
+                if aux_blend_group:
+                    anim_aux_blend = nodes.new("ShaderNodeGroup")
+                    anim_aux_blend.name = "Animated Aux Blend"
+                    anim_aux_blend.node_tree = aux_blend_group
+                    anim_aux_blend.location = (-880, -1170)
+                    anim_aux_blend.parent = frame_tex
+                    links.new(aux_node.outputs["Color"], anim_aux_blend.inputs["Current Specular"])
+                    links.new(aux_next_node.outputs["Color"], anim_aux_blend.inputs["Next Specular"])
+                    links.new(aux_node.outputs["Alpha"], anim_aux_blend.inputs["Current Emission"])
+                    links.new(aux_next_node.outputs["Alpha"], anim_aux_blend.inputs["Next Emission"])
+                    if blend_factor_sock:
+                        links.new(blend_factor_sock, anim_aux_blend.inputs["Blend Factor"])
+                    aux_out_color = anim_aux_blend.outputs["Specular"]
+                else:
+                    aux_out_color = aux_node.outputs["Color"]
+            else:
+                aux_node = nodes.new("ShaderNodeTexImage")
+                aux_node.name = "Atlas Aux Texture"
+                aux_node.image = aux_img
+                aux_node.interpolation = "Closest"
+                aux_node.extension = "CLIP"
+                aux_node.location = (-1150, -1040)
+                aux_node.parent = frame_tex
+                links.new(active_sample_uv, aux_node.inputs["Vector"])
+                aux_out_color = aux_node.outputs["Color"]
 
     # -------------------------------------------------------------------------
-    # 4. Biome Tint & Colormap Decoding Integration (X: -700 to 200)
+    # 5. Biome tint & colormap decoding
     # -------------------------------------------------------------------------
     biome_tint_group = ensure_biome_tint()
     tint_node = None
@@ -648,16 +617,12 @@ def build_atlas_chunk_material(
         tint_node.location = (200, 350)
         tint_node.parent = frame_biome
 
-        # Base Color & Alpha
         links.new(albedo_out_color, tint_node.inputs["Base Color"])
         links.new(albedo_out_alpha, tint_node.inputs["Base Alpha"])
-
-        # Overlay Color & Alpha
         if overlay_out_color is not None:
             links.new(overlay_out_color, tint_node.inputs["Overlay Color"])
             links.new(overlay_out_alpha, tint_node.inputs["Overlay Alpha"])
 
-        # Mesh Attribute: mtk_biome_tint_data (RGBA: Base Weight, Overlay Weight, Tint Weight, Tint Type)
         attr_tint_data = nodes.new("ShaderNodeAttribute")
         attr_tint_data.name = "Attr Biome Tint Data"
         attr_tint_data.attribute_name = ATTR_BIOME_TINT_DATA
@@ -674,12 +639,10 @@ def build_atlas_chunk_material(
         red_w = sep_tint_data.outputs.get("Red") or sep_tint_data.outputs[0]
         green_w = sep_tint_data.outputs.get("Green") or sep_tint_data.outputs[1]
         blue_w = sep_tint_data.outputs.get("Blue") or sep_tint_data.outputs[2]
-
         links.new(red_w, tint_node.inputs["Base Tint Weight"])
         links.new(green_w, tint_node.inputs["Overlay Tint Weight"])
         links.new(blue_w, tint_node.inputs["Tint Weight"])
 
-        # Mesh Attribute: mtk_biome_tint_color (Fallback / Static / Hardcoded / Water Color)
         attr_tint_col = nodes.new("ShaderNodeAttribute")
         attr_tint_col.name = "Attr Biome Tint Color"
         attr_tint_col.attribute_name = ATTR_BIOME_TINT_COLOR
@@ -687,20 +650,18 @@ def build_atlas_chunk_material(
         attr_tint_col.location = (-450, 100)
         attr_tint_col.parent = frame_biome
 
-        # Colormap Dynamic Decoding Pipeline
         decoder_group_tree = ensure_colormap_decoder()
         active_colormaps = {}
         if colormaps and isinstance(colormaps, dict):
-            for k in ("grass", "foliage", "dry_foliage"):
-                v = colormaps.get(k)
-                if v and (os.path.exists(str(v)) or str(v).startswith("biome/")):
-                    active_colormaps[k] = v
+            for key in ("grass", "foliage", "dry_foliage"):
+                value = colormaps.get(key)
+                if value and (os.path.exists(str(value)) or str(value).startswith("biome/")):
+                    active_colormaps[key] = value
         else:
-            for k in ("grass", "foliage", "dry_foliage"):
-                active_colormaps[k] = f"biome/colormap/{k}"
+            for key in ("grass", "foliage", "dry_foliage"):
+                active_colormaps[key] = f"biome/colormap/{key}"
 
         if decoder_group_tree and active_colormaps:
-            # Mesh Attribute: mtk_colormap_uv
             attr_cm_uv = nodes.new("ShaderNodeAttribute")
             attr_cm_uv.name = "Attr Colormap UV"
             attr_cm_uv.attribute_name = ATTR_COLORMAP_UV
@@ -724,7 +685,7 @@ def build_atlas_chunk_material(
                 ("foliage", "Colormap Foliage", (-450, 750), "Foliage Color"),
                 ("dry_foliage", "Colormap Dry Foliage", (-450, 550), "Dry Foliage Color"),
             ]
-            for key, node_name, pos, target_sock in cm_configs:
+            for key, node_name, position, target_sock in cm_configs:
                 cm_file = active_colormaps.get(key)
                 if cm_file:
                     cm_img = get_or_create_image(cm_file, colorspace="sRGB", chunk_id=f"biome/colormap/{key}")
@@ -734,7 +695,7 @@ def build_atlas_chunk_material(
                         tex_cm.image = cm_img
                         tex_cm.interpolation = "Linear"
                         tex_cm.extension = "EXTEND"
-                        tex_cm.location = pos
+                        tex_cm.location = position
                         tex_cm.parent = frame_biome
                         links.new(attr_cm_uv.outputs["Vector"], tex_cm.inputs["Vector"])
                         links.new(tex_cm.outputs["Color"], colormap_decoder.inputs[target_sock])
@@ -744,83 +705,42 @@ def build_atlas_chunk_material(
             links.new(attr_tint_col.outputs["Color"], tint_node.inputs["Tint Color"])
 
     # -------------------------------------------------------------------------
-    # 5. LabPBR 1.3 Material Shading (X: 650)
+    # 6. Standard Principled PBR shading
     # -------------------------------------------------------------------------
-    decoder_group = ensure_labpbr_decoder() if use_labpbr else None
-    if decoder_group:
-        decoder_node = nodes.new("ShaderNodeGroup")
-        decoder_node.name = "LabPBR Decoder"
-        decoder_node.node_tree = decoder_group
-        decoder_node.location = (650, 0)
-        decoder_node.parent = frame_shading
-
-        # Link Decoder -> Output
-        links.new(decoder_node.outputs["BSDF"], output_node.inputs["Surface"])
-        if "Displacement" in decoder_node.outputs and "Displacement" in output_node.inputs:
-            links.new(decoder_node.outputs["Displacement"], output_node.inputs["Displacement"])
-    else:
-        bsdf_node = nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf_node.location = (650, 0)
-        bsdf_node.parent = frame_shading
-        links.new(bsdf_node.outputs["BSDF"], output_node.inputs["Surface"])
-        decoder_node = bsdf_node
-
-    # Link Albedo / Tint -> Decoder / BSDF
-    if tint_node:
-        if decoder_group:
-            links.new(tint_node.outputs["Color"], decoder_node.inputs["Albedo Color"])
-            links.new(tint_node.outputs["Alpha"], decoder_node.inputs["Albedo Alpha"])
-        else:
-            links.new(tint_node.outputs["Color"], decoder_node.inputs["Base Color"])
-            links.new(tint_node.outputs["Alpha"], decoder_node.inputs["Alpha"])
-    elif albedo_node and albedo_out_color is not None:
-        if decoder_group:
-            links.new(albedo_out_color, decoder_node.inputs["Albedo Color"])
-            links.new(albedo_out_alpha, decoder_node.inputs["Albedo Alpha"])
-        else:
-            links.new(albedo_out_color, decoder_node.inputs["Base Color"])
-            links.new(albedo_out_alpha, decoder_node.inputs["Alpha"])
-
-    # Link Normal -> Decoder
-    if normal_out_color is not None and decoder_group:
-        links.new(normal_out_color, decoder_node.inputs["Normal (_n) Color"])
-        links.new(normal_out_height, decoder_node.inputs["Normal (_n) Alpha (Height)"])
-
-    # Link Specular -> Decoder
-    if spec_out_color is not None and decoder_group:
-        links.new(spec_out_color, decoder_node.inputs["Specular (_s) Color"])
-        links.new(spec_out_emission, decoder_node.inputs["Specular (_s) Alpha (Emission)"])
-
-    # Configure PBR gating and connect packed material properties (Emission, Thin Wall, Transmission, Sticker Threshold)
-    has_pbr = bool(normal_node or spec_node)
     cfg = resolve_material_shading_config(
-        clean_block=f"atlas_chunk_{chunk_id}",
-        has_pbr=has_pbr,
         render_engine=render_engine,
-        enable_game_semantics=enable_game_semantics,
-        enable_transmission=enable_transmission,
-        enable_thin_wall=enable_thin_wall,
         disable_subsurface=disable_subsurface,
     )
 
-    if decoder_group:
-        if "Enable PBR (0-1)" in decoder_node.inputs:
-            decoder_node.inputs["Enable PBR (0-1)"].default_value = 1.0 if has_pbr else 0.0
-        if "Disable Subsurface" in decoder_node.inputs:
-            decoder_node.inputs["Disable Subsurface"].default_value = bool(cfg["disable_subsurface"])
-        if "Subsurface Scale" in decoder_node.inputs:
-            decoder_node.inputs["Subsurface Scale"].default_value = 0.1
+    base_color = tint_node.outputs["Color"] if tint_node else albedo_out_color
+    alpha = tint_node.outputs["Alpha"] if tint_node else albedo_out_alpha
+    if base_color is None or alpha is None:
+        return mat
 
-        add_packed_material_props_nodes(nodes, links, decoder_node, location=(150, -250), parent=frame_shading, cfg=cfg)
+    build_pbr_shading(
+        nodes,
+        links,
+        output_node,
+        frame_shading,
+        base_color=base_color,
+        alpha=alpha,
+        normal_color=normal_out_color,
+        orm_color=orm_out_color,
+        orm_alpha=orm_out_alpha,
+        aux_color=aux_out_color,
+        disable_subsurface=cfg["disable_subsurface"],
+        emission_strength=cfg["emission_strength"],
+        subsurface_method=cfg.get("subsurface_method", "BURLEY"),
+    )
 
-    # Ensure Albedo image texture node is active and selected for Solid Viewport mode
+    # Keep the albedo node active for Solid viewport display.
     if albedo_node:
-        for n in nodes:
-            n.select = False
+        for current in nodes:
+            current.select = False
         nodes.active = albedo_node
         albedo_node.select = True
 
-    # Material settings for transparency and refraction (Blender 4.2+ EEVEE Next & legacy)
+    # Alpha / transparency settings (no transmission in v1).
     if hasattr(mat, "surface_render_method"):
         try:
             mat.surface_render_method = "DITHERED"
@@ -839,12 +759,12 @@ def build_atlas_chunk_material(
             pass
     if hasattr(mat, "use_raytrace_refraction"):
         try:
-            mat.use_raytrace_refraction = cfg["use_raytrace_refraction"]
+            mat.use_raytrace_refraction = False
         except Exception:
             pass
     if hasattr(mat, "use_screen_refraction"):
         try:
-            mat.use_screen_refraction = cfg["use_raytrace_refraction"]
+            mat.use_screen_refraction = False
         except Exception:
             pass
 
