@@ -14,25 +14,201 @@ from typing import Any, Dict, Optional, Tuple
 try:
     from ...bridge.engine import get_libmtk
     from ...bridge.progress import ProgressCallback, ProgressReport
-    from ...bridge.assets.cache import (
-        invalidate_asset_cache_memory,
-        open_active_asset_cache,
+    from ...utils.system import get_prefs
+    from ...utils.pack_detect import (
+        KIND_VANILLA_CLIENT,
+        KIND_VANILLA_SERVER,
+        peek_cached_probe,
+        detect_pack_kind,
     )
-    from ...bridge.assets.pack import get_configured_pack_stack
-    from ...bridge.assets.precompile import precompile_stack, reload_atlas_images
+    from ...i18n import tr
 except (ImportError, ValueError):
     from bridge.engine import get_libmtk
     from bridge.progress import ProgressCallback, ProgressReport
-    from bridge.assets.cache import (
-        invalidate_asset_cache_memory,
-        open_active_asset_cache,
-    )
-    from bridge.assets.pack import get_configured_pack_stack
-    from bridge.assets.precompile import precompile_stack, reload_atlas_images
+    try:
+        from utils.system import get_prefs
+    except (ImportError, ValueError):
+        def get_prefs(context=None):
+            return None
+    try:
+        from utils.pack_detect import (
+            KIND_VANILLA_CLIENT,
+            KIND_VANILLA_SERVER,
+            peek_cached_probe,
+            detect_pack_kind,
+        )
+    except (ImportError, ValueError):
+        KIND_VANILLA_CLIENT = "VANILLA_CLIENT"
+        KIND_VANILLA_SERVER = "VANILLA_SERVER"
+        def peek_cached_probe(path):
+            return None
+        def detect_pack_kind(path):
+            return type("PackProbe", (), {"kind": "UNKNOWN"})()
+    try:
+        from i18n import tr
+    except (ImportError, ValueError):
+        def tr(msgid: str, msgctxt: str | None = None) -> str:
+            return msgid
+
+
+def _get_configured_pack_stack(prefs=None):
+    try:
+        from ...bridge.assets.pack import get_configured_pack_stack
+    except (ImportError, ValueError):
+        from bridge.assets.pack import get_configured_pack_stack
+    return get_configured_pack_stack(prefs)
+
+
+def _open_active_asset_cache(prefs=None):
+    try:
+        from ...bridge.assets.cache import open_active_asset_cache
+    except (ImportError, ValueError):
+        from bridge.assets.cache import open_active_asset_cache
+    return open_active_asset_cache(prefs)
+
+
+def _invalidate_asset_cache_memory():
+    try:
+        from ...bridge.assets.cache import invalidate_asset_cache_memory
+    except (ImportError, ValueError):
+        from bridge.assets.cache import invalidate_asset_cache_memory
+    return invalidate_asset_cache_memory()
+
+
+def _precompile_stack(*args, **kwargs):
+    try:
+        from ...bridge.assets.precompile import precompile_stack
+    except (ImportError, ValueError):
+        from bridge.assets.precompile import precompile_stack
+    return precompile_stack(*args, **kwargs)
+
+
+def _reload_atlas_images(*args, **kwargs):
+    try:
+        from ...bridge.assets.precompile import reload_atlas_images
+    except (ImportError, ValueError):
+        from bridge.assets.precompile import reload_atlas_images
+    return reload_atlas_images(*args, **kwargs)
 
 from .cache_utils import get_cache_dir
 
 logger = logging.getLogger("MoziToolKit.Utils.Assets.Guard")
+
+
+def _is_entry_valid_vanilla_client(entry: Any) -> bool:
+    """Evaluates whether a single resource pack entry is an active and valid Minecraft Vanilla Client pack."""
+    if not getattr(entry, "enabled", True):
+        return False
+    raw_path = getattr(entry, "path", "")
+    if not raw_path or not isinstance(raw_path, str):
+        return False
+    path = Path(raw_path.strip())
+    if not path.exists():
+        return False
+
+    # Explicit server exclusion: vanilla server JARs lack textures and client models
+    detected = getattr(entry, "detected_kind", "")
+    if detected == KIND_VANILLA_SERVER:
+        return False
+
+    pack_type = getattr(entry, "pack_type", "")
+
+    # Directory pack inspection
+    if path.is_dir():
+        # Check standard vanilla assets hierarchy
+        if (
+            (path / "assets" / "minecraft" / "textures").exists()
+            or (path / "assets" / "minecraft" / "models").exists()
+            or (path / "assets" / "minecraft").exists()
+        ):
+            return True
+        if pack_type == "VANILLA":
+            return True
+
+    # Archive pack inspection (.jar / .zip)
+    if path.is_file() and path.suffix.lower() in (".jar", ".zip"):
+        if detected == KIND_VANILLA_CLIENT:
+            return True
+
+        probe = peek_cached_probe(str(path.resolve()))
+        if probe is not None:
+            if probe.kind == KIND_VANILLA_SERVER:
+                return False
+            if probe.kind == KIND_VANILLA_CLIENT:
+                return True
+
+        if pack_type == "VANILLA":
+            # Guard against server JAR masquerading as Vanilla JAR
+            try:
+                probe_res = detect_pack_kind(path)
+                if probe_res.kind == KIND_VANILLA_SERVER:
+                    return False
+            except Exception:
+                pass
+            return True
+
+    return False
+
+
+def has_valid_vanilla_pack(prefs=None) -> bool:
+    """
+    Checks if preferences contain at least one enabled and reachable Minecraft Vanilla Client pack.
+    Third-party resource packs, mod JARs, or vanilla server JARs do NOT qualify as foundation base packs.
+    """
+    if prefs is None:
+        try:
+            prefs = get_prefs()
+        except Exception:
+            prefs = None
+
+    if prefs is not None:
+        # 1. Check entries in resource_packs
+        if hasattr(prefs, "resource_packs") and prefs.resource_packs:
+            for entry in prefs.resource_packs:
+                if _is_entry_valid_vanilla_client(entry):
+                    return True
+
+        # 2. Check legacy / single resource_pack_path if present
+        single_path = getattr(prefs, "resource_pack_path", None)
+        if single_path and isinstance(single_path, str) and single_path.strip():
+            p = Path(single_path.strip())
+            if p.exists():
+                mock_entry = type(
+                    "MockEntry",
+                    (),
+                    {"enabled": True, "path": str(p), "pack_type": "VANILLA", "detected_kind": ""},
+                )()
+                if _is_entry_valid_vanilla_client(mock_entry):
+                    return True
+
+    # 3. Test isolation / CI environment variable fallback (e.g. MTK_TEST_JAR, MTK_TEST_ASSETS)
+    for env_var in ("MTK_TEST_JAR", "MTK_TEST_ASSETS"):
+        val = os.environ.get(env_var)
+        if val and Path(val).exists():
+            p = Path(val)
+            mock_entry = type(
+                "MockEntry",
+                (),
+                {"enabled": True, "path": str(p), "pack_type": "VANILLA", "detected_kind": ""},
+            )()
+            if _is_entry_valid_vanilla_client(mock_entry):
+                return True
+
+    return False
+
+
+def can_execute_asset_pipeline(prefs=None) -> Tuple[bool, str]:
+    """
+    Evaluates whether the asset pipeline (meshing, material replacement, precompilation) can be executed.
+    Returns (can_execute, reason_message).
+    When False, reason_message provides a clear, user-facing explanation suitable for UI tooltips or reports.
+    """
+    if not has_valid_vanilla_pack(prefs):
+        status = check_asset_cache_status(prefs)
+        if status == "NO_PACKS":
+            return False, tr("No Minecraft resource packs configured. Please configure a Vanilla Client JAR in Preferences.")
+        return False, tr("A Minecraft Vanilla Client JAR is required. Resource packs and mods cannot be used without a vanilla base pack.")
+    return True, ""
 
 
 def check_asset_cache_status(prefs=None) -> str:
@@ -40,15 +216,16 @@ def check_asset_cache_status(prefs=None) -> str:
     Checks the validity and freshness of precompiled asset caches against configured resource packs.
     Returns:
     - "READY": A valid precompiled .mtkcache package matching the active stack fingerprint exists.
-    - "MISSING": No cache package exists on disk (initial run / empty cache directory).
+    - "MISSING": Valid vanilla client pack is configured, but no cache package exists on disk.
     - "STALE": Cache packages exist, but the fingerprint does not match the active configuration.
-    - "NO_PACKS": No enabled resource packs or JARs configured in preferences to compile from.
+    - "NO_PACKS": No resource packs or JARs configured or enabled in preferences.
+    - "NO_VANILLA": Resource packs or mod JARs are configured, but no valid Vanilla Client JAR base pack is enabled.
     """
     mtk = get_libmtk()
     if mtk is None:
         return "MISSING"
 
-    stack = get_configured_pack_stack(prefs)
+    stack = _get_configured_pack_stack(prefs)
     cache_dir = get_cache_dir(prefs).resolve()
 
     # Discover all existing .mtkcache packages in the cache directory
@@ -56,17 +233,18 @@ def check_asset_cache_status(prefs=None) -> str:
 
     if stack is None or stack.get_pack_count() == 0:
         # No enabled packs configured by user
-        if existing_packages:
-            active = open_active_asset_cache(prefs)
-            if active is not None:
-                return "READY"
+        # CRITICAL FIX: Never return "READY" just because stale packages exist on disk!
         return "NO_PACKS"
+
+    # Enforce base pack gate: must have a valid Vanilla Client pack
+    if not has_valid_vanilla_pack(prefs):
+        return "NO_VANILLA"
 
     # Test sandbox isolation guard: if isolated via MOZI_CACHE_DIR, caller did not specify custom prefs,
     # and a test package already exists in the sandbox directory, treat it as READY to prevent
     # host-level global preferences from overwriting mock test assets.
     if prefs is None and os.environ.get("MOZI_CACHE_DIR") and existing_packages:
-        active = open_active_asset_cache(prefs)
+        active = _open_active_asset_cache(prefs)
         if active is not None:
             return "READY"
 
@@ -76,7 +254,7 @@ def check_asset_cache_status(prefs=None) -> str:
         return "MISSING" if not existing_packages else "STALE"
 
     # Fast-path check: in-memory active cache matches expected fingerprint
-    active = open_active_asset_cache(prefs)
+    active = _open_active_asset_cache(prefs)
     if active is not None and getattr(active, "fingerprint", None) == expected_fp:
         return "READY"
 
@@ -115,7 +293,7 @@ def prepare_asset_context(prefs=None) -> Dict[str, Any]:
     the resulting dict to run_task_with_asset_guard.
     """
     status = check_asset_cache_status(prefs)
-    stack = get_configured_pack_stack(prefs)
+    stack = _get_configured_pack_stack(prefs)
     try:
         cache_dir = str(get_cache_dir(prefs))
     except Exception:
@@ -138,16 +316,16 @@ def ensure_pipeline_assets_ready_sync(
     if status == "READY":
         return True, "READY"
 
-    if status == "NO_PACKS":
-        return False, "NO_PACKS"
+    if status in ("NO_PACKS", "NO_VANILLA"):
+        return False, status
 
     if status in ("MISSING", "STALE"):
         logger.info("Asset cache status is '%s'. Triggering automated precompilation...", status)
         try:
-            precompile_stack(prefs, progress_callback=progress_callback)
-            invalidate_asset_cache_memory()
+            _precompile_stack(prefs, progress_callback=progress_callback)
+            _invalidate_asset_cache_memory()
             try:
-                reload_atlas_images(prefs)
+                _reload_atlas_images(prefs)
             except Exception:
                 pass
             return True, status
@@ -172,13 +350,16 @@ def run_task_with_asset_guard(
     then chains into target_func as Stage 2.
     Returns (result, did_precompile).
     """
-    # asset_context must be prepared on the Blender main thread. When it is
-    # provided, this worker only reads plain Python values and never touches bpy.
     if asset_context is not None:
         status = str(asset_context.get("status", "READY"))
     else:
         status = check_asset_cache_status(prefs)
     did_precompile = False
+
+    if status in ("NO_PACKS", "NO_VANILLA"):
+        raise RuntimeError(
+            f"Cannot execute task: asset cache status is '{status}'. A Minecraft Vanilla Client JAR must be configured."
+        )
 
     if status in ("MISSING", "STALE"):
         did_precompile = True
@@ -200,7 +381,7 @@ def run_task_with_asset_guard(
                 )
                 progress_callback(stage_report)
 
-        precompile_stack(
+        _precompile_stack(
             prefs,
             num_threads=asset_context.get("num_threads") if asset_context else None,
             progress_callback=stage1_cb,
@@ -209,7 +390,7 @@ def run_task_with_asset_guard(
             reload_images=False,
             resolve_prefs=asset_context is None,
         )
-        invalidate_asset_cache_memory()
+        _invalidate_asset_cache_memory()
 
     # Stage 2: Target Function
     def stage2_cb(report: Any):
@@ -238,6 +419,8 @@ def run_task_with_asset_guard(
 
 
 __all__ = [
+    "has_valid_vanilla_pack",
+    "can_execute_asset_pipeline",
     "prepare_asset_context",
     "check_asset_cache_status",
     "ensure_pipeline_assets_ready_sync",

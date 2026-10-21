@@ -26,6 +26,7 @@ try:
         load_and_mesh_minecraft_save,
     )
     from ...utils.assets import (
+        can_execute_asset_pipeline,
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
@@ -45,6 +46,7 @@ except (ImportError, ValueError):
         load_and_mesh_minecraft_save,
     )
     from utils.assets import (
+        can_execute_asset_pipeline,
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
@@ -66,6 +68,20 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
     bl_idname = "mtk.import_minecraft_save"
     bl_label = "Import Minecraft World"
     bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            from ...utils.system.dependencies import get_prefs
+            prefs = get_prefs(context)
+        except Exception:
+            prefs = None
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+        return True
 
     # Directory picker configuration
     directory: StringProperty(
@@ -209,15 +225,19 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         except Exception:
             prefs = None
 
+        # Asset readiness gate: verify valid vanilla client base pack before proceeding
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({"WARNING"}, reason)
+            return {"CANCELLED"}
+
         # Asset readiness gate. Precompilation and asset loading touch bpy, so they
         # must run here on the main thread; the AsyncTask below receives only
         # resolved Python/Rust objects.
         status = check_asset_cache_status(prefs)
-        if status == "NO_PACKS":
-            # Keep the legacy behaviour here: the underlying pipeline raises a
-            # descriptive error if it truly cannot resolve assets. A dedicated
-            # first-run wizard is tracked separately from the P0 stability fixes.
-            self.report({"WARNING"}, "No enabled resource packs configured. Configure a Minecraft pack in Preferences if import fails.")
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({"WARNING"}, reason)
+            return {"CANCELLED"}
         if status in ("MISSING", "STALE"):
             try:
                 self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before importing...")

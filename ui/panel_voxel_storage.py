@@ -18,6 +18,8 @@ try:
     )
     from ..i18n import tr
     from ..utils.mesh.ownership import ORIGIN_SAVE, classify_origin
+    from ..utils.assets import has_valid_vanilla_pack
+    from ..utils.system import get_prefs
 except (ImportError, ValueError):
     from utils.point_cloud import (
         get_associated_voxel_cloud,
@@ -36,6 +38,9 @@ except (ImportError, ValueError):
 
         def classify_origin(obj):
             return "EXTERNAL"
+
+    from utils.assets import has_valid_vanilla_pack
+    from utils.system import get_prefs
 
 
 def _resolve_target_cloud(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:
@@ -84,6 +89,21 @@ class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+
+        prefs = get_prefs(context)
+        if not has_valid_vanilla_pack(prefs):
+            box_warn = layout.box()
+            box_warn.alert = True
+            box_warn.label(text=tr("Vanilla Client JAR Required"), icon='ERROR')
+            col_w = box_warn.column(align=True)
+            col_w.scale_y = 0.85
+            col_w.label(text=tr("Configure a Vanilla Client JAR in Preferences to enable meshing and material replacement."))
+            row_cfg = box_warn.row(align=True)
+            row_cfg.scale_y = 1.1
+            op_cfg = row_cfg.operator("mozi.open_preferences", text=tr("Configure Resource Packs..."), icon='PREFERENCES')
+            op_cfg.tab = "RESOURCE_PACKS"
+            layout.separator()
+
         world_obj, cloud_obj = _resolve_target_cloud(context)
 
         # -------------------------------------------------------------

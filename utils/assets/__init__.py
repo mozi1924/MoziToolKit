@@ -14,8 +14,10 @@ from .cache_utils import (
     open_cache_folder,
 )
 from .guard import (
+    can_execute_asset_pipeline,
     check_asset_cache_status,
     ensure_pipeline_assets_ready_sync,
+    has_valid_vanilla_pack,
     prepare_asset_context,
     run_task_with_asset_guard,
 )
@@ -35,6 +37,8 @@ __all__ = [
     "clear_cache",
     "open_cache_folder",
     # Guards
+    "has_valid_vanilla_pack",
+    "can_execute_asset_pipeline",
     "check_asset_cache_status",
     "prepare_asset_context",
     "ensure_pipeline_assets_ready_sync",

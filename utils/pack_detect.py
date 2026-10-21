@@ -80,7 +80,10 @@ KIND_TO_PACK_TYPE: Dict[str, Optional[str]] = {
 }
 
 #: Kinds that can actually contribute textures/models to the bake pipeline.
-TEXTURE_SOURCE_KINDS = frozenset({KIND_VANILLA_CLIENT, KIND_VANILLA_SERVER, KIND_MOD, KIND_RESOURCE_PACK})
+TEXTURE_SOURCE_KINDS = frozenset({KIND_VANILLA_CLIENT, KIND_MOD, KIND_RESOURCE_PACK})
+
+#: Kinds that qualify as a valid standalone vanilla foundation base pack.
+VALID_BASE_PACK_KINDS = frozenset({KIND_VANILLA_CLIENT})
 
 TYPE_SOURCE_AUTO = "AUTO"
 TYPE_SOURCE_MANUAL = "MANUAL"
@@ -679,6 +682,7 @@ __all__ = [
     "KIND_LABELS",
     "KIND_TO_PACK_TYPE",
     "TEXTURE_SOURCE_KINDS",
+    "VALID_BASE_PACK_KINDS",
     "TYPE_SOURCE_AUTO",
     "TYPE_SOURCE_MANUAL",
     "PackProbe",

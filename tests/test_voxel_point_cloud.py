@@ -264,7 +264,15 @@ class TestVoxelPointCloudBridge:
 
             bpy.context.view_layer.objects.active = obj
             obj.select_set(True)
-            res = bpy.ops.mozi.rebuild_mesh(run_async=False)
+            from unittest.mock import patch
+            mod_name = (
+                "MoziToolKit.operators.mesh.op_rebuild_mesh"
+                if "MoziToolKit.operators.mesh.op_rebuild_mesh" in sys.modules
+                else "operators.mesh.op_rebuild_mesh"
+            )
+            with patch(f"{mod_name}.can_execute_asset_pipeline", return_value=(True, "")), \
+                 patch(f"{mod_name}.check_asset_cache_status", return_value="READY"):
+                res = bpy.ops.mozi.rebuild_mesh(run_async=False)
             assert res == {"FINISHED"}
 
             # After removing center block, the 6 interior cavity faces are newly exposed!

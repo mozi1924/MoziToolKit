@@ -22,6 +22,7 @@ try:
     from ...bridge.world import prepare_world_mesh_context
     from ...bridge.save import load_and_mesh_minecraft_save
     from ...utils.assets import (
+        can_execute_asset_pipeline,
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
@@ -37,6 +38,7 @@ except (ImportError, ValueError):
     from bridge.world import prepare_world_mesh_context
     from bridge.save import load_and_mesh_minecraft_save
     from utils.assets import (
+        can_execute_asset_pipeline,
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
@@ -79,7 +81,16 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
         target = root or mesh
         if not target or not hasattr(target, "get"):
             return False
-        return bool(target.get("mozi_save_uuid") or target.get("mtk:container_id"))
+        if not bool(target.get("mozi_save_uuid") or target.get("mtk:container_id")):
+            return False
+
+        prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+        return True
 
     def execute(self, context):
         active = getattr(context, "active_object", None)
@@ -87,6 +98,14 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
         target = root or mesh
         if not target or not hasattr(target, "get"):
             self.report({"WARNING"}, "No valid Minecraft Save container or mesh selected.")
+            return {"CANCELLED"}
+
+        prefs = get_prefs(context)
+
+        # Asset readiness gate: verify valid vanilla client base pack before proceeding
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({"WARNING"}, reason)
             return {"CANCELLED"}
 
         save_uuid = str(target.get("mozi_save_uuid") or target.get("mtk:container_id") or "")
@@ -117,16 +136,13 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
         enable_ctm = bool(target.get("mtk_enable_ctm", True))
         enable_animated_textures = bool(target.get("mtk_enable_animated_textures", True))
         level_name = str(target.get("mtk_world_name", "Minecraft World"))
-        prefs = get_prefs(context)
 
         # Asset readiness gate. All bpy-touching work stays on this main thread;
         # the worker below only receives resolved assets and plain values.
         status = check_asset_cache_status(prefs)
-        if status == "NO_PACKS":
-            # Keep the legacy behaviour here: the underlying pipeline raises a
-            # descriptive error if it truly cannot resolve assets. A dedicated
-            # first-run wizard is tracked separately from the P0 stability fixes.
-            self.report({"WARNING"}, "No enabled resource packs configured. Configure a Minecraft pack in Preferences if import fails.")
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({"WARNING"}, reason)
+            return {"CANCELLED"}
         if status in ("MISSING", "STALE"):
             try:
                 self.report({"INFO"}, f"Asset cache is {status.lower()}; automatically precompiling before refreshing...")

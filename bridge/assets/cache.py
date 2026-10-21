@@ -33,6 +33,8 @@ except (ImportError, ValueError):
         open_cache_folder,
     )
 
+clear_cache = _utils_clear_cache
+
 logger = logging.getLogger("MoziToolKit.Bridge.Assets.Cache")
 
 try:

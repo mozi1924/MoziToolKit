@@ -11,13 +11,13 @@ from bpy.props import BoolProperty, EnumProperty
 logger = logging.getLogger("MoziToolKit.Operators.Materials")
 
 try:
-    from ..utils.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
+    from ..utils.assets import can_execute_asset_pipeline, check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
     from ..utils.materials.pipeline import replace_materials
     from ..utils.mesh.ownership import is_external_mesh
     from ..utils.system import get_prefs, register_menu_item
 except (ImportError, ValueError):
-    from utils.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
+    from utils.assets import can_execute_asset_pipeline, check_asset_cache_status, ensure_pipeline_assets_ready_sync
     from utils.materials.biome import BIOME_ENUM_ITEMS
     from utils.materials.pipeline import replace_materials
     from utils.mesh.ownership import is_external_mesh
@@ -82,7 +82,15 @@ class MOZI_OT_replace_material(bpy.types.Operator):
     def poll(cls, context):
         # Replace Material only accepts external imports. MTK-generated meshes
         # derive their materials from a voxel source and must be rebuilt.
-        return is_external_mesh(getattr(context, "active_object", None))
+        if not is_external_mesh(getattr(context, "active_object", None)):
+            return False
+        prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+        return True
 
     def draw(self, context):
         layout = self.layout
@@ -101,10 +109,15 @@ class MOZI_OT_replace_material(bpy.types.Operator):
         obj = context.active_object
         prefs = get_prefs(context)
 
-        # Asset readiness gate: verify cache freshness before material operations
+        # Asset readiness gate: verify vanilla base pack and cache freshness before material operations
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({'WARNING'}, reason)
+            return {'CANCELLED'}
+
         status = check_asset_cache_status(prefs)
-        if status == "NO_PACKS":
-            self.report({'WARNING'}, "No enabled resource packs configured. Please configure a Minecraft pack in Preferences.")
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({'WARNING'}, reason)
             return {'CANCELLED'}
         if status in ("MISSING", "STALE"):
             self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before replacing materials...")

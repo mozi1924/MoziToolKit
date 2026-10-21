@@ -303,12 +303,18 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             save_root.children = [save_cloud]
 
         ctx_valid = types.SimpleNamespace(active_object=save_root, selected_objects=[save_root])
-        self.assertTrue(MOZI_OT_rebuild_mesh.poll(ctx_valid))
+        # Gating check: returns False when pipeline assets are not ready
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(False, "No vanilla pack")):
+            self.assertFalse(MOZI_OT_rebuild_mesh.poll(ctx_valid))
+        # When assets ready: returns True
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertTrue(MOZI_OT_rebuild_mesh.poll(ctx_valid))
 
-        # Poll with normal Cube: False
+        # Poll with normal Cube: False even when pipeline is ready
         cube = self._make_obj("Cube", "MESH")
         ctx_invalid = types.SimpleNamespace(active_object=cube, selected_objects=[cube])
-        self.assertFalse(MOZI_OT_rebuild_mesh.poll(ctx_invalid))
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertFalse(MOZI_OT_rebuild_mesh.poll(ctx_invalid))
 
     def test_rebuild_mesh_execution_with_companion_cloud(self):
         """Verifies executing mozi.rebuild_mesh on a Save container triggers remeshing from cloud."""
@@ -359,7 +365,9 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         op = DummyRebuildOp()
 
-        with patch("operators.mesh.op_rebuild_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
+             patch("operators.mesh.op_rebuild_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
              patch("operators.mesh.op_rebuild_mesh.mesh_voxel_storage", return_value=(mock_new_mesh_data, 10.5)) as mock_mesh_fn, \
              patch("operators.mesh.op_rebuild_mesh.inject_mesh_data") as mock_inject, \
              patch("operators.mesh.op_rebuild_mesh.ensure_world_materials"):
@@ -416,7 +424,9 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
 
         op = DummyRebuildOp()
 
-        with patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
+             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
              patch("operators.sync.hierarchy.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
 
             res = op.execute(context)
@@ -463,7 +473,9 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 return MOZI_OT_rebuild_mesh.execute(self, ctx)
 
         op = DummyRebuildOp()
-        with patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
+             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
              patch("operators.mesh.op_rebuild_mesh.AsyncTask") as mock_task, \
              patch("operators.mesh.op_rebuild_mesh.ModalTaskRunner") as mock_runner:
             mock_runner.return_value.start.return_value = {"RUNNING_MODAL"}
@@ -592,7 +604,9 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 "data_version": 4189,
                 "spawn": (0, 64, 0),
             }
-            with patch("operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
+            with patch("operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
+                 patch("operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
+                 patch("operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
                  patch("utils.save.hierarchy.inject_mesh_data"), patch("utils.save.hierarchy.ensure_world_materials"):
                 res = op.execute(ctx)
                 self.assertEqual(res, {"FINISHED"})

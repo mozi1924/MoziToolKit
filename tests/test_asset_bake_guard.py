@@ -22,10 +22,12 @@ from bridge.assets import (
     precompile_stack,
 )
 from utils.assets import (
+    can_execute_asset_pipeline,
     check_asset_cache_status,
     clear_cache,
     ensure_pipeline_assets_ready_sync,
     get_cache_dir,
+    has_valid_vanilla_pack,
     run_task_with_asset_guard,
 )
 from bridge.engine import has_libmtk
@@ -289,6 +291,97 @@ class TestAssetBakeGuard(unittest.TestCase):
 
         # Verifies that asset cache was automatically precompiled and is now READY
         self.assertEqual(check_asset_cache_status(prefs_a), "READY")
+
+    def test_status_no_vanilla_when_only_resource_pack_or_mod(self):
+        """Verifies that configuring ONLY a resource pack or mod JAR returns NO_VANILLA and blocks execution."""
+        custom_pack_dir = os.path.join(self.temp_dir, "custom_rp")
+        os.makedirs(os.path.join(custom_pack_dir, "assets", "custom_mod", "textures"), exist_ok=True)
+        with open(os.path.join(custom_pack_dir, "pack.mcmeta"), "w") as f:
+            json.dump({"pack": {"pack_format": 15, "description": "Resource Pack Only"}}, f)
+
+        prefs_only_rp = types.SimpleNamespace(
+            resource_packs=[
+                types.SimpleNamespace(
+                    path=custom_pack_dir,
+                    enabled=True,
+                    pack_type="RESOURCE_PACK",
+                    detected_kind="RESOURCE_PACK",
+                    name="CustomRP",
+                )
+            ],
+            cache_dir=self.cache_dir,
+            thread_count=0,
+        )
+
+        self.assertFalse(has_valid_vanilla_pack(prefs_only_rp))
+        can_run, reason = can_execute_asset_pipeline(prefs_only_rp)
+        self.assertFalse(can_run)
+        self.assertIn("Vanilla Client", reason)
+        self.assertEqual(check_asset_cache_status(prefs_only_rp), "NO_VANILLA")
+
+    def test_status_no_vanilla_when_server_jar(self):
+        """Verifies that configuring a server JAR (which lacks textures/models) returns NO_VANILLA."""
+        server_jar_path = os.path.join(self.temp_dir, "server.jar")
+        import zipfile
+        with zipfile.ZipFile(server_jar_path, "w") as zf:
+            zf.writestr("net/minecraft/bundler/Main.class", b"fake class")
+            zf.writestr("META-INF/versions.list", b"1.21")
+
+        prefs_server = types.SimpleNamespace(
+            resource_packs=[
+                types.SimpleNamespace(
+                    path=server_jar_path,
+                    enabled=True,
+                    pack_type="VANILLA",
+                    detected_kind="VANILLA_SERVER",
+                    name="ServerJAR",
+                )
+            ],
+            cache_dir=self.cache_dir,
+            thread_count=0,
+        )
+
+        self.assertFalse(has_valid_vanilla_pack(prefs_server))
+        self.assertEqual(check_asset_cache_status(prefs_server), "NO_VANILLA")
+
+    def test_stale_cache_does_not_mask_no_packs_or_no_vanilla(self):
+        """Verifies the critical fix: existing .mtkcache files NEVER cause NO_PACKS or NO_VANILLA to return READY."""
+        # 1. Precompile a cache with Pack A
+        prefs_a = self._make_prefs([self.pack_a])
+        ensure_pipeline_assets_ready_sync(prefs_a)
+        self.assertEqual(check_asset_cache_status(prefs_a), "READY")
+
+        # 2. Now user removes all packs: must return NO_PACKS, NOT READY!
+        empty_prefs = types.SimpleNamespace(resource_packs=[], cache_dir=self.cache_dir, thread_count=0)
+        self.assertEqual(check_asset_cache_status(empty_prefs), "NO_PACKS")
+        can_run, _ = can_execute_asset_pipeline(empty_prefs)
+        self.assertFalse(can_run)
+
+    def test_operators_poll_and_execute_blocked_when_no_vanilla(self):
+        """Verifies operator poll and execute return False / CANCELLED when no vanilla client base pack exists."""
+        from operators.op_materials import MOZI_OT_replace_material
+        from operators.op_precompile import MOZI_OT_precompile_cache
+
+        empty_prefs = types.SimpleNamespace(resource_packs=[], cache_dir=self.cache_dir, thread_count=0)
+
+        # Context mock with empty prefs
+        mock_obj = MagicMock()
+        mock_obj.type = "MESH"
+        mock_mesh = MagicMock()
+        mock_mesh.attributes = {}
+        mock_obj.data = mock_mesh
+
+        context = types.SimpleNamespace(
+            active_object=mock_obj,
+            preferences=types.SimpleNamespace(addons={"MoziToolKit": types.SimpleNamespace(preferences=empty_prefs)}),
+        )
+
+        with patch("operators.op_materials.get_prefs", return_value=empty_prefs), \
+             patch("operators.op_materials.is_external_mesh", return_value=True):
+            self.assertFalse(MOZI_OT_replace_material.poll(context))
+
+        with patch("operators.op_precompile.get_prefs", return_value=empty_prefs):
+            self.assertFalse(MOZI_OT_precompile_cache.poll(context))
 
 
 

@@ -560,7 +560,7 @@ class MOZI_PG_resource_pack_entry(bpy.types.PropertyGroup):
         items=[
             ("RESOURCE_PACK", "Resource Pack", "Standard ZIP or folder resource pack (Overrides base assets)"),
             ("MOD_JAR", "Mod JAR", "Mod JAR archive (Fabric/Forge/NeoForge) containing assets"),
-            ("VANILLA", "Vanilla JAR", "Minecraft vanilla client or server JAR archive (Base foundation)"),
+            ("VANILLA", "Vanilla Client JAR", "Minecraft vanilla client JAR archive containing textures and models (Base foundation)"),
         ],
         default="RESOURCE_PACK",
         update=on_pack_type_changed,

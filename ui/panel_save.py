@@ -31,6 +31,8 @@ try:
         resolve_save_container,
     )
     from ..utils.system.save_registry import get_save_registry
+    from ..utils.assets import has_valid_vanilla_pack
+    from ..utils.system import get_prefs
 except (ImportError, ValueError):
     from operators.save.utils import (
         is_save_child_object,
@@ -38,10 +40,26 @@ except (ImportError, ValueError):
         resolve_save_container,
     )
     from utils.system.save_registry import get_save_registry
+    from utils.assets import has_valid_vanilla_pack
+    from utils.system import get_prefs
 
 
 def _draw_save_container_ui(layout: bpy.types.UILayout, context: bpy.types.Context):
     """Draws dedicated inspection and refresh UI for Minecraft Save containers."""
+    prefs = get_prefs(context)
+    if not has_valid_vanilla_pack(prefs):
+        box_warn = layout.box()
+        box_warn.alert = True
+        box_warn.label(text=tr("Vanilla Client JAR Required"), icon='ERROR')
+        col_w = box_warn.column(align=True)
+        col_w.scale_y = 0.85
+        col_w.label(text=tr("Configure a Vanilla Client JAR in Preferences to enable save refresh."))
+        row_cfg = box_warn.row(align=True)
+        row_cfg.scale_y = 1.1
+        op_cfg = row_cfg.operator("mozi.open_preferences", text=tr("Configure Resource Packs..."), icon='PREFERENCES')
+        op_cfg.tab = "RESOURCE_PACKS"
+        layout.separator()
+
     active_obj = getattr(context, "active_object", None)
     if not active_obj:
         layout.label(text=tr("No active object"), icon='INFO')
@@ -212,6 +230,20 @@ class MOZI_PT_view3d_save_container(bpy.types.Panel):
         return True
 
     def draw(self, context):
+        prefs = get_prefs(context)
+        if not has_valid_vanilla_pack(prefs):
+            box_warn = self.layout.box()
+            box_warn.alert = True
+            box_warn.label(text=tr("Vanilla Client JAR Required"), icon='ERROR')
+            col_w = box_warn.column(align=True)
+            col_w.scale_y = 0.85
+            col_w.label(text=tr("Configure a Vanilla Client JAR in Preferences to enable save import and refresh."))
+            row_cfg = box_warn.row(align=True)
+            row_cfg.scale_y = 1.1
+            op_cfg = row_cfg.operator("mozi.open_preferences", text=tr("Configure Resource Packs..."), icon='PREFERENCES')
+            op_cfg.tab = "RESOURCE_PACKS"
+            self.layout.separator()
+
         active = getattr(context, "active_object", None)
         if active and (is_save_root_container(active) or is_save_child_object(active)):
             _draw_save_container_ui(self.layout, context)

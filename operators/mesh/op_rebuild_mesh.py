@@ -28,6 +28,7 @@ try:
         reload_atlas_images,
     )
     from ...utils.assets import (
+        can_execute_asset_pipeline,
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
@@ -59,6 +60,7 @@ except (ImportError, ValueError):
         reload_atlas_images,
     )
     from utils.assets import (
+        can_execute_asset_pipeline,
         prepare_asset_context,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
@@ -288,6 +290,14 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
     def poll(cls, context):
         if not context:
             return False
+
+        prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+
         root_container, world_mesh, cloud_obj, source_type = resolve_mesh_rebuild_targets(context)
         if source_type == "NONE":
             return False
@@ -316,6 +326,12 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         return False
 
     def execute(self, context):
+        prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({"WARNING"}, reason)
+            return {"CANCELLED"}
+
         root_container, world_mesh_obj, cloud_obj, source_type = resolve_mesh_rebuild_targets(context)
         if source_type == "NONE" or (world_mesh_obj is None and cloud_obj is None and root_container is None):
             self.report({"WARNING"}, "No valid Live Sync, Save container, or Voxel Point Cloud found.")
@@ -399,8 +415,9 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             return self._runner.start()
 
         # Branch B: Remesh from companion Voxel Point Cloud (Save container, offline Sync, or Carved cloud)
-        if status == "NO_PACKS":
-            self.report({"WARNING"}, "No enabled resource packs configured. Configure a Minecraft pack in Preferences if rebuild fails.")
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({"WARNING"}, reason)
+            return {"CANCELLED"}
         if cloud_obj is None:
             self.report({"WARNING"}, "Associated Voxel Point Cloud is required for offline mesh reconstruction.")
             return {"CANCELLED"}

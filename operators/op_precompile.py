@@ -12,6 +12,7 @@ try:
         reload_atlas_images,
     )
     from ..utils.assets import (
+        can_execute_asset_pipeline,
         check_asset_cache_status,
         clear_cache,
         get_cache_stats,
@@ -28,6 +29,7 @@ except (ImportError, ValueError):
         reload_atlas_images,
     )
     from utils.assets import (
+        can_execute_asset_pipeline,
         check_asset_cache_status,
         clear_cache,
         get_cache_stats,
@@ -55,6 +57,16 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
 
     _runner: Optional[ModalTaskRunner] = None
 
+    @classmethod
+    def poll(cls, context):
+        prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+        return True
+
     def invoke(self, context, event):
         return self.execute(context)
 
@@ -62,9 +74,14 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
         prefs = get_prefs(context)
         title = "Precompiling Assets"
 
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({'WARNING'}, reason)
+            return {'CANCELLED'}
+
         status = check_asset_cache_status(prefs)
-        if status == "NO_PACKS":
-            self.report({'WARNING'}, "No enabled resource packs configured. Please configure a Minecraft pack in Preferences.")
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({'WARNING'}, reason)
             return {'CANCELLED'}
 
         # Resolve stack/cache dir/thread count on the main thread; the worker must
@@ -233,10 +250,25 @@ class MOZI_OT_open_preferences(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class MOZI_OT_refresh_cache_stats(bpy.types.Operator):
+    """Refresh the calculated cache size and file count statistics."""
+
+    bl_idname = "mozi.refresh_cache_stats"
+    bl_label = "Refresh Cache Stats"
+    bl_options = {"REGISTER"}
+
+    def execute(self, context):
+        prefs = get_prefs(context)
+        get_cache_stats(prefs, force_refresh=True)
+        self.report({'INFO'}, "Cache statistics refreshed.")
+        return {'FINISHED'}
+
+
 OPERATOR_CLASSES = (
     MOZI_OT_precompile_cache,
     MOZI_OT_clear_cache,
     MOZI_OT_open_cache_folder,
+    MOZI_OT_refresh_cache_stats,
     MOZI_OT_open_url,
     MOZI_OT_open_preferences,
 )

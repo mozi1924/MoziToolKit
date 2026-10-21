@@ -220,13 +220,16 @@ class TestMeshOwnership(unittest.TestCase):
 
     def test_replace_material_poll_external_only(self):
         external = self._make_obj("Cube", "MESH")
-        self.assertTrue(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=external)))
+        with patch("operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertTrue(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=external)))
 
         save_mesh = self._make_obj("Save_World_overworld_Mesh", "MESH")
-        self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=save_mesh)))
+        with patch("operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=save_mesh)))
 
         cloud = self._make_obj("Save_World_overworld_VoxelCloud", "MESH")
-        self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=cloud)))
+        with patch("operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=cloud)))
 
         self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=None)))
 
@@ -254,7 +257,8 @@ class TestMeshOwnership(unittest.TestCase):
         if not IS_REAL_BLENDER:
             root.children = [mesh, cloud]
 
-        self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
         # A save container without a companion cloud cannot rebuild offline.
         orphan_root = self._make_obj("Save_NoCloud", "EMPTY")
@@ -266,7 +270,8 @@ class TestMeshOwnership(unittest.TestCase):
         if not IS_REAL_BLENDER:
             orphan_root.children = [orphan_mesh]
 
-        self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(orphan_root)))
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(orphan_root)))
 
     def test_rebuild_poll_live_session_bypasses_cloud(self):
         root = self._make_obj("Yefira_World", "EMPTY")
@@ -283,12 +288,14 @@ class TestMeshOwnership(unittest.TestCase):
 
         active_session = MagicMock()
         active_session.is_active = True
-        with patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=active_session):
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=active_session):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(context))
 
         inactive_session = MagicMock()
         inactive_session.is_active = False
-        with patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=inactive_session):
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
+             patch("operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=inactive_session):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(context))
 
     def test_rebuild_poll_rejects_external_mesh_under_container(self):
@@ -327,7 +334,8 @@ class TestMeshOwnership(unittest.TestCase):
         self.assertIs(world, save_mesh)
         self.assertIs(resolved_cloud, cloud)
         self.assertEqual(source_type, "SAVE")
-        self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
+        with patch("operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
+            self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
     def test_rebuild_poll_rejects_provenance_only_external_mesh(self):
         if IS_REAL_BLENDER:

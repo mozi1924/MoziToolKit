@@ -23,6 +23,7 @@ try:
         reload_atlas_images,
     )
     from ...utils.assets import (
+        can_execute_asset_pipeline,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
     )
@@ -39,6 +40,7 @@ except (ImportError, ValueError):
         reload_atlas_images,
     )
     from utils.assets import (
+        can_execute_asset_pipeline,
         check_asset_cache_status,
         ensure_pipeline_assets_ready_sync,
     )
@@ -466,6 +468,21 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         default="",
     )
 
+    @classmethod
+    def poll(cls, context):
+        try:
+            from ...utils.system import get_prefs
+            prefs = get_prefs(context)
+        except (ImportError, ValueError):
+            from utils.system import get_prefs
+            prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+        return True
+
     def invoke(self, context, event):
         target_obj = None
         if self.target_container and self.target_container in bpy.data.objects:
@@ -537,8 +554,17 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             from utils.system import get_prefs
         prefs = get_prefs(context)
 
+        # Asset readiness gate: verify valid vanilla client base pack before proceeding
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({'WARNING'}, reason)
+            return {'CANCELLED'}
+
         # Asset readiness gate
         status = check_asset_cache_status(prefs)
+        if status in ("NO_PACKS", "NO_VANILLA"):
+            self.report({'WARNING'}, reason)
+            return {'CANCELLED'}
         if status in ("MISSING", "STALE"):
             self.report({'INFO'}, f"Asset cache is {status.lower()}; automatically precompiling before Live Sync connection...")
             success, _ = ensure_pipeline_assets_ready_sync(prefs)

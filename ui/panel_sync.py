@@ -21,6 +21,8 @@ try:
         find_voxel_cloud_child,
     )
     from ..operators.sync.properties import get_active_sync_container
+    from ..utils.assets import has_valid_vanilla_pack
+    from ..utils.system import get_prefs
 except (ImportError, ValueError):
     from operators.sync.hierarchy import (
         is_yefira_root_object,
@@ -30,6 +32,8 @@ except (ImportError, ValueError):
         find_voxel_cloud_child,
     )
     from operators.sync.properties import get_active_sync_container
+    from utils.assets import has_valid_vanilla_pack
+    from utils.system import get_prefs
 
 
 class MOZI_UL_sync_palette_list(bpy.types.UIList):
@@ -140,6 +144,21 @@ def _draw_live_sync_content(layout: bpy.types.UILayout, context: bpy.types.Conte
         op_pref = row_pref.operator("screen.userpref_show", text=tr("Open Preferences"), icon='PREFERENCES')
         op_pref.section = 'SYSTEM'
         return
+
+    # Check vanilla client base pack
+    prefs = get_prefs(context)
+    if not has_valid_vanilla_pack(prefs):
+        box_warn = layout.box()
+        box_warn.alert = True
+        box_warn.label(text=tr("Vanilla Client JAR Required"), icon='ERROR')
+        col_w = box_warn.column(align=True)
+        col_w.scale_y = 0.85
+        col_w.label(text=tr("Configure a Vanilla Client JAR in Preferences to enable Live Sync meshing."))
+        row_cfg = box_warn.row(align=True)
+        row_cfg.scale_y = 1.1
+        op_cfg = row_cfg.operator("mozi.open_preferences", text=tr("Configure Resource Packs..."), icon='PREFERENCES')
+        op_cfg.tab = "RESOURCE_PACKS"
+        layout.separator()
 
     # 1. Hierarchy & Container Context Card
     box_hierarchy = layout.box()

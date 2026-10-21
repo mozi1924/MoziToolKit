@@ -9,10 +9,18 @@ import bpy
 
 try:
     from ...bridge.sync import get_sync_bridge_session
-    from ...utils.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
+    from ...utils.assets import (
+        can_execute_asset_pipeline,
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+    )
 except (ImportError, ValueError):
     from bridge.sync import get_sync_bridge_session
-    from utils.assets import check_asset_cache_status, ensure_pipeline_assets_ready_sync
+    from utils.assets import (
+        can_execute_asset_pipeline,
+        check_asset_cache_status,
+        ensure_pipeline_assets_ready_sync,
+    )
 from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
 
 logger = logging.getLogger("MoziToolKit.Sync.Rebuild")
@@ -49,13 +57,8 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
 
     _runner: Optional[ModalTaskRunner] = None
 
-    def execute(self, context):
-        session = get_sync_bridge_session()
-        if not session.is_active:
-            self.report({'WARNING'}, "Live Sync session is not active.")
-            return {'CANCELLED'}
-
-        target_container_name = self.target_container
+    @classmethod
+    def poll(cls, context):
         prefs = None
         try:
             from ...utils.system import get_prefs
@@ -66,6 +69,36 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                 prefs = get_prefs(context)
             except Exception:
                 pass
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
+        return True
+
+    def execute(self, context):
+        prefs = None
+        try:
+            from ...utils.system import get_prefs
+            prefs = get_prefs(context)
+        except Exception:
+            try:
+                from utils.system import get_prefs
+                prefs = get_prefs(context)
+            except Exception:
+                pass
+
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            self.report({'WARNING'}, reason)
+            return {'CANCELLED'}
+
+        session = get_sync_bridge_session()
+        if not session.is_active:
+            self.report({'WARNING'}, "Live Sync session is not active.")
+            return {'CANCELLED'}
+
+        target_container_name = self.target_container
 
         # Check and hot-reload dirty asset cache before remeshing
         dirty = False

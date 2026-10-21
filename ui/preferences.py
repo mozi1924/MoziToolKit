@@ -33,6 +33,7 @@ try:
         get_prefs,
         sort_unadded_items,
     )
+    from ..utils.assets import has_valid_vanilla_pack
 except (ImportError, ValueError):
     from utils.config import (
         get_config_manager,
@@ -57,6 +58,7 @@ except (ImportError, ValueError):
         get_prefs,
         sort_unadded_items,
     )
+    from utils.assets import has_valid_vanilla_pack
 
 try:
     from ..utils.materials.biome import BIOME_ENUM_ITEMS
@@ -438,6 +440,16 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         info_col.label(text=tr("Packs are checked from top to bottom. Higher entries override lower entries."))
         info_col.label(text=tr("Add custom/PBR packs at top, Mod JARs in middle, and Vanilla Minecraft JAR at bottom as base fallback."))
 
+        if not has_valid_vanilla_pack(self):
+            warn_box = layout.box()
+            warn_box.alert = True
+            w_row = warn_box.row(align=True)
+            w_row.label(text=tr("Minecraft Vanilla Client JAR Required!"), icon="ERROR")
+            w_col = warn_box.column(align=True)
+            w_col.scale_y = 0.85
+            w_col.label(text=tr("Please add and enable a Minecraft Vanilla Client JAR (.jar) at the bottom tier."))
+            w_col.label(text=tr("Without a vanilla client JAR, meshing, material replacement, and precompilation are disabled."))
+
         layout.separator()
 
         # Split Layout: UIList + Up/Down/Add/Remove Tools
@@ -527,7 +539,33 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
         # Stack cache maintenance (material replacement defaults live in the Material tab).
         layout.separator()
-        cache_row = layout.row(align=True)
+        cache_box = layout.box()
+        c_head = cache_box.row(align=True)
+        c_head.label(text=tr("Stack Precompilation & Cache:"), icon="FILE_CACHE")
+
+        try:
+            from ..utils.assets import check_asset_cache_status
+            status = check_asset_cache_status(self)
+        except Exception:
+            status = "UNKNOWN"
+
+        st_row = cache_box.row(align=True)
+        st_row.scale_y = 0.9
+        if status == "READY":
+            st_row.label(text=tr("Cache Status: Ready and up-to-date"), icon="CHECKMARK")
+        elif status == "STALE":
+            st_row.alert = True
+            st_row.label(text=tr("Cache Status: Outdated (Stack changed, recompile recommended)"), icon="TIME")
+        elif status == "MISSING":
+            st_row.alert = True
+            st_row.label(text=tr("Cache Status: Missing (Not precompiled yet)"), icon="INFO")
+        elif status == "NO_VANILLA":
+            st_row.alert = True
+            st_row.label(text=tr("Cache Status: Disabled (Minecraft Vanilla Client JAR required)"), icon="ERROR")
+        else:
+            st_row.label(text=tr("Cache Status: No resource packs configured"), icon="INFO")
+
+        cache_row = cache_box.row(align=True)
         cache_row.operator("mozi.precompile_cache", text=tr("Precompile / Rebuild Stack Caches"), icon="FILE_REFRESH")
         cache_row.operator("mozi.open_cache_folder", text=tr("Open Cache Folder"), icon="FOLDER_REDIRECT")
 
@@ -759,8 +797,19 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         layout.separator()
 
         # Cache & Storage Management
-        from ..bridge import get_cache_stats
-        stats = get_cache_stats(self)
+        try:
+            from ..utils.assets import get_cache_stats
+            stats = get_cache_stats(self)
+        except Exception:
+            try:
+                from ..bridge import get_cache_stats
+                stats = get_cache_stats(self)
+            except Exception:
+                stats = {
+                    "size_formatted": "0 B",
+                    "files_count": 0,
+                    "path": str(getattr(self, "cache_dir", "") or "Default"),
+                }
 
         cache_box = layout.box()
         cache_header = cache_box.row(align=True)
