@@ -115,7 +115,7 @@ Minecraft 26.2 原版 `FaceInfo` 严格定义了 6 个面的标准顶点缠绕�
 ### 5.2 全局 StateBaker 单例与发光方块识别
 - **全局缓存**：`_GLOBAL_STATE_BAKER` 缓存所有已解析的 BlockState 网格几何，同一种方块变体在整个生命周期内仅烘焙一次。
 - **发光特性判断 (`is_block_emissive`)**：
-  根据内置 `EMISSIVE_BLOCKS` 白名单与 `lit=true` / `charges>0` / `power>0` 状态属性（如点亮的红石灯、充能的重生锚），精确标识网格的 `is_emissive` 属性与发光强度。
+  根据内置 `EMISSIVE_BLOCKS` 白名单与 `lit=true` / `charges>0` / `power>0` 状态属性（如点亮的红石灯、充能的重生锚），标识网格的 `is_emissive` 属性；该标记仅用于 AO 门控，不再写入废弃的发光强度字段。
 
 ---
 

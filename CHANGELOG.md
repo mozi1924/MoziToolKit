@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧽 其他零消费者 Rust 硬编码/辅助清理
+- 删除 `apply_bell_patches_resolved`（重复的 ResolvedModel 钟补丁路径）。
+- 删除 `mtk-material` 中未使用的 `is_grass` 分类辅助，以及 `BiomeResolver::load_from_directory` / `load_from_zip` 与 `mtk-material` 的 `zip` feature/dependency。
+- 删除 `mtk-voxel` 的 `ensure_selection_bounds`、`is_snapshot_identical`、`recalculate_all_section_crcs` 零调用方法。
+- 保留仍有消费者的 `is_emissive`（AO 门控）、`EMISSIVE_BLOCKS`、`is_opaque_block` / `is_known_non_cube`（流体高度）、`builtin` 实体方块回退与 `is_emissive_overlay_of`（叠面去重）。
+
+### 🧹 移除失效的发光强度编译残留
+- 删除 `BakedModel.emissive_level`、`get_block_emissive_level` 及 obj/model baker 中的等级计算；该字段已无渲染消费者，仅测试/CLI 元数据残留。
+- `is_emissive` 保留，仅用于 AO 门控；不再编译 0.0–1.0 的自发光强度。
+- 资产缓存格式升至 **v6**，旧 v5 模型缓存会被 manifest 版本校验拒绝并重建。
+
 ### 🧩 外部导入兼容配置接口
 - 新增 `configs/import_compat.json` 与 `bridge/assets/compat.py`：旧导出器后缀、leaves/log 回退、模组 tint/hardcoded 规则改为 Python 可编辑 JSON，无需重编译 Rust。
 - Rust `ResolverOverrides` 在预编译期合并进 `BiomeResolver`，并写入 `.mtkcache` 的 `resolver/overrides`；`AssetCacheReader::open` 在运行时安装为 `MaterialResolver` 规则。
