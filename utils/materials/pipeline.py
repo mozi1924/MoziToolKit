@@ -45,7 +45,6 @@ from ...bridge.assets import (
     get_cache_fingerprint,
     precompile_stack,
     invalidate_asset_cache_memory,
-    reload_atlas_images,
     load_atlas_mapping_from_cache,
     load_baked_atlas_from_cache,
     ensure_atlas_textures_extracted,
@@ -73,28 +72,12 @@ from .biome import (
 )
 from .constants import (
     ATTR_SOURCE_TEXTURE_KEY,
-    ATTR_MATERIAL_SLOT,
     ATTR_ATLAS_CHUNK_ID,
-    ATTR_ATLAS_TEXTURE_ID,
-    ATTR_UV_MODE,
     ATTR_UV_TRANSFORM,
     ATTR_UV_ROTATION,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
-    ATTR_COLORMAP_UV,
 )
-
-if "ATTR_MATERIAL_PROPS" not in globals():
-    ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
-    ATTR_MATERIAL_SLOT = "mtk_material_slot"
-    ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
-    ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
-    ATTR_UV_MODE = "mtk_uv_mode"
-    ATTR_UV_TRANSFORM = "mtk_uv_transform"
-    ATTR_UV_ROTATION = "mtk_uv_rotation"
-    ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
-    ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"
-    ATTR_COLORMAP_UV = "mtk_colormap_uv"
 
 from .uv_layers import (
     compute_atlas_layout_hash,

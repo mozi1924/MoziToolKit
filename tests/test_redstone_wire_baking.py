@@ -86,7 +86,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         self.assertEqual(info_legacy_off.get("hardcoded_hex"), "#4B0000")
 
     def test_redstone_wire_builtin_fallback_baking(self):
-        """Redstone wire models must bake correctly from resource pack assets with emission and tints."""
+        """Redstone wire models must bake correctly from resource pack assets with hardcoded tints."""
         if self.stack.get_pack_count() == 0:
             raise unittest.SkipTest("No resource pack available for redstone wire")
 
@@ -96,10 +96,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         )
         self.assertIsNotNone(mesh_z)
         self.assertEqual(mesh_z.face_count, 2, "Straight line must have 2 faces (north arm + south arm)")
-        em_z = mesh_z.get_attribute_data("mtk_emission")
-        self.assertIsNotNone(em_z)
-        for val in em_z:
-            self.assertAlmostEqual(val, 0.0, places=3)
+        self.assertFalse(mesh_z.has_attribute("mtk_emission"))
 
         # 2. Power 15 with vertical wall wire (north=up, south=side)
         mesh_up, tex_up = self.baker.bake_blockstate(
@@ -108,11 +105,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         self.assertIsNotNone(mesh_up)
         self.assertGreater(mesh_up.face_count, 0)
 
-        # Check emission level = 1.0 for power 15
-        self.assertTrue(mesh_up.has_attribute("mtk_emission"))
-        em_up = mesh_up.get_attribute_data("mtk_emission")
-        for val in em_up:
-            self.assertAlmostEqual(val, 1.0, places=3)
+        self.assertFalse(mesh_up.has_attribute("mtk_emission"))
 
         # 3. Intermediate power 8 dot wire
         mesh_dot, tex_dot = self.baker.bake_blockstate(
@@ -120,10 +113,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         )
         self.assertIsNotNone(mesh_dot)
         self.assertEqual(mesh_dot.face_count, 1, "Isolated dot wire must have 1 face")
-        em_dot = mesh_dot.get_attribute_data("mtk_emission")
-        expected_em = 8.0 / 15.0
-        for val in em_dot:
-            self.assertAlmostEqual(val, expected_em, places=2)
+        self.assertFalse(mesh_dot.has_attribute("mtk_emission"))
 
     def test_redstone_wire_directional_geometry(self):
         """Corner and cross wires must generate appropriate geometry faces."""

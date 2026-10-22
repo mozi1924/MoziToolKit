@@ -7,17 +7,16 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock
 
-from MoziToolKit.bridge.mesh.constants import EXCLUDED_MESH_ATTRIBUTES
+from MoziToolKit.bridge.mesh.attribute_schema import (
+    ACTIVE_ATTRIBUTE_NAMES,
+    RETIRED_ATTRIBUTE_NAMES,
+)
 from MoziToolKit.bridge.mesh.attributes import inject_custom_attributes
 from MoziToolKit.utils.materials.cleaner import clean_obsolete_mesh_attributes
 from MoziToolKit.utils.materials.constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_BIOME_TINT_COLOR,
-    ATTR_BIOME_TINT_DATA,
-    ATTR_SOURCE_TEXTURE_IDX,
-    ATTR_UV_ROTATION,
     ATTR_UV_TRANSFORM,
-    CANONICAL_MESH_FACE_ATTRIBUTES,
 )
 
 
@@ -190,10 +189,10 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertNotIn("mtk_atlas_texture_id", mesh.attributes)
         self.assertNotIn("mtk_anim_total_frames", mesh.attributes)
 
-    def test_canonical_and_excluded_disjoint(self):
-        # Verify that canonical attributes and excluded attributes have zero overlap
-        overlap = CANONICAL_MESH_FACE_ATTRIBUTES.intersection(EXCLUDED_MESH_ATTRIBUTES)
-        self.assertEqual(len(overlap), 0, f"Overlap between canonical and excluded: {overlap}")
+    def test_active_and_retired_disjoint(self):
+        # The native schema must never declare the same attribute as active and retired.
+        overlap = ACTIVE_ATTRIBUTE_NAMES.intersection(RETIRED_ATTRIBUTE_NAMES)
+        self.assertEqual(len(overlap), 0, f"Overlap between active and retired: {overlap}")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import struct
 import sys
 import tempfile
 import unittest
@@ -271,12 +272,39 @@ class TestCtmBridge(unittest.TestCase):
             bxs = mesh_data.attribute_memoryview("mtk_block_x").cast("i")
             bys = mesh_data.attribute_memoryview("mtk_block_y").cast("i")
             bzs = mesh_data.attribute_memoryview("mtk_block_z").cast("i")
-            dirs = mesh_data.attribute_memoryview("mtk_face_dir").cast("B")
+            positions = mesh_data.positions_memoryview().tobytes()
+            quad_indices = mesh_data.quad_indices_memoryview().tobytes()
             for i in range(mesh_data.quad_count):
                 if (bxs[i] == target_x and bys[i] == target_y and
-                    bzs[i] == target_z and dirs[i] == target_dir):
+                    bzs[i] == target_z and
+                    _face_dir_from_geometry(positions, quad_indices, i) == target_dir):
                     return keys[i]
             return None
+
+        def _face_dir_from_geometry(positions, quad_indices, face_index):
+            """Map a quad's geometric normal back to the MC Direction index (0..5)."""
+            i0, i1, i3 = struct.unpack_from("<I", quad_indices, face_index * 16), \
+                struct.unpack_from("<I", quad_indices, face_index * 16 + 4), \
+                struct.unpack_from("<I", quad_indices, face_index * 16 + 12)
+            p0 = struct.unpack_from("<3f", positions, i0[0] * 12)
+            p1 = struct.unpack_from("<3f", positions, i1[0] * 12)
+            p3 = struct.unpack_from("<3f", positions, i3[0] * 12)
+            e1 = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+            e2 = (p3[0] - p0[0], p3[1] - p0[1], p3[2] - p0[2])
+            x = e1[1] * e2[2] - e1[2] * e2[1]
+            y = e1[2] * e2[0] - e1[0] * e2[2]
+            z = e1[0] * e2[1] - e1[1] * e2[0]
+            if x > 0.5:
+                return 0  # East
+            if x < -0.5:
+                return 1  # West
+            if z > 0.5:
+                return 2  # Up
+            if z < -0.5:
+                return 3  # Down
+            if y < -0.5:
+                return 4  # South
+            return 5      # North
 
         # 1. Horizontal connection along X axis (East-West)
         storage_x = self.mtk.VoxelStorage()

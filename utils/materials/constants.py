@@ -4,6 +4,21 @@ Authoritative block models, culling rules, and texture categorizations
 are computed directly in Rust (libmtk).
 """
 
+from ...bridge.mesh.attribute_schema import (
+    ATTR_ANIM_FRAME_SIZE,
+    ATTR_ANIM_TIMING,
+    ATTR_ATLAS_CHUNK_ID,
+    ATTR_BIOME_TINT_COLOR,
+    ATTR_BIOME_TINT_DATA,
+    ATTR_BLOCK_X,
+    ATTR_BLOCK_Y,
+    ATTR_BLOCK_Z,
+    ATTR_SOURCE_TEXTURE_IDX,
+    ATTR_SOURCE_TEXTURE_KEY,
+    ATTR_UV_ROTATION,
+    ATTR_UV_TRANSFORM,
+)
+
 # Default Minecraft Namespace
 DEFAULT_NAMESPACE = "minecraft"
 
@@ -37,57 +52,11 @@ ATLAS_CATEGORY_ITEMS = "items"
 ATLAS_CATEGORY_ENTITIES = "entities"
 ATLAS_CATEGORY_MISC = "misc"
 
-# Atlas Mesh Attribute Names (Namespaced with mtk_)
-ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
-ATTR_ATLAS_TEXTURE_ID = "mtk_atlas_texture_id"
-ATTR_FACE_MATERIAL_ID = "mtk_material_id"
-ATTR_MATERIAL_SLOT = "mtk_material_slot"
-ATTR_UV_MODE = "mtk_uv_mode"
-# Pseudo-UV affine transform (scale_u, scale_v, offset_u, offset_v) applied in the shader.
-# Required for greedy-meshed / imported external meshes: faces merged into one quad cannot
-# carry per-block atlas UVs, so tiling is reconstructed at render time instead.
-ATTR_UV_TRANSFORM = "mtk_uv_transform"
-ATTR_IS_OPAQUE = "mtk_is_opaque"
-ATTR_ALPHA_MODE = "mtk_alpha_mode"
-ATTR_EMISSION = "mtk_emission"
-
-# Canonical source provenance attributes
-ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
-ATTR_SOURCE_TEXTURE_IDX = "mtk_source_texture_idx"
+# Mesh attribute names come from the native schema mirror (bridge/mesh/_attribute_schema_generated.py).
+# Keep host-only custom-property keys here.
 PROP_SOURCE_TEXTURES = "mtk_source_textures"
-ATTR_SOURCE_ORIGIN = "mtk_source_origin"
 FALLBACK_TEXTURE_KEY = "mozi:fallback"
 PROVENANCE_SCHEMA_VERSION = 2
-
-# Biome & Tint Mesh Attribute Names (Namespaced with mtk_)
-ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"       # RGBA: base, overlay, tint, hardcoded
-ATTR_BIOME_TINT_COLOR = "mtk_biome_tint_color"    # RGBA: resolved tint colour
-ATTR_TINT_WEIGHT = "mtk_tint_weight"
-ATTR_BASE_TINT_WEIGHT = "mtk_base_tint_weight"
-ATTR_OVERLAY_TINT_WEIGHT = "mtk_overlay_tint_weight"
-ATTR_TINT_COLOR = "mtk_tint_color"
-ATTR_TINT_TYPE = "mtk_tint_type"
-ATTR_HARDCODED_COLOR = "mtk_hardcoded_color"
-ATTR_USE_HARDCODED = "mtk_use_hardcoded"
-ATTR_BIOME_TEMPERATURE = "mtk_biome_temperature"
-ATTR_BIOME_HUMIDITY = "mtk_biome_humidity"
-ATTR_COLORMAP_UV = "mtk_colormap_uv"
-ATTR_BIOME_COORDS = "mtk_biome_coords"
-
-# Animation Mesh Attribute Names (Atlas Dynamic Animation)
-ATTR_ANIM_TIMING = "mtk_anim_timing"               # FLOAT_VECTOR: frames (X), frametime (Y), interpolate (Z)
-ATTR_ANIM_FRAME_SIZE = "mtk_anim_frame_size"       # FLOAT_VECTOR: frame width (X), frame height (Y), reserved (Z)
-ATTR_ANIM_TOTAL_FRAMES = "mtk_anim_total_frames"
-ATTR_ANIM_FRAMETIME = "mtk_anim_frametime"
-ATTR_ANIM_INTERPOLATE = "mtk_anim_interpolate"
-ATTR_ANIM_FRAME_WIDTH = "mtk_anim_frame_width"
-ATTR_ANIM_FRAME_HEIGHT = "mtk_anim_frame_height"
-
-# Atlas UV Rotation & Tiling Mesh Attributes
-ATTR_UV_ROTATION = "mtk_uv_rotation"
-ATTR_UV_TILING_TRANSFORM = "mtk_uv_tiling_transform"  # LEGACY: no longer written; cleaned up on compact
-ATTR_UV_TILING_SCALE = "mtk_uv_tiling_scale"
-ATTR_UV_TILING_LOCATION = "mtk_uv_tiling_location"
 
 # Known Block Texture Suffixes
 TEXTURE_SUFFIXES = (
@@ -111,108 +80,3 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 # Atlas Format Version
 ATLAS_FORMAT_VERSION = 16
-
-# Canonical active mesh face attributes written and consumed by MTK shaders / DCC tools
-CANONICAL_MESH_FACE_ATTRIBUTES = frozenset({
-    ATTR_SOURCE_TEXTURE_KEY,    # "mtk_source_texture_key" (STRING) - provenance & fallback
-    ATTR_SOURCE_TEXTURE_IDX,    # "mtk_source_texture_idx" (INT)
-    ATTR_ATLAS_CHUNK_ID,        # "mtk_atlas_chunk_id" (INT)
-    ATTR_UV_TRANSFORM,          # "mtk_uv_transform" (FLOAT_COLOR / FLOAT4)
-    ATTR_UV_ROTATION,           # "mtk_uv_rotation" (FLOAT)
-    ATTR_BIOME_TINT_DATA,       # "mtk_biome_tint_data" (FLOAT_COLOR / FLOAT4)
-    ATTR_BIOME_TINT_COLOR,      # "mtk_biome_tint_color" (FLOAT_COLOR / FLOAT4)
-    ATTR_ANIM_TIMING,           # "mtk_anim_timing" (FLOAT_VECTOR / FLOAT3)
-    ATTR_ANIM_FRAME_SIZE,       # "mtk_anim_frame_size" (FLOAT_VECTOR / FLOAT3)
-    # Block coordinates for 3D world biome sampling with storage
-    "mtk_block_x",
-    "mtk_block_y",
-    "mtk_block_z",
-})
-
-# Obsolete, dead, or retired attributes that must NOT be written to Blender mesh.attributes
-# and must be purged if found on meshes.
-EXCLUDED_MESH_ATTRIBUTES = frozenset({
-    # 1. Native redundancy: Blender polygon.material_index is the authoritative material assignment
-    ATTR_MATERIAL_SLOT,         # "mtk_material_slot"
-    # 2. Dead metadata: unconsumed by any shader, operator, or node tree
-    ATTR_ATLAS_TEXTURE_ID,      # "mtk_atlas_texture_id"
-    ATTR_UV_MODE,               # "mtk_uv_mode"
-    "mtk_face_dir",             # Redundant with mesh polygon normal
-    ATTR_EMISSION,              # "mtk_emission" - PBR pre-decodes emission into ORM Alpha; shaders don't read it
-    # 3. Obsolete Biome & Colormap attributes (Rust resolves Linear RGBA directly into ATTR_BIOME_TINT_COLOR)
-    ATTR_COLORMAP_UV,           # "mtk_colormap_uv"
-    ATTR_TINT_WEIGHT,           # "mtk_tint_weight"
-    ATTR_BASE_TINT_WEIGHT,      # "mtk_base_tint_weight"
-    ATTR_OVERLAY_TINT_WEIGHT,   # "mtk_overlay_tint_weight"
-    ATTR_TINT_COLOR,            # "mtk_tint_color"
-    ATTR_HARDCODED_COLOR,       # "mtk_hardcoded_color"
-    ATTR_USE_HARDCODED,         # "mtk_use_hardcoded"
-    ATTR_BIOME_TEMPERATURE,     # "mtk_biome_temperature"
-    ATTR_BIOME_HUMIDITY,        # "mtk_biome_humidity"
-    ATTR_BIOME_COORDS,          # "mtk_biome_coords"
-    # 4. Redundant scalar splits of vector animation attributes (now packed into ATTR_ANIM_TIMING / ATTR_ANIM_FRAME_SIZE)
-    ATTR_ANIM_TOTAL_FRAMES,     # "mtk_anim_total_frames"
-    ATTR_ANIM_FRAMETIME,        # "mtk_anim_frametime"
-    ATTR_ANIM_INTERPOLATE,      # "mtk_anim_interpolate"
-    ATTR_ANIM_FRAME_WIDTH,      # "mtk_anim_frame_width"
-    ATTR_ANIM_FRAME_HEIGHT,     # "mtk_anim_frame_height"
-    # 5. Legacy UV tiling attributes (replaced by ATTR_UV_TRANSFORM)
-    ATTR_UV_TILING_SCALE,       # "mtk_uv_tiling_scale"
-    ATTR_UV_TILING_LOCATION,    # "mtk_uv_tiling_location"
-    ATTR_UV_TILING_TRANSFORM,   # "mtk_uv_tiling_transform"
-    # 6. Completely retired physical property table
-    "mtk_material_props",
-    # 7. Legacy point cloud strings on face domain
-    "mtk_block_state",
-    "mtk_biome",
-    # 8. Unnamespaced legacy attribute names
-    "atlas_chunk_id",
-    "atlas_texture_id",
-    "material_id",
-})
-
-# All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
-ANIM_AND_ATLAS_ATTR_NAMES = (
-    ATTR_ATLAS_CHUNK_ID,
-    ATTR_ATLAS_TEXTURE_ID,
-    ATTR_FACE_MATERIAL_ID,
-    ATTR_IS_OPAQUE,
-    ATTR_UV_ROTATION,
-    ATTR_UV_TILING_SCALE,
-    ATTR_UV_TILING_LOCATION,
-    ATTR_UV_TILING_TRANSFORM,
-    ATTR_ANIM_TIMING,
-    ATTR_ANIM_FRAME_SIZE,
-    ATTR_BIOME_TINT_DATA,
-    ATTR_BIOME_TINT_COLOR,
-    "atlas_chunk_id",
-    "atlas_texture_id",
-    "material_id",
-    "mtk_uv_rotation",
-    "mtk_anim_total_frames",
-    "mtk_anim_frametime",
-    "mtk_anim_interpolate",
-    "mtk_anim_frame_width",
-    "mtk_anim_frame_height",
-    "mtk_biome_tint_data",
-    "mtk_biome_tint_color",
-)
-
-# Obsolete / split stream attribute names cleaned up when compact attributes are written
-LEGACY_SPLIT_ATTR_NAMES = (
-    ATTR_TINT_WEIGHT,
-    ATTR_BASE_TINT_WEIGHT,
-    ATTR_OVERLAY_TINT_WEIGHT,
-    ATTR_TINT_COLOR,
-    ATTR_HARDCODED_COLOR,
-    ATTR_USE_HARDCODED,
-    ATTR_UV_ROTATION,
-    ATTR_UV_TILING_SCALE,
-    ATTR_UV_TILING_LOCATION,
-    "mtk_uv_rotation",
-    "mtk_anim_total_frames",
-    "mtk_anim_frametime",
-    "mtk_anim_interpolate",
-    "mtk_anim_frame_width",
-    "mtk_anim_frame_height",
-)

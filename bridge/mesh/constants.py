@@ -61,49 +61,6 @@ MTK_TO_BLENDER_TYPE: Dict[str, Tuple[str, str, str]] = {
     "String": ("STRING", "value", ""),
 }
 
-# Mesh attributes that must never be injected into Blender mesh.attributes
-# because they are dead, redundant with native Blender properties, or obsolete.
-EXCLUDED_MESH_ATTRIBUTES: frozenset[str] = frozenset({
-    # 1. Native redundancy: Blender polygon.material_index is the authoritative material assignment
-    "mtk_material_slot",
-    # 2. Dead metadata: unconsumed by any shader, operator, or node tree
-    "mtk_atlas_texture_id",
-    "mtk_uv_mode",
-    "mtk_face_dir",
-    "mtk_emission",
-    # 3. Obsolete Biome & Colormap attributes (Rust resolves Linear RGBA directly into mtk_biome_tint_color)
-    "mtk_colormap_uv",
-    "mtk_tint_weight",
-    "mtk_base_tint_weight",
-    "mtk_overlay_tint_weight",
-    "mtk_tint_color",
-    "mtk_hardcoded_color",
-    "mtk_use_hardcoded",
-    "mtk_biome_temperature",
-    "mtk_biome_humidity",
-    "mtk_biome_coords",
-    # 4. Redundant scalar splits of vector animation attributes (packed into mtk_anim_timing / mtk_anim_frame_size)
-    "mtk_anim_total_frames",
-    "mtk_anim_frametime",
-    "mtk_anim_interpolate",
-    "mtk_anim_frame_width",
-    "mtk_anim_frame_height",
-    # 5. Legacy UV tiling attributes (replaced by mtk_uv_transform)
-    "mtk_uv_tiling_scale",
-    "mtk_uv_tiling_location",
-    "mtk_uv_tiling_transform",
-    # 6. Completely retired physical property table
-    "mtk_material_props",
-    # 7. Legacy point cloud strings on face domain
-    "mtk_block_state",
-    "mtk_biome",
-    # 8. Unnamespaced legacy attribute names
-    "atlas_chunk_id",
-    "atlas_texture_id",
-    "material_id",
-})
-
-
 
 def get_mesh(mesh_or_obj: Any) -> Any:
     """Helper to resolve bpy.types.Mesh from either Mesh or Object."""

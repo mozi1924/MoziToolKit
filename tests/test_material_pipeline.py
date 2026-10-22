@@ -41,8 +41,10 @@ from MoziToolKit.utils.materials.biome.updater import update_object_biome
 from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
-    ATTR_COLORMAP_UV,
 )
+
+# Retired attribute used to verify legacy purge behavior (see mtk-core schema).
+RETIRED_COLORMAP_UV = "mtk_colormap_uv"
 
 def _write_dummy_png(path: Path):
     """Helper to write a valid PNG file."""
@@ -250,7 +252,7 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn("mtk_uv_transform", mesh.attributes)
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
                 self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
-                self.assertNotIn(ATTR_COLORMAP_UV, mesh.attributes)
+                self.assertNotIn(RETIRED_COLORMAP_UV, mesh.attributes)
                 self.assertNotIn("mtk_material_props", mesh.attributes)
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")

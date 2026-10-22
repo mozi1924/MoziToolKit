@@ -76,7 +76,6 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         - mtk_uv_transform
         - mtk_biome_tint_data
         - mtk_biome_tint_color
-        - mtk_face_dir
         """
         # Create a mock atlas mapping JSON
         mapping_data = {
@@ -194,7 +193,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
-        self.assertTrue(mesh.has_attribute("mtk_face_dir"))
+        self.assertFalse(mesh.has_attribute("mtk_face_dir"))
 
         # Verify string keys
         keys = mesh.get_string_attribute("mtk_source_texture_key")

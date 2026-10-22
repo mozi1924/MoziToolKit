@@ -9,7 +9,12 @@ provides ``bpy.ops.object.material_slot_remove_unused``.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
+
+from ...bridge.mesh.attribute_schema import RETIRED_ATTRIBUTE_NAMES
+
+logger = logging.getLogger("MoziToolKit.Utils.Materials.Cleaner")
 
 try:
     import numpy as np
@@ -61,12 +66,10 @@ def remap_indices_lut(
 
 def clean_obsolete_mesh_attributes(mesh_or_obj: Any) -> list[str]:
     """
-    Purges dead, redundant, and obsolete MTK attributes from a Blender mesh.
+    Purges retired MTK attributes from a Blender mesh.
 
-    Removes obsolete attributes (e.g. mtk_colormap_uv, mtk_material_slot, mtk_atlas_texture_id,
-    mtk_anim_total_frames, mtk_material_props, etc.) leaving only canonical active attributes.
-    Preserves provenance attributes such as mtk_source_texture_key, mtk_source_texture_idx,
-    and mtk_atlas_chunk_id.
+    The retired-name list comes from the native attribute schema; active
+    provenance/material/metadata attributes are never touched.
     """
     if mesh_or_obj is None:
         return []
@@ -75,17 +78,14 @@ def clean_obsolete_mesh_attributes(mesh_or_obj: Any) -> list[str]:
     if not hasattr(mesh, "attributes"):
         return []
 
-    from .constants import EXCLUDED_MESH_ATTRIBUTES
-
     removed: list[str] = []
-    for name in EXCLUDED_MESH_ATTRIBUTES:
+    for name in RETIRED_ATTRIBUTE_NAMES:
         attr = mesh.attributes.get(name)
         if attr is not None:
             try:
                 mesh.attributes.remove(attr)
                 removed.append(name)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to purge retired attribute %s: %s", name, exc)
 
     return removed
-

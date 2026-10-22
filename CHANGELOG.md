@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧱 网格属性契约 SSOT 与死属性清理
+- **后端成为唯一权威源**：`mtk-core::attributes` 新增 `MESH_ATTRIBUTE_SPECS`（名称/域/类型/`material`|`metadata` 角色）与 `RETIRED_MESH_ATTRIBUTES`，并通过 `libmtk_py.mesh_attribute_schema()` / `retired_mesh_attributes()` 暴露给宿主。
+- **Python 只消费、不复制**：新增 `tools/sync_attribute_schema.py` 生成 `bridge/mesh/_attribute_schema_generated.py`；删除 `bridge/mesh/constants.py` 与 `utils/materials/constants.py` 中两份手工维护的排除/规范名单。`tests/test_attribute_schema.py` 在原生扩展可用时逐项校验镜像一致性。
+- **彻底删除死属性生成链路**：`mtk_material_slot`、`mtk_atlas_texture_id`、`mtk_uv_mode`、`mtk_colormap_uv`、`mtk_face_dir`、`mtk_emission` 以及标量动画/旧 UV Tiling/旧 tint 权重等不再由 Rust 写入，`FaceAttributes` 与 shading 结构中的对应字段/参数一并移除。
+- **元信息保留**：`mtk_source_texture_key/idx`、`mtk_atlas_chunk_id`、`mtk_block_x/y/z` 继续作为宿主元信息写入；`mtk_emission` 的发光信息已由预解码 ORM Alpha 通道承载。
+- 新增文档 `docs/mesh/attributes.md`，记录 SSOT 生成流程、活跃属性表与退役清单。
+
 ### 🎨 PBR 预编译与材质图简化（v2.1）
 - **LabPBR 改为预编译解码**：Rust `mtk-material::pbr` 在生成图集时把 `_n` / `_s` 解码为 `MtkPackedV1`：`_n`（OpenGL 法线 + 高度）、`_orm`（AO/roughness/metallic/emission）、`_aux`（encoded IOR/porosity/SSS/transmission）。缓存格式版本升至 `ASSET_CACHE_FORMAT_VERSION = 4`，旧缓存自动失效重建。
 - **移除运行时 `LabPBR 1.3 Decoder`**：Blender 图集材质只接标准 Principled 输入，不再做 DX→GL、F0→IOR、smoothness→roughness 等逐像素解码；新增 `utils/materials/builder/pbr_graph.py` 承载标准 PBR 图。

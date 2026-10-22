@@ -17,12 +17,11 @@ except ImportError:
     np = None
     HAS_NUMPY = False
 
+from ..cleaner import clean_obsolete_mesh_attributes
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
-    ATTR_ATLAS_TEXTURE_ID,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
-    ATTR_COLORMAP_UV,
     ATTR_SOURCE_TEXTURE_KEY,
     ATTR_SOURCE_TEXTURE_IDX,
     PROP_CREATED_BY,
@@ -275,7 +274,16 @@ def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
         return True
     mesh = obj.data
     attrs = mesh.attributes
-    if any(name in attrs for name in (ATTR_SOURCE_TEXTURE_KEY, ATTR_SOURCE_TEXTURE_IDX, ATTR_BIOME_TINT_DATA, ATTR_BIOME_TINT_COLOR, ATTR_ATLAS_CHUNK_ID, ATTR_COLORMAP_UV)):
+    if any(
+        name in attrs
+        for name in (
+            ATTR_SOURCE_TEXTURE_KEY,
+            ATTR_SOURCE_TEXTURE_IDX,
+            ATTR_BIOME_TINT_DATA,
+            ATTR_BIOME_TINT_COLOR,
+            ATTR_ATLAS_CHUNK_ID,
+        )
+    ):
         return True
     for slot in obj.material_slots:
         mat = slot.material
@@ -615,12 +623,8 @@ def update_object_biome(
                                 "color", np.frombuffer(colors_mv, dtype=np.float32)
                             )
 
-                        # Clean up legacy colormap UV attribute if present
-                        if ATTR_COLORMAP_UV in mesh.attributes:
-                            try:
-                                mesh.attributes.remove(mesh.attributes[ATTR_COLORMAP_UV])
-                            except Exception:
-                                pass
+                        # Purge retired legacy attributes (e.g. mtk_colormap_uv).
+                        clean_obsolete_mesh_attributes(mesh)
 
                         if hasattr(mesh, "__setitem__"):
                             try:

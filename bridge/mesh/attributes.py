@@ -9,8 +9,8 @@ from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from .attribute_schema import ATTR_SOURCE_TEXTURE_KEY, is_active
 from .constants import (
-    EXCLUDED_MESH_ATTRIBUTES,
     MTK_TO_BLENDER_DOMAIN,
     MTK_TO_BLENDER_TYPE,
     get_mesh,
@@ -48,7 +48,7 @@ def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
             return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
 
     # 2. Robust Fallback: STRING attribute ('mtk_source_texture_key')
-    attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
+    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY) if hasattr(mesh, "attributes") else None
     if attr_str is not None and len(attr_str.data) == num_polys:
         result = []
         for elem in attr_str.data:
@@ -88,7 +88,7 @@ def resolve_source_texture_keys_paletted(mesh_or_obj: Any) -> Tuple[List[str], A
         return palette, idx_arr
 
     # 2. Robust Fallback: STRING attribute ('mtk_source_texture_key')
-    attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
+    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY) if hasattr(mesh, "attributes") else None
     if attr_str is not None and len(attr_str.data) == num_polys:
         values = []
         for elem in attr_str.data:
@@ -128,10 +128,10 @@ def inject_face_source_texture_palette(
         attr_idx.data.foreach_set("value", arr)
 
     # Synchronize or populate mtk_source_texture_key for meshes <= 1024 faces or when already existing
-    attr_str = mesh.attributes.get("mtk_source_texture_key")
+    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
     if attr_str is not None or num_polys <= 1024:
         if attr_str is None:
-            attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+            attr_str = get_or_create_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY, "STRING", "FACE")
         if attr_str is not None and len(attr_str.data) == num_polys:
             pal_list = list(palette)
             pal_len = len(pal_list)
@@ -141,8 +141,8 @@ def inject_face_source_texture_palette(
                 b_val = str(val).encode("utf-8")
                 try:
                     attr_str.data[i].value = b_val
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to write source texture key at face %d: %s", i, exc)
 
 
 def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
@@ -171,23 +171,22 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
         attr_idx.data.foreach_set("value", np_indices)
 
     # 3. Synchronize or populate STRING attribute for compatibility
-    attr_str = mesh.attributes.get("mtk_source_texture_key")
+    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
     if attr_str is not None or num_polys <= 1024:
         if attr_str is None:
-            attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+            attr_str = get_or_create_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY, "STRING", "FACE")
         if attr_str is not None and len(attr_str.data) == num_polys:
             for i, val in enumerate(values):
                 b_val = str(val).encode("utf-8") if isinstance(val, str) else bytes(val)
                 try:
                     attr_str.data[i].value = b_val
-                except Exception:
-                    pass
-
+                except Exception as exc:
+                    logger.debug("Failed to write source texture key at face %d: %s", i, exc)
 
 
 def inject_face_attribute_string(mesh: Any, name: str, values: List[str]) -> None:
     """Inject a Face-domain String attribute into Blender Mesh."""
-    if name == "mtk_source_texture_key":
+    if name == ATTR_SOURCE_TEXTURE_KEY:
         inject_face_source_texture_keys(mesh, values)
         return
     attr = get_or_create_attribute(mesh, name, "STRING", "FACE")
@@ -322,7 +321,7 @@ def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> boo
     those values, so we rebuild the palette + INT index attribute instead of losing
     provenance. Falls back to the legacy string path for older native builds.
     """
-    if attr_name != "mtk_source_texture_key":
+    if attr_name != ATTR_SOURCE_TEXTURE_KEY:
         return False
 
     builder = getattr(mesh_data, "source_texture_palette_indices", None)
@@ -344,13 +343,15 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
         return
 
     for attr_name in mesh_data.attribute_names():
-        if attr_name in EXCLUDED_MESH_ATTRIBUTES:
+        if not is_active(attr_name):
+            # The native core never emits retired attributes; guard against a
+            # stale native build and purge any leftover layer.
             b_attr = mesh.attributes.get(attr_name)
             if b_attr is not None:
                 try:
                     mesh.attributes.remove(b_attr)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Failed to purge retired attribute %s: %s", attr_name, exc)
             continue
 
         try:
@@ -365,7 +366,7 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
             # remain only as a <=256-face compatibility shim inside the helper, so
             # save imports and Live Sync meshes expose the exact same attributes.
             if dtype_name.lower() == "string":
-                if attr_name == "mtk_source_texture_key" and b_domain == "FACE":
+                if attr_name == ATTR_SOURCE_TEXTURE_KEY and b_domain == "FACE":
                     _inject_palette_provenance(mesh, mesh_data, attr_name)
                     continue
                 if skip_string_attributes:

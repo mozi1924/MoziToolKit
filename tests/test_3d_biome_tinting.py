@@ -30,9 +30,11 @@ from MoziToolKit.ui.panel_biome import _get_object_biome, _resolve_biome_preset
 from MoziToolKit.utils.materials.constants import (
     ATTR_BIOME_TINT_COLOR,
     ATTR_BIOME_TINT_DATA,
-    ATTR_COLORMAP_UV,
     ATTR_SOURCE_TEXTURE_IDX,
 )
+
+# Retired attribute used to verify legacy purge behavior (see mtk-core schema).
+RETIRED_COLORMAP_UV = "mtk_colormap_uv"
 from MoziToolKit.utils.materials.pipeline import resolve_and_apply_biome_tint
 
 
@@ -271,7 +273,7 @@ class Test3DBiomeTinting(unittest.TestCase):
         self.assertEqual(obj.get("mtk:biome_preset"), "WORLD")
         self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
         self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
-        self.assertNotIn(ATTR_COLORMAP_UV, mesh.attributes)
+        self.assertNotIn(RETIRED_COLORMAP_UV, mesh.attributes)
 
         col0 = mesh.attributes[ATTR_BIOME_TINT_COLOR].data[0].color
         col1 = mesh.attributes[ATTR_BIOME_TINT_COLOR].data[1].color
@@ -401,7 +403,7 @@ class Test3DBiomeTinting(unittest.TestCase):
         # [base_weight, overlay_weight, tint_weight, tint_type] -> grass tinted.
         tint_attr.data[0].color = [1.0, 0.0, 1.0, 1.0]
         mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
-        mesh.attributes.new(name=ATTR_COLORMAP_UV, type="VECTOR", domain="FACE")
+        mesh.attributes.new(name=RETIRED_COLORMAP_UV, type="VECTOR", domain="FACE")
         for name in ("mtk_block_x", "mtk_block_y", "mtk_block_z"):
             attr = mesh.attributes.new(name=name, type="INT", domain="FACE")
             attr.data[0].value = 0

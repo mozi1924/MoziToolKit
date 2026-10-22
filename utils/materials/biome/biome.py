@@ -34,10 +34,10 @@ def __getattr__(name: str) -> Any:
         return has_libmtk()
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
+from ..cleaner import clean_obsolete_mesh_attributes
 from ..constants import (
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
-    ATTR_COLORMAP_UV,
     ATTR_SOURCE_TEXTURE_KEY,
 )
 
@@ -318,12 +318,8 @@ def apply_biome_tint_attributes(
             flat_col = array.array("f", [c for val in tint_colors for c in val])
         attr_col.data.foreach_set("color", flat_col)
 
-    # 3. Legacy ATTR_COLORMAP_UV cleanup: Colormap sampling is now fully executed in Rust.
-    if hasattr(mesh, "attributes") and ATTR_COLORMAP_UV in mesh.attributes:
-        try:
-            mesh.attributes.remove(mesh.attributes[ATTR_COLORMAP_UV])
-        except Exception:
-            pass
+    # 3. Purge retired legacy attributes (e.g. mtk_colormap_uv).
+    clean_obsolete_mesh_attributes(mesh)
 
 
 def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
