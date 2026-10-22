@@ -18,7 +18,106 @@ def test_operator_definition():
     assert "min_coord" in MTK_OT_import_minecraft_save.__annotations__
     assert "max_coord" in MTK_OT_import_minecraft_save.__annotations__
     assert "dimension" in MTK_OT_import_minecraft_save.__annotations__
+    assert "use_yefira_selection" in MTK_OT_import_minecraft_save.__annotations__
     assert "run_async" in MTK_OT_import_minecraft_save.__annotations__
+
+
+def test_operator_apply_yefira_selection(tmp_path):
+    """Verify operator apply_yefira_selection loads coordinates into operator instance."""
+    import json
+    from types import SimpleNamespace
+    from MoziToolKit.utils.save.selection import YEFIRA_SELECTION_FILENAME
+
+    json_file = tmp_path / YEFIRA_SELECTION_FILENAME
+    json_file.write_text(
+        json.dumps({
+            "pos1": {"x": 100, "y": 200, "z": 300},
+            "pos2": {"x": 50, "y": 64, "z": -50},
+            "dimension": "minecraft:the_nether",
+        }),
+        encoding="utf-8",
+    )
+
+    op = SimpleNamespace(
+        directory=str(tmp_path),
+        filepath="",
+        use_yefira_selection=True,
+        min_coord=(-64, -64, -64),
+        max_coord=(64, 320, 64),
+        dimension="overworld",
+    )
+    applied = MTK_OT_import_minecraft_save.apply_yefira_selection(op)
+
+    assert applied is True
+    assert tuple(op.min_coord) == (50, 64, -50)
+    assert tuple(op.max_coord) == (100, 200, 300)
+    assert op.dimension == "the_nether"
+
+
+def test_operator_apply_yefira_selection_non_world_dir(tmp_path):
+    """Verify that toggling in a non-world folder does not crash and safely returns False."""
+    from types import SimpleNamespace
+    from MoziToolKit.operators.save.op_import_save import (
+        _on_use_yefira_selection_update,
+        _on_save_import_directory_update,
+    )
+
+    op = SimpleNamespace(
+        directory=str(tmp_path),
+        filepath="",
+        use_yefira_selection=True,
+        min_coord=(-64, -64, -64),
+        max_coord=(64, 320, 64),
+        dimension="overworld",
+    )
+
+    # Calling callbacks on RNA-like structs must not crash
+    _on_use_yefira_selection_update(op, None)
+    _on_save_import_directory_update(op, None)
+
+    # Coordinates remain untouched
+    assert tuple(op.min_coord) == (-64, -64, -64)
+    assert tuple(op.max_coord) == (64, 320, 64)
+    assert op.dimension == "overworld"
+
+
+def test_operator_apply_yefira_selection_via_filepath(tmp_path):
+    """Verify that selecting a world folder via filepath correctly resolves and fills."""
+    import json
+    from types import SimpleNamespace
+    from MoziToolKit.utils.save.selection import YEFIRA_SELECTION_FILENAME
+    from MoziToolKit.operators.save.op_import_save import _on_use_yefira_selection_update
+
+    parent_dir = tmp_path / "saves"
+    parent_dir.mkdir()
+    world_dir = parent_dir / "MyWorld"
+    world_dir.mkdir()
+
+    json_file = world_dir / YEFIRA_SELECTION_FILENAME
+    json_file.write_text(
+        json.dumps({
+            "pos1": {"x": 10, "y": 70, "z": 20},
+            "pos2": {"x": -10, "y": 60, "z": -20},
+            "dimension": "minecraft:the_end",
+        }),
+        encoding="utf-8",
+    )
+
+    # User is in parent_dir, but selected world_dir as filepath
+    op = SimpleNamespace(
+        directory=str(parent_dir),
+        filepath=str(world_dir),
+        use_yefira_selection=True,
+        min_coord=(-64, -64, -64),
+        max_coord=(64, 320, 64),
+        dimension="overworld",
+    )
+
+    _on_use_yefira_selection_update(op, None)
+
+    assert tuple(op.min_coord) == (-10, 60, -20)
+    assert tuple(op.max_coord) == (10, 70, 20)
+    assert op.dimension == "the_end"
 
 
 @pytest.mark.skipif(SAMPLE_WORLD_PATH is None, reason="Sample Minecraft world not found (set MTK_TEST_SAVE)")

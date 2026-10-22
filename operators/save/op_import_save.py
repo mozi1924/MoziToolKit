@@ -34,12 +34,106 @@ from ...utils.assets import (
 from ...utils.save import (
     apply_imported_save_to_blender,
     import_save_to_blender,
+    load_yefira_selection,
+    resolve_world_directory,
 )
 from ...utils.async_task import AsyncTask, ModalTaskRunner
 from ...utils.diagnostics import format_timing_parts
 from ...utils.progress import BlenderProgressReporter
 
 logger = logging.getLogger("MoziToolKit.Operators.Save")
+
+
+def resolve_operator_world_dir(op, context=None) -> Optional[Path]:
+    """
+    Resolves the active Minecraft world save directory from an operator instance
+    and the Blender file browser context.
+    """
+    candidates = []
+
+    # 1. Check op.filepath
+    filepath = getattr(op, "filepath", None)
+    if filepath:
+        candidates.append(Path(filepath))
+
+    # 2. Check op.directory
+    directory = getattr(op, "directory", None)
+    if directory:
+        candidates.append(Path(directory))
+
+    # 3. Check context file browser space params if available
+    if context is not None:
+        try:
+            space = getattr(context, "space_data", None)
+            params = getattr(space, "params", None) if space else None
+            if params:
+                p_dir = getattr(params, "directory", None)
+                p_file = getattr(params, "filename", None)
+                if isinstance(p_dir, bytes):
+                    p_dir = p_dir.decode("utf-8", errors="ignore")
+                if isinstance(p_file, bytes):
+                    p_file = p_file.decode("utf-8", errors="ignore")
+                if p_dir and p_file:
+                    candidates.append(Path(p_dir) / p_file)
+                if p_dir:
+                    candidates.append(Path(p_dir))
+        except Exception:
+            pass
+
+    # First pass: look for a directory containing yefira_selection.json
+    for cand in candidates:
+        world_dir = resolve_world_directory(cand)
+        if world_dir and (world_dir / "yefira_selection.json").is_file():
+            return world_dir
+
+    # Second pass: look for a valid world root containing level.dat
+    for cand in candidates:
+        world_dir = resolve_world_directory(cand)
+        if world_dir and (world_dir / "level.dat").is_file():
+            return world_dir
+
+    # Third pass: return first existing directory
+    for cand in candidates:
+        try:
+            resolved = resolve_world_directory(cand)
+            if resolved and resolved.exists():
+                return resolved
+        except Exception:
+            pass
+
+    return None
+
+
+def apply_yefira_selection_to_op(op, context=None) -> bool:
+    """
+    Attempts to read yefira_selection.json and apply coordinates and dimension to the operator.
+    Safely works on both Python operator instances and Blender RNA OperatorProperties structs.
+    """
+    world_dir = resolve_operator_world_dir(op, context)
+    if not world_dir:
+        return False
+
+    selection = load_yefira_selection(world_dir)
+    if selection is not None:
+        try:
+            op.min_coord = selection.min_coord
+            op.max_coord = selection.max_coord
+            op.dimension = selection.dimension
+            return True
+        except Exception as exc:
+            logger.warning("Failed to assign selection coordinates to operator: %s", exc)
+            return False
+    return False
+
+
+def _on_save_import_directory_update(self, context):
+    if getattr(self, "use_yefira_selection", False):
+        apply_yefira_selection_to_op(self, context)
+
+
+def _on_use_yefira_selection_update(self, context):
+    if getattr(self, "use_yefira_selection", False):
+        apply_yefira_selection_to_op(self, context)
 
 
 class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
@@ -63,11 +157,23 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
             return False
         return True
 
+    def apply_yefira_selection(self, context=None) -> bool:
+        """Attempt to read and apply yefira_selection.json to coordinates and dimension."""
+        return apply_yefira_selection_to_op(self, context)
+
     # Directory picker configuration
     directory: StringProperty(
         name="World Folder",
         description="Select the Minecraft world save folder containing level.dat or region files",
         subtype="DIR_PATH",
+        update=_on_save_import_directory_update,
+    ) # type: ignore
+
+    use_yefira_selection: BoolProperty(
+        name="Auto-fill Yefira Selection",
+        description="Automatically fill bounding coordinates and dimension from yefira_selection.json in the save folder",
+        default=False,
+        update=_on_use_yefira_selection_update,
     ) # type: ignore
 
     # Filter out non-folders
@@ -158,6 +264,24 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         # 2. 3D Bounding Box selection
         box_coords = layout.box()
         box_coords.label(text=tr("3D Selection Bounds (Blocks)"), icon="SNAP_INCREMENT")
+
+        # Yefira selection integration
+        box_coords.prop(self, "use_yefira_selection", text=tr("Auto-fill from Yefira Selection"))
+
+        if self.use_yefira_selection:
+            world_dir = resolve_operator_world_dir(self, context)
+            selection = load_yefira_selection(world_dir) if world_dir else None
+            if selection is not None:
+                box_coords.label(
+                    text=f"{tr('Yefira Selection Detected')}: {selection.dimension}",
+                    icon="CHECKMARK",
+                )
+            else:
+                box_coords.label(
+                    text=tr("No yefira_selection.json found in folder"),
+                    icon="INFO",
+                )
+
         col_coords = box_coords.column(align=True)
         col_coords.prop(self, "min_coord", text=tr("Min Coordinate"))
         col_coords.prop(self, "max_coord", text=tr("Max Coordinate"))
@@ -183,18 +307,22 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         box_mesh.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
 
     def execute(self, context):
-        target_dir = self.directory or getattr(self, "filepath", "")
-        if not target_dir:
+        world_dir = resolve_operator_world_dir(self, context)
+        if not world_dir:
             self.report({"ERROR"}, "Please select a valid Minecraft world save folder.")
             return {"CANCELLED"}
 
-        path = Path(target_dir)
+        path = world_dir
         if path.is_file():
             path = path.parent
 
         if not path.exists():
             self.report({"ERROR"}, f"Folder does not exist: {path}")
             return {"CANCELLED"}
+
+        # If Yefira selection is enabled, ensure latest coordinates are applied
+        if self.use_yefira_selection:
+            apply_yefira_selection_to_op(self, context)
 
         try:
             from ...utils.system.dependencies import get_prefs
