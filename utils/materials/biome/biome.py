@@ -22,7 +22,6 @@ from ....bridge.material import (
     get_biome_meta,
     get_all_biomes,
     get_hardcoded_tint,
-    get_hardcoded_tint_hex,
     compute_biome_tint_attributes as bridge_compute_biome_tint_attributes,
 )
 from ....bridge.engine import has_libmtk

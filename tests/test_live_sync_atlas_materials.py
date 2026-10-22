@@ -451,14 +451,12 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
 
                     with patch("MoziToolKit.bridge.world.ensure_atlas_textures_extracted") as mock_extract, \
                          patch("MoziToolKit.bridge.world.load_baked_atlas_from_cache") as mock_load_atlas, \
-                         patch("MoziToolKit.bridge.world.ensure_colormaps_extracted") as mock_colormaps, \
                          patch("MoziToolKit.bridge.world.get_cache_fingerprint") as mock_fp:
                         ensure_world_materials(test_obj, used_chunk_ids=[0, 1])
 
                         # Fast-path assertion: ZERO cache reading or texture extraction during incremental update
                         self.assertFalse(mock_extract.called, "Fast-path must not extract atlas textures")
                         self.assertFalse(mock_load_atlas.called, "Fast-path must not load atlas from cache")
-                        self.assertFalse(mock_colormaps.called, "Fast-path must not check colormaps")
                         self.assertFalse(mock_fp.called, "Fast-path must not check manifest fingerprint")
 
                     self.assertEqual(len(test_mesh.materials), 3, "Material slots must be preserved")

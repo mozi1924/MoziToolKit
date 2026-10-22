@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎨 资源包 Colormap 缓存与 Python 解耦
+- **保留资源包自定义色盘**：预编译仍提取 `colormap/{grass,foliage,dry_foliage}.png` 写入 `.mtkcache`；`AssetCacheReader::open` 在 Rust 内安装缓存色盘，采样优先使用资源包覆盖，缺失通道回退内置原版。
+- **Python 不再消费 colormap**：删除 `ensure_colormaps_extracted`、`AssetCache.extract_colormap`、`build_atlas_chunk_material(colormaps=...)` 及全部调用/导出/测试 patch；Python 只负责打开缓存，色盘解析完全在 Rust 完成。
+- **移除 Python `get_colormap_uv`**：该接口在宿主侧已无消费者，色盘 UV 数学保留在 Rust 内部。
+- **后续模组规则输入化**：不确定的模组/导出器命名规则将收敛为 Python 可提供的覆盖配置（别名、tint 分类等），避免为小版本修复反复重编 Rust。
+
 ### ⚡ Palette provenance 直传
 - `extract_mesh_data` 走新的 `MeshData.add_string_attribute_from_palette(name, domain, palette, indices)`：palette + u32 索引直接传入 Rust 展开，避免在 Python 侧构造百万级逐面字符串列表。
 

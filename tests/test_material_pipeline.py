@@ -128,16 +128,13 @@ class TestMaterialPipeline(unittest.TestCase):
                 tmp_path = Path(tmpdir)
                 albedo_file = tmp_path / "blocks_chunk_001.png"
                 overlay_file = tmp_path / "blocks_chunk_001_overlay.png"
-                grass_cm = tmp_path / "grass.png"
                 _write_dummy_png(albedo_file)
                 _write_dummy_png(overlay_file)
-                _write_dummy_png(grass_cm)
 
                 mat = build_atlas_chunk_material(
                     chunk_id=0,
                     albedo_path=albedo_file,
                     overlay_path=overlay_file,
-                    colormaps={"grass": grass_cm},
                     category="blocks",
                     category_chunk_index=1,
                     stack_fingerprint="test_fp_overlay",

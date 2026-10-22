@@ -16,7 +16,6 @@ from MoziToolKit.bridge.material import (
     compute_biome_tint_attributes,
     get_all_biomes,
     get_biome_meta,
-    get_colormap_uv,
     is_material_bridge_available,
     load_baked_atlas_from_json,
 )
@@ -28,16 +27,12 @@ class TestMaterialBridge(unittest.TestCase):
         avail = is_material_bridge_available()
         self.assertIsInstance(avail, bool)
 
-    def test_biome_metadata_and_colormap(self):
-        """Verify canonical biome metadata and colormap UV calculation."""
+    def test_biome_metadata(self):
+        """Verify canonical biome metadata."""
         meta = get_biome_meta("plains")
         self.assertIn("temperature", meta)
         self.assertIn("humidity", meta)
         self.assertIn("grass_linear", meta)
-
-        uv = get_colormap_uv(0.8, 0.4)
-        self.assertEqual(len(uv), 2)
-        self.assertAlmostEqual(uv[0], 0.2, places=3)
 
     def test_get_all_biomes(self):
         """Verify list of biomes is returned with valid structures."""

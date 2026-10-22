@@ -322,21 +322,6 @@ def ensure_atlas_textures_extracted(prefs=None) -> Path:
 
 
 
-def ensure_colormaps_extracted(prefs=None) -> Dict[str, Any]:
-    """Returns colormap identifiers (grass, foliage, dry_foliage) for material builders."""
-    base_cache = get_cache_dir(prefs)
-    colormaps_dir = base_cache / "colormaps"
-
-    result: Dict[str, Any] = {}
-    for cm_name in ("grass", "foliage", "dry_foliage"):
-        disk_p = colormaps_dir / f"{cm_name}.png"
-        if disk_p.exists():
-            result[cm_name] = disk_p
-        else:
-            result[cm_name] = f"biome/colormap/{cm_name}"
-    return result
-
-
 def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> Optional[Any]:
     """
     Loads the precompiled binary model database from cache package into memory.
@@ -535,7 +520,6 @@ __all__ = [
     "get_cached_texture_rgba",
     "get_cached_texture_f32",
     "ensure_atlas_textures_extracted",
-    "ensure_colormaps_extracted",
     "load_baked_model_database",
     "load_model_database_from_cache",
     "load_baked_atlas_from_cache",

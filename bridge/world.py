@@ -19,7 +19,6 @@ from .assets import (
     get_cache_fingerprint,
     get_cache_timestamp,
     ensure_atlas_textures_extracted,
-    ensure_colormaps_extracted,
     load_baked_atlas_from_cache,
     load_atlas_mapping_from_cache,
     load_baked_model_database,

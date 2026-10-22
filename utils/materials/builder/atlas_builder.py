@@ -60,7 +60,6 @@ def build_atlas_chunk_material(
     orm_path: Optional[str | Path] = None,
     aux_path: Optional[str | Path] = None,
     overlay_path: Optional[str | Path] = None,
-    colormaps: Optional[Dict[str, str | Path]] = None,
     category: str = "blocks",
     category_chunk_index: int = 1,
     is_animated: bool = False,

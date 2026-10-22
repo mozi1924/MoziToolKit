@@ -49,7 +49,6 @@ from ...bridge.assets import (
     load_atlas_mapping_from_cache,
     load_baked_atlas_from_cache,
     ensure_atlas_textures_extracted,
-    ensure_colormaps_extracted,
 )
 from ...bridge.mesh import (
     _get_mesh,
@@ -140,16 +139,16 @@ def _load_atlas_data_and_baked_atlas(atlas_dir: Path, prefs: Optional[Any] = Non
 
 def load_material_cache_context(
     prefs: Optional[Any] = None,
-) -> Tuple[Path, Path, Dict[str, Path], Optional[str]]:
+) -> Tuple[Path, Path, Optional[str]]:
     """
-    Step 1: Ensure assets are precompiled and discover cache directories, colormaps, and manifest.
+    Step 1: Ensure assets are precompiled and discover the cache directory and manifest.
+    Resource-pack colormaps are resolved inside Rust when the cache is opened.
     """
     base_cache = ensure_stack_precompiled(prefs)
     atlas_dir = ensure_atlas_textures_extracted(prefs)
-    colormaps = ensure_colormaps_extracted(prefs)
     manifest_fingerprint = get_cache_fingerprint(prefs)
 
-    return base_cache, atlas_dir, colormaps, manifest_fingerprint
+    return base_cache, atlas_dir, manifest_fingerprint
 
 
 def extract_face_material_palette_context(
@@ -282,7 +281,6 @@ def assign_atlas_chunk_materials(
     atlas_dir: Path,
     face_chunk_ids: List[int],
     atlas_uvs: Optional[List[float]],
-    colormaps: Dict[str, Path],
     manifest_fingerprint: Optional[str],
     force_rebuild_materials: bool = False,
     material_namespace: Optional[str] = None,
@@ -340,7 +338,6 @@ def assign_atlas_chunk_materials(
             orm_path=orm_file,
             aux_path=aux_file,
             overlay_path=overlay_file,
-            colormaps=colormaps,
             category=cat,
             category_chunk_index=c_idx,
             is_animated=is_anim,
@@ -634,7 +631,7 @@ def replace_materials(
     mode_upper = "ATLAS"
 
     # Step 1: Load cache context & precompiled assets
-    base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
+    base_cache, atlas_dir, manifest_fingerprint = load_material_cache_context(prefs)
 
     atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
     anim_enabled = animated_textures_enabled(prefs)
@@ -751,7 +748,6 @@ def replace_materials(
         atlas_dir=atlas_dir,
         face_chunk_ids=remap["face_chunk_ids"],
         atlas_uvs=remap["atlas_uvs"],
-        colormaps=colormaps,
         manifest_fingerprint=manifest_fingerprint,
         force_rebuild_materials=layout_changed,
         material_namespace="EXT",
@@ -879,7 +875,7 @@ def restore_materials_from_provenance(
     )
 
     # Step 1: Load cache context and atlas routing data
-    base_cache, atlas_dir, colormaps, manifest_fingerprint = load_material_cache_context(prefs)
+    base_cache, atlas_dir, manifest_fingerprint = load_material_cache_context(prefs)
     atlas_data, baked_atlas = _load_atlas_data_and_baked_atlas(atlas_dir, prefs)
 
     current_layout_hash = layout_hash or compute_atlas_layout_hash(atlas_data)
@@ -982,7 +978,6 @@ def restore_materials_from_provenance(
         atlas_dir=atlas_dir,
         face_chunk_ids=face_chunk_ids,
         atlas_uvs=atlas_uvs,
-        colormaps=colormaps,
         manifest_fingerprint=manifest_fingerprint,
         material_namespace=material_namespace,
     )

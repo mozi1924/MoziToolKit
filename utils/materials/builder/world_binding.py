@@ -12,7 +12,6 @@ from typing import Any, Optional
 
 from ....bridge.assets import (
     ensure_atlas_textures_extracted,
-    ensure_colormaps_extracted,
     get_cache_fingerprint,
     load_atlas_mapping_from_cache,
     load_baked_atlas_from_cache,
@@ -195,7 +194,6 @@ def ensure_world_materials(
                             chunk_meta_map[cid] = cm
 
             if chunk_meta_map:
-                colormaps = ensure_colormaps_extracted(prefs)
                 manifest_fp = get_cache_fingerprint(prefs)
 
                 sorted_chunks = sorted(chunk_meta_map.keys())
@@ -280,7 +278,6 @@ def ensure_world_materials(
                         orm_path=orm_file,
                         aux_path=aux_file,
                         overlay_path=overlay_file,
-                        colormaps=colormaps,
                         category=cat,
                         category_chunk_index=c_idx,
                         is_animated=is_anim,
