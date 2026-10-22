@@ -91,6 +91,10 @@ def test_removed_native_symbols_do_not_return():
     ):
         assert not hasattr(mtk, name), f"removed biome helper {name} leaked into libmtk_py"
 
+    resolver = mtk.BiomeResolver()
+    for name in ("set_models", "load_from_directory", "load_from_zip", "get_overlay_texture"):
+        assert not hasattr(resolver, name), f"test-only BiomeResolver method {name} leaked"
+
     for name in (
         "get_all_blocks",
         "get_generation",
