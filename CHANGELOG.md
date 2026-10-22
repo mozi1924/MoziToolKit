@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 修复 Section 动画属性裁剪导致的长度错位与 VBO 抖动
+- **Rust**：`FaceAttributesCollector` 不再按 Section 条件省略 `mtk_anim_timing` / `mtk_anim_frame_size`；所有 Section 保持同构属性缓冲，合并后由世界网格统一裁剪静态动画属性，修复 378,180 vs 1,930,965 的 `foreach_set` 长度错误及动画数据错位。
+- **性能**：移除每个 Section 的 `anim_timings.iter().any(...)` 线性扫描；混合静态/动画 Section 的合并重新保持连续 `extend_from_slice`。
+- **Python**：`ensure_world_materials` 不再在每次同步后删除面级 `mtk_atlas_chunk_id`；该属性保持稳定，避免 Blender 反复 `attributes.remove/new` 触发 VBO 与 GPU Batch 缓存失效。
+
+
 ### 🧽 其他零消费者 Rust 硬编码/辅助清理
 - 删除 `apply_bell_patches_resolved`（重复的 ResolvedModel 钟补丁路径）。
 - 删除 `mtk-material` 中未使用的 `is_grass` 分类辅助，以及 `BiomeResolver::load_from_directory` / `load_from_zip` 与 `mtk-material` 的 `zip` feature/dependency。
@@ -41,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `extract_mesh_data` 走新的 `MeshData.add_string_attribute_from_palette(name, domain, palette, indices)`：palette + u32 索引直接传入 Rust 展开，避免在 Python 侧构造百万级逐面字符串列表。
 
 ### 🔗 内部世界网格移除面级 Chunk 属性
-- `ensure_world_materials` 在材质槽携带 `mtk_atlas_chunk_id` 后裁剪面级 `mtk_atlas_chunk_id`；后续绑定通过材质槽 + `material_index` 反推 chunk 路由，内部网格每面再省一个 INT 属性。
+- `ensure_world_materials` 不再在每次同步后删除面级 `mtk_atlas_chunk_id`；该属性保持稳定以便 Blender 复用 VBO/属性缓冲，材质槽仍携带映射作为权威回退。
 
 ### 🧹 内部网格移除冗余 STRING provenance
 - 内部体素/存档/Live Sync 网格在注入 palette + index 时不再写 `mtk_source_texture_key` STRING 兼容副本，并会清理旧副本；外部导入网格仍保留 ≤1024 面的兼容层。

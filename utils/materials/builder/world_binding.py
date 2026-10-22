@@ -32,8 +32,9 @@ def _material_slot_chunk_ids(mesh: Any) -> list[int]:
 def face_chunk_ids(mesh: Any) -> Any:
     """Return per-face chunk ids, falling back to material-slot provenance.
 
-    Internal meshes drop `mtk_atlas_chunk_id` once material slots carry the
-    authoritative chunk id; external meshes keep the explicit attribute.
+    The face-level `mtk_atlas_chunk_id` attribute is kept stable for both
+    internal and external meshes; material slots act as a fallback when it is
+    absent.
     """
     import numpy as np
 
@@ -60,22 +61,6 @@ def face_chunk_ids(mesh: Any) -> Any:
     mesh.polygons.foreach_get("material_index", slot_indices)
     np.clip(slot_indices, 0, len(slot_chunks) - 1, out=slot_indices)
     return slot_lut[slot_indices]
-
-
-def prune_internal_chunk_attribute(mesh: Any) -> bool:
-    """Drops `mtk_atlas_chunk_id` when material slots can supply the mapping."""
-    attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
-    if attr is None:
-        return False
-    slot_chunks = _material_slot_chunk_ids(mesh)
-    if not slot_chunks or any(cid < 0 for cid in slot_chunks):
-        return False
-    try:
-        mesh.attributes.remove(attr)
-        return True
-    except Exception as exc:
-        logger.debug("Failed to prune mtk_atlas_chunk_id: %s", exc)
-        return False
 
 
 def ensure_world_materials(
@@ -143,7 +128,6 @@ def ensure_world_materials(
             # then inject_face_materials_standard has already set the exact material_index.
             # We can return immediately with zero operations, zero disk reads, and zero cache hashing!
             if is_identity_mapping and not has_chunk_attr:
-                prune_internal_chunk_attribute(mesh)
                 return
 
             # Otherwise, if slot indices differ or mtk_atlas_chunk_id is present, remap polygon indices:
@@ -158,7 +142,6 @@ def ensure_world_materials(
                     mesh.polygons.foreach_set("material_index", remapped)
                 except Exception as e:
                     logger.debug("Failed remapping polygon material indices in fast path: %s", e)
-            prune_internal_chunk_attribute(mesh)
             return
 
     atlas_dir = ensure_atlas_textures_extracted(prefs)
@@ -322,7 +305,6 @@ def ensure_world_materials(
                             p.material_index = chunk_to_compact_slot.get(int(raw_cid), 0)
 
                 if len(mesh.materials) > 0:
-                    prune_internal_chunk_attribute(mesh)
                     return
         except Exception as e:
             logger.warning(f"Failed binding Atlas chunk materials: {e}")

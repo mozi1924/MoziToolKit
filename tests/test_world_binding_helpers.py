@@ -1,4 +1,4 @@
-"""Unit tests for material-slot chunk-id fallback and pruning helpers."""
+"""Unit tests for material-slot chunk-id fallback helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import numpy as np
 
 from MoziToolKit.utils.materials.builder.world_binding import (
     face_chunk_ids,
-    prune_internal_chunk_attribute,
 )
 
 
@@ -78,20 +77,3 @@ def test_face_chunk_ids_prefers_attribute():
 def test_face_chunk_ids_falls_back_to_material_slots():
     mesh = _Mesh([0, 1, 0], [5, 7])
     assert list(face_chunk_ids(mesh)) == [5, 7, 5]
-
-
-def test_prune_only_when_every_slot_has_chunk_id():
-    mesh = _Mesh([0, 1], [5, None], chunk_ids=[5, 0])
-    assert prune_internal_chunk_attribute(mesh) is False
-    assert "mtk_atlas_chunk_id" in mesh.attributes
-
-    mesh = _Mesh([0, 1], [5, 7], chunk_ids=[5, 7])
-    assert prune_internal_chunk_attribute(mesh) is True
-    assert "mtk_atlas_chunk_id" not in mesh.attributes
-
-
-def test_face_chunk_ids_after_prune_is_stable():
-    mesh = _Mesh([0, 0, 1], [5, 7], chunk_ids=[5, 5, 7])
-    before = list(face_chunk_ids(mesh))
-    assert prune_internal_chunk_attribute(mesh)
-    assert list(face_chunk_ids(mesh)) == before

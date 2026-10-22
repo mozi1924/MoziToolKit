@@ -460,6 +460,11 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
                         self.assertFalse(mock_fp.called, "Fast-path must not check manifest fingerprint")
 
                     self.assertEqual(len(test_mesh.materials), 3, "Material slots must be preserved")
+                    self.assertIn(
+                        "mtk_atlas_chunk_id",
+                        test_mesh.attributes,
+                        "Incremental updates must keep the face chunk attribute stable",
+                    )
                     self.assertEqual(test_mesh.polygons[0].material_index, 1)
                     self.assertEqual(test_mesh.polygons[1].material_index, 0)
                     self.assertEqual(test_mesh.polygons[2].material_index, 1)
