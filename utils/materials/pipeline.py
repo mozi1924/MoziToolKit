@@ -28,6 +28,7 @@ from ...bridge.material import (
     load_baked_atlas_from_json,
     remap_mesh_multi_uvs_paletted,
     reroute_mesh_animation,
+    resolve_mesh_material_routes,
     build_material_palette,
 )
 
@@ -918,7 +919,26 @@ def restore_materials_from_provenance(
         else:
             face_chunk_ids = [int(elem.value) for elem in chunk_attr.data]
     else:
-        face_chunk_ids = [0] * num_polys
+        # No chunk attribute: derive routing from the preserved source keys.
+        if baked_atlas is None:
+            return {
+                "success": False,
+                "message": "Atlas data is required to reconstruct missing mtk_atlas_chunk_id.",
+            }
+        routes = resolve_mesh_material_routes(
+            face_source_keys,
+            baked_atlas,
+            enable_animated_textures=anim_enabled,
+        )
+        face_chunk_ids = [int(cid) for cid in routes["chunk_ids"]]
+        unmapped = int(routes.get("unmapped_faces", 0))
+        if unmapped:
+            logger.warning(
+                "Restore resolved %d/%d chunk routes from provenance; %d faces are unmapped",
+                num_polys - unmapped,
+                num_polys,
+                unmapped,
+            )
 
     atlas_uvs: Optional[List[float]] = None
     face_anim_timing: Optional[List[List[float]]] = None

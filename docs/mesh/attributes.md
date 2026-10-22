@@ -90,8 +90,8 @@ bridge/mesh/attributes.py / utils/materials/*
 - `mtk_source_texture_key` 的 STRING 层只对 ≤1024 面同步；大网格以 `mtk_source_textures` + `mtk_source_texture_idx` 为唯一权威。判断 provenance 时必须同时检查 INT 属性（现有 `op_materials` / `pipeline` 已这样做）。
 - `Replace Material` 的 restore 路径现在走 palette + index 写入，不再为所有面重建 Python 字符串。
 - `inject_mesh_provenance_attributes` 已移除 `poly_mat_indices` / `face_texture_ids` / `mode` 等死参数；写入尺寸不匹配会记录 warning 而不是静默失败。
-- 恢复材质时若 `mtk_atlas_chunk_id` 缺失，当前会以 0 填充；这是待收敛的边界，最终应从材质槽 provenance 推导而不是默认 0。
-- 动画重路由（`reconcile_animation`）只重投影 Atlas UV，不重写 `mtk_uv_transform` / `mtk_uv_rotation`；若布局或动画精灵比例变化，需要补写这两个属性。
+- 恢复材质时若 `mtk_atlas_chunk_id` 缺失，现在会从 provenance + atlas 重新解析 chunk 路由；解析不到时明确失败或告警，不再默认 0。
+- 动画重路由（`reconcile_animation`）只重投影 Atlas UV 与动画指标；`mtk_uv_transform` 表达的是**局部 UV 平铺**而非 sprite 尺寸，因此有意保持原值，不随动画精灵切换重写。
 - Blender → `MeshData` 的 `extract_mesh_data` 会把 palette + index 展开为逐面字符串（Rust 侧再压缩）；这是当前往返路径的内存热点，可后续补 palette 直传 API。
 
 ## 7. 按上下文裁剪策略

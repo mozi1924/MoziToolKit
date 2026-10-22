@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧭 材质恢复的 Chunk 路由与动画变换修复
+- **缺失 `mtk_atlas_chunk_id` 不再默认 0**：`restore_materials_from_provenance` 会从 `mtk_source_texture_key/idx` + atlas 重新解析 chunk 路由；无法解析时返回明确失败并告警。
+- **动画重路由不误改 UV 变换**：`mtk_uv_transform` 语义确认为局部 UV 平铺而非 sprite 尺寸；动画重路由只更新 Atlas UV 与动画指标，保留该属性原值。
+
 ### 🪶 属性按上下文裁剪与缓存格式 v5
 - **静态网格不再写动画属性**：`FaceAttributesCollector` 仅在任何面确实存在多帧动画时写 `mtk_anim_timing` / `mtk_anim_frame_size`；纯静态网格少 2 个逐面属性。
 - **独立烘焙模型不再写世界坐标**：`populate_standard_face_attributes` 增加 `include_block_coords` 开关，独立模型网格不再携带 `mtk_block_x/y/z`；体素/世界网格仍保留。
