@@ -64,6 +64,7 @@ from ...bridge.mesh import (
 )
 from .builder.atlas_builder import build_atlas_chunk_material
 from .matching.presets.registry import build_matching_context
+from .cleaner import clean_obsolete_mesh_attributes
 from .biome import (
     get_or_load_biome_resolver,
     compute_biome_tint_attributes,
@@ -422,16 +423,8 @@ def inject_mesh_provenance_attributes(
     elif face_source_keys is not None:
         inject_face_attribute_string(mesh, "mtk_source_texture_key", face_source_keys)
 
-    if poly_mat_indices is not None:
-        inject_face_attribute_int(mesh, "mtk_material_slot", poly_mat_indices)
     if face_chunk_ids is not None:
         inject_face_attribute_int(mesh, "mtk_atlas_chunk_id", face_chunk_ids)
-
-    if face_texture_ids is not None:
-        inject_face_attribute_int(mesh, "mtk_atlas_texture_id", face_texture_ids)
-        inject_face_attribute_int(
-            mesh, "mtk_uv_mode", [0 if mode_upper == "ATLAS" else 1] * num_polys
-        )
 
     if face_uv_transforms is not None:
         if isinstance(face_uv_transforms, (list, tuple)):
@@ -462,21 +455,8 @@ def inject_mesh_provenance_attributes(
                 sizes = sizes[: num_polys * 3]
                 inject_face_attribute_vector(mesh, "mtk_anim_timing", timing)
                 inject_face_attribute_vector(mesh, "mtk_anim_frame_size", sizes)
-                inject_face_attribute_float(
-                    mesh, "mtk_anim_total_frames", np.ascontiguousarray(timing[0::3])
-                )
-                inject_face_attribute_float(
-                    mesh, "mtk_anim_frametime", np.ascontiguousarray(timing[1::3])
-                )
-                inject_face_attribute_float(
-                    mesh, "mtk_anim_interpolate", np.ascontiguousarray(timing[2::3])
-                )
-                inject_face_attribute_float(
-                    mesh, "mtk_anim_frame_width", np.ascontiguousarray(sizes[0::3])
-                )
-                inject_face_attribute_float(
-                    mesh, "mtk_anim_frame_height", np.ascontiguousarray(sizes[1::3])
-                )
+
+    clean_obsolete_mesh_attributes(mesh)
 
 
 def resolve_and_apply_biome_tint(

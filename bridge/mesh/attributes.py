@@ -10,6 +10,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 import numpy as np
 
 from .constants import (
+    EXCLUDED_MESH_ATTRIBUTES,
     MTK_TO_BLENDER_DOMAIN,
     MTK_TO_BLENDER_TYPE,
     get_mesh,
@@ -21,8 +22,9 @@ logger = logging.getLogger("MoziToolKit.Bridge.Mesh.Attributes")
 
 def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
     """
-    High-performance helper to resolve face source texture keys from the
-    palette-indexed attribute ('mtk_source_texture_idx' + 'mtk_source_textures').
+    High-performance helper to resolve face source texture keys.
+    Prioritizes INT palette-indexed attribute ('mtk_source_texture_idx' + 'mtk_source_textures'),
+    with graceful fallback to direct STRING attribute ('mtk_source_texture_key').
     """
     mesh = get_mesh(mesh_or_obj)
     if not mesh or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
@@ -45,6 +47,18 @@ def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
             attr_idx.data.foreach_get("value", idx_arr)
             return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
 
+    # 2. Robust Fallback: STRING attribute ('mtk_source_texture_key')
+    attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
+    if attr_str is not None and len(attr_str.data) == num_polys:
+        result = []
+        for elem in attr_str.data:
+            val = getattr(elem, "value", "")
+            if isinstance(val, (bytes, bytearray)):
+                result.append(val.decode("utf-8", errors="replace"))
+            else:
+                result.append(str(val))
+        return result
+
     return []
 
 
@@ -52,9 +66,9 @@ def resolve_source_texture_keys_paletted(mesh_or_obj: Any) -> Tuple[List[str], A
     """
     Return `(palette, indices)` for per-face source texture keys.
 
-    Uses the INT palette attribute (`mtk_source_textures` +
-    `mtk_source_texture_idx`). Returns an empty palette and empty int32 array when
-    no provenance exists.
+    Prefers the INT palette attribute (`mtk_source_textures` +
+    `mtk_source_texture_idx`); falls back to STRING attribute ('mtk_source_texture_key').
+    Returns an empty palette and empty int32 array when no provenance exists.
     """
     mesh = get_mesh(mesh_or_obj)
     if not mesh or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
@@ -72,6 +86,21 @@ def resolve_source_texture_keys_paletted(mesh_or_obj: Any) -> Tuple[List[str], A
         idx_arr = np.empty(num_polys, dtype=np.uint32)
         attr_idx.data.foreach_get("value", idx_arr)
         return palette, idx_arr
+
+    # 2. Robust Fallback: STRING attribute ('mtk_source_texture_key')
+    attr_str = mesh.attributes.get("mtk_source_texture_key") if hasattr(mesh, "attributes") else None
+    if attr_str is not None and len(attr_str.data) == num_polys:
+        values = []
+        for elem in attr_str.data:
+            val = getattr(elem, "value", "")
+            if isinstance(val, (bytes, bytearray)):
+                values.append(val.decode("utf-8", errors="replace"))
+            else:
+                values.append(str(val))
+        palette = list(dict.fromkeys(values))
+        key_to_idx = {k: i for i, k in enumerate(palette)}
+        indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
+        return palette, indices
 
     return [], np.empty(0, dtype=np.uint32)
 
@@ -98,6 +127,23 @@ def inject_face_source_texture_palette(
     if attr_idx is not None and len(attr_idx.data) == num_polys:
         attr_idx.data.foreach_set("value", arr)
 
+    # Synchronize or populate mtk_source_texture_key for meshes <= 1024 faces or when already existing
+    attr_str = mesh.attributes.get("mtk_source_texture_key")
+    if attr_str is not None or num_polys <= 1024:
+        if attr_str is None:
+            attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+        if attr_str is not None and len(attr_str.data) == num_polys:
+            pal_list = list(palette)
+            pal_len = len(pal_list)
+            for i in range(num_polys):
+                idx = int(arr[i])
+                val = pal_list[idx] if 0 <= idx < pal_len else ""
+                b_val = str(val).encode("utf-8")
+                try:
+                    attr_str.data[i].value = b_val
+                except Exception:
+                    pass
+
 
 def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     """
@@ -105,6 +151,7 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     Creates:
       - mesh["mtk_source_textures"]: List[str] palette
       - "mtk_source_texture_idx": INT (FACE) attribute with mapped indices
+      - "mtk_source_texture_key": STRING (FACE) attribute for interop and fallback
     """
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
@@ -122,6 +169,19 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     if attr_idx is not None and len(attr_idx.data) == num_polys:
         np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
         attr_idx.data.foreach_set("value", np_indices)
+
+    # 3. Synchronize or populate STRING attribute for compatibility
+    attr_str = mesh.attributes.get("mtk_source_texture_key")
+    if attr_str is not None or num_polys <= 1024:
+        if attr_str is None:
+            attr_str = get_or_create_attribute(mesh, "mtk_source_texture_key", "STRING", "FACE")
+        if attr_str is not None and len(attr_str.data) == num_polys:
+            for i, val in enumerate(values):
+                b_val = str(val).encode("utf-8") if isinstance(val, str) else bytes(val)
+                try:
+                    attr_str.data[i].value = b_val
+                except Exception:
+                    pass
 
 
 
@@ -284,6 +344,15 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
         return
 
     for attr_name in mesh_data.attribute_names():
+        if attr_name in EXCLUDED_MESH_ATTRIBUTES:
+            b_attr = mesh.attributes.get(attr_name)
+            if b_attr is not None:
+                try:
+                    mesh.attributes.remove(b_attr)
+                except Exception:
+                    pass
+            continue
+
         try:
             info = mesh_data.attribute_info(attr_name)
             if info is None:

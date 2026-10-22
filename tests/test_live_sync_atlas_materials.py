@@ -188,9 +188,9 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
 
         # Check face attributes on mesh
         self.assertTrue(mesh.has_attribute("mtk_source_texture_key"))
-        self.assertTrue(mesh.has_attribute("mtk_material_slot"))
+        self.assertFalse(mesh.has_attribute("mtk_material_slot"))
         self.assertTrue(mesh.has_attribute("mtk_atlas_chunk_id"))
-        self.assertTrue(mesh.has_attribute("mtk_atlas_texture_id"))
+        self.assertFalse(mesh.has_attribute("mtk_atlas_texture_id"))
         self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))

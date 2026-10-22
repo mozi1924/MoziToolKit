@@ -112,6 +112,65 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 # Atlas Format Version
 ATLAS_FORMAT_VERSION = 16
 
+# Canonical active mesh face attributes written and consumed by MTK shaders / DCC tools
+CANONICAL_MESH_FACE_ATTRIBUTES = frozenset({
+    ATTR_SOURCE_TEXTURE_KEY,    # "mtk_source_texture_key" (STRING) - provenance & fallback
+    ATTR_SOURCE_TEXTURE_IDX,    # "mtk_source_texture_idx" (INT)
+    ATTR_ATLAS_CHUNK_ID,        # "mtk_atlas_chunk_id" (INT)
+    ATTR_UV_TRANSFORM,          # "mtk_uv_transform" (FLOAT_COLOR / FLOAT4)
+    ATTR_UV_ROTATION,           # "mtk_uv_rotation" (FLOAT)
+    ATTR_BIOME_TINT_DATA,       # "mtk_biome_tint_data" (FLOAT_COLOR / FLOAT4)
+    ATTR_BIOME_TINT_COLOR,      # "mtk_biome_tint_color" (FLOAT_COLOR / FLOAT4)
+    ATTR_ANIM_TIMING,           # "mtk_anim_timing" (FLOAT_VECTOR / FLOAT3)
+    ATTR_ANIM_FRAME_SIZE,       # "mtk_anim_frame_size" (FLOAT_VECTOR / FLOAT3)
+    # Block coordinates for 3D world biome sampling with storage
+    "mtk_block_x",
+    "mtk_block_y",
+    "mtk_block_z",
+})
+
+# Obsolete, dead, or retired attributes that must NOT be written to Blender mesh.attributes
+# and must be purged if found on meshes.
+EXCLUDED_MESH_ATTRIBUTES = frozenset({
+    # 1. Native redundancy: Blender polygon.material_index is the authoritative material assignment
+    ATTR_MATERIAL_SLOT,         # "mtk_material_slot"
+    # 2. Dead metadata: unconsumed by any shader, operator, or node tree
+    ATTR_ATLAS_TEXTURE_ID,      # "mtk_atlas_texture_id"
+    ATTR_UV_MODE,               # "mtk_uv_mode"
+    "mtk_face_dir",             # Redundant with mesh polygon normal
+    ATTR_EMISSION,              # "mtk_emission" - PBR pre-decodes emission into ORM Alpha; shaders don't read it
+    # 3. Obsolete Biome & Colormap attributes (Rust resolves Linear RGBA directly into ATTR_BIOME_TINT_COLOR)
+    ATTR_COLORMAP_UV,           # "mtk_colormap_uv"
+    ATTR_TINT_WEIGHT,           # "mtk_tint_weight"
+    ATTR_BASE_TINT_WEIGHT,      # "mtk_base_tint_weight"
+    ATTR_OVERLAY_TINT_WEIGHT,   # "mtk_overlay_tint_weight"
+    ATTR_TINT_COLOR,            # "mtk_tint_color"
+    ATTR_HARDCODED_COLOR,       # "mtk_hardcoded_color"
+    ATTR_USE_HARDCODED,         # "mtk_use_hardcoded"
+    ATTR_BIOME_TEMPERATURE,     # "mtk_biome_temperature"
+    ATTR_BIOME_HUMIDITY,        # "mtk_biome_humidity"
+    ATTR_BIOME_COORDS,          # "mtk_biome_coords"
+    # 4. Redundant scalar splits of vector animation attributes (now packed into ATTR_ANIM_TIMING / ATTR_ANIM_FRAME_SIZE)
+    ATTR_ANIM_TOTAL_FRAMES,     # "mtk_anim_total_frames"
+    ATTR_ANIM_FRAMETIME,        # "mtk_anim_frametime"
+    ATTR_ANIM_INTERPOLATE,      # "mtk_anim_interpolate"
+    ATTR_ANIM_FRAME_WIDTH,      # "mtk_anim_frame_width"
+    ATTR_ANIM_FRAME_HEIGHT,     # "mtk_anim_frame_height"
+    # 5. Legacy UV tiling attributes (replaced by ATTR_UV_TRANSFORM)
+    ATTR_UV_TILING_SCALE,       # "mtk_uv_tiling_scale"
+    ATTR_UV_TILING_LOCATION,    # "mtk_uv_tiling_location"
+    ATTR_UV_TILING_TRANSFORM,   # "mtk_uv_tiling_transform"
+    # 6. Completely retired physical property table
+    "mtk_material_props",
+    # 7. Legacy point cloud strings on face domain
+    "mtk_block_state",
+    "mtk_biome",
+    # 8. Unnamespaced legacy attribute names
+    "atlas_chunk_id",
+    "atlas_texture_id",
+    "material_id",
+})
+
 # All Atlas & Animation Mesh Attribute Names (Current + Legacy/Transitional)
 ANIM_AND_ATLAS_ATTR_NAMES = (
     ATTR_ATLAS_CHUNK_ID,

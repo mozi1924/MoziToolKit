@@ -184,20 +184,20 @@ class TestBiomeTintingFix(unittest.TestCase):
         config = libmtk_py.MesherConfig()
         mesh = mesh_world(storage, config, None)
         self.assertIsNotNone(mesh)
-        self.assertTrue(mesh.has_attribute("mtk_colormap_uv"))
+        self.assertFalse(mesh.has_attribute("mtk_colormap_uv"))
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
 
-        # Unpack mtk_colormap_uv
-        mv_uv = mesh.attribute_memoryview("mtk_colormap_uv")
-        raw_uv = struct.unpack(f"{len(mv_uv)//4}f", bytes(mv_uv))
-        uvs = [raw_uv[i*3:(i+1)*3] for i in range(len(raw_uv)//3)]
+        # Unpack mtk_biome_tint_color (Vector3 float32)
+        mv_col = mesh.attribute_memoryview("mtk_biome_tint_color")
+        raw_col = struct.unpack(f"{len(mv_col)//4}f", bytes(mv_col))
+        colors = [raw_col[i*3:(i+1)*3] for i in range(len(raw_col)//3)]
 
-        # Verify continuous intermediate gradient values exist across the 5x5 kernel transition
-        distinct_u = set()
-        for u, v, _ in uvs:
-            distinct_u.add(round(u * 100))
+        # Verify continuous intermediate gradient colors exist across the 5x5 kernel transition
+        distinct_col = set()
+        for r, g, b in colors:
+            distinct_col.add((round(r * 100), round(g * 100)))
 
-        self.assertGreater(len(distinct_u), 2, "Transition zone must produce continuous blended gradient values!")
+        self.assertGreater(len(distinct_col), 2, "Transition zone must produce continuous blended gradient colors!")
 
     def test_update_object_biome_live_sync_mesh_without_source_keys(self):
         """Verifies update_object_biome successfully updates colors and colormap UVs on meshes lacking string attributes."""

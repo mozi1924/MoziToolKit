@@ -57,3 +57,35 @@ def remap_indices_lut(
         )
 
     return [mapping.get(int(idx), default_value) for idx in indices]
+
+
+def clean_obsolete_mesh_attributes(mesh_or_obj: Any) -> list[str]:
+    """
+    Purges dead, redundant, and obsolete MTK attributes from a Blender mesh.
+
+    Removes obsolete attributes (e.g. mtk_colormap_uv, mtk_material_slot, mtk_atlas_texture_id,
+    mtk_anim_total_frames, mtk_material_props, etc.) leaving only canonical active attributes.
+    Preserves provenance attributes such as mtk_source_texture_key, mtk_source_texture_idx,
+    and mtk_atlas_chunk_id.
+    """
+    if mesh_or_obj is None:
+        return []
+
+    mesh = getattr(mesh_or_obj, "data", mesh_or_obj)
+    if not hasattr(mesh, "attributes"):
+        return []
+
+    from .constants import EXCLUDED_MESH_ATTRIBUTES
+
+    removed: list[str] = []
+    for name in EXCLUDED_MESH_ATTRIBUTES:
+        attr = mesh.attributes.get(name)
+        if attr is not None:
+            try:
+                mesh.attributes.remove(attr)
+                removed.append(name)
+            except Exception:
+                pass
+
+    return removed
+

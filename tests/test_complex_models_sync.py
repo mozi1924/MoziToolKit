@@ -174,7 +174,7 @@ class TestComplexModelsSync(unittest.TestCase):
         self.assertGreater(world_mesh.face_count, 1000, "Complex scene should have >1000 faces")
 
         attrs = world_mesh.attribute_names()
-        self.assertIn("mtk_material_slot", attrs)
+        self.assertNotIn("mtk_material_slot", attrs)
         self.assertIn("mtk_atlas_chunk_id", attrs)
         self.assertIn("mtk_block_x", attrs)
 

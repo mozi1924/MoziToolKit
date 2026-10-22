@@ -46,6 +46,32 @@ def migrate_legacy_uv_attribute_names() -> int:
     return renamed
 
 
+def purge_all_obsolete_mesh_attributes() -> int:
+    """Purges all dead, obsolete, and redundant MTK attributes from existing meshes in bpy.data.meshes."""
+    try:
+        import bpy
+    except ImportError:
+        return 0
+
+    from .cleaner import clean_obsolete_mesh_attributes
+
+    total_cleaned = 0
+    for mesh in bpy.data.meshes:
+        removed = clean_obsolete_mesh_attributes(mesh)
+        if removed:
+            total_cleaned += len(removed)
+
+    if total_cleaned > 0:
+        logger.info("Purged %d obsolete/dead mesh attribute(s) across meshes", total_cleaned)
+    return total_cleaned
+
+
+def run_all_migrations() -> None:
+    """Runs material shader migrations and sweeps obsolete mesh attributes."""
+    migrate_legacy_uv_attribute_names()
+    purge_all_obsolete_mesh_attributes()
+
+
 def register_migration_handlers() -> None:
     """Run migrations now and hook them onto ``load_post`` for opened files."""
     global _migration_handler
@@ -54,11 +80,11 @@ def register_migration_handlers() -> None:
 
     import bpy
 
-    migrate_legacy_uv_attribute_names()
+    run_all_migrations()
 
     @bpy.app.handlers.persistent
     def _mtk_migrate_on_load(_dummy: object) -> None:
-        migrate_legacy_uv_attribute_names()
+        run_all_migrations()
 
     _migration_handler = _mtk_migrate_on_load
     if _migration_handler not in bpy.app.handlers.load_post:
