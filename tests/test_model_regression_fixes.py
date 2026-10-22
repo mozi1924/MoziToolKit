@@ -105,7 +105,7 @@ class TestModelRegressionFixes(unittest.TestCase):
         if cls.stack.get_pack_count() == 0:
             raise unittest.SkipTest("No test resource packs or vanilla jar found on system")
 
-        baker = libmtk_py.ModelBaker()
+        baker = libmtk_py.unstable.testing.ModelBaker()
         cls.db = baker.bake_all(cls.stack)
 
     def test_resource_pack_custom_model_priority(self):

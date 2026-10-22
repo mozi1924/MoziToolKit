@@ -17,7 +17,7 @@ class TestBakerVoxelFixes(unittest.TestCase):
             )
         cls.stack = libmtk_py.ResourcePackStack()
         cls.stack.add_directory_pack(str(root))
-        cls.baker = libmtk_py.ModelBaker()
+        cls.baker = libmtk_py.unstable.testing.ModelBaker()
 
     def test_spawner_faces(self):
         mesh, textures = self.baker.bake_blockstate(self.stack, "minecraft:spawner")
@@ -73,7 +73,7 @@ class TestBakerVoxelFixes(unittest.TestCase):
         self.assertIn("minecraft:block/lava_still", lc_tex)
 
         # 2. VoxelWorld construction
-        atlas = libmtk_py.AtlasBuilder().build(self.stack, "blocks")
+        atlas = libmtk_py.unstable.testing.AtlasBuilder().build(self.stack, "blocks")
         db = self.baker.bake_all(self.stack, atlas)
         culler = libmtk_py.FaceCuller()
         config = libmtk_py.MesherConfig(enable_ao=True, mesh_fluids=True, z_up_coordinates=True)

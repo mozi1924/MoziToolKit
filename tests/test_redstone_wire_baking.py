@@ -42,7 +42,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
             raise unittest.SkipTest(
                 "Minecraft assets unavailable (set MTK_TEST_JAR / MTK_TEST_ASSETS)"
             )
-        cls.baker = libmtk_py.ModelBaker()
+        cls.baker = libmtk_py.unstable.testing.ModelBaker()
 
     def test_redstone_wire_signal_tints_power_0_to_15(self):
         """Dynamic BiomeResolver addressing must map power 0..15 to canonical Minecraft colors."""

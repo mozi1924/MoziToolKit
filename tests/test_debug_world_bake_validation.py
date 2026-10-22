@@ -85,7 +85,7 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
         else:
             cls.stack.add_directory_pack(str(cls.vanilla_jar))
 
-        baker = libmtk_py.ModelBaker()
+        baker = libmtk_py.unstable.testing.ModelBaker()
         cls.db = baker.bake_all(cls.stack)
         cls.unique_states = sorted(cls.db.get_states())
 

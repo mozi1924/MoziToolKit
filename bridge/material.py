@@ -92,25 +92,6 @@ def get_all_biomes() -> List[Dict[str, Any]]:
     return mtk.get_all_biomes()
 
 
-def get_hardcoded_tint(name: str) -> Optional[Tuple[float, float, float, float]]:
-    """Retrieve hardcoded linear RGBA tint for a vanilla block or texture stem from Rust SSOT."""
-    mtk = require_libmtk("get_hardcoded_tint")
-    res = mtk.get_hardcoded_tint(name)
-    return tuple(res) if res is not None else None
-
-
-def get_hardcoded_tint_hex(name: str) -> Optional[str]:
-    """Retrieve hardcoded hex string for a vanilla block or texture stem from Rust SSOT."""
-    mtk = require_libmtk("get_hardcoded_tint_hex")
-    return mtk.get_hardcoded_tint_hex(name)
-
-
-def get_swamp_grass_color(x: float, z: float) -> Tuple[float, float, float, float]:
-    """Retrieve swamp grass linear RGBA color at (x, z) computed via authoritative Perlin noise in Rust SSOT."""
-    mtk = require_libmtk("get_swamp_grass_color")
-    return tuple(mtk.get_swamp_grass_color(float(x), float(z)))
-
-
 def compute_biome_tint_attributes(
     face_texture_keys: List[str],
     biome_preset: Union[str, List[Tuple[str, float]]] = "PLAINS",
@@ -380,8 +361,6 @@ __all__ = [
     "get_biome_meta",
     "sample_colormap_colors",
     "get_all_biomes",
-    "get_hardcoded_tint",
-    "get_hardcoded_tint_hex",
     "compute_biome_tint_attributes",
     "compute_biome_tint_attributes_paletted",
     "compute_mesh_biome_attributes_from_storage",
@@ -397,7 +376,6 @@ __all__ = [
     "TINT_TYPE_WATER",
     "TINT_TYPE_HARDCODED",
     "TINT_TYPE_DRY_FOLIAGE",
-    "get_swamp_grass_color",
 ]
 
 

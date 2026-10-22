@@ -37,7 +37,6 @@ from .biome import (
     TINT_TYPE_WATER,
     TINT_TYPE_HARDCODED,
     TINT_TYPE_DRY_FOLIAGE,
-    get_hardcoded_tint,
 )
 
 logger = logging.getLogger("MoziToolKit.Materials.Biome.Updater")

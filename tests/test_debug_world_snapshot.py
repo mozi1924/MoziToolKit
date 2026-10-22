@@ -78,7 +78,7 @@ class TestDebugWorldSnapshot(unittest.TestCase):
         self.assertGreater(bounds[3], 100)
         self.assertEqual(bounds[4], 3)
         self.assertGreater(bounds[5], 100)
-        self.assertGreater(storage.dirty_section_count(), 50)
+        self.assertGreater(libmtk_py.unstable.testing.voxel_dirty_section_count(storage), 50)
 
         config = libmtk_py.MesherConfig(enable_ao=True, mesh_fluids=True, z_up_coordinates=True)
         mesh = mesh_world(storage, config)

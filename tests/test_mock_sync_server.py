@@ -75,7 +75,7 @@ class TestMockSyncServer(unittest.TestCase):
 
     def test_v3_protocol_packet_decoding(self):
         import libmtk_py
-        welcome_bytes = libmtk_py.encode_welcome(
+        welcome_bytes = libmtk_py.unstable.testing.encode_welcome(
             epoch=1,
             server_uuid=b"\x01" * 16,
             sequence=10,

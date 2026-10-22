@@ -29,7 +29,7 @@ def calculate_face_target_grid(
     mtk = require_libmtk("calculate_face_target_grid")
     if not uvs:
         return (1, 1)
-    return mtk.calculate_face_target_grid(
+    return mtk.unstable.testing.calculate_face_target_grid(
         [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
     )
 
@@ -45,7 +45,7 @@ def calculate_pixel_grid_cut_factors(
     mtk = require_libmtk("calculate_pixel_grid_cut_factors")
     if not uvs:
         return ([], [])
-    return mtk.calculate_pixel_grid_cut_factors(
+    return mtk.unstable.testing.calculate_pixel_grid_cut_factors(
         [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
     )
 
@@ -62,7 +62,7 @@ def slice_face_by_pixel_grid(
     mtk = require_libmtk("slice_face_by_pixel_grid")
     pos_list = [list(p) for p in positions]
     uv_list = [list(u) for u in uvs]
-    return mtk.slice_face_by_pixel_grid(
+    return mtk.unstable.testing.slice_face_by_pixel_grid(
         pos_list, uv_list, tex_w, tex_h, pixels_per_face, max_subdivisions
     )
 

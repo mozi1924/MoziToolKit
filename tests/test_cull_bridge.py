@@ -29,7 +29,7 @@ class TestVoxelCullBridge(unittest.TestCase):
         grid[0] = 1
         # Kelp above stone at (0, 1, 0)
         grid[16] = 2
-        storage.set_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, palette, grid)
+        libmtk_py.unstable.testing.voxel_set_section_snapshot(storage, 0, 0, 0, 0, 0, 0, 16, 16, 16, palette, grid)
 
         culler = libmtk_py.FaceCuller()
         config = libmtk_py.MesherConfig()
@@ -49,11 +49,11 @@ class TestVoxelCullBridge(unittest.TestCase):
         grid = [0] * 4096
         grid[0] = 1
 
-        storage.set_section_snapshot(0, 0, 0, 0, 0, 0, 16, 16, 16, palette, grid)
+        libmtk_py.unstable.testing.voxel_set_section_snapshot(storage, 0, 0, 0, 0, 0, 0, 16, 16, 16, palette, grid)
         self.assertEqual(storage.get_bounds(), (0, 0, 0, 16, 16, 16))
 
         # Second chunk at (1, 0, 0) automatically expands bounds to [0..32, 0..16, 0..16]
-        storage.set_section_snapshot(1, 0, 0, 16, 0, 0, 16, 16, 16, palette, grid)
+        libmtk_py.unstable.testing.voxel_set_section_snapshot(storage, 1, 0, 0, 16, 0, 0, 16, 16, 16, palette, grid)
         self.assertEqual(storage.get_bounds(), (0, 0, 0, 32, 16, 16))
 
 

@@ -32,7 +32,7 @@ def repair_extruded_side_uv(
     """Reconstruct 4 UV corner coordinates for an extruded side quad polygon."""
     mtk = require_libmtk("repair_extruded_side_uv")
     adj = list(adjacent_uv_strip) if adjacent_uv_strip is not None else None
-    return mtk.repair_extruded_side_uv(
+    return mtk.unstable.testing.repair_extruded_side_uv(
         tuple(uv_base_a),
         tuple(uv_base_b),
         tuple(top_normal),

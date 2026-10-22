@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧪 测试专用 API 迁移与死字段清理
+- **`unstable.testing` 命名空间**：`AtlasBuilder`、`ModelBaker`、低阶切分/UV/流体/纹理采样、协议 `encode_*` 以及 `VoxelStorage` 底层方法迁移到 `libmtk_py.unstable.testing`，稳定顶层不再暴露。
+- **删除死字段**：`MeshMultiUvRemapResult.face_uv_modes` / `face_is_overlay` 及 PyO3 字典键移除。
+- **删除零消费群系包装**：`classify_tint_category`、`get_hardcoded_tint` / `_hex`、`get_swamp_grass_color` 的 Python 包装与注册移除（Rust 内部实现保留）。
+- **缓存瘦身**：`BiomeResolver.analyze_models()` 完成后清空 raw `models` / `models_by_stem`，避免把整包模型 JSON 序列化进 `.mtkcache`。
+
 ### 🎨 资源包 Colormap 缓存与 Python 解耦
 - **保留资源包自定义色盘**：预编译仍提取 `colormap/{grass,foliage,dry_foliage}.png` 写入 `.mtkcache`；`AssetCacheReader::open` 在 Rust 内安装缓存色盘，采样优先使用资源包覆盖，缺失通道回退内置原版。
 - **Python 不再消费 colormap**：删除 `ensure_colormaps_extracted`、`AssetCache.extract_colormap`、`build_atlas_chunk_material(colormaps=...)` 及全部调用/导出/测试 patch；Python 只负责打开缓存，色盘解析完全在 Rust 完成。

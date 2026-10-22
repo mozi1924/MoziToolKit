@@ -820,7 +820,7 @@ class MockLiveSyncServer:
                 print("📦 [Handshake] Cache mismatch or initial sync -> FULL_BASELINE_REQUIRED")
 
             # 2. Send WELCOME packet (0x02)
-            welcome_bytes = libmtk_py.encode_welcome(
+            welcome_bytes = libmtk_py.unstable.testing.encode_welcome(
                 server_uuid=self.server_uuid_bytes,
                 epoch=self.epoch,
                 sequence=self.seq_id,
@@ -868,7 +868,7 @@ class MockLiveSyncServer:
         print(f"📤 [Baseline] Sending Baseline ({len(blocks):,} blocks, {len(palette)} palette entries)...")
         t0 = time.perf_counter()
 
-        begin_pkt = libmtk_py.encode_baseline_begin(
+        begin_pkt = libmtk_py.unstable.testing.encode_baseline_begin(
             epoch=self.epoch,
             snapshot_uuid=self.snapshot_uuid_bytes,
             snapshot_seq=self.seq_id,
@@ -888,7 +888,7 @@ class MockLiveSyncServer:
         )
         await client.send_binary(begin_pkt)
 
-        chunk_pkt = libmtk_py.encode_baseline_chunk(
+        chunk_pkt = libmtk_py.unstable.testing.encode_baseline_chunk(
             epoch=self.epoch,
             snapshot_uuid=self.snapshot_uuid_bytes,
             chunk_index=0,
@@ -901,7 +901,7 @@ class MockLiveSyncServer:
         )
         await client.send_binary(chunk_pkt)
 
-        end_pkt = libmtk_py.encode_baseline_end(
+        end_pkt = libmtk_py.unstable.testing.encode_baseline_end(
             epoch=self.epoch,
             snapshot_uuid=self.snapshot_uuid_bytes,
             snapshot_seq=self.seq_id,
@@ -939,7 +939,7 @@ class MockLiveSyncServer:
 
         if new_palette_entries and hasattr(libmtk_py, "encode_palette_update"):
             self.palette_revision += 1
-            pal_pkt = libmtk_py.encode_palette_update(
+            pal_pkt = libmtk_py.unstable.testing.encode_palette_update(
                 epoch=self.epoch,
                 seq_id=self.seq_id,
                 base_revision=self.palette_revision - 1,
@@ -953,7 +953,7 @@ class MockLiveSyncServer:
                     pass
 
         self.seq_id += 1
-        delta_pkt = libmtk_py.encode_delta_op(
+        delta_pkt = libmtk_py.unstable.testing.encode_delta_op(
             epoch=self.epoch,
             seq_id=self.seq_id,
             palette_revision=self.palette_revision,
