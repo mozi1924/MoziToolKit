@@ -105,3 +105,9 @@ bridge/mesh/attributes.py / utils/materials/*
 | 内部体素/存档/Live Sync 网格 | 材质属性 + palette provenance + `mtk_block_*` | 无动画时移除动画属性；世界坐标保留以支持 `WORLD` 预设切换 |
 
 裁剪只针对“可选属性”，`mtk_source_texture_idx` + `mtk_source_textures`、`mtk_atlas_chunk_id` 与 6 个材质属性不会被裁剪。
+
+## 8. Colormap 归属
+
+资源包自定义 `assets/minecraft/textures/colormap/{grass,foliage,dry_foliage}.png` 会由预编译写入 `.mtkcache` 的 `BIOM` chunk；`AssetCacheReader::open` 在 Rust 内安装为当前采样色盘，缺失通道回退内置原版。
+
+Python 不再解包、转发或直接消费 colormap 文件：`ensure_colormaps_extracted`、`AssetCache.extract_colormap`、`build_atlas_chunk_material(colormaps=...)` 与 `get_colormap_uv` 均已移除。材质包作者的覆盖色盘因此仍会参与 `mtk_biome_tint_color` 的生成。
