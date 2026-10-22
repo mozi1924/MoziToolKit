@@ -8,7 +8,6 @@ import bpy
 from ..bridge.assets import (
     precompile_stack,
     precompile_stack_async,
-    reload_atlas_images,
 )
 from ..utils.assets import (
     can_execute_asset_pipeline,
@@ -112,11 +111,7 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
         )
 
         def on_success(res):
-            # bpy image reload and stats refresh must happen on the main thread.
-            try:
-                reload_atlas_images(prefs)
-            except Exception:
-                pass
+            # Refresh stats only; do not mutate active scene image datablocks or materials
             try:
                 get_cache_stats(prefs, force_refresh=True)
             except Exception:

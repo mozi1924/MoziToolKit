@@ -121,10 +121,6 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
         try:
             precompile_stack(prefs)
             invalidate_asset_cache_memory()
-            try:
-                reload_atlas_images(prefs)
-            except Exception:
-                pass
         except Exception as e:
             logger.warning("Automated precompilation in ensure_stack_precompiled failed: %s", e)
     return base_cache

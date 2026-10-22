@@ -329,10 +329,6 @@ def ensure_pipeline_assets_ready_sync(
         try:
             _precompile_stack(prefs, progress_callback=progress_callback)
             _invalidate_asset_cache_memory()
-            try:
-                _reload_atlas_images(prefs)
-            except Exception:
-                pass
             return True, status
         except Exception as e:
             logger.exception("Automated precompilation failed: %s", e)

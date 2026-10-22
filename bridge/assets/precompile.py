@@ -28,7 +28,7 @@ def precompile_stack(
     progress_callback: Optional[ProgressCallback] = None,
     stack: Optional[Any] = None,
     cache_dir: Optional[str] = None,
-    reload_images: bool = True,
+    reload_images: bool = False,
     resolve_prefs: bool = True,
 ) -> Dict[str, Any]:
     """
