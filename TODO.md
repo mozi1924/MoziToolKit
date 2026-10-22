@@ -33,7 +33,7 @@
 - [x] **B7：拆分宿主内存适配器为独立 Wheel**：Blender C++ 内存直写被剥离为独立的 `libmtk_blender_dna` wheel，计算核保持 100% 宿主无关。
 
 ### 2. 材质管线现代化与旧实现物理清除 (✅ 全部完成)
-- [x] **PBR 图集预解码全面接管**：Rust 预编译期（`ASSET_CACHE_FORMAT_VERSION = 4`）将 LabPBR 解码为规范图集通道（Albedo, Normal_GL, Roughness, Metallic, Aux/Emission），丢弃原始 `_n` / `_s`。
+- [x] **PBR 图集预解码全面接管**：Rust 预编译期（`ASSET_CACHE_FORMAT_VERSION = 5`）将 LabPBR 解码为规范图集通道（Albedo, Normal_GL, Roughness, Metallic, Aux/Emission），丢弃原始 `_n` / `_s`。
 - [x] **彻底删除 `mtk_material_props`**：移除物理属性注册表、`properties_config.py` 与外部 JSON，移除逐面材质属性字符串展开，每面少存一份 Float4。
 - [x] **着色器现代化**：前端着色器全面适配原生 Principled BSDF，节点图全面迁移至现代 `ShaderNodeMix`（彻底消除过时的 `ShaderNodeMixRGB` 与 `use_nodes = True` 警告）。
 - [x] **材质视觉回归测试框架**：增加 `test(material): add legacy-vs-baked visual regression harness`，保障材质渲染 100% 视觉对齐。

@@ -93,3 +93,14 @@ bridge/mesh/attributes.py / utils/materials/*
 - 恢复材质时若 `mtk_atlas_chunk_id` 缺失，当前会以 0 填充；这是待收敛的边界，最终应从材质槽 provenance 推导而不是默认 0。
 - 动画重路由（`reconcile_animation`）只重投影 Atlas UV，不重写 `mtk_uv_transform` / `mtk_uv_rotation`；若布局或动画精灵比例变化，需要补写这两个属性。
 - Blender → `MeshData` 的 `extract_mesh_data` 会把 palette + index 展开为逐面字符串（Rust 侧再压缩）；这是当前往返路径的内存热点，可后续补 palette 直传 API。
+
+## 7. 按上下文裁剪策略
+
+| 条件 | 保留 | 移除 |
+| :--- | :--- | :--- |
+| 网格无多帧动画（`mtk_anim_timing[0] <= 1`） | 其余属性 | `mtk_anim_timing`、`mtk_anim_frame_size`（Rust collector 直接不写；Python 侧 `prune_optional_mesh_attributes` 兜底） |
+| 独立烘焙模型网格 | 材质/染色/来源属性 | `mtk_block_x/y/z`（`populate_standard_face_attributes(..., include_block_coords=false)`） |
+| 外部导入网格（EXTERNAL，Replace Material 后） | 材质属性 + provenance + chunk 路由 | 动画残留（无动画时）与 `mtk_block_*` 残留 |
+| 内部体素/存档/Live Sync 网格 | 材质属性 + palette provenance + `mtk_block_*` | 无动画时移除动画属性；世界坐标保留以支持 `WORLD` 预设切换 |
+
+裁剪只针对“可选属性”，`mtk_source_texture_idx` + `mtk_source_textures`、`mtk_atlas_chunk_id` 与 6 个材质属性不会被裁剪。

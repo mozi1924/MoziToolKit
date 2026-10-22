@@ -53,7 +53,7 @@
 - 每次新增、更新或调整轮子文件名/版本时，必须同步更新清单中的 `wheels` 列表。
 
 ### 规则 6：标准化预解码 PBR 材质管线 (Canonical Pre-decoded PBR Pipeline)
-- **预解码权威通道**：所有 PBR 属性（LabPBR 等）在 Rust 预编译期（`ASSET_CACHE_FORMAT_VERSION = 4`）解码为规范的 PBR 图集通道（Albedo, Normal_GL, Roughness, Metallic, Aux/Emission），丢弃原始 `_n` / `_s`。
+- **预解码权威通道**：所有 PBR 属性（LabPBR 等）在 Rust 预编译期（`ASSET_CACHE_FORMAT_VERSION = 5`）解码为规范的 PBR 图集通道（Albedo, Normal_GL, Roughness, Metallic, Aux/Emission），丢弃原始 `_n` / `_s`。
 - **彻底清除旧材质依赖**：
   - 严禁在运行期动态生成 LabPBR 复杂解码器节点树；
   - 严禁使用过时的 `mtk_material_props` 物理属性表或逐面字符串属性展开；

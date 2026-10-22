@@ -9,10 +9,18 @@ from unittest.mock import MagicMock
 
 from MoziToolKit.bridge.mesh.attribute_schema import (
     ACTIVE_ATTRIBUTE_NAMES,
+    ATTR_ANIM_FRAME_SIZE,
+    ATTR_ANIM_TIMING,
+    ATTR_BLOCK_X,
+    ATTR_BLOCK_Y,
+    ATTR_BLOCK_Z,
     RETIRED_ATTRIBUTE_NAMES,
 )
 from MoziToolKit.bridge.mesh.attributes import inject_custom_attributes
-from MoziToolKit.utils.materials.cleaner import clean_obsolete_mesh_attributes
+from MoziToolKit.utils.materials.cleaner import (
+    clean_obsolete_mesh_attributes,
+    prune_optional_mesh_attributes,
+)
 from MoziToolKit.utils.materials.constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_BIOME_TINT_COLOR,
@@ -188,6 +196,35 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertNotIn("mtk_material_slot", mesh.attributes)
         self.assertNotIn("mtk_atlas_texture_id", mesh.attributes)
         self.assertNotIn("mtk_anim_total_frames", mesh.attributes)
+
+    def test_prune_optional_attributes_by_context(self):
+        mesh = MockMesh(face_count=4)
+        for name in (
+            ATTR_ANIM_TIMING,
+            ATTR_ANIM_FRAME_SIZE,
+            ATTR_BLOCK_X,
+            ATTR_BLOCK_Y,
+            ATTR_BLOCK_Z,
+        ):
+            mesh.attributes[name] = MockAttributeData(name, 4)
+
+        removed = prune_optional_mesh_attributes(
+            mesh,
+            keep_animation=False,
+            keep_block_coords=True,
+        )
+        self.assertIn(ATTR_ANIM_TIMING, removed)
+        self.assertIn(ATTR_ANIM_FRAME_SIZE, removed)
+        self.assertNotIn(ATTR_BLOCK_X, removed)
+        self.assertIn(ATTR_BLOCK_X, mesh.attributes)
+
+        removed = prune_optional_mesh_attributes(
+            mesh,
+            keep_animation=False,
+            keep_block_coords=False,
+        )
+        self.assertIn(ATTR_BLOCK_X, removed)
+        self.assertNotIn(ATTR_BLOCK_X, mesh.attributes)
 
     def test_active_and_retired_disjoint(self):
         # The native schema must never declare the same attribute as active and retired.

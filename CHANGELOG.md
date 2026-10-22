@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🪶 属性按上下文裁剪与缓存格式 v5
+- **静态网格不再写动画属性**：`FaceAttributesCollector` 仅在任何面确实存在多帧动画时写 `mtk_anim_timing` / `mtk_anim_frame_size`；纯静态网格少 2 个逐面属性。
+- **独立烘焙模型不再写世界坐标**：`populate_standard_face_attributes` 增加 `include_block_coords` 开关，独立模型网格不再携带 `mtk_block_x/y/z`；体素/世界网格仍保留。
+- **材质替换后按来源裁剪**：外部导入网格在 Replace Material 后清理动画/世界坐标残留；内部体素网格保留世界坐标以支持 `WORLD` 预设重采样。
+- **缓存格式升至 v5**：采用新的 Postcard + Zstd 模型数据库，烘焙体积更小；旧 v4 缓存由 manifest 版本校验拒绝并自动重建。
+
 ### 🎛️ 材质节点属性消费审计与 Colormap 输出清理
 - **移除已退役的 Colormap UV 输出**：`mtk-material` 的 `MeshBiomeAttributesResult.colormap_uvs`、`BiomeTintFlatBuffers.colormap_uvs`、`BiomeColorSet.colormap_uv` 及 PyO3 对应返回值全部删除；Blender 端只消费 Rust 已解算的 `mtk_biome_tint_color` / `mtk_biome_tint_data`。
 - **删除废弃节点组 stub**：`ensure_colormap_sampler` / `ensure_colormap_decoder` 不再保留；节点模板注册表与测试同步收敛。

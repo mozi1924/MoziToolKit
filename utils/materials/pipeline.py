@@ -63,7 +63,11 @@ from ...bridge.mesh import (
 )
 from .builder.atlas_builder import build_atlas_chunk_material
 from .matching.presets.registry import build_matching_context
-from .cleaner import clean_obsolete_mesh_attributes
+from .cleaner import (
+    clean_obsolete_mesh_attributes,
+    mesh_has_animation,
+    prune_optional_mesh_attributes,
+)
 from .biome import (
     get_or_load_biome_resolver,
     compute_biome_tint_attributes,
@@ -787,6 +791,11 @@ def replace_materials(
             pass
 
     mesh.update()
+    prune_optional_mesh_attributes(
+        mesh,
+        keep_animation=mesh_has_animation(mesh),
+        keep_block_coords=not _is_external_object(mesh_or_obj),
+    )
     animated_faces = sum(1 for flag in remap.get("face_is_animated", []) if flag)
     return {
         "success": True,
@@ -980,6 +989,11 @@ def restore_materials_from_provenance(
 
     set_stored_layout_hash(mesh, current_layout_hash)
     mesh.update()
+    prune_optional_mesh_attributes(
+        mesh,
+        keep_animation=mesh_has_animation(mesh),
+        keep_block_coords=not _is_external_object(mesh_or_obj),
+    )
     animated_faces = sum(1 for flag in (face_anim_timing or []) if flag and flag[0] > 1.0)
     return {
         "success": True,
