@@ -450,17 +450,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
                 st_row = d_col.row(align=True)
                 st_row.alert = True
                 st_row.label(text=f"{tr('File not found')}: '{p_val}'", icon="ERROR")
-            else:
-                st_row = d_col.row(align=True)
-                st_row.label(text=f"{tr('File Valid')}: {Path(p_val).name}", icon="CHECKMARK")
-
-            detect_row = d_col.row(align=True)
-            detect_row.prop(item, "pack_type_source", text=tr("Type Source"))
-            detect_row.operator("mozi.pack_detect", text=tr("Re-detect"), icon="FILE_REFRESH")
-
-            kind_text, kind_icon = describe_detected_kind(item)
-            kind_row = d_col.row(align=True)
-            kind_row.label(text=f"{tr('Detected')}: {kind_text}", icon=kind_icon)
 
             kind_warning = detected_kind_warning(item)
             if kind_warning:

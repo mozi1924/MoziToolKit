@@ -246,9 +246,21 @@ class TestUpdateCallbacks(unittest.TestCase):
         ), patch.object(packs_ui, "refresh_ui_and_menus"), patch.object(
             packs_ui, "_timers_available", return_value=False
         ):
+            # 1. Selecting a file triggers auto-detection once
             packs_ui.on_pack_path_changed(item, None)
-        self.assertEqual(item.pack_type, "RESOURCE_PACK")
-        self.assertEqual(item.detected_kind, "")
+            self.assertEqual(item.pack_type, "VANILLA")
+            self.assertEqual(item.detected_kind, KIND_VANILLA_CLIENT)
+
+            # 2. Later user modifies the tier choice manually
+            item.pack_type = "MOD_JAR"
+            packs_ui.on_pack_type_changed(item, None)
+            self.assertEqual(item.pack_type_source, "MANUAL")
+            self.assertEqual(item.pack_type, "MOD_JAR")
+
+            # 3. Subsequent probe applications preserve user's manual choice
+            probe = detect_pack_kind(path)
+            packs_ui.apply_probe_to_entry(item, probe)
+            self.assertEqual(item.pack_type, "MOD_JAR")
 
     def test_missing_path_does_not_probe(self) -> None:
         item = _entry(self.root / "missing.zip")
@@ -361,11 +373,15 @@ class TestPanelDraw(unittest.TestCase):
 
         prop_names = [call[1] for call in layout.calls if call[0] == "prop"]
         operators = [call[1] for call in layout.calls if call[0] == "operator"]
-        self.assertIn("pack_type_source", prop_names)
-        self.assertIn("mozi.pack_detect", operators)
+        self.assertIn("name", prop_names)
+        self.assertIn("pack_type", prop_names)
+        self.assertIn("path", prop_names)
+        # Internal detection knobs are converged away for a clean experience
+        self.assertNotIn("pack_type_source", prop_names)
+        self.assertNotIn("mozi.pack_detect", operators)
         from MoziToolKit.i18n import tr
 
-        self.assertTrue(any(call[0] == "label" and call[1].startswith(tr("Detected")) for call in layout.calls))
+        self.assertFalse(any(call[0] == "label" and call[1].startswith(tr("Detected")) for call in layout.calls))
 
     def test_draw_shows_warning_for_data_pack(self) -> None:
         from MoziToolKit.ui.preferences import MOZI_AddonPreferences
@@ -398,7 +414,7 @@ class TestPanelDraw(unittest.TestCase):
         MOZI_AddonPreferences.draw_resource_packs(self._prefs(item), layout, None)
         from MoziToolKit.i18n import tr
 
-        self.assertTrue(any(call[0] == "label" and call[1].startswith(tr("Detected")) for call in layout.calls))
+        self.assertTrue(any(call[0] == "label" and tr("Path is empty. Please select a .zip, .jar, or assets folder.") in call[1] for call in layout.calls))
 
 
 class TestStartupMigration(unittest.TestCase):

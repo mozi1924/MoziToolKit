@@ -65,25 +65,83 @@ BASE_PROBE_BLOCKS = ("stone", "dirt", "oak_planks")
 
 #: Archive asset probes keyed by (resolved path, mtime_ns, size) so UI redraws stay cheap.
 _ARCHIVE_ASSET_CACHE: Dict[Tuple[str, int, int], bool] = {}
+_DIR_ASSET_CACHE: Dict[Tuple[str, int], bool] = {}
+_VANILLA_PROBE_CACHE: Dict[Tuple[str, int, int], bool] = {}
+_VANILLA_CHECK_CACHE: Dict[Any, bool] = {}
+_GUARD_STATUS_CACHE: Dict[Any, str] = {}
+
+
+def invalidate_guard_cache() -> None:
+    """Invalidate all cached pack readiness and cache status evaluations."""
+    _ARCHIVE_ASSET_CACHE.clear()
+    _DIR_ASSET_CACHE.clear()
+    _VANILLA_PROBE_CACHE.clear()
+    _VANILLA_CHECK_CACHE.clear()
+    _GUARD_STATUS_CACHE.clear()
+
+
+def _get_pack_signature(prefs=None) -> tuple:
+    if prefs is None:
+        try:
+            prefs = get_prefs()
+        except Exception:
+            prefs = None
+    packs = getattr(prefs, "resource_packs", None) or []
+    entries = []
+    for e in packs:
+        raw = getattr(e, "path", "") or ""
+        enabled = getattr(e, "enabled", True)
+        pt = getattr(e, "pack_type", "")
+        mtime = 0.0
+        if raw:
+            try:
+                mtime = os.path.getmtime(raw)
+            except OSError:
+                mtime = 0.0
+        entries.append((raw, enabled, pt, mtime))
+    single = getattr(prefs, "resource_pack_path", "") or ""
+    single_mtime = 0.0
+    if single:
+        try:
+            single_mtime = os.path.getmtime(single)
+        except OSError:
+            single_mtime = 0.0
+    env_sig = tuple((k, os.environ.get(k, "")) for k in ENV_ASSET_ROOTS + ENV_ASSET_ARCHIVES)
+    return (tuple(entries), single, single_mtime, env_sig)
 
 
 def _probe_archive(path: Path) -> Any:
     """Returns a cached probe when available, otherwise classifies the archive once."""
-    probe = peek_cached_probe(str(path.resolve()))
+    raw = str(path)
+    probe = peek_cached_probe(raw) or peek_cached_probe(str(path.resolve()))
     return probe if probe is not None else detect_pack_kind(path)
 
 
 def _dir_has_client_assets(root: Path) -> bool:
     """Cheap, version-stable proof that a directory can back the whole bake pipeline."""
+    try:
+        resolved = root.resolve()
+        stat = resolved.stat()
+        key = (str(resolved), stat.st_mtime_ns)
+    except OSError:
+        return False
+    if key in _DIR_ASSET_CACHE:
+        return _DIR_ASSET_CACHE[key]
+
     mc = root / "assets" / "minecraft"
+    ok = True
     for block in BASE_PROBE_BLOCKS:
         if not (mc / "blockstates" / f"{block}.json").is_file():
-            return False
+            ok = False
+            break
         if not (mc / "models" / "block" / f"{block}.json").is_file():
-            return False
+            ok = False
+            break
         if not (mc / "textures" / "block" / f"{block}.png").is_file():
-            return False
-    return True
+            ok = False
+            break
+    _DIR_ASSET_CACHE[key] = ok
+    return ok
 
 
 def _archive_has_client_assets(path: Path) -> bool:
@@ -122,16 +180,30 @@ def _path_provides_vanilla_client(path: Path) -> bool:
       same canonical asset set (future assets-only "slim" packs).
     - ``pack_type`` / ``detected_kind`` metadata is never trusted: both are user-editable.
     """
-    if path.is_dir():
-        return _dir_has_client_assets(path)
+    try:
+        if not path.exists():
+            return False
+        stat = path.stat()
+        key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return False
 
-    if path.is_file() and path.suffix.lower() in (".jar", ".zip"):
+    if key in _VANILLA_PROBE_CACHE:
+        return _VANILLA_PROBE_CACHE[key]
+
+    if path.is_dir():
+        res = _dir_has_client_assets(path)
+    elif path.is_file() and path.suffix.lower() in (".jar", ".zip"):
         probe = _probe_archive(path)
         if probe is not None and probe.kind in VALID_BASE_PACK_KINDS:
-            return True
-        return _archive_has_client_assets(path)
+            res = True
+        else:
+            res = _archive_has_client_assets(path)
+    else:
+        res = False
 
-    return False
+    _VANILLA_PROBE_CACHE[key] = res
+    return res
 
 
 def _is_entry_valid_vanilla_client(entry: Any) -> bool:
@@ -172,34 +244,45 @@ def has_valid_vanilla_pack(prefs=None) -> bool:
     Resource packs that only override a namespace, mod JARs, vanilla server JARs, and
     empty directories do NOT qualify.
     """
+    sig = _get_pack_signature(prefs)
+    if sig in _VANILLA_CHECK_CACHE:
+        return _VANILLA_CHECK_CACHE[sig]
+
     if prefs is None:
         try:
             prefs = get_prefs()
         except Exception:
             prefs = None
 
+    result = False
     if prefs is not None:
         for entry in getattr(prefs, "resource_packs", None) or []:
             if _is_entry_valid_vanilla_client(entry):
-                return True
+                result = True
+                break
 
-        single_path = getattr(prefs, "resource_pack_path", None)
-        if isinstance(single_path, str) and single_path.strip():
-            if _path_provides_vanilla_client(Path(single_path.strip())):
-                return True
+        if not result:
+            single_path = getattr(prefs, "resource_pack_path", None)
+            if isinstance(single_path, str) and single_path.strip():
+                if _path_provides_vanilla_client(Path(single_path.strip())):
+                    result = True
 
         # A stack is configured but none of it can back the pipeline: fail closed.
-        if _has_configured_packs(prefs):
+        if not result and _has_configured_packs(prefs):
+            _VANILLA_CHECK_CACHE[sig] = False
             return False
 
-    # No packs configured (CLI / CI / first run): the host environment may point at
-    # unpacked client assets or a client JAR, still subject to the content check.
-    for env_var in ENV_ASSET_ROOTS + ENV_ASSET_ARCHIVES:
-        val = os.environ.get(env_var)
-        if val and _path_provides_vanilla_client(Path(val)):
-            return True
+    if not result:
+        # No packs configured (CLI / CI / first run): the host environment may point at
+        # unpacked client assets or a client JAR, still subject to the content check.
+        for env_var in ENV_ASSET_ROOTS + ENV_ASSET_ARCHIVES:
+            val = os.environ.get(env_var)
+            if val and _path_provides_vanilla_client(Path(val)):
+                result = True
+                break
 
-    return False
+    _VANILLA_CHECK_CACHE[sig] = result
+    return result
 
 
 def can_execute_asset_pipeline(prefs=None) -> Tuple[bool, str]:
@@ -226,12 +309,23 @@ def check_asset_cache_status(prefs=None) -> str:
     - "NO_PACKS": No resource packs or JARs configured or enabled in preferences.
     - "NO_VANILLA": Resource packs or mod JARs are configured, but no valid Vanilla Client JAR base pack is enabled.
     """
+    sig = _get_pack_signature(prefs)
+    cache_dir = get_cache_dir(prefs).resolve()
+    cache_dir_mtime = 0.0
+    if cache_dir.exists():
+        try:
+            cache_dir_mtime = os.path.getmtime(cache_dir)
+        except OSError:
+            cache_dir_mtime = 0.0
+    cache_key = (sig, str(cache_dir), cache_dir_mtime)
+    if cache_key in _GUARD_STATUS_CACHE:
+        return _GUARD_STATUS_CACHE[cache_key]
+
     mtk = get_libmtk()
     if mtk is None:
         return "MISSING"
 
     stack = _get_configured_pack_stack(prefs)
-    cache_dir = get_cache_dir(prefs).resolve()
 
     # Discover all existing .mtkcache packages in the cache directory
     existing_packages = list(cache_dir.glob("*.mtkcache")) if cache_dir.exists() else []
@@ -239,10 +333,12 @@ def check_asset_cache_status(prefs=None) -> str:
     if stack is None or stack.get_pack_count() == 0:
         # No enabled packs configured by user
         # CRITICAL FIX: Never return "READY" just because stale packages exist on disk!
+        _GUARD_STATUS_CACHE[cache_key] = "NO_PACKS"
         return "NO_PACKS"
 
     # Enforce base pack gate: must have a valid Vanilla Client pack
     if not has_valid_vanilla_pack(prefs):
+        _GUARD_STATUS_CACHE[cache_key] = "NO_VANILLA"
         return "NO_VANILLA"
 
     # Test sandbox isolation guard: if isolated via MOZI_CACHE_DIR, caller did not specify custom prefs,
@@ -251,16 +347,20 @@ def check_asset_cache_status(prefs=None) -> str:
     if prefs is None and os.environ.get("MOZI_CACHE_DIR") and existing_packages:
         active = _open_active_asset_cache(prefs)
         if active is not None:
+            _GUARD_STATUS_CACHE[cache_key] = "READY"
             return "READY"
 
     # Compute expected stack fingerprint
     expected_fp = stack.compute_stack_fingerprint() if hasattr(stack, "compute_stack_fingerprint") else ""
     if not expected_fp:
-        return "MISSING" if not existing_packages else "STALE"
+        status = "MISSING" if not existing_packages else "STALE"
+        _GUARD_STATUS_CACHE[cache_key] = status
+        return status
 
     # Fast-path check: in-memory active cache matches expected fingerprint
     active = _open_active_asset_cache(prefs)
     if active is not None and getattr(active, "fingerprint", None) == expected_fp:
+        _GUARD_STATUS_CACHE[cache_key] = "READY"
         return "READY"
 
     # Direct file match: {expected_fp}.mtkcache
@@ -269,10 +369,12 @@ def check_asset_cache_status(prefs=None) -> str:
         if hasattr(mtk, "is_valid_cache_package"):
             try:
                 if mtk.is_valid_cache_package(str(direct_pkg), expected_fp):
+                    _GUARD_STATUS_CACHE[cache_key] = "READY"
                     return "READY"
             except Exception:
                 pass
         else:
+            _GUARD_STATUS_CACHE[cache_key] = "READY"
             return "READY"
 
     # Search all packages for a matching fingerprint
@@ -280,12 +382,18 @@ def check_asset_cache_status(prefs=None) -> str:
         if hasattr(mtk, "is_valid_cache_package"):
             try:
                 if mtk.is_valid_cache_package(str(pkg), expected_fp):
+                    _GUARD_STATUS_CACHE[cache_key] = "READY"
                     return "READY"
             except Exception:
                 pass
+        else:
+            if pkg.stem == expected_fp:
+                _GUARD_STATUS_CACHE[cache_key] = "READY"
+                return "READY"
 
-    if existing_packages:
-        return "STALE"
+    status = "STALE" if existing_packages else "MISSING"
+    _GUARD_STATUS_CACHE[cache_key] = status
+    return status
     return "MISSING"
 
 

@@ -85,6 +85,12 @@ def invalidate_asset_cache_memory() -> None:
         pass
 
     try:
+        from ...utils.assets.guard import invalidate_guard_cache
+        invalidate_guard_cache()
+    except Exception:
+        pass
+
+    try:
         mtk = get_libmtk()
         if mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "clear_debug_world_cache"):
             mtk.VoxelStorage.clear_debug_world_cache()
