@@ -28,6 +28,7 @@
   - 只读 ZIP 中央目录的内容判定：原版客户端/服务端、模组（Fabric/Quilt/Forge/NeoForge）、资源包、数据包、整合包。
   - 根路径精确匹配 + 加权打分（含 Forge universal、原版 JAR 内嵌数据包等对抗样本）。
   - `AUTO` / `MANUAL` 可纠正策略、防抖 + 工作线程调度、缓存契约，以及「何时才该下沉 Rust」的判定依据。
+- **[外部导入兼容配置 (Import Compatibility Profile)](materials/import_compat.md)**：Python 维护的 JSON 兼容规则（导出器后缀、材质回退、tint/硬编码颜色），预编译期合并进缓存，修改后自动触发重烘焙。
 - **[MC 方块模型烘焙引擎 (MC Baker)](materials/mc_baker.md)**：
   - Blockstate 变体与 Multipart 复合条件解析。
   - Block Model JSON 继承树展开、`#texture` 变量解析、Cullface 标记、UV 旋转与 Atlas Bridge 桥接。

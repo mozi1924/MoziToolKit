@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧩 外部导入兼容配置接口
+- 新增 `configs/import_compat.json` 与 `bridge/assets/compat.py`：旧导出器后缀、leaves/log 回退、模组 tint/hardcoded 规则改为 Python 可编辑 JSON，无需重编译 Rust。
+- Rust `ResolverOverrides` 在预编译期合并进 `BiomeResolver`，并写入 `.mtkcache` 的 `resolver/overrides`；`AssetCacheReader::open` 在运行时安装为 `MaterialResolver` 规则。
+- `precompile_stack` 新增 `resolver_overrides_json` 参数；缓存写入 `import_compat.sha256` 戳，配置变化会自动触发重新预编译。
+
 ### 🧪 测试专用 API 迁移与死字段清理
 - **`unstable.testing` 命名空间**：`AtlasBuilder`、`ModelBaker`、低阶切分/UV/流体/纹理采样、协议 `encode_*` 以及 `VoxelStorage` 底层方法迁移到 `libmtk_py.unstable.testing`，稳定顶层不再暴露。
 - **删除死字段**：`MeshMultiUvRemapResult.face_uv_modes` / `face_is_overlay` 及 PyO3 字典键移除。

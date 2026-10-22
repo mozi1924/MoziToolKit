@@ -105,7 +105,11 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
     """Ensure asset caches exist in persistent storage and match configured pack stack."""
     base_cache = get_cache_dir(prefs)
     status = check_asset_cache_status(prefs)
-    if status in ("MISSING", "STALE"):
+    from ...bridge.assets.compat import compat_stamp_matches
+
+    if status in ("MISSING", "STALE") or (
+        status == "READY" and not compat_stamp_matches(base_cache)
+    ):
         logger.info("Asset cache is %s; running automated precompilation...", status)
         try:
             precompile_stack(prefs)

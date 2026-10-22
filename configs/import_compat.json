@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "strip_biome_suffixes": [
+    "-desert", "-forest", "-swamp", "-taiga", "-snow", "-ocean", "-jungle", "-badlands",
+    "-savanna", "-dark_forest", "-birch_forest", "-plains", "-meadow", "-mangrove",
+    "-cherry_grove", "-cold_ocean", "-warm_ocean",
+    "_desert", "_forest", "_swamp", "_taiga", "_snow", "_ocean", "_jungle", "_badlands",
+    "_savanna", "_dark_forest", "_birch_forest", "_plains", "_meadow", "_mangrove",
+    "_cherry_grove", "_cold_ocean", "_warm_ocean", "_y"
+  ],
+  "material_fallbacks": [
+    {
+      "keyword": "leaves",
+      "candidates": ["block/oak_leaves", "minecraft:block/oak_leaves", "block/leaves"]
+    },
+    {
+      "keyword": "leaf",
+      "candidates": ["block/oak_leaves", "minecraft:block/oak_leaves", "block/leaves"]
+    },
+    {
+      "keyword": "log",
+      "candidates": ["block/oak_log", "minecraft:block/oak_log"]
+    }
+  ],
+  "tint_categories": {},
+  "hardcoded_colors": {}
+}
