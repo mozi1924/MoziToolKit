@@ -55,3 +55,41 @@ bridge/mesh/attributes.py / utils/materials/*
 - 旧属性表/点云字符串/无前缀遗留名：`mtk_material_props`、`mtk_block_state`、`mtk_biome`、`atlas_chunk_id`、`atlas_texture_id`、`material_id`
 
 清理入口：`utils/materials/cleaner.py::clean_obsolete_mesh_attributes`，其名单直接来自生成镜像。
+
+## 4. 材质节点消费者矩阵
+
+材质节点树中只有以下 `ShaderNodeAttribute` 真正读取 MTK 属性（`utils/materials/builder/atlas_builder.py`）：
+
+| 属性 | 节点 | 条件 | 用途 |
+| :--- | :--- | :--- | :--- |
+| `mtk_uv_transform` | `MTK UV Transform` | 始终 | UV 缩放/偏移 |
+| `mtk_uv_rotation` | `MTK UV Rotation` | 始终 | 旋转 UV |
+| `mtk_anim_timing` | `Face Anim Timing` | `is_animated` | 动画帧时序 |
+| `mtk_anim_frame_size` | `Face Anim Frame Size` | `is_animated` | 动画帧尺寸 |
+| `mtk_biome_tint_data` | `Attr Biome Tint Data` | 有 Biome Tint 组 | 基色/叠加/染色权重 |
+| `mtk_biome_tint_color` | `Attr Biome Tint Color` | 有 Biome Tint 组 | 已解算 Linear RGBA |
+
+结论：
+
+- **实际消费**：仅 6 个 `material` 角色属性；`metadata` 属性不进入着色器。
+- **近乎退役/可条件化**：`mtk_uv_rotation` 只对旋转 UV 生效；`mtk_anim_timing/frame_size` 只在动画材质上生效；`mtk_biome_tint_data` 的 Alpha 通道（`tint_type`）节点不读取，仅 Python 重着色使用，保留为元数据。
+- **世界坐标**：`mtk_block_x/y/z` 只服务 `WORLD` 预设的 3D Biome 重采样，外部导入网格不需要。
+
+## 5. 按网格来源的最小属性集
+
+| 来源 | 必需属性 | 说明 |
+| :--- | :--- | :--- |
+| 外部导入（`EXTERNAL`） | 6 个材质属性 + `mtk_source_texture_key/idx` + `mtk_atlas_chunk_id` | `Replace Material` 依赖 provenance 与 chunk 路由；无 `mtk_block_*` |
+| 存档 / Live Sync / 体素重建（内部） | 6 个材质属性 + `mtk_source_texture_idx`（+ `mtk_source_textures`）+ `mtk_block_x/y/z` | 材质与几何由点云/体素源重建，`mtk_source_texture_key` 字符串只是 ≤1024 面的兼容副本 |
+| 点云对象 | 无 MTK 面属性 | 点云承载体素/生物群系信息，网格由重建流程生成 |
+
+内部网格的材质重替换应优先走 `Rebuild Voxel Mesh`；`Replace Material` 的 provenance 只用于外部导入网格与同布局重绑。
+
+## 6. 已知写入边界
+
+- `mtk_source_texture_key` 的 STRING 层只对 ≤1024 面同步；大网格以 `mtk_source_textures` + `mtk_source_texture_idx` 为唯一权威。判断 provenance 时必须同时检查 INT 属性（现有 `op_materials` / `pipeline` 已这样做）。
+- `Replace Material` 的 restore 路径现在走 palette + index 写入，不再为所有面重建 Python 字符串。
+- `inject_mesh_provenance_attributes` 已移除 `poly_mat_indices` / `face_texture_ids` / `mode` 等死参数；写入尺寸不匹配会记录 warning 而不是静默失败。
+- 恢复材质时若 `mtk_atlas_chunk_id` 缺失，当前会以 0 填充；这是待收敛的边界，最终应从材质槽 provenance 推导而不是默认 0。
+- 动画重路由（`reconcile_animation`）只重投影 Atlas UV，不重写 `mtk_uv_transform` / `mtk_uv_rotation`；若布局或动画精灵比例变化，需要补写这两个属性。
+- Blender → `MeshData` 的 `extract_mesh_data` 会把 palette + index 展开为逐面字符串（Rust 侧再压缩）；这是当前往返路径的内存热点，可后续补 palette 直传 API。

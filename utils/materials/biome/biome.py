@@ -20,7 +20,6 @@ except ImportError:
 from ....bridge.material import (
     BiomeResolver,
     get_biome_meta,
-    get_colormap_uv,
     get_all_biomes,
     get_hardcoded_tint,
     get_hardcoded_tint_hex,
@@ -145,7 +144,6 @@ def get_biome_colors(
             "foliage_linear": custom_foliage or [0.18, 0.40, 0.03, 1.0],
             "dry_foliage_linear": custom_dry_foliage or [0.36, 0.22, 0.06, 1.0],
             "water_linear": custom_water or [0.05, 0.18, 0.78, 1.0],
-            "colormap_uv": [1.0 - max(0.0, min(1.0, temp)), max(0.0, min(1.0, hum)) * max(0.0, min(1.0, temp))],
             "has_custom_grass": has_custom_grass,
             "has_custom_foliage": has_custom_foliage,
             "has_custom_dry_foliage": has_custom_dry_foliage,
@@ -157,7 +155,6 @@ def get_biome_colors(
         hum = custom_humidity if custom_humidity is not None else meta.get("humidity", 0.4)
         meta["temperature"] = temp
         meta["humidity"] = hum
-        meta["colormap_uv"] = get_colormap_uv(temp, hum)
 
         # Sample resident colormaps in Rust for base colors
         from ....bridge.material import sample_colormap_colors
@@ -204,10 +201,10 @@ def compute_biome_tint_attributes(
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
     face_biomes: Optional[List[str]] = None,
-) -> Tuple[List[List[float]], List[List[float]], List[List[float]]]:
+) -> Tuple[List[List[float]], List[List[float]]]:
     """
-    Compute packed tint weights, colors, and colormap UV coordinates for mesh faces using Rust core.
-    Returns (packed_tint_data, tint_colors, colormap_uvs).
+    Compute packed tint weights and resolved Linear RGBA colors for mesh faces using Rust core.
+    Returns (packed_tint_data, tint_colors).
     """
     res = bridge_compute_biome_tint_attributes(
         face_texture_keys=face_texture_keys,
@@ -225,7 +222,7 @@ def compute_biome_tint_attributes(
         face_biomes=face_biomes,
     )
 
-    return res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"]
+    return res["packed_tint_data"], res["tint_colors"]
 
 
 def compute_biome_tint_attributes_paletted(
@@ -242,7 +239,7 @@ def compute_biome_tint_attributes_paletted(
     has_custom_grass: bool = False,
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
-) -> Tuple[Any, Any, Any]:
+) -> Tuple[Any, Any]:
     """Palette-native biome tint computation; never expands per-face strings."""
     from ....bridge.material import compute_biome_tint_attributes_paletted as _native
 
@@ -267,9 +264,8 @@ def apply_biome_tint_attributes(
     mesh: Any,
     packed_tint_data: List[List[float]],
     tint_colors: List[List[float]],
-    colormap_uvs: Optional[List[List[float]]] = None,
 ) -> None:
-    """Write Rust-computed biome tint data, color vectors, and colormap UVs directly to Blender mesh face attributes."""
+    """Write Rust-computed biome tint data and color vectors directly to Blender mesh face attributes."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
 

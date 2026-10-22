@@ -10,6 +10,7 @@ from typing import Any, Optional
 import numpy as np
 
 from ..engine import require_libmtk
+from .attribute_schema import ATTR_SOURCE_TEXTURE_IDX, ATTR_SOURCE_TEXTURE_KEY
 from .attributes import resolve_source_texture_keys
 from .constants import (
     BLENDER_TO_MTK_DOMAIN,
@@ -105,12 +106,12 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any) -> None:
             if attr_name in ("position", "normal") or attr_name.startswith("."):
                 continue
 
-            if attr_name in ("mtk_source_texture_key", "mtk_source_texture_idx"):
+            if attr_name in (ATTR_SOURCE_TEXTURE_KEY, ATTR_SOURCE_TEXTURE_IDX):
                 if not handled_source_keys:
                     domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "face")
                     resolved = resolve_source_texture_keys(mesh)
                     if resolved:
-                        mesh_data.add_string_attribute("mtk_source_texture_key", domain_str, resolved)
+                        mesh_data.add_string_attribute(ATTR_SOURCE_TEXTURE_KEY, domain_str, resolved)
                     handled_source_keys = True
                 continue
 

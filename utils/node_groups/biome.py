@@ -11,7 +11,6 @@ from .core import add_sockets, ensure_group, finalize_group, link, node
 
 
 BIOME_TINT_VERSION = 4
-COLORMAP_SAMPLER_VERSION = 2
 
 
 def ensure_biome_tint() -> bpy.types.NodeTree:
@@ -148,19 +147,3 @@ def ensure_biome_tint() -> bpy.types.NodeTree:
     link(links, max_alpha, "Value", group_out, "Alpha")
 
     return finalize_group(tree)
-
-
-def ensure_colormap_sampler() -> bpy.types.NodeTree | None:
-    """
-    [Deprecated] Colormap UV computation is now resolved directly in Rust (libmtk).
-    Retained as stub for legacy compatibility.
-    """
-    return None
-
-
-def ensure_colormap_decoder() -> bpy.types.NodeTree | None:
-    """
-    [Deprecated] Colormap decoding is now resolved directly in Rust (libmtk) and
-    injected via mtk_biome_tint_color. Retained as stub for legacy compatibility.
-    """
-    return None

@@ -4,6 +4,7 @@ Authoritative block models, culling rules, and texture categorizations
 are computed directly in Rust (libmtk).
 """
 
+from ...bridge.mesh.constants import PROP_SOURCE_TEXTURES
 from ...bridge.mesh.attribute_schema import (
     ATTR_ANIM_FRAME_SIZE,
     ATTR_ANIM_TIMING,
@@ -54,7 +55,6 @@ ATLAS_CATEGORY_MISC = "misc"
 
 # Mesh attribute names come from the native schema mirror (bridge/mesh/_attribute_schema_generated.py).
 # Keep host-only custom-property keys here.
-PROP_SOURCE_TEXTURES = "mtk_source_textures"
 FALLBACK_TEXTURE_KEY = "mozi:fallback"
 PROVENANCE_SCHEMA_VERSION = 2
 

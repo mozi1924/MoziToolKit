@@ -11,7 +11,7 @@ try:
     )
     from .atlas_uv_decoder import build_atlas_uv_decoder_node_group
     from .atlas_uv_tiling import ensure_atlas_uv_tiling
-    from .biome import ensure_biome_tint, ensure_colormap_sampler, ensure_colormap_decoder
+    from .biome import ensure_biome_tint
     from .parallax import ensure_parallax_uv_offset
 
     def ensure_all_templates():
@@ -43,8 +43,6 @@ __all__ = (
     "ensure_animation_scheduler",
     "ensure_atlas_uv_tiling",
     "ensure_biome_tint",
-    "ensure_colormap_sampler",
-    "ensure_colormap_decoder",
     "ensure_parallax_uv_offset",
 )
 

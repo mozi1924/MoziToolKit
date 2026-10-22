@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+#: Mesh custom property holding the compact source-texture key palette.
+PROP_SOURCE_TEXTURES = "mtk_source_textures"
+
 BLENDER_TO_MTK_DOMAIN: Dict[str, str] = {
     "POINT": "point",
     "CORNER": "corner",

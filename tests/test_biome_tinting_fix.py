@@ -24,10 +24,9 @@ except ImportError:
 from MoziToolKit.bridge.assets import load_biome_resolver_from_cache
 
 if HAS_BPY:
-    from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, ensure_colormap_decoder, BIOME_TINT_VERSION
+    from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, BIOME_TINT_VERSION
 else:
     ensure_biome_tint = None
-    ensure_colormap_decoder = None
     BIOME_TINT_VERSION = None
 
 try:
@@ -43,10 +42,8 @@ class TestBiomeTintingFix(unittest.TestCase):
         if not HAS_BPY or not HAS_LIBMTK:
             self.skipTest("Requires bpy and native libmtk_py")
 
-    def test_biome_tint_template_and_deprecated_decoder(self):
-        """Verifies that MC_Biome_Tint template has Tint Color input and ensure_colormap_decoder is deprecated."""
-        self.assertIsNone(ensure_colormap_decoder())
-
+    def test_biome_tint_template(self):
+        """Verifies that the MC_Biome_Tint template exposes the Tint Color input."""
         tree = ensure_biome_tint()
         self.assertIsNotNone(tree)
         self.assertEqual(tree.get("mozi_template_version"), BIOME_TINT_VERSION)

@@ -75,6 +75,8 @@ from .constants import (
     ATTR_ATLAS_CHUNK_ID,
     ATTR_UV_TRANSFORM,
     ATTR_UV_ROTATION,
+    ATTR_ANIM_TIMING,
+    ATTR_ANIM_FRAME_SIZE,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
 )
@@ -376,44 +378,40 @@ def assign_atlas_chunk_materials(
 def inject_mesh_provenance_attributes(
     mesh: Any,
     face_source_keys: Optional[List[str]] = None,
-    poly_mat_indices: Any = None,
     face_chunk_ids: Any = None,
-    face_texture_ids: Optional[Any] = None,
     face_uv_transforms: Optional[Any] = None,
     face_uv_rotations: Optional[Any] = None,
     face_anim_timing: Optional[Any] = None,
     face_anim_frame_size: Optional[Any] = None,
     face_source_key_palette: Optional[List[str]] = None,
     face_source_key_indices: Optional[Any] = None,
-    mode: str = "ATLAS",
 ) -> None:
     """Step 5: Inject provenance and shader-driver attributes.
 
-    Accepts either legacy per-face string lists or compact palette + indices and
-    buffer-protocol id/metric arrays (numpy arrays / Rust memoryviews).
+    Accepts either per-face string lists or the compact palette + index form and
+    buffer-protocol metrics (numpy arrays / Rust memoryviews).
     """
     num_polys = len(mesh.polygons)
-    mode_upper = mode.strip().upper()
 
     if face_source_key_palette is not None and face_source_key_indices is not None:
         inject_face_source_texture_palette(
             mesh, face_source_key_palette, face_source_key_indices
         )
     elif face_source_keys is not None:
-        inject_face_attribute_string(mesh, "mtk_source_texture_key", face_source_keys)
+        inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, face_source_keys)
 
     if face_chunk_ids is not None:
-        inject_face_attribute_int(mesh, "mtk_atlas_chunk_id", face_chunk_ids)
+        inject_face_attribute_int(mesh, ATTR_ATLAS_CHUNK_ID, face_chunk_ids)
 
     if face_uv_transforms is not None:
         if isinstance(face_uv_transforms, (list, tuple)):
             flat_transforms = np.ascontiguousarray(face_uv_transforms, dtype=np.float32).ravel()
         else:
             flat_transforms = np.frombuffer(face_uv_transforms, dtype=np.float32)
-        inject_face_attribute_float4(mesh, "mtk_uv_transform", flat_transforms)
+        inject_face_attribute_float4(mesh, ATTR_UV_TRANSFORM, flat_transforms)
 
     if face_uv_rotations is not None:
-        inject_face_attribute_float(mesh, "mtk_uv_rotation", face_uv_rotations)
+        inject_face_attribute_float(mesh, ATTR_UV_ROTATION, face_uv_rotations)
 
     # Per-face animation timing/metrics consumed by MC_Animation_Scheduler_Default
     # and MC_Animated_UV_Mapping.
@@ -432,8 +430,8 @@ def inject_mesh_provenance_attributes(
                 sizes = np.frombuffer(face_anim_frame_size, dtype=np.float32)
             if sizes.size >= num_polys * 3:
                 sizes = sizes[: num_polys * 3]
-                inject_face_attribute_vector(mesh, "mtk_anim_timing", timing)
-                inject_face_attribute_vector(mesh, "mtk_anim_frame_size", sizes)
+                inject_face_attribute_vector(mesh, ATTR_ANIM_TIMING, timing)
+                inject_face_attribute_vector(mesh, ATTR_ANIM_FRAME_SIZE, sizes)
 
     clean_obsolete_mesh_attributes(mesh)
 
@@ -494,7 +492,7 @@ def resolve_and_apply_biome_tint(
         custom_water = None
 
     if not is_world and source_key_palette is not None and source_key_indices is not None:
-        packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes_paletted(
+        packed_tint_data, tint_colors = compute_biome_tint_attributes_paletted(
             source_key_palette,
             source_key_indices,
             biome_preset=biome,
@@ -512,7 +510,7 @@ def resolve_and_apply_biome_tint(
     else:
         if face_source_keys is None:
             return
-        packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+        packed_tint_data, tint_colors = compute_biome_tint_attributes(
             face_source_keys,
             biome_preset=biome,
             resolver=biome_resolver,
@@ -526,7 +524,7 @@ def resolve_and_apply_biome_tint(
             has_custom_foliage=has_custom_foliage,
             has_custom_dry_foliage=has_custom_dry_foliage,
         )
-    apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
+    apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
 
     if hasattr(mesh_or_obj, "__setitem__"):
         try:
@@ -741,7 +739,7 @@ def replace_materials(
 
     # Step 5: Construct and assign materials into the atlas UV map
     layout_changed = bool(stored_layout_hash) and stored_layout_hash != current_layout_hash
-    poly_mat_indices = assign_atlas_chunk_materials(
+    assign_atlas_chunk_materials(
         mesh=mesh,
         uv_layer=atlas_uv_layer,
         atlas_data=atlas_data,
@@ -760,14 +758,11 @@ def replace_materials(
         mesh=mesh,
         face_source_key_palette=remap["source_key_palette"],
         face_source_key_indices=remap["face_source_key_indices"],
-        poly_mat_indices=poly_mat_indices,
         face_chunk_ids=remap["face_chunk_ids"],
-        face_texture_ids=remap["face_texture_ids"],
         face_uv_transforms=remap["face_uv_transforms"],
         face_uv_rotations=remap.get("face_uv_rotations"),
         face_anim_timing=remap.get("face_anim_timing"),
         face_anim_frame_size=remap.get("face_anim_frame_size"),
-        mode=mode_upper,
     )
 
     # Step 7: Compute & apply biome tint attributes through the palette-native
@@ -854,6 +849,7 @@ def restore_materials_from_provenance(
 
     num_polys = len(mesh.polygons)
     face_source_keys = resolve_source_texture_keys(mesh)
+    face_source_palette, face_source_indices = resolve_source_texture_keys_paletted(mesh)
     if not face_source_keys or len(face_source_keys) != num_polys:
         return {
             "success": False,
@@ -915,7 +911,6 @@ def restore_materials_from_provenance(
     else:
         face_chunk_ids = [0] * num_polys
 
-    face_texture_ids: Optional[List[int]] = None
     atlas_uvs: Optional[List[float]] = None
     face_anim_timing: Optional[List[List[float]]] = None
     face_anim_frame_size: Optional[List[List[float]]] = None
@@ -945,14 +940,13 @@ def restore_materials_from_provenance(
             enable_animated_textures=anim_enabled,
         )
         face_chunk_ids = [int(x) for x in reroute["face_chunk_ids"]]
-        face_texture_ids = [int(x) for x in reroute["face_texture_ids"]]
         atlas_uvs = reroute["atlas_uvs"]
         face_anim_timing = reroute.get("face_anim_timing")
         face_anim_frame_size = reroute.get("face_anim_frame_size")
         animation_reconciled = True
 
     # Step 2: Reconstruct material slots (optionally reusing re-projected atlas UVs)
-    poly_mat_indices = assign_atlas_chunk_materials(
+    assign_atlas_chunk_materials(
         mesh=mesh,
         uv_layer=atlas_uv_layer,
         atlas_data=atlas_data,
@@ -968,12 +962,11 @@ def restore_materials_from_provenance(
     inject_mesh_provenance_attributes(
         mesh=mesh,
         face_source_keys=face_source_keys,
-        poly_mat_indices=poly_mat_indices,
+        face_source_key_palette=face_source_palette or None,
+        face_source_key_indices=face_source_indices if len(face_source_indices) == num_polys else None,
         face_chunk_ids=face_chunk_ids,
-        face_texture_ids=face_texture_ids,
         face_anim_timing=face_anim_timing,
         face_anim_frame_size=face_anim_frame_size,
-        mode="ATLAS",
     )
 
     if animation_reconciled and hasattr(mesh, "__setitem__"):

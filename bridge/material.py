@@ -133,8 +133,8 @@ def compute_biome_tint_attributes(
     face_biomes: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Compute packed tint weights, colors, and colormap UV coordinates using Rust core.
-    Returns dictionary with keys: 'packed_tint_data', 'tint_colors', 'colormap_uvs'.
+    Compute packed tint weights and resolved Linear RGBA colors using the Rust core.
+    Returns a dictionary with keys: 'packed_tint_data', 'tint_colors'.
     """
     mtk = require_libmtk("compute_biome_tint_attributes")
 
@@ -185,12 +185,12 @@ def compute_biome_tint_attributes_paletted(
     has_custom_grass: bool = False,
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """Palette-native biome tint computation returning zero-copy flat arrays."""
     mtk = require_libmtk("compute_biome_tint_attributes_paletted")
     multi = list(biome_preset) if isinstance(biome_preset, list) else None
     name = "PLAINS" if multi is not None else str(biome_preset)
-    packed, colors, uvs = mtk.compute_biome_tint_attributes_paletted(
+    packed, colors = mtk.compute_biome_tint_attributes_paletted(
         list(palette),
         face_indices,
         name,
@@ -209,7 +209,6 @@ def compute_biome_tint_attributes_paletted(
     return (
         np.frombuffer(packed, dtype=np.float32).reshape(-1, 4),
         np.frombuffer(colors, dtype=np.float32).reshape(-1, 4),
-        np.frombuffer(uvs, dtype=np.float32).reshape(-1, 3),
     )
 
 
@@ -221,7 +220,6 @@ def reapply_uniform_biome_tint(
     foliage_color: Sequence[float],
     dry_foliage_color: Sequence[float],
     water_color: Sequence[float],
-    colormap_uv: Sequence[float],
     has_custom_grass: bool = False,
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
@@ -234,7 +232,7 @@ def reapply_uniform_biome_tint(
       - packed_tint_data: float32 x 4 per face
       - existing_tint_colors: float32 x 4 per face (may be empty)
 
-    Returns zero-copy memoryviews for (packed_tint_data, tint_colors, colormap_uvs).
+    Returns zero-copy memoryviews for (packed_tint_data, tint_colors).
     """
     mtk = require_libmtk("reapply_uniform_biome_tint")
     return mtk.reapply_uniform_biome_tint(
@@ -245,7 +243,6 @@ def reapply_uniform_biome_tint(
         tuple(foliage_color),
         tuple(dry_foliage_color),
         tuple(water_color),
-        tuple(colormap_uv),
         bool(has_custom_grass),
         bool(has_custom_foliage),
         bool(has_custom_dry_foliage),

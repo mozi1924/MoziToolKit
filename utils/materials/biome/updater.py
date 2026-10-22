@@ -422,7 +422,7 @@ def resolve_and_apply_world_biome_tint(
             resolver=biome_resolver,
             smooth=True,
         )
-        apply_biome_tint_attributes(target_mesh, res["packed_tint_data"], res["tint_colors"], res["colormap_uvs"])
+        apply_biome_tint_attributes(target_mesh, res["packed_tint_data"], res["tint_colors"])
         if hasattr(mesh_or_obj, "__setitem__"):
             try:
                 mesh_or_obj["mtk:biome_preset"] = "WORLD"
@@ -573,7 +573,6 @@ def update_object_biome(
                     foliage_col = biome_colors.get("foliage_linear", [0.18, 0.41, 0.03, 1.0])
                     water_col = biome_colors.get("water_linear", [0.05, 0.18, 0.78, 1.0])
                     dry_foliage_col = biome_colors.get("dry_foliage_linear", [0.37, 0.18, 0.06, 1.0])
-                    cm_uv = biome_colors.get("colormap_uv", [0.2, 0.32])
 
                     # Rust owns the per-face category/color composition. Python only
                     # reads/writes flat buffers, so slider drags stay memory-bandwidth bound.
@@ -601,7 +600,7 @@ def update_object_biome(
                         else:
                             old_cols = np.empty(0, dtype=np.float32)
 
-                        packed_mv, colors_mv, _ = reapply_uniform_biome_tint(
+                        packed_mv, colors_mv = reapply_uniform_biome_tint(
                             np.ascontiguousarray(base_tt, dtype=np.uint8),
                             np.ascontiguousarray(raw_data, dtype=np.float32),
                             np.ascontiguousarray(old_cols, dtype=np.float32),
@@ -609,7 +608,6 @@ def update_object_biome(
                             foliage_col,
                             dry_foliage_col,
                             water_col,
-                            cm_uv,
                             has_custom_grass=has_custom_grass,
                             has_custom_foliage=has_custom_foliage,
                             has_custom_dry_foliage=has_custom_dry_foliage,
@@ -643,7 +641,7 @@ def update_object_biome(
 
             if any(source_keys):
                 biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
-                packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+                packed_tint_data, tint_colors = compute_biome_tint_attributes(
                     source_keys,
                     biome_preset=biome_name,
                     resolver=biome_resolver,
@@ -657,7 +655,7 @@ def update_object_biome(
                     has_custom_foliage=has_custom_foliage,
                     has_custom_dry_foliage=has_custom_dry_foliage,
                 )
-                apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
+                apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
                 if hasattr(mesh, "__setitem__"):
                     try:
                         mesh["mtk:biome_tint_initialized"] = True
@@ -680,7 +678,7 @@ def update_object_biome(
                     except Exception:
                         pass
                     biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
-                    packed_tint_data, tint_colors, colormap_uvs = compute_biome_tint_attributes(
+                    packed_tint_data, tint_colors = compute_biome_tint_attributes(
                         derived_keys,
                         biome_preset=biome_name,
                         resolver=biome_resolver,
@@ -694,7 +692,7 @@ def update_object_biome(
                         has_custom_foliage=has_custom_foliage,
                         has_custom_dry_foliage=has_custom_dry_foliage,
                     )
-                    apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors, colormap_uvs)
+                    apply_biome_tint_attributes(mesh, packed_tint_data, tint_colors)
                     if hasattr(mesh, "__setitem__"):
                         try:
                             mesh["mtk:biome_tint_initialized"] = True

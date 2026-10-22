@@ -276,6 +276,9 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
+                # Restore must keep the compact palette provenance contract.
+                self.assertIn("mtk_source_texture_idx", mesh.attributes)
+                self.assertIn("mtk_source_textures", mesh)
 
 
 

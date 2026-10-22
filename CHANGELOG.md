@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🎛️ 材质节点属性消费审计与 Colormap 输出清理
+- **移除已退役的 Colormap UV 输出**：`mtk-material` 的 `MeshBiomeAttributesResult.colormap_uvs`、`BiomeTintFlatBuffers.colormap_uvs`、`BiomeColorSet.colormap_uv` 及 PyO3 对应返回值全部删除；Blender 端只消费 Rust 已解算的 `mtk_biome_tint_color` / `mtk_biome_tint_data`。
+- **删除废弃节点组 stub**：`ensure_colormap_sampler` / `ensure_colormap_decoder` 不再保留；节点模板注册表与测试同步收敛。
+- **Provenance 写入修复**：`Replace Material` 的 restore 路径改用 palette + index 写入，避免为大网格重建逐面字符串；移除 `poly_mat_indices` / `face_texture_ids` / `mode` 等死参数；`mtk_source_textures` 常量收口到 `bridge/mesh/constants.py`。
+- **写入边界可观测**：provenance 写入尺寸不匹配时记录 warning 而非静默丢弃；补充外部导入 vs 内部体素网格的属性消费矩阵文档（`docs/mesh/attributes.md`）。
+
 ### 🧱 网格属性契约 SSOT 与死属性清理
 - **后端成为唯一权威源**：`mtk-core::attributes` 新增 `MESH_ATTRIBUTE_SPECS`（名称/域/类型/`material`|`metadata` 角色）与 `RETIRED_MESH_ATTRIBUTES`，并通过 `libmtk_py.mesh_attribute_schema()` / `retired_mesh_attributes()` 暴露给宿主。
 - **Python 只消费、不复制**：新增 `tools/sync_attribute_schema.py` 生成 `bridge/mesh/_attribute_schema_generated.py`；删除 `bridge/mesh/constants.py` 与 `utils/materials/constants.py` 中两份手工维护的排除/规范名单。`tests/test_attribute_schema.py` 在原生扩展可用时逐项校验镜像一致性。

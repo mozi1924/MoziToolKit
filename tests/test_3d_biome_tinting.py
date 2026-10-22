@@ -140,16 +140,13 @@ class Test3DBiomeTinting(unittest.TestCase):
         )
         packed = res["packed_tint_data"]
         colors = res["tint_colors"]
-        uvs = res["colormap_uvs"]
 
         self.assertEqual(len(packed), 3)
         self.assertEqual(len(colors), 3)
-        self.assertEqual(len(uvs), 3)
 
-        # Desert vs Jungle: standard colormap grass (tint_type == 1.0), distinct UVs & colors
+        # Desert vs Jungle: standard colormap grass (tint_type == 1.0), distinct resolved colors
         self.assertAlmostEqual(packed[0][3], 1.0)
         self.assertAlmostEqual(packed[1][3], 1.0)
-        self.assertNotEqual(uvs[0], uvs[1])
         self.assertNotEqual(colors[0], colors[1])
 
         # Badlands: hardcoded custom grass override -> routed to TINT_TYPE_HARDCODED (4.0)
@@ -173,8 +170,8 @@ class Test3DBiomeTinting(unittest.TestCase):
             biome_preset="JUNGLE",
             resolver=resolver,
         )
-        expected = (expected["packed_tint_data"], expected["tint_colors"], expected["colormap_uvs"])
-        packed, colors, uvs = self.lib.compute_biome_tint_attributes_paletted(
+        expected = (expected["packed_tint_data"], expected["tint_colors"])
+        packed, colors = self.lib.compute_biome_tint_attributes_paletted(
             palette,
             indices,
             "JUNGLE",
@@ -182,7 +179,6 @@ class Test3DBiomeTinting(unittest.TestCase):
         )
         np.testing.assert_allclose(np.frombuffer(packed, dtype=np.float32).reshape(-1, 4), expected[0])
         np.testing.assert_allclose(np.frombuffer(colors, dtype=np.float32).reshape(-1, 4), expected[1])
-        np.testing.assert_allclose(np.frombuffer(uvs, dtype=np.float32).reshape(-1, 3), expected[2])
 
     def test_3d_biome_attributes_from_storage(self):
         """Verify 3D vertical biome difference (lush_caves at y=2 vs dark_forest at y=14) in same X/Z column."""
@@ -208,11 +204,9 @@ class Test3DBiomeTinting(unittest.TestCase):
         )
         packed = res["packed_tint_data"]
         colors = res["tint_colors"]
-        uvs = res["colormap_uvs"]
 
         # Bottom (lush_caves) vs Top (dark_forest) must have different grass colors
         self.assertNotEqual(colors[0], colors[1])
-        self.assertNotEqual(uvs[0], uvs[1])
         # lush_caves uses standard colormap (1.0), dark_forest uses custom grass modifier (4.0)
         self.assertAlmostEqual(packed[0][3], 1.0)
         self.assertAlmostEqual(packed[1][3], 4.0)

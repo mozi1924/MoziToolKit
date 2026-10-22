@@ -12,6 +12,7 @@ import numpy as np
 from .attribute_schema import ATTR_SOURCE_TEXTURE_KEY, is_active
 from .constants import (
     MTK_TO_BLENDER_DOMAIN,
+    PROP_SOURCE_TEXTURES,
     MTK_TO_BLENDER_TYPE,
     get_mesh,
     get_or_create_attribute,
@@ -121,11 +122,21 @@ def inject_face_source_texture_palette(
     else:
         arr = np.frombuffer(indices, dtype=np.int32)
     if arr.size != num_polys:
+        logger.warning(
+            "Source-texture palette not written: got %d indices for %d faces",
+            arr.size,
+            num_polys,
+        )
         return
-    mesh["mtk_source_textures"] = list(palette)
+    mesh[PROP_SOURCE_TEXTURES] = list(palette)
     attr_idx = get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
-    if attr_idx is not None and len(attr_idx.data) == num_polys:
-        attr_idx.data.foreach_set("value", arr)
+    if attr_idx is None or len(attr_idx.data) != num_polys:
+        logger.warning(
+            "Source-texture palette index attribute could not be sized to %d faces",
+            num_polys,
+        )
+        return
+    attr_idx.data.foreach_set("value", arr)
 
     # Synchronize or populate mtk_source_texture_key for meshes <= 1024 faces or when already existing
     attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
@@ -157,12 +168,17 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
         return
     num_polys = len(mesh.polygons)
     if num_polys == 0 or len(values) != num_polys:
+        logger.warning(
+            "Source-texture keys not written: got %d keys for %d faces",
+            len(values),
+            num_polys,
+        )
         return
 
     # 1. Build palette and index mapping
     palette = list(dict.fromkeys(values))
     key_to_idx = {k: i for i, k in enumerate(palette)}
-    mesh["mtk_source_textures"] = palette
+    mesh[PROP_SOURCE_TEXTURES] = palette
 
     # 2. Write INT attribute in bulk
     attr_idx = get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
