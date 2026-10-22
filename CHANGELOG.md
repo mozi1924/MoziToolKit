@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧹 内部网格移除冗余 STRING provenance
+- 内部体素/存档/Live Sync 网格在注入 palette + index 时不再写 `mtk_source_texture_key` STRING 兼容副本，并会清理旧副本；外部导入网格仍保留 ≤1024 面的兼容层。
+
 ### 🧭 材质恢复的 Chunk 路由与动画变换修复
 - **缺失 `mtk_atlas_chunk_id` 不再默认 0**：`restore_materials_from_provenance` 会从 `mtk_source_texture_key/idx` + atlas 重新解析 chunk 路由；无法解析时返回明确失败并告警。
 - **动画重路由不误改 UV 变换**：`mtk_uv_transform` 语义确认为局部 UV 平铺而非 sprite 尺寸；动画重路由只更新 Atlas UV 与动画指标，保留该属性原值。

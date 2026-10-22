@@ -80,14 +80,14 @@ bridge/mesh/attributes.py / utils/materials/*
 | 来源 | 必需属性 | 说明 |
 | :--- | :--- | :--- |
 | 外部导入（`EXTERNAL`） | 6 个材质属性 + `mtk_source_texture_key/idx` + `mtk_atlas_chunk_id` | `Replace Material` 依赖 provenance 与 chunk 路由；无 `mtk_block_*` |
-| 存档 / Live Sync / 体素重建（内部） | 6 个材质属性 + `mtk_source_texture_idx`（+ `mtk_source_textures`）+ `mtk_block_x/y/z` | 材质与几何由点云/体素源重建，`mtk_source_texture_key` 字符串只是 ≤1024 面的兼容副本 |
+| 存档 / Live Sync / 体素重建（内部） | 6 个材质属性 + `mtk_source_texture_idx`（+ `mtk_source_textures`）+ `mtk_block_x/y/z` | 材质与几何由点云/体素源重建；内部网格不再写 `mtk_source_texture_key` STRING 副本 |
 | 点云对象 | 无 MTK 面属性 | 点云承载体素/生物群系信息，网格由重建流程生成 |
 
 内部网格的材质重替换应优先走 `Rebuild Voxel Mesh`；`Replace Material` 的 provenance 只用于外部导入网格与同布局重绑。
 
 ## 6. 已知写入边界
 
-- `mtk_source_texture_key` 的 STRING 层只对 ≤1024 面同步；大网格以 `mtk_source_textures` + `mtk_source_texture_idx` 为唯一权威。判断 provenance 时必须同时检查 INT 属性（现有 `op_materials` / `pipeline` 已这样做）。
+- `mtk_source_texture_key` 的 STRING 层现在只由外部导入材质路径保留（≤1024 面兼容副本）；内部体素/Live Sync 网格在 palette 注入时直接移除该层，以 `mtk_source_textures` + `mtk_source_texture_idx` 为唯一权威。判断 provenance 时必须检查 INT 属性（现有 `op_materials` / `pipeline` 已这样做）。
 - `Replace Material` 的 restore 路径现在走 palette + index 写入，不再为所有面重建 Python 字符串。
 - `inject_mesh_provenance_attributes` 已移除 `poly_mat_indices` / `face_texture_ids` / `mode` 等死参数；写入尺寸不匹配会记录 warning 而不是静默失败。
 - 恢复材质时若 `mtk_atlas_chunk_id` 缺失，现在会从 provenance + atlas 重新解析 chunk 路由；解析不到时明确失败或告警，不再默认 0。

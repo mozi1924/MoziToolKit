@@ -110,8 +110,14 @@ def inject_face_source_texture_palette(
     mesh: Any,
     palette: Sequence[str],
     indices: Any,
+    write_legacy_string: bool = True,
 ) -> None:
-    """Write source texture provenance directly as palette + INT indices."""
+    """Write source texture provenance directly as palette + INT indices.
+
+    `write_legacy_string` keeps the ≤1024-face STRING compatibility copy for
+    external meshes; internal voxel/Live Sync meshes pass False because the
+    palette + index pair is the authoritative provenance.
+    """
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
     num_polys = len(mesh.polygons)
@@ -138,8 +144,15 @@ def inject_face_source_texture_palette(
         return
     attr_idx.data.foreach_set("value", arr)
 
-    # Synchronize or populate mtk_source_texture_key for meshes <= 1024 faces or when already existing
+    # Optional ≤1024-face STRING compatibility copy (external meshes only).
     attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
+    if not write_legacy_string:
+        if attr_str is not None:
+            try:
+                mesh.attributes.remove(attr_str)
+            except Exception as exc:
+                logger.debug("Failed to remove legacy provenance string: %s", exc)
+        return
     if attr_str is not None or num_polys <= 1024:
         if attr_str is None:
             attr_str = get_or_create_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY, "STRING", "FACE")
@@ -156,13 +169,15 @@ def inject_face_source_texture_palette(
                     logger.debug("Failed to write source texture key at face %d: %s", i, exc)
 
 
-def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
+def inject_face_source_texture_keys(
+    mesh: Any, values: Sequence[str], write_legacy_string: bool = True
+) -> None:
     """
     Inject face source texture keys via palette indexing (sub-millisecond throughput).
     Creates:
       - mesh["mtk_source_textures"]: List[str] palette
       - "mtk_source_texture_idx": INT (FACE) attribute with mapped indices
-      - "mtk_source_texture_key": STRING (FACE) attribute for interop and fallback
+      - "mtk_source_texture_key": optional STRING (FACE) compatibility copy
     """
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
@@ -186,8 +201,15 @@ def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
         np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
         attr_idx.data.foreach_set("value", np_indices)
 
-    # 3. Synchronize or populate STRING attribute for compatibility
+    # 3. Optional STRING compatibility copy (external meshes only).
     attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
+    if not write_legacy_string:
+        if attr_str is not None:
+            try:
+                mesh.attributes.remove(attr_str)
+            except Exception as exc:
+                logger.debug("Failed to remove legacy provenance string: %s", exc)
+        return
     if attr_str is not None or num_polys <= 1024:
         if attr_str is None:
             attr_str = get_or_create_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY, "STRING", "FACE")
@@ -345,7 +367,9 @@ def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> boo
         try:
             palette, indices = builder()
             if palette:
-                inject_face_source_texture_palette(mesh, palette, indices)
+                inject_face_source_texture_palette(
+                    mesh, palette, indices, write_legacy_string=False
+                )
                 return True
         except Exception as e:
             logger.debug("Palette provenance fast path failed: %s", e)
