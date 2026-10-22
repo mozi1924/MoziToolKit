@@ -86,6 +86,12 @@ def get_colormap_uv(temperature: float, humidity: float) -> List[float]:
     return mtk.get_colormap_uv(temperature, humidity)
 
 
+def sample_colormap_colors(temperature: float, humidity: float) -> Dict[str, List[float]]:
+    """Sample resident vanilla colormap linear RGBA colors from temperature and humidity in Rust."""
+    mtk = require_libmtk("sample_colormap_colors")
+    return mtk.sample_colormap_colors(float(temperature), float(humidity))
+
+
 def get_all_biomes() -> List[Dict[str, Any]]:
     """Retrieve all standard vanilla Minecraft biomes with canonical metadata."""
     mtk = require_libmtk("get_all_biomes")
@@ -382,6 +388,7 @@ __all__ = [
     "load_biome_resolver_from_file",
     "get_biome_meta",
     "get_colormap_uv",
+    "sample_colormap_colors",
     "get_all_biomes",
     "get_hardcoded_tint",
     "get_hardcoded_tint_hex",

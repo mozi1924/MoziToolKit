@@ -271,7 +271,7 @@ class Test3DBiomeTinting(unittest.TestCase):
         self.assertEqual(obj.get("mtk:biome_preset"), "WORLD")
         self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
         self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
-        self.assertIn(ATTR_COLORMAP_UV, mesh.attributes)
+        self.assertNotIn(ATTR_COLORMAP_UV, mesh.attributes)
 
         col0 = mesh.attributes[ATTR_BIOME_TINT_COLOR].data[0].color
         col1 = mesh.attributes[ATTR_BIOME_TINT_COLOR].data[1].color

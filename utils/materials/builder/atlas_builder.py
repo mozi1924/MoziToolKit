@@ -27,7 +27,7 @@ except ImportError:
     HAS_BPY = False
 
 from ...node_groups.atlas_uv_tiling import ensure_atlas_uv_tiling
-from ...node_groups.biome import ensure_biome_tint, ensure_colormap_decoder
+from ...node_groups.biome import ensure_biome_tint
 from ...node_groups.animated import (
     ensure_animation_scheduler,
     ensure_animated_uv_mapping,
@@ -40,7 +40,6 @@ from ..constants import (
     ATTR_UV_ROTATION,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
-    ATTR_COLORMAP_UV,
 )
 from .image_utils import (
     ensure_material_node_tree,
@@ -650,59 +649,8 @@ def build_atlas_chunk_material(
         attr_tint_col.location = (-450, 100)
         attr_tint_col.parent = frame_biome
 
-        decoder_group_tree = ensure_colormap_decoder()
-        active_colormaps = {}
-        if colormaps and isinstance(colormaps, dict):
-            for key in ("grass", "foliage", "dry_foliage"):
-                value = colormaps.get(key)
-                if value and (os.path.exists(str(value)) or str(value).startswith("biome/")):
-                    active_colormaps[key] = value
-        else:
-            for key in ("grass", "foliage", "dry_foliage"):
-                active_colormaps[key] = f"biome/colormap/{key}"
-
-        if decoder_group_tree and active_colormaps:
-            attr_cm_uv = nodes.new("ShaderNodeAttribute")
-            attr_cm_uv.name = "Attr Colormap UV"
-            attr_cm_uv.attribute_name = ATTR_COLORMAP_UV
-            attr_cm_uv.attribute_type = "GEOMETRY"
-            attr_cm_uv.location = (-700, 800)
-            attr_cm_uv.parent = frame_biome
-
-            colormap_decoder = nodes.new("ShaderNodeGroup")
-            colormap_decoder.name = "MC Biome Colormap Decoder"
-            colormap_decoder.node_tree = decoder_group_tree
-            colormap_decoder.location = (-100, 750)
-            colormap_decoder.parent = frame_biome
-
-            links.new(attr_tint_data.outputs["Alpha"], colormap_decoder.inputs["Tint Type"])
-            links.new(attr_tint_col.outputs["Color"], colormap_decoder.inputs["Hardcoded Color"])
-            links.new(attr_tint_col.outputs["Color"], colormap_decoder.inputs["Water Color"])
-            links.new(attr_tint_col.outputs["Color"], colormap_decoder.inputs["Fallback Color"])
-
-            cm_configs = [
-                ("grass", "Colormap Grass", (-450, 950), "Grass Color"),
-                ("foliage", "Colormap Foliage", (-450, 750), "Foliage Color"),
-                ("dry_foliage", "Colormap Dry Foliage", (-450, 550), "Dry Foliage Color"),
-            ]
-            for key, node_name, position, target_sock in cm_configs:
-                cm_file = active_colormaps.get(key)
-                if cm_file:
-                    cm_img = get_or_create_image(cm_file, colorspace="sRGB", chunk_id=f"biome/colormap/{key}")
-                    if cm_img:
-                        tex_cm = nodes.new("ShaderNodeTexImage")
-                        tex_cm.name = node_name
-                        tex_cm.image = cm_img
-                        tex_cm.interpolation = "Linear"
-                        tex_cm.extension = "EXTEND"
-                        tex_cm.location = position
-                        tex_cm.parent = frame_biome
-                        links.new(attr_cm_uv.outputs["Vector"], tex_cm.inputs["Vector"])
-                        links.new(tex_cm.outputs["Color"], colormap_decoder.inputs[target_sock])
-
-            links.new(colormap_decoder.outputs["Color"], tint_node.inputs["Tint Color"])
-        else:
-            links.new(attr_tint_col.outputs["Color"], tint_node.inputs["Tint Color"])
+        # Direct pure-data link: resolved Linear RGBA calculated by Rust is piped straight into Tint Color.
+        links.new(attr_tint_col.outputs["Color"], tint_node.inputs["Tint Color"])
 
     # -------------------------------------------------------------------------
     # 6. Standard Principled PBR shading

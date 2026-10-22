@@ -24,10 +24,11 @@ except ImportError:
 from MoziToolKit.bridge.assets import load_biome_resolver_from_cache
 
 if HAS_BPY:
-    from MoziToolKit.utils.node_groups.biome import ensure_colormap_decoder, COLORMAP_DECODER_VERSION
+    from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, ensure_colormap_decoder, BIOME_TINT_VERSION
 else:
+    ensure_biome_tint = None
     ensure_colormap_decoder = None
-    COLORMAP_DECODER_VERSION = None
+    BIOME_TINT_VERSION = None
 
 try:
     import libmtk_py
@@ -42,21 +43,22 @@ class TestBiomeTintingFix(unittest.TestCase):
         if not HAS_BPY or not HAS_LIBMTK:
             self.skipTest("Requires bpy and native libmtk_py")
 
-    def test_colormap_decoder_default_tint_type(self):
-        """Verifies that MC_Biome_Colormap_Decoder default Tint Type is 0.0 (white fallback)."""
-        tree = ensure_colormap_decoder()
-        assert tree is not None
-        assert tree.get("mozi_template_version") == COLORMAP_DECODER_VERSION
+    def test_biome_tint_template_and_deprecated_decoder(self):
+        """Verifies that MC_Biome_Tint template has Tint Color input and ensure_colormap_decoder is deprecated."""
+        self.assertIsNone(ensure_colormap_decoder())
 
-        # Check Tint Type socket default
-        tint_type_sock = None
+        tree = ensure_biome_tint()
+        self.assertIsNotNone(tree)
+        self.assertEqual(tree.get("mozi_template_version"), BIOME_TINT_VERSION)
+
+        # Check Tint Color socket exists in MC_Biome_Tint interface
+        tint_col_sock = None
         for item in tree.interface.items_tree:
-            if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == "Tint Type":
-                tint_type_sock = item
+            if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == "Tint Color":
+                tint_col_sock = item
                 break
 
-        assert tint_type_sock is not None, "Tint Type socket not found in decoder interface"
-        assert tint_type_sock.default_value == 0.0, f"Expected default Tint Type 0.0, got {tint_type_sock.default_value}"
+        self.assertIsNotNone(tint_col_sock, "Tint Color socket not found in MC_Biome_Tint interface")
 
     def test_biome_resolver_categories(self):
         """Verifies that BiomeResolver categorizes dead_bush, leaf_litter, bush, and foliage correctly."""
@@ -229,10 +231,8 @@ class TestBiomeTintingFix(unittest.TestCase):
             self.assertAlmostEqual(new_col[0], 0.5209956, places=2)
             self.assertAlmostEqual(new_col[1], 0.4735315, places=2)
 
-            # Check new colormap UV (Desert: [0.0, 0.0, 0.0])
-            new_uv = list(b_mesh.attributes["mtk_colormap_uv"].data[0].vector)
-            self.assertAlmostEqual(new_uv[0], 0.0, places=3)
-            self.assertAlmostEqual(new_uv[1], 0.0, places=3)
+            # Legacy colormap UV attribute must be purged
+            self.assertNotIn("mtk_colormap_uv", b_mesh.attributes)
         finally:
             bpy.data.objects.remove(obj)
             bpy.data.meshes.remove(b_mesh)

@@ -26,8 +26,6 @@ try:
             "MC_Atlas_UV_Decoder": build_atlas_uv_decoder_node_group(),
             "MC_Atlas_UV_Tiling": ensure_atlas_uv_tiling(),
             "MC_Biome_Tint": ensure_biome_tint(),
-            "MC_Biome_Colormap_Sampler": ensure_colormap_sampler(),
-            "MC_Biome_Colormap_Decoder": ensure_colormap_decoder(),
             "MC_Parallax_UV_Offset": ensure_parallax_uv_offset(),
         }
 except ImportError:

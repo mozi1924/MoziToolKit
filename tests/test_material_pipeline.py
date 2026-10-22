@@ -150,14 +150,17 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn("Atlas Albedo Texture", node_names)
                 self.assertIn("Atlas Overlay Texture", node_names)
                 self.assertIn("MC Biome Tint", node_names)
-                self.assertIn("MC Biome Colormap Decoder", node_names)
-                self.assertIn("Colormap Grass", node_names)
+                self.assertIn("Attr Biome Tint Color", node_names)
+                self.assertNotIn("MC Biome Colormap Decoder", node_names)
+                self.assertNotIn("Colormap Grass", node_names)
                 self.assertIn("Principled BSDF", node_names)
                 self.assertNotIn("LabPBR Decoder", node_names)
 
-                cm_grass_node = mat.node_tree.nodes["Colormap Grass"]
-                self.assertEqual(cm_grass_node.interpolation, "Linear")
-                self.assertEqual(cm_grass_node.extension, "EXTEND")
+                # Verify Attr Biome Tint Color is directly wired to MC Biome Tint -> Tint Color
+                tint_node = mat.node_tree.nodes["MC Biome Tint"]
+                self.assertTrue(tint_node.inputs["Tint Color"].is_linked)
+                from_node = tint_node.inputs["Tint Color"].links[0].from_node
+                self.assertEqual(from_node.name, "Attr Biome Tint Color")
         finally:
             if "MTK:Atlas:blocks:001" in bpy.data.materials:
                 bpy.data.materials.remove(bpy.data.materials["MTK:Atlas:blocks:001"])
@@ -247,7 +250,7 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertIn("mtk_uv_transform", mesh.attributes)
                 self.assertIn(ATTR_BIOME_TINT_DATA, mesh.attributes)
                 self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
-                self.assertIn(ATTR_COLORMAP_UV, mesh.attributes)
+                self.assertNotIn(ATTR_COLORMAP_UV, mesh.attributes)
                 self.assertNotIn("mtk_material_props", mesh.attributes)
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertEqual(mesh.materials[0]["mtk_stack_fingerprint"], "abc123stackfp")

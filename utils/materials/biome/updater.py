@@ -573,6 +573,12 @@ def update_object_biome(
 
                     if reapply_uniform_biome_tint is not None and len(base_tt) == num_polys:
                         attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
+                        if attr_col is None:
+                            try:
+                                attr_col = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+                            except Exception:
+                                attr_col = None
+
                         # Only hardcoded faces need the previous colors. Avoid a
                         # 4-byte-per-face read when the mesh has none.
                         needs_existing_colors = bool(np.any(base_tt == TINT_TYPE_HARDCODED))
@@ -587,7 +593,7 @@ def update_object_biome(
                         else:
                             old_cols = np.empty(0, dtype=np.float32)
 
-                        packed_mv, colors_mv, uvs_mv = reapply_uniform_biome_tint(
+                        packed_mv, colors_mv, _ = reapply_uniform_biome_tint(
                             np.ascontiguousarray(base_tt, dtype=np.uint8),
                             np.ascontiguousarray(raw_data, dtype=np.float32),
                             np.ascontiguousarray(old_cols, dtype=np.float32),
@@ -609,11 +615,12 @@ def update_object_biome(
                                 "color", np.frombuffer(colors_mv, dtype=np.float32)
                             )
 
-                        attr_uv = mesh.attributes.get(ATTR_COLORMAP_UV)
-                        if attr_uv is not None and len(attr_uv.data) == num_polys and hasattr(attr_uv.data, "foreach_set"):
-                            attr_uv.data.foreach_set(
-                                "vector", np.frombuffer(uvs_mv, dtype=np.float32)
-                            )
+                        # Clean up legacy colormap UV attribute if present
+                        if ATTR_COLORMAP_UV in mesh.attributes:
+                            try:
+                                mesh.attributes.remove(mesh.attributes[ATTR_COLORMAP_UV])
+                            except Exception:
+                                pass
 
                         if hasattr(mesh, "__setitem__"):
                             try:

@@ -159,6 +159,21 @@ def get_biome_colors(
         meta["humidity"] = hum
         meta["colormap_uv"] = get_colormap_uv(temp, hum)
 
+        # Sample resident colormaps in Rust for base colors
+        from ....bridge.material import sample_colormap_colors
+
+        if sample_colormap_colors is not None:
+            try:
+                sampled = sample_colormap_colors(temp, hum)
+                if "grass_linear" in sampled:
+                    meta["grass_linear"] = sampled["grass_linear"]
+                if "foliage_linear" in sampled:
+                    meta["foliage_linear"] = sampled["foliage_linear"]
+                if "dry_foliage_linear" in sampled:
+                    meta["dry_foliage_linear"] = sampled["dry_foliage_linear"]
+            except Exception:
+                pass
+
         if has_custom_grass and custom_grass is not None:
             meta["grass_linear"] = list(custom_grass)
         if has_custom_foliage and custom_foliage is not None:
@@ -303,31 +318,12 @@ def apply_biome_tint_attributes(
             flat_col = array.array("f", [c for val in tint_colors for c in val])
         attr_col.data.foreach_set("color", flat_col)
 
-    # 3. ATTR_COLORMAP_UV (FLOAT_VECTOR, domain=FACE)
-    if colormap_uvs is not None and len(colormap_uvs) == target_len:
-        attr_uv = mesh.attributes.get(ATTR_COLORMAP_UV)
-        if attr_uv is not None and (getattr(attr_uv, "domain", None) != "FACE" or len(attr_uv.data) != target_len):
-            try:
-                mesh.attributes.remove(attr_uv)
-            except Exception:
-                pass
-            attr_uv = None
-        if attr_uv is None:
-            try:
-                attr_uv = mesh.attributes.new(name=ATTR_COLORMAP_UV, type="FLOAT_VECTOR", domain="FACE")
-            except Exception:
-                attr_uv = None
-        if attr_uv and len(attr_uv.data) == target_len:
-            if HAS_NUMPY and isinstance(colormap_uvs, np.ndarray):
-                if colormap_uvs.ndim == 2 and colormap_uvs.shape[1] == 2:
-                    padded_uvs = np.zeros((len(colormap_uvs), 3), dtype=np.float32)
-                    padded_uvs[:, :2] = colormap_uvs
-                    flat_uv = padded_uvs.ravel()
-                else:
-                    flat_uv = np.ascontiguousarray(colormap_uvs, dtype=np.float32).ravel()
-            else:
-                flat_uv = array.array("f", [v for val in colormap_uvs for v in (val[0], val[1], val[2] if len(val) > 2 else 0.0)])
-            attr_uv.data.foreach_set("vector", flat_uv)
+    # 3. Legacy ATTR_COLORMAP_UV cleanup: Colormap sampling is now fully executed in Rust.
+    if hasattr(mesh, "attributes") and ATTR_COLORMAP_UV in mesh.attributes:
+        try:
+            mesh.attributes.remove(mesh.attributes[ATTR_COLORMAP_UV])
+        except Exception:
+            pass
 
 
 def read_face_string_attribute(mesh: Any, name: str) -> List[str]:
