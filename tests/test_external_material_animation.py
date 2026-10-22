@@ -183,8 +183,8 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                 self.assertFalse(mesh["mtk_enable_animated_textures"])
                 chunk_ids = [d.value for d in mesh.attributes["mtk_atlas_chunk_id"].data]
                 self.assertTrue(all(cid == 0 for cid in chunk_ids))
-                timing = mesh.attributes["mtk_anim_timing"]
-                self.assertEqual(tuple(timing.data[0].vector), (1.0, 1.0, 0.0))
+                self.assertNotIn("mtk_anim_timing", mesh.attributes)
+                self.assertNotIn("mtk_anim_frame_size", mesh.attributes)
 
                 # And back on again, still without the original local UVs.
                 prefs_on = SimpleNamespace(enable_animated_textures=True)
@@ -229,8 +229,8 @@ class TestExternalMaterialAnimation(unittest.TestCase):
                 self.assertEqual(res["animated_faces"], 0)
                 self.assertEqual(mesh.materials[0].name, "MTK:Atlas:Ext:blocks:001")
                 self.assertFalse(mesh["mtk_enable_animated_textures"])
-                timing = mesh.attributes["mtk_anim_timing"]
-                self.assertEqual(tuple(timing.data[0].vector), (1.0, 1.0, 0.0))
+                self.assertNotIn("mtk_anim_timing", mesh.attributes)
+                self.assertNotIn("mtk_anim_frame_size", mesh.attributes)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from __future__ import annotations
 import array
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -110,12 +111,14 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
     if status in ("MISSING", "STALE") or (
         status == "READY" and not compat_stamp_matches(base_cache)
     ):
-        logger.info("Asset cache is %s; running automated precompilation...", status)
-        try:
-            precompile_stack(prefs)
-            invalidate_asset_cache_memory()
-        except Exception as e:
-            logger.warning("Automated precompilation in ensure_stack_precompiled failed: %s", e)
+        has_custom_packs = prefs is not None and hasattr(prefs, "resource_packs")
+        if not (not has_custom_packs and os.environ.get("MOZI_CACHE_DIR")):
+            logger.info("Asset cache is %s; running automated precompilation...", status)
+            try:
+                precompile_stack(prefs)
+                invalidate_asset_cache_memory()
+            except Exception as e:
+                logger.warning("Automated precompilation in ensure_stack_precompiled failed: %s", e)
     return base_cache
 
 
@@ -273,7 +276,11 @@ def remap_face_materials_and_uvs_paletted(
         alias_map=alias_map,
         grid_spec=grid_spec,
         existing_key_palette=existing_key_palette if existing_key_palette else None,
-        existing_key_indices=existing_key_indices if len(existing_key_indices) else None,
+        existing_key_indices=(
+            existing_key_indices
+            if existing_key_indices is not None and len(existing_key_indices)
+            else None
+        ),
         enable_animated_textures=enable_animated_textures,
     )
 

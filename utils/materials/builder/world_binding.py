@@ -124,13 +124,20 @@ def ensure_world_materials(
             has_chunk_attr = hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes
             is_identity_mapping = all(existing_chunk_to_slot[cid] == cid for cid in target_chunk_ids)
 
-            # If identity mapping AND no separate mtk_atlas_chunk_id attribute overriding polygons,
-            # then inject_face_materials_standard has already set the exact material_index.
-            # We can return immediately with zero operations, zero disk reads, and zero cache hashing!
-            if is_identity_mapping and not has_chunk_attr:
-                return
+            # If identity mapping and inject_face_materials_standard has already initialized
+            # matching polygon material indices, return immediately with zero operations,
+            # zero disk reads, and zero cache hashing.
+            if is_identity_mapping:
+                if not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
+                    return
+                try:
+                    first_cid = mesh.attributes["mtk_atlas_chunk_id"].data[0].value if has_chunk_attr else mesh.polygons[0].material_index
+                    if mesh.polygons[0].material_index == first_cid:
+                        return
+                except Exception:
+                    return
 
-            # Otherwise, if slot indices differ or mtk_atlas_chunk_id is present, remap polygon indices:
+            # Otherwise, if slot indices differ or indices need remapping, remap polygon indices:
             if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
                 try:
                     import numpy as np
