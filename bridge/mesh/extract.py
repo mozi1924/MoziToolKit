@@ -11,7 +11,7 @@ import numpy as np
 
 from ..engine import require_libmtk
 from .attribute_schema import ATTR_SOURCE_TEXTURE_IDX, ATTR_SOURCE_TEXTURE_KEY
-from .attributes import resolve_source_texture_keys
+from .attributes import resolve_source_texture_keys, resolve_source_texture_keys_paletted
 from .constants import (
     BLENDER_TO_MTK_DOMAIN,
     BLENDER_TO_MTK_TYPE,
@@ -108,11 +108,26 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any) -> None:
 
             if attr_name in (ATTR_SOURCE_TEXTURE_KEY, ATTR_SOURCE_TEXTURE_IDX):
                 if not handled_source_keys:
-                    domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "face")
-                    resolved = resolve_source_texture_keys(mesh)
-                    if resolved:
-                        mesh_data.add_string_attribute(ATTR_SOURCE_TEXTURE_KEY, domain_str, resolved)
                     handled_source_keys = True
+                    palette, indices = resolve_source_texture_keys_paletted(mesh)
+                    if (
+                        palette
+                        and indices is not None
+                        and len(indices) == len(mesh.polygons)
+                        and hasattr(mesh_data, "add_string_attribute_from_palette")
+                    ):
+                        # Compact path: expand the palette inside Rust instead of
+                        # building one Python string object per face.
+                        mesh_data.add_string_attribute_from_palette(
+                            ATTR_SOURCE_TEXTURE_KEY, "face", palette, indices
+                        )
+                    else:
+                        domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "face")
+                        resolved = resolve_source_texture_keys(mesh)
+                        if resolved:
+                            mesh_data.add_string_attribute(
+                                ATTR_SOURCE_TEXTURE_KEY, domain_str, resolved
+                            )
                 continue
 
             domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "point")

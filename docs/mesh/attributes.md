@@ -80,7 +80,7 @@ bridge/mesh/attributes.py / utils/materials/*
 | 来源 | 必需属性 | 说明 |
 | :--- | :--- | :--- |
 | 外部导入（`EXTERNAL`） | 6 个材质属性 + `mtk_source_texture_key/idx` + `mtk_atlas_chunk_id` | `Replace Material` 依赖 provenance 与 chunk 路由；无 `mtk_block_*` |
-| 存档 / Live Sync / 体素重建（内部） | 6 个材质属性 + `mtk_source_texture_idx`（+ `mtk_source_textures`）+ `mtk_block_x/y/z` | 材质与几何由点云/体素源重建；内部网格不再写 `mtk_source_texture_key` STRING 副本 |
+| 存档 / Live Sync / 体素重建（内部） | 6 个材质属性 + `mtk_source_texture_idx`（+ `mtk_source_textures`）+ `mtk_block_x/y/z` | 材质与几何由点云/体素源重建；不写 STRING 副本，`mtk_atlas_chunk_id` 在材质槽绑定后裁剪（槽上的 `mtk_atlas_chunk_id` 成为映射权威） |
 | 点云对象 | 无 MTK 面属性 | 点云承载体素/生物群系信息，网格由重建流程生成 |
 
 内部网格的材质重替换应优先走 `Rebuild Voxel Mesh`；`Replace Material` 的 provenance 只用于外部导入网格与同布局重绑。
@@ -91,8 +91,9 @@ bridge/mesh/attributes.py / utils/materials/*
 - `Replace Material` 的 restore 路径现在走 palette + index 写入，不再为所有面重建 Python 字符串。
 - `inject_mesh_provenance_attributes` 已移除 `poly_mat_indices` / `face_texture_ids` / `mode` 等死参数；写入尺寸不匹配会记录 warning 而不是静默失败。
 - 恢复材质时若 `mtk_atlas_chunk_id` 缺失，现在会从 provenance + atlas 重新解析 chunk 路由；解析不到时明确失败或告警，不再默认 0。
+- 内部世界网格在材质槽写入 `mtk_atlas_chunk_id` 后会移除面级 `mtk_atlas_chunk_id`；后续绑定从材质槽 + `material_index` 反推 chunk 路由，避免每面多一个 INT 属性。
 - 动画重路由（`reconcile_animation`）只重投影 Atlas UV 与动画指标；`mtk_uv_transform` 表达的是**局部 UV 平铺**而非 sprite 尺寸，因此有意保持原值，不随动画精灵切换重写。
-- Blender → `MeshData` 的 `extract_mesh_data` 会把 palette + index 展开为逐面字符串（Rust 侧再压缩）；这是当前往返路径的内存热点，可后续补 palette 直传 API。
+- Blender → `MeshData` 的 `extract_mesh_data` 现在通过 `add_string_attribute_from_palette` 把 palette + index 直接交给 Rust 展开，避免 Python 侧逐面字符串列表；Rust 内部仍以 `Vec<String>` 存储。
 
 ## 7. 按上下文裁剪策略
 

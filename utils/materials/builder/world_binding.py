@@ -21,6 +21,64 @@ from ....bridge.assets import (
 logger = logging.getLogger("MoziToolKit.Materials.WorldBinding")
 
 
+def _material_slot_chunk_ids(mesh: Any) -> list[int]:
+    """Chunk id stored on each material slot, or -1 when unavailable."""
+    result = []
+    for mat in getattr(mesh, "materials", []):
+        cid = mat.get("mtk_atlas_chunk_id") if mat is not None else None
+        result.append(int(cid) if cid is not None else -1)
+    return result
+
+
+def face_chunk_ids(mesh: Any) -> Any:
+    """Return per-face chunk ids, falling back to material-slot provenance.
+
+    Internal meshes drop `mtk_atlas_chunk_id` once material slots carry the
+    authoritative chunk id; external meshes keep the explicit attribute.
+    """
+    import numpy as np
+
+    num_polys = len(getattr(mesh, "polygons", []))
+    attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
+    if attr is not None and len(attr.data) == num_polys:
+        raw = np.empty(num_polys, dtype=np.int32)
+        attr.data.foreach_get("value", raw)
+        return raw
+
+    slot_chunks = _material_slot_chunk_ids(mesh)
+    if not slot_chunks:
+        raw = np.empty(num_polys, dtype=np.int32)
+        mesh.polygons.foreach_get("material_index", raw)
+        return raw
+
+    slot_lut = np.asarray(slot_chunks, dtype=np.int32)
+    if (slot_lut < 0).any():
+        raw = np.empty(num_polys, dtype=np.int32)
+        mesh.polygons.foreach_get("material_index", raw)
+        return raw
+
+    slot_indices = np.empty(num_polys, dtype=np.int32)
+    mesh.polygons.foreach_get("material_index", slot_indices)
+    np.clip(slot_indices, 0, len(slot_chunks) - 1, out=slot_indices)
+    return slot_lut[slot_indices]
+
+
+def prune_internal_chunk_attribute(mesh: Any) -> bool:
+    """Drops `mtk_atlas_chunk_id` when material slots can supply the mapping."""
+    attr = mesh.attributes.get("mtk_atlas_chunk_id") if hasattr(mesh, "attributes") else None
+    if attr is None:
+        return False
+    slot_chunks = _material_slot_chunk_ids(mesh)
+    if not slot_chunks or any(cid < 0 for cid in slot_chunks):
+        return False
+    try:
+        mesh.attributes.remove(attr)
+        return True
+    except Exception as exc:
+        logger.debug("Failed to prune mtk_atlas_chunk_id: %s", exc)
+        return False
+
+
 def ensure_world_materials(
     world_obj: Any,
     prefs=None,
@@ -51,30 +109,10 @@ def ensure_world_materials(
     target_chunk_ids: Optional[set[int]] = None
     if used_chunk_ids is not None:
         target_chunk_ids = {int(c) for c in used_chunk_ids}
-    elif hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
-        try:
-            import numpy as np
-            raw_cids = np.empty(len(mesh.polygons), dtype=np.int32)
-            mesh.attributes["mtk_atlas_chunk_id"].data.foreach_get("value", raw_cids)
-            target_chunk_ids = {int(x) for x in np.unique(raw_cids).tolist()}
-        except Exception:
-            target_chunk_ids = {int(getattr(d, "value", 0)) for d in mesh.attributes["mtk_atlas_chunk_id"].data}
-    elif hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
-        if hasattr(mesh.polygons, "foreach_get"):
-            try:
-                import numpy as np
-                poly_mats = np.empty(len(mesh.polygons), dtype=np.int32)
-                mesh.polygons.foreach_get("material_index", poly_mats)
-                target_chunk_ids = {int(x) for x in np.unique(poly_mats).tolist()}
-            except Exception:
-                try:
-                    poly_mats = [0] * len(mesh.polygons)
-                    mesh.polygons.foreach_get("material_index", poly_mats)
-                    target_chunk_ids = {int(x) for x in poly_mats}
-                except Exception:
-                    target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
-        else:
-            target_chunk_ids = {getattr(p, "material_index", 0) for p in mesh.polygons}
+    elif len(getattr(mesh, "polygons", [])) > 0:
+        import numpy as np
+
+        target_chunk_ids = {int(x) for x in np.unique(face_chunk_ids(mesh)).tolist()}
 
     # 0. Zero-cost Fast Path:
     # If the mesh has no polygons, or if target_chunk_ids is empty, nothing to bind
@@ -106,20 +144,14 @@ def ensure_world_materials(
             # then inject_face_materials_standard has already set the exact material_index.
             # We can return immediately with zero operations, zero disk reads, and zero cache hashing!
             if is_identity_mapping and not has_chunk_attr:
+                prune_internal_chunk_attribute(mesh)
                 return
 
             # Otherwise, if slot indices differ or mtk_atlas_chunk_id is present, remap polygon indices:
             if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
-                num_polys = len(mesh.polygons)
                 try:
                     import numpy as np
-                    if has_chunk_attr:
-                        raw_cids = np.empty(num_polys, dtype=np.int32)
-                        mesh.attributes["mtk_atlas_chunk_id"].data.foreach_get("value", raw_cids)
-                    else:
-                        raw_cids = np.empty(num_polys, dtype=np.int32)
-                        mesh.polygons.foreach_get("material_index", raw_cids)
-
+                    raw_cids = face_chunk_ids(mesh)
                     if remap_indices_lut is not None:
                         remapped = remap_indices_lut(raw_cids, existing_chunk_to_slot, default_value=0)
                     else:
@@ -127,6 +159,7 @@ def ensure_world_materials(
                     mesh.polygons.foreach_set("material_index", remapped)
                 except Exception as e:
                     logger.debug("Failed remapping polygon material indices in fast path: %s", e)
+            prune_internal_chunk_attribute(mesh)
             return
 
     atlas_dir = ensure_atlas_textures_extracted(prefs)
@@ -275,12 +308,7 @@ def ensure_world_materials(
                     num_polys = len(mesh.polygons)
                     try:
                         import numpy as np
-                        if hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
-                            raw_cids = np.empty(num_polys, dtype=np.int32)
-                            mesh.attributes["mtk_atlas_chunk_id"].data.foreach_get("value", raw_cids)
-                        else:
-                            raw_cids = np.empty(num_polys, dtype=np.int32)
-                            mesh.polygons.foreach_get("material_index", raw_cids)
+                        raw_cids = face_chunk_ids(mesh)
 
                         if remap_indices_lut is not None:
                             remapped = remap_indices_lut(raw_cids, chunk_to_compact_slot, default_value=0)
@@ -297,6 +325,7 @@ def ensure_world_materials(
                             p.material_index = chunk_to_compact_slot.get(int(raw_cid), 0)
 
                 if len(mesh.materials) > 0:
+                    prune_internal_chunk_attribute(mesh)
                     return
         except Exception as e:
             logger.warning(f"Failed binding Atlas chunk materials: {e}")

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚡ Palette provenance 直传
+- `extract_mesh_data` 走新的 `MeshData.add_string_attribute_from_palette(name, domain, palette, indices)`：palette + u32 索引直接传入 Rust 展开，避免在 Python 侧构造百万级逐面字符串列表。
+
+### 🔗 内部世界网格移除面级 Chunk 属性
+- `ensure_world_materials` 在材质槽携带 `mtk_atlas_chunk_id` 后裁剪面级 `mtk_atlas_chunk_id`；后续绑定通过材质槽 + `material_index` 反推 chunk 路由，内部网格每面再省一个 INT 属性。
+
 ### 🧹 内部网格移除冗余 STRING provenance
 - 内部体素/存档/Live Sync 网格在注入 palette + index 时不再写 `mtk_source_texture_key` STRING 兼容副本，并会清理旧副本；外部导入网格仍保留 ≤1024 面的兼容层。
 
