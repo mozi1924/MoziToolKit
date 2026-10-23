@@ -1,6 +1,6 @@
-# RFC v3.1: MTK 2.0 Live Sync 协议与架构设计规范 (Binary Protocol v3.1)
+# RFC v3.1 / v3.2: MTK 2.0 Live Sync 协议与架构设计规范 (Binary Protocol v3.1 & v3.2-draft)
 
-> **文档状态**：Accepted / Implemented（已与 v2.0 实际代码及 Live Sync 稳定性修复对齐）
+> **文档状态**：Accepted / Implemented (v3.1); Draft Extension (v3.2: 稀疏 BlockEntity 伴生流)
 > **权威范围**：Yefira (Minecraft Java Mod) ↔ `mtk-sync` (Rust 核心) ↔ MoziToolKit (Blender/Python 前端)
 > **适用版本**：MoziToolKit / libmozitoolkit / Yefira 2.0+
 > **实现事实源**：
@@ -568,6 +568,46 @@ Offset | Type     | Description
 
 > **当前实现**：服务端在选区超过 32M 体素硬限时发送 `ERROR(0x0005)`，
 > 客户端将其显示为 `Error: ...` 并停止流式进度，但保持连接，等待用户缩小选区或手动刷新。
+
+### 4.15 `0x11` BASELINE_ENTITIES（RFC v3.2 选区稀疏方块实体伴生流 S → C）
+
+```
+Offset | Type     | Description
+-------+----------+-------------------------------------------------------------
+0..3   | Header   | Magic ('M', 'T'), Ver (0x03), Opcode (0x11)
+4..11  | uint64   | Related Epoch ID
+12..15 | uint32   | Total Entities Count K in this payload
+16..   | List     | K 个 BlockEntity 条目:
+       |   uint32 - Relative X (0..SizeX-1)
+       |   uint32 - Relative Y (0..SizeY-1)
+       |   uint32 - Relative Z (0..SizeZ-1)
+       |   uint32 - Payload Length L (in bytes)
+       |   bytes  - Binary NBT Compound Payload (tag type TAG_Compound)
+```
+
+> **设计要点 (RFC v3.2)**：
+> 1. **解耦原则**：BlockState 负责密集网格拓扑与调色板；BlockEntity NBT 作为稀疏伴生表挂载，绝不污染 BlockState 字符串。
+> 2. **时序契约**：服务端在所有 `BASELINE_CHUNK` 发送完毕后、发送 `BASELINE_END` 之前，发送 `BASELINE_ENTITIES`。
+> 3. **空包优化**：若选区内没有任何特殊方块实体（绝大部分自然场景），可省略该包或发送 `Total Entities Count = 0`。
+
+### 4.16 `0x12` DELTA_ENTITY（RFC v3.2 增量方块实体变动 S → C）
+
+```
+Offset | Type     | Description
+-------+----------+-------------------------------------------------------------
+0..3   | Header   | Magic ('M', 'T'), Ver (0x03), Opcode (0x12)
+4..11  | uint64   | Related Epoch ID
+12..19 | uint64   | Sequence ID（单调自增序号）
+20..23 | uint32   | Relative X (0..SizeX-1)
+24..27 | uint32   | Relative Y (0..SizeY-1)
+28..31 | uint32   | Relative Z (0..SizeZ-1)
+32..35 | uint32   | Payload Length L (in bytes). 0 表示该坐标实体已被移除/销毁
+36..   | bytes    | Binary NBT Compound Payload (当 L > 0 时)
+```
+
+> **设计要点**：
+> 1. 当玩家破坏、放置或右键交互修改方块实体（如插入陶片、书写告示牌、悬挂旗帜）时，服务端向客户端发送 `DELTA_ENTITY`。
+> 2. 若伴随方块状态改变（如放置新方块），服务端同时按序发送常规 `DELTA_OP` 与对应 `DELTA_ENTITY`。
 
 ---
 
