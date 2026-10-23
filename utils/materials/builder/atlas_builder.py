@@ -50,6 +50,11 @@ from .image_utils import (
 from .layout import auto_layout_material
 from .pbr_graph import build_pbr_shading
 from .shading_config import resolve_material_shading_config
+from .template import (
+    preload_atlas_images,
+    register_archetype_material,
+    try_clone_material,
+)
 
 PBR_LAYOUT_VERSION = "mtk_packed_v1"
 
@@ -114,6 +119,49 @@ def build_atlas_chunk_material(
 
     image_reload_needed = force_rebuild or is_stale_fingerprint or is_stale_layout
 
+    images = preload_atlas_images(
+        category=category,
+        category_chunk_index=category_chunk_index,
+        is_animated=is_animated,
+        albedo_path=albedo_path,
+        overlay_path=overlay_path,
+        normal_path=normal_path,
+        orm_path=orm_path,
+        aux_path=aux_path,
+        image_reload_needed=image_reload_needed,
+        chunk_stem=chunk_stem,
+    )
+    has_overlay = images["has_overlay"]
+    albedo_img = images["albedo_img"]
+    overlay_img = images["overlay_img"]
+    normal_img = images["normal_img"]
+    orm_img = images["orm_img"]
+    aux_img = images["aux_img"]
+
+    cloned, template_key = try_clone_material(
+        mat_name,
+        chunk_id=chunk_id,
+        category=category,
+        category_chunk_index=category_chunk_index,
+        is_animated=is_animated,
+        use_attribute_node=use_attribute_node,
+        target_uv_map=target_uv_map,
+        stack_fingerprint=stack_fingerprint,
+        has_overlay=has_overlay,
+        normal_path=normal_path,
+        orm_path=orm_path,
+        aux_path=aux_path,
+        images=images,
+        atlas_width=atlas_width,
+        atlas_height=atlas_height,
+        tile_width=tile_width,
+        tile_height=tile_height,
+        render_engine=render_engine,
+        disable_subsurface=disable_subsurface,
+    )
+    if cloned is not None:
+        return cloned
+
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
 
@@ -126,7 +174,8 @@ def build_atlas_chunk_material(
     mat["mtk_atlas_chunk_index"] = category_chunk_index
     mat["mtk_is_animated"] = is_animated
     mat["mtk_uv_map_name"] = target_uv_map
-    mat["mtk_has_overlay"] = bool(overlay_path and os.path.exists(str(overlay_path)))
+    mat["mtk_has_overlay"] = has_overlay
+    mat["mtk_template_key"] = template_key
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
 
@@ -302,21 +351,10 @@ def build_atlas_chunk_material(
             blend_factor_sock = anim_uv_node.outputs["Blend Factor"]
 
     active_sample_uv = anim_curr_uv if is_animated else target_uv_output
-    c_stem = chunk_stem or (
-        f"{category}_anim_chunk_{category_chunk_index:03}"
-        if is_animated
-        else f"{category}_chunk_{category_chunk_index:03}"
-    )
 
     # -------------------------------------------------------------------------
     # 3. Albedo + overlay
     # -------------------------------------------------------------------------
-    albedo_img = get_or_create_image(
-        albedo_path,
-        colorspace="sRGB",
-        force_reload=image_reload_needed,
-        chunk_id=f"atlas/textures/{c_stem}.png",
-    )
     albedo_node = None
     albedo_out_color = None
     albedo_out_alpha = None
@@ -373,14 +411,7 @@ def build_atlas_chunk_material(
     overlay_node = None
     overlay_out_color = None
     overlay_out_alpha = None
-    if overlay_path:
-        overlay_img = get_or_create_image(
-            overlay_path,
-            colorspace="sRGB",
-            force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_overlay.png",
-        )
-        if overlay_img:
+    if overlay_img:
             if is_animated and anim_uv_node is not None and ensure_animated_frame_blend is not None:
                 overlay_node = nodes.new("ShaderNodeTexImage")
                 overlay_node.name = "Atlas Overlay Texture (Current)"
@@ -434,14 +465,7 @@ def build_atlas_chunk_material(
     # 4. Canonical PBR maps: normal+height, ORM+emission, aux
     # -------------------------------------------------------------------------
     normal_out_color = None
-    if normal_path:
-        normal_img = get_or_create_image(
-            normal_path,
-            colorspace="Non-Color",
-            force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_n.png",
-        )
-        if normal_img:
+    if normal_img:
             if is_animated and anim_uv_node is not None and ensure_animated_normal_blend is not None:
                 normal_node = nodes.new("ShaderNodeTexImage")
                 normal_node.name = "Atlas Normal Texture (Current)"
@@ -490,14 +514,7 @@ def build_atlas_chunk_material(
 
     orm_out_color = None
     orm_out_alpha = None
-    if orm_path:
-        orm_img = get_or_create_image(
-            orm_path,
-            colorspace="Non-Color",
-            force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_orm.png",
-        )
-        if orm_img:
+    if orm_img:
             if is_animated and anim_uv_node is not None and ensure_animated_specular_blend is not None:
                 orm_node = nodes.new("ShaderNodeTexImage")
                 orm_node.name = "Atlas ORM Texture (Current)"
@@ -550,14 +567,7 @@ def build_atlas_chunk_material(
                 orm_out_alpha = orm_node.outputs["Alpha"]
 
     aux_out_color = None
-    if aux_path:
-        aux_img = get_or_create_image(
-            aux_path,
-            colorspace="Non-Color",
-            force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_aux.png",
-        )
-        if aux_img:
+    if aux_img:
             if is_animated and anim_uv_node is not None and ensure_animated_specular_blend is not None:
                 aux_node = nodes.new("ShaderNodeTexImage")
                 aux_node.name = "Atlas Aux Texture (Current)"
@@ -727,4 +737,5 @@ def build_atlas_chunk_material(
         except Exception:
             pass
 
+    register_archetype_material(mat, template_key)
     return mat
