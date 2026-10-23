@@ -225,6 +225,90 @@ class TestDnaBridge(unittest.TestCase):
         finally:
             bpy.data.meshes.remove(mesh)
 
+    def test_preference_enable_dna_acceleration_toggle(self):
+        try:
+            import bpy
+            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
+                self.skipTest("Requires real Blender host environment")
+        except ImportError:
+            self.skipTest("bpy not available")
+
+        from MoziToolKit.utils.system import get_prefs
+        prefs = get_prefs()
+        if prefs is None or not hasattr(prefs, "enable_dna_acceleration"):
+            self.skipTest("Preferences not registered")
+
+        orig = prefs.enable_dna_acceleration
+        try:
+            prefs.enable_dna_acceleration = False
+            self.assertFalse(is_dna_enabled())
+
+            prefs.enable_dna_acceleration = True
+            self.assertEqual(is_dna_enabled(), is_dna_available())
+        finally:
+            prefs.enable_dna_acceleration = orig
+
+    def test_mesh_batch_fallback_parity(self):
+        try:
+            import bpy
+            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
+                self.skipTest("Requires real Blender host environment")
+        except ImportError:
+            self.skipTest("bpy not available")
+
+        import _mesh_arrays as ma
+        from MoziToolKit.bridge.mesh import inject_mesh_data
+
+        mesh_data = ma.unit_quads(3, material=1)
+        mesh_dna = bpy.data.meshes.new("mesh_dna_test")
+        mesh_batch = bpy.data.meshes.new("mesh_batch_test")
+
+        try:
+            # 1. Inject via DNA path
+            inject_mesh_data(
+                mesh_data,
+                mesh_dna,
+                update_topology=True,
+                update_normals=True,
+                use_dna=True,
+            )
+
+            # 2. Inject via Standard Batch Fallback path
+            inject_mesh_data(
+                mesh_data,
+                mesh_batch,
+                update_topology=True,
+                update_normals=True,
+                use_dna=False,
+            )
+
+            # 3. Verify absolute topology & attribute parity
+            self.assertEqual(len(mesh_dna.vertices), len(mesh_batch.vertices))
+            self.assertEqual(len(mesh_dna.polygons), len(mesh_batch.polygons))
+            self.assertEqual(len(mesh_dna.loops), len(mesh_batch.loops))
+
+            for v_dna, v_batch in zip(mesh_dna.vertices, mesh_batch.vertices):
+                for c1, c2 in zip(v_dna.co, v_batch.co):
+                    self.assertAlmostEqual(c1, c2, places=5)
+
+            for l_dna, l_batch in zip(mesh_dna.loops, mesh_batch.loops):
+                self.assertEqual(l_dna.vertex_index, l_batch.vertex_index)
+
+            for p_dna, p_batch in zip(mesh_dna.polygons, mesh_batch.polygons):
+                self.assertEqual(p_dna.loop_start, p_batch.loop_start)
+                self.assertEqual(p_dna.loop_total, p_batch.loop_total)
+                self.assertEqual(p_dna.material_index, p_batch.material_index)
+
+            uv_dna = mesh_dna.uv_layers.active.data
+            uv_batch = mesh_batch.uv_layers.active.data
+            self.assertEqual(len(uv_dna), len(uv_batch))
+            for u1, u2 in zip(uv_dna, uv_batch):
+                self.assertAlmostEqual(u1.uv[0], u2.uv[0], places=5)
+                self.assertAlmostEqual(u1.uv[1], u2.uv[1], places=5)
+        finally:
+            bpy.data.meshes.remove(mesh_dna)
+            bpy.data.meshes.remove(mesh_batch)
+
 
 if __name__ == "__main__":
     unittest.main()

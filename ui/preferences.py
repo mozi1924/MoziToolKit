@@ -171,6 +171,16 @@ def on_material_setting_changed(self, context):
 
 
 
+def on_dna_setting_changed(self, context):
+    """Callback when DNA acceleration toggle is changed."""
+    try:
+        from ..bridge.dna import set_dna_enabled
+        set_dna_enabled(self.enable_dna_acceleration)
+    except Exception:
+        pass
+    refresh_ui_and_menus(context)
+
+
 def sync_prefs_from_json(prefs):
     """Populate preferences PropertyGroups from central ConfigManager."""
     get_config_manager().sync_to_preferences(prefs)
@@ -302,6 +312,14 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         min=0,
         max=128,
         update=on_material_setting_changed,
+    )
+
+    enable_dna_acceleration: BoolProperty(
+        name="DNA Direct Memory Acceleration",
+        description="Enable hardware-speed zero-copy DNA direct memory injection into Blender mesh buffers. "
+                    "Disable to enforce 100% stable standard BPy batch writing API (recommended for strict production stability)",
+        default=True,
+        update=on_dna_setting_changed,
     )
 
     context_menu_tab: EnumProperty(
@@ -687,6 +705,28 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         else:
             perf_col.label(text=f"{tr('Active mode')}: {tr('Fixed')} ({self.thread_count} {tr('threads')})")
         perf_col.label(text=tr("Controls Rayon thread pool concurrency for asset precompilation, atlas encoding, and mesh construction."))
+
+        perf_box.separator()
+
+        # DNA Direct Memory Acceleration toggle
+        dna_row = perf_box.row(align=True)
+        dna_row.prop(self, "enable_dna_acceleration", text=tr("DNA Direct Memory Acceleration"))
+
+        dna_desc = perf_box.column(align=True)
+        dna_desc.scale_y = 0.85
+        if not self.enable_dna_acceleration:
+            dna_desc.label(text=f"{tr('Status')}: {tr('Disabled (Safe Batch API Mode)')}", icon="CHECKMARK")
+        else:
+            try:
+                from ..bridge.dna import is_dna_available
+                dna_avail = is_dna_available()
+            except Exception:
+                dna_avail = False
+            if dna_avail:
+                dna_desc.label(text=f"{tr('Status')}: {tr('Active (Hardware Speed)')}", icon="CHECKMARK")
+            else:
+                dna_desc.label(text=f"{tr('Status')}: {tr('Unavailable (Batch API Active)')}", icon="INFO")
+        dna_desc.label(text=tr("Hardware-speed direct memory injection into Blender mesh buffers. Disable to enforce 100% stable standard BPy batch API."))
 
         layout.separator()
 

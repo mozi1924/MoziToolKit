@@ -86,8 +86,23 @@ def is_dna_enabled() -> bool:
     """
     Returns True if DNA direct mode is actively enabled for operations.
     """
+    if os.environ.get("MTK_DISABLE_DNA", "").strip() in ("1", "true", "TRUE"):
+        return False
+
     if _dna_enabled_override is not None:
         return _dna_enabled_override and is_dna_available()
+
+    # Query AddonPreferences if running in Blender host
+    if "bpy" in sys.modules:
+        try:
+            from ...utils.system import get_prefs
+            prefs = get_prefs()
+            if prefs is not None and hasattr(prefs, "enable_dna_acceleration"):
+                if not prefs.enable_dna_acceleration:
+                    return False
+        except Exception:
+            pass
+
     return is_dna_available()
 
 

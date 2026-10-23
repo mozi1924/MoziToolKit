@@ -50,53 +50,61 @@ def inject_topology_dna(
     if not (hasattr(mesh.vertices, "add") and hasattr(mesh.loops, "add") and hasattr(mesh.polygons, "add")):
         return False
 
-    clean_zombie_attributes(mesh)
-    mesh.clear_geometry()
-    clean_zombie_attributes(mesh)
-    mesh.vertices.add(v_count)
-
-    # 1. Direct copy vertex positions
-    pos_ptr = resolve_positions_ptr(mesh, expected_count=v_count)
-    if pos_ptr is None:
-        return False
-
-    try:
-        blender_dna.copy_f32(
-            _byte_view(mesh_data.positions_memoryview()),
-            pos_ptr,
-            v_count * 3,
-            max_bytes=v_count * 12,
-        )
-    except Exception as e:
-        logger.debug("DNA direct position copy failed: %s", e)
-        return False
-
-    # 2. Direct copy loops & corner vertices
     poly_count = (total_indices // 6) if is_quad else (total_indices // 3)
     stride = 4 if is_quad else 3
     total_loops = poly_count * stride
+
+    clean_zombie_attributes(mesh)
+    mesh.clear_geometry()
+    clean_zombie_attributes(mesh)
+
+    # Atomic allocation of geometry counts
+    mesh.vertices.add(v_count)
     mesh.loops.add(total_loops)
+    mesh.polygons.add(poly_count)
 
+    # 1. Direct copy vertex positions (DNA fast path, fallback to foreach_set)
+    pos_ptr = resolve_positions_ptr(mesh, expected_count=v_count)
+    pos_copied = False
+    if pos_ptr is not None:
+        try:
+            blender_dna.copy_f32(
+                _byte_view(mesh_data.positions_memoryview()),
+                pos_ptr,
+                v_count * 3,
+                max_bytes=v_count * 12,
+            )
+            pos_copied = True
+        except Exception as e:
+            logger.debug("DNA direct position copy failed: %s", e)
+
+    if not pos_copied:
+        pos_mv = mesh_data.positions_memoryview()
+        if hasattr(pos_mv, "cast") and pos_mv.format == "B":
+            pos_mv = pos_mv.cast("f")
+        mesh.vertices.foreach_set("co", pos_mv)
+
+    # 2. Direct copy loops & corner vertices (DNA fast path, fallback to foreach_set)
     cvert_ptr = resolve_corner_verts_ptr(mesh, expected_count=total_loops)
-    if cvert_ptr is None:
-        return False
+    cvert_copied = False
+    if cvert_ptr is not None:
+        try:
+            src = mesh_data.quad_indices_memoryview() if is_quad else mesh_data.indices_memoryview()
+            if src is not None:
+                blender_dna.copy_u32(
+                    _byte_view(src), cvert_ptr, total_loops, max_bytes=total_loops * 4
+                )
+                cvert_copied = True
+        except Exception as e:
+            logger.debug("DNA direct corner vert copy failed: %s", e)
 
-    try:
-        if is_quad:
-            src = mesh_data.quad_indices_memoryview()
-        else:
-            src = mesh_data.indices_memoryview()
-        if src is None:
-            return False
-        blender_dna.copy_u32(
-            _byte_view(src), cvert_ptr, total_loops, max_bytes=total_loops * 4
-        )
-    except Exception as e:
-        logger.debug("DNA direct corner vert copy failed: %s", e)
-        return False
+    if not cvert_copied:
+        src = mesh_data.quad_indices_memoryview() if is_quad else mesh_data.indices_memoryview()
+        if hasattr(src, "cast") and src.format == "B":
+            src = src.cast("i")
+        mesh.loops.foreach_set("vertex_index", src)
 
     # 3. Direct setup polygons
-    mesh.polygons.add(poly_count)
     if not shade_smooth:
         mesh.polygons.foreach_set("use_smooth", b"\x00" * poly_count)
 
