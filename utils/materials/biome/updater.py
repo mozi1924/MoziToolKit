@@ -470,15 +470,20 @@ def update_object_biome(
     # Read custom biome parameters if configured on the object
     is_custom = biome_name.upper() == "CUSTOM"
     if is_custom:
-        custom_temp = float(getattr(obj, "mtk_biome_temp", obj.get("mtk_biome_temp", 0.8) if hasattr(obj, "get") else 0.8))
-        custom_humidity = float(getattr(obj, "mtk_biome_humidity", obj.get("mtk_biome_humidity", 0.4) if hasattr(obj, "get") else 0.4))
-        has_custom_grass = bool(getattr(obj, "mtk_biome_use_custom_grass", obj.get("mtk_biome_use_custom_grass", False) if hasattr(obj, "get") else False))
-        has_custom_foliage = bool(getattr(obj, "mtk_biome_use_custom_foliage", obj.get("mtk_biome_use_custom_foliage", False) if hasattr(obj, "get") else False))
-        has_custom_dry_foliage = bool(getattr(obj, "mtk_biome_use_custom_dry_foliage", obj.get("mtk_biome_use_custom_dry_foliage", False) if hasattr(obj, "get") else False))
-        custom_grass = list(getattr(obj, "mtk_biome_grass_color", obj.get("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)) if hasattr(obj, "get") else (0.28, 0.51, 0.10, 1.0)))
-        custom_foliage = list(getattr(obj, "mtk_biome_foliage_color", obj.get("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)) if hasattr(obj, "get") else (0.18, 0.41, 0.03, 1.0)))
-        custom_dry_foliage = list(getattr(obj, "mtk_biome_dry_foliage_color", obj.get("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)) if hasattr(obj, "get") else (0.37, 0.18, 0.06, 1.0)))
-        custom_water = list(getattr(obj, "mtk_biome_water_color", obj.get("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)) if hasattr(obj, "get") else (0.05, 0.18, 0.78, 1.0)))
+        def _get_prop(k: str, default: Any) -> Any:
+            if hasattr(obj, "get") and obj.get(k) is not None:
+                return obj.get(k)
+            return getattr(obj, k, default)
+
+        custom_temp = float(_get_prop("mtk_biome_temp", 0.8))
+        custom_humidity = float(_get_prop("mtk_biome_humidity", 0.4))
+        has_custom_grass = bool(_get_prop("mtk_biome_use_custom_grass", False))
+        has_custom_foliage = bool(_get_prop("mtk_biome_use_custom_foliage", False))
+        has_custom_dry_foliage = bool(_get_prop("mtk_biome_use_custom_dry_foliage", False))
+        custom_grass = list(_get_prop("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)))
+        custom_foliage = list(_get_prop("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)))
+        custom_dry_foliage = list(_get_prop("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)))
+        custom_water = list(_get_prop("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)))
     else:
         custom_temp = None
         custom_humidity = None
