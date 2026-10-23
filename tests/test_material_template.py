@@ -34,6 +34,11 @@ class TestMaterialTemplate(unittest.TestCase):
         k_overlay = get_template_key("blocks", False, True, True, True, True, True, "CYCLES", False, "UVMap")
         self.assertNotEqual(k1, k_overlay)
 
+        # Varying biome tint changes key
+        k_tint = get_template_key("blocks", False, True, False, True, True, True, "CYCLES", False, "UVMap", enable_biome_tint=True)
+        k_no_tint = get_template_key("blocks", False, True, False, True, True, True, "CYCLES", False, "UVMap", enable_biome_tint=False)
+        self.assertNotEqual(k_tint, k_no_tint)
+
     def test_register_and_find_archetype_mock(self):
         mock_mat = {}
         register_archetype_material(mock_mat, "blocks_pbr_v1")
@@ -192,6 +197,87 @@ class TestMaterialTemplate(unittest.TestCase):
         # Clean up
         bpy.data.materials.remove(mat)
         bpy.data.images.remove(ovr_img)
+
+    def test_non_blocks_category_skips_biome_tint(self):
+        try:
+            import bpy
+            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
+                self.skipTest("Requires real Blender host environment")
+        except ImportError:
+            self.skipTest("bpy not available")
+
+        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
+
+        albedo = (2, 2, array.array("f", [0.8, 0.2, 0.2, 1.0] * 4))
+
+        # 1. Non-blocks category (items) -> automatically skips biome tint
+        mat_items = build_atlas_chunk_material(
+            chunk_id=10,
+            albedo_path=albedo,
+            category="items",
+            category_chunk_index=1,
+            force_rebuild=True,
+        )
+        self.assertIsNotNone(mat_items)
+        self.assertFalse(mat_items.get("mtk_has_biome_tint"))
+
+        item_nodes = [n.name for n in mat_items.node_tree.nodes]
+        self.assertNotIn("MC Biome Tint", item_nodes)
+        self.assertNotIn("Attr Biome Tint Data", item_nodes)
+        self.assertNotIn("Attr Biome Tint Color", item_nodes)
+        self.assertNotIn("Frame_Biome", item_nodes)
+
+        # BSDF Base Color should be wired from Atlas Albedo Texture (either directly or via Vertex AO)
+        bsdf = mat_items.node_tree.nodes["Principled BSDF"]
+        self.assertTrue(bsdf.inputs["Base Color"].is_linked)
+        from_node = bsdf.inputs["Base Color"].links[0].from_node
+        if from_node.name == "Base Color × Vertex AO":
+            # Input A of the multiplier mix node should come directly from Atlas Albedo Texture
+            a_input = from_node.inputs.get("A") or from_node.inputs.get("Color1") or from_node.inputs[6]
+            self.assertEqual(a_input.links[0].from_node.name, "Atlas Albedo Texture")
+        else:
+            self.assertEqual(from_node.name, "Atlas Albedo Texture")
+
+        # BSDF Alpha should be wired directly from Atlas Albedo Texture
+        self.assertTrue(bsdf.inputs["Alpha"].is_linked)
+        alpha_source = bsdf.inputs["Alpha"].links[0].from_node
+        self.assertEqual(alpha_source.name, "Atlas Albedo Texture")
+
+        # 2. Blocks category with explicit enable_biome_tint=False -> skips biome tint
+        mat_block_no_tint = build_atlas_chunk_material(
+            chunk_id=11,
+            albedo_path=albedo,
+            category="blocks",
+            category_chunk_index=99,
+            enable_biome_tint=False,
+            force_rebuild=True,
+        )
+        self.assertIsNotNone(mat_block_no_tint)
+        self.assertFalse(mat_block_no_tint.get("mtk_has_biome_tint"))
+        block_no_tint_nodes = [n.name for n in mat_block_no_tint.node_tree.nodes]
+        self.assertNotIn("MC Biome Tint", block_no_tint_nodes)
+        self.assertNotIn("Attr Biome Tint Data", block_no_tint_nodes)
+        self.assertNotIn("Attr Biome Tint Color", block_no_tint_nodes)
+
+        # 3. Blocks category default -> includes biome tint
+        mat_block_tint = build_atlas_chunk_material(
+            chunk_id=12,
+            albedo_path=albedo,
+            category="blocks",
+            category_chunk_index=98,
+            force_rebuild=True,
+        )
+        self.assertIsNotNone(mat_block_tint)
+        self.assertTrue(mat_block_tint.get("mtk_has_biome_tint"))
+        block_tint_nodes = [n.name for n in mat_block_tint.node_tree.nodes]
+        self.assertIn("MC Biome Tint", block_tint_nodes)
+        self.assertIn("Attr Biome Tint Data", block_tint_nodes)
+        self.assertIn("Attr Biome Tint Color", block_tint_nodes)
+
+        # Clean up
+        for m in (mat_items, mat_block_no_tint, mat_block_tint):
+            if m.name in bpy.data.materials:
+                bpy.data.materials.remove(m)
 
 
 if __name__ == "__main__":

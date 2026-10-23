@@ -34,13 +34,15 @@ def get_template_key(
     disable_subsurface: Optional[bool] = None,
     target_uv_map: str = "UVMap",
     enable_vertex_ao: Optional[bool] = None,
+    enable_biome_tint: bool = True,
 ) -> str:
     """Compute a deterministic key representing the material's node graph topology."""
     return (
         f"{category}|anim={int(is_animated)}|attr={int(use_attribute_node)}|"
         f"ovr={int(has_overlay)}|n={int(has_normal)}|orm={int(has_orm)}|aux={int(has_aux)}|"
         f"eng={render_engine or 'AUTO'}|nosss={int(bool(disable_subsurface))}|"
-        f"vao={int(bool(enable_vertex_ao if enable_vertex_ao is not None else True))}|uv={target_uv_map}"
+        f"vao={int(bool(enable_vertex_ao if enable_vertex_ao is not None else True))}|"
+        f"tint={int(bool(enable_biome_tint))}|uv={target_uv_map}"
     )
 
 
@@ -185,6 +187,7 @@ def clone_atlas_chunk_material(
     tile_width: float = 16.0,
     tile_height: float = 16.0,
     template_key: str = "",
+    enable_biome_tint: bool = True,
 ) -> Optional[Any]:
     """
     Instantly clone the archetype material and rebind chunk-specific images and attributes.
@@ -218,6 +221,7 @@ def clone_atlas_chunk_material(
         cloned["mtk_is_animated"] = is_animated
         cloned["mtk_uv_map_name"] = target_uv_map
         cloned["mtk_has_overlay"] = has_overlay
+        cloned["mtk_has_biome_tint"] = bool(enable_biome_tint)
         if stack_fingerprint:
             cloned["mtk_stack_fingerprint"] = stack_fingerprint
         if template_key:
@@ -363,6 +367,7 @@ def try_clone_material(
     render_engine: Optional[str] = None,
     disable_subsurface: Optional[bool] = None,
     enable_vertex_ao: Optional[bool] = None,
+    enable_biome_tint: bool = True,
 ) -> tuple[Optional[Any], str]:
     """
     Check if a matching archetype exists, and if so, clone and return it.
@@ -384,6 +389,7 @@ def try_clone_material(
         disable_subsurface=disable_subsurface,
         target_uv_map=target_uv_map,
         enable_vertex_ao=enable_vertex_ao,
+        enable_biome_tint=enable_biome_tint,
     )
 
     archetype = find_archetype_material(
@@ -415,6 +421,7 @@ def try_clone_material(
             tile_width=tile_width,
             tile_height=tile_height,
             template_key=template_key,
+            enable_biome_tint=enable_biome_tint,
         )
         if cloned is not None:
             return cloned, template_key

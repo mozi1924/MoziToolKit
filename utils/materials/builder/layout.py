@@ -111,6 +111,7 @@ class NodeLayoutEngine:
         has_normal: bool = False,
         has_orm: bool = False,
         has_aux: bool = False,
+        has_biome_tint: Optional[bool] = None,
     ) -> None:
         """
         Performs semantic columnar layout for an MTK Atlas Chunk material.
@@ -268,60 +269,102 @@ class NodeLayoutEngine:
         attr_tint_col = nodes.get("Attr Biome Tint Color")
         tint_node = nodes.get("MC Biome Tint")
 
-        if attr_tint_data:
-            attr_tint_data.location = (-580.0, 450.0)
-        if sep_tint_data:
-            sep_tint_data.location = (-340.0, 450.0)
-        if attr_tint_col:
-            attr_tint_col.location = (-340.0, 200.0)
-        if tint_node:
-            tint_node.location = (-60.0, 350.0)
+        if has_biome_tint is None:
+            has_biome_tint = bool(tint_node or attr_tint_col or attr_tint_data or nodes.get("Frame_Biome"))
+
+        if has_biome_tint:
+            shading_shift_x = 0.0
+            if attr_tint_data:
+                attr_tint_data.location = (-580.0, 450.0)
+            if sep_tint_data:
+                sep_tint_data.location = (-340.0, 450.0)
+            if attr_tint_col:
+                attr_tint_col.location = (-340.0, 200.0)
+            if tint_node:
+                tint_node.location = (-60.0, 350.0)
+        else:
+            # When Biome Tint is skipped, shift all downstream shading and output
+            # columns to the left by 700 px to close the empty void.
+            shading_shift_x = -700.0
+            frame_biome = nodes.get("Frame_Biome")
+            if frame_biome:
+                child_nodes = [n for n in nodes if getattr(n, "parent", None) == frame_biome]
+                if not child_nodes:
+                    try:
+                        nodes.remove(frame_biome)
+                    except Exception:
+                        pass
 
         # ---------------------------------------------------------------------
         # 4. Layout Shading Stage (PBR & BSDF)
         # ---------------------------------------------------------------------
-        norm_map = nodes.get("Normal Map")
-        if norm_map:
-            norm_map.location = (420.0, 360.0)
+        # Determine the rightmost boundary of the active Textures stage
+        tex_right_x = -940.0
+        if is_animated and any(e.get("blend") is not None for e in active_tex):
+            tex_right_x = -680.0
 
+        if has_biome_tint:
+            curr_shading_x = 180.0
+        else:
+            curr_shading_x = tex_right_x + 140.0
+
+        norm_map = nodes.get("Normal Map")
         sep_orm = nodes.get("Separate ORM")
         ao_mix = nodes.get("Albedo × AO")
         emit_strength = nodes.get("Emission Strength × Mask")
         attr_vertex_ao = nodes.get("Vertex AO")
+        safe_vertex_ao = nodes.get("Safe Vertex AO")
         vertex_ao_mix = nodes.get("Base Color × Vertex AO")
-
-        if sep_orm:
-            sep_orm.location = (180.0, 100.0)
-        if ao_mix:
-            ao_mix.location = (420.0, 160.0)
-        if emit_strength:
-            emit_strength.location = (420.0, -60.0)
-        if attr_vertex_ao:
-            attr_vertex_ao.location = (420.0, -200.0)
-        if vertex_ao_mix:
-            vertex_ao_mix.location = (640.0, 160.0)
-
         sep_aux = nodes.get("Separate Aux")
         ior_node = nodes.get("IOR from Aux")
-        if sep_aux:
-            sep_aux.location = (180.0, -360.0)
-        if ior_node:
-            ior_node.location = (420.0, -360.0)
 
+        # Column 1: ORM / Aux unpackers
+        has_col1 = bool(sep_orm or sep_aux)
+        if has_col1:
+            if sep_orm:
+                sep_orm.location = (curr_shading_x, 100.0)
+            if sep_aux:
+                sep_aux.location = (curr_shading_x, -360.0)
+            curr_shading_x += 240.0
+
+        # Column 2: Normal map, AO multiply, emission mask, Vertex AO, IOR
+        has_col2 = bool(norm_map or ao_mix or emit_strength or attr_vertex_ao or ior_node)
+        if has_col2:
+            if norm_map:
+                norm_map.location = (curr_shading_x, 360.0)
+            if ao_mix:
+                ao_mix.location = (curr_shading_x, 160.0)
+            if emit_strength:
+                emit_strength.location = (curr_shading_x, -60.0)
+            if attr_vertex_ao:
+                attr_vertex_ao.location = (curr_shading_x, -200.0)
+            if ior_node:
+                ior_node.location = (curr_shading_x, -360.0)
+            curr_shading_x += 240.0
+
+        # Column 3: Vertex AO mix / Safe AO
+        has_col3 = bool(vertex_ao_mix or safe_vertex_ao)
+        if has_col3:
+            if safe_vertex_ao:
+                safe_vertex_ao.location = (curr_shading_x, -200.0)
+            if vertex_ao_mix:
+                vertex_ao_mix.location = (curr_shading_x, 160.0)
+            curr_shading_x += 220.0
+
+        # Column 4: Principled BSDF
         principled = nodes.get("Principled BSDF")
         if principled is None:
             principled = next((n for n in nodes if getattr(n, "bl_idname", None) == "ShaderNodeBsdfPrincipled"), None)
         if principled:
-            principled.location = (880.0, 80.0) if vertex_ao_mix else (780.0, 80.0)
+            principled.location = (curr_shading_x, 80.0)
+            curr_shading_x += 380.0
 
-        # ---------------------------------------------------------------------
-        # 5. Layout Output Stage
-        # ---------------------------------------------------------------------
+        # Column 5: Output
         output_node = nodes.get("Material Output")
         if output_node is None:
             output_node = next((n for n in nodes if getattr(n, "bl_idname", None) == "ShaderNodeOutputMaterial"), None)
         if output_node:
-            output_node.location = (1260.0, 80.0) if vertex_ao_mix else (1180.0, 80.0)
+            output_node.location = (curr_shading_x, 80.0)
 
         # ---------------------------------------------------------------------
         # 6. Fit Frame Bounding Boxes
@@ -330,7 +373,8 @@ class NodeLayoutEngine:
             frame = nodes.get(frame_name)
             if frame:
                 child_nodes = [n for n in nodes if getattr(n, "parent", None) == frame]
-                cls.fit_frame_bounds(frame, child_nodes)
+                if child_nodes:
+                    cls.fit_frame_bounds(frame, child_nodes)
 
 
 def auto_layout_material(
@@ -342,6 +386,7 @@ def auto_layout_material(
     has_orm: bool = False,
     has_aux: bool = False,
     use_attribute_node: bool = False,
+    has_biome_tint: Optional[bool] = None,
 ) -> None:
     """Convenience entry point to format an active Blender Material node tree."""
     if material is None or getattr(material, "node_tree", None) is None:
@@ -354,4 +399,5 @@ def auto_layout_material(
         has_orm=has_orm,
         has_aux=has_aux,
         use_attribute_node=use_attribute_node,
+        has_biome_tint=has_biome_tint,
     )

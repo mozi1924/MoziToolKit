@@ -82,10 +82,19 @@ def build_atlas_chunk_material(
     disable_subsurface: Optional[bool] = None,
     chunk_stem: Optional[str] = None,
     enable_vertex_ao: Optional[bool] = None,
+    enable_biome_tint: Optional[bool] = None,
 ) -> Optional[Any]:
     """Build or update an Atlas Chunk material with standard Principled PBR."""
     if not HAS_BPY:
         return None
+
+    if enable_biome_tint is None:
+        # Minecraft biome tinting only applies to 'blocks' category atlases
+        # (grass, foliage, water, etc.). Other categories (items, chests, entities,
+        # particles, etc.) never have biome tint.
+        enable_biome_tint = (category == "blocks")
+    else:
+        enable_biome_tint = bool(enable_biome_tint)
 
     if material_name:
         mat_name = material_name
@@ -104,10 +113,16 @@ def build_atlas_chunk_material(
     is_stale_layout = bool(
         mat is not None and mat.get("mtk_pbr_layout") != PBR_LAYOUT_VERSION
     )
+    is_stale_biome_tint = bool(
+        mat is not None
+        and mat.get("mtk_has_biome_tint") is not None
+        and mat.get("mtk_has_biome_tint") != enable_biome_tint
+    )
     if (
         not force_rebuild
         and not is_stale_fingerprint
         and not is_stale_layout
+        and not is_stale_biome_tint
         and mat is not None
         and getattr(mat, "node_tree", None)
         and len(mat.node_tree.nodes) > 0
@@ -163,6 +178,7 @@ def build_atlas_chunk_material(
         render_engine=render_engine,
         disable_subsurface=disable_subsurface,
         enable_vertex_ao=enable_vertex_ao,
+        enable_biome_tint=enable_biome_tint,
     )
     if cloned is not None:
         return cloned
@@ -180,6 +196,7 @@ def build_atlas_chunk_material(
     mat["mtk_is_animated"] = is_animated
     mat["mtk_uv_map_name"] = target_uv_map
     mat["mtk_has_overlay"] = has_overlay
+    mat["mtk_has_biome_tint"] = enable_biome_tint
     mat["mtk_template_key"] = template_key
     if stack_fingerprint:
         mat["mtk_stack_fingerprint"] = stack_fingerprint
@@ -197,7 +214,11 @@ def build_atlas_chunk_material(
     # -------------------------------------------------------------------------
     frame_uv = _create_frame(nodes, "Frame_UV", "UV Coordinates & Tiling", (0.15, 0.25, 0.40))
     frame_tex = _create_frame(nodes, "Frame_Textures", "Texture Maps Input", (0.15, 0.35, 0.25))
-    frame_biome = _create_frame(nodes, "Frame_Biome", "Biome Tint & Colormap Decoding", (0.35, 0.25, 0.15))
+    frame_biome = (
+        _create_frame(nodes, "Frame_Biome", "Biome Tint & Colormap Decoding", (0.35, 0.25, 0.15))
+        if enable_biome_tint
+        else None
+    )
     frame_shading = _create_frame(nodes, "Frame_Shading", "Standard PBR Shading", (0.30, 0.20, 0.35))
     frame_output = _create_frame(nodes, "Frame_Output", "Material Output", (0.20, 0.20, 0.20))
 
@@ -622,50 +643,55 @@ def build_atlas_chunk_material(
     # -------------------------------------------------------------------------
     # 5. Biome tint & colormap decoding
     # -------------------------------------------------------------------------
-    biome_tint_group = ensure_biome_tint()
     tint_node = None
-    if biome_tint_group and albedo_out_color is not None:
-        tint_node = nodes.new("ShaderNodeGroup")
-        tint_node.name = "MC Biome Tint"
-        tint_node.node_tree = biome_tint_group
-        tint_node.location = (200, 350)
-        tint_node.parent = frame_biome
+    if enable_biome_tint and albedo_out_color is not None:
+        biome_tint_group = ensure_biome_tint()
+        if biome_tint_group:
+            tint_node = nodes.new("ShaderNodeGroup")
+            tint_node.name = "MC Biome Tint"
+            tint_node.node_tree = biome_tint_group
+            tint_node.location = (200, 350)
+            if frame_biome:
+                tint_node.parent = frame_biome
 
-        links.new(albedo_out_color, tint_node.inputs["Base Color"])
-        links.new(albedo_out_alpha, tint_node.inputs["Base Alpha"])
-        if overlay_out_color is not None:
-            links.new(overlay_out_color, tint_node.inputs["Overlay Color"])
-            links.new(overlay_out_alpha, tint_node.inputs["Overlay Alpha"])
+            links.new(albedo_out_color, tint_node.inputs["Base Color"])
+            links.new(albedo_out_alpha, tint_node.inputs["Base Alpha"])
+            if overlay_out_color is not None:
+                links.new(overlay_out_color, tint_node.inputs["Overlay Color"])
+                links.new(overlay_out_alpha, tint_node.inputs["Overlay Alpha"])
 
-        attr_tint_data = nodes.new("ShaderNodeAttribute")
-        attr_tint_data.name = "Attr Biome Tint Data"
-        attr_tint_data.attribute_name = ATTR_BIOME_TINT_DATA
-        attr_tint_data.attribute_type = "GEOMETRY"
-        attr_tint_data.location = (-700, 350)
-        attr_tint_data.parent = frame_biome
+            attr_tint_data = nodes.new("ShaderNodeAttribute")
+            attr_tint_data.name = "Attr Biome Tint Data"
+            attr_tint_data.attribute_name = ATTR_BIOME_TINT_DATA
+            attr_tint_data.attribute_type = "GEOMETRY"
+            attr_tint_data.location = (-700, 350)
+            if frame_biome:
+                attr_tint_data.parent = frame_biome
 
-        sep_tint_data = nodes.new("ShaderNodeSeparateColor")
-        sep_tint_data.name = "Separate Biome Tint Data"
-        sep_tint_data.location = (-450, 350)
-        sep_tint_data.parent = frame_biome
-        links.new(attr_tint_data.outputs["Color"], sep_tint_data.inputs["Color"])
+            sep_tint_data = nodes.new("ShaderNodeSeparateColor")
+            sep_tint_data.name = "Separate Biome Tint Data"
+            sep_tint_data.location = (-450, 350)
+            if frame_biome:
+                sep_tint_data.parent = frame_biome
+            links.new(attr_tint_data.outputs["Color"], sep_tint_data.inputs["Color"])
 
-        red_w = sep_tint_data.outputs.get("Red") or sep_tint_data.outputs[0]
-        green_w = sep_tint_data.outputs.get("Green") or sep_tint_data.outputs[1]
-        blue_w = sep_tint_data.outputs.get("Blue") or sep_tint_data.outputs[2]
-        links.new(red_w, tint_node.inputs["Base Tint Weight"])
-        links.new(green_w, tint_node.inputs["Overlay Tint Weight"])
-        links.new(blue_w, tint_node.inputs["Tint Weight"])
+            red_w = sep_tint_data.outputs.get("Red") or sep_tint_data.outputs[0]
+            green_w = sep_tint_data.outputs.get("Green") or sep_tint_data.outputs[1]
+            blue_w = sep_tint_data.outputs.get("Blue") or sep_tint_data.outputs[2]
+            links.new(red_w, tint_node.inputs["Base Tint Weight"])
+            links.new(green_w, tint_node.inputs["Overlay Tint Weight"])
+            links.new(blue_w, tint_node.inputs["Tint Weight"])
 
-        attr_tint_col = nodes.new("ShaderNodeAttribute")
-        attr_tint_col.name = "Attr Biome Tint Color"
-        attr_tint_col.attribute_name = ATTR_BIOME_TINT_COLOR
-        attr_tint_col.attribute_type = "GEOMETRY"
-        attr_tint_col.location = (-450, 100)
-        attr_tint_col.parent = frame_biome
+            attr_tint_col = nodes.new("ShaderNodeAttribute")
+            attr_tint_col.name = "Attr Biome Tint Color"
+            attr_tint_col.attribute_name = ATTR_BIOME_TINT_COLOR
+            attr_tint_col.attribute_type = "GEOMETRY"
+            attr_tint_col.location = (-450, 100)
+            if frame_biome:
+                attr_tint_col.parent = frame_biome
 
-        # Direct pure-data link: resolved Linear RGBA calculated by Rust is piped straight into Tint Color.
-        links.new(attr_tint_col.outputs["Color"], tint_node.inputs["Tint Color"])
+            # Direct pure-data link: resolved Linear RGBA calculated by Rust is piped straight into Tint Color.
+            links.new(attr_tint_col.outputs["Color"], tint_node.inputs["Tint Color"])
 
     # -------------------------------------------------------------------------
     # 6. Standard Principled PBR shading
@@ -681,6 +707,12 @@ def build_atlas_chunk_material(
     if base_color is None or alpha is None:
         return mat
 
+    final_enable_vertex_ao = (
+        bool(enable_vertex_ao)
+        if enable_vertex_ao is not None
+        else (category == "blocks" and cfg.get("enable_vertex_ao", True))
+    )
+
     build_pbr_shading(
         nodes,
         links,
@@ -695,7 +727,7 @@ def build_atlas_chunk_material(
         disable_subsurface=cfg["disable_subsurface"],
         emission_strength=cfg["emission_strength"],
         subsurface_method=cfg.get("subsurface_method", "BURLEY"),
-        enable_vertex_ao=cfg.get("enable_vertex_ao", True),
+        enable_vertex_ao=final_enable_vertex_ao,
     )
 
     # Automatically format and space nodes based on active channels
@@ -707,9 +739,10 @@ def build_atlas_chunk_material(
         has_orm=has_orm,
         has_aux=has_aux,
         use_attribute_node=use_attribute_node,
+        has_biome_tint=enable_biome_tint,
     )
 
-    mat["mtk_enable_vertex_ao"] = bool(cfg.get("enable_vertex_ao", True))
+    mat["mtk_enable_vertex_ao"] = final_enable_vertex_ao
 
     # Keep the albedo node active for Solid viewport display.
     if albedo_node:

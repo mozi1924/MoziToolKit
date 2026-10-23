@@ -342,6 +342,7 @@ def assign_atlas_chunk_materials(
             else:
                 material_name = f"MTK:Atlas:Ext:{cat}:{c_idx:03}"
 
+        enable_biome_tint = bool(cm.get("has_tint", True)) if cat == "blocks" else False
         mat = build_atlas_chunk_material(
             chunk_id=chunk_id,
             albedo_path=albedo_file,
@@ -353,6 +354,7 @@ def assign_atlas_chunk_materials(
             category_chunk_index=c_idx,
             is_animated=is_anim,
             stack_fingerprint=manifest_fingerprint,
+            enable_biome_tint=enable_biome_tint,
             atlas_width=chunk_width,
             atlas_height=chunk_height,
             tile_width=16.0,

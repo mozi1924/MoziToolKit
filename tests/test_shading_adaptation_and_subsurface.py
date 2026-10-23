@@ -128,6 +128,9 @@ def test_build_atlas_chunk_material_has_no_game_semantic_nodes():
     assert nodes.get("IOR from Aux") is not None
     assert nodes.get("Emission Strength × Mask") is not None
     assert nodes.get("Vertex AO") is not None
+    assert nodes.get("AO Presence") is not None
+    assert nodes.get("AO Active") is not None
+    assert nodes.get("Safe Vertex AO") is not None
     assert nodes.get("Base Color × Vertex AO") is not None
 
     # Test with enable_vertex_ao = False
@@ -145,6 +148,9 @@ def test_build_atlas_chunk_material_has_no_game_semantic_nodes():
     assert mat_no_vao is not None
     nodes_no_vao = mat_no_vao.node_tree.nodes
     assert nodes_no_vao.get("Vertex AO") is None
+    assert nodes_no_vao.get("AO Presence") is None
+    assert nodes_no_vao.get("AO Active") is None
+    assert nodes_no_vao.get("Safe Vertex AO") is None
     assert nodes_no_vao.get("Base Color × Vertex AO") is None
 
     # Removed runtime decoder and game-semantic nodes.

@@ -139,18 +139,59 @@ def build_pbr_shading(
         if frame_shading is not None:
             attr_ao.parent = frame_shading
 
+        # In Blender, when an attribute is missing on the mesh, ShaderNodeAttribute outputs
+        # Color=(0,0,0,0) and Alpha=1.0. A factor driven solely by Alpha would select Color B,
+        # resulting in (0,0,0,0) and turning uncolored meshes pitch black.
+        # We calculate the vector length of the sampled Color: if length > 0.01, valid AO exists;
+        # otherwise, we safely fall back to pure White (1,1,1,1) so the mesh stays properly lit.
+        ao_len = node(
+            nodes,
+            "ShaderNodeVectorMath",
+            "AO Presence",
+            location=(500, 480),
+            properties={"operation": "LENGTH"},
+        )
+        if frame_shading is not None:
+            ao_len.parent = frame_shading
+        links.new(attr_ao.outputs["Color"], ao_len.inputs[0])
+
+        ao_active = node(
+            nodes,
+            "ShaderNodeMath",
+            "AO Active",
+            location=(640, 480),
+            properties={"operation": "GREATER_THAN"},
+            inputs={"Value[1]": 0.01},
+        )
+        if frame_shading is not None:
+            ao_active.parent = frame_shading
+        links.new(ao_len.outputs["Value"], input_socket(ao_active, "Value[0]"))
+
+        safe_ao = node(
+            nodes,
+            "ShaderNodeMix",
+            "Safe Vertex AO",
+            location=(640, 360),
+            properties={"data_type": "RGBA", "blend_type": "MIX"},
+            inputs={"A[2]": (1.0, 1.0, 1.0, 1.0)},
+        )
+        if frame_shading is not None:
+            safe_ao.parent = frame_shading
+        links.new(ao_active.outputs["Value"], input_socket(safe_ao, "Factor[0]"))
+        links.new(attr_ao.outputs["Color"], input_socket(safe_ao, "B[2]"))
+
         vertex_ao_mix = node(
             nodes,
             "ShaderNodeMix",
             "Base Color × Vertex AO",
-            location=(720, 250),
+            location=(780, 250),
             properties={"data_type": "RGBA", "blend_type": "MULTIPLY"},
         )
         if frame_shading is not None:
             vertex_ao_mix.parent = frame_shading
         input_socket(vertex_ao_mix, "Factor[0]").default_value = 1.0
         links.new(base_out, input_socket(vertex_ao_mix, "A[2]"))
-        links.new(attr_ao.outputs["Color"], input_socket(vertex_ao_mix, "B[2]"))
+        links.new(output_socket(safe_ao, "Result[2]"), input_socket(vertex_ao_mix, "B[2]"))
         base_out = output_socket(vertex_ao_mix, "Result[2]")
 
     links.new(base_out, principled.inputs["Base Color"])

@@ -120,6 +120,24 @@ class TestMaterialLayout(unittest.TestCase):
             # Verify gap is at least node height + padding
             self.assertGreaterEqual(albedo_node.location.y - normal_node.location.y, 280.0)
             self.assertGreaterEqual(normal_node.location.y - orm_node.location.y, 280.0)
+
+            # When Biome Tint is absent, BSDF shifts left to close the empty void
+            bsdf_no_tint_x = bsdf_node.location.x
+
+            # Now test with has_biome_tint=True
+            auto_layout_material(
+                mat,
+                is_animated=False,
+                has_overlay=False,
+                has_normal=True,
+                has_orm=True,
+                has_aux=False,
+                use_attribute_node=False,
+                has_biome_tint=True,
+            )
+            self.assertGreater(bsdf_node.location.x, bsdf_no_tint_x)
+            # The leftward shift to eliminate the biome tint gap should be exactly 980 px
+            self.assertAlmostEqual(bsdf_node.location.x - bsdf_no_tint_x, 980.0, delta=1.0)
         finally:
             bpy.data.materials.remove(mat)
 
