@@ -40,7 +40,7 @@
   - 底层原生库分为通用的 `libmtk_py`（宿主无关纯计算内核）与独立的 `libmtk_blender_dna`（Blender C++ 内存直写特化适配器），通过 CI 矩阵构建为符合 CPython 3.11+ 标准 ABI (`abi3`) 的跨平台 Wheel。
 - **开发态（Development Mode）极速直通规约**：
   - 日常开发阶段工作区根目录不存放固定本地 wheel，`blender_manifest.toml` 中不声明开发期本地轮子。
-  - 底层二进制扩展统一由 `dev/loader.py` 动态加载，通过软链接（`dev/lib/libmtk_py.so` 与 `dev/lib/libmtk_blender_dna.so`）直通 Rust 编译产物，编译后 Blender 重载插件即可即时生效。
+  - 底层二进制扩展统一由 `dev/loader.py` 动态加载，通过软链接（`dev/lib/libmtk_py.so` 与 `dev/lib/libmtk_blender_dna.so`）直通 Rust 编译产物（日常使用 `cargo build-all-py` / `cargo build-py`），编译后 Blender 重载插件即可即时生效。
   - 开发专用面板、压测与调试算子统一收敛在 `dev/` 模块，并通过 `dev/api.py` 提供无头测试支持。
 - **发布态（Release Packaging）纯净隔离规约**：
   - 打包由 `python3 build.py` 处理；打包脚本拉取/注入对应平台的 release wheels 并更新 `blender_manifest.toml` 的 `wheels = [...]` 字段。
