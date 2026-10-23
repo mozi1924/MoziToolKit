@@ -47,6 +47,7 @@ from .image_utils import (
     _create_frame,
     set_material_displacement_method,
 )
+from .layout import auto_layout_material
 from .pbr_graph import build_pbr_shading
 from .shading_config import resolve_material_shading_config
 
@@ -678,6 +679,17 @@ def build_atlas_chunk_material(
         disable_subsurface=cfg["disable_subsurface"],
         emission_strength=cfg["emission_strength"],
         subsurface_method=cfg.get("subsurface_method", "BURLEY"),
+    )
+
+    # Automatically format and space nodes based on active channels
+    auto_layout_material(
+        mat,
+        is_animated=is_animated,
+        has_overlay=bool(overlay_path),
+        has_normal=bool(normal_path),
+        has_orm=bool(orm_path),
+        has_aux=bool(aux_path),
+        use_attribute_node=use_attribute_node,
     )
 
     # Keep the albedo node active for Solid viewport display.

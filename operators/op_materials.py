@@ -179,8 +179,47 @@ class MOZI_OT_replace_material(bpy.types.Operator):
             return {'CANCELLED'}
 
 
+@register_menu_item(views=["material"], label="Auto Layout Material Nodes")
+class MOZI_OT_auto_layout_material_nodes(bpy.types.Operator):
+    """Automatically formats and arranges active material shader nodes cleanly according to MTK standard layout."""
+
+    bl_idname = "mozi.auto_layout_material_nodes"
+    bl_label = "Auto Layout Shader Nodes"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        mat = getattr(context, "material", None)
+        if mat is None and getattr(context, "active_object", None):
+            mat = getattr(context.active_object, "active_material", None)
+        return mat is not None and getattr(mat, "node_tree", None) is not None
+
+    def execute(self, context):
+        mat = getattr(context, "material", None)
+        if mat is None and getattr(context, "active_object", None):
+            mat = getattr(context.active_object, "active_material", None)
+        if not mat or not getattr(mat, "node_tree", None):
+            self.report({"WARNING"}, "No active material with node tree selected")
+            return {"CANCELLED"}
+
+        from ..utils.materials.builder import auto_layout_material
+
+        auto_layout_material(
+            mat,
+            is_animated=bool(mat.get("mtk_is_animated", False)),
+            has_overlay=bool(mat.get("mtk_has_overlay", False)),
+            has_normal=bool(mat.get("mtk_has_pbr", False)),
+            has_orm=bool(mat.get("mtk_has_pbr", False)),
+            has_aux=bool(mat.get("mtk_has_pbr", False)),
+            use_attribute_node=True,
+        )
+        self.report({"INFO"}, f"Nodes in material '{mat.name}' formatted cleanly")
+        return {"FINISHED"}
+
+
 OPERATOR_CLASSES = (
     MOZI_OT_replace_material,
+    MOZI_OT_auto_layout_material_nodes,
 )
 OPERATORS_CLASSES = OPERATOR_CLASSES
 
