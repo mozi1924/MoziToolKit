@@ -15,7 +15,9 @@ class BaseDnaResolver(ABC):
     """Abstract interface for resolving raw memory addresses from Blender datablocks."""
 
     @abstractmethod
-    def resolve_attribute_ptr(self, attr: Any, min_elements: int = 1) -> Optional[int]:
+    def resolve_attribute_ptr(
+        self, attr: Any, min_elements: int = 1, required_align: int = 4
+    ) -> Optional[int]:
         """Resolves the raw memory address of the first item in a Blender attribute layer."""
         raise NotImplementedError
 

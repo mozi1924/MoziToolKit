@@ -186,6 +186,45 @@ class TestDnaBridge(unittest.TestCase):
         self.assertTrue(hasattr(blender_dna, "copy_f32"))
         self.assertTrue(hasattr(blender_dna, "copy_u32"))
 
+    def test_inject_custom_attribute_dna_zero_elements(self):
+        from MoziToolKit.bridge.mesh.dna import inject_custom_attribute_dna
+
+        attr = MagicMock()
+        attr.data = []
+        self.assertTrue(inject_custom_attribute_dna(attr, b"", "INT", 0))
+
+    def test_custom_attribute_dna_in_blender(self):
+        try:
+            import bpy
+            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
+                self.skipTest("Requires real Blender host environment")
+        except ImportError:
+            self.skipTest("bpy not available")
+
+        if not is_dna_available():
+            self.skipTest("libmtk_blender_dna not available")
+
+        import numpy as np
+        from MoziToolKit.bridge.mesh.dna import inject_custom_attribute_dna
+
+        mesh = bpy.data.meshes.new("dna_attr_test")
+        mesh.vertices.add(4)
+        mesh.polygons.add(2)
+        try:
+            attr_int = mesh.attributes.new("test_int", "INT", "POINT")
+            int_buf = np.array([42, 43, 44, 45], dtype=np.int32).tobytes()
+            ok = inject_custom_attribute_dna(attr_int, int_buf, "INT", 4)
+            self.assertTrue(ok)
+            self.assertEqual([x.value for x in attr_int.data], [42, 43, 44, 45])
+
+            attr_float = mesh.attributes.new("test_float", "FLOAT", "POINT")
+            float_buf = np.array([1.25, 2.5, 3.75, 5.0], dtype=np.float32).tobytes()
+            ok_f = inject_custom_attribute_dna(attr_float, float_buf, "FLOAT", 4)
+            self.assertTrue(ok_f)
+            self.assertEqual([round(x.value, 2) for x in attr_float.data], [1.25, 2.5, 3.75, 5.0])
+        finally:
+            bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     unittest.main()

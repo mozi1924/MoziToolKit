@@ -19,7 +19,9 @@ logger = logging.getLogger("MoziToolKit.Bridge.DNA.V42")
 class DnaResolverV42(BaseDnaResolver):
     """Blender 4.2 LTS CustomData & RNA attribute memory pointer resolver."""
 
-    def resolve_attribute_ptr(self, attr: Any, min_elements: int = 1) -> Optional[int]:
+    def resolve_attribute_ptr(
+        self, attr: Any, min_elements: int = 1, required_align: int = 4
+    ) -> Optional[int]:
         """
         Extracts the contiguous memory pointer from an Attribute's first element.
         Safe against empty collections and unallocated layers.
@@ -33,7 +35,7 @@ class DnaResolverV42(BaseDnaResolver):
 
         try:
             first_elem = data_seq[0]
-            return safe_as_pointer(first_elem)
+            return safe_as_pointer(first_elem, required_align=required_align)
         except (IndexError, AttributeError, RuntimeError) as e:
             logger.debug("Failed to resolve attribute pointer: %s", e)
             return None

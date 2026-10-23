@@ -169,7 +169,12 @@ def inject_mesh_data(
 
     # Extra custom attributes
     if inject_attributes:
-        inject_custom_attributes(mesh, mesh_data, skip_string_attributes=skip_string_attributes)
+        inject_custom_attributes(
+            mesh,
+            mesh_data,
+            skip_string_attributes=skip_string_attributes,
+            use_dna=use_dna,
+        )
 
     mesh.update(calc_edges=topology_updated)
 

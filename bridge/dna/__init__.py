@@ -48,9 +48,13 @@ def get_dna_resolver() -> BaseDnaResolver:
     return _active_resolver
 
 
-def resolve_attribute_ptr(attr: Any, min_elements: int = 1) -> Optional[int]:
+def resolve_attribute_ptr(
+    attr: Any, min_elements: int = 1, required_align: int = 4
+) -> Optional[int]:
     """Resolves raw memory pointer for an attribute layer."""
-    return get_dna_resolver().resolve_attribute_ptr(attr, min_elements=min_elements)
+    return get_dna_resolver().resolve_attribute_ptr(
+        attr, min_elements=min_elements, required_align=required_align
+    )
 
 
 def resolve_positions_ptr(mesh: Any, expected_count: Optional[int] = None) -> Optional[int]:

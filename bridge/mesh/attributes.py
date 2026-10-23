@@ -9,6 +9,7 @@ from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from ..dna import is_dna_enabled
 from .attribute_schema import ATTR_SOURCE_TEXTURE_KEY, is_active
 from .constants import (
     MTK_TO_BLENDER_DOMAIN,
@@ -17,6 +18,7 @@ from .constants import (
     get_mesh,
     get_or_create_attribute,
 )
+from .dna import inject_custom_attribute_dna
 
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh.Attributes")
 
@@ -377,7 +379,12 @@ def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> boo
     return False
 
 
-def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: bool = False) -> None:
+def inject_custom_attributes(
+    mesh: Any,
+    mesh_data: Any,
+    skip_string_attributes: bool = False,
+    use_dna: bool = True,
+) -> None:
     """Generic custom attributes synchronization into mesh.attributes."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh_data, "attribute_names"):
         return
@@ -451,11 +458,23 @@ def inject_custom_attributes(mesh: Any, mesh_data: Any, skip_string_attributes: 
             else:
                 mv = mesh_data.attribute_memoryview(attr_name)
                 if mv is not None:
-                    try:
-                        if hasattr(mv, "cast") and mv.format == "B" and typecode:
-                            mv = mv.cast(typecode)
-                        b_attr.data.foreach_set(value_key, mv)
-                    except Exception as e:
-                        logger.debug("Failed setting attribute %s: %s", attr_name, e)
+                    dna_injected = False
+                    if use_dna and is_dna_enabled():
+                        try:
+                            dna_injected = inject_custom_attribute_dna(
+                                b_attr, mv, b_type, elem_count
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "DNA custom attribute injection error on %s: %s", attr_name, e
+                            )
+
+                    if not dna_injected:
+                        try:
+                            if hasattr(mv, "cast") and mv.format == "B" and typecode:
+                                mv = mv.cast(typecode)
+                            b_attr.data.foreach_set(value_key, mv)
+                        except Exception as e:
+                            logger.debug("Failed setting attribute %s: %s", attr_name, e)
         except Exception as e:
             logger.debug("Error injecting attribute %s: %s", attr_name, e)

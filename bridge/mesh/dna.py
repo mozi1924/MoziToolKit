@@ -14,6 +14,7 @@ import numpy as np
 
 from ..dna import (
     is_dna_available,
+    resolve_attribute_ptr,
     resolve_colors_ptr,
     resolve_corner_verts_ptr,
     resolve_loop_uvs_ptr,
@@ -259,3 +260,98 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
         logger.debug("DNA direct copy colors failed: %s", e)
 
     return False
+
+
+def inject_custom_attribute_dna(
+    b_attr: Any,
+    mv: Any,
+    b_type: str,
+    elem_count: int,
+) -> bool:
+    """
+    Directly injects generic CustomData attribute memory layers via libmtk_blender_dna.
+    Returns True if successfully written, or False if standard fallback is required.
+    """
+    blender_dna = get_libmtk_dna()
+    if blender_dna is None or not is_dna_available():
+        return False
+
+    if elem_count == 0:
+        return True
+
+    if mv is None:
+        return False
+
+    if b_type in ("FLOAT", "FLOAT2", "FLOAT_VECTOR", "FLOAT_COLOR"):
+        align = 4
+        stride = 1
+        if b_type == "FLOAT2":
+            stride = 2
+        elif b_type == "FLOAT_VECTOR":
+            stride = 3
+        elif b_type == "FLOAT_COLOR":
+            stride = 4
+        total_count = elem_count * stride
+        attr_ptr = resolve_attribute_ptr(b_attr, min_elements=elem_count, required_align=align)
+        if attr_ptr is None:
+            return False
+        try:
+            blender_dna.copy_f32(
+                _byte_view(mv),
+                attr_ptr,
+                total_count,
+                max_bytes=total_count * 4,
+            )
+            return True
+        except Exception as e:
+            logger.debug(
+                "DNA direct copy float attribute %s failed: %s",
+                getattr(b_attr, "name", ""),
+                e,
+            )
+            return False
+
+    elif b_type in ("INT", "INT32"):
+        attr_ptr = resolve_attribute_ptr(b_attr, min_elements=elem_count, required_align=4)
+        if attr_ptr is None:
+            return False
+        try:
+            blender_dna.copy_i32(
+                _byte_view(mv),
+                attr_ptr,
+                elem_count,
+                max_bytes=elem_count * 4,
+            )
+            return True
+        except Exception as e:
+            logger.debug(
+                "DNA direct copy int attribute %s failed: %s",
+                getattr(b_attr, "name", ""),
+                e,
+            )
+            return False
+
+    elif b_type in ("INT8", "BOOLEAN", "BYTE_COLOR"):
+        stride = 4 if b_type == "BYTE_COLOR" else 1
+        total_count = elem_count * stride
+        attr_ptr = resolve_attribute_ptr(b_attr, min_elements=elem_count, required_align=1)
+        if attr_ptr is None:
+            return False
+        try:
+            blender_dna.copy_u8(
+                _byte_view(mv),
+                attr_ptr,
+                total_count,
+                max_bytes=total_count,
+            )
+            return True
+        except Exception as e:
+            logger.debug(
+                "DNA direct copy byte attribute %s failed: %s",
+                getattr(b_attr, "name", ""),
+                e,
+            )
+            return False
+
+    return False
+
