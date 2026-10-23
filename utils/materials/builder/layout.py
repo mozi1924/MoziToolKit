@@ -303,6 +303,8 @@ class NodeLayoutEngine:
             ior_node.location = (420.0, -320.0)
 
         principled = nodes.get("Principled BSDF")
+        if principled is None:
+            principled = next((n for n in nodes if getattr(n, "bl_idname", None) == "ShaderNodeBsdfPrincipled"), None)
         if principled:
             principled.location = (780.0, 80.0)
 
@@ -310,6 +312,8 @@ class NodeLayoutEngine:
         # 5. Layout Output Stage
         # ---------------------------------------------------------------------
         output_node = nodes.get("Material Output")
+        if output_node is None:
+            output_node = next((n for n in nodes if getattr(n, "bl_idname", None) == "ShaderNodeOutputMaterial"), None)
         if output_node:
             output_node.location = (1180.0, 80.0)
 

@@ -26,9 +26,11 @@ from .standard import clean_zombie_attributes
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh.DNA")
 
 
-def _byte_view(mv: Any) -> memoryview:
-    """Normalizes a typed/raw core memoryview to a C-contiguous byte view."""
-    return memoryview(mv).cast("B")
+def _byte_view(mv: Any) -> Any:
+    """Normalizes a typed/raw core memoryview or array without unnecessary re-casting."""
+    if isinstance(mv, memoryview):
+        return mv
+    return memoryview(mv)
 
 
 def inject_topology_dna(

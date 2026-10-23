@@ -74,7 +74,11 @@ class TestMaterialLayout(unittest.TestCase):
         # Create a material and populate with dummy nodes matching MTK names
         mat = bpy.data.materials.new("LayoutTestMat")
         try:
+            if getattr(mat, "node_tree", None) is None:
+                from MoziToolKit.utils.materials.builder.image_utils import ensure_material_node_tree
+                ensure_material_node_tree(mat)
             nodes = mat.node_tree.nodes
+            nodes.clear()
             uv_node = nodes.new("ShaderNodeUVMap")
             uv_node.name = "UV Map"
 
