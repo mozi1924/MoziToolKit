@@ -55,11 +55,6 @@ def preload_atlas_images(
     chunk_stem: Optional[str] = None,
 ) -> dict[str, Any]:
     """Retrieve or load all atlas texture image datablocks for a chunk."""
-    has_overlay = bool(
-        overlay_path
-        and (isinstance(overlay_path, (tuple, list)) or os.path.exists(str(overlay_path)))
-    )
-
     c_stem = chunk_stem or (
         f"{category}_anim_chunk_{category_chunk_index:03}"
         if is_animated
@@ -79,7 +74,7 @@ def preload_atlas_images(
             force_reload=image_reload_needed,
             chunk_id=f"atlas/textures/{c_stem}_overlay.png",
         )
-        if has_overlay
+        if overlay_path
         else None
     )
     normal_img = (
@@ -112,6 +107,8 @@ def preload_atlas_images(
         if aux_path
         else None
     )
+
+    has_overlay = (overlay_img is not None) if HAS_BPY else bool(overlay_path)
 
     return {
         "c_stem": c_stem,

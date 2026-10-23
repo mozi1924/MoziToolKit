@@ -695,7 +695,7 @@ def build_atlas_chunk_material(
     auto_layout_material(
         mat,
         is_animated=is_animated,
-        has_overlay=bool(overlay_path),
+        has_overlay=has_overlay,
         has_normal=bool(normal_path),
         has_orm=bool(orm_path),
         has_aux=bool(aux_path),

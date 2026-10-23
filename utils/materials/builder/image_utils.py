@@ -312,6 +312,15 @@ def get_or_create_image(
                 if img is not None:
                     return img
 
+        # Fallback if reloading from cache/package returned None but existing datablock is valid
+        if _is_valid_image(existing_img):
+            if hasattr(existing_img, "colorspace_settings") and colorspace:
+                try:
+                    existing_img.colorspace_settings.name = colorspace
+                except Exception:
+                    pass
+            return existing_img
+
     # 3. Fallback: On-disk filesystem loading
     resolved_path = None
     try:
