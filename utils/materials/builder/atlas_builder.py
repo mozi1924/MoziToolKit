@@ -81,6 +81,7 @@ def build_atlas_chunk_material(
     render_engine: Optional[str] = None,
     disable_subsurface: Optional[bool] = None,
     chunk_stem: Optional[str] = None,
+    enable_vertex_ao: Optional[bool] = None,
 ) -> Optional[Any]:
     """Build or update an Atlas Chunk material with standard Principled PBR."""
     if not HAS_BPY:
@@ -161,6 +162,7 @@ def build_atlas_chunk_material(
         tile_height=tile_height,
         render_engine=render_engine,
         disable_subsurface=disable_subsurface,
+        enable_vertex_ao=enable_vertex_ao,
     )
     if cloned is not None:
         return cloned
@@ -671,6 +673,7 @@ def build_atlas_chunk_material(
     cfg = resolve_material_shading_config(
         render_engine=render_engine,
         disable_subsurface=disable_subsurface,
+        enable_vertex_ao=enable_vertex_ao,
     )
 
     base_color = tint_node.outputs["Color"] if tint_node else albedo_out_color
@@ -692,6 +695,7 @@ def build_atlas_chunk_material(
         disable_subsurface=cfg["disable_subsurface"],
         emission_strength=cfg["emission_strength"],
         subsurface_method=cfg.get("subsurface_method", "BURLEY"),
+        enable_vertex_ao=cfg.get("enable_vertex_ao", True),
     )
 
     # Automatically format and space nodes based on active channels
@@ -704,6 +708,8 @@ def build_atlas_chunk_material(
         has_aux=has_aux,
         use_attribute_node=use_attribute_node,
     )
+
+    mat["mtk_enable_vertex_ao"] = bool(cfg.get("enable_vertex_ao", True))
 
     # Keep the albedo node active for Solid viewport display.
     if albedo_node:

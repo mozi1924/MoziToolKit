@@ -88,6 +88,7 @@ class MaterialSettings:
     render_engine: str = "AUTO"  # AUTO | CYCLES | EEVEE
     disable_subsurface: bool = False
     subsurface_method: str = "BURLEY"  # BURLEY | RANDOM_WALK
+    enable_vertex_ao: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -97,6 +98,7 @@ class MaterialSettings:
             "render_engine": self.render_engine,
             "disable_subsurface": self.disable_subsurface,
             "subsurface_method": self.subsurface_method,
+            "enable_vertex_ao": self.enable_vertex_ao,
         }
 
     @classmethod
@@ -118,6 +120,7 @@ class MaterialSettings:
             render_engine=r_engine,
             disable_subsurface=bool(data.get("disable_subsurface", False)),
             subsurface_method=sss_method,
+            enable_vertex_ao=bool(data.get("enable_vertex_ao", True)),
         )
 
 

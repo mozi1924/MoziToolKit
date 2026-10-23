@@ -33,12 +33,14 @@ def get_template_key(
     render_engine: Optional[str] = None,
     disable_subsurface: Optional[bool] = None,
     target_uv_map: str = "UVMap",
+    enable_vertex_ao: Optional[bool] = None,
 ) -> str:
     """Compute a deterministic key representing the material's node graph topology."""
     return (
         f"{category}|anim={int(is_animated)}|attr={int(use_attribute_node)}|"
         f"ovr={int(has_overlay)}|n={int(has_normal)}|orm={int(has_orm)}|aux={int(has_aux)}|"
-        f"eng={render_engine or 'AUTO'}|nosss={int(bool(disable_subsurface))}|uv={target_uv_map}"
+        f"eng={render_engine or 'AUTO'}|nosss={int(bool(disable_subsurface))}|"
+        f"vao={int(bool(enable_vertex_ao if enable_vertex_ao is not None else True))}|uv={target_uv_map}"
     )
 
 
@@ -360,6 +362,7 @@ def try_clone_material(
     tile_height: float = 16.0,
     render_engine: Optional[str] = None,
     disable_subsurface: Optional[bool] = None,
+    enable_vertex_ao: Optional[bool] = None,
 ) -> tuple[Optional[Any], str]:
     """
     Check if a matching archetype exists, and if so, clone and return it.
@@ -380,6 +383,7 @@ def try_clone_material(
         render_engine=render_engine,
         disable_subsurface=disable_subsurface,
         target_uv_map=target_uv_map,
+        enable_vertex_ao=enable_vertex_ao,
     )
 
     archetype = find_archetype_material(

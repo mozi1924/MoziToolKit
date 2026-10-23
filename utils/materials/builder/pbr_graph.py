@@ -3,7 +3,7 @@
 This module intentionally contains **no LabPBR decoding** and **no game-semantic
 branches**. It only maps canonical channels to standard Principled inputs:
 
-- ``base_color`` × ORM.R (AO) -> Base Color
+- ``base_color`` × ORM.R (AO) × Vertex AO (Mesh "color" attribute) -> Base Color
 - ORM.G -> Roughness, ORM.B -> Metallic, ORM.A -> Emission Strength
 - aux.R -> IOR via ``encoded * 7 + 1``, aux.B -> Subsurface Weight
 - normal RGB -> Normal Map
@@ -45,6 +45,7 @@ def build_pbr_shading(
     disable_subsurface: bool = False,
     emission_strength: float = DEFAULT_EMISSION_STRENGTH,
     subsurface_method: str = "BURLEY",
+    enable_vertex_ao: bool = True,
 ) -> Any:
     """Create the Principled BSDF and wire canonical PBR sockets.
 
@@ -126,6 +127,31 @@ def build_pbr_shading(
     else:
         principled.inputs["Roughness"].default_value = 0.5
         principled.inputs["Metallic"].default_value = 0.0
+
+    if enable_vertex_ao:
+        attr_ao = node(
+            nodes,
+            "ShaderNodeAttribute",
+            "Vertex AO",
+            location=(500, 360),
+            properties={"attribute_name": "color"},
+        )
+        if frame_shading is not None:
+            attr_ao.parent = frame_shading
+
+        vertex_ao_mix = node(
+            nodes,
+            "ShaderNodeMix",
+            "Base Color × Vertex AO",
+            location=(720, 250),
+            properties={"data_type": "RGBA", "blend_type": "MULTIPLY"},
+        )
+        if frame_shading is not None:
+            vertex_ao_mix.parent = frame_shading
+        input_socket(vertex_ao_mix, "Factor[0]").default_value = 1.0
+        links.new(base_out, input_socket(vertex_ao_mix, "A[2]"))
+        links.new(attr_ao.outputs["Color"], input_socket(vertex_ao_mix, "B[2]"))
+        base_out = output_socket(vertex_ao_mix, "Result[2]")
 
     links.new(base_out, principled.inputs["Base Color"])
     links.new(emission_color, principled.inputs["Emission Color"])

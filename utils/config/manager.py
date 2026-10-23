@@ -328,6 +328,8 @@ class ConfigManager:
                     prefs.material_disable_subsurface = data.material_settings.disable_subsurface
                 if hasattr(prefs, "material_subsurface_method"):
                     prefs.material_subsurface_method = data.material_settings.subsurface_method
+                if hasattr(prefs, "material_enable_vertex_ao"):
+                    prefs.material_enable_vertex_ao = data.material_settings.enable_vertex_ao
 
                 # 3. Sync Views & Unadded items
                 # Late import menu helpers to avoid circular dependencies
@@ -453,6 +455,7 @@ class ConfigManager:
                     render_engine=getattr(prefs, "material_render_engine", "AUTO"),
                     disable_subsurface=getattr(prefs, "material_disable_subsurface", False),
                     subsurface_method=getattr(prefs, "material_subsurface_method", "BURLEY"),
+                    enable_vertex_ao=getattr(prefs, "material_enable_vertex_ao", True),
                 )
 
                 # Update cache

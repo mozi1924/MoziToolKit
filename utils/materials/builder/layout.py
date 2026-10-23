@@ -287,6 +287,8 @@ class NodeLayoutEngine:
         sep_orm = nodes.get("Separate ORM")
         ao_mix = nodes.get("Albedo × AO")
         emit_strength = nodes.get("Emission Strength × Mask")
+        attr_vertex_ao = nodes.get("Vertex AO")
+        vertex_ao_mix = nodes.get("Base Color × Vertex AO")
 
         if sep_orm:
             sep_orm.location = (180.0, 100.0)
@@ -294,19 +296,23 @@ class NodeLayoutEngine:
             ao_mix.location = (420.0, 160.0)
         if emit_strength:
             emit_strength.location = (420.0, -60.0)
+        if attr_vertex_ao:
+            attr_vertex_ao.location = (420.0, -200.0)
+        if vertex_ao_mix:
+            vertex_ao_mix.location = (640.0, 160.0)
 
         sep_aux = nodes.get("Separate Aux")
         ior_node = nodes.get("IOR from Aux")
         if sep_aux:
-            sep_aux.location = (180.0, -320.0)
+            sep_aux.location = (180.0, -360.0)
         if ior_node:
-            ior_node.location = (420.0, -320.0)
+            ior_node.location = (420.0, -360.0)
 
         principled = nodes.get("Principled BSDF")
         if principled is None:
             principled = next((n for n in nodes if getattr(n, "bl_idname", None) == "ShaderNodeBsdfPrincipled"), None)
         if principled:
-            principled.location = (780.0, 80.0)
+            principled.location = (880.0, 80.0) if vertex_ao_mix else (780.0, 80.0)
 
         # ---------------------------------------------------------------------
         # 5. Layout Output Stage
@@ -315,7 +321,7 @@ class NodeLayoutEngine:
         if output_node is None:
             output_node = next((n for n in nodes if getattr(n, "bl_idname", None) == "ShaderNodeOutputMaterial"), None)
         if output_node:
-            output_node.location = (1180.0, 80.0)
+            output_node.location = (1260.0, 80.0) if vertex_ao_mix else (1180.0, 80.0)
 
         # ---------------------------------------------------------------------
         # 6. Fit Frame Bounding Boxes

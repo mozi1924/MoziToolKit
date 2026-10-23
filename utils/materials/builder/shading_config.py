@@ -35,6 +35,7 @@ def resolve_material_shading_config(
     render_engine: Optional[str] = None,
     disable_subsurface: Optional[bool] = None,
     emission_strength: Optional[float] = None,
+    enable_vertex_ao: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Resolve the remaining standard-PBR material settings.
 
@@ -44,6 +45,7 @@ def resolve_material_shading_config(
         - ``disable_subsurface``: bool
         - ``emission_strength``: float
         - ``subsurface_scale``: float
+        - ``enable_vertex_ao``: bool
     """
     settings = None
     if get_config_manager is not None:
@@ -83,6 +85,12 @@ def resolve_material_shading_config(
     if subsurface_method not in {"BURLEY", "RANDOM_WALK"}:
         subsurface_method = "BURLEY"
 
+    final_enable_vertex_ao = (
+        bool(enable_vertex_ao)
+        if enable_vertex_ao is not None
+        else bool(getattr(settings, "enable_vertex_ao", True) if settings else True)
+    )
+
     return {
         "target_engine": target_engine,
         "is_eevee": target_engine == "EEVEE",
@@ -90,4 +98,5 @@ def resolve_material_shading_config(
         "emission_strength": final_emission,
         "subsurface_scale": DEFAULT_SUBSURFACE_SCALE,
         "subsurface_method": subsurface_method,
+        "enable_vertex_ao": final_enable_vertex_ao,
     }

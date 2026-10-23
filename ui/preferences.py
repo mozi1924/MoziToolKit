@@ -297,6 +297,13 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         update=on_material_setting_changed,
     )
 
+    material_enable_vertex_ao: BoolProperty(
+        name="Vertex Ambient Occlusion (AO)",
+        description="Multiply Base Color by corner vertex ambient occlusion (smooth lighting) baked into mesh colors",
+        default=True,
+        update=on_material_setting_changed,
+    )
+
     cache_dir: StringProperty(
         name="Cache Directory",
         description="Directory used to store precompiled texture atlases, standalone materials, and model caches. Leave empty to use Blender's default user cache folder",
@@ -533,6 +540,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         repl_row = col_repl.row(align=True)
         repl_row.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
         repl_row.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
+        col_repl.prop(self, "material_enable_vertex_ao", text=tr("Vertex Ambient Occlusion (AO)"))
 
         # Group 2: Render Engine Adaptation & Presets
         layout.separator()
