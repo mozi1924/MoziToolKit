@@ -132,6 +132,9 @@ def build_atlas_chunk_material(
         chunk_stem=chunk_stem,
     )
     has_overlay = images["has_overlay"]
+    has_normal = images["has_normal"]
+    has_orm = images["has_orm"]
+    has_aux = images["has_aux"]
     albedo_img = images["albedo_img"]
     overlay_img = images["overlay_img"]
     normal_img = images["normal_img"]
@@ -168,7 +171,7 @@ def build_atlas_chunk_material(
     # Authoritative lightweight custom properties.
     mat["mtk_material_mode"] = "ATLAS"
     mat["mtk_pbr_layout"] = PBR_LAYOUT_VERSION
-    mat["mtk_has_pbr"] = bool(normal_path or orm_path or aux_path)
+    mat["mtk_has_pbr"] = bool(has_normal or has_orm or has_aux)
     mat["mtk_atlas_category"] = category
     mat["mtk_atlas_chunk_id"] = chunk_id
     mat["mtk_atlas_chunk_index"] = category_chunk_index
@@ -696,9 +699,9 @@ def build_atlas_chunk_material(
         mat,
         is_animated=is_animated,
         has_overlay=has_overlay,
-        has_normal=bool(normal_path),
-        has_orm=bool(orm_path),
-        has_aux=bool(aux_path),
+        has_normal=has_normal,
+        has_orm=has_orm,
+        has_aux=has_aux,
         use_attribute_node=use_attribute_node,
     )
 

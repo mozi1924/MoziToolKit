@@ -109,10 +109,16 @@ def preload_atlas_images(
     )
 
     has_overlay = (overlay_img is not None) if HAS_BPY else bool(overlay_path)
+    has_normal = (normal_img is not None) if HAS_BPY else bool(normal_path)
+    has_orm = (orm_img is not None) if HAS_BPY else bool(orm_path)
+    has_aux = (aux_img is not None) if HAS_BPY else bool(aux_path)
 
     return {
         "c_stem": c_stem,
         "has_overlay": has_overlay,
+        "has_normal": has_normal,
+        "has_orm": has_orm,
+        "has_aux": has_aux,
         "albedo_img": albedo_img,
         "overlay_img": overlay_img,
         "normal_img": normal_img,
@@ -203,7 +209,7 @@ def clone_atlas_chunk_material(
         # Authoritative lightweight custom properties
         cloned["mtk_material_mode"] = "ATLAS"
         cloned["mtk_pbr_layout"] = PBR_LAYOUT_VERSION
-        cloned["mtk_has_pbr"] = bool(normal_path or orm_path or aux_path)
+        cloned["mtk_has_pbr"] = bool(normal_img is not None or orm_img is not None or aux_img is not None)
         cloned["mtk_atlas_category"] = category
         cloned["mtk_atlas_chunk_id"] = chunk_id
         cloned["mtk_atlas_chunk_index"] = category_chunk_index
@@ -359,14 +365,18 @@ def try_clone_material(
     Check if a matching archetype exists, and if so, clone and return it.
     Returns (cloned_mat, template_key).
     """
+    has_normal_flag = images.get("has_normal", (images.get("normal_img") is not None) if HAS_BPY else bool(normal_path))
+    has_orm_flag = images.get("has_orm", (images.get("orm_img") is not None) if HAS_BPY else bool(orm_path))
+    has_aux_flag = images.get("has_aux", (images.get("aux_img") is not None) if HAS_BPY else bool(aux_path))
+
     template_key = get_template_key(
         category=category,
         is_animated=is_animated,
         use_attribute_node=use_attribute_node,
         has_overlay=has_overlay,
-        has_normal=bool(normal_path),
-        has_orm=bool(orm_path),
-        has_aux=bool(aux_path),
+        has_normal=has_normal_flag,
+        has_orm=has_orm_flag,
+        has_aux=has_aux_flag,
         render_engine=render_engine,
         disable_subsurface=disable_subsurface,
         target_uv_map=target_uv_map,

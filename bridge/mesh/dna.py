@@ -235,7 +235,8 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
     if col_mv is None:
         return False
 
-    num_color_elems = len(col_mv) // (4 * 4)
+    total_bytes = getattr(col_mv, "nbytes", len(col_mv) * getattr(col_mv, "itemsize", 1))
+    num_color_elems = total_bytes // (4 * 4)
     if num_color_elems == len(getattr(mesh, "loops", [])):
         domain = "CORNER"
     elif num_color_elems == len(getattr(mesh, "vertices", [])):
@@ -263,7 +264,7 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
 
     try:
         blender_dna.copy_f32(
-            _byte_view(col_mv), col_ptr, num_color_elems * 4, max_bytes=len(col_mv)
+            _byte_view(col_mv), col_ptr, num_color_elems * 4, max_bytes=total_bytes
         )
         return True
     except Exception as e:

@@ -249,14 +249,12 @@ def inject_face_materials_standard(mesh: Any, mesh_data: Any) -> None:
     if num_polys == 0:
         return
 
-    # If the mesh data only uses a single material, all faces map to slot 0.
-    # Newly created polygons in Blender already default to 0; skip foreach_set.
-    used = getattr(mesh_data, "used_materials", lambda: None)()
-    if used is not None and len(used) <= 1:
-        return
-
     mats_mv = getattr(mesh_data, "face_materials_memoryview", lambda: None)()
     if mats_mv is None:
+        used = getattr(mesh_data, "used_materials", lambda: None)()
+        if used and len(used) == 1 and used[0] != 0:
+            import numpy as np
+            mesh.polygons.foreach_set("material_index", np.full(num_polys, int(used[0]), dtype=np.int32))
         return
 
     # Direct single-pass write to polygon material indices

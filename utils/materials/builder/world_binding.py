@@ -132,9 +132,6 @@ def ensure_world_materials(
                 if num_polys == 0:
                     return
                 try:
-                    if mesh.polygons[0].material_index == target_slot:
-                        # Polygons already align with the single active slot: instant exit
-                        return
                     # Single-chunk mesh faces all map to target_slot; direct fill without reading back mesh
                     import numpy as np
                     mesh.polygons.foreach_set("material_index", np.full(num_polys, target_slot, dtype=np.int32))
@@ -142,28 +139,20 @@ def ensure_world_materials(
                     logger.debug("Failed setting single chunk material index: %s", e)
                 return
 
-            # Fast Path B: Identity mapping where slot indices equal chunk IDs
-            if is_identity_mapping:
-                num_polys = len(getattr(mesh, "polygons", []))
-                if num_polys == 0:
-                    return
-                try:
-                    first_cid = mesh.attributes["mtk_atlas_chunk_id"].data[0].value if has_chunk_attr else mesh.polygons[0].material_index
-                    if mesh.polygons[0].material_index == first_cid:
-                        return
-                except Exception:
-                    pass
-
-            # Fast Path C: Remap polygon indices when multiple slots differ from chunk IDs
+            # Multi-chunk remapping: Fast identity copy or dictionary/LUT remapping
             if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
                 try:
                     import numpy as np
                     raw_cids = face_chunk_ids(mesh)
-                    if remap_indices_lut is not None:
+                    if is_identity_mapping:
+                        # Direct assignment when slot indices match chunk IDs identically
+                        mesh.polygons.foreach_set("material_index", raw_cids.astype(np.int32, copy=False))
+                    elif remap_indices_lut is not None:
                         remapped = remap_indices_lut(raw_cids, existing_chunk_to_slot, default_value=0)
+                        mesh.polygons.foreach_set("material_index", remapped)
                     else:
                         remapped = np.array([existing_chunk_to_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
-                    mesh.polygons.foreach_set("material_index", remapped)
+                        mesh.polygons.foreach_set("material_index", remapped)
                 except Exception as e:
                     logger.debug("Failed remapping polygon material indices in fast path: %s", e)
             return
@@ -312,9 +301,8 @@ def ensure_world_materials(
                     num_polys = len(mesh.polygons)
                     if len(sorted_chunks) == 1:
                         try:
-                            if mesh.polygons[0].material_index != 0:
-                                import numpy as np
-                                mesh.polygons.foreach_set("material_index", np.zeros(num_polys, dtype=np.int32))
+                            import numpy as np
+                            mesh.polygons.foreach_set("material_index", np.zeros(num_polys, dtype=np.int32))
                         except Exception as e:
                             logger.debug("Failed setting single material slot 0: %s", e)
                     else:
