@@ -166,6 +166,12 @@ def get_biome_colors(
                     meta["foliage_linear"] = sampled["foliage_linear"]
                 if "dry_foliage_linear" in sampled:
                     meta["dry_foliage_linear"] = sampled["dry_foliage_linear"]
+                if "grass_hex" in sampled:
+                    meta["grass_hex"] = sampled["grass_hex"]
+                if "foliage_hex" in sampled:
+                    meta["foliage_hex"] = sampled["foliage_hex"]
+                if "dry_foliage_hex" in sampled:
+                    meta["dry_foliage_hex"] = sampled["dry_foliage_hex"]
             except Exception:
                 pass
 
