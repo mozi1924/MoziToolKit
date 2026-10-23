@@ -79,6 +79,7 @@ def get_or_create_image_from_f32(
     f32_bytes_or_memview: Any,
     colorspace: str = "sRGB",
     force_reload: bool = False,
+    pack: bool = False,
 ) -> Optional[Any]:
     """
     Creates or updates an image datablock directly from normalized float32 memory buffer.
@@ -102,38 +103,39 @@ def get_or_create_image_from_f32(
         elif img.size[0] != width or img.size[1] != height:
             img.scale(width, height)
 
+        if hasattr(img, "colorspace_settings") and colorspace:
+            try:
+                img.colorspace_settings.name = colorspace
+            except Exception:
+                pass
+
         mv = memoryview(f32_bytes_or_memview)
         if mv.format != "f":
             mv = mv.cast("f")
         img.pixels.foreach_set(mv)
         img.update()
-        if hasattr(img, "pack"):
+        if pack and hasattr(img, "pack"):
             try:
                 img.pack()
-            except Exception:
-                pass
-        if hasattr(img, "colorspace_settings") and colorspace:
-            try:
-                img.colorspace_settings.name = colorspace
             except Exception:
                 pass
         return img
     except Exception:
         try:
             fresh_img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
+            if hasattr(fresh_img, "colorspace_settings") and colorspace:
+                try:
+                    fresh_img.colorspace_settings.name = colorspace
+                except Exception:
+                    pass
             mv = memoryview(f32_bytes_or_memview)
             if mv.format != "f":
                 mv = mv.cast("f")
             fresh_img.pixels.foreach_set(mv)
             fresh_img.update()
-            if hasattr(fresh_img, "pack"):
+            if pack and hasattr(fresh_img, "pack"):
                 try:
                     fresh_img.pack()
-                except Exception:
-                    pass
-            if hasattr(fresh_img, "colorspace_settings") and colorspace:
-                try:
-                    fresh_img.colorspace_settings.name = colorspace
                 except Exception:
                     pass
             return fresh_img
@@ -149,6 +151,7 @@ def get_or_create_image_from_rgba(
     colorspace: str = "sRGB",
     force_reload: bool = False,
     flip_y: bool = True,
+    pack: bool = False,
 ) -> Optional[Any]:
     """
     Creates or updates an image datablock directly in memory using NumPy.
@@ -183,6 +186,12 @@ def get_or_create_image_from_rgba(
         elif img.size[0] != width or img.size[1] != height:
             img.scale(width, height)
 
+        if hasattr(img, "colorspace_settings") and colorspace:
+            try:
+                img.colorspace_settings.name = colorspace
+            except Exception:
+                pass
+
         raw_u8 = np.frombuffer(rgba_bytes_or_memview, dtype=np.uint8)
         if flip_y:
             u8_2d = raw_u8.reshape((height, width, 4))
@@ -192,20 +201,20 @@ def get_or_create_image_from_rgba(
             flat_f32 = (raw_u8.astype(np.float32) * (1.0 / 255.0))
         img.pixels.foreach_set(flat_f32)
         img.update()
-        if hasattr(img, "pack"):
+        if pack and hasattr(img, "pack"):
             try:
                 img.pack()
-            except Exception:
-                pass
-        if hasattr(img, "colorspace_settings") and colorspace:
-            try:
-                img.colorspace_settings.name = colorspace
             except Exception:
                 pass
         return img
     except Exception:
         try:
             fresh_img = bpy.data.images.new(image_name, width=width, height=height, alpha=True)
+            if hasattr(fresh_img, "colorspace_settings") and colorspace:
+                try:
+                    fresh_img.colorspace_settings.name = colorspace
+                except Exception:
+                    pass
             raw_u8 = np.frombuffer(rgba_bytes_or_memview, dtype=np.uint8)
             if flip_y:
                 u8_2d = raw_u8.reshape((height, width, 4))
@@ -215,14 +224,9 @@ def get_or_create_image_from_rgba(
                 flat_f32 = (raw_u8.astype(np.float32) * (1.0 / 255.0))
             fresh_img.pixels.foreach_set(flat_f32)
             fresh_img.update()
-            if hasattr(fresh_img, "pack"):
+            if pack and hasattr(fresh_img, "pack"):
                 try:
                     fresh_img.pack()
-                except Exception:
-                    pass
-            if hasattr(fresh_img, "colorspace_settings") and colorspace:
-                try:
-                    fresh_img.colorspace_settings.name = colorspace
                 except Exception:
                     pass
             return fresh_img
@@ -236,6 +240,7 @@ def get_or_create_image(
     force_reload: bool = False,
     chunk_id: Optional[str] = None,
     flip_y: bool = True,
+    pack: bool = False,
 ) -> Optional[Any]:
     """
     Load or retrieve an image datablock from memory (.mtkcache) or disk.
@@ -254,11 +259,11 @@ def get_or_create_image(
             nbytes = getattr(buf, "nbytes", len(buf))
         is_f32 = (nbytes == w * h * 16) or (hasattr(buf, "format") and buf.format == "f" and len(buf) == w * h * 4)
         if is_f32:
-            img = get_or_create_image_from_f32(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload)
+            img = get_or_create_image_from_f32(img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload, pack=pack)
             if img is not None:
                 return img
         return get_or_create_image_from_rgba(
-            img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload, flip_y=flip_y
+            img_name, w, h, buf, colorspace=colorspace, force_reload=force_reload, flip_y=flip_y, pack=pack
         )
 
     # 2. Try resolving chunk_id from package if explicit or identifiable
@@ -291,7 +296,7 @@ def get_or_create_image(
             if f32_tuple is not None:
                 w, h, memview = f32_tuple
                 img = get_or_create_image_from_f32(
-                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload
+                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload, pack=pack
                 )
                 if img is not None:
                     return img
@@ -302,7 +307,7 @@ def get_or_create_image(
             if rgba_tuple is not None:
                 w, h, memview = rgba_tuple
                 img = get_or_create_image_from_rgba(
-                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload, flip_y=False
+                    img_name, w, h, memview, colorspace=colorspace, force_reload=force_reload, flip_y=False, pack=pack
                 )
                 if img is not None:
                     return img

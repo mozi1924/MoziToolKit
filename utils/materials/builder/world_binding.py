@@ -124,20 +124,37 @@ def ensure_world_materials(
             has_chunk_attr = hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes
             is_identity_mapping = all(existing_chunk_to_slot[cid] == cid for cid in target_chunk_ids)
 
-            # If identity mapping and inject_face_materials_standard has already initialized
-            # matching polygon material indices, return immediately with zero operations,
-            # zero disk reads, and zero cache hashing.
+            # Fast Path A: Single used chunk (common case for incremental/localized sync)
+            if len(target_chunk_ids) == 1:
+                only_cid = next(iter(target_chunk_ids))
+                target_slot = existing_chunk_to_slot[only_cid]
+                num_polys = len(getattr(mesh, "polygons", []))
+                if num_polys == 0:
+                    return
+                try:
+                    if mesh.polygons[0].material_index == target_slot:
+                        # Polygons already align with the single active slot: instant exit
+                        return
+                    # Single-chunk mesh faces all map to target_slot; direct fill without reading back mesh
+                    import numpy as np
+                    mesh.polygons.foreach_set("material_index", np.full(num_polys, target_slot, dtype=np.int32))
+                except Exception as e:
+                    logger.debug("Failed setting single chunk material index: %s", e)
+                return
+
+            # Fast Path B: Identity mapping where slot indices equal chunk IDs
             if is_identity_mapping:
-                if not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
+                num_polys = len(getattr(mesh, "polygons", []))
+                if num_polys == 0:
                     return
                 try:
                     first_cid = mesh.attributes["mtk_atlas_chunk_id"].data[0].value if has_chunk_attr else mesh.polygons[0].material_index
                     if mesh.polygons[0].material_index == first_cid:
                         return
                 except Exception:
-                    return
+                    pass
 
-            # Otherwise, if slot indices differ or indices need remapping, remap polygon indices:
+            # Fast Path C: Remap polygon indices when multiple slots differ from chunk IDs
             if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
                 try:
                     import numpy as np
@@ -293,23 +310,31 @@ def ensure_world_materials(
                 # Retrieve authoritative face chunk IDs from mtk_atlas_chunk_id attribute if available
                 if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
                     num_polys = len(mesh.polygons)
-                    try:
-                        import numpy as np
-                        raw_cids = face_chunk_ids(mesh)
+                    if len(sorted_chunks) == 1:
+                        try:
+                            if mesh.polygons[0].material_index != 0:
+                                import numpy as np
+                                mesh.polygons.foreach_set("material_index", np.zeros(num_polys, dtype=np.int32))
+                        except Exception as e:
+                            logger.debug("Failed setting single material slot 0: %s", e)
+                    else:
+                        try:
+                            import numpy as np
+                            raw_cids = face_chunk_ids(mesh)
 
-                        if remap_indices_lut is not None:
-                            remapped = remap_indices_lut(raw_cids, chunk_to_compact_slot, default_value=0)
-                        else:
-                            remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
-                        mesh.polygons.foreach_set("material_index", remapped)
-                    except Exception as e:
-                        logger.debug("Failed remapping polygon material indices: %s", e)
-                        for idx, p in enumerate(mesh.polygons):
-                            if hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
-                                raw_cid = mesh.attributes["mtk_atlas_chunk_id"].data[idx].value
+                            if remap_indices_lut is not None:
+                                remapped = remap_indices_lut(raw_cids, chunk_to_compact_slot, default_value=0)
                             else:
-                                raw_cid = getattr(p, "material_index", 0)
-                            p.material_index = chunk_to_compact_slot.get(int(raw_cid), 0)
+                                remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
+                            mesh.polygons.foreach_set("material_index", remapped)
+                        except Exception as e:
+                            logger.debug("Failed remapping polygon material indices: %s", e)
+                            for idx, p in enumerate(mesh.polygons):
+                                if hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
+                                    raw_cid = mesh.attributes["mtk_atlas_chunk_id"].data[idx].value
+                                else:
+                                    raw_cid = getattr(p, "material_index", 0)
+                                p.material_index = chunk_to_compact_slot.get(int(raw_cid), 0)
 
                 if len(mesh.materials) > 0:
                     return
