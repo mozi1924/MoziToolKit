@@ -3,7 +3,7 @@
 This module intentionally contains **no LabPBR decoding** and **no game-semantic
 branches**. It only maps canonical channels to standard Principled inputs:
 
-- ``base_color`` × ORM.R (AO) × Vertex AO (Mesh "color" attribute) -> Base Color
+- ``base_color`` × ORM.R (AO) × Vertex AO (Mesh "mtk_ao" attribute) -> Base Color
 - ORM.G -> Roughness, ORM.B -> Metallic, ORM.A -> Emission Strength
 - aux.R -> IOR via ``encoded * 7 + 1``, aux.B -> Subsurface Weight
 - normal RGB -> Normal Map
@@ -134,7 +134,7 @@ def build_pbr_shading(
             "ShaderNodeAttribute",
             "Vertex AO",
             location=(500, 360),
-            properties={"attribute_name": "color"},
+            properties={"attribute_name": "mtk_ao"},
         )
         if frame_shading is not None:
             attr_ao.parent = frame_shading

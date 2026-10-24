@@ -211,6 +211,17 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
     try:
         col_mv = mesh_data.colors_memoryview()
         if col_mv is None:
+            color_attr = mesh.color_attributes.get("color")
+            if color_attr is None and hasattr(mesh.color_attributes, "new") and len(getattr(mesh, "loops", [])) > 0:
+                try:
+                    color_attr = mesh.color_attributes.new(name="color", type="FLOAT_COLOR", domain="CORNER")
+                except Exception:
+                    pass
+            if color_attr is not None and hasattr(mesh.color_attributes, "active_color"):
+                try:
+                    mesh.color_attributes.active_color = color_attr
+                except Exception:
+                    pass
             return
 
         num_color_elems = len(col_mv) // (4 * 4)
