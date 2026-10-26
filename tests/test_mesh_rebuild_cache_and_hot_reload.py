@@ -167,7 +167,16 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         if not hasattr(mtk, "VoxelWorld"):
             self.skipTest("VoxelWorld not available in bindings")
 
-        world = mtk.VoxelWorld.create_debug_world()
+        try:
+            from _assets import require_assets
+            require_assets()
+        except Exception:
+            pass
+
+        try:
+            world = mtk.VoxelWorld.create_debug_world()
+        except ValueError as e:
+            self.skipTest(f"Debug world unavailable without client assets: {e}")
         mesh = world.rebuild_all()
         self.assertGreater(mesh.vertex_count, 0)
         self.assertGreater(world.get_world_mesh().vertex_count, 0)

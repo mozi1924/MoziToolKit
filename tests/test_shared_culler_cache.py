@@ -46,8 +46,18 @@ def test_shared_culler_warms_across_mesh_calls():
 
         pytest.skip("native debug world unavailable")
 
+    try:
+        from _assets import require_assets
+        require_assets()
+    except Exception:
+        pass
+
     reset_shared_face_culler()
-    storage = mtk.VoxelStorage.create_debug_world()
+    try:
+        storage = mtk.VoxelStorage.create_debug_world()
+    except ValueError as e:
+        import pytest
+        pytest.skip(f"Debug world unavailable without client assets: {e}")
 
     first, _ = mesh_voxel_storage(
         storage=storage, resolve_prefs=False, resolve_ctm=False, atlas=False

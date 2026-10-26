@@ -157,6 +157,7 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         mock_context = MagicMock()
 
         with patch("MoziToolKit.operators.sync.op_sync_rebuild.get_sync_bridge_session", return_value=mock_session), \
+             patch("MoziToolKit.operators.sync.op_sync_rebuild.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.sync.op_sync_rebuild.check_asset_cache_status") as mock_check_status, \
              patch("MoziToolKit.operators.sync.op_sync_rebuild.get_or_create_world_mesh_object"), \
              patch("MoziToolKit.operators.sync.op_sync_rebuild.update_world_mesh", return_value=(50, 25)) as mock_update_mesh:
@@ -292,6 +293,7 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         orig_objects = getattr(bpy.data, "objects", None)
         try:
             with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.can_execute_asset_pipeline", return_value=(True, "")), \
                  patch("MoziToolKit.operators.sync.op_sync_connect.is_sync_available", return_value=True), \
                  patch("MoziToolKit.operators.sync.op_sync_connect.check_asset_cache_status", return_value="READY"), \
                  patch("MoziToolKit.operators.sync.op_sync_connect.load_model_database_from_cache", return_value=None), \

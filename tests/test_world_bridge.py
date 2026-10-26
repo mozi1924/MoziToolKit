@@ -36,6 +36,8 @@ class TestWorldBridgePipeline:
         assert bounds[3] > 0  # size_x > 0
 
     def test_mesh_voxel_storage_offline(self):
+        from _assets import require_assets
+        require_assets()
         from MoziToolKit.bridge.debug import load_debug_world_storage
         from MoziToolKit.bridge.world import mesh_voxel_storage
 
@@ -55,6 +57,8 @@ class TestWorldBridgePipeline:
         assert elapsed_ms > 0
 
     def test_dev_api_diagnostics_and_benchmark(self):
+        from _assets import require_assets
+        require_assets()
         from MoziToolKit.dev.api import get_diagnostics, run_mesher_benchmark
 
         diag = get_diagnostics()
@@ -89,6 +93,8 @@ class TestWorldBridgePipeline:
 
     def test_voxel_world_used_materials_and_chunks(self):
         """Verifies VoxelWorld rebuild and used materials tracking."""
+        from _assets import require_assets
+        require_assets()
         from MoziToolKit.bridge.debug import load_debug_world_storage
         storage = load_debug_world_storage()
 

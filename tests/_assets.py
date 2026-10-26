@@ -38,7 +38,9 @@ def assets_root() -> Optional[Path]:
 
     candidates = [
         _WORKSPACE_PARENT / "mc",
+        _WORKSPACE_PARENT / "Minecraft_Unpacked",
         _WORKSPACE_PARENT / "libmozitoolkit" / ".." / "mc",
+        _WORKSPACE_PARENT / "libmozitoolkit" / ".." / "Minecraft_Unpacked",
     ]
     for candidate in candidates:
         if _is_asset_root(candidate):
@@ -159,9 +161,9 @@ def require_assets() -> Path:
             "Minecraft assets unavailable: set MTK_TEST_ASSETS / MC_DIR or place an "
             "unpacked jar at ../mc"
         )
-    os.environ.setdefault("MC_DIR", str(root))
-    os.environ.setdefault("MC_ASSETS_DIR", str(root))
-    os.environ.setdefault("MTK_TEST_ASSETS", str(root))
+    os.environ["MC_DIR"] = str(root)
+    os.environ["MC_ASSETS_DIR"] = str(root)
+    os.environ["MTK_TEST_ASSETS"] = str(root)
     return root
 
 
@@ -174,7 +176,7 @@ def require_jar() -> Path:
         pytest.skip(
             "Minecraft jar unavailable: set MTK_TEST_JAR or place ../26.2-Fabric.jar"
         )
-    os.environ.setdefault("MTK_TEST_JAR", str(jar))
+    os.environ["MTK_TEST_JAR"] = str(jar)
     return jar
 
 
@@ -186,5 +188,5 @@ def require_ctm_resource_pack() -> Path:
         pytest.skip(
             "CTM resource pack unavailable: set MTK_TEST_CTM_PACK environment variable or place pack zip in parent directory."
         )
-    os.environ.setdefault("MTK_TEST_CTM_PACK", str(pack))
+    os.environ["MTK_TEST_CTM_PACK"] = str(pack)
     return pack
