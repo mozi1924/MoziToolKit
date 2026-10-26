@@ -77,6 +77,60 @@ class TestVoxelPointCloudBridge:
         assert s2.get_biome(1, 2, 3) == "minecraft:desert"
 
     @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
+    def test_blender_point_cloud_entity_palette_roundtrip(self):
+        """Verifies Block Entity Palette & indices injection and extraction in Blender."""
+        import numpy as np
+        from MoziToolKit.bridge.point_cloud import (
+            inject_voxel_point_cloud,
+            extract_voxel_point_cloud,
+            ATTR_BLOCK_ENTITY_IDX,
+            PROP_BLOCK_ENTITY_PALETTE,
+        )
+
+        positions = np.array([0.5, 0.5, 0.5, 1.5, 0.5, 0.5, 2.5, 0.5, 0.5], dtype=np.float32)
+        bx = np.array([0, 1, 2], dtype=np.int32)
+        by = np.array([0, 0, 0], dtype=np.int32)
+        bz = np.array([0, 0, 0], dtype=np.int32)
+        st_idx = np.array([0, 1, 1], dtype=np.int32)
+        st_pal = ["minecraft:stone", "minecraft:banner"]
+        ent_idx = np.array([-1, 0, 0], dtype=np.int32)
+        ent_pal = ['{"id":"minecraft:banner","base_color":"blue","patterns":[]}']
+
+        cloud = libmtk_py.VoxelPointCloud.from_indexed_arrays(
+            positions,
+            bx,
+            by,
+            bz,
+            st_idx,
+            st_pal,
+            entity_indices=ent_idx,
+            entity_palette=ent_pal,
+        )
+        assert cloud.has_entities()
+        assert cloud.get_entity_palette() == ent_pal
+
+        b_mesh = bpy.data.meshes.new("Test_Entity_Mesh")
+        b_obj = bpy.data.objects.new("Test_Entity_Obj", b_mesh)
+        try:
+            assert inject_voxel_point_cloud(b_obj, cloud, update_mask=False)
+            assert ATTR_BLOCK_ENTITY_IDX in b_mesh.attributes
+            assert list(b_mesh.get(PROP_BLOCK_ENTITY_PALETTE)) == ent_pal
+            assert [d.value for d in b_mesh.attributes[ATTR_BLOCK_ENTITY_IDX].data] == [-1, 0, 0]
+
+            # Extract back from Blender
+            extracted_cloud = extract_voxel_point_cloud(b_obj)
+            assert extracted_cloud is not None
+            assert extracted_cloud.has_entities()
+            assert extracted_cloud.get_entity_palette() == ent_pal
+            np.testing.assert_array_equal(
+                np.frombuffer(extracted_cloud.entity_indices_memoryview(), dtype=np.int32),
+                [-1, 0, 0],
+            )
+        finally:
+            bpy.data.objects.remove(b_obj, do_unlink=True)
+            bpy.data.meshes.remove(b_mesh, do_unlink=True)
+
+    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_blender_point_cloud_injection_and_mask_modifier(self):
         """Verifies point cloud injection into Blender Mesh, attributes, and Mask modifier."""
         from MoziToolKit.bridge.point_cloud import (

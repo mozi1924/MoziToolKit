@@ -99,7 +99,10 @@ def get_or_create_attribute(
     elif dom_upper == "CORNER":
         expected_count = len(getattr(mesh, "loops", []))
     elif dom_upper == "POINT":
-        expected_count = len(getattr(mesh, "vertices", []))
+        if hasattr(mesh, "vertices"):
+            expected_count = len(mesh.vertices)
+        elif hasattr(mesh, "points"):
+            expected_count = len(mesh.points)
     elif dom_upper == "EDGE":
         expected_count = len(getattr(mesh, "edges", []))
 

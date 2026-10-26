@@ -149,6 +149,7 @@ class DnaResolverV42(BaseDnaResolver):
             "block_z_ptr": None,
             "state_idx_ptr": None,
             "biome_idx_ptr": None,
+            "entity_idx_ptr": None,
             "light_ptr": None,
         }
         if cloud_data is None or not hasattr(cloud_data, "attributes"):
@@ -156,19 +157,22 @@ class DnaResolverV42(BaseDnaResolver):
 
         attrs = cloud_data.attributes
         mapping = {
-            "pos_ptr": "position",
-            "block_x_ptr": "block_x",
-            "block_y_ptr": "block_y",
-            "block_z_ptr": "block_z",
-            "state_idx_ptr": "state_index",
-            "biome_idx_ptr": "biome_index",
-            "light_ptr": "light_level",
+            "pos_ptr": ("position",),
+            "block_x_ptr": ("mtk_block_x", "block_x"),
+            "block_y_ptr": ("mtk_block_y", "block_y"),
+            "block_z_ptr": ("mtk_block_z", "block_z"),
+            "state_idx_ptr": ("mtk_state_idx", "state_index"),
+            "biome_idx_ptr": ("mtk_biome_idx", "biome_index"),
+            "entity_idx_ptr": ("mtk_entity_idx", "entity_index"),
+            "light_ptr": ("mtk_light", "light_level"),
         }
 
-        for out_key, attr_name in mapping.items():
-            attr = attrs.get(attr_name)
-            if attr is not None:
-                if expected_count is None or len(attr.data) == expected_count:
-                    res[out_key] = self.resolve_attribute_ptr(attr)
+        for out_key, candidates in mapping.items():
+            for attr_name in candidates:
+                attr = attrs.get(attr_name)
+                if attr is not None:
+                    if expected_count is None or len(attr.data) == expected_count:
+                        res[out_key] = self.resolve_attribute_ptr(attr)
+                        break
 
         return res

@@ -166,6 +166,7 @@ class TestDnaBridge(unittest.TestCase):
             "block_z": make_mock_attr(),
             "state_index": make_mock_attr(),
             "biome_index": make_mock_attr(),
+            "entity_index": make_mock_attr(),
             "light_level": make_mock_attr(),
         }
         cloud.attributes.get = lambda k: cloud_attrs.get(k)
@@ -175,6 +176,29 @@ class TestDnaBridge(unittest.TestCase):
         self.assertEqual(ptrs["block_x_ptr"], valid_ptr)
         self.assertEqual(ptrs["state_idx_ptr"], valid_ptr)
         self.assertEqual(ptrs["biome_idx_ptr"], valid_ptr)
+        self.assertEqual(ptrs["entity_idx_ptr"], valid_ptr)
+        self.assertEqual(ptrs["light_ptr"], valid_ptr)
+
+        # Also test canonical mtk_* names
+        canonical_cloud = MagicMock()
+        canonical_attrs = {
+            "position": make_mock_attr(),
+            "mtk_block_x": make_mock_attr(),
+            "mtk_block_y": make_mock_attr(),
+            "mtk_block_z": make_mock_attr(),
+            "mtk_state_idx": make_mock_attr(),
+            "mtk_biome_idx": make_mock_attr(),
+            "mtk_entity_idx": make_mock_attr(),
+            "mtk_light": make_mock_attr(),
+        }
+        canonical_cloud.attributes.get = lambda k: canonical_attrs.get(k)
+        c_ptrs = resolve_point_cloud_ptrs(canonical_cloud, expected_count=5)
+        self.assertEqual(c_ptrs["pos_ptr"], valid_ptr)
+        self.assertEqual(c_ptrs["block_x_ptr"], valid_ptr)
+        self.assertEqual(c_ptrs["state_idx_ptr"], valid_ptr)
+        self.assertEqual(c_ptrs["biome_idx_ptr"], valid_ptr)
+        self.assertEqual(c_ptrs["entity_idx_ptr"], valid_ptr)
+        self.assertEqual(c_ptrs["light_ptr"], valid_ptr)
 
     def test_native_dna_module(self):
         if not has_libmtk_dna():

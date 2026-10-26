@@ -37,9 +37,13 @@
 │      - 一键显现/进入雕刻模式 (mozi.toggle_voxel_cloud)        │
 │  - 挂载点级属性 (Point Attributes):                          │
 │      - mtk_block_x, mtk_block_y, mtk_block_z (INT)          │
-│      - mtk_source_texture_idx (INT) + mtk_source_textures   │
+│      - mtk_state_idx (INT) + mtk_palette                    │
 │      - mtk_biome_idx (INT) + mtk_biome_palette              │
-│  - 自定义属性:                                               │
+│      - mtk_entity_idx (INT, 稀疏按需) + mtk_entity_palette   │
+│  - 自定义属性 (Custom Properties):                           │
+│      - mtk_palette = [Canonical BlockState Strings]         │
+│      - mtk_biome_palette = [Canonical Biome Strings]         │
+│      - mtk_entity_palette = [Visual NBT JSON Strings]        │
 │      - mtk_is_voxel_cloud = True                            │
 │      - mtk_world_mesh = parent.name                         │
 │      - mtk_bounds = [min_x, min_y, min_z, max_x, ...]       │

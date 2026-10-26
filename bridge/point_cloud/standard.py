@@ -18,6 +18,7 @@ from .constants import (
     ATTR_BIOME_IDX,
     ATTR_BLOCK_STATE_IDX,
     PROP_BIOME_PALETTE,
+    PROP_BLOCK_ENTITY_PALETTE,
     PROP_BLOCK_PALETTE,
 )
 
@@ -32,6 +33,7 @@ def inject_point_cloud_standard(
     attr_z: Optional[Any] = None,
     attr_state_idx: Optional[Any] = None,
     attr_biome_idx: Optional[Any] = None,
+    attr_entity_idx: Optional[Any] = None,
 ) -> bool:
     """Injects point cloud attributes using standard Blender Python foreach_set operations."""
     pos_attr = target_data.attributes.get("position") if hasattr(target_data, "attributes") else None
@@ -75,5 +77,31 @@ def inject_point_cloud_standard(
         target_data[PROP_BIOME_PALETTE] = b_palette
         if obj is not None:
             obj[PROP_BIOME_PALETTE] = b_palette
+
+    # 5. Block entities palette & indices
+    has_entities = False
+    if hasattr(cloud_data, "has_entities"):
+        has_entities = bool(cloud_data.has_entities())
+    elif hasattr(cloud_data, "get_entity_palette"):
+        has_entities = bool(cloud_data.get_entity_palette())
+
+    if has_entities and attr_entity_idx is not None and hasattr(cloud_data, "entity_indices_memoryview"):
+        ent_palette = cloud_data.get_entity_palette()
+        ent_indices = np.frombuffer(cloud_data.entity_indices_memoryview(), dtype=np.int32)
+        attr_entity_idx.data.foreach_set("value", np.ascontiguousarray(ent_indices))
+        target_data[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
+        if obj is not None:
+            obj[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
+    elif not has_entities:
+        if PROP_BLOCK_ENTITY_PALETTE in target_data:
+            try:
+                del target_data[PROP_BLOCK_ENTITY_PALETTE]
+            except Exception:
+                pass
+        if obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
+            try:
+                del obj[PROP_BLOCK_ENTITY_PALETTE]
+            except Exception:
+                pass
 
     return True

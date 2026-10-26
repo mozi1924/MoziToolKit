@@ -12,7 +12,12 @@ from typing import Any, Optional
 
 from ..dna import is_dna_available, resolve_point_cloud_ptrs
 from ..engine import get_libmtk_dna
-from .constants import PROP_BIOME_PALETTE, PROP_BLOCK_PALETTE
+from .constants import (
+    ATTR_BLOCK_ENTITY_IDX,
+    PROP_BIOME_PALETTE,
+    PROP_BLOCK_ENTITY_PALETTE,
+    PROP_BLOCK_PALETTE,
+)
 
 logger = logging.getLogger("MoziToolKit.Bridge.PointCloud.DNA")
 
@@ -104,6 +109,34 @@ def inject_point_cloud_dna(
         if obj is not None:
             obj[PROP_BLOCK_PALETTE] = state_palette
             obj[PROP_BIOME_PALETTE] = biome_palette
+
+        # Block entities palette & indices
+        has_entities = False
+        if hasattr(cloud_data, "has_entities"):
+            has_entities = bool(cloud_data.has_entities())
+        elif hasattr(cloud_data, "get_entity_palette"):
+            has_entities = bool(cloud_data.get_entity_palette())
+
+        if has_entities and hasattr(cloud_data, "entity_indices_memoryview"):
+            ent_palette = cloud_data.get_entity_palette()
+            target_data[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
+            if obj is not None:
+                obj[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
+            ent_ptr = ptrs.get("entity_idx_ptr")
+            if ent_ptr:
+                blender_dna.copy_i32(
+                    _byte_view(cloud_data.entity_indices_memoryview()),
+                    ent_ptr,
+                    pt_count,
+                    max_bytes=pt_count * 4,
+                )
+            else:
+                attr_ent = target_data.attributes.get(ATTR_BLOCK_ENTITY_IDX)
+                if attr_ent is not None:
+                    import numpy as np
+                    ent_indices = np.frombuffer(cloud_data.entity_indices_memoryview(), dtype=np.int32)
+                    attr_ent.data.foreach_set("value", np.ascontiguousarray(ent_indices))
+
         return True
     except Exception as e:
         logger.debug("DNA direct copy point cloud failed: %s", e)

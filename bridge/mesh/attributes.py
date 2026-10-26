@@ -407,6 +407,21 @@ def inject_custom_attributes(
                 continue
 
             domain_str, dtype_name, elem_count = info
+
+            # Mesh-level global attributes (such as palettes or bounding boxes) are
+            # stored as ID custom properties on the Mesh datablock, not custom data layers.
+            if domain_str.lower() == "mesh":
+                if dtype_name.lower() == "string":
+                    str_vals = mesh_data.get_string_attribute(attr_name)
+                    if str_vals is not None:
+                        mesh[attr_name] = list(str_vals)
+                else:
+                    mv = mesh_data.attribute_memoryview(attr_name)
+                    if mv is not None:
+                        arr_dtype = np.int32 if "int" in dtype_name.lower() else np.float32
+                        mesh[attr_name] = list(np.frombuffer(mv, dtype=arr_dtype))
+                continue
+
             b_domain = MTK_TO_BLENDER_DOMAIN.get(domain_str.lower(), "POINT")
 
             # Source-texture provenance is always palette-based. Per-face strings

@@ -7,7 +7,7 @@ Regenerate after changing the native attribute contract:
 
 from __future__ import annotations
 
-SCHEMA_HASH = "b98ea2f88fac4e3c"
+SCHEMA_HASH = "9e7665684d945b76"
 
 # (name, domain, data_type, role)
 ATTRIBUTE_SPECS: tuple[tuple[str, str, str, str], ...] = (
@@ -24,6 +24,14 @@ ATTRIBUTE_SPECS: tuple[tuple[str, str, str, str], ...] = (
     ("mtk_block_x", "face", "int32", "metadata"),
     ("mtk_block_y", "face", "int32", "metadata"),
     ("mtk_block_z", "face", "int32", "metadata"),
+    ("mtk_state_idx", "point", "int32", "metadata"),
+    ("mtk_palette", "mesh", "string", "metadata"),
+    ("mtk_biome_idx", "point", "int32", "metadata"),
+    ("mtk_biome_palette", "mesh", "string", "metadata"),
+    ("mtk_entity_idx", "point", "int32", "metadata"),
+    ("mtk_entity_palette", "mesh", "string", "metadata"),
+    ("mtk_light", "point", "uint8", "metadata"),
+    ("mtk_bounds", "mesh", "int32", "metadata"),
 )
 
 RETIRED_ATTRIBUTE_NAMES: frozenset[str] = frozenset({
@@ -77,3 +85,11 @@ ATTR_BIOME_TINT_DATA = "mtk_biome_tint_data"
 ATTR_BLOCK_X = "mtk_block_x"
 ATTR_BLOCK_Y = "mtk_block_y"
 ATTR_BLOCK_Z = "mtk_block_z"
+ATTR_STATE_IDX = "mtk_state_idx"
+ATTR_PALETTE = "mtk_palette"
+ATTR_BIOME_IDX = "mtk_biome_idx"
+ATTR_BIOME_PALETTE = "mtk_biome_palette"
+ATTR_ENTITY_IDX = "mtk_entity_idx"
+ATTR_ENTITY_PALETTE = "mtk_entity_palette"
+ATTR_LIGHT = "mtk_light"
+ATTR_BOUNDS = "mtk_bounds"

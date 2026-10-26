@@ -12,11 +12,13 @@ import numpy as np
 from ..engine import require_libmtk
 from .constants import (
     ATTR_BIOME_IDX,
+    ATTR_BLOCK_ENTITY_IDX,
     ATTR_BLOCK_STATE_IDX,
     ATTR_BLOCK_X,
     ATTR_BLOCK_Y,
     ATTR_BLOCK_Z,
     PROP_BIOME_PALETTE,
+    PROP_BLOCK_ENTITY_PALETTE,
     PROP_BLOCK_PALETTE,
 )
 
@@ -107,6 +109,25 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
         except Exception:
             pass
 
+    # Extract block entity palette & indices if present
+    attr_entity_idx = mesh.attributes.get(ATTR_BLOCK_ENTITY_IDX)
+    ent_palette = None
+    if obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
+        try:
+            ent_palette = list(obj[PROP_BLOCK_ENTITY_PALETTE])
+        except Exception:
+            pass
+    if ent_palette is None and PROP_BLOCK_ENTITY_PALETTE in mesh:
+        try:
+            ent_palette = list(mesh[PROP_BLOCK_ENTITY_PALETTE])
+        except Exception:
+            pass
+
+    ent_idx_arr = None
+    if attr_entity_idx is not None and ent_palette and len(attr_entity_idx.data) == v_count:
+        ent_idx_arr = np.empty(v_count, dtype=np.int32)
+        attr_entity_idx.data.foreach_get("value", ent_idx_arr)
+
     # Palette-indexed ingestion: never materialize per-point Python strings.
     idx_arr = np.empty(v_count, dtype=np.int32)
     attr_state_idx.data.foreach_get("value", idx_arr)
@@ -127,4 +148,6 @@ def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
         b_palette,
         None,
         bounds,
+        ent_idx_arr,
+        ent_palette,
     )

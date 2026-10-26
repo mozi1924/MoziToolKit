@@ -21,6 +21,7 @@ from ..dna import is_dna_enabled
 from .constants import (
     ATTR_BIOME,
     ATTR_BIOME_IDX,
+    ATTR_BLOCK_ENTITY_IDX,
     ATTR_BLOCK_STATE,
     ATTR_BLOCK_STATE_IDX,
     ATTR_BLOCK_X,
@@ -29,6 +30,7 @@ from .constants import (
     ATTR_LIGHT,
     MASK_MODIFIER_NAME,
     PROP_BIOME_PALETTE,
+    PROP_BLOCK_ENTITY_PALETTE,
     PROP_BLOCK_PALETTE,
     VOXEL_VERTEX_GROUP,
     ensure_attr,
@@ -91,6 +93,21 @@ def inject_voxel_point_cloud(
     attr_state_idx = ensure_attr(target_data, ATTR_BLOCK_STATE_IDX, "INT", "POINT")
     attr_biome_idx = ensure_attr(target_data, ATTR_BIOME_IDX, "INT", "POINT")
 
+    has_entities = False
+    if hasattr(cloud_data, "has_entities"):
+        has_entities = bool(cloud_data.has_entities())
+    elif hasattr(cloud_data, "get_entity_palette"):
+        has_entities = bool(cloud_data.get_entity_palette())
+
+    attr_entity_idx = None
+    if has_entities:
+        attr_entity_idx = ensure_attr(target_data, ATTR_BLOCK_ENTITY_IDX, "INT", "POINT")
+    elif hasattr(target_data, "attributes") and ATTR_BLOCK_ENTITY_IDX in target_data.attributes:
+        try:
+            target_data.attributes.remove(target_data.attributes.get(ATTR_BLOCK_ENTITY_IDX))
+        except Exception:
+            pass
+
     # 3. Direct Pointer Fast Path (Zero-Copy DNA)
     injected = False
     if fast_mode and use_dna and is_dna_enabled():
@@ -112,6 +129,7 @@ def inject_voxel_point_cloud(
             attr_z=attr_z,
             attr_state_idx=attr_state_idx,
             attr_biome_idx=attr_biome_idx,
+            attr_entity_idx=attr_entity_idx,
         )
 
     # 5. Configure Mask Modifier via utils
@@ -131,6 +149,7 @@ def inject_voxel_point_cloud(
 __all__ = [
     "ATTR_BIOME",
     "ATTR_BIOME_IDX",
+    "ATTR_BLOCK_ENTITY_IDX",
     "ATTR_BLOCK_STATE",
     "ATTR_BLOCK_STATE_IDX",
     "ATTR_BLOCK_X",
@@ -139,6 +158,7 @@ __all__ = [
     "ATTR_LIGHT",
     "MASK_MODIFIER_NAME",
     "PROP_BIOME_PALETTE",
+    "PROP_BLOCK_ENTITY_PALETTE",
     "PROP_BLOCK_PALETTE",
     "VOXEL_VERTEX_GROUP",
     "extract_voxel_point_cloud",
