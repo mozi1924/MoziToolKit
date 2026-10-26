@@ -419,6 +419,133 @@ class TestPaletteProvenanceParity(unittest.TestCase):
         self.assertEqual(resolved_by_mode[True], keys)
 
 
+class TestColorAttributeInjection(unittest.TestCase):
+    def test_inject_color_attributes_standard_sets_active_color(self):
+        from MoziToolKit.bridge.mesh.standard import inject_color_attributes_standard
+
+        class MockColorAttrData:
+            def __init__(self, size):
+                self.size = size
+                self.values = None
+
+            def __len__(self):
+                return self.size
+
+            def foreach_set(self, attr_name, array_data):
+                self.values = list(array_data)
+
+        class MockColorAttr:
+            def __init__(self, name, domain, size):
+                self.name = name
+                self.domain = domain
+                self.data = MockColorAttrData(size)
+
+        class MockColorAttributes:
+            def __init__(self, loop_count):
+                self.attrs = {}
+                self.active_color = None
+                self.loop_count = loop_count
+
+            def get(self, name, default=None):
+                return self.attrs.get(name, default)
+
+            def new(self, name, type, domain):
+                attr = MockColorAttr(name, domain, self.loop_count)
+                self.attrs[name] = attr
+                return attr
+
+            def __contains__(self, name):
+                return name in self.attrs
+
+        class MockMesh:
+            def __init__(self, loop_count=4):
+                self.loops = [object()] * loop_count
+                self.vertices = [object()] * 4
+                self.color_attributes = MockColorAttributes(loop_count)
+
+        mesh = MockMesh(loop_count=4)
+        colors_f32 = np.array([
+            0.5, 0.2, 0.1, 1.0,
+            0.5, 0.2, 0.1, 1.0,
+            0.5, 0.2, 0.1, 1.0,
+            0.5, 0.2, 0.1, 1.0,
+        ], dtype=np.float32)
+
+        class MockMeshData:
+            def colors_memoryview(self):
+                return memoryview(colors_f32)
+
+        inject_color_attributes_standard(mesh, MockMeshData())
+
+        self.assertIn("color", mesh.color_attributes.attrs)
+        col_attr = mesh.color_attributes.get("color")
+        self.assertIsNotNone(col_attr)
+        self.assertEqual(mesh.color_attributes.active_color, col_attr)
+        self.assertEqual(len(col_attr.data.values), 16)
+        self.assertAlmostEqual(col_attr.data.values[0], 0.5, places=5)
+        self.assertAlmostEqual(col_attr.data.values[1], 0.2, places=5)
+
+    def test_inject_color_attributes_dna_sets_active_color(self):
+        from unittest.mock import MagicMock, patch
+        from MoziToolKit.bridge.mesh.dna import inject_color_attributes_dna
+
+        class MockColorAttr:
+            def __init__(self, name, domain, size):
+                self.name = name
+                self.domain = domain
+                self.data = [MagicMock()] * size
+
+        class MockColorAttributes:
+            def __init__(self, loop_count):
+                self.attrs = {}
+                self.active_color = None
+                self.loop_count = loop_count
+
+            def get(self, name, default=None):
+                return self.attrs.get(name, default)
+
+            def new(self, name, type, domain):
+                attr = MockColorAttr(name, domain, self.loop_count)
+                self.attrs[name] = attr
+                return attr
+
+            def __contains__(self, name):
+                return name in self.attrs
+
+        class MockMesh:
+            def __init__(self, loop_count=4):
+                self.loops = [object()] * loop_count
+                self.vertices = [object()] * 4
+                self.color_attributes = MockColorAttributes(loop_count)
+
+        mesh = MockMesh(loop_count=4)
+        colors_f32 = np.array([
+            0.5, 0.2, 0.1, 1.0,
+            0.5, 0.2, 0.1, 1.0,
+            0.5, 0.2, 0.1, 1.0,
+            0.5, 0.2, 0.1, 1.0,
+        ], dtype=np.float32)
+
+        class MockMeshData:
+            def colors_memoryview(self):
+                return memoryview(colors_f32)
+
+        mock_dna = MagicMock()
+        mock_dna.copy_f32.return_value = None
+
+        with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
+             patch("MoziToolKit.bridge.mesh.dna.is_dna_available", return_value=True), \
+             patch("MoziToolKit.bridge.mesh.dna.resolve_colors_ptr", return_value=0x12345678):
+            result = inject_color_attributes_dna(mesh, MockMeshData())
+
+        self.assertTrue(result)
+        self.assertIn("color", mesh.color_attributes.attrs)
+        col_attr = mesh.color_attributes.get("color")
+        self.assertIsNotNone(col_attr)
+        self.assertEqual(mesh.color_attributes.active_color, col_attr)
+        mock_dna.copy_f32.assert_called_once()
+
+
 if __name__ == "__main__":
     if "--" in sys.argv:
         argv = [sys.argv[0]] + sys.argv[sys.argv.index("--") + 1:]

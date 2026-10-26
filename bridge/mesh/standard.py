@@ -224,7 +224,8 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
                     pass
             return
 
-        num_color_elems = len(col_mv) // (4 * 4)
+        total_bytes = getattr(col_mv, "nbytes", len(col_mv) * getattr(col_mv, "itemsize", 1))
+        num_color_elems = total_bytes // (4 * 4)
         if num_color_elems == len(mesh.loops):
             domain = "CORNER"
         elif num_color_elems == len(mesh.vertices):
@@ -250,6 +251,11 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
         if color_attr is not None and hasattr(color_attr.data, "foreach_set"):
             col_arr = np.frombuffer(col_mv, dtype=np.float32)
             color_attr.data.foreach_set("color", col_arr)
+            if hasattr(mesh.color_attributes, "active_color"):
+                try:
+                    mesh.color_attributes.active_color = color_attr
+                except Exception:
+                    pass
     except Exception as e:
         logger.debug("Standard color attribute injection error: %s", e)
 

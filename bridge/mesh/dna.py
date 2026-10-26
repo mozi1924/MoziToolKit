@@ -278,6 +278,13 @@ def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
         blender_dna.copy_f32(
             _byte_view(col_mv), col_ptr, num_color_elems * 4, max_bytes=total_bytes
         )
+        if hasattr(mesh, "color_attributes"):
+            active_attr = mesh.color_attributes.get("color")
+            if active_attr is not None and hasattr(mesh.color_attributes, "active_color"):
+                try:
+                    mesh.color_attributes.active_color = active_attr
+                except Exception:
+                    pass
         return True
     except Exception as e:
         logger.debug("DNA direct copy colors failed: %s", e)
