@@ -545,6 +545,108 @@ class TestColorAttributeInjection(unittest.TestCase):
         self.assertEqual(mesh.color_attributes.active_color, col_attr)
         mock_dna.copy_f32.assert_called_once()
 
+    def test_inject_face_materials_standard_triangulated_quad_expansion(self):
+        """Regression test: triangulated quad meshes should repeat face material slots across both triangles."""
+        from MoziToolKit.bridge.mesh.standard import inject_face_materials_standard
+
+        class MockPolygons:
+            def __init__(self, count):
+                self.count = count
+                self.slots = None
+
+            def __len__(self):
+                return self.count
+
+            def foreach_set(self, attr, arr):
+                if attr == "material_index":
+                    self.slots = list(arr)
+
+        class MockMesh:
+            def __init__(self, poly_count=2):
+                self.polygons = MockPolygons(poly_count)
+
+        # 1 quad face with material 3, but triangulated into 2 triangles
+        mesh = MockMesh(poly_count=2)
+        mats_u16 = np.array([3], dtype=np.uint16)
+
+        class MockMeshData:
+            def face_materials_memoryview(self):
+                return memoryview(mats_u16)
+
+        inject_face_materials_standard(mesh, MockMeshData())
+        self.assertEqual(mesh.polygons.slots, [3, 3])
+
+    def test_inject_color_attributes_standard_triangulated_quad_expansion(self):
+        """Regression test: triangulated quad meshes expand 4 quad corners to 6 triangle loop corners."""
+        from MoziToolKit.bridge.mesh.standard import inject_color_attributes_standard
+
+        class MockColorAttrData:
+            def __init__(self, size):
+                self.size = size
+                self.values = []
+
+            def foreach_set(self, attr, arr):
+                self.values = list(arr)
+
+            def __len__(self):
+                return self.size
+
+        class MockColorAttr:
+            def __init__(self, name, domain, size):
+                self.name = name
+                self.domain = domain
+                self.data = MockColorAttrData(size)
+
+        class MockColorAttributes:
+            def __init__(self, loop_count):
+                self.attrs = {}
+                self.active_color = None
+                self.loop_count = loop_count
+
+            def get(self, name, default=None):
+                return self.attrs.get(name, default)
+
+            def new(self, name, type, domain):
+                attr = MockColorAttr(name, domain, self.loop_count)
+                self.attrs[name] = attr
+                return attr
+
+            def __contains__(self, name):
+                return name in self.attrs
+
+        class MockMesh:
+            def __init__(self, loop_count=6):
+                self.loops = [object()] * loop_count
+                self.vertices = [object()] * 4
+                self.color_attributes = MockColorAttributes(loop_count)
+
+        # 1 quad face with 4 distinct corner colors, triangulated into 2 triangles (6 loops)
+        mesh = MockMesh(loop_count=6)
+        colors_f32 = np.array([
+            1.0, 0.0, 0.0, 1.0,  # Corner 0
+            0.0, 1.0, 0.0, 1.0,  # Corner 1
+            0.0, 0.0, 1.0, 1.0,  # Corner 2
+            1.0, 1.0, 0.0, 1.0,  # Corner 3
+        ], dtype=np.float32)
+
+        class MockMeshData:
+            def colors_memoryview(self):
+                return memoryview(colors_f32)
+
+        inject_color_attributes_standard(mesh, MockMeshData())
+
+        col_attr = mesh.color_attributes.get("color")
+        self.assertIsNotNone(col_attr)
+        self.assertEqual(len(col_attr.data.values), 24)  # 6 corners * 4 floats
+        # Tri 1: corners 0, 1, 2
+        self.assertEqual(col_attr.data.values[0:4], [1.0, 0.0, 0.0, 1.0])
+        self.assertEqual(col_attr.data.values[4:8], [0.0, 1.0, 0.0, 1.0])
+        self.assertEqual(col_attr.data.values[8:12], [0.0, 0.0, 1.0, 1.0])
+        # Tri 2: corners 0, 2, 3
+        self.assertEqual(col_attr.data.values[12:16], [1.0, 0.0, 0.0, 1.0])
+        self.assertEqual(col_attr.data.values[16:20], [0.0, 0.0, 1.0, 1.0])
+        self.assertEqual(col_attr.data.values[20:24], [1.0, 1.0, 0.0, 1.0])
+
 
 if __name__ == "__main__":
     if "--" in sys.argv:

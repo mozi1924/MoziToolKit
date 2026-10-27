@@ -226,10 +226,21 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
 
         total_bytes = getattr(col_mv, "nbytes", len(col_mv) * getattr(col_mv, "itemsize", 1))
         num_color_elems = total_bytes // (4 * 4)
+        col_arr = None
         if num_color_elems == len(mesh.loops):
             domain = "CORNER"
+            col_arr = np.asarray(col_mv, dtype=np.float32).reshape(-1)
+        elif num_color_elems > 0 and (num_color_elems * 6) // 4 == len(mesh.loops):
+            # Quad faces triangulated: 4 corners per quad expanded to 6 corners for 2 triangles.
+            domain = "CORNER"
+            raw_colors = np.asarray(col_mv, dtype=np.float32).reshape(-1, 4, 4)
+            tri1 = raw_colors[:, [0, 1, 2], :]
+            tri2 = raw_colors[:, [0, 2, 3], :]
+            col_arr = np.concatenate([tri1, tri2], axis=1).reshape(-1)
+            num_color_elems = len(mesh.loops)
         elif num_color_elems == len(mesh.vertices):
             domain = "POINT"
+            col_arr = np.asarray(col_mv, dtype=np.float32).reshape(-1)
         else:
             return
 
@@ -248,8 +259,7 @@ def inject_color_attributes_standard(mesh: Any, mesh_data: Any) -> None:
             except Exception:
                 return
 
-        if color_attr is not None and hasattr(color_attr.data, "foreach_set"):
-            col_arr = np.frombuffer(col_mv, dtype=np.float32)
+        if color_attr is not None and hasattr(color_attr.data, "foreach_set") and col_arr is not None:
             color_attr.data.foreach_set("color", col_arr)
             if hasattr(mesh.color_attributes, "active_color"):
                 try:
@@ -270,7 +280,6 @@ def inject_face_materials_standard(mesh: Any, mesh_data: Any) -> None:
     if mats_mv is None:
         used = getattr(mesh_data, "used_materials", lambda: None)()
         if used and len(used) == 1 and used[0] != 0:
-            import numpy as np
             mesh.polygons.foreach_set("material_index", np.full(num_polys, int(used[0]), dtype=np.int32))
         return
 
@@ -285,9 +294,14 @@ def inject_face_materials_standard(mesh: Any, mesh_data: Any) -> None:
         pass
 
     try:
-        mats_arr = np.frombuffer(mats_mv, dtype=np.uint16).astype(np.int32)
+        mats_arr = np.asarray(mats_mv, dtype=np.int32)
         if len(mats_arr) == num_polys:
             mesh.polygons.foreach_set("material_index", mats_arr)
+        elif len(mats_arr) * 2 == num_polys:
+            # Triangulated quad mesh: each quad was converted to 2 triangles.
+            # Duplicate each face material index to cover both triangles.
+            tri_mats = np.repeat(mats_arr, 2)
+            mesh.polygons.foreach_set("material_index", tri_mats)
     except Exception as e:
         logger.debug("Standard material_index foreach_set error: %s", e)
 

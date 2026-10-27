@@ -45,6 +45,7 @@ def apply_voxel_mesh_to_blender(
     inject_mesh_func=None,
     ensure_materials_func=None,
     ensure_cloud_func=None,
+    sync_point_cloud: bool = True,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed voxel world geometry.
@@ -101,16 +102,21 @@ def apply_voxel_mesh_to_blender(
         mark_world_biome(obj, storage)
 
     # 4. Extract unculled VoxelPointCloud and ensure child companion object
-    t0_cloud = time.perf_counter()
-    _ensure_cloud = ensure_cloud_func or ensure_voxel_child_cloud
-    cloud_obj = _ensure_cloud(
-        parent_obj=obj,
-        storage=storage,
-        origin_centered=origin_centered,
-        initial_hidden=True,
-    )
-    cloud_count = len(cloud_obj.data.vertices) if cloud_obj and getattr(cloud_obj, "data", None) and hasattr(cloud_obj.data, "vertices") else 0
-    cloud_ms = (time.perf_counter() - t0_cloud) * 1000.0
+    cloud_obj = None
+    if sync_point_cloud and storage is not None:
+        t0_cloud = time.perf_counter()
+        _ensure_cloud = ensure_cloud_func or ensure_voxel_child_cloud
+        cloud_obj = _ensure_cloud(
+            parent_obj=obj,
+            storage=storage,
+            origin_centered=origin_centered,
+            initial_hidden=True,
+        )
+        cloud_count = len(cloud_obj.data.vertices) if cloud_obj and getattr(cloud_obj, "data", None) and hasattr(cloud_obj.data, "vertices") else 0
+        cloud_ms = (time.perf_counter() - t0_cloud) * 1000.0
+    else:
+        cloud_ms = 0.0
+        cloud_count = 0
 
     from ..diagnostics import append_stage_to_last_profile
 
