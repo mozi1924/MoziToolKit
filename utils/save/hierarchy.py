@@ -378,8 +378,8 @@ def import_save_to_blender(
         sc = get_cache_dir() / "skins"
         sc.mkdir(parents=True, exist_ok=True)
         skin_cache_dir = str(sc)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed configuring skin cache dir for save import: %s", e)
 
     mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
         world_dir=world_dir,

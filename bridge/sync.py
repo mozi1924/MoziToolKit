@@ -247,8 +247,8 @@ class SyncBridgeSession:
                     if self._skin_cache_dir and hasattr(self._session, "set_skin_cache_dir"):
                         try:
                             self._session.set_skin_cache_dir(self._skin_cache_dir)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Failed setting skin cache dir on hot reload: %s", e)
                     _start_native(self._session)
                     self._is_active = True
                     self._is_connected = False

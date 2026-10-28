@@ -570,8 +570,8 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             skin_cache = get_cache_dir() / "skins"
             skin_cache.mkdir(parents=True, exist_ok=True)
             session.set_skin_cache_dir(str(skin_cache))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed configuring skin cache dir on connect: %s", e)
 
         success = session.start(
             url=url,
