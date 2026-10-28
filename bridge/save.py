@@ -61,6 +61,7 @@ def load_and_mesh_minecraft_save(
     enable_ctm: bool = True,
     enable_animated_textures: Optional[bool] = None,
     ctm_solver: Optional[Any] = None,
+    skin_cache_dir: Optional[str] = None,
     resolve_prefs: bool = True,
     resolve_ctm: bool = True,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
@@ -118,17 +119,21 @@ def load_and_mesh_minecraft_save(
         wrapped_cb = wrap_progress_callback(progress_callback)
 
     t0 = time.perf_counter()
-    mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(
-        world_dir=target_path,
-        dimension=dimension,
-        min_block=min_block,
-        max_block=max_block,
-        config=config,
-        culler=culler,
-        model_db=model_db,
-        num_threads=num_threads,
-        callback=wrapped_cb,
-    )
+    call_kwargs: Dict[str, Any] = {
+        "world_dir": target_path,
+        "dimension": dimension,
+        "min_block": min_block,
+        "max_block": max_block,
+        "config": config,
+        "culler": culler,
+        "model_db": model_db,
+        "num_threads": num_threads,
+        "callback": wrapped_cb,
+    }
+    if skin_cache_dir is not None:
+        call_kwargs["skin_cache_dir"] = skin_cache_dir
+
+    mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(**call_kwargs)
     t1 = time.perf_counter()
     elapsed_ms = (t1 - t0) * 1000.0
 

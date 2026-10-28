@@ -115,6 +115,7 @@ def apply_imported_save_to_blender(
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
     enable_animated_textures: bool = True,
+    dynamic_skin_atlas: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -130,6 +131,9 @@ def apply_imported_save_to_blender(
 
     if context is None:
         context = bpy.context
+
+    if dynamic_skin_atlas is None:
+        dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
 
     target_coll = context.collection if context and context.collection else (
         bpy.context.scene.collection if hasattr(bpy.context, "scene") else None
@@ -225,7 +229,13 @@ def apply_imported_save_to_blender(
     # 4. Bind Atlas materials and shaders
     t_materials = time.perf_counter()
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    ensure_world_materials(mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+    ensure_world_materials(
+        mesh_obj,
+        prefs=prefs,
+        atlas=atlas,
+        used_chunk_ids=used_chunk_ids,
+        dynamic_skin_atlas=dynamic_skin_atlas,
+    )
     materials_ms = (time.perf_counter() - t_materials) * 1000.0
 
     # 5. Extract unculled VoxelPointCloud and ensure child companion object under root Empty
@@ -362,6 +372,15 @@ def import_save_to_blender(
     else:
         anim_tex_enabled = bool(anim_tex_enabled)
 
+    skin_cache_dir = None
+    try:
+        from ..assets.cache_utils import get_cache_dir
+        sc = get_cache_dir() / "skins"
+        sc.mkdir(parents=True, exist_ok=True)
+        skin_cache_dir = str(sc)
+    except Exception:
+        pass
+
     mesh_data, meta, storage, elapsed_ms = load_and_mesh_minecraft_save(
         world_dir=world_dir,
         dimension=dimension,
@@ -379,6 +398,7 @@ def import_save_to_blender(
         material_mode=material_mode,
         enable_ctm=enable_ctm,
         enable_animated_textures=anim_tex_enabled,
+        skin_cache_dir=skin_cache_dir,
     )
 
     return apply_imported_save_to_blender(

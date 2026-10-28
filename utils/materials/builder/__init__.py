@@ -18,6 +18,11 @@ from .image_utils import (
     set_material_displacement_method,
     ensure_material_node_tree,
 )
+from .dynamic_skins import (
+    DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
+    build_dynamic_skins_material,
+    update_dynamic_skins_image,
+)
 
 __all__ = [
     "build_atlas_chunk_material",
@@ -33,5 +38,8 @@ __all__ = [
     "get_or_create_image_from_f32",
     "set_material_displacement_method",
     "ensure_material_node_tree",
+    "DEFAULT_DYNAMIC_SKINS_CHUNK_ID",
+    "build_dynamic_skins_material",
+    "update_dynamic_skins_image",
 ]
 

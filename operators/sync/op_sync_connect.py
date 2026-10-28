@@ -341,6 +341,7 @@ def _sync_timer_tick() -> Optional[float]:
                     storage=storage,
                     sync_point_cloud=needs_voxel_sync,
                     atlas=getattr(session, "atlas", None),
+                    session=session,
                 )
                 _safe_set_custom_prop(active_container, "mtk:client_generation", latest_generation)
                 _sync_prop("point_count", v_count)
@@ -563,6 +564,14 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         cached_state_json = None
         if cached_state and not cached_state.get("user_modified", False):
             cached_state_json = cached_state.get("state_json") or None
+
+        try:
+            from ...utils.assets.cache_utils import get_cache_dir
+            skin_cache = get_cache_dir() / "skins"
+            skin_cache.mkdir(parents=True, exist_ok=True)
+            session.set_skin_cache_dir(str(skin_cache))
+        except Exception:
+            pass
 
         success = session.start(
             url=url,

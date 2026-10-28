@@ -549,7 +549,15 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
                 t0_mat = time.perf_counter()
                 used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-                ensure_world_materials(world_mesh_obj, prefs=prefs, atlas=atlas, used_chunk_ids=used_chunk_ids)
+                from ...bridge.world import get_world_session_dynamic_skin_atlas
+                dyn_skins = get_world_session_dynamic_skin_atlas(session_key) if session_key else None
+                ensure_world_materials(
+                    world_mesh_obj,
+                    prefs=prefs,
+                    atlas=atlas,
+                    used_chunk_ids=used_chunk_ids,
+                    dynamic_skin_atlas=dyn_skins,
+                )
                 mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
                 try:

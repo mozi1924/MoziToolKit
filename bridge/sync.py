@@ -65,6 +65,7 @@ class SyncBridgeSession:
         self._cached_manifest_fingerprint: Optional[str] = None
         self._cached_manifest_timestamp: float = 0.0
         self._last_error: str = ""
+        self._skin_cache_dir: Optional[str] = None
 
     @property
     def is_active(self) -> bool:
@@ -243,6 +244,11 @@ class SyncBridgeSession:
                 try:
                     if hasattr(self._session, "hot_reload"):
                         self._session.hot_reload(config, model_db)
+                    if self._skin_cache_dir and hasattr(self._session, "set_skin_cache_dir"):
+                        try:
+                            self._session.set_skin_cache_dir(self._skin_cache_dir)
+                        except Exception:
+                            pass
                     _start_native(self._session)
                     self._is_active = True
                     self._is_connected = False
@@ -262,6 +268,11 @@ class SyncBridgeSession:
                 culler=culler,
                 model_db=model_db,
             )
+            if self._skin_cache_dir and hasattr(self._session, "set_skin_cache_dir"):
+                try:
+                    self._session.set_skin_cache_dir(self._skin_cache_dir)
+                except Exception as e:
+                    logger.debug("Failed setting skin cache dir on new session: %s", e)
 
             _start_native(self._session)
             self._is_active = True
@@ -494,6 +505,25 @@ class SyncBridgeSession:
         except Exception as e:
             logger.warning("Failed exporting persisted sync state: %s", e)
             return None
+
+    def get_dynamic_skin_atlas(self) -> Optional[bytes]:
+        """Returns dynamic skins atlas RGBA bytes (1024x1024x4) from the native session, or None."""
+        if self._session is not None and hasattr(self._session, "get_dynamic_skin_atlas"):
+            try:
+                return self._session.get_dynamic_skin_atlas()
+            except Exception as e:
+                logger.debug("Failed getting dynamic skin atlas from session: %s", e)
+                return None
+        return None
+
+    def set_skin_cache_dir(self, cache_dir: Optional[str]) -> None:
+        """Sets the player head skin disk cache path on the native session."""
+        self._skin_cache_dir = cache_dir
+        if self._session is not None and hasattr(self._session, "set_skin_cache_dir"):
+            try:
+                self._session.set_skin_cache_dir(cache_dir)
+            except Exception as e:
+                logger.debug("Failed setting skin cache dir on session: %s", e)
 
 
 

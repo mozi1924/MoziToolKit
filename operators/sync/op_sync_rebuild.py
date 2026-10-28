@@ -122,6 +122,7 @@ class MOZI_OT_sync_rebuild_world(bpy.types.Operator):
                 storage=storage,
                 sync_point_cloud=True,
                 atlas=getattr(session, "atlas", None),
+                session=session,
             )
 
             root_obj = target_root or world_obj

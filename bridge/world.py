@@ -163,6 +163,17 @@ def clear_world_sessions(session_key: Optional[str] = None) -> None:
         _WORLD_SESSION_META.pop(session_key, None)
 
 
+def get_world_session_dynamic_skin_atlas(session_key: str) -> Optional[Any]:
+    """Returns dynamic skin atlas bytes for the cached VoxelWorld session, if any."""
+    w = _WORLD_SESSIONS.get(session_key)
+    if w is not None and hasattr(w, "get_dynamic_skin_atlas"):
+        try:
+            return w.get_dynamic_skin_atlas()
+        except Exception:
+            return None
+    return None
+
+
 def mesh_voxel_storage(
     storage: Any,
     config: Optional[Any] = None,
