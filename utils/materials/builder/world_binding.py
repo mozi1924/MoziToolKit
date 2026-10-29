@@ -87,15 +87,25 @@ def ensure_world_materials(
     from .atlas_builder import PBR_LAYOUT_VERSION, build_atlas_chunk_material
     from .dynamic_skins import (
         DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
+        DYNAMIC_CHUNK_END,
+        DYNAMIC_CHUNK_START,
         DYNAMIC_SKINS_IMAGE_NAME,
         build_dynamic_skins_material,
+        dynamic_skins_image_name,
+        dynamic_skins_material_name,
         update_dynamic_skins_image,
     )
     from . import ensure_material_node_tree
     from ..cleaner import remap_indices_lut
 
-    if dynamic_skin_atlas is not None:
-        update_dynamic_skins_image(dynamic_skin_atlas)
+    atlas_dict: dict[int, Any] = {}
+    if isinstance(dynamic_skin_atlas, dict):
+        atlas_dict = {int(k): v for k, v in dynamic_skin_atlas.items()}
+    elif dynamic_skin_atlas is not None:
+        atlas_dict = {DEFAULT_DYNAMIC_SKINS_CHUNK_ID: dynamic_skin_atlas}
+
+    for cid, buf in atlas_dict.items():
+        update_dynamic_skins_image(buf, chunk_id=cid)
 
     mesh = world_obj.data
 
@@ -131,15 +141,17 @@ def ensure_world_materials(
             existing_chunk_to_slot[int(cid)] = s_idx
 
         if all_valid and target_chunk_ids.issubset(existing_chunk_to_slot.keys()):
-            if DEFAULT_DYNAMIC_SKINS_CHUNK_ID in target_chunk_ids:
-                skin_slot = existing_chunk_to_slot[DEFAULT_DYNAMIC_SKINS_CHUNK_ID]
-                skin_mat = mesh.materials[skin_slot] if skin_slot < len(mesh.materials) else None
-                if skin_mat and getattr(skin_mat, "node_tree", None):
-                    tex_node = skin_mat.node_tree.nodes.get("DynamicAtlasTex")
-                    if tex_node is not None and (tex_node.image is None or dynamic_skin_atlas is not None):
-                        img = bpy.data.images.get(DYNAMIC_SKINS_IMAGE_NAME)
-                        if img is not None:
-                            tex_node.image = img
+            for cid in target_chunk_ids:
+                if DYNAMIC_CHUNK_START <= cid <= DYNAMIC_CHUNK_END:
+                    skin_slot = existing_chunk_to_slot.get(cid)
+                    if skin_slot is not None and skin_slot < len(mesh.materials):
+                        skin_mat = mesh.materials[skin_slot]
+                        if skin_mat and getattr(skin_mat, "node_tree", None):
+                            tex_node = skin_mat.node_tree.nodes.get("DynamicAtlasTex")
+                            if tex_node is not None:
+                                img = bpy.data.images.get(dynamic_skins_image_name(cid))
+                                if img is not None and (tex_node.image is None or cid in atlas_dict):
+                                    tex_node.image = img
             has_chunk_attr = hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes
             is_identity_mapping = all(existing_chunk_to_slot[cid] == cid for cid in target_chunk_ids)
 
@@ -208,11 +220,13 @@ def ensure_world_materials(
                         if target_chunk_ids is None or cid in target_chunk_ids:
                             chunk_meta_map[cid] = cm
 
-            if target_chunk_ids is not None and DEFAULT_DYNAMIC_SKINS_CHUNK_ID in target_chunk_ids:
-                chunk_meta_map[DEFAULT_DYNAMIC_SKINS_CHUNK_ID] = {
-                    "chunk_id": DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
-                    "is_dynamic_skins": True,
-                }
+            if target_chunk_ids is not None:
+                for cid in target_chunk_ids:
+                    if DYNAMIC_CHUNK_START <= cid <= DYNAMIC_CHUNK_END:
+                        chunk_meta_map[cid] = {
+                            "chunk_id": cid,
+                            "is_dynamic_skins": True,
+                        }
 
             if chunk_meta_map:
                 manifest_fp = get_cache_fingerprint(prefs)
@@ -223,8 +237,9 @@ def ensure_world_materials(
 
                 for slot_idx, chunk_id in enumerate(sorted_chunks):
                     cm = chunk_meta_map[chunk_id]
-                    if cm.get("is_dynamic_skins") or chunk_id == DEFAULT_DYNAMIC_SKINS_CHUNK_ID:
-                        mat = build_dynamic_skins_material(dynamic_skin_atlas_bytes=dynamic_skin_atlas)
+                    if cm.get("is_dynamic_skins") or DYNAMIC_CHUNK_START <= chunk_id <= DYNAMIC_CHUNK_END:
+                        buf = atlas_dict.get(chunk_id)
+                        mat = build_dynamic_skins_material(chunk_id=chunk_id, dynamic_skin_atlas_bytes=buf)
                         compact_materials.append(mat)
                         chunk_to_compact_slot[chunk_id] = slot_idx
                         continue

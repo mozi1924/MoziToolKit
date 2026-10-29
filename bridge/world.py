@@ -173,13 +173,21 @@ def clear_world_sessions(session_key: Optional[str] = None) -> None:
 
 
 def get_world_session_dynamic_skin_atlas(session_key: str) -> Optional[Any]:
-    """Returns dynamic skin atlas bytes for the cached VoxelWorld session, if any."""
+    """Returns dynamic skin atlas bytes or dict for the cached VoxelWorld session, if any."""
     w = _WORLD_SESSIONS.get(session_key)
-    if w is not None and hasattr(w, "get_dynamic_skin_atlas"):
-        try:
-            return w.get_dynamic_skin_atlas()
-        except Exception:
-            return None
+    if w is not None:
+        if hasattr(w, "get_dynamic_skin_atlases"):
+            try:
+                atlases = w.get_dynamic_skin_atlases()
+                if atlases:
+                    return atlases
+            except Exception:
+                pass
+        if hasattr(w, "get_dynamic_skin_atlas"):
+            try:
+                return w.get_dynamic_skin_atlas()
+            except Exception:
+                return None
     return None
 
 

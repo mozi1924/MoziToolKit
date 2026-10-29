@@ -133,7 +133,9 @@ def apply_imported_save_to_blender(
         context = bpy.context
 
     if dynamic_skin_atlas is None:
-        dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
+        dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlases", None)
+        if not dynamic_skin_atlas:
+            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
 
     target_coll = context.collection if context and context.collection else (
         bpy.context.scene.collection if hasattr(bpy.context, "scene") else None

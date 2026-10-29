@@ -32,9 +32,13 @@ except ImportError:
 
 from MoziToolKit.utils.materials.builder.dynamic_skins import (
     DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
+    DYNAMIC_CHUNK_END,
+    DYNAMIC_CHUNK_START,
     DYNAMIC_SKINS_IMAGE_NAME,
     DYNAMIC_SKINS_MATERIAL_NAME,
     build_dynamic_skins_material,
+    dynamic_skins_image_name,
+    dynamic_skins_material_name,
     update_dynamic_skins_image,
 )
 
@@ -109,6 +113,17 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
         atlas_bytes = world.get_dynamic_skin_atlas()
         self.assertIsNotNone(atlas_bytes)
         self.assertEqual(len(atlas_bytes), 1024 * 1024 * 4)
+
+        # Dynamic skin atlases dictionary
+        atlases_dict = world.get_dynamic_skin_atlases()
+        self.assertIsNotNone(atlases_dict)
+        self.assertIn(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, atlases_dict)
+        self.assertEqual(bytes(atlases_dict[DEFAULT_DYNAMIC_SKINS_CHUNK_ID]), bytes(atlas_bytes))
+
+        # PyMeshData dynamic_skin_atlases
+        self.assertIsNotNone(mesh.dynamic_skin_atlases)
+        self.assertIn(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, mesh.dynamic_skin_atlases)
+        self.assertEqual(bytes(mesh.dynamic_skin_atlases[DEFAULT_DYNAMIC_SKINS_CHUNK_ID]), bytes(atlas_bytes))
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for Blender material node tree test")
     def test_build_dynamic_skins_material_bpy(self):
@@ -187,6 +202,67 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
             tex_node.image = None
             update_world_mesh(b_obj, mesh)
             self.assertEqual(tex_node.image, img)
+        finally:
+            bpy.data.objects.remove(b_obj, do_unlink=True)
+            bpy.data.meshes.remove(b_mesh)
+
+    @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk material test")
+    def test_multi_chunk_dynamic_skins_material_bpy(self):
+        """Dynamic skins material builder creates unique materials and images per chunk ID."""
+        chunk_0 = 0xFFF0
+        chunk_1 = 0xFFF1
+        self.assertEqual(dynamic_skins_material_name(chunk_0), DYNAMIC_SKINS_MATERIAL_NAME)
+        self.assertEqual(dynamic_skins_material_name(chunk_1), "MTK:Atlas:skins:dynamic_FFF1")
+        self.assertEqual(dynamic_skins_image_name(chunk_0), DYNAMIC_SKINS_IMAGE_NAME)
+        self.assertEqual(dynamic_skins_image_name(chunk_1), "MTK_Dynamic_Skins_Atlas_FFF1")
+
+        mat1 = build_dynamic_skins_material(chunk_id=chunk_1)
+        self.assertIsNotNone(mat1)
+        self.assertEqual(mat1.get("mtk_atlas_chunk_id"), chunk_1)
+        self.assertEqual(mat1.name, "MTK:Atlas:skins:dynamic_FFF1")
+
+    @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk world binding test")
+    def test_multi_chunk_world_binding_bpy(self):
+        """ensure_world_materials binds multiple dynamic skin chunk materials from a dict."""
+        from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials
+
+        b_mesh = bpy.data.meshes.new("TestMultiChunkMesh")
+        verts = [
+            (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+            (2, 0, 0), (3, 0, 0), (3, 1, 0), (2, 1, 0),
+        ]
+        faces = [(0, 1, 2, 3), (4, 5, 6, 7)]
+        b_mesh.from_pydata(verts, [], faces)
+
+        b_mesh.attributes.new(name="mtk_atlas_chunk_id", type="INT", domain="FACE")
+        b_mesh.attributes["mtk_atlas_chunk_id"].data[0].value = 0xFFF0
+        b_mesh.attributes["mtk_atlas_chunk_id"].data[1].value = 0xFFF1
+
+        b_obj = bpy.data.objects.new("TestMultiChunkObj", b_mesh)
+        bpy.context.scene.collection.objects.link(b_obj)
+
+        dummy_buf_0 = b"\x11" * (1024 * 1024 * 4)
+        dummy_buf_1 = b"\x22" * (1024 * 1024 * 4)
+
+        try:
+            ensure_world_materials(
+                b_obj,
+                used_chunk_ids=[0xFFF0, 0xFFF1],
+                dynamic_skin_atlas={
+                    0xFFF0: dummy_buf_0,
+                    0xFFF1: dummy_buf_1,
+                },
+            )
+
+            mat_names = [m.name for m in b_obj.data.materials if m is not None]
+            self.assertIn("MTK:Atlas:skins:dynamic", mat_names)
+            self.assertIn("MTK:Atlas:skins:dynamic_FFF1", mat_names)
+
+            # Polygons mapped to their respective slots
+            p0_mat = b_obj.data.materials[b_obj.data.polygons[0].material_index]
+            p1_mat = b_obj.data.materials[b_obj.data.polygons[1].material_index]
+            self.assertEqual(p0_mat.name, "MTK:Atlas:skins:dynamic")
+            self.assertEqual(p1_mat.name, "MTK:Atlas:skins:dynamic_FFF1")
         finally:
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh)

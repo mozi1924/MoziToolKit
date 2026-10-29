@@ -23,13 +23,30 @@ from .image_utils import (
 )
 
 DEFAULT_DYNAMIC_SKINS_CHUNK_ID = 0xFFF0  # 65520
+DYNAMIC_CHUNK_START = 0xFFF0
+DYNAMIC_CHUNK_END = 0xFFFF
 DYNAMIC_SKINS_IMAGE_NAME = "MTK_Dynamic_Skins_Atlas"
 DYNAMIC_SKINS_MATERIAL_NAME = "MTK:Atlas:skins:dynamic"
 
 
+def dynamic_skins_image_name(chunk_id: int = DEFAULT_DYNAMIC_SKINS_CHUNK_ID) -> str:
+    """Returns canonical Blender image name for a dynamic skin atlas chunk."""
+    if chunk_id == DEFAULT_DYNAMIC_SKINS_CHUNK_ID:
+        return DYNAMIC_SKINS_IMAGE_NAME
+    return f"MTK_Dynamic_Skins_Atlas_{chunk_id:04X}"
+
+
+def dynamic_skins_material_name(chunk_id: int = DEFAULT_DYNAMIC_SKINS_CHUNK_ID) -> str:
+    """Returns canonical Blender material name for a dynamic skin atlas chunk."""
+    if chunk_id == DEFAULT_DYNAMIC_SKINS_CHUNK_ID:
+        return DYNAMIC_SKINS_MATERIAL_NAME
+    return f"MTK:Atlas:skins:dynamic_{chunk_id:04X}"
+
+
 def update_dynamic_skins_image(
     rgba_bytes_or_memview: Any,
-    image_name: str = DYNAMIC_SKINS_IMAGE_NAME,
+    chunk_id: int = DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
+    image_name: Optional[str] = None,
     width: int = 1024,
     height: int = 1024,
 ) -> Optional[Any]:
@@ -39,11 +56,15 @@ def update_dynamic_skins_image(
     if not HAS_BPY or rgba_bytes_or_memview is None:
         return None
 
+    if image_name is None:
+        image_name = dynamic_skins_image_name(chunk_id)
+
     if len(rgba_bytes_or_memview) < width * height * 4:
         logger.warning(
-            "Dynamic skin atlas buffer length (%d) is smaller than expected (%d)",
+            "Dynamic skin atlas buffer length (%d) is smaller than expected (%d) for chunk 0x%04X",
             len(rgba_bytes_or_memview),
             width * height * 4,
+            chunk_id,
         )
         return None
 
@@ -60,9 +81,10 @@ def update_dynamic_skins_image(
 
 
 def build_dynamic_skins_material(
+    chunk_id: int = DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
     dynamic_skin_atlas_bytes: Optional[Any] = None,
-    image_name: str = DYNAMIC_SKINS_IMAGE_NAME,
-    mat_name: str = DYNAMIC_SKINS_MATERIAL_NAME,
+    image_name: Optional[str] = None,
+    mat_name: Optional[str] = None,
 ) -> Optional[Any]:
     """
     Builds or retrieves the standard Principled BSDF material for player heads
@@ -71,9 +93,18 @@ def build_dynamic_skins_material(
     if not HAS_BPY:
         return None
 
+    if mat_name is None:
+        mat_name = dynamic_skins_material_name(chunk_id)
+    if image_name is None:
+        image_name = dynamic_skins_image_name(chunk_id)
+
     img = None
     if dynamic_skin_atlas_bytes is not None:
-        img = update_dynamic_skins_image(dynamic_skin_atlas_bytes, image_name=image_name)
+        img = update_dynamic_skins_image(
+            dynamic_skin_atlas_bytes,
+            chunk_id=chunk_id,
+            image_name=image_name,
+        )
     else:
         img = bpy.data.images.get(image_name)
 
@@ -81,7 +112,7 @@ def build_dynamic_skins_material(
     if mat is None:
         mat = bpy.data.materials.new(name=mat_name)
 
-    mat["mtk_atlas_chunk_id"] = DEFAULT_DYNAMIC_SKINS_CHUNK_ID
+    mat["mtk_atlas_chunk_id"] = chunk_id
     mat["mtk_pbr_layout"] = "mtk_dynamic_skins_v1"
 
     # Forward-compatible transparency handling (Blender 4.2+ / 5.x)

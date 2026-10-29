@@ -342,12 +342,20 @@ def update_world_mesh(
     t0_mat = time.perf_counter()
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     if dynamic_skin_atlas is None:
-        dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
-    if dynamic_skin_atlas is None and session is not None and hasattr(session, "get_dynamic_skin_atlas"):
-        try:
-            dynamic_skin_atlas = session.get_dynamic_skin_atlas()
-        except Exception:
-            pass
+        dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlases", None)
+        if not dynamic_skin_atlas:
+            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
+    if dynamic_skin_atlas is None and session is not None:
+        if hasattr(session, "get_dynamic_skin_atlases"):
+            try:
+                dynamic_skin_atlas = session.get_dynamic_skin_atlases()
+            except Exception:
+                pass
+        if dynamic_skin_atlas is None and hasattr(session, "get_dynamic_skin_atlas"):
+            try:
+                dynamic_skin_atlas = session.get_dynamic_skin_atlas()
+            except Exception:
+                pass
     ensure_world_materials(
         world_obj,
         atlas=atlas,
