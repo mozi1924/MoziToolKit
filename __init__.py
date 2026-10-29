@@ -43,7 +43,14 @@ from . import ui
 
 
 def register():
-    # 0. Development environment & local native library mounting
+    # 0. Sync OS system proxies into process environment
+    try:
+        from .utils.system.network import sync_system_proxies
+        sync_system_proxies()
+    except Exception:
+        pass
+
+    # 1. Development environment & local native library mounting
     try:
         from . import dev
         dev.register()

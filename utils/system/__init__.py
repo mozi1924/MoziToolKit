@@ -7,6 +7,10 @@ from .dependencies import (
     get_prefs,
 )
 
+from .network import (
+    sync_system_proxies,
+)
+
 from .menu_config import (
     register_menu_item,
     register_operator_menu_item,

@@ -17,6 +17,7 @@ except ImportError:
     bpy = None
 
 from ..bridge.progress import ProgressReport
+from ..i18n import tr
 
 logger = logging.getLogger("MoziToolKit.Utils.Progress")
 
@@ -81,10 +82,17 @@ class BlenderProgressReporter:
         workspace = getattr(self.context, "workspace", None)
         if workspace and hasattr(workspace, "status_text_set"):
             pct = (current / self.total * 100.0) if self.total > 0 else 0.0
+            translated_title = tr(self.title)
             if message:
-                text = f"{self.title}: {message} ({current}/{self.total}, {pct:.0f}%)"
+                translated_msg = tr(message)
+                if "(" in message and translated_msg == message:
+                    prefix, rest = message.split("(", 1)
+                    translated_prefix = tr(prefix.strip())
+                    if translated_prefix != prefix.strip():
+                        translated_msg = f"{translated_prefix} ({rest}"
+                text = f"{translated_title}: {translated_msg} ({current}/{self.total}, {pct:.0f}%)"
             else:
-                text = f"{self.title} ({current}/{self.total}, {pct:.0f}%)"
+                text = f"{translated_title} ({current}/{self.total}, {pct:.0f}%)"
             try:
                 workspace.status_text_set(text)
             except Exception:

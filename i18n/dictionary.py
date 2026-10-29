@@ -518,6 +518,8 @@ translations_dict = {
         ('*', 'Rebuild Mesh'): '重建网格',
         ('*', 'Rebuild Voxel Mesh'): '重建体素网格',
         ('Operator', 'Rebuild Voxel Mesh'): '重建体素网格',
+        ('*', 'Resolving player head skins'): '加载玩家头颅皮肤',
+        ('*', 'Resolving player head skins...'): '正在加载玩家头颅皮肤...',
         ('*', 'Rebuilding Voxel Mesh'): '正在重建体素网格',
         ('*', 'Rebuild World'): '重建世界',
         ('*', 'Rebuild World Mesh'): '重建世界网格',

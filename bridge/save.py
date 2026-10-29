@@ -133,6 +133,12 @@ def load_and_mesh_minecraft_save(
     if skin_cache_dir is not None:
         call_kwargs["skin_cache_dir"] = skin_cache_dir
 
+    try:
+        from ..utils.system.network import sync_system_proxies
+        sync_system_proxies()
+    except Exception:
+        pass
+
     mesh_data, level_meta, storage = mtk.load_and_mesh_minecraft_save(**call_kwargs)
     t1 = time.perf_counter()
     elapsed_ms = (t1 - t0) * 1000.0
