@@ -130,6 +130,15 @@ def load_and_mesh_minecraft_save(
         "num_threads": num_threads,
         "callback": wrapped_cb,
     }
+    if skin_cache_dir is None:
+        try:
+            from .assets import get_cache_dir
+            sc = get_cache_dir(prefs if resolve_prefs else None) / "skins"
+            sc.mkdir(parents=True, exist_ok=True)
+            skin_cache_dir = str(sc)
+        except Exception as e:
+            logger.debug("Failed configuring skin cache dir in save bridge: %s", e)
+
     if skin_cache_dir is not None:
         call_kwargs["skin_cache_dir"] = skin_cache_dir
 

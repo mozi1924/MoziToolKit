@@ -124,6 +124,14 @@ def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
     num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
     raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
     enable_animated_textures = raw_anim if isinstance(raw_anim, bool) else True
+    skin_cache_dir = None
+    try:
+        from .assets import get_cache_dir
+        sc = get_cache_dir(prefs) / "skins"
+        sc.mkdir(parents=True, exist_ok=True)
+        skin_cache_dir = str(sc)
+    except Exception as e:
+        logger.debug("Failed configuring skin cache dir in prepare_world_mesh_context: %s", e)
     return {
         "model_db": model_db,
         "atlas": atlas,
@@ -131,6 +139,7 @@ def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
         "ctm_solver": ctm_solver,
         "num_threads": num_threads,
         "enable_animated_textures": enable_animated_textures,
+        "skin_cache_dir": skin_cache_dir,
         "cache_fingerprint": get_cache_fingerprint(prefs),
         "cache_timestamp": get_cache_timestamp(prefs),
     }
@@ -192,6 +201,7 @@ def mesh_voxel_storage(
     material_mode: str = "ATLAS",
     force_rebuild: bool = False,
     enable_animated_textures: Optional[bool] = None,
+    skin_cache_dir: Optional[str] = None,
     cache_fingerprint: Optional[str] = None,
     cache_timestamp: Optional[float] = None,
     resolve_prefs: bool = True,
@@ -263,6 +273,15 @@ def mesh_voxel_storage(
 
     culler = get_shared_face_culler(mtk)
 
+    if skin_cache_dir is None:
+        try:
+            from .assets import get_cache_dir
+            sc = get_cache_dir(prefs if resolve_prefs else None) / "skins"
+            sc.mkdir(parents=True, exist_ok=True)
+            skin_cache_dir = str(sc)
+        except Exception:
+            pass
+
     t0 = time.perf_counter()
     # The fingerprint/timestamp pair only guards the incremental world session cache
     # below. Reading it is filesystem-backed and costs ~1 ms, so skip it entirely when
@@ -310,6 +329,11 @@ def mesh_voxel_storage(
                 model_db=model_db,
                 num_threads=num_threads,
             )
+            if skin_cache_dir is not None and hasattr(cached_world, "set_skin_cache_dir"):
+                try:
+                    cached_world.set_skin_cache_dir(skin_cache_dir)
+                except Exception:
+                    pass
             _WORLD_SESSIONS[world_session_key] = cached_world
             _WORLD_SESSION_META[world_session_key] = {
                 "fingerprint": current_fp,
@@ -329,6 +353,11 @@ def mesh_voxel_storage(
             model_db=model_db,
             num_threads=num_threads,
         )
+        if skin_cache_dir is not None and hasattr(world, "set_skin_cache_dir"):
+            try:
+                world.set_skin_cache_dir(skin_cache_dir)
+            except Exception:
+                pass
         if progress_callback is not None:
             from .progress import wrap_progress_callback
             wrapped_cb = wrap_progress_callback(progress_callback)

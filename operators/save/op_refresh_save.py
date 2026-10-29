@@ -158,6 +158,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                         origin_centered=origin_centered,
                         enable_ctm=enable_ctm,
                         enable_animated_textures=enable_animated_textures,
+                        skin_cache_dir=mesh_context.get("skin_cache_dir"),
                         progress_callback=reporter.on_progress,
                     )
 
@@ -216,6 +217,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     "biome_resolver": mesh_context["biome_resolver"],
                     "ctm_solver": mesh_context["ctm_solver"] if enable_ctm else None,
                     "num_threads": mesh_context["num_threads"],
+                    "skin_cache_dir": mesh_context.get("skin_cache_dir"),
                     "resolve_prefs": False,
                     "resolve_ctm": False,
                 },

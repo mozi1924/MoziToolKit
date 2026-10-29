@@ -482,6 +482,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 world_session_key=session_key,
                 force_rebuild=did_precompile,
                 enable_animated_textures=anim_tex_enabled,
+                skin_cache_dir=mesh_context.get("skin_cache_dir"),
                 cache_fingerprint=cache_fingerprint,
                 cache_timestamp=cache_timestamp,
                 resolve_prefs=False,

@@ -417,6 +417,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
                     "biome_resolver": mesh_context["biome_resolver"],
                     "ctm_solver": mesh_context["ctm_solver"] if self.enable_ctm else None,
                     "num_threads": mesh_context["num_threads"],
+                    "skin_cache_dir": mesh_context.get("skin_cache_dir"),
                     "resolve_prefs": False,
                     "resolve_ctm": False,
                 },

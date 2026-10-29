@@ -241,3 +241,61 @@ def test_cold_cache_save_import_binds_textures(tmp_path, monkeypatch):
         assert albedo_node.image is not None
 
 
+def test_prepare_world_mesh_context_skin_cache(tmp_path, monkeypatch):
+    """Verify prepare_world_mesh_context provides resolved skin_cache_dir on the main thread."""
+    from MoziToolKit.bridge.world import prepare_world_mesh_context
+
+    custom_cache = tmp_path / "custom_cache"
+    monkeypatch.setenv("MOZI_CACHE_DIR", str(custom_cache))
+
+    ctx = prepare_world_mesh_context()
+    assert "skin_cache_dir" in ctx
+    assert ctx["skin_cache_dir"] is not None
+    assert str(custom_cache / "skins") == ctx["skin_cache_dir"]
+    assert (custom_cache / "skins").is_dir()
+
+
+def test_save_bridge_skin_cache_dir_propagation(tmp_path, monkeypatch):
+    """Verify load_and_mesh_minecraft_save auto-resolves and forwards skin_cache_dir to native core."""
+    from unittest.mock import MagicMock, patch
+    from MoziToolKit.bridge.save import load_and_mesh_minecraft_save
+
+    custom_cache = tmp_path / "save_skin_cache"
+    monkeypatch.setenv("MOZI_CACHE_DIR", str(custom_cache))
+
+    mock_mtk = MagicMock()
+    mock_mesh = MagicMock()
+    mock_mesh.profile = None
+    mock_mtk.load_and_mesh_minecraft_save.return_value = (mock_mesh, MagicMock(), MagicMock())
+
+    with patch("MoziToolKit.bridge.save.require_libmtk", return_value=mock_mtk):
+        # 1. When skin_cache_dir is not provided, auto-resolves from cache dir
+        load_and_mesh_minecraft_save(
+            world_dir=tmp_path,
+            dimension="overworld",
+            min_block=(0, 0, 0),
+            max_block=(15, 15, 15),
+            resolve_prefs=False,
+            resolve_ctm=False,
+        )
+        assert mock_mtk.load_and_mesh_minecraft_save.called
+        kwargs = mock_mtk.load_and_mesh_minecraft_save.call_args.kwargs
+        assert "skin_cache_dir" in kwargs
+        assert kwargs["skin_cache_dir"] == str(custom_cache / "skins")
+
+        # 2. When explicit skin_cache_dir is passed, it takes precedence
+        explicit_dir = str(tmp_path / "explicit_skins")
+        load_and_mesh_minecraft_save(
+            world_dir=tmp_path,
+            dimension="overworld",
+            min_block=(0, 0, 0),
+            max_block=(15, 15, 15),
+            skin_cache_dir=explicit_dir,
+            resolve_prefs=False,
+            resolve_ctm=False,
+        )
+        kwargs2 = mock_mtk.load_and_mesh_minecraft_save.call_args.kwargs
+        assert kwargs2["skin_cache_dir"] == explicit_dir
+
+
+
