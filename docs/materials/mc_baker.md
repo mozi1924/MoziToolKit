@@ -21,7 +21,7 @@ graph TD
 ## 1. BlockState 状态机与变体条件组合解析
 
 ### 1.1 状态字符串规范化解析 (`blockstate_resolver.py`)
-- **函数**：[`mtk-model` BlockState 解析](../../../libmozitoolkit/crates/mtk-model/README.md)
+- **函数**：[`mtk-model` BlockState 解析](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-model)
 - **输入示例**：`"minecraft:observer[facing=north,powered=false]"`
 - **输出元组**：`("minecraft:observer", {"facing": "north", "powered": "false"})`
 - 自动补充缺失的 `minecraft:` 命名空间，严格剥离属性方括号并解析为属性键值字典。
@@ -104,7 +104,7 @@ Minecraft 26.2 原版 `FaceInfo` 严格定义了 6 个面的标准顶点缠绕�
 
 ### 5.1 Atlas 坐标空间映射 (`AtlasBridge`)
 - 通过 `AtlasAddressResolver` 将烘焙模型各面的贴图标识（`"minecraft:block/oak_planks"`）换算为全局 Atlas 的 Chunk 材质槽位索引（`chunk_id`）与归一化 UV 矩阵。
-- 输出结构体 Rust `AtlasAddressMap`（[mtk-texture](../../../libmozitoolkit/crates/mtk-texture/README.md)） 包含：
+- 输出结构体 Rust `AtlasAddressMap`（[mtk-texture](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-texture)） 包含：
   - `direction`: 对应 6 向面名称。
   - `material_id`: 目标材质槽位。
   - `tile_col` / `tile_row`: 图集瓦片行列索引。

@@ -4,8 +4,8 @@
 > **权威范围**：Yefira (Minecraft Java Mod) ↔ `mtk-sync` (Rust 核心) ↔ MoziToolKit (Blender/Python 前端)
 > **适用版本**：MoziToolKit / libmozitoolkit / Yefira 2.0+
 > **实现事实源**：
-> - Rust：[`crates/mtk-sync`](../../../libmozitoolkit/crates/mtk-sync)
-> - Java：[`common-core/.../network/WebSocketServerManager.java`](../../../yefira/common-core/src/main/java/com/mozi1924/yefira/network/WebSocketServerManager.java)
+> - Rust：[`crates/mtk-sync`](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-sync)
+> - Java：[`common-core/.../network/WebSocketServerManager.java`](https://github.com/mozi1924/yefira/blob/main/common-core/src/main/java/com/mozi1924/yefira/network/WebSocketServerManager.java)
 > - Python/Blender：[`bridge/sync.py`](../../bridge/sync.py)、[`operators/sync/`](../../operators/sync)
 >
 > 本文档是三端共同遵守的**协议与工程实现唯一事实源 (SSOT)**。任何一端的行为与本文冲突时，视为实现缺陷；当前代码与 RFC 初稿存在的刻意差异统一记录在 [§7 实现对齐矩阵与已知偏差](#7-实现对齐矩阵与已知偏差-implementation-matrix--deviations)。

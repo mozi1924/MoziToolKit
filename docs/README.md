@@ -88,10 +88,10 @@
 ---
 
 ### 6. 底层几何与网络内核 API (libmozitoolkit / libmtk_py)
-- **[Rust 内核 API 总览](../../libmozitoolkit/docs/API_REFERENCE.md)**：跨 crate 的公共 API、错误类型与数据布局。
-- **[Python 绑定设计](../../libmozitoolkit/docs/BINDINGS_DESIGN.md)**：`libmtk_py` 的 Buffer Protocol、零拷贝与 DNA 直写契约。
+- **[Rust 内核 API 总览](https://github.com/mozi1924/libmozitoolkit/blob/main/docs/API_REFERENCE.md)**：跨 crate 的公共 API、错误类型与数据布局。
+- **[Python 绑定设计](https://github.com/mozi1924/libmozitoolkit/blob/main/docs/BINDINGS_DESIGN.md)**：`libmtk_py` 的 Buffer Protocol、零拷贝与 DNA 直写契约。
 - **Crate 级参考**：
-  - [mtk-core](../../libmozitoolkit/crates/mtk-core/README.md)、[mtk-voxel](../../libmozitoolkit/crates/mtk-voxel/README.md)、[mtk-cull](../../libmozitoolkit/crates/mtk-cull/README.md)
-  - [mtk-model](../../libmozitoolkit/crates/mtk-model/README.md)、[mtk-texture](../../libmozitoolkit/crates/mtk-texture/README.md)、[mtk-resource](../../libmozitoolkit/crates/mtk-resource/README.md)
-  - [mtk-material](../../libmozitoolkit/crates/mtk-material/README.md)、[mtk-sync](../../libmozitoolkit/crates/mtk-sync/README.md)、[mtk-save](../../libmozitoolkit/crates/mtk-save/README.md)
-  - [libmtk facade](../../libmozitoolkit/crates/libmtk/README.md)、[mtk-py bindings](../../libmozitoolkit/bindings/mtk-py/README.md)
+  - [mtk-core](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-core)、[mtk-voxel](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-voxel)、[mtk-cull](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-cull)
+  - [mtk-model](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-model)、[mtk-texture](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-texture)、[mtk-resource](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-resource)
+  - [mtk-material](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-material)、[mtk-sync](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-sync)、[mtk-save](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-save)
+  - [libmtk facade](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/libmtk)、[mtk-py bindings](https://github.com/mozi1924/libmozitoolkit/tree/main/bindings/mtk-py)

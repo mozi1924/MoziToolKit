@@ -3,18 +3,32 @@
 [![Blender](https://img.shields.io/badge/Blender-5.0%2B%20LTS-orange.svg)](https://www.blender.org/)
 [![Platform](https://img.shields.io/badge/Platforms-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](blender_manifest.toml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Core: libmtk](https://img.shields.io/badge/Core-libmozitoolkit%20(Rust)-red.svg)](../libmozitoolkit)
+[![Core: libmtk](https://img.shields.io/badge/Core-libmozitoolkit%20(Rust)-red.svg)](https://github.com/mozi1924/libmozitoolkit)
+[![Companion: Yefira](https://img.shields.io/badge/Companion-Yefira%20(Mod)-brightgreen.svg)](https://github.com/mozi1924/yefira)
 
 **MoziToolKit** 是面向 Blender 5.0+ (LTS) 扩展平台的高性能 Minecraft 资产处理、世界协同与着色器管线系统。
 
-系统采用 **计算下沉与宿主解耦** 架构：几何重构、微观遮挡剔除、体素流解析、图集装箱与生物群系色彩数学均由底层通用 Rust 引擎（`libmtk`）无头处理；Blender 前端负责 UI 交互、视口渲染调度与材质节点树装配，并通过 Buffer Protocol 及 Blender DNA 裸指针实现硬件级零拷贝几何直写。
+系统采用 **计算下沉与宿主解耦** 架构：几何重构、微观遮挡剔除、体素流解析、图集装箱与生物群系色彩数学均由底层通用 Rust 引擎（[`libmozitoolkit`](https://github.com/mozi1924/libmozitoolkit)）无头处理；实时双向同步由 Minecraft 伴生模组（[`Yefira`](https://github.com/mozi1924/yefira)）提供服务端权威体素扫描；Blender 前端负责 UI 交互、视口渲染调度与材质节点树装配，并通过 Buffer Protocol 及 Blender DNA 裸指针实现硬件级零拷贝几何直写。
+
+---
+
+## 🌐 三位一体协同生态体系 (Three-Pillar Architecture)
+
+MoziToolKit 并非单一孤立插件，而是由三大核心工程紧密协作构建的现代化 Minecraft 创作生态：
+
+| 工程与角色 | 职责定位 | 技术栈与边界 | 仓库链接 |
+| :--- | :--- | :--- | :---: |
+| **`MoziToolKit`**<br>*(DCC 插件前端，本仓库)* | **Blender 宿主界面与场景装配**<br>提供 3D 视图侧边栏面板、操作符、规范 PBR 材质节点树生成、点云伴生管理及视口实时渲染调度。 | Python 3.11+<br>Blender 5.0+ Extension | **当前仓库** |
+| **[`libmozitoolkit`](https://github.com/mozi1924/libmozitoolkit)**<br>*(Rust 核心引擎 `libmtk`)* | **无头高性能几何与体素计算底座**<br>负责体素流解析、1.21+ 方块模型烘焙、邻域面遮挡剔除、2D 矩形装箱、66 种原版 Biome 调色板与 DNA 内存直灌。 | Rust 2021<br>PyO3 / ABI3 / WASM | [🔗 GitHub](https://github.com/mozi1924/libmozitoolkit) |
+| **[`yefira`](https://github.com/mozi1924/yefira)**<br>*(Minecraft 伴生模组)* | **服务端权威体素扫描与实时协同**<br>通过 WebSocket 全双工流推送三维选区与增量体素数据，支持 XXHash64 校验自愈与幽灵漫游模式。 | Java 17/21/25<br>Fabric / Forge / NeoForge | [🔗 GitHub](https://github.com/mozi1924/yefira) |
 
 ---
 
 ## 核心系统与功能规范 (Architecture & Features)
 
 ### 1. 实时双向网络协同 (Minecraft Live Sync)
-- **传输协议**：基于全双工 WebSocket 二进制异步流，直连 Minecraft 客户端（Fabric `Yefira`）或服务端。
+- **传输协议**：基于全双工 WebSocket 二进制异步流，直连 Minecraft 模组 [**`Yefira`**](https://github.com/mozi1924/yefira)（支持客户端与独立服务端）。
+- **权威协议规范**：遵循 [RFC v3.1: MTK 2.0 Live Sync 协议与架构设计规范](docs/live_sync/live_sync_protocol.md)。
 - **增量网格重构 (Delta Meshing)**：以 16×16×16 Section 为空间单元，仅计算 6 向暴露外表面，提供平滑 4 角环境光遮蔽 (Smooth AO) 与拓扑微距焊接。
 - **状态校验与接缝自愈**：基于 CRC32 校验码实现零重复流量瞬时重连；选区变动或流传输完成时自动触发跨 Section 边界接缝面剔除自愈（Seam Healing）。
 - **复合方块解析**：支持定向方块、红石线动力学、流体表面张力四角高度插值及 CTM (Connected Textures Mod) 47-tile 状态解算。
@@ -147,7 +161,8 @@ blender --background --python tests/run_tests.py -- -q
   - [面剔除与微观遮挡算法](docs/mesh/face_culling.md)
   - [自适应像素切分与智能挤出规范](docs/mesh/pixel_split.md)
   - [体素点云持久化与存储契约](docs/mesh/voxel_point_cloud.md)
-- [Rust 底层核心库 (`libmozitoolkit`)](../libmozitoolkit/README.md)
+- [Rust 底层核心引擎 (`libmozitoolkit`)](https://github.com/mozi1924/libmozitoolkit)
+- [Minecraft 实时协同模组 (`Yefira`)](https://github.com/mozi1924/yefira)
 - [版本变更日志 (CHANGELOG.md)](CHANGELOG.md)
 
 ---

@@ -60,7 +60,7 @@ public static boolean shouldRenderFace(BlockState state, BlockState neighborStat
 
 ## 3. 核心方块分类与剔除规则
 
-系统将所有方块状态映射为 [`CullCategory`](../../../libmozitoolkit/crates/mtk-cull/README.md)：
+系统将所有方块状态映射为 [`CullCategory`](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-cull)：
 
 ### 3.1 SOLID_OPAQUE (实心不透明方块)
 - **典型方块**：石头、泥土、木板、深层岩、圆石等。
