@@ -4,7 +4,14 @@ Texture sampling and animated frame blend helpers for Atlas materials.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional, Tuple
+
+from ...node_groups.animated import (
+    ensure_animated_frame_blend,
+    ensure_animated_normal_blend,
+    ensure_animated_specular_blend,
+)
 
 
 def _create_tex_node(
@@ -189,3 +196,135 @@ def sample_specular_channel(
     tex_node = _create_tex_node(nodes, image, name_prefix, (-1150, y_static), frame_tex)
     links.new(active_sample_uv, tex_node.inputs["Vector"])
     return tex_node.outputs["Color"], tex_node.outputs["Alpha"]
+
+
+@dataclass
+class SampledAtlasChannels:
+    """Output sockets and nodes resulting from sampling all atlas channels."""
+    albedo_color: Optional[Any] = None
+    albedo_alpha: Optional[Any] = None
+    albedo_node: Optional[Any] = None
+    overlay_color: Optional[Any] = None
+    overlay_alpha: Optional[Any] = None
+    overlay_node: Optional[Any] = None
+    normal_color: Optional[Any] = None
+    orm_color: Optional[Any] = None
+    orm_alpha: Optional[Any] = None
+    aux_color: Optional[Any] = None
+
+
+def sample_all_atlas_channels(
+    nodes: Any,
+    links: Any,
+    frame_tex: Any,
+    images: Dict[str, Any],
+    *,
+    is_animated: bool,
+    target_uv_output: Any,
+    anim_curr_uv: Any,
+    anim_next_uv: Any,
+    blend_factor_sock: Any,
+    active_sample_uv: Any,
+) -> SampledAtlasChannels:
+    """Sample all active atlas texture channels and return their output sockets."""
+    albedo_out_color, albedo_out_alpha, albedo_node = sample_color_channel(
+        nodes,
+        links,
+        frame_tex,
+        images.get("albedo_img"),
+        name_prefix="Atlas Albedo Texture",
+        is_animated=is_animated,
+        anim_curr_uv=anim_curr_uv,
+        anim_next_uv=anim_next_uv,
+        blend_factor_sock=blend_factor_sock,
+        static_uv=target_uv_output,
+        y_current=420,
+        y_next=160,
+        y_blend=300,
+        y_static=300,
+        blend_group_getter=ensure_animated_frame_blend,
+        blend_group_name="Animated Frame Blend",
+    )
+
+    overlay_out_color, overlay_out_alpha, overlay_node = sample_color_channel(
+        nodes,
+        links,
+        frame_tex,
+        images.get("overlay_img"),
+        name_prefix="Atlas Overlay Texture",
+        is_animated=is_animated,
+        anim_curr_uv=anim_curr_uv,
+        anim_next_uv=anim_next_uv,
+        blend_factor_sock=blend_factor_sock,
+        static_uv=target_uv_output,
+        y_current=940,
+        y_next=680,
+        y_blend=810,
+        y_static=580,
+        blend_group_getter=ensure_animated_frame_blend,
+        blend_group_name="Animated Overlay Blend",
+    )
+
+    normal_out_color = sample_normal_channel(
+        nodes,
+        links,
+        frame_tex,
+        images.get("normal_img"),
+        is_animated=is_animated,
+        anim_curr_uv=anim_curr_uv,
+        anim_next_uv=anim_next_uv,
+        blend_factor_sock=blend_factor_sock,
+        active_sample_uv=active_sample_uv,
+        blend_group_getter=ensure_animated_normal_blend,
+    )
+
+    orm_out_color, orm_out_alpha = sample_specular_channel(
+        nodes,
+        links,
+        frame_tex,
+        images.get("orm_img"),
+        name_prefix="Atlas ORM Texture",
+        blend_group_name="Animated ORM Blend",
+        is_animated=is_animated,
+        anim_curr_uv=anim_curr_uv,
+        anim_next_uv=anim_next_uv,
+        blend_factor_sock=blend_factor_sock,
+        active_sample_uv=active_sample_uv,
+        y_current=-520,
+        y_next=-780,
+        y_blend=-650,
+        y_static=-520,
+        blend_group_getter=ensure_animated_specular_blend,
+    )
+
+    aux_out_color, _ = sample_specular_channel(
+        nodes,
+        links,
+        frame_tex,
+        images.get("aux_img"),
+        name_prefix="Atlas Aux Texture",
+        blend_group_name="Animated Aux Blend",
+        is_animated=is_animated,
+        anim_curr_uv=anim_curr_uv,
+        anim_next_uv=anim_next_uv,
+        blend_factor_sock=blend_factor_sock,
+        active_sample_uv=active_sample_uv,
+        y_current=-1040,
+        y_next=-1300,
+        y_blend=-1170,
+        y_static=-1040,
+        blend_group_getter=ensure_animated_specular_blend,
+    )
+
+    return SampledAtlasChannels(
+        albedo_color=albedo_out_color,
+        albedo_alpha=albedo_out_alpha,
+        albedo_node=albedo_node,
+        overlay_color=overlay_out_color,
+        overlay_alpha=overlay_out_alpha,
+        overlay_node=overlay_node,
+        normal_color=normal_out_color,
+        orm_color=orm_out_color,
+        orm_alpha=orm_out_alpha,
+        aux_color=aux_out_color,
+    )

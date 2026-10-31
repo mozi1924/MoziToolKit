@@ -26,11 +26,6 @@ except ImportError:
     bpy = None
     HAS_BPY = False
 
-from ...node_groups.animated import (
-    ensure_animated_frame_blend,
-    ensure_animated_normal_blend,
-    ensure_animated_specular_blend,
-)
 from .stage_builders import (
     build_atlas_uv_pipeline,
     build_biome_tint_pipeline,
@@ -49,11 +44,7 @@ from .template import (
     register_archetype_material,
     try_clone_material,
 )
-from .texture_sampler import (
-    sample_color_channel,
-    sample_normal_channel,
-    sample_specular_channel,
-)
+from .texture_sampler import sample_all_atlas_channels
 
 PBR_LAYOUT_VERSION = "mtk_packed_v1"
 
@@ -251,116 +242,37 @@ def build_atlas_chunk_material(
     )
 
     # -------------------------------------------------------------------------
-    # 3. Albedo + overlay sampling
+    # 2. Texture channels sampling
     # -------------------------------------------------------------------------
-    albedo_out_color, albedo_out_alpha, albedo_node = sample_color_channel(
-        nodes,
-        links,
-        frame_tex,
-        albedo_img,
-        name_prefix="Atlas Albedo Texture",
+    sampled = sample_all_atlas_channels(
+        nodes=nodes,
+        links=links,
+        frame_tex=frame_tex,
+        images=images,
         is_animated=is_animated,
-        anim_curr_uv=anim_curr_uv,
-        anim_next_uv=anim_next_uv,
-        blend_factor_sock=blend_factor_sock,
-        static_uv=target_uv_output,
-        y_current=420,
-        y_next=160,
-        y_blend=300,
-        y_static=300,
-        blend_group_getter=ensure_animated_frame_blend,
-        blend_group_name="Animated Frame Blend",
-    )
-
-    overlay_out_color, overlay_out_alpha, overlay_node = sample_color_channel(
-        nodes,
-        links,
-        frame_tex,
-        overlay_img,
-        name_prefix="Atlas Overlay Texture",
-        is_animated=is_animated,
-        anim_curr_uv=anim_curr_uv,
-        anim_next_uv=anim_next_uv,
-        blend_factor_sock=blend_factor_sock,
-        static_uv=target_uv_output,
-        y_current=940,
-        y_next=680,
-        y_blend=810,
-        y_static=580,
-        blend_group_getter=ensure_animated_frame_blend,
-        blend_group_name="Animated Overlay Blend",
-    )
-
-    # -------------------------------------------------------------------------
-    # 4. Canonical PBR maps: normal+height, ORM+emission, aux
-    # -------------------------------------------------------------------------
-    normal_out_color = sample_normal_channel(
-        nodes,
-        links,
-        frame_tex,
-        normal_img,
-        is_animated=is_animated,
+        target_uv_output=target_uv_output,
         anim_curr_uv=anim_curr_uv,
         anim_next_uv=anim_next_uv,
         blend_factor_sock=blend_factor_sock,
         active_sample_uv=active_sample_uv,
-        blend_group_getter=ensure_animated_normal_blend,
-    )
-
-    orm_out_color, orm_out_alpha = sample_specular_channel(
-        nodes,
-        links,
-        frame_tex,
-        orm_img,
-        name_prefix="Atlas ORM Texture",
-        blend_group_name="Animated ORM Blend",
-        is_animated=is_animated,
-        anim_curr_uv=anim_curr_uv,
-        anim_next_uv=anim_next_uv,
-        blend_factor_sock=blend_factor_sock,
-        active_sample_uv=active_sample_uv,
-        y_current=-520,
-        y_next=-780,
-        y_blend=-650,
-        y_static=-520,
-        blend_group_getter=ensure_animated_specular_blend,
-    )
-
-    aux_out_color, _ = sample_specular_channel(
-        nodes,
-        links,
-        frame_tex,
-        aux_img,
-        name_prefix="Atlas Aux Texture",
-        blend_group_name="Animated Aux Blend",
-        is_animated=is_animated,
-        anim_curr_uv=anim_curr_uv,
-        anim_next_uv=anim_next_uv,
-        blend_factor_sock=blend_factor_sock,
-        active_sample_uv=active_sample_uv,
-        y_current=-1040,
-        y_next=-1300,
-        y_blend=-1170,
-        y_static=-1040,
-        blend_group_getter=ensure_animated_specular_blend,
     )
 
     # -------------------------------------------------------------------------
-    # 5. Biome tint & colormap decoding
+    # 3. Biome tint & colormap decoding
     # -------------------------------------------------------------------------
     tint_node = build_biome_tint_pipeline(
         nodes=nodes,
         links=links,
         frame_biome=frame_biome,
         enable_biome_tint=enable_biome_tint,
-        albedo_out_color=albedo_out_color,
-        albedo_out_alpha=albedo_out_alpha,
-        overlay_out_color=overlay_out_color,
-        overlay_out_alpha=overlay_out_alpha,
+        albedo_out_color=sampled.albedo_color,
+        albedo_out_alpha=sampled.albedo_alpha,
+        overlay_out_color=sampled.overlay_color,
+        overlay_out_alpha=sampled.overlay_alpha,
     )
 
     # -------------------------------------------------------------------------
-    # 6. Standard Principled PBR shading
+    # 4. Standard Principled PBR shading
     # -------------------------------------------------------------------------
     cfg = resolve_material_shading_config(
         render_engine=render_engine,
@@ -368,8 +280,8 @@ def build_atlas_chunk_material(
         enable_vertex_ao=enable_vertex_ao,
     )
 
-    base_color = tint_node.outputs["Color"] if tint_node else albedo_out_color
-    alpha = tint_node.outputs["Alpha"] if tint_node else albedo_out_alpha
+    base_color = tint_node.outputs["Color"] if tint_node else sampled.albedo_color
+    alpha = tint_node.outputs["Alpha"] if tint_node else sampled.albedo_alpha
     if base_color is None or alpha is None:
         return mat
 
@@ -386,10 +298,10 @@ def build_atlas_chunk_material(
         frame_shading,
         base_color=base_color,
         alpha=alpha,
-        normal_color=normal_out_color,
-        orm_color=orm_out_color,
-        orm_alpha=orm_out_alpha,
-        aux_color=aux_out_color,
+        normal_color=sampled.normal_color,
+        orm_color=sampled.orm_color,
+        orm_alpha=sampled.orm_alpha,
+        aux_color=sampled.aux_color,
         disable_subsurface=cfg["disable_subsurface"],
         emission_strength=cfg["emission_strength"],
         subsurface_method=cfg.get("subsurface_method", "BURLEY"),
@@ -411,11 +323,11 @@ def build_atlas_chunk_material(
     mat["mtk_enable_vertex_ao"] = final_enable_vertex_ao
 
     # Keep the albedo node active for Solid viewport display.
-    if albedo_node:
+    if sampled.albedo_node:
         for current in nodes:
             current.select = False
-        nodes.active = albedo_node
-        albedo_node.select = True
+        nodes.active = sampled.albedo_node
+        sampled.albedo_node.select = True
 
     # Alpha / transparency settings (no transmission in v1).
     if hasattr(mat, "surface_render_method"):

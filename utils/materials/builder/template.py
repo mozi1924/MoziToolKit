@@ -275,53 +275,25 @@ def clone_atlas_chunk_material(
         nodes = cloned.node_tree.nodes
 
         # Rebind texture image pointers
-        if not is_animated:
-            if albedo_img is not None:
-                albedo_node = nodes.get("Atlas Albedo Texture")
-                if albedo_node is not None:
-                    albedo_node.image = albedo_img
-            if overlay_img is not None:
-                ovr_node = nodes.get("Atlas Overlay Texture")
-                if ovr_node is not None:
-                    ovr_node.image = overlay_img
-            if normal_img is not None:
-                norm_node = nodes.get("Atlas Normal Texture")
-                if norm_node is not None:
-                    norm_node.image = normal_img
-            if orm_img is not None:
-                orm_node = nodes.get("Atlas ORM Texture")
-                if orm_node is not None:
-                    orm_node.image = orm_img
-            if aux_img is not None:
-                aux_node = nodes.get("Atlas Aux Texture")
-                if aux_node is not None:
-                    aux_node.image = aux_img
-        else:
-            if albedo_img is not None:
+        image_slots = (
+            ("Atlas Albedo Texture", albedo_img),
+            ("Atlas Overlay Texture", overlay_img),
+            ("Atlas Normal Texture", normal_img),
+            ("Atlas ORM Texture", orm_img),
+            ("Atlas Aux Texture", aux_img),
+        )
+        for base_name, img in image_slots:
+            if img is None:
+                continue
+            if not is_animated:
+                node = nodes.get(base_name)
+                if node is not None:
+                    node.image = img
+            else:
                 for suffix in (" (Current)", " (Next)"):
-                    n = nodes.get(f"Atlas Albedo Texture{suffix}")
-                    if n is not None:
-                        n.image = albedo_img
-            if overlay_img is not None:
-                for suffix in (" (Current)", " (Next)"):
-                    n = nodes.get(f"Atlas Overlay Texture{suffix}")
-                    if n is not None:
-                        n.image = overlay_img
-            if normal_img is not None:
-                for suffix in (" (Current)", " (Next)"):
-                    n = nodes.get(f"Atlas Normal Texture{suffix}")
-                    if n is not None:
-                        n.image = normal_img
-            if orm_img is not None:
-                for suffix in (" (Current)", " (Next)"):
-                    n = nodes.get(f"Atlas ORM Texture{suffix}")
-                    if n is not None:
-                        n.image = orm_img
-            if aux_img is not None:
-                for suffix in (" (Current)", " (Next)"):
-                    n = nodes.get(f"Atlas Aux Texture{suffix}")
-                    if n is not None:
-                        n.image = aux_img
+                    node = nodes.get(f"{base_name}{suffix}")
+                    if node is not None:
+                        node.image = img
 
         # Rebind UV Map target
         uv_node = nodes.get("UV Map")
