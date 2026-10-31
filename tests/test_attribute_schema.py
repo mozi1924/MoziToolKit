@@ -29,10 +29,12 @@ class TestAttributeSchema(unittest.TestCase):
 
     def test_schema_exposes_expected_active_contract(self):
         self.assertIn("mtk_uv_transform", attribute_schema.ATTRIBUTE_SPECS)
-        self.assertIn("mtk_source_texture_key", attribute_schema.METADATA_ATTRIBUTE_NAMES)
+        self.assertIn("mtk_source_texture_idx", attribute_schema.METADATA_ATTRIBUTE_NAMES)
+        self.assertIn("mtk_source_textures", attribute_schema.METADATA_ATTRIBUTE_NAMES)
         self.assertIn("mtk_biome_tint_color", attribute_schema.MATERIAL_ATTRIBUTE_NAMES)
         self.assertIn("mtk_colormap_uv", attribute_schema.RETIRED_ATTRIBUTE_NAMES)
         self.assertIn("mtk_face_dir", attribute_schema.RETIRED_ATTRIBUTE_NAMES)
+        self.assertIn("mtk_source_texture_key", attribute_schema.RETIRED_ATTRIBUTE_NAMES)
 
     def test_attribute_constants_cover_every_active_name(self):
         for name in attribute_schema.ACTIVE_ATTRIBUTE_NAMES:

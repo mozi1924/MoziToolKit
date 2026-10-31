@@ -163,6 +163,12 @@ EXPLICIT_MATERIAL_ALIASES = {
 
 def clean_jmc2obj_identifier(raw: str) -> str:
     """Clean jmc2obj prefixes, suffixes, extensions, and biome tints."""
+    try:
+        from .....bridge import clean_material_identifier
+        return clean_material_identifier(raw)
+    except Exception:
+        pass
+
     s = raw.strip().lower()
     if s.endswith(".png") or s.endswith(".jpg"):
         s = s[:-4]
@@ -197,7 +203,19 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
     clean = clean_jmc2obj_identifier(raw_name)
     cands: list[str] = []
 
-    # 1. Check Banner short aliases
+    # 1. Check Banner short aliases (authoritative Rust SSOT first)
+    try:
+        from .....bridge import normalize_banner_pattern
+
+        if "pattern_" in clean or clean in JMC2OBJ_BANNER_SHORT_ALIASES:
+            norm = normalize_banner_pattern(clean)
+            mapped = f"entity/banner/{norm if norm != 'base' else 'banner_base'}"
+            cands.append(mapped)
+            cands.append(f"minecraft:{mapped}")
+            return cands
+    except Exception:
+        pass
+
     for short_code, mapped_path in JMC2OBJ_BANNER_SHORT_ALIASES.items():
         if clean == short_code or clean.endswith(short_code):
             cands.append(mapped_path)

@@ -127,25 +127,7 @@ def get_biome_colors(
 ) -> Dict[str, Any]:
     """Retrieve canonical metadata, temperature, humidity, and Linear RGBA colors from Rust core."""
     if not has_libmtk():
-        temp = custom_temp if custom_temp is not None else 0.8
-        hum = custom_humidity if custom_humidity is not None else 0.4
-        return {
-            "id": biome_name.lower(),
-            "name": biome_name,
-            "temperature": temp,
-            "humidity": hum,
-            "grass_hex": "#91BD59",
-            "foliage_hex": "#77AB2F",
-            "dry_foliage_hex": "#A37546",
-            "water_hex": "#3F76E4",
-            "grass_linear": custom_grass or [0.27, 0.50, 0.09, 1.0],
-            "foliage_linear": custom_foliage or [0.18, 0.40, 0.03, 1.0],
-            "dry_foliage_linear": custom_dry_foliage or [0.36, 0.22, 0.06, 1.0],
-            "water_linear": custom_water or [0.05, 0.18, 0.78, 1.0],
-            "has_custom_grass": has_custom_grass,
-            "has_custom_foliage": has_custom_foliage,
-            "has_custom_dry_foliage": has_custom_dry_foliage,
-        }
+        raise RuntimeError("libmtk is required for biome calculations")
 
     meta = get_biome_meta(biome_name)
     if biome_name.upper() == "CUSTOM":
@@ -352,7 +334,7 @@ def _get_biome_enum_items():
         ("CUSTOM", "Custom", "Custom Biome (Temperature / Humidity & Color Overrides)"),
     ]
     if not has_libmtk():
-        return items + [("PLAINS", "Plains", "Plains Biome")]
+        return items
     biomes = get_all_biomes()
     return items + [(b["id"].upper(), b["name"], f"{b['name']} Biome ({b['temperature']} / {b['humidity']})") for b in biomes]
 

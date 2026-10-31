@@ -268,17 +268,17 @@ class TestCtmBridge(unittest.TestCase):
         solver = stack.build_ctm_solver()
 
         def get_face_key_for(mesh_data, target_x, target_y, target_z, target_dir):
-            keys = mesh_data.get_string_attribute("mtk_source_texture_key")
-            bxs = mesh_data.attribute_memoryview("mtk_block_x").cast("i")
-            bys = mesh_data.attribute_memoryview("mtk_block_y").cast("i")
-            bzs = mesh_data.attribute_memoryview("mtk_block_z").cast("i")
+            palette, tex_indices = mesh_data.source_texture_palette_indices()
+            bxs = mesh_data.attribute_memoryview("mtk_block_x")
+            bys = mesh_data.attribute_memoryview("mtk_block_y")
+            bzs = mesh_data.attribute_memoryview("mtk_block_z")
             positions = mesh_data.positions_memoryview().tobytes()
             quad_indices = mesh_data.quad_indices_memoryview().tobytes()
             for i in range(mesh_data.quad_count):
                 if (bxs[i] == target_x and bys[i] == target_y and
                     bzs[i] == target_z and
                     _face_dir_from_geometry(positions, quad_indices, i) == target_dir):
-                    return keys[i]
+                    return palette[tex_indices[i]]
             return None
 
         def _face_dir_from_geometry(positions, quad_indices, face_index):

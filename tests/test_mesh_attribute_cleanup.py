@@ -128,15 +128,17 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertIn(ATTR_UV_TRANSFORM, mesh.attributes)
         self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
 
-    def test_clean_obsolete_mesh_attributes_preserves_source_texture_key(self):
+    def test_clean_obsolete_mesh_attributes_purges_retired_source_texture_key(self):
         mesh = MockMesh(face_count=300)
         mesh.attributes["mtk_source_texture_key"] = MockAttributeData("mtk_source_texture_key", 300)
         mesh.attributes["mtk_source_texture_idx"] = MockAttributeData("mtk_source_texture_idx", 300)
         mesh["mtk_source_textures"] = ["stone", "dirt"]
 
         removed = clean_obsolete_mesh_attributes(mesh)
-        self.assertNotIn("mtk_source_texture_key", removed)
-        self.assertIn("mtk_source_texture_key", mesh.attributes)
+        self.assertIn("mtk_source_texture_key", removed)
+        self.assertNotIn("mtk_source_texture_key", mesh.attributes)
+        self.assertIn("mtk_source_texture_idx", mesh.attributes)
+        self.assertIn("mtk_source_textures", mesh)
 
     def test_resolve_source_texture_keys_string_fallback(self):
         from MoziToolKit.bridge.mesh.attributes import (

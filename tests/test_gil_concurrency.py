@@ -64,15 +64,18 @@ class TestGilConcurrency(unittest.TestCase):
 
         loop_uvs = mesh.loop_uvs_memoryview()
         self.assertIsNotNone(loop_uvs)
-        self.assertEqual(len(loop_uvs), 32)
+        self.assertEqual(loop_uvs.format, "f")
+        self.assertEqual(len(loop_uvs), 8)  # 4 loops * 2 floats
 
         starts = mesh.loop_starts_memoryview()
         self.assertIsNotNone(starts)
-        self.assertEqual(len(starts), 4)
+        self.assertEqual(starts.format, "i")
+        self.assertEqual(len(starts), 1)  # 1 face
 
         totals = mesh.loop_totals_memoryview()
         self.assertIsNotNone(totals)
-        self.assertEqual(len(totals), 4)
+        self.assertEqual(totals.format, "i")
+        self.assertEqual(len(totals), 1)  # 1 face
 
     def test_concurrent_mesh_data_merge(self):
         """Verify concurrent mesh merging and thread pool meshing."""

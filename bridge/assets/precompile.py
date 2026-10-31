@@ -244,10 +244,7 @@ def reload_atlas_images(prefs=None) -> int:
                     try:
                         if img.size[0] != w or img.size[1] != h:
                             img.scale(w, h)
-                        mv = memoryview(albedo_f32)
-                        if mv.format != "f":
-                            mv = mv.cast("f")
-                        img.pixels.foreach_set(mv)
+                        img.pixels.foreach_set(albedo_f32)
                         img.update()
                         reloaded_count += 1
                     except Exception:

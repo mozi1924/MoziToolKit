@@ -79,6 +79,9 @@ for _name, _value in vars(_generated).items():
     if _name.startswith("ATTR_"):
         globals()[_name] = _value
 
+# Retired legacy attribute constants kept for cleanup routines
+ATTR_SOURCE_TEXTURE_KEY: str = "mtk_source_texture_key"
+
 __all__ = [
     "SCHEMA_HASH",
     "AttributeSpec",

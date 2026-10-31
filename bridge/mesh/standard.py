@@ -59,38 +59,28 @@ def inject_topology_standard(
 
     # 2. Vertex positions
     pos_mv = mesh_data.positions_memoryview()
-    if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-        pos_mv = pos_mv.cast("f")
-
     try:
         mesh.vertices.foreach_set("co", pos_mv)
     except Exception:
         pos_attr = safe_get_attribute(mesh, "position")
         if pos_attr is not None and len(pos_attr.data) == v_count:
-            pos_arr = np.frombuffer(pos_mv, dtype=np.float32)
-            pos_attr.data.foreach_set("vector", pos_arr)
+            pos_attr.data.foreach_set("vector", pos_mv)
 
     # 3. Loops & Corner Vertices
     if is_quad:
         quad_mv = mesh_data.quad_indices_memoryview()
         if quad_mv is None:
             raise RuntimeError("Quad mesh is missing quad_indices")
-        if hasattr(quad_mv, "cast") and quad_mv.format == "B":
-            quad_mv = quad_mv.cast("i")
         loop_indices = quad_mv
     else:
-        indices_mv = mesh_data.indices_memoryview()
-        if hasattr(indices_mv, "cast") and indices_mv.format == "B":
-            indices_mv = indices_mv.cast("i")
-        loop_indices = indices_mv
+        loop_indices = mesh_data.indices_memoryview()
 
     try:
         mesh.loops.foreach_set("vertex_index", loop_indices)
     except Exception:
         cvert_attr = safe_get_attribute(mesh, ".corner_vert")
         if cvert_attr is not None and len(cvert_attr.data) == total_loops:
-            arr = np.frombuffer(loop_indices, dtype=np.int32)
-            cvert_attr.data.foreach_set("value", arr)
+            cvert_attr.data.foreach_set("value", loop_indices)
 
     # 4. Polygons
     if not shade_smooth:
@@ -103,19 +93,16 @@ def inject_topology_standard(
 
 def inject_vertex_positions_standard(mesh: Any, mesh_data: Any) -> None:
     """Standard injection for vertex positions."""
+    pos_mv = mesh_data.positions_memoryview()
     pos_attr = safe_get_attribute(mesh, "position")
     if pos_attr is not None and len(pos_attr.data) > 0:
         try:
-            pos_arr = np.frombuffer(mesh_data.positions_memoryview(), dtype=np.float32)
-            pos_attr.data.foreach_set("vector", pos_arr)
+            pos_attr.data.foreach_set("vector", pos_mv)
             return
         except Exception:
             pass
 
     try:
-        pos_mv = mesh_data.positions_memoryview()
-        if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-            pos_mv = pos_mv.cast("f")
         mesh.vertices.foreach_set("co", pos_mv)
     except Exception:
         pass
@@ -123,19 +110,16 @@ def inject_vertex_positions_standard(mesh: Any, mesh_data: Any) -> None:
 
 def inject_vertex_normals_standard(mesh: Any, mesh_data: Any) -> None:
     """Standard injection for vertex normals."""
+    norm_mv = mesh_data.normals_memoryview()
     norm_attr = safe_get_attribute(mesh, "normal")
     if norm_attr is not None and len(norm_attr.data) > 0:
         try:
-            norm_arr = np.frombuffer(mesh_data.normals_memoryview(), dtype=np.float32)
-            norm_attr.data.foreach_set("vector", norm_arr)
+            norm_attr.data.foreach_set("vector", norm_mv)
             return
         except Exception:
             pass
 
     try:
-        norm_mv = mesh_data.normals_memoryview()
-        if hasattr(norm_mv, "cast") and norm_mv.format == "B":
-            norm_mv = norm_mv.cast("f")
         mesh.vertices.foreach_set("normal", norm_mv)
     except Exception:
         pass
@@ -172,10 +156,9 @@ def inject_uvs_standard(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] 
 
     # Priority 1: Fast loop UVs memoryview
     loop_uv_mv = getattr(mesh_data, "loop_uvs_memoryview", lambda: None)()
-    if loop_uv_mv is not None and len(loop_uv_mv) == num_loops * 2 * 4:
+    if loop_uv_mv is not None and len(loop_uv_mv) == num_loops * 2:
         try:
-            loop_uv_arr = np.frombuffer(loop_uv_mv, dtype=np.float32)
-            target_setter(attr_key, loop_uv_arr)
+            target_setter(attr_key, loop_uv_mv)
             return
         except Exception as e:
             logger.debug("Standard loop_uvs foreach_set failed: %s", e)
@@ -285,8 +268,6 @@ def inject_face_materials_standard(mesh: Any, mesh_data: Any) -> None:
 
     # Direct single-pass write to polygon material indices
     try:
-        if hasattr(mats_mv, "cast") and mats_mv.format == "B":
-            mats_mv = mats_mv.cast("H")
         if len(mats_mv) == num_polys:
             mesh.polygons.foreach_set("material_index", mats_mv)
             return

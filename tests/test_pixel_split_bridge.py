@@ -147,7 +147,7 @@ class TestPixelSplitBridge(unittest.TestCase):
 
         self.assertGreater(subdivided.face_count, 20)
         loop_uvs = np.frombuffer(subdivided.loop_uvs_memoryview(), dtype=np.float32).reshape(-1, 2)
-        self.assertEqual(len(loop_uvs), len(subdivided.indices_memoryview()) // 4)
+        self.assertEqual(len(loop_uvs), len(subdivided.indices_memoryview()))
 
     def test_slice_face_by_pixel_grid_bridge(self):
         positions = [

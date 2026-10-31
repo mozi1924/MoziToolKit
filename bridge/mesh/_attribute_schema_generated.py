@@ -7,12 +7,12 @@ Regenerate after changing the native attribute contract:
 
 from __future__ import annotations
 
-SCHEMA_HASH = "9e7665684d945b76"
+SCHEMA_HASH = "4a1374594c69aa06"
 
 # (name, domain, data_type, role)
 ATTRIBUTE_SPECS: tuple[tuple[str, str, str, str], ...] = (
-    ("mtk_source_texture_key", "face", "string", "metadata"),
     ("mtk_source_texture_idx", "face", "int32", "metadata"),
+    ("mtk_source_textures", "mesh", "string", "metadata"),
     ("mtk_atlas_chunk_id", "face", "int32", "metadata"),
     ("mtk_uv_transform", "face", "float4", "material"),
     ("mtk_uv_rotation", "face", "float", "material"),
@@ -35,6 +35,7 @@ ATTRIBUTE_SPECS: tuple[tuple[str, str, str, str], ...] = (
 )
 
 RETIRED_ATTRIBUTE_NAMES: frozenset[str] = frozenset({
+    "mtk_source_texture_key",
     "mtk_material_slot",
     "mtk_material_id",
     "mtk_atlas_texture_id",
@@ -72,8 +73,8 @@ RETIRED_ATTRIBUTE_NAMES: frozenset[str] = frozenset({
 })
 
 # Convenience constants for shader/host code. One name, one definition.
-ATTR_SOURCE_TEXTURE_KEY = "mtk_source_texture_key"
 ATTR_SOURCE_TEXTURE_IDX = "mtk_source_texture_idx"
+ATTR_SOURCE_TEXTURES = "mtk_source_textures"
 ATTR_ATLAS_CHUNK_ID = "mtk_atlas_chunk_id"
 ATTR_UV_TRANSFORM = "mtk_uv_transform"
 ATTR_UV_ROTATION = "mtk_uv_rotation"

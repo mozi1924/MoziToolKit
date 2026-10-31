@@ -39,13 +39,13 @@ def inject_point_cloud_standard(
     pos_attr = target_data.attributes.get("position") if hasattr(target_data, "attributes") else None
 
     # 1. Positions injection
-    pos_arr = np.frombuffer(cloud_data.positions_memoryview(), dtype=np.float32)
+    pos_mv = cloud_data.positions_memoryview()
     if pos_attr is not None and len(pos_attr.data) == pt_count:
-        pos_attr.data.foreach_set("vector", pos_arr)
+        pos_attr.data.foreach_set("vector", pos_mv)
     elif hasattr(target_data, "vertices"):
-        target_data.vertices.foreach_set("co", pos_arr)
+        target_data.vertices.foreach_set("co", pos_mv)
     elif hasattr(target_data, "points"):
-        target_data.points.foreach_set("co", pos_arr)
+        target_data.points.foreach_set("co", pos_mv)
 
     # 2. Block X, Y, Z integer coordinates
     for mv_fn, target_attr in (
@@ -56,15 +56,13 @@ def inject_point_cloud_standard(
         if target_attr is None:
             continue
         mv = getattr(cloud_data, mv_fn)()
-        if hasattr(mv, "cast") and mv.format == "B":
-            mv = mv.cast("i")
         target_attr.data.foreach_set("value", mv)
 
     # 3. Block states palette & indices
     if attr_state_idx is not None:
         palette = cloud_data.get_state_palette()
-        indices = np.frombuffer(cloud_data.state_indices_memoryview(), dtype=np.int32)
-        attr_state_idx.data.foreach_set("value", np.ascontiguousarray(indices))
+        indices = cloud_data.state_indices_memoryview()
+        attr_state_idx.data.foreach_set("value", indices)
         target_data[PROP_BLOCK_PALETTE] = palette
         if obj is not None:
             obj[PROP_BLOCK_PALETTE] = palette
@@ -72,8 +70,8 @@ def inject_point_cloud_standard(
     # 4. Biome palette & indices
     if attr_biome_idx is not None:
         b_palette = cloud_data.get_biome_palette()
-        b_indices = np.frombuffer(cloud_data.biome_indices_memoryview(), dtype=np.int32)
-        attr_biome_idx.data.foreach_set("value", np.ascontiguousarray(b_indices))
+        b_indices = cloud_data.biome_indices_memoryview()
+        attr_biome_idx.data.foreach_set("value", b_indices)
         target_data[PROP_BIOME_PALETTE] = b_palette
         if obj is not None:
             obj[PROP_BIOME_PALETTE] = b_palette
@@ -87,8 +85,8 @@ def inject_point_cloud_standard(
 
     if has_entities and attr_entity_idx is not None and hasattr(cloud_data, "entity_indices_memoryview"):
         ent_palette = cloud_data.get_entity_palette()
-        ent_indices = np.frombuffer(cloud_data.entity_indices_memoryview(), dtype=np.int32)
-        attr_entity_idx.data.foreach_set("value", np.ascontiguousarray(ent_indices))
+        ent_indices = cloud_data.entity_indices_memoryview()
+        attr_entity_idx.data.foreach_set("value", ent_indices)
         target_data[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
         if obj is not None:
             obj[PROP_BLOCK_ENTITY_PALETTE] = ent_palette

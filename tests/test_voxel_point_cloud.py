@@ -286,11 +286,14 @@ class TestVoxelPointCloudBridge:
 
             # Rebuild a point cloud excluding center block (1, 1, 1) -> 26 points
             carved_cloud = libmtk_py.VoxelPointCloud()
-            positions = extracted_cloud.positions_memoryview().cast("f")
+            positions = extracted_cloud.positions_memoryview()
+            bxs = extracted_cloud.block_x_memoryview()
+            bys = extracted_cloud.block_y_memoryview()
+            bzs = extracted_cloud.block_z_memoryview()
             for i in range(len(extracted_cloud)):
-                bx = extracted_cloud.block_x_memoryview().cast("i")[i]
-                by = extracted_cloud.block_y_memoryview().cast("i")[i]
-                bz = extracted_cloud.block_z_memoryview().cast("i")[i]
+                bx = bxs[i]
+                by = bys[i]
+                bz = bzs[i]
                 st = _states(extracted_cloud)[i]
                 bm = _biomes(extracted_cloud)[i]
                 if not (bx == 1 and by == 1 and bz == 1):

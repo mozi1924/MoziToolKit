@@ -50,14 +50,7 @@ class DnaResolverV42(BaseDnaResolver):
         pos_attr = mesh.attributes.get("position")
         if pos_attr is not None:
             if expected_count is None or len(pos_attr.data) == expected_count:
-                ptr = self.resolve_attribute_ptr(pos_attr)
-                if ptr is not None:
-                    return ptr
-
-        # Fallback to legacy vertices array if attributes['position'] resolution fails
-        if hasattr(mesh, "vertices") and len(mesh.vertices) > 0:
-            if expected_count is None or len(mesh.vertices) == expected_count:
-                return safe_as_pointer(mesh.vertices[0])
+                return self.resolve_attribute_ptr(pos_attr)
 
         return None
 

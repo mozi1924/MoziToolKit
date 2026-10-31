@@ -254,8 +254,38 @@ def compute_mesh_biome_attributes_from_storage(
 
 def clean_material_name(name: str) -> str:
     """Normalize and clean a material or texture name into an identifier stem."""
-    mtk = require_libmtk("clean_material_name")
-    return mtk.MaterialResolver.clean_name(name)
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(mtk, "clean_material_identifier"):
+        return mtk.clean_material_identifier(name)
+    if mtk is not None and hasattr(mtk, "MaterialResolver") and hasattr(mtk.MaterialResolver, "clean_name"):
+        return mtk.MaterialResolver.clean_name(name)
+    return name
+
+
+clean_material_identifier = clean_material_name
+
+
+def normalize_banner_pattern(code_or_name: str) -> str:
+    """Normalize a legacy banner pattern short-code or identifier into standard pattern stem."""
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(mtk, "normalize_banner_pattern"):
+        return mtk.normalize_banner_pattern(code_or_name)
+    return "base"
+
+
+def builtin_biome_suffixes() -> tuple[str, ...]:
+    """Returns canonical exporter biome suffixes from Rust core."""
+    mtk = get_libmtk()
+    if mtk is not None and hasattr(mtk, "builtin_biome_suffixes"):
+        return tuple(mtk.builtin_biome_suffixes())
+    return (
+        "-desert", "-forest", "-swamp", "-taiga", "-snow", "-ocean", "-jungle",
+        "-badlands", "-savanna", "-dark_forest", "-birch_forest", "-plains",
+        "-meadow", "-mangrove", "-cherry_grove", "-cold_ocean", "-warm_ocean",
+        "_desert", "_forest", "_swamp", "_taiga", "_snow", "_ocean", "_jungle",
+        "_badlands", "_savanna", "_dark_forest", "_birch_forest", "_plains",
+        "_meadow", "_mangrove", "_cherry_grove", "_cold_ocean", "_warm_ocean",
+    )
 
 
 def remap_mesh_multi_uvs_paletted(
@@ -459,6 +489,9 @@ __all__ = [
     "compute_mesh_biome_attributes_from_storage",
     "MaterialResolver",
     "clean_material_name",
+    "clean_material_identifier",
+    "normalize_banner_pattern",
+    "builtin_biome_suffixes",
     "GridAtlasSpec",
     "BakedAtlas",
     "load_baked_atlas_from_json",

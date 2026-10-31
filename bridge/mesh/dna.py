@@ -82,8 +82,6 @@ def inject_topology_dna(
 
     if not pos_copied:
         pos_mv = mesh_data.positions_memoryview()
-        if hasattr(pos_mv, "cast") and pos_mv.format == "B":
-            pos_mv = pos_mv.cast("f")
         mesh.vertices.foreach_set("co", pos_mv)
 
     # 2. Direct copy loops & corner vertices (DNA fast path, fallback to foreach_set)
@@ -102,8 +100,6 @@ def inject_topology_dna(
 
     if not cvert_copied:
         src = mesh_data.quad_indices_memoryview() if is_quad else mesh_data.indices_memoryview()
-        if hasattr(src, "cast") and src.format == "B":
-            src = src.cast("i")
         mesh.loops.foreach_set("vertex_index", src)
 
     # 3. Direct setup polygons

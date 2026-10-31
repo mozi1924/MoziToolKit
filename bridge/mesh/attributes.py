@@ -112,14 +112,9 @@ def inject_face_source_texture_palette(
     mesh: Any,
     palette: Sequence[str],
     indices: Any,
-    write_legacy_string: bool = True,
+    write_legacy_string: bool = False,
 ) -> None:
-    """Write source texture provenance directly as palette + INT indices.
-
-    `write_legacy_string` keeps the ≤1024-face STRING compatibility copy for
-    external meshes; internal voxel/Live Sync meshes pass False because the
-    palette + index pair is the authoritative provenance.
-    """
+    """Write source texture provenance directly as palette + INT indices."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
     num_polys = len(mesh.polygons)
@@ -127,12 +122,14 @@ def inject_face_source_texture_palette(
         return
     if isinstance(indices, (list, tuple)):
         arr = np.ascontiguousarray(indices, dtype=np.int32)
+    elif hasattr(indices, "format") and indices.format == "i":
+        arr = indices
     else:
         arr = np.frombuffer(indices, dtype=np.int32)
-    if arr.size != num_polys:
+    if len(arr) != num_polys:
         logger.warning(
             "Source-texture palette not written: got %d indices for %d faces",
-            arr.size,
+            len(arr),
             num_polys,
         )
         return
@@ -146,40 +143,23 @@ def inject_face_source_texture_palette(
         return
     attr_idx.data.foreach_set("value", arr)
 
-    # Optional ≤1024-face STRING compatibility copy (external meshes only).
+    # Clean up retired per-face string attribute if left over
     attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
-    if not write_legacy_string:
-        if attr_str is not None:
-            try:
-                mesh.attributes.remove(attr_str)
-            except Exception as exc:
-                logger.debug("Failed to remove legacy provenance string: %s", exc)
-        return
-    if attr_str is not None or num_polys <= 1024:
-        if attr_str is None:
-            attr_str = get_or_create_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY, "STRING", "FACE")
-        if attr_str is not None and len(attr_str.data) == num_polys:
-            pal_list = list(palette)
-            pal_len = len(pal_list)
-            for i in range(num_polys):
-                idx = int(arr[i])
-                val = pal_list[idx] if 0 <= idx < pal_len else ""
-                b_val = str(val).encode("utf-8")
-                try:
-                    attr_str.data[i].value = b_val
-                except Exception as exc:
-                    logger.debug("Failed to write source texture key at face %d: %s", i, exc)
+    if attr_str is not None:
+        try:
+            mesh.attributes.remove(attr_str)
+        except Exception as exc:
+            logger.debug("Failed to remove retired provenance string: %s", exc)
 
 
 def inject_face_source_texture_keys(
-    mesh: Any, values: Sequence[str], write_legacy_string: bool = True
+    mesh: Any, values: Sequence[str], write_legacy_string: bool = False
 ) -> None:
     """
     Inject face source texture keys via palette indexing (sub-millisecond throughput).
     Creates:
       - mesh["mtk_source_textures"]: List[str] palette
       - "mtk_source_texture_idx": INT (FACE) attribute with mapped indices
-      - "mtk_source_texture_key": optional STRING (FACE) compatibility copy
     """
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
         return
@@ -200,28 +180,16 @@ def inject_face_source_texture_keys(
     # 2. Write INT attribute in bulk
     attr_idx = get_or_create_attribute(mesh, "mtk_source_texture_idx", "INT", "FACE")
     if attr_idx is not None and len(attr_idx.data) == num_polys:
-        np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
+        np_indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.int32, count=num_polys)
         attr_idx.data.foreach_set("value", np_indices)
 
-    # 3. Optional STRING compatibility copy (external meshes only).
+    # Clean up retired per-face string attribute if left over
     attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY)
-    if not write_legacy_string:
-        if attr_str is not None:
-            try:
-                mesh.attributes.remove(attr_str)
-            except Exception as exc:
-                logger.debug("Failed to remove legacy provenance string: %s", exc)
-        return
-    if attr_str is not None or num_polys <= 1024:
-        if attr_str is None:
-            attr_str = get_or_create_attribute(mesh, ATTR_SOURCE_TEXTURE_KEY, "STRING", "FACE")
-        if attr_str is not None and len(attr_str.data) == num_polys:
-            for i, val in enumerate(values):
-                b_val = str(val).encode("utf-8") if isinstance(val, str) else bytes(val)
-                try:
-                    attr_str.data[i].value = b_val
-                except Exception as exc:
-                    logger.debug("Failed to write source texture key at face %d: %s", i, exc)
+    if attr_str is not None:
+        try:
+            mesh.attributes.remove(attr_str)
+        except Exception as exc:
+            logger.debug("Failed to remove retired provenance string: %s", exc)
 
 
 def inject_face_attribute_string(mesh: Any, name: str, values: List[str]) -> None:
@@ -457,20 +425,7 @@ def inject_custom_attributes(
                 except Exception:
                     continue
 
-            if dtype_name.lower() == "string":
-                str_vals = mesh_data.get_string_attribute(attr_name)
-                if str_vals and len(str_vals) == len(b_attr.data):
-                    if len(str_vals) <= 256:
-                        for i, val in enumerate(str_vals):
-                            b_val = val.encode("utf-8") if isinstance(val, str) else bytes(val)
-                            try:
-                                b_attr.data[i].value = b_val
-                            except Exception:
-                                try:
-                                    b_attr.data[i].value = val
-                                except Exception:
-                                    pass
-            else:
+            if dtype_name.lower() != "string":
                 mv = mesh_data.attribute_memoryview(attr_name)
                 if mv is not None:
                     dna_injected = False

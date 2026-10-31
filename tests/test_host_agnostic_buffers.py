@@ -48,17 +48,29 @@ def test_mesh_data_to_buffers_headless():
     assert buf_dict["face_count"] == 1
     assert buf_dict["quad_count"] == 1
 
-    # Ingest with numpy zero-copy
+    # Ingest with typed memoryview and numpy zero-copy
+    assert buf_dict["positions"].format == "f"
+    assert buf_dict["positions"].itemsize == 4
+    assert len(buf_dict["positions"]) == 12
     pos_np = np.frombuffer(buf_dict["positions"], dtype=np.float32)
     assert len(pos_np) == 12
     np.testing.assert_allclose(pos_np[:3], [0.0, 0.0, 0.0])
 
+    assert buf_dict["indices"].format == "I"
+    assert buf_dict["indices"].itemsize == 4
+    assert len(buf_dict["indices"]) == 6
     indices_np = np.frombuffer(buf_dict["indices"], dtype=np.uint32)
     assert len(indices_np) == 6  # Triangulated 2 tris = 6 indices
 
+    assert buf_dict["loop_uvs"].format == "f"
+    assert buf_dict["loop_uvs"].itemsize == 4
+    assert len(buf_dict["loop_uvs"]) == 8
     uvs_np = np.frombuffer(buf_dict["loop_uvs"], dtype=np.float32)
     assert len(uvs_np) == 8
 
+    assert buf_dict["face_materials"].format == "H"
+    assert buf_dict["face_materials"].itemsize == 2
+    assert len(buf_dict["face_materials"]) == 1
     mats_np = np.frombuffer(buf_dict["face_materials"], dtype=np.uint16)
     assert len(mats_np) == 1
     assert mats_np[0] == 0
@@ -69,6 +81,9 @@ def test_mesh_data_to_buffers_headless():
     attr_info = buf_dict["attributes"]["test_attr"]
     assert attr_info["domain"] == "point"
     assert attr_info["dtype"] == "int32"
+    assert attr_info["data"].format == "i"
+    assert attr_info["data"].itemsize == 4
+    assert len(attr_info["data"]) == 4
     attr_data = np.frombuffer(attr_info["data"], dtype=np.int32)
     np.testing.assert_array_equal(attr_data, [42, 43, 44, 45])
 
@@ -86,10 +101,16 @@ def test_voxel_point_cloud_to_buffers_headless():
     assert isinstance(buf_dict, dict)
     assert buf_dict["count"] == 2
 
+    assert buf_dict["positions"].format == "f"
+    assert buf_dict["positions"].itemsize == 4
+    assert len(buf_dict["positions"]) == 6
     pos_np = np.frombuffer(buf_dict["positions"], dtype=np.float32)
     assert len(pos_np) == 6
     np.testing.assert_allclose(pos_np[:3], [0.5, 0.5, 0.5])
 
+    assert buf_dict["block_x"].format == "i"
+    assert buf_dict["block_x"].itemsize == 4
+    assert len(buf_dict["block_x"]) == 2
     bx_np = np.frombuffer(buf_dict["block_x"], dtype=np.int32)
     np.testing.assert_array_equal(bx_np, [0, 1])
 
