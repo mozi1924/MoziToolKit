@@ -21,8 +21,11 @@
 - **Data-In, Data-Out**：`bridge/` 严禁编写 Blender 宿主业务编排（如物体创建、材质节点树链接，统一收敛在 `utils/`）。
 - **零假降级 (No Fake Fallbacks)**：全面移除 Python 假数据生成与静默吞错，原生核心未就绪或参数非法时抛出明确异常或走统一门禁。
 
-### 规则 3：批量灌入与零拷贝优先 (Batch & Zero-Copy)
-- 几何读写优先使用 `libmtk_blender_dna` 指针直写，或通过 `foreach_set`、NumPy 批量通道；严禁在 Python 中逐顶点/面循环修改。
+### 规则 3：双通道批量灌入与安全降级规范 (Dual-Channel Ingestion & Safe Fallback)
+- **双通道架构**：
+  1. **Fast-Path (DNA 直写零拷贝)**：通过 `libmtk_blender_dna` 直写 C++ 内存指针，作为极速加速插件。
+  2. **Safe-Path (官方安全批量通道)**：基于 Blender 官方稳定 `foreach_set` / `Attribute.data.foreach_set` 批量灌入。
+- **解耦与降级铁律**：严禁将 DNA 直写作为不可替代的硬性依赖。当未来 Blender 版本 DNA 结构变化、指针校验失败或用户手动关闭零拷贝（`use_dna=False`）时，系统必须无缝回退至官方批量通道，且保证几何、UV、属性 100% 一致。严禁在 Python 中逐顶点/面循环修改。
 
 ### 规则 4：双轮子开发态直通与发布态隔离 (Dual-Wheel Architecture)
 - **开发态**：通过 `dev/lib/` 软链接直连 Rust 产物（`libmtk_py.so`, `libmtk_blender_dna.so`），由 `dev/loader.py` 动态加载，即改即生效。
