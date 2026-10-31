@@ -112,7 +112,6 @@ def inject_face_source_texture_palette(
     mesh: Any,
     palette: Sequence[str],
     indices: Any,
-    write_legacy_string: bool = False,
 ) -> None:
     """Write source texture provenance directly as palette + INT indices."""
     if not hasattr(mesh, "attributes") or not hasattr(mesh, "polygons"):
@@ -152,9 +151,7 @@ def inject_face_source_texture_palette(
             logger.debug("Failed to remove retired provenance string: %s", exc)
 
 
-def inject_face_source_texture_keys(
-    mesh: Any, values: Sequence[str], write_legacy_string: bool = False
-) -> None:
+def inject_face_source_texture_keys(mesh: Any, values: Sequence[str]) -> None:
     """
     Inject face source texture keys via palette indexing (sub-millisecond throughput).
     Creates:
@@ -337,9 +334,7 @@ def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> boo
         try:
             palette, indices = builder()
             if palette:
-                inject_face_source_texture_palette(
-                    mesh, palette, indices, write_legacy_string=False
-                )
+                inject_face_source_texture_palette(mesh, palette, indices)
                 return True
         except Exception as e:
             logger.debug("Palette provenance fast path failed: %s", e)

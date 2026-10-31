@@ -172,15 +172,18 @@ def main() -> None:
         _assert(len(extracted) == 27, "3x3x3 cloud must contain 27 points")
 
         carved = libmtk_py.VoxelPointCloud()
-        positions = extracted.positions_memoryview().cast("f")
+        positions = extracted.positions_memoryview()
         state_palette = extracted.get_state_palette()
         biome_palette = extracted.get_biome_palette()
-        state_indices = extracted.state_indices_memoryview().cast("i")
-        biome_indices = extracted.biome_indices_memoryview().cast("i")
+        state_indices = extracted.state_indices_memoryview()
+        biome_indices = extracted.biome_indices_memoryview()
+        bxs = extracted.block_x_memoryview()
+        bys = extracted.block_y_memoryview()
+        bzs = extracted.block_z_memoryview()
         for i in range(len(extracted)):
-            bx = extracted.block_x_memoryview().cast("i")[i]
-            by = extracted.block_y_memoryview().cast("i")[i]
-            bz = extracted.block_z_memoryview().cast("i")[i]
+            bx = bxs[i]
+            by = bys[i]
+            bz = bzs[i]
             if (bx, by, bz) == (1, 1, 1):
                 continue
             off = i * 3

@@ -6,7 +6,34 @@ PROJECT_DIR = Path(__file__).parent.parent.resolve()
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from MoziToolKit.bridge.extrude import repair_extruded_side_uv, generate_random_extrude_heights
+from MoziToolKit.bridge.engine import get_libmtk
+from MoziToolKit.bridge.extrude import generate_random_extrude_heights
+
+
+def repair_extruded_side_uv(
+    uv_base_a,
+    uv_base_b,
+    top_normal,
+    extrude_vec,
+    mode="SMART",
+    step_u=1.0 / 16.0,
+    step_v=1.0 / 16.0,
+    top_uv_bounds=None,
+    adjacent_uv_strip=None,
+):
+    mtk = get_libmtk()
+    adj = list(adjacent_uv_strip) if adjacent_uv_strip is not None else None
+    return mtk.unstable.testing.repair_extruded_side_uv(
+        tuple(uv_base_a),
+        tuple(uv_base_b),
+        tuple(top_normal),
+        tuple(extrude_vec),
+        mode,
+        step_u,
+        step_v,
+        top_uv_bounds,
+        adj,
+    )
 
 
 

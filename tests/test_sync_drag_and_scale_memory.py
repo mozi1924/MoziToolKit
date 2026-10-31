@@ -148,6 +148,22 @@ def _get_rss_mb() -> float:
                 _fields_ = [
                     ("pti_virtual_size", ctypes.c_uint64),
                     ("pti_resident_size", ctypes.c_uint64),
+                    ("pti_total_user", ctypes.c_uint64),
+                    ("pti_total_system", ctypes.c_uint64),
+                    ("pti_threads_user", ctypes.c_uint64),
+                    ("pti_threads_system", ctypes.c_uint64),
+                    ("pti_policy", ctypes.c_int32),
+                    ("pti_faults", ctypes.c_int32),
+                    ("pti_pageins", ctypes.c_int32),
+                    ("pti_cow_faults", ctypes.c_int32),
+                    ("pti_messages_sent", ctypes.c_int32),
+                    ("pti_messages_received", ctypes.c_int32),
+                    ("pti_syscalls_mach", ctypes.c_int32),
+                    ("pti_syscalls_unix", ctypes.c_int32),
+                    ("pti_csw", ctypes.c_int32),
+                    ("pti_threadnum", ctypes.c_int32),
+                    ("pti_numrunning", ctypes.c_int32),
+                    ("pti_priority", ctypes.c_int32),
                 ]
 
             info = _ProcTaskinfo()
@@ -280,6 +296,22 @@ class TestSyncDragAndScaleMemory(unittest.TestCase):
     def setUp(self):
         if not is_sync_available():
             self.skipTest("libmtk_py LiveSyncSession not available")
+        self._orig_objects = getattr(bpy.data, "objects", None)
+        if not HAS_BPY:
+            from unittest.mock import MagicMock
+            mock_container = MagicMock()
+            mock_container.name = "Yefira_World"
+            mock_container.type = "EMPTY"
+            mock_container.get.side_effect = lambda k, d=None: True if k == "mtk:is_yefira_world" else d
+            mock_dict = {"Yefira_World": mock_container}
+            mock_objects = MagicMock()
+            mock_objects.__getitem__.side_effect = mock_dict.__getitem__
+            mock_objects.__contains__.side_effect = mock_dict.__contains__
+            mock_objects.get.side_effect = mock_dict.get
+            mock_objects.values.side_effect = mock_dict.values
+            bpy.data.objects = mock_objects
+            if hasattr(bpy, "context") and hasattr(bpy.context, "scene"):
+                bpy.context.scene.mozi_active_sync_container_name = "Yefira_World"
 
     def test_drag_and_scale_memory_stability(self):
         server = _TestControllableSyncServer(port=8797)
@@ -334,7 +366,9 @@ class TestSyncDragAndScaleMemory(unittest.TestCase):
         self.assertLess(total_growth, max_allowed_total, f"Total sync memory grew excessively by {total_growth:.2f} MB")
 
     def tearDown(self):
-        if HAS_BPY:
+        if not HAS_BPY:
+            bpy.data.objects = self._orig_objects
+        else:
             obj = bpy.data.objects.get("Yefira_World")
             if obj:
                 mesh = obj.data

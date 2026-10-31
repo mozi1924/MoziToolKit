@@ -88,7 +88,6 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
                 summary_msg = (
                     f"Compiled {res.get('pack_count', 0)} packs: "
                     f"{res.get('atlas_chunks', 0)} atlas chunks, "
-                    f"{res.get('standalone_textures', 0)} standalone textures, "
                     f"{models_cnt} models in {duration:.2f}s"
                 )
                 self.report({'INFO'}, summary_msg)
@@ -121,7 +120,6 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
             summary_msg = (
                 f"Compiled {res.get('pack_count', 0)} packs: "
                 f"{res.get('atlas_chunks', 0)} atlas chunks, "
-                f"{res.get('standalone_textures', 0)} standalone textures, "
                 f"{models_cnt} models in {duration:.2f}s"
             )
             self.report({'INFO'}, summary_msg)

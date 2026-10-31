@@ -48,7 +48,6 @@ from .assets import (
 from .extrude import (
     generate_random_extrude_heights,
     process_flat_mesh_extrude_repair,
-    repair_extruded_side_uv,
 )
 from .material import (
     BakedAtlas,
@@ -94,7 +93,7 @@ from .save import (
     inspect_minecraft_save,
     load_and_mesh_minecraft_save,
 )
-from .subdivide import adaptive_pixel_split_mesh, calculate_face_target_grid
+from .subdivide import adaptive_pixel_split_mesh
 from .sync import (
     SyncBridgeSession,
     get_sync_bridge_session,
@@ -104,26 +103,15 @@ from .sync import (
 )
 from .texture import (
     batch_analyze_transparent_faces,
-    is_face_transparent,
-    sample_uv_alpha,
 )
 from .uv import (
-    batch_repair_fluid_uv,
     calculate_uv_area,
-    detect_uv_rotation,
     get_fluid_side_uvs,
     get_fluid_top_uvs,
     get_uv_bounds,
     get_uv_center,
-    is_orthogonal_angle,
-    is_uv_collapsed,
-    normalize_uv_for_atlas_tiling,
     repair_mesh_fluid_uv_inplace,
-    repair_quad_fluid_uv,
-    restore_atlas_tiling_uv,
     scale_uv,
-    straighten_uv,
-    uv_requires_atlas_tiling,
 )
 from .world import (
     clear_world_sessions,
@@ -180,31 +168,18 @@ __all__ = [
     # Extrude
     "generate_random_extrude_heights",
     "process_flat_mesh_extrude_repair",
-    "repair_extruded_side_uv",
     # Subdivide
-    "calculate_face_target_grid",
     "adaptive_pixel_split_mesh",
     # Texture
     "batch_analyze_transparent_faces",
-    "is_face_transparent",
-    "sample_uv_alpha",
     # UV
-    "batch_repair_fluid_uv",
     "calculate_uv_area",
-    "detect_uv_rotation",
     "get_fluid_side_uvs",
     "get_fluid_top_uvs",
     "get_uv_bounds",
     "get_uv_center",
-    "is_orthogonal_angle",
-    "is_uv_collapsed",
-    "normalize_uv_for_atlas_tiling",
     "repair_mesh_fluid_uv_inplace",
-    "repair_quad_fluid_uv",
-    "restore_atlas_tiling_uv",
     "scale_uv",
-    "straighten_uv",
-    "uv_requires_atlas_tiling",
     # Material
     "is_material_bridge_available",
     "require_material_bridge",

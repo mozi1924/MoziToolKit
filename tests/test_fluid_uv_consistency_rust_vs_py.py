@@ -36,13 +36,20 @@ except ImportError:
     Vector = None
     HAS_REAL_BPY = False
 
+from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.bridge.uv import (
     repair_mesh_fluid_uv_inplace,
-    repair_quad_fluid_uv,
-    batch_repair_fluid_uv,
     get_fluid_top_uvs,
     get_fluid_side_uvs,
 )
+
+
+def repair_quad_fluid_uv(verts, uvs, normal=None, force=False, min_slope_threshold=0.005):
+    return get_libmtk().unstable.testing.repair_quad_fluid_uv(verts, uvs, normal, force, min_slope_threshold)
+
+
+def batch_repair_fluid_uv(verts_flat, uvs_flat, normals_flat=None, force=False, min_slope_threshold=0.005):
+    return get_libmtk().unstable.testing.batch_repair_fluid_uv(verts_flat, uvs_flat, normals_flat, force, min_slope_threshold)
 from MoziToolKit.utils.mesh.fluid_uv import repair_face_fluid_uv, process_mesh_fluid_uv_repairs
 
 

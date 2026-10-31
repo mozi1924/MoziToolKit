@@ -27,7 +27,8 @@ class TestYefiraSelection(unittest.TestCase):
         self.assertEqual(normalize_dimension("the_end"), "the_end")
         self.assertEqual(normalize_dimension(None), "overworld")
         self.assertEqual(normalize_dimension(""), "overworld")
-        self.assertEqual(normalize_dimension("custom_dim"), "overworld")
+        self.assertEqual(normalize_dimension("custom_dim"), "custom_dim")
+        self.assertEqual(normalize_dimension("twilightforest:twilight_forest"), "twilightforest:twilight_forest")
 
     def test_load_yefira_selection_success(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

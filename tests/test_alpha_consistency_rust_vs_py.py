@@ -18,6 +18,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
         sys.path.insert(0, p)
 
 import MoziToolKit.bridge.texture as tex_bridge
+from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.utils.materials.builder import ensure_material_node_tree
 
 from unittest.mock import MagicMock
@@ -46,11 +47,12 @@ class TestTextureAlphaBridge(unittest.TestCase):
                 pixels.extend([1.0, 1.0, 1.0, a])
 
         # Sample left side (x=0, 1 -> u=0.1)
-        a_left = tex_bridge.sample_uv_alpha(0.1, 0.5, width, height, pixels)
+        mtk = get_libmtk()
+        a_left = mtk.unstable.testing.sample_uv_alpha_f32(0.1, 0.5, width, height, pixels, False)
         self.assertAlmostEqual(a_left, 1.0, places=5)
 
         # Sample right side (x=2, 3 -> u=0.8)
-        a_right = tex_bridge.sample_uv_alpha(0.8, 0.5, width, height, pixels)
+        a_right = mtk.unstable.testing.sample_uv_alpha_f32(0.8, 0.5, width, height, pixels, False)
         self.assertAlmostEqual(a_right, 0.0, places=5)
 
     def test_batch_analyze_transparent_faces(self):

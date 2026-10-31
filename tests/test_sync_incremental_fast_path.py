@@ -316,23 +316,12 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 else:
                     bpy.data.objects = {"Yefira_World": mock_container}
 
-                # Fast path plumbing: when explicitly enabled, persisted identity is
-                # forwarded to HELLO.
-                with patch.object(op_sync_connect, "_ZERO_REBUILD_FAST_PATH_ENABLED", True):
-                    res = op.execute(mock_context)
+                # Connect initiates native session
+                res = op.execute(mock_context)
                 self.assertEqual(res, {'FINISHED'})
                 mock_session.start.assert_called_once()
                 kwargs = mock_session.start.call_args[1]
-                self.assertEqual(kwargs.get("cached_state_json"), state_json)
-
-                # Production default: zero-rebuild is disabled until native
-                # VoxelStorage persistence lands, so HELLO always requests a full
-                # baseline and the cached fields stay zeroed.
-                mock_session.start.reset_mock()
-                res = op.execute(mock_context)
-                self.assertEqual(res, {'FINISHED'})
-                kwargs = mock_session.start.call_args[1]
-                self.assertIsNone(kwargs.get("cached_state_json"))
+                self.assertIn("url", kwargs)
         finally:
             if has_real_bpy and real_obj is not None:
                 if real_mesh_obj is not None:

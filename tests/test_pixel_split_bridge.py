@@ -8,13 +8,30 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from MoziToolKit.bridge.mesh import MeshData
-from MoziToolKit.bridge.subdivide import (
-    calculate_face_target_grid,
-    calculate_pixel_grid_cut_factors,
-    slice_face_by_pixel_grid,
-    adaptive_pixel_split_mesh,
-)
+from MoziToolKit.bridge.engine import get_libmtk
+from MoziToolKit.bridge.subdivide import adaptive_pixel_split_mesh
 import numpy as np
+
+
+def calculate_face_target_grid(uvs, tex_w, tex_h, pixels_per_face=1.0, max_subdivisions=64):
+    mtk = get_libmtk()
+    return mtk.unstable.testing.calculate_face_target_grid(
+        [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+    )
+
+
+def calculate_pixel_grid_cut_factors(uvs, tex_w, tex_h, pixels_per_face=1.0, max_subdivisions=64):
+    mtk = get_libmtk()
+    return mtk.unstable.testing.calculate_pixel_grid_cut_factors(
+        [tuple(p) for p in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+    )
+
+
+def slice_face_by_pixel_grid(positions, uvs, tex_w, tex_h, pixels_per_face=1.0, max_subdivisions=64):
+    mtk = get_libmtk()
+    return mtk.unstable.testing.slice_face_by_pixel_grid(
+        [list(p) for p in positions], [list(u) for u in uvs], tex_w, tex_h, pixels_per_face, max_subdivisions
+    )
 
 
 

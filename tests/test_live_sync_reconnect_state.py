@@ -44,32 +44,6 @@ def _run_tick(mock_session):
     return props, mock_stop, result
 
 
-class TestLiveSyncPersistedIdentity(unittest.TestCase):
-    def test_native_session_exports_persisted_state_json(self):
-        try:
-            from MoziToolKit.bridge.engine import get_libmtk
-        except Exception:
-            self.skipTest("libmtk_py unavailable")
-
-        mtk = get_libmtk()
-        if mtk is None or not hasattr(mtk, "LiveSyncSession"):
-            self.skipTest("LiveSyncSession unavailable")
-
-        import json
-
-        session = mtk.LiveSyncSession()
-        raw = session.export_persisted_state_json(False)
-        state = json.loads(raw)
-        self.assertEqual(state["server_uuid"], "0" * 32)
-        self.assertEqual(state["state_hash"], 0)
-        self.assertEqual(state["size"], [0, 0, 0])
-        self.assertFalse(state["user_modified"])
-
-    def test_bridge_exposes_persisted_state_json(self):
-        session = SyncBridgeSession()
-        self.assertIsNone(session.export_persisted_state_json())
-
-
 class TestLiveSyncConnectionState(unittest.TestCase):
     def test_terminal_disconnect_is_applied_when_worker_already_stopped(self):
         session = _make_session(

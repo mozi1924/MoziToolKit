@@ -34,8 +34,6 @@ from .hierarchy import (
     find_world_mesh_child,
     resolve_world_root_object,
     update_world_mesh,
-    persist_sync_session_state,
-    load_persisted_sync_session_state,
 )
 from .properties import (
     get_active_sync_container,
@@ -48,14 +46,6 @@ _timer_registered = False
 _progress_reporter = None
 _delayed_close_callback = None
 _pending_cloud_sync_time = None
-
-# RFC v3.1 §6.2 zero-rebuild fast path.
-# The protocol/server support VERIFIED_SKIP_REBUILD, but the Blender client cannot
-# use it yet: the native VoxelStorage is not persisted into the .blend, so entering
-# LIVE with an empty Rust storage would make the next delta remesh only the changed
-# blocks and wipe the viewport. Keep HELLO cached_* fields zeroed (full baseline)
-# until VoxelStorage persistence/restore is implemented.
-_ZERO_REBUILD_FAST_PATH_ENABLED = False
 
 
 def is_sync_timer_running() -> bool:
@@ -349,12 +339,6 @@ def _sync_timer_tick() -> Optional[float]:
                 _sync_prop("last_update_info", f"World Mesh updated: {v_count:,} vertices, {f_count:,} faces")
                 _sync_prop("is_streaming", False)
 
-                # Atomically persist the Rust-produced session state into the root container.
-                if active_container:
-                    state_json = session.export_persisted_state_json(user_modified=False)
-                    if isinstance(state_json, str) and state_json:
-                        persist_sync_session_state(active_container, state_json)
-
                 if _progress_reporter is not None:
                     _progress_reporter.update(_progress_reporter.total, _progress_reporter.total, message=f"Mesh ready ({v_count:,} v, {f_count:,} f)")
             else:
@@ -546,25 +530,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         atlas = load_atlas_from_cache(prefs)
         biome_resolver = load_biome_resolver_from_cache(prefs)
 
-        # Check persisted session state on active container to attempt 0ms reconnect verification
-        cached_state = load_persisted_sync_session_state(target_obj)
-
-        # The zero-rebuild fast path may only be used when the scene already holds
-        # a populated world mesh. Persisted custom properties survive even if the
-        # user deleted the mesh object, so verify the local geometry first.
-        local_mesh = find_world_mesh_child(target_obj)
-        has_local_mesh = bool(
-            local_mesh is not None
-            and getattr(local_mesh, "type", "") == "MESH"
-            and getattr(getattr(local_mesh, "data", None), "vertices", None) is not None
-            and len(local_mesh.data.vertices) > 0
-        )
-        if not _ZERO_REBUILD_FAST_PATH_ENABLED or not has_local_mesh:
-            cached_state = {}
-        cached_state_json = None
-        if cached_state and not cached_state.get("user_modified", False):
-            cached_state_json = cached_state.get("state_json") or None
-
         try:
             from ...utils.assets.cache_utils import get_cache_dir
             skin_cache = get_cache_dir() / "skins"
@@ -581,7 +546,6 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
             atlas=atlas,
             biome_resolver=biome_resolver,
             auth_token=(getattr(props, "auth_token", "") or None) if props else None,
-            cached_state_json=cached_state_json,
         )
 
         if not success:
@@ -629,11 +593,6 @@ class MOZI_OT_sync_disconnect(bpy.types.Operator):
             target_obj = bpy.data.objects[self.target_container]
         else:
             target_obj = get_active_sync_container(context.scene) or resolve_world_root_object(getattr(context, "active_object", None))
-
-        if target_obj:
-            state_json = session.export_persisted_state_json(user_modified=False)
-            if isinstance(state_json, str) and state_json:
-                persist_sync_session_state(target_obj, state_json)
 
         session.stop()
 

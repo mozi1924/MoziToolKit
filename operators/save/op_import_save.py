@@ -187,8 +187,8 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         description="World dimension to import from",
         items=[
             ("overworld", "Overworld", "Overworld dimension (region/ or dimensions/minecraft/overworld)"),
-            ("the_nether", "The Nether", "Nether dimension (DIM-1/ or dimensions/minecraft/the_nether)"),
-            ("the_end", "The End", "The End dimension (DIM1/ or dimensions/minecraft/the_end)"),
+            ("the_nether", "The Nether", "Nether dimension (dimensions/minecraft/the_nether)"),
+            ("the_end", "The End", "The End dimension (dimensions/minecraft/the_end)"),
         ],
         default="overworld",
     ) # type: ignore

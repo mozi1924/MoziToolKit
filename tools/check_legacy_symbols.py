@@ -56,10 +56,6 @@ SECTION_MESHER_ALLOWED = (
     "libmozitoolkit/crates/mtk-bench/",
     "libmozitoolkit/crates/libmtk/src/lib.rs",
 )
-DIM_ALLOWED = (
-    "MoziToolKit/i18n/",
-    "MoziToolKit/operators/save/op_import_save.py",
-)
 
 
 def _relative(path: Path) -> str:
@@ -83,8 +79,6 @@ def _skip(path: Path) -> bool:
 
 def _allowed(name: str, rel: str) -> bool:
     if name == "SectionMesher" and rel.startswith(SECTION_MESHER_ALLOWED):
-        return True
-    if name in ("DIM-1", "DIM1") and rel.startswith(DIM_ALLOWED):
         return True
     if name in ("process_mesh_extrude_repair", "process_random_extrude_mesh") and rel.startswith(
         "libmozitoolkit/crates/mtk-core/"

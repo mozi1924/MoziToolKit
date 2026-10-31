@@ -18,33 +18,6 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
-def repair_extruded_side_uv(
-    uv_base_a: Tuple[float, float],
-    uv_base_b: Tuple[float, float],
-    top_normal: Tuple[float, float, float],
-    extrude_vec: Tuple[float, float, float],
-    mode: str = "SMART",
-    step_u: float = 1.0 / 16.0,
-    step_v: float = 1.0 / 16.0,
-    top_uv_bounds: Optional[Tuple[float, float, float, float]] = None,
-    adjacent_uv_strip: Optional[Sequence[Tuple[float, float]]] = None,
-) -> List[Tuple[float, float]]:
-    """Reconstruct 4 UV corner coordinates for an extruded side quad polygon."""
-    mtk = require_libmtk("repair_extruded_side_uv")
-    adj = list(adjacent_uv_strip) if adjacent_uv_strip is not None else None
-    return mtk.unstable.testing.repair_extruded_side_uv(
-        tuple(uv_base_a),
-        tuple(uv_base_b),
-        tuple(top_normal),
-        tuple(extrude_vec),
-        mode,
-        step_u,
-        step_v,
-        top_uv_bounds,
-        adj,
-    )
-
-
 def generate_random_extrude_heights(
     centers: Sequence[Tuple[float, float, float]],
     noise_type: str = "RANDOM",
@@ -99,7 +72,6 @@ def process_flat_mesh_extrude_repair(
 
 
 __all__ = [
-    "repair_extruded_side_uv",
     "generate_random_extrude_heights",
     "process_flat_mesh_extrude_repair",
 ]

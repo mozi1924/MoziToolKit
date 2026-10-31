@@ -400,31 +400,3 @@ def update_world_mesh(
     return v_count, f_count
 
 
-def persist_sync_session_state(
-    root_obj: bpy.types.Object,
-    state_json: str,
-    user_modified: bool = False,
-) -> None:
-    """
-    Atomically writes the Rust-produced, host-agnostic session state JSON to the
-    root container empty. The host never parses or normalizes UUID/bounds/hash.
-    """
-    if not root_obj or not state_json:
-        return
-    _safe_set_custom_prop(root_obj, "mtk_sync_state_json", str(state_json))
-    _safe_set_custom_prop(root_obj, "mtk_sync_user_modified", bool(user_modified))
-
-
-def load_persisted_sync_session_state(root_obj: Optional[bpy.types.Object]) -> dict[str, Any]:
-    """Reads the opaque persisted session-state JSON from the root container empty."""
-    if not root_obj:
-        return {}
-    state_json = _safe_get_custom_prop(root_obj, "mtk_sync_state_json", "")
-    if not isinstance(state_json, str) or not state_json.strip():
-        return {}
-    return {
-        "state_json": state_json,
-        "user_modified": bool(_safe_get_custom_prop(root_obj, "mtk_sync_user_modified", False)),
-    }
-
-

@@ -14,16 +14,6 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("MoziToolKit.Bridge.Sync")
 
 from .engine import get_libmtk, require_libmtk
-
-
-def __getattr__(name: str) -> Any:
-    if name == "HAS_LIBMTK":
-        return is_sync_available()
-    if name == "mtk_py":
-        return get_libmtk()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
 from .assets import (
     load_biome_resolver_from_cache,
     check_cache_dirty,
@@ -72,27 +62,23 @@ class SyncBridgeSession:
         """Whether a background synchronization session is running."""
         if not self._is_active:
             return False
-        if self._session is not None and hasattr(self._session, "is_active"):
+        if self._session is not None:
             return bool(self._session.is_active)
-        return self._session is not None
+        return False
 
     @property
     def is_connected(self) -> bool:
         """Whether the session is currently connected to the server."""
-        if not self.is_active:
+        if not self.is_active or self._session is None:
             return False
-        if self._session is not None and hasattr(self._session, "is_connected"):
-            return bool(self._session.is_connected)
-        return self._is_connected
+        return bool(self._session.is_connected)
 
     @property
     def connection_status(self) -> str:
         """Current connection status string ('DISCONNECTED', 'CONNECTING...', 'CONNECTED', etc.)."""
-        if not self.is_active:
+        if not self.is_active or self._session is None:
             return "DISCONNECTED"
-        if self._session is not None and hasattr(self._session, "status"):
-            return str(self._session.status)
-        return self._connection_status
+        return str(self._session.status)
 
     @property
     def current_url(self) -> str:
@@ -127,21 +113,21 @@ class SyncBridgeSession:
     @property
     def client_generation(self) -> int:
         """Current client generation counter from native session."""
-        if self._session is not None and hasattr(self._session, "client_generation"):
+        if self._session is not None:
             return int(self._session.client_generation)
         return 0
 
     @property
     def current_sequence(self) -> int:
         """Current monotonic sequence ID from native session."""
-        if self._session is not None and hasattr(self._session, "current_sequence"):
+        if self._session is not None:
             return int(self._session.current_sequence)
         return 0
 
     @property
     def current_epoch(self) -> int:
         """Current server epoch counter from native session."""
-        if self._session is not None and hasattr(self._session, "current_epoch"):
+        if self._session is not None:
             return int(self._session.current_epoch)
         return 0
 
@@ -242,9 +228,8 @@ class SyncBridgeSession:
             # If native session already exists, reuse it to preserve cached voxel storage & mesh cache
             if self._session is not None:
                 try:
-                    if hasattr(self._session, "hot_reload"):
-                        self._session.hot_reload(config, model_db)
-                    if self._skin_cache_dir and hasattr(self._session, "set_skin_cache_dir"):
+                    self._session.hot_reload(config, model_db)
+                    if self._skin_cache_dir:
                         try:
                             self._session.set_skin_cache_dir(self._skin_cache_dir)
                         except Exception as e:
@@ -260,7 +245,7 @@ class SyncBridgeSession:
                     self._session = None
 
             # Face culler instance
-            culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
+            culler = mtk.FaceCuller()
 
             # Instantiate native LiveSyncSession
             self._session = mtk.LiveSyncSession(
@@ -268,7 +253,7 @@ class SyncBridgeSession:
                 culler=culler,
                 model_db=model_db,
             )
-            if self._skin_cache_dir and hasattr(self._session, "set_skin_cache_dir"):
+            if self._skin_cache_dir:
                 try:
                     self._session.set_skin_cache_dir(self._skin_cache_dir)
                 except Exception as e:
@@ -326,7 +311,7 @@ class SyncBridgeSession:
         """
         Purges cached section meshes on the underlying VoxelWorld, marking all sections dirty.
         """
-        if self._session is not None and hasattr(self._session, "clear_cache"):
+        if self._session is not None:
             try:
                 self._session.clear_cache()
                 return True
@@ -398,27 +383,10 @@ class SyncBridgeSession:
                 except Exception:
                     new_config = None
 
-                if hasattr(self._session, "hot_reload"):
-                    try:
-                        self._session.hot_reload(new_config, new_model_db)
-                    except Exception as e:
-                        logger.warning("Session hot_reload failed: %s", e)
-                else:
-                    if new_config and hasattr(self._session, "set_config"):
-                        try:
-                            self._session.set_config(new_config)
-                        except Exception:
-                            pass
-                    if hasattr(self._session, "set_model_db"):
-                        try:
-                            self._session.set_model_db(new_model_db)
-                        except Exception:
-                            pass
-                    if hasattr(self._session, "clear_cache"):
-                        try:
-                            self._session.clear_cache()
-                        except Exception:
-                            pass
+                try:
+                    self._session.hot_reload(new_config, new_model_db)
+                except Exception as e:
+                    logger.warning("Session hot_reload failed: %s", e)
 
         # 3. Reload Blender images in GPU/VRAM
         reloaded = reload_atlas_images(prefs)

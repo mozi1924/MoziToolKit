@@ -23,36 +23,6 @@ def _as_pixel_buffer(pixels: Any) -> Any:
     return pixels if isinstance(pixels, (list, np.ndarray)) else list(pixels)
 
 
-def sample_uv_alpha(
-    u: float,
-    v: float,
-    width: int,
-    height: int,
-    pixels: Sequence[float],
-    invert_y: bool = False,
-) -> float:
-    """Sample alpha value [0.0, 1.0] at normalized UV coordinate."""
-    mtk = require_libmtk("sample_uv_alpha")
-    return mtk.unstable.testing.sample_uv_alpha_f32(u, v, width, height, _as_pixel_buffer(pixels), invert_y)
-
-
-def is_face_transparent(
-    face_uvs: Sequence[Tuple[float, float]],
-    width: int,
-    height: int,
-    pixels: Sequence[float],
-    mode: str = "CENTER",
-    threshold: float = 0.01,
-    invert_y: bool = False,
-) -> bool:
-    """Check if a single face is transparent against texture pixels."""
-    mtk = require_libmtk("is_face_transparent")
-    uv_list = [tuple(p) for p in face_uvs]
-    return mtk.unstable.testing.is_face_transparent_f32(
-        uv_list, width, height, _as_pixel_buffer(pixels), mode, threshold, invert_y
-    )
-
-
 def batch_analyze_transparent_faces(
     faces_uvs: Sequence[Sequence[Tuple[float, float]]],
     width: int,

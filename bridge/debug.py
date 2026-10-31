@@ -14,12 +14,6 @@ logger = logging.getLogger("MoziToolKit.Bridge.Debug")
 from .engine import get_libmtk, has_libmtk, require_libmtk
 
 
-def __getattr__(name: str) -> Any:
-    if name == "libmtk_py":
-        return get_libmtk()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-
 def _has_valid_vanilla_pack(prefs=None) -> bool:
     """Resolves the host-side vanilla-client gate, failing closed if the guard is unavailable."""
     from ..utils.assets.guard import has_valid_vanilla_pack
@@ -28,8 +22,7 @@ def _has_valid_vanilla_pack(prefs=None) -> bool:
 
 def is_debug_world_available(prefs=None) -> bool:
     """True when libmtk_py supports debug worlds and client assets are actually available."""
-    mtk = get_libmtk()
-    if mtk is None or not hasattr(getattr(mtk, "VoxelStorage", None), "create_debug_world"):
+    if not has_libmtk():
         return False
     return _has_valid_vanilla_pack(prefs)
 
@@ -37,7 +30,7 @@ def is_debug_world_available(prefs=None) -> bool:
 def clear_debug_world_cache() -> None:
     """Clears the internally cached debug storage in libmtk_py."""
     mtk = get_libmtk()
-    if mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "clear_debug_world_cache"):
+    if mtk is not None:
         mtk.VoxelStorage.clear_debug_world_cache()
 
 
@@ -53,14 +46,10 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
     Strictly rejects generation with ValueError if no valid vanilla client assets are found.
     """
     mtk = require_libmtk("load_debug_world_storage")
-    voxel_storage = getattr(mtk, "VoxelStorage", None)
-    if voxel_storage is None:
-        raise RuntimeError("libmtk_py does not support VoxelStorage")
+    voxel_storage = mtk.VoxelStorage
 
     if states is not None:
-        if hasattr(voxel_storage, "create_debug_world_from_states"):
-            return voxel_storage.create_debug_world_from_states(states)
-        return voxel_storage.create_debug_world(states=states)
+        return voxel_storage.create_debug_world_from_states(states)
 
     if not _has_valid_vanilla_pack(prefs):
         clear_debug_world_cache()
@@ -73,8 +62,7 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
         from .assets.cache import load_model_database_from_cache
         cached_db = load_model_database_from_cache(prefs)
         if cached_db is not None and not cached_db.is_empty():
-            if hasattr(voxel_storage, "create_debug_world_from_model_db"):
-                return voxel_storage.create_debug_world_from_model_db(cached_db)
+            return voxel_storage.create_debug_world_from_model_db(cached_db)
     except Exception as e:
         logger.debug(f"Could not load model_db from cache for debug world: {e}")
 
@@ -86,9 +74,9 @@ def load_debug_world_storage(prefs=None, states=None, stack=None):
         except Exception:
             stack = None
 
-    if stack is not None and hasattr(voxel_storage, "create_debug_world_from_pack_stack"):
-        pack_count = getattr(stack, "get_pack_count", lambda: 0)()
-        has_base = getattr(stack, "has_vanilla_client_base", lambda: False)()
+    if stack is not None:
+        pack_count = stack.get_pack_count()
+        has_base = stack.has_vanilla_client_base()
         if pack_count > 0 and has_base:
             return voxel_storage.create_debug_world_from_pack_stack(stack)
 
@@ -138,7 +126,7 @@ def generate_debug_world_mesh(
                 origin_centered=True,
                 num_threads=num_threads,
             )
-        elif num_threads is not None and hasattr(config, "num_threads"):
+        elif num_threads is not None:
             config.num_threads = num_threads
         t0 = time.perf_counter()
         world = mtk.VoxelWorld.from_storage(

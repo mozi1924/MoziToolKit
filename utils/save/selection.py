@@ -34,23 +34,31 @@ class YefiraSelection:
 
 def normalize_dimension(raw_dim: Optional[str]) -> str:
     """
-    Normalizes a Minecraft dimension identifier to the standard MoziToolKit enum.
+    Normalizes a Minecraft dimension identifier to the standard identifier,
+    preserving custom namespaces.
 
     Examples:
-        'minecraft:overworld' -> 'overworld'
-        'minecraft:the_nether' -> 'the_nether'
-        'minecraft:the_end' -> 'the_end'
-        None / unknown -> 'overworld'
+        'minecraft:overworld' / 'overworld' -> 'overworld'
+        'minecraft:the_nether' / 'the_nether' / 'nether' -> 'the_nether'
+        'minecraft:the_end' / 'the_end' / 'end' -> 'the_end'
+        'twilightforest:twilight_forest' -> 'twilightforest:twilight_forest'
+        None / '' -> 'overworld'
     """
     if not raw_dim or not isinstance(raw_dim, str):
         return "overworld"
 
     dim = raw_dim.strip().lower()
-    if "nether" in dim:
+    if not dim:
+        return "overworld"
+
+    if dim in ("overworld", "minecraft:overworld"):
+        return "overworld"
+    if dim in ("nether", "the_nether", "minecraft:the_nether"):
         return "the_nether"
-    elif "end" in dim:
+    if dim in ("end", "the_end", "minecraft:the_end"):
         return "the_end"
-    return "overworld"
+
+    return dim
 
 
 def resolve_world_directory(path: str | Path | None) -> Optional[Path]:
