@@ -352,6 +352,99 @@ def build_material_palette(
     return palette, indices
 
 
+# ---------------------------------------------------------------------------
+# Texture Descriptor & Slot Resolution
+# ---------------------------------------------------------------------------
+
+def get_chunk_texture_specs(chunk_meta: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    Extract the authoritative list of texture slot specifications for an atlas chunk.
+    Falls back gracefully to legacy channel flags if the 'textures' field is absent.
+    """
+    raw_textures = chunk_meta.get("textures")
+    if raw_textures:
+        return [dict(t) for t in raw_textures]
+
+    cat = str(chunk_meta.get("category", "blocks"))
+    c_idx = int(chunk_meta.get("category_chunk_index", 1))
+    is_anim = bool(chunk_meta.get("is_animated", False))
+    stem = chunk_meta.get("file_stem") or (
+        f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}"
+    )
+
+    specs = [{"role": "albedo", "file_name": f"{stem}.png", "colorspace": "sRGB"}]
+    if chunk_meta.get("has_normal"):
+        specs.append({"role": "normal", "file_name": f"{stem}_n.png", "colorspace": "Non-Color"})
+    if chunk_meta.get("has_orm"):
+        specs.append({"role": "orm", "file_name": f"{stem}_orm.png", "colorspace": "Non-Color"})
+    if chunk_meta.get("has_aux"):
+        specs.append({"role": "aux", "file_name": f"{stem}_aux.png", "colorspace": "Non-Color"})
+    if chunk_meta.get("has_overlay"):
+        specs.append({"role": "overlay", "file_name": f"{stem}_overlay.png", "colorspace": "sRGB"})
+    return specs
+
+
+def resolve_chunk_texture_sources(
+    chunk_meta: Dict[str, Any],
+    atlas_dir: Optional[Union[str, Path]] = None,
+    active_atlas: Optional[Any] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Resolve active texture slot sources (filesystem Path or zero-copy in-memory buffer) for a chunk.
+    Returns a dictionary mapping role -> {
+        'role': str,
+        'source': Path | tuple[int, int, Any] | None,
+        'colorspace': str,
+        'file_name': str,
+        'chunk_id': str,
+    }
+    """
+    specs = get_chunk_texture_specs(chunk_meta)
+    width = int(chunk_meta.get("width", 1024))
+    height = int(chunk_meta.get("height", 1024))
+    chunk_id = int(chunk_meta.get("chunk_id", 0))
+    atlas_path = Path(atlas_dir) if atlas_dir is not None else None
+
+    # Map roles to in-memory PyBakedAtlas getters
+    memory_getter_map = {
+        "albedo": "get_chunk_albedo_f32",
+        "normal": "get_chunk_normal_f32",
+        "orm": "get_chunk_orm_f32",
+        "aux": "get_chunk_aux_f32",
+        "overlay": "get_chunk_overlay_f32",
+    }
+
+    resolved: Dict[str, Dict[str, Any]] = {}
+    for spec in specs:
+        role = spec["role"]
+        file_name = spec["file_name"]
+        colorspace = spec.get("colorspace", "sRGB")
+        disk_path = (atlas_path / file_name) if atlas_path is not None else None
+
+        source: Any = disk_path
+
+        # If disk file is unavailable, stream zero-copy in-memory from active_atlas
+        if (disk_path is None or not disk_path.exists()) and active_atlas is not None:
+            getter_name = memory_getter_map.get(role)
+            if getter_name and hasattr(active_atlas, getter_name):
+                try:
+                    getter = getattr(active_atlas, getter_name)
+                    buf = getter(chunk_id, flip_v=True)
+                    if buf is not None:
+                        source = (width, height, buf)
+                except Exception:
+                    pass
+
+        resolved[role] = {
+            "role": role,
+            "source": source,
+            "colorspace": colorspace,
+            "file_name": file_name,
+            "chunk_id": f"atlas/textures/{file_name}",
+        }
+    return resolved
+
+
 __all__ = [
     "HAS_LIBMTK",
     "is_material_bridge_available",
@@ -370,6 +463,8 @@ __all__ = [
     "BakedAtlas",
     "load_baked_atlas_from_json",
     "build_material_palette",
+    "get_chunk_texture_specs",
+    "resolve_chunk_texture_sources",
     "TINT_TYPE_NONE",
     "TINT_TYPE_GRASS",
     "TINT_TYPE_FOLIAGE",

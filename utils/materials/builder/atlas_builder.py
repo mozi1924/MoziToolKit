@@ -60,7 +60,7 @@ PBR_LAYOUT_VERSION = "mtk_packed_v1"
 
 def build_atlas_chunk_material(
     chunk_id: int,
-    albedo_path: str | Path,
+    albedo_path: Optional[str | Path] = None,
     normal_path: Optional[str | Path] = None,
     orm_path: Optional[str | Path] = None,
     aux_path: Optional[str | Path] = None,
@@ -82,6 +82,7 @@ def build_atlas_chunk_material(
     chunk_stem: Optional[str] = None,
     enable_vertex_ao: Optional[bool] = None,
     enable_biome_tint: Optional[bool] = None,
+    texture_sources: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[Any]:
     """Build or update an Atlas Chunk material with standard Principled PBR."""
     if not HAS_BPY:
@@ -145,6 +146,7 @@ def build_atlas_chunk_material(
         aux_path=aux_path,
         image_reload_needed=image_reload_needed,
         chunk_stem=chunk_stem,
+        texture_sources=texture_sources,
     )
     has_overlay = images["has_overlay"]
     has_normal = images["has_normal"]

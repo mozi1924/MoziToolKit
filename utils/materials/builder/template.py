@@ -50,13 +50,14 @@ def preload_atlas_images(
     category: str,
     category_chunk_index: int,
     is_animated: bool,
-    albedo_path: Any,
-    overlay_path: Any,
-    normal_path: Any,
-    orm_path: Any,
-    aux_path: Any,
-    image_reload_needed: bool,
+    albedo_path: Any = None,
+    overlay_path: Any = None,
+    normal_path: Any = None,
+    orm_path: Any = None,
+    aux_path: Any = None,
+    image_reload_needed: bool = False,
     chunk_stem: Optional[str] = None,
+    texture_sources: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Retrieve or load all atlas texture image datablocks for a chunk."""
     c_stem = chunk_stem or (
@@ -65,57 +66,101 @@ def preload_atlas_images(
         else f"{category}_chunk_{category_chunk_index:03}"
     )
 
-    albedo_img = get_or_create_image(
-        albedo_path,
-        colorspace="sRGB",
-        force_reload=image_reload_needed,
-        chunk_id=f"atlas/textures/{c_stem}.png",
+    if texture_sources is not None:
+        albedo_slot = texture_sources.get("albedo")
+        overlay_slot = texture_sources.get("overlay")
+        normal_slot = texture_sources.get("normal")
+        orm_slot = texture_sources.get("orm")
+        aux_slot = texture_sources.get("aux")
+
+        albedo_source = albedo_slot["source"] if albedo_slot else albedo_path
+        overlay_source = overlay_slot["source"] if overlay_slot else overlay_path
+        normal_source = normal_slot["source"] if normal_slot else normal_path
+        orm_source = orm_slot["source"] if orm_slot else orm_path
+        aux_source = aux_slot["source"] if aux_slot else aux_path
+
+        albedo_cs = albedo_slot.get("colorspace", "sRGB") if albedo_slot else "sRGB"
+        overlay_cs = overlay_slot.get("colorspace", "sRGB") if overlay_slot else "sRGB"
+        normal_cs = normal_slot.get("colorspace", "Non-Color") if normal_slot else "Non-Color"
+        orm_cs = orm_slot.get("colorspace", "Non-Color") if orm_slot else "Non-Color"
+        aux_cs = aux_slot.get("colorspace", "Non-Color") if aux_slot else "Non-Color"
+
+        albedo_cid = albedo_slot.get("chunk_id", f"atlas/textures/{c_stem}.png") if albedo_slot else f"atlas/textures/{c_stem}.png"
+        overlay_cid = overlay_slot.get("chunk_id", f"atlas/textures/{c_stem}_overlay.png") if overlay_slot else f"atlas/textures/{c_stem}_overlay.png"
+        normal_cid = normal_slot.get("chunk_id", f"atlas/textures/{c_stem}_n.png") if normal_slot else f"atlas/textures/{c_stem}_n.png"
+        orm_cid = orm_slot.get("chunk_id", f"atlas/textures/{c_stem}_orm.png") if orm_slot else f"atlas/textures/{c_stem}_orm.png"
+        aux_cid = aux_slot.get("chunk_id", f"atlas/textures/{c_stem}_aux.png") if aux_slot else f"atlas/textures/{c_stem}_aux.png"
+    else:
+        albedo_source = albedo_path
+        overlay_source = overlay_path
+        normal_source = normal_path
+        orm_source = orm_path
+        aux_source = aux_path
+
+        albedo_cs, overlay_cs = "sRGB", "sRGB"
+        normal_cs, orm_cs, aux_cs = "Non-Color", "Non-Color", "Non-Color"
+
+        albedo_cid = f"atlas/textures/{c_stem}.png"
+        overlay_cid = f"atlas/textures/{c_stem}_overlay.png"
+        normal_cid = f"atlas/textures/{c_stem}_n.png"
+        orm_cid = f"atlas/textures/{c_stem}_orm.png"
+        aux_cid = f"atlas/textures/{c_stem}_aux.png"
+
+    albedo_img = (
+        get_or_create_image(
+            albedo_source,
+            colorspace=albedo_cs,
+            force_reload=image_reload_needed,
+            chunk_id=albedo_cid,
+        )
+        if albedo_source is not None
+        else None
     )
     overlay_img = (
         get_or_create_image(
-            overlay_path,
-            colorspace="sRGB",
+            overlay_source,
+            colorspace=overlay_cs,
             force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_overlay.png",
+            chunk_id=overlay_cid,
         )
-        if overlay_path
+        if overlay_source is not None
         else None
     )
     normal_img = (
         get_or_create_image(
-            normal_path,
-            colorspace="Non-Color",
+            normal_source,
+            colorspace=normal_cs,
             force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_n.png",
+            chunk_id=normal_cid,
         )
-        if normal_path
+        if normal_source is not None
         else None
     )
     orm_img = (
         get_or_create_image(
-            orm_path,
-            colorspace="Non-Color",
+            orm_source,
+            colorspace=orm_cs,
             force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_orm.png",
+            chunk_id=orm_cid,
         )
-        if orm_path
+        if orm_source is not None
         else None
     )
     aux_img = (
         get_or_create_image(
-            aux_path,
-            colorspace="Non-Color",
+            aux_source,
+            colorspace=aux_cs,
             force_reload=image_reload_needed,
-            chunk_id=f"atlas/textures/{c_stem}_aux.png",
+            chunk_id=aux_cid,
         )
-        if aux_path
+        if aux_source is not None
         else None
     )
 
-    has_overlay = (overlay_img is not None) if HAS_BPY else bool(overlay_path)
-    has_normal = (normal_img is not None) if HAS_BPY else bool(normal_path)
-    has_orm = (orm_img is not None) if HAS_BPY else bool(orm_path)
-    has_aux = (aux_img is not None) if HAS_BPY else bool(aux_path)
+    has_overlay = (overlay_img is not None) if HAS_BPY else bool(overlay_source)
+    has_normal = (normal_img is not None) if HAS_BPY else bool(normal_source)
+    has_orm = (orm_img is not None) if HAS_BPY else bool(orm_source)
+    has_aux = (aux_img is not None) if HAS_BPY else bool(aux_source)
 
     return {
         "c_stem": c_stem,

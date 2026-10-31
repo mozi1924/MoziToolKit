@@ -76,6 +76,60 @@ class TestMaterialBridge(unittest.TestCase):
         self.assertEqual(palette, ["stone", "dirt"])
         self.assertEqual(list(indices), [0, 1, 0, 1])
 
+    def test_get_chunk_texture_specs_authoritative(self):
+        """Verify get_chunk_texture_specs uses the authoritative textures list when present."""
+        from MoziToolKit.bridge.material import get_chunk_texture_specs
+        cm = {
+            "chunk_id": 0,
+            "category": "blocks",
+            "textures": [
+                {"role": "albedo", "file_name": "blocks_chunk_001.png", "colorspace": "sRGB"},
+                {"role": "orm", "file_name": "blocks_chunk_001_orm.png", "colorspace": "Non-Color"},
+            ],
+        }
+        specs = get_chunk_texture_specs(cm)
+        self.assertEqual(len(specs), 2)
+        self.assertEqual(specs[0]["role"], "albedo")
+        self.assertEqual(specs[1]["role"], "orm")
+
+    def test_get_chunk_texture_specs_legacy_fallback(self):
+        """Verify get_chunk_texture_specs falls back to channel flags for legacy metadata."""
+        from MoziToolKit.bridge.material import get_chunk_texture_specs
+        cm = {
+            "chunk_id": 1,
+            "category": "blocks",
+            "category_chunk_index": 2,
+            "is_animated": True,
+            "has_normal": True,
+            "has_orm": True,
+        }
+        specs = get_chunk_texture_specs(cm)
+        roles = [s["role"] for s in specs]
+        self.assertIn("albedo", roles)
+        self.assertIn("normal", roles)
+        self.assertIn("orm", roles)
+        normal_spec = next(s for s in specs if s["role"] == "normal")
+        self.assertEqual(normal_spec["file_name"], "blocks_anim_chunk_002_n.png")
+        self.assertEqual(normal_spec["colorspace"], "Non-Color")
+
+    def test_resolve_chunk_texture_sources(self):
+        """Verify resolve_chunk_texture_sources maps specs to file paths and memory getters."""
+        from MoziToolKit.bridge.material import resolve_chunk_texture_sources
+        cm = {
+            "chunk_id": 0,
+            "category": "blocks",
+            "category_chunk_index": 1,
+            "has_normal": True,
+        }
+        atlas_dir = Path("/tmp/fake_atlas")
+        sources = resolve_chunk_texture_sources(cm, atlas_dir=atlas_dir)
+        self.assertIn("albedo", sources)
+        self.assertIn("normal", sources)
+        self.assertEqual(sources["albedo"]["source"], atlas_dir / "blocks_chunk_001.png")
+        self.assertEqual(sources["albedo"]["colorspace"], "sRGB")
+        self.assertEqual(sources["normal"]["source"], atlas_dir / "blocks_chunk_001_n.png")
+        self.assertEqual(sources["normal"]["colorspace"], "Non-Color")
+
     def test_no_direct_libmtk_py_in_utils_materials(self):
         """Rule compliance check: ensure utils/materials does not directly import libmtk_py."""
         toolkit_root = Path(__file__).parent.parent

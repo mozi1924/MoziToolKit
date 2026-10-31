@@ -16,6 +16,7 @@ from ....bridge.assets import (
     load_atlas_mapping_from_cache,
     load_baked_atlas_from_cache,
 )
+from ....bridge.material import resolve_chunk_texture_sources
 
 logger = logging.getLogger("MoziToolKit.Materials.WorldBinding")
 
@@ -276,51 +277,19 @@ def ensure_world_materials(
                         chunk_to_compact_slot[chunk_id] = slot_idx
                         continue
 
-                    albedo_file: Any = atlas_dir / f"{stem}.png"
-                    normal_file: Any = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
-                    orm_file: Any = atlas_dir / f"{stem}_orm.png" if cm.get("has_orm") else None
-                    aux_file: Any = atlas_dir / f"{stem}_aux.png" if cm.get("has_aux") else None
-                    overlay_file: Any = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
-
-                    # If file doesn't exist on disk, stream in-memory from active BakedAtlas if available
-                    if not albedo_file.exists() and active_atlas is not None and hasattr(active_atlas, "get_chunk_albedo_f32"):
-                        try:
-                            c_order_idx = cm.get("chunk_id", chunk_id)
-                            albedo_f32 = active_atlas.get_chunk_albedo_f32(c_order_idx, flip_v=True)
-                            if albedo_f32 is not None:
-                                albedo_file = (int(chunk_width), int(chunk_height), albedo_f32)
-                            if normal_file and hasattr(active_atlas, "get_chunk_normal_f32"):
-                                n_f32 = active_atlas.get_chunk_normal_f32(c_order_idx, flip_v=True)
-                                if n_f32 is not None:
-                                    normal_file = (int(chunk_width), int(chunk_height), n_f32)
-                            if orm_file and hasattr(active_atlas, "get_chunk_orm_f32"):
-                                orm_f32 = active_atlas.get_chunk_orm_f32(c_order_idx, flip_v=True)
-                                if orm_f32 is not None:
-                                    orm_file = (int(chunk_width), int(chunk_height), orm_f32)
-                            if aux_file and hasattr(active_atlas, "get_chunk_aux_f32"):
-                                aux_f32 = active_atlas.get_chunk_aux_f32(c_order_idx, flip_v=True)
-                                if aux_f32 is not None:
-                                    aux_file = (int(chunk_width), int(chunk_height), aux_f32)
-                            if overlay_file and hasattr(active_atlas, "get_chunk_overlay_f32"):
-                                o_f32 = active_atlas.get_chunk_overlay_f32(c_order_idx, flip_v=True)
-                                if o_f32 is not None:
-                                    overlay_file = (int(chunk_width), int(chunk_height), o_f32)
-                        except Exception:
-                            pass
-
                     # World meshes are greedy-meshed per block face, so every face maps 1:1 to
                     # its atlas sprite and the UVMap can drive the texture directly. The
                     # `mtk_uv_transform` / `mtk_uv_rotation` attribute path below is reserved for
                     # imported external meshes, where UVs must be tiled in the shader
                     # (see utils/materials/pipeline.py, use_attribute_node=True).
                     enable_biome_tint = bool(cm.get("has_tint", True)) if cat == "blocks" else False
+                    texture_sources = resolve_chunk_texture_sources(
+                        cm,
+                        atlas_dir=atlas_dir,
+                        active_atlas=active_atlas,
+                    )
                     mat = build_atlas_chunk_material(
                         chunk_id=chunk_id,
-                        albedo_path=albedo_file,
-                        normal_path=normal_file,
-                        orm_path=orm_file,
-                        aux_path=aux_file,
-                        overlay_path=overlay_file,
                         category=cat,
                         category_chunk_index=c_idx,
                         is_animated=is_anim,
@@ -332,6 +301,7 @@ def ensure_world_materials(
                         tile_width=16.0,
                         tile_height=16.0,
                         chunk_stem=stem,
+                        texture_sources=texture_sources,
                     )
                     compact_materials.append(mat)
                     chunk_to_compact_slot[chunk_id] = slot_idx

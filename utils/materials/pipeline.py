@@ -31,6 +31,7 @@ from ...bridge.material import (
     reroute_mesh_animation,
     resolve_mesh_material_routes,
     build_material_palette,
+    resolve_chunk_texture_sources,
 )
 
 
@@ -324,11 +325,7 @@ def assign_atlas_chunk_materials(
         is_anim = cm.get("is_animated", False)
         stem = f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}"
 
-        albedo_file = atlas_dir / f"{stem}.png"
-        normal_file = atlas_dir / f"{stem}_n.png" if cm.get("has_normal") else None
-        orm_file = atlas_dir / f"{stem}_orm.png" if cm.get("has_orm") else None
-        aux_file = atlas_dir / f"{stem}_aux.png" if cm.get("has_aux") else None
-        overlay_file = atlas_dir / f"{stem}_overlay.png" if cm.get("has_overlay") else None
+        stem = cm.get("file_stem", f"{cat}_anim_chunk_{c_idx:03}" if is_anim else f"{cat}_chunk_{c_idx:03}")
         chunk_width = float(cm.get("width", 1024))
         chunk_height = float(cm.get("height", 512))
         uv_map_name = uv_layer.name if uv_layer else "UVMap"
@@ -343,13 +340,9 @@ def assign_atlas_chunk_materials(
                 material_name = f"MTK:Atlas:Ext:{cat}:{c_idx:03}"
 
         enable_biome_tint = bool(cm.get("has_tint", True)) if cat == "blocks" else False
+        texture_sources = resolve_chunk_texture_sources(cm, atlas_dir=atlas_dir)
         mat = build_atlas_chunk_material(
             chunk_id=chunk_id,
-            albedo_path=albedo_file,
-            normal_path=normal_file,
-            orm_path=orm_file,
-            aux_path=aux_file,
-            overlay_path=overlay_file,
             category=cat,
             category_chunk_index=c_idx,
             is_animated=is_anim,
@@ -362,6 +355,8 @@ def assign_atlas_chunk_materials(
             uv_map_name=uv_map_name,
             material_name=material_name,
             force_rebuild=force_rebuild_materials,
+            chunk_stem=stem,
+            texture_sources=texture_sources,
         )
         mesh.materials.append(mat)
         chunk_to_slot[chunk_id] = slot_idx
