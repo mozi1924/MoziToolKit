@@ -62,6 +62,7 @@ def load_and_mesh_minecraft_save(
     enable_animated_textures: Optional[bool] = None,
     ctm_solver: Optional[Any] = None,
     skin_cache_dir: Optional[str] = None,
+    cache_package_path: Optional[str] = None,
     resolve_prefs: bool = True,
     resolve_ctm: bool = True,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
@@ -79,6 +80,12 @@ def load_and_mesh_minecraft_save(
         model_db = model_db or cached_mdb
         atlas = atlas or cached_atlas
         biome_resolver = biome_resolver or cached_resolver
+
+    if resolve_prefs and cache_package_path is None:
+        from .assets import get_active_cache_package_path
+        pkg = get_active_cache_package_path(prefs)
+        if pkg is not None:
+            cache_package_path = str(pkg.resolve())
 
     # Thread count resolution
     if resolve_prefs and num_threads is None and prefs is not None:
@@ -141,6 +148,9 @@ def load_and_mesh_minecraft_save(
 
     if skin_cache_dir is not None:
         call_kwargs["skin_cache_dir"] = skin_cache_dir
+
+    if cache_package_path is not None:
+        call_kwargs["cache_package_path"] = cache_package_path
 
     try:
         from ..utils.system.network import sync_system_proxies

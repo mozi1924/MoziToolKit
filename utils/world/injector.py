@@ -60,7 +60,11 @@ def apply_voxel_mesh_to_blender(
         context = bpy.context
 
     if dynamic_skin_atlas is None:
-        dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlases", None)
+        dynamic_skin_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
+        if not dynamic_skin_atlas:
+            dynamic_skin_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
+        if not dynamic_skin_atlas:
+            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlases", None)
         if not dynamic_skin_atlas:
             dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
 

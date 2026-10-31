@@ -23,6 +23,7 @@ from .assets import (
     load_atlas_mapping_from_cache,
     load_baked_model_database,
     load_biome_resolver_from_cache,
+    get_active_cache_package_path,
     get_configured_ctm_solver,
 )
 
@@ -119,6 +120,7 @@ def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
     the asset cache has been verified/precompiled on the main thread.
     """
     model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
+    active_pkg = get_active_cache_package_path(prefs)
     ctm_solver = get_configured_ctm_solver(prefs)
     raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
     num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
@@ -136,6 +138,7 @@ def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
         "model_db": model_db,
         "atlas": atlas,
         "biome_resolver": biome_resolver,
+        "cache_package_path": str(active_pkg.resolve()) if active_pkg else None,
         "ctm_solver": ctm_solver,
         "num_threads": num_threads,
         "enable_animated_textures": enable_animated_textures,
@@ -172,10 +175,24 @@ def clear_world_sessions(session_key: Optional[str] = None) -> None:
         _WORLD_SESSION_META.pop(session_key, None)
 
 
-def get_world_session_dynamic_skin_atlas(session_key: str) -> Optional[Any]:
-    """Returns dynamic skin atlas bytes or dict for the cached VoxelWorld session, if any."""
+def get_world_session_dynamic_entity_atlas(session_key: str) -> Optional[Any]:
+    """Returns dynamic entity atlas bytes or dict for the cached VoxelWorld session, if any."""
     w = _WORLD_SESSIONS.get(session_key)
     if w is not None:
+        if hasattr(w, "get_dynamic_entity_atlases"):
+            try:
+                atlases = w.get_dynamic_entity_atlases()
+                if atlases:
+                    return atlases
+            except Exception:
+                pass
+        if hasattr(w, "get_dynamic_entity_atlas"):
+            try:
+                res = w.get_dynamic_entity_atlas()
+                if res is not None:
+                    return res
+            except Exception:
+                pass
         if hasattr(w, "get_dynamic_skin_atlases"):
             try:
                 atlases = w.get_dynamic_skin_atlases()
@@ -189,6 +206,9 @@ def get_world_session_dynamic_skin_atlas(session_key: str) -> Optional[Any]:
             except Exception:
                 return None
     return None
+
+
+get_world_session_dynamic_skin_atlas = get_world_session_dynamic_entity_atlas
 
 
 def mesh_voxel_storage(

@@ -60,7 +60,10 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
     def test_voxel_world_dynamic_skin_atlas_generation(self):
         """VoxelWorld resolves skull, allocates slot in 1024x1024 atlas, and meshes to slot 0xFFF0."""
         world = libmtk_py.VoxelWorld()
-        self.assertIsNone(world.get_dynamic_skin_atlas())
+        # Atlas is pre-warmed with 16 vanilla banner dye base slots in chunk 0xFFF0
+        init_atlas = world.get_dynamic_skin_atlas()
+        self.assertIsNotNone(init_atlas)
+        self.assertEqual(len(init_atlas), 1024 * 1024 * 4)
 
         world.set_block(2, 2, 2, "minecraft:player_head[rotation=0]", None)
         skull_json = {
@@ -208,18 +211,18 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk material test")
     def test_multi_chunk_dynamic_skins_material_bpy(self):
-        """Dynamic skins material builder creates unique materials and images per chunk ID."""
+        """Dynamic entities material builder creates unique materials and images per chunk ID."""
         chunk_0 = 0xFFF0
         chunk_1 = 0xFFF1
         self.assertEqual(dynamic_skins_material_name(chunk_0), DYNAMIC_SKINS_MATERIAL_NAME)
-        self.assertEqual(dynamic_skins_material_name(chunk_1), "MTK:Atlas:skins:dynamic_FFF1")
+        self.assertEqual(dynamic_skins_material_name(chunk_1), "MTK:Atlas:entities:dynamic_FFF1")
         self.assertEqual(dynamic_skins_image_name(chunk_0), DYNAMIC_SKINS_IMAGE_NAME)
-        self.assertEqual(dynamic_skins_image_name(chunk_1), "MTK_Dynamic_Skins_Atlas_FFF1")
+        self.assertEqual(dynamic_skins_image_name(chunk_1), "MTK_Dynamic_Entities_Atlas_FFF1")
 
         mat1 = build_dynamic_skins_material(chunk_id=chunk_1)
         self.assertIsNotNone(mat1)
         self.assertEqual(mat1.get("mtk_atlas_chunk_id"), chunk_1)
-        self.assertEqual(mat1.name, "MTK:Atlas:skins:dynamic_FFF1")
+        self.assertEqual(mat1.name, "MTK:Atlas:entities:dynamic_FFF1")
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk world binding test")
     def test_multi_chunk_world_binding_bpy(self):
@@ -255,14 +258,14 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
             )
 
             mat_names = [m.name for m in b_obj.data.materials if m is not None]
-            self.assertIn("MTK:Atlas:skins:dynamic", mat_names)
-            self.assertIn("MTK:Atlas:skins:dynamic_FFF1", mat_names)
+            self.assertIn("MTK:Atlas:entities:dynamic", mat_names)
+            self.assertIn("MTK:Atlas:entities:dynamic_FFF1", mat_names)
 
             # Polygons mapped to their respective slots
             p0_mat = b_obj.data.materials[b_obj.data.polygons[0].material_index]
             p1_mat = b_obj.data.materials[b_obj.data.polygons[1].material_index]
-            self.assertEqual(p0_mat.name, "MTK:Atlas:skins:dynamic")
-            self.assertEqual(p1_mat.name, "MTK:Atlas:skins:dynamic_FFF1")
+            self.assertEqual(p0_mat.name, "MTK:Atlas:entities:dynamic")
+            self.assertEqual(p1_mat.name, "MTK:Atlas:entities:dynamic_FFF1")
         finally:
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh)

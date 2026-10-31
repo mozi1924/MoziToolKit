@@ -218,6 +218,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     "ctm_solver": mesh_context["ctm_solver"] if enable_ctm else None,
                     "num_threads": mesh_context["num_threads"],
                     "skin_cache_dir": mesh_context.get("skin_cache_dir"),
+                    "cache_package_path": mesh_context.get("cache_package_path"),
                     "resolve_prefs": False,
                     "resolve_ctm": False,
                 },

@@ -70,6 +70,7 @@ def ensure_world_materials(
     atlas: Optional[Any] = None,
     used_chunk_ids: Optional[Any] = None,
     dynamic_skin_atlas: Optional[Any] = None,
+    dynamic_entity_atlas: Optional[Any] = None,
 ) -> None:
     """
     Ensures that the unified world mesh object has corresponding Atlas Chunk materials
@@ -86,27 +87,28 @@ def ensure_world_materials(
         return
 
     from .atlas_builder import PBR_LAYOUT_VERSION, build_atlas_chunk_material
-    from .dynamic_skins import (
-        DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
+    from .dynamic_entities import (
+        DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID,
         DYNAMIC_CHUNK_END,
         DYNAMIC_CHUNK_START,
-        DYNAMIC_SKINS_IMAGE_NAME,
-        build_dynamic_skins_material,
-        dynamic_skins_image_name,
-        dynamic_skins_material_name,
-        update_dynamic_skins_image,
+        DYNAMIC_ENTITIES_IMAGE_NAME,
+        build_dynamic_entities_material,
+        dynamic_entities_image_name,
+        dynamic_entities_material_name,
+        update_dynamic_entities_image,
     )
     from . import ensure_material_node_tree
     from ..cleaner import remap_indices_lut
 
+    target_dyn_atlas = dynamic_entity_atlas if dynamic_entity_atlas is not None else dynamic_skin_atlas
     atlas_dict: dict[int, Any] = {}
-    if isinstance(dynamic_skin_atlas, dict):
-        atlas_dict = {int(k): v for k, v in dynamic_skin_atlas.items()}
-    elif dynamic_skin_atlas is not None:
-        atlas_dict = {DEFAULT_DYNAMIC_SKINS_CHUNK_ID: dynamic_skin_atlas}
+    if isinstance(target_dyn_atlas, dict):
+        atlas_dict = {int(k): v for k, v in target_dyn_atlas.items()}
+    elif target_dyn_atlas is not None:
+        atlas_dict = {DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID: target_dyn_atlas}
 
     for cid, buf in atlas_dict.items():
-        update_dynamic_skins_image(buf, chunk_id=cid)
+        update_dynamic_entities_image(buf, chunk_id=cid)
 
     mesh = world_obj.data
 
@@ -150,7 +152,7 @@ def ensure_world_materials(
                         if skin_mat and getattr(skin_mat, "node_tree", None):
                             tex_node = skin_mat.node_tree.nodes.get("DynamicAtlasTex")
                             if tex_node is not None:
-                                img = bpy.data.images.get(dynamic_skins_image_name(cid))
+                                img = bpy.data.images.get(dynamic_entities_image_name(cid))
                                 if img is not None and (tex_node.image is None or cid in atlas_dict):
                                     tex_node.image = img
             has_chunk_attr = hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes
@@ -226,7 +228,7 @@ def ensure_world_materials(
                     if DYNAMIC_CHUNK_START <= cid <= DYNAMIC_CHUNK_END:
                         chunk_meta_map[cid] = {
                             "chunk_id": cid,
-                            "is_dynamic_skins": True,
+                            "is_dynamic_entities": True,
                         }
 
             if chunk_meta_map:
@@ -238,9 +240,9 @@ def ensure_world_materials(
 
                 for slot_idx, chunk_id in enumerate(sorted_chunks):
                     cm = chunk_meta_map[chunk_id]
-                    if cm.get("is_dynamic_skins") or DYNAMIC_CHUNK_START <= chunk_id <= DYNAMIC_CHUNK_END:
+                    if cm.get("is_dynamic_entities") or cm.get("is_dynamic_skins") or DYNAMIC_CHUNK_START <= chunk_id <= DYNAMIC_CHUNK_END:
                         buf = atlas_dict.get(chunk_id)
-                        mat = build_dynamic_skins_material(chunk_id=chunk_id, dynamic_skin_atlas_bytes=buf)
+                        mat = build_dynamic_entities_material(chunk_id=chunk_id, dynamic_entity_atlas_bytes=buf)
                         compact_materials.append(mat)
                         chunk_to_compact_slot[chunk_id] = slot_idx
                         continue
