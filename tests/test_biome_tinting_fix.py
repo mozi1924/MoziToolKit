@@ -126,7 +126,7 @@ class TestBiomeTintingFix(unittest.TestCase):
         assert mesh_res.has_attribute("mtk_biome_tint_data")
 
         mv = mesh_res.attribute_memoryview("mtk_biome_tint_data")
-        floats = struct.unpack(f"{len(mv)//4}f", bytes(mv))
+        floats = list(mv) if getattr(mv, "format", "") == "f" else list(memoryview(mv).cast("f"))
         rows = [floats[i*4:(i+1)*4] for i in range(len(floats)//4)]
         tint_types = {r[3] for r in rows}
 
@@ -139,7 +139,7 @@ class TestBiomeTintingFix(unittest.TestCase):
         mesh_no_res = mesh_world(storage, cfg_no_res, None)
         assert mesh_no_res is not None
         mv_no_res = mesh_no_res.attribute_memoryview("mtk_biome_tint_data")
-        floats_no_res = struct.unpack(f"{len(mv_no_res)//4}f", bytes(mv_no_res))
+        floats_no_res = list(mv_no_res) if getattr(mv_no_res, "format", "") == "f" else list(memoryview(mv_no_res).cast("f"))
         rows_no_res = [floats_no_res[i*4:(i+1)*4] for i in range(len(floats_no_res)//4)]
         tint_types_no_res = {r[3] for r in rows_no_res}
 
@@ -186,7 +186,7 @@ class TestBiomeTintingFix(unittest.TestCase):
 
         # Unpack mtk_biome_tint_color (Vector3 float32)
         mv_col = mesh.attribute_memoryview("mtk_biome_tint_color")
-        raw_col = struct.unpack(f"{len(mv_col)//4}f", bytes(mv_col))
+        raw_col = list(mv_col) if getattr(mv_col, "format", "") == "f" else list(memoryview(mv_col).cast("f"))
         colors = [raw_col[i*3:(i+1)*3] for i in range(len(raw_col)//3)]
 
         # Verify continuous intermediate gradient colors exist across the 5x5 kernel transition

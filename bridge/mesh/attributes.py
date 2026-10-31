@@ -324,7 +324,7 @@ def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> boo
     Live Sync meshes skip per-face strings to keep large baselines light, but the
     biome/material paths still need the original texture keys. The Rust mesher keeps
     those values, so we rebuild the palette + INT index attribute instead of losing
-    provenance. Falls back to the legacy string path for older native builds.
+    provenance. Falls back to string attribute migration when only strings are present.
     """
     if attr_name != ATTR_SOURCE_TEXTURE_KEY:
         return False
@@ -338,6 +338,17 @@ def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> boo
                 return True
         except Exception as e:
             logger.debug("Palette provenance fast path failed: %s", e)
+
+    # Fallback: if mesh_data only holds per-face string provenance, migrate to palette + int indices
+    get_str = getattr(mesh_data, "get_string_attribute", None)
+    if callable(get_str):
+        try:
+            vals = get_str(attr_name)
+            if vals:
+                inject_face_source_texture_keys(mesh, vals)
+                return True
+        except Exception as e:
+            logger.debug("Palette provenance string migration failed: %s", e)
 
     return False
 
@@ -354,6 +365,8 @@ def inject_custom_attributes(
 
     for attr_name in mesh_data.attribute_names():
         if not is_active(attr_name):
+            if attr_name == ATTR_SOURCE_TEXTURE_KEY:
+                _inject_palette_provenance(mesh, mesh_data, attr_name)
             # The native core never emits retired attributes; guard against a
             # stale native build and purge any leftover layer.
             b_attr = mesh.attributes.get(attr_name)
