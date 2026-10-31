@@ -20,11 +20,8 @@ from .image_utils import (
 )
 from .dynamic_entities import (
     DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID,
-    DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
     build_dynamic_entities_material,
-    build_dynamic_skins_material,
     update_dynamic_entities_image,
-    update_dynamic_skins_image,
 )
 
 __all__ = [
@@ -42,10 +39,7 @@ __all__ = [
     "set_material_displacement_method",
     "ensure_material_node_tree",
     "DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID",
-    "DEFAULT_DYNAMIC_SKINS_CHUNK_ID",
     "build_dynamic_entities_material",
-    "build_dynamic_skins_material",
     "update_dynamic_entities_image",
-    "update_dynamic_skins_image",
 ]
 

@@ -107,6 +107,8 @@ def test_cleaned_dead_apis_are_absent():
     mesh = mtk.MeshData()
     assert not hasattr(mesh, "get_attribute_data")
     assert not hasattr(mesh, "get_flat_secondary_uvs")
+    assert not hasattr(mesh, "dynamic_skin_atlas")
+    assert not hasattr(mesh, "dynamic_skin_atlases")
     assert not hasattr(mesh, "set_dynamic_skin_atlas")
 
     cfg = mtk.MesherConfig()

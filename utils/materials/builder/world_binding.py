@@ -69,7 +69,6 @@ def ensure_world_materials(
     prefs=None,
     atlas: Optional[Any] = None,
     used_chunk_ids: Optional[Any] = None,
-    dynamic_skin_atlas: Optional[Any] = None,
     dynamic_entity_atlas: Optional[Any] = None,
 ) -> None:
     """
@@ -100,12 +99,11 @@ def ensure_world_materials(
     from . import ensure_material_node_tree
     from ..cleaner import remap_indices_lut
 
-    target_dyn_atlas = dynamic_entity_atlas if dynamic_entity_atlas is not None else dynamic_skin_atlas
     atlas_dict: dict[int, Any] = {}
-    if isinstance(target_dyn_atlas, dict):
-        atlas_dict = {int(k): v for k, v in target_dyn_atlas.items()}
-    elif target_dyn_atlas is not None:
-        atlas_dict = {DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID: target_dyn_atlas}
+    if isinstance(dynamic_entity_atlas, dict):
+        atlas_dict = {int(k): v for k, v in dynamic_entity_atlas.items()}
+    elif dynamic_entity_atlas is not None:
+        atlas_dict = {DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID: dynamic_entity_atlas}
 
     for cid, buf in atlas_dict.items():
         update_dynamic_entities_image(buf, chunk_id=cid)
@@ -240,7 +238,7 @@ def ensure_world_materials(
 
                 for slot_idx, chunk_id in enumerate(sorted_chunks):
                     cm = chunk_meta_map[chunk_id]
-                    if cm.get("is_dynamic_entities") or cm.get("is_dynamic_skins") or DYNAMIC_CHUNK_START <= chunk_id <= DYNAMIC_CHUNK_END:
+                    if cm.get("is_dynamic_entities") or DYNAMIC_CHUNK_START <= chunk_id <= DYNAMIC_CHUNK_END:
                         buf = atlas_dict.get(chunk_id)
                         mat = build_dynamic_entities_material(chunk_id=chunk_id, dynamic_entity_atlas_bytes=buf)
                         compact_materials.append(mat)

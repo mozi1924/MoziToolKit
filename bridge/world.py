@@ -193,22 +193,7 @@ def get_world_session_dynamic_entity_atlas(session_key: str) -> Optional[Any]:
                     return res
             except Exception:
                 pass
-        if hasattr(w, "get_dynamic_skin_atlases"):
-            try:
-                atlases = w.get_dynamic_skin_atlases()
-                if atlases:
-                    return atlases
-            except Exception:
-                pass
-        if hasattr(w, "get_dynamic_skin_atlas"):
-            try:
-                return w.get_dynamic_skin_atlas()
-            except Exception:
-                return None
     return None
-
-
-get_world_session_dynamic_skin_atlas = get_world_session_dynamic_entity_atlas
 
 
 def mesh_voxel_storage(

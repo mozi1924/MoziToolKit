@@ -23,15 +23,10 @@ from .image_utils import (
 )
 
 DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID = 0xFFF0  # 65520
-DEFAULT_DYNAMIC_SKINS_CHUNK_ID = DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID
 DYNAMIC_CHUNK_START = 0xFFF0
 DYNAMIC_CHUNK_END = 0xFFFF
 DYNAMIC_ENTITIES_IMAGE_NAME = "MTK_Dynamic_Entities_Atlas"
 DYNAMIC_ENTITIES_MATERIAL_NAME = "MTK:Atlas:entities:dynamic"
-
-# Backwards compatibility constants
-DYNAMIC_SKINS_IMAGE_NAME = DYNAMIC_ENTITIES_IMAGE_NAME
-DYNAMIC_SKINS_MATERIAL_NAME = DYNAMIC_ENTITIES_MATERIAL_NAME
 
 
 def dynamic_entities_image_name(chunk_id: int = DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID) -> str:
@@ -46,11 +41,6 @@ def dynamic_entities_material_name(chunk_id: int = DEFAULT_DYNAMIC_ENTITIES_CHUN
     if chunk_id == DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID:
         return DYNAMIC_ENTITIES_MATERIAL_NAME
     return f"MTK:Atlas:entities:dynamic_{chunk_id:04X}"
-
-
-# Aliases
-dynamic_skins_image_name = dynamic_entities_image_name
-dynamic_skins_material_name = dynamic_entities_material_name
 
 
 def update_dynamic_entities_image(
@@ -88,9 +78,6 @@ def update_dynamic_entities_image(
         flip_y=True,
         pack=True,
     )
-
-
-update_dynamic_skins_image = update_dynamic_entities_image
 
 
 def build_dynamic_entities_material(
@@ -175,6 +162,3 @@ def build_dynamic_entities_material(
         tex_node.image = img
 
     return mat
-
-
-build_dynamic_skins_material = build_dynamic_entities_material

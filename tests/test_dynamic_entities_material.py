@@ -1,5 +1,5 @@
 """
-Tests for Dynamic Skins Material Pipeline and VoxelWorld Skin Integration.
+Tests for Dynamic Entities Material Pipeline and VoxelWorld Entity Integration.
 """
 
 import json
@@ -30,38 +30,38 @@ except ImportError:
     libmtk_py = None
     HAS_LIBMTK = False
 
-from MoziToolKit.utils.materials.builder.dynamic_skins import (
-    DEFAULT_DYNAMIC_SKINS_CHUNK_ID,
+from MoziToolKit.utils.materials.builder.dynamic_entities import (
+    DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID,
     DYNAMIC_CHUNK_END,
     DYNAMIC_CHUNK_START,
-    DYNAMIC_SKINS_IMAGE_NAME,
-    DYNAMIC_SKINS_MATERIAL_NAME,
-    build_dynamic_skins_material,
-    dynamic_skins_image_name,
-    dynamic_skins_material_name,
-    update_dynamic_skins_image,
+    DYNAMIC_ENTITIES_IMAGE_NAME,
+    DYNAMIC_ENTITIES_MATERIAL_NAME,
+    build_dynamic_entities_material,
+    dynamic_entities_image_name,
+    dynamic_entities_material_name,
+    update_dynamic_entities_image,
 )
 
 
-class TestDynamicSkinsMaterial(unittest.TestCase):
-    def test_dynamic_skins_chunk_id_constant(self):
-        """Dynamic skin atlas chunk ID must be 0xFFF0 (65520)."""
-        self.assertEqual(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, 0xFFF0)
-        self.assertEqual(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, 65520)
+class TestDynamicEntitiesMaterial(unittest.TestCase):
+    def test_dynamic_entities_chunk_id_constant(self):
+        """Dynamic entity atlas chunk ID must be 0xFFF0 (65520)."""
+        self.assertEqual(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, 0xFFF0)
+        self.assertEqual(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, 65520)
 
-    def test_update_dynamic_skins_image_guard(self):
+    def test_update_dynamic_entities_image_guard(self):
         """Guards against short or invalid buffer without crashing."""
         # Buffer smaller than 1024*1024*4 must be rejected
         short_buf = b"\x00" * 100
-        result = update_dynamic_skins_image(short_buf)
+        result = update_dynamic_entities_image(short_buf)
         self.assertIsNone(result)
 
-    @unittest.skipUnless(HAS_LIBMTK, "libmtk_py is required for voxel world dynamic skin test")
-    def test_voxel_world_dynamic_skin_atlas_generation(self):
+    @unittest.skipUnless(HAS_LIBMTK, "libmtk_py is required for voxel world dynamic entity test")
+    def test_voxel_world_dynamic_entity_atlas_generation(self):
         """VoxelWorld resolves skull, allocates slot in 1024x1024 atlas, and meshes to slot 0xFFF0."""
         world = libmtk_py.VoxelWorld()
         # Atlas is pre-warmed with 16 vanilla banner dye base slots in chunk 0xFFF0
-        init_atlas = world.get_dynamic_skin_atlas()
+        init_atlas = world.get_dynamic_entity_atlas()
         self.assertIsNotNone(init_atlas)
         self.assertEqual(len(init_atlas), 1024 * 1024 * 4)
 
@@ -73,7 +73,7 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
             "profile": {
                 "name": "Steve",
                 "id": "00000000-0000-0000-0000-000000000000",
-                "skin_url": "http://textures.minecraft.net/texture/3c3fa837d5e9ae5d06150a699495387d068fb9e682572b191e6868959f51bc52",
+                "skin_url": "https://textures.minecraft.net/texture/2724ab65dec7d77b07238a4c9bc075501630608aed6f0c1118777017bd2c0cb",
             },
         }
         world.set_block_entity_json(2, 2, 2, json.dumps(skull_json))
@@ -104,37 +104,34 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
         # 2. Synchronous resolve (simulating background download arrival)
         if hasattr(world, "ensure_dynamic_entities_resolved_sync"):
             world.ensure_dynamic_entities_resolved_sync()
-        else:
-            # Fallback for mock/stub
-            pass
 
         mesh = world.rebuild_all()
         self.assertGreater(mesh.face_count, 0)
         used_mats = mesh.used_materials()
-        self.assertIn(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, used_mats)
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, used_mats)
 
-        atlas_bytes = world.get_dynamic_skin_atlas()
+        atlas_bytes = world.get_dynamic_entity_atlas()
         self.assertIsNotNone(atlas_bytes)
         self.assertEqual(len(atlas_bytes), 1024 * 1024 * 4)
 
-        # Dynamic skin atlases dictionary
-        atlases_dict = world.get_dynamic_skin_atlases()
+        # Dynamic entity atlases dictionary
+        atlases_dict = world.get_dynamic_entity_atlases()
         self.assertIsNotNone(atlases_dict)
-        self.assertIn(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, atlases_dict)
-        self.assertEqual(bytes(atlases_dict[DEFAULT_DYNAMIC_SKINS_CHUNK_ID]), bytes(atlas_bytes))
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, atlases_dict)
+        self.assertEqual(bytes(atlases_dict[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]), bytes(atlas_bytes))
 
-        # PyMeshData dynamic_skin_atlases
-        self.assertIsNotNone(mesh.dynamic_skin_atlases)
-        self.assertIn(DEFAULT_DYNAMIC_SKINS_CHUNK_ID, mesh.dynamic_skin_atlases)
-        self.assertEqual(bytes(mesh.dynamic_skin_atlases[DEFAULT_DYNAMIC_SKINS_CHUNK_ID]), bytes(atlas_bytes))
+        # PyMeshData dynamic_entity_atlases
+        self.assertIsNotNone(mesh.dynamic_entity_atlases)
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, mesh.dynamic_entity_atlases)
+        self.assertEqual(bytes(mesh.dynamic_entity_atlases[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]), bytes(atlas_bytes))
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for Blender material node tree test")
-    def test_build_dynamic_skins_material_bpy(self):
-        """build_dynamic_skins_material creates Principled BSDF with Closest texture."""
-        mat = build_dynamic_skins_material()
+    def test_build_dynamic_entities_material_bpy(self):
+        """build_dynamic_entities_material creates Principled BSDF with Closest texture."""
+        mat = build_dynamic_entities_material()
         self.assertIsNotNone(mat)
-        self.assertEqual(mat.get("mtk_atlas_chunk_id"), DEFAULT_DYNAMIC_SKINS_CHUNK_ID)
-        self.assertEqual(mat.name, DYNAMIC_SKINS_MATERIAL_NAME)
+        self.assertEqual(mat.get("mtk_atlas_chunk_id"), DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID)
+        self.assertEqual(mat.name, DYNAMIC_ENTITIES_MATERIAL_NAME)
 
         nodes = mat.node_tree.nodes
         tex_node = nodes.get("DynamicAtlasTex")
@@ -142,11 +139,11 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
         self.assertEqual(tex_node.interpolation, "Closest")
 
     @unittest.skipUnless(HAS_BPY and HAS_LIBMTK, "bpy and libmtk_py required for full DCC hierarchy test")
-    def test_update_world_mesh_dynamic_skin_binding_bpy(self):
-        """update_world_mesh injects geometry, creates image in memory, and binds dynamic skin material slot."""
+    def test_update_world_mesh_dynamic_entity_binding_bpy(self):
+        """update_world_mesh injects geometry, creates image in memory, and binds dynamic entity material slot."""
         world = libmtk_py.VoxelWorld()
         world.set_block(2, 2, 2, "minecraft:player_head[rotation=0]", None)
-        hash_str = "3c3fa837d5e9ae5d06150a699495387d068fb9e682572b191e6868959f51bc52"
+        hash_str = "2724ab65dec7d77b07238a4c9bc075501630608aed6f0c1118777017bd2c0cb"
         skull_json = {
             "id": "minecraft:skull",
             "kind": "player",
@@ -160,13 +157,13 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
         world.set_block_entity_json(2, 2, 2, json.dumps(skull_json))
         world.ensure_dynamic_entities_resolved_sync()
         mesh = world.rebuild_all()
-        atlas_bytes = world.get_dynamic_skin_atlas()
+        atlas_bytes = world.get_dynamic_entity_atlas()
         self.assertIsNotNone(atlas_bytes)
 
-        # PyMeshData itself must now carry dynamic_skin_atlas directly
-        self.assertIsNotNone(mesh.dynamic_skin_atlas)
-        self.assertEqual(len(mesh.dynamic_skin_atlas), 1024 * 1024 * 4)
-        self.assertEqual(bytes(mesh.dynamic_skin_atlas), bytes(atlas_bytes))
+        # PyMeshData itself must now carry dynamic_entity_atlas directly
+        self.assertIsNotNone(mesh.dynamic_entity_atlas)
+        self.assertEqual(len(mesh.dynamic_entity_atlas), 1024 * 1024 * 4)
+        self.assertEqual(bytes(mesh.dynamic_entity_atlas), bytes(atlas_bytes))
 
         # Create host object
         b_mesh = bpy.data.meshes.new("TestDynamicWorldMesh")
@@ -175,23 +172,23 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
 
         try:
             from MoziToolKit.operators.sync.hierarchy import update_world_mesh
-            # Call without passing dynamic_skin_atlas explicitly; should auto-extract from mesh.dynamic_skin_atlas
+            # Call without passing dynamic_entity_atlas explicitly; should auto-extract from mesh.dynamic_entity_atlas
             v_cnt, f_cnt = update_world_mesh(b_obj, mesh)
             self.assertGreater(v_cnt, 0)
             self.assertGreater(f_cnt, 0)
 
             # Verify image exists in bpy.data.images with direct memory injection
-            img = bpy.data.images.get(DYNAMIC_SKINS_IMAGE_NAME)
+            img = bpy.data.images.get(DYNAMIC_ENTITIES_IMAGE_NAME)
             self.assertIsNotNone(img)
             self.assertEqual(img.size[0], 1024)
             self.assertEqual(img.size[1], 1024)
 
             # Verify material slot on object
             mat_names = [m.name for m in b_obj.data.materials if m is not None]
-            self.assertIn(DYNAMIC_SKINS_MATERIAL_NAME, mat_names)
+            self.assertIn(DYNAMIC_ENTITIES_MATERIAL_NAME, mat_names)
 
             # Verify skull face material index
-            slot_idx = mat_names.index(DYNAMIC_SKINS_MATERIAL_NAME)
+            slot_idx = mat_names.index(DYNAMIC_ENTITIES_MATERIAL_NAME)
             poly_mats = [p.material_index for p in b_obj.data.polygons]
             self.assertIn(slot_idx, poly_mats)
 
@@ -210,23 +207,23 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
             bpy.data.meshes.remove(b_mesh)
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk material test")
-    def test_multi_chunk_dynamic_skins_material_bpy(self):
+    def test_multi_chunk_dynamic_entities_material_bpy(self):
         """Dynamic entities material builder creates unique materials and images per chunk ID."""
         chunk_0 = 0xFFF0
         chunk_1 = 0xFFF1
-        self.assertEqual(dynamic_skins_material_name(chunk_0), DYNAMIC_SKINS_MATERIAL_NAME)
-        self.assertEqual(dynamic_skins_material_name(chunk_1), "MTK:Atlas:entities:dynamic_FFF1")
-        self.assertEqual(dynamic_skins_image_name(chunk_0), DYNAMIC_SKINS_IMAGE_NAME)
-        self.assertEqual(dynamic_skins_image_name(chunk_1), "MTK_Dynamic_Entities_Atlas_FFF1")
+        self.assertEqual(dynamic_entities_material_name(chunk_0), DYNAMIC_ENTITIES_MATERIAL_NAME)
+        self.assertEqual(dynamic_entities_material_name(chunk_1), "MTK:Atlas:entities:dynamic_FFF1")
+        self.assertEqual(dynamic_entities_image_name(chunk_0), DYNAMIC_ENTITIES_IMAGE_NAME)
+        self.assertEqual(dynamic_entities_image_name(chunk_1), "MTK_Dynamic_Entities_Atlas_FFF1")
 
-        mat1 = build_dynamic_skins_material(chunk_id=chunk_1)
+        mat1 = build_dynamic_entities_material(chunk_id=chunk_1)
         self.assertIsNotNone(mat1)
         self.assertEqual(mat1.get("mtk_atlas_chunk_id"), chunk_1)
         self.assertEqual(mat1.name, "MTK:Atlas:entities:dynamic_FFF1")
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk world binding test")
     def test_multi_chunk_world_binding_bpy(self):
-        """ensure_world_materials binds multiple dynamic skin chunk materials from a dict."""
+        """ensure_world_materials binds multiple dynamic entity chunk materials from a dict."""
         from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials
 
         b_mesh = bpy.data.meshes.new("TestMultiChunkMesh")
@@ -251,7 +248,7 @@ class TestDynamicSkinsMaterial(unittest.TestCase):
             ensure_world_materials(
                 b_obj,
                 used_chunk_ids=[0xFFF0, 0xFFF1],
-                dynamic_skin_atlas={
+                dynamic_entity_atlas={
                     0xFFF0: dummy_buf_0,
                     0xFFF1: dummy_buf_1,
                 },

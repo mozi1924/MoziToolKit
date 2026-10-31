@@ -508,21 +508,13 @@ class SyncBridgeSession:
 
     def get_dynamic_entity_atlases(self) -> Optional[dict[int, bytes]]:
         """Returns dynamic entities atlas dict mapping chunk_id -> RGBA bytes from the native session."""
-        if self._session is not None:
-            if hasattr(self._session, "get_dynamic_entity_atlases"):
-                try:
-                    atlases = self._session.get_dynamic_entity_atlases()
-                    if atlases:
-                        return atlases
-                except Exception as e:
-                    logger.debug("Failed getting dynamic entity atlases from session: %s", e)
-            if hasattr(self._session, "get_dynamic_skin_atlases"):
-                try:
-                    atlases = self._session.get_dynamic_skin_atlases()
-                    if atlases:
-                        return atlases
-                except Exception as e:
-                    logger.debug("Failed getting dynamic skin atlases from session: %s", e)
+        if self._session is not None and hasattr(self._session, "get_dynamic_entity_atlases"):
+            try:
+                atlases = self._session.get_dynamic_entity_atlases()
+                if atlases:
+                    return atlases
+            except Exception as e:
+                logger.debug("Failed getting dynamic entity atlases from session: %s", e)
         return None
 
     def get_dynamic_entity_atlas(self) -> Optional[Any]:
@@ -530,21 +522,12 @@ class SyncBridgeSession:
         atlases = self.get_dynamic_entity_atlases()
         if atlases:
             return atlases
-        if self._session is not None:
-            if hasattr(self._session, "get_dynamic_entity_atlas"):
-                try:
-                    return self._session.get_dynamic_entity_atlas()
-                except Exception as e:
-                    logger.debug("Failed getting dynamic entity atlas from session: %s", e)
-            if hasattr(self._session, "get_dynamic_skin_atlas"):
-                try:
-                    return self._session.get_dynamic_skin_atlas()
-                except Exception as e:
-                    logger.debug("Failed getting dynamic skin atlas from session: %s", e)
+        if self._session is not None and hasattr(self._session, "get_dynamic_entity_atlas"):
+            try:
+                return self._session.get_dynamic_entity_atlas()
+            except Exception as e:
+                logger.debug("Failed getting dynamic entity atlas from session: %s", e)
         return None
-
-    get_dynamic_skin_atlases = get_dynamic_entity_atlases
-    get_dynamic_skin_atlas = get_dynamic_entity_atlas
 
     def set_skin_cache_dir(self, cache_dir: Optional[str]) -> None:
         """Sets the player head skin disk cache path on the native session."""

@@ -46,7 +46,7 @@ def apply_voxel_mesh_to_blender(
     ensure_materials_func=None,
     ensure_cloud_func=None,
     sync_point_cloud: bool = True,
-    dynamic_skin_atlas: Optional[Any] = None,
+    dynamic_entity_atlas: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed voxel world geometry.
@@ -59,14 +59,10 @@ def apply_voxel_mesh_to_blender(
     if context is None:
         context = bpy.context
 
-    if dynamic_skin_atlas is None:
-        dynamic_skin_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
-        if not dynamic_skin_atlas:
-            dynamic_skin_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
-        if not dynamic_skin_atlas:
-            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlases", None)
-        if not dynamic_skin_atlas:
-            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
+    if dynamic_entity_atlas is None:
+        dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
+        if not dynamic_entity_atlas:
+            dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
 
     # 1. Acquire or create Blender object
     obj = None
@@ -107,7 +103,7 @@ def apply_voxel_mesh_to_blender(
         prefs=prefs,
         atlas=atlas,
         used_chunk_ids=used_chunk_ids,
-        dynamic_skin_atlas=dynamic_skin_atlas,
+        dynamic_entity_atlas=dynamic_entity_atlas,
     )
     mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 

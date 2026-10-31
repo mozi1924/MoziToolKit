@@ -115,7 +115,7 @@ def apply_imported_save_to_blender(
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
     enable_animated_textures: bool = True,
-    dynamic_skin_atlas: Optional[Any] = None,
+    dynamic_entity_atlas: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -132,14 +132,10 @@ def apply_imported_save_to_blender(
     if context is None:
         context = bpy.context
 
-    if dynamic_skin_atlas is None:
-        dynamic_skin_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
-        if not dynamic_skin_atlas:
-            dynamic_skin_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
-        if not dynamic_skin_atlas:
-            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlases", None)
-        if not dynamic_skin_atlas:
-            dynamic_skin_atlas = getattr(mesh_data, "dynamic_skin_atlas", None)
+    if dynamic_entity_atlas is None:
+        dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
+        if not dynamic_entity_atlas:
+            dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
 
     target_coll = context.collection if context and context.collection else (
         bpy.context.scene.collection if hasattr(bpy.context, "scene") else None
@@ -240,7 +236,7 @@ def apply_imported_save_to_blender(
         prefs=prefs,
         atlas=atlas,
         used_chunk_ids=used_chunk_ids,
-        dynamic_skin_atlas=dynamic_skin_atlas,
+        dynamic_entity_atlas=dynamic_entity_atlas,
     )
     materials_ms = (time.perf_counter() - t_materials) * 1000.0
 
