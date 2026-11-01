@@ -329,20 +329,36 @@ class TestDualMeshApi(unittest.TestCase):
 
 
     def test_source_texture_palette_indices(self):
-        """Rust builds palette + u32 indices without materializing per-face strings."""
+        """Rust reads the canonical palette + u32 indices without per-face strings."""
         if not hasattr(self.mesh, "source_texture_palette_indices"):
             self.skipTest("source_texture_palette_indices not available in this libmtk build")
-        keys = [
-            "minecraft:block/grass_block_top",
-            "minecraft:block/dirt",
-            "minecraft:block/grass_block_top",
-        ]
         mesh = ma.unit_quads(3)
-        mesh.add_string_attribute("mtk_source_texture_key", "face", keys)
+        # Canonical provenance: Mesh-domain string palette + Face-domain Int32 indices.
+        mesh.add_string_attribute(
+            "mtk_source_textures", "mesh", ["minecraft:block/grass_block_top", "minecraft:block/dirt"]
+        )
+        mesh.add_attribute_from_buffer(
+            "mtk_source_texture_idx", "face", "int32", np.array([0, 1, 0], dtype=np.int32)
+        )
 
         palette, indices = mesh.source_texture_palette_indices()
         self.assertEqual(palette, ["minecraft:block/grass_block_top", "minecraft:block/dirt"])
         self.assertEqual(np.frombuffer(indices, dtype=np.uint32).tolist(), [0, 1, 0])
+
+    def test_retired_source_texture_key_is_not_converted(self):
+        """The retired per-face string layer must never be resurrected into provenance."""
+        if not hasattr(self.mesh, "source_texture_palette_indices"):
+            self.skipTest("source_texture_palette_indices not available in this libmtk build")
+        mesh = ma.unit_quads(3)
+        mesh.add_string_attribute(
+            "mtk_source_texture_key",
+            "face",
+            ["minecraft:block/stone", "minecraft:block/dirt", "minecraft:block/stone"],
+        )
+
+        palette, indices = mesh.source_texture_palette_indices()
+        self.assertEqual(palette, [])
+        self.assertEqual(len(np.frombuffer(indices, dtype=np.uint32)), 0)
 
 
 class TestPaletteSourceTextureKeys(unittest.TestCase):
@@ -390,11 +406,14 @@ class TestPaletteProvenanceParity(unittest.TestCase):
 
     def test_skip_string_flag_does_not_change_provenance(self):
         keys = ["minecraft:block/grass_block_top", "minecraft:block/dirt"]
+        palette = ["minecraft:block/grass_block_top", "minecraft:block/dirt"]
+        idx = np.array([0, 1], dtype=np.int32)
         resolved_by_mode = {}
         for skip in (False, True):
-            mtk = get_libmtk()
             mesh_data = ma.unit_quads(2)
-            mesh_data.add_string_attribute("mtk_source_texture_key", "face", keys)
+            # Canonical provenance only: the per-face string layer is retired.
+            mesh_data.add_string_attribute("mtk_source_textures", "mesh", palette)
+            mesh_data.add_attribute_from_buffer("mtk_source_texture_idx", "face", "int32", idx)
 
             name = f"mtk_palette_parity_{int(skip)}"
             b_mesh = bpy.data.meshes.new(name)
@@ -410,6 +429,7 @@ class TestPaletteProvenanceParity(unittest.TestCase):
                 )
                 self.assertIn("mtk_source_textures", b_mesh)
                 self.assertIn("mtk_source_texture_idx", b_mesh.attributes)
+                self.assertNotIn("mtk_source_texture_key", b_mesh.attributes)
                 resolved_by_mode[skip] = resolve_source_texture_keys(b_mesh)
             finally:
                 bpy.data.objects.remove(obj, do_unlink=True)

@@ -117,7 +117,10 @@ class TestLiveSyncFlow(unittest.TestCase):
                         mesh = ev.get("mesh")
                         self.assertIsNotNone(mesh)
                         self.assertGreater(mesh.vertex_count, 0)
-                        self.assertTrue(mesh.has_attribute("mtk_source_texture_key"))
+                        # Provenance is palette-only: the per-face string layer is retired.
+                        self.assertFalse(mesh.has_attribute("mtk_source_texture_key"))
+                        self.assertTrue(mesh.has_attribute("mtk_source_texture_idx"))
+                        self.assertTrue(mesh.has_attribute("mtk_source_textures"))
                         self.assertFalse(mesh.has_attribute("mtk_material_slot"))
                         self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
                         self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))

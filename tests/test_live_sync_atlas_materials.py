@@ -186,7 +186,9 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         self.assertGreater(mesh.face_count, 0)
 
         # Check face attributes on mesh
-        self.assertTrue(mesh.has_attribute("mtk_source_texture_key"))
+        self.assertFalse(mesh.has_attribute("mtk_source_texture_key"))
+        self.assertTrue(mesh.has_attribute("mtk_source_texture_idx"))
+        self.assertTrue(mesh.has_attribute("mtk_source_textures"))
         self.assertFalse(mesh.has_attribute("mtk_material_slot"))
         self.assertTrue(mesh.has_attribute("mtk_atlas_chunk_id"))
         self.assertFalse(mesh.has_attribute("mtk_atlas_texture_id"))
@@ -195,10 +197,11 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
         self.assertFalse(mesh.has_attribute("mtk_face_dir"))
 
-        # Verify string keys
-        keys = mesh.get_string_attribute("mtk_source_texture_key")
-        self.assertIsNotNone(keys)
-        self.assertGreater(len(keys), 0)
+        # Verify keys resolve from the compact palette + indices pair
+        palette, indices = mesh.source_texture_palette_indices()
+        self.assertGreater(len(palette), 0)
+        self.assertGreater(len(indices), 0)
+        keys = [palette[i] for i in indices]
 
         # Directional candidate resolution check:
         # grass_block should resolve to top, side, and dirt for bottom!
@@ -283,8 +286,8 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
     def test_update_world_mesh_atlas_injection_end_to_end(self):
         """
         Verify that update_world_mesh successfully injects real VoxelWorld geometry,
-        all 15 custom attributes (including string and multi-component floats/ints),
-        binds Atlas materials with use_attribute_node=False, and connects UVMap directly.
+        palette-based provenance attributes, binds Atlas materials with
+        use_attribute_node=False, and connects UVMap directly.
         """
         if not HAS_BPY or not HAS_LIBMTK:
             self.skipTest("bpy and libmtk are required for end-to-end injection test")
@@ -292,13 +295,18 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         from _assets import blender_datafiles_cache
 
         cache_root = blender_datafiles_cache()
-        cache_atlas_mapping = (
-            cache_root / "atlas" / "atlas_mapping.json" if cache_root else None
-        )
-        if cache_atlas_mapping is None or not cache_atlas_mapping.exists():
-            self.skipTest("Precompiled atlas cache mapping is required (set MTK_TEST_CACHE)")
+        if cache_root is None:
+            self.skipTest("Blender asset cache not found (set MOZI_CACHE_DIR / MTK_TEST_CACHE)")
+        packages = sorted(cache_root.glob("*.mtkcache"))
+        if not packages:
+            self.skipTest(f"No .mtkcache package found at {cache_root}")
+        try:
+            cache = mtk_py.AssetCache.open(str(packages[0]))
+            atlas = cache.load_atlas()
+            model_db = cache.load_models()
+        except Exception as exc:
+            self.skipTest(f"Failed to open .mtkcache: {exc}")
 
-        atlas = mtk_py.BakedAtlas.from_mapping_json(cache_atlas_mapping.read_text(encoding="utf-8"))
         config = mtk_py.MesherConfig(
             enable_ao=True,
             mesh_fluids=True,
@@ -309,7 +317,7 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         storage.set_bounds(0, 0, 0, 16, 16, 16)
         storage.set_block(0, 0, 0, "minecraft:grass_block")
         culler = mtk_py.FaceCuller() if hasattr(mtk_py, "FaceCuller") else None
-        mesh_data = mesh_world(storage, config, culler)
+        mesh_data = mesh_world(storage, config, culler, model_db)
 
         test_mesh = bpy.data.meshes.new("E2EWorldMesh")
         test_obj = bpy.data.objects.new("E2EWorldMesh", test_mesh)
@@ -319,11 +327,12 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
             self.assertGreater(v_count, 0)
             self.assertGreater(f_count, 0)
 
-            # 1. Verify string custom attribute
-            str_attr = test_mesh.attributes.get("mtk_source_texture_key")
-            self.assertIsNotNone(str_attr)
-            self.assertGreater(len(str_attr.data), 0)
-            self.assertTrue(isinstance(str_attr.data[0].value, bytes))
+            # 1. Verify palette-based provenance (per-face strings are retired)
+            self.assertIsNone(test_mesh.attributes.get("mtk_source_texture_key"))
+            idx_attr = test_mesh.attributes.get("mtk_source_texture_idx")
+            self.assertIsNotNone(idx_attr)
+            self.assertGreater(len(idx_attr.data), 0)
+            self.assertIn("mtk_source_textures", test_mesh)
 
             # 2. Verify numeric custom attributes
             tint_data_attr = test_mesh.attributes.get("mtk_biome_tint_data")

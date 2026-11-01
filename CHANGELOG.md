@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🗑️ 物理停产已废弃的逐面字符串溯源属性 `mtk_source_texture_key`
+- **Rust**：`mtk-voxel::FaceAttributesCollector::attach_to_mesh` 不再生成逐面 `AttributeData::String` 的 `mtk_source_texture_key`（该名字已在 `mtk-core::attributes::RETIRED_MESH_ATTRIBUTES` 中声明为「不得再写入」）。溯源全链统一为 `mtk_source_textures`（Mesh 字符串调色板）+ `mtk_source_texture_idx`（Face Int32 索引），每个网格少一次 O(faces) 的 `String` 堆分配。
+- **Rust 门禁**：`test_mesher` 新增回归断言，mesher 输出不得包含任何 `RETIRED_MESH_ATTRIBUTES` 成员。
+- **`mtk-py`**：`source_texture_palette_indices()` 只读取规范调色板 + 索引对，删除「字符串属性 → 调色板」的废弃转换回退；删除零消费者的 `add_string_attribute_from_palette`。
+- **Python**：`resolve_source_texture_keys` / `resolve_source_texture_keys_paletted` 删除字符串回退分支（只认调色板 + 索引）；删除 `_inject_palette_provenance` 及其两处调用点，残留的注册属性只做清理；`extract_mesh_data` 改为产出调色板 + 索引而不写已废弃属性。
+- **测试**：`test_update_world_mesh_atlas_injection_end_to_end` 原先检查 2.0 之前的散落文件布局 `<cache>/atlas/atlas_mapping.json`，在 `.mtkcache` 打包缓存下**永久跳过**；改为与其他缓存测试一致的 `AssetCache.open()` + `load_atlas()` / `load_models()`，恢复真实 bpy + 真实图集的端到端覆盖。
+
 ### 🐛 修复 Section 动画属性裁剪导致的长度错位与 VBO 抖动
 - **Rust**：`FaceAttributesCollector` 不再按 Section 条件省略 `mtk_anim_timing` / `mtk_anim_frame_size`；所有 Section 保持同构属性缓冲，合并后由世界网格统一裁剪静态动画属性，修复 378,180 vs 1,930,965 的 `foreach_set` 长度错误及动画数据错位。
 - **性能**：移除每个 Section 的 `anim_timings.iter().any(...)` 线性扫描；混合静态/动画 Section 的合并重新保持连续 `extend_from_slice`。

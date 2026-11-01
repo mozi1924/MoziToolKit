@@ -10,8 +10,8 @@ from typing import Any, Optional
 import numpy as np
 
 from ..engine import require_libmtk
-from .attribute_schema import ATTR_SOURCE_TEXTURE_IDX, ATTR_SOURCE_TEXTURE_KEY
-from .attributes import resolve_source_texture_keys, resolve_source_texture_keys_paletted
+from .attribute_schema import ATTR_SOURCE_TEXTURE_IDX, ATTR_SOURCE_TEXTURE_KEY, ATTR_SOURCE_TEXTURES
+from .attributes import resolve_source_texture_keys_paletted
 from .constants import (
     BLENDER_TO_MTK_DOMAIN,
     BLENDER_TO_MTK_TYPE,
@@ -114,20 +114,19 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any) -> None:
                         palette
                         and indices is not None
                         and len(indices) == len(mesh.polygons)
-                        and hasattr(mesh_data, "add_string_attribute_from_palette")
                     ):
-                        # Compact path: expand the palette inside Rust instead of
-                        # building one Python string object per face.
-                        mesh_data.add_string_attribute_from_palette(
-                            ATTR_SOURCE_TEXTURE_KEY, "face", palette, indices
+                        # Provenance travels as `palette + indices` (Golden Rule 8) so
+                        # no per-face Python strings are ever materialized. The retired
+                        # `mtk_source_texture_key` string layer is never re-emitted.
+                        mesh_data.add_string_attribute(
+                            ATTR_SOURCE_TEXTURES, "mesh", list(palette)
                         )
-                    else:
-                        domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "face")
-                        resolved = resolve_source_texture_keys(mesh)
-                        if resolved:
-                            mesh_data.add_string_attribute(
-                                ATTR_SOURCE_TEXTURE_KEY, domain_str, resolved
-                            )
+                        mesh_data.add_attribute_from_buffer(
+                            ATTR_SOURCE_TEXTURE_IDX,
+                            "face",
+                            "int32",
+                            np.ascontiguousarray(indices, dtype=np.int32),
+                        )
                 continue
 
             domain_str = BLENDER_TO_MTK_DOMAIN.get(attr.domain, "point")

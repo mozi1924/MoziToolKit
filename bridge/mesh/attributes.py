@@ -25,9 +25,12 @@ logger = logging.getLogger("MoziToolKit.Bridge.Mesh.Attributes")
 
 def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
     """
-    High-performance helper to resolve face source texture keys.
-    Prioritizes INT palette-indexed attribute ('mtk_source_texture_idx' + 'mtk_source_textures'),
-    with graceful fallback to direct STRING attribute ('mtk_source_texture_key').
+    High-performance helper to resolve per-face source texture keys.
+
+    Reads the canonical INT palette-indexed pair
+    (`mtk_source_texture_idx` + `mtk_source_textures`). The retired per-face
+    STRING attribute (`mtk_source_texture_key`) is never consulted: the native
+    mesher no longer emits it and hosts purge it on ingestion.
     """
     mesh = get_mesh(mesh_or_obj)
     if not mesh or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
@@ -35,7 +38,6 @@ def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
 
     num_polys = len(mesh.polygons)
 
-    # 1. Fast Path: INT attribute + Palette
     palette = None
     if hasattr(mesh, "keys") and "mtk_source_textures" in mesh:
         palette = list(mesh["mtk_source_textures"])
@@ -50,18 +52,6 @@ def resolve_source_texture_keys(mesh_or_obj: Any) -> List[str]:
             attr_idx.data.foreach_get("value", idx_arr)
             return [palette[i] if 0 <= i < pal_len else "" for i in idx_arr]
 
-    # 2. Robust Fallback: STRING attribute ('mtk_source_texture_key')
-    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY) if hasattr(mesh, "attributes") else None
-    if attr_str is not None and len(attr_str.data) == num_polys:
-        result = []
-        for elem in attr_str.data:
-            val = getattr(elem, "value", "")
-            if isinstance(val, (bytes, bytearray)):
-                result.append(val.decode("utf-8", errors="replace"))
-            else:
-                result.append(str(val))
-        return result
-
     return []
 
 
@@ -69,9 +59,9 @@ def resolve_source_texture_keys_paletted(mesh_or_obj: Any) -> Tuple[List[str], A
     """
     Return `(palette, indices)` for per-face source texture keys.
 
-    Prefers the INT palette attribute (`mtk_source_textures` +
-    `mtk_source_texture_idx`); falls back to STRING attribute ('mtk_source_texture_key').
-    Returns an empty palette and empty int32 array when no provenance exists.
+    Reads the canonical INT palette attribute (`mtk_source_textures` +
+    `mtk_source_texture_idx`). Returns an empty palette and empty int32 array
+    when no palette provenance exists.
     """
     mesh = get_mesh(mesh_or_obj)
     if not mesh or not hasattr(mesh, "polygons") or len(mesh.polygons) == 0:
@@ -89,21 +79,6 @@ def resolve_source_texture_keys_paletted(mesh_or_obj: Any) -> Tuple[List[str], A
         idx_arr = np.empty(num_polys, dtype=np.uint32)
         attr_idx.data.foreach_get("value", idx_arr)
         return palette, idx_arr
-
-    # 2. Robust Fallback: STRING attribute ('mtk_source_texture_key')
-    attr_str = mesh.attributes.get(ATTR_SOURCE_TEXTURE_KEY) if hasattr(mesh, "attributes") else None
-    if attr_str is not None and len(attr_str.data) == num_polys:
-        values = []
-        for elem in attr_str.data:
-            val = getattr(elem, "value", "")
-            if isinstance(val, (bytes, bytearray)):
-                values.append(val.decode("utf-8", errors="replace"))
-            else:
-                values.append(str(val))
-        palette = list(dict.fromkeys(values))
-        key_to_idx = {k: i for i, k in enumerate(palette)}
-        indices = np.fromiter((key_to_idx[k] for k in values), dtype=np.uint32, count=num_polys)
-        return palette, indices
 
     return [], np.empty(0, dtype=np.uint32)
 
@@ -317,42 +292,6 @@ def inject_attribute(
         attr.data.foreach_set("value", np.ascontiguousarray(values, dtype=np.float32))
 
 
-def _inject_palette_provenance(mesh: Any, mesh_data: Any, attr_name: str) -> bool:
-    """
-    Inject compact palette provenance for a skipped string attribute.
-
-    Live Sync meshes skip per-face strings to keep large baselines light, but the
-    biome/material paths still need the original texture keys. The Rust mesher keeps
-    those values, so we rebuild the palette + INT index attribute instead of losing
-    provenance. Falls back to string attribute migration when only strings are present.
-    """
-    if attr_name != ATTR_SOURCE_TEXTURE_KEY:
-        return False
-
-    builder = getattr(mesh_data, "source_texture_palette_indices", None)
-    if callable(builder):
-        try:
-            palette, indices = builder()
-            if palette:
-                inject_face_source_texture_palette(mesh, palette, indices)
-                return True
-        except Exception as e:
-            logger.debug("Palette provenance fast path failed: %s", e)
-
-    # Fallback: if mesh_data only holds per-face string provenance, migrate to palette + int indices
-    get_str = getattr(mesh_data, "get_string_attribute", None)
-    if callable(get_str):
-        try:
-            vals = get_str(attr_name)
-            if vals:
-                inject_face_source_texture_keys(mesh, vals)
-                return True
-        except Exception as e:
-            logger.debug("Palette provenance string migration failed: %s", e)
-
-    return False
-
-
 def inject_custom_attributes(
     mesh: Any,
     mesh_data: Any,
@@ -365,8 +304,6 @@ def inject_custom_attributes(
 
     for attr_name in mesh_data.attribute_names():
         if not is_active(attr_name):
-            if attr_name == ATTR_SOURCE_TEXTURE_KEY:
-                _inject_palette_provenance(mesh, mesh_data, attr_name)
             # The native core never emits retired attributes; guard against a
             # stale native build and purge any leftover layer.
             b_attr = mesh.attributes.get(attr_name)
@@ -400,15 +337,11 @@ def inject_custom_attributes(
 
             b_domain = MTK_TO_BLENDER_DOMAIN.get(domain_str.lower(), "POINT")
 
-            # Source-texture provenance is always palette-based. Per-face strings
-            # remain only as a <=256-face compatibility shim inside the helper, so
-            # save imports and Live Sync meshes expose the exact same attributes.
-            if dtype_name.lower() == "string":
-                if attr_name == ATTR_SOURCE_TEXTURE_KEY and b_domain == "FACE":
-                    _inject_palette_provenance(mesh, mesh_data, attr_name)
-                    continue
-                if skip_string_attributes:
-                    continue
+            # Source-texture provenance is always palette-based
+            # (`mtk_source_textures` + `mtk_source_texture_idx`); per-face strings
+            # are retired and never emitted, so they are only purged above.
+            if dtype_name.lower() == "string" and skip_string_attributes:
+                continue
 
             type_tuple = MTK_TO_BLENDER_TYPE.get(dtype_name)
             if type_tuple is None:

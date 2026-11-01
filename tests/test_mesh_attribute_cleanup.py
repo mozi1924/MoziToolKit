@@ -140,28 +140,31 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertIn("mtk_source_texture_idx", mesh.attributes)
         self.assertIn("mtk_source_textures", mesh)
 
-    def test_resolve_source_texture_keys_string_fallback(self):
+    def test_resolve_source_texture_keys_ignores_retired_string(self):
         from MoziToolKit.bridge.mesh.attributes import (
             resolve_source_texture_keys,
             resolve_source_texture_keys_paletted,
         )
 
         mesh = MockMesh(face_count=3)
-        # Populate ONLY mtk_source_texture_key without mtk_source_textures custom property
+        # The retired per-face string layer must never be resurrected as provenance.
         class MockStringElem:
             def __init__(self, val):
                 self.value = val
 
         attr_str = MagicMock()
-        attr_str.data = [MockStringElem("minecraft:block/stone"), MockStringElem("minecraft:block/dirt"), MockStringElem("minecraft:block/stone")]
+        attr_str.data = [
+            MockStringElem("minecraft:block/stone"),
+            MockStringElem("minecraft:block/dirt"),
+            MockStringElem("minecraft:block/stone"),
+        ]
         mesh.attributes["mtk_source_texture_key"] = attr_str
 
-        keys = resolve_source_texture_keys(mesh)
-        self.assertEqual(keys, ["minecraft:block/stone", "minecraft:block/dirt", "minecraft:block/stone"])
+        self.assertEqual(resolve_source_texture_keys(mesh), [])
 
         pal, idx = resolve_source_texture_keys_paletted(mesh)
-        self.assertEqual(pal, ["minecraft:block/stone", "minecraft:block/dirt"])
-        self.assertEqual(list(idx), [0, 1, 0])
+        self.assertEqual(pal, [])
+        self.assertEqual(list(idx), [])
 
     def test_inject_custom_attributes_skips_excluded(self):
         mesh = MockMesh(face_count=4)
