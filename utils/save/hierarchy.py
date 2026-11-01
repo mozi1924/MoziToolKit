@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ...bridge.mesh import inject_mesh_data
+from ...bridge.world import resolve_dynamic_entity_atlases
 from ...utils.point_cloud import ensure_voxel_child_cloud
 from ..diagnostics import append_stage_to_last_profile
 from ..materials.builder.world_binding import ensure_world_materials
@@ -115,7 +116,7 @@ def apply_imported_save_to_blender(
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
     enable_animated_textures: bool = True,
-    dynamic_entity_atlas: Optional[Any] = None,
+    dynamic_entity_atlases: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -132,10 +133,8 @@ def apply_imported_save_to_blender(
     if context is None:
         context = bpy.context
 
-    if dynamic_entity_atlas is None:
-        dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
-        if not dynamic_entity_atlas:
-            dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
+    if dynamic_entity_atlases is None:
+        dynamic_entity_atlases = resolve_dynamic_entity_atlases(mesh_data)
 
     target_coll = context.collection if context and context.collection else (
         bpy.context.scene.collection if hasattr(bpy.context, "scene") else None
@@ -236,7 +235,7 @@ def apply_imported_save_to_blender(
         prefs=prefs,
         atlas=atlas,
         used_chunk_ids=used_chunk_ids,
-        dynamic_entity_atlas=dynamic_entity_atlas,
+        dynamic_entity_atlases=dynamic_entity_atlases,
     )
     materials_ms = (time.perf_counter() - t_materials) * 1000.0
 

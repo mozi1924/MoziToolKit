@@ -61,9 +61,9 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         """VoxelWorld resolves skull, allocates slot in 1024x1024 atlas, and meshes to slot 0xFFF0."""
         world = libmtk_py.VoxelWorld()
         # Atlas is pre-warmed with 16 vanilla banner dye base slots in chunk 0xFFF0
-        init_atlas = world.get_dynamic_entity_atlas()
-        self.assertIsNotNone(init_atlas)
-        self.assertEqual(len(init_atlas), 1024 * 1024 * 4)
+        init_atlases = world.get_dynamic_entity_atlases()
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, init_atlases)
+        self.assertEqual(len(init_atlases[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]), 1024 * 1024 * 4)
 
         world.set_block(2, 2, 2, "minecraft:player_head[rotation=0]", None)
         skull_json = {
@@ -110,20 +110,19 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         used_mats = mesh.used_materials()
         self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, used_mats)
 
-        atlas_bytes = world.get_dynamic_entity_atlas()
-        self.assertIsNotNone(atlas_bytes)
+        # The canonical dynamic entity atlas is a `{chunk_id: RGBA bytes}` map.
+        atlases_dict = world.get_dynamic_entity_atlases()
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, atlases_dict)
+        atlas_bytes = atlases_dict[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]
         self.assertEqual(len(atlas_bytes), 1024 * 1024 * 4)
 
-        # Dynamic entity atlases dictionary
-        atlases_dict = world.get_dynamic_entity_atlases()
-        self.assertIsNotNone(atlases_dict)
-        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, atlases_dict)
-        self.assertEqual(bytes(atlases_dict[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]), bytes(atlas_bytes))
-
-        # PyMeshData dynamic_entity_atlases
-        self.assertIsNotNone(mesh.dynamic_entity_atlases)
-        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, mesh.dynamic_entity_atlases)
-        self.assertEqual(bytes(mesh.dynamic_entity_atlases[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]), bytes(atlas_bytes))
+        # PyMeshData carries exactly the same map, with no singular accessor.
+        self.assertEqual(set(mesh.dynamic_entity_atlases), set(atlases_dict))
+        self.assertEqual(
+            bytes(mesh.dynamic_entity_atlases[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]),
+            bytes(atlas_bytes),
+        )
+        self.assertFalse(hasattr(mesh, "dynamic_entity_atlas"))
 
     @unittest.skipUnless(HAS_BPY, "bpy is required for Blender material node tree test")
     def test_build_dynamic_entities_material_bpy(self):
@@ -157,13 +156,16 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         world.set_block_entity_json(2, 2, 2, json.dumps(skull_json))
         world.ensure_dynamic_entities_resolved_sync()
         mesh = world.rebuild_all()
-        atlas_bytes = world.get_dynamic_entity_atlas()
-        self.assertIsNotNone(atlas_bytes)
+        atlases_dict = world.get_dynamic_entity_atlases()
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, atlases_dict)
+        atlas_bytes = atlases_dict[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]
 
-        # PyMeshData itself must now carry dynamic_entity_atlas directly
-        self.assertIsNotNone(mesh.dynamic_entity_atlas)
-        self.assertEqual(len(mesh.dynamic_entity_atlas), 1024 * 1024 * 4)
-        self.assertEqual(bytes(mesh.dynamic_entity_atlas), bytes(atlas_bytes))
+        # PyMeshData itself must carry the multi-chunk atlas map directly
+        self.assertIn(DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID, mesh.dynamic_entity_atlases)
+        self.assertEqual(
+            bytes(mesh.dynamic_entity_atlases[DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID]),
+            bytes(atlas_bytes),
+        )
 
         # Create host object
         b_mesh = bpy.data.meshes.new("TestDynamicWorldMesh")
@@ -172,7 +174,7 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
 
         try:
             from MoziToolKit.operators.sync.hierarchy import update_world_mesh
-            # Call without passing dynamic_entity_atlas explicitly; should auto-extract from mesh.dynamic_entity_atlas
+            # Call without passing the atlas explicitly; it auto-resolves from mesh.dynamic_entity_atlases
             v_cnt, f_cnt = update_world_mesh(b_obj, mesh)
             self.assertGreater(v_cnt, 0)
             self.assertGreater(f_cnt, 0)
@@ -248,7 +250,7 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
             ensure_world_materials(
                 b_obj,
                 used_chunk_ids=[0xFFF0, 0xFFF1],
-                dynamic_entity_atlas={
+                dynamic_entity_atlases={
                     0xFFF0: dummy_buf_0,
                     0xFFF1: dummy_buf_1,
                 },

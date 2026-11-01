@@ -144,7 +144,6 @@ class SyncBridgeSession:
         custom_aliases: Optional[Any] = None,
         num_threads: Optional[int] = None,
         auth_token: Optional[str] = None,
-        cached_state_json: Optional[str] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -206,24 +205,13 @@ class SyncBridgeSession:
             config = mtk.MesherConfig(**config_kwargs)
 
             def _start_native(session: Any) -> None:
-                """Prefer the host-agnostic persisted-state entry point when available."""
-                if cached_state_json and hasattr(session, "start_with_persisted_state"):
-                    session.start_with_persisted_state(
-                        url=url,
-                        auto_reconnect=auto_reconnect,
-                        max_reconnect_attempts=max_reconnect_attempts,
-                        state_json=cached_state_json,
-                        auth_token=auth_token,
-                    )
+                # The auth token always rides on the HELLO; omitting it would make a
+                # token-protected server reject the connection with the opaque
+                # "Authentication failed" message (RFC v3.1 §4.1).
+                if auth_token:
+                    session.start(url, auto_reconnect, max_reconnect_attempts, auth_token=auth_token)
                 else:
-                    # Never silently fall back to a tokenless HELLO: a server with
-                    # an auth token would reject the connection and the user only
-                    # sees "Authentication failed". An outdated native build now
-                    # fails loudly instead.
-                    if auth_token:
-                        session.start(url, auto_reconnect, max_reconnect_attempts, auth_token=auth_token)
-                    else:
-                        session.start(url, auto_reconnect, max_reconnect_attempts)
+                    session.start(url, auto_reconnect, max_reconnect_attempts)
 
             # If native session already exists, reuse it to preserve cached voxel storage & mesh cache
             if self._session is not None:
@@ -464,37 +452,16 @@ class SyncBridgeSession:
             logger.error(f"Failed to send Resync Request: {e}")
             return False
 
-    def export_persisted_state_json(self, user_modified: bool = False) -> Optional[str]:
-        """Exports host-agnostic session state JSON (UUID/epoch/seq/bounds/hash) from Rust."""
-        if self._session is None or not hasattr(self._session, "export_persisted_state_json"):
+    def get_dynamic_entity_atlases(self) -> Optional[dict[int, bytes]]:
+        """Returns the `{chunk_id: RGBA bytes}` dynamic entity atlas map of the live session."""
+        if self._session is None:
             return None
         try:
-            return self._session.export_persisted_state_json(bool(user_modified))
+            atlases = self._session.get_dynamic_entity_atlases()
+            if atlases:
+                return atlases
         except Exception as e:
-            logger.warning("Failed exporting persisted sync state: %s", e)
-            return None
-
-    def get_dynamic_entity_atlases(self) -> Optional[dict[int, bytes]]:
-        """Returns dynamic entities atlas dict mapping chunk_id -> RGBA bytes from the native session."""
-        if self._session is not None and hasattr(self._session, "get_dynamic_entity_atlases"):
-            try:
-                atlases = self._session.get_dynamic_entity_atlases()
-                if atlases:
-                    return atlases
-            except Exception as e:
-                logger.debug("Failed getting dynamic entity atlases from session: %s", e)
-        return None
-
-    def get_dynamic_entity_atlas(self) -> Optional[Any]:
-        """Returns dynamic entities atlas RGBA bytes or dict from the native session, or None."""
-        atlases = self.get_dynamic_entity_atlases()
-        if atlases:
-            return atlases
-        if self._session is not None and hasattr(self._session, "get_dynamic_entity_atlas"):
-            try:
-                return self._session.get_dynamic_entity_atlas()
-            except Exception as e:
-                logger.debug("Failed getting dynamic entity atlas from session: %s", e)
+            logger.debug("Failed getting dynamic entity atlases from session: %s", e)
         return None
 
     def set_skin_cache_dir(self, cache_dir: Optional[str]) -> None:

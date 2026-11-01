@@ -10,6 +10,7 @@ from typing import Any, Optional, Tuple
 import bpy
 
 from ...bridge.mesh import inject_mesh_data
+from ...bridge.world import resolve_dynamic_entity_atlases
 from ...utils.materials.builder.world_binding import ensure_world_materials
 from ...utils.point_cloud import ensure_voxel_child_cloud
 from ...utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
@@ -314,7 +315,7 @@ def update_world_mesh(
     sync_point_cloud: bool = False,
     atlas: Optional[Any] = None,
     session: Optional[Any] = None,
-    dynamic_entity_atlas: Optional[Any] = None,
+    dynamic_entity_atlases: Optional[Any] = None,
 ) -> Tuple[int, int]:
     """
     Injects processed geometry buffer into the single world mesh object using high-throughput
@@ -341,26 +342,13 @@ def update_world_mesh(
 
     t0_mat = time.perf_counter()
     used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
-    if dynamic_entity_atlas is None:
-        dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
-        if not dynamic_entity_atlas:
-            dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
-    if dynamic_entity_atlas is None and session is not None:
-        if hasattr(session, "get_dynamic_entity_atlases"):
-            try:
-                dynamic_entity_atlas = session.get_dynamic_entity_atlases()
-            except Exception:
-                pass
-        if dynamic_entity_atlas is None and hasattr(session, "get_dynamic_entity_atlas"):
-            try:
-                dynamic_entity_atlas = session.get_dynamic_entity_atlas()
-            except Exception:
-                pass
+    if dynamic_entity_atlases is None:
+        dynamic_entity_atlases = resolve_dynamic_entity_atlases(mesh_data, session)
     ensure_world_materials(
         world_obj,
         atlas=atlas,
         used_chunk_ids=used_chunk_ids,
-        dynamic_entity_atlas=dynamic_entity_atlas,
+        dynamic_entity_atlases=dynamic_entity_atlases,
     )
     mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧹 清理 Live Sync 持久化残留与单数图集接口
+- **`mtk-py` API v2**：`LiveSyncSession.start()` 删除 7 个零调用 `cached_uuid` / `cached_epoch` / `cached_seq` / `cached_min` / `cached_size` / `cached_state_hash` / `cached_dimension` 关键字参数与约 45 行不可达的「cached HELLO」构造；签名收敛为 `(url, auto_reconnect, max_reconnect_attempts, auth_token)`，直接走 `LiveSyncSession::start`。`API_VERSION` 与 `REQUIRED_API_VERSION` 升至 **2**。
+- **协议能力保留**：`mtk-sync::LiveSyncSession::start_with_hello` 与 `hello::with_auth_token` 作为 Rust 宿主能力保留（`test_auth_token.rs` 仍有真实服务端覆盖）；仅剔除前端未消费的绑定层。
+- **动态实体图集收敛为多块字典**：删除 `PyMeshData.dynamic_entity_atlas` 字段/getter/`with_dynamic_entity_atlas`，删除 `LiveSyncSession::get_dynamic_entity_atlas` 与 `VoxelWorld::get_dynamic_entity_atlas`；`mtk-sync` 的 `LiveSyncSession::dynamic_entity_atlas_rgba` 一并删除（已零消费者）。全链路只保留 `{chunk_id: RGBA bytes}`。
+- **Python 侧去重**：新增 `bridge.world.resolve_dynamic_entity_atlases(mesh_data, session)` 作为唯一解析入口，删除 `operators/sync/hierarchy.py`、`utils/world/injector.py`、`utils/save/hierarchy.py`、`bridge/world.py` 四处重复的「先 plur 再 singular」嵌套回退；`get_world_session_dynamic_entity_atlas` 更名为 `get_world_session_dynamic_entity_atlases` 并只返回字典；`ensure_world_materials` 删除「单块 bytes 包成 0xFFF0」的兼容分支。
+- **持久化死代码**：删除 `SyncBridgeSession.start(cached_state_json=...)` 参数、`_start_native` 的 `hasattr(session, "start_with_persisted_state")` 死分支、`SyncBridgeSession.export_persisted_state_json()`。
+- **回归门禁**：`test_api_surface_contract` 新增 `test_live_sync_surface_has_no_retired_aliases`，锁定 `start()` 签名与单数图集接口不得回归。
+
 ### 🗑️ 物理停产已废弃的逐面字符串溯源属性 `mtk_source_texture_key`
 - **Rust**：`mtk-voxel::FaceAttributesCollector::attach_to_mesh` 不再生成逐面 `AttributeData::String` 的 `mtk_source_texture_key`（该名字已在 `mtk-core::attributes::RETIRED_MESH_ATTRIBUTES` 中声明为「不得再写入」）。溯源全链统一为 `mtk_source_textures`（Mesh 字符串调色板）+ `mtk_source_texture_idx`（Face Int32 索引），每个网格少一次 O(faces) 的 `String` 堆分配。
 - **Rust 门禁**：`test_mesher` 新增回归断言，mesher 输出不得包含任何 `RETIRED_MESH_ATTRIBUTES` 成员。

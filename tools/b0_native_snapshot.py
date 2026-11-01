@@ -13,6 +13,11 @@ sys.path.insert(0, str(PROJECT_DIR / "dev" / "lib"))
 import libmtk_py  # noqa: E402
 import libmtk_blender_dna  # noqa: E402
 
+from MoziToolKit.bridge.engine import (  # noqa: E402
+    REQUIRED_API_VERSION,
+    REQUIRED_DNA_API_VERSION,
+)
+
 FIXTURES = PROJECT_DIR / "tests" / "fixtures"
 FIXTURES.mkdir(parents=True, exist_ok=True)
 
@@ -52,8 +57,8 @@ def main() -> None:
     ]
     missing_required = [name for name in REQUIRED if name not in top_level]
     checks = {
-        "api_version": libmtk_py.api_version() == 1,
-        "dna_api_version": libmtk_blender_dna.api_version() == 1,
+        "api_version": libmtk_py.api_version() == REQUIRED_API_VERSION,
+        "dna_api_version": libmtk_blender_dna.api_version() == REQUIRED_DNA_API_VERSION,
         "core_has_no_blender_dna": not hasattr(unstable, "blender_dna"),
         "forbidden_native_symbols_absent": not forbidden_hits,
         "required_native_symbols_present": not missing_required,

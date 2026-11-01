@@ -112,6 +112,41 @@ def test_removed_native_symbols_do_not_return():
         assert not hasattr(cloud, name)
 
 
+def test_live_sync_surface_has_no_retired_aliases():
+    """The persisted-state fast path and the singular atlas accessor are retired."""
+    mtk = get_libmtk()
+    assert mtk is not None
+
+    session = mtk.LiveSyncSession
+    # The dead persisted-state entry points must not return.
+    for name in ("start_with_persisted_state", "export_persisted_state_json"):
+        assert not hasattr(session, name), f"removed LiveSyncSession API {name} leaked back"
+
+    # `start()` only carries the live connection args (no cached_* handshake fields).
+    signature = session.start.__text_signature__ or ""
+    assert signature, "LiveSyncSession.start must expose a signature"
+    for retired in (
+        "cached_uuid",
+        "cached_epoch",
+        "cached_seq",
+        "cached_min",
+        "cached_size",
+        "cached_state_hash",
+        "cached_dimension",
+        "state_json",
+    ):
+        assert retired not in signature, f"retired handshake arg {retired} leaked into start()"
+    assert "auth_token" in signature
+
+    # Dynamic entity atlases are a multi-chunk map only; the singular blob is gone.
+    for owner in (session, mtk.VoxelWorld):
+        assert hasattr(owner, "get_dynamic_entity_atlases")
+        assert not hasattr(owner, "get_dynamic_entity_atlas")
+    mesh = mtk.MeshData()
+    assert hasattr(mesh, "dynamic_entity_atlases")
+    assert not hasattr(mesh, "dynamic_entity_atlas")
+
+
 
 def test_standalone_dna_adapter_contract():
     import pytest

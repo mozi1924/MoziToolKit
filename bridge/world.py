@@ -175,25 +175,38 @@ def clear_world_sessions(session_key: Optional[str] = None) -> None:
         _WORLD_SESSION_META.pop(session_key, None)
 
 
-def get_world_session_dynamic_entity_atlas(session_key: str) -> Optional[Any]:
-    """Returns dynamic entity atlas bytes or dict for the cached VoxelWorld session, if any."""
-    w = _WORLD_SESSIONS.get(session_key)
-    if w is not None:
-        if hasattr(w, "get_dynamic_entity_atlases"):
+def resolve_dynamic_entity_atlases(mesh_data: Any = None, session: Any = None) -> Dict[int, bytes]:
+    """
+    Canonical `{chunk_id: RGBA bytes}` dynamic entity atlas map.
+
+    Resolution order: the atlas map already carried by ``mesh_data``, then the live
+    sync session. Returns ``{}`` when the world has no dynamic entities (skins,
+    banners, decorated pots).
+
+    Every caller must use this helper instead of probing
+    ``dynamic_entity_atlases`` / ``dynamic_entity_atlas`` by hand: provenance is a
+    single multi-chunk dictionary, so a lone byte blob is never a valid shape.
+    """
+    if mesh_data is not None:
+        atlases = getattr(mesh_data, "dynamic_entity_atlases", None)
+        if atlases:
+            return {int(chunk_id): data for chunk_id, data in atlases.items()}
+    if session is not None:
+        getter = getattr(session, "get_dynamic_entity_atlases", None)
+        if callable(getter):
             try:
-                atlases = w.get_dynamic_entity_atlases()
+                atlases = getter()
                 if atlases:
-                    return atlases
-            except Exception:
-                pass
-        if hasattr(w, "get_dynamic_entity_atlas"):
-            try:
-                res = w.get_dynamic_entity_atlas()
-                if res is not None:
-                    return res
-            except Exception:
-                pass
-    return None
+                    return {int(chunk_id): data for chunk_id, data in atlases.items()}
+            except Exception as exc:
+                logger.debug("Failed reading dynamic entity atlases from session: %s", exc)
+    return {}
+
+
+def get_world_session_dynamic_entity_atlases(session_key: str) -> Dict[int, bytes]:
+    """Returns the `{chunk_id: RGBA bytes}` dynamic entity atlas map of a cached VoxelWorld session."""
+    world = _WORLD_SESSIONS.get(session_key)
+    return resolve_dynamic_entity_atlases(None, world) if world is not None else {}
 
 
 def mesh_voxel_storage(
@@ -395,5 +408,7 @@ __all__ = [
     "get_world_pipeline_assets",
     "prepare_world_mesh_context",
     "clear_world_sessions",
+    "resolve_dynamic_entity_atlases",
+    "get_world_session_dynamic_entity_atlases",
     "mesh_voxel_storage",
 ]

@@ -69,7 +69,7 @@ def ensure_world_materials(
     prefs=None,
     atlas: Optional[Any] = None,
     used_chunk_ids: Optional[Any] = None,
-    dynamic_entity_atlas: Optional[Any] = None,
+    dynamic_entity_atlases: Optional[Any] = None,
 ) -> None:
     """
     Ensures that the unified world mesh object has corresponding Atlas Chunk materials
@@ -87,7 +87,6 @@ def ensure_world_materials(
 
     from .atlas_builder import PBR_LAYOUT_VERSION, build_atlas_chunk_material
     from .dynamic_entities import (
-        DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID,
         DYNAMIC_CHUNK_END,
         DYNAMIC_CHUNK_START,
         DYNAMIC_ENTITIES_IMAGE_NAME,
@@ -99,11 +98,9 @@ def ensure_world_materials(
     from . import ensure_material_node_tree
     from ..cleaner import remap_indices_lut
 
-    atlas_dict: dict[int, Any] = {}
-    if isinstance(dynamic_entity_atlas, dict):
-        atlas_dict = {int(k): v for k, v in dynamic_entity_atlas.items()}
-    elif dynamic_entity_atlas is not None:
-        atlas_dict = {DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID: dynamic_entity_atlas}
+    atlas_dict: dict[int, Any] = {
+        int(chunk_id): data for chunk_id, data in (dynamic_entity_atlases or {}).items()
+    }
 
     for cid, buf in atlas_dict.items():
         update_dynamic_entities_image(buf, chunk_id=cid)

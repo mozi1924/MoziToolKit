@@ -22,7 +22,10 @@ _dna_api_error: Optional[str] = None
 # Integer ABI/API contract expected from libmtk_py. Bump together with
 # `bindings/mtk-py/src/lib.rs::API_VERSION` whenever the Python surface changes
 # incompatibly.
-REQUIRED_API_VERSION = 1
+#
+# v2: removed the dead `cached_*` kwargs from `LiveSyncSession.start()` and the
+#     singular `dynamic_entity_atlas` accessors in favour of `dynamic_entity_atlases`.
+REQUIRED_API_VERSION = 2
 REQUIRED_DNA_API_VERSION = 1
 
 

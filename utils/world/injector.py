@@ -21,6 +21,7 @@ except ImportError:
     HAS_BPY = False
 
 from ...bridge.mesh import inject_mesh_data
+from ...bridge.world import resolve_dynamic_entity_atlases
 from ...utils.point_cloud.hierarchy import ensure_voxel_child_cloud
 from ...utils.materials.builder.world_binding import ensure_world_materials
 from ...utils.mesh.ownership import ORIGIN_VOXEL, stamp_geometry_origin
@@ -46,7 +47,7 @@ def apply_voxel_mesh_to_blender(
     ensure_materials_func=None,
     ensure_cloud_func=None,
     sync_point_cloud: bool = True,
-    dynamic_entity_atlas: Optional[Any] = None,
+    dynamic_entity_atlases: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed voxel world geometry.
@@ -59,10 +60,8 @@ def apply_voxel_mesh_to_blender(
     if context is None:
         context = bpy.context
 
-    if dynamic_entity_atlas is None:
-        dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlases", None)
-        if not dynamic_entity_atlas:
-            dynamic_entity_atlas = getattr(mesh_data, "dynamic_entity_atlas", None)
+    if dynamic_entity_atlases is None:
+        dynamic_entity_atlases = resolve_dynamic_entity_atlases(mesh_data)
 
     # 1. Acquire or create Blender object
     obj = None
@@ -103,7 +102,7 @@ def apply_voxel_mesh_to_blender(
         prefs=prefs,
         atlas=atlas,
         used_chunk_ids=used_chunk_ids,
-        dynamic_entity_atlas=dynamic_entity_atlas,
+        dynamic_entity_atlases=dynamic_entity_atlases,
     )
     mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
