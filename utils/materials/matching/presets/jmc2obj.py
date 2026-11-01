@@ -53,14 +53,21 @@ JMC2OBJ_BANNER_SHORT_ALIASES = {
     "pattern_gus": "entity/banner/guster",
 }
 
-JMC2OBJ_BIOME_SUFFIXES = (
-    "-desert", "-forest", "-swamp", "-taiga", "-snow", "-ocean", "-jungle",
-    "-badlands", "-savanna", "-dark_forest", "-birch_forest", "-plains",
-    "-meadow", "-mangrove", "-cherry_grove", "-cold_ocean", "-warm_ocean",
-    "_desert", "_forest", "_swamp", "_taiga", "_snow", "_ocean", "_jungle",
-    "_badlands", "_savanna", "_dark_forest", "_birch_forest", "_plains",
-    "_meadow", "_mangrove", "_cherry_grove", "_cold_ocean", "_warm_ocean",
-)
+_BIOME_SUFFIXES: "tuple[str, ...] | None" = None
+
+
+def biome_suffixes() -> tuple[str, ...]:
+    """DCC-exporter biome suffixes, sourced from the Rust core (single source of truth).
+
+    Resolved lazily and memoized: importing `MoziToolKit.bridge` at module load
+    would create an `utils -> bridge -> utils` import cycle.
+    """
+    global _BIOME_SUFFIXES
+    if _BIOME_SUFFIXES is None:
+        from .....bridge import builtin_biome_suffixes
+
+        _BIOME_SUFFIXES = tuple(builtin_biome_suffixes())
+    return _BIOME_SUFFIXES
 
 MINECRAFT_COLORS = (
     "white", "orange", "magenta", "light_blue", "yellow", "lime",
@@ -187,10 +194,14 @@ def clean_jmc2obj_identifier(raw: str) -> str:
             s = s[len(p):]
             break
 
-    for suffix in JMC2OBJ_BIOME_SUFFIXES:
-        if s.endswith(suffix):
-            s = s[:-len(suffix)]
-            break
+    # Longest match wins: `stone_dark_forest` must not be truncated to `stone_dark`.
+    matched = max(
+        (suffix for suffix in biome_suffixes() if s.endswith(suffix)),
+        key=len,
+        default="",
+    )
+    if matched:
+        s = s[: -len(matched)]
 
     if "/" not in s:
         s = s.replace(" ", "_").replace("-", "_")

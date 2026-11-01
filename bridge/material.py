@@ -274,18 +274,15 @@ def normalize_banner_pattern(code_or_name: str) -> str:
 
 
 def builtin_biome_suffixes() -> tuple[str, ...]:
-    """Returns canonical exporter biome suffixes from Rust core."""
-    mtk = get_libmtk()
-    if mtk is not None and hasattr(mtk, "builtin_biome_suffixes"):
-        return tuple(mtk.builtin_biome_suffixes())
-    return (
-        "-desert", "-forest", "-swamp", "-taiga", "-snow", "-ocean", "-jungle",
-        "-badlands", "-savanna", "-dark_forest", "-birch_forest", "-plains",
-        "-meadow", "-mangrove", "-cherry_grove", "-cold_ocean", "-warm_ocean",
-        "_desert", "_forest", "_swamp", "_taiga", "_snow", "_ocean", "_jungle",
-        "_badlands", "_savanna", "_dark_forest", "_birch_forest", "_plains",
-        "_meadow", "_mangrove", "_cherry_grove", "_cold_ocean", "_warm_ocean",
-    )
+    """
+    Returns the canonical DCC-exporter biome suffixes from the Rust core.
+
+    `mtk-material::resolver::overrides::builtin_biome_suffixes()` owns this list;
+    hosts must never re-declare it, otherwise new suffixes silently fail to reach
+    the Python candidate generator.
+    """
+    mtk = require_libmtk("builtin_biome_suffixes")
+    return tuple(mtk.builtin_biome_suffixes())
 
 
 def remap_mesh_multi_uvs_paletted(

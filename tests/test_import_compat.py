@@ -25,6 +25,38 @@ def test_default_profile_is_valid_json():
     assert isinstance(data["hardcoded_colors"], dict)
 
 
+def test_profile_biome_suffixes_match_the_native_core():
+    """The editable profile must never drift from `mtk-material`'s built-in list.
+
+    `strip_biome_suffixes` in the JSON *overrides* the Rust default, so a missing
+    entry here silently disables that suffix for every host. Keeping the two in
+    lockstep is what prevents a repeat of the historical `_y` divergence.
+    """
+    from MoziToolKit.bridge import builtin_biome_suffixes
+
+    native = list(builtin_biome_suffixes())
+    assert native, "Rust core must expose a non-empty biome suffix list"
+    assert len(set(native)) == len(native), "Rust core suffix list must not contain duplicates"
+    data = json.loads(load_import_compat_json() or "{}")
+    profile = data["strip_biome_suffixes"]
+    # Ordering is irrelevant: Rust and every consumer prefer the longest match.
+    assert set(profile) == set(native)
+    assert len(profile) == len(native), "profile has duplicate suffix entries"
+
+
+def test_jmc2obj_uses_the_native_suffix_list():
+    """The jmc2obj candidate generator must not carry its own suffix table."""
+    from MoziToolKit.bridge import builtin_biome_suffixes
+    from MoziToolKit.utils.materials.matching.presets import jmc2obj
+
+    native = tuple(builtin_biome_suffixes())
+    assert jmc2obj.biome_suffixes() == native
+    assert not hasattr(jmc2obj, "JMC2OBJ_BIOME_SUFFIXES"), "local biome suffix table leaked back"
+    # Every native suffix must actually be stripped from a jmc2obj material name.
+    for suffix in native:
+        assert jmc2obj.clean_jmc2obj_identifier(f"stone{suffix}") == "stone", suffix
+
+
 def test_env_override(tmp_path, monkeypatch):
     profile = tmp_path / "compat.json"
     profile.write_text(

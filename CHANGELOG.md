@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🔗 biome 后缀表真正闭环到 Rust 单一事实源（并修复长后缀被错截）
+- **真实缺陷**：`builtin_biome_suffixes()` 原本按「短后缀在前」的顺序排列，消费端用 `ends_with` + `break`，导致 `stone_dark_forest` 先被 `_forest` 截断为 `stone_dark`、`stone_birch_forest` → `stone_birch`、`stone_cherry_grove` → `stone_cherry`。Rust `clean_identifier` 与 Python `clean_jmc2obj_identifier` 同时中招。
+- **Rust SSOT 修复**：`builtin_biome_suffixes()` 现按最长优先排序返回；`clean_identifier` 改为「最长匹配优先」（对用户自定义 `strip_biome_suffixes` 同样生效）。
+- **删除前端重复表**：删除 `utils/materials/matching/presets/jmc2obj.py::JMC2OBJ_BIOME_SUFFIXES`（34 条）与 `bridge/material.py::builtin_biome_suffixes` 的硬编码降级字典（34 条，均缺失 `_y`）；两者改为消费 Rust SSOT（`jmc2obj.biome_suffixes()` 惰性记忆化以避免 `utils ⇄ bridge` 导入环）。`bridge/material.py` 不再假降级，缺失原生模块时直接报错。
+- **回归门禁**：新增 `test_clean_identifier_strips_longest_biome_suffix`（Rust）、`builtin_biome_suffixes_are_longest_first`（Rust）与 `test_profile_biome_suffixes_match_the_native_core` / `test_jmc2obj_uses_the_native_suffix_list`（Python），同时锁定 `configs/import_compat.json` 与 Rust 默认列表不得漂移。
+
 ### 🧹 清理 Live Sync 持久化残留与单数图集接口
 - **`mtk-py` API v2**：`LiveSyncSession.start()` 删除 7 个零调用 `cached_uuid` / `cached_epoch` / `cached_seq` / `cached_min` / `cached_size` / `cached_state_hash` / `cached_dimension` 关键字参数与约 45 行不可达的「cached HELLO」构造；签名收敛为 `(url, auto_reconnect, max_reconnect_attempts, auth_token)`，直接走 `LiveSyncSession::start`。`API_VERSION` 与 `REQUIRED_API_VERSION` 升至 **2**。
 - **协议能力保留**：`mtk-sync::LiveSyncSession::start_with_hello` 与 `hello::with_auth_token` 作为 Rust 宿主能力保留（`test_auth_token.rs` 仍有真实服务端覆盖）；仅剔除前端未消费的绑定层。
