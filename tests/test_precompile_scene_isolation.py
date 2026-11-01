@@ -45,8 +45,13 @@ class TestPrecompileSceneIsolation(unittest.TestCase):
         mock_res.atlas_chunks = 1
         mock_res.baked_models = 10
 
-        with patch("MoziToolKit.bridge.assets.precompile.get_libmtk") as mock_get_mtk, \
-             patch("MoziToolKit.bridge.assets.precompile.reload_atlas_images") as mock_reload:
+        import inspect
+
+        # The bridge precompiler must not accept a host-image-reload flag at all:
+        # refreshing bpy images is caller-owned host business.
+        self.assertNotIn("reload_images", inspect.signature(precompile_stack).parameters)
+
+        with patch("MoziToolKit.bridge.assets.precompile.get_libmtk") as mock_get_mtk:
             mock_mtk = MagicMock()
             mock_mtk.precompile_resource_stack.return_value = mock_res
             mock_get_mtk.return_value = mock_mtk
@@ -55,11 +60,8 @@ class TestPrecompileSceneIsolation(unittest.TestCase):
             mock_stack.get_pack_count.return_value = 1
             mock_stack.compute_stack_fingerprint.return_value = "new_fingerprint_abc"
 
-            res = precompile_stack(stack=mock_stack, cache_dir="/tmp/dummy_cache", reload_images=False)
+            res = precompile_stack(stack=mock_stack, cache_dir="/tmp/dummy_cache")
             self.assertTrue(res.get("success"))
-
-            # reload_atlas_images must NOT have been called
-            mock_reload.assert_not_called()
 
         if is_real_bpy and img is not None:
             current_pixels = list(img.pixels)
@@ -69,7 +71,11 @@ class TestPrecompileSceneIsolation(unittest.TestCase):
     def test_operator_on_success_does_not_reload_scene_images(self):
         """Verifies MOZI_OT_precompile_cache does not import or reload scene images on precompile completion."""
         import MoziToolKit.operators.op_precompile as op_mod
+        import MoziToolKit.bridge.assets as assets_bridge
+
         self.assertFalse(hasattr(op_mod, "reload_atlas_images"), "op_precompile should not import or call reload_atlas_images")
+        # The bridge layer no longer exposes any host image mutation helper.
+        self.assertFalse(hasattr(assets_bridge, "reload_atlas_images"))
 
 
 if __name__ == "__main__":

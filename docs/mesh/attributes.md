@@ -32,8 +32,8 @@ bridge/mesh/attributes.py / utils/materials/*
 
 | 属性 | 域 | 类型 | 角色 | 消费者 |
 | :--- | :--- | :--- | :--- | :--- |
-| `mtk_source_texture_key` | FACE | STRING | metadata | 调色板来源、Biome 重算、材质替换 |
-| `mtk_source_texture_idx` | FACE | INT | metadata | 宿主生成的来源调色板索引 |
+| `mtk_source_textures` | MESH | STRING | metadata | 来源调色板（与 idx 配对，唯一权威） |
+| `mtk_source_texture_idx` | FACE | INT | metadata | 调色板索引；Biome 重算、材质替换 |
 | `mtk_atlas_chunk_id` | FACE | INT | metadata | 图集 Chunk 材质路由 |
 | `mtk_uv_transform` | FACE | FLOAT4 | material | UV 缩放/偏移着色器 |
 | `mtk_uv_rotation` | FACE | FLOAT | material | UV 旋转着色器 |
@@ -79,7 +79,7 @@ bridge/mesh/attributes.py / utils/materials/*
 
 | 来源 | 必需属性 | 说明 |
 | :--- | :--- | :--- |
-| 外部导入（`EXTERNAL`） | 6 个材质属性 + `mtk_source_texture_key/idx` + `mtk_atlas_chunk_id` | `Replace Material` 依赖 provenance 与 chunk 路由；无 `mtk_block_*` |
+| 外部导入（`EXTERNAL`） | 6 个材质属性 + `mtk_source_textures`/`mtk_source_texture_idx` + `mtk_atlas_chunk_id` | `Replace Material` 依赖 provenance 与 chunk 路由；无 `mtk_block_*` |
 | 存档 / Live Sync / 体素重建（内部） | 6 个材质属性 + `mtk_source_texture_idx`（+ `mtk_source_textures`）+ `mtk_block_x/y/z` | 材质与几何由点云/体素源重建；不写 STRING 副本，`mtk_atlas_chunk_id` 保持稳定以避免反复重建 Blender 属性缓冲（材质槽上的 `mtk_atlas_chunk_id` 作为映射回退） |
 | 点云对象 | 无 MTK 面属性 | 点云承载体素/生物群系信息，网格由重建流程生成 |
 
@@ -87,7 +87,7 @@ bridge/mesh/attributes.py / utils/materials/*
 
 ## 6. 已知写入边界
 
-- `mtk_source_texture_key` 的 STRING 层现在只由外部导入材质路径保留（≤1024 面兼容副本）；内部体素/Live Sync 网格在 palette 注入时直接移除该层，以 `mtk_source_textures` + `mtk_source_texture_idx` 为唯一权威。判断 provenance 时必须检查 INT 属性（现有 `op_materials` / `pipeline` 已这样做）。
+- `mtk_source_texture_key` 已列入 `RETIRED_MESH_ATTRIBUTES`：Rust mesher 不再生成逐面 STRING 层，宿主在注入/清理时物理移除它，provenance 一律以 `mtk_source_textures` + `mtk_source_texture_idx` 为唯一权威。判断 provenance 必须检查 INT 属性（`op_materials` / `pipeline` 已这样做）。
 - `Replace Material` 的 restore 路径现在走 palette + index 写入，不再为所有面重建 Python 字符串。
 - `inject_mesh_provenance_attributes` 已移除 `poly_mat_indices` / `face_texture_ids` / `mode` 等死参数；写入尺寸不匹配会记录 warning 而不是静默失败。
 - 恢复材质时若 `mtk_atlas_chunk_id` 缺失，现在会从 provenance + atlas 重新解析 chunk 路由；解析不到时明确失败或告警，不再默认 0。

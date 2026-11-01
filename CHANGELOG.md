@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧽 第四轮 P2 批量清理（死接口 / 别名 / 胶水层宿主侵入 / 文档同步）
+- **`mtk-py` 零消费者接口删除**：`StageSpan.duration_us`、`ExecutionProfile.total_duration_us` / `stage_count` / `stage_ms()` / `summary()`、`StageSpan.to_dict()` / `ExecutionProfile.to_dict()` / `__str__`、`LiveSyncSession.set_model_db()`、`MeshData.remove_attribute()`（从未注册到 `pymethods`）、`MeshData.with_dynamic_entity_atlases()`。核心侧连带删除 `ExecutionProfile::stage_ms` / `summary_string`。
+- **buffer 缓冲层瘦身**：删除零调用 `create_zerocopy_memoryview` / `create_owned_bytes_memoryview` / `create_owned_u16_memoryview`，以及从未构造的 `BufferStorage::{I8, I16}` 变体。
+- **`source_texture_palette_indices` 真零拷贝**：不再把 `Vec<i32>` 拷贝成 `Vec<u32>`，改为直接对 native 索引缓冲建立强类型 `'i'` memoryview（父对象保活），调色板仍为小数组拷贝。
+- **删除 typed-memoryview 迁移后的残余防御**：`bridge/mesh/attributes.py` 的 `hasattr(mv, "cast") and mv.format == "B"` 分支下线；`MTK_TO_BLENDER_TYPE` 值从三元组降为二元组（第三位 `typecode` 已无读取方）。
+- **删除 `mtk_py` / `libmtk_py` 模块别名**：`uv` / `subdivide` / `extrude` / `texture` / `world` / `assets` 的 `__getattr__` 整体下线，`mesh` 仅保留惰性 `MeshData` / `AttributeDomain`；`assets` 的零消费 `_get_libmtk` / `_has_libmtk` 与 `world` 的同名包装一并删除。
+- **宿主业务迁出 `bridge`**：`reload_atlas_images` 从 `bridge/assets/precompile.py` 移至 `utils/materials/builder/atlas_refresh.py`；`precompile_stack` 的 `reload_images` 参数（所有调用方恒传 `False`）整体删除；`SyncBridgeSession.check_and_reload_dirty_cache` 不再触碰 `bpy.data.images`（刷新由材质重绑或调用方负责）。
+- **死测试修正**：`test_live_sync_atlas_materials` 之前 patch 的是 `bridge.world` 中的**未使用导入**（断言恒真），改为 patch 真正的解析模块 `utils.materials.builder.world_binding`，快速路径断言现在真正生效。
+- **文档同步**：`docs/mesh/attributes.md`、`direct_mesh.md`、`materials/material_pipeline.md`、`live_sync/live_sync_architecture.md`、`docs/README.md`、`README.md`、`libmozitoolkit/docs/API_REFERENCE.md` 将 `mtk_source_texture_key` 改为已退役；`live_sync_protocol.md` 将 `0x09/0x0A` 标为已移除并重写快速重连说明；`crates/mtk-sync/README.md`、`bindings/mtk-py/README.md` 修正从未落地/已删除的持久化接口；两份 planning 文档加上「历史文档」横幅。
+
 ### 🔗 biome 后缀表真正闭环到 Rust 单一事实源（并修复长后缀被错截）
 - **真实缺陷**：`builtin_biome_suffixes()` 原本按「短后缀在前」的顺序排列，消费端用 `ends_with` + `break`，导致 `stone_dark_forest` 先被 `_forest` 截断为 `stone_dark`、`stone_birch_forest` → `stone_birch`、`stone_cherry_grove` → `stone_cherry`。Rust `clean_identifier` 与 Python `clean_jmc2obj_identifier` 同时中招。
 - **Rust SSOT 修复**：`builtin_biome_suffixes()` 现按最长优先排序返回；`clean_identifier` 改为「最长匹配优先」（对用户自定义 `strip_biome_suffixes` 同样生效）。

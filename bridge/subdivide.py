@@ -9,13 +9,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence, Tuple, Any
 
-from .engine import get_libmtk, require_libmtk
-
-
-def __getattr__(name: str) -> Any:
-    if name == "mtk_py":
-        return get_libmtk()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+from .engine import require_libmtk
 
 
 def adaptive_pixel_split_mesh(

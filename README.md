@@ -47,7 +47,7 @@ MoziToolKit 并非单一孤立插件，而是由三大核心工程紧密协作�
 
 ### 4. 材质、图集与着色器管线 (Material & Shader Pipeline)
 - **双材质构建体系**：
-  - **图集分块模式 (Atlas Chunk)**：采用二维装箱算法动态拼合，应用安全 Padding 与 UV Clamp 防溢色算法，通过面级属性（`mtk_atlas_chunk_id` / `mtk_source_texture_key`）驱动共享材质槽位。
+  - **图集分块模式 (Atlas Chunk)**：采用二维装箱算法动态拼合，应用安全 Padding 与 UV Clamp 防溢色算法，通过面级属性（`mtk_atlas_chunk_id` + `mtk_source_textures`/`mtk_source_texture_idx` 调色板来源）驱动共享材质槽位。
   - **独立材质模式 (Standalone PBR)**：预编译通道全栈融合，支持独立纹理展开。
 - **PBR 与实时渲染引擎适配**：
   - 预编译期将 LabPBR `_n`/`_s` 解码为标准通道（`_n` 法线+高度、`_orm`、`_aux`）；Blender 材质只使用标准 Principled，不再运行时解码。

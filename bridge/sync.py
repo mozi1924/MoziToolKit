@@ -19,7 +19,6 @@ from .assets import (
     check_cache_dirty,
     get_cache_fingerprint,
     get_cache_timestamp,
-    reload_atlas_images,
     get_configured_ctm_solver,
 )
 
@@ -314,8 +313,11 @@ class SyncBridgeSession:
         1. Reloads latest BakedAtlas, BakedModelDatabase, and BiomeResolver from disk.
         2. Updates the native LiveSyncSession config and model database.
         3. Clears dirty section mesh cache in Rust.
-        4. Triggers reload on Blender image datablocks for updated atlas PNGs.
         Returns True if cache was dirty and reloaded, False otherwise.
+
+        Refreshing `bpy.data.images` datablocks is deliberately *not* done here:
+        that is DCC host business and belongs to the caller
+        (`utils.materials.builder.atlas_refresh.reload_atlas_images`).
         """
         is_dirty, current_fp, current_ts = check_cache_dirty(
             self._cached_manifest_fingerprint,
@@ -375,11 +377,6 @@ class SyncBridgeSession:
                     self._session.hot_reload(new_config, new_model_db)
                 except Exception as e:
                     logger.warning("Session hot_reload failed: %s", e)
-
-        # 3. Reload Blender images in GPU/VRAM
-        reloaded = reload_atlas_images(prefs)
-        if reloaded > 0:
-            logger.info("Reloaded %d atlas image datablock(s) in Blender.", reloaded)
 
         return True
 

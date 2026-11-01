@@ -18,7 +18,7 @@ except ImportError:
     bpy = None
     ImportHelper = object
 
-from ...bridge.assets import reload_atlas_images
+from ...utils.materials.builder.atlas_refresh import reload_atlas_images
 from ...bridge.world import prepare_world_mesh_context
 from ...bridge.save import (
     inspect_minecraft_save,

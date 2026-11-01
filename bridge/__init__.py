@@ -43,7 +43,6 @@ from .assets import (
     open_cache_folder,
     precompile_stack,
     precompile_stack_async,
-    reload_atlas_images,
 )
 from .extrude import (
     generate_random_extrude_heights,
@@ -134,7 +133,6 @@ __all__ = [
     "get_configured_ctm_solver",
     "precompile_stack",
     "precompile_stack_async",
-    "reload_atlas_images",
     "invalidate_asset_cache_memory",
     "get_active_cache_package_path",
     "open_active_asset_cache",

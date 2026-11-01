@@ -57,8 +57,6 @@ logger = logging.getLogger("MoziToolKit.Bridge.Mesh")
 
 def __getattr__(name: str) -> Any:
     mtk = get_libmtk()
-    if name == "mtk_py":
-        return mtk
     if name == "MeshData":
         return getattr(mtk, "MeshData", Any) if mtk else Any
     if name == "AttributeDomain":

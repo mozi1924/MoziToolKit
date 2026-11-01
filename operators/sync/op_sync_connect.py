@@ -17,10 +17,8 @@ from ...bridge.sync import (
     load_model_database_from_cache,
     load_biome_resolver_from_cache,
 )
-from ...bridge.assets import (
-    invalidate_asset_cache_memory,
-    reload_atlas_images,
-)
+from ...bridge.assets import invalidate_asset_cache_memory
+from ...utils.materials.builder.atlas_refresh import reload_atlas_images
 from ...utils.assets import (
     can_execute_asset_pipeline,
     check_asset_cache_status,

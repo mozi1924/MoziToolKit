@@ -257,7 +257,7 @@ Offset | Type     | Description
   `LiveSyncSession` 一旦通过 `set_auth_token` 设置令牌，就以会话令牌为准覆盖 HELLO 中的值。
 * **Blender**：面板 `Auth Token`（`properties.auth_token`，`subtype=PASSWORD`，
   `SKIP_SAVE`，不写入 `.blend`）→ `bridge/sync.py`（`strip()` 归一化）→
-  `LiveSyncSession.start(..., auth_token=...)` / `start_with_persisted_state(...)`。
+  `LiveSyncSession.start(url, auto_reconnect, max_reconnect_attempts, auth_token=...)`。
   token 为空时不传参，等价于空令牌。
 
 > **历史缺陷（v2.0.x 修复）**：`LiveSyncSession` 的默认 HELLO 曾把 `auth_token` 硬编码为空串，
@@ -307,11 +307,14 @@ Offset | Type     | Description
 > 2. 快速重连（`VERIFIED_SKIP_REBUILD`）依赖客户端持久化的 `mtk_sync_*` 属性。
 >    服务端在**任何方块变更 / 选区变更 / 选区清空**时都会把 `cachedStateHash` 置 0，
 >    因此“断线期间世界被修改”不会误触发跳过重建。
-> 3. **Blender 端当前默认禁用快速重连**（`_ZERO_REBUILD_FAST_PATH_ENABLED = False`）：
->    Rust 原生 `VoxelStorage` 尚未持久化到 `.blend`。若在空存储上直接进入 `LIVE`，
->    下一条 `DELTA_OP` 只会重构被修改方块所在区块，导致视口网格被覆盖丢失。
->    因此客户端仍会持久化 `mtk_sync_*`（为未来恢复功能做准备），但 `HELLO` 的
->    `cached_*` 字段保持为 0，始终请求全量基线。启用前提见 §8 阶段 C。
+> 3. **Blender 端不存在快速重连路径**：Rust 原生 `VoxelStorage` 尚未持久化到 `.blend`，
+>    若在空存储上直接进入 `LIVE`，下一条 `DELTA_OP` 只会重构被修改方块所在区块，
+>    导致视口网格被覆盖丢失。因此 Python 宿主侧的持久化握手代码
+>    （`start_with_persisted_state` / `export_persisted_state_json` / `cached_state_json`）
+>    与 `mtk-py::LiveSyncSession.start()` 的 `cached_*` 参数已**物理删除**：
+>    Blender 永远发送 `cached_*` 全 0 的默认 HELLO 并请求全量基线。
+>    `mtk-sync` 的 `LiveSyncSession::start_with_hello` 仍作为 Rust 宿主能力保留
+>    （`tests/test_auth_token.rs` 覆盖），供将来具备持久化存储的宿主使用。启用前提见 §8 阶段 C。
 
 ### 4.3 `0x03` BASELINE_BEGIN（全量基线元信息 S → C）
 
@@ -490,7 +493,7 @@ Offset | Type     | Description
     “点击 Refresh 或更换选区后重试”；
   * 手动 `Refresh` 会清零失败计数并重新请求全量快照。
 
-### 4.10 `0x09` STATE_VERIFY_REQ（状态校验请求，双向）
+### 4.10 `0x09` STATE_VERIFY_REQ（已废弃，Opcode 已从实现中移除）
 
 ```
 Offset | Type     | Description
@@ -501,7 +504,7 @@ Offset | Type     | Description
 20..27 | uint64   | Volume state_hash
 ```
 
-### 4.11 `0x0A` STATE_VERIFY_RESP（状态校验应答，双向）
+### 4.11 `0x0A` STATE_VERIFY_RESP（已废弃，Opcode 已从实现中移除）
 
 ```
 Offset | Type     | Description
@@ -512,7 +515,10 @@ Offset | Type     | Description
 20     | uint8    | IsMatch (1 = 匹配, 0 = 不匹配)
 ```
 
-> 当前 `0x09/0x0A` 已由 Rust 编解码器与 Java 常量定义，但未纳入实际会话流程（📋 预留）。
+> **已废弃**：`0x09/0x0A` 从未纳入会话流程，握手完整性现由 `WELCOME` +
+> `BASELINE_END` + `RESYNC_REQUEST(0x0D)` 负责。`mtk-sync` 的 `Opcode` 枚举、
+> 编解码器与 `mtk-py` 绑定中的对应分支已物理删除；本节仅保留历史线格式记录，
+> 任何实现都不得再发送这两个 Opcode。
 
 ### 4.12 `0x0B` CANCEL（任务主动取消，双向）
 
@@ -792,11 +798,11 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
 | Delta Staging + Snapshot Replay | `staging.rs`, `dispatcher.rs` | ✅ |
 | PALETTE_UPDATE 与批次共享序号 | `broadcastDeltaUpdate` | ✅（文档已按实现修正） |
 | RESYNC_REQUEST | 客户端 + 服务端整包重发 | ✅（无 Delta 窗口补发） |
-| STATE_VERIFY_REQ/RESP | 编解码已实现 | 📋 未接入会话 |
+| STATE_VERIFY_REQ/RESP | 编解码与 Opcode | 🗑️ 已物理删除 |
 | CANCEL 双向取消 | 客户端 + 服务端代际失效 | ✅（v2.0 修复） |
 | PING / PONG | 编解码 + 应答 | ⚠️ 无应用层定时器 |
 | ERROR(0x10) | 编解码 + 超限/资源错误 | ✅（v2.0 修复） |
-| 快速重连持久化 | Python `persist_sync_session_state` + Rust getters + Java 失效规则 | ⚠️ 服务端判定已完备；Blender 端默认禁用（等待 VoxelStorage 持久化） |
+| 快速重连持久化 | Java 失效规则保留；宿主侧实现已删除 | ⚠️ 服务端判定完备；宿主侧入口已移除（等待 VoxelStorage 持久化） |
 | 基线看门狗 / 限流 / 失败熔断 | `dispatcher.rs` | ✅（v2.0 修复） |
 | Worker 异常终态保证 | `WorkerExitGuard` + `catch_unwind` | ✅（v2.0 修复） |
 | 宿主连接状态权威同步 | `bridge/sync.py`, `_sync_timer_tick` | ✅（v2.0 修复） |
@@ -808,12 +814,13 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
 3. **超时数值**：基线看门狗为 20s/10s，而非“每分块 10s”；ACK 超时未实现。
 4. **Keepalive**：依赖 WebSocket 协议层 Ping/Pong；应用层 20s PING 定时器未实现。
 5. **`mtk:unloaded`**：未引入；扫描时强制加载选区覆盖的区块。
-6. **`STATE_VERIFY_*`**：Opcode 已预留，会话流程未使用。
+6. **`STATE_VERIFY_*`**：从未接入会话，Opcode 已从 `mtk-sync` 与 `mtk-py` 物理删除。
 7. **`SyncLifecycle::Verifying`**：枚举预留，`VERIFIED_SKIP_REBUILD` 直接进入 `LIVE`。
 8. **`COMMITTING_DNA`**：不属于 Rust 状态机，由 Blender 主线程以 `WorldMeshReady` 驱动。
 9. **`MaxMessageSize`**：实现常量为 512 KiB（目标值允许上限），服务端 payload 切片 256 KiB。
-10. **零重建快速路径**：服务端 `VERIFIED_SKIP_REBUILD` 判定与客户端属性持久化均已实现，
-    但 Blender 端默认将 `HELLO.cached_*` 置零。原因是原生 `VoxelStorage` 尚未持久化，
+10. **零重建快速路径**：服务端 `VERIFIED_SKIP_REBUILD` 判定保留，但宿主侧入口
+    （`start_with_persisted_state` / `export_persisted_state_json` / `start()` 的 `cached_*` 参数）
+    已物理删除，HELLO 的 `cached_*` 恒为 0。原因是原生 `VoxelStorage` 尚未持久化，
     跳过基线会导致后续增量在空存储上重构并覆盖视口。
 
 ### 7.3 v2.0 稳定性修复索引（本次对齐）
@@ -856,11 +863,11 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
 * 15s Baseline ACK 超时与事务回滚；
 * 5s 握手超时；
 * Delta 环形缓冲区（`REPLAY_DELTAS` 窗口补发）；
-* `STATE_VERIFY_REQ/RESP` 心跳校验接入；
 * `mtk:unloaded` 未加载区块占位语义；
 * Delta 相对坐标越界的显式 `ERROR(INVALID_BOUNDS)` 校验；
-* **原生 `VoxelStorage` 持久化/恢复**：完成后即可安全启用
-  `_ZERO_REBUILD_FAST_PATH_ENABLED`，真正打通 RFC §6.2 的零重建重连。
+* **原生 `VoxelStorage` 持久化/恢复**：完成后才能重新引入客户端的 `cached_*`
+  握手与 `VERIFIED_SKIP_REBUILD`，真正打通 RFC §6.2 的零重建重连
+  （当前宿主侧已删除该入口，需随持久化存储一并实现）。
 
 ---
 

@@ -26,7 +26,7 @@ class TestEngineBridge:
 
     def test_dynamic_attributes_on_bridges(self):
         """Verifies PEP 562 dynamic attributes resolve correctly without static freeze."""
-        from MoziToolKit.bridge import material, mesh, uv, subdivide, texture, extrude
+        from MoziToolKit.bridge import assets, extrude, material, mesh, subdivide, texture, uv
 
         # Dynamic classes in material bridge
         assert hasattr(material, "BiomeResolver")
@@ -38,13 +38,14 @@ class TestEngineBridge:
         # Dynamic classes in mesh bridge
         assert hasattr(mesh, "MeshData")
         assert hasattr(mesh, "AttributeDomain")
-        assert hasattr(mesh, "mtk_py")
 
-        # Dynamic mtk_py references in other bridges
-        assert hasattr(uv, "mtk_py")
-        assert hasattr(subdivide, "mtk_py")
-        assert hasattr(texture, "mtk_py")
-        assert hasattr(extrude, "mtk_py")
+        # The undocumented `mtk_py` / `libmtk_py` module aliases are retired: every
+        # consumer resolves the native module through `bridge.engine`.
+        for module in (mesh, uv, subdivide, texture, extrude, assets):
+            for alias in ("mtk_py", "libmtk_py", "HAS_LIBMTK"):
+                assert not hasattr(module, alias), (
+                    f"retired alias {module.__name__}.{alias} leaked back"
+                )
 
     def test_rejects_missing_or_mismatched_native_api(self, monkeypatch):
         from MoziToolKit.bridge import engine

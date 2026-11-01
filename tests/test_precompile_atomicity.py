@@ -43,7 +43,6 @@ class TestPrecompileReleasesMappedCache(unittest.TestCase):
             result = precompile_mod.precompile_stack(
                 stack=stack,
                 cache_dir=tmp,
-                reload_images=False,
             )
 
         self.assertTrue(result["success"])

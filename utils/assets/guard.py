@@ -44,7 +44,7 @@ def _precompile_stack(*args, **kwargs):
 
 
 def _reload_atlas_images(*args, **kwargs):
-    from ...bridge.assets.precompile import reload_atlas_images
+    from ..materials.builder.atlas_refresh import reload_atlas_images
     return reload_atlas_images(*args, **kwargs)
 
 from .cache_utils import get_cache_dir
@@ -497,7 +497,6 @@ def run_task_with_asset_guard(
             progress_callback=stage1_cb,
             stack=asset_context.get("stack") if asset_context else None,
             cache_dir=asset_context.get("cache_dir") if asset_context else None,
-            reload_images=False,
             resolve_prefs=asset_context is None,
         )
         _invalidate_asset_cache_memory()

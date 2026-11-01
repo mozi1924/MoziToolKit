@@ -22,11 +22,8 @@ from ...bridge.world import (
 from ...utils.materials.builder.world_binding import ensure_world_materials
 from ...bridge.mesh import inject_mesh_data
 from ...bridge.sync import get_sync_bridge_session
-from ...bridge.assets import (
-    check_cache_dirty,
-    invalidate_asset_cache_memory,
-    reload_atlas_images,
-)
+from ...bridge.assets import check_cache_dirty, invalidate_asset_cache_memory
+from ...utils.materials.builder.atlas_refresh import reload_atlas_images
 from ...utils.assets import (
     can_execute_asset_pipeline,
     prepare_asset_context,

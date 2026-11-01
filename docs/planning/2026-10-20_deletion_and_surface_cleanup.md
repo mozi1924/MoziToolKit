@@ -1,5 +1,9 @@
 # 2026-10-20 2.0 删除与暴露面收敛计划
 
+> ⚠️ **历史文档（已执行完毕）**：本文是清理清单的执行记录，其中的接口已按计划删除；
+> 现网契约请以 `docs/mesh/attributes.md`、`docs/live_sync/live_sync_protocol.md` 与
+> `libmozitoolkit/docs/API_REFERENCE.md` 为准。
+
 > 状态：**B0–B7 已全部执行；Baseline 快照、Blender 冒烟、6 平台双 wheel 与滚动包验证通过**
 > 基线：`MoziToolKit@210a9e2`、`libmozitoolkit@3e08dc4`
 > 范围：`MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心）两个仓库

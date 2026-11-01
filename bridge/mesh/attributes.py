@@ -347,7 +347,7 @@ def inject_custom_attributes(
             if type_tuple is None:
                 continue
 
-            b_type, value_key, typecode = type_tuple
+            b_type, value_key = type_tuple
             b_attr = mesh.attributes.get(attr_name)
             if b_attr is not None and (
                 b_attr.data_type != b_type
@@ -382,8 +382,8 @@ def inject_custom_attributes(
 
                     if not dna_injected:
                         try:
-                            if hasattr(mv, "cast") and mv.format == "B" and typecode:
-                                mv = mv.cast(typecode)
+                            # `attribute_memoryview` is always strongly typed ('f'/'i'/'I'/'H'/'h'/'b'/'B'),
+                            # so `foreach_set` can consume it without any cast.
                             b_attr.data.foreach_set(value_key, mv)
                         except Exception as e:
                             logger.debug("Failed setting attribute %s: %s", attr_name, e)

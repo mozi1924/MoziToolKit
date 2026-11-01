@@ -9,18 +9,14 @@ Completely host-agnostic and decoupled from WebSocket network synchronization.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from .assets import (
     get_cache_fingerprint,
     get_cache_timestamp,
-    ensure_atlas_textures_extracted,
     load_baked_atlas_from_cache,
-    load_atlas_mapping_from_cache,
     load_baked_model_database,
     load_biome_resolver_from_cache,
     get_active_cache_package_path,
@@ -29,17 +25,7 @@ from .assets import (
 
 logger = logging.getLogger("MoziToolKit.Bridge.World")
 
-from .engine import get_libmtk, has_libmtk, require_libmtk
-
-
-def _get_libmtk():
-    return get_libmtk()
-
-
-def __getattr__(name: str) -> Any:
-    if name == "libmtk_py":
-        return get_libmtk()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+from .engine import get_libmtk, require_libmtk
 
 
 _WORLD_PIPELINE_ASSETS_CACHE: Optional[Tuple[Any, Any, Any]] = None

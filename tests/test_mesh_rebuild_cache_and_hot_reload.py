@@ -37,8 +37,8 @@ from MoziToolKit.bridge.assets import (
     get_cache_fingerprint,
     get_cache_manifest,
     get_cache_timestamp,
-    reload_atlas_images,
 )
+from MoziToolKit.utils.materials.builder.atlas_refresh import reload_atlas_images
 from MoziToolKit.utils.assets import get_cache_dir
 from MoziToolKit.bridge.sync import (
     SyncBridgeSession,

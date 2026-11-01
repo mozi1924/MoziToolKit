@@ -200,11 +200,11 @@ MoziToolKit 将庞大的材质解析、通道融合与图像装箱计算全部�
 | **预编译机制** | 预编译输出 Atlas Chunks 与 `atlas_mapping.json` | 预编译输出融合贴图库、对齐伴生图与 `standalone_mapping.json` |
 
 ### 3.5 面级身份契约与节点树自愈恢复 (Mesh Face Provenance & Auto-Recovery)
-- **核心契约（`mtk_source_texture_key` & `mtk_atlas_chunk_id`）**：
-  无论是静态模型导入、材质替换管线还是实时同步 Direct Mesh 生成，系统均向网格写入标准的面域字符串属性 `mtk_source_texture_key`（例如 `"minecraft:block/stone"`）与整数属性 `mtk_atlas_chunk_id`。
+- **核心契约（`mtk_source_textures` + `mtk_source_texture_idx` & `mtk_atlas_chunk_id`）**：
+  无论是静态模型导入、材质替换管线还是实时同步 Direct Mesh 生成，系统均向网格写入紧凑的调色板来源（Mesh 域字符串列表 `mtk_source_textures` + Face 域整数 `mtk_source_texture_idx`）与整数属性 `mtk_atlas_chunk_id`。逐面 `mtk_source_texture_key` 字符串层已退役，不再由任何路径写入。
 - **节点树删除无损自愈算子 (`mozi.restore_materials_from_provenance`)**：
   当用户或脚本将物体的材质槽完全清空、或者在 Shader Editor 中误删了全部节点时，系统通过 [`pipeline.py`](../../utils/materials/pipeline.py) 中的 `restore_materials_from_provenance` 核心算法：
-  1. 扫描网格面属性，提取所有唯一的 `mtk_source_texture_key` 与 Chunk ID 映射表；
+  1. 扫描网格面属性，由 `mtk_source_textures` + `mtk_source_texture_idx` 还原每面来源键，并提取 Chunk ID 映射表；
   2. 根据图集映射表或独立材质库，瞬间重新分配所有材质槽并对齐多边形面的 `material_index`；
   3. 自动重新生成 Principled BSDF / 图集着色器节点树并绑定贴图；
   4. 实现 100% 离线、零数据损失的原地自愈。
@@ -316,6 +316,6 @@ MoziToolKit 提供了从底层色彩插值到交互式 UI 的全套生物群系�
 - **`parallax.py`**：POM（Parallax Occlusion Mapping）视差遮挡贴图 UV 位移节点组。
 
 ### 8.4 材质替换与逆向恢复管线 (`utils/materials/pipeline/`)
-- **`provenance.py`**：面属性来源追踪（`mtk_source_texture_key`）与材质槽一键原地自愈重构器。
+- **`provenance.py`**：面属性来源追踪（`mtk_source_textures` + `mtk_source_texture_idx`）与材质槽一键原地自愈重构器。
 - **`material_pipeline.py`**：顶层材质替换流水线协调器。
 

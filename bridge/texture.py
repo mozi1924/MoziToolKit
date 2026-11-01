@@ -10,13 +10,7 @@ from typing import List, Sequence, Tuple, Any
 
 import numpy as np
 
-from .engine import get_libmtk, require_libmtk
-
-
-def __getattr__(name: str) -> Any:
-    if name == "mtk_py":
-        return get_libmtk()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+from .engine import require_libmtk
 
 
 def _as_pixel_buffer(pixels: Any) -> Any:

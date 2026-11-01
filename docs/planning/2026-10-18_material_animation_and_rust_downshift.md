@@ -2,6 +2,12 @@
 
 > 状态：**P0 动画材质修复已完成；第一批 Host-Agnostic 下沉已完成；剩余迁移项待排期。**
 > 本次改动跨越 `MoziToolKit`（Blender 前端）与 `libmozitoolkit`（Rust 核心），两个仓库需分别提交。
+>
+> ⚠️ **历史文档（已部分废弃）**：本文描述的 Live Sync「零重建快速路径」持久化接口
+> （`start_with_persisted_state`、`export_persisted_state_json`、`start(..., cached_state_json=...)`
+> 以及 `LiveSyncSession.start()` 的 `cached_*` 参数）**已于后续清理中物理删除**——
+> 原生 `VoxelStorage` 无法持久化到 `.blend`，该路径始终不可达。当前契约见
+> [`docs/live_sync/live_sync_protocol.md`](../live_sync/live_sync_protocol.md) §4.1 与 §8。
 
 ---
 

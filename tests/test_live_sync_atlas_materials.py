@@ -458,9 +458,10 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
                     attr_chunk2.data[2].value = 1
                     attr_chunk2.data[3].value = 0
 
-                    with patch("MoziToolKit.bridge.world.ensure_atlas_textures_extracted") as mock_extract, \
-                         patch("MoziToolKit.bridge.world.load_baked_atlas_from_cache") as mock_load_atlas, \
-                         patch("MoziToolKit.bridge.world.get_cache_fingerprint") as mock_fp:
+                    binding_mod = "MoziToolKit.utils.materials.builder.world_binding"
+                    with patch(f"{binding_mod}.ensure_atlas_textures_extracted") as mock_extract, \
+                         patch(f"{binding_mod}.load_baked_atlas_from_cache") as mock_load_atlas, \
+                         patch(f"{binding_mod}.get_cache_fingerprint") as mock_fp:
                         ensure_world_materials(test_obj, used_chunk_ids=[0, 1])
 
                         # Fast-path assertion: ZERO cache reading or texture extraction during incremental update

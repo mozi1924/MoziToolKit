@@ -104,7 +104,7 @@ Direct Mesh 直接向 Blender 原生数据层写入渲染元数据，无需任�
 | **`mtk_anim_frame_size`** | Face | 3D Float Vector | 动画单帧宽高尺寸元数据（X=帧宽, Y=帧高）。 |
 | **`mtk_source_textures`** | Mesh | String List | 来源贴图键紧凑调色板；与 `mtk_source_texture_idx` 组成 palette 索引，任意规模的网格都可无损恢复来源。 |
 | **`mtk_source_texture_idx`** | Face | Integer | 调色板索引；Live Sync 网格跳过逐面字符串时仍会写入此项，保证 Biome/材质路径与存档导入一致。 |
-| **`mtk_source_texture_key`** | Face | String | 旧版逐面来源贴图键（如 `minecraft:block/stone`）；小网格保留以兼容旧工具，读取时优先使用 palette。 |
+| ~~`mtk_source_texture_key`~~ | ~~Face~~ | ~~String~~ | **已退役**：Rust mesher 不再生成，宿主在注入时清理；来源一律走 `mtk_source_textures` + `mtk_source_texture_idx`。 |
 
 ---
 

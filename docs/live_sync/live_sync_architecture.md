@@ -20,8 +20,8 @@ MoziToolKit 实时同步模块（Live Sync）基于高性能异步 WebSocket 二
   - **`mtk:atlas_chunk_id`** (`int` / `str`)：标识当前材质所绑定的纹理图集 Chunk 索引（例如 Chunk `0` 代表基础方块，Chunk `1` 代表逐帧动画或特定扩展块）。
   - **`mtk:pack_hash`** (`str`)：标识编译生成该材质时的资源包组合哈希（Stack Hash / Cache Key）。
   - **`mtk:atlas_mapping`** (`str` / JSON)：存储图集 UV 映射表与纹理位置元数据。
-- **网格面级来源契约 (`mtk_source_texture_key`)**：
-  - Direct Mesh 生成器在为每个多边形面烘焙几何时，自动写入面属性 `mtk_source_texture_key`（例如 `"minecraft:block/stone"`）。
+- **网格面级来源契约 (`mtk_source_textures` + `mtk_source_texture_idx`)**：
+  - Direct Mesh 生成器输出紧凑调色板来源：Mesh 域字符串列表 `mtk_source_textures` 与 Face 域整数 `mtk_source_texture_idx`。逐面 `mtk_source_texture_key` 字符串层已退役（`RETIRED_MESH_ATTRIBUTES`），任何路径都不再写入。
   - **价值与跨模块共享**：使得实时同步生成的网格可以直接被“替换材质”管线无损识别并转换为独立模式/高清材质包；同时在用户误删节点树时，可通过 `reconstruct_materials_from_mesh_provenance` 瞬间自动复原材质与槽位。
 
 ### 1.2 材质生命周期与零冗余复用原则

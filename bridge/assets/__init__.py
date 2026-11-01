@@ -8,9 +8,6 @@ and geometric meshing are handled entirely within libmtk.
 
 from __future__ import annotations
 
-from typing import Any
-
-from ..engine import get_libmtk, has_libmtk, require_libmtk
 from .cache import (
     check_cache_dirty,
     clear_cache,
@@ -34,27 +31,7 @@ from .cache import (
     open_cache_folder,
 )
 from .pack import get_configured_ctm_solver, get_configured_pack_stack
-from .precompile import (
-    precompile_stack,
-    precompile_stack_async,
-    reload_atlas_images,
-)
-
-
-def _get_libmtk():
-    return get_libmtk()
-
-
-def _has_libmtk() -> bool:
-    return has_libmtk()
-
-
-def __getattr__(name: str) -> Any:
-    if name == "HAS_LIBMTK":
-        return has_libmtk()
-    if name == "libmtk_py":
-        return get_libmtk()
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+from .precompile import precompile_stack, precompile_stack_async
 
 
 __all__ = [
@@ -78,7 +55,6 @@ __all__ = [
     "get_cache_fingerprint",
     "get_cache_timestamp",
     "check_cache_dirty",
-    "reload_atlas_images",
     "clear_cache",
     "get_cache_dir",
     "get_cache_stats",

@@ -104,7 +104,6 @@ class MOZI_OT_precompile_cache(bpy.types.Operator):
                 "num_threads": num_threads,
                 "stack": asset_context["stack"],
                 "cache_dir": asset_context["cache_dir"],
-                "reload_images": False,
                 "resolve_prefs": False,
             },
         )
