@@ -17,7 +17,7 @@ except ImportError:
     bpy = None
 
 from ..bridge.progress import ProgressReport
-from ..i18n import tr
+from ..i18n import format_backend_message, format_progress_title, tr
 
 logger = logging.getLogger("MoziToolKit.Utils.Progress")
 
@@ -82,15 +82,14 @@ class BlenderProgressReporter:
         workspace = getattr(self.context, "workspace", None)
         if workspace and hasattr(workspace, "status_text_set"):
             pct = (current / self.total * 100.0) if self.total > 0 else 0.0
-            translated_title = tr(self.title)
+            translated_title = format_progress_title(self.title)
             if message:
-                translated_msg = tr(message)
-                if "(" in message and translated_msg == message:
-                    prefix, rest = message.split("(", 1)
-                    translated_prefix = tr(prefix.strip())
-                    if translated_prefix != prefix.strip():
-                        translated_msg = f"{translated_prefix} ({rest}"
-                text = f"{translated_title}: {translated_msg} ({current}/{self.total}, {pct:.0f}%)"
+                translated_msg = format_backend_message(message)
+                ratio_str = f"({current}/{self.total}"
+                if ratio_str in translated_msg:
+                    text = f"{translated_title}: {translated_msg} ({pct:.0f}%)"
+                else:
+                    text = f"{translated_title}: {translated_msg} ({current}/{self.total}, {pct:.0f}%)"
             else:
                 text = f"{translated_title} ({current}/{self.total}, {pct:.0f}%)"
             try:

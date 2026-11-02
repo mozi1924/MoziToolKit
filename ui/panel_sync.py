@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 import bpy
 
-from ..i18n import tr
+from ..i18n import format_backend_message, tr
 
 from ..operators.sync.hierarchy import (
     is_yefira_root_object,
@@ -62,43 +62,14 @@ def _format_sync_status(status_str: str) -> str:
 def _format_sync_info(info_str: str) -> str:
     if not info_str:
         return ""
-    direct = tr(info_str)
-    if direct != info_str:
-        return direct
-    m = re.match(r"World Mesh updated: ([\d,]+) vertices, ([\d,]+) faces", info_str)
-    if m:
-        return f"{tr('World Mesh updated')}: {m.group(1)} {tr('vertices')}, {m.group(2)} {tr('faces')}"
-    m = re.match(r"Rebuilt World Mesh: ([\d,]+) vertices, ([\d,]+) faces", info_str)
-    if m:
-        return f"{tr('Rebuilt World Mesh')}: {m.group(1)} {tr('vertices')}, {m.group(2)} {tr('faces')}"
-    m = re.match(r"Detected (\d+) out-of-sync sections?", info_str)
-    if m:
-        return f"{tr('Detected')} {m.group(1)} {tr('out-of-sync sections')}"
-    m = re.match(r"Connecting to (.+)\.\.\.", info_str)
-    if m:
-        return f"{tr('Connecting to')} {m.group(1)}..."
-    m = re.match(r"Sync Handshake: (\d+) chunks \(([\d,]+) blocks\)", info_str)
-    if m:
-        return f"{tr('Sync Handshake')}: {m.group(1)} {tr('chunks')} ({m.group(2)} {tr('blocks')})"
-    m = re.match(r"Delta Applied: (\d+) block modification\(s\)", info_str)
-    if m:
-        return f"{tr('Delta Applied')}: {m.group(1)} {tr('block modifications')}"
-    m = re.match(r"Stream Complete \((\d+) chunks received\)", info_str)
-    if m:
-        return f"{tr('Stream Complete')} ({m.group(1)} {tr('chunks received')})"
-    return info_str
+    return format_backend_message(info_str)
 
 
 def _format_stream_message(msg: str) -> str:
     if not msg:
         return ""
-    direct = tr(msg)
-    if direct != msg:
-        return direct
-    m = re.match(r"Receiving chunk (\(\d+/\d+\) .*)", msg)
-    if m:
-        return f"{tr('Receiving chunk')} {m.group(1)}"
-    return msg
+    return format_backend_message(msg)
+
 
 
 def _draw_live_sync_content(layout: bpy.types.UILayout, context: bpy.types.Context):
