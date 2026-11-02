@@ -8,6 +8,13 @@ are properly translated and formatted for display in Blender status bar and UI p
 import unittest
 from unittest.mock import MagicMock
 
+try:
+    import bpy
+    HAS_BPY = not isinstance(bpy, MagicMock) and type(bpy).__name__ != "MagicMock" and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and type(bpy.data).__name__ != "MagicMock"
+except ImportError:
+    bpy = None
+    HAS_BPY = False
+
 from MoziToolKit.i18n import (
     format_backend_error,
     format_backend_message,
@@ -19,6 +26,34 @@ from MoziToolKit.utils.progress import BlenderProgressReporter
 
 
 class TestBackendI18n(unittest.TestCase):
+    saved_lang = None
+    saved_ui = False
+
+    @classmethod
+    def setUpClass(cls):
+        """Ensures i18n is registered and active in Chinese during test execution."""
+        if HAS_BPY:
+            try:
+                import MoziToolKit.i18n as i18n
+                i18n.register()
+            except Exception:
+                pass
+            view = getattr(bpy.context.preferences, "view", None)
+            if view:
+                cls.saved_lang = getattr(view, "language", "DEFAULT")
+                cls.saved_ui = getattr(view, "use_translate_interface", False)
+                view.language = "zh_HANS"
+                view.use_translate_interface = True
+
+    @classmethod
+    def tearDownClass(cls):
+        """Restores original language preferences."""
+        if HAS_BPY and cls.saved_lang is not None:
+            view = getattr(bpy.context.preferences, "view", None)
+            if view:
+                view.language = cls.saved_lang
+                view.use_translate_interface = cls.saved_ui
+
     def test_static_dictionary_entries(self):
         """Verifies that all static Rust progress and sync tokens exist in dictionary."""
         self.assertEqual(tr("Loading chunk"), "加载区块切片")
@@ -180,6 +215,28 @@ class TestBackendI18n(unittest.TestCase):
         mock_ws.status_text_set.assert_called_with("导入主世界: 正在提取生物群系映射与调色板... (50/100, 50%)")
 
         reporter.close()
+
+    def test_english_locale_preservation(self):
+        """Verifies that when running under an English locale, original English strings are preserved."""
+        if not HAS_BPY:
+            return
+        view = getattr(bpy.context.preferences, "view", None)
+        if not view:
+            return
+
+        # Temporarily switch to English
+        view.language = "en_US"
+        view.use_translate_interface = True
+        try:
+            self.assertFalse(is_chinese_locale())
+            # In English, progress title and backend messages must remain in English
+            self.assertEqual(format_progress_title("Import overworld"), "Import overworld")
+            self.assertEqual(format_backend_message("Loading chunk (15/100)"), "Loading chunk (15/100)")
+            self.assertEqual(format_backend_message("Waiting for Baseline stream..."), "Waiting for Baseline stream...")
+            self.assertEqual(format_backend_error("Coordinate out of bounds: (1, 2, 3)"), "Coordinate out of bounds: (1, 2, 3)")
+        finally:
+            view.language = "zh_HANS"
+            view.use_translate_interface = True
 
 
 if __name__ == "__main__":

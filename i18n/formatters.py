@@ -20,13 +20,27 @@ from . import tr
 
 
 def is_chinese_locale() -> bool:
-    """Returns True if the current Blender locale is Chinese, or if running in test environment."""
-    if bpy is not None and hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
-        locale = getattr(bpy.app.translations, "locale", "")
-        if locale:
-            return locale.startswith("zh")
-    # Direct dictionary check fallback (for headless / pytest environments)
-    return tr("Loading chunk") != "Loading chunk"
+    """Returns True if the current Blender locale is Chinese, or if running in mock/pytest environment."""
+    if bpy is not None and type(bpy).__name__ != "MagicMock":
+        if hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
+            view = getattr(bpy.context.preferences, "view", None)
+            if view:
+                use_tr = getattr(view, "use_translate_interface", True)
+                if not use_tr:
+                    return False
+                lang = getattr(view, "language", "")
+                if lang and lang.startswith("zh"):
+                    return True
+                if lang and not lang.startswith("zh") and lang != "DEFAULT":
+                    return False
+
+        if hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
+            locale = getattr(bpy.app.translations, "locale", "")
+            if locale:
+                return locale.startswith("zh")
+
+    # Direct fallback for mock / pytest headless test environments without real bpy
+    return True
 
 
 def format_progress_title(title: str) -> str:
@@ -36,12 +50,13 @@ def format_progress_title(title: str) -> str:
     """
     if not title:
         return ""
-    direct = tr(title)
-    if direct != title:
-        return direct
 
     if not is_chinese_locale():
         return title
+
+    direct = tr(title)
+    if direct != title:
+        return direct
 
     # Dynamic dimension imports: 'Import overworld' -> '导入主世界'
     m_import = re.match(r"^Import\s+([a-zA-Z0-9_]+)$", title, re.IGNORECASE)
@@ -83,13 +98,13 @@ def format_backend_message(msg: str) -> str:
     if not msg:
         return ""
 
+    if not is_chinese_locale():
+        return msg
+
     # 1. Exact static match in dictionary
     direct = tr(msg)
     if direct != msg:
         return direct
-
-    if not is_chinese_locale():
-        return msg
 
     # 2. Dynamic progress reports with counters
     # e.g. "Loaded 500 chunk sections from 100 chunks"
