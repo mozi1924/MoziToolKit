@@ -149,20 +149,28 @@
 
 4. **生物群系规范化与不可变契约**：
    * **Live 阶段生物群系不可变**：运行时方块放置/破坏不改变生物群系；Biome 仅在 Baseline 阶段采集并锁定。
-   * **Quart 剖面规范化**：选区覆盖的 3D Quart 区域维度为 `Q_W × Q_H × Q_D`，其中
-     `Q_W = ceil(W / 4)`、`Q_H = ceil(H / 4)`、`Q_D = ceil(D / 4)`；遍历顺序同样为 `Y → Z → X`。
+   * **Quart 剖面规范化**：选区覆盖的 3D Quart 区域维度为 `Q_W × Q_H × Q_D`。由于选区原点 `min_pos` 可能非 4 对齐，严格按实际覆盖的世界 Quart 范围计算：
+     ```
+     min_qx = min_x >> 2
+     max_qx = (min_x + size_x - 1) >> 2
+     Q_W    = max_qx - min_qx + 1
+     ```
+     同理定义 `Q_H` 与 `Q_D`；遍历顺序同样为 `Y → Z → X`。
    * **⚠️ Section-local 写入契约（v2.0 修复）**：
-     客户端在重建 `VoxelStorage` 时，必须把每个全局 Quart 锚点 `(wx, wy, wz)` 映射到
+     客户端在重建 `VoxelStorage` 时，必须把每个全局 Quart 序号 `(qx, qy, qz)` 映射到世界 Quart 并换算为
      **所在 16³ Section 的局部 Quart 索引**：
 
      ```
-     sec      = (wx >> 4, wy >> 4, wz >> 4)
-     sec_qx   = (wx >> 2) & 3
-     sec_qy   = (wy >> 2) & 3
-     sec_qz   = (wz >> 2) & 3
+     world_qx = min_qx + qx
+     world_qy = min_qy + qy
+     world_qz = min_qz + qz
+     sec      = (world_qx >> 2, world_qy >> 2, world_qz >> 2)
+     sec_qx   = world_qx & 3
+     sec_qy   = world_qy & 3
+     sec_qz   = world_qz & 3
      ```
 
-     **严禁**直接使用全局 Quart 序号 `qx & 3`。当 `min_pos` 不是 16 对齐时，后者会写入错误的
+     **严禁**使用 `size / 4` 粗略估算或直接使用局部 Quart 序号 `qx & 3`。当 `min_pos` 非 4 对齐或非 16 对齐时，后者会导致选区边缘 Quart 截断或写入错误的局部格点，引发状态哈希不匹配。
      Section 局部 Quart 单元，导致多生物群系大选区的 `state_hash` 必然失配、进度永久卡在 75%
      并陷入重同步循环（已由 `test_baseline_alignment.rs` 回归覆盖）。
 
