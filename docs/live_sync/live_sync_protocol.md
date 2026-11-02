@@ -166,14 +166,16 @@
      Section 局部 Quart 单元，导致多生物群系大选区的 `state_hash` 必然失配、进度永久卡在 75%
      并陷入重同步循环（已由 `test_baseline_alignment.rs` 回归覆盖）。
 
-### 3.2 伪代码计算规范 (xxHash64)
+### 3.2 伪代码计算规范 (xxHash64 - Sparse Canonical Version 0x02)
+
+为支持 0ms 零重建快速重连与 `.blend` 原生伴生点云（`_VoxelCloud`）指纹秒级比对，状态哈希采用稀疏非空气体素流规范编码（Version 0x02）。空气与虚空完全跳过，仅对非空气方块按规范顺序流式哈希：
 
 ```text
-function compute_canonical_state_hash(level, bounds, dimension_str) -> uint64:
+function compute_sparse_state_hash(level, bounds, dimension_str) -> uint64:
     hasher = xxHash64::new(seed = 0)
 
     // 1. 元信息标头
-    hasher.update([0x01])                         // Canonical Encoding Version: u8
+    hasher.update([0x02])                         // Sparse Canonical Encoding Version: u8
     hasher.update(u16_le(dimension_str.len()))
     hasher.update(dimension_str.utf8_bytes())
     hasher.update(i32_le(bounds.min_x))
@@ -183,28 +185,44 @@ function compute_canonical_state_hash(level, bounds, dimension_str) -> uint64:
     hasher.update(u32_le(bounds.size_y))
     hasher.update(u32_le(bounds.size_z))
 
-    // 2. 连续三维体素流 (X-fastest, Z-next, Y-slowest)
+    // 2. 稀疏三维非空气体素流 (X-fastest, Z-next, Y-slowest)
     for y from min_y to max_y - 1:
         for z from min_z to max_z - 1:
             for x from min_x to max_x - 1:
                 state_str = get_canonical_blockstate(level, x, y, z)
+                if state_str == "minecraft:air":
+                    continue
+
+                rel_x = u32(x - bounds.min_x)
+                rel_y = u32(y - bounds.min_y)
+                rel_z = u32(z - bounds.min_z)
+                hasher.update(u32_le(rel_x))
+                hasher.update(u32_le(rel_y))
+                hasher.update(u32_le(rel_z))
+
                 hasher.update(u16_le(state_str.len()))
                 hasher.update(state_str.utf8_bytes())
 
-    // 3. 连续 3D Quart 生物群系流 (4x4x4 降采样网格)
-    for qy from 0 to ceil(H / 4) - 1:
-        for qz from 0 to ceil(D / 4) - 1:
-            for qx from 0 to ceil(W / 4) - 1:
-                biome_str = get_canonical_quart_biome(level, qx, qy, qz)
+                biome_str = get_canonical_block_biome(level, x, y, z).trim()
+                if biome_str.is_empty():
+                    biome_str = "minecraft:plains"
                 hasher.update(u16_le(biome_str.len()))
                 hasher.update(biome_str.utf8_bytes())
+
+                entity_json = get_visual_block_entity_json(level, x, y, z)
+                if entity_json != null and not entity_json.trim().is_empty():
+                    hasher.update(u32_le(entity_json.len()))
+                    hasher.update(entity_json.utf8_bytes())
+                else:
+                    hasher.update(u32_le(0))
 
     return hasher.digest()
 ```
 
-> **实现注意**：服务端在扫描 Level 的原始数据上计算；客户端在组装完成的 `VoxelStorage` 上重算。
-> 两者必须使用完全一致的规范化字符串与 Quart 映射，否则会在 `BASELINE_END` 阶段报
-> `STATE_HASH_MISMATCH`。
+> **实现注意**：
+> 1. 服务端在扫描 Level 的原始数据上计算；客户端在组装完成的 `VoxelStorage` 或提取的伴生点云 `VoxelPointCloud` 上计算。
+> 2. `_VoxelCloud` 点云在比对前先按 `(Y, Z, X)` 顺序排序，确保由于网格点乱序提取不会破坏指纹确定性。
+> 3. 两端对非空气判断、字符串规范化（`normalize_canonical_blockstate`）、Quart 生物群系解析与方块实体 NBT JSON 序列化严格同构，保证 xxHash64 指纹位级一致。
 
 ---
 
@@ -307,14 +325,11 @@ Offset | Type     | Description
 > 2. 快速重连（`VERIFIED_SKIP_REBUILD`）依赖客户端持久化的 `mtk_sync_*` 属性。
 >    服务端在**任何方块变更 / 选区变更 / 选区清空**时都会把 `cachedStateHash` 置 0，
 >    因此“断线期间世界被修改”不会误触发跳过重建。
-> 3. **Blender 端不存在快速重连路径**：Rust 原生 `VoxelStorage` 尚未持久化到 `.blend`，
->    若在空存储上直接进入 `LIVE`，下一条 `DELTA_OP` 只会重构被修改方块所在区块，
->    导致视口网格被覆盖丢失。因此 Python 宿主侧的持久化握手代码
->    （`start_with_persisted_state` / `export_persisted_state_json` / `cached_state_json`）
->    与 `mtk-py::LiveSyncSession.start()` 的 `cached_*` 参数已**物理删除**：
->    Blender 永远发送 `cached_*` 全 0 的默认 HELLO 并请求全量基线。
->    `mtk-sync` 的 `LiveSyncSession::start_with_hello` 仍作为 Rust 宿主能力保留
->    （`tests/test_auth_token.rs` 覆盖），供将来具备持久化存储的宿主使用。启用前提见 §8 阶段 C。
+> 3. **Blender 端 0ms 零重建快速重连**：
+>    依托 `.blend` 内原生持久化的伴生点云网格（`_VoxelCloud`，存储离散点坐标、方块状态调色板、生物群系与方块实体），
+>    在重连时经由规范稀疏状态哈希（Sparse Canonical State Hash Version 0x02，仅对非空气方块按 (Y, Z, X) 序哈希）
+>    毫秒级校验一致性，直接恢复底层 `VoxelStorage` 内存拓扑，并携缓存元信息发送 `HELLO`。
+>    服务端匹配成功即返回 `0x00 VERIFIED_SKIP_REBUILD`，视口网格零重建直接复用，实现真正的 0ms 瞬间重连。
 
 ### 4.3 `0x03` BASELINE_BEGIN（全量基线元信息 S → C）
 
@@ -766,10 +781,10 @@ Blender 4.2+ / 5.0 的 C 内存布局规范：
    | `mtk_sync_state_hash` | String | `"0x" + 16 位 hex` |
    | `mtk_sync_user_modified` | bool | 用户是否手工修改过场景（默认 False，阻止快速跳过） |
 
-   这些字段是 RFC v3.1 快速重连的候选输入。**当前 Blender 端默认不把它们填入
-   `HELLO.cached_*`**，因为原生 `VoxelStorage` 未随 `.blend` 持久化；仅持久化
-   属性并不能让 Rust 侧在 `VERIFIED_SKIP_REBUILD` 后继续正确应用增量。
-   在实现 VoxelStorage 持久化/恢复之前，连接一律走全量基线（安全优先）。
+   这些字段随世界容器在 `.blend` 内原生持久化。Blender 在发起连接时：
+   首先通过子级 `_VoxelCloud` 提取点云并执行稀疏哈希校验；一致后通过
+   `session.load_from_point_cloud` 恢复原生 `VoxelStorage`，并调用 `start_with_cache`
+   将以上元信息填入 `HELLO.cached_*`。若校验不匹配或选区变化，则安全降级走全量基线。
 
 3. **快速重连失效规则（服务端）**：
    * 任何方块变更（`queueDeltaUpdate`）→ `cachedStateHash = 0`；

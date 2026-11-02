@@ -718,14 +718,20 @@ class MockLiveSyncServer:
         return blocks
 
     def update_state_hash(self) -> int:
-        """Calculates authoritative xxHash64 canonical state hash using libmtk_py core."""
-        blocks = self.get_canonical_blocks()
-        self.current_state_hash = libmtk_py.compute_canonical_state_hash(
-            self.origin[0], self.origin[1], self.origin[2],
-            self.size[0], self.size[1], self.size[2],
+        """Calculates authoritative xxHash64 canonical sparse state hash (RFC v3.2 0x02) using libmtk_py core."""
+        min_x, min_y, min_z = self.origin
+        size_x, size_y, size_z = self.size
+        storage = libmtk_py.VoxelStorage()
+        for y in range(min_y, min_y + size_y):
+            for z in range(min_z, min_z + size_z):
+                for x in range(min_x, min_x + size_x):
+                    block = self.grid.get_block(x - min_x, y - min_y, z - min_z)
+                    if block and block != "minecraft:air":
+                        storage.set_block(x, y, z, block)
+        self.current_state_hash = storage.compute_sparse_state_hash(
+            (min_x, min_y, min_z),
+            (size_x, size_y, size_z),
             "minecraft:overworld",
-            blocks,
-            None,
         )
         return self.current_state_hash
 

@@ -275,6 +275,24 @@ def _sync_timer_tick() -> Optional[float]:
             if is_ver:
                 _sync_prop("validation_info", msg or "100% in sync with scene")
                 _sync_prop("is_streaming", False)
+                try:
+                    storage = session.get_storage()
+                    if storage is not None:
+                        from ...utils.materials.biome.updater import (
+                            mark_world_biome,
+                            register_object_storage,
+                        )
+                        if mark_world_biome is not None:
+                            container_name = getattr(active_container, "name", "")
+                            if isinstance(container_name, str) and container_name:
+                                register_object_storage(container_name, storage)
+                                register_object_storage(f"{container_name}_Mesh", storage)
+                            container_id = active_container.get("mtk:container_id") if hasattr(active_container, "get") else None
+                            if isinstance(container_id, str) and container_id:
+                                register_object_storage(container_id, storage)
+                            mark_world_biome(active_container, storage)
+                except Exception as e:
+                    logger.debug("Failed registering storage on verified: %s", e)
             else:
                 _sync_prop("validation_info", f"Out of sync: {msg}" if msg else "Detected out-of-sync sections")
 
@@ -371,6 +389,36 @@ def _sync_timer_tick() -> Optional[float]:
         except Exception as e:
             logger.debug(f"Failed syncing voxel cloud on event: {e}")
 
+    if needs_voxel_sync and active_container is not None and session is not None:
+        try:
+            s_uuid = getattr(session, "server_uuid", "") or ""
+            s_hash = getattr(session, "state_hash", 0) or 0
+            if s_uuid and s_hash != 0:
+                _safe_set_custom_prop(active_container, "mtk_sync_server_uuid", s_uuid)
+                _safe_set_custom_prop(active_container, "mtk_sync_epoch", int(getattr(session, "current_epoch", 0)))
+                _safe_set_custom_prop(active_container, "mtk_sync_sequence", int(getattr(session, "current_sequence", 0)))
+                _safe_set_custom_prop(active_container, "mtk_sync_state_hash", f"0x{s_hash:016x}")
+                _safe_set_custom_prop(
+                    active_container,
+                    "mtk_sync_dimension",
+                    getattr(props, "dimension", "minecraft:overworld") or "minecraft:overworld",
+                )
+                _safe_set_custom_prop(
+                    active_container,
+                    "mtk_sync_bounds",
+                    [
+                        int(getattr(props, "min_x", 0)),
+                        int(getattr(props, "min_y", 0)),
+                        int(getattr(props, "min_z", 0)),
+                        int(getattr(props, "size_x", 0)),
+                        int(getattr(props, "size_y", 0)),
+                        int(getattr(props, "size_z", 0)),
+                    ],
+                )
+                logger.info("Persisted sync session state for container '%s' (hash: 0x%016x)", active_container.name, s_hash)
+        except Exception as e:
+            logger.debug("Failed persisting sync session state: %s", e)
+
     # Check debounced point cloud sync (only update if storage is fully populated to avoid wiping existing cloud)
     if _pending_cloud_sync_time is not None and time.time() >= _pending_cloud_sync_time:
         _pending_cloud_sync_time = None
@@ -383,6 +431,7 @@ def _sync_timer_tick() -> Optional[float]:
                 if storage_non_empty > 0 and (non_empty_count == 0 or storage_non_empty >= non_empty_count):
                     from ...utils.point_cloud import ensure_voxel_child_cloud
                     ensure_voxel_child_cloud(active_container, storage=storage, origin_centered=True, initial_hidden=True)
+                    _safe_set_custom_prop(active_container, "mtk_sync_sequence", int(getattr(session, "current_sequence", 0)))
                     logger.debug("Debounced voxel child cloud updated successfully")
                 else:
                     logger.debug(f"Skipping point cloud sync: sparse storage ({storage_non_empty}/{non_empty_count} sections)")
@@ -536,15 +585,82 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         except Exception as e:
             logger.debug("Failed configuring skin cache dir on connect: %s", e)
 
-        success = session.start(
-            url=url,
-            auto_reconnect=True,
-            max_reconnect_attempts=5,
-            model_db=model_db,
-            atlas=atlas,
-            biome_resolver=biome_resolver,
-            auth_token=(getattr(props, "auth_token", "") or None) if props else None,
-        )
+        # Check for 0ms instant reconnect capability
+        can_fast_reconnect = False
+        cached_uuid = _safe_get_custom_prop(target_obj, "mtk_sync_server_uuid", "")
+        cached_epoch = _safe_get_custom_prop(target_obj, "mtk_sync_epoch", 0)
+        cached_seq = _safe_get_custom_prop(target_obj, "mtk_sync_sequence", 0)
+        cached_hash_val = _safe_get_custom_prop(target_obj, "mtk_sync_state_hash", 0)
+        cached_dim = _safe_get_custom_prop(target_obj, "mtk_sync_dimension", "minecraft:overworld") or "minecraft:overworld"
+        cached_bounds = _safe_get_custom_prop(target_obj, "mtk_sync_bounds", None)
+
+        cached_hash = 0
+        if cached_hash_val:
+            try:
+                if isinstance(cached_hash_val, str):
+                    cached_hash = int(cached_hash_val, 16) if cached_hash_val.startswith("0x") else int(cached_hash_val)
+                elif isinstance(cached_hash_val, int):
+                    cached_hash = cached_hash_val
+            except Exception:
+                cached_hash = 0
+
+        min_pos = (0, 0, 0)
+        size = (0, 0, 0)
+        if cached_bounds and len(cached_bounds) == 6:
+            min_pos = (int(cached_bounds[0]), int(cached_bounds[1]), int(cached_bounds[2]))
+            size = (int(cached_bounds[3]), int(cached_bounds[4]), int(cached_bounds[5]))
+
+        from ...utils.point_cloud import get_associated_voxel_cloud
+        from ...bridge.point_cloud.extract import extract_voxel_point_cloud
+
+        cloud_obj = get_associated_voxel_cloud(target_obj)
+        point_cloud = None
+        if cloud_obj is not None and cached_uuid and cached_hash != 0 and size[0] > 0 and size[1] > 0 and size[2] > 0:
+            try:
+                point_cloud = extract_voxel_point_cloud(cloud_obj)
+                if point_cloud is not None and hasattr(point_cloud, "compute_sparse_state_hash"):
+                    computed_hash = point_cloud.compute_sparse_state_hash(min_pos, size, cached_dim)
+                    if computed_hash == cached_hash:
+                        can_fast_reconnect = True
+                        logger.info("0ms instant reconnect: Point cloud state hash verified (0x%016x)", computed_hash)
+                    else:
+                        logger.info(
+                            "Point cloud hash mismatch (0x%016x != 0x%016x), falling back to full baseline",
+                            computed_hash,
+                            cached_hash,
+                        )
+            except Exception as e:
+                logger.debug("Failed computing point cloud sparse hash for fast reconnect: %s", e)
+                can_fast_reconnect = False
+
+        if can_fast_reconnect and point_cloud is not None:
+            success = session.start_with_cache(
+                url=url,
+                auto_reconnect=True,
+                max_reconnect_attempts=5,
+                server_uuid=cached_uuid,
+                epoch=int(cached_epoch),
+                sequence=int(cached_seq),
+                min_pos=min_pos,
+                size=size,
+                state_hash=cached_hash,
+                dimension=cached_dim,
+                point_cloud=point_cloud,
+                model_db=model_db,
+                atlas=atlas,
+                biome_resolver=biome_resolver,
+                auth_token=(getattr(props, "auth_token", "") or None) if props else None,
+            )
+        else:
+            success = session.start(
+                url=url,
+                auto_reconnect=True,
+                max_reconnect_attempts=5,
+                model_db=model_db,
+                atlas=atlas,
+                biome_resolver=biome_resolver,
+                auth_token=(getattr(props, "auth_token", "") or None) if props else None,
+            )
 
         if not success:
             err = session.last_error or "Check system console for details"

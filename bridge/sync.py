@@ -130,6 +130,20 @@ class SyncBridgeSession:
             return int(self._session.current_epoch)
         return 0
 
+    @property
+    def state_hash(self) -> int:
+        """Server-confirmed canonical state hash from native session."""
+        if self._session is not None:
+            return int(self._session.state_hash)
+        return 0
+
+    @property
+    def server_uuid(self) -> str:
+        """Server UUID in hex format."""
+        if self._session is not None:
+            return str(self._session.server_uuid)
+        return ""
+
     def start(
         self,
         url: str = "ws://127.0.0.1:8765",
@@ -255,6 +269,156 @@ class SyncBridgeSession:
         except Exception as e:
             self._last_error = str(e)
             logger.error(f"Failed to start LiveSyncSession: {e}")
+            self._session = None
+            self._is_active = False
+            self._is_connected = False
+            self._connection_status = "DISCONNECTED"
+            return False
+
+    def load_from_point_cloud(self, point_cloud: Any) -> bool:
+        """Restores voxel storage in the native session from an existing point cloud without re-meshing."""
+        if self._session is not None and hasattr(self._session, "load_from_point_cloud"):
+            try:
+                self._session.load_from_point_cloud(point_cloud)
+                return True
+            except Exception as e:
+                logger.error("Failed loading from point cloud: %s", e)
+        return False
+
+    def start_with_cache(
+        self,
+        url: str = "ws://127.0.0.1:8765",
+        auto_reconnect: bool = True,
+        max_reconnect_attempts: int = 5,
+        server_uuid: str = "",
+        epoch: int = 0,
+        sequence: int = 0,
+        min_pos: tuple[int, int, int] = (0, 0, 0),
+        size: tuple[int, int, int] = (0, 0, 0),
+        state_hash: int = 0,
+        dimension: str = "minecraft:overworld",
+        point_cloud: Optional[Any] = None,
+        model_db: Optional[Any] = None,
+        atlas: Optional[Any] = None,
+        enable_ao: bool = True,
+        mesh_fluids: bool = True,
+        biome_resolver: Optional[Any] = None,
+        custom_aliases: Optional[Any] = None,
+        num_threads: Optional[int] = None,
+        auth_token: Optional[str] = None,
+    ) -> bool:
+        """
+        Starts the LiveSync client using cached handshake parameters for 0ms zero-rebuild reconnect.
+        Restores VoxelStorage from `point_cloud` if provided.
+        """
+        mtk = get_libmtk()
+        if mtk is None or not hasattr(mtk, "LiveSyncSession"):
+            self._last_error = "Native libmtk_py core is not available."
+            logger.error("Cannot start Live Sync: native libmtk_py core is not available.")
+            return False
+
+        self.stop()
+        self._last_error = ""
+
+        auth_token = (auth_token or "").strip() or None
+
+        self._model_db = model_db
+        self._atlas = atlas
+        self._biome_resolver = biome_resolver
+        self._custom_aliases = custom_aliases
+        self._config_params = {
+            "enable_ao": enable_ao,
+            "mesh_fluids": mesh_fluids,
+            "num_threads": num_threads,
+        }
+        self._cached_manifest_fingerprint = get_cache_fingerprint()
+        self._cached_manifest_timestamp = get_cache_timestamp()
+        self._current_url = url
+
+        prefs = None
+        try:
+            from ..utils.system import get_prefs
+            prefs = get_prefs()
+        except Exception:
+            prefs = None
+
+        if num_threads is None and prefs is not None:
+            num_threads = getattr(prefs, "thread_count", 0) or None
+
+        ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
+
+        try:
+            config_kwargs = {
+                "enable_ao": enable_ao,
+                "mesh_fluids": mesh_fluids,
+                "z_up_coordinates": True,
+                "origin_centered": True,
+                "weld_vertices": True,
+                "num_threads": num_threads,
+                "atlas": atlas,
+                "biome_resolver": biome_resolver,
+                "custom_aliases": custom_aliases,
+            }
+            if ctm_solver is not None:
+                config_kwargs["ctm_solver"] = ctm_solver
+            config = mtk.MesherConfig(**config_kwargs)
+
+            def _start_cached_native(session: Any) -> None:
+                if point_cloud is not None and hasattr(session, "load_from_point_cloud"):
+                    session.load_from_point_cloud(point_cloud)
+                session.start_with_cache(
+                    url=url,
+                    auto_reconnect=auto_reconnect,
+                    max_reconnect_attempts=max_reconnect_attempts,
+                    server_uuid=server_uuid,
+                    epoch=epoch,
+                    sequence=sequence,
+                    min_pos=min_pos,
+                    size=size,
+                    state_hash=state_hash,
+                    dimension=dimension,
+                    auth_token=auth_token,
+                )
+
+            if self._session is not None:
+                try:
+                    self._session.hot_reload(config, model_db)
+                    if self._skin_cache_dir:
+                        try:
+                            self._session.set_skin_cache_dir(self._skin_cache_dir)
+                        except Exception as e:
+                            logger.debug("Failed setting skin cache dir on hot reload: %s", e)
+                    _start_cached_native(self._session)
+                    self._is_active = True
+                    self._is_connected = False
+                    self._connection_status = "CONNECTING..."
+                    logger.info("Reused existing LiveSyncSession connecting with cache to %s", url)
+                    return True
+                except Exception as e:
+                    logger.debug("Failed reusing existing session for start_with_cache, creating new: %s", e)
+                    self._session = None
+
+            culler = mtk.FaceCuller()
+            self._session = mtk.LiveSyncSession(
+                config=config,
+                culler=culler,
+                model_db=model_db,
+            )
+            if self._skin_cache_dir:
+                try:
+                    self._session.set_skin_cache_dir(self._skin_cache_dir)
+                except Exception as e:
+                    logger.debug("Failed setting skin cache dir on new session: %s", e)
+
+            _start_cached_native(self._session)
+            self._is_active = True
+            self._is_connected = False
+            self._connection_status = "CONNECTING..."
+            logger.info("LiveSyncSession started with cache connecting to %s", url)
+            return True
+        except Exception as e:
+            self._last_error = str(e)
+            logger.error("Failed to start LiveSyncSession with cache: %s", e)
             self._session = None
             self._is_active = False
             self._is_connected = False
