@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional, Union
 
 from .backends.base import ConfigBackend
 from .backends.json_backend import JsonConfigBackend
-from .backends.blender_backend import BlenderPreferencesConfigBackend
 from .backends.memory_backend import MemoryConfigBackend
 from .models import (
     ConfigData,
@@ -89,14 +88,10 @@ class ConfigManager:
                 self._cache = self._backend.load()
 
     def switch_backend_by_name(self, name: str, migrate_data: bool = True) -> ConfigBackend:
-        """Switch backend by string identifier ('JSON', 'BLENDER_PREFS', 'MEMORY')."""
+        """Switch backend by string identifier ('JSON', 'MEMORY')."""
         with self._lock:
             name_upper = name.strip().upper()
-            if name_upper == "JSON":
-                new_backend = JsonConfigBackend()
-            elif name_upper in {"BLENDER_PREFS", "BLENDER", "PREFERENCES"}:
-                new_backend = BlenderPreferencesConfigBackend()
-            elif name_upper in {"MEMORY", "TEST"}:
+            if name_upper in {"MEMORY", "TEST"}:
                 new_backend = MemoryConfigBackend()
             else:
                 new_backend = JsonConfigBackend()

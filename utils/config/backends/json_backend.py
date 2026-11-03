@@ -38,10 +38,61 @@ class JsonConfigBackend(ConfigBackend):
     def backend_name(self) -> str:
         return "JSON"
 
+    def _migrate_legacy_config_if_needed(self, config_dir: Path) -> Path:
+        """
+        Migrate legacy context_menus.json to config.json if needed.
+
+        Rules:
+        - If config.json already exists: use config.json directly (no migration).
+        - If context_menus.json exists and config.json does not exist:
+          rewrite context_menus.json into config.json (with backup) and remove legacy file.
+        - If neither exists: use config.json.
+        """
+        target_path = config_dir / "config.json"
+        legacy_path = config_dir / "context_menus.json"
+
+        # If config.json already exists, use it directly without migration.
+        if target_path.exists():
+            return target_path
+
+        # If context_menus.json exists and config.json does not exist:
+        if legacy_path.exists():
+            try:
+                data = self._load_json_dict(legacy_path)
+                legacy_bak = legacy_path.with_suffix(legacy_path.suffix + ".bak")
+                if data is None and legacy_bak.exists():
+                    data = self._load_json_dict(legacy_bak)
+
+                if data is not None:
+                    # Write to target_path atomically
+                    self._atomic_write_json(target_path, data)
+                    # Also write target backup
+                    target_bak = target_path.with_suffix(target_path.suffix + ".bak")
+                    self._atomic_write_json(target_bak, data)
+                    logger.info("Migrated legacy configuration from %s to %s", legacy_path, target_path)
+
+                # Remove legacy files
+                try:
+                    legacy_path.unlink(missing_ok=True)
+                except OSError as e:
+                    logger.warning("Failed to remove legacy config file %s: %s", legacy_path, e)
+
+                if legacy_bak.exists():
+                    try:
+                        legacy_bak.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            except Exception as e:
+                logger.error("Error during legacy config migration: %s", e, exc_info=True)
+
+        return target_path
+
     def get_config_path(self) -> Path:
-        """Return path to JSON configuration file."""
+        """Return path to JSON configuration file, performing legacy migration if needed."""
         if self._custom_path:
             self._custom_path.parent.mkdir(parents=True, exist_ok=True)
+            if self._custom_path.name == "context_menus.json":
+                return self._migrate_legacy_config_if_needed(self._custom_path.parent)
             return self._custom_path
 
         env_dir = os.environ.get("MOZI_CONFIG_DIR")
@@ -54,7 +105,7 @@ class JsonConfigBackend(ConfigBackend):
                 config_dir = Path.home() / ".config" / "blender" / "MoziToolKit"
 
         config_dir.mkdir(parents=True, exist_ok=True)
-        return config_dir / "context_menus.json"
+        return self._migrate_legacy_config_if_needed(config_dir)
 
     def _atomic_write_json(self, filepath: Path, data: dict) -> None:
         """Durably replace a JSON file without ever exposing a partial document."""

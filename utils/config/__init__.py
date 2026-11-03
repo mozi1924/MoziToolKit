@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Union
 from .backends import (
     ConfigBackend,
     JsonConfigBackend,
-    BlenderPreferencesConfigBackend,
     MemoryConfigBackend,
 )
 from .models import (
@@ -125,7 +124,6 @@ __all__ = [
     "get_config_path",
     "ConfigBackend",
     "JsonConfigBackend",
-    "BlenderPreferencesConfigBackend",
     "MemoryConfigBackend",
     "ConfigData",
     "PackEntry",

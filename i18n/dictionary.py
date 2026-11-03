@@ -204,6 +204,7 @@ translations_dict = {
         ('*', 'Colormap Sampling (Climate)'): '气候采样 (Colormap 贴图)',
         ('*', 'Combine all textures into a single texture atlas material'): '将所有纹理合并为单一 Atlas 图集材质',
         ('*', 'Combine all textures into a single texture atlas material (Default)'): '将所有纹理合并为单一 Atlas 图集材质 (默认)',
+        ('*', 'Configuration Storage:'): '配置持久化：',
         ('*', 'Configuration Storage Backend:'): '配置持久化后端：',
         ('*', 'Configure LabPBR shading, render engine adaptations, transmission, and thin wall'): '配置 LabPBR 着色、渲染引擎自适应、物理透射与植物薄壁',
         ('*', 'Configure right-click context menu options'): '配置 3D 视图与 UV 编辑器的右键上下文菜单项',

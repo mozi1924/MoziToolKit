@@ -53,10 +53,9 @@ graph TD
 
 ### 2.1 架构与多后端解耦 (`utils/config/`)
 - **`ConfigManager`** 单例门面（Facade）：维护全局 `_lock = threading.RLock()`，保证进程内所有 UI 属性变动、异步线程与后台任务对配置的读写绝对串行化。
-- **插拔式存储后端 (`utils/config/backends/`)**：
-  - **`JsonBackend` (`json_backend.py`)**：生产默认后端，持久化至 Blender 用户配置目录下的 `mozitoolkit_config.json`。
-  - **`MemoryBackend` (`memory_backend.py`)**：全内存沙盒，用于单元测试与无头沙盒隔离。
-  - **`BlenderBackend` (`blender_backend.py`)**：与 Blender 原生 `AddonPreferences` 属性组保持双向状态同步。
+- **单一权威存储后端 (`utils/config/backends/`)**：
+  - **`JsonBackend` (`json_backend.py`)**：生产唯一权威后端，持久化至 Blender 用户配置目录下的 `config.json`（自动迁移旧版 `context_menus.json` 并删除旧文件），由 `MOZI_AddonPreferences` 充当 UI 控制器。
+  - **`MemoryBackend` (`memory_backend.py`)**：全内存沙盒，专供单元测试与无头沙盒隔离。
 
 ### 2.2 防丢失写入与原子发布契约 (Atomic Publication & Fallback)
 1. **原子写入与崩溃防护**：

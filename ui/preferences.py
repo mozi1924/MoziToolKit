@@ -71,7 +71,6 @@ from .preferences_menus import (
 __all__ = [
     "refresh_ui_and_menus",
     "_safe_get_prefs",
-    "on_backend_type_changed",
     "on_material_setting_changed",
     "on_item_label_changed",
     "reorder_resource_packs_by_tier",
@@ -134,25 +133,7 @@ def _safe_get_prefs(self_or_context=None):
     return None
 
 
-_is_switching_backend = False
 _is_updating_material_settings = False
-
-
-def on_backend_type_changed(self, context):
-    """Callback when storage backend type is switched in preferences UI."""
-    global _is_switching_backend
-    if _is_switching_backend or get_config_manager().is_syncing():
-        return
-    _is_switching_backend = True
-    try:
-        prefs = _safe_get_prefs(self)
-        if prefs and hasattr(prefs, "backend_type"):
-            mgr = get_config_manager()
-            mgr.switch_backend_by_name(prefs.backend_type, migrate_data=True)
-            mgr.sync_to_preferences(prefs)
-            refresh_ui_and_menus(context)
-    finally:
-        _is_switching_backend = False
 
 
 def on_material_setting_changed(self, context):
@@ -211,20 +192,9 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
             ("RESOURCE_PACKS", "Resource Packs & Base JARs", "Manage prioritized resource packs, Minecraft vanilla JARs, and mod JARs for fallback and texture/model baking"),
             ("MATERIAL", "Material & Shading", "Configure standard PBR shading and subsurface options"),
             ("CONTEXT_MENU", "Context Menu Presets", "Configure right-click context menu options"),
-            ("MISC", "Performance & Storage", "Storage backend, worker thread concurrency, and persistent cache settings"),
+            ("MISC", "Performance & Storage", "Worker thread concurrency, direct memory acceleration, and cache settings"),
         ],
         default="RESOURCE_PACKS",
-    )
-
-    backend_type: EnumProperty(
-        name="Storage Backend",
-        description="Choose where addon configuration is stored and persisted",
-        items=[
-            ("JSON", "JSON File Backend", "Persist to independent JSON file with atomic writes, backups, and export/import support (Default)"),
-            ("BLENDER_PREFS", "Blender Preferences Backend", "Persist directly into Blender's user preferences file (userpref.blend)"),
-        ],
-        default="JSON",
-        update=on_backend_type_changed,
     )
 
     resource_packs: CollectionProperty(type=MOZI_PG_resource_pack_entry)
@@ -361,9 +331,6 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         if not self.is_initialized:
             mgr = get_config_manager()
             mgr.sync_to_preferences(self)
-            b_name = mgr.get_backend().backend_name
-            if b_name in {"JSON", "BLENDER_PREFS"}:
-                self.backend_type = b_name
             self.is_initialized = True
             # Lazily classify pre-existing entries (non-blocking, debounced off the main thread).
             schedule_pending_pack_detection(self)
@@ -675,23 +642,19 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
 
     def draw_misc(self, layout, context):
         from ..i18n import tr
-        # Configuration Backend Selector Box
-        backend_box = layout.box()
-        b_header = backend_box.row(align=True)
-        b_header.label(text=tr("Configuration Storage Backend:"), icon="PREFERENCES")
-        backend_row = backend_box.row(align=True)
-        backend_row.prop(self, "backend_type", expand=True)
+        # Configuration Storage Info Box
+        config_box = layout.box()
+        c_header = config_box.row(align=True)
+        c_header.label(text=tr("Configuration Storage:"), icon="PREFERENCES")
 
-        b_desc = backend_box.column(align=True)
-        b_desc.scale_y = 0.85
-        if self.backend_type == "JSON":
-            mgr = get_config_manager()
-            from ..utils.config.backends.json_backend import JsonConfigBackend
-            path_str = mgr.get_backend().get_config_path() if isinstance(mgr.get_backend(), JsonConfigBackend) else "context_menus.json"
-            b_desc.label(text=f"{tr('Active File')}: {path_str}")
-            b_desc.label(text=tr("Changes are atomically written to external JSON file with automatic backup."))
-        else:
-            b_desc.label(text=tr("Saved directly inside Blender's default user preferences (userpref.blend)."))
+        c_desc = config_box.column(align=True)
+        c_desc.scale_y = 0.85
+        mgr = get_config_manager()
+        backend = mgr.get_backend()
+        from ..utils.config.backends.json_backend import JsonConfigBackend
+        path_str = backend.get_config_path() if isinstance(backend, JsonConfigBackend) else "config.json"
+        c_desc.label(text=f"{tr('Active File')}: {path_str}")
+        c_desc.label(text=tr("Changes are atomically written to external JSON file with automatic backup."))
 
         layout.separator()
 

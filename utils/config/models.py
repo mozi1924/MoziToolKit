@@ -207,7 +207,7 @@ class ConfigData:
     """Full MoziToolKit root configuration data model."""
 
     version: int = 1
-    backend_type: str = "JSON"  # JSON | BLENDER_PREFS | MEMORY
+    backend_type: str = "JSON"  # JSON | MEMORY
     views: Dict[str, List[MenuItem]] = field(default_factory=get_default_menu_views)
     resource_packs: List[PackEntry] = field(default_factory=list)
     material_settings: MaterialSettings = field(default_factory=MaterialSettings)

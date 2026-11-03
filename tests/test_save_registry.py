@@ -80,7 +80,7 @@ class TestSaveRegistryManager(unittest.TestCase):
         self.assertEqual(info["level_name"], "EndWorld")
 
     def test_aligned_with_context_menus_dir(self):
-        """Verifies default registry path resides in same directory as context_menus.json."""
+        """Verifies default registry path resides in same directory as config.json."""
         import os
         from MoziToolKit.utils.config.backends.json_backend import JsonConfigBackend
         with tempfile.TemporaryDirectory() as env_tmp:
@@ -96,7 +96,7 @@ class TestSaveRegistryManager(unittest.TestCase):
                 # Both files must reside in the exact same directory!
                 self.assertEqual(menu_path.parent, registry_path.parent)
                 self.assertEqual(registry_path.name, "save_registry.json")
-                self.assertEqual(menu_path.name, "context_menus.json")
+                self.assertEqual(menu_path.name, "config.json")
             finally:
                 if old_env is not None:
                     os.environ["MOZI_CONFIG_DIR"] = old_env

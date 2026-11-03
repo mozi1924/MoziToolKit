@@ -17,7 +17,7 @@ class ConfigBackend(ABC):
     @property
     @abstractmethod
     def backend_name(self) -> str:
-        """Human-readable name of the backend (e.g. 'JSON', 'BLENDER_PREFS', 'MEMORY')."""
+        """Human-readable name of the backend (e.g. 'JSON', 'MEMORY')."""
         pass
 
     @abstractmethod

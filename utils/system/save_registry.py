@@ -3,7 +3,7 @@ MoziToolKit Local Privacy Save Registry Manager.
 
 Manages local Minecraft save directory mappings securely in the user's local
 application config directory (CONFIG/MoziToolKit/save_registry.json), aligned
-with right-click menu configuration (context_menus.json).
+with right-click menu and system configuration (config.json).
 
 Guarantees that sensitive local filesystem paths (e.g. /Users/username/...)
 are NEVER saved into portable .blend scene files, storing only an anonymous
