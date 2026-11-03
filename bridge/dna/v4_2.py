@@ -44,7 +44,7 @@ class DnaResolverV42(BaseDnaResolver):
         self, mesh: Any, expected_count: Optional[int] = None
     ) -> Optional[int]:
         """Resolves pointer for the vertex 'position' attribute layer."""
-        if mesh is None or not hasattr(mesh, "attributes"):
+        if mesh is None or not hasattr(mesh, "attributes") or not hasattr(mesh.attributes, "get"):
             return None
 
         pos_attr = mesh.attributes.get("position")
@@ -58,7 +58,7 @@ class DnaResolverV42(BaseDnaResolver):
         self, mesh: Any, expected_count: Optional[int] = None
     ) -> Optional[int]:
         """Resolves pointer for the '.corner_vert' loop attribute layer."""
-        if mesh is None or not hasattr(mesh, "attributes"):
+        if mesh is None or not hasattr(mesh, "attributes") or not hasattr(mesh.attributes, "get"):
             return None
 
         cvert_attr = mesh.attributes.get(".corner_vert")
@@ -75,7 +75,7 @@ class DnaResolverV42(BaseDnaResolver):
         expected_count: Optional[int] = None,
     ) -> Optional[int]:
         """Resolves pointer for the active or named Loop UV layer."""
-        if mesh is None or not hasattr(mesh, "attributes"):
+        if mesh is None or not hasattr(mesh, "attributes") or not hasattr(mesh.attributes, "get"):
             return None
 
         target_name = uv_name
@@ -92,13 +92,38 @@ class DnaResolverV42(BaseDnaResolver):
 
         return None
 
+    def resolve_polygons_offset_ptr(
+        self, mesh: Any, expected_count: Optional[int] = None
+    ) -> Optional[int]:
+        """Resolves pointer for the face_offset_indices CSR layer (MeshPolygon array)."""
+        if mesh is None or not hasattr(mesh, "polygons"):
+            return None
+
+        polys = mesh.polygons
+        if len(polys) == 0:
+            return None
+
+        if expected_count is not None and len(polys) != expected_count:
+            return None
+
+        try:
+            return safe_as_pointer(polys[0], required_align=4)
+        except (IndexError, AttributeError, RuntimeError) as e:
+            logger.debug("Failed to resolve polygons offset pointer: %s", e)
+            return None
+
     def resolve_materials_ptr(
         self, mesh: Any, expected_count: Optional[int] = None
     ) -> Optional[int]:
-        """
-        Polygon material indices are intentionally deferred to Phase 2 standard BPy foreach_set.
-        Prevents CustomData corruption and ensures cross-version stability.
-        """
+        """Resolves pointer for the face 'material_index' attribute layer."""
+        if mesh is None or not hasattr(mesh, "attributes") or not hasattr(mesh.attributes, "get"):
+            return None
+
+        mat_attr = mesh.attributes.get("material_index")
+        if mat_attr is not None:
+            if expected_count is None or len(mat_attr.data) == expected_count:
+                return self.resolve_attribute_ptr(mat_attr, required_align=4)
+
         return None
 
     def resolve_colors_ptr(
@@ -145,7 +170,7 @@ class DnaResolverV42(BaseDnaResolver):
             "entity_idx_ptr": None,
             "light_ptr": None,
         }
-        if cloud_data is None or not hasattr(cloud_data, "attributes"):
+        if cloud_data is None or not hasattr(cloud_data, "attributes") or not hasattr(cloud_data.attributes, "get"):
             return res
 
         attrs = cloud_data.attributes

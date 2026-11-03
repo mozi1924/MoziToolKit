@@ -46,6 +46,13 @@ class BaseDnaResolver(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def resolve_polygons_offset_ptr(
+        self, mesh: Any, expected_count: Optional[int] = None
+    ) -> Optional[int]:
+        """Resolves the memory pointer for polygon CSR face offset indices (`int32`)."""
+        raise NotImplementedError
+
+    @abstractmethod
     def resolve_materials_ptr(
         self, mesh: Any, expected_count: Optional[int] = None
     ) -> Optional[int]:

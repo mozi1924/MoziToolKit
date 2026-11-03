@@ -36,7 +36,7 @@ from .constants import (
     ensure_attr,
 )
 from .dna import inject_point_cloud_dna
-from .extract import extract_voxel_point_cloud
+from .extract import extract_voxel_point_cloud, extract_voxel_point_cloud_dna
 from .standard import inject_point_cloud_standard
 
 logger = logging.getLogger("MoziToolKit.Bridge.PointCloud")
@@ -162,5 +162,6 @@ __all__ = [
     "PROP_BLOCK_PALETTE",
     "VOXEL_VERTEX_GROUP",
     "extract_voxel_point_cloud",
+    "extract_voxel_point_cloud_dna",
     "inject_voxel_point_cloud",
 ]

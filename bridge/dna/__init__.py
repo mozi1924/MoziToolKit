@@ -78,6 +78,11 @@ def resolve_loop_uvs_ptr(
     )
 
 
+def resolve_polygons_offset_ptr(mesh: Any, expected_count: Optional[int] = None) -> Optional[int]:
+    """Resolves raw memory pointer for polygon CSR face offset indices."""
+    return get_dna_resolver().resolve_polygons_offset_ptr(mesh, expected_count=expected_count)
+
+
 def resolve_materials_ptr(mesh: Any, expected_count: Optional[int] = None) -> Optional[int]:
     """Resolves raw memory pointer for polygon material indices."""
     return get_dna_resolver().resolve_materials_ptr(mesh, expected_count=expected_count)
@@ -120,6 +125,7 @@ __all__ = [
     "resolve_loop_uvs_ptr",
     "resolve_materials_ptr",
     "resolve_point_cloud_ptrs",
+    "resolve_polygons_offset_ptr",
     "resolve_positions_ptr",
     "safe_as_pointer",
     "set_dna_enabled",

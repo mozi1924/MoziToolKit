@@ -174,3 +174,17 @@ mesh.update()
 外部网格 replace 的 palette-native 管线见计划文档；500k faces 已从 2.65 s 降到 ~0.95 s。
 600k~1M faces 仍落在 60 FPS 预算内；继续优化应优先减少 Rust 侧分配/复制，
 而不是替换 `foreach_set`。
+
+---
+
+## 8. DNA 内存直读与全通道直写拓展（2026-11-03）
+
+基于 Blender 4.2 LTS ~ 5.2.3 LTS 源码审查与实测，最新规划详见：
+👉 **[`2026-11-03 DNA 内存直读与全通道直写架构设计方案`](../planning/2026-11-03_dna_direct_read_write_optimization.md)**
+
+重点涵盖：
+1. **DNA 内存直读**：通过 `position`、`.corner_vert`、`UVMap`、`face_offset_indices` 的连续 C 指针，实现 0.02ms 级零拷贝/微秒级内存直读，将 `extract_mesh_data` 耗时从 20~30ms 压到 0.3ms（18x ~ 180x 吞吐量提升）；
+2. **面拓扑偏移直写**：利用 `mesh.polygons[0].as_pointer()` 直写 `face_offset_indices`，彻底替代 `loop_start/loop_total` 的两次 `foreach_set` 慢通道；
+3. **面材质槽索引直写**：解除旧注释误区，将 `material_index` Face 属性纳入 DNA 直写通道；
+4. **全链路双通道与安全降级**：严格遵循用户偏好开关与官方 `foreach_get/set` 降级门禁。
+

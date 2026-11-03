@@ -19,6 +19,8 @@ from ..dna import (
     resolve_colors_ptr,
     resolve_corner_verts_ptr,
     resolve_loop_uvs_ptr,
+    resolve_materials_ptr,
+    resolve_polygons_offset_ptr,
     resolve_positions_ptr,
 )
 from ..engine import get_libmtk_dna
@@ -107,8 +109,25 @@ def inject_topology_dna(
     if not shade_smooth:
         mesh.polygons.foreach_set("use_smooth", b"\x00" * poly_count)
 
-    mesh.polygons.foreach_set("loop_start", np.arange(0, total_loops, stride, dtype=np.int32))
-    mesh.polygons.foreach_set("loop_total", np.full(poly_count, stride, dtype=np.int32))
+    offset_ptr = resolve_polygons_offset_ptr(mesh, expected_count=poly_count)
+    offset_copied = False
+    if offset_ptr is not None:
+        try:
+            offsets = np.arange(0, total_loops + stride, stride, dtype=np.int32)
+            blender_dna.copy_i32(
+                _byte_view(offsets),
+                offset_ptr,
+                poly_count + 1,
+                max_bytes=(poly_count + 1) * 4,
+            )
+            offset_copied = True
+        except Exception as e:
+            logger.debug("DNA direct polygon offset copy failed: %s", e)
+
+    if not offset_copied:
+        mesh.polygons.foreach_set("loop_start", np.arange(0, total_loops, stride, dtype=np.int32))
+        mesh.polygons.foreach_set("loop_total", np.full(poly_count, stride, dtype=np.int32))
+
     return True
 
 
@@ -141,38 +160,71 @@ def inject_vertex_positions_dna(mesh: Any, mesh_data: Any) -> bool:
 
 
 def inject_vertex_normals_dna(mesh: Any, mesh_data: Any) -> bool:
-    """Injects vertex normals via direct memory pointer write."""
+    """
+    Direct vertex normals injection stub.
+
+    In Blender 4.2+, point-domain normals are evaluated dynamically by the
+    evaluation graph and not stored as a writable CustomData layer. Custom
+    normals must be written via split corner normals or standard channels.
+    Returns False immediately to trigger official safe-path handling with zero overhead.
+    """
+    _ = (mesh, mesh_data)
+    return False
+
+
+def inject_face_materials_dna(mesh: Any, mesh_data: Any) -> bool:
+    """
+    Directly injects polygon material indices via hardware-accelerated memory write.
+    Returns True if successfully written, or False if safe-path fallback is required.
+    """
     blender_dna = get_libmtk_dna()
     if blender_dna is None or not is_dna_enabled():
         return False
 
-    v_count = getattr(mesh_data, "vertex_count", 0)
-    if v_count == 0 or not hasattr(mesh, "attributes"):
+    num_polys = len(getattr(mesh, "polygons", []))
+    if num_polys == 0:
+        return True
+
+    mats_mv = getattr(mesh_data, "face_materials_memoryview", lambda: None)()
+    if mats_mv is None:
+        used = getattr(mesh_data, "used_materials", lambda: None)()
+        if used and len(used) == 1 and used[0] != 0:
+            val = int(used[0])
+            mats_mv = np.full(num_polys, val, dtype=np.int32)
+        else:
+            return False
+
+    if len(mats_mv) != num_polys:
+        # Triangulated quad expansion or count mismatch: fall back to standard
         return False
 
-    norm_attr = mesh.attributes.get("normal")
-    if norm_attr is None or len(norm_attr.data) != v_count:
-        return False
+    # Blender material_index is 32-bit integer; MeshData.face_materials is uint16.
+    if getattr(mats_mv, "itemsize", 4) != 4 or getattr(mats_mv, "format", "") != "i":
+        mats_mv = np.asarray(mats_mv, dtype=np.int32)
 
-    p0 = getattr(norm_attr.data[0], "as_pointer", None)
-    if p0 is None:
+    # Ensure material_index attribute exists on mesh
+    mat_attr = mesh.attributes.get("material_index") if hasattr(mesh, "attributes") else None
+    if mat_attr is None and hasattr(mesh, "attributes") and hasattr(mesh.attributes, "new"):
+        try:
+            mat_attr = mesh.attributes.new(name="material_index", type="INT", domain="FACE")
+        except Exception as e:
+            logger.debug("Failed creating material_index attribute: %s", e)
+
+    mat_ptr = resolve_materials_ptr(mesh, expected_count=num_polys)
+    if mat_ptr is None:
         return False
 
     try:
-        norm_ptr = p0()
-        if norm_ptr == 0:
-            return False
-        blender_dna.copy_f32(
-            _byte_view(mesh_data.normals_memoryview()),
-            norm_ptr,
-            v_count * 3,
-            max_bytes=v_count * 12,
+        blender_dna.copy_i32(
+            _byte_view(mats_mv),
+            mat_ptr,
+            num_polys,
+            max_bytes=num_polys * 4,
         )
         return True
     except Exception as e:
-        logger.debug("DNA direct copy normals failed: %s", e)
-
-    return False
+        logger.debug("DNA direct copy face materials failed: %s", e)
+        return False
 
 
 def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = None) -> bool:

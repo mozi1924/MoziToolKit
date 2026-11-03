@@ -36,12 +36,13 @@ from .constants import (
 )
 from .dna import (
     inject_color_attributes_dna,
+    inject_face_materials_dna,
     inject_topology_dna,
     inject_uvs_dna,
     inject_vertex_normals_dna,
     inject_vertex_positions_dna,
 )
-from .extract import extract_mesh_data
+from .extract import extract_mesh_data, extract_mesh_data_dna
 from .topology import analyze_mesh_hard_edges
 from .standard import (
     inject_color_attributes_standard,
@@ -160,10 +161,15 @@ def inject_mesh_data(
     if not col_injected:
         inject_color_attributes_standard(mesh, mesh_data)
 
-    # Face materials: always use the standard RNA path. Blender stores material
-    # indices as a narrow integer inside its polygon struct; DNA-direct writes
-    # would need a version-specific layout contract for no measurable gain.
-    inject_face_materials_standard(mesh, mesh_data)
+    # Face materials injection (Fast-Path DNA direct write, Safe-Path fallback)
+    mat_injected = False
+    if use_dna and is_dna_enabled():
+        try:
+            mat_injected = inject_face_materials_dna(mesh, mesh_data)
+        except Exception as e:
+            logger.debug("DNA direct material injection fallback: %s", e)
+    if not mat_injected:
+        inject_face_materials_standard(mesh, mesh_data)
 
     # Extra custom attributes
     if inject_attributes:
@@ -185,6 +191,7 @@ __all__ = [
     "_get_mesh",
     "analyze_mesh_hard_edges",
     "extract_mesh_data",
+    "extract_mesh_data_dna",
     "inject_attribute",
     "inject_custom_attributes",
     "inject_face_attribute_float",
@@ -192,6 +199,7 @@ __all__ = [
     "inject_face_attribute_int",
     "inject_face_attribute_string",
     "inject_face_attribute_vector",
+    "inject_face_materials_dna",
     "inject_face_source_texture_keys",
     "inject_face_source_texture_palette",
     "inject_mesh_data",

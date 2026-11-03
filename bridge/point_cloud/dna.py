@@ -10,7 +10,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from ..dna import is_dna_available, is_dna_enabled, resolve_point_cloud_ptrs
+from ..dna import (
+    is_dna_available,
+    is_dna_enabled,
+    resolve_attribute_ptr,
+    resolve_point_cloud_ptrs,
+)
 from ..engine import get_libmtk_dna
 from .constants import (
     ATTR_BLOCK_ENTITY_IDX,
@@ -123,6 +128,11 @@ def inject_point_cloud_dna(
             if obj is not None:
                 obj[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
             ent_ptr = ptrs.get("entity_idx_ptr")
+            if not ent_ptr:
+                attr_ent = target_data.attributes.get(ATTR_BLOCK_ENTITY_IDX)
+                if attr_ent is not None:
+                    ent_ptr = resolve_attribute_ptr(attr_ent, min_elements=pt_count, required_align=4)
+
             if ent_ptr:
                 blender_dna.copy_i32(
                     _byte_view(cloud_data.entity_indices_memoryview()),

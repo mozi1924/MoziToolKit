@@ -152,7 +152,21 @@ def test_standalone_dna_adapter_contract():
     import pytest
 
     dna = pytest.importorskip("libmtk_blender_dna")
-    assert dna.api_version() == 1
-    for name in ("copy_f32", "copy_i32", "copy_u32", "copy_u8"):
+    assert dna.api_version() == 2
+    for name in (
+        "copy_f32",
+        "copy_i32",
+        "copy_u32",
+        "copy_u8",
+        "read_f32",
+        "read_i32",
+        "read_u32",
+        "read_u8",
+        "as_memoryview_f32",
+        "as_memoryview_i32",
+        "as_memoryview_u32",
+        "as_memoryview_u8",
+        "as_memoryview_raw",
+    ):
         assert hasattr(dna, name)
     assert not hasattr(dna, "copy_positions_to_ptr")

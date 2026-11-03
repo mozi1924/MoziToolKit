@@ -22,7 +22,7 @@ class TestEngineBridge:
         assert "version" in info
         assert info["api_version"] == 2
         assert info["dna_available"] is True
-        assert info["dna_api_version"] == 1
+        assert info["dna_api_version"] == 2
 
     def test_dynamic_attributes_on_bridges(self):
         """Verifies PEP 562 dynamic attributes resolve correctly without static freeze."""
@@ -80,7 +80,7 @@ class TestEngineBridge:
         assert has_libmtk_dna() is True
         dna = get_libmtk_dna()
         assert dna is not None
-        assert dna.api_version() == 1
+        assert dna.api_version() == 2
         core = get_libmtk()
         assert core is not None
         assert not hasattr(getattr(core, "unstable", None), "blender_dna")

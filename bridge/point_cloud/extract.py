@@ -9,7 +9,8 @@ from typing import Any, Optional
 
 import numpy as np
 
-from ..engine import require_libmtk
+from ..dna import is_dna_available, is_dna_enabled, resolve_point_cloud_ptrs
+from ..engine import get_libmtk_dna, require_libmtk
 from .constants import (
     ATTR_BIOME_IDX,
     ATTR_BLOCK_ENTITY_IDX,
@@ -25,11 +26,144 @@ from .constants import (
 logger = logging.getLogger("MoziToolKit.Bridge.PointCloud.Extract")
 
 
-def extract_voxel_point_cloud(cloud_obj_or_mesh: Any) -> Optional[Any]:
+def extract_voxel_point_cloud_dna(cloud_obj_or_mesh: Any) -> Optional[Any]:
+    """
+    Extracts a live Rust VoxelPointCloud using zero-copy DNA direct memory reads.
+    Returns None if pointers are unavailable, triggering seamless safe-path fallback.
+    """
+    blender_dna = get_libmtk_dna()
+    if blender_dna is None or not is_dna_enabled():
+        return None
+
+    mtk = require_libmtk("extract_voxel_point_cloud_dna")
+
+    if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") == "MESH":
+        obj = cloud_obj_or_mesh
+        mesh = cloud_obj_or_mesh.data
+    else:
+        obj = None
+        mesh = cloud_obj_or_mesh
+
+    v_count = len(getattr(mesh, "vertices", []))
+    if v_count == 0:
+        return mtk.VoxelPointCloud.new() if hasattr(mtk, "VoxelPointCloud") else None
+
+    if not hasattr(mesh, "attributes"):
+        return None
+
+    palette = None
+    if obj is not None and PROP_BLOCK_PALETTE in obj:
+        try:
+            palette = list(obj[PROP_BLOCK_PALETTE])
+        except Exception:
+            pass
+    if palette is None and PROP_BLOCK_PALETTE in mesh:
+        try:
+            palette = list(mesh[PROP_BLOCK_PALETTE])
+        except Exception:
+            pass
+
+    if palette is None:
+        return None
+
+    ptrs = resolve_point_cloud_ptrs(mesh, expected_count=v_count)
+    pos_ptr = ptrs.get("pos_ptr")
+    bx_ptr = ptrs.get("block_x_ptr")
+    by_ptr = ptrs.get("block_y_ptr")
+    bz_ptr = ptrs.get("block_z_ptr")
+    state_idx_ptr = ptrs.get("state_idx_ptr")
+
+    if not (pos_ptr and bx_ptr and by_ptr and bz_ptr and state_idx_ptr):
+        return None
+
+    # Biome palette
+    b_palette = None
+    if obj is not None and PROP_BIOME_PALETTE in obj:
+        try:
+            b_palette = list(obj[PROP_BIOME_PALETTE])
+        except Exception:
+            pass
+    if b_palette is None and PROP_BIOME_PALETTE in mesh:
+        try:
+            b_palette = list(mesh[PROP_BIOME_PALETTE])
+        except Exception:
+            pass
+
+    # Bounds
+    bounds = None
+    if obj is not None and "mtk_bounds" in obj:
+        try:
+            raw_b = obj["mtk_bounds"]
+            if len(raw_b) == 6:
+                bounds = [int(x) for x in raw_b]
+        except Exception:
+            pass
+
+    # Block entity palette
+    ent_palette = None
+    if obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
+        try:
+            ent_palette = list(obj[PROP_BLOCK_ENTITY_PALETTE])
+        except Exception:
+            pass
+    if ent_palette is None and PROP_BLOCK_ENTITY_PALETTE in mesh:
+        try:
+            ent_palette = list(mesh[PROP_BLOCK_ENTITY_PALETTE])
+        except Exception:
+            pass
+
+    try:
+        pos_mv = blender_dna.as_memoryview_f32(pos_ptr, v_count * 3)
+        bx_mv = blender_dna.as_memoryview_i32(bx_ptr, v_count)
+        by_mv = blender_dna.as_memoryview_i32(by_ptr, v_count)
+        bz_mv = blender_dna.as_memoryview_i32(bz_ptr, v_count)
+        state_idx_mv = blender_dna.as_memoryview_i32(state_idx_ptr, v_count)
+
+        biome_idx_ptr = ptrs.get("biome_idx_ptr")
+        b_idx_mv = None
+        if biome_idx_ptr and b_palette:
+            b_idx_mv = blender_dna.as_memoryview_i32(biome_idx_ptr, v_count)
+
+        entity_idx_ptr = ptrs.get("entity_idx_ptr")
+        ent_idx_mv = None
+        if entity_idx_ptr and ent_palette:
+            ent_idx_mv = blender_dna.as_memoryview_i32(entity_idx_ptr, v_count)
+
+        return mtk.VoxelPointCloud.from_indexed_arrays(
+            pos_mv,
+            bx_mv,
+            by_mv,
+            bz_mv,
+            state_idx_mv,
+            palette,
+            b_idx_mv,
+            b_palette,
+            None,
+            bounds,
+            ent_idx_mv,
+            ent_palette,
+        )
+    except Exception as e:
+        logger.debug("extract_voxel_point_cloud_dna failed, falling back: %s", e)
+        return None
+
+
+def extract_voxel_point_cloud(
+    cloud_obj_or_mesh: Any,
+    use_dna: bool = True,
+) -> Optional[Any]:
     """
     Extracts a live Rust VoxelPointCloud from a Blender Point Mesh.
     Captures user modifications (deleted vertices, carved cavities) with zero overhead.
+
+    Dual-channel architecture: prioritizes DNA memoryview reads, seamlessly falling
+    back to standard foreach_get when DNA is disabled or pointers are invalid.
     """
+    if use_dna and is_dna_enabled():
+        dna_cloud = extract_voxel_point_cloud_dna(cloud_obj_or_mesh)
+        if dna_cloud is not None:
+            return dna_cloud
+
     mtk = require_libmtk("extract_voxel_point_cloud")
 
     if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") == "MESH":

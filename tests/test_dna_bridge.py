@@ -141,8 +141,8 @@ class TestDnaBridge(unittest.TestCase):
         self.assertEqual(resolve_positions_ptr(mesh, expected_count=8), valid_ptr)
         self.assertEqual(resolve_corner_verts_ptr(mesh, expected_count=24), valid_ptr)
         self.assertEqual(resolve_loop_uvs_ptr(mesh, expected_count=24), valid_ptr)
-        # Material index resolution is intentionally deferred to Stage 2 Python API
-        self.assertIsNone(resolve_materials_ptr(mesh, expected_count=6))
+        # Material index resolution via material_index attribute data
+        self.assertEqual(resolve_materials_ptr(mesh, expected_count=6), valid_ptr)
         self.assertEqual(resolve_colors_ptr(mesh, expected_count=8), valid_ptr)
 
         # Mismatched count should return None
@@ -206,7 +206,7 @@ class TestDnaBridge(unittest.TestCase):
 
         blender_dna = get_libmtk_blender()
         self.assertIsNotNone(blender_dna)
-        self.assertEqual(blender_dna.api_version(), 1)
+        self.assertEqual(blender_dna.api_version(), 2)
         self.assertTrue(hasattr(blender_dna, "copy_f32"))
         self.assertTrue(hasattr(blender_dna, "copy_u32"))
 
