@@ -17,6 +17,11 @@ def menu_func_import(self, context):
         text=tr("Minecraft World / Save (.mca / level.dat)"),
         icon="WORLD",
     )
+    self.layout.operator(
+        "mozi.import_scene",
+        text=tr("MTK Scene Interchange (.mtkscene)"),
+        icon="SCENE_DATA",
+    )
 
 
 def register():

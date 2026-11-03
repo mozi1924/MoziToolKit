@@ -67,6 +67,10 @@ from .menu_import import (
     register as register_menu_import,
     unregister as unregister_menu_import,
 )
+from .menu_export import (
+    register as register_menu_export,
+    unregister as unregister_menu_export,
+)
 
 classes = (
     # PropertyGroups
@@ -118,9 +122,11 @@ def register():
     register_panel_voxel_storage()
     register_panel_save()
     register_menu_import()
+    register_menu_export()
 
 
 def unregister():
+    unregister_menu_export()
     unregister_menu_import()
     unregister_panel_save()
     unregister_panel_voxel_storage()

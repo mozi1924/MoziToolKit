@@ -92,6 +92,12 @@ from .save import (
     inspect_minecraft_save,
     load_and_mesh_minecraft_save,
 )
+from .scene import (
+    export_scene_package,
+    inspect_scene_package,
+    load_and_mesh_scene_package,
+    read_scene_package,
+)
 from .subdivide import adaptive_pixel_split_mesh
 from .sync import (
     SyncBridgeSession,
@@ -217,6 +223,11 @@ __all__ = [
     # Save (Anvil unpacking & meshing)
     "inspect_minecraft_save",
     "load_and_mesh_minecraft_save",
+    # Scene Interchange (.mtkscene)
+    "export_scene_package",
+    "inspect_scene_package",
+    "load_and_mesh_scene_package",
+    "read_scene_package",
     # Sync (WebSocket LiveSync Client)
     "SyncBridgeSession",
     "get_sync_bridge_session",

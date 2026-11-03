@@ -32,6 +32,7 @@ ORIGIN_SYNC_WORLD = "SYNC_WORLD"
 ORIGIN_SYNC_SECTION = "SYNC_SECTION"
 ORIGIN_VOXEL = "VOXEL"
 ORIGIN_POINT_CLOUD = "POINT_CLOUD"
+ORIGIN_SCENE = "SCENE"
 
 ALL_ORIGINS = frozenset(
     {
@@ -41,6 +42,7 @@ ALL_ORIGINS = frozenset(
         ORIGIN_SYNC_SECTION,
         ORIGIN_VOXEL,
         ORIGIN_POINT_CLOUD,
+        ORIGIN_SCENE,
     }
 )
 
@@ -310,6 +312,7 @@ __all__ = [
     "ORIGIN_SYNC_SECTION",
     "ORIGIN_VOXEL",
     "ORIGIN_POINT_CLOUD",
+    "ORIGIN_SCENE",
     "ALL_ORIGINS",
     "is_point_cloud",
     "stamp_geometry_origin",

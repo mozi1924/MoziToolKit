@@ -82,7 +82,7 @@ def inject_mesh_data(
     Automatically dispatches between the high-throughput DNA raw memory channel
     and the 100% stable standard BPy channel with graceful fallback.
     """
-    if hasattr(mesh_or_obj, "vertex_count") and not hasattr(mesh_data, "vertex_count"):
+    if isinstance(getattr(mesh_or_obj, "vertex_count", None), int) and not isinstance(getattr(mesh_data, "vertex_count", None), int):
         mesh_data, mesh_or_obj = mesh_or_obj, mesh_data
 
     mesh = get_mesh(mesh_or_obj)

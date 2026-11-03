@@ -36,6 +36,10 @@
 ---
 
 ### 3. 网格与建模工具系统 (Mesh & UV Modeling)
+- **[自包含场景交换包与 Mini-Atlas 管线 (.mtkscene)](scene/scene_interchange.md)**：
+  - 基于伴生体素点云与紧凑稀疏体素 (Sparse Voxel SoA) 的单文件离线场景交换。
+  - 按需树剪枝模型库 (Tree-shaken Models) 与多通道 PBR 内存裁剪微型图集 (Scene Mini-Atlas)。
+  - `File -> Export/Import` DCC 交互、纯数据桥梁 `bridge/scene.py` 与无依赖独立渲染。
 - **[实时同步系统架构与数据规范 (Live Sync)](live_sync/live_sync_architecture.md)**：
   - 材质约定体系与自定义属性规范（`mtk:atlas_chunk_id`, `mtk:pack_hash`）。
   - 连接握手 CRC32 差异校验与已有场景物体智能免重刷机制。

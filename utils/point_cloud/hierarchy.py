@@ -247,7 +247,7 @@ def ensure_voxel_child_cloud(
     # 1. Acquire target collection from parent parent_obj
     target_coll = (
         parent_obj.users_collection[0]
-        if parent_obj.users_collection
+        if getattr(parent_obj, "users_collection", None)
         else (bpy.context.scene.collection if hasattr(bpy.context, "scene") else None)
     )
 
@@ -286,13 +286,16 @@ def ensure_voxel_child_cloud(
     cloud_obj.scale = (1.0, 1.0, 1.0)
 
     # 4. Bind bidirectional custom properties
-    cloud_obj["mtk_is_voxel_cloud"] = True
-    cloud_obj["mtk_world_mesh"] = parent_obj.name
-    parent_obj["mtk_voxel_cloud"] = cloud_obj.name
+    try:
+        cloud_obj["mtk_is_voxel_cloud"] = True
+        cloud_obj["mtk_world_mesh"] = parent_obj.name
+        parent_obj["mtk_voxel_cloud"] = cloud_obj.name
 
-    # Record bounds to lock origin alignment during future user carving & remeshing
-    if hasattr(cloud_data, "bounds") and cloud_data.bounds is not None:
-        cloud_obj["mtk_bounds"] = list(cloud_data.bounds)
+        # Record bounds to lock origin alignment during future user carving & remeshing
+        if hasattr(cloud_data, "bounds") and cloud_data.bounds is not None:
+            cloud_obj["mtk_bounds"] = list(cloud_data.bounds)
+    except (TypeError, AttributeError, KeyError):
+        pass
 
     # 5. Inject points and configure Mask modifier via bridge
     from ...bridge.point_cloud import inject_voxel_point_cloud

@@ -58,6 +58,13 @@
 ### 7. 6 平台 Native Wheels 自动化构建与发布矩阵 (✅ 全部完成)
 - [x] Windows x64, macOS (arm64/x64), Linux (glibc/musl) CI 验证全绿，支持 rolling release 自动注入。
 
+### 8. DNA 双向极速通道与状态持久化跃迁 (2026-11-01 ~ 2026-11-03 ✅ 全部完成)
+- [x] **DNA 直写与直读双向优化**：实现基于 Blender DNA 指针的网格几何、面材质、循环 UV 与点云属性零拷贝直读（`read_mesh_geometry` / `read_point_cloud_attributes`），彻底消除 Python 包装对象开销。
+- [x] **Live Sync 0ms 零重建重连**：基于体素状态指纹与 SHA-256 哈希持久化，实现与服务端（RFC v3.1）握手后的 0ms 零几何重建秒级恢复。
+- [x] **统一 JSON 配置存储**：废弃 Blender 原生 `AddonPreferences` 属性存储，全面迁移至原子持久化的统一 JSON 配置引擎。
+- [x] **存档容器化与原地刷新闭环**：完善 Minecraft 存档导入的 Empty 根容器、选区 AABB 属性持久化与原地无感刷新模型算子。
+- [x] **自包含场景交换格式 (.mtkscene)**：打通轻量场景导出、Mini-Atlas 自动重映射、伴生体素点云挂载与无依赖独立渲染。
+
 ---
 
 ## 🧭 当前待办与持续优化清单
@@ -139,9 +146,11 @@
 - [ ] **旗帜多层花纹合成 (Banner Patterns)**：按原版公式进行多层 Alpha 顺位合成；
 - [ ] **动画铰链分体装配选项**：门、栅栏门、箱子顶盖、钟体生成为独立子物体并预留精确轴心。
 
-### 5. 自包含轻量场景交换包交互 (`.mtkscene`) (P2)
-- [ ] **导出端 (`Export -> MTK Scene Interchange (.mtkscene)`)**：按需提取最小依赖模型与独立贴图闭包（Tree-shaking），稀疏体素单文件打包；
-- [ ] **导入端与现场重构 (`Import -> MTK Scene Interchange (.mtkscene)`)**：极速读取单文件并重构世界几何。
+### 5. 自包含轻量场景交换包交互 (`.mtkscene`) (P2 - ✅ 已完成端到端闭环)
+- [x] **导出端 (`Export -> MTK Scene Interchange (.mtkscene)`)**：按需提取最小依赖模型与独立贴图闭包（Tree-shaking），内存裁剪生成多通道 Mini-Atlas 并自动重映射 UV，稀疏体素单文件打包；
+- [x] **导入端与现场重构 (`Import -> MTK Scene Interchange (.mtkscene)`)**：极速读取单文件并重构世界几何，自动绑定伴生点云与规范 PBR 材质节点树；
+- [x] **Blender 顶层菜单接入**：在 `File -> Export` 与 `File -> Import` 挂载标准导出/导入菜单；
+- [x] **纯数据桥梁与层级解耦**：`bridge/scene.py` 纯数据交换，`utils/scene/` DCC 业务装配，零宿主业务污染。
 
 ---
 

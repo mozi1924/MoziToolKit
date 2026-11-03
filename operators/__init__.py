@@ -16,6 +16,7 @@ from .op_texture import OPERATOR_CLASSES as TEXTURE_CLASSES
 from .op_uv import OPERATOR_CLASSES as UV_CLASSES
 from .op_voxel_cloud import OPERATOR_CLASSES as VOXEL_CLOUD_CLASSES
 from .save import OPERATOR_CLASSES as SAVE_CLASSES
+from .scene import OPERATOR_CLASSES as SCENE_CLASSES
 
 ALL_OPERATORS = (
     PRECOMPILE_CLASSES
@@ -27,11 +28,13 @@ ALL_OPERATORS = (
     + EXTRUDE_CLASSES
     + VOXEL_CLOUD_CLASSES
     + SAVE_CLASSES
+    + SCENE_CLASSES
 )
 
 from . import extrude
 from . import sync
 from . import save
+from . import scene
 
 
 def register():
@@ -52,9 +55,17 @@ def register():
         save.register()
     except Exception:
         pass
+    try:
+        scene.register()
+    except Exception:
+        pass
 
 
 def unregister():
+    try:
+        scene.unregister()
+    except Exception:
+        pass
     try:
         save.unregister()
     except Exception:

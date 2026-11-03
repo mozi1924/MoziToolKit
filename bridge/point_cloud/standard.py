@@ -23,6 +23,25 @@ from .constants import (
 )
 
 
+def _safe_get_prop(target: Any, key: str, default: Any = None) -> Any:
+    if hasattr(target, "get") and callable(target.get):
+        try:
+            return target.get(key, default)
+        except Exception:
+            pass
+    try:
+        return target[key]
+    except Exception:
+        return default
+
+
+def _safe_set_prop(target: Any, key: str, value: Any) -> None:
+    try:
+        target[key] = value
+    except Exception:
+        pass
+
+
 def inject_point_cloud_standard(
     target_data: Any,
     cloud_data: Any,
@@ -63,8 +82,8 @@ def inject_point_cloud_standard(
         palette = cloud_data.get_state_palette()
         indices = cloud_data.state_indices_memoryview()
         attr_state_idx.data.foreach_set("value", indices)
-        if target_data.get(PROP_BLOCK_PALETTE) != palette:
-            target_data[PROP_BLOCK_PALETTE] = palette
+        if _safe_get_prop(target_data, PROP_BLOCK_PALETTE) != palette:
+            _safe_set_prop(target_data, PROP_BLOCK_PALETTE, palette)
 
     # 4. Biome palette & indices
     if attr_biome_idx is not None:
@@ -72,8 +91,8 @@ def inject_point_cloud_standard(
         b_indices = cloud_data.biome_indices_memoryview()
         if len(b_indices) == pt_count:
             attr_biome_idx.data.foreach_set("value", b_indices)
-            if target_data.get(PROP_BIOME_PALETTE) != b_palette:
-                target_data[PROP_BIOME_PALETTE] = b_palette
+            if _safe_get_prop(target_data, PROP_BIOME_PALETTE) != b_palette:
+                _safe_set_prop(target_data, PROP_BIOME_PALETTE, b_palette)
 
     # 5. Block entities palette & indices
     has_entities = False
@@ -86,10 +105,10 @@ def inject_point_cloud_standard(
         ent_palette = cloud_data.get_entity_palette()
         ent_indices = cloud_data.entity_indices_memoryview()
         attr_entity_idx.data.foreach_set("value", ent_indices)
-        if target_data.get(PROP_BLOCK_ENTITY_PALETTE) != ent_palette:
-            target_data[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
+        if _safe_get_prop(target_data, PROP_BLOCK_ENTITY_PALETTE) != ent_palette:
+            _safe_set_prop(target_data, PROP_BLOCK_ENTITY_PALETTE, ent_palette)
     elif not has_entities:
-        if PROP_BLOCK_ENTITY_PALETTE in target_data:
+        if hasattr(target_data, "__contains__") and PROP_BLOCK_ENTITY_PALETTE in target_data:
             try:
                 del target_data[PROP_BLOCK_ENTITY_PALETTE]
             except Exception:
