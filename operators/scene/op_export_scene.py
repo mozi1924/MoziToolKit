@@ -20,10 +20,65 @@ except ImportError:
 
 from ...bridge.point_cloud import extract_voxel_point_cloud
 from ...bridge.scene import export_scene_package
-from ...utils.mesh.ownership import find_voxel_cloud
+from ...bridge.world import (
+    get_world_session_dynamic_entity_atlases,
+    resolve_dynamic_entity_atlases,
+)
+from ...utils.mesh.ownership import find_voxel_cloud, is_point_cloud
 from ...utils.system.dependencies import get_prefs
 
 logger = logging.getLogger("MoziToolKit.Operators.Scene.Export")
+
+
+def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optional[dict[int, bytes]]:
+    """Resolves dynamic entity atlas buffers (0xFFF0) from sessions, properties, or Blender images."""
+    if not HAS_BPY:
+        return None
+
+    # 1. Probe session key on active, cloud, or parent container
+    session_key = (
+        active_obj.get("mtk:session_key")
+        if hasattr(active_obj, "get")
+        else None
+    ) or (
+        cloud_obj.get("mtk:session_key")
+        if hasattr(cloud_obj, "get")
+        else None
+    )
+    if not session_key and hasattr(active_obj, "parent") and active_obj.parent:
+        session_key = active_obj.parent.get("mtk:session_key") if hasattr(active_obj.parent, "get") else None
+
+    if session_key:
+        atlases = get_world_session_dynamic_entity_atlases(session_key)
+        if atlases:
+            return atlases
+
+    # 2. Check if active or parent has dynamic entity image attached
+    from ...utils.materials.builder.dynamic_entities import (
+        DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID,
+        DYNAMIC_CHUNK_END,
+        DYNAMIC_CHUNK_START,
+        dynamic_entities_image_name,
+    )
+
+    result: dict[int, bytes] = {}
+    for cid in range(DYNAMIC_CHUNK_START, DYNAMIC_CHUNK_START + 1):  # 0xFFF0
+        img_name = dynamic_entities_image_name(cid)
+        img = bpy.data.images.get(img_name)
+        if img is not None and len(img.pixels) == 1024 * 1024 * 4:
+            try:
+                import numpy as np
+
+                floats = np.empty(len(img.pixels), dtype=np.float32)
+                img.pixels.foreach_get(floats)
+                # Reshape and flip back to canonical top-down Y layout
+                pixels_2d = (floats.reshape(1024, 1024, 4) * 255.0).clip(0, 255).astype(np.uint8)
+                pixels_top_down = np.ascontiguousarray(pixels_2d[::-1, :, :])
+                result[cid] = pixels_top_down.tobytes()
+            except Exception as e:
+                logger.debug("Could not read dynamic entity pixels from Blender image: %s", e)
+
+    return result if result else None
 
 
 class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
@@ -79,6 +134,7 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
             return {"CANCELLED"}
 
         prefs = get_prefs(context)
+        dyn_entities = _resolve_export_dynamic_entities(active, cloud_obj)
 
         try:
             meta = export_scene_package(
@@ -86,6 +142,7 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
                 point_cloud=point_cloud,
                 prefs=prefs,
                 max_atlas_size=self.max_atlas_size,
+                dynamic_entity_atlases=dyn_entities,
             )
             v_count = meta.get("voxel_count", 0)
             res = meta.get("atlas_resolution", [0, 0])

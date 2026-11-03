@@ -146,11 +146,19 @@
 - [ ] **旗帜多层花纹合成 (Banner Patterns)**：按原版公式进行多层 Alpha 顺位合成；
 - [ ] **动画铰链分体装配选项**：门、栅栏门、箱子顶盖、钟体生成为独立子物体并预留精确轴心。
 
-### 5. 自包含轻量场景交换包交互 (`.mtkscene`) (P2 - ✅ 已完成端到端闭环)
-- [x] **导出端 (`Export -> MTK Scene Interchange (.mtkscene)`)**：按需提取最小依赖模型与独立贴图闭包（Tree-shaking），内存裁剪生成多通道 Mini-Atlas 并自动重映射 UV，稀疏体素单文件打包；
-- [x] **导入端与现场重构 (`Import -> MTK Scene Interchange (.mtkscene)`)**：极速读取单文件并重构世界几何，自动绑定伴生点云与规范 PBR 材质节点树；
-- [x] **Blender 顶层菜单接入**：在 `File -> Export` 与 `File -> Import` 挂载标准导出/导入菜单；
-- [x] **纯数据桥梁与层级解耦**：`bridge/scene.py` 纯数据交换，`utils/scene/` DCC 业务装配，零宿主业务污染。
+### 5. 自包含轻量场景交换包交互与 Mini-Atlas 彻底重构 (`.mtkscene`) (✅ 全部完成 🌟)
+> 详细设计与重构方案详见：[`docs/planning/2026-11-03_mtkscene_miniatlas_comprehensive_refactor.md`](docs/planning/2026-11-03_mtkscene_miniatlas_comprehensive_refactor.md) 与规范文档 [`docs/scene/scene_interchange.md`](docs/scene/scene_interchange.md)
+- [x] **Mini-Atlas 动静双模与实体图集自包含装箱 (Rust / Python)**：
+  - [x] 导出时同时装箱「静态卷 Frame 0」与「动态卷 Strip」，无论当前世界是否开启动图均自包含打包；
+  - [x] 修复 UV 坐标系垂直颠倒数学公式（`v_min = 1.0 - (y+h)/H`, `v_max = 1.0 - y/H`）；
+  - [x] 完整支持 Overlay 通道（草方块侧面草皮）裁剪、装箱与着色器混合；
+  - [x] 动态实体平民化装箱：透传并裁剪玩家头颅 64x64 皮肤与合成旗帜进 Mini-Atlas，消除 0xFFF0 槽位越界；
+  - [x] 流体方块（水/熔岩）贴图自动防御收集；
+- [x] **Blender 前端架构 SSOT 纯净化与体验对齐 (Python)**：
+  - [x] 废弃 `MoziToolKit_Scenes` 专属集合，统一严格挂载在当前激活集合（`context.collection`）；
+  - [x] 彻底移除 `utils/scene/materials.py` 私有材质节点树，复用成熟的 `ensure_world_materials` / `build_atlas_chunk_material`；
+  - [x] 升级 `op_import_scene.py`：加入对标存档导入的多属性定制面板（Animated Textures 开关、Smooth AO、Mesh Fluids、Weld Vertices、Origin Centered、信息预览盒）；
+  - [x] 升级 `op_export_scene.py`：自动提取当前网格绑定的 `dynamic_entity_atlases` 内存缓冲并透传给导出器。
 
 ---
 

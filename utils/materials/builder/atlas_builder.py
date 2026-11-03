@@ -83,7 +83,7 @@ def build_atlas_chunk_material(
         # Minecraft biome tinting only applies to 'blocks' category atlases
         # (grass, foliage, water, etc.). Other categories (items, chests, entities,
         # particles, etc.) never have biome tint.
-        enable_biome_tint = (category == "blocks")
+        enable_biome_tint = (category in ("blocks", "scene"))
     else:
         enable_biome_tint = bool(enable_biome_tint)
 

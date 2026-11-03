@@ -415,6 +415,7 @@ def resolve_chunk_texture_sources(
     chunk_meta: Dict[str, Any],
     atlas_dir: Optional[Union[str, Path]] = None,
     active_atlas: Optional[Any] = None,
+    package_reader: Optional[Any] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Resolve active texture slot sources (filesystem Path or zero-copy in-memory buffer) for a chunk.
@@ -450,17 +451,25 @@ def resolve_chunk_texture_sources(
 
         source: Any = disk_path
 
-        # If disk file is unavailable, stream zero-copy in-memory from active_atlas
-        if (disk_path is None or not disk_path.exists()) and active_atlas is not None:
-            getter_name = memory_getter_map.get(role)
-            if getter_name and hasattr(active_atlas, getter_name):
+        # If disk file is unavailable, stream zero-copy in-memory from package_reader or active_atlas
+        if disk_path is None or not disk_path.exists():
+            if package_reader is not None:
                 try:
-                    getter = getattr(active_atlas, getter_name)
-                    buf = getter(chunk_id, flip_v=True)
-                    if buf is not None:
-                        source = (width, height, buf)
+                    tex_id = f"atlas/textures/{file_name}"
+                    w, h, buf = package_reader.read_texture_rgba(tex_id, flip_v=False)
+                    source = (w, h, buf)
                 except Exception:
                     pass
+            elif active_atlas is not None:
+                getter_name = memory_getter_map.get(role)
+                if getter_name and hasattr(active_atlas, getter_name):
+                    try:
+                        getter = getattr(active_atlas, getter_name)
+                        buf = getter(chunk_id, flip_v=True)
+                        if buf is not None:
+                            source = (width, height, buf)
+                    except Exception:
+                        pass
 
         resolved[role] = {
             "role": role,

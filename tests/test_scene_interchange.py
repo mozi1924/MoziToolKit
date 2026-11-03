@@ -21,6 +21,13 @@ import zlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
+
 from MoziToolKit.bridge.assets import open_active_asset_cache, precompile_stack
 from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.bridge.point_cloud import extract_voxel_point_cloud
@@ -297,8 +304,19 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         mesh_obj = assembled["mesh_obj"]
 
         # 1. Test export operator
-        context = MagicMock()
-        context.active_object = mesh_obj
+        is_real_blender = HAS_BPY and isinstance(getattr(getattr(bpy, "app", None), "version", None), tuple)
+        if is_real_blender:
+            context = bpy.context
+            if hasattr(context, "view_layer") and hasattr(context.view_layer, "objects"):
+                try:
+                    context.view_layer.objects.active = mesh_obj
+                except Exception:
+                    pass
+            if not getattr(context, "active_object", None):
+                context.active_object = mesh_obj
+        else:
+            context = MagicMock()
+            context.active_object = mesh_obj
 
         # Mock find_voxel_cloud to return our companion point cloud
         with patch("MoziToolKit.operators.scene.op_export_scene.find_voxel_cloud", return_value=mock_cloud):
@@ -322,6 +340,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         class MockImportOp:
             def __init__(self, filepath):
                 self.filepath = filepath
+                self.enable_animated_textures = True
                 self.enable_ao = True
                 self.mesh_fluids = True
                 self.weld_vertices = True
@@ -333,6 +352,115 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         with patch("MoziToolKit.operators.scene.op_import_scene.get_prefs", return_value=self.mock_prefs):
             ret = MOZI_OT_import_scene.execute(import_op, context)
             self.assertEqual(ret, {"FINISHED"})
+
+    def test_07_dynamic_entity_atlas_and_self_contained_stitching(self):
+        """Verifies player skulls and banners are stitched into normal mini-atlas slots (no 0xFFF0 out-of-bounds)."""
+        import array
+
+        skull_json = '{"minecraft:block_entity":"minecraft:skull","kind":"player","profile":{"name":"Alex","id":"5678"}}'
+        positions = array.array("f", [0.5, 0.5, 0.5])
+        bx = array.array("i", [0])
+        by = array.array("i", [0])
+        bz = array.array("i", [0])
+        st_indices = array.array("i", [0])
+        st_palette = ["minecraft:stone"]
+        ent_indices = array.array("i", [0])
+        ent_palette = [skull_json]
+
+        cloud = self.mtk.VoxelPointCloud.from_indexed_arrays(
+            positions,
+            bx,
+            by,
+            bz,
+            st_indices,
+            st_palette,
+            entity_indices=ent_indices,
+            entity_palette=ent_palette,
+        )
+
+        # Prepare fake 1024x1024 dynamic entity atlas buffer (0xFFF0)
+        dyn_buf = bytearray(1024 * 1024 * 4)
+        for i in range(64 * 64 * 4):
+            dyn_buf[i] = 200  # Fill some dummy skin bytes
+
+        dyn_atlases = {0xFFF0: bytes(dyn_buf)}
+
+        scene_path = os.path.join(self.temp_dir, "test_dynamic_entity.mtkscene")
+        meta = export_scene_package(
+            output_path=scene_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            dynamic_entity_atlases=dyn_atlases,
+        )
+        self.assertEqual(meta["voxel_count"], 1)
+
+        # Read back and mesh: face material must NOT be 0xFFF0!
+        res = load_and_mesh_scene_package(scene_path, prefs=self.mock_prefs)
+        mesh_data = res["mesh_data"]
+        used_mats = mesh_data.used_materials()
+        self.assertNotIn(0xFFF0, used_mats)
+        self.assertIn(0, used_mats)
+
+    def test_08_container_hierarchy_and_collection_mounting(self):
+        """Verifies unified empty container architecture, context.collection linking, and no obj.type assignment."""
+        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        data = load_and_mesh_scene_package(path=scene_path, prefs=self.mock_prefs)
+
+        mock_coll = MagicMock()
+        mock_coll.objects.link = MagicMock()
+
+        mock_context = MagicMock()
+        mock_context.collection = mock_coll
+
+        mock_cloud = MagicMock()
+        mock_cloud.name = "[Scene] CapsuleTest_VoxelCloud"
+        mock_cloud.data.vertices = [0, 1]
+
+        with patch("MoziToolKit.utils.scene.hierarchy.ensure_voxel_child_cloud", return_value=mock_cloud), \
+             patch("MoziToolKit.utils.materials.biome.updater.register_object_storage") as mock_reg:
+            assembled = apply_imported_scene_to_blender(
+                data,
+                scene_name="CapsuleTest",
+                context=mock_context,
+            )
+
+        root_obj = assembled["root_obj"]
+        mesh_obj = assembled["mesh_obj"]
+
+        def _get_prop(obj, key):
+            if hasattr(obj, "get") and callable(obj.get):
+                val = obj.get(key)
+                if val is not None and not isinstance(val, MagicMock):
+                    return val
+            if hasattr(obj, "__getitem__"):
+                try:
+                    return obj[key]
+                except Exception:
+                    pass
+            return getattr(obj, key, None)
+
+        # 1. Root object properties
+        if hasattr(root_obj, "__setitem__") and isinstance(root_obj.__setitem__, MagicMock):
+            root_obj.__setitem__.assert_any_call("mtk:is_container", True)
+            root_obj.__setitem__.assert_any_call("mtk:container_type", "SCENE")
+        else:
+            self.assertEqual(_get_prop(root_obj, "mtk:is_container"), True)
+            self.assertEqual(_get_prop(root_obj, "mtk:container_type"), "SCENE")
+
+        # 2. Mesh object origin
+        if hasattr(mesh_obj, "__setitem__") and isinstance(mesh_obj.__setitem__, MagicMock):
+            mesh_obj.__setitem__.assert_any_call("mtk:is_scene_mesh", True)
+            mesh_obj.__setitem__.assert_any_call("mtk:geometry_origin", ORIGIN_SCENE)
+        else:
+            self.assertEqual(_get_prop(mesh_obj, "mtk:is_scene_mesh"), True)
+            self.assertEqual(_get_prop(mesh_obj, "mtk:geometry_origin"), ORIGIN_SCENE)
+
+        # 3. Collection linking to context.collection
+        mock_coll.objects.link.assert_any_call(root_obj)
+        mock_coll.objects.link.assert_any_call(mesh_obj)
+
+        # 4. Storage registered for world biome restore
+        self.assertTrue(mock_reg.called)
 
 
 if __name__ == "__main__":

@@ -71,6 +71,7 @@ def ensure_world_materials(
     used_chunk_ids: Optional[Any] = None,
     dynamic_entity_atlases: Optional[Any] = None,
     clean_unused_slots: bool = False,
+    package_reader: Optional[Any] = None,
 ) -> None:
     """
     Ensures that the unified world mesh object has corresponding Atlas Chunk materials
@@ -191,8 +192,8 @@ def ensure_world_materials(
                     logger.debug("Failed remapping polygon material indices in fast path: %s", e)
             return
 
-    atlas_dir = ensure_atlas_textures_extracted(prefs)
-    atlas_mapping_path = atlas_dir / "atlas_mapping.json"
+    atlas_dir = ensure_atlas_textures_extracted(prefs) if package_reader is None else None
+    atlas_mapping_path = (atlas_dir / "atlas_mapping.json") if atlas_dir is not None else None
 
     # 2. Bind Precompiled Atlas Chunk Materials for used chunks only
     active_atlas = atlas or load_baked_atlas_from_cache(prefs)
@@ -200,7 +201,7 @@ def ensure_world_materials(
     if active_atlas is None:
         atlas_data = load_atlas_mapping_from_cache(prefs)
 
-    if (active_atlas is not None or atlas_data is not None or atlas_mapping_path.exists()) and build_atlas_chunk_material is not None:
+    if (active_atlas is not None or atlas_data is not None or (atlas_mapping_path is not None and atlas_mapping_path.exists())) and build_atlas_chunk_material is not None:
         try:
             # Query chunk metadata from BakedAtlas (Rust SSOT) or fallback to mapping JSON
             chunk_meta_map: dict[int, dict[str, Any]] = {}
@@ -284,11 +285,12 @@ def ensure_world_materials(
                     # `mtk_uv_transform` / `mtk_uv_rotation` attribute path below is reserved for
                     # imported external meshes, where UVs must be tiled in the shader
                     # (see utils/materials/pipeline.py, use_attribute_node=True).
-                    enable_biome_tint = bool(cm.get("has_tint", True)) if cat == "blocks" else False
+                    enable_biome_tint = bool(cm.get("has_tint", True)) if cat in ("blocks", "scene") else False
                     texture_sources = resolve_chunk_texture_sources(
                         cm,
                         atlas_dir=atlas_dir,
                         active_atlas=active_atlas,
+                        package_reader=package_reader,
                     )
                     mat = build_atlas_chunk_material(
                         chunk_id=chunk_id,

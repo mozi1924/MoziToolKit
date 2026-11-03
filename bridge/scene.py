@@ -73,11 +73,13 @@ def load_and_mesh_scene_package(
     mesh_fluids: bool = True,
     weld_vertices: bool = True,
     origin_centered: bool = True,
+    enable_animated_textures: bool = True,
     num_threads: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     High-level headless scene loader: reads .mtkscene, reconstructs VoxelStorage,
     and meshes the geometry with the self-contained mini-atlas and tree-shaken models.
+    Supports animated texture toggle via dual-volume mini-atlas.
     Returns dictionary with mesh_data, point_cloud, storage, metadata, atlas, and reader.
     """
     t0 = time.perf_counter()
@@ -101,6 +103,7 @@ def load_and_mesh_scene_package(
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,
         origin_centered=origin_centered,
+        enable_animated_textures=enable_animated_textures,
         num_threads=num_threads,
         resolve_prefs=resolve_prefs,
         resolve_ctm=False,
@@ -126,11 +129,13 @@ def export_scene_package(
     prefs=None,
     max_atlas_size: int = 2048,
     mip_level: int = 0,
+    dynamic_entity_atlases: Optional[Dict[int, bytes]] = None,
 ) -> Dict[str, Any]:
     """
     Exports a live VoxelPointCloud into a self-contained .mtkscene interchange package.
     Automatically tree-shakes block models, crops referenced textures from the active
-    asset cache into a compact Scene Mini-Atlas, remaps model UVs, and compresses into .mtkscene.
+    asset cache and dynamic entity buffers into a compact Scene Mini-Atlas, remaps model UVs,
+    and compresses into .mtkscene.
     """
     mtk = require_libmtk("export_scene_package")
     cache = open_active_asset_cache(prefs)
@@ -150,6 +155,7 @@ def export_scene_package(
         cache,
         max_atlas_size,
         mip_level,
+        dynamic_entity_atlases,
     )
 
     return meta.to_dict()

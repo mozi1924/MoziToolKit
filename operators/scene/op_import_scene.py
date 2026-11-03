@@ -9,16 +9,16 @@ from pathlib import Path
 
 try:
     import bpy
-    from bpy.props import BoolProperty, StringProperty
+    from bpy.props import BoolProperty, EnumProperty, StringProperty
     from bpy_extras.io_utils import ImportHelper
     HAS_BPY = True
 except ImportError:
     bpy = None
     ImportHelper = object
-    BoolProperty = StringProperty = lambda **kwargs: None
+    BoolProperty = EnumProperty = StringProperty = lambda **kwargs: None
     HAS_BPY = False
 
-from ...bridge.scene import load_and_mesh_scene_package
+from ...bridge.scene import inspect_scene_package, load_and_mesh_scene_package
 from ...utils.scene.hierarchy import apply_imported_scene_to_blender
 from ...utils.system.dependencies import get_prefs
 
@@ -36,6 +36,12 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
     filter_glob: StringProperty(  # type: ignore
         default="*.mtkscene",
         options={"HIDDEN"},
+    )
+
+    enable_animated_textures: BoolProperty(  # type: ignore
+        name="Animated Textures",
+        description="Enable animated texture frame playback for water, lava, fire, and animated blocks",
+        default=True,
     )
 
     enable_ao: BoolProperty(  # type: ignore
@@ -62,6 +68,63 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
+    material_mode: EnumProperty(  # type: ignore
+        name="Material Mode",
+        description="Shader material assembly mode for imported scene geometry",
+        items=[
+            ("ATLAS", "PBR Atlas", "Canonical Principled BSDF with self-contained Mini-Atlas"),
+        ],
+        default="ATLAS",
+    )
+
+    def draw(self, context):
+        from ...i18n import tr
+        layout = self.layout
+
+        # 1. Scene Info Preview box (if a file is selected)
+        if self.filepath:
+            path = Path(self.filepath)
+            if path.exists() and path.is_file():
+                try:
+                    meta = inspect_scene_package(path)
+                    box_info = layout.box()
+                    box_info.label(text=tr("Scene Capsule Info"), icon="INFO")
+                    box_info.label(text=f"{tr('File')}: {path.name}")
+
+                    bounds = meta.get("bounds", [0, 0, 0, 0, 0, 0])
+                    dx, dy, dz = bounds[3], bounds[4], bounds[5]
+                    v_count = meta.get("voxel_count", 0)
+                    box_info.label(
+                        text=f"{tr('Bounds')}: {dx} × {dy} × {dz} ({v_count:,} {tr('voxels')})",
+                        icon="SNAP_INCREMENT",
+                    )
+
+                    u_states = meta.get("unique_states_count", 0)
+                    u_biomes = meta.get("unique_biomes_count", 0)
+                    u_entities = meta.get("unique_entities_count", 0)
+                    box_info.label(
+                        text=f"{tr('Palette')}: {u_states} states, {u_biomes} biomes, {u_entities} entities",
+                    )
+
+                    res = meta.get("atlas_resolution", [0, 0])
+                    has_anim = meta.get("has_animated_atlas", False)
+                    anim_badge = tr("Yes") if has_anim else tr("No")
+                    box_info.label(
+                        text=f"{tr('Mini-Atlas')}: {res[0]}×{res[1]} (Animated: {anim_badge})",
+                        icon="TEXTURE",
+                    )
+                except Exception as e:
+                    logger.debug("Failed inspecting scene package for UI preview: %s", e)
+
+        # 2. Meshing & Shading Options
+        box_mesh = layout.box()
+        box_mesh.label(text=tr("Meshing & Shaders"), icon="SHADING_RENDERED")
+        box_mesh.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
+        box_mesh.prop(self, "enable_ao", text=tr("Smooth AO"))
+        box_mesh.prop(self, "mesh_fluids", text=tr("Mesh Fluids"))
+        box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
+        box_mesh.prop(self, "origin_centered", text=tr("Center Origin"))
+
     def execute(self, context):
         if not HAS_BPY:
             return {"CANCELLED"}
@@ -74,20 +137,25 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         prefs = get_prefs(context)
 
         try:
+            enable_anim = getattr(self, "enable_animated_textures", True)
             data = load_and_mesh_scene_package(
                 path=path,
                 prefs=prefs,
-                enable_ao=self.enable_ao,
-                mesh_fluids=self.mesh_fluids,
-                weld_vertices=self.weld_vertices,
-                origin_centered=self.origin_centered,
+                enable_ao=getattr(self, "enable_ao", True),
+                mesh_fluids=getattr(self, "mesh_fluids", True),
+                weld_vertices=getattr(self, "weld_vertices", True),
+                origin_centered=getattr(self, "origin_centered", True),
+                enable_animated_textures=enable_anim,
             )
 
             stem = path.stem
             res = apply_imported_scene_to_blender(
                 data=data,
                 scene_name=stem,
-                origin_centered=self.origin_centered,
+                origin_centered=getattr(self, "origin_centered", True),
+                context=context,
+                prefs=prefs,
+                enable_animated_textures=enable_anim,
             )
 
             v_count = data.get("metadata", {}).get("voxel_count", 0)
@@ -98,9 +166,15 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
             if root_obj and hasattr(context, "view_layer"):
                 for obj in getattr(context, "selected_objects", []):
                     if hasattr(obj, "select_set"):
-                        obj.select_set(False)
+                        try:
+                            obj.select_set(False)
+                        except Exception:
+                            pass
                 if hasattr(root_obj, "select_set"):
-                    root_obj.select_set(True)
+                    try:
+                        root_obj.select_set(True)
+                    except Exception:
+                        pass
                 if hasattr(context.view_layer, "objects"):
                     try:
                         context.view_layer.objects.active = root_obj

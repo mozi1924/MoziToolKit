@@ -108,80 +108,37 @@ def bind_scene_materials(
     mesh_obj: Any,
     reader: Any,
     scene_name: str = "Scene",
+    atlas: Optional[Any] = None,
+    prefs: Optional[Any] = None,
+    used_chunk_ids: Optional[Any] = None,
+    dynamic_entity_atlases: Optional[Any] = None,
 ) -> List[Any]:
     """
     Reads mini-atlas texture chunks from the ScenePackageReader, creates in-memory
     Blender images, builds canonical PBR materials, and binds them to the mesh slots.
+    Delegates to the authoritative ensure_world_materials pipeline.
     """
     if not HAS_BPY or mesh_obj is None or reader is None:
         return []
 
-    mesh = getattr(mesh_obj, "data", None)
-    if mesh is None:
-        return []
-
-    texture_names = reader.get_atlas_texture_names()
-    # Find unique base chunk stems (e.g. 'scene_chunk_001' from 'atlas/textures/scene_chunk_001.png')
-    stems = set()
-    for name in texture_names:
-        clean = name.replace("atlas/textures/", "")
-        if clean.endswith(".png"):
-            clean = clean[:-4]
-        # Strip suffixes like _n, _orm, _aux
-        for suffix in ("_n", "_orm", "_aux"):
-            if clean.endswith(suffix):
-                clean = clean[: -len(suffix)]
-                break
-        stems.add(clean)
-
-    sorted_stems = sorted(stems)
-    materials = []
-
-    for stem in sorted_stems:
-        albedo_name = f"atlas/textures/{stem}.png"
-        albedo_img = None
+    active_atlas = atlas
+    if active_atlas is None and hasattr(reader, "read_atlas"):
         try:
-            w, h, pixels = reader.read_texture_rgba(albedo_name, flip_v=False)
-            albedo_img = get_or_create_image_from_rgba(
-                f"MTK_Scene_{scene_name}_{stem}",
-                w,
-                h,
-                pixels,
-                colorspace="sRGB",
-                flip_y=True,
-            )
-        except Exception as e:
-            logger.debug("Failed reading albedo texture %s: %s", albedo_name, e)
+            active_atlas = reader.read_atlas()
+        except Exception:
+            pass
 
-        normal_name = f"atlas/textures/{stem}_n.png"
-        normal_img = None
-        if normal_name in texture_names:
-            try:
-                w, h, pixels = reader.read_texture_rgba(normal_name, flip_v=False)
-                normal_img = get_or_create_image_from_rgba(
-                    f"MTK_Scene_{scene_name}_{stem}_Normal",
-                    w,
-                    h,
-                    pixels,
-                    colorspace="Non-Color",
-                    flip_y=True,
-                )
-            except Exception as e:
-                logger.debug("Failed reading normal texture %s: %s", normal_name, e)
+    from ..materials.builder.world_binding import ensure_world_materials
 
-        mat = build_scene_chunk_material(
-            scene_name=scene_name,
-            chunk_stem=stem,
-            albedo_img=albedo_img,
-            normal_img=normal_img,
-        )
-        if mat is not None:
-            materials.append(mat)
+    ensure_world_materials(
+        mesh_obj,
+        prefs=prefs,
+        atlas=active_atlas,
+        used_chunk_ids=used_chunk_ids,
+        dynamic_entity_atlases=dynamic_entity_atlases,
+        clean_unused_slots=True,
+        package_reader=reader,
+    )
 
-    # Bind to mesh material slots
-    if hasattr(mesh, "materials"):
-        mesh.materials.clear()
-        for mat in materials:
-            mesh.materials.append(mat)
-
-    return materials
+    mesh = getattr(mesh_obj, "data", None)
+    return list(getattr(mesh, "materials", [])) if mesh else []

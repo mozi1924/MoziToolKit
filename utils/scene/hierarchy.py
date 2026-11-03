@@ -1,8 +1,9 @@
 """
 MoziToolKit Scene Interchange Hierarchy and Assembly.
 
-Orchestrates Blender scene datablocks, collections, companion point cloud synchronization,
-and metadata custom properties for imported .mtkscene interchange packages.
+Orchestrates Blender scene datablocks, unified empty container architecture,
+companion point cloud synchronization, canonical PBR materials, and metadata
+custom properties for imported .mtkscene interchange packages.
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 try:
@@ -21,6 +21,8 @@ except ImportError:
     HAS_BPY = False
 
 from ...bridge.mesh import inject_mesh_data
+from ...bridge.world import resolve_dynamic_entity_atlases
+from ..materials.builder.world_binding import ensure_world_materials
 from ..mesh.ownership import ORIGIN_SCENE, stamp_geometry_origin
 from ..point_cloud.hierarchy import ensure_voxel_child_cloud
 from .materials import bind_scene_materials
@@ -41,26 +43,14 @@ def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
 
 
 def get_or_create_scene_collection() -> Optional[Any]:
-    """Retrieves or creates the 'MoziToolKit_Scenes' scene collection."""
-    if not HAS_BPY or not hasattr(bpy, "context") or not hasattr(bpy.context, "scene"):
+    """Deprecated: returns the active or root scene collection to preserve SSOT."""
+    if not HAS_BPY or not hasattr(bpy, "context"):
         return None
-
-    scene = bpy.context.scene
-    coll_name = "MoziToolKit_Scenes"
-    for coll in scene.collection.children:
-        if coll.name == coll_name:
-            return coll
-
-    coll = bpy.data.collections.get(coll_name)
-    if coll is None:
-        coll = bpy.data.collections.new(coll_name)
-
-    if coll.name not in [c.name for c in scene.collection.children]:
-        try:
-            scene.collection.children.link(coll)
-        except Exception:
-            pass
-    return coll
+    if hasattr(bpy.context, "collection") and bpy.context.collection:
+        return bpy.context.collection
+    if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
+        return bpy.context.scene.collection
+    return None
 
 
 def apply_imported_scene_to_blender(
@@ -68,31 +58,43 @@ def apply_imported_scene_to_blender(
     scene_name: Optional[str] = None,
     origin_centered: bool = True,
     target_collection: Optional[Any] = None,
+    context: Optional[Any] = None,
+    prefs=None,
+    enable_animated_textures: bool = True,
 ) -> Dict[str, Any]:
     """
-    Assembles Blender objects for an imported .mtkscene package:
-    - Root Empty: `[Scene] <name>`
-    - Surface Mesh: `[Scene] <name>_Mesh`
-    - Companion Point Cloud: `[Scene] <name>_VoxelCloud`
-    - Injects mesh geometry, companion point cloud attributes, and binds materials.
+    Assembles Blender objects for an imported .mtkscene package adhering strictly
+    to the Unified World Empty Container architecture:
+      Container Root: Empty, `[Scene] <name>`, mtk:is_container=True, mtk:container_type="SCENE"
+      ├── World Mesh: Mesh, `[Scene] <name>_Mesh`
+      └── Companion Point Cloud: Mesh, `[Scene] <name>_VoxelCloud` (hidden by default)
     """
     if not HAS_BPY:
         return {}
 
+    if context is None and hasattr(bpy, "context"):
+        context = bpy.context
+
     mesh_data = data.get("mesh_data")
     point_cloud = data.get("point_cloud")
+    storage = data.get("storage")
     reader = data.get("reader")
+    atlas = data.get("atlas")
     meta = data.get("metadata", {})
 
     s_name = scene_name or "Scene"
     root_name = f"[Scene] {s_name}"
     mesh_child_name = f"{root_name}_Mesh"
 
-    target_coll = target_collection or get_or_create_scene_collection()
-    if target_coll is None and hasattr(bpy.context, "scene"):
-        target_coll = bpy.context.scene.collection
+    target_coll = target_collection or (
+        context.collection
+        if context and getattr(context, "collection", None)
+        else (bpy.context.scene.collection if hasattr(bpy.context, "scene") else None)
+    )
 
-    # 1. Create or acquire root Empty container
+    scene_uuid = str(uuid.uuid4())
+
+    # 1. Acquire or create Root Empty Container
     root_obj = None
     if hasattr(bpy, "data") and hasattr(bpy.data, "objects") and root_name in bpy.data.objects:
         cand = bpy.data.objects[root_name]
@@ -101,12 +103,8 @@ def apply_imported_scene_to_blender(
 
     if root_obj is None:
         root_obj = bpy.data.objects.new(root_name, None)
-        try:
-            root_obj.type = "EMPTY"
-        except (AttributeError, TypeError):
-            pass
         if hasattr(root_obj, "empty_display_type"):
-            root_obj.empty_display_type = "CUBE"
+            root_obj.empty_display_type = "PLAIN_AXES"
         if hasattr(root_obj, "empty_display_size"):
             root_obj.empty_display_size = 1.0
         if target_coll is not None and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
@@ -115,9 +113,14 @@ def apply_imported_scene_to_blender(
             except Exception:
                 pass
 
+    _safe_set_custom_prop(root_obj, "mtk:is_container", True)
+    _safe_set_custom_prop(root_obj, "mtk:container_type", "SCENE")
+    _safe_set_custom_prop(root_obj, "mtk:container_id", scene_uuid)
+    _safe_set_custom_prop(root_obj, "mozi_scene_uuid", scene_uuid)
+    _safe_set_custom_prop(root_obj, "mtk:last_name", getattr(root_obj, "name", root_name))
     _safe_set_custom_prop(root_obj, "mtk:is_scene_container", True)
 
-    # 2. Create or acquire child surface mesh object
+    # 2. Acquire or create Child Mesh Object
     mesh_obj = None
     if hasattr(bpy, "data") and hasattr(bpy.data, "objects") and mesh_child_name in bpy.data.objects:
         cand = bpy.data.objects[mesh_child_name]
@@ -127,10 +130,6 @@ def apply_imported_scene_to_blender(
     if mesh_obj is None:
         b_mesh = bpy.data.meshes.new(mesh_child_name)
         mesh_obj = bpy.data.objects.new(mesh_child_name, b_mesh)
-        try:
-            mesh_obj.type = "MESH"
-        except (AttributeError, TypeError):
-            pass
         if hasattr(mesh_obj, "parent"):
             mesh_obj.parent = root_obj
         if target_coll is not None and hasattr(target_coll, "objects") and hasattr(target_coll.objects, "link"):
@@ -146,7 +145,7 @@ def apply_imported_scene_to_blender(
     _safe_set_custom_prop(mesh_obj, "mtk:is_scene_mesh", True)
     stamp_geometry_origin(mesh_obj, ORIGIN_SCENE, overwrite=True)
 
-    # 3. Inject mesh geometry
+    # 3. Inject mesh geometry (Dual-Channel Safe-Path / DNA Fast-Path)
     if mesh_data is not None:
         inject_mesh_data(
             b_mesh,
@@ -155,20 +154,28 @@ def apply_imported_scene_to_blender(
             update_normals=True,
         )
 
-    # 4. Bind mini-atlas materials
-    materials = []
-    if reader is not None:
-        materials = bind_scene_materials(mesh_obj, reader, scene_name=s_name)
+    # 4. Bind Mini-Atlas materials via SSOT canonical PBR pipeline
+    used_chunk_ids = mesh_data.used_materials() if mesh_data and hasattr(mesh_data, "used_materials") else None
+    dynamic_entity_atlases = resolve_dynamic_entity_atlases(mesh_data) if mesh_data else None
 
-    # 5. Synchronize companion VoxelPointCloud child object
-    cloud_obj = None
-    if point_cloud is not None:
-        cloud_obj = ensure_voxel_child_cloud(
-            parent_obj=root_obj,
-            cloud_data=point_cloud,
-            origin_centered=origin_centered,
-            initial_hidden=True,
-        )
+    materials = bind_scene_materials(
+        mesh_obj,
+        reader=reader,
+        scene_name=s_name,
+        atlas=atlas,
+        prefs=prefs,
+        used_chunk_ids=used_chunk_ids,
+        dynamic_entity_atlases=dynamic_entity_atlases,
+    )
+
+    # 5. Extract unculled companion VoxelPointCloud child object
+    cloud_obj = ensure_voxel_child_cloud(
+        parent_obj=root_obj,
+        storage=storage,
+        cloud_data=point_cloud,
+        origin_centered=origin_centered,
+        initial_hidden=True,
+    )
 
     if cloud_obj is not None:
         _safe_set_custom_prop(root_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
@@ -177,15 +184,48 @@ def apply_imported_scene_to_blender(
         stamp_geometry_origin(cloud_obj, ORIGIN_SCENE, overwrite=True)
 
     # 6. Store metadata custom properties
-    scene_uuid = str(uuid.uuid4())
     now_ts = time.time()
     for target in (root_obj, mesh_obj):
-        _safe_set_custom_prop(target, "mtk:scene_uuid", scene_uuid)
+        _safe_set_custom_prop(target, "mozi_scene_uuid", str(scene_uuid))
+        _safe_set_custom_prop(target, "mtk:container_id", str(scene_uuid))
         _safe_set_custom_prop(target, "mtk:scene_format_version", meta.get("format_version", 1))
         _safe_set_custom_prop(target, "mtk:voxel_count", meta.get("voxel_count", 0))
         _safe_set_custom_prop(target, "mtk:bounds", list(meta.get("bounds", [0, 0, 0, 0, 0, 0])))
         _safe_set_custom_prop(target, "mtk:generator", str(meta.get("generator", "MoziToolKit")))
-        _safe_set_custom_prop(target, "mtk:imported_at", now_ts)
+        _safe_set_custom_prop(target, "mtk:origin_centered", bool(origin_centered))
+        _safe_set_custom_prop(target, "mtk:enable_animated_textures", bool(enable_animated_textures))
+        _safe_set_custom_prop(target, "mtk:imported_at", float(now_ts))
+        _safe_set_custom_prop(target, "mtk:biome_preset", "WORLD")
+
+    # 7. Register VoxelStorage in memory cache for instant WORLD biome restores
+    if storage is not None:
+        from ..materials.biome.updater import register_object_storage
+
+        if register_object_storage is not None:
+            register_object_storage(str(scene_uuid), storage)
+            if root_obj and hasattr(root_obj, "name"):
+                register_object_storage(root_obj.name, storage)
+            if mesh_obj and hasattr(mesh_obj, "name"):
+                register_object_storage(mesh_obj.name, storage)
+
+    # 8. Prime base tint types for the newly created mesh
+    from ..materials.biome.updater import resolve_mesh_base_tint_types
+
+    if resolve_mesh_base_tint_types is not None:
+        try:
+            resolve_mesh_base_tint_types(b_mesh, mesh_obj)
+        except Exception:
+            pass
+
+    # 9. Activate root container in viewport
+    if context and hasattr(context, "view_layer"):
+        try:
+            if hasattr(root_obj, "select_set"):
+                root_obj.select_set(True)
+            if hasattr(context.view_layer, "objects"):
+                context.view_layer.objects.active = root_obj
+        except (RuntimeError, Exception):
+            pass
 
     return {
         "root_obj": root_obj,

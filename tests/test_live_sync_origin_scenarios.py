@@ -160,6 +160,13 @@ if not HAS_BPY:
             self.color_attributes = _MockAttributes()
             self.attributes = _MockAttributes()
             self.loops = []
+            self._props = {}
+        def __getitem__(self, item):
+            return self._props[item]
+        def __setitem__(self, item, value):
+            self._props[item] = value
+        def get(self, item, default=None):
+            return self._props.get(item, default)
         def clear_geometry(self):
             self.vertices = _MockMeshVertices()
             self.polygons = []
@@ -174,8 +181,8 @@ if not HAS_BPY:
     class _MockObject:
         def __init__(self, name="Obj", mesh=None):
             self.name = name
-            self.data = mesh or _MockMesh(name)
-            self.type = "MESH"
+            self.data = mesh
+            self.type = "EMPTY" if mesh is None else "MESH"
             self.parent = None
             self.children = []
             self.users_collection = [MagicMock()]
@@ -188,17 +195,20 @@ if not HAS_BPY:
         def get(self, item, default=None):
             return self._props.get(item, default)
 
-    class MockCollection(dict):
+    class MockObjectCollection(dict):
         def new(self, name, data=None):
-            if data is not None:
-                obj = _MockObject(name, data)
-            else:
-                obj = _MockMesh(name)
+            obj = _MockObject(name, data)
             self[name] = obj
             return obj
 
-    _mock_objects = MockCollection()
-    _mock_meshes = MockCollection()
+    class MockMeshCollection(dict):
+        def new(self, name):
+            mesh = _MockMesh(name)
+            self[name] = mesh
+            return mesh
+
+    _mock_objects = MockObjectCollection()
+    _mock_meshes = MockMeshCollection()
 
     bpy.data = MagicMock()
     bpy.data.objects = _mock_objects
