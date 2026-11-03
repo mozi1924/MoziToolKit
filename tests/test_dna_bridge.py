@@ -217,6 +217,42 @@ class TestDnaBridge(unittest.TestCase):
         attr.data = []
         self.assertTrue(inject_custom_attribute_dna(attr, b"", "INT", 0))
 
+    def test_dna_underlying_functions_respect_disabled_state(self):
+        """Defense-in-depth: underlying inject_*_dna functions must refuse execution when DNA is disabled."""
+        from unittest.mock import patch
+        from MoziToolKit.bridge.mesh.dna import (
+            inject_topology_dna,
+            inject_vertex_positions_dna,
+            inject_vertex_normals_dna,
+            inject_uvs_dna,
+            inject_color_attributes_dna,
+            inject_custom_attribute_dna,
+        )
+        from MoziToolKit.bridge.point_cloud.dna import inject_point_cloud_dna
+
+        mock_dna = MagicMock()
+        mock_mesh = MagicMock()
+        mock_data = MagicMock()
+
+        # Explicitly disable DNA
+        set_dna_enabled(False)
+        self.assertFalse(is_dna_enabled())
+
+        with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
+             patch("MoziToolKit.bridge.point_cloud.dna.get_libmtk_dna", return_value=mock_dna):
+            self.assertFalse(inject_topology_dna(mock_mesh, mock_data, 4, False, 6))
+            self.assertFalse(inject_vertex_positions_dna(mock_mesh, mock_data))
+            self.assertFalse(inject_vertex_normals_dna(mock_mesh, mock_data))
+            self.assertFalse(inject_uvs_dna(mock_mesh, mock_data))
+            self.assertFalse(inject_color_attributes_dna(mock_mesh, mock_data))
+            self.assertFalse(inject_custom_attribute_dna(MagicMock(), b"1234", "INT", 1))
+            self.assertFalse(inject_point_cloud_dna(mock_mesh, mock_data, 10))
+
+        mock_dna.copy_f32.assert_not_called()
+        mock_dna.copy_i32.assert_not_called()
+        mock_dna.copy_u32.assert_not_called()
+        mock_dna.copy_u8.assert_not_called()
+
     def test_custom_attribute_dna_in_blender(self):
         try:
             import bpy

@@ -554,7 +554,7 @@ class TestColorAttributeInjection(unittest.TestCase):
         mock_dna.copy_f32.return_value = None
 
         with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
-             patch("MoziToolKit.bridge.mesh.dna.is_dna_available", return_value=True), \
+             patch("MoziToolKit.bridge.mesh.dna.is_dna_enabled", return_value=True), \
              patch("MoziToolKit.bridge.mesh.dna.resolve_colors_ptr", return_value=0x12345678):
             result = inject_color_attributes_dna(mesh, MockMeshData())
 

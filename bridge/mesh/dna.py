@@ -14,6 +14,7 @@ import numpy as np
 
 from ..dna import (
     is_dna_available,
+    is_dna_enabled,
     resolve_attribute_ptr,
     resolve_colors_ptr,
     resolve_corner_verts_ptr,
@@ -46,7 +47,7 @@ def inject_topology_dna(
     Returns True if successfully injected, or False if direct copy failed.
     """
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     if not (hasattr(mesh.vertices, "add") and hasattr(mesh.loops, "add") and hasattr(mesh.polygons, "add")):
@@ -114,7 +115,7 @@ def inject_topology_dna(
 def inject_vertex_positions_dna(mesh: Any, mesh_data: Any) -> bool:
     """Injects vertex positions via direct memory pointer write."""
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     v_count = getattr(mesh_data, "vertex_count", 0)
@@ -142,7 +143,7 @@ def inject_vertex_positions_dna(mesh: Any, mesh_data: Any) -> bool:
 def inject_vertex_normals_dna(mesh: Any, mesh_data: Any) -> bool:
     """Injects vertex normals via direct memory pointer write."""
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     v_count = getattr(mesh_data, "vertex_count", 0)
@@ -177,7 +178,7 @@ def inject_vertex_normals_dna(mesh: Any, mesh_data: Any) -> bool:
 def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = None) -> bool:
     """Injects loop UVs via direct memory pointer write."""
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     num_loops = len(getattr(mesh, "loops", []))
@@ -224,7 +225,7 @@ def inject_uvs_dna(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = Non
 def inject_color_attributes_dna(mesh: Any, mesh_data: Any) -> bool:
     """Injects vertex/loop color attributes via direct memory pointer write."""
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     col_mv = mesh_data.colors_memoryview() if hasattr(mesh_data, "colors_memoryview") else None
@@ -299,7 +300,7 @@ def inject_custom_attribute_dna(
     Returns True if successfully written, or False if standard fallback is required.
     """
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     if elem_count == 0:

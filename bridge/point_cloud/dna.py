@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from ..dna import is_dna_available, resolve_point_cloud_ptrs
+from ..dna import is_dna_available, is_dna_enabled, resolve_point_cloud_ptrs
 from ..engine import get_libmtk_dna
 from .constants import (
     ATTR_BLOCK_ENTITY_IDX,
@@ -37,7 +37,7 @@ def inject_point_cloud_dna(
     Returns True if successfully injected, False if pointers were invalid or copy failed.
     """
     blender_dna = get_libmtk_dna()
-    if blender_dna is None or not is_dna_available():
+    if blender_dna is None or not is_dna_enabled():
         return False
 
     if pt_count == 0:
