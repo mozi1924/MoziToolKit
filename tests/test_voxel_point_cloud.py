@@ -517,7 +517,7 @@ class TestVoxelPointCloudBridge:
             mod = b_obj.modifiers.get(MASK_MODIFIER_NAME)
             assert mod is not None
 
-            attr_x_id = id(b_mesh.attributes[ATTR_BLOCK_X])
+            attr_x_ptr = b_mesh.attributes[ATTR_BLOCK_X].as_pointer()
 
             # 2. Update with modified data (same vertex count)
             cloud2 = libmtk_py.VoxelPointCloud()
@@ -529,7 +529,7 @@ class TestVoxelPointCloudBridge:
             assert len(b_mesh.vertices) == 2
 
             # Attributes should be reused in-place without clear_geometry recreation
-            assert id(b_mesh.attributes[ATTR_BLOCK_X]) == attr_x_id
+            assert b_mesh.attributes[ATTR_BLOCK_X].as_pointer() == attr_x_ptr
             assert b_mesh.attributes[ATTR_BLOCK_X].data[0].value == 70
             assert b_mesh.attributes[ATTR_BLOCK_X].data[1].value == 15
             assert list(b_mesh[PROP_BLOCK_PALETTE]) == ["minecraft:glass", "minecraft:stone"]

@@ -78,14 +78,14 @@ class TestDnaReadWriteConsistency(unittest.TestCase):
 
         mesh.loops.foreach_set("vertex_index", np.array(loop_verts, dtype=np.uint32))
 
-        # Setup UV layer
-        uv_layer = mesh.uv_layers.new(name="UVMap")
-        uv_layer.data.foreach_set("uv", np.array(loop_uvs, dtype=np.float32))
-
-        # Setup polygon offsets
+        # Setup polygon offsets first so face topology is valid for UV/attribute layers
         offsets = np.arange(0, loop_count + 4, 4, dtype=np.int32)
         mesh.polygons.foreach_set("loop_start", offsets[:-1])
         mesh.polygons.foreach_set("loop_total", np.full(poly_count, 4, dtype=np.int32))
+
+        # Setup UV layer
+        uv_layer = mesh.uv_layers.new(name="UVMap")
+        uv_layer.data.foreach_set("uv", np.array(loop_uvs, dtype=np.float32))
 
         # Setup material indices
         mat_attr = mesh.attributes.new(name="material_index", type="INT", domain="FACE")
