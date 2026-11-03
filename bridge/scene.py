@@ -33,7 +33,11 @@ def inspect_scene_package(path: str | Path) -> Dict[str, Any]:
     return meta.to_dict()
 
 
-def read_scene_package(path: str | Path) -> Dict[str, Any]:
+def read_scene_package(
+    path: str | Path,
+    origin_centered: bool = True,
+    z_up: bool = True,
+) -> Dict[str, Any]:
     """
     Reads an .mtkscene package into memory:
     - metadata (dict)
@@ -49,7 +53,7 @@ def read_scene_package(path: str | Path) -> Dict[str, Any]:
 
     reader = mtk.ScenePackageReader.open(target_path)
     meta = reader.metadata.to_dict()
-    point_cloud = reader.read_point_cloud()
+    point_cloud = reader.read_point_cloud(origin_centered=origin_centered, z_up=z_up)
     models = reader.read_models()
     atlas = reader.read_atlas()
     atlas_mapping_json = reader.read_atlas_mapping_json()
@@ -75,6 +79,7 @@ def load_and_mesh_scene_package(
     origin_centered: bool = True,
     enable_animated_textures: bool = True,
     num_threads: Optional[int] = None,
+    z_up: bool = True,
 ) -> Dict[str, Any]:
     """
     High-level headless scene loader: reads .mtkscene, reconstructs VoxelStorage,
@@ -83,7 +88,7 @@ def load_and_mesh_scene_package(
     Returns dictionary with mesh_data, point_cloud, storage, metadata, atlas, and reader.
     """
     t0 = time.perf_counter()
-    data = read_scene_package(path)
+    data = read_scene_package(path, origin_centered=origin_centered, z_up=z_up)
     point_cloud = data["point_cloud"]
     models = data["models"]
     atlas = data["atlas"]

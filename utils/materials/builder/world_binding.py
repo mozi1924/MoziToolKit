@@ -25,8 +25,14 @@ def _material_slot_chunk_ids(mesh: Any) -> list[int]:
     """Chunk id stored on each material slot, or -1 when unavailable."""
     result = []
     for mat in getattr(mesh, "materials", []):
-        cid = mat.get("mtk_atlas_chunk_id") if mat is not None else None
-        result.append(int(cid) if cid is not None else -1)
+        cid = mat.get("mtk_atlas_chunk_id") if (mat is not None and hasattr(mat, "get")) else None
+        if cid is not None and isinstance(cid, (int, str, float)):
+            try:
+                result.append(int(cid))
+            except (ValueError, TypeError):
+                result.append(-1)
+        else:
+            result.append(-1)
     return result
 
 
@@ -49,17 +55,26 @@ def face_chunk_ids(mesh: Any) -> Any:
     slot_chunks = _material_slot_chunk_ids(mesh)
     if not slot_chunks:
         raw = np.empty(num_polys, dtype=np.int32)
-        mesh.polygons.foreach_get("material_index", raw)
+        if hasattr(mesh.polygons, "foreach_get"):
+            mesh.polygons.foreach_get("material_index", raw)
+        else:
+            raw = np.array([getattr(p, "material_index", 0) for p in mesh.polygons], dtype=np.int32)
         return raw
 
     slot_lut = np.asarray(slot_chunks, dtype=np.int32)
     if (slot_lut < 0).any():
         raw = np.empty(num_polys, dtype=np.int32)
-        mesh.polygons.foreach_get("material_index", raw)
+        if hasattr(mesh.polygons, "foreach_get"):
+            mesh.polygons.foreach_get("material_index", raw)
+        else:
+            raw = np.array([getattr(p, "material_index", 0) for p in mesh.polygons], dtype=np.int32)
         return raw
 
     slot_indices = np.empty(num_polys, dtype=np.int32)
-    mesh.polygons.foreach_get("material_index", slot_indices)
+    if hasattr(mesh.polygons, "foreach_get"):
+        mesh.polygons.foreach_get("material_index", slot_indices)
+    else:
+        slot_indices = np.array([getattr(p, "material_index", 0) for p in mesh.polygons], dtype=np.int32)
     np.clip(slot_indices, 0, len(slot_chunks) - 1, out=slot_indices)
     return slot_lut[slot_indices]
 
@@ -97,7 +112,6 @@ def ensure_world_materials(
         dynamic_entities_material_name,
         update_dynamic_entities_image,
     )
-    from . import ensure_material_node_tree
     from ..cleaner import remap_indices_lut
 
     atlas_dict: dict[int, Any] = {
@@ -322,57 +336,37 @@ def ensure_world_materials(
                 if hasattr(mesh, "polygons") and len(mesh.polygons) > 0:
                     num_polys = len(mesh.polygons)
                     if len(sorted_chunks) == 1:
-                        try:
+                        if hasattr(mesh.polygons, "foreach_set"):
                             import numpy as np
                             mesh.polygons.foreach_set("material_index", np.zeros(num_polys, dtype=np.int32))
-                        except Exception as e:
-                            logger.debug("Failed setting single material slot 0: %s", e)
+                        else:
+                            for p in mesh.polygons:
+                                p.material_index = 0
                     else:
-                        try:
-                            import numpy as np
-                            raw_cids = face_chunk_ids(mesh)
+                        import numpy as np
+                        raw_cids = face_chunk_ids(mesh)
 
-                            if remap_indices_lut is not None:
-                                remapped = remap_indices_lut(raw_cids, chunk_to_compact_slot, default_value=0)
-                            else:
-                                remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
+                        if remap_indices_lut is not None:
+                            remapped = remap_indices_lut(raw_cids, chunk_to_compact_slot, default_value=0)
+                        else:
+                            remapped = np.array([chunk_to_compact_slot.get(int(cid), 0) for cid in raw_cids], dtype=np.int32)
+
+                        if hasattr(mesh.polygons, "foreach_set"):
                             mesh.polygons.foreach_set("material_index", remapped)
-                        except Exception as e:
-                            logger.debug("Failed remapping polygon material indices: %s", e)
-                            for idx, p in enumerate(mesh.polygons):
-                                if hasattr(mesh, "attributes") and "mtk_atlas_chunk_id" in mesh.attributes:
-                                    raw_cid = mesh.attributes["mtk_atlas_chunk_id"].data[idx].value
-                                else:
-                                    raw_cid = getattr(p, "material_index", 0)
-                                p.material_index = chunk_to_compact_slot.get(int(raw_cid), 0)
+                        else:
+                            for idx, val in enumerate(remapped):
+                                mesh.polygons[idx].material_index = int(val)
 
                 if len(mesh.materials) > 0:
                     return
         except Exception as e:
-            logger.warning(f"Failed binding Atlas chunk materials: {e}")
+            logger.error("Failed binding Atlas chunk materials: %s", e)
+            raise
 
-
-    # 2. Fallback: Default shaded material with vertex colors / AO
-    default_mat_name = "MTK:Default:AO"
-    mat = bpy.data.materials.get(default_mat_name)
-    if mat is None:
-        mat = bpy.data.materials.new(name=default_mat_name)
-        ensure_material_node_tree(mat)
-        nodes = mat.node_tree.nodes
-        nodes.clear()
-        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf.location = (200, 0)
-        output = nodes.new("ShaderNodeOutputMaterial")
-        output.location = (500, 0)
-        mat.node_tree.links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
-
-        attr_node = nodes.new("ShaderNodeAttribute")
-        attr_node.location = (-150, 0)
-        attr_node.attribute_name = "color"
-        mat.node_tree.links.new(attr_node.outputs["Color"], bsdf.inputs["Base Color"])
-
-    mesh.materials.clear()
-    mesh.materials.append(mat)
+    raise RuntimeError(
+        "Failed to bind world materials: Atlas cache, mapping, or materials are unavailable. "
+        "Strict Golden Rules forbid falling back to untextured grey models."
+    )
 
 
 

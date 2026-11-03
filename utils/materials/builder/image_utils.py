@@ -41,17 +41,6 @@ def ensure_material_node_tree(mat: Any) -> Any:
     """
     if mat is None:
         return None
-    tree = getattr(mat, "node_tree", None)
-    if tree is not None:
-        return tree
-
-    # Legacy Blender fallback (< 5.0) where node_tree is not initialized automatically
-    try:
-        import bpy
-        if getattr(bpy.app, "version", (0, 0, 0)) < (5, 0, 0):
-            mat.use_nodes = True
-    except Exception:
-        pass
     return getattr(mat, "node_tree", None)
 
 

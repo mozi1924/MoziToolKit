@@ -32,7 +32,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
         sys.path.insert(0, p)
 
 import types
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 if "mathutils" not in sys.modules:
     sys.modules["mathutils"] = MagicMock()
@@ -304,7 +304,8 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
         if hasattr(bpy.data, "meshes") and isinstance(bpy.data.meshes, dict):
             bpy.data.meshes.clear()
 
-    def test_all_four_origin_scenarios_sequential(self):
+    @patch("MoziToolKit.operators.sync.hierarchy.ensure_world_materials")
+    def test_all_four_origin_scenarios_sequential(self, _mock_ensure_mats):
         """
         Runs the full progression across all 4 scenarios in sequence on a single connection:
         1. Initial build with no world in scene
