@@ -17,6 +17,7 @@ except ImportError:
 
 from ..i18n import tr
 
+from ..operators.save.properties import get_save_properties
 from ..operators.save.utils import (
     is_save_child_object,
     is_save_root_container,
@@ -53,6 +54,7 @@ def _draw_save_container_ui(layout: bpy.types.UILayout, context: bpy.types.Conte
     min_coord = list(target.get("mtk_min_coord", [-64, -64, -64]))
     max_coord = list(target.get("mtk_max_coord", [64, 320, 64]))
     last_refreshed_ts = target.get("mtk_last_refreshed")
+    props = get_save_properties(target)
 
     # 1. Container Hierarchy Card
     box_hier = layout.box()
@@ -86,16 +88,20 @@ def _draw_save_container_ui(layout: bpy.types.UILayout, context: bpy.types.Conte
     row_m1.label(text=f"{tr('Version')}: {mc_version}")
 
     row_m2 = col_meta.row(align=True)
-    row_m2.label(text=f"{tr('Dimension')}: {dimension}")
+    row_m2.label(text=f"{tr('World Dimension')}: {dimension}")
 
-    # AABB Bounds & Volume
+    # AABB Bounds & Volume (Current Model Geometry)
     dx = abs(max_coord[0] - min_coord[0]) + 1
     dy = abs(max_coord[1] - min_coord[1]) + 1
     dz = abs(max_coord[2] - min_coord[2]) + 1
     vol = dx * dy * dz
 
     box_bounds = layout.box()
-    box_bounds.label(text=tr("3D Selection Bounds"), icon='SNAP_INCREMENT')
+    row_b_head = box_bounds.row(align=True)
+    row_b_head.label(text=tr("3D Selection Bounds"), icon='SNAP_INCREMENT')
+    if props and props.is_dirty:
+        row_b_head.label(text=tr("Pending Changes (Unsaved)"), icon='COLOR')
+
     col_b = box_bounds.column(align=True)
     col_b.label(text=f"Min: ({min_coord[0]}, {min_coord[1]}, {min_coord[2]})")
     col_b.label(text=f"Max: ({max_coord[0]}, {max_coord[1]}, {max_coord[2]})")
@@ -107,41 +113,106 @@ def _draw_save_container_ui(layout: bpy.types.UILayout, context: bpy.types.Conte
         p_cnt = len(b_mesh.polygons) if hasattr(b_mesh, "polygons") else 0
         col_b.label(text=f"{tr('Geometry')}: {v_cnt:,} {tr('vertices')}, {p_cnt:,} {tr('faces')}")
 
-    # 3. Privacy & Local Storage Registry Card
-    box_priv = layout.box()
-    box_priv.label(text=tr("Local Save & Privacy Protection"), icon='LOCKED')
-
+    # 3. Re-mesh & Selection Settings (Collapsible Subpanel)
     reg = get_save_registry()
     is_valid = reg.is_path_valid(save_uuid)
     world_path = reg.get_world_dir(save_uuid)
 
-    col_priv = box_priv.column(align=True)
-    # Short anonymized UUID preview
-    short_uuid = f"{save_uuid[:8]}..." if len(save_uuid) > 8 else save_uuid
-    col_priv.label(text=f"UUID: {short_uuid} ({tr('Anonymized')})")
+    if props is not None:
+        box_edit = layout.box()
+        row_toggle = box_edit.row(align=True)
+        icon_fold = 'DISCLOSURE_TRI_DOWN' if props.show_rebuild_settings else 'DISCLOSURE_TRI_RIGHT'
+        row_toggle.prop(
+            props,
+            "show_rebuild_settings",
+            text=tr("Re-mesh & Selection Settings"),
+            icon=icon_fold,
+            toggle=True,
+        )
+        if props.is_dirty:
+            row_toggle.label(text=tr("Modified"), icon='COLOR')
+
+        if props.show_rebuild_settings:
+            col_s = box_edit.column(align=True)
+
+            # Dimension selection
+            row_dim = col_s.row(align=True)
+            row_dim.prop(props, "dimension", text="")
+
+            # Bounds configuration
+            col_bounds = col_s.column(align=True)
+            col_bounds.label(text=tr("3D Selection Bounds (Blocks)"), icon='SNAP_INCREMENT')
+            col_bounds.prop(props, "min_coord", text=tr("Min Coordinate"))
+            col_bounds.prop(props, "max_coord", text=tr("Max Coordinate"))
+
+            # Dynamic size preview for new settings
+            cur_dx = abs(props.max_coord[0] - props.min_coord[0]) + 1
+            cur_dy = abs(props.max_coord[1] - props.min_coord[1]) + 1
+            cur_dz = abs(props.max_coord[2] - props.min_coord[2]) + 1
+            cur_vol = cur_dx * cur_dy * cur_dz
+            col_bounds.label(
+                text=f"{tr('Configured Size')}: {cur_dx} × {cur_dy} × {cur_dz} ({cur_vol:,} {tr('blocks')})",
+                icon='INFO',
+            )
+
+            # Yefira selection reload helper button
+            if is_valid and world_path and (world_path / "yefira_selection.json").is_file():
+                row_yef = col_bounds.row(align=True)
+                row_yef.operator("mozi.save_load_yefira_selection", text=tr("Load Yefira Selection"), icon='IMPORT')
+
+            # Meshing options
+            col_mesh_opts = col_s.column(align=True)
+            col_mesh_opts.label(text=tr("Meshing & Shaders"), icon='MATERIAL')
+            r1 = col_mesh_opts.row(align=True)
+            r1.prop(props, "enable_ao", text=tr("Ambient Occlusion"))
+            r1.prop(props, "mesh_fluids", text=tr("Mesh Fluids"))
+
+            r2 = col_mesh_opts.row(align=True)
+            r2.prop(props, "weld_vertices", text=tr("Weld Vertices"))
+            r2.prop(props, "origin_centered", text=tr("Origin Centered"))
+
+            r3 = col_mesh_opts.row(align=True)
+            r3.prop(props, "enable_ctm", text=tr("Connected Textures (CTM)"))
+            r3.prop(props, "enable_animated_textures", text=tr("Animated Textures"))
+
+            # Dirty notice and reset button
+            if props.is_dirty:
+                box_notice = col_s.box()
+                box_notice.alert = True
+                box_notice.label(text=tr("Settings modified. Refresh to rebuild mesh."), icon='INFO')
+                row_reset = box_notice.row(align=True)
+                row_reset.operator("mozi.save_reset_settings", text=tr("Reset to Current Model"), icon='LOOP_BACK')
+
+    # 4. Actions & Local Link Card
+    box_act = layout.box()
 
     if is_valid and world_path:
-        row_status = col_priv.row(align=True)
-        row_status.label(text=f"{tr('Local Link')}: {world_path.name}", icon='CHECKMARK')
+        row_status = box_act.row(align=True)
+        row_status.label(text=f"{tr('Local Link')}: {world_path.name}", icon='FILE_FOLDER')
 
         if last_refreshed_ts:
             try:
-                refreshed_str = datetime.datetime.fromtimestamp(float(last_refreshed_ts)).strftime("%Y-%m-%d %H:%M:%S")
+                refreshed_str = datetime.datetime.fromtimestamp(float(last_refreshed_ts)).strftime("%Y-%m-%d %H:%M")
             except Exception:
                 refreshed_str = str(last_refreshed_ts)
-            col_priv.label(text=f"{tr('Last Refreshed')}: {refreshed_str}", icon='TIME')
+            row_status.label(text=f"{tr('Last Refreshed')}: {refreshed_str}", icon='TIME')
 
         # Action Buttons
-        col_actions = box_priv.column(align=True)
+        col_actions = box_act.column(align=True)
         col_actions.scale_y = 1.2
-        op_refresh = col_actions.operator("mozi.refresh_save_mesh", text=tr("Refresh Model"), icon='FILE_REFRESH')
+        if props and props.is_dirty:
+            col_actions.alert = True
+            refresh_text = f"{tr('Apply & Refresh Model')} *"
+        else:
+            refresh_text = tr("Refresh Model")
+        op_refresh = col_actions.operator("mozi.refresh_save_mesh", text=refresh_text, icon='FILE_REFRESH')
 
-        row_relink = box_priv.row(align=True)
+        row_relink = box_act.row(align=True)
         op_relink = row_relink.operator("mozi.relink_save_folder", text=tr("Relink Save Folder..."), icon='FOLDER_REDIRECT')
         op_relink.target_uuid = save_uuid
     else:
         # Warning: unlinked or path moved
-        box_warn = col_priv.box()
+        box_warn = box_act.column(align=True)
         box_warn.alert = True
         box_warn.label(text=tr("Local Save Unlinked or Path Moved"), icon='ERROR')
         box_warn.label(text=tr("Link your local Minecraft save folder to enable model refresh."))

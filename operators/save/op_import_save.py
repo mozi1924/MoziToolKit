@@ -183,7 +183,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
     ) # type: ignore
 
     dimension: EnumProperty(
-        name="Dimension",
+        name="World Dimension",
         description="World dimension to import from",
         items=[
             ("overworld", "Overworld", "Overworld dimension (region/ or dimensions/minecraft/overworld)"),

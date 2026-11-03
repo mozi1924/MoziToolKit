@@ -65,7 +65,7 @@ class MoziSyncProperties(bpy.types.PropertyGroup):
     )
 
     dimension: StringProperty(
-        name="Dimension",
+        name="World Dimension",
         description="Minecraft dimension identifier of the active selection",
         default="minecraft:overworld",
     )

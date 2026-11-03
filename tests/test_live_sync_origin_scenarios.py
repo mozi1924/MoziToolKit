@@ -176,6 +176,9 @@ if not HAS_BPY:
             self.name = name
             self.data = mesh or _MockMesh(name)
             self.type = "MESH"
+            self.parent = None
+            self.children = []
+            self.users_collection = [MagicMock()]
             self.location = (0.0, 0.0, 0.0)
             self._props = {}
         def __getitem__(self, item):

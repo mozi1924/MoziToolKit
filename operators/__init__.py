@@ -31,6 +31,7 @@ ALL_OPERATORS = (
 
 from . import extrude
 from . import sync
+from . import save
 
 
 def register():
@@ -47,9 +48,17 @@ def register():
         sync.register()
     except Exception:
         pass
+    try:
+        save.register()
+    except Exception:
+        pass
 
 
 def unregister():
+    try:
+        save.unregister()
+    except Exception:
+        pass
     sync.unregister()
     extrude.unregister()
     for cls in reversed(ALL_OPERATORS):

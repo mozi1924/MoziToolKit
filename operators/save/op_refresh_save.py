@@ -34,6 +34,10 @@ from ...utils.progress import BlenderProgressReporter, blender_progress_scope
 from ...utils.system.dependencies import get_prefs
 from ...utils.system.save_registry import get_save_registry
 
+from .properties import (
+    get_save_properties,
+    sync_save_properties_to_custom_props,
+)
 from .utils import resolve_save_container
 
 logger = logging.getLogger("MoziToolKit.Operators.Save.Refresh")
@@ -110,15 +114,27 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     pass
             return {"CANCELLED"}
 
-        dimension = str(target.get("mtk_dimension", "overworld"))
-        min_block = tuple(target.get("mtk_min_coord", (-64, -64, -64)))
-        max_block = tuple(target.get("mtk_max_coord", (64, 320, 64)))
-        enable_ao = bool(target.get("mtk_enable_ao", True))
-        mesh_fluids = bool(target.get("mtk_mesh_fluids", True))
-        weld_vertices = bool(target.get("mtk_weld_vertices", True))
-        origin_centered = bool(target.get("mtk_origin_centered", True))
-        enable_ctm = bool(target.get("mtk_enable_ctm", True))
-        enable_animated_textures = bool(target.get("mtk_enable_animated_textures", True))
+        props = get_save_properties(target)
+        if props:
+            dimension = str(props.dimension)
+            min_block = tuple(props.min_coord)
+            max_block = tuple(props.max_coord)
+            enable_ao = bool(props.enable_ao)
+            mesh_fluids = bool(props.mesh_fluids)
+            weld_vertices = bool(props.weld_vertices)
+            origin_centered = bool(props.origin_centered)
+            enable_ctm = bool(props.enable_ctm)
+            enable_animated_textures = bool(props.enable_animated_textures)
+        else:
+            dimension = str(target.get("mtk_dimension", "overworld"))
+            min_block = tuple(target.get("mtk_min_coord", (-64, -64, -64)))
+            max_block = tuple(target.get("mtk_max_coord", (64, 320, 64)))
+            enable_ao = bool(target.get("mtk_enable_ao", True))
+            mesh_fluids = bool(target.get("mtk_mesh_fluids", True))
+            weld_vertices = bool(target.get("mtk_weld_vertices", True))
+            origin_centered = bool(target.get("mtk_origin_centered", True))
+            enable_ctm = bool(target.get("mtk_enable_ctm", True))
+            enable_animated_textures = bool(target.get("mtk_enable_animated_textures", True))
         level_name = str(target.get("mtk_world_name", "Minecraft World"))
 
         # Asset readiness gate. All bpy-touching work stays on this main thread;
@@ -182,6 +198,11 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                         enable_animated_textures=enable_animated_textures,
                         target_root=root,
                     )
+
+                if props:
+                    sync_save_properties_to_custom_props(props, root, mesh)
+                    props.is_dirty = False
+                    props.is_initialized = True
 
                 self.report(
                     {"INFO"},
@@ -256,6 +277,10 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                 enable_animated_textures=enable_animated_textures,
                 target_root=root,
             )
+            if props:
+                sync_save_properties_to_custom_props(props, root, mesh)
+                props.is_dirty = False
+                props.is_initialized = True
             self.report(
                 {"INFO"},
                 f"Refreshed '{stats['level_name']}': "

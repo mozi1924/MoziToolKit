@@ -289,6 +289,16 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(target, "mtk:biome_preset", "WORLD")
         sanitize_save_privacy(target)
 
+    # Initialize MoziSaveProperties on root container if available
+    try:
+        from ...operators.save.properties import sync_save_properties_from_object
+        if root_obj and hasattr(root_obj, "mozi_save"):
+            sync_save_properties_from_object(root_obj.mozi_save, root_obj)
+        if mesh_obj and hasattr(mesh_obj, "mozi_save"):
+            sync_save_properties_from_object(mesh_obj.mozi_save, mesh_obj)
+    except Exception:
+        pass
+
     # 7. Register VoxelStorage in memory cache for instant WORLD biome restores
     if storage is not None:
         from ..materials.biome.updater import register_object_storage
