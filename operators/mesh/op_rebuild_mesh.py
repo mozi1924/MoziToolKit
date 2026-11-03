@@ -600,7 +600,8 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 # Offline rebuilds resample the 3D biomes from the point cloud, so
                 # the object must advertise the WORLD preset (and keep that storage
                 # available for later panel edits).
-                from ...utils.materials.biome.updater import mark_world_biome
+                from ...utils.materials.biome.updater import mark_world_biome, clear_biome_updater_cache, resolve_mesh_base_tint_types
+                clear_biome_updater_cache()
                 if mark_world_biome is not None:
                     aliases = []
                     if root_container is not None:
@@ -610,6 +611,12 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                             aliases.append(container_id)
                         mark_world_biome(root_container, storage)
                     mark_world_biome(world_mesh_obj, storage, aliases=aliases)
+
+                if resolve_mesh_base_tint_types is not None:
+                    try:
+                        resolve_mesh_base_tint_types(world_mesh_obj.data, world_mesh_obj)
+                    except Exception:
+                        pass
 
                 poly_cnt = len(world_mesh_obj.data.polygons) if hasattr(world_mesh_obj.data, "polygons") else 0
                 self.report(

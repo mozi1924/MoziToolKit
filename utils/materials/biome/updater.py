@@ -130,7 +130,12 @@ def _rehydrate_storage_from_point_cloud(obj: Any, target_mesh: Any = None) -> An
             return None
         has_biomes = ATTR_BIOME in attrs
         if not has_biomes and ATTR_BIOME_IDX in attrs:
-            has_biomes = hasattr(cloud, "__contains__") and PROP_BIOME_PALETTE in cloud
+            has_biomes = (
+                (hasattr(cloud_mesh, "__contains__") and PROP_BIOME_PALETTE in cloud_mesh)
+                or (hasattr(cloud_mesh, "get") and cloud_mesh.get(PROP_BIOME_PALETTE) is not None)
+                or (hasattr(cloud, "__contains__") and PROP_BIOME_PALETTE in cloud)
+                or (hasattr(cloud, "get") and cloud.get(PROP_BIOME_PALETTE) is not None)
+            )
         if not has_biomes:
             # Legacy point clouds without biome data would silently become Plains.
             return None
