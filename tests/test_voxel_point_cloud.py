@@ -478,8 +478,70 @@ class TestVoxelPointCloudBridge:
                 assert tuple(b_pc.points[1].co) == (4.0, 5.0, 6.0)
                 assert b_pc.attributes[ATTR_BLOCK_X].data[0].value == 10
                 assert b_pc.attributes[ATTR_BLOCK_X].data[1].value == 40
-                assert list(pc_obj[PROP_BLOCK_PALETTE]) == ["minecraft:stone", "minecraft:dirt"]
+                assert list(b_pc[PROP_BLOCK_PALETTE]) == ["minecraft:stone", "minecraft:dirt"]
                 assert b_pc.attributes[ATTR_BLOCK_STATE_IDX].data[0].value == 0
                 assert b_pc.attributes[ATTR_BLOCK_STATE_IDX].data[1].value == 1
             finally:
                 bpy.data.pointclouds.remove(b_pc, do_unlink=True)
+
+    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
+    def test_incremental_point_cloud_reuse_preserves_attributes_and_mask_modifier(self):
+        """Verifies incremental in-place attribute reuse and fast modifier bypass when vertex count matches."""
+        from MoziToolKit.bridge.point_cloud import (
+            inject_voxel_point_cloud,
+            extract_voxel_point_cloud,
+            ATTR_BLOCK_X,
+            ATTR_BLOCK_STATE_IDX,
+            PROP_BLOCK_PALETTE,
+            MASK_MODIFIER_NAME,
+            VOXEL_VERTEX_GROUP,
+        )
+
+        cloud1 = libmtk_py.VoxelPointCloud()
+        cloud1.push([1.0, 2.0, 3.0], [10, 20, 30], "minecraft:stone", "minecraft:plains", 15)
+        cloud1.push([4.0, 5.0, 6.0], [40, 50, 60], "minecraft:dirt", "minecraft:desert", 8)
+
+        b_mesh = bpy.data.meshes.new("Test_IncrReuse_Mesh")
+        b_obj = bpy.data.objects.new("Test_IncrReuse_Obj", b_mesh)
+        bpy.context.scene.collection.objects.link(b_obj)
+
+        try:
+            # 1. Initial injection with mask modifier setup
+            ok = inject_voxel_point_cloud(b_obj, cloud1, update_mask=True)
+            assert ok is True
+            assert len(b_mesh.vertices) == 2
+            vg = b_obj.vertex_groups.get(VOXEL_VERTEX_GROUP)
+            assert vg is not None
+            assert vg.weight(0) == 1.0
+            assert vg.weight(1) == 1.0
+            mod = b_obj.modifiers.get(MASK_MODIFIER_NAME)
+            assert mod is not None
+
+            attr_x_id = id(b_mesh.attributes[ATTR_BLOCK_X])
+
+            # 2. Update with modified data (same vertex count)
+            cloud2 = libmtk_py.VoxelPointCloud()
+            cloud2.push([7.0, 8.0, 9.0], [70, 80, 90], "minecraft:glass", "minecraft:jungle", 10)
+            cloud2.push([1.0, 2.0, 3.0], [15, 25, 35], "minecraft:stone", "minecraft:plains", 12)
+
+            ok = inject_voxel_point_cloud(b_obj, cloud2, update_mask=True)
+            assert ok is True
+            assert len(b_mesh.vertices) == 2
+
+            # Attributes should be reused in-place without clear_geometry recreation
+            assert id(b_mesh.attributes[ATTR_BLOCK_X]) == attr_x_id
+            assert b_mesh.attributes[ATTR_BLOCK_X].data[0].value == 70
+            assert b_mesh.attributes[ATTR_BLOCK_X].data[1].value == 15
+            assert list(b_mesh[PROP_BLOCK_PALETTE]) == ["minecraft:glass", "minecraft:stone"]
+
+            # Weights and modifier remain intact and untouched
+            assert vg.weight(0) == 1.0
+            assert vg.weight(1) == 1.0
+
+            # 3. Verify round-trip extraction
+            extracted = extract_voxel_point_cloud(b_obj)
+            assert extracted is not None
+            assert len(extracted) == 2
+            assert list(extracted.get_state_palette()) == ["minecraft:glass", "minecraft:stone"]
+        finally:
+            bpy.data.objects.remove(b_obj, do_unlink=True)

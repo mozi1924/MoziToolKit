@@ -26,6 +26,7 @@ def setup_voxel_mask_modifier(
     modifier_name: str = MASK_MODIFIER_NAME,
     initial_hidden: bool = True,
     threshold: float = 0.5,
+    force_update: bool = False,
 ) -> Optional[Any]:
     """
     Sets up Blender's native Mask Modifier ('MASK') on a mesh object to control
@@ -39,16 +40,28 @@ def setup_voxel_mask_modifier(
     if v_count == 0:
         return None
 
-    # 1. Acquire or create dedicated vertex group
     vg = obj.vertex_groups.get(group_name)
+    mod = obj.modifiers.get(modifier_name)
+
+    # Fast-path: If modifier and vertex group already exist and weights are valid,
+    # avoid re-allocating weight ranges and re-evaluating the modifier stack.
+    if not force_update and vg is not None and mod is not None and getattr(mod, "type", "") == "MASK":
+        try:
+            vg.weight(0)
+            if v_count > 1:
+                vg.weight(v_count - 1)
+            return mod
+        except Exception:
+            pass
+
+    # 1. Acquire or create dedicated vertex group
     if vg is None:
         vg = obj.vertex_groups.new(name=group_name)
 
-    # 2. Assign weight 1.0 to all points in point cloud
-    vg.add(list(range(v_count)), 1.0, "REPLACE")
+    # 2. Assign weight 1.0 to all points using lightweight range (zero Python list heap allocation)
+    vg.add(range(v_count), 1.0, "REPLACE")
 
     # 3. Acquire or create Mask Modifier
-    mod = obj.modifiers.get(modifier_name)
     if mod is None:
         mod = obj.modifiers.new(name=modifier_name, type="MASK")
 

@@ -37,7 +37,7 @@ def extract_voxel_point_cloud_dna(cloud_obj_or_mesh: Any) -> Optional[Any]:
 
     mtk = require_libmtk("extract_voxel_point_cloud_dna")
 
-    if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") == "MESH":
+    if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") in ("MESH", "POINTCLOUD"):
         obj = cloud_obj_or_mesh
         mesh = cloud_obj_or_mesh.data
     else:
@@ -52,14 +52,14 @@ def extract_voxel_point_cloud_dna(cloud_obj_or_mesh: Any) -> Optional[Any]:
         return None
 
     palette = None
-    if obj is not None and PROP_BLOCK_PALETTE in obj:
-        try:
-            palette = list(obj[PROP_BLOCK_PALETTE])
-        except Exception:
-            pass
-    if palette is None and PROP_BLOCK_PALETTE in mesh:
+    if PROP_BLOCK_PALETTE in mesh:
         try:
             palette = list(mesh[PROP_BLOCK_PALETTE])
+        except Exception:
+            pass
+    elif obj is not None and PROP_BLOCK_PALETTE in obj:
+        try:
+            palette = list(obj[PROP_BLOCK_PALETTE])
         except Exception:
             pass
 
@@ -76,16 +76,16 @@ def extract_voxel_point_cloud_dna(cloud_obj_or_mesh: Any) -> Optional[Any]:
     if not (pos_ptr and bx_ptr and by_ptr and bz_ptr and state_idx_ptr):
         return None
 
-    # Biome palette
+    # Biome palette (mesh-first authoritative lookup)
     b_palette = None
-    if obj is not None and PROP_BIOME_PALETTE in obj:
-        try:
-            b_palette = list(obj[PROP_BIOME_PALETTE])
-        except Exception:
-            pass
-    if b_palette is None and PROP_BIOME_PALETTE in mesh:
+    if PROP_BIOME_PALETTE in mesh:
         try:
             b_palette = list(mesh[PROP_BIOME_PALETTE])
+        except Exception:
+            pass
+    elif obj is not None and PROP_BIOME_PALETTE in obj:
+        try:
+            b_palette = list(obj[PROP_BIOME_PALETTE])
         except Exception:
             pass
 
@@ -99,16 +99,16 @@ def extract_voxel_point_cloud_dna(cloud_obj_or_mesh: Any) -> Optional[Any]:
         except Exception:
             pass
 
-    # Block entity palette
+    # Block entity palette (mesh-first authoritative lookup)
     ent_palette = None
-    if obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
-        try:
-            ent_palette = list(obj[PROP_BLOCK_ENTITY_PALETTE])
-        except Exception:
-            pass
-    if ent_palette is None and PROP_BLOCK_ENTITY_PALETTE in mesh:
+    if PROP_BLOCK_ENTITY_PALETTE in mesh:
         try:
             ent_palette = list(mesh[PROP_BLOCK_ENTITY_PALETTE])
+        except Exception:
+            pass
+    elif obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
+        try:
+            ent_palette = list(obj[PROP_BLOCK_ENTITY_PALETTE])
         except Exception:
             pass
 
@@ -166,7 +166,7 @@ def extract_voxel_point_cloud(
 
     mtk = require_libmtk("extract_voxel_point_cloud")
 
-    if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") == "MESH":
+    if hasattr(cloud_obj_or_mesh, "data") and getattr(cloud_obj_or_mesh, "type", "") in ("MESH", "POINTCLOUD"):
         obj = cloud_obj_or_mesh
         mesh = cloud_obj_or_mesh.data
     else:
@@ -186,14 +186,14 @@ def extract_voxel_point_cloud(
     attr_state_idx = mesh.attributes.get(ATTR_BLOCK_STATE_IDX)
 
     palette = None
-    if obj is not None and PROP_BLOCK_PALETTE in obj:
-        try:
-            palette = list(obj[PROP_BLOCK_PALETTE])
-        except Exception:
-            pass
-    if palette is None and PROP_BLOCK_PALETTE in mesh:
+    if PROP_BLOCK_PALETTE in mesh:
         try:
             palette = list(mesh[PROP_BLOCK_PALETTE])
+        except Exception:
+            pass
+    elif obj is not None and PROP_BLOCK_PALETTE in obj:
+        try:
+            palette = list(obj[PROP_BLOCK_PALETTE])
         except Exception:
             pass
 
@@ -219,17 +219,17 @@ def extract_voxel_point_cloud(
     attr_y.data.foreach_get("value", by_arr)
     attr_z.data.foreach_get("value", bz_arr)
 
-    # Extract biomes palette
+    # Extract biomes palette (mesh-first authoritative lookup)
     attr_biome_idx = mesh.attributes.get(ATTR_BIOME_IDX)
     b_palette = None
-    if obj is not None and PROP_BIOME_PALETTE in obj:
-        try:
-            b_palette = list(obj[PROP_BIOME_PALETTE])
-        except Exception:
-            pass
-    if b_palette is None and PROP_BIOME_PALETTE in mesh:
+    if PROP_BIOME_PALETTE in mesh:
         try:
             b_palette = list(mesh[PROP_BIOME_PALETTE])
+        except Exception:
+            pass
+    elif obj is not None and PROP_BIOME_PALETTE in obj:
+        try:
+            b_palette = list(obj[PROP_BIOME_PALETTE])
         except Exception:
             pass
 
@@ -243,17 +243,17 @@ def extract_voxel_point_cloud(
         except Exception:
             pass
 
-    # Extract block entity palette & indices if present
+    # Extract block entity palette & indices if present (mesh-first authoritative lookup)
     attr_entity_idx = mesh.attributes.get(ATTR_BLOCK_ENTITY_IDX)
     ent_palette = None
-    if obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
-        try:
-            ent_palette = list(obj[PROP_BLOCK_ENTITY_PALETTE])
-        except Exception:
-            pass
-    if ent_palette is None and PROP_BLOCK_ENTITY_PALETTE in mesh:
+    if PROP_BLOCK_ENTITY_PALETTE in mesh:
         try:
             ent_palette = list(mesh[PROP_BLOCK_ENTITY_PALETTE])
+        except Exception:
+            pass
+    elif obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
+        try:
+            ent_palette = list(obj[PROP_BLOCK_ENTITY_PALETTE])
         except Exception:
             pass
 

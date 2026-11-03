@@ -63,18 +63,17 @@ def inject_point_cloud_standard(
         palette = cloud_data.get_state_palette()
         indices = cloud_data.state_indices_memoryview()
         attr_state_idx.data.foreach_set("value", indices)
-        target_data[PROP_BLOCK_PALETTE] = palette
-        if obj is not None:
-            obj[PROP_BLOCK_PALETTE] = palette
+        if target_data.get(PROP_BLOCK_PALETTE) != palette:
+            target_data[PROP_BLOCK_PALETTE] = palette
 
     # 4. Biome palette & indices
     if attr_biome_idx is not None:
         b_palette = cloud_data.get_biome_palette()
         b_indices = cloud_data.biome_indices_memoryview()
-        attr_biome_idx.data.foreach_set("value", b_indices)
-        target_data[PROP_BIOME_PALETTE] = b_palette
-        if obj is not None:
-            obj[PROP_BIOME_PALETTE] = b_palette
+        if len(b_indices) == pt_count:
+            attr_biome_idx.data.foreach_set("value", b_indices)
+            if target_data.get(PROP_BIOME_PALETTE) != b_palette:
+                target_data[PROP_BIOME_PALETTE] = b_palette
 
     # 5. Block entities palette & indices
     has_entities = False
@@ -87,18 +86,12 @@ def inject_point_cloud_standard(
         ent_palette = cloud_data.get_entity_palette()
         ent_indices = cloud_data.entity_indices_memoryview()
         attr_entity_idx.data.foreach_set("value", ent_indices)
-        target_data[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
-        if obj is not None:
-            obj[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
+        if target_data.get(PROP_BLOCK_ENTITY_PALETTE) != ent_palette:
+            target_data[PROP_BLOCK_ENTITY_PALETTE] = ent_palette
     elif not has_entities:
         if PROP_BLOCK_ENTITY_PALETTE in target_data:
             try:
                 del target_data[PROP_BLOCK_ENTITY_PALETTE]
-            except Exception:
-                pass
-        if obj is not None and PROP_BLOCK_ENTITY_PALETTE in obj:
-            try:
-                del obj[PROP_BLOCK_ENTITY_PALETTE]
             except Exception:
                 pass
 

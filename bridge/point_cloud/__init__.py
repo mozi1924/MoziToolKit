@@ -79,14 +79,25 @@ def inject_voxel_point_cloud(
             target_data.resize(0)
         return True
 
-    # 1. Allocate points
-    if is_pc or hasattr(target_data, "resize"):
-        target_data.resize(pt_count)
-    elif hasattr(target_data, "clear_geometry") and hasattr(target_data.vertices, "add"):
-        target_data.clear_geometry()
-        target_data.vertices.add(pt_count)
+    # 1. Allocate or reuse points
+    current_count = (
+        len(target_data.points)
+        if (is_pc or hasattr(target_data, "points"))
+        else len(getattr(target_data, "vertices", []))
+    )
+    reallocated = False
 
-    # 2. Pre-allocate standard attributes
+    if is_pc or hasattr(target_data, "resize"):
+        if current_count != pt_count:
+            target_data.resize(pt_count)
+            reallocated = True
+    elif hasattr(target_data, "clear_geometry") and hasattr(target_data.vertices, "add"):
+        if current_count != pt_count:
+            target_data.clear_geometry()
+            target_data.vertices.add(pt_count)
+            reallocated = True
+
+    # 2. Pre-allocate standard attributes (reusing existing if count unchanged)
     attr_x = ensure_attr(target_data, ATTR_BLOCK_X, "INT", "POINT")
     attr_y = ensure_attr(target_data, ATTR_BLOCK_Y, "INT", "POINT")
     attr_z = ensure_attr(target_data, ATTR_BLOCK_Z, "INT", "POINT")
@@ -136,7 +147,11 @@ def inject_voxel_point_cloud(
     if update_mask and obj is not None and getattr(obj, "type", "") == "MESH":
         try:
             from ...utils.point_cloud.hierarchy import setup_voxel_mask_modifier
-            setup_voxel_mask_modifier(obj, initial_hidden=initial_hidden)
+            setup_voxel_mask_modifier(
+                obj,
+                initial_hidden=initial_hidden,
+                force_update=reallocated,
+            )
         except Exception:
             pass
 
