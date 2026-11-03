@@ -42,17 +42,6 @@ def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
             pass
 
 
-def get_or_create_scene_collection() -> Optional[Any]:
-    """Deprecated: returns the active or root scene collection to preserve SSOT."""
-    if not HAS_BPY or not hasattr(bpy, "context"):
-        return None
-    if hasattr(bpy.context, "collection") and bpy.context.collection:
-        return bpy.context.collection
-    if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
-        return bpy.context.scene.collection
-    return None
-
-
 def apply_imported_scene_to_blender(
     data: Dict[str, Any],
     scene_name: Optional[str] = None,

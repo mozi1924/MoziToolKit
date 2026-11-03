@@ -298,7 +298,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         mock_cloud.type = "MESH"
         mock_cloud.data.vertices = [0, 1]
 
-        with patch("MoziToolKit.utils.scene.hierarchy.ensure_voxel_child_cloud", return_value=mock_cloud):
+        with patch("MoziToolKit.utils.scene.hierarchy.ensure_voxel_child_cloud", return_value=mock_cloud), \
+             patch("MoziToolKit.utils.scene.hierarchy.bind_scene_materials", return_value=[MagicMock()]):
             assembled = apply_imported_scene_to_blender(data, scene_name="OpTest")
 
         mesh_obj = assembled["mesh_obj"]
@@ -349,7 +350,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
         import_op = MockImportOp(export_op.filepath)
 
-        with patch("MoziToolKit.operators.scene.op_import_scene.get_prefs", return_value=self.mock_prefs):
+        with patch("MoziToolKit.operators.scene.op_import_scene.get_prefs", return_value=self.mock_prefs), \
+             patch("MoziToolKit.utils.scene.hierarchy.bind_scene_materials", return_value=[MagicMock()]):
             ret = MOZI_OT_import_scene.execute(import_op, context)
             self.assertEqual(ret, {"FINISHED"})
 
@@ -417,6 +419,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         mock_cloud.data.vertices = [0, 1]
 
         with patch("MoziToolKit.utils.scene.hierarchy.ensure_voxel_child_cloud", return_value=mock_cloud), \
+             patch("MoziToolKit.utils.scene.hierarchy.bind_scene_materials", return_value=[MagicMock()]), \
              patch("MoziToolKit.utils.materials.biome.updater.register_object_storage") as mock_reg:
             assembled = apply_imported_scene_to_blender(
                 data,

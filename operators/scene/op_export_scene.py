@@ -31,7 +31,7 @@ logger = logging.getLogger("MoziToolKit.Operators.Scene.Export")
 
 
 def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optional[dict[int, bytes]]:
-    """Resolves dynamic entity atlas buffers (0xFFF0) from sessions, properties, or Blender images."""
+    """Resolves dynamic entity atlas buffers (0xFFF0) via bridge.world.resolve_dynamic_entity_atlases."""
     if not HAS_BPY:
         return None
 
@@ -53,32 +53,20 @@ def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optiona
         if atlases:
             return atlases
 
-    # 2. Check if active or parent has dynamic entity image attached
-    from ...utils.materials.builder.dynamic_entities import (
-        DEFAULT_DYNAMIC_ENTITIES_CHUNK_ID,
-        DYNAMIC_CHUNK_END,
-        DYNAMIC_CHUNK_START,
-        dynamic_entities_image_name,
-    )
+    # 2. Check mesh data on active or cloud object via bridge.world.resolve_dynamic_entity_atlases
+    mesh_data = getattr(active_obj, "data", None)
+    if mesh_data is not None:
+        atlases = resolve_dynamic_entity_atlases(mesh_data)
+        if atlases:
+            return atlases
 
-    result: dict[int, bytes] = {}
-    for cid in range(DYNAMIC_CHUNK_START, DYNAMIC_CHUNK_START + 1):  # 0xFFF0
-        img_name = dynamic_entities_image_name(cid)
-        img = bpy.data.images.get(img_name)
-        if img is not None and len(img.pixels) == 1024 * 1024 * 4:
-            try:
-                import numpy as np
+    cloud_data = getattr(cloud_obj, "data", None)
+    if cloud_data is not None:
+        atlases = resolve_dynamic_entity_atlases(cloud_data)
+        if atlases:
+            return atlases
 
-                floats = np.empty(len(img.pixels), dtype=np.float32)
-                img.pixels.foreach_get(floats)
-                # Reshape and flip back to canonical top-down Y layout
-                pixels_2d = (floats.reshape(1024, 1024, 4) * 255.0).clip(0, 255).astype(np.uint8)
-                pixels_top_down = np.ascontiguousarray(pixels_2d[::-1, :, :])
-                result[cid] = pixels_top_down.tobytes()
-            except Exception as e:
-                logger.debug("Could not read dynamic entity pixels from Blender image: %s", e)
-
-    return result if result else None
+    return None
 
 
 class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
