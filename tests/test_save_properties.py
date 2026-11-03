@@ -111,8 +111,24 @@ class _MockLayout:
         return res
 
 
+IS_REAL_BLENDER = (
+    not isinstance(bpy, MagicMock)
+    and hasattr(bpy, "app")
+    and not isinstance(bpy.app, MagicMock)
+    and hasattr(bpy.app, "version")
+    and isinstance(bpy.app.version, tuple)
+    and bpy.app.version[0] >= 4
+    and hasattr(bpy, "data")
+    and hasattr(bpy.data, "objects")
+    and not isinstance(bpy.data.objects, MagicMock)
+)
+
+
 class TestSaveProperties(unittest.TestCase):
     def setUp(self):
+        if IS_REAL_BLENDER:
+            self.skipTest("Uses lightweight mock data blocks for save properties unit testing")
+
         self.tmp_reg_dir = tempfile.TemporaryDirectory()
         self.reg_file = Path(self.tmp_reg_dir.name) / "save_registry.json"
         reg = get_save_registry()
@@ -175,14 +191,16 @@ class TestSaveProperties(unittest.TestCase):
         self.root.children = [self.mesh]
 
     def tearDown(self):
-        if hasattr(self, "orig_objects") and self.orig_objects is not None:
-            bpy.data.objects = self.orig_objects
-        if hasattr(self, "orig_meshes") and self.orig_meshes is not None:
-            bpy.data.meshes = self.orig_meshes
-        try:
-            self.tmp_reg_dir.cleanup()
-        except Exception:
-            pass
+        if not IS_REAL_BLENDER:
+            if hasattr(self, "orig_objects") and self.orig_objects is not None:
+                bpy.data.objects = self.orig_objects
+            if hasattr(self, "orig_meshes") and self.orig_meshes is not None:
+                bpy.data.meshes = self.orig_meshes
+        if hasattr(self, "tmp_reg_dir"):
+            try:
+                self.tmp_reg_dir.cleanup()
+            except Exception:
+                pass
 
     def test_get_save_properties_initial_sync(self):
         """Verifies get_save_properties initializes from object custom properties cleanly without dirtying."""
