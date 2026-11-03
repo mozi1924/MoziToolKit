@@ -39,6 +39,15 @@ from ...utils.mesh.ownership import (
 )
 
 
+def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
+    if obj is None:
+        return
+    try:
+        obj[key] = val
+    except Exception:
+        pass
+
+
 def _resolve_mesh_rebuild_targets_from_root(
     root_container: bpy.types.Object,
 ) -> Tuple[bpy.types.Object, Optional[bpy.types.Object], Optional[bpy.types.Object], str]:
@@ -430,7 +439,25 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             if root_container.get("mtk_origin_centered") is not None:
                 origin_centered = bool(root_container.get("mtk_origin_centered"))
 
+        anim_tex_enabled = None
+        if root_container is not None:
+            props = getattr(root_container, "mozi_save", None)
+            if props and hasattr(props, "enable_animated_textures"):
+                anim_tex_enabled = bool(props.enable_animated_textures)
+            elif hasattr(root_container, "get") and root_container.get("mtk_enable_animated_textures") is not None:
+                anim_tex_enabled = bool(root_container.get("mtk_enable_animated_textures"))
+        if anim_tex_enabled is None and world_mesh_obj is not None:
+            props = getattr(world_mesh_obj, "mozi_save", None)
+            if props and hasattr(props, "enable_animated_textures"):
+                anim_tex_enabled = bool(props.enable_animated_textures)
+            elif hasattr(world_mesh_obj, "get") and world_mesh_obj.get("mtk_enable_animated_textures") is not None:
+                anim_tex_enabled = bool(world_mesh_obj.get("mtk_enable_animated_textures"))
+
         prefs = get_prefs(context)
+        if anim_tex_enabled is None:
+            raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+            anim_tex_enabled = raw_anim if isinstance(raw_anim, bool) else True
+
         did_precompile = False
         if status in ("MISSING", "STALE"):
             try:
@@ -444,7 +471,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         # Resolve every bpy-backed value before launching the worker. The worker
         # only receives plain Python/Rust objects and never touches bpy.
         asset_context = prepare_asset_context(prefs)
-        mesh_context = prepare_world_mesh_context(prefs)
+        mesh_context = prepare_world_mesh_context(prefs, enable_animated_textures=anim_tex_enabled)
         model_db = mesh_context["model_db"]
         atlas = mesh_context["atlas"]
         biome_resolver = mesh_context["biome_resolver"]
@@ -555,8 +582,13 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                     atlas=atlas,
                     used_chunk_ids=used_chunk_ids,
                     dynamic_entity_atlases=dyn_entities,
+                    clean_unused_slots=True,
                 )
                 mat_ms = (time.perf_counter() - t0_mat) * 1000.0
+
+                _safe_set_custom_prop(world_mesh_obj, "mtk_enable_animated_textures", bool(anim_tex_enabled))
+                if root_container is not None:
+                    _safe_set_custom_prop(root_container, "mtk_enable_animated_textures", bool(anim_tex_enabled))
 
                 try:
                     from ...bridge.diagnostics import append_stage_to_last_profile

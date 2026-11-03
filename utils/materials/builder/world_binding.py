@@ -70,6 +70,7 @@ def ensure_world_materials(
     atlas: Optional[Any] = None,
     used_chunk_ids: Optional[Any] = None,
     dynamic_entity_atlases: Optional[Any] = None,
+    clean_unused_slots: bool = False,
 ) -> None:
     """
     Ensures that the unified world mesh object has corresponding Atlas Chunk materials
@@ -138,7 +139,11 @@ def ensure_world_materials(
                 break
             existing_chunk_to_slot[int(cid)] = s_idx
 
-        if all_valid and target_chunk_ids.issubset(existing_chunk_to_slot.keys()):
+        can_fast_path = all_valid and (
+            (not clean_unused_slots and target_chunk_ids.issubset(existing_chunk_to_slot.keys()))
+            or (clean_unused_slots and target_chunk_ids == set(existing_chunk_to_slot.keys()))
+        )
+        if can_fast_path:
             for cid in target_chunk_ids:
                 if DYNAMIC_CHUNK_START <= cid <= DYNAMIC_CHUNK_END:
                     skin_slot = existing_chunk_to_slot.get(cid)

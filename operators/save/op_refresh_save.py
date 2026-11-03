@@ -156,7 +156,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
             status = "READY"
 
         asset_context = prepare_asset_context(prefs)
-        mesh_context = prepare_world_mesh_context(prefs)
+        mesh_context = prepare_world_mesh_context(prefs, enable_animated_textures=enable_animated_textures)
 
         # Synchronous mode (headless / tests)
         if not self.run_async:
@@ -232,7 +232,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     "weld_vertices": weld_vertices,
                     "origin_centered": origin_centered,
                     "enable_ctm": enable_ctm,
-                    "enable_animated_textures": mesh_context["enable_animated_textures"],
+                    "enable_animated_textures": enable_animated_textures,
                     "model_db": mesh_context["model_db"],
                     "atlas": mesh_context["atlas"],
                     "biome_resolver": mesh_context["biome_resolver"],

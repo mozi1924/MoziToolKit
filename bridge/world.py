@@ -98,7 +98,7 @@ def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any],
     return _WORLD_PIPELINE_ASSETS_CACHE
 
 
-def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
+def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bool] = None) -> Dict[str, Any]:
     """Resolve every asset/config value a background mesher needs, on the main thread.
 
     The returned dict is plain Python/Rust data: it contains no Blender RNA
@@ -110,8 +110,11 @@ def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
     ctm_solver = get_configured_ctm_solver(prefs)
     raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
     num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
-    raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
-    enable_animated_textures = raw_anim if isinstance(raw_anim, bool) else True
+    if enable_animated_textures is None:
+        raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+        anim_enabled = raw_anim if isinstance(raw_anim, bool) else True
+    else:
+        anim_enabled = bool(enable_animated_textures)
     skin_cache_dir = None
     try:
         from .assets import get_cache_dir
@@ -127,7 +130,7 @@ def prepare_world_mesh_context(prefs=None) -> Dict[str, Any]:
         "cache_package_path": str(active_pkg.resolve()) if active_pkg else None,
         "ctm_solver": ctm_solver,
         "num_threads": num_threads,
-        "enable_animated_textures": enable_animated_textures,
+        "enable_animated_textures": anim_enabled,
         "skin_cache_dir": skin_cache_dir,
         "cache_fingerprint": get_cache_fingerprint(prefs),
         "cache_timestamp": get_cache_timestamp(prefs),

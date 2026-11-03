@@ -236,6 +236,7 @@ def apply_imported_save_to_blender(
         atlas=atlas,
         used_chunk_ids=used_chunk_ids,
         dynamic_entity_atlases=dynamic_entity_atlases,
+        clean_unused_slots=True,
     )
     materials_ms = (time.perf_counter() - t_materials) * 1000.0
 

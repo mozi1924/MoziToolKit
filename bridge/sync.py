@@ -157,6 +157,7 @@ class SyncBridgeSession:
         custom_aliases: Optional[Any] = None,
         num_threads: Optional[int] = None,
         auth_token: Optional[str] = None,
+        enable_animated_textures: Optional[bool] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -175,6 +176,19 @@ class SyncBridgeSession:
         # still be rejected with "Authentication failed".
         auth_token = (auth_token or "").strip() or None
 
+        prefs = None
+        try:
+            from ..utils.system import get_prefs
+            prefs = get_prefs()
+        except Exception:
+            prefs = None
+
+        if enable_animated_textures is None:
+            raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+            anim_enabled = raw_anim if isinstance(raw_anim, bool) else True
+        else:
+            anim_enabled = bool(enable_animated_textures)
+
         self._model_db = model_db
         self._atlas = atlas
         self._biome_resolver = biome_resolver
@@ -183,17 +197,11 @@ class SyncBridgeSession:
             "enable_ao": enable_ao,
             "mesh_fluids": mesh_fluids,
             "num_threads": num_threads,
+            "enable_animated_textures": anim_enabled,
         }
         self._cached_manifest_fingerprint = get_cache_fingerprint()
         self._cached_manifest_timestamp = get_cache_timestamp()
         self._current_url = url
-
-        prefs = None
-        try:
-            from ..utils.system import get_prefs
-            prefs = get_prefs()
-        except Exception:
-            prefs = None
 
         if num_threads is None and prefs is not None:
             num_threads = getattr(prefs, "thread_count", 0) or None
@@ -212,6 +220,7 @@ class SyncBridgeSession:
                 "atlas": atlas,
                 "biome_resolver": biome_resolver,
                 "custom_aliases": custom_aliases,
+                "enable_animated_textures": anim_enabled,
             }
             if ctm_solver is not None:
                 config_kwargs["ctm_solver"] = ctm_solver
@@ -306,6 +315,7 @@ class SyncBridgeSession:
         custom_aliases: Optional[Any] = None,
         num_threads: Optional[int] = None,
         auth_token: Optional[str] = None,
+        enable_animated_textures: Optional[bool] = None,
     ) -> bool:
         """
         Starts the LiveSync client using cached handshake parameters for 0ms zero-rebuild reconnect.
@@ -322,6 +332,19 @@ class SyncBridgeSession:
 
         auth_token = (auth_token or "").strip() or None
 
+        prefs = None
+        try:
+            from ..utils.system import get_prefs
+            prefs = get_prefs()
+        except Exception:
+            prefs = None
+
+        if enable_animated_textures is None:
+            raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+            anim_enabled = raw_anim if isinstance(raw_anim, bool) else True
+        else:
+            anim_enabled = bool(enable_animated_textures)
+
         self._model_db = model_db
         self._atlas = atlas
         self._biome_resolver = biome_resolver
@@ -330,17 +353,11 @@ class SyncBridgeSession:
             "enable_ao": enable_ao,
             "mesh_fluids": mesh_fluids,
             "num_threads": num_threads,
+            "enable_animated_textures": anim_enabled,
         }
         self._cached_manifest_fingerprint = get_cache_fingerprint()
         self._cached_manifest_timestamp = get_cache_timestamp()
         self._current_url = url
-
-        prefs = None
-        try:
-            from ..utils.system import get_prefs
-            prefs = get_prefs()
-        except Exception:
-            prefs = None
 
         if num_threads is None and prefs is not None:
             num_threads = getattr(prefs, "thread_count", 0) or None
@@ -358,6 +375,7 @@ class SyncBridgeSession:
                 "atlas": atlas,
                 "biome_resolver": biome_resolver,
                 "custom_aliases": custom_aliases,
+                "enable_animated_textures": anim_enabled,
             }
             if ctm_solver is not None:
                 config_kwargs["ctm_solver"] = ctm_solver
@@ -518,6 +536,10 @@ class SyncBridgeSession:
                 enable_ao = self._config_params.get("enable_ao", True)
                 mesh_fluids = self._config_params.get("mesh_fluids", True)
                 num_threads = self._config_params.get("num_threads", None)
+                anim_enabled = self._config_params.get("enable_animated_textures")
+                if anim_enabled is None:
+                    raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
+                    anim_enabled = raw_anim if isinstance(raw_anim, bool) else True
                 ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
                 try:
                     cfg_kwargs = {
@@ -530,6 +552,7 @@ class SyncBridgeSession:
                         "atlas": new_atlas,
                         "biome_resolver": new_biome_resolver,
                         "custom_aliases": self._custom_aliases,
+                        "enable_animated_textures": anim_enabled,
                     }
                     if ctm_solver is not None:
                         cfg_kwargs["ctm_solver"] = ctm_solver
