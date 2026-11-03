@@ -25,6 +25,7 @@ except ImportError:
     HAS_BPY = False
 
 from ...bridge.material import (
+    get_biome_meta,
     is_material_bridge_available,
     load_baked_atlas_from_json,
     remap_mesh_multi_uvs_paletted,
@@ -107,11 +108,8 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
     """Ensure asset caches exist in persistent storage and match configured pack stack."""
     base_cache = get_cache_dir(prefs)
     status = check_asset_cache_status(prefs)
-    from ...bridge.assets.compat import compat_stamp_matches
 
-    if status in ("MISSING", "STALE") or (
-        status == "READY" and not compat_stamp_matches(base_cache)
-    ):
+    if status in ("MISSING", "STALE"):
         has_custom_packs = prefs is not None and hasattr(prefs, "resource_packs")
         if not (not has_custom_packs and os.environ.get("MOZI_CACHE_DIR")):
             logger.info("Asset cache is %s; running automated precompilation...", status)
@@ -481,15 +479,16 @@ def resolve_and_apply_biome_tint(
 
     is_custom = biome.upper() == "CUSTOM"
     if is_custom:
-        custom_temp = float(getattr(mesh_or_obj, "mtk_biome_temp", mesh_or_obj.get("mtk_biome_temp", 0.8) if hasattr(mesh_or_obj, "get") else 0.8))
-        custom_humidity = float(getattr(mesh_or_obj, "mtk_biome_humidity", mesh_or_obj.get("mtk_biome_humidity", 0.4) if hasattr(mesh_or_obj, "get") else 0.4))
+        plains_meta = get_biome_meta("PLAINS")
+        custom_temp = float(getattr(mesh_or_obj, "mtk_biome_temp", mesh_or_obj.get("mtk_biome_temp", plains_meta["temperature"]) if hasattr(mesh_or_obj, "get") else plains_meta["temperature"]))
+        custom_humidity = float(getattr(mesh_or_obj, "mtk_biome_humidity", mesh_or_obj.get("mtk_biome_humidity", plains_meta["humidity"]) if hasattr(mesh_or_obj, "get") else plains_meta["humidity"]))
         has_custom_grass = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_grass", mesh_or_obj.get("mtk_biome_use_custom_grass", False) if hasattr(mesh_or_obj, "get") else False))
         has_custom_foliage = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_foliage", mesh_or_obj.get("mtk_biome_use_custom_foliage", False) if hasattr(mesh_or_obj, "get") else False))
         has_custom_dry_foliage = bool(getattr(mesh_or_obj, "mtk_biome_use_custom_dry_foliage", mesh_or_obj.get("mtk_biome_use_custom_dry_foliage", False) if hasattr(mesh_or_obj, "get") else False))
-        custom_grass = list(getattr(mesh_or_obj, "mtk_biome_grass_color", mesh_or_obj.get("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)) if hasattr(mesh_or_obj, "get") else (0.28, 0.51, 0.10, 1.0)))
-        custom_foliage = list(getattr(mesh_or_obj, "mtk_biome_foliage_color", mesh_or_obj.get("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)) if hasattr(mesh_or_obj, "get") else (0.18, 0.41, 0.03, 1.0)))
-        custom_dry_foliage = list(getattr(mesh_or_obj, "mtk_biome_dry_foliage_color", mesh_or_obj.get("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)) if hasattr(mesh_or_obj, "get") else (0.37, 0.18, 0.06, 1.0)))
-        custom_water = list(getattr(mesh_or_obj, "mtk_biome_water_color", mesh_or_obj.get("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)) if hasattr(mesh_or_obj, "get") else (0.05, 0.18, 0.78, 1.0)))
+        custom_grass = list(getattr(mesh_or_obj, "mtk_biome_grass_color", mesh_or_obj.get("mtk_biome_grass_color", plains_meta["grass_linear"]) if hasattr(mesh_or_obj, "get") else plains_meta["grass_linear"]))
+        custom_foliage = list(getattr(mesh_or_obj, "mtk_biome_foliage_color", mesh_or_obj.get("mtk_biome_foliage_color", plains_meta["foliage_linear"]) if hasattr(mesh_or_obj, "get") else plains_meta["foliage_linear"]))
+        custom_dry_foliage = list(getattr(mesh_or_obj, "mtk_biome_dry_foliage_color", mesh_or_obj.get("mtk_biome_dry_foliage_color", plains_meta["dry_foliage_linear"]) if hasattr(mesh_or_obj, "get") else plains_meta["dry_foliage_linear"]))
+        custom_water = list(getattr(mesh_or_obj, "mtk_biome_water_color", mesh_or_obj.get("mtk_biome_water_color", plains_meta["water_linear"]) if hasattr(mesh_or_obj, "get") else plains_meta["water_linear"]))
     else:
         custom_temp = None
         custom_humidity = None

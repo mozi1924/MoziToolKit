@@ -41,6 +41,11 @@ def test_mesh_data_to_buffers_headless():
     attr_buf = np.array([42, 43, 44, 45], dtype=np.int32)
     mesh.add_attribute_from_buffer("test_attr", "point", "int", attr_buf)
 
+    # Attach a string custom attribute (palette)
+    mesh.add_string_attribute(
+        "mtk_source_textures", "mesh", ["minecraft:block/stone", "minecraft:block/dirt"]
+    )
+
     # Export host-agnostic buffer DTO
     buf_dict = mesh.to_buffers()
     assert isinstance(buf_dict, dict)
@@ -86,6 +91,15 @@ def test_mesh_data_to_buffers_headless():
     assert len(attr_info["data"]) == 4
     attr_data = np.frombuffer(attr_info["data"], dtype=np.int32)
     np.testing.assert_array_equal(attr_data, [42, 43, 44, 45])
+
+    # Custom string attribute (palette) in dict
+    assert "mtk_source_textures" in buf_dict["attributes"]
+    str_attr_info = buf_dict["attributes"]["mtk_source_textures"]
+    assert str_attr_info["domain"] == "mesh"
+    assert str_attr_info["dtype"] == "string"
+    assert str_attr_info["element_count"] == 2
+    assert str_attr_info["data"] == ["minecraft:block/stone", "minecraft:block/dirt"]
+    assert str_attr_info["palette"] == ["minecraft:block/stone", "minecraft:block/dirt"]
 
 
 def test_voxel_point_cloud_to_buffers_headless():

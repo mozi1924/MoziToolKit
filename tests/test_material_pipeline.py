@@ -631,6 +631,17 @@ class TestMaterialPipeline(unittest.TestCase):
         self.assertEqual(list(indices), [0, 1])
         self.assertEqual(face_loop_ranges, [(0, 4), (4, 4)])
 
+    def test_jmc2obj_uses_the_native_suffix_list(self):
+        """The jmc2obj candidate generator must not carry its own suffix table."""
+        from MoziToolKit.bridge import builtin_biome_suffixes
+        from MoziToolKit.utils.materials.matching.presets import jmc2obj
+
+        native = tuple(builtin_biome_suffixes())
+        self.assertEqual(jmc2obj.biome_suffixes(), native)
+        self.assertFalse(hasattr(jmc2obj, "JMC2OBJ_BIOME_SUFFIXES"), "local biome suffix table leaked back")
+        for suffix in native:
+            self.assertEqual(jmc2obj.clean_jmc2obj_identifier(f"stone{suffix}"), "stone", suffix)
+
 
 if __name__ == "__main__":
     if "--" in sys.argv:

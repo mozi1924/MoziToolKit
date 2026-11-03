@@ -7,16 +7,12 @@ from typing import Optional
 
 
 def has_libmtk() -> bool:
-    """Check if LibMTK native Rust core (libmtk_py) is available."""
+    """Check if LibMTK native Rust core is available."""
     try:
         from ...bridge import has_libmtk as _engine_has_libmtk
         return _engine_has_libmtk()
     except Exception:
-        try:
-            import libmtk_py
-            return True
-        except ImportError:
-            return False
+        return False
 
 
 def get_prefs(context=None):

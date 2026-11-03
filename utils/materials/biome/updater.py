@@ -17,6 +17,7 @@ except ImportError:
     np = None
     HAS_NUMPY = False
 
+from ....bridge.material import get_biome_meta
 from ..cleaner import clean_obsolete_mesh_attributes
 from ..constants import (
     ATTR_ATLAS_CHUNK_ID,
@@ -475,15 +476,16 @@ def update_object_biome(
                 return obj.get(k)
             return getattr(obj, k, default)
 
-        custom_temp = float(_get_prop("mtk_biome_temp", 0.8))
-        custom_humidity = float(_get_prop("mtk_biome_humidity", 0.4))
+        plains_meta = get_biome_meta("PLAINS")
+        custom_temp = float(_get_prop("mtk_biome_temp", plains_meta["temperature"]))
+        custom_humidity = float(_get_prop("mtk_biome_humidity", plains_meta["humidity"]))
         has_custom_grass = bool(_get_prop("mtk_biome_use_custom_grass", False))
         has_custom_foliage = bool(_get_prop("mtk_biome_use_custom_foliage", False))
         has_custom_dry_foliage = bool(_get_prop("mtk_biome_use_custom_dry_foliage", False))
-        custom_grass = list(_get_prop("mtk_biome_grass_color", (0.28, 0.51, 0.10, 1.0)))
-        custom_foliage = list(_get_prop("mtk_biome_foliage_color", (0.18, 0.41, 0.03, 1.0)))
-        custom_dry_foliage = list(_get_prop("mtk_biome_dry_foliage_color", (0.37, 0.18, 0.06, 1.0)))
-        custom_water = list(_get_prop("mtk_biome_water_color", (0.05, 0.18, 0.78, 1.0)))
+        custom_grass = list(_get_prop("mtk_biome_grass_color", plains_meta["grass_linear"]))
+        custom_foliage = list(_get_prop("mtk_biome_foliage_color", plains_meta["foliage_linear"]))
+        custom_dry_foliage = list(_get_prop("mtk_biome_dry_foliage_color", plains_meta["dry_foliage_linear"]))
+        custom_water = list(_get_prop("mtk_biome_water_color", plains_meta["water_linear"]))
     else:
         custom_temp = None
         custom_humidity = None
@@ -573,10 +575,11 @@ def update_object_biome(
                 if not np.any(base_tt > 0) and not is_init:
                     fast_path_done = False
                 else:
-                    grass_col = biome_colors.get("grass_linear", [0.28, 0.51, 0.10, 1.0])
-                    foliage_col = biome_colors.get("foliage_linear", [0.18, 0.41, 0.03, 1.0])
-                    water_col = biome_colors.get("water_linear", [0.05, 0.18, 0.78, 1.0])
-                    dry_foliage_col = biome_colors.get("dry_foliage_linear", [0.37, 0.18, 0.06, 1.0])
+                    plains_meta = get_biome_meta("PLAINS")
+                    grass_col = biome_colors.get("grass_linear", plains_meta["grass_linear"])
+                    foliage_col = biome_colors.get("foliage_linear", plains_meta["foliage_linear"])
+                    water_col = biome_colors.get("water_linear", plains_meta["water_linear"])
+                    dry_foliage_col = biome_colors.get("dry_foliage_linear", plains_meta["dry_foliage_linear"])
 
                     # Rust owns the per-face category/color composition. Python only
                     # reads/writes flat buffers, so slider drags stay memory-bandwidth bound.

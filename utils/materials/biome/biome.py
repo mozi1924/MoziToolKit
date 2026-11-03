@@ -131,8 +131,8 @@ def get_biome_colors(
 
     meta = get_biome_meta(biome_name)
     if biome_name.upper() == "CUSTOM":
-        temp = custom_temp if custom_temp is not None else meta.get("temperature", 0.8)
-        hum = custom_humidity if custom_humidity is not None else meta.get("humidity", 0.4)
+        temp = custom_temp if custom_temp is not None else meta["temperature"]
+        hum = custom_humidity if custom_humidity is not None else meta["humidity"]
         meta["temperature"] = temp
         meta["humidity"] = hum
 

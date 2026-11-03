@@ -13,7 +13,6 @@ from typing import Any, Dict, Optional
 
 from ..engine import get_libmtk
 from ..progress import ProgressCallback, wrap_progress_callback
-from .compat import load_import_compat_json, write_compat_stamp
 from .cache import (
     get_cache_dir,
     invalidate_asset_cache_memory,
@@ -68,12 +67,6 @@ def precompile_stack(
     # destination that still has an open mapped view, so drop it first.
     invalidate_asset_cache_memory()
 
-    compat_json = (
-        resolver_overrides_json
-        if resolver_overrides_json is not None
-        else load_import_compat_json()
-    )
-
     # Use unified high-performance Rust engine with thread pool control & progress callback
     if hasattr(mtk, "precompile_all_assets"):
         res = mtk.precompile_all_assets(
@@ -86,10 +79,9 @@ def precompile_stack(
             compile_models=True,
             num_threads=num_threads,
             callback=wrapped_cb,
-            resolver_overrides_json=compat_json,
+            resolver_overrides_json=resolver_overrides_json,
         )
         package_path = getattr(res, "package_path", "")
-        write_compat_stamp(base_cache, compat_json)
         if hasattr(res, "profile") and res.profile is not None:
             from ..diagnostics import record_operation_profile
 

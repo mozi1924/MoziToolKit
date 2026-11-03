@@ -6,6 +6,8 @@ for Atlas and Standalone mesh objects without running full material rebuilds.
 
 from __future__ import annotations
 
+from typing import Any, Optional
+
 import bpy
 from bpy.props import EnumProperty
 
@@ -18,10 +20,20 @@ from ..utils.materials.biome import (
 )
 from ..utils.materials.constants import ATTR_BIOME_TINT_DATA
 from ..utils.mesh.ownership import classify_origin
+from ..bridge.material import get_biome_meta
 from ..i18n import tr
 
 #: Mesh origins whose tint attributes are baked from real voxel world biomes.
 _WORLD_ORIGINS = {"SAVE", "SYNC_WORLD", "SYNC_SECTION", "VOXEL"}
+
+_PLAINS_META: Optional[dict[str, Any]] = None
+
+
+def _get_plains_meta() -> dict[str, Any]:
+    global _PLAINS_META
+    if _PLAINS_META is None:
+        _PLAINS_META = get_biome_meta("PLAINS")
+    return _PLAINS_META
 
 
 def _resolve_biome_preset(obj) -> str:
@@ -182,15 +194,16 @@ def _draw_biome_ui(layout, context, obj: bpy.types.Object):
     else:
         # Standard Biome Preset Info
         biome_info = get_biome_colors(current_biome)
+        plains_meta = _get_plains_meta()
         col_info = box.column(align=True)
         row_temp = col_info.row(align=True)
-        row_temp.label(text=f"{tr('Temperature')}: {biome_info.get('temperature', 0.8):.2f}")
-        row_temp.label(text=f"{tr('Downfall')}: {biome_info.get('humidity', 0.4):.2f}")
+        row_temp.label(text=f"{tr('Temperature')}: {biome_info.get('temperature', plains_meta['temperature']):.2f}")
+        row_temp.label(text=f"{tr('Downfall')}: {biome_info.get('humidity', plains_meta['humidity']):.2f}")
 
         row_cols = box.row(align=True)
         row_cols.scale_y = 0.8
-        grass_hex = biome_info.get("grass_hex", "#91BD59")
-        foliage_hex = biome_info.get("foliage_hex", "#77AB2F")
+        grass_hex = biome_info.get("grass_hex", plains_meta["grass_hex"])
+        foliage_hex = biome_info.get("foliage_hex", plains_meta["foliage_hex"])
         row_cols.label(text=f"{tr('Grass')}: {grass_hex}")
         row_cols.label(text=f"{tr('Foliage')}: {foliage_hex}")
 
@@ -251,6 +264,8 @@ def register():
         except ValueError:
             pass
 
+    plains_meta = _get_plains_meta()
+
     bpy.types.Object.mtk_biome = EnumProperty(
         name="Biome",
         description="Choose the Minecraft Biome color palette preset for grass, foliage, and water tinting",
@@ -261,7 +276,7 @@ def register():
     bpy.types.Object.mtk_biome_temp = bpy.props.FloatProperty(
         name="Temperature",
         description="Custom temperature for colormap sampling (-1.0 to 2.0)",
-        default=0.8,
+        default=plains_meta["temperature"],
         min=-1.0,
         max=2.0,
         step=1,
@@ -271,7 +286,7 @@ def register():
     bpy.types.Object.mtk_biome_humidity = bpy.props.FloatProperty(
         name="Downfall",
         description="Custom humidity / rainfall for colormap sampling (0.0 to 1.0)",
-        default=0.4,
+        default=plains_meta["humidity"],
         min=0.0,
         max=1.0,
         step=1,
@@ -291,7 +306,7 @@ def register():
         size=4,
         min=0.0,
         max=1.0,
-        default=(0.28, 0.51, 0.10, 1.0),
+        default=tuple(plains_meta["grass_linear"]),
         update=_on_custom_param_changed,
     )
     bpy.types.Object.mtk_biome_use_custom_foliage = bpy.props.BoolProperty(
@@ -307,7 +322,7 @@ def register():
         size=4,
         min=0.0,
         max=1.0,
-        default=(0.18, 0.41, 0.03, 1.0),
+        default=tuple(plains_meta["foliage_linear"]),
         update=_on_custom_param_changed,
     )
     bpy.types.Object.mtk_biome_use_custom_dry_foliage = bpy.props.BoolProperty(
@@ -323,7 +338,7 @@ def register():
         size=4,
         min=0.0,
         max=1.0,
-        default=(0.37, 0.18, 0.06, 1.0),
+        default=tuple(plains_meta["dry_foliage_linear"]),
         update=_on_custom_param_changed,
     )
     bpy.types.Object.mtk_biome_water_color = bpy.props.FloatVectorProperty(
@@ -333,7 +348,7 @@ def register():
         size=4,
         min=0.0,
         max=1.0,
-        default=(0.05, 0.18, 0.78, 1.0),
+        default=tuple(plains_meta["water_linear"]),
         update=_on_custom_param_changed,
     )
 
