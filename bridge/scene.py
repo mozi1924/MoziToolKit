@@ -46,49 +46,31 @@ def read_scene_package(
     - atlas (BakedAtlas or None)
     - atlas_mapping_json (str or None)
     - texture_names (list[str])
+    - biome_resolver (BiomeResolver or None)
+    - colormaps (VanillaColormaps or None)
+    - dynamic_entity_slots (dict or None)
+    - ctm_solver (CtmSolver or None)
     - reader (ScenePackageReader)
     """
     mtk = require_libmtk("read_scene_package")
     target_path = str(Path(path).resolve())
 
     reader = mtk.ScenePackageReader.open(target_path)
+    if hasattr(reader, "unpack"):
+        bundle = reader.unpack(origin_centered=origin_centered, z_up=z_up)
+        bundle["reader"] = reader
+        return bundle
+
     meta = reader.metadata.to_dict()
     point_cloud = reader.read_point_cloud(origin_centered=origin_centered, z_up=z_up)
     models = reader.read_models()
     atlas = reader.read_atlas()
     atlas_mapping_json = reader.read_atlas_mapping_json()
     texture_names = reader.get_atlas_texture_names()
-    biome_resolver = None
-    if hasattr(reader, "read_biome_resolver"):
-        try:
-            biome_resolver = reader.read_biome_resolver()
-        except Exception as e:
-            logger.error("Failed to decode BiomeResolver from scene package '%s': %s", target_path, e, exc_info=True)
-            raise
-
-    ctm_solver = None
-    if hasattr(reader, "read_ctm_solver"):
-        try:
-            ctm_solver = reader.read_ctm_solver()
-        except Exception as e:
-            logger.error("Failed to decode CtmSolver from scene package '%s': %s", target_path, e, exc_info=True)
-            raise
-
-    colormaps = None
-    if hasattr(reader, "read_colormaps"):
-        try:
-            colormaps = reader.read_colormaps()
-        except Exception as e:
-            logger.error("Failed to decode colormaps from scene package '%s': %s", target_path, e, exc_info=True)
-            raise
-
-    dynamic_entity_slots = None
-    if hasattr(reader, "read_dynamic_entity_slots"):
-        try:
-            dynamic_entity_slots = reader.read_dynamic_entity_slots()
-        except Exception as e:
-            logger.error("Failed to decode dynamic entity slots from scene package '%s': %s", target_path, e, exc_info=True)
-            raise
+    biome_resolver = reader.read_biome_resolver() if hasattr(reader, "read_biome_resolver") else None
+    ctm_solver = reader.read_ctm_solver() if hasattr(reader, "read_ctm_solver") else None
+    colormaps = reader.read_colormaps() if hasattr(reader, "read_colormaps") else None
+    dynamic_entity_slots = reader.read_dynamic_entity_slots() if hasattr(reader, "read_dynamic_entity_slots") else None
 
     return {
         "metadata": meta,
@@ -204,12 +186,14 @@ def export_scene_package(
     output_path: str | Path,
     point_cloud: Any,
     prefs=None,
+    options: Optional[Dict[str, Any]] = None,
     max_atlas_size: int = 2048,
     mip_level: int = 0,
     dynamic_entity_atlases: Optional[Dict[int, bytes]] = None,
     ctm_solver: Optional[Any] = None,
     enable_ctm: Optional[bool] = None,
     dynamic_entity_slots: Optional[Dict[str, Tuple[int, int]]] = None,
+    **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Exports a live VoxelPointCloud into a self-contained .mtkscene interchange package.
@@ -229,37 +213,49 @@ def export_scene_package(
     if out_p.parent:
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
-    if enable_ctm is None and prefs is not None:
+    # Merge explicitly passed options dict with keyword args
+    opts = dict(options) if options else {}
+    for k, v in kwargs.items():
+        opts.setdefault(k, v)
+
+    resolved_enable_ctm = opts.get("enable_ctm", enable_ctm)
+    resolved_ctm_solver = opts.get("ctm_solver", ctm_solver)
+
+    if resolved_enable_ctm is None and prefs is not None:
         raw = getattr(prefs, "enable_ctm", True)
-        enable_ctm = bool(raw) if isinstance(raw, bool) else True
-    elif enable_ctm is not None:
-        enable_ctm = bool(enable_ctm)
+        resolved_enable_ctm = bool(raw) if isinstance(raw, bool) else True
+    elif resolved_enable_ctm is not None:
+        resolved_enable_ctm = bool(resolved_enable_ctm)
 
     # Older caches may predate the packaged `ctm/rules` chunk. If the active cache has
     # no CTM rules but the live pack stack does, fall back to the live solver so a stale
     # cache does not silently strip working connected textures from the export.
-    if enable_ctm and ctm_solver is None and prefs is not None:
+    if resolved_enable_ctm and resolved_ctm_solver is None and prefs is not None:
         cache_has_ctm = getattr(cache, "has_ctm_rules", None)
         cache_is_missing_ctm = callable(cache_has_ctm) and not cache_has_ctm()
         if cache_is_missing_ctm:
             from .assets.pack import get_configured_ctm_solver
 
-            ctm_solver = get_configured_ctm_solver(prefs, force=True)
-            if ctm_solver is not None:
+            resolved_ctm_solver = get_configured_ctm_solver(prefs, force=True)
+            if resolved_ctm_solver is not None:
                 logger.warning(
                     "Active asset cache has no packaged CTM rules; using the live resource-pack CTM solver for scene export. Recompile the cache to make it self-contained."
                 )
+
+    export_options = {
+        "max_atlas_size": opts.get("max_atlas_size", max_atlas_size),
+        "mip_level": opts.get("mip_level", mip_level),
+        "dynamic_entity_atlases": opts.get("dynamic_entity_atlases", dynamic_entity_atlases),
+        "ctm_solver": resolved_ctm_solver,
+        "enable_ctm": resolved_enable_ctm,
+        "dynamic_entity_slots": opts.get("dynamic_entity_slots", dynamic_entity_slots),
+    }
 
     meta = mtk.export_scene_package(
         output_path=str(out_p),
         point_cloud=point_cloud,
         asset_cache=cache,
-        max_atlas_size=max_atlas_size,
-        mip_level=mip_level,
-        dynamic_entity_atlases=dynamic_entity_atlases,
-        ctm_solver=ctm_solver,
-        enable_ctm=enable_ctm,
-        dynamic_entity_slots=dynamic_entity_slots,
+        options=export_options,
     )
 
     return meta.to_dict()

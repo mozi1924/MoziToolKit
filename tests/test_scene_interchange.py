@@ -794,7 +794,20 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         eff_caps = reader.effective_capabilities()
         self.assertTrue(eff_caps.has_dynamic_entities)
         self.assertTrue(eff_caps["has_dynamic_entities"])
+        self.assertIn("has_dynamic_entities", eff_caps)
+        self.assertEqual(eff_caps.get("has_dynamic_entities"), True)
+        self.assertEqual(eff_caps.get("nonexistent", False), False)
+        self.assertIn("has_dynamic_entities", eff_caps.keys())
         self.assertIsInstance(eff_caps.to_dict(), dict)
+
+        # Verify unified reader.unpack() delivers all high-level components in one pass
+        bundle = reader.unpack()
+        self.assertIn("metadata", bundle)
+        self.assertIn("point_cloud", bundle)
+        self.assertIn("models", bundle)
+        self.assertIn("atlas", bundle)
+        self.assertIn("dynamic_entity_slots", bundle)
+        self.assertEqual(bundle["dynamic_entity_slots"], packaged_slots)
 
         # Test scene with NO dynamic entities, but session has unused slots: slots must be omitted and has_dynamic_entities=False
         cloud_no_dyn = self.mtk.VoxelPointCloud()
@@ -963,6 +976,40 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
                 found_magenta = True
                 break
         self.assertTrue(found_magenta, f"Standard mesh_voxel_storage should auto-resolve custom colormap from cache, got: {tint_data[:8]}")
+
+    def test_18_options_dict_export_and_reader_unpack(self):
+        """Verifies export_scene_package accepts an options dictionary and reader.unpack returns cohesive components."""
+        from MoziToolKit.bridge.scene import export_scene_package, read_scene_package
+
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 1, 1, 1]
+
+        target_path = os.path.join(self.temp_dir, "test_options_export.mtkscene")
+        options = {
+            "max_atlas_size": 1024,
+            "mip_level": 0,
+            "enable_ctm": False,
+        }
+
+        meta = export_scene_package(
+            output_path=target_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            options=options,
+        )
+
+        self.assertIn("atlas_resolution", meta)
+        self.assertLessEqual(meta["atlas_resolution"][0], 1024)
+
+        # Verify read_scene_package uses reader.unpack
+        bundle = read_scene_package(target_path)
+        self.assertIn("metadata", bundle)
+        self.assertIn("point_cloud", bundle)
+        self.assertIn("models", bundle)
+        self.assertIn("atlas", bundle)
+        self.assertIn("reader", bundle)
+        self.assertEqual(bundle["metadata"]["voxel_count"], 1)
 
 
 if __name__ == "__main__":

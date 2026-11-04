@@ -433,25 +433,14 @@ def resolve_and_apply_world_biome_tint(
             coords_y = [int(p.value) for p in attr_y.data]
             coords_z = [int(p.value) for p in attr_z.data]
 
+        # Resolve isolated scene colormaps if registered; otherwise Rust auto-resolves active resident colormaps
         colormaps = getattr(mesh_or_obj, "_colormaps", None) or getattr(target_mesh, "_colormaps", None)
         if colormaps is None and hasattr(mesh_or_obj, "name"):
             colormaps = get_object_colormaps(mesh_or_obj.name)
-        if colormaps is None and hasattr(target_mesh, "name"):
-            colormaps = get_object_colormaps(target_mesh.name)
         if colormaps is None and hasattr(mesh_or_obj, "get"):
-            c_uuid = mesh_or_obj.get("mozi_save_uuid") or mesh_or_obj.get("mtk:container_id") or mesh_or_obj.get("mozi_scene_uuid")
+            c_uuid = mesh_or_obj.get("mtk:container_id") or mesh_or_obj.get("mozi_save_uuid")
             if c_uuid:
                 colormaps = get_object_colormaps(c_uuid)
-        if colormaps is None and hasattr(target_mesh, "get"):
-            c_uuid = target_mesh.get("mozi_save_uuid") or target_mesh.get("mtk:container_id") or target_mesh.get("mozi_scene_uuid")
-            if c_uuid:
-                colormaps = get_object_colormaps(c_uuid)
-        if colormaps is None:
-            try:
-                from ....bridge.assets import load_colormaps_from_cache
-                colormaps = load_colormaps_from_cache(prefs)
-            except Exception:
-                colormaps = None
 
         res = compute_mesh_biome_attributes_from_storage(
             source_keys,
