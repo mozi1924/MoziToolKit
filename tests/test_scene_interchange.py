@@ -241,6 +241,22 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertTrue(hasattr(self.mtk, "ScenePackageReader"))
         self.assertTrue(hasattr(self.mtk, "export_scene_package"))
 
+    def _ensure_exported_scene(self) -> str:
+        """Helper to ensure test_export.mtkscene exists so tests can run in any order or individually."""
+        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        if not os.path.exists(scene_path):
+            cloud = self.mtk.VoxelPointCloud()
+            cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
+            cloud.push([1.5, 0.5, 0.5], [1, 0, 0], "minecraft:dirt", "minecraft:plains", 14)
+            cloud.bounds = [0, 0, 0, 2, 1, 1]
+            export_scene_package(
+                output_path=scene_path,
+                point_cloud=cloud,
+                prefs=self.mock_prefs,
+                max_atlas_size=1024,
+            )
+        return scene_path
+
     def test_02_export_scene_package_and_inspect(self):
         """Builds a VoxelPointCloud and exports it to .mtkscene with Mini-Atlas and tree-shaken models."""
         cloud = self.mtk.VoxelPointCloud()
@@ -269,7 +285,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
     def test_03_read_scene_package(self):
         """Reads exported .mtkscene and validates sparse voxels, mini-atlas, and model database."""
-        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        scene_path = self._ensure_exported_scene()
         data = read_scene_package(scene_path)
 
         point_cloud = data["point_cloud"]
@@ -320,12 +336,14 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertGreater(len(grass_cm), 0)
         self.assertIsNotNone(data.get("biome_resolver"))
 
-        # Verify install_colormaps executes without error
+        # Verify install_colormaps executes without error and clean up
         reader.install_colormaps()
+        if hasattr(self.mtk, "clear_cached_colormaps"):
+            self.mtk.clear_cached_colormaps()
 
     def test_04_load_and_mesh_scene_package(self):
         """Loads and meshes the scene package headlessly using self-contained mini-atlas and models."""
-        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        scene_path = self._ensure_exported_scene()
         res = load_and_mesh_scene_package(
             path=scene_path,
             prefs=self.mock_prefs,
@@ -344,7 +362,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
     def test_05_apply_imported_scene_to_blender(self):
         """Tests Blender hierarchy construction, mesh and point cloud injection, and custom properties."""
-        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        scene_path = self._ensure_exported_scene()
         data = load_and_mesh_scene_package(
             path=scene_path,
             prefs=self.mock_prefs,
@@ -378,7 +396,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
     def test_06_operators_poll_and_execution(self):
         """Validates MOZI_OT_export_scene and MOZI_OT_import_scene operator flows."""
-        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        scene_path = self._ensure_exported_scene()
         data = load_and_mesh_scene_package(path=scene_path, prefs=self.mock_prefs)
 
         mock_cloud = MagicMock()
@@ -493,7 +511,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
     def test_08_container_hierarchy_and_collection_mounting(self):
         """Verifies unified empty container architecture, context.collection linking, and no obj.type assignment."""
-        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        scene_path = self._ensure_exported_scene()
         data = load_and_mesh_scene_package(path=scene_path, prefs=self.mock_prefs)
 
         mock_coll = MagicMock()
@@ -622,7 +640,7 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
     def test_11_incomplete_package_fallback_policy(self):
         """Verifies allow_host_fallback gate: False raises clear ValueError; True falls back and marks degraded=True."""
-        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        scene_path = self._ensure_exported_scene()
         real_data = read_scene_package(scene_path)
 
         # Mock an incomplete package missing models
@@ -721,12 +739,18 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
     def test_14_skin_slot_resolution_and_missing_skin_rejection(self):
         """Verifies that cropper resolves skins via dynamic_entity_slots when not in source atlas, and rejects missing skins."""
         cloud = self.mtk.VoxelPointCloud()
-        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
+        skull_nbt = json.dumps({
+            "id": "minecraft:skull",
+            "kind": "player",
+            "rotation": 0,
+            "profile": {"name": "TestHeroAlex"},
+        })
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:player_head[rotation=0]", "minecraft:plains", 15, skull_nbt)
         cloud.bounds = [0, 0, 0, 1, 1, 1]
 
         dummy_rgba = bytes([120, 150, 200, 255] * (1024 * 1024))
         dyn_atlases = {65520: dummy_rgba}
-        dyn_slots = {"custom_hero_skin": (65520, 1)}
+        dyn_slots = {"player_TestHeroAlex": (65520, 1)}
 
         scene_path = os.path.join(self.temp_dir, "test_skin_fallback.mtkscene")
         meta = export_scene_package(
@@ -737,6 +761,19 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
             dynamic_entity_slots=dyn_slots,
         )
         self.assertIsNotNone(meta)
+        self.assertTrue(meta["capabilities"]["has_dynamic_entities"])
+
+        # Rejection test: if dynamic_entity_slots does not provide the skin, export must fail
+        bad_scene_path = os.path.join(self.temp_dir, "test_skin_missing.mtkscene")
+        with self.assertRaises(RuntimeError) as ctx:
+            export_scene_package(
+                output_path=bad_scene_path,
+                point_cloud=cloud,
+                prefs=self.mock_prefs,
+                dynamic_entity_atlases=dyn_atlases,
+                dynamic_entity_slots={},
+            )
+        self.assertTrue("not found" in str(ctx.exception).lower() or "missing" in str(ctx.exception).lower())
 
     def test_15_ctm_explicit_solver_conflict_check(self):
         """Verifies that passing enable_ctm=False together with explicit ctm_solver raises ValueError."""
@@ -759,7 +796,22 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
             )
         self.assertIn("conflicting", str(ctx.exception).lower())
 
-    def test_16_standard_world_meshing_resolves_cache_colormap_without_explicit_arg(self):
+    def test_16_validate_report_bindings(self):
+        """Verifies that ScenePackageReader.validate() returns a ValidationReport object with is_valid, errors, warnings."""
+        scene_path = self._ensure_exported_scene()
+        reader = self.mtk.ScenePackageReader.open(scene_path)
+        report = reader.validate()
+        self.assertTrue(hasattr(report, "is_valid"))
+        self.assertTrue(hasattr(report, "errors"))
+        self.assertTrue(hasattr(report, "warnings"))
+        self.assertTrue(report.is_valid)
+        self.assertEqual(len(report.errors), 0)
+        report_dict = report.to_dict()
+        self.assertTrue(report_dict["is_valid"])
+        self.assertIsInstance(report_dict["errors"], list)
+        self.assertIsInstance(report_dict["warnings"], list)
+
+    def test_17_standard_world_meshing_resolves_cache_colormap_without_explicit_arg(self):
         """Verifies that standard mesh_voxel_storage with colormaps=None auto-resolves cache colormaps and paints custom colors."""
         from MoziToolKit.bridge.world import mesh_voxel_storage, prepare_world_mesh_context
         from unittest.mock import patch
