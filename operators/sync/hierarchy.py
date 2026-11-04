@@ -323,59 +323,54 @@ def update_world_mesh(
     zero-copy bridge methods, and optionally synchronizes unculled voxel storage into companion point cloud.
     Returns (vertex_count, face_count).
     """
-    if not world_obj or world_obj.type != "MESH":
+    if not world_obj or getattr(world_obj, "type", "") != "MESH":
         return 0, 0
 
-    # Upgrade legacy meshes that predate explicit origin stamping.
-    stamp_geometry_origin(world_obj, ORIGIN_SYNC_WORLD, overwrite=False)
+    root_container = resolve_world_root_object(world_obj)
+    container_id = _safe_get_custom_prop(root_container, "mtk:container_id") if root_container else None
 
-    import time
-    t0_inj = time.perf_counter()
-    mesh = world_obj.data
-    inject_mesh_data(
-        mesh,
-        mesh_data,
-        update_topology=True,
-        update_normals=True,
-        skip_string_attributes=skip_string_attributes,
-    )
-    inj_ms = (time.perf_counter() - t0_inj) * 1000.0
-
-    t0_mat = time.perf_counter()
-    used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
     if dynamic_entity_atlases is None:
         dynamic_entity_atlases = resolve_dynamic_entity_atlases(mesh_data, session)
-    ensure_world_materials(
-        world_obj,
-        atlas=atlas,
-        used_chunk_ids=used_chunk_ids,
-        dynamic_entity_atlases=dynamic_entity_atlases,
-    )
-    mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
-    # Persist dynamic entity slot allocation for later scene export even if the live
-    # sync session is no longer available.
-    slot_map = getattr(mesh_data, "dynamic_entity_slots", None)
-    if slot_map:
-        try:
-            slots_json = json.dumps(
-                {str(k): [int(v[0]), int(v[1])] for k, v in slot_map.items()},
-                separators=(",", ":"),
-            )
-        except Exception:
-            slots_json = None
-        if slots_json:
-            _safe_set_custom_prop(world_obj, "mtk:dynamic_entity_slots", slots_json)
-            root_container = resolve_world_root_object(world_obj)
-            if root_container is not None and root_container is not world_obj:
-                _safe_set_custom_prop(root_container, "mtk:dynamic_entity_slots", slots_json)
+    def mat_binder(m_obj: Any) -> Any:
+        used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+        ensure_world_materials(
+            m_obj,
+            atlas=atlas,
+            used_chunk_ids=used_chunk_ids,
+            dynamic_entity_atlases=dynamic_entity_atlases,
+        )
+
+    from ...utils.world.assembler import VoxelWorldAssemblyRequest, assemble_voxel_world
+
+    req = VoxelWorldAssemblyRequest(
+        container_type="SYNC",
+        root_name=getattr(root_container, "name", getattr(world_obj, "name", DEFAULT_WORLD_OBJECT_NAME)),
+        mesh_data=mesh_data,
+        storage=storage,
+        container_id=container_id,
+        atlas=atlas,
+        dynamic_entity_atlases=dynamic_entity_atlases,
+        origin_centered=True,
+        reuse_existing=True,
+        target_root=root_container,
+        target_mesh=world_obj,
+        geometry_origin=ORIGIN_SYNC_WORLD,
+        skip_string_attributes=skip_string_attributes,
+        custom_injector=inject_mesh_data,
+        custom_material_binder=mat_binder,
+        custom_cloud_ensurer=ensure_voxel_child_cloud,
+        clean_unused_material_slots=False,
+        sync_point_cloud=sync_point_cloud,
+    )
+
+    res = assemble_voxel_world(req)
 
     # Live Sync meshes bake true 3D Quart biomes into their tint attributes. Tag the
     # object (and its root container) so the biome panel shows "World Biome (3D)"
     # instead of falling back to Plains, and cache storage for later re-tints.
     from ...utils.materials.biome.updater import mark_world_biome
-    if mark_world_biome is not None:
-        root_container = resolve_world_root_object(world_obj)
+    if mark_world_biome is not None and storage is not None:
         aliases = []
         if root_container is not None and root_container is not world_obj:
             aliases.append(getattr(root_container, "name", ""))
@@ -383,26 +378,17 @@ def update_world_mesh(
             mark_world_biome(root_container, storage)
         mark_world_biome(world_obj, storage, aliases=aliases)
 
-    # Ensure unculled voxel storage point cloud is attached under root container or world_obj as sibling
-    if sync_point_cloud and storage is not None:
-        try:
-            root_container = resolve_world_root_object(world_obj)
-            parent_target = root_container if (root_container and root_container.type == 'EMPTY') else world_obj
-            cloud_obj = ensure_voxel_child_cloud(parent_target, storage=storage, origin_centered=True, initial_hidden=True)
-            if cloud_obj and parent_target != world_obj:
-                world_obj["mtk_voxel_cloud"] = cloud_obj.name
-        except Exception as e:
-            logger.warning("Failed ensuring voxel child cloud during live sync mesh update: %s", e)
-
     try:
         from ...bridge.diagnostics import append_stage_to_last_profile
-        append_stage_to_last_profile("blender_mesh_injection", inj_ms, getattr(mesh_data, "vertex_count", None))
-        append_stage_to_last_profile("blender_material_binding", mat_ms, len(used_chunk_ids) if used_chunk_ids else None)
+        used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
+        append_stage_to_last_profile("blender_mesh_injection", res.get("inject_ms", 0.0), getattr(mesh_data, "vertex_count", None))
+        append_stage_to_last_profile("blender_material_binding", res.get("materials_ms", 0.0), len(used_chunk_ids) if used_chunk_ids else None)
     except Exception:
         pass
 
-    v_count = len(mesh.vertices)
-    f_count = len(mesh.polygons)
+    mesh = getattr(world_obj, "data", None)
+    v_count = len(mesh.vertices) if mesh and hasattr(mesh, "vertices") else 0
+    f_count = len(mesh.polygons) if mesh and hasattr(mesh, "polygons") else 0
     return v_count, f_count
 
 
