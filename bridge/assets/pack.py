@@ -132,7 +132,7 @@ def get_configured_ctm_solver(prefs=None) -> Optional[Any]:
             _CACHED_CTM_SIGNATURE = ctm_sig
             return solver
         except Exception as e:
-            logger.debug("Failed building CTM solver: %s", e)
+            logger.warning("Failed building CTM solver: %s", e, exc_info=True)
     return None
 
 

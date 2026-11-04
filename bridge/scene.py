@@ -235,15 +235,15 @@ def export_scene_package(
         enable_ctm = bool(enable_ctm)
 
     meta = mtk.export_scene_package(
-        str(out_p),
-        point_cloud,
-        cache,
-        max_atlas_size,
-        mip_level,
-        dynamic_entity_atlases,
-        ctm_solver,
-        enable_ctm,
-        dynamic_entity_slots,
+        output_path=str(out_p),
+        point_cloud=point_cloud,
+        asset_cache=cache,
+        max_atlas_size=max_atlas_size,
+        mip_level=mip_level,
+        dynamic_entity_atlases=dynamic_entity_atlases,
+        ctm_solver=ctm_solver,
+        enable_ctm=enable_ctm,
+        dynamic_entity_slots=dynamic_entity_slots,
     )
 
     return meta.to_dict()
