@@ -105,13 +105,13 @@ def get_configured_pack_stack(prefs=None) -> Optional[Any]:
     return stack
 
 
-def get_configured_ctm_solver(prefs=None) -> Optional[Any]:
+def get_configured_ctm_solver(prefs=None, force: bool = False) -> Optional[Any]:
     """
     Builds a CtmSolver from the configured resource pack stack if any CTM rules exist.
     Memoized against the active pack stack signature.
     """
     global _CACHED_CTM_SOLVER, _CACHED_CTM_SIGNATURE
-    if prefs is not None and not getattr(prefs, "enable_ctm", True):
+    if not force and prefs is not None and not getattr(prefs, "enable_ctm", True):
         return None
     stack = get_configured_pack_stack(prefs)
     if stack is None:

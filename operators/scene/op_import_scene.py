@@ -74,6 +74,12 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         default=False,
     )
 
+    enable_ctm: BoolProperty(  # type: ignore
+        name="Connected Textures (CTM)",
+        description="Apply the connected-texture rules embedded in the scene package",
+        default=True,
+    )
+
     material_mode: EnumProperty(  # type: ignore
         name="Material Mode",
         description="Shader material assembly mode for imported scene geometry",
@@ -131,6 +137,7 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
         box_mesh.prop(self, "origin_centered", text=tr("Center Origin"))
         box_mesh.prop(self, "allow_host_fallback", text=tr("Allow Host Fallback"))
+        box_mesh.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
 
     def execute(self, context):
         if not HAS_BPY:
@@ -146,6 +153,7 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         try:
             enable_anim = getattr(self, "enable_animated_textures", True)
             allow_fallback = getattr(self, "allow_host_fallback", False)
+            enable_ctm = getattr(self, "enable_ctm", True)
             data = load_and_mesh_scene_package(
                 path=path,
                 prefs=prefs,
@@ -155,6 +163,7 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
                 origin_centered=getattr(self, "origin_centered", True),
                 enable_animated_textures=enable_anim,
                 allow_host_fallback=allow_fallback,
+                enable_ctm=enable_ctm,
             )
 
             stem = path.stem

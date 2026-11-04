@@ -665,16 +665,23 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
     def test_12_isolated_colormaps_and_dynamic_entity_slots(self):
         """Verifies dynamic_entity_slots roundtrip and pure colormap passing without host fallback."""
         cloud = self.mtk.VoxelPointCloud()
-        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
-        cloud.bounds = [0, 0, 0, 1, 1, 1]
+        skull_alex = json.dumps({"id": "minecraft:skull", "kind": "player", "rotation": 0, "profile": {"name": "skull_alex"}})
+        skull_hero = json.dumps({"id": "minecraft:skull", "kind": "player", "rotation": 0, "profile": {"name": "custom_skull_hero"}})
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:player_head[rotation=0]", "minecraft:plains", 15, skull_alex)
+        cloud.push([1.5, 0.5, 0.5], [1, 0, 0], "minecraft:player_head[rotation=0]", "minecraft:plains", 15, skull_hero)
+        cloud.bounds = [0, 0, 0, 2, 1, 1]
+
+        dummy_rgba = bytes([120, 150, 200, 255] * (1024 * 1024))
+        dyn_atlases = {65520: dummy_rgba}
+        slots_input = {"player_skull_alex": (65520, 2), "custom_skull_hero": (65520, 7)}
 
         scene_path = os.path.join(self.temp_dir, "test_slots_scene.mtkscene")
-        slots_input = {"player_skull_alex": (65520, 2), "custom_skull_hero": (65520, 7)}
         export_scene_package(
             output_path=scene_path,
             point_cloud=cloud,
             prefs=self.mock_prefs,
             max_atlas_size=1024,
+            dynamic_entity_atlases=dyn_atlases,
             dynamic_entity_slots=slots_input,
         )
 
@@ -684,6 +691,11 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         read_slots = reader.read_dynamic_entity_slots()
         self.assertEqual(read_slots, slots_input)
         self.assertEqual(data.get("dynamic_entity_slots"), slots_input)
+
+        # Validate that the exported package is 100% valid
+        report = reader.validate()
+        self.assertTrue(report.is_valid, f"Expected valid package, got errors: {report.errors}")
+        self.assertEqual(len(report.errors), 0)
 
         # Colormaps
         self.assertTrue(reader.has_colormaps())
@@ -750,7 +762,10 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
         dummy_rgba = bytes([120, 150, 200, 255] * (1024 * 1024))
         dyn_atlases = {65520: dummy_rgba}
-        dyn_slots = {"player_TestHeroAlex": (65520, 1)}
+        dyn_slots = {
+            "player_TestHeroAlex": (65520, 1),
+            "unused_skin": (65520, 2),  # Simulates live session having unreferenced player skin
+        }
 
         scene_path = os.path.join(self.temp_dir, "test_skin_fallback.mtkscene")
         meta = export_scene_package(
@@ -762,6 +777,43 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         )
         self.assertIsNotNone(meta)
         self.assertTrue(meta["capabilities"]["has_dynamic_entities"])
+
+        # Validate that reader validates this dynamic entity package as 100% valid
+        reader = self.mtk.ScenePackageReader.open(scene_path)
+        report = reader.validate()
+        self.assertTrue(report.is_valid, f"Expected valid scene package, got errors: {report.errors}")
+        self.assertEqual(len(report.errors), 0)
+
+        # Verify unused skin slot was pruned, and referenced slot was retained
+        packaged_slots = reader.read_dynamic_entity_slots()
+        self.assertIsNotNone(packaged_slots)
+        self.assertIn("player_TestHeroAlex", packaged_slots)
+        self.assertNotIn("unused_skin", packaged_slots)
+
+        # Verify effective_capabilities returns SceneCapabilities with attribute and dict access
+        eff_caps = reader.effective_capabilities()
+        self.assertTrue(eff_caps.has_dynamic_entities)
+        self.assertTrue(eff_caps["has_dynamic_entities"])
+        self.assertIsInstance(eff_caps.to_dict(), dict)
+
+        # Test scene with NO dynamic entities, but session has unused slots: slots must be omitted and has_dynamic_entities=False
+        cloud_no_dyn = self.mtk.VoxelPointCloud()
+        cloud_no_dyn.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
+        cloud_no_dyn.bounds = [0, 0, 0, 1, 1, 1]
+        no_dyn_path = os.path.join(self.temp_dir, "test_no_dyn_with_unused_slots.mtkscene")
+        meta_no_dyn = export_scene_package(
+            output_path=no_dyn_path,
+            point_cloud=cloud_no_dyn,
+            prefs=self.mock_prefs,
+            dynamic_entity_atlases=dyn_atlases,
+            dynamic_entity_slots={"unused_skin": (65520, 2)},
+        )
+        self.assertFalse(meta_no_dyn["capabilities"]["has_dynamic_entities"])
+        reader_no_dyn = self.mtk.ScenePackageReader.open(no_dyn_path)
+        self.assertFalse(reader_no_dyn.has_dynamic_entity_slots())
+        report_no_dyn = reader_no_dyn.validate()
+        self.assertTrue(report_no_dyn.is_valid, f"Expected valid report, got: {report_no_dyn.errors}")
+        self.assertEqual(len(report_no_dyn.errors), 0)
 
         # Rejection test: if dynamic_entity_slots does not provide the skin, export must fail
         bad_scene_path = os.path.join(self.temp_dir, "test_skin_missing.mtkscene")
@@ -810,6 +862,67 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertTrue(report_dict["is_valid"])
         self.assertIsInstance(report_dict["errors"], list)
         self.assertIsInstance(report_dict["warnings"], list)
+
+        # Capabilities and effective_capabilities bindings
+        caps = reader.metadata.capabilities
+        self.assertTrue(hasattr(caps, "has_pbr"))
+        self.assertTrue(hasattr(caps, "has_dynamic_entities"))
+        self.assertIsInstance(caps["has_pbr"], bool)
+        self.assertIsInstance(caps.to_dict(), dict)
+
+        eff_caps = reader.effective_capabilities()
+        self.assertTrue(hasattr(eff_caps, "has_pbr"))
+        self.assertIsInstance(eff_caps["has_pbr"], bool)
+        self.assertIsInstance(eff_caps.to_dict(), dict)
+
+    def test_18_scene_import_ctm_toggle(self):
+        """Verifies scene package CTM can be disabled at import time from the operator path."""
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.push([1.5, 0.5, 0.5], [1, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 2, 1, 1]
+
+        scene_path = os.path.join(self.temp_dir, "test_ctm_toggle.mtkscene")
+        export_scene_package(
+            output_path=scene_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            max_atlas_size=1024,
+        )
+
+        def _texture_keys(mesh):
+            palette, indices = mesh.source_texture_palette_indices()
+            return [palette[i] for i in indices]
+
+        on = load_and_mesh_scene_package(scene_path, prefs=None, enable_ctm=True)
+        off = load_and_mesh_scene_package(scene_path, prefs=None, enable_ctm=False)
+        on_keys = _texture_keys(on["mesh_data"])
+        off_keys = _texture_keys(off["mesh_data"])
+
+        self.assertTrue(any("optifine/ctm" in key for key in on_keys))
+        self.assertFalse(any("optifine/ctm" in key for key in off_keys))
+
+    def test_19_scene_export_reads_embedded_dynamic_entity_slots(self):
+        """Verifies the export operator can recover slots persisted on an imported object hierarchy."""
+        from MoziToolKit.operators.scene import op_export_scene as op
+
+        class FakeObject:
+            def __init__(self, props=None, parent=None):
+                self._props = props or {}
+                self.parent = parent
+                self.data = None
+
+            def get(self, key, default=None):
+                return self._props.get(key, default)
+
+        payload = json.dumps({"player_jaxlocke": [65520, 3]})
+        root = FakeObject({"mtk:dynamic_entity_slots": payload, "mtk_enable_ctm": False})
+        mesh = FakeObject(parent=root)
+        with patch.object(op, "HAS_BPY", True):
+            slots = op._resolve_export_dynamic_entity_slots(mesh, None)
+            enable_ctm = op._resolve_export_enable_ctm(mesh, None, None)
+        self.assertEqual(slots, {"player_jaxlocke": (65520, 3)})
+        self.assertFalse(enable_ctm)
 
     def test_17_standard_world_meshing_resolves_cache_colormap_without_explicit_arg(self):
         """Verifies that standard mesh_voxel_storage with colormaps=None auto-resolves cache colormaps and paints custom colors."""

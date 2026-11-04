@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -268,6 +269,21 @@ def apply_imported_save_to_blender(
         _safe_set_custom_prop(root_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
         _safe_set_custom_prop(mesh_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
         _safe_set_custom_prop(cloud_obj, "mtk_world_mesh", getattr(mesh_obj, "name", ""))
+
+    # Persist dynamic entity slot allocation on the imported objects so scene export
+    # can resolve player skins even when the live VoxelWorld session is no longer cached.
+    slot_map = getattr(mesh_data, "dynamic_entity_slots", None)
+    if slot_map:
+        try:
+            slots_json = json.dumps(
+                {str(k): [int(v[0]), int(v[1])] for k, v in slot_map.items()},
+                separators=(",", ":"),
+            )
+        except Exception:
+            slots_json = None
+        if slots_json:
+            for target in (root_obj, mesh_obj, cloud_obj):
+                _safe_set_custom_prop(target, "mtk:dynamic_entity_slots", slots_json)
 
     # 6. Store metadata in Object Custom Properties on both root container and mesh (Privacy Protected)
     now_ts = time.time()

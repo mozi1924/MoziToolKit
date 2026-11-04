@@ -8,6 +8,7 @@ custom properties for imported .mtkscene interchange packages.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
@@ -171,6 +172,20 @@ def apply_imported_scene_to_blender(
         _safe_set_custom_prop(mesh_obj, "mtk_voxel_cloud", getattr(cloud_obj, "name", ""))
         _safe_set_custom_prop(cloud_obj, "mtk_world_mesh", getattr(mesh_obj, "name", ""))
         stamp_geometry_origin(cloud_obj, ORIGIN_SCENE, overwrite=True)
+
+    # Preserve packaged dynamic entity slot allocation on the imported objects
+    slot_map = data.get("dynamic_entity_slots") if data else None
+    if slot_map:
+        try:
+            slots_json = json.dumps(
+                {str(k): [int(v[0]), int(v[1])] for k, v in slot_map.items()},
+                separators=(",", ":"),
+            )
+        except Exception:
+            slots_json = None
+        if slots_json:
+            for target in (root_obj, mesh_obj, cloud_obj):
+                _safe_set_custom_prop(target, "mtk:dynamic_entity_slots", slots_json)
 
     # 6. Store metadata custom properties
     now_ts = time.time()

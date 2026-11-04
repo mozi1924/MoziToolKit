@@ -116,6 +116,7 @@ def load_and_mesh_scene_package(
     num_threads: Optional[int] = None,
     z_up: bool = True,
     allow_host_fallback: bool = False,
+    enable_ctm: bool = True,
 ) -> Dict[str, Any]:
     """
     High-level headless scene loader: reads .mtkscene, reconstructs VoxelStorage,
@@ -132,7 +133,7 @@ def load_and_mesh_scene_package(
     metadata = data["metadata"]
     biome_resolver = data.get("biome_resolver")
     colormaps = data.get("colormaps")
-    ctm_solver = data.get("ctm_solver")
+    ctm_solver = data.get("ctm_solver") if enable_ctm else None
     has_pkg_ctm = ctm_solver is not None
 
     storage = point_cloud.to_storage()
@@ -154,7 +155,7 @@ def load_and_mesh_scene_package(
 
     # Mesh voxel volume using package-embedded models and atlas
     resolve_prefs = allow_host_fallback and (models is None or atlas is None or biome_resolver is None)
-    resolve_ctm = allow_host_fallback and (not has_pkg_ctm)
+    resolve_ctm = enable_ctm and allow_host_fallback and (not has_pkg_ctm)
     mesh_data, mesher_ms = mesh_voxel_storage(
         storage=storage,
         model_db=models,
@@ -233,6 +234,21 @@ def export_scene_package(
         enable_ctm = bool(raw) if isinstance(raw, bool) else True
     elif enable_ctm is not None:
         enable_ctm = bool(enable_ctm)
+
+    # Older caches may predate the packaged `ctm/rules` chunk. If the active cache has
+    # no CTM rules but the live pack stack does, fall back to the live solver so a stale
+    # cache does not silently strip working connected textures from the export.
+    if enable_ctm and ctm_solver is None and prefs is not None:
+        cache_has_ctm = getattr(cache, "has_ctm_rules", None)
+        cache_is_missing_ctm = callable(cache_has_ctm) and not cache_has_ctm()
+        if cache_is_missing_ctm:
+            from .assets.pack import get_configured_ctm_solver
+
+            ctm_solver = get_configured_ctm_solver(prefs, force=True)
+            if ctm_solver is not None:
+                logger.warning(
+                    "Active asset cache has no packaged CTM rules; using the live resource-pack CTM solver for scene export. Recompile the cache to make it self-contained."
+                )
 
     meta = mtk.export_scene_package(
         output_path=str(out_p),

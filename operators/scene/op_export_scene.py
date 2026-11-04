@@ -4,6 +4,7 @@ Operator for exporting an MTK Scene Interchange package (.mtkscene).
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -98,6 +99,45 @@ def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optiona
     return None
 
 
+def _decode_dynamic_entity_slots_payload(raw: Any) -> Optional[dict[str, tuple[int, int]]]:
+    """Decodes a JSON dynamic-entity slot payload stored on a Blender object."""
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    slots: dict[str, tuple[int, int]] = {}
+    for key, value in data.items():
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            try:
+                slots[str(key)] = (int(value[0]), int(value[1]))
+            except (TypeError, ValueError):
+                continue
+    return slots or None
+
+
+def _embedded_dynamic_entity_slots(obj: Any) -> Optional[dict[str, tuple[int, int]]]:
+    if obj is None or not hasattr(obj, "get"):
+        return None
+    return _decode_dynamic_entity_slots_payload(obj.get("mtk:dynamic_entity_slots"))
+
+
+def _resolve_export_enable_ctm(active_obj: Any, cloud_obj: Any, prefs: Any) -> bool:
+    """Resolve CTM enablement from the imported container, then preferences."""
+    parent = getattr(active_obj, "parent", None) if active_obj is not None else None
+    for obj in (active_obj, cloud_obj, parent):
+        if obj is None or not hasattr(obj, "get"):
+            continue
+        raw = obj.get("mtk_enable_ctm")
+        if isinstance(raw, bool):
+            return raw
+    raw_pref = getattr(prefs, "enable_ctm", True) if prefs is not None else True
+    return bool(raw_pref) if isinstance(raw_pref, bool) else True
+
+
 def _resolve_export_dynamic_entity_slots(active_obj: Any, cloud_obj: Any) -> Optional[dict[str, tuple[int, int]]]:
     """Resolves dynamic entity slot mapping via bridge.world.resolve_dynamic_entity_slots."""
     if not HAS_BPY:
@@ -118,6 +158,15 @@ def _resolve_export_dynamic_entity_slots(active_obj: Any, cloud_obj: Any) -> Opt
 
     if session_key:
         slots = get_world_session_dynamic_entity_slots(session_key)
+        if slots:
+            return slots
+
+    # Save/scene imports persist slots on the container hierarchy; use them when the
+    # live VoxelWorld session has been evicted or was never registered (save imports).
+    parent = getattr(active_obj, "parent", None) if active_obj is not None else None
+    grandparent = getattr(parent, "parent", None) if parent is not None else None
+    for obj in (active_obj, cloud_obj, parent, grandparent):
+        slots = _embedded_dynamic_entity_slots(obj)
         if slots:
             return slots
 
@@ -157,6 +206,21 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
         max=8192,
     )
 
+    enable_ctm: BoolProperty(  # type: ignore
+        name="Connected Textures (CTM)",
+        description="Include connected-texture rules and sub-tiles in the exported scene package",
+        default=True,
+    )
+
+    def draw(self, context):
+        from ...i18n import tr
+
+        layout = self.layout
+        box = layout.box()
+        box.label(text=tr("Scene Export Options"), icon="SCENE_DATA")
+        box.prop(self, "max_atlas_size", text=tr("Max Atlas Size"))
+        box.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
+
     @classmethod
     def poll(cls, context):
         if not HAS_BPY or context is None:
@@ -191,7 +255,11 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
         prefs = get_prefs(context)
         dyn_entities = _resolve_export_dynamic_entities(active, cloud_obj)
         dyn_slots = _resolve_export_dynamic_entity_slots(active, cloud_obj)
-        enable_ctm = getattr(prefs, "enable_ctm", True) if prefs is not None else True
+        ui_enable_ctm = getattr(self, "enable_ctm", None)
+        if isinstance(ui_enable_ctm, bool):
+            enable_ctm = ui_enable_ctm
+        else:
+            enable_ctm = _resolve_export_enable_ctm(active, cloud_obj, prefs)
 
         try:
             meta = export_scene_package(

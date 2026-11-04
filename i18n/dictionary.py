@@ -215,6 +215,8 @@ translations_dict = {
         ('*', 'Connected Textures'): '连接纹理',
         ('*', 'Connected Textures (CTM)'): '连接纹理 (CTM)',
         ('*', 'Connected Textures (CTM):'): '连接纹理 (CTM):',
+        ('*', 'Scene Export Options'): '场景导出选项',
+        ('*', 'Max Atlas Size'): '最大图集尺寸',
         ('*', 'Connected textures for glass blocks and panes.'): '玻璃方块与玻璃板的连接纹理。',
         ('*', 'Connected to Live Sync'): '已连接至实时同步',
         ('*', 'Connecting to'): '正在连接至',

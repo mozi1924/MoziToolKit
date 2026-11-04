@@ -4,6 +4,7 @@ Hierarchical management for the Unified World Empty Container and Section Mesh i
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from typing import Any, Optional, Tuple
@@ -351,6 +352,23 @@ def update_world_mesh(
         dynamic_entity_atlases=dynamic_entity_atlases,
     )
     mat_ms = (time.perf_counter() - t0_mat) * 1000.0
+
+    # Persist dynamic entity slot allocation for later scene export even if the live
+    # sync session is no longer available.
+    slot_map = getattr(mesh_data, "dynamic_entity_slots", None)
+    if slot_map:
+        try:
+            slots_json = json.dumps(
+                {str(k): [int(v[0]), int(v[1])] for k, v in slot_map.items()},
+                separators=(",", ":"),
+            )
+        except Exception:
+            slots_json = None
+        if slots_json:
+            _safe_set_custom_prop(world_obj, "mtk:dynamic_entity_slots", slots_json)
+            root_container = resolve_world_root_object(world_obj)
+            if root_container is not None and root_container is not world_obj:
+                _safe_set_custom_prop(root_container, "mtk:dynamic_entity_slots", slots_json)
 
     # Live Sync meshes bake true 3D Quart biomes into their tint attributes. Tag the
     # object (and its root container) so the biome panel shows "World Biome (3D)"
