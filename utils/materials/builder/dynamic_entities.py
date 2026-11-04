@@ -162,3 +162,36 @@ def build_dynamic_entities_material(
         tex_node.image = img
 
     return mat
+
+
+def extract_resident_dynamic_entity_atlases() -> Optional[dict[int, bytes]]:
+    """
+    Extracts raw RGBA bytes for resident dynamic entity atlas images in Blender.
+    Converts Blender top-down float pixels into RGBA8 bytes.
+    Returns a mapping of chunk_id -> raw_rgba_bytes, or None if no resident atlas exists.
+    """
+    if not HAS_BPY or bpy is None:
+        return None
+
+    try:
+        import numpy as np
+
+        extracted: dict[int, bytes] = {}
+        for cid in range(DYNAMIC_CHUNK_START, DYNAMIC_CHUNK_END + 1):
+            img_name = dynamic_entities_image_name(cid)
+            img = bpy.data.images.get(img_name)
+            if img is not None and img.size[0] >= 64 and img.size[1] >= 64:
+                w, h = img.size[0], img.size[1]
+                pixels = np.empty(w * h * 4, dtype=np.float32)
+                img.pixels.foreach_get(pixels)
+                u8 = np.clip(pixels * 255.0 + 0.5, 0, 255).astype(np.uint8).reshape((h, w, 4))
+                raw_rgba = np.ascontiguousarray(np.flipud(u8)).tobytes()
+                extracted[cid] = raw_rgba
+
+        if extracted:
+            return extracted
+    except Exception as e:
+        logger.debug("Failed extracting dynamic entity atlases from Blender images: %s", e)
+
+    return None
+
