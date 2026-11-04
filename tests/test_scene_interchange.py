@@ -161,11 +161,20 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         pack_entry.name = "test_pack"
         pack_entry.path = cls.pack_dir
         cls.mock_prefs.resource_packs = [pack_entry]
+        cls._orig_mozi_cache_dir = os.environ.get("MOZI_CACHE_DIR")
         os.environ["MOZI_CACHE_DIR"] = cls.cache_dir
 
     @classmethod
     def tearDownClass(cls):
-        os.environ.pop("MOZI_CACHE_DIR", None)
+        if getattr(cls, "_orig_mozi_cache_dir", None) is not None:
+            os.environ["MOZI_CACHE_DIR"] = cls._orig_mozi_cache_dir
+        else:
+            os.environ.pop("MOZI_CACHE_DIR", None)
+        try:
+            from MoziToolKit.bridge.assets import invalidate_asset_cache_memory
+            invalidate_asset_cache_memory()
+        except Exception:
+            pass
         shutil.rmtree(cls.temp_dir, ignore_errors=True)
 
     def test_01_scene_package_reader_and_metadata_bindings(self):

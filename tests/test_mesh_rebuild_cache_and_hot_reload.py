@@ -37,6 +37,7 @@ from MoziToolKit.bridge.assets import (
     get_cache_fingerprint,
     get_cache_manifest,
     get_cache_timestamp,
+    invalidate_asset_cache_memory,
 )
 from MoziToolKit.utils.materials.builder.atlas_refresh import reload_atlas_images
 from MoziToolKit.utils.assets import get_cache_dir
@@ -78,6 +79,10 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
             os.environ["MOZI_CACHE_DIR"] = self.old_env
         else:
             os.environ.pop("MOZI_CACHE_DIR", None)
+        try:
+            invalidate_asset_cache_memory()
+        except Exception:
+            pass
         self.tmp_dir.cleanup()
         reset_sync_bridge_session()
 
@@ -236,7 +241,8 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
             session._cached_manifest_timestamp = 100.0
 
             with patch.object(session, "get_world_mesh", return_value=real_mesh), \
-                 patch.object(session, "get_storage", return_value=world.get_storage()):
+                 patch.object(session, "get_storage", return_value=world.get_storage()), \
+                 patch("MoziToolKit.operators.sync.op_sync_rebuild.update_world_mesh", return_value=(getattr(real_mesh, "vertex_count", 100), 50)):
                 # Write new package to simulate rebaking
                 self._create_package("new_recompiled_fp", 200)
 
