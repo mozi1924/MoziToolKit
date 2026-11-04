@@ -43,11 +43,19 @@ for _stream in (sys.stdout, sys.stderr):
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
-DEV_LIB = os.path.join(PROJECT_ROOT, "dev", "lib")
-if DEV_LIB not in sys.path:
-    sys.path.insert(0, DEV_LIB)
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
+for candidate in [
+    os.path.join(PROJECT_ROOT, "dev", "lib"),
+    os.path.abspath(os.path.join(PROJECT_ROOT, "..", "MoziToolKit", "dev", "lib")),
+]:
+    if os.path.isdir(candidate) and candidate not in sys.path:
+        sys.path.insert(0, candidate)
+
+for candidate_root in [
+    PROJECT_ROOT,
+    os.path.abspath(os.path.join(PROJECT_ROOT, "..", "MoziToolKit")),
+]:
+    if candidate_root not in sys.path:
+        sys.path.insert(0, candidate_root)
 
 # Blender's bundled Python is used as sys.executable by the test suite. In CI the
 # abi3 wheel lives in the host interpreter's site-packages, which is injected into
@@ -61,8 +69,11 @@ if _TEST_SITE_PACKAGES and _TEST_SITE_PACKAGES not in sys.path:
 try:
     import libmtk_py
 except ImportError:
-    from MoziToolKit.bridge.engine import get_libmtk
-    libmtk_py = get_libmtk()
+    try:
+        from MoziToolKit.bridge.engine import get_libmtk
+        libmtk_py = get_libmtk()
+    except Exception:
+        libmtk_py = None
 
 # ---------------------------------------------------------------------------
 # Protocol Constants (RFC v3.1 & Legacy)
@@ -80,8 +91,6 @@ OPCODE_BASELINE_END = 0x05
 OPCODE_BASELINE_ACK = 0x06
 OPCODE_DELTA_OP = 0x07
 OPCODE_PALETTE_UPDATE = 0x08
-OPCODE_STATE_VERIFY_REQ = 0x09
-OPCODE_STATE_VERIFY_RESP = 0x0A
 OPCODE_CANCEL = 0x0B
 OPCODE_RESYNC_REQUEST = 0x0D
 OPCODE_PING = 0x0E
