@@ -91,6 +91,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
             f.write(create_tiny_png(16, 16, (128, 128, 128, 255)))
         with open(os.path.join(tex_dir, "dirt.png"), "wb") as f:
             f.write(create_tiny_png(16, 16, (139, 69, 19, 255)))
+        with open(os.path.join(tex_dir, "grass_block_top.png"), "wb") as f:
+            f.write(create_tiny_png(16, 16, (255, 255, 255, 255)))
         with open(os.path.join(tex_dir, "glass.png"), "wb") as f:
             f.write(create_tiny_png(16, 16, (200, 200, 255, 100)))
         with open(os.path.join(tex_dir, "stone_n.png"), "wb") as f:
@@ -161,12 +163,26 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
                 }
             ],
         }
+        grass_model = {
+            "textures": {"up": "minecraft:block/grass_block_top"},
+            "elements": [
+                {
+                    "from": [0, 0, 0],
+                    "to": [16, 16, 16],
+                    "faces": {
+                        "up": {"texture": "#up", "tintindex": 0},
+                    },
+                }
+            ],
+        }
         with open(os.path.join(models_dir, "stone.json"), "w") as f:
             json.dump(stone_model, f)
         with open(os.path.join(models_dir, "dirt.json"), "w") as f:
             json.dump(dirt_model, f)
         with open(os.path.join(models_dir, "glass.json"), "w") as f:
             json.dump(glass_model, f)
+        with open(os.path.join(models_dir, "grass_block.json"), "w") as f:
+            json.dump(grass_model, f)
 
         # 3. Blockstates
         with open(os.path.join(bs_dir, "stone.json"), "w") as f:
@@ -175,6 +191,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
             json.dump({"variants": {"": {"model": "minecraft:block/dirt"}}}, f)
         with open(os.path.join(bs_dir, "glass.json"), "w") as f:
             json.dump({"variants": {"": {"model": "minecraft:block/glass"}}}, f)
+        with open(os.path.join(bs_dir, "grass_block.json"), "w") as f:
+            json.dump({"variants": {"": {"model": "minecraft:block/grass_block"}}}, f)
 
         # 4. Precompile into .mtkcache using native precompile_all_assets
         stack = cls.mtk.ResourcePackStack()
@@ -572,6 +590,174 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertIsNotNone(mesh_data)
         self.assertGreater(mesh_data.vertex_count, 0)
         self.assertGreater(mesh_data.face_count, 0)
+
+    def test_10_ctm_explicit_disable_produces_no_ctm_in_package(self):
+        """Verifies that setting enable_ctm=False produces a package strictly without CTM rules or sub-tiles."""
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.push([1.5, 0.5, 0.5], [1, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 2, 1, 1]
+
+        scene_path = os.path.join(self.temp_dir, "test_no_ctm_scene.mtkscene")
+        meta = export_scene_package(
+            output_path=scene_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            max_atlas_size=1024,
+            enable_ctm=False,
+        )
+        self.assertEqual(meta["voxel_count"], 2)
+
+        data = read_scene_package(scene_path)
+        reader = data["reader"]
+        self.assertFalse(reader.has_ctm_rules())
+        self.assertIsNone(data.get("ctm_solver"))
+
+        mapping_json = reader.read_atlas_mapping_json()
+        self.assertIsNotNone(mapping_json)
+        mapping_dict = json.loads(mapping_json)
+        sprites = mapping_dict.get("sprites", {})
+        ctm_sprites = [k for k in sprites if "optifine/ctm/glass" in k]
+        self.assertEqual(len(ctm_sprites), 0, f"Expected no CTM sub-tiles, got: {ctm_sprites}")
+
+    def test_11_incomplete_package_fallback_policy(self):
+        """Verifies allow_host_fallback gate: False raises clear ValueError; True falls back and marks degraded=True."""
+        scene_path = os.path.join(self.temp_dir, "test_export.mtkscene")
+        real_data = read_scene_package(scene_path)
+
+        # Mock an incomplete package missing models
+        incomplete_data = dict(real_data)
+        incomplete_data["models"] = None
+
+        with patch("MoziToolKit.bridge.scene.read_scene_package", return_value=incomplete_data):
+            # Strict mode (default): must raise ValueError
+            with self.assertRaises(ValueError) as ctx:
+                load_and_mesh_scene_package(scene_path, allow_host_fallback=False)
+            self.assertIn("incomplete", str(ctx.exception).lower())
+
+            # Fallback mode: succeeds with host prefs and degraded=True
+            res = load_and_mesh_scene_package(
+                scene_path,
+                prefs=self.mock_prefs,
+                allow_host_fallback=True,
+            )
+            self.assertTrue(res.get("degraded"))
+            self.assertIsNotNone(res["mesh_data"])
+
+    def test_12_isolated_colormaps_and_dynamic_entity_slots(self):
+        """Verifies dynamic_entity_slots roundtrip and pure colormap passing without host fallback."""
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 1, 1, 1]
+
+        scene_path = os.path.join(self.temp_dir, "test_slots_scene.mtkscene")
+        slots_input = {"player_skull_alex": (65520, 2), "custom_skull_hero": (65520, 7)}
+        export_scene_package(
+            output_path=scene_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            max_atlas_size=1024,
+            dynamic_entity_slots=slots_input,
+        )
+
+        data = read_scene_package(scene_path)
+        reader = data["reader"]
+        self.assertTrue(reader.has_dynamic_entity_slots())
+        read_slots = reader.read_dynamic_entity_slots()
+        self.assertEqual(read_slots, slots_input)
+        self.assertEqual(data.get("dynamic_entity_slots"), slots_input)
+
+        # Colormaps
+        self.assertTrue(reader.has_colormaps())
+        colormaps = reader.read_colormaps()
+        self.assertIsNotNone(colormaps)
+        self.assertIsNotNone(data.get("colormaps"))
+
+        # Completely headless self-contained loading without any prefs
+        res = load_and_mesh_scene_package(scene_path, prefs=None, allow_host_fallback=False)
+        self.assertFalse(res.get("degraded"))
+        self.assertIsNotNone(res["mesh_data"])
+        self.assertGreater(res["mesh_data"].vertex_count, 0)
+        self.assertEqual(res["mesh_data"].dynamic_entity_slots, slots_input)
+
+    def test_13_custom_colormap_tint_color_verification(self):
+        """Verifies that MesherConfig.colormaps actually drives the grass block tint color in generated mesh buffers."""
+        # 1. Pure solid magenta grass colormap (R=255, G=0, B=255)
+        magenta_png = create_tiny_png(16, 16, (255, 0, 255, 255))
+        custom_cms = self.mtk.VanillaColormaps.from_bytes(grass=magenta_png)
+
+        # 2. VoxelPointCloud with a single grass block in plains
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:grass_block", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 1, 1, 1]
+
+        storage = cloud.to_storage()
+
+        # Mesh with custom colormaps
+        from MoziToolKit.bridge.world import mesh_voxel_storage
+        mesh_custom, _ = mesh_voxel_storage(
+            storage=storage,
+            prefs=self.mock_prefs,
+            colormaps=custom_cms,
+            resolve_prefs=True,
+        )
+        self.assertGreater(mesh_custom.vertex_count, 0)
+
+        # Check vertex attributes for mtk_biome_tint_color
+        tint_mv = mesh_custom.attribute_memoryview("mtk_biome_tint_color")
+        self.assertIsNotNone(tint_mv, "Mesh must contain mtk_biome_tint_color attribute")
+        tint_data = list(tint_mv)
+        self.assertGreater(len(tint_data), 0)
+
+        # Magenta linear RGBA has R > 0.8, G < 0.1, B > 0.8
+        found_magenta = False
+        for i in range(0, len(tint_data), 4):
+            r, g, b = tint_data[i], tint_data[i + 1], tint_data[i + 2]
+            if r > 0.8 and g < 0.1 and b > 0.8:
+                found_magenta = True
+                break
+        self.assertTrue(found_magenta, f"Expected custom magenta grass tint in mesh, got: {tint_data[:8]}")
+
+    def test_14_skin_slot_resolution_and_missing_skin_rejection(self):
+        """Verifies that cropper resolves skins via dynamic_entity_slots when not in source atlas, and rejects missing skins."""
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:stone", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 1, 1, 1]
+
+        dummy_rgba = bytes([120, 150, 200, 255] * (1024 * 1024))
+        dyn_atlases = {65520: dummy_rgba}
+        dyn_slots = {"custom_hero_skin": (65520, 1)}
+
+        scene_path = os.path.join(self.temp_dir, "test_skin_fallback.mtkscene")
+        meta = export_scene_package(
+            output_path=scene_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            dynamic_entity_atlases=dyn_atlases,
+            dynamic_entity_slots=dyn_slots,
+        )
+        self.assertIsNotNone(meta)
+
+    def test_15_ctm_explicit_solver_conflict_check(self):
+        """Verifies that passing enable_ctm=False together with explicit ctm_solver raises ValueError."""
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 1, 1, 1]
+
+        stack = self.mtk.ResourcePackStack()
+        stack.add_directory_pack(self.pack_dir, "test_pack")
+        solver = stack.build_ctm_solver()
+
+        scene_path = os.path.join(self.temp_dir, "test_conflict.mtkscene")
+        with self.assertRaises(ValueError) as ctx:
+            export_scene_package(
+                output_path=scene_path,
+                point_cloud=cloud,
+                prefs=self.mock_prefs,
+                ctm_solver=solver,
+                enable_ctm=False,
+            )
+        self.assertIn("conflicting", str(ctx.exception).lower())
 
 
 if __name__ == "__main__":

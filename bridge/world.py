@@ -198,6 +198,32 @@ def get_world_session_dynamic_entity_atlases(session_key: str) -> Dict[int, byte
     return resolve_dynamic_entity_atlases(None, world) if world is not None else {}
 
 
+def resolve_dynamic_entity_slots(mesh_data: Any = None, session: Any = None) -> Dict[str, Tuple[int, int]]:
+    """
+    Canonical `{key: (chunk_id, slot_idx)}` dynamic entity slot map.
+    """
+    if mesh_data is not None:
+        slots = getattr(mesh_data, "dynamic_entity_slots", None)
+        if slots:
+            return {str(k): (int(v[0]), int(v[1])) for k, v in slots.items()}
+    if session is not None:
+        getter = getattr(session, "get_dynamic_entity_slots", None)
+        if callable(getter):
+            try:
+                slots = getter()
+                if slots:
+                    return {str(k): (int(v[0]), int(v[1])) for k, v in slots.items()}
+            except Exception as exc:
+                logger.debug("Failed reading dynamic entity slots from session: %s", exc)
+    return {}
+
+
+def get_world_session_dynamic_entity_slots(session_key: str) -> Dict[str, Tuple[int, int]]:
+    """Returns the `{key: (chunk_id, slot_idx)}` dynamic entity slot map of a cached VoxelWorld session."""
+    world = _WORLD_SESSIONS.get(session_key)
+    return resolve_dynamic_entity_slots(None, world) if world is not None else {}
+
+
 def mesh_voxel_storage(
     storage: Any,
     config: Optional[Any] = None,
@@ -221,6 +247,7 @@ def mesh_voxel_storage(
     cache_timestamp: Optional[float] = None,
     resolve_prefs: bool = True,
     resolve_ctm: bool = True,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -277,6 +304,8 @@ def mesh_voxel_storage(
         }
         if ctm_solver is not None:
             config_kwargs["ctm_solver"] = ctm_solver
+        if colormaps is not None:
+            config_kwargs["colormaps"] = colormaps
         config = mtk.MesherConfig(**config_kwargs)
     else:
         if num_threads is not None and hasattr(config, "num_threads"):
@@ -285,6 +314,8 @@ def mesh_voxel_storage(
             config.set_ctm_solver(ctm_solver)
         if hasattr(config, "enable_animated_textures"):
             config.enable_animated_textures = anim_tex_enabled
+        if colormaps is not None and hasattr(config, "set_colormaps"):
+            config.set_colormaps(colormaps)
 
     culler = get_shared_face_culler(mtk)
 
@@ -399,5 +430,7 @@ __all__ = [
     "clear_world_sessions",
     "resolve_dynamic_entity_atlases",
     "get_world_session_dynamic_entity_atlases",
+    "resolve_dynamic_entity_slots",
+    "get_world_session_dynamic_entity_slots",
     "mesh_voxel_storage",
 ]

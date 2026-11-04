@@ -68,6 +68,12 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
+    allow_host_fallback: BoolProperty(  # type: ignore
+        name="Allow Host Fallback",
+        description="Allow falling back to local asset cache if the scene package is missing models or textures",
+        default=False,
+    )
+
     material_mode: EnumProperty(  # type: ignore
         name="Material Mode",
         description="Shader material assembly mode for imported scene geometry",
@@ -124,6 +130,7 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         box_mesh.prop(self, "mesh_fluids", text=tr("Mesh Fluids"))
         box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
         box_mesh.prop(self, "origin_centered", text=tr("Center Origin"))
+        box_mesh.prop(self, "allow_host_fallback", text=tr("Allow Host Fallback"))
 
     def execute(self, context):
         if not HAS_BPY:
@@ -138,6 +145,7 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
 
         try:
             enable_anim = getattr(self, "enable_animated_textures", True)
+            allow_fallback = getattr(self, "allow_host_fallback", False)
             data = load_and_mesh_scene_package(
                 path=path,
                 prefs=prefs,
@@ -146,6 +154,7 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
                 weld_vertices=getattr(self, "weld_vertices", True),
                 origin_centered=getattr(self, "origin_centered", True),
                 enable_animated_textures=enable_anim,
+                allow_host_fallback=allow_fallback,
             )
 
             stem = path.stem
@@ -181,6 +190,11 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
                     except Exception:
                         pass
 
+            if data.get("degraded"):
+                self.report(
+                    {"WARNING"},
+                    f"Scene package was incomplete; imported with host fallback assets.",
+                )
             self.report(
                 {"INFO"},
                 f"Imported MTK Scene '{stem}' ({v_count} voxels in {total_ms:.1f}ms).",

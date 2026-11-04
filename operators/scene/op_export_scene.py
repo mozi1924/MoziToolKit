@@ -22,7 +22,9 @@ from ...bridge.point_cloud import extract_voxel_point_cloud
 from ...bridge.scene import export_scene_package
 from ...bridge.world import (
     get_world_session_dynamic_entity_atlases,
+    get_world_session_dynamic_entity_slots,
     resolve_dynamic_entity_atlases,
+    resolve_dynamic_entity_slots,
 )
 from ...utils.mesh.ownership import find_voxel_cloud, is_point_cloud
 from ...utils.system.dependencies import get_prefs
@@ -96,6 +98,44 @@ def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optiona
     return None
 
 
+def _resolve_export_dynamic_entity_slots(active_obj: Any, cloud_obj: Any) -> Optional[dict[str, tuple[int, int]]]:
+    """Resolves dynamic entity slot mapping via bridge.world.resolve_dynamic_entity_slots."""
+    if not HAS_BPY:
+        return None
+
+    session_key = (
+        active_obj.get("mtk:session_key") or active_obj.get("mozi_save_uuid")
+        if hasattr(active_obj, "get")
+        else None
+    ) or (
+        cloud_obj.get("mtk:session_key") or cloud_obj.get("mozi_save_uuid")
+        if hasattr(cloud_obj, "get")
+        else None
+    )
+    if not session_key and hasattr(active_obj, "parent") and active_obj.parent:
+        p = active_obj.parent
+        session_key = (p.get("mtk:session_key") or p.get("mozi_save_uuid")) if hasattr(p, "get") else None
+
+    if session_key:
+        slots = get_world_session_dynamic_entity_slots(session_key)
+        if slots:
+            return slots
+
+    mesh_data = getattr(active_obj, "data", None)
+    if mesh_data is not None:
+        slots = resolve_dynamic_entity_slots(mesh_data)
+        if slots:
+            return slots
+
+    cloud_data = getattr(cloud_obj, "data", None)
+    if cloud_data is not None:
+        slots = resolve_dynamic_entity_slots(cloud_data)
+        if slots:
+            return slots
+
+    return None
+
+
 class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
     """Export selected world mesh or companion point cloud to an MTK Scene package (.mtkscene)"""
 
@@ -150,6 +190,8 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
 
         prefs = get_prefs(context)
         dyn_entities = _resolve_export_dynamic_entities(active, cloud_obj)
+        dyn_slots = _resolve_export_dynamic_entity_slots(active, cloud_obj)
+        enable_ctm = getattr(prefs, "enable_ctm", True) if prefs is not None else True
 
         try:
             meta = export_scene_package(
@@ -158,6 +200,8 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
                 prefs=prefs,
                 max_atlas_size=self.max_atlas_size,
                 dynamic_entity_atlases=dyn_entities,
+                dynamic_entity_slots=dyn_slots,
+                enable_ctm=enable_ctm,
             )
             v_count = meta.get("voxel_count", 0)
             res = meta.get("atlas_resolution", [0, 0])

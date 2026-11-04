@@ -148,7 +148,7 @@ def load_material_cache_context(
 ) -> Tuple[Path, Path, Optional[str]]:
     """
     Step 1: Ensure assets are precompiled and discover the cache directory and manifest.
-    Resource-pack colormaps are resolved inside Rust when the cache is opened.
+    Resource-pack colormaps are resolved inside Rust when the active cache is opened via open_active_asset_cache.
     """
     base_cache = ensure_stack_precompiled(prefs)
     atlas_dir = ensure_atlas_textures_extracted(prefs)

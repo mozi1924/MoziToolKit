@@ -80,9 +80,13 @@ def get_biome_meta(biome_name: str) -> Dict[str, Any]:
     return mtk.get_biome_meta(biome_name)
 
 
-def sample_colormap_colors(temperature: float, humidity: float) -> Dict[str, List[float]]:
+def sample_colormap_colors(
+    temperature: float, humidity: float, colormaps: Optional[Any] = None
+) -> Dict[str, List[float]]:
     """Sample resident vanilla colormap linear RGBA colors from temperature and humidity in Rust."""
     mtk = require_libmtk("sample_colormap_colors")
+    if colormaps is not None:
+        return mtk.sample_colormap_colors(float(temperature), float(humidity), colormaps)
     return mtk.sample_colormap_colors(float(temperature), float(humidity))
 
 

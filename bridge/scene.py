@@ -74,6 +74,22 @@ def read_scene_package(
             logger.error("Failed to decode CtmSolver from scene package '%s': %s", target_path, e, exc_info=True)
             raise
 
+    colormaps = None
+    if hasattr(reader, "read_colormaps"):
+        try:
+            colormaps = reader.read_colormaps()
+        except Exception as e:
+            logger.error("Failed to decode colormaps from scene package '%s': %s", target_path, e, exc_info=True)
+            raise
+
+    dynamic_entity_slots = None
+    if hasattr(reader, "read_dynamic_entity_slots"):
+        try:
+            dynamic_entity_slots = reader.read_dynamic_entity_slots()
+        except Exception as e:
+            logger.error("Failed to decode dynamic entity slots from scene package '%s': %s", target_path, e, exc_info=True)
+            raise
+
     return {
         "metadata": meta,
         "point_cloud": point_cloud,
@@ -82,6 +98,8 @@ def read_scene_package(
         "atlas_mapping_json": atlas_mapping_json,
         "texture_names": texture_names,
         "biome_resolver": biome_resolver,
+        "colormaps": colormaps,
+        "dynamic_entity_slots": dynamic_entity_slots,
         "ctm_solver": ctm_solver,
         "reader": reader,
     }
@@ -97,6 +115,7 @@ def load_and_mesh_scene_package(
     enable_animated_textures: bool = True,
     num_threads: Optional[int] = None,
     z_up: bool = True,
+    allow_host_fallback: bool = False,
 ) -> Dict[str, Any]:
     """
     High-level headless scene loader: reads .mtkscene, reconstructs VoxelStorage,
@@ -112,18 +131,36 @@ def load_and_mesh_scene_package(
     reader = data["reader"]
     metadata = data["metadata"]
     biome_resolver = data.get("biome_resolver")
+    colormaps = data.get("colormaps")
     ctm_solver = data.get("ctm_solver")
     has_pkg_ctm = ctm_solver is not None
 
     storage = point_cloud.to_storage()
 
+    degraded = False
+    if models is None or atlas is None:
+        if not allow_host_fallback:
+            raise ValueError(
+                f"Scene package '{path}' is incomplete: missing required models or atlas chunks. "
+                "Host fallback is disabled."
+            )
+        logger.warning(
+            "Scene package '%s' is incomplete (missing models or atlas); falling back to host cache assets.",
+            path,
+        )
+        degraded = True
+    elif biome_resolver is None and allow_host_fallback:
+        degraded = True
+
     # Mesh voxel volume using package-embedded models and atlas
-    resolve_prefs = models is None or atlas is None or biome_resolver is None
+    resolve_prefs = allow_host_fallback and (models is None or atlas is None or biome_resolver is None)
+    resolve_ctm = allow_host_fallback and (not has_pkg_ctm)
     mesh_data, mesher_ms = mesh_voxel_storage(
         storage=storage,
         model_db=models,
         atlas=atlas,
         biome_resolver=biome_resolver,
+        colormaps=colormaps,
         ctm_solver=ctm_solver,
         prefs=prefs,
         enable_ao=enable_ao,
@@ -133,9 +170,16 @@ def load_and_mesh_scene_package(
         enable_animated_textures=enable_animated_textures,
         num_threads=num_threads,
         resolve_prefs=resolve_prefs,
-        resolve_ctm=not has_pkg_ctm,
+        resolve_ctm=resolve_ctm,
     )
     total_ms = (time.perf_counter() - t0) * 1000.0
+
+    dynamic_entity_slots = data.get("dynamic_entity_slots")
+    if hasattr(mesh_data, "dynamic_entity_slots") and getattr(mesh_data, "dynamic_entity_slots", None) is None and dynamic_entity_slots:
+        try:
+            mesh_data.dynamic_entity_slots = dynamic_entity_slots
+        except Exception:
+            pass
 
     return {
         "mesh_data": mesh_data,
@@ -145,8 +189,11 @@ def load_and_mesh_scene_package(
         "models": models,
         "atlas": atlas,
         "biome_resolver": biome_resolver,
+        "colormaps": colormaps,
+        "dynamic_entity_slots": dynamic_entity_slots,
         "ctm_solver": ctm_solver,
         "reader": reader,
+        "degraded": degraded,
         "mesher_ms": mesher_ms,
         "total_ms": total_ms,
     }
@@ -160,6 +207,8 @@ def export_scene_package(
     mip_level: int = 0,
     dynamic_entity_atlases: Optional[Dict[int, bytes]] = None,
     ctm_solver: Optional[Any] = None,
+    enable_ctm: Optional[bool] = None,
+    dynamic_entity_slots: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> Dict[str, Any]:
     """
     Exports a live VoxelPointCloud into a self-contained .mtkscene interchange package.
@@ -179,9 +228,11 @@ def export_scene_package(
     if out_p.parent:
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
-    if ctm_solver is None and prefs is not None:
-        from .assets.pack import get_configured_ctm_solver
-        ctm_solver = get_configured_ctm_solver(prefs)
+    if enable_ctm is None and prefs is not None:
+        raw = getattr(prefs, "enable_ctm", True)
+        enable_ctm = bool(raw) if isinstance(raw, bool) else True
+    elif enable_ctm is not None:
+        enable_ctm = bool(enable_ctm)
 
     meta = mtk.export_scene_package(
         str(out_p),
@@ -191,6 +242,8 @@ def export_scene_package(
         mip_level,
         dynamic_entity_atlases,
         ctm_solver,
+        enable_ctm,
+        dynamic_entity_slots,
     )
 
     return meta.to_dict()

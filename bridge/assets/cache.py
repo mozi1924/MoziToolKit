@@ -220,6 +220,11 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
 
     try:
         _ACTIVE_ASSET_CACHE = mtk.AssetCache.open(pkg_str)
+        if hasattr(_ACTIVE_ASSET_CACHE, "install_colormaps"):
+            try:
+                _ACTIVE_ASSET_CACHE.install_colormaps()
+            except Exception as ce:
+                logger.debug("Failed installing resident colormaps from active cache: %s", ce)
         _ACTIVE_CACHE_PKG_PATH = pkg_str
         _ACTIVE_CACHE_MTIME = mtime
         _ACTIVE_CACHE_MANIFEST = (
