@@ -611,7 +611,7 @@ Offset | Type     | Description
        |   uint32 - Relative Y (0..SizeY-1)
        |   uint32 - Relative Z (0..SizeZ-1)
        |   uint32 - Payload Length L (in bytes)
-       |   bytes  - Binary NBT Compound Payload (tag type TAG_Compound)
+       |   bytes  - BlockEntity UTF-8 JSON Payload
 ```
 
 > **设计要点 (RFC v3.2)**：
@@ -631,7 +631,7 @@ Offset | Type     | Description
 24..27 | uint32   | Relative Y (0..SizeY-1)
 28..31 | uint32   | Relative Z (0..SizeZ-1)
 32..35 | uint32   | Payload Length L (in bytes). 0 表示该坐标实体已被移除/销毁
-36..   | bytes    | Binary NBT Compound Payload (当 L > 0 时)
+36..   | bytes    | BlockEntity UTF-8 JSON Payload (当 L > 0 时)
 ```
 
 > **设计要点**：

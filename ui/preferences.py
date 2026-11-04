@@ -489,7 +489,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         # Information Banner
         info_box = layout.box()
         b_row = info_box.row(align=True)
-        b_row.label(text=tr("Material & LabPBR Shading Configuration:"), icon="SHADING_RENDERED")
+        b_row.label(text=tr("Material & PBR Shading Configuration:"), icon="SHADING_RENDERED")
 
         st_row = info_box.row(align=True)
         st_row.scale_y = 0.9

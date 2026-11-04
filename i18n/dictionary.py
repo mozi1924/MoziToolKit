@@ -371,7 +371,7 @@ translations_dict = {
         ('*', 'Mask Threshold'): '遮罩阈值',
         ('*', 'Masked (Hidden)'): '已遮罩 (隐藏)',
         ('*', 'Material & Asset Cache'): '材质与资产缓存',
-        ('*', 'Material & LabPBR Shading Configuration:'): '材质与 LabPBR 着色配置:',
+        ('*', 'Material & PBR Shading Configuration:'): '材质与 PBR 着色配置:',
         ('*', 'Material & Shading'): '材质与着色',
         ('*', 'Material Mode'): '材质模式',
         ('*', 'Max'): '最大范围',
