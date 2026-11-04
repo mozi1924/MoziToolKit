@@ -53,21 +53,48 @@ JMC2OBJ_BANNER_SHORT_ALIASES = {
     "pattern_gus": "entity/banner/guster",
 }
 
-_BIOME_SUFFIXES: "tuple[str, ...] | None" = None
+JMC2OBJ_BIOME_SUFFIXES: tuple[str, ...] = (
+    "-dark_forest",
+    "-birch_forest",
+    "-cherry_grove",
+    "-cold_ocean",
+    "-warm_ocean",
+    "_dark_forest",
+    "_birch_forest",
+    "_cherry_grove",
+    "_cold_ocean",
+    "_warm_ocean",
+    "-badlands",
+    "-mangrove",
+    "-savanna",
+    "_badlands",
+    "_mangrove",
+    "_savanna",
+    "-desert",
+    "-forest",
+    "-jungle",
+    "-meadow",
+    "-plains",
+    "_desert",
+    "_forest",
+    "_jungle",
+    "_meadow",
+    "_plains",
+    "-ocean",
+    "-swamp",
+    "-taiga",
+    "_ocean",
+    "_swamp",
+    "_taiga",
+    "-snow",
+    "_snow",
+    "_y",
+)
 
 
 def biome_suffixes() -> tuple[str, ...]:
-    """DCC-exporter biome suffixes, sourced from the Rust core (single source of truth).
-
-    Resolved lazily and memoized: importing `MoziToolKit.bridge` at module load
-    would create an `utils -> bridge -> utils` import cycle.
-    """
-    global _BIOME_SUFFIXES
-    if _BIOME_SUFFIXES is None:
-        from .....bridge import builtin_biome_suffixes
-
-        _BIOME_SUFFIXES = tuple(builtin_biome_suffixes())
-    return _BIOME_SUFFIXES
+    """DCC-exporter biome suffixes owned by the Python preset layer."""
+    return JMC2OBJ_BIOME_SUFFIXES
 
 MINECRAFT_COLORS = (
     "white", "orange", "magenta", "light_blue", "yellow", "lime",
@@ -169,13 +196,7 @@ EXPLICIT_MATERIAL_ALIASES = {
 
 
 def clean_jmc2obj_identifier(raw: str) -> str:
-    """Clean jmc2obj prefixes, suffixes, extensions, and biome tints."""
-    try:
-        from .....bridge import clean_material_identifier
-        return clean_material_identifier(raw)
-    except Exception:
-        pass
-
+    """Clean jmc2obj prefixes, suffixes, extensions, and biome tints in Python layer."""
     s = raw.strip().lower()
     if s.endswith(".png") or s.endswith(".jpg"):
         s = s[:-4]
@@ -183,11 +204,12 @@ def clean_jmc2obj_identifier(raw: str) -> str:
         s = s.rsplit(".", 1)[0]
 
     prefixes = (
-        "tex/minecraft/", "textures/block/", "textures/entity/", "textures/",
+        "tex/minecraft/", "textures/block/", "textures/entity/", "textures/item/", "textures/banner/", "textures/",
         "minecraft_block-", "minecraft_entity-", "minecraft_item-", "minecraft_banner-",
         "minecraft_block_", "minecraft_entity_", "minecraft_item_",
         "jmc2obj_block-", "jmc2obj_block_", "jmc2obj_entity-", "jmc2obj_item-", "jmc2obj_",
-        "minecraft:", "minecraft-", "tile_", "tile-", "tile.", "block_", "block-", "block.",
+        "minecraft:", "minecraft-", "mw_", "mwo_", "tile_", "tile-", "tile.", "block_", "block-", "block.",
+        "block/", "entity/", "item/",
     )
     for p in prefixes:
         if s.startswith(p):
@@ -304,12 +326,34 @@ def expand_jmc2obj_candidates(raw_name: str) -> list[str]:
 
     # 5. Redstone dust/wire
     if "redstone_dust" in clean or "redstone_wire" in clean:
-        cands.extend([
-            "block/redstone_dust_line0",
-            "block/redstone_dust_line1",
-            "block/redstone_dust_dot",
-            "block/redstone_dust_overlay",
-        ])
+        base = clean.replace("_on", "").replace("_off", "")
+        if "line0" in base or "angled" in base:
+            cands.extend([
+                "block/redstone_dust_line0",
+                "block/redstone_dust_overlay",
+                "block/redstone_dust_dot",
+            ])
+        elif "line1" in base or "three_way" in base:
+            cands.extend([
+                "block/redstone_dust_line1",
+                "block/redstone_dust_overlay",
+                "block/redstone_dust_dot",
+            ])
+        elif "dot" in base or "four_way" in base or "cross" in base:
+            cands.extend([
+                "block/redstone_dust_dot",
+                "block/redstone_dust_line1",
+                "block/redstone_dust_overlay",
+            ])
+        elif "overlay" in base:
+            cands.extend(["block/redstone_dust_overlay"])
+        else:
+            cands.extend([
+                "block/redstone_dust_line0",
+                "block/redstone_dust_line1",
+                "block/redstone_dust_dot",
+                "block/redstone_dust_overlay",
+            ])
 
     # 6. Signs & Hanging Signs (all wood types)
     is_sign = "sign" in clean_tokens or "signs" in clean_tokens

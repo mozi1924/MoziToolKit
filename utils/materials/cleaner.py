@@ -110,10 +110,6 @@ def mesh_has_animation(mesh_or_obj: Any) -> bool:
         raw = np.empty(len(attr.data) * 3, dtype=np.float32)
         attr.data.foreach_get("vector", raw)
         return bool((raw[0::3] > 1.0).any())
-    for elem in attr.data:
-        vector = getattr(elem, "vector", None)
-        if vector is not None and vector[0] > 1.0:
-            return True
     return False
 
 

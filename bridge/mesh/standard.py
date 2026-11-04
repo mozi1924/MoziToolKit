@@ -175,12 +175,7 @@ def inject_uvs_standard(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] 
         else:
             # Per-vertex UVs expansion into loop domain
             loop_vert_indices = np.empty(num_loops, dtype=np.int32)
-            if hasattr(mesh.loops, "foreach_get"):
-                mesh.loops.foreach_get("vertex_index", loop_vert_indices)
-            else:
-                cvert_attr = safe_get_attribute(mesh, ".corner_vert")
-                if cvert_attr is not None and len(cvert_attr.data) == num_loops:
-                    cvert_attr.data.foreach_get("value", loop_vert_indices)
+            mesh.loops.foreach_get("vertex_index", loop_vert_indices)
 
             uv_table = uv_np.reshape(-1, 2)
             loop_uvs = np.ascontiguousarray(uv_table[loop_vert_indices].ravel(), dtype=np.float32)

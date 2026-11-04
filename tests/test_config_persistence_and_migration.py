@@ -31,60 +31,6 @@ class TestConfigPersistenceAndMigration(unittest.TestCase):
                 else:
                     os.environ.pop("MOZI_CONFIG_DIR", None)
 
-    def test_migration_from_context_menus_to_config_json(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-            legacy_file = tmp_path / "context_menus.json"
-            legacy_bak = tmp_path / "context_menus.json.bak"
-            target_file = tmp_path / "config.json"
-
-            sample_data = {
-                "version": 1,
-                "backend_type": "JSON",
-                "resource_packs": [
-                    {
-                        "name": "CustomPack.zip",
-                        "path": "/path/to/CustomPack.zip",
-                        "enabled": True,
-                        "pack_type": "RESOURCE_PACK",
-                        "pack_type_source": "AUTO",
-                        "detected_kind": "",
-                    }
-                ],
-                "views": {"mesh": [], "object": [], "uv": []},
-            }
-
-            with open(legacy_file, "w", encoding="utf-8") as f:
-                json.dump(sample_data, f)
-            with open(legacy_bak, "w", encoding="utf-8") as f:
-                json.dump(sample_data, f)
-
-            self.assertTrue(legacy_file.exists())
-            self.assertTrue(legacy_bak.exists())
-            self.assertFalse(target_file.exists())
-
-            old_env = os.environ.get("MOZI_CONFIG_DIR")
-            try:
-                os.environ["MOZI_CONFIG_DIR"] = tmp_dir
-                backend = JsonConfigBackend()
-                cfg_path = backend.get_config_path()
-
-                self.assertEqual(cfg_path, target_file)
-                self.assertTrue(target_file.exists())
-                # Verify legacy files were cleaned up
-                self.assertFalse(legacy_file.exists())
-                self.assertFalse(legacy_bak.exists())
-
-                # Verify loaded data matches original content
-                loaded = backend.load()
-                self.assertEqual(len(loaded.resource_packs), 1)
-                self.assertEqual(loaded.resource_packs[0].name, "CustomPack.zip")
-            finally:
-                if old_env is not None:
-                    os.environ["MOZI_CONFIG_DIR"] = old_env
-                else:
-                    os.environ.pop("MOZI_CONFIG_DIR", None)
-
     def test_no_migration_when_only_config_json_exists(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)

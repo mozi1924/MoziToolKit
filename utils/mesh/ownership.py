@@ -181,7 +181,6 @@ def classify_origin(obj: Any) -> str:
     2. point-cloud marker
     3. legacy creation markers (``mtk:is_save_mesh`` etc.)
     4. container type (when an Empty root is active)
-    5. naming conventions (legacy files created before origin stamping)
 
     Material provenance attributes are intentionally never consulted.
     """
@@ -218,20 +217,6 @@ def classify_origin(obj: Any) -> str:
             if container_type.strip().upper() == "SYNC":
                 return ORIGIN_SYNC_WORLD
         if _as_bool(_safe_get(obj, "mtk:is_container")) and _as_bool(_safe_get(obj, "mtk:is_yefira_world")):
-            return ORIGIN_SYNC_WORLD
-
-    # Naming fallbacks for legacy files created before explicit origin stamping.
-    if obj_type == "MESH":
-        if name.startswith("Save_") and name.endswith("_Mesh"):
-            return ORIGIN_SAVE
-        if name.startswith("Yefira_World"):
-            return ORIGIN_SYNC_WORLD
-        if name.startswith("MTK_World"):
-            return ORIGIN_VOXEL
-    elif obj_type == "EMPTY":
-        if name.startswith("Save_"):
-            return ORIGIN_SAVE
-        if name.startswith("Yefira_World"):
             return ORIGIN_SYNC_WORLD
 
     return ORIGIN_EXTERNAL

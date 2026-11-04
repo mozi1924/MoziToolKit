@@ -150,12 +150,6 @@ class MOZI_OT_toggle_voxel_cloud(bpy.types.Operator):
         default="TOGGLE",
     )
 
-    enter_edit_mode: BoolProperty(
-        name="Enter Edit Mode",
-        description="Automatically switch to Edit Mode on the voxel cloud to select and delete blocks",
-        default=False,
-    )
-
     @classmethod
     def poll(cls, context):
         world_obj, cloud_obj = _resolve_world_and_cloud_objects(context)
@@ -166,11 +160,6 @@ class MOZI_OT_toggle_voxel_cloud(bpy.types.Operator):
         if cloud_obj is None:
             self.report({"WARNING"}, "No associated Voxel Point Cloud found for active object.")
             return {"CANCELLED"}
-
-        # Backward compatibility: if caller requested enter_edit_mode, enter carve mode directly
-        if getattr(self, "enter_edit_mode", False):
-            _enter_carve_mode(context, world_obj, cloud_obj, report_fn=self.report)
-            return {"FINISHED"}
 
         action = getattr(self, "action", "TOGGLE")
         currently_visible = is_voxel_cloud_visible(cloud_obj)

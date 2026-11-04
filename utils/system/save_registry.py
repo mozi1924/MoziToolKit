@@ -60,19 +60,7 @@ class SaveRegistryManager:
                 base_dir = Path.home() / ".config" / "blender" / "MoziToolKit"
 
         base_dir.mkdir(parents=True, exist_ok=True)
-        target_path = base_dir / "save_registry.json"
-
-        # Migrate from legacy DATAFILES directory if needed
-        try:
-            if not target_path.exists() and bpy and hasattr(bpy, "utils") and hasattr(bpy.utils, "user_resource"):
-                legacy_path = Path(bpy.utils.user_resource("DATAFILES")) / "MoziToolKit" / "save_registry.json"
-                if legacy_path.exists():
-                    import shutil
-                    shutil.copy2(legacy_path, target_path)
-        except Exception:
-            pass
-
-        return target_path
+        return base_dir / "save_registry.json"
 
     def _atomic_write_json(self, filepath: Path, data: dict) -> None:
         """Atomically writes JSON to disk using a temporary file and fsync."""

@@ -62,9 +62,8 @@ class MockObject:
 
 
 class MockOperatorSelf:
-    def __init__(self, action: str = "TOGGLE", enter_edit_mode: bool = False):
+    def __init__(self, action: str = "TOGGLE"):
         self.action = action
-        self.enter_edit_mode = enter_edit_mode
         self.reports = []
 
     def report(self, level, message):
@@ -190,16 +189,6 @@ class TestVoxelCloudOperators(unittest.TestCase):
         self.assertEqual(ctx.view_layer.objects.active, self.world_obj)
         # Point cloud must remain visible so user can inspect edited voxels
         self.assertFalse(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
-
-    def test_toggle_voxel_cloud_enter_edit_mode_backward_compat(self):
-        op = MockOperatorSelf(enter_edit_mode=True)
-        ctx = self._make_context(self.world_obj)
-
-        res = MOZI_OT_toggle_voxel_cloud.execute(op, ctx)
-        self.assertEqual(res, {"FINISHED"})
-        # Should have unmasked cloud and set active to cloud_obj
-        self.assertFalse(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
-        self.assertEqual(ctx.view_layer.objects.active, self.cloud_obj)
 
 
 class TestVoxelToolsPanelUI(unittest.TestCase):

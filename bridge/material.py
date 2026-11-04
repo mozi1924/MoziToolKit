@@ -275,14 +275,10 @@ def normalize_banner_pattern(code_or_name: str) -> str:
 
 def builtin_biome_suffixes() -> tuple[str, ...]:
     """
-    Returns the canonical DCC-exporter biome suffixes from the Rust core.
-
-    `mtk-material::resolver::overrides::builtin_biome_suffixes()` owns this list;
-    hosts must never re-declare it, otherwise new suffixes silently fail to reach
-    the Python candidate generator.
+    Returns the DCC-exporter biome suffixes owned by the Python preset layer.
     """
-    mtk = require_libmtk("builtin_biome_suffixes")
-    return tuple(mtk.builtin_biome_suffixes())
+    from ..utils.materials.matching.presets.jmc2obj import biome_suffixes
+    return biome_suffixes()
 
 
 def remap_mesh_multi_uvs_paletted(

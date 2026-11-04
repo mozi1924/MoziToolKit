@@ -266,16 +266,6 @@ def ensure_voxel_child_cloud(
         if target_coll is not None and cloud_obj.name not in target_coll.objects:
             target_coll.objects.link(cloud_obj)
 
-    # Clean up legacy separate collection if present and empty
-    legacy_coll = bpy.data.collections.get("MTK_Voxel_Storage")
-    if legacy_coll is not None:
-        try:
-            for o in list(legacy_coll.objects):
-                legacy_coll.objects.unlink(o)
-            bpy.data.collections.remove(legacy_coll)
-        except Exception:
-            pass
-
     # 3. Enforce strict hierarchy and 1:1 absolute local transform alignment
     if cloud_obj.parent != parent_obj:
         cloud_obj.parent = parent_obj

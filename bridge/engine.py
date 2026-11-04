@@ -107,15 +107,6 @@ def _resolve_libmtk() -> Optional[Any]:
     except (ImportError, ValueError, AttributeError):
         pass
 
-    # 4. Fallback attempt for alternative module naming in build scripts
-    try:
-        import mtk_py
-        accepted = _accept_native(mtk_py)
-        if accepted is not None:
-            return accepted
-    except ImportError:
-        pass
-
     return None
 
 

@@ -149,15 +149,15 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("AnyName_VoxelCloud", "MESH")
         self.assertEqual(classify_origin(cloud), ORIGIN_POINT_CLOUD)
 
-    def test_legacy_name_fallbacks(self):
+    def test_legacy_name_fallbacks_removed(self):
         save_mesh = self._make_obj("Save_World_overworld_Mesh", "MESH")
-        self.assertEqual(classify_origin(save_mesh), ORIGIN_SAVE)
+        self.assertEqual(classify_origin(save_mesh), ORIGIN_EXTERNAL)
 
         sync_mesh = self._make_obj("Yefira_World_Mesh", "MESH")
-        self.assertEqual(classify_origin(sync_mesh), ORIGIN_SYNC_WORLD)
+        self.assertEqual(classify_origin(sync_mesh), ORIGIN_EXTERNAL)
 
         voxel_mesh = self._make_obj("MTK_World", "MESH")
-        self.assertEqual(classify_origin(voxel_mesh), ORIGIN_VOXEL)
+        self.assertEqual(classify_origin(voxel_mesh), ORIGIN_EXTERNAL)
 
     def test_container_roots(self):
         save_root = self._make_obj("Save_Test_overworld", "EMPTY")
@@ -224,6 +224,7 @@ class TestMeshOwnership(unittest.TestCase):
             self.assertTrue(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=external)))
 
         save_mesh = self._make_obj("Save_World_overworld_Mesh", "MESH")
+        stamp_geometry_origin(save_mesh, ORIGIN_SAVE)
         with patch("MoziToolKit.operators.op_materials.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertFalse(MOZI_OT_replace_material.poll(types.SimpleNamespace(active_object=save_mesh)))
 

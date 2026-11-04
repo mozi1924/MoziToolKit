@@ -551,39 +551,6 @@ def _needs_animation_reconcile(mesh: Any, prefs: Optional[Any] = None) -> bool:
     return not (hasattr(mesh, "attributes") and "mtk_anim_timing" in mesh.attributes)
 
 
-def _is_legacy_single_uv_atlas_mesh(mesh: Any) -> bool:
-    """
-    Detect meshes produced by the removed single-UV atlas pipeline.
-
-    They keep already-baked atlas UVs in their sole UV layer and have no
-    recoverable local layout, so they must be re-imported.
-    """
-    if mesh is None or not hasattr(mesh, "uv_layers"):
-        return False
-    try:
-        if len(mesh.uv_layers) != 1:
-            return False
-    except Exception:
-        return False
-    try:
-        if mesh.get(LOCAL_UV_LAYER_PROP) or mesh.get(ATLAS_UV_LAYER_PROP):
-            return False
-    except Exception:
-        pass
-    attributes = getattr(mesh, "attributes", None)
-    if attributes is None:
-        return False
-    try:
-        has_provenance = (
-            "mtk_source_texture_key" in attributes
-            or "mtk_source_texture_idx" in attributes
-        )
-        has_atlas_routing = "mtk_atlas_chunk_id" in attributes
-    except Exception:
-        return False
-    return bool(has_provenance and has_atlas_routing)
-
-
 def _is_external_object(obj: Any) -> bool:
     """Best-effort ownership check used to pick the external material namespace."""
     if obj is None:
@@ -646,17 +613,7 @@ def replace_materials(
     current_layout_hash = compute_atlas_layout_hash(atlas_data)
     stored_layout_hash = get_stored_layout_hash(mesh)
 
-    # Step 2: Reject meshes from the removed single-UV atlas pipeline and resolve
-    # the preserved local UV map plus the atlas UV map.
-    if _is_legacy_single_uv_atlas_mesh(mesh):
-        return {
-            "success": False,
-            "message": (
-                "Mesh uses the removed single-UV atlas layout. Re-import external imports "
-                "to preserve their local UV map; MTK voxel meshes must use Rebuild Voxel Mesh."
-            ),
-        }
-
+    # Step 2: Resolve the preserved local UV map plus the atlas UV map.
     local_uv_layer, atlas_uv_layer, atlas_created = resolve_uv_layers(
         mesh,
         create_atlas=True,
@@ -954,14 +911,11 @@ def restore_materials_from_provenance(
         num_loops = len(mesh.loops)
         loop_uvs = read_uv_layer(atlas_uv_layer, num_loops)
 
-        if hasattr(mesh.polygons, "foreach_get"):
-            starts = np.empty(num_polys, dtype=np.int32)
-            totals = np.empty(num_polys, dtype=np.int32)
-            mesh.polygons.foreach_get("loop_start", starts)
-            mesh.polygons.foreach_get("loop_total", totals)
-            face_loop_ranges = list(zip(starts.tolist(), totals.tolist()))
-        else:
-            face_loop_ranges = [(int(p.loop_start), int(p.loop_total)) for p in mesh.polygons]
+        starts = np.empty(num_polys, dtype=np.int32)
+        totals = np.empty(num_polys, dtype=np.int32)
+        mesh.polygons.foreach_get("loop_start", starts)
+        mesh.polygons.foreach_get("loop_total", totals)
+        face_loop_ranges = list(zip(starts.tolist(), totals.tolist()))
 
         reroute = reroute_mesh_animation(
             loop_uvs=loop_uvs,

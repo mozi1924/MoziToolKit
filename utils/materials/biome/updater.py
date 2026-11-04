@@ -684,11 +684,6 @@ def update_object_biome(
                 # Never derive provenance from atlas chunk material names: that
                 # would zero every face's tint type and break later presets.
                 if derived_keys and all(derived_keys):
-                    try:
-                        from ....bridge.mesh import inject_face_attribute_string
-                        inject_face_attribute_string(mesh, ATTR_SOURCE_TEXTURE_KEY, derived_keys)
-                    except Exception:
-                        pass
                     biome_resolver = get_or_load_biome_resolver(pack_stack=effective_stack)
                     packed_tint_data, tint_colors = compute_biome_tint_attributes(
                         derived_keys,

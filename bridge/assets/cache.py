@@ -144,16 +144,6 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
                     resolved = mtk.resolve_active_cache_package(str(cache_dir), fp)
                     if resolved:
                         return Path(resolved)
-                else:
-                    # Minimal compatibility for a native library predating the resolver.
-                    for cand_name in (f"{fp}.mtkcache", f"mtk_fp_{fp}.mtkcache", f"{fp}"):
-                        direct_pkg = cache_dir / cand_name
-                        if direct_pkg.exists() and direct_pkg.is_file():
-                            if hasattr(mtk, "is_valid_cache_package"):
-                                if mtk.is_valid_cache_package(str(direct_pkg), fp):
-                                    return direct_pkg
-                            else:
-                                return direct_pkg
 
                 # Test sandboxes may contain synthetic packages whose header does not
                 # match the host-level stack fingerprint.
