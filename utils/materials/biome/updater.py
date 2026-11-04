@@ -57,8 +57,27 @@ def clear_biome_updater_cache() -> None:
     _COLORMAPS_CACHE.clear()
 
 
+def resolve_container_id(obj: Any) -> Optional[str]:
+    """Resolves the immutable mtk:container_id UUID across object hierarchy with legacy fallbacks."""
+    if obj is None:
+        return None
+    curr = obj
+    depth = 0
+    while curr is not None and depth < 64:
+        if hasattr(curr, "get"):
+            c_id = curr.get("mtk:container_id") or curr.get("mozi_save_uuid") or curr.get("mozi_scene_uuid")
+            if c_id:
+                return str(c_id)
+        parent = getattr(curr, "parent", None)
+        if parent is None and hasattr(curr, "id_data") and curr.id_data != curr:
+            parent = getattr(curr.id_data, "parent", None)
+        curr = parent
+        depth += 1
+    return None
+
+
 def register_object_colormaps(key: str, colormaps: Any) -> None:
-    """Register native VanillaColormaps in memory for a given container UUID or object name."""
+    """Register native VanillaColormaps in memory for a given container UUID."""
     if key and colormaps is not None:
         _COLORMAPS_CACHE[str(key)] = colormaps
 
@@ -71,7 +90,7 @@ def get_object_colormaps(key: str) -> Any:
 
 
 def register_object_storage(key: str, storage: Any) -> None:
-    """Register native VoxelStorage in memory for a given container UUID or object name."""
+    """Register native VoxelStorage in memory for a given container UUID."""
     if key and storage is not None:
         _STORAGE_CACHE[str(key)] = storage
 
@@ -91,9 +110,6 @@ def mark_world_biome(obj: Any, storage: Any = None, aliases: Any = ()) -> bool:
     biome colors into its tint attributes. Tagging ``mtk:biome_preset`` here keeps the
     biome panel from falling back to the uniform ``PLAINS`` default, while registering
     the storage lets a later WORLD re-selection recompute colors without a live session.
-
-    ``aliases`` may contain extra lookup keys (root container name, container UUID)
-    that should resolve to the same storage.
     """
     if obj is None:
         return False
@@ -107,13 +123,17 @@ def mark_world_biome(obj: Any, storage: Any = None, aliases: Any = ()) -> bool:
             pass
 
     if storage is not None:
-        mesh = getattr(obj, "data", None)
-        for key in (getattr(obj, "name", ""), getattr(mesh, "name", "")):
-            if isinstance(key, str) and key:
-                register_object_storage(key, storage)
+        c_id = resolve_container_id(obj)
+        if c_id:
+            register_object_storage(c_id, storage)
         for key in aliases:
             if isinstance(key, str) and key:
                 register_object_storage(key, storage)
+        # Fallback for bare test mocks lacking container_id
+        if not c_id and not aliases:
+            for key in (getattr(obj, "name", ""), getattr(getattr(obj, "data", None), "name", "")):
+                if isinstance(key, str) and key:
+                    register_object_storage(key, storage)
 
     return True
 
@@ -355,18 +375,14 @@ def resolve_and_apply_world_biome_tint(
     )
 
     storage = getattr(mesh_or_obj, "_storage", None) or getattr(target_mesh, "_storage", None)
+    if storage is None:
+        c_id = resolve_container_id(mesh_or_obj) or resolve_container_id(target_mesh)
+        if c_id:
+            storage = get_object_storage(c_id)
     if storage is None and hasattr(mesh_or_obj, "name"):
         storage = get_object_storage(mesh_or_obj.name)
     if storage is None and hasattr(target_mesh, "name"):
         storage = get_object_storage(target_mesh.name)
-    if storage is None and hasattr(mesh_or_obj, "get"):
-        save_uuid = mesh_or_obj.get("mozi_save_uuid") or mesh_or_obj.get("mtk:container_id")
-        if save_uuid:
-            storage = get_object_storage(save_uuid)
-    if storage is None and hasattr(target_mesh, "get"):
-        save_uuid = target_mesh.get("mozi_save_uuid") or target_mesh.get("mtk:container_id")
-        if save_uuid:
-            storage = get_object_storage(save_uuid)
     if storage is None and hasattr(mesh_or_obj, "get"):
         storage = mesh_or_obj.get("mtk:storage", None)
     if storage is None and hasattr(target_mesh, "get"):
@@ -435,12 +451,12 @@ def resolve_and_apply_world_biome_tint(
 
         # Resolve isolated scene colormaps if registered; otherwise Rust auto-resolves active resident colormaps
         colormaps = getattr(mesh_or_obj, "_colormaps", None) or getattr(target_mesh, "_colormaps", None)
-        if colormaps is None and hasattr(mesh_or_obj, "name"):
-            colormaps = get_object_colormaps(mesh_or_obj.name)
-        if colormaps is None and hasattr(mesh_or_obj, "get"):
-            c_uuid = mesh_or_obj.get("mtk:container_id") or mesh_or_obj.get("mozi_save_uuid")
+        if colormaps is None:
+            c_uuid = resolve_container_id(mesh_or_obj) or resolve_container_id(target_mesh)
             if c_uuid:
                 colormaps = get_object_colormaps(c_uuid)
+        if colormaps is None and hasattr(mesh_or_obj, "name"):
+            colormaps = get_object_colormaps(mesh_or_obj.name)
 
         res = compute_mesh_biome_attributes_from_storage(
             source_keys,

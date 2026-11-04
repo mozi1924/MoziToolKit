@@ -173,7 +173,7 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         bpy.context.scene.collection.objects.link(b_obj)
 
         try:
-            from MoziToolKit.operators.sync.hierarchy import update_world_mesh
+            from MoziToolKit.utils.world.sync_container import update_world_mesh
             # Call without passing the atlas explicitly; it auto-resolves from mesh.dynamic_entity_atlases
             v_cnt, f_cnt = update_world_mesh(b_obj, mesh)
             self.assertGreater(v_cnt, 0)

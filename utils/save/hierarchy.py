@@ -198,7 +198,6 @@ def apply_imported_save_to_blender(
         container_id=save_uuid,
         atlas=atlas,
         dynamic_entity_atlases=dynamic_entity_atlases,
-        colormaps=colormaps,
         origin_centered=origin_centered,
         reuse_existing=reuse_existing,
         target_root=root_obj,

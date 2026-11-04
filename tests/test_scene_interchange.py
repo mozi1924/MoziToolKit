@@ -790,15 +790,14 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertIn("player_TestHeroAlex", packaged_slots)
         self.assertNotIn("unused_skin", packaged_slots)
 
-        # Verify effective_capabilities returns SceneCapabilities with attribute and dict access
+        # Verify effective_capabilities returns native dictionary with declared capabilities
         eff_caps = reader.effective_capabilities()
-        self.assertTrue(eff_caps.has_dynamic_entities)
+        self.assertIsInstance(eff_caps, dict)
         self.assertTrue(eff_caps["has_dynamic_entities"])
         self.assertIn("has_dynamic_entities", eff_caps)
         self.assertEqual(eff_caps.get("has_dynamic_entities"), True)
         self.assertEqual(eff_caps.get("nonexistent", False), False)
         self.assertIn("has_dynamic_entities", eff_caps.keys())
-        self.assertIsInstance(eff_caps.to_dict(), dict)
 
         # Verify unified reader.unpack() delivers all high-level components in one pass
         bundle = reader.unpack()
@@ -878,15 +877,15 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
         # Capabilities and effective_capabilities bindings
         caps = reader.metadata.capabilities
-        self.assertTrue(hasattr(caps, "has_pbr"))
-        self.assertTrue(hasattr(caps, "has_dynamic_entities"))
+        self.assertIsInstance(caps, dict)
+        self.assertIn("has_pbr", caps)
+        self.assertIn("has_dynamic_entities", caps)
         self.assertIsInstance(caps["has_pbr"], bool)
-        self.assertIsInstance(caps.to_dict(), dict)
 
         eff_caps = reader.effective_capabilities()
-        self.assertTrue(hasattr(eff_caps, "has_pbr"))
+        self.assertIsInstance(eff_caps, dict)
+        self.assertIn("has_pbr", eff_caps)
         self.assertIsInstance(eff_caps["has_pbr"], bool)
-        self.assertIsInstance(eff_caps.to_dict(), dict)
 
     def test_18_scene_import_ctm_toggle(self):
         """Verifies scene package CTM can be disabled at import time from the operator path."""

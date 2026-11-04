@@ -10,7 +10,7 @@ import logging
 from typing import Set
 import bpy
 
-from .hierarchy import (
+from ...utils.world.sync_container import (
     is_yefira_root_object,
     sync_container_child_names,
 )

@@ -1,36 +1,41 @@
 """
-Hierarchical management for the Unified World Empty Container and Section Mesh in Blender.
+Live Sync Container and Hierarchy Management in Blender.
+
+Authoritative utility module for identifying, creating, resolving, and synchronizing
+the Unified World Empty Container and Section Mesh for Yefira Live Sync.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from typing import Any, Optional, Tuple
-import bpy
+
+try:
+    import bpy
+    HAS_BPY = True
+except ImportError:
+    bpy = None
+    HAS_BPY = False
 
 from ...bridge.mesh import inject_mesh_data
 from ...bridge.world import resolve_dynamic_entity_atlases
-from ...utils.materials.builder.world_binding import ensure_world_materials
-from ...utils.point_cloud import ensure_voxel_child_cloud
-from ...utils.mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
+from ..materials.builder.world_binding import ensure_world_materials
+from ..point_cloud.hierarchy import ensure_voxel_child_cloud
+from ..mesh.ownership import ORIGIN_SYNC_WORLD, stamp_geometry_origin
+from .assembler import (
+    VoxelWorldAssemblyRequest,
+    assemble_voxel_world,
+    safe_get_custom_prop,
+    safe_set_custom_prop,
+)
 
-logger = logging.getLogger("MoziToolKit.Sync.Hierarchy")
+logger = logging.getLogger("MoziToolKit.World.SyncContainer")
 
 DEFAULT_WORLD_OBJECT_NAME = "Yefira_World"
 
-
-def _safe_set_custom_prop(obj: Any, key: str, val: Any) -> None:
-    if obj is None:
-        return
-    try:
-        obj[key] = val
-    except (TypeError, AttributeError, KeyError):
-        try:
-            setattr(obj, key, val)
-        except Exception:
-            pass
+_safe_get_custom_prop = safe_get_custom_prop
+_safe_set_custom_prop = safe_set_custom_prop
 
 
 def _stamp_world_mesh_origin(mesh_obj: Any) -> None:
@@ -38,47 +43,37 @@ def _stamp_world_mesh_origin(mesh_obj: Any) -> None:
     stamp_geometry_origin(mesh_obj, ORIGIN_SYNC_WORLD, overwrite=True)
 
 
-def _safe_get_custom_prop(obj: Any, key: str, default: Any = None) -> Any:
-    if obj is None:
-        return default
-    try:
-        if hasattr(obj, "get"):
-            return obj.get(key, default)
-        return getattr(obj, key, default)
-    except Exception:
-        return default
-
-
-def is_yefira_root_object(obj: Optional[bpy.types.Object]) -> bool:
+def is_yefira_root_object(obj: Optional[Any]) -> bool:
     """Identify whether a Blender object is a root Yefira live sync Empty container."""
     if not obj:
         return False
     obj_type = getattr(obj, "type", "")
-    if obj_type == 'EMPTY':
-        c_type = _safe_get_custom_prop(obj, "mtk:container_type")
+    if obj_type == "EMPTY":
+        c_type = safe_get_custom_prop(obj, "mtk:container_type")
         if c_type and c_type != "SYNC":
             return False
-        if _safe_get_custom_prop(obj, "mtk:is_yefira_world"):
+        if safe_get_custom_prop(obj, "mtk:is_yefira_world"):
             return True
-        if _safe_get_custom_prop(obj, "mtk:is_container") and c_type == "SYNC":
+        if safe_get_custom_prop(obj, "mtk:is_container") and c_type == "SYNC":
             return True
         obj_name = getattr(obj, "name", "")
         if obj_name == DEFAULT_WORLD_OBJECT_NAME or obj_name.startswith("Yefira_World"):
             return True
         for c in getattr(obj, "children", []):
-            if _safe_get_custom_prop(c, "mtk:is_yefira_mesh"):
+            if safe_get_custom_prop(c, "mtk:is_yefira_mesh"):
                 return True
     return False
 
 
-def is_yefira_child_object(obj: Optional[bpy.types.Object]) -> bool:
+def is_yefira_child_object(obj: Optional[Any]) -> bool:
     """Identify whether a Blender object is a child section or point cloud of a Yefira container."""
     if not obj:
         return False
     if (
-        _safe_get_custom_prop(obj, "mtk:is_yefira_mesh")
-        or _safe_get_custom_prop(obj, "mtk:is_section_mesh")
-        or _safe_get_custom_prop(obj, "mtk_is_voxel_cloud")
+        safe_get_custom_prop(obj, "mtk:is_yefira_mesh")
+        or safe_get_custom_prop(obj, "mtk:is_section_mesh")
+        or safe_get_custom_prop(obj, "mtk_is_voxel_cloud")
+        or safe_get_custom_prop(obj, "mtk:is_voxel_cloud")
     ):
         return True
     parent = getattr(obj, "parent", None)
@@ -87,14 +82,19 @@ def is_yefira_child_object(obj: Optional[bpy.types.Object]) -> bool:
     return False
 
 
-def is_yefira_world_object(obj: Optional[bpy.types.Object]) -> bool:
+def is_yefira_world_object(obj: Optional[Any]) -> bool:
     """Checks if an object is tagged as or belongs to the Yefira Live Sync world container."""
     if not obj:
         return False
-    return is_yefira_root_object(obj) or is_yefira_child_object(obj) or bool(_safe_get_custom_prop(obj, "mtk:is_yefira_world")) or getattr(obj, "name", "") == DEFAULT_WORLD_OBJECT_NAME
+    return (
+        is_yefira_root_object(obj)
+        or is_yefira_child_object(obj)
+        or bool(safe_get_custom_prop(obj, "mtk:is_yefira_world"))
+        or getattr(obj, "name", "") == DEFAULT_WORLD_OBJECT_NAME
+    )
 
 
-def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
+def resolve_world_root_object(obj: Optional[Any]) -> Optional[Any]:
     """
     Given any object (root empty, child mesh, or point cloud), resolves up the hierarchy
     to the topmost Yefira World Empty root container.
@@ -103,7 +103,6 @@ def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.t
         return None
 
     # 1. Climb up parent chain looking for an Empty root container
-    #    (depth guard protects against cyclic parenting created by scripts).
     curr = obj
     depth = 0
     while curr is not None and depth < 256:
@@ -116,15 +115,15 @@ def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.t
     obj_name = getattr(obj, "name", "")
     if obj_name.endswith("_Mesh"):
         root_name = obj_name[:-5]
-        if hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
+        if HAS_BPY and hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
             candidate = bpy.data.objects.get(root_name) if hasattr(bpy.data.objects, "get") else None
             if candidate and is_yefira_root_object(candidate):
                 return candidate
 
-    # 3. Fallback: if object itself is tagged as world container (even if Mesh in legacy mode)
+    # 3. Fallback: if object itself is tagged as world container
     if is_yefira_root_object(obj):
         return obj
-    if bool(_safe_get_custom_prop(obj, "mtk:is_yefira_world")):
+    if bool(safe_get_custom_prop(obj, "mtk:is_yefira_world")):
         return obj
 
     return None
@@ -133,51 +132,59 @@ def resolve_world_root_object(obj: Optional[bpy.types.Object]) -> Optional[bpy.t
 find_root_container = resolve_world_root_object
 
 
-def find_world_mesh_child(root_container: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
+def find_world_mesh_child(root_container: Optional[Any]) -> Optional[Any]:
     """Finds the primary world mesh child under the given root container."""
     if not root_container:
         return None
     for child in getattr(root_container, "children", []):
-        if getattr(child, "type", "") == "MESH" and (_safe_get_custom_prop(child, "mtk:is_yefira_mesh") or not _safe_get_custom_prop(child, "mtk_is_voxel_cloud")):
+        if getattr(child, "type", "") == "MESH" and (
+            safe_get_custom_prop(child, "mtk:is_yefira_mesh")
+            or not (
+                safe_get_custom_prop(child, "mtk_is_voxel_cloud")
+                or safe_get_custom_prop(child, "mtk:is_voxel_cloud")
+            )
+        ):
             return child
     return None
 
 
-def find_voxel_cloud_child(root_container: Optional[bpy.types.Object]) -> Optional[bpy.types.Object]:
+def find_voxel_cloud_child(root_container: Optional[Any]) -> Optional[Any]:
     """Finds the companion point cloud child under the given root container."""
     if not root_container:
         return None
     for child in getattr(root_container, "children", []):
-        if _safe_get_custom_prop(child, "mtk_is_voxel_cloud") or getattr(child, "name", "").endswith("_VoxelCloud"):
+        if (
+            safe_get_custom_prop(child, "mtk_is_voxel_cloud")
+            or safe_get_custom_prop(child, "mtk:is_voxel_cloud")
+            or getattr(child, "name", "").endswith("_VoxelCloud")
+        ):
             return child
     return None
 
 
 def get_or_create_world_container(
-    context: Optional[bpy.types.Context] = None,
+    context: Optional[Any] = None,
     target_name: str = DEFAULT_WORLD_OBJECT_NAME,
-) -> bpy.types.Object:
-    """
-    Acquires or creates the root Empty container for Yefira Live Sync.
-    """
+) -> Any:
+    """Acquires or creates the root Empty container for Yefira Live Sync."""
+    if not HAS_BPY or bpy is None:
+        return None
+
     ctx = context or getattr(bpy, "context", None)
 
-    # 1. Check active object if it is or belongs to a valid Yefira root container
     active = getattr(ctx, "active_object", None) if ctx else None
     resolved = resolve_world_root_object(active)
-    if resolved and getattr(resolved, "type", "") == 'EMPTY':
+    if resolved and getattr(resolved, "type", "") == "EMPTY":
         return resolved
 
-    # 2. Check by exact name in bpy.data.objects
     if hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
         if target_name in bpy.data.objects:
             obj = bpy.data.objects[target_name]
-            if getattr(obj, "type", "") == 'EMPTY':
-                _safe_set_custom_prop(obj, "mtk:is_yefira_world", True)
-                _safe_set_custom_prop(obj, "mtk:is_container", True)
+            if getattr(obj, "type", "") == "EMPTY":
+                safe_set_custom_prop(obj, "mtk:is_yefira_world", True)
+                safe_set_custom_prop(obj, "mtk:is_container", True)
                 return obj
 
-        # 3. Check any existing Empty tagged with mtk:is_yefira_world if target_name is default
         if target_name == DEFAULT_WORLD_OBJECT_NAME:
             objs = bpy.data.objects.values() if hasattr(bpy.data.objects, "values") else bpy.data.objects
             for obj in objs:
@@ -186,21 +193,19 @@ def get_or_create_world_container(
                 if obj and is_yefira_root_object(obj):
                     return obj
 
-    # 4. Create new Empty root container
     root_obj = bpy.data.objects.new(target_name, None)
     if hasattr(root_obj, "empty_display_type"):
-        root_obj.empty_display_type = 'PLAIN_AXES'
+        root_obj.empty_display_type = "PLAIN_AXES"
     if hasattr(root_obj, "empty_display_size"):
         root_obj.empty_display_size = 1.0
-    _safe_set_custom_prop(root_obj, "mtk:is_yefira_world", True)
-    _safe_set_custom_prop(root_obj, "mtk:is_container", True)
-    _safe_set_custom_prop(root_obj, "mtk:container_type", "SYNC")
-    _safe_set_custom_prop(root_obj, "mtk:container_id", uuid.uuid4().hex)
-    _safe_set_custom_prop(root_obj, "mtk:last_name", getattr(root_obj, "name", target_name))
+    safe_set_custom_prop(root_obj, "mtk:is_yefira_world", True)
+    safe_set_custom_prop(root_obj, "mtk:is_container", True)
+    safe_set_custom_prop(root_obj, "mtk:container_type", "SYNC")
+    safe_set_custom_prop(root_obj, "mtk:container_id", uuid.uuid4().hex)
+    safe_set_custom_prop(root_obj, "mtk:last_name", getattr(root_obj, "name", target_name))
     if hasattr(root_obj, "location"):
         root_obj.location = (0.0, 0.0, 0.0)
 
-    # Link to active collection
     col = getattr(ctx, "collection", None) if ctx else None
     if col is None and hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
         col = bpy.context.scene.collection
@@ -215,63 +220,56 @@ def get_or_create_world_container(
 
 
 def get_or_create_world_mesh_object(
-    context: Optional[bpy.types.Context] = None,
+    context: Optional[Any] = None,
     target_name: str = DEFAULT_WORLD_OBJECT_NAME,
-    root_container: Optional[bpy.types.Object] = None,
-) -> bpy.types.Object:
-    """
-    Acquires or creates the single unified mesh object representing the synchronized world.
-    Ensures it is nested under an Empty root container as a child.
-    """
+    root_container: Optional[Any] = None,
+) -> Any:
+    """Acquires or creates the single unified mesh object representing the synchronized world."""
+    if not HAS_BPY or bpy is None:
+        return None
+
     ctx = context or getattr(bpy, "context", None)
 
-    # 1. Check active object if it is already a valid mesh
     active = getattr(ctx, "active_object", None) if ctx else None
     if active and active.type == "MESH" and is_yefira_world_object(active):
         _stamp_world_mesh_origin(active)
         return active
 
-    # 2. Acquire or create root container
     if root_container is None:
         root_container = get_or_create_world_container(context, target_name)
 
-    # In legacy or mock environments where root_container is already a Mesh
     if getattr(root_container, "type", "") == "MESH":
-        _safe_set_custom_prop(root_container, "mtk:is_yefira_world", True)
-        _safe_set_custom_prop(root_container, "mtk:is_yefira_mesh", True)
+        safe_set_custom_prop(root_container, "mtk:is_yefira_world", True)
+        safe_set_custom_prop(root_container, "mtk:is_yefira_mesh", True)
         _stamp_world_mesh_origin(root_container)
         return root_container
 
-    # 3. Check if root container already has a child mesh
     existing_mesh = find_world_mesh_child(root_container)
     if existing_mesh:
         _stamp_world_mesh_origin(existing_mesh)
         return existing_mesh
 
-    # 4. Check if a mesh named <root>_Mesh or target_name already exists
     root_name = getattr(root_container, "name", target_name)
     mesh_child_name = f"{root_name}_Mesh"
     if hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
         if mesh_child_name in bpy.data.objects and getattr(bpy.data.objects[mesh_child_name], "type", "") == "MESH":
             mesh_obj = bpy.data.objects[mesh_child_name]
-            _safe_set_custom_prop(mesh_obj, "mtk:is_yefira_world", True)
-            _safe_set_custom_prop(mesh_obj, "mtk:is_yefira_mesh", True)
+            safe_set_custom_prop(mesh_obj, "mtk:is_yefira_world", True)
+            safe_set_custom_prop(mesh_obj, "mtk:is_yefira_mesh", True)
             if getattr(mesh_obj, "parent", None) != root_container and hasattr(mesh_obj, "parent"):
                 mesh_obj.parent = root_container
             _stamp_world_mesh_origin(mesh_obj)
             return mesh_obj
 
-    # 5. Create new child mesh object
     mesh = bpy.data.meshes.new(mesh_child_name)
     world_obj = bpy.data.objects.new(mesh_child_name, mesh)
-    _safe_set_custom_prop(world_obj, "mtk:is_yefira_world", True)
-    _safe_set_custom_prop(world_obj, "mtk:is_yefira_mesh", True)
+    safe_set_custom_prop(world_obj, "mtk:is_yefira_world", True)
+    safe_set_custom_prop(world_obj, "mtk:is_yefira_mesh", True)
     if hasattr(world_obj, "parent"):
         world_obj.parent = root_container
     if hasattr(world_obj, "location"):
         world_obj.location = (0.0, 0.0, 0.0)
 
-    # Link to same collection as root container
     target_coll = root_container.users_collection[0] if getattr(root_container, "users_collection", None) else None
     if target_coll is None:
         col = getattr(ctx, "collection", None) if ctx else None
@@ -289,27 +287,37 @@ def get_or_create_world_mesh_object(
     return world_obj
 
 
-def sync_container_child_names(root_obj: bpy.types.Object) -> None:
+def sync_container_child_names(root_obj: Any) -> None:
     """When root_obj is renamed, synchronize child mesh and point cloud names."""
     if not root_obj:
         return
-    prefix = root_obj.name
-    root_obj["mtk:last_name"] = prefix
-    for child in root_obj.children:
-        if child.get("mtk:is_yefira_mesh") or (child.type == "MESH" and not child.get("mtk_is_voxel_cloud")):
+    prefix = getattr(root_obj, "name", "")
+    safe_set_custom_prop(root_obj, "mtk:last_name", prefix)
+    for child in getattr(root_obj, "children", []):
+        if safe_get_custom_prop(child, "mtk:is_yefira_mesh") or (
+            getattr(child, "type", "") == "MESH"
+            and not (
+                safe_get_custom_prop(child, "mtk_is_voxel_cloud")
+                or safe_get_custom_prop(child, "mtk:is_voxel_cloud")
+            )
+        ):
             target_name = f"{prefix}_Mesh"
             if child.name != target_name:
                 child.name = target_name
             if child.data and child.data.name != f"Mesh_{prefix}":
                 child.data.name = f"Mesh_{prefix}"
-        elif child.get("mtk_is_voxel_cloud") or child.name.endswith("_VoxelCloud"):
+        elif (
+            safe_get_custom_prop(child, "mtk_is_voxel_cloud")
+            or safe_get_custom_prop(child, "mtk:is_voxel_cloud")
+            or getattr(child, "name", "").endswith("_VoxelCloud")
+        ):
             target_name = f"{prefix}_VoxelCloud"
             if child.name != target_name:
                 child.name = target_name
 
 
 def update_world_mesh(
-    world_obj: bpy.types.Object,
+    world_obj: Any,
     mesh_data: Any,
     skip_string_attributes: bool = False,
     storage: Optional[Any] = None,
@@ -318,16 +326,12 @@ def update_world_mesh(
     session: Optional[Any] = None,
     dynamic_entity_atlases: Optional[Any] = None,
 ) -> Tuple[int, int]:
-    """
-    Injects processed geometry buffer into the single world mesh object using high-throughput
-    zero-copy bridge methods, and optionally synchronizes unculled voxel storage into companion point cloud.
-    Returns (vertex_count, face_count).
-    """
+    """Injects processed geometry buffer into world mesh and syncs companion point cloud."""
     if not world_obj or getattr(world_obj, "type", "") != "MESH":
         return 0, 0
 
     root_container = resolve_world_root_object(world_obj)
-    container_id = _safe_get_custom_prop(root_container, "mtk:container_id") if root_container else None
+    container_id = safe_get_custom_prop(root_container, "mtk:container_id") if root_container else None
 
     if dynamic_entity_atlases is None:
         dynamic_entity_atlases = resolve_dynamic_entity_atlases(mesh_data, session)
@@ -340,8 +344,6 @@ def update_world_mesh(
             used_chunk_ids=used_chunk_ids,
             dynamic_entity_atlases=dynamic_entity_atlases,
         )
-
-    from ...utils.world.assembler import VoxelWorldAssemblyRequest, assemble_voxel_world
 
     req = VoxelWorldAssemblyRequest(
         container_type="SYNC",
@@ -366,15 +368,12 @@ def update_world_mesh(
 
     res = assemble_voxel_world(req)
 
-    # Live Sync meshes bake true 3D Quart biomes into their tint attributes. Tag the
-    # object (and its root container) so the biome panel shows "World Biome (3D)"
-    # instead of falling back to Plains, and cache storage for later re-tints.
-    from ...utils.materials.biome.updater import mark_world_biome
+    from ..materials.biome.updater import mark_world_biome
     if mark_world_biome is not None and storage is not None:
         aliases = []
         if root_container is not None and root_container is not world_obj:
             aliases.append(getattr(root_container, "name", ""))
-            aliases.append(_safe_get_custom_prop(root_container, "mtk:container_id", ""))
+            aliases.append(safe_get_custom_prop(root_container, "mtk:container_id", ""))
             mark_world_biome(root_container, storage)
         mark_world_biome(world_obj, storage, aliases=aliases)
 
@@ -390,5 +389,3 @@ def update_world_mesh(
     v_count = len(mesh.vertices) if mesh and hasattr(mesh, "vertices") else 0
     f_count = len(mesh.polygons) if mesh and hasattr(mesh, "polygons") else 0
     return v_count, f_count
-
-

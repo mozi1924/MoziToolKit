@@ -285,25 +285,17 @@ def assemble_voxel_world(req: VoxelWorldAssemblyRequest) -> Dict[str, Any]:
         for k, v in req.metadata_props.items():
             safe_set_custom_prop(target, k, v)
 
-    # 8. Register in-memory caches and prime tint types
+    # 8. Register in-memory caches by immutable container_id and prime tint types
     container_id_str = str(container_id)
     if req.storage is not None:
         reg_fn = getattr(_biome_updater, "register_object_storage", None)
         if reg_fn is not None:
             reg_fn(container_id_str, req.storage)
-            if root_obj and hasattr(root_obj, "name"):
-                reg_fn(root_obj.name, req.storage)
-            if mesh_obj and hasattr(mesh_obj, "name"):
-                reg_fn(mesh_obj.name, req.storage)
 
     if req.colormaps is not None:
         reg_col_fn = getattr(_biome_updater, "register_object_colormaps", None)
         if reg_col_fn is not None:
             reg_col_fn(container_id_str, req.colormaps)
-            if root_obj and hasattr(root_obj, "name"):
-                reg_col_fn(root_obj.name, req.colormaps)
-            if mesh_obj and hasattr(mesh_obj, "name"):
-                reg_col_fn(mesh_obj.name, req.colormaps)
 
     if b_mesh is not None and mesh_obj is not None:
         prime_fn = getattr(_biome_updater, "resolve_mesh_base_tint_types", None)

@@ -9,7 +9,7 @@ import uuid
 import bpy
 from bpy.props import StringProperty
 
-from .hierarchy import (
+from ...utils.world.sync_container import (
     DEFAULT_WORLD_OBJECT_NAME,
     get_or_create_world_container,
     get_or_create_world_mesh_object,

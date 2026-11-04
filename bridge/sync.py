@@ -211,8 +211,6 @@ class SyncBridgeSession:
 
         ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
 
-        if colormaps is None:
-            colormaps = load_colormaps_from_cache(prefs)
         self._colormaps = colormaps
 
         try:
@@ -374,8 +372,6 @@ class SyncBridgeSession:
 
         ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
 
-        if colormaps is None:
-            colormaps = load_colormaps_from_cache(prefs)
         self._colormaps = colormaps
 
         try:
@@ -538,12 +534,11 @@ class SyncBridgeSession:
         new_model_db = load_model_database_from_cache(prefs)
         new_atlas = load_atlas_from_cache(prefs)
         new_biome_resolver = load_biome_resolver_from_cache(prefs)
-        new_colormaps = load_colormaps_from_cache(prefs)
 
         self._model_db = new_model_db
         self._atlas = new_atlas
         self._biome_resolver = new_biome_resolver
-        self._colormaps = new_colormaps
+        self._colormaps = None
         self._cached_manifest_fingerprint = current_fp
         self._cached_manifest_timestamp = current_ts
 

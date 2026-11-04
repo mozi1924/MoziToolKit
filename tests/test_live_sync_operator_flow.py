@@ -68,7 +68,7 @@ if not HAS_BPY:
     HAS_BPY = False
 
 from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available
-from MoziToolKit.operators.sync.hierarchy import (
+from MoziToolKit.utils.world.sync_container import (
     DEFAULT_WORLD_OBJECT_NAME,
     is_yefira_world_object,
     get_or_create_world_mesh_object,

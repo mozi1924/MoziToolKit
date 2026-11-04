@@ -72,7 +72,7 @@ if not HAS_BPY:
 
 import libmtk_py
 from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available, reset_sync_bridge_session
-from MoziToolKit.operators.sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
+from MoziToolKit.utils.world.sync_container import get_or_create_world_mesh_object, update_world_mesh
 
 
 class TestComplexModelsSync(unittest.TestCase):

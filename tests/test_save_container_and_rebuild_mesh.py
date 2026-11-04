@@ -427,7 +427,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
-             patch("MoziToolKit.operators.sync.hierarchy.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
+             patch("MoziToolKit.utils.world.sync_container.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
 
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})

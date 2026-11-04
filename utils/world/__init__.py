@@ -16,6 +16,14 @@ from .assembler import (
     safe_get_custom_prop,
     persist_dynamic_entity_slots,
 )
+from .sync_container import (
+    get_or_create_world_container,
+    get_or_create_world_mesh_object,
+    resolve_world_root_object,
+    is_yefira_root_object,
+    is_yefira_world_object,
+    update_world_mesh,
+)
 
 __all__ = [
     "apply_voxel_mesh_to_blender",
@@ -26,4 +34,10 @@ __all__ = [
     "safe_set_custom_prop",
     "safe_get_custom_prop",
     "persist_dynamic_entity_slots",
+    "get_or_create_world_container",
+    "get_or_create_world_mesh_object",
+    "resolve_world_root_object",
+    "is_yefira_root_object",
+    "is_yefira_world_object",
+    "update_world_mesh",
 ]

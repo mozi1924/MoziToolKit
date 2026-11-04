@@ -47,8 +47,8 @@ except ImportError:
     mtk_py = None
     HAS_LIBMTK = False
 
-from MoziToolKit.operators.sync.hierarchy import (
-    ensure_world_materials,
+from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials
+from MoziToolKit.utils.world.sync_container import (
     get_or_create_world_mesh_object,
     update_world_mesh,
 )

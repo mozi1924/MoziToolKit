@@ -9,7 +9,7 @@ import bpy
 
 from ..i18n import format_backend_message, tr
 
-from ..operators.sync.hierarchy import (
+from ..utils.world.sync_container import (
     is_yefira_root_object,
     is_yefira_world_object,
     resolve_world_root_object,

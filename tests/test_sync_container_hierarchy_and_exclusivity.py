@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import types
 
 import bpy
-from MoziToolKit.operators.sync.hierarchy import (
+from MoziToolKit.utils.world.sync_container import (
     DEFAULT_WORLD_OBJECT_NAME,
     get_or_create_world_container,
     get_or_create_world_mesh_object,
@@ -235,7 +235,7 @@ class TestSyncContainerHierarchyAndExclusivity(unittest.TestCase):
 
     def test_sync_container_rename_cascades_to_children(self):
         """Verifies that renaming Empty container propagates new prefix to child mesh and point cloud."""
-        from MoziToolKit.operators.sync.hierarchy import sync_container_child_names
+        from MoziToolKit.utils.world.sync_container import sync_container_child_names
 
         root = self._make_obj("OldWorld", "EMPTY")
         root["mtk:is_container"] = True

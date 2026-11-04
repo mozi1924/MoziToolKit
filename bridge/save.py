@@ -82,9 +82,6 @@ def load_and_mesh_minecraft_save(
         atlas = atlas or cached_atlas
         biome_resolver = biome_resolver or cached_resolver
 
-    if resolve_prefs and colormaps is None:
-        colormaps = get_world_pipeline_colormaps(prefs)
-
     if resolve_prefs and cache_package_path is None:
         from .assets import get_active_cache_package_path
         pkg = get_active_cache_package_path(prefs)

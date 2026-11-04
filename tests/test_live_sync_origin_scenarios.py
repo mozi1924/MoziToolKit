@@ -226,7 +226,7 @@ if not HAS_BPY:
     bpy.context = _MockContext()
 
 from MoziToolKit.bridge.sync import SyncBridgeSession, is_sync_available
-from MoziToolKit.operators.sync.hierarchy import (
+from MoziToolKit.utils.world.sync_container import (
     DEFAULT_WORLD_OBJECT_NAME,
     get_or_create_world_mesh_object,
     update_world_mesh,
@@ -304,7 +304,7 @@ class TestLiveSyncOriginScenarios(unittest.TestCase):
         if hasattr(bpy.data, "meshes") and isinstance(bpy.data.meshes, dict):
             bpy.data.meshes.clear()
 
-    @patch("MoziToolKit.operators.sync.hierarchy.ensure_world_materials")
+    @patch("MoziToolKit.utils.world.sync_container.ensure_world_materials")
     def test_all_four_origin_scenarios_sequential(self, _mock_ensure_mats):
         """
         Runs the full progression across all 4 scenarios in sequence on a single connection:

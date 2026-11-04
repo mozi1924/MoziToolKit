@@ -24,7 +24,7 @@ from ...utils.assets import (
     check_asset_cache_status,
     ensure_pipeline_assets_ready_sync,
 )
-from .hierarchy import (
+from ...utils.world.sync_container import (
     _safe_get_custom_prop,
     _safe_set_custom_prop,
     get_or_create_world_container,

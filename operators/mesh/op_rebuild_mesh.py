@@ -332,7 +332,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 use_live_session = True
 
         if use_live_session:
-            from ..sync.hierarchy import get_or_create_world_mesh_object, update_world_mesh
+            from ...utils.world.sync_container import get_or_create_world_mesh_object, update_world_mesh
 
             prefs = get_prefs(context)
             if status in ("MISSING", "STALE"):

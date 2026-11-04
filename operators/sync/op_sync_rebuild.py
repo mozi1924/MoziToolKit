@@ -13,7 +13,7 @@ from ...utils.assets import (
     check_asset_cache_status,
     ensure_pipeline_assets_ready_sync,
 )
-from .hierarchy import get_or_create_world_mesh_object, update_world_mesh
+from ...utils.world.sync_container import get_or_create_world_mesh_object, update_world_mesh
 
 logger = logging.getLogger("MoziToolKit.Sync.Rebuild")
 
