@@ -58,6 +58,21 @@ def read_scene_package(
     atlas = reader.read_atlas()
     atlas_mapping_json = reader.read_atlas_mapping_json()
     texture_names = reader.get_atlas_texture_names()
+    biome_resolver = None
+    if hasattr(reader, "read_biome_resolver"):
+        try:
+            biome_resolver = reader.read_biome_resolver()
+        except Exception as e:
+            logger.error("Failed to decode BiomeResolver from scene package '%s': %s", target_path, e, exc_info=True)
+            raise
+
+    ctm_solver = None
+    if hasattr(reader, "read_ctm_solver"):
+        try:
+            ctm_solver = reader.read_ctm_solver()
+        except Exception as e:
+            logger.error("Failed to decode CtmSolver from scene package '%s': %s", target_path, e, exc_info=True)
+            raise
 
     return {
         "metadata": meta,
@@ -66,6 +81,8 @@ def read_scene_package(
         "atlas": atlas,
         "atlas_mapping_json": atlas_mapping_json,
         "texture_names": texture_names,
+        "biome_resolver": biome_resolver,
+        "ctm_solver": ctm_solver,
         "reader": reader,
     }
 
@@ -94,15 +111,20 @@ def load_and_mesh_scene_package(
     atlas = data["atlas"]
     reader = data["reader"]
     metadata = data["metadata"]
+    biome_resolver = data.get("biome_resolver")
+    ctm_solver = data.get("ctm_solver")
+    has_pkg_ctm = ctm_solver is not None
 
     storage = point_cloud.to_storage()
 
     # Mesh voxel volume using package-embedded models and atlas
-    resolve_prefs = models is None or atlas is None
+    resolve_prefs = models is None or atlas is None or biome_resolver is None
     mesh_data, mesher_ms = mesh_voxel_storage(
         storage=storage,
         model_db=models,
         atlas=atlas,
+        biome_resolver=biome_resolver,
+        ctm_solver=ctm_solver,
         prefs=prefs,
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,
@@ -111,7 +133,7 @@ def load_and_mesh_scene_package(
         enable_animated_textures=enable_animated_textures,
         num_threads=num_threads,
         resolve_prefs=resolve_prefs,
-        resolve_ctm=False,
+        resolve_ctm=not has_pkg_ctm,
     )
     total_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -122,6 +144,8 @@ def load_and_mesh_scene_package(
         "metadata": metadata,
         "models": models,
         "atlas": atlas,
+        "biome_resolver": biome_resolver,
+        "ctm_solver": ctm_solver,
         "reader": reader,
         "mesher_ms": mesher_ms,
         "total_ms": total_ms,
@@ -135,6 +159,7 @@ def export_scene_package(
     max_atlas_size: int = 2048,
     mip_level: int = 0,
     dynamic_entity_atlases: Optional[Dict[int, bytes]] = None,
+    ctm_solver: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
     Exports a live VoxelPointCloud into a self-contained .mtkscene interchange package.
@@ -154,6 +179,10 @@ def export_scene_package(
     if out_p.parent:
         out_p.parent.mkdir(parents=True, exist_ok=True)
 
+    if ctm_solver is None and prefs is not None:
+        from .assets.pack import get_configured_ctm_solver
+        ctm_solver = get_configured_ctm_solver(prefs)
+
     meta = mtk.export_scene_package(
         str(out_p),
         point_cloud,
@@ -161,6 +190,7 @@ def export_scene_package(
         max_atlas_size,
         mip_level,
         dynamic_entity_atlases,
+        ctm_solver,
     )
 
     return meta.to_dict()

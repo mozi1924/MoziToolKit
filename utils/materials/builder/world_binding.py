@@ -114,13 +114,6 @@ def ensure_world_materials(
     )
     from ..cleaner import remap_indices_lut
 
-    atlas_dict: dict[int, Any] = {
-        int(chunk_id): data for chunk_id, data in (dynamic_entity_atlases or {}).items()
-    }
-
-    for cid, buf in atlas_dict.items():
-        update_dynamic_entities_image(buf, chunk_id=cid)
-
     mesh = world_obj.data
 
     # 1. Resolve which Chunk IDs are actually present in the mesh geometry
@@ -131,6 +124,17 @@ def ensure_world_materials(
         import numpy as np
 
         target_chunk_ids = {int(x) for x in np.unique(face_chunk_ids(mesh)).tolist()}
+
+    atlas_dict: dict[int, Any] = {
+        int(chunk_id): data for chunk_id, data in (dynamic_entity_atlases or {}).items()
+    }
+    if target_chunk_ids is not None:
+        atlas_dict = {
+            cid: buf for cid, buf in atlas_dict.items() if cid in target_chunk_ids
+        }
+
+    for cid, buf in atlas_dict.items():
+        update_dynamic_entities_image(buf, chunk_id=cid)
 
     # 0. Zero-cost Fast Path:
     # If the mesh has no polygons, or if target_chunk_ids is empty, nothing to bind

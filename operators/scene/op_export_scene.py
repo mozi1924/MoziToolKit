@@ -37,16 +37,17 @@ def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optiona
 
     # 1. Probe session key on active, cloud, or parent container
     session_key = (
-        active_obj.get("mtk:session_key")
+        active_obj.get("mtk:session_key") or active_obj.get("mozi_save_uuid")
         if hasattr(active_obj, "get")
         else None
     ) or (
-        cloud_obj.get("mtk:session_key")
+        cloud_obj.get("mtk:session_key") or cloud_obj.get("mozi_save_uuid")
         if hasattr(cloud_obj, "get")
         else None
     )
     if not session_key and hasattr(active_obj, "parent") and active_obj.parent:
-        session_key = active_obj.parent.get("mtk:session_key") if hasattr(active_obj.parent, "get") else None
+        p = active_obj.parent
+        session_key = (p.get("mtk:session_key") or p.get("mozi_save_uuid")) if hasattr(p, "get") else None
 
     if session_key:
         atlases = get_world_session_dynamic_entity_atlases(session_key)
@@ -65,6 +66,32 @@ def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optiona
         atlases = resolve_dynamic_entity_atlases(cloud_data)
         if atlases:
             return atlases
+
+    # 3. Fallback: extract from resident Blender dynamic entity images
+    try:
+        from ...utils.materials.builder.dynamic_entities import (
+            DYNAMIC_CHUNK_END,
+            DYNAMIC_CHUNK_START,
+            dynamic_entities_image_name,
+        )
+        import numpy as np
+
+        extracted: dict[int, bytes] = {}
+        for cid in range(DYNAMIC_CHUNK_START, DYNAMIC_CHUNK_END + 1):
+            img_name = dynamic_entities_image_name(cid)
+            img = bpy.data.images.get(img_name)
+            if img is not None and img.size[0] >= 64 and img.size[1] >= 64:
+                w, h = img.size[0], img.size[1]
+                pixels = np.empty(w * h * 4, dtype=np.float32)
+                img.pixels.foreach_get(pixels)
+                u8 = np.clip(pixels * 255.0 + 0.5, 0, 255).astype(np.uint8).reshape((h, w, 4))
+                raw_rgba = np.ascontiguousarray(np.flipud(u8)).tobytes()
+                extracted[cid] = raw_rgba
+
+        if extracted:
+            return extracted
+    except Exception as e:
+        logger.debug("Failed extracting dynamic entity atlases from Blender images: %s", e)
 
     return None
 

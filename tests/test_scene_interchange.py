@@ -78,17 +78,36 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         os.makedirs(cls.cache_dir, exist_ok=True)
 
         tex_dir = os.path.join(cls.pack_dir, "assets", "minecraft", "textures", "block")
+        colormap_dir = os.path.join(cls.pack_dir, "assets", "minecraft", "textures", "colormap")
         models_dir = os.path.join(cls.pack_dir, "assets", "minecraft", "models", "block")
         bs_dir = os.path.join(cls.pack_dir, "assets", "minecraft", "blockstates")
         os.makedirs(tex_dir, exist_ok=True)
+        os.makedirs(colormap_dir, exist_ok=True)
         os.makedirs(models_dir, exist_ok=True)
         os.makedirs(bs_dir, exist_ok=True)
 
-        # 1. Textures: stone & dirt
+        # 1. Textures: stone & dirt + PBR companions + Colormaps + Glass CTM
         with open(os.path.join(tex_dir, "stone.png"), "wb") as f:
             f.write(create_tiny_png(16, 16, (128, 128, 128, 255)))
         with open(os.path.join(tex_dir, "dirt.png"), "wb") as f:
             f.write(create_tiny_png(16, 16, (139, 69, 19, 255)))
+        with open(os.path.join(tex_dir, "glass.png"), "wb") as f:
+            f.write(create_tiny_png(16, 16, (200, 200, 255, 100)))
+        with open(os.path.join(tex_dir, "stone_n.png"), "wb") as f:
+            f.write(create_tiny_png(16, 16, (128, 128, 255, 255)))
+        with open(os.path.join(tex_dir, "stone_s.png"), "wb") as f:
+            f.write(create_tiny_png(16, 16, (200, 100, 0, 50)))
+        with open(os.path.join(colormap_dir, "grass.png"), "wb") as f:
+            f.write(create_tiny_png(16, 16, (100, 200, 50, 255)))
+
+        # CTM Rules & sub-tiles for glass
+        ctm_dir = os.path.join(cls.pack_dir, "assets", "minecraft", "optifine", "ctm", "glass")
+        os.makedirs(ctm_dir, exist_ok=True)
+        with open(os.path.join(ctm_dir, "glass.properties"), "w") as f:
+            f.write("matchBlocks=glass\nmethod=ctm_compact\ntiles=0-4\n")
+        for i in range(5):
+            with open(os.path.join(ctm_dir, f"{i}.png"), "wb") as f:
+                f.write(create_tiny_png(16, 16, (200, 200, 255, 100)))
 
         # 2. Block models
         stone_model = {
@@ -125,16 +144,37 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
                 }
             ],
         }
+        glass_model = {
+            "textures": {"all": "minecraft:block/glass"},
+            "elements": [
+                {
+                    "from": [0, 0, 0],
+                    "to": [16, 16, 16],
+                    "faces": {
+                        "up": {"texture": "#all", "cullface": "up"},
+                        "down": {"texture": "#all", "cullface": "down"},
+                        "north": {"texture": "#all", "cullface": "north"},
+                        "south": {"texture": "#all", "cullface": "south"},
+                        "east": {"texture": "#all", "cullface": "east"},
+                        "west": {"texture": "#all", "cullface": "west"},
+                    },
+                }
+            ],
+        }
         with open(os.path.join(models_dir, "stone.json"), "w") as f:
             json.dump(stone_model, f)
         with open(os.path.join(models_dir, "dirt.json"), "w") as f:
             json.dump(dirt_model, f)
+        with open(os.path.join(models_dir, "glass.json"), "w") as f:
+            json.dump(glass_model, f)
 
         # 3. Blockstates
         with open(os.path.join(bs_dir, "stone.json"), "w") as f:
             json.dump({"variants": {"": {"model": "minecraft:block/stone"}}}, f)
         with open(os.path.join(bs_dir, "dirt.json"), "w") as f:
             json.dump({"variants": {"": {"model": "minecraft:block/dirt"}}}, f)
+        with open(os.path.join(bs_dir, "glass.json"), "w") as f:
+            json.dump({"variants": {"": {"model": "minecraft:block/glass"}}}, f)
 
         # 4. Precompile into .mtkcache using native precompile_all_assets
         stack = cls.mtk.ResourcePackStack()
@@ -243,6 +283,27 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertGreater(w, 0)
         self.assertGreater(h, 0)
         self.assertEqual(len(memview), w * h * 4)
+
+        # Verify PBR channels (normal, ORM, AUX) are exported and readable
+        normal_names = [t for t in texture_names if t.endswith("_n.png")]
+        orm_names = [t for t in texture_names if t.endswith("_orm.png")]
+        aux_names = [t for t in texture_names if t.endswith("_aux.png")]
+        self.assertTrue(len(normal_names) >= 1)
+        self.assertTrue(len(orm_names) >= 1)
+        self.assertTrue(len(aux_names) >= 1)
+
+        nw, nh, n_view = reader.read_texture_rgba(normal_names[0], flip_v=False)
+        self.assertEqual(len(n_view), nw * nh * 4)
+
+        # Verify colormaps and biome resolver are packaged and readable
+        self.assertTrue(reader.has_colormaps())
+        grass_cm = reader.read_colormap("grass")
+        self.assertIsNotNone(grass_cm)
+        self.assertGreater(len(grass_cm), 0)
+        self.assertIsNotNone(data.get("biome_resolver"))
+
+        # Verify install_colormaps executes without error
+        reader.install_colormaps()
 
     def test_04_load_and_mesh_scene_package(self):
         """Loads and meshes the scene package headlessly using self-contained mini-atlas and models."""
@@ -473,6 +534,44 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
         # 4. Storage registered for world biome restore
         self.assertTrue(mock_reg.called)
+
+    def test_09_ctm_self_contained_scene_export_and_meshing(self):
+        """Verifies connected textures rules are tree-shaken, sub-tiles are stitched into mini-atlas, and reader restores CtmSolver."""
+        cloud = self.mtk.VoxelPointCloud()
+        # Two connected glass blocks side by side
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.push([1.5, 0.5, 0.5], [1, 0, 0], "minecraft:glass", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 2, 1, 1]
+
+        scene_path = os.path.join(self.temp_dir, "test_ctm_scene.mtkscene")
+        meta = export_scene_package(
+            output_path=scene_path,
+            point_cloud=cloud,
+            prefs=self.mock_prefs,
+            max_atlas_size=1024,
+        )
+        self.assertEqual(meta["voxel_count"], 2)
+
+        # 1. Read back .mtkscene and verify CTM solver is restored
+        data = read_scene_package(scene_path)
+        reader = data["reader"]
+        self.assertTrue(reader.has_ctm_rules())
+        self.assertIsNotNone(data.get("ctm_solver"))
+
+        # 2. Verify CTM sub-tiles are present in mini-atlas mapping
+        mapping_json = reader.read_atlas_mapping_json()
+        self.assertIsNotNone(mapping_json)
+        mapping_dict = json.loads(mapping_json)
+        sprites = mapping_dict.get("sprites", {})
+        ctm_sprites = [k for k in sprites if "optifine/ctm/glass" in k]
+        self.assertTrue(len(ctm_sprites) >= 1, f"Expected CTM sub-tiles in mini-atlas mapping, got: {list(sprites.keys())}")
+
+        # 3. Load and mesh scene headlessly using only self-contained mini-atlas and models
+        res = load_and_mesh_scene_package(scene_path, prefs=self.mock_prefs)
+        mesh_data = res["mesh_data"]
+        self.assertIsNotNone(mesh_data)
+        self.assertGreater(mesh_data.vertex_count, 0)
+        self.assertGreater(mesh_data.face_count, 0)
 
 
 if __name__ == "__main__":
