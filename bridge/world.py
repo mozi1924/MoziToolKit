@@ -19,6 +19,7 @@ from .assets import (
     load_baked_atlas_from_cache,
     load_baked_model_database,
     load_biome_resolver_from_cache,
+    load_colormaps_from_cache,
     get_active_cache_package_path,
     get_configured_ctm_solver,
 )
@@ -98,6 +99,11 @@ def get_world_pipeline_assets(prefs=None) -> Tuple[Optional[Any], Optional[Any],
     return _WORLD_PIPELINE_ASSETS_CACHE
 
 
+def get_world_pipeline_colormaps(prefs=None) -> Optional[Any]:
+    """Acquires precompiled colormaps from active asset cache for biome tinting."""
+    return load_colormaps_from_cache(prefs)
+
+
 def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bool] = None) -> Dict[str, Any]:
     """Resolve every asset/config value a background mesher needs, on the main thread.
 
@@ -106,6 +112,7 @@ def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bo
     the asset cache has been verified/precompiled on the main thread.
     """
     model_db, atlas, biome_resolver = get_world_pipeline_assets(prefs)
+    colormaps = get_world_pipeline_colormaps(prefs)
     active_pkg = get_active_cache_package_path(prefs)
     ctm_solver = get_configured_ctm_solver(prefs)
     raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
@@ -127,6 +134,7 @@ def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bo
         "model_db": model_db,
         "atlas": atlas,
         "biome_resolver": biome_resolver,
+        "colormaps": colormaps,
         "cache_package_path": str(active_pkg.resolve()) if active_pkg else None,
         "ctm_solver": ctm_solver,
         "num_threads": num_threads,
@@ -263,6 +271,8 @@ def mesh_voxel_storage(
             model_db = model_db or cached_model_db
             atlas = atlas or cached_atlas
             biome_resolver = biome_resolver or cached_biome_resolver
+        if colormaps is None:
+            colormaps = get_world_pipeline_colormaps(prefs)
     else:
         if atlas is False:
             atlas = None
@@ -426,6 +436,7 @@ __all__ = [
     "reset_shared_face_culler",
     "invalidate_world_pipeline_assets",
     "get_world_pipeline_assets",
+    "get_world_pipeline_colormaps",
     "prepare_world_mesh_context",
     "clear_world_sessions",
     "resolve_dynamic_entity_atlases",

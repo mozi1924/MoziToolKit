@@ -759,6 +759,46 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
             )
         self.assertIn("conflicting", str(ctx.exception).lower())
 
+    def test_16_standard_world_meshing_resolves_cache_colormap_without_explicit_arg(self):
+        """Verifies that standard mesh_voxel_storage with colormaps=None auto-resolves cache colormaps and paints custom colors."""
+        from MoziToolKit.bridge.world import mesh_voxel_storage, prepare_world_mesh_context
+        from unittest.mock import patch
+
+        # 1. Verify prepare_world_mesh_context includes 'colormaps'
+        ctx = prepare_world_mesh_context(self.mock_prefs)
+        self.assertIn("colormaps", ctx)
+
+        # 2. Build custom solid magenta grass colormap
+        magenta_png = create_tiny_png(16, 16, (255, 0, 255, 255))
+        custom_cms = self.mtk.VanillaColormaps.from_bytes(grass=magenta_png)
+
+        cloud = self.mtk.VoxelPointCloud()
+        cloud.push([0.5, 0.5, 0.5], [0, 0, 0], "minecraft:grass_block", "minecraft:plains", 15)
+        cloud.bounds = [0, 0, 0, 1, 1, 1]
+        storage = cloud.to_storage()
+
+        # Patch get_world_pipeline_colormaps to return custom_cms as if active cache loaded it
+        with patch("MoziToolKit.bridge.world.get_world_pipeline_colormaps", return_value=custom_cms):
+            mesh, _ = mesh_voxel_storage(
+                storage=storage,
+                prefs=self.mock_prefs,
+                colormaps=None,  # Not explicitly passed!
+                resolve_prefs=True,
+            )
+
+        tint_mv = mesh.attribute_memoryview("mtk_biome_tint_color")
+        self.assertIsNotNone(tint_mv, "Mesh must contain mtk_biome_tint_color attribute")
+        tint_data = list(tint_mv)
+        self.assertGreater(len(tint_data), 0)
+
+        found_magenta = False
+        for i in range(0, len(tint_data), 4):
+            r, g, b = tint_data[i], tint_data[i + 1], tint_data[i + 2]
+            if r > 0.8 and g < 0.1 and b > 0.8:
+                found_magenta = True
+                break
+        self.assertTrue(found_magenta, f"Standard mesh_voxel_storage should auto-resolve custom colormap from cache, got: {tint_data[:8]}")
+
 
 if __name__ == "__main__":
     unittest.main()

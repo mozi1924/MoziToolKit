@@ -173,6 +173,7 @@ def ingest_voxel_world(
     origin_centered: bool = True,
     reuse_existing: bool = True,
     progress_callback: Optional[Any] = None,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Complete synchronous end-to-end Voxel World Ingestion Pipeline:
@@ -189,6 +190,7 @@ def ingest_voxel_world(
         atlas=atlas,
         biome_resolver=biome_resolver,
         ctm_solver=ctm_solver,
+        colormaps=colormaps,
         prefs=prefs,
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,
@@ -229,6 +231,7 @@ def create_debug_world_object(
     states=None,
     stack=None,
     progress_callback: Optional[Any] = None,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Meshes the canonical debug world and creates/updates a Blender Mesh Object in the active scene,
@@ -247,6 +250,7 @@ def create_debug_world_object(
         model_db=model_db,
         atlas=atlas,
         biome_resolver=biome_resolver,
+        colormaps=colormaps,
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,
         weld_vertices=weld_vertices,

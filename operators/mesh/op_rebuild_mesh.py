@@ -475,6 +475,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         model_db = mesh_context["model_db"]
         atlas = mesh_context["atlas"]
         biome_resolver = mesh_context["biome_resolver"]
+        colormaps = mesh_context.get("colormaps")
         ctm_solver = mesh_context["ctm_solver"]
         num_threads = mesh_context["num_threads"]
         anim_tex_enabled = mesh_context["enable_animated_textures"]
@@ -495,6 +496,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 model_db=model_db,
                 atlas=atlas,
                 biome_resolver=biome_resolver,
+                colormaps=colormaps,
                 ctm_solver=ctm_solver,
                 prefs=prefs,
                 enable_ao=enable_ao,

@@ -48,6 +48,9 @@ _CACHED_ATLAS_MTIME: float = 0.0
 _CACHED_MODEL_DB: Optional[Any] = None
 _CACHED_MODEL_DB_PKG_PATH: Optional[str] = None
 _CACHED_MODEL_DB_MTIME: float = 0.0
+_CACHED_COLORMAPS: Optional[Any] = None
+_CACHED_COLORMAPS_PKG_PATH: Optional[str] = None
+_CACHED_COLORMAPS_MTIME: float = 0.0
 
 
 # get_cache_dir is imported from utils.assets.cache_utils above
@@ -59,6 +62,7 @@ def invalidate_asset_cache_memory() -> None:
     global _CACHED_BIOME_RESOLVER, _CACHED_BIOME_RESOLVER_PKG_PATH, _CACHED_BIOME_RESOLVER_MTIME
     global _CACHED_ATLAS, _CACHED_ATLAS_PKG_PATH, _CACHED_ATLAS_MTIME
     global _CACHED_MODEL_DB, _CACHED_MODEL_DB_PKG_PATH, _CACHED_MODEL_DB_MTIME
+    global _CACHED_COLORMAPS, _CACHED_COLORMAPS_PKG_PATH, _CACHED_COLORMAPS_MTIME
     _ACTIVE_ASSET_CACHE = None
     _ACTIVE_CACHE_PKG_PATH = None
     _ACTIVE_CACHE_MTIME = 0.0
@@ -72,6 +76,9 @@ def invalidate_asset_cache_memory() -> None:
     _CACHED_MODEL_DB = None
     _CACHED_MODEL_DB_PKG_PATH = None
     _CACHED_MODEL_DB_MTIME = 0.0
+    _CACHED_COLORMAPS = None
+    _CACHED_COLORMAPS_PKG_PATH = None
+    _CACHED_COLORMAPS_MTIME = 0.0
     try:
         from .pack import invalidate_pack_stack_cache
         invalidate_pack_stack_cache()
@@ -436,6 +443,37 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
     return None
 
 
+def load_colormaps_from_cache(prefs=None) -> Optional[Any]:
+    """Loads precompiled VanillaColormaps from active cache package into memory, reusing cached instance."""
+    global _CACHED_COLORMAPS, _CACHED_COLORMAPS_PKG_PATH, _CACHED_COLORMAPS_MTIME
+    mtk = get_libmtk()
+    if mtk is None:
+        return None
+
+    cache = open_active_asset_cache(prefs)
+    if cache is not None:
+        pkg_path = _ACTIVE_CACHE_PKG_PATH
+        mtime = _ACTIVE_CACHE_MTIME
+        if (
+            _CACHED_COLORMAPS is not None
+            and _CACHED_COLORMAPS_PKG_PATH == pkg_path
+            and _CACHED_COLORMAPS_MTIME == mtime
+        ):
+            return _CACHED_COLORMAPS
+
+        if hasattr(cache, "load_colormaps"):
+            try:
+                colormaps = cache.load_colormaps()
+                if colormaps is not None:
+                    _CACHED_COLORMAPS = colormaps
+                    _CACHED_COLORMAPS_PKG_PATH = pkg_path
+                    _CACHED_COLORMAPS_MTIME = mtime
+                    return colormaps
+            except Exception:
+                pass
+    return None
+
+
 def get_cache_manifest(prefs=None) -> Optional[Dict[str, Any]]:
     """Reads manifest from active .mtkcache package."""
     global _ACTIVE_CACHE_MANIFEST
@@ -519,6 +557,7 @@ __all__ = [
     "load_model_database_from_cache",
     "load_baked_atlas_from_cache",
     "load_biome_resolver_from_cache",
+    "load_colormaps_from_cache",
     "get_cache_manifest",
     "get_cache_fingerprint",
     "get_cache_timestamp",

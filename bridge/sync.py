@@ -16,6 +16,7 @@ logger = logging.getLogger("MoziToolKit.Bridge.Sync")
 from .engine import get_libmtk, require_libmtk
 from .assets import (
     load_biome_resolver_from_cache,
+    load_colormaps_from_cache,
     check_cache_dirty,
     get_cache_fingerprint,
     get_cache_timestamp,
@@ -49,6 +50,7 @@ class SyncBridgeSession:
         self._model_db: Optional[Any] = None
         self._atlas: Optional[Any] = None
         self._biome_resolver: Optional[Any] = None
+        self._colormaps: Optional[Any] = None
         self._custom_aliases: Optional[Any] = None
         self._config_params: Dict[str, Any] = {}
         self._cached_manifest_fingerprint: Optional[str] = None
@@ -158,6 +160,7 @@ class SyncBridgeSession:
         num_threads: Optional[int] = None,
         auth_token: Optional[str] = None,
         enable_animated_textures: Optional[bool] = None,
+        colormaps: Optional[Any] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -208,6 +211,10 @@ class SyncBridgeSession:
 
         ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
 
+        if colormaps is None:
+            colormaps = load_colormaps_from_cache(prefs)
+        self._colormaps = colormaps
+
         try:
             # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
             config_kwargs = {
@@ -224,6 +231,8 @@ class SyncBridgeSession:
             }
             if ctm_solver is not None:
                 config_kwargs["ctm_solver"] = ctm_solver
+            if colormaps is not None:
+                config_kwargs["colormaps"] = colormaps
             config = mtk.MesherConfig(**config_kwargs)
 
             def _start_native(session: Any) -> None:
@@ -316,6 +325,7 @@ class SyncBridgeSession:
         num_threads: Optional[int] = None,
         auth_token: Optional[str] = None,
         enable_animated_textures: Optional[bool] = None,
+        colormaps: Optional[Any] = None,
     ) -> bool:
         """
         Starts the LiveSync client using cached handshake parameters for 0ms zero-rebuild reconnect.
@@ -364,6 +374,10 @@ class SyncBridgeSession:
 
         ctm_solver = get_configured_ctm_solver(prefs) if 'get_configured_ctm_solver' in globals() else None
 
+        if colormaps is None:
+            colormaps = load_colormaps_from_cache(prefs)
+        self._colormaps = colormaps
+
         try:
             config_kwargs = {
                 "enable_ao": enable_ao,
@@ -379,6 +393,8 @@ class SyncBridgeSession:
             }
             if ctm_solver is not None:
                 config_kwargs["ctm_solver"] = ctm_solver
+            if colormaps is not None:
+                config_kwargs["colormaps"] = colormaps
             config = mtk.MesherConfig(**config_kwargs)
 
             def _start_cached_native(session: Any) -> None:
@@ -522,10 +538,12 @@ class SyncBridgeSession:
         new_model_db = load_model_database_from_cache(prefs)
         new_atlas = load_atlas_from_cache(prefs)
         new_biome_resolver = load_biome_resolver_from_cache(prefs)
+        new_colormaps = load_colormaps_from_cache(prefs)
 
         self._model_db = new_model_db
         self._atlas = new_atlas
         self._biome_resolver = new_biome_resolver
+        self._colormaps = new_colormaps
         self._cached_manifest_fingerprint = current_fp
         self._cached_manifest_timestamp = current_ts
 
@@ -556,6 +574,8 @@ class SyncBridgeSession:
                     }
                     if ctm_solver is not None:
                         cfg_kwargs["ctm_solver"] = ctm_solver
+                    if new_colormaps is not None:
+                        cfg_kwargs["colormaps"] = new_colormaps
                     new_config = mtk.MesherConfig(**cfg_kwargs)
                 except Exception:
                     new_config = None

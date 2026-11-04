@@ -124,6 +124,7 @@ def get_biome_colors(
     has_custom_grass: bool = False,
     has_custom_foliage: bool = False,
     has_custom_dry_foliage: bool = False,
+    colormaps: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Retrieve canonical metadata, temperature, humidity, and Linear RGBA colors from Rust core."""
     if not has_libmtk():
@@ -141,7 +142,13 @@ def get_biome_colors(
 
         if sample_colormap_colors is not None:
             try:
-                sampled = sample_colormap_colors(temp, hum)
+                if colormaps is None:
+                    try:
+                        from ....bridge.assets import load_colormaps_from_cache
+                        colormaps = load_colormaps_from_cache()
+                    except Exception:
+                        pass
+                sampled = sample_colormap_colors(temp, hum, colormaps=colormaps)
                 if "grass_linear" in sampled:
                     meta["grass_linear"] = sampled["grass_linear"]
                 if "foliage_linear" in sampled:

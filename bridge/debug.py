@@ -154,6 +154,7 @@ def build_debug_world_data(
     origin_centered: bool = True,
     num_threads: Optional[int] = None,
     progress_callback: Optional[Any] = None,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, Any, float]:
     """
     Pure data background worker target for debug world generation.
@@ -172,6 +173,10 @@ def build_debug_world_data(
         atlas = atlas or cached_atlas
         biome_resolver = biome_resolver or cached_resolver
 
+    if colormaps is None:
+        from .world import get_world_pipeline_colormaps
+        colormaps = get_world_pipeline_colormaps(prefs)
+
     if model_db is None:
         raise ValueError("Active asset cache (model_db) is strictly required to mesh Minecraft debug world")
     if atlas is None:
@@ -182,6 +187,7 @@ def build_debug_world_data(
         model_db=model_db,
         atlas=atlas,
         biome_resolver=biome_resolver,
+        colormaps=colormaps,
         prefs=prefs,
         enable_ao=enable_ao,
         mesh_fluids=mesh_fluids,

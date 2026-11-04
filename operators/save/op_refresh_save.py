@@ -236,6 +236,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                     "model_db": mesh_context["model_db"],
                     "atlas": mesh_context["atlas"],
                     "biome_resolver": mesh_context["biome_resolver"],
+                    "colormaps": mesh_context.get("colormaps"),
                     "ctm_solver": mesh_context["ctm_solver"] if enable_ctm else None,
                     "num_threads": mesh_context["num_threads"],
                     "skin_cache_dir": mesh_context.get("skin_cache_dir"),

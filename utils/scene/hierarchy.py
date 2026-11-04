@@ -186,7 +186,7 @@ def apply_imported_scene_to_blender(
         _safe_set_custom_prop(target, "mtk:imported_at", float(now_ts))
         _safe_set_custom_prop(target, "mtk:biome_preset", "WORLD")
 
-    # 7. Register VoxelStorage in memory cache for instant WORLD biome restores
+    # 7. Register VoxelStorage and colormaps in memory cache for instant WORLD biome restores
     if storage is not None:
         from ..materials.biome.updater import register_object_storage
 
@@ -196,6 +196,17 @@ def apply_imported_scene_to_blender(
                 register_object_storage(root_obj.name, storage)
             if mesh_obj and hasattr(mesh_obj, "name"):
                 register_object_storage(mesh_obj.name, storage)
+
+    colormaps = data.get("colormaps")
+    if colormaps is not None:
+        from ..materials.biome.updater import register_object_colormaps
+
+        if register_object_colormaps is not None:
+            register_object_colormaps(str(scene_uuid), colormaps)
+            if root_obj and hasattr(root_obj, "name"):
+                register_object_colormaps(root_obj.name, colormaps)
+            if mesh_obj and hasattr(mesh_obj, "name"):
+                register_object_colormaps(mesh_obj.name, colormaps)
 
     # 8. Prime base tint types for the newly created mesh
     from ..materials.biome.updater import resolve_mesh_base_tint_types

@@ -47,12 +47,27 @@ _MESH_BASE_TINT_TYPES: dict[str, Any] = {}
 
 # In-memory storage registry to avoid serializing unpicklable native VoxelStorage into bpy properties
 _STORAGE_CACHE: dict[str, Any] = {}
+_COLORMAPS_CACHE: dict[str, Any] = {}
 
 
 def clear_biome_updater_cache() -> None:
-    """Clear in-memory caches for mesh tint types and voxel storage registry."""
+    """Clear in-memory caches for mesh tint types, voxel storage registry, and colormaps."""
     _MESH_BASE_TINT_TYPES.clear()
     _STORAGE_CACHE.clear()
+    _COLORMAPS_CACHE.clear()
+
+
+def register_object_colormaps(key: str, colormaps: Any) -> None:
+    """Register native VanillaColormaps in memory for a given container UUID or object name."""
+    if key and colormaps is not None:
+        _COLORMAPS_CACHE[str(key)] = colormaps
+
+
+def get_object_colormaps(key: str) -> Any:
+    """Retrieve native VanillaColormaps from memory cache."""
+    if not key:
+        return None
+    return _COLORMAPS_CACHE.get(str(key))
 
 
 def register_object_storage(key: str, storage: Any) -> None:
@@ -418,6 +433,26 @@ def resolve_and_apply_world_biome_tint(
             coords_y = [int(p.value) for p in attr_y.data]
             coords_z = [int(p.value) for p in attr_z.data]
 
+        colormaps = getattr(mesh_or_obj, "_colormaps", None) or getattr(target_mesh, "_colormaps", None)
+        if colormaps is None and hasattr(mesh_or_obj, "name"):
+            colormaps = get_object_colormaps(mesh_or_obj.name)
+        if colormaps is None and hasattr(target_mesh, "name"):
+            colormaps = get_object_colormaps(target_mesh.name)
+        if colormaps is None and hasattr(mesh_or_obj, "get"):
+            c_uuid = mesh_or_obj.get("mozi_save_uuid") or mesh_or_obj.get("mtk:container_id") or mesh_or_obj.get("mozi_scene_uuid")
+            if c_uuid:
+                colormaps = get_object_colormaps(c_uuid)
+        if colormaps is None and hasattr(target_mesh, "get"):
+            c_uuid = target_mesh.get("mozi_save_uuid") or target_mesh.get("mtk:container_id") or target_mesh.get("mozi_scene_uuid")
+            if c_uuid:
+                colormaps = get_object_colormaps(c_uuid)
+        if colormaps is None:
+            try:
+                from ....bridge.assets import load_colormaps_from_cache
+                colormaps = load_colormaps_from_cache(prefs)
+            except Exception:
+                colormaps = None
+
         res = compute_mesh_biome_attributes_from_storage(
             source_keys,
             coords_x,
@@ -426,6 +461,7 @@ def resolve_and_apply_world_biome_tint(
             storage,
             resolver=biome_resolver,
             smooth=True,
+            colormaps=colormaps,
         )
         apply_biome_tint_attributes(target_mesh, res["packed_tint_data"], res["tint_colors"])
         if hasattr(mesh_or_obj, "__setitem__"):

@@ -16,6 +16,7 @@ from ...bridge.sync import (
     load_atlas_from_cache,
     load_model_database_from_cache,
     load_biome_resolver_from_cache,
+    load_colormaps_from_cache,
 )
 from ...bridge.assets import invalidate_asset_cache_memory
 from ...utils.materials.builder.atlas_refresh import reload_atlas_images
@@ -576,6 +577,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
         model_db = load_model_database_from_cache(prefs)
         atlas = load_atlas_from_cache(prefs)
         biome_resolver = load_biome_resolver_from_cache(prefs)
+        colormaps = load_colormaps_from_cache(prefs)
 
         try:
             from ...utils.assets.cache_utils import get_cache_dir
@@ -649,6 +651,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 model_db=model_db,
                 atlas=atlas,
                 biome_resolver=biome_resolver,
+                colormaps=colormaps,
                 auth_token=(getattr(props, "auth_token", "") or None) if props else None,
             )
         else:
@@ -659,6 +662,7 @@ class MOZI_OT_sync_connect(bpy.types.Operator):
                 model_db=model_db,
                 atlas=atlas,
                 biome_resolver=biome_resolver,
+                colormaps=colormaps,
                 auth_token=(getattr(props, "auth_token", "") or None) if props else None,
             )
 

@@ -117,6 +117,7 @@ def apply_imported_save_to_blender(
     enable_ctm: bool = True,
     enable_animated_textures: bool = True,
     dynamic_entity_atlases: Optional[Any] = None,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Main-thread Blender scene injector for pre-meshed Minecraft save geometry.
@@ -312,6 +313,24 @@ def apply_imported_save_to_blender(
             if mesh_obj and hasattr(mesh_obj, "name"):
                 register_object_storage(mesh_obj.name, storage)
 
+    if colormaps is None:
+        try:
+            from ...bridge.assets import load_colormaps_from_cache
+            colormaps = load_colormaps_from_cache(prefs)
+        except Exception:
+            pass
+
+    if colormaps is not None:
+        from ..materials.biome.updater import register_object_colormaps
+
+        if register_object_colormaps is not None:
+            if save_uuid:
+                register_object_colormaps(str(save_uuid), colormaps)
+            if root_obj and hasattr(root_obj, "name"):
+                register_object_colormaps(root_obj.name, colormaps)
+            if mesh_obj and hasattr(mesh_obj, "name"):
+                register_object_colormaps(mesh_obj.name, colormaps)
+
     # 8. Prime base tint types for the newly created mesh
     from ..materials.biome.updater import resolve_mesh_base_tint_types
     if resolve_mesh_base_tint_types is not None:
@@ -369,6 +388,7 @@ def import_save_to_blender(
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
     enable_animated_textures: Optional[bool] = None,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Full synchronous end-to-end Minecraft save importer pipeline for Blender:
@@ -411,6 +431,7 @@ def import_save_to_blender(
         enable_ctm=enable_ctm,
         enable_animated_textures=anim_tex_enabled,
         skin_cache_dir=skin_cache_dir,
+        colormaps=colormaps,
     )
 
     return apply_imported_save_to_blender(
@@ -433,6 +454,7 @@ def import_save_to_blender(
         material_mode=material_mode,
         enable_ctm=enable_ctm,
         enable_animated_textures=anim_tex_enabled,
+        colormaps=colormaps,
     )
 
 

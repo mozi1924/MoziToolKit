@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .assets import get_configured_ctm_solver
 from .engine import get_libmtk, has_libmtk, require_libmtk
-from .world import get_world_pipeline_assets
+from .world import get_world_pipeline_assets, get_world_pipeline_colormaps
 
 logger = logging.getLogger("MoziToolKit.Bridge.Save")
 
@@ -65,6 +65,7 @@ def load_and_mesh_minecraft_save(
     cache_package_path: Optional[str] = None,
     resolve_prefs: bool = True,
     resolve_ctm: bool = True,
+    colormaps: Optional[Any] = None,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -80,6 +81,9 @@ def load_and_mesh_minecraft_save(
         model_db = model_db or cached_mdb
         atlas = atlas or cached_atlas
         biome_resolver = biome_resolver or cached_resolver
+
+    if resolve_prefs and colormaps is None:
+        colormaps = get_world_pipeline_colormaps(prefs)
 
     if resolve_prefs and cache_package_path is None:
         from .assets import get_active_cache_package_path
@@ -115,6 +119,8 @@ def load_and_mesh_minecraft_save(
     }
     if ctm_solver is not None:
         config_kwargs["ctm_solver"] = ctm_solver
+    if colormaps is not None:
+        config_kwargs["colormaps"] = colormaps
 
     config = mtk.MesherConfig(**config_kwargs)
 
