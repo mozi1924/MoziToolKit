@@ -103,14 +103,11 @@ class TestBiomeTintingFix(unittest.TestCase):
         cfg_res = libmtk_py.MesherConfig(biome_resolver=resolver)
         cfg_no_res = libmtk_py.MesherConfig(biome_resolver=None)
 
-        assert cfg_res.has_biome_resolver() is True
-        assert cfg_no_res.has_biome_resolver() is False
-
         # 1. With BiomeResolver
         mesh_res = mesh_world(storage, cfg_res, None)
         assert mesh_res is not None
         assert mesh_res.face_count > 0
-        assert mesh_res.has_attribute("mtk_biome_tint_data")
+        assert "mtk_biome_tint_data" in mesh_res.attribute_names()
 
         mv = mesh_res.attribute_memoryview("mtk_biome_tint_data")
         floats = list(mv) if getattr(mv, "format", "") == "f" else list(memoryview(mv).cast("f"))
@@ -168,8 +165,8 @@ class TestBiomeTintingFix(unittest.TestCase):
         config = libmtk_py.MesherConfig()
         mesh = mesh_world(storage, config, None)
         self.assertIsNotNone(mesh)
-        self.assertFalse(mesh.has_attribute("mtk_colormap_uv"))
-        self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
+        self.assertNotIn("mtk_colormap_uv", mesh.attribute_names())
+        self.assertIn("mtk_biome_tint_color", mesh.attribute_names())
 
         # Unpack mtk_biome_tint_color (Vector3 float32)
         mv_col = mesh.attribute_memoryview("mtk_biome_tint_color")

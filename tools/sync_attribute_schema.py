@@ -46,14 +46,15 @@ def _load_native_schema() -> tuple[list[tuple[str, str, str, str]], list[str]]:
 
     import libmtk_py as mtk
 
-    if not hasattr(mtk, "mesh_attribute_schema") or not hasattr(mtk, "retired_mesh_attributes"):
+    testing = getattr(getattr(mtk, "unstable", None), "testing", None)
+    if testing is None or not hasattr(testing, "mesh_attribute_schema") or not hasattr(testing, "retired_mesh_attributes"):
         raise RuntimeError(
-            "libmtk_py does not expose the mesh attribute schema; "
+            "libmtk_py.unstable.testing does not expose the mesh attribute schema; "
             "rebuild the extension with 'cargo build-py'"
         )
 
-    specs = [tuple(item) for item in mtk.mesh_attribute_schema()]
-    retired = list(mtk.retired_mesh_attributes())
+    specs = [tuple(item) for item in testing.mesh_attribute_schema()]
+    retired = list(testing.retired_mesh_attributes())
     return specs, retired
 
 

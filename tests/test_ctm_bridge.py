@@ -156,8 +156,10 @@ class TestCtmBridge(unittest.TestCase):
         self.assertGreater(mesh_data.quad_count, 0)
 
         # Standalone mode must emit palette + per-face indices (never per-face strings)
-        self.assertFalse(mesh_data.has_attribute("mtk_source_texture_key"))
-        palette, indices = mesh_data.source_texture_palette_indices()
+        self.assertNotIn("mtk_source_texture_key", mesh_data.attribute_names())
+        palette = mesh_data.get_string_attribute("mtk_source_textures") or []
+        mv = mesh_data.attribute_memoryview("mtk_source_texture_idx")
+        indices = list(mv) if mv is not None else []
         self.assertGreater(len(palette), 0)
         self.assertEqual(len(indices), mesh_data.quad_count)
         keys = [palette[i] for i in indices]
@@ -201,8 +203,10 @@ class TestCtmBridge(unittest.TestCase):
         )
 
         self.assertIsNotNone(mesh_data)
-        self.assertFalse(mesh_data.has_attribute("mtk_source_texture_key"))
-        palette, indices = mesh_data.source_texture_palette_indices()
+        self.assertNotIn("mtk_source_texture_key", mesh_data.attribute_names())
+        palette = mesh_data.get_string_attribute("mtk_source_textures") or []
+        mv = mesh_data.attribute_memoryview("mtk_source_texture_idx")
+        indices = list(mv) if mv is not None else []
         keys = [palette[i] for i in indices]
 
         # Corner glass faces should resolve to connected sub-tiles
@@ -263,7 +267,9 @@ class TestCtmBridge(unittest.TestCase):
         solver = stack.build_ctm_solver()
 
         def get_face_key_for(mesh_data, target_x, target_y, target_z, target_dir):
-            palette, tex_indices = mesh_data.source_texture_palette_indices()
+            palette = mesh_data.get_string_attribute("mtk_source_textures") or []
+            mv = mesh_data.attribute_memoryview("mtk_source_texture_idx")
+            tex_indices = list(mv) if mv is not None else []
             bxs = mesh_data.attribute_memoryview("mtk_block_x")
             bys = mesh_data.attribute_memoryview("mtk_block_y")
             bzs = mesh_data.attribute_memoryview("mtk_block_z")

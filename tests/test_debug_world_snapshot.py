@@ -22,7 +22,7 @@ class TestDebugWorldSnapshot(unittest.TestCase):
 
         require_assets()  # canonical debug world requires full vanilla assets
         storage = libmtk_py.VoxelStorage.create_debug_world()
-        bounds = storage.get_bounds()
+        bounds = (storage.min_x, storage.min_y, storage.min_z, storage.size_x, storage.size_y, storage.size_z)
         self.assertEqual(bounds[0], 0)
         self.assertEqual(bounds[1], 69)
         self.assertEqual(bounds[2], 0)

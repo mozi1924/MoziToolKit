@@ -50,11 +50,17 @@ class TestVoxelCullBridge(unittest.TestCase):
         grid[0] = 1
 
         libmtk_py.unstable.testing.voxel_set_section_snapshot(storage, 0, 0, 0, 0, 0, 0, 16, 16, 16, palette, grid)
-        self.assertEqual(storage.get_bounds(), (0, 0, 0, 16, 16, 16))
+        self.assertEqual(
+            (storage.min_x, storage.min_y, storage.min_z, storage.size_x, storage.size_y, storage.size_z),
+            (0, 0, 0, 16, 16, 16),
+        )
 
         # Second chunk at (1, 0, 0) automatically expands bounds to [0..32, 0..16, 0..16]
         libmtk_py.unstable.testing.voxel_set_section_snapshot(storage, 1, 0, 0, 16, 0, 0, 16, 16, 16, palette, grid)
-        self.assertEqual(storage.get_bounds(), (0, 0, 0, 32, 16, 16))
+        self.assertEqual(
+            (storage.min_x, storage.min_y, storage.min_z, storage.size_x, storage.size_y, storage.size_z),
+            (0, 0, 0, 32, 16, 16),
+        )
 
 
 if __name__ == "__main__":

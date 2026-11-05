@@ -96,7 +96,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         )
         self.assertIsNotNone(mesh_z)
         self.assertEqual(mesh_z.face_count, 2, "Straight line must have 2 faces (north arm + south arm)")
-        self.assertFalse(mesh_z.has_attribute("mtk_emission"))
+        self.assertNotIn("mtk_emission", mesh_z.attribute_names())
 
         # 2. Power 15 with vertical wall wire (north=up, south=side)
         mesh_up, tex_up = self.baker.bake_blockstate(
@@ -105,7 +105,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         self.assertIsNotNone(mesh_up)
         self.assertGreater(mesh_up.face_count, 0)
 
-        self.assertFalse(mesh_up.has_attribute("mtk_emission"))
+        self.assertNotIn("mtk_emission", mesh_up.attribute_names())
 
         # 3. Intermediate power 8 dot wire
         mesh_dot, tex_dot = self.baker.bake_blockstate(
@@ -113,7 +113,7 @@ class TestRedstoneWireBakingAndAddressing(unittest.TestCase):
         )
         self.assertIsNotNone(mesh_dot)
         self.assertEqual(mesh_dot.face_count, 1, "Isolated dot wire must have 1 face")
-        self.assertFalse(mesh_dot.has_attribute("mtk_emission"))
+        self.assertNotIn("mtk_emission", mesh_dot.attribute_names())
 
     def test_redstone_wire_directional_geometry(self):
         """Corner and cross wires must generate appropriate geometry faces."""

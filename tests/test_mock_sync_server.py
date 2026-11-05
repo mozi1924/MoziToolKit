@@ -86,7 +86,7 @@ class TestMockSyncServer(unittest.TestCase):
             dimension="minecraft:overworld",
             negotiated_version=3,
         )
-        decoded = libmtk_py.decode_packet(welcome_bytes)
+        decoded = libmtk_py.unstable.testing.decode_packet(welcome_bytes)
         self.assertEqual(decoded["type"], "WELCOME")
         self.assertEqual(decoded["epoch"], 1)
         self.assertEqual(decoded["server_seq"], 10)

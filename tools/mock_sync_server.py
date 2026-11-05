@@ -813,7 +813,7 @@ class MockLiveSyncServer:
             msg = await client.read_frame()
             if not msg:
                 return
-            hello = libmtk_py.decode_packet(msg)
+            hello = libmtk_py.unstable.testing.decode_packet(msg)
             if hello.get("type") != "HELLO":
                 print(f"⚠️ [Protocol Error] Expected HELLO, got {hello.get('type')}")
                 return
@@ -857,7 +857,7 @@ class MockLiveSyncServer:
                 msg = await client.read_frame()
                 if msg is None:
                     break
-                decoded = libmtk_py.decode_packet(msg)
+                decoded = libmtk_py.unstable.testing.decode_packet(msg)
                 if decoded:
                     await self._handle_client_event(client, decoded)
 

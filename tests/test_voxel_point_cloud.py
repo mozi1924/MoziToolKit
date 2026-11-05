@@ -53,17 +53,8 @@ class TestVoxelPointCloudBridge:
         assert "minecraft:oak_stairs[facing=east]" in states
         assert "minecraft:gold_block" in states
 
-        # Test pure-point MeshData conversion
-        mesh_data = cloud.to_mesh_data()
-        assert mesh_data.vertex_count == 3
-        assert mesh_data.quad_count == 0
-
-        # Roundtrip back from MeshData
-        cloud2 = libmtk_py.VoxelPointCloud.from_mesh_data(mesh_data)
-        assert len(cloud2) == 3
-
-        # Reconstruct VoxelStorage
-        s2 = libmtk_py.VoxelStorage.from_point_cloud(cloud2)
+        # Reconstruct VoxelStorage directly from point cloud
+        s2 = cloud.to_storage()
         assert s2.get_block(0, 0, 0) == "minecraft:stone"
         assert s2.get_block(1, 2, 3) == "minecraft:oak_stairs[facing=east]"
         assert s2.get_block(5, 5, 5) == "minecraft:gold_block"

@@ -110,7 +110,8 @@ class TestVoxelWeldingAndOrigin(unittest.TestCase):
         self._assert_unique_positions(full)
 
         # Unrelated edit in Section 0: the Live Sync debounce takes the dirty path.
-        world.set_block(0, 5, 5, "minecraft:dirt")
+        storage.set_block(0, 5, 5, "minecraft:dirt")
+        world.sync_from_storage(storage)
         world.rebuild_dirty()
         incremental = world.get_world_mesh()
 

@@ -56,7 +56,7 @@ class TestGilConcurrency(unittest.TestCase):
                 self.assertGreater(vc, 0)
 
     def test_loop_memoryviews_zero_copy(self):
-        """Verify loop_uvs_memoryview, loop_starts_memoryview, and loop_totals_memoryview."""
+        """Verify loop_uvs_memoryview and to_buffers polygon loop layout."""
         mesh = ma.unit_quad()  # 1 quad: 4 vertices, 4 loop UVs
 
         self.assertEqual(mesh.vertex_count, 4)
@@ -67,12 +67,13 @@ class TestGilConcurrency(unittest.TestCase):
         self.assertEqual(loop_uvs.format, "f")
         self.assertEqual(len(loop_uvs), 8)  # 4 loops * 2 floats
 
-        starts = mesh.loop_starts_memoryview()
+        bufs = mesh.to_buffers()
+        starts = bufs["loop_starts"]
         self.assertIsNotNone(starts)
         self.assertEqual(starts.format, "i")
         self.assertEqual(len(starts), 1)  # 1 face
 
-        totals = mesh.loop_totals_memoryview()
+        totals = bufs["loop_totals"]
         self.assertIsNotNone(totals)
         self.assertEqual(totals.format, "i")
         self.assertEqual(len(totals), 1)  # 1 face

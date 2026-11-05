@@ -158,7 +158,6 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
             z_up_coordinates=True,
             atlas=atlas,
         )
-        self.assertTrue(config.has_atlas())
 
         # Create storage with a grass block and a water block
         storage = mtk_py.VoxelStorage()
@@ -173,19 +172,22 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         self.assertGreater(mesh.face_count, 0)
 
         # Check face attributes on mesh
-        self.assertFalse(mesh.has_attribute("mtk_source_texture_key"))
-        self.assertTrue(mesh.has_attribute("mtk_source_texture_idx"))
-        self.assertTrue(mesh.has_attribute("mtk_source_textures"))
-        self.assertFalse(mesh.has_attribute("mtk_material_slot"))
-        self.assertTrue(mesh.has_attribute("mtk_atlas_chunk_id"))
-        self.assertFalse(mesh.has_attribute("mtk_atlas_texture_id"))
-        self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
-        self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))
-        self.assertTrue(mesh.has_attribute("mtk_biome_tint_color"))
-        self.assertFalse(mesh.has_attribute("mtk_face_dir"))
+        attr_names = set(mesh.attribute_names())
+        self.assertNotIn("mtk_source_texture_key", attr_names)
+        self.assertIn("mtk_source_texture_idx", attr_names)
+        self.assertIn("mtk_source_textures", attr_names)
+        self.assertNotIn("mtk_material_slot", attr_names)
+        self.assertIn("mtk_atlas_chunk_id", attr_names)
+        self.assertNotIn("mtk_atlas_texture_id", attr_names)
+        self.assertIn("mtk_uv_transform", attr_names)
+        self.assertIn("mtk_biome_tint_data", attr_names)
+        self.assertIn("mtk_biome_tint_color", attr_names)
+        self.assertNotIn("mtk_face_dir", attr_names)
 
         # Verify keys resolve from the compact palette + indices pair
-        palette, indices = mesh.source_texture_palette_indices()
+        palette = mesh.get_string_attribute("mtk_source_textures") or []
+        mv = mesh.attribute_memoryview("mtk_source_texture_idx")
+        indices = list(mv) if mv is not None else []
         self.assertGreater(len(palette), 0)
         self.assertGreater(len(indices), 0)
         keys = [palette[i] for i in indices]

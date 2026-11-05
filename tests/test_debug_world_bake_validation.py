@@ -36,7 +36,7 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
 
         baker = libmtk_py.unstable.testing.ModelBaker()
         cls.db = baker.bake_all(cls.stack)
-        cls.unique_states = sorted(cls.db.get_states())
+        cls.unique_states = sorted(libmtk_py.unstable.testing.model_database_get_states(cls.db))
 
     def test_entity_blocks_hit_rate(self):
         """Verifies that 100% of all map-making entity block states resolve with geometry."""

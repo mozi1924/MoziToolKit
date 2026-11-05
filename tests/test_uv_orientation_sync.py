@@ -133,7 +133,7 @@ class TestUvOrientationSync(unittest.TestCase):
             self.skipTest("Atlas or models.bin cache not found")
 
         # Make sure remap_to_atlas works without error
-        self.model_db.remap_to_atlas(self.atlas)
+        libmtk_py.unstable.testing.model_database_remap_to_atlas(self.model_db, self.atlas)
         mesh_tuple = self.model_db.get_mesh("minecraft:stone")
         if mesh_tuple is not None:
             mesh, textures = mesh_tuple

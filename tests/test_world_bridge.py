@@ -30,10 +30,9 @@ class TestWorldBridgePipeline:
         assert is_debug_world_available()
         storage = load_debug_world_storage()
         assert storage is not None
-        non_empty = storage.get_non_empty_sections()
+        non_empty = libmtk_py.unstable.testing.voxel_storage_get_non_empty_sections(storage)
         assert len(non_empty) > 100
-        bounds = storage.get_bounds()
-        assert bounds[3] > 0  # size_x > 0
+        assert storage.size_x > 0
 
     def test_mesh_voxel_storage_offline(self):
         from _assets import require_assets

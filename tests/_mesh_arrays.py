@@ -79,10 +79,14 @@ def unit_quad(material=0):
 
 
 def unit_quads(count, material=0):
-    import libmtk_py
-
-    base = unit_quad(material)
-    mesh = libmtk_py.MeshData()
-    for _ in range(count):
-        mesh.append_mesh(base)
-    return mesh
+    positions_list = []
+    quads_list = []
+    uvs_list = []
+    mats_list = []
+    for i in range(count):
+        base_v = i * 4
+        positions_list.extend([0.0, float(i), 0.0, 1.0, float(i), 0.0, 1.0, float(i) + 1.0, 0.0, 0.0, float(i) + 1.0, 0.0])
+        quads_list.append([base_v, base_v + 1, base_v + 2, base_v + 3])
+        uvs_list.append([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+        mats_list.append(material)
+    return mesh_from_quads(positions_list, quads_list, uvs_list, mats_list)

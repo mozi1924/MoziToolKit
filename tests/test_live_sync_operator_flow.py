@@ -65,13 +65,14 @@ class TestLiveSyncFlow(unittest.TestCase):
                         self.assertIsNotNone(mesh)
                         self.assertGreater(mesh.vertex_count, 0)
                         # Provenance is palette-only: the per-face string layer is retired.
-                        self.assertFalse(mesh.has_attribute("mtk_source_texture_key"))
-                        self.assertTrue(mesh.has_attribute("mtk_source_texture_idx"))
-                        self.assertTrue(mesh.has_attribute("mtk_source_textures"))
-                        self.assertFalse(mesh.has_attribute("mtk_material_slot"))
-                        self.assertTrue(mesh.has_attribute("mtk_uv_transform"))
-                        self.assertTrue(mesh.has_attribute("mtk_biome_tint_data"))
-                        self.assertFalse(mesh.has_attribute("mtk_face_dir"))
+                        attr_names = set(mesh.attribute_names())
+                        self.assertNotIn("mtk_source_texture_key", attr_names)
+                        self.assertIn("mtk_source_texture_idx", attr_names)
+                        self.assertIn("mtk_source_textures", attr_names)
+                        self.assertNotIn("mtk_material_slot", attr_names)
+                        self.assertIn("mtk_uv_transform", attr_names)
+                        self.assertIn("mtk_biome_tint_data", attr_names)
+                        self.assertNotIn("mtk_face_dir", attr_names)
                         world_mesh_received = True
                     elif ev.get("type") == "DELTA_APPLIED":
                         delta_received = True

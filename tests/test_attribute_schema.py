@@ -47,20 +47,21 @@ class TestAttributeSchema(unittest.TestCase):
         mtk = get_libmtk()
         if mtk is None:
             self.skipTest("libmtk_py is not available")
-        if not hasattr(mtk, "mesh_attribute_schema") or not hasattr(mtk, "retired_mesh_attributes"):
+        testing = getattr(getattr(mtk, "unstable", None), "testing", None)
+        if testing is None or not hasattr(testing, "mesh_attribute_schema") or not hasattr(testing, "retired_mesh_attributes"):
             self.fail(
-                "libmtk_py does not expose the attribute schema; rebuild it with "
+                "libmtk_py.unstable.testing does not expose the attribute schema; rebuild it with "
                 "'cargo build-py' (the addon mirror is generated from it)"
             )
 
-        live_specs = tuple(tuple(item) for item in mtk.mesh_attribute_schema())
+        live_specs = tuple(tuple(item) for item in testing.mesh_attribute_schema())
         self.assertEqual(
             live_specs,
             generated.ATTRIBUTE_SPECS,
             "Generated attribute schema is stale; run 'python tools/sync_attribute_schema.py'",
         )
         self.assertEqual(
-            frozenset(mtk.retired_mesh_attributes()),
+            frozenset(testing.retired_mesh_attributes()),
             generated.RETIRED_ATTRIBUTE_NAMES,
             "Generated retired-attribute list is stale; run 'python tools/sync_attribute_schema.py'",
         )

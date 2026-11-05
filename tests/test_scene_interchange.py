@@ -299,8 +299,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         # Check models
         models = data["models"]
         self.assertIsNotNone(models)
-        self.assertTrue(models.contains("minecraft:stone"))
-        self.assertTrue(models.contains("minecraft:dirt"))
+        self.assertIsNotNone(models.get_mesh("minecraft:stone"))
+        self.assertIsNotNone(models.get_mesh("minecraft:dirt"))
 
         # Check atlas
         atlas = data["atlas"]
@@ -807,8 +807,10 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         )
 
         def _texture_keys(mesh):
-            palette, indices = mesh.source_texture_palette_indices()
-            return [palette[i] for i in indices]
+            palette = mesh.get_string_attribute("mtk_source_textures") or []
+            mv = mesh.attribute_memoryview("mtk_source_texture_idx")
+            indices = list(mv) if mv is not None else []
+            return [palette[i] for i in indices if 0 <= i < len(palette)]
 
         on = load_and_mesh_scene_package(scene_path, prefs=None, enable_ctm=True)
         off = load_and_mesh_scene_package(scene_path, prefs=None, enable_ctm=False)

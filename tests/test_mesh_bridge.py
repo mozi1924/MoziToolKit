@@ -121,7 +121,6 @@ class TestMaterialPresets(unittest.TestCase):
         self.assertEqual(mesh_data.triangle_count, 2)
         indices = ma.indices(mesh_data)
         self.assertEqual(len(indices), 6)
-        self.assertEqual(mesh_data.uv_layout, "per_loop")
         self.assertEqual(len(ma.loop_uvs(mesh_data)), 8)
         face_mats = ma.face_materials(mesh_data)
         self.assertEqual(len(face_mats), 1)
@@ -176,10 +175,8 @@ class TestDualMeshApi(unittest.TestCase):
         self.assertEqual(written, 48)
 
 
-    def test_source_texture_palette_indices(self):
-        """Rust reads the canonical palette + u32 indices without per-face strings."""
-        if not hasattr(self.mesh, "source_texture_palette_indices"):
-            self.skipTest("source_texture_palette_indices not available in this libmtk build")
+    def test_canonical_source_texture_palette_and_indices(self):
+        """Native stores canonical palette + int32 indices as generic attributes."""
         mesh = ma.unit_quads(3)
         # Canonical provenance: Mesh-domain string palette + Face-domain Int32 indices.
         mesh.add_string_attribute(
@@ -189,24 +186,10 @@ class TestDualMeshApi(unittest.TestCase):
             "mtk_source_texture_idx", "face", "int32", np.array([0, 1, 0], dtype=np.int32)
         )
 
-        palette, indices = mesh.source_texture_palette_indices()
+        palette = mesh.get_string_attribute("mtk_source_textures")
+        indices_mv = mesh.attribute_memoryview("mtk_source_texture_idx")
         self.assertEqual(palette, ["minecraft:block/grass_block_top", "minecraft:block/dirt"])
-        self.assertEqual(np.frombuffer(indices, dtype=np.uint32).tolist(), [0, 1, 0])
-
-    def test_retired_source_texture_key_is_not_converted(self):
-        """The retired per-face string layer must never be resurrected into provenance."""
-        if not hasattr(self.mesh, "source_texture_palette_indices"):
-            self.skipTest("source_texture_palette_indices not available in this libmtk build")
-        mesh = ma.unit_quads(3)
-        mesh.add_string_attribute(
-            "mtk_source_texture_key",
-            "face",
-            ["minecraft:block/stone", "minecraft:block/dirt", "minecraft:block/stone"],
-        )
-
-        palette, indices = mesh.source_texture_palette_indices()
-        self.assertEqual(palette, [])
-        self.assertEqual(len(np.frombuffer(indices, dtype=np.uint32)), 0)
+        self.assertEqual(np.frombuffer(indices_mv, dtype=np.int32).tolist(), [0, 1, 0])
 
 
 class TestPaletteSourceTextureKeys(unittest.TestCase):

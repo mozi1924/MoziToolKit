@@ -33,6 +33,9 @@ def test_removed_native_symbols_do_not_return():
         "PyBufferOwner",
         "ValidationReport",
         "clear_cached_colormaps",
+        "decode_packet",
+        "mesh_attribute_schema",
+        "retired_mesh_attributes",
     ]
     for name in removed:
         assert not hasattr(mtk, name), f"removed symbol {name} leaked back into libmtk_py"
@@ -49,11 +52,45 @@ def test_removed_native_symbols_do_not_return():
         "get_face_materials",
         "weld_spatial_vertices",
         "has_dynamic_entity_chunks",
+        "append_mesh",
+        "has_attribute",
+        "loop_starts_memoryview",
+        "loop_totals_memoryview",
+        "source_texture_palette_indices",
+        "uv_layout",
     ):
         assert not hasattr(mesh, name), f"removed MeshData API {name} leaked back"
 
-    for name in ("set_model_db",):
+    for name in (
+        "set_model_db",
+        "clear",
+        "get_bounds",
+        "get_block",
+        "set_block",
+        "get_block_entity_json",
+        "set_block_entity_json",
+        "ensure_dynamic_entities_resolved_sync",
+    ):
         assert not hasattr(mtk.VoxelWorld, name), f"removed VoxelWorld API {name} leaked back"
+
+    cfg = mtk.MesherConfig()
+    for name in (
+        "has_atlas",
+        "has_biome_resolver",
+        "has_colormaps",
+        "set_bounds",
+    ):
+        assert not hasattr(cfg, name), f"removed MesherConfig API {name} leaked back"
+
+    for name in (
+        "contains",
+        "get_states",
+        "remap_to_atlas",
+    ):
+        assert not hasattr(mtk.BakedModelDatabase, name), f"removed BakedModelDatabase API {name} leaked back"
+
+    assert not hasattr(mtk.AssetCache, "extract_atlas_texture")
+    assert not hasattr(mtk.AssetCache, "is_valid")
 
     assert not hasattr(mtk.MaterialResolver, "clean_name")
 
@@ -107,6 +144,16 @@ def test_removed_native_symbols_do_not_return():
         "encode_baseline_end",
         "encode_delta_op",
         "encode_palette_update",
+        "decode_packet",
+        "mesh_attribute_schema",
+        "retired_mesh_attributes",
+        "extract_cache_atlas_texture",
+        "model_database_get_states",
+        "model_database_remap_to_atlas",
+        "voxel_storage_get_non_empty_sections",
+        "voxel_storage_get_block_entity_json",
+        "voxel_storage_set_block_entity_json",
+        "voxel_world_ensure_dynamic_entities_resolved_sync",
     ]
     for name in test_only:
         assert not hasattr(mtk, name), f"test-only symbol {name} leaked into libmtk_py"
@@ -125,6 +172,11 @@ def test_removed_native_symbols_do_not_return():
         assert not hasattr(resolver, name), f"test-only BiomeResolver method {name} leaked"
 
     for name in (
+        "clear",
+        "get_bounds",
+        "get_non_empty_sections",
+        "get_block_entity_json",
+        "set_block_entity_json",
         "get_all_blocks",
         "get_generation",
         "calculate_and_store_section_crc",
@@ -136,7 +188,7 @@ def test_removed_native_symbols_do_not_return():
         assert not hasattr(mtk.VoxelStorage, name), f"test-only VoxelStorage method {name} leaked"
 
     cloud = mtk.VoxelPointCloud()
-    for name in ("from_arrays", "get_block_states", "get_biomes"):
+    for name in ("from_arrays", "get_block_states", "get_biomes", "to_mesh_data", "from_mesh_data"):
         assert not hasattr(mtk.VoxelPointCloud, name), f"removed VoxelPointCloud API {name} leaked back"
         assert not hasattr(cloud, name)
 

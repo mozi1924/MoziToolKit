@@ -346,7 +346,7 @@ def main() -> None:
             ("_orm", "orm.png"),
             ("_aux", "aux.png"),
         ):
-            cache.extract_atlas_texture(f"{stem}{suffix}.png", str(sheets / target_name))
+            mtk.unstable.testing.extract_cache_atlas_texture(cache, f"{stem}{suffix}.png", str(sheets / target_name))
 
         raw = _extract_raw_textures(resource_pack, block, raw_dir)
 
