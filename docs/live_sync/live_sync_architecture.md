@@ -56,22 +56,21 @@ sequenceDiagram
     participant Client as 插件网络线程 (SyncClientThread)
     participant Server as 游戏端 (Minecraft Mod Server)
 
-    Scene->>Storage: 启动连接前，从已有物体持久化属性恢复 Bounds 与 Section CRC
+    Scene->>Storage: 启动连接前，从已有物体持久化属性恢复 Bounds 与 state_hash
     Client->>Server: 建立 WebSocket 握手
-    Server->>Client: 发送 SELECTION_INFO, HANDSHAKE_INFO 与 SECTION_MANIFEST (各 16x16x16 区块 CRC32)
-    Client->>Storage: 比对服务器 Manifest 与本地 Section CRC，并校验场景子网格物体健康状态
+    Server->>Client: 发送 HELLO, MANIFEST 与 BASELINE_BEGIN (携带权威 state_hash 与 xxHash64 校验码)
+    Client->>Storage: 比对服务器 state_hash 与本地指纹，并校验场景子网格物体健康状态
     
-    alt 100% 校验一致且场景子网格完好 (所有区块 CRC 完全匹配且场景物体存在)
+    alt 100% 校验一致且场景子网格完好 (state_hash 完全匹配且场景物体存在)
         Storage->>Scene: 标记 Verified (100% in sync with scene)，跳过全量构建
         Note over Scene,Storage: 0ms 瞬间连接，0 额外网络流量，直接保持已有网格并进入 Delta 监听
-    else 存在坏区块或局部差异 (部分 Section CRC 不一致或场景子网格丢失)
-        Storage->>Client: 计算差异与坏区块 Section 坐标列表
-        Client->>Server: 发送 REPAIR_REQUEST (0x81 仅请求不匹配或损坏的区块)
-        Server->>Client: 发送 SECTION_SNAPSHOT
+    else 存在局部差异或脏区块 (state_hash 不一致或场景子网格丢失)
+        Storage->>Client: 标记差异区块与变更边界
+        Client->>Server: 接收增量 Baseline/Delta 流式数据
         Client->>Scene: 仅增量重构/修复发生变更的 Section 子网格及邻域 (< 5ms)
     else 场景为空、子网格丢失或选区 Bounds 完全变更
-        Client->>Server: 发送 FULL_SYNC_REQUEST (0x80)
-        Server->>Client: 流式发送 SECTION_SNAPSHOT
+        Client->>Server: 发送 RESYNC_REQUEST
+        Server->>Client: 流式发送 BASELINE_CHUNK 数据流
         Client->>Scene: 清理缓存并执行全量网格构建
     end
 ```
@@ -79,8 +78,8 @@ sequenceDiagram
 ### 核心校验与零卡顿准则：
 - **数据层（Data Plane）与视图层（View Plane）解耦校验**：
   - **网格剔除面（View Plane）**：为优化视口与渲染性能，Direct Mesh 会执行邻域遮挡剔除，内部方块不生成多边形面。
-  - **体素全量数据（Data Plane）**：服务端计算的 CRC32 与客户端内存中的 `VoxelStorage` 均忠实记录 3D 空间内的所有方块状态（包括内部被遮挡的方块）。
-  - **校验原理**：握手校验直接比对 **Data Plane** 的 Section CRC32 与 Bounds，只要数据层 100% 一致且场景中网格物体完好，即可在数学上严格证明当前网格无需任何重新计算。
+  - **体素全量数据（Data Plane）**：服务端计算的 xxHash64 权威指纹与客户端内存中的 `VoxelStorage` 均忠实记录 3D 空间内的所有方块状态（包括内部被遮挡的方块）。
+  - **校验原理**：握手校验直接比对 **Data Plane** 的 `state_hash` 与 Bounds，只要数据层 100% 一致且场景中网格物体完好，即可在数学上严格证明当前网格无需任何重新计算。
 - **服务端发包时序保证**：
   - 服务端在发送数据时，严格保证 **`SELECTION_INFO` → `SECTION_MANIFEST` → `FULL_SNAPSHOT`** 的顺序。
   - 客户端优先处理 Manifest 清单，在 0 毫秒内完成比对；若一致，后续到达的 Snapshot 自动触发短路跳过。
@@ -133,12 +132,12 @@ graph TD
 ```
 
 ### 4.1 内存运行时模型
-- **`VoxelStorage`**：纯 Python 堆内存哈希表，提供 $O(1)$ 的方块状态查询、快速 6 向邻居碰撞判定、生物群系映射字典（`biome_map: Dict[Tuple[int, int, int], str]`）、基于 $5\times 5$ 邻域加权的群系混合算法（`get_smoothed_biome_data`）与区块 CRC32 实时哈希计算。
+- **`VoxelStorage`**：纯 Python 堆内存哈希表，提供 $O(1)$ 的方块状态查询、快速 6 向邻居碰撞判定、生物群系映射字典（`biome_map: Dict[Tuple[int, int, int], str]`）、基于 $5\times 5$ 邻域加权的群系混合算法（`get_smoothed_biome_data`）与 16x16x16 脏区块追踪。
 - **`_delta_queue`**：线程安全的非阻塞事件队列，以 200Hz（5ms）的泵频在 Blender 主线程中排队消费，确保 UI 流畅无卡顿。
 
 ### 4.2 场景持久化模型
 - **`Yefira_World` 自定义属性**：
-  - `mtk:sync_manifest`：包含 `min_x/y/z`, `size_x/y/z`, `generation` 及每个 Section 坐标对应的 CRC32 映射字典。
+  - `mtk:sync_manifest`：包含 `min_x/y/z`, `size_x/y/z`, `generation` 及 `state_hash` 权威指纹。
   - `mtk_block_bounds`：当前同步区域的 6 维整型包围盒 `[min_x, min_y, min_z, size_x, size_y, size_z]`。
 - **Mesh 面属性 (Loop & Face Attributes)**：
   - `mtk_block_x`, `mtk_block_y`, `mtk_block_z`：每个面对应的 Minecraft 绝对世界坐标。
@@ -155,7 +154,7 @@ graph TD
 ### 6.1 核心包结构划分
 - **存储与会话 (`utils/live_sync/storage/` & `session/`)**：
   - **`storage/voxel_storage.py`**：内存体素堆存储、包围盒管理、5x5 邻域加权平滑群系查询（`get_smoothed_biome_data`）与 16x16x16 Section 脏区块追踪。
-  - **`session/session_manager.py`**：连接生命周期管理单例、握手 CRC 校验、场景持久化状态读取与主线程事件泵（Main-Thread Event Pump）。
+  - **`session/session_manager.py`**：连接生命周期管理单例、握手 state_hash 校验、场景持久化状态读取与主线程事件泵（Main-Thread Event Pump）。
 - **分类与状态解析 (`utils/live_sync/classifier/`)**：
   - **`classifier/classifier.py`**：方块状态解析、模型朝向转换与语义分类（`BlockTypeEnum`: Cube, Prop, Fluid, Translucent, Air）。
   - **`classifier/hot_states.py`**：高频红石、火把、门窗等热点方块状态预提取与极速分类字典。
@@ -194,7 +193,7 @@ graph TD
 > 3. **运行时属性不可持久化（`SKIP_SAVE` 约束）**：
 >    - 连接状态（`is_connected`、`connection_status`、`validation_info`）属于运行时动态会话，必须在 PropertyGroup 中声明 `options={'SKIP_SAVE'}`，并在 `load_post` 钩子中重置为断开，禁止污染 `.blend` 文件。
 > 4. **断点续接 0 耗时校验（0ms Instant Validation）**：
->    - 重新打开 `.blend` 文件后发起连接，只要游戏服务端场景未发生变动，必须通过 CRC 校验与 `_known_empty_sections` 记录实现 0 耗时即时验证，不得触发冗余全量重建或误报坏区块。
+>    - 重新打开 `.blend` 文件后发起连接，只要游戏服务端场景未发生变动，必须通过 state_hash 校验与 `_known_empty_sections` 记录实现 0 耗时即时验证，不得触发冗余全量重建或误报坏区块。
 > 5. **操作职责严格隔离**：
 >    - “刷新 (Refresh)”：负责网络请求全量快照，必须带有 `_pending_full_sync_request` 守卫以防递归死循环；
 >    - “重建 (Rebuild)”：负责本地离线重新计算网格与面剔除，不发送任何网络请求。
