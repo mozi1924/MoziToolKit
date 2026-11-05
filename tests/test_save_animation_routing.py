@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 from MoziToolKit.bridge.world import prepare_world_mesh_context
 from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials
@@ -21,7 +22,7 @@ class TestSaveAnimationRouting(unittest.TestCase):
             thread_count=4,
             enable_animated_textures=True,  # Global pref is True
         )
-        with patch("MoziToolKit.bridge.world.get_world_pipeline_assets", return_value=(MagicMock(), MagicMock(), MagicMock())), \
+        with patch("MoziToolKit.bridge.world.get_world_pipeline_assets", return_value=(object(), object(), object())), \
              patch("MoziToolKit.bridge.world.get_active_cache_package_path", return_value=None), \
              patch("MoziToolKit.bridge.world.get_configured_ctm_solver", return_value=None), \
              patch("MoziToolKit.bridge.world.get_cache_fingerprint", return_value="fp"), \
@@ -58,7 +59,8 @@ class TestSaveAnimationRouting(unittest.TestCase):
                 self.enable_ctm = False
                 self.enable_animated_textures = False  # User unchecked it!
                 self.run_async = True
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
                 self._runner = None
 
             def execute(self, ctx):
@@ -67,9 +69,11 @@ class TestSaveAnimationRouting(unittest.TestCase):
         op = DummyImportOp()
         ctx = bpy.context
 
-        mock_path = MagicMock()
-        mock_path.is_file.return_value = False
-        mock_path.exists.return_value = True
+        mock_path = types.SimpleNamespace(
+            is_file=lambda: False,
+            exists=lambda: True,
+            resolve=lambda: Path("/fake/world"),
+        )
 
         prefs = types.SimpleNamespace(
             thread_count=2,
@@ -81,7 +85,7 @@ class TestSaveAnimationRouting(unittest.TestCase):
         def fake_runner_init(self_runner, operator, context, task, reporter, on_success, title):
             nonlocal captured_task
             captured_task = task
-            self_runner.start = MagicMock(return_value={"RUNNING_MODAL"})
+            self_runner.start = lambda: {"RUNNING_MODAL"}
 
         with patch("MoziToolKit.operators.save.op_import_save.resolve_operator_world_dir", return_value=mock_path), \
              patch("MoziToolKit.utils.system.dependencies.get_prefs", return_value=prefs), \
@@ -89,9 +93,9 @@ class TestSaveAnimationRouting(unittest.TestCase):
              patch("MoziToolKit.operators.save.op_import_save.check_asset_cache_status", return_value="READY"), \
              patch("MoziToolKit.operators.save.op_import_save.prepare_asset_context", return_value={}), \
              patch("MoziToolKit.operators.save.op_import_save.prepare_world_mesh_context", return_value={
-                 "model_db": MagicMock(),
-                 "atlas": MagicMock(),
-                 "biome_resolver": MagicMock(),
+                 "model_db": object(),
+                 "atlas": object(),
+                 "biome_resolver": object(),
                  "ctm_solver": None,
                  "num_threads": 2,
                  "enable_animated_textures": False,
@@ -131,7 +135,8 @@ class TestSaveAnimationRouting(unittest.TestCase):
 
         class DummyRefreshOp:
             def __init__(self):
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
                 self.run_async = True
                 self._runner = None
 
@@ -151,12 +156,10 @@ class TestSaveAnimationRouting(unittest.TestCase):
         def fake_runner_init(self_runner, operator, context, task, reporter, on_success, title):
             nonlocal captured_task
             captured_task = task
-            self_runner.start = MagicMock(return_value={"RUNNING_MODAL"})
+            self_runner.start = lambda: {"RUNNING_MODAL"}
 
-        mock_reg = MagicMock()
-        mock_world_dir = MagicMock()
-        mock_world_dir.exists.return_value = True
-        mock_reg.get_world_dir.return_value = mock_world_dir
+        mock_world_dir = types.SimpleNamespace(exists=lambda: True, resolve=lambda: Path("/fake/world"))
+        mock_reg = types.SimpleNamespace(get_world_dir=lambda *args: mock_world_dir)
 
         try:
             with patch("MoziToolKit.operators.save.op_refresh_save.get_save_registry", return_value=mock_reg), \
@@ -166,9 +169,9 @@ class TestSaveAnimationRouting(unittest.TestCase):
                  patch("MoziToolKit.operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
                  patch("MoziToolKit.operators.save.op_refresh_save.prepare_asset_context", return_value={}), \
                  patch("MoziToolKit.operators.save.op_refresh_save.prepare_world_mesh_context", return_value={
-                     "model_db": MagicMock(),
-                     "atlas": MagicMock(),
-                     "biome_resolver": MagicMock(),
+                     "model_db": object(),
+                     "atlas": object(),
+                     "biome_resolver": object(),
                      "ctm_solver": None,
                      "num_threads": 2,
                      "enable_animated_textures": False,
@@ -190,19 +193,29 @@ class TestSaveAnimationRouting(unittest.TestCase):
         from MoziToolKit.bridge.sync import SyncBridgeSession
 
         client = SyncBridgeSession()
-        mock_mtk = MagicMock()
-        mock_session = MagicMock()
-        mock_mtk.LiveSyncSession.return_value = mock_session
+        config_calls = []
 
-        mock_config = MagicMock()
-        mock_mtk.MesherConfig.return_value = mock_config
+        def fake_config(**kwargs):
+            config_calls.append(kwargs)
+            return types.SimpleNamespace(**kwargs)
+
+        mock_session = types.SimpleNamespace(
+            set_error_callback=lambda cb: None,
+            set_progress_callback=lambda cb: None,
+            connect=lambda url: None,
+        )
+
+        mock_mtk = types.SimpleNamespace(
+            LiveSyncSession=lambda *args, **kwargs: mock_session,
+            MesherConfig=fake_config,
+        )
 
         with patch("MoziToolKit.bridge.sync.get_libmtk", return_value=mock_mtk), \
              patch("MoziToolKit.utils.system.get_prefs", return_value=types.SimpleNamespace(thread_count=1, enable_animated_textures=False)):
 
             client.start(url="ws://127.0.0.1:8765", enable_animated_textures=False)
-            self.assertTrue(mock_mtk.MesherConfig.called)
-            cfg_kwargs = mock_mtk.MesherConfig.call_args.kwargs
+            self.assertTrue(len(config_calls) > 0)
+            cfg_kwargs = config_calls[-1]
             self.assertIn("enable_animated_textures", cfg_kwargs)
             self.assertFalse(cfg_kwargs["enable_animated_textures"])
 
@@ -230,18 +243,17 @@ class TestSaveAnimationRouting(unittest.TestCase):
         # When used_chunk_ids is [0] (only static chunk), and clean_unused_slots=True:
         # It must not use the subset fast-path that leaves mat1_anim in test_mesh.materials.
         try:
-            with patch("MoziToolKit.utils.materials.builder.world_binding.ensure_atlas_textures_extracted") as mock_dir, \
-                 patch("MoziToolKit.utils.materials.builder.world_binding.load_baked_atlas_from_cache") as mock_atlas:
-                mock_dir.return_value = MagicMock()
-                mock_dir.return_value.__truediv__.return_value.exists.return_value = False
-                mock_atlas_obj = MagicMock()
-                mock_atlas_obj.get_chunk_info.side_effect = lambda cid: {
+            fake_dir = Path("/nonexistent/atlas/dir")
+            fake_atlas = types.SimpleNamespace(
+                get_chunk_info=lambda cid: {
                     "chunk_id": cid,
                     "category": "blocks",
                     "category_chunk_index": cid + 1,
                     "is_animated": False,
                 }
-                mock_atlas.return_value = mock_atlas_obj
+            )
+            with patch("MoziToolKit.utils.materials.builder.world_binding.ensure_atlas_textures_extracted", return_value=fake_dir), \
+                 patch("MoziToolKit.utils.materials.builder.world_binding.load_baked_atlas_from_cache", return_value=fake_atlas):
 
                 ensure_world_materials(test_obj, used_chunk_ids=[0], clean_unused_slots=True)
 

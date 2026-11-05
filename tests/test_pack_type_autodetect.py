@@ -14,7 +14,7 @@ import types
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import bpy
 
@@ -224,8 +224,11 @@ class TestUpdateCallbacks(unittest.TestCase):
         path = _vanilla_client(self.root / "client.jar")
         item = _entry(path)
         prefs = types.SimpleNamespace(resource_packs=[item])
-        manager = MagicMock()
-        manager.is_syncing.return_value = False
+        manager = types.SimpleNamespace(
+            is_syncing=lambda: False,
+            sync_from_preferences=lambda p: None,
+            sync_to_preferences=lambda p: None,
+        )
         with patch.object(packs_ui, "_safe_get_prefs", return_value=prefs), patch.object(
             packs_ui, "get_config_manager", return_value=manager
         ), patch.object(packs_ui, "refresh_ui_and_menus"), patch.object(
@@ -239,8 +242,11 @@ class TestUpdateCallbacks(unittest.TestCase):
         path = _vanilla_client(self.root / "client.jar")
         item = _entry(path, pack_type="RESOURCE_PACK", pack_type_source="MANUAL")
         prefs = types.SimpleNamespace(resource_packs=[item])
-        manager = MagicMock()
-        manager.is_syncing.return_value = False
+        manager = types.SimpleNamespace(
+            is_syncing=lambda: False,
+            sync_from_preferences=lambda p: None,
+            sync_to_preferences=lambda p: None,
+        )
         with patch.object(packs_ui, "_safe_get_prefs", return_value=prefs), patch.object(
             packs_ui, "get_config_manager", return_value=manager
         ), patch.object(packs_ui, "refresh_ui_and_menus"), patch.object(
@@ -463,8 +469,11 @@ class TestAsyncProbePipeline(unittest.TestCase):
         path = _vanilla_client(self.root / "client.jar")
         item = _entry(path)
         prefs = types.SimpleNamespace(resource_packs=[item])
-        manager = MagicMock()
-        manager.is_syncing.return_value = False
+        manager = types.SimpleNamespace(
+            is_syncing=lambda: False,
+            sync_from_preferences=lambda p: None,
+            sync_to_preferences=lambda p: None,
+        )
         probe = detect_pack_kind(path)
         packs_ui._probe_results.put((str(path), probe))
         with patch.object(packs_ui, "_safe_get_prefs", return_value=prefs), patch.object(

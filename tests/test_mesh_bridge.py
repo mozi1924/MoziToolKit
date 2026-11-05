@@ -7,7 +7,6 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 import array
 import ctypes
 import numpy as np
@@ -300,7 +299,7 @@ class TestColorAttributeInjection(unittest.TestCase):
             bpy.data.meshes.remove(mesh)
 
     def test_inject_color_attributes_dna_sets_active_color(self):
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
         from MoziToolKit.bridge.mesh.dna import inject_color_attributes_dna
 
         mesh = bpy.data.meshes.new("test_color_dna_mesh")
@@ -317,8 +316,8 @@ class TestColorAttributeInjection(unittest.TestCase):
 
             mesh_data = SimpleNamespace(colors_memoryview=lambda: memoryview(colors_f32))
 
-            mock_dna = MagicMock()
-            mock_dna.copy_f32.return_value = None
+            dna_calls = []
+            mock_dna = SimpleNamespace(copy_f32=lambda *args, **kwargs: dna_calls.append((args, kwargs)))
 
             with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
                  patch("MoziToolKit.bridge.mesh.dna.is_dna_enabled", return_value=True), \
@@ -330,7 +329,7 @@ class TestColorAttributeInjection(unittest.TestCase):
             col_attr = mesh.color_attributes.get("color")
             self.assertIsNotNone(col_attr)
             self.assertEqual(mesh.color_attributes.active_color, col_attr)
-            mock_dna.copy_f32.assert_called_once()
+            self.assertEqual(len(dna_calls), 1)
         finally:
             bpy.data.meshes.remove(mesh)
 

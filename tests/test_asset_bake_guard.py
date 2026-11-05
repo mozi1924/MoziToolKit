@@ -14,7 +14,7 @@ import types
 import unittest
 import zlib
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import bpy
 
@@ -310,11 +310,14 @@ class TestAssetBakeGuard(unittest.TestCase):
 
         class DummyReplaceOp:
             def __init__(self):
-                self.report = MagicMock()
+                self.reported = []
                 self.reuse_atlas_uvs = True
                 self.mode = "ATLAS"
                 self.biome_preset = "PLAINS"
                 self.origin = "AUTO"
+
+            def report(self, type_set, msg):
+                self.reported.append((type_set, msg))
 
             def execute(self, ctx):
                 return MOZI_OT_replace_material.execute(self, ctx)

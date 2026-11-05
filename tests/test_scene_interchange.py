@@ -20,7 +20,8 @@ import unittest
 import zlib
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import bpy
 
@@ -206,15 +207,17 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         cls.cache_pkg = res.package_path
 
         # Mock preferences to point to our test cache
-        cls.mock_prefs = MagicMock()
-        cls.mock_prefs.cache_dir = cls.cache_dir
-        cls.mock_prefs.resource_pack_path = ""
-        cls.mock_prefs.active_resource_pack_index = 0
-        pack_entry = MagicMock()
-        pack_entry.enabled = True
-        pack_entry.name = "test_pack"
-        pack_entry.path = cls.pack_dir
-        cls.mock_prefs.resource_packs = [pack_entry]
+        pack_entry = SimpleNamespace(
+            enabled=True,
+            name="test_pack",
+            path=cls.pack_dir,
+        )
+        cls.mock_prefs = SimpleNamespace(
+            cache_dir=cls.cache_dir,
+            resource_pack_path="",
+            active_resource_pack_index=0,
+            resource_packs=[pack_entry],
+        )
         cls._orig_mozi_cache_dir = os.environ.get("MOZI_CACHE_DIR")
         os.environ["MOZI_CACHE_DIR"] = cls.cache_dir
 

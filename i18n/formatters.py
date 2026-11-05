@@ -11,33 +11,29 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 from . import tr
 
 
 def is_chinese_locale() -> bool:
-    """Returns True if the current Blender locale is Chinese, or if running in mock/pytest environment."""
-    if bpy is not None and type(bpy).__name__ != "MagicMock":
-        if hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
-            view = getattr(bpy.context.preferences, "view", None)
-            if view:
-                use_tr = getattr(view, "use_translate_interface", True)
-                if not use_tr:
-                    return False
-                lang = getattr(view, "language", "")
-                if lang and lang.startswith("zh"):
-                    return True
-                if lang and not lang.startswith("zh") and lang != "DEFAULT":
-                    return False
+    """Returns True if the current Blender locale is Chinese."""
+    if hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
+        view = getattr(bpy.context.preferences, "view", None)
+        if view:
+            use_tr = getattr(view, "use_translate_interface", True)
+            if not use_tr:
+                return False
+            lang = getattr(view, "language", "")
+            if lang and lang.startswith("zh"):
+                return True
+            if lang and not lang.startswith("zh") and lang != "DEFAULT":
+                return False
 
-        if hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
-            locale = getattr(bpy.app.translations, "locale", "")
-            if locale:
-                return locale.startswith("zh")
+    if hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
+        locale = getattr(bpy.app.translations, "locale", "")
+        if locale:
+            return locale.startswith("zh")
 
     # Direct fallback for mock / pytest headless test environments without real bpy
     return True

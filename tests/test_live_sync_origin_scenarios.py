@@ -32,7 +32,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
         sys.path.insert(0, p)
 
 import types
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import bpy
 import bmesh

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import MoziToolKit.ui.preferences_packs as packs_ui
 from MoziToolKit.i18n import tr
@@ -104,8 +104,11 @@ class TestAddInsertsAtTop(unittest.TestCase):
         return types.SimpleNamespace(resource_packs=coll, resource_packs_index=0, is_initialized=True)
 
     def _run_add(self, prefs):
-        manager = MagicMock()
-        manager.is_syncing.return_value = False
+        manager = types.SimpleNamespace(
+            is_syncing=lambda: False,
+            sync_from_preferences=lambda p: None,
+            sync_to_preferences=lambda p: None,
+        )
         with patch.object(packs_ui, "_safe_get_prefs", return_value=prefs), patch.object(
             packs_ui, "get_config_manager", return_value=manager
         ), patch.object(packs_ui, "refresh_ui_and_menus"):

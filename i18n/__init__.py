@@ -1,7 +1,4 @@
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 from .dictionary import translations_dict
 
@@ -10,15 +7,14 @@ def tr(msgid: str, msgctxt: str | None = None) -> str:
     """Translate string using Blender i18n registry, falling back to dictionary/msgid if untranslated."""
     if not msgid:
         return ""
-    if bpy is not None and hasattr(bpy, "app") and hasattr(bpy.app, "translations"):
-        try:
-            val = bpy.app.translations.pgettext(msgid, msgctxt)
-            if isinstance(val, str):
-                return val
-        except Exception:
-            pass
+    try:
+        val = bpy.app.translations.pgettext(msgid, msgctxt)
+        if isinstance(val, str):
+            return val
+    except Exception:
+        pass
 
-    # Direct dictionary fallback for testing or non-Blender environments
+    # Direct dictionary fallback if untranslated in Blender
     hans = translations_dict.get("zh_HANS", {})
     if msgctxt and (msgctxt, msgid) in hans:
         return hans[(msgctxt, msgid)]

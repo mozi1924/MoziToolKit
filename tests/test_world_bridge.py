@@ -117,7 +117,7 @@ class TestWorldBridgePipeline:
         """
         import tempfile
         import json
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials
 
         with tempfile.TemporaryDirectory() as tmp_dir:

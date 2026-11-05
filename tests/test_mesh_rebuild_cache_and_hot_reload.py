@@ -11,7 +11,8 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -214,8 +215,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         real_mesh = world.rebuild_all()
 
         try:
-            session._session = MagicMock()
-            session._session.is_active = True
+            session._session = SimpleNamespace(is_active=True)
             session._is_active = True
             session._cached_manifest_fingerprint = "old_fp"
             session._cached_manifest_timestamp = 100.0
@@ -316,7 +316,7 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         from MoziToolKit.utils.assets import clear_cache
 
         # Insert dummy mock session
-        mock_world = MagicMock()
+        mock_world = SimpleNamespace()
         _WORLD_SESSIONS["test_session"] = mock_world
         _WORLD_SESSION_META["test_session"] = {"fingerprint": "fp1", "timestamp": 10.0}
 

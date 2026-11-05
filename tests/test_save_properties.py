@@ -11,7 +11,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import bpy
 
@@ -229,9 +229,12 @@ class TestSaveProperties(unittest.TestCase):
 
             class DummyRefreshOp:
                 def __init__(self):
-                    self.report = MagicMock()
+                    self.reported = []
                     self.run_async = False
                     self._runner = None
+
+                def report(self, type_set, msg):
+                    self.reported.append((type_set, msg))
 
                 def execute(self, ctx):
                     return MOZI_OT_refresh_save_mesh.execute(self, ctx)
@@ -245,8 +248,7 @@ class TestSaveProperties(unittest.TestCase):
                 mode="OBJECT",
             )
 
-            mock_mesh = MagicMock()
-            mock_mesh.used_materials.return_value = []
+            mock_mesh = types.SimpleNamespace(used_materials=lambda: [])
             mock_meta = {
                 "level_name": "TestWorld",
                 "version_name": "1.21.4",
@@ -258,7 +260,7 @@ class TestSaveProperties(unittest.TestCase):
 
             def fake_load_and_mesh(**kwargs):
                 captured_args.update(kwargs)
-                return mock_mesh, mock_meta, MagicMock(), 10.0
+                return mock_mesh, mock_meta, None, 10.0
 
             with patch("MoziToolKit.operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
                  patch("MoziToolKit.operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \

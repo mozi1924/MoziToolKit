@@ -5,7 +5,8 @@ and NEVER mutates active Blender scene images or scrambles mesh materials.
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 import bpy
@@ -25,11 +26,12 @@ class TestPrecompileSceneIsolation(unittest.TestCase):
         self.addCleanup(lambda: bpy.data.images.remove(img) if img.name in bpy.data.images else None)
 
         # Mock the underlying native precompiler
-        mock_res = MagicMock()
-        mock_res.success = True
-        mock_res.pack_count = 1
-        mock_res.atlas_chunks = 1
-        mock_res.baked_models = 10
+        mock_res = SimpleNamespace(
+            success=True,
+            pack_count=1,
+            atlas_chunks=1,
+            baked_models=10,
+        )
 
         import inspect
 
@@ -37,15 +39,15 @@ class TestPrecompileSceneIsolation(unittest.TestCase):
         # refreshing bpy images is caller-owned host business.
         self.assertNotIn("reload_images", inspect.signature(precompile_stack).parameters)
 
-        with patch("MoziToolKit.bridge.assets.precompile.get_libmtk") as mock_get_mtk:
-            mock_mtk = MagicMock()
-            mock_mtk.precompile_resource_stack.return_value = mock_res
-            mock_get_mtk.return_value = mock_mtk
+        mock_stack = SimpleNamespace(
+            get_pack_count=lambda: 1,
+            compute_stack_fingerprint=lambda: "new_fingerprint_abc",
+        )
+        mock_mtk = SimpleNamespace(
+            precompile_all_assets=lambda *args, **kwargs: mock_res
+        )
 
-            mock_stack = MagicMock()
-            mock_stack.get_pack_count.return_value = 1
-            mock_stack.compute_stack_fingerprint.return_value = "new_fingerprint_abc"
-
+        with patch("MoziToolKit.bridge.assets.precompile.get_libmtk", return_value=mock_mtk):
             res = precompile_stack(stack=mock_stack, cache_dir="/tmp/dummy_cache")
             self.assertTrue(res.get("success"))
 

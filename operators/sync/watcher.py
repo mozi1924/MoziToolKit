@@ -81,16 +81,7 @@ def _deferred_enforce_object_mode() -> None:
     return None
 
 
-def _safe_persistent(fn):
-    """Safely apply bpy.app.handlers.persistent without being replaced by MagicMock."""
-    if hasattr(bpy, "app") and hasattr(bpy.app, "handlers") and hasattr(bpy.app.handlers, "persistent"):
-        p = bpy.app.handlers.persistent
-        if callable(p) and not str(type(p)).endswith("MagicMock'>"):
-            return p(fn)
-    return fn
-
-
-@_safe_persistent
+@bpy.app.handlers.persistent
 def on_sync_depsgraph_update_post(scene, depsgraph) -> None:
     """
     Non-blocking depsgraph listener.

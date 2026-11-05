@@ -4,13 +4,12 @@ Unit tests for AsyncTask and ModalTaskRunner asynchronous non-blocking worker pi
 
 import queue
 import time
-from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 import pytest
 
 from MoziToolKit.bridge.progress import ProgressReport
 from MoziToolKit.utils.async_task import AsyncTask, ModalTaskRunner
-from MoziToolKit.utils.progress import BlenderProgressReporter
 
 
 def dummy_heavy_worker(count: int, progress_callback=None):
@@ -78,9 +77,8 @@ class TestAsyncTask:
 
 class TestModalTaskRunner:
     def test_modal_task_runner_sync_fallback(self):
-        mock_op = MagicMock()
-        mock_ctx = MagicMock()
-        mock_ctx.window = None  # Force headless fallback
+        mock_op = SimpleNamespace(report=lambda *args: None)
+        mock_ctx = SimpleNamespace(window=None)
 
         success_called = []
 
@@ -101,13 +99,25 @@ class TestModalTaskRunner:
         assert success_called[0] == {"calculated": 30}
 
     def test_modal_task_runner_modal_flow(self):
-        mock_op = MagicMock()
-        mock_ctx = MagicMock()
-        mock_wm = MagicMock()
-        mock_ctx.window_manager = mock_wm
-        mock_ctx.window = MagicMock()
+        wm_calls = []
+        mock_wm = SimpleNamespace(
+            event_timer_add=lambda *args, **kwargs: (wm_calls.append("event_timer_add"), object())[1],
+            event_timer_remove=lambda *args, **kwargs: wm_calls.append("event_timer_remove"),
+            modal_handler_add=lambda *args, **kwargs: wm_calls.append("modal_handler_add"),
+        )
+        mock_op = SimpleNamespace(report=lambda *args: None)
+        mock_ctx = SimpleNamespace(
+            window_manager=mock_wm,
+            window=object(),
+        )
 
-        reporter = MagicMock(spec=BlenderProgressReporter)
+        reporter_calls = []
+        reporter = SimpleNamespace(
+            start=lambda: reporter_calls.append("start"),
+            update=lambda *args, **kwargs: reporter_calls.append("update"),
+            on_progress=lambda *args, **kwargs: reporter_calls.append("on_progress"),
+            close=lambda: reporter_calls.append("close"),
+        )
         success_called = []
 
         def on_success(res):
@@ -125,9 +135,9 @@ class TestModalTaskRunner:
 
         ret = runner.start()
         assert ret == {"RUNNING_MODAL"}
-        reporter.start.assert_called_once()
-        mock_wm.event_timer_add.assert_called_once()
-        mock_wm.modal_handler_add.assert_called_once()
+        assert "start" in reporter_calls
+        assert "event_timer_add" in wm_calls
+        assert "modal_handler_add" in wm_calls
 
         # Wait for task thread to finish
         max_wait = 2.0
@@ -136,12 +146,11 @@ class TestModalTaskRunner:
             time.sleep(0.01)
 
         # Simulate timer event
-        timer_event = MagicMock()
-        timer_event.type = "TIMER"
+        timer_event = SimpleNamespace(type="TIMER")
 
         modal_ret = runner.modal(timer_event)
         assert modal_ret == {"FINISHED"}
         assert len(success_called) == 1
         assert success_called[0] == {"calculated": 20}
-        reporter.close.assert_called_once()
-        mock_wm.event_timer_remove.assert_called_once()
+        assert "close" in reporter_calls
+        assert "event_timer_remove" in wm_calls

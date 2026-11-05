@@ -74,7 +74,6 @@ paths_exclude_pattern = [
   ".github/",
   ".pytest_cache/",
   ".blender-test-config/",
-  "MagicMock/",
   "tools/",
   "*.md",
 ]

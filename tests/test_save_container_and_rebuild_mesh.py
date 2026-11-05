@@ -10,7 +10,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import bpy
 from MoziToolKit.utils.save.hierarchy import (
@@ -74,9 +74,8 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             "data_version": 4189,
             "spawn": (0, 64, 0),
         }
-        mesh_data = MagicMock()
-        mesh_data.used_materials.return_value = []
-        storage = MagicMock()
+        mesh_data = types.SimpleNamespace(used_materials=lambda: [])
+        storage = object()
 
         context = bpy.context
 
@@ -244,16 +243,20 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             scene=bpy.context.scene,
         )
 
-        mock_cloud_data = MagicMock()
-        mock_cloud_data.__len__.return_value = 100
-        mock_storage = MagicMock()
-        mock_cloud_data.to_storage.return_value = mock_storage
-        mock_new_mesh_data = MagicMock()
-        mock_new_mesh_data.used_materials.return_value = []
+        mock_storage = object()
+        class DummyCloudData:
+            def __len__(self):
+                return 100
+            def to_storage(self):
+                return mock_storage
+
+        mock_cloud_data = DummyCloudData()
+        mock_new_mesh_data = types.SimpleNamespace(used_materials=lambda: [])
 
         class DummyRebuildOp:
             def __init__(self):
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
                 self.run_async = False
                 self.enable_ao = True
                 self.mesh_fluids = True
@@ -265,21 +268,30 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 return MOZI_OT_rebuild_mesh.execute(self, ctx)
 
         op = DummyRebuildOp()
+        mesh_fn_calls = []
+        inject_calls = []
+
+        def fake_mesh_voxel_storage(*args, **kwargs):
+            mesh_fn_calls.append((args, kwargs))
+            return mock_new_mesh_data, 10.5
+
+        def fake_inject(*args, **kwargs):
+            inject_calls.append((args, kwargs))
 
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.extract_voxel_point_cloud", return_value=mock_cloud_data), \
-             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.mesh_voxel_storage", return_value=(mock_new_mesh_data, 10.5)) as mock_mesh_fn, \
-             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.inject_mesh_data") as mock_inject, \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.mesh_voxel_storage", fake_mesh_voxel_storage), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.inject_mesh_data", fake_inject), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.ensure_world_materials"):
 
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
-            mock_mesh_fn.assert_called_once()
-            kwargs = mock_mesh_fn.call_args[1]
+            self.assertEqual(len(mesh_fn_calls), 1)
+            kwargs = mesh_fn_calls[0][1]
             self.assertTrue(kwargs["enable_ao"])
             self.assertTrue(kwargs["mesh_fluids"])
-            mock_inject.assert_called_once()
+            self.assertEqual(len(inject_calls), 1)
 
     def test_rebuild_mesh_execution_with_live_sync_session(self):
         """Verifies executing mozi.rebuild_mesh on active Live Sync container calls session.get_world_mesh."""
@@ -299,16 +311,18 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             scene=types.SimpleNamespace(mozi_active_sync_container_name="Yefira_World"),
         )
 
-        mock_session = MagicMock()
-        mock_session.is_active = True
-        mock_mesh_data = MagicMock()
-        mock_mesh_data.vertex_count = 50
-        mock_session.get_world_mesh.return_value = mock_mesh_data
-        mock_session.get_storage.return_value = MagicMock()
+        mock_mesh_data = types.SimpleNamespace(vertex_count=50)
+        get_world_mesh_calls = []
+        mock_session = types.SimpleNamespace(
+            is_active=True,
+            get_world_mesh=lambda: (get_world_mesh_calls.append(True), mock_mesh_data)[1],
+            get_storage=lambda: object(),
+        )
 
         class DummyRebuildOp:
             def __init__(self):
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
                 self.run_async = False
                 self.enable_ao = True
                 self.mesh_fluids = True
@@ -320,16 +334,17 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 return MOZI_OT_rebuild_mesh.execute(self, ctx)
 
         op = DummyRebuildOp()
+        update_calls = []
 
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
-             patch("MoziToolKit.utils.world.sync_container.update_world_mesh", return_value=(50, 20)) as mock_update_fn:
+             patch("MoziToolKit.utils.world.sync_container.update_world_mesh", lambda *args, **kwargs: (update_calls.append(args), (50, 20))[1]):
 
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
-            mock_session.get_world_mesh.assert_called_once()
-            mock_update_fn.assert_called_once()
+            self.assertEqual(len(get_world_mesh_calls), 1)
+            self.assertEqual(len(update_calls), 1)
 
     def test_rebuild_mesh_live_sync_async_path_resolves_async_task(self):
         """Regression: a later local import must not shadow module-level AsyncTask."""
@@ -349,14 +364,16 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             scene=types.SimpleNamespace(mozi_active_sync_container_name="Yefira_World_Async"),
         )
 
-        mock_session = MagicMock()
-        mock_session.is_active = True
-        mock_session.get_world_mesh.return_value = MagicMock()
-        mock_session.get_storage.return_value = MagicMock()
+        mock_session = types.SimpleNamespace(
+            is_active=True,
+            get_world_mesh=lambda: types.SimpleNamespace(),
+            get_storage=lambda: object(),
+        )
 
         class DummyRebuildOp:
             def __init__(self):
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
                 self.run_async = True
                 self.enable_ao = True
                 self.mesh_fluids = True
@@ -368,15 +385,27 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 return MOZI_OT_rebuild_mesh.execute(self, ctx)
 
         op = DummyRebuildOp()
+        task_calls = []
+        runner_calls = []
+
+        class DummyTask:
+            def __init__(self, *args, **kwargs):
+                task_calls.append((args, kwargs))
+
+        class DummyRunner:
+            def __init__(self, *args, **kwargs):
+                runner_calls.append((args, kwargs))
+            def start(self):
+                return {"RUNNING_MODAL"}
+
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.check_asset_cache_status", return_value="READY"), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=mock_session), \
-             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.AsyncTask") as mock_task, \
-             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.ModalTaskRunner") as mock_runner:
-            mock_runner.return_value.start.return_value = {"RUNNING_MODAL"}
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.AsyncTask", DummyTask), \
+             patch("MoziToolKit.operators.mesh.op_rebuild_mesh.ModalTaskRunner", DummyRunner):
             self.assertEqual(op.execute(context), {"RUNNING_MODAL"})
-            mock_task.assert_called_once()
-            mock_runner.return_value.start.assert_called_once()
+            self.assertEqual(len(task_calls), 1)
+            self.assertEqual(len(runner_calls), 1)
 
     def test_save_container_privacy_and_uuid_registry(self):
         """Verifies that local filesystem absolute paths are scrubbed and registered to privacy UUID registry."""
@@ -386,9 +415,8 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             "data_version": 4189,
             "spawn": (10, 70, 10),
         }
-        mesh_data = MagicMock()
-        mesh_data.used_materials.return_value = []
-        storage = MagicMock()
+        mesh_data = types.SimpleNamespace(used_materials=lambda: [])
+        storage = object()
 
         context = bpy.context
 
@@ -465,7 +493,8 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             # 3. Refresh operator in synchronous mode
             class DummyRefreshOp:
                 def __init__(self):
-                    self.report = MagicMock()
+                    self.reports = []
+                    self.report = lambda *args: self.reports.append(args)
                     self.run_async = False
                     self._runner = None
 
@@ -481,8 +510,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 mode="OBJECT",
             )
 
-            mock_mesh = MagicMock()
-            mock_mesh.used_materials.return_value = []
+            mock_mesh = types.SimpleNamespace(used_materials=lambda: [])
             mock_meta = {
                 "level_name": "RelinkWorld",
                 "version_name": "1.21.4",
@@ -491,7 +519,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             }
             with patch("MoziToolKit.operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
                  patch("MoziToolKit.operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
-                 patch("MoziToolKit.operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, MagicMock(), 5.0)), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.load_and_mesh_minecraft_save", return_value=(mock_mesh, mock_meta, object(), 5.0)), \
                  patch("MoziToolKit.utils.save.hierarchy.inject_mesh_data"), patch("MoziToolKit.utils.save.hierarchy.ensure_world_materials"):
                 res = op.execute(ctx)
                 self.assertEqual(res, {"FINISHED"})

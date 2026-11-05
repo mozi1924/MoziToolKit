@@ -9,8 +9,11 @@ Verifies:
 
 from __future__ import annotations
 
+import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+import bpy
 
 from MoziToolKit.bridge.sync import SyncBridgeSession, get_sync_bridge_session
 from MoziToolKit.bridge.assets.cache import (
@@ -29,147 +32,178 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
 
     def test_atlas_and_model_db_in_memory_memoization(self):
         """Verify load_baked_atlas_from_cache and load_baked_model_database reuse in-memory objects."""
-        mock_cache = MagicMock()
-        mock_atlas = MagicMock()
-        mock_model_db = MagicMock()
-        mock_cache.load_atlas.return_value = mock_atlas
-        mock_cache.load_models.return_value = mock_model_db
+        mock_atlas = object()
+        mock_model_db = object()
+        load_atlas_calls = []
+        load_models_calls = []
+        mock_cache = types.SimpleNamespace(
+            load_atlas=lambda: (load_atlas_calls.append(True), mock_atlas)[1],
+            load_models=lambda: (load_models_calls.append(True), mock_model_db)[1],
+        )
 
         with patch("MoziToolKit.bridge.assets.cache.open_active_asset_cache", return_value=mock_cache), \
-             patch("MoziToolKit.bridge.assets.cache.get_libmtk") as mock_mtk:
-            mock_mtk.return_value = MagicMock()
+             patch("MoziToolKit.bridge.assets.cache.get_libmtk", return_value=types.SimpleNamespace()):
 
             # First load -> calls cache.load_atlas
             atlas1 = load_baked_atlas_from_cache()
             self.assertIs(atlas1, mock_atlas)
-            self.assertEqual(mock_cache.load_atlas.call_count, 1)
+            self.assertEqual(len(load_atlas_calls), 1)
 
             # Second load -> returns cached instance with 0 cache.load_atlas calls
             atlas2 = load_baked_atlas_from_cache()
             self.assertIs(atlas2, mock_atlas)
-            self.assertEqual(mock_cache.load_atlas.call_count, 1)
+            self.assertEqual(len(load_atlas_calls), 1)
 
             # Model DB first load
             mdb1 = load_baked_model_database()
             self.assertIs(mdb1, mock_model_db)
-            self.assertEqual(mock_cache.load_models.call_count, 1)
+            self.assertEqual(len(load_models_calls), 1)
 
             # Model DB second load -> returns cached instance
             mdb2 = load_baked_model_database()
             self.assertIs(mdb2, mock_model_db)
-            self.assertEqual(mock_cache.load_models.call_count, 1)
+            self.assertEqual(len(load_models_calls), 1)
 
             # Invalidate clears memory
             invalidate_asset_cache_memory()
             atlas3 = load_baked_atlas_from_cache()
             self.assertIs(atlas3, mock_atlas)
-            self.assertEqual(mock_cache.load_atlas.call_count, 2)
+            self.assertEqual(len(load_atlas_calls), 2)
 
     def test_sync_timer_tick_avoids_get_storage_on_delta(self):
         """Verify _sync_timer_tick does NOT call session.get_storage() during delta updates."""
         from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
 
-        mock_session = MagicMock(spec=SyncBridgeSession)
-        mock_session.is_active = True
-        mock_session.atlas = MagicMock()
-        mock_mesh = MagicMock()
-        mock_mesh.vertex_count = 100
-        mock_mesh.used_materials.return_value = [0]
+        storage_calls = []
+        mock_atlas = object()
+        mock_mesh = types.SimpleNamespace(vertex_count=100, used_materials=lambda: [0])
+        mock_session = types.SimpleNamespace(
+            is_active=True,
+            atlas=mock_atlas,
+            poll_events=lambda: [
+                {"type": "DELTA_APPLIED", "change_count": 1},
+                {"type": "WORLD_MESH_READY", "mesh": mock_mesh},
+            ],
+            get_storage=lambda: storage_calls.append(True),
+        )
 
-        # Simulate receiving WORLD_MESH_READY without STREAM_FINISHED (i.e. Delta Update)
-        mock_session.poll_events.return_value = [
-            {"type": "DELTA_APPLIED", "change_count": 1},
-            {"type": "WORLD_MESH_READY", "mesh": mock_mesh},
-        ]
+        test_root = bpy.data.objects.new("Sync_Root_Test", None)
+        test_mesh_obj = bpy.data.objects.new("Sync_Mesh_Test", None)
+        bpy.context.collection.objects.link(test_root)
+        bpy.context.collection.objects.link(test_mesh_obj)
 
-        with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
-             patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=MagicMock()), \
-             patch("MoziToolKit.operators.sync.op_sync_connect.get_or_create_world_mesh_object") as mock_get_obj, \
-             patch("MoziToolKit.operators.sync.op_sync_connect.update_world_mesh", return_value=(100, 50)) as mock_update_mesh:
+        update_calls = []
 
-            mock_get_obj.return_value = MagicMock()
-            _sync_timer_tick()
+        try:
+            with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=test_root), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.get_or_create_world_mesh_object", return_value=test_mesh_obj), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.update_world_mesh", lambda *args, **kwargs: (update_calls.append((args, kwargs)), (100, 50))[1]):
 
-            # Critical assertion: get_storage must NOT be called for delta updates
-            mock_session.get_storage.assert_not_called()
+                _sync_timer_tick()
 
-            # update_world_mesh must receive storage=None and atlas=mock_session.atlas
-            mock_update_mesh.assert_called_once()
-            _, kwargs = mock_update_mesh.call_args
-            self.assertIsNone(kwargs.get("storage"))
-            self.assertFalse(kwargs.get("sync_point_cloud"))
-            self.assertIs(kwargs.get("atlas"), mock_session.atlas)
+                # Critical assertion: get_storage must NOT be called for delta updates
+                self.assertEqual(len(storage_calls), 0)
+
+                # update_world_mesh must receive storage=None and atlas=mock_session.atlas
+                self.assertEqual(len(update_calls), 1)
+                args, kwargs = update_calls[0]
+                self.assertIsNone(kwargs.get("storage"))
+                self.assertFalse(kwargs.get("sync_point_cloud"))
+                self.assertIs(kwargs.get("atlas"), mock_atlas)
+        finally:
+            bpy.data.objects.remove(test_mesh_obj)
+            bpy.data.objects.remove(test_root)
 
     def test_sync_timer_tick_calls_get_storage_on_stream_finished(self):
         """Verify _sync_timer_tick calls session.get_storage() only when needs_voxel_sync is True."""
         from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
 
-        mock_session = MagicMock(spec=SyncBridgeSession)
-        mock_session.is_active = True
-        mock_session.atlas = MagicMock()
-        mock_mesh = MagicMock()
-        mock_mesh.vertex_count = 200
-        mock_mesh.used_materials.return_value = [0]
-        mock_storage = MagicMock()
-        mock_session.get_storage.return_value = mock_storage
+        storage_calls = []
+        mock_atlas = object()
+        mock_storage = object()
+        mock_mesh = types.SimpleNamespace(vertex_count=200, used_materials=lambda: [0])
+        mock_session = types.SimpleNamespace(
+            is_active=True,
+            atlas=mock_atlas,
+            poll_events=lambda: [
+                {"type": "STREAM_FINISHED", "built_sections": 5},
+                {"type": "WORLD_MESH_READY", "mesh": mock_mesh},
+            ],
+            get_storage=lambda: (storage_calls.append(True), mock_storage)[1],
+        )
 
-        # Simulate receiving STREAM_FINISHED and WORLD_MESH_READY
-        mock_session.poll_events.return_value = [
-            {"type": "STREAM_FINISHED", "built_sections": 5},
-            {"type": "WORLD_MESH_READY", "mesh": mock_mesh},
-        ]
+        test_root = bpy.data.objects.new("Sync_Root_Finished_Test", None)
+        test_mesh_obj = bpy.data.objects.new("Sync_Mesh_Finished_Test", None)
+        bpy.context.collection.objects.link(test_root)
+        bpy.context.collection.objects.link(test_mesh_obj)
 
-        with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
-             patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=MagicMock()), \
-             patch("MoziToolKit.operators.sync.op_sync_connect.get_or_create_world_mesh_object") as mock_get_obj, \
-             patch("MoziToolKit.operators.sync.op_sync_connect.update_world_mesh", return_value=(200, 100)) as mock_update_mesh:
+        update_calls = []
 
-            mock_get_obj.return_value = MagicMock()
-            _sync_timer_tick()
+        try:
+            with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=test_root), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.get_or_create_world_mesh_object", return_value=test_mesh_obj), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.update_world_mesh", lambda *args, **kwargs: (update_calls.append((args, kwargs)), (200, 100))[1]):
 
-            # get_storage MUST be called when stream finishes to sync companion point cloud
-            mock_session.get_storage.assert_called_once()
-            _, kwargs = mock_update_mesh.call_args
-            self.assertIs(kwargs.get("storage"), mock_storage)
-            self.assertTrue(kwargs.get("sync_point_cloud"))
-            self.assertIs(kwargs.get("atlas"), mock_session.atlas)
+                _sync_timer_tick()
+
+                # get_storage MUST be called when stream finishes to sync companion point cloud
+                self.assertEqual(len(storage_calls), 1)
+                self.assertEqual(len(update_calls), 1)
+                args, kwargs = update_calls[0]
+                self.assertIs(kwargs.get("storage"), mock_storage)
+                self.assertTrue(kwargs.get("sync_point_cloud"))
+                self.assertIs(kwargs.get("atlas"), mock_atlas)
+        finally:
+            bpy.data.objects.remove(test_mesh_obj)
+            bpy.data.objects.remove(test_root)
 
     def test_sync_rebuild_bypasses_check_asset_cache_status_when_session_active(self):
         """Verify MOZI_OT_sync_rebuild_world bypasses check_asset_cache_status when session is active and clean."""
         from MoziToolKit.operators.sync.op_sync_rebuild import MOZI_OT_sync_rebuild_world
 
-        mock_session = MagicMock(spec=SyncBridgeSession)
-        mock_session.is_active = True
-        mock_session.atlas = MagicMock()
-        mock_session.check_and_reload_dirty_cache.return_value = False  # Not dirty
-        mock_session.get_world_mesh.return_value = MagicMock(vertex_count=50)
+        mock_atlas = object()
+        mock_mesh = types.SimpleNamespace(vertex_count=50)
+        mock_session = types.SimpleNamespace(
+            is_active=True,
+            atlas=mock_atlas,
+            check_and_reload_dirty_cache=lambda *args, **kwargs: False,
+            get_world_mesh=lambda: mock_mesh,
+            get_storage=lambda: object(),
+        )
 
         class DummyRebuildOp:
             def __init__(self):
                 self.target_container = ""
                 self.run_async = False
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
 
             def execute(self, ctx):
                 return MOZI_OT_sync_rebuild_world.execute(self, ctx)
 
         op = DummyRebuildOp()
-        mock_context = MagicMock()
+        mock_context = bpy.context
+
+        check_status_calls = []
+        update_calls = []
 
         with patch("MoziToolKit.operators.sync.op_sync_rebuild.get_sync_bridge_session", return_value=mock_session), \
              patch("MoziToolKit.operators.sync.op_sync_rebuild.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("MoziToolKit.operators.sync.op_sync_rebuild.check_asset_cache_status") as mock_check_status, \
+             patch("MoziToolKit.operators.sync.op_sync_rebuild.check_asset_cache_status", lambda *args, **kwargs: check_status_calls.append(True)), \
              patch("MoziToolKit.operators.sync.op_sync_rebuild.get_or_create_world_mesh_object"), \
-             patch("MoziToolKit.operators.sync.op_sync_rebuild.update_world_mesh", return_value=(50, 25)) as mock_update_mesh:
+             patch("MoziToolKit.operators.sync.op_sync_rebuild.update_world_mesh", lambda *args, **kwargs: (update_calls.append((args, kwargs)), (50, 25))[1]):
 
             res = op.execute(mock_context)
             self.assertEqual(res, {'FINISHED'})
 
             # check_asset_cache_status must NOT be called because session is active, has atlas, and is clean!
-            mock_check_status.assert_not_called()
+            self.assertEqual(len(check_status_calls), 0)
 
-            _, kwargs = mock_update_mesh.call_args
-            self.assertIs(kwargs.get("atlas"), mock_session.atlas)
+            self.assertEqual(len(update_calls), 1)
+            args, kwargs = update_calls[0]
+            self.assertIs(kwargs.get("atlas"), mock_atlas)
 
     def test_sync_clear_history_operator(self):
         """Verify MOZI_OT_sync_clear_history defines target_container and clears delta history."""
@@ -178,12 +212,12 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         class DummyClearOp:
             def __init__(self):
                 self.target_container = "World_Container_Test"
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
 
             def execute(self, ctx):
                 return MOZI_OT_sync_clear_history.execute(self, ctx)
 
-        import bpy
         test_empty = bpy.data.objects.new("World_Container_Test", None)
         bpy.context.scene.collection.objects.link(test_empty)
         try:
@@ -207,31 +241,41 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         from MoziToolKit.operators.sync import op_sync_connect
         from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
 
-        mock_session = MagicMock(spec=SyncBridgeSession)
-        mock_session.is_active = True
-        mock_session.atlas = MagicMock()
-        mock_session.poll_events.return_value = [
-            {"type": "DELTA_APPLIED", "change_count": 3},
-        ]
+        mock_atlas = object()
+        mock_session = types.SimpleNamespace(
+            is_active=True,
+            atlas=mock_atlas,
+            poll_events=lambda: [
+                {"type": "DELTA_APPLIED", "change_count": 3},
+            ],
+        )
 
-        with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
-             patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=MagicMock()):
+        test_root = bpy.data.objects.new("Sync_Debounce_Root", None)
+        bpy.context.collection.objects.link(test_root)
 
-            op_sync_connect._pending_cloud_sync_time = None
-            _sync_timer_tick()
+        try:
+            with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
+                 patch("MoziToolKit.operators.sync.op_sync_connect.get_active_sync_container", return_value=test_root):
 
-            # Must have set a debounced timestamp in future
-            self.assertIsNotNone(op_sync_connect._pending_cloud_sync_time)
-            self.assertGreater(op_sync_connect._pending_cloud_sync_time, time.time())
+                op_sync_connect._pending_cloud_sync_time = None
+                _sync_timer_tick()
+
+                # Must have set a debounced timestamp in future
+                self.assertIsNotNone(op_sync_connect._pending_cloud_sync_time)
+                self.assertGreater(op_sync_connect._pending_cloud_sync_time, time.time())
+        finally:
+            bpy.data.objects.remove(test_root)
 
     def test_stored_manifest_imported_on_connect(self):
         """Verify MOZI_OT_sync_connect restores persistent sync manifest into native session."""
         from MoziToolKit.operators.sync import op_sync_connect
         from MoziToolKit.operators.sync.op_sync_connect import MOZI_OT_sync_connect
 
-        mock_session = MagicMock(spec=SyncBridgeSession)
-        mock_session.is_active = False
-        mock_session.start.return_value = True
+        start_calls = []
+        mock_session = types.SimpleNamespace(
+            is_active=False,
+            start=lambda **kwargs: (start_calls.append(kwargs), True)[1],
+        )
 
         import json
         state_json = json.dumps({
@@ -252,13 +296,13 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         class DummyConnectOp:
             def __init__(self):
                 self.target_container = "Yefira_World"
-                self.report = MagicMock()
+                self.reports = []
+                self.report = lambda *args: self.reports.append(args)
 
             def execute(self, ctx):
                 return MOZI_OT_sync_connect.execute(self, ctx)
 
         op = DummyConnectOp()
-        import bpy
 
         real_obj = bpy.data.objects.new("Yefira_World", None)
         for k, v in props.items():
@@ -284,8 +328,8 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
 
                 res = op.execute(bpy.context)
                 self.assertEqual(res, {'FINISHED'})
-                mock_session.start.assert_called_once()
-                kwargs = mock_session.start.call_args[1]
+                self.assertEqual(len(start_calls), 1)
+                kwargs = start_calls[0]
                 self.assertIn("url", kwargs)
         finally:
             bpy.data.objects.remove(real_mesh_obj, do_unlink=True)

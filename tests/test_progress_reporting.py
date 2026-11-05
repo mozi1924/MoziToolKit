@@ -3,7 +3,9 @@ Unit tests for unified progress reporting across bridge, voxel meshing, and Blen
 """
 
 import unittest
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+
+import bpy
 
 from MoziToolKit.bridge.progress import ProgressReport, wrap_progress_callback
 from MoziToolKit.bridge.world import mesh_voxel_storage
@@ -35,40 +37,55 @@ class TestProgressReporting(unittest.TestCase):
         self.assertEqual(received[0].stage, "stage1")
 
     def test_blender_progress_reporter_lifecycle(self):
-        mock_wm = MagicMock()
-        mock_ws = MagicMock()
-        mock_ctx = MagicMock()
-        mock_ctx.window_manager = mock_wm
-        mock_ctx.workspace = mock_ws
+        calls = []
+        dummy_wm = SimpleNamespace(
+            progress_begin=lambda a, b: calls.append(("begin", a, b)),
+            progress_update=lambda v: calls.append(("update", v)),
+            progress_end=lambda: calls.append(("end",)),
+        )
+        dummy_ws = SimpleNamespace(
+            status_text_set=lambda t: calls.append(("status", t)),
+        )
+        dummy_ctx = SimpleNamespace(
+            window_manager=dummy_wm,
+            workspace=dummy_ws,
+        )
 
-        reporter = BlenderProgressReporter(context=mock_ctx, total=100, title="TestSync")
+        reporter = BlenderProgressReporter(context=dummy_ctx, total=100, title="TestSync")
         reporter.start()
-        mock_wm.progress_begin.assert_called_once_with(0, 100)
+        self.assertIn(("begin", 0, 100), calls)
 
         reporter.update(current=50, total=100, message="Halfway")
-        mock_wm.progress_update.assert_called_with(50)
-        mock_ws.status_text_set.assert_called_with("TestSync: Halfway (50/100, 50%)")
+        self.assertIn(("update", 50), calls)
+        self.assertIn(("status", "TestSync: Halfway (50/100, 50%)"), calls)
 
         reporter.close()
-        mock_wm.progress_end.assert_called_once()
-        mock_ws.status_text_set.assert_called_with(None)
+        self.assertIn(("end",), calls)
+        self.assertIn(("status", None), calls)
 
     def test_blender_progress_scope_exception_safety(self):
-        mock_wm = MagicMock()
-        mock_ws = MagicMock()
-        mock_ctx = MagicMock()
-        mock_ctx.window_manager = mock_wm
-        mock_ctx.workspace = mock_ws
+        calls = []
+        dummy_wm = SimpleNamespace(
+            progress_begin=lambda a, b: calls.append(("begin", a, b)),
+            progress_update=lambda v: calls.append(("update", v)),
+            progress_end=lambda: calls.append(("end",)),
+        )
+        dummy_ws = SimpleNamespace(
+            status_text_set=lambda t: calls.append(("status", t)),
+        )
+        dummy_ctx = SimpleNamespace(
+            window_manager=dummy_wm,
+            workspace=dummy_ws,
+        )
 
         try:
-            with blender_progress_scope(context=mock_ctx, total=50, title="Faulty"):
+            with blender_progress_scope(context=dummy_ctx, total=50, title="Faulty"):
                 raise RuntimeError("Simulated crash")
         except RuntimeError:
             pass
 
-        # Verification: Progress end and status clear MUST have been called despite exception
-        mock_wm.progress_end.assert_called_once()
-        mock_ws.status_text_set.assert_called_with(None)
+        self.assertIn(("end",), calls)
+        self.assertIn(("status", None), calls)
 
     def test_voxel_meshing_with_real_physical_progress(self):
         from MoziToolKit.bridge.engine import get_libmtk

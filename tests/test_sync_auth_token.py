@@ -8,16 +8,26 @@ Yefira server to answer `REJECTED("Authentication failed")`.
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from MoziToolKit.bridge.sync import SyncBridgeSession
 
 
 def _start_with_token(token):
     session = SyncBridgeSession()
-    native = MagicMock()
-    mock_mtk = MagicMock()
-    mock_mtk.LiveSyncSession.return_value = native
+    calls = []
+
+    class DummyNative:
+        def start(self, *args, **kwargs):
+            calls.append(kwargs)
+            return True
+
+    dummy_native = DummyNative()
+    from MoziToolKit.bridge.engine import get_libmtk
+    real_mtk = get_libmtk()
+    mock_mtk = SimpleNamespace(**{k: getattr(real_mtk, k) for k in dir(real_mtk)})
+    mock_mtk.LiveSyncSession = lambda *args, **kwargs: dummy_native
 
     with patch("MoziToolKit.bridge.sync.get_libmtk", return_value=mock_mtk), \
          patch("MoziToolKit.bridge.sync.get_cache_fingerprint", return_value="fp"), \
@@ -26,20 +36,18 @@ def _start_with_token(token):
          patch("MoziToolKit.utils.system.get_prefs", return_value=None):
         started = session.start(url="ws://127.0.0.1:8765", auth_token=token, num_threads=1)
 
-    return started, native
+    return started, calls[0] if calls else {}
 
 
 class TestSyncAuthToken(unittest.TestCase):
     def test_token_is_stripped_before_reaching_native(self):
-        started, native = _start_with_token("  secret-token \n")
+        started, kwargs = _start_with_token("  secret-token \n")
         self.assertTrue(started)
-        _, kwargs = native.start.call_args
         self.assertEqual(kwargs.get("auth_token"), "secret-token")
 
     def test_blank_token_is_not_forwarded(self):
-        started, native = _start_with_token("   ")
+        started, kwargs = _start_with_token("   ")
         self.assertTrue(started)
-        _, kwargs = native.start.call_args
         self.assertNotIn("auth_token", kwargs)
 
 

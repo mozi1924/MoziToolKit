@@ -253,16 +253,37 @@ def test_prepare_world_mesh_context_skin_cache(tmp_path, monkeypatch):
 
 def test_save_bridge_skin_cache_dir_propagation(tmp_path, monkeypatch):
     """Verify load_and_mesh_minecraft_save auto-resolves and forwards skin_cache_dir to native core."""
-    from unittest.mock import MagicMock, patch
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from MoziToolKit.bridge.engine import get_libmtk
     from MoziToolKit.bridge.save import load_and_mesh_minecraft_save
 
+    real_mtk = get_libmtk()
     custom_cache = tmp_path / "save_skin_cache"
     monkeypatch.setenv("MOZI_CACHE_DIR", str(custom_cache))
 
-    mock_mtk = MagicMock()
-    mock_mesh = MagicMock()
-    mock_mesh.profile = None
-    mock_mtk.load_and_mesh_minecraft_save.return_value = (mock_mesh, MagicMock(), MagicMock())
+    recorded_calls = []
+    mock_mesh = SimpleNamespace(profile=None)
+    mock_meta = SimpleNamespace(
+        level_name="test",
+        version_name="1.21",
+        data_version=3953,
+        spawn=(0, 64, 0),
+        time=0,
+        day_time=0,
+        hardcore=False,
+        game_type=0,
+        dimensions=["overworld"],
+    )
+
+    def fake_load(*args, **kwargs):
+        recorded_calls.append(kwargs)
+        return mock_mesh, mock_meta, None
+
+    mock_mtk = SimpleNamespace(
+        **{k: getattr(real_mtk, k) for k in dir(real_mtk) if k != "load_and_mesh_minecraft_save"},
+        load_and_mesh_minecraft_save=fake_load,
+    )
 
     with patch("MoziToolKit.bridge.save.require_libmtk", return_value=mock_mtk):
         # 1. When skin_cache_dir is not provided, auto-resolves from cache dir
@@ -274,8 +295,8 @@ def test_save_bridge_skin_cache_dir_propagation(tmp_path, monkeypatch):
             resolve_prefs=False,
             resolve_ctm=False,
         )
-        assert mock_mtk.load_and_mesh_minecraft_save.called
-        kwargs = mock_mtk.load_and_mesh_minecraft_save.call_args.kwargs
+        assert len(recorded_calls) == 1
+        kwargs = recorded_calls[0]
         assert "skin_cache_dir" in kwargs
         assert kwargs["skin_cache_dir"] == str(custom_cache / "skins")
 
@@ -290,7 +311,8 @@ def test_save_bridge_skin_cache_dir_propagation(tmp_path, monkeypatch):
             resolve_prefs=False,
             resolve_ctm=False,
         )
-        kwargs2 = mock_mtk.load_and_mesh_minecraft_save.call_args.kwargs
+        assert len(recorded_calls) == 2
+        kwargs2 = recorded_calls[1]
         assert kwargs2["skin_cache_dir"] == explicit_dir
 
 
