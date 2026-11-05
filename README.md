@@ -30,7 +30,7 @@ MoziToolKit 并非单一孤立插件，而是由三大核心工程紧密协作�
 - **传输协议**：基于全双工 WebSocket 二进制异步流，直连 Minecraft 模组 [**`Yefira`**](https://github.com/mozi1924/yefira)（支持客户端与独立服务端）。
 - **权威协议规范**：遵循 [RFC v3.1: MTK 2.0 Live Sync 协议与架构设计规范](docs/live_sync/live_sync_protocol.md)。
 - **增量网格重构 (Delta Meshing)**：以 16×16×16 Section 为空间单元，仅计算 6 向暴露外表面，提供平滑 4 角环境光遮蔽 (Smooth AO) 与拓扑微距焊接。
-- **状态校验与接缝自愈**：基于 CRC32 校验码实现零重复流量瞬时重连；选区变动或流传输完成时自动触发跨 Section 边界接缝面剔除自愈（Seam Healing）。
+- **状态校验与接缝自愈**：基于 xxHash64 全局状态指纹实现零重复流量瞬时重连；选区变动或流传输完成时自动触发跨 Section 边界接缝面剔除自愈（Seam Healing）。
 - **复合方块解析**：支持定向方块、红石线动力学、流体表面张力四角高度插值及 CTM (Connected Textures Mod) 47-tile 状态解算。
 
 ### 2. 存档直读与体素存储 (Anvil Save Pipeline & Voxel Storage)

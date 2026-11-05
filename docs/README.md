@@ -42,7 +42,7 @@
   - `File -> Export/Import` DCC 交互、纯数据桥梁 `bridge/scene.py` 与无依赖独立渲染。
 - **[实时同步系统架构与数据规范 (Live Sync)](live_sync/live_sync_architecture.md)**：
   - 材质约定体系与自定义属性规范（`mtk:atlas_chunk_id`, `mtk:pack_hash`）。
-  - 连接握手 CRC32 差异校验与已有场景物体智能免重刷机制。
+  - 连接握手 xxHash64 状态指纹差异校验与已有场景物体智能免重刷机制。
   - “刷新数据 (Refresh Data)” 与 “重建网格 (Rebuild Mesh)” 行为边界划分。
   - 内存体素模型（`VoxelStorage`）、场景持久化层级容器（`hierarchy.py`）与操作符全景。
 - **[实时同步协议与架构 RFC v3.1 (Live Sync RFC)](live_sync/live_sync_protocol.md)**：
