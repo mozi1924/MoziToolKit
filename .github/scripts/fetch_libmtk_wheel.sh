@@ -34,12 +34,12 @@ build_from_source() {
   echo "Building libmtk_py from source (${checkout_ref:-main}) -> ${src}"
   if [ -n "$checkout_ref" ]; then
     git clone --depth 1 --branch "$checkout_ref" \
-      https://github.com/mozi1924/libmozitoolkit "$src" || {
-      git clone https://github.com/mozi1924/libmozitoolkit "$src"
+      https://github.com/MoziToolKit/libmozitoolkit "$src" || {
+      git clone https://github.com/MoziToolKit/libmozitoolkit "$src"
       git -C "$src" checkout "$checkout_ref"
     }
   else
-    git clone --depth 1 https://github.com/mozi1924/libmozitoolkit "$src"
+    git clone --depth 1 https://github.com/MoziToolKit/libmozitoolkit "$src"
   fi
   "$PYTHON" -m pip install --upgrade maturin >/dev/null
   (cd "$src" && "$PYTHON" -m maturin build --release --out "$out_dir" -m bindings/mtk-py/Cargo.toml)

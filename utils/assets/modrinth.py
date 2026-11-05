@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional
 logger = logging.getLogger("MoziToolKit.Utils.Assets.Modrinth")
 
 MODRINTH_API_BASE = "https://api.modrinth.com/v2"
-USER_AGENT = "MoziToolKit/1.0.0 (https://github.com/mozi1924/MoziToolKit)"
+USER_AGENT = "MoziToolKit/1.0.0 (https://github.com/MoziToolKit/MoziToolKit)"
 
 
 def default_cache_dir() -> Path:

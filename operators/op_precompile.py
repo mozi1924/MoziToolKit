@@ -187,7 +187,7 @@ class MOZI_OT_open_url(bpy.types.Operator):
     url: bpy.props.StringProperty(
         name="URL",
         description="URL to open",
-        default="https://github.com/mozi1924/MoziToolKit",
+        default="https://github.com/MoziToolKit/MoziToolKit",
     )
 
     def execute(self, context):

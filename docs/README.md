@@ -92,10 +92,10 @@
 ---
 
 ### 6. 底层几何与网络内核 API (libmozitoolkit / libmtk_py)
-- **[Rust 内核 API 总览](https://github.com/mozi1924/libmozitoolkit/blob/main/docs/API_REFERENCE.md)**：跨 crate 的公共 API、错误类型与数据布局。
-- **[Python 绑定设计](https://github.com/mozi1924/libmozitoolkit/blob/main/docs/BINDINGS_DESIGN.md)**：`libmtk_py` 的 Buffer Protocol、零拷贝与 DNA 直写契约。
+- **[Rust 内核 API 总览](https://github.com/MoziToolKit/libmozitoolkit/blob/main/docs/API_REFERENCE.md)**：跨 crate 的公共 API、错误类型与数据布局。
+- **[Python 绑定设计](https://github.com/MoziToolKit/libmozitoolkit/blob/main/docs/BINDINGS_DESIGN.md)**：`libmtk_py` 的 Buffer Protocol、零拷贝与 DNA 直写契约。
 - **Crate 级参考**：
-  - [mtk-core](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-core)、[mtk-voxel](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-voxel)、[mtk-cull](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-cull)
-  - [mtk-model](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-model)、[mtk-texture](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-texture)、[mtk-resource](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-resource)
-  - [mtk-material](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-material)、[mtk-sync](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-sync)、[mtk-save](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/mtk-save)
-  - [libmtk facade](https://github.com/mozi1924/libmozitoolkit/tree/main/crates/libmtk)、[mtk-py bindings](https://github.com/mozi1924/libmozitoolkit/tree/main/bindings/mtk-py)
+  - [mtk-core](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-core)、[mtk-voxel](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-voxel)、[mtk-cull](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-cull)
+  - [mtk-model](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-model)、[mtk-texture](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-texture)、[mtk-resource](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-resource)
+  - [mtk-material](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-material)、[mtk-sync](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-sync)、[mtk-save](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/mtk-save)
+  - [libmtk facade](https://github.com/MoziToolKit/libmozitoolkit/tree/main/crates/libmtk)、[mtk-py bindings](https://github.com/MoziToolKit/libmozitoolkit/tree/main/bindings/mtk-py)

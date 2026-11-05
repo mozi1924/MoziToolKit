@@ -181,7 +181,7 @@ def download_file(url: str, dest_path: Path, token: str | None = None) -> None:
 
 
 def fetch_wheels(
-    repo: str = "mozi1924/libmozitoolkit",
+    repo: str = "MoziToolKit/libmozitoolkit",
     release: str = "ci-latest",
     target_platforms: list[str] | None = None,
     out_dir: Path = Path("wheels"),
@@ -266,8 +266,8 @@ def main():
     parser = argparse.ArgumentParser(description="Fetch precompiled libmtk_py wheels from libmozitoolkit releases.")
     parser.add_argument(
         "--repo",
-        default="mozi1924/libmozitoolkit",
-        help="GitHub repository in owner/repo format (default: mozi1924/libmozitoolkit)",
+        default="MoziToolKit/libmozitoolkit",
+        help="GitHub repository in owner/repo format (default: MoziToolKit/libmozitoolkit)",
     )
     parser.add_argument(
         "--release",
