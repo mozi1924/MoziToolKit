@@ -4,10 +4,7 @@ MoziToolKit File > Export Menu Integration.
 
 from __future__ import annotations
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 
 def menu_func_export(self, context):

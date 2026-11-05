@@ -9,20 +9,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-try:
-    import bpy
-    from bpy.props import (
-        BoolProperty,
-        EnumProperty,
-        IntVectorProperty,
-        PointerProperty,
-    )
-except ImportError:
-    bpy = None
-    BoolProperty = object
-    EnumProperty = object
-    IntVectorProperty = object
-    PointerProperty = object
+import bpy
+from bpy.props import (
+    BoolProperty,
+    EnumProperty,
+    IntVectorProperty,
+    PointerProperty,
+)
 
 from .utils import resolve_save_container
 

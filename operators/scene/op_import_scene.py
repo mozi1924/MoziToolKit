@@ -7,16 +7,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-try:
-    import bpy
-    from bpy.props import BoolProperty, EnumProperty, StringProperty
-    from bpy_extras.io_utils import ImportHelper
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    ImportHelper = object
-    BoolProperty = EnumProperty = StringProperty = lambda **kwargs: None
-    HAS_BPY = False
+import bpy
+from bpy.props import BoolProperty, EnumProperty, StringProperty
+from bpy_extras.io_utils import ImportHelper
 
 from ...bridge.scene import inspect_scene_package, load_and_mesh_scene_package
 from ...utils.scene.hierarchy import apply_imported_scene_to_blender
@@ -140,8 +133,6 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         box_mesh.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
 
     def execute(self, context):
-        if not HAS_BPY:
-            return {"CANCELLED"}
 
         path = Path(self.filepath).resolve()
         if not path.exists() or not path.is_file():

@@ -16,12 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...bridge.mesh import inject_mesh_data
 from ...bridge.world import resolve_dynamic_entity_atlases
@@ -121,8 +116,6 @@ def assemble_voxel_world(req: VoxelWorldAssemblyRequest) -> Dict[str, Any]:
     6. Registers in-memory caches (storage, colormaps) and primes tint types
     7. Stamps metadata custom properties and activates in viewport
     """
-    if not HAS_BPY or bpy is None:
-        return {}
 
     context = req.context or getattr(bpy, "context", None)
     target_coll = req.target_collection or (

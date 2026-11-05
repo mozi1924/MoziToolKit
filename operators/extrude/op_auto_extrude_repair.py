@@ -4,19 +4,8 @@ Operator: Auto Extrude UV Repair on selected/all faces.
 
 from __future__ import annotations
 
-try:
-    import bpy
-    from bpy.props import BoolProperty, EnumProperty, FloatProperty
-except ImportError:
-    bpy = None
-    BoolProperty = EnumProperty = FloatProperty = lambda *args, **kwargs: None
-
-if bpy is None:
-    class _DummyBpyTypes:
-        Operator = object
-    class _DummyBpy:
-        types = _DummyBpyTypes
-    bpy = _DummyBpy()
+import bpy
+from bpy.props import BoolProperty, EnumProperty, FloatProperty
 
 from .properties import UV_MODE_ITEMS
 

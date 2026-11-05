@@ -7,12 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...bridge.engine import get_libmtk
 from ...bridge.point_cloud.constants import MASK_MODIFIER_NAME, VOXEL_VERTEX_GROUP
@@ -32,7 +27,7 @@ def setup_voxel_mask_modifier(
     Sets up Blender's native Mask Modifier ('MASK') on a mesh object to control
     voxel point cloud visibility via vertex group weights and threshold.
     """
-    if not HAS_BPY or obj is None or getattr(obj, "type", "") != "MESH":
+    if obj is None or getattr(obj, "type", "") != "MESH":
         return None
 
     mesh = obj.data
@@ -81,7 +76,7 @@ def set_voxel_mask_threshold(
     modifier_name: str = MASK_MODIFIER_NAME,
 ) -> bool:
     """Sets the threshold (0.0 to 1.0) and optional invert state of the Mask modifier."""
-    if not HAS_BPY or obj is None:
+    if obj is None:
         return False
     mod = obj.modifiers.get(modifier_name)
     if mod is None or mod.type != "MASK":
@@ -102,7 +97,7 @@ def set_voxel_cloud_visibility(
     When hidden (visible=False), the Mask modifier inverts the 1.0 vertex group, hiding all points.
     When shown (visible=True), points are not masked and are fully visible for user editing.
     """
-    if not HAS_BPY or obj is None:
+    if obj is None:
         return False
     # Ensure object itself is not hidden in viewport so the mask can be seen
     if hasattr(obj, "hide_set"):
@@ -125,7 +120,7 @@ def is_voxel_cloud_visible(
     modifier_name: str = MASK_MODIFIER_NAME,
 ) -> bool:
     """Checks whether the voxel cloud is currently visible in the viewport."""
-    if not HAS_BPY or obj is None:
+    if obj is None:
         return False
     if hasattr(obj, "hide_get"):
         try:
@@ -144,7 +139,7 @@ def is_voxel_cloud_visible(
 
 def get_associated_voxel_cloud(mesh_or_obj: Any) -> Optional[Any]:
     """Resolves the associated Voxel Point Cloud object from a world mesh object or vice versa."""
-    if not HAS_BPY or mesh_or_obj is None:
+    if mesh_or_obj is None:
         return None
 
     obj = mesh_or_obj if hasattr(mesh_or_obj, "type") else None
@@ -179,7 +174,7 @@ def get_associated_voxel_cloud(mesh_or_obj: Any) -> Optional[Any]:
 
 def get_associated_parent_mesh(cloud_or_mesh: Any) -> Optional[Any]:
     """Resolves the parent world mesh object from an associated voxel point cloud."""
-    if not HAS_BPY or cloud_or_mesh is None:
+    if cloud_or_mesh is None:
         return None
 
     obj = cloud_or_mesh if hasattr(cloud_or_mesh, "type") else None
@@ -220,7 +215,7 @@ def ensure_voxel_child_cloud(
     Ensures a persistent Voxel Point Cloud mesh object is built and synchronized
     directly under the given parent mesh object as a child.
     """
-    if not HAS_BPY or parent_obj is None or getattr(parent_obj, "type", "") not in ("MESH", "EMPTY"):
+    if parent_obj is None or getattr(parent_obj, "type", "") not in ("MESH", "EMPTY"):
         return None
 
     mtk = get_libmtk()

@@ -11,10 +11,7 @@ import logging
 from contextlib import contextmanager
 from typing import Generator, Optional
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 from ..bridge.progress import ProgressReport
 from ..i18n import format_backend_message, format_progress_title, tr

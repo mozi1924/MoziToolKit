@@ -16,7 +16,8 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -26,13 +27,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = MagicMock()
-    sys.modules["bpy"] = bpy
-    HAS_BPY = False
+import bpy
 
 from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.utils.assets.modrinth import (
@@ -123,9 +118,10 @@ class TestCtmBridge(unittest.TestCase):
         if self.mtk is None or not hasattr(self.mtk, "ResourcePackStack"):
             self.skipTest("libmtk_py ResourcePackStack not available")
 
-        mock_prefs = MagicMock()
-        mock_prefs.resource_pack_path = str(self.synthetic_pack_zip)
-        mock_prefs.resource_packs = []
+        mock_prefs = SimpleNamespace(
+            resource_pack_path=str(self.synthetic_pack_zip),
+            resource_packs=[],
+        )
 
         solver = get_configured_ctm_solver(mock_prefs)
         self.assertIsNotNone(solver)
@@ -215,9 +211,6 @@ class TestCtmBridge(unittest.TestCase):
 
     def test_scene_loading_standalone_materials(self):
         """Verify apply_voxel_mesh_to_blender assigns standalone materials and slots."""
-        if not HAS_BPY:
-            self.skipTest("Live bpy host required for scene material binding test")
-
         if self.mtk is None or not hasattr(self.mtk, "VoxelStorage"):
             self.skipTest("libmtk_py VoxelStorage not available")
 

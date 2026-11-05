@@ -3,17 +3,7 @@ import sys
 import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
-
-PROJECT_ROOT = Path(__file__).parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    HAS_BPY = False
+import bpy
 
 
 class TestAnimatedTexturePipeline(unittest.TestCase):
@@ -39,7 +29,6 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
         )
         self.assertTrue(has_op, "MTK_OT_import_minecraft_save must declare enable_animated_textures")
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_builder_animated_material_node_structure(self):
         try:
             from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
@@ -106,7 +95,6 @@ class TestAnimatedTexturePipeline(unittest.TestCase):
         self.assertNotIn("Animated Frame Blend", static_node_names)
         self.assertIn("Atlas Albedo Texture", static_node_names)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_builder_animated_pbr_blend_node_structure(self):
         try:
             from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material

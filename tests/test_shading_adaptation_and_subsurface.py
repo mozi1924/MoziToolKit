@@ -1,26 +1,11 @@
 import array
 
+import bpy
 import pytest
 
 from MoziToolKit.utils.config.models import MaterialSettings
+from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 from MoziToolKit.utils.materials.builder.shading_config import resolve_material_shading_config
-
-from unittest.mock import MagicMock
-
-try:
-    import bpy
-    HAS_BPY = (
-        not isinstance(bpy, MagicMock)
-        and hasattr(bpy, "data")
-        and hasattr(bpy.data, "meshes")
-        and not isinstance(bpy.data, MagicMock)
-    )
-except ImportError:
-    bpy = None
-    HAS_BPY = False
-
-if HAS_BPY:
-    from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
 
 def test_material_settings_model_serialization():
@@ -100,7 +85,6 @@ def test_template_key_vertex_ao():
     assert key_on != key_off
 
 
-@pytest.mark.skipif(not HAS_BPY, reason="Blender environment required")
 def test_build_atlas_chunk_material_has_no_game_semantic_nodes():
     albedo = (2, 2, array.array("f", [1.0, 1.0, 1.0, 1.0] * 4))
     normal = (2, 2, array.array("f", [0.5, 0.5, 1.0, 1.0] * 4))

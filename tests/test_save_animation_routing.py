@@ -43,6 +43,7 @@ class TestSaveAnimationRouting(unittest.TestCase):
     def test_import_save_async_forwards_animation_disabled(self):
         """op_import_save must forward self.enable_animated_textures=False into the AsyncTask kwargs."""
         from MoziToolKit.operators.save.op_import_save import MTK_OT_import_minecraft_save
+        import bpy
 
         class DummyImportOp:
             def __init__(self):
@@ -64,10 +65,7 @@ class TestSaveAnimationRouting(unittest.TestCase):
                 return MTK_OT_import_minecraft_save.execute(self, ctx)
 
         op = DummyImportOp()
-        ctx = types.SimpleNamespace(
-            collection=MagicMock(),
-            scene=types.SimpleNamespace(),
-        )
+        ctx = bpy.context
 
         mock_path = MagicMock()
         mock_path.is_file.return_value = False
@@ -112,24 +110,24 @@ class TestSaveAnimationRouting(unittest.TestCase):
     def test_refresh_save_async_forwards_animation_disabled(self):
         """op_refresh_save must forward enable_animated_textures=False into the AsyncTask kwargs."""
         from MoziToolKit.operators.save.op_refresh_save import MOZI_OT_refresh_save_mesh
+        import bpy
 
-        save_root = MagicMock()
-        save_root.name = "Save_World_overworld"
-        save_root.get = lambda k, d=None: {
-            "mtk:is_container": True,
-            "mtk:container_type": "SAVE",
-            "mozi_save_uuid": "test-uuid",
-            "mtk_dimension": "overworld",
-            "mtk_min_coord": (-10, 0, -10),
-            "mtk_max_coord": (10, 50, 10),
-            "mtk_enable_ao": True,
-            "mtk_mesh_fluids": True,
-            "mtk_weld_vertices": True,
-            "mtk_origin_centered": True,
-            "mtk_enable_ctm": True,
-            "mtk_enable_animated_textures": False,  # Save was imported with False
-            "mtk_world_name": "TestWorld",
-        }.get(k, d)
+        save_root = bpy.data.objects.new("Save_World_overworld", None)
+        save_root["mtk:is_container"] = True
+        save_root["mtk:container_type"] = "SAVE"
+        save_root["mozi_save_uuid"] = "test-uuid"
+        save_root["mtk_dimension"] = "overworld"
+        save_root["mtk_min_coord"] = (-10, 0, -10)
+        save_root["mtk_max_coord"] = (10, 50, 10)
+        save_root["mtk_enable_ao"] = True
+        save_root["mtk_mesh_fluids"] = True
+        save_root["mtk_weld_vertices"] = True
+        save_root["mtk_origin_centered"] = True
+        save_root["mtk_enable_ctm"] = True
+        save_root["mtk_enable_animated_textures"] = False  # Save was imported with False
+        save_root["mtk_world_name"] = "TestWorld"
+        bpy.context.collection.objects.link(save_root)
+        bpy.context.view_layer.objects.active = save_root
 
         class DummyRefreshOp:
             def __init__(self):
@@ -141,13 +139,7 @@ class TestSaveAnimationRouting(unittest.TestCase):
                 return MOZI_OT_refresh_save_mesh.execute(self, ctx)
 
         op = DummyRefreshOp()
-        ctx = types.SimpleNamespace(
-            active_object=save_root,
-            selected_objects=[save_root],
-            collection=MagicMock(),
-            view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=save_root)),
-            mode="OBJECT",
-        )
+        ctx = bpy.context
 
         prefs = types.SimpleNamespace(
             thread_count=2,
@@ -166,30 +158,32 @@ class TestSaveAnimationRouting(unittest.TestCase):
         mock_world_dir.exists.return_value = True
         mock_reg.get_world_dir.return_value = mock_world_dir
 
-        with patch("MoziToolKit.operators.save.op_refresh_save.get_save_registry", return_value=mock_reg), \
-             patch("MoziToolKit.operators.save.op_refresh_save.get_save_properties", return_value=None), \
-             patch("MoziToolKit.operators.save.op_refresh_save.get_prefs", return_value=prefs), \
-             patch("MoziToolKit.operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
-             patch("MoziToolKit.operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
-             patch("MoziToolKit.operators.save.op_refresh_save.prepare_asset_context", return_value={}), \
-             patch("MoziToolKit.operators.save.op_refresh_save.prepare_world_mesh_context", return_value={
-                 "model_db": MagicMock(),
-                 "atlas": MagicMock(),
-                 "biome_resolver": MagicMock(),
-                 "ctm_solver": None,
-                 "num_threads": 2,
-                 "enable_animated_textures": False,
-                 "skin_cache_dir": None,
-                 "cache_package_path": None,
-             }), \
-             patch("MoziToolKit.operators.save.op_refresh_save.ModalTaskRunner.__init__", fake_runner_init):
+        try:
+            with patch("MoziToolKit.operators.save.op_refresh_save.get_save_registry", return_value=mock_reg), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.get_save_properties", return_value=None), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.get_prefs", return_value=prefs), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.can_execute_asset_pipeline", return_value=(True, "")), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.check_asset_cache_status", return_value="READY"), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.prepare_asset_context", return_value={}), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.prepare_world_mesh_context", return_value={
+                     "model_db": MagicMock(),
+                     "atlas": MagicMock(),
+                     "biome_resolver": MagicMock(),
+                     "ctm_solver": None,
+                     "num_threads": 2,
+                     "enable_animated_textures": False,
+                     "skin_cache_dir": None,
+                     "cache_package_path": None,
+                 }), \
+                 patch("MoziToolKit.operators.save.op_refresh_save.ModalTaskRunner.__init__", fake_runner_init):
 
-            res = op.execute(ctx)
-            self.assertEqual(res, {"RUNNING_MODAL"})
-            self.assertIsNotNone(captured_task)
-            task_kwargs = captured_task.kwargs["target_kwargs"]
-            # Must be False, NOT prefs' True
-            self.assertFalse(task_kwargs["enable_animated_textures"])
+                res = op.execute(ctx)
+                self.assertEqual(res, {"RUNNING_MODAL"})
+                self.assertIsNotNone(captured_task)
+                task_kwargs = captured_task.kwargs["target_kwargs"]
+                self.assertFalse(task_kwargs["enable_animated_textures"])
+        finally:
+            bpy.data.objects.remove(save_root)
 
     def test_sync_client_forwards_enable_animated_textures(self):
         """SyncBridgeSession start and start_with_cache must forward enable_animated_textures to MesherConfig."""
@@ -214,48 +208,51 @@ class TestSaveAnimationRouting(unittest.TestCase):
 
     def test_ensure_world_materials_cleans_unused_slots_when_requested(self):
         """ensure_world_materials with clean_unused_slots=True prunes unreferenced material slots."""
-        test_mesh = MagicMock()
-        test_mesh.polygons = [MagicMock(), MagicMock()]
-        test_mesh.attributes = {}
+        import bpy
 
-        mat0 = MagicMock()
-        mat0.name = "MTK:Atlas:blocks:001"
-        mat0.get = lambda k, d=None: 0 if k == "mtk_atlas_chunk_id" else None
-        mat0.node_tree = MagicMock()
-        mat0.node_tree.nodes = [MagicMock()]
+        test_mesh = bpy.data.meshes.new("test_clean_slots_mesh")
+        verts = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (3, 0, 0), (3, 1, 0), (2, 1, 0)]
+        faces = [(0, 1, 2, 3), (4, 5, 6, 7)]
+        test_mesh.from_pydata(verts, [], faces)
+        test_mesh.update()
 
-        mat1_anim = MagicMock()
-        mat1_anim.name = "MTK:Atlas:blocks:anim:001"
-        mat1_anim.get = lambda k, d=None: 1 if k == "mtk_atlas_chunk_id" else None
-        mat1_anim.node_tree = MagicMock()
-        mat1_anim.node_tree.nodes = [MagicMock()]
+        mat0 = bpy.data.materials.new("MTK:Atlas:blocks:001")
+        mat0["mtk_atlas_chunk_id"] = 0
+        mat1_anim = bpy.data.materials.new("MTK:Atlas:blocks:anim:001")
+        mat1_anim["mtk_atlas_chunk_id"] = 1
 
-        test_mesh.materials = [mat0, mat1_anim]
+        test_mesh.materials.append(mat0)
+        test_mesh.materials.append(mat1_anim)
 
-        test_obj = MagicMock()
-        test_obj.type = "MESH"
-        test_obj.data = test_mesh
+        test_obj = bpy.data.objects.new("test_clean_slots_obj", test_mesh)
+        bpy.context.collection.objects.link(test_obj)
 
         # When used_chunk_ids is [0] (only static chunk), and clean_unused_slots=True:
         # It must not use the subset fast-path that leaves mat1_anim in test_mesh.materials.
-        with patch("MoziToolKit.utils.materials.builder.world_binding.ensure_atlas_textures_extracted") as mock_dir, \
-             patch("MoziToolKit.utils.materials.builder.world_binding.load_baked_atlas_from_cache") as mock_atlas:
-            mock_dir.return_value = MagicMock()
-            mock_dir.return_value.__truediv__.return_value.exists.return_value = False
-            mock_atlas_obj = MagicMock()
-            mock_atlas_obj.get_chunk_info.side_effect = lambda cid: {
-                "chunk_id": cid,
-                "category": "blocks",
-                "category_chunk_index": cid + 1,
-                "is_animated": False,
-            }
-            mock_atlas.return_value = mock_atlas_obj
+        try:
+            with patch("MoziToolKit.utils.materials.builder.world_binding.ensure_atlas_textures_extracted") as mock_dir, \
+                 patch("MoziToolKit.utils.materials.builder.world_binding.load_baked_atlas_from_cache") as mock_atlas:
+                mock_dir.return_value = MagicMock()
+                mock_dir.return_value.__truediv__.return_value.exists.return_value = False
+                mock_atlas_obj = MagicMock()
+                mock_atlas_obj.get_chunk_info.side_effect = lambda cid: {
+                    "chunk_id": cid,
+                    "category": "blocks",
+                    "category_chunk_index": cid + 1,
+                    "is_animated": False,
+                }
+                mock_atlas.return_value = mock_atlas_obj
 
-            ensure_world_materials(test_obj, used_chunk_ids=[0], clean_unused_slots=True)
+                ensure_world_materials(test_obj, used_chunk_ids=[0], clean_unused_slots=True)
 
-            # test_mesh.materials must now contain ONLY 1 slot (mat0) and mat1_anim removed!
-            self.assertEqual(len(test_mesh.materials), 1)
-            self.assertNotIn(mat1_anim, test_mesh.materials)
+                # test_mesh.materials must now contain ONLY 1 slot (mat0) and mat1_anim removed!
+                self.assertEqual(len(test_mesh.materials), 1)
+                self.assertNotIn(mat1_anim, [s.material for s in test_obj.material_slots if s.material])
+        finally:
+            bpy.data.objects.remove(test_obj)
+            bpy.data.meshes.remove(test_mesh)
+            bpy.data.materials.remove(mat0)
+            bpy.data.materials.remove(mat1_anim)
 
 
 if __name__ == "__main__":

@@ -11,32 +11,9 @@ Verifies that libmtk voxel meshing matches MoziToolKit requirements:
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
-
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_DIR.parent
-libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
-
-for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data")
-except ImportError:
-    bpy = MagicMock()
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = MagicMock()
-    sys.modules["bpy.types"] = MagicMock()
-    sys.modules["bpy.app"] = MagicMock()
-    HAS_BPY = False
-
-if "bmesh" not in sys.modules:
-    sys.modules["bmesh"] = MagicMock()
+import bpy
+import bmesh
+import mathutils
 
 try:
     import libmtk_py as mtk_py

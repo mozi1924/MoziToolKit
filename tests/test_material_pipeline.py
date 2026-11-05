@@ -21,16 +21,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
         sys.path.insert(0, p)
 
 
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = MagicMock()
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = MagicMock()
-    sys.modules["bpy.types"] = MagicMock()
-    sys.modules["bpy.app"] = MagicMock()
-    HAS_BPY = False
+import bpy
 
 from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 from MoziToolKit.utils.materials.pipeline import (
@@ -48,14 +39,11 @@ RETIRED_COLORMAP_UV = "mtk_colormap_uv"
 
 def _write_dummy_png(path: Path):
     """Helper to write a valid PNG file."""
-    if HAS_BPY:
-        img = bpy.data.images.new(path.name, width=16, height=16)
-        img.filepath_raw = str(path)
-        img.file_format = 'PNG'
-        img.save()
-        bpy.data.images.remove(img)
-    else:
-        path.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+    img = bpy.data.images.new(path.name, width=16, height=16)
+    img.filepath_raw = str(path)
+    img.file_format = 'PNG'
+    img.save()
+    bpy.data.images.remove(img)
 
 
 def _read_loop_uvs(layer):
@@ -66,22 +54,19 @@ def _read_loop_uvs(layer):
 class TestMaterialPipeline(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if HAS_BPY:
-            import MoziToolKit.ui as ui
-            import MoziToolKit.ui.panel_biome
-            ui.panel_biome.register()
+        import MoziToolKit.ui as ui
+        import MoziToolKit.ui.panel_biome
+        ui.panel_biome.register()
 
     @classmethod
     def tearDownClass(cls):
-        if HAS_BPY:
-            import MoziToolKit.ui as ui
-            import MoziToolKit.ui.panel_biome
-            try:
-                ui.panel_biome.unregister()
-            except Exception:
-                pass
+        import MoziToolKit.ui as ui
+        import MoziToolKit.ui.panel_biome
+        try:
+            ui.panel_biome.unregister()
+        except Exception:
+            pass
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_construction_in_blender(self):
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -121,7 +106,6 @@ class TestMaterialPipeline(unittest.TestCase):
             if "blocks_chunk_001.png" in bpy.data.images:
                 bpy.data.images.remove(bpy.data.images["blocks_chunk_001.png"])
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_atlas_chunk_material_with_overlay_in_blender(self):
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -167,7 +151,6 @@ class TestMaterialPipeline(unittest.TestCase):
                 if img_n in bpy.data.images:
                     bpy.data.images.remove(bpy.data.images[img_n])
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_end_to_end_material_replacement_and_provenance(self):
         # Create a test cube in Blender
         bpy.ops.mesh.primitive_cube_add(size=2.0)
@@ -279,7 +262,6 @@ class TestMaterialPipeline(unittest.TestCase):
 
 
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_multi_uv_atlas_layer_roundtrip(self):
         """Local UVs stay untouched; atlas UVs live in MTK_Atlas and are reused when the layout is unchanged."""
         bpy.ops.mesh.primitive_cube_add(size=2.0)
@@ -385,7 +367,6 @@ class TestMaterialPipeline(unittest.TestCase):
                 self.assertEqual(_read_loop_uvs(obj.data.uv_layers["UVMap"]), local_before)
                 self.assertEqual(obj.data["mtk:atlas_layout_hash"], "v1:layout-changed")
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_secondary_replacement_with_hashed_mtk_materials(self):
         # Create a test cube in Blender with hashed MTK material (mimicking previously processed map)
         bpy.ops.mesh.primitive_cube_add(size=2.0)
@@ -468,7 +449,6 @@ class TestMaterialPipeline(unittest.TestCase):
                 tint_cols = [list(d.color) for d in mesh.attributes[ATTR_BIOME_TINT_COLOR].data]
                 self.assertEqual(tint_cols[0], [0.0, 1.0, 0.0, 1.0])
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_memory_image_pixel_orientation_matches_blender_convention(self):
         """
         Verify that in-memory image streaming via get_or_create_image_from_rgba
@@ -532,7 +512,6 @@ class TestMaterialPipeline(unittest.TestCase):
             bpy.data.images.remove(file_img)
             bpy.data.images.remove(mem_img)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_f32_memory_image_pixel_orientation_matches_blender_convention(self):
         """
         Verify that direct float32 streaming via get_or_create_image_from_f32
@@ -597,39 +576,35 @@ class TestMaterialPipeline(unittest.TestCase):
     def test_extract_face_material_palette_context(self):
         """Verify extract_face_material_palette_context builds palette via bridge."""
         from MoziToolKit.utils.materials.pipeline import extract_face_material_palette_context
-        import numpy as np
 
-        mesh = MagicMock()
-        class Polys:
-            def __len__(self): return 2
-            def foreach_get(self, attr, buf):
-                if attr == "material_index":
-                    buf[:] = [0, 1]
-                elif attr == "loop_start":
-                    buf[:] = [0, 4]
-                elif attr == "loop_total":
-                    buf[:] = [4, 4]
-        mesh.polygons = Polys()
-        class Loops:
-            def __len__(self): return 8
-        mesh.loops = Loops()
+        mesh = bpy.data.meshes.new("test_face_mat_ctx")
+        verts = [
+            (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+            (2, 0, 0), (3, 0, 0), (3, 1, 0), (2, 1, 0),
+        ]
+        faces = [(0, 1, 2, 3), (4, 5, 6, 7)]
+        mesh.from_pydata(verts, [], faces)
+        mesh.update()
 
-        slot0 = MagicMock()
-        slot0.name = "minecraft:stone"
-        slot0.get.return_value = ""
-        slot1 = MagicMock()
-        slot1.name = "minecraft:dirt"
-        slot1.get.return_value = ""
-        mesh.materials = [slot0, slot1]
-        mesh.uv_layers = MagicMock()
-        mesh.attributes = {}
+        mat0 = bpy.data.materials.new("minecraft:stone")
+        mat1 = bpy.data.materials.new("minecraft:dirt")
+        mesh.materials.append(mat0)
+        mesh.materials.append(mat1)
+        mesh.polygons[0].material_index = 0
+        mesh.polygons[1].material_index = 1
+        mesh.uv_layers.new(name="UVMap")
 
-        palette, indices, face_loop_ranges, loop_uvs, uv_layer, existing_key_palette, existing_key_indices = (
-            extract_face_material_palette_context(mesh)
-        )
-        self.assertEqual(palette, ["minecraft:stone", "minecraft:dirt"])
-        self.assertEqual(list(indices), [0, 1])
-        self.assertEqual(face_loop_ranges, [(0, 4), (4, 4)])
+        try:
+            palette, indices, face_loop_ranges, loop_uvs, uv_layer, existing_key_palette, existing_key_indices = (
+                extract_face_material_palette_context(mesh)
+            )
+            self.assertEqual(palette, ["minecraft:stone", "minecraft:dirt"])
+            self.assertEqual(list(indices), [0, 1])
+            self.assertEqual(face_loop_ranges, [(0, 4), (4, 4)])
+        finally:
+            bpy.data.meshes.remove(mesh)
+            bpy.data.materials.remove(mat0)
+            bpy.data.materials.remove(mat1)
 
     def test_jmc2obj_strips_exporter_biome_suffixes(self):
         """The jmc2obj candidate generator strips exporter biome suffixes in Python."""

@@ -184,39 +184,22 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 return MOZI_OT_sync_clear_history.execute(self, ctx)
 
         import bpy
-        is_mock_bpy = isinstance(bpy, MagicMock) or "Mock" in type(bpy).__name__ or str(type(bpy)).endswith("MagicMock'>")
-        if not is_mock_bpy:
-            test_empty = bpy.data.objects.new("World_Container_Test", None)
-            bpy.context.scene.collection.objects.link(test_empty)
-            try:
-                if hasattr(test_empty, "mozi_sync"):
-                    item = test_empty.mozi_sync.delta_history.add()
-                    item.pos_str = "Delta #1"
-                    self.assertGreaterEqual(len(test_empty.mozi_sync.delta_history), 1)
+        test_empty = bpy.data.objects.new("World_Container_Test", None)
+        bpy.context.scene.collection.objects.link(test_empty)
+        try:
+            if hasattr(test_empty, "mozi_sync"):
+                item = test_empty.mozi_sync.delta_history.add()
+                item.pos_str = "Delta #1"
+                self.assertGreaterEqual(len(test_empty.mozi_sync.delta_history), 1)
 
-                op = DummyClearOp()
-                res = op.execute(bpy.context)
-                self.assertEqual(res, {'FINISHED'})
-
-                if hasattr(test_empty, "mozi_sync"):
-                    self.assertEqual(len(test_empty.mozi_sync.delta_history), 0)
-            finally:
-                bpy.data.objects.remove(test_empty)
-        else:
-            mock_obj = MagicMock()
-            mock_obj.mozi_sync.delta_history = MagicMock()
-            mock_context = MagicMock()
-            mock_context.scene.mozi_sync.delta_history = MagicMock()
             op = DummyClearOp()
-            orig_objects = getattr(bpy.data, "objects", None)
-            try:
-                bpy.data.objects = {"World_Container_Test": mock_obj}
-                res = op.execute(mock_context)
-                self.assertEqual(res, {'FINISHED'})
-                mock_obj.mozi_sync.delta_history.clear.assert_called_once()
-                mock_context.scene.mozi_sync.delta_history.clear.assert_called_once()
-            finally:
-                bpy.data.objects = orig_objects
+            res = op.execute(bpy.context)
+            self.assertEqual(res, {'FINISHED'})
+
+            if hasattr(test_empty, "mozi_sync"):
+                self.assertEqual(len(test_empty.mozi_sync.delta_history), 0)
+        finally:
+            bpy.data.objects.remove(test_empty)
 
     def test_delta_applied_schedules_debounced_point_cloud_update(self):
         """Verify DELTA_APPLIED schedules debounced point cloud synchronization."""
@@ -250,8 +233,6 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
         mock_session.is_active = False
         mock_session.start.return_value = True
 
-        mock_container = MagicMock()
-        mock_container.name = "Yefira_World"
         import json
         state_json = json.dumps({
             "server_uuid": "12345678123456781234567812345678",
@@ -267,11 +248,6 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
             "mtk_sync_state_json": state_json,
             "mtk_sync_user_modified": False,
         }
-        mock_container.get.side_effect = lambda k, d=None: props.get(k, d)
-        mock_mesh = MagicMock()
-        mock_mesh.type = "MESH"
-        mock_mesh.data.vertices = [object()]
-        mock_container.children = [mock_mesh]
 
         class DummyConnectOp:
             def __init__(self):
@@ -282,15 +258,20 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                 return MOZI_OT_sync_connect.execute(self, ctx)
 
         op = DummyConnectOp()
-        mock_context = MagicMock()
-        mock_context.scene.mozi_active_sync_container_name = "Yefira_World"
-
         import bpy
-        has_real_bpy = hasattr(bpy, "data") and hasattr(bpy.data, "objects") and not isinstance(bpy, MagicMock)
 
-        real_obj = None
-        real_mesh_obj = None
-        orig_objects = getattr(bpy.data, "objects", None)
+        real_obj = bpy.data.objects.new("Yefira_World", None)
+        for k, v in props.items():
+            real_obj[k] = v
+        bpy.context.collection.objects.link(real_obj)
+
+        mesh = bpy.data.meshes.new("Yefira_World_Mesh")
+        mesh.from_pydata([(0.0, 0.0, 0.0)], [], [])
+        real_mesh_obj = bpy.data.objects.new("Yefira_World_Mesh", mesh)
+        real_mesh_obj["mtk:is_yefira_mesh"] = True
+        real_mesh_obj.parent = real_obj
+        bpy.context.collection.objects.link(real_mesh_obj)
+
         try:
             with patch("MoziToolKit.operators.sync.op_sync_connect.get_sync_bridge_session", return_value=mock_session), \
                  patch("MoziToolKit.operators.sync.op_sync_connect.can_execute_asset_pipeline", return_value=(True, "")), \
@@ -301,34 +282,14 @@ class TestSyncIncrementalFastPath(unittest.TestCase):
                  patch("MoziToolKit.operators.sync.op_sync_connect.load_biome_resolver_from_cache", return_value=None), \
                  patch("MoziToolKit.operators.sync.op_sync_connect.start_sync_timer"):
 
-                if has_real_bpy:
-                    real_obj = bpy.data.objects.new("Yefira_World", None)
-                    for k, v in props.items():
-                        real_obj[k] = v
-                    bpy.context.collection.objects.link(real_obj)
-
-                    mesh = bpy.data.meshes.new("Yefira_World_Mesh")
-                    mesh.from_pydata([(0.0, 0.0, 0.0)], [], [])
-                    real_mesh_obj = bpy.data.objects.new("Yefira_World_Mesh", mesh)
-                    real_mesh_obj["mtk:is_yefira_mesh"] = True
-                    real_mesh_obj.parent = real_obj
-                    bpy.context.collection.objects.link(real_mesh_obj)
-                else:
-                    bpy.data.objects = {"Yefira_World": mock_container}
-
-                # Connect initiates native session
-                res = op.execute(mock_context)
+                res = op.execute(bpy.context)
                 self.assertEqual(res, {'FINISHED'})
                 mock_session.start.assert_called_once()
                 kwargs = mock_session.start.call_args[1]
                 self.assertIn("url", kwargs)
         finally:
-            if has_real_bpy and real_obj is not None:
-                if real_mesh_obj is not None:
-                    bpy.data.objects.remove(real_mesh_obj, do_unlink=True)
-                bpy.data.objects.remove(real_obj, do_unlink=True)
-            elif not has_real_bpy:
-                bpy.data.objects = orig_objects
+            bpy.data.objects.remove(real_mesh_obj, do_unlink=True)
+            bpy.data.objects.remove(real_obj, do_unlink=True)
 
 
 if __name__ == "__main__":

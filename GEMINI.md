@@ -6,7 +6,11 @@
 
 ## 1. 项目定位与协同拓扑
 
-- **本工作区职责**：基于 Blender 4.2+ 的 DCC 插件前端，负责 UI 交互、操作符 (Operators)、标准 PBR 着色器节点构建、场景装配与 Save/Sync/.mtkscene 编排。
+- **本工作区职责**：基于 Blender 4.2+ / 5.x LTS 的 DCC 插件前端，负责 UI 交互、操作符 (Operators)、标准 PBR 着色器节点构建、场景装配与 Save/Sync/.mtkscene 编排。
+- **纯粹插件前端定位 (No Third-Party Consumers)**：
+  - MoziToolKit 是纯正的 Blender 插件前端，**没有任何第三方外部 Python 消费者**；
+  - 胶水层 (`bridge/`, `utils/`, `operators/`) 完全依托 Blender 宿主运行，**不需要也不支持脱离 Blender 运行，无需稳定 ABI**；
+  - 严禁为了“脱离 Blender 运行”或“兼容旧版本历史废弃设计”保留任何 legacy 实现、冗余兼容层或过渡 shim。
 - **协同边界**：
   - 底层计算消费相对路径 `../libmozitoolkit` 产出的原生绑定 (`libmtk_py` / `libmtk_blender_dna`)；
   - 实时世界协同对接相对路径 `../yefira` 服务端 (RFC v3.1)。
@@ -41,7 +45,7 @@
 - **禁止废弃 API**：严禁编写 `mat.use_nodes = True`（5.2 废弃，6.0 移除），必须直接操作/判断 `mat.node_tree`。
 - **现代节点**：严禁使用 `ShaderNodeMixRGB`，统一使用 modern `ShaderNodeMix` (`data_type='RGBA'`)。
 - **结构体属性只读**：在真实 Blender 中，`Object.type` 是只读属性（在创建时由 `bpy.data.objects.new(name, data)` 自动确定，传入 `None` 为 `"EMPTY"`，传入 mesh 数据块为 `"MESH"`），严禁对其进行直接赋值。
-- **操作符架构与测试规范**：复杂操作符必须采用独立子包架构（如 `operators/scene/`、`operators/extrude/`、`operators/sync/`），严禁巨石单文件。测试中由于 Blender `bpy.types.Operator` 无法直接实例化，统一采用 `MOZI_OT_xxx.execute(mock_op, context)` 模式。
+- **操作符架构规范**：复杂操作符必须采用独立子包架构（如 `operators/scene/`、`operators/extrude/`、`operators/sync/`），严禁巨石单文件。测试中由于 Blender `bpy.types.Operator` 无法直接实例化，统一采用 `MOZI_OT_xxx.execute(mock_op, context)` 模式。
 
 ### 规则 7：RFC v3.1 协议与权威资产门禁
 - Live Sync 严格遵循 RFC v3.1 契约、服务端权威机制与状态机。
@@ -50,6 +54,12 @@
 ### 规则 8：场景交换格式 (.mtkscene) 与伴生体素点云
 - **自包含场景包**：`.mtkscene` 作为中间场景交换格式，内含紧凑稀疏体素 (Sparse Voxels)、按需裁剪装箱的自包含 Mini-Atlas (含 UV 自动重映射)、Tree-Shaken 方块模型库，实现脱离原版资源的独立便携共享。
 - **伴生体素点云 (Voxel Point Cloud)**：几何网格与体素数据通过 companion point cloud 建立 0ms 快速链接（标识属性 `mtk:is_voxel_cloud`），支持非破坏性视口遮罩与体素雕刻。
+
+### 规则 9：全面废除 Mock 测试，统一 Blender 宿主验证 (100% Real Blender Test, No Magic Mock)
+- **严禁使用 MagicMock 伪造 Blender**：严禁在测试中通过 `unittest.mock.MagicMock` 伪造 `bpy`、`bmesh`、`mathutils`、`bpy_extras` 或 Blender 内部对象（`Object`、`Mesh`、`Material`、`Scene`、`Modifier` 等）。
+- **统一在真实 Blender 宿主内运行**：所有测试必须且只能在 Blender 5.x LTS 宿主环境中执行（`blender --background --python tests/run_tests.py`）。脱离 Blender 的单体运行直接报错拒绝。
+- **严禁手写伪造对象**：严禁编写 `MockObject`、`MockModifier`、`MockMeshesDict` 等模拟类，所有测试均使用原生 `bpy.data.objects.new`、`bpy.data.meshes.new` 等 Blender 真实 API 进行场景装配与断言。
+- **坚决剔除 Legacy 兼容层**：前端胶水层绝不迎合脱离 Blender 的使用场景，无用的 legacy 垫片、fallback 分支和冗余判断一律坚决物理清理。
 
 ---
 
@@ -75,29 +85,25 @@ MoziToolKit/
 │   ├── point_cloud/      -> 伴生点云层级、修改器与遮罩管理
 │   └── ...
 ├── docs/                 -> 架构手册与 RFC 协议文档
-└── tests/                -> 自动化测试套件
+└── tests/                -> 自动化测试套件 (统一在真实 Blender 宿主下运行)
 ```
 
 ---
 
 ## 4. 测试与验证门禁
 
-所有测试命令均基于 `uv` 虚拟环境与相对路径执行，杜绝全局 Python 污染：
+所有测试命令均在 Blender 5.x LTS 宿主环境中通过 `uv` 虚拟环境支持执行，杜绝 Mock 与全局 Python 污染：
 
-- **Mock 快速测试（CI 默认门禁）**：
+- **Blender 宿主环境全套测试（唯一权威测试门禁）**：
+  通过 `uv run python` 解析虚拟环境的 `site-packages`，确保 Blender 内置 Python 能加载 `pytest` 等依赖：
   ```bash
-  # 全套测试
-  uv run pytest tests/ -q
-
-  # 运行指定测试用例
-  uv run pytest tests/test_scene_interchange.py -q
-  ```
-
-- **Blender 宿主环境测试（真实 bpy，5.x LTS）**：
-  必须通过 `uv run python` 解析虚拟环境的 `site-packages`，确保 Blender 内置 Python 能加载 `pytest` 等依赖：
-  ```bash
+  # 全套测试 (真实 Blender 5.x 环境)
   MTK_TEST_SITE_PACKAGES="$(uv run python -c 'import site; print(site.getsitepackages()[0])')" \
     blender --background --python tests/run_tests.py -- -q
+
+  # 运行指定测试用例
+  MTK_TEST_SITE_PACKAGES="$(uv run python -c 'import site; print(site.getsitepackages()[0])')" \
+    blender --background --python tests/run_tests.py -- -q tests/test_scene_interchange.py
   ```
 
 - **Rust 原生模块热更新验证**：

@@ -5,68 +5,11 @@ Tests for Context Menu Registration and Dynamic Rendering.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_DIR.parent
-libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
-
-for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-try:
-    import bpy
-    import bpy_extras
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = MagicMock()
-    import types
-    bpy_extras = types.ModuleType("bpy_extras")
-    bpy_extras.__path__ = []
-
-    class _MockOperator: pass
-    class _MockPanel: pass
-    class _MockMenu: pass
-    class _MockPropertyGroup: pass
-    class _MockUIList: pass
-    class _MockAddonPreferences: pass
-    class _MockExportHelper: pass
-    class _MockImportHelper: pass
-
-    class _MockTypes:
-        Operator = _MockOperator
-        Panel = _MockPanel
-        Menu = _MockMenu
-        PropertyGroup = _MockPropertyGroup
-        UIList = _MockUIList
-        AddonPreferences = _MockAddonPreferences
-
-    class _MockIoUtils:
-        ExportHelper = _MockExportHelper
-        ImportHelper = _MockImportHelper
-
-    io_utils_mod = types.ModuleType("bpy_extras.io_utils")
-    io_utils_mod.ExportHelper = _MockExportHelper
-    io_utils_mod.ImportHelper = _MockImportHelper
-
-    bpy.types = _MockTypes
-    bpy.app = MagicMock()
-    bpy.props = MagicMock()
-    bpy_extras.io_utils = io_utils_mod
-
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = bpy.props
-    sys.modules["bpy.types"] = _MockTypes
-    sys.modules["bpy.app"] = bpy.app
-    sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = io_utils_mod
-    HAS_BPY = False
-
-if HAS_BPY:
-    import MoziToolKit.ui as ui
-else:
-    ui = None
+import bpy
+import bpy_extras
+import MoziToolKit.ui as ui
 
 from MoziToolKit.utils.system.menu_registry import (
     draw_dynamic_menu,
@@ -155,37 +98,48 @@ class TestMenuRegistration(unittest.TestCase):
         from MoziToolKit.operators.mesh import resolve_mesh_rebuild_targets, MOZI_OT_rebuild_mesh
 
         # A standalone external mesh with provenance has no voxel source.
-        mock_obj_prov = MagicMock(type="MESH")
-        mock_obj_prov.name = "Character_Hair"
-        mock_obj_prov.get.return_value = None
-        mock_obj_prov.parent = None
-        mock_obj_prov.data.attributes = {"mtk_source_texture_key": MagicMock()}
-        mock_context = MagicMock()
-        mock_context.active_object = mock_obj_prov
-        mock_context.selected_objects = [mock_obj_prov]
+        mesh = bpy.data.meshes.new("Character_Hair_Mesh")
+        mesh.attributes.new(name="mtk_source_texture_key", type="STRING", domain="POINT")
+        obj = bpy.data.objects.new("Character_Hair", mesh)
+        bpy.context.scene.collection.objects.link(obj)
 
-        root, world, cloud, stype = resolve_mesh_rebuild_targets(mock_context)
-        self.assertEqual(stype, "NONE")
-        self.assertIsNone(world)
-        self.assertFalse(MOZI_OT_rebuild_mesh.poll(mock_context))
+        try:
+            bpy.context.view_layer.objects.active = obj
+            obj.select_set(True)
+
+            root, world, cloud, stype = resolve_mesh_rebuild_targets(bpy.context)
+            self.assertEqual(stype, "NONE")
+            self.assertIsNone(world)
+            self.assertFalse(MOZI_OT_rebuild_mesh.poll(bpy.context))
+        finally:
+            bpy.data.objects.remove(obj)
+            bpy.data.meshes.remove(mesh)
 
     def test_replace_material_provenance_predetection(self):
         from MoziToolKit.operators.op_materials import _has_provenance_attributes
 
         # None or non-mesh
         self.assertFalse(_has_provenance_attributes(None))
-        mock_obj_none = MagicMock(type="EMPTY")
-        self.assertFalse(_has_provenance_attributes(mock_obj_none))
+        empty = bpy.data.objects.new("EmptyTest", None)
+        self.assertFalse(_has_provenance_attributes(empty))
 
         # Mesh without attributes
-        mock_obj_mesh = MagicMock(type="MESH")
-        mock_obj_mesh.data.attributes = {}
-        self.assertFalse(_has_provenance_attributes(mock_obj_mesh))
+        mesh_empty = bpy.data.meshes.new("MeshEmptyTest")
+        obj_mesh = bpy.data.objects.new("ObjMeshTest", mesh_empty)
+        self.assertFalse(_has_provenance_attributes(obj_mesh))
 
         # Mesh with attributes
-        mock_obj_prov = MagicMock(type="MESH")
-        mock_obj_prov.data.attributes = {"mtk_source_texture_key": MagicMock()}
-        self.assertTrue(_has_provenance_attributes(mock_obj_prov))
+        mesh_prov = bpy.data.meshes.new("MeshProvTest")
+        mesh_prov.attributes.new(name="mtk_source_texture_key", type="STRING", domain="POINT")
+        obj_prov = bpy.data.objects.new("ObjProvTest", mesh_prov)
+        self.assertTrue(_has_provenance_attributes(obj_prov))
+
+        # Clean up
+        bpy.data.objects.remove(obj_prov)
+        bpy.data.meshes.remove(mesh_prov)
+        bpy.data.objects.remove(obj_mesh)
+        bpy.data.meshes.remove(mesh_empty)
+        bpy.data.objects.remove(empty)
 
 
     def test_unknown_operator_ids_are_filtered(self):
@@ -241,6 +195,15 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertEqual(len(cfg2.views["mesh"]), 1)
 
     def test_draw_dynamic_menu_skips_unregistered(self):
+        class DummyLayout:
+            def __init__(self):
+                self.operators = []
+            def operator(self, op_id, **kwargs):
+                self.operators.append(op_id)
+                return self
+            def separator(self): pass
+            def label(self, **kwargs): pass
+
         with patch(
             "MoziToolKit.utils.system.menu_registry.load_config",
             return_value={
@@ -250,12 +213,11 @@ class TestMenuRegistration(unittest.TestCase):
                 ]
             },
         ):
-            layout = MagicMock()
+            layout = DummyLayout()
             draw_dynamic_menu(layout, "mesh")
 
-        called_ids = [call.args[0] for call in layout.operator.call_args_list if call.args]
-        self.assertIn("mozi.rebuild_mesh", called_ids)
-        self.assertNotIn("mozi.ghost", called_ids)
+        self.assertIn("mozi.rebuild_mesh", layout.operators)
+        self.assertNotIn("mozi.ghost", layout.operators)
 
     def test_config_manager_reset_single_view(self):
         from MoziToolKit.utils.config import get_config_manager
@@ -284,7 +246,6 @@ class TestMenuRegistration(unittest.TestCase):
         self.assertNotEqual(views_all["object"][0]["label"], "Custom Rebuild")
 
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_menu_hooks_registration(self):
         # Register hooks
         ui.menu_mesh.register()
@@ -292,11 +253,22 @@ class TestMenuRegistration(unittest.TestCase):
         ui.menu_select.register()
         ui.menu_uv.register()
 
-        # Mock layout to test drawing
-        mock_layout = MagicMock()
-        draw_dynamic_menu(mock_layout, "object")
-        self.assertTrue(mock_layout.label.called)
-        self.assertTrue(mock_layout.operator.called)
+        class DummyLayout:
+            def __init__(self):
+                self.operators = []
+                self.labels = []
+            def operator(self, op_id, **kwargs):
+                self.operators.append(op_id)
+                return self
+            def label(self, **kwargs):
+                self.labels.append(kwargs)
+                return self
+            def separator(self): pass
+
+        layout = DummyLayout()
+        draw_dynamic_menu(layout, "object")
+        self.assertTrue(len(layout.labels) > 0)
+        self.assertTrue(len(layout.operators) > 0)
 
         # Unregister hooks
         ui.menu_uv.unregister()

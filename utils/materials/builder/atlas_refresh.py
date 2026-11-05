@@ -11,6 +11,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import bpy
+
 from ....bridge.assets.cache import get_cache_dir
 
 logger = logging.getLogger("MoziToolKit.Utils.Materials.Builder.AtlasRefresh")
@@ -23,10 +25,6 @@ def reload_atlas_images(prefs=None) -> int:
     reflect on screen.
     Returns the count of successfully reloaded images.
     """
-    try:
-        import bpy
-    except ImportError:
-        return 0
 
     if not hasattr(bpy, "data") or not hasattr(bpy.data, "images"):
         return 0

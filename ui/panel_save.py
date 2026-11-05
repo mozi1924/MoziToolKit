@@ -10,10 +10,7 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 from ..i18n import tr
 

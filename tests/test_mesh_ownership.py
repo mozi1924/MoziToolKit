@@ -6,13 +6,15 @@ Covers:
 * external meshes staying external after material provenance injection
 * Replace Material poll restricted to external meshes
 * Rebuild Mesh requiring a voxel source (cloud or active Live Sync session)
+Runs 100% inside real Blender host environment with native bpy data structures.
 """
 
 from __future__ import annotations
 
 import types
 import unittest
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import bpy
 
@@ -24,7 +26,6 @@ from MoziToolKit.utils.mesh.ownership import (
     ORIGIN_SAVE,
     ORIGIN_SYNC_SECTION,
     ORIGIN_SYNC_WORLD,
-    ORIGIN_VOXEL,
     classify_origin,
     find_voxel_cloud,
     has_voxel_source,
@@ -32,86 +33,29 @@ from MoziToolKit.utils.mesh.ownership import (
     stamp_geometry_origin,
 )
 
-IS_REAL_BLENDER = (
-    not isinstance(bpy, MagicMock)
-    and hasattr(bpy, "app")
-    and not isinstance(bpy.app, MagicMock)
-    and hasattr(bpy.app, "version")
-    and isinstance(bpy.app.version, tuple)
-    and bpy.app.version[0] >= 4
-    and hasattr(bpy, "data")
-    and hasattr(bpy.data, "objects")
-    and not isinstance(bpy.data.objects, MagicMock)
-)
-
-
-class _MockObject:
-    def __init__(self, name: str, obj_type: str = "EMPTY", data=None):
-        self.name = name
-        self.type = obj_type
-        self.data = data
-        self.parent = None
-        self.children = []
-        self._props = {}
-        self.users_collection = [MagicMock()]
-        self.location = (0.0, 0.0, 0.0)
-
-    def __getitem__(self, key):
-        return self._props[key]
-
-    def __setitem__(self, key, value):
-        self._props[key] = value
-
-    def __delitem__(self, key):
-        if key in self._props:
-            del self._props[key]
-
-    def __contains__(self, key):
-        return key in self._props
-
-    def get(self, key, default=None):
-        return self._props.get(key, default)
-
-    def select_set(self, value):
-        pass
-
 
 class TestMeshOwnership(unittest.TestCase):
     def setUp(self):
-        self._created = []
-        if IS_REAL_BLENDER:
-            self._orig_objects = None
-        else:
-            self._orig_objects = getattr(bpy.data, "objects", None)
-            self._objects = {}
-            bpy.data.objects = self._objects
+        self._created: list[bpy.types.Object] = []
 
     def tearDown(self):
-        if IS_REAL_BLENDER:
-            for obj in reversed(self._created):
-                try:
-                    mesh = obj.data
-                    bpy.data.objects.remove(obj, do_unlink=True)
-                    if mesh is not None and getattr(mesh, "users", 0) == 0:
-                        bpy.data.meshes.remove(mesh)
-                except Exception:
-                    pass
+        for obj in reversed(self._created):
+            try:
+                mesh = obj.data
+                bpy.data.objects.remove(obj, do_unlink=True)
+                if mesh is not None and getattr(mesh, "users", 0) == 0:
+                    bpy.data.meshes.remove(mesh)
+            except Exception:
+                pass
+
+    def _make_obj(self, name: str, obj_type: str = "EMPTY", data=None) -> bpy.types.Object:
+        if obj_type == "MESH":
+            mesh = data if data is not None else bpy.data.meshes.new(name)
+            obj = bpy.data.objects.new(name, mesh)
         else:
-            bpy.data.objects = self._orig_objects
-
-    def _make_obj(self, name: str, obj_type: str = "EMPTY", data=None):
-        if IS_REAL_BLENDER:
-            if obj_type == "MESH":
-                mesh = data if data is not None else bpy.data.meshes.new(name)
-                obj = bpy.data.objects.new(name, mesh)
-            else:
-                obj = bpy.data.objects.new(name, None)
-            bpy.context.scene.collection.objects.link(obj)
-            self._created.append(obj)
-            return obj
-
-        obj = _MockObject(name, obj_type=obj_type, data=data)
-        self._objects[name] = obj
+            obj = bpy.data.objects.new(name, None)
+        bpy.context.scene.collection.objects.link(obj)
+        self._created.append(obj)
         return obj
 
     # ------------------------------------------------------------------
@@ -120,10 +64,9 @@ class TestMeshOwnership(unittest.TestCase):
 
     def test_external_mesh_with_provenance_stays_external(self):
         """Replace Material writes provenance; it must not change ownership."""
-        if IS_REAL_BLENDER:
-            self.skipTest("Uses a lightweight mock data block for provenance detection")
-        mesh_data = types.SimpleNamespace(attributes={"mtk_source_texture_key": MagicMock()})
-        obj = self._make_obj("Character_Hair", "MESH", data=mesh_data)
+        mesh = bpy.data.meshes.new("Character_Hair_Mesh")
+        mesh.attributes.new(name="mtk_source_texture_key", type="INT", domain="CORNER")
+        obj = self._make_obj("Character_Hair", "MESH", data=mesh)
 
         self.assertEqual(classify_origin(obj), ORIGIN_EXTERNAL)
         self.assertTrue(is_external_mesh(obj))
@@ -195,8 +138,6 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_Test_overworld_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        if not IS_REAL_BLENDER:
-            root.children = [cloud]
 
         self.assertIs(find_voxel_cloud(root), cloud)
         self.assertTrue(has_voxel_source(root))
@@ -255,21 +196,16 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_WithCloud_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        if not IS_REAL_BLENDER:
-            root.children = [mesh, cloud]
 
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
-        # A save container without a companion cloud cannot rebuild offline.
         orphan_root = self._make_obj("Save_NoCloud", "EMPTY")
         orphan_root["mtk:is_container"] = True
         orphan_root["mtk:container_type"] = "SAVE"
         orphan_mesh = self._make_obj("Save_NoCloud_Mesh", "MESH")
         orphan_mesh.parent = orphan_root
         orphan_mesh["mtk:is_save_mesh"] = True
-        if not IS_REAL_BLENDER:
-            orphan_root.children = [orphan_mesh]
 
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(orphan_root)))
@@ -282,19 +218,15 @@ class TestMeshOwnership(unittest.TestCase):
         mesh = self._make_obj("Yefira_World_Mesh", "MESH")
         mesh.parent = root
         mesh["mtk:is_yefira_mesh"] = True
-        if not IS_REAL_BLENDER:
-            root.children = [mesh]
 
         context = self._context(root, active_name=root.name)
 
-        active_session = MagicMock()
-        active_session.is_active = True
+        active_session = SimpleNamespace(is_active=True)
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=active_session):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(context))
 
-        inactive_session = MagicMock()
-        inactive_session.is_active = False
+        inactive_session = SimpleNamespace(is_active=False)
         with patch("MoziToolKit.operators.mesh.op_rebuild_mesh.can_execute_asset_pipeline", return_value=(True, "")), \
              patch("MoziToolKit.operators.mesh.op_rebuild_mesh.get_sync_bridge_session", return_value=inactive_session):
             self.assertFalse(MOZI_OT_rebuild_mesh.poll(context))
@@ -308,8 +240,6 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_Container_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        if not IS_REAL_BLENDER:
-            root.children = [external, cloud]
 
         self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
@@ -328,8 +258,6 @@ class TestMeshOwnership(unittest.TestCase):
         cloud = self._make_obj("Save_Mixed_VoxelCloud", "MESH")
         cloud["mtk_is_voxel_cloud"] = True
         cloud.parent = root
-        if not IS_REAL_BLENDER:
-            root.children = [external, save_mesh, cloud]
 
         _, world, resolved_cloud, source_type = resolve_mesh_rebuild_targets(self._context(root))
         self.assertIs(world, save_mesh)
@@ -339,11 +267,9 @@ class TestMeshOwnership(unittest.TestCase):
             self.assertTrue(MOZI_OT_rebuild_mesh.poll(self._context(root)))
 
     def test_rebuild_poll_rejects_provenance_only_external_mesh(self):
-        if IS_REAL_BLENDER:
-            self.skipTest("Uses a lightweight mock data block for provenance detection")
-
-        mesh_data = types.SimpleNamespace(attributes={"mtk_source_texture_key": MagicMock()})
-        external = self._make_obj("Character_Hair", "MESH", data=mesh_data)
+        mesh = bpy.data.meshes.new("Character_Hair_Mesh_2")
+        mesh.attributes.new(name="mtk_source_texture_key", type="INT", domain="CORNER")
+        external = self._make_obj("Character_Hair_2", "MESH", data=mesh)
         self.assertFalse(MOZI_OT_rebuild_mesh.poll(self._context(external)))
 
 

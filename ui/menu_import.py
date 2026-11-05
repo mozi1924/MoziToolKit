@@ -4,10 +4,7 @@ MoziToolKit File > Import Menu Integration.
 
 from __future__ import annotations
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 
 def menu_func_import(self, context):

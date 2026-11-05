@@ -5,7 +5,8 @@ Unit tests for MTK mesh attribute sanitization and obsolete attribute cleanup.
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock
+
+import bpy
 
 from MoziToolKit.bridge.mesh.attribute_schema import (
     ACTIVE_ATTRIBUTE_NAMES,
@@ -28,100 +29,54 @@ from MoziToolKit.utils.materials.constants import (
 )
 
 
-class MockAttributeData:
-    def __init__(self, name: str, count: int = 4):
-        self.name = name
-        self.data = [MagicMock() for _ in range(count)]
-        self.data_type = "FLOAT"
-        self.domain = "FACE"
-
-    def foreach_set(self, key, values):
-        pass
-
-
-class MockAttributesCollection:
-    def __init__(self):
-        self._attrs: dict[str, MockAttributeData] = {}
-
-    def get(self, name, default=None):
-        return self._attrs.get(name, default)
-
-    def __contains__(self, name):
-        return name in self._attrs
-
-    def __getitem__(self, name):
-        return self._attrs[name]
-
-    def __setitem__(self, name, value):
-        self._attrs[name] = value
-
-    def __iter__(self):
-        return iter(self._attrs.values())
-
-    def remove(self, attr):
-        name_to_del = None
-        for k, v in self._attrs.items():
-            if v == attr or k == getattr(attr, "name", None):
-                name_to_del = k
-                break
-        if name_to_del:
-            del self._attrs[name_to_del]
-
-    def new(self, name, type, domain):
-        attr = MockAttributeData(name)
-        attr.data_type = type
-        attr.domain = domain
-        self._attrs[name] = attr
-        return attr
-
-
-class MockMesh:
-    def __init__(self, face_count: int = 4):
-        self.attributes = MockAttributesCollection()
-        self.polygons = [MagicMock() for _ in range(face_count)]
-        self.custom_props = {}
-
-    def __contains__(self, item):
-        return item in self.custom_props
-
-    def __setitem__(self, key, value):
-        self.custom_props[key] = value
-
-    def __getitem__(self, key):
-        return self.custom_props[key]
-
-    def get(self, key, default=None):
-        return self.custom_props.get(key, default)
+def _make_real_mesh(face_count=4, name="TestAttrMesh"):
+    mesh = bpy.data.meshes.new(name)
+    verts = []
+    faces = []
+    for i in range(face_count):
+        base = i * 4
+        verts.extend([(float(i), 0.0, 0.0), (float(i + 1), 0.0, 0.0), (float(i + 1), 1.0, 0.0), (float(i), 1.0, 0.0)])
+        faces.append((base, base + 1, base + 2, base + 3))
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    return mesh
 
 
 class TestMeshAttributeCleanup(unittest.TestCase):
     def test_clean_obsolete_mesh_attributes_removes_excluded(self):
-        mesh = MockMesh(face_count=10)
-        # Populate mesh with some canonical and some obsolete attributes
-        mesh.attributes[ATTR_ATLAS_CHUNK_ID] = MockAttributeData(ATTR_ATLAS_CHUNK_ID, 10)
-        mesh.attributes[ATTR_UV_TRANSFORM] = MockAttributeData(ATTR_UV_TRANSFORM, 10)
-        mesh.attributes[ATTR_BIOME_TINT_COLOR] = MockAttributeData(ATTR_BIOME_TINT_COLOR, 10)
+        mesh = _make_real_mesh(face_count=10)
+        self.addCleanup(lambda: bpy.data.meshes.remove(mesh) if mesh.name in bpy.data.meshes else None)
+        mesh.attributes.new(name=ATTR_ATLAS_CHUNK_ID, type="INT", domain="FACE")
+        mesh.attributes.new(name=ATTR_UV_TRANSFORM, type="FLOAT_COLOR", domain="FACE")
+        mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
 
         # Add obsolete attributes
-        mesh.attributes["mtk_colormap_uv"] = MockAttributeData("mtk_colormap_uv", 10)
-        mesh.attributes["mtk_material_slot"] = MockAttributeData("mtk_material_slot", 10)
-        mesh.attributes["mtk_atlas_texture_id"] = MockAttributeData("mtk_atlas_texture_id", 10)
-        mesh.attributes["mtk_uv_mode"] = MockAttributeData("mtk_uv_mode", 10)
-        mesh.attributes["mtk_face_dir"] = MockAttributeData("mtk_face_dir", 10)
-        mesh.attributes["mtk_emission"] = MockAttributeData("mtk_emission", 10)
-        mesh.attributes["mtk_anim_total_frames"] = MockAttributeData("mtk_anim_total_frames", 10)
-        mesh.attributes["mtk_material_props"] = MockAttributeData("mtk_material_props", 10)
+        for name in (
+            "mtk_colormap_uv",
+            "mtk_material_slot",
+            "mtk_atlas_texture_id",
+            "mtk_uv_mode",
+            "mtk_face_dir",
+            "mtk_emission",
+            "mtk_anim_total_frames",
+            "mtk_material_props",
+        ):
+            mesh.attributes.new(name=name, type="FLOAT" if "emission" in name or "uv" in name else "INT", domain="FACE")
 
         removed = clean_obsolete_mesh_attributes(mesh)
 
-        self.assertIn("mtk_colormap_uv", removed)
-        self.assertIn("mtk_material_slot", removed)
-        self.assertIn("mtk_atlas_texture_id", removed)
-        self.assertIn("mtk_uv_mode", removed)
-        self.assertIn("mtk_face_dir", removed)
-        self.assertIn("mtk_emission", removed)
-        self.assertIn("mtk_anim_total_frames", removed)
-        self.assertIn("mtk_material_props", removed)
+        for name in (
+            "mtk_colormap_uv",
+            "mtk_material_slot",
+            "mtk_atlas_texture_id",
+            "mtk_uv_mode",
+            "mtk_face_dir",
+            "mtk_emission",
+            "mtk_anim_total_frames",
+            "mtk_material_props",
+        ):
+            self.assertIn(name, removed)
+            self.assertNotIn(name, mesh.attributes)
 
         # Canonical attributes must NOT be removed
         self.assertIn(ATTR_ATLAS_CHUNK_ID, mesh.attributes)
@@ -129,9 +84,10 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
 
     def test_clean_obsolete_mesh_attributes_purges_retired_source_texture_key(self):
-        mesh = MockMesh(face_count=300)
-        mesh.attributes["mtk_source_texture_key"] = MockAttributeData("mtk_source_texture_key", 300)
-        mesh.attributes["mtk_source_texture_idx"] = MockAttributeData("mtk_source_texture_idx", 300)
+        mesh = _make_real_mesh(face_count=4)
+        self.addCleanup(lambda: bpy.data.meshes.remove(mesh) if mesh.name in bpy.data.meshes else None)
+        mesh.attributes.new(name="mtk_source_texture_key", type="STRING", domain="FACE")
+        mesh.attributes.new(name="mtk_source_texture_idx", type="INT", domain="FACE")
         mesh["mtk_source_textures"] = ["stone", "dirt"]
 
         removed = clean_obsolete_mesh_attributes(mesh)
@@ -146,19 +102,9 @@ class TestMeshAttributeCleanup(unittest.TestCase):
             resolve_source_texture_keys_paletted,
         )
 
-        mesh = MockMesh(face_count=3)
-        # The retired per-face string layer must never be resurrected as provenance.
-        class MockStringElem:
-            def __init__(self, val):
-                self.value = val
-
-        attr_str = MagicMock()
-        attr_str.data = [
-            MockStringElem("minecraft:block/stone"),
-            MockStringElem("minecraft:block/dirt"),
-            MockStringElem("minecraft:block/stone"),
-        ]
-        mesh.attributes["mtk_source_texture_key"] = attr_str
+        mesh = _make_real_mesh(face_count=3)
+        self.addCleanup(lambda: bpy.data.meshes.remove(mesh) if mesh.name in bpy.data.meshes else None)
+        mesh.attributes.new(name="mtk_source_texture_key", type="STRING", domain="FACE")
 
         self.assertEqual(resolve_source_texture_keys(mesh), [])
 
@@ -167,28 +113,30 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertEqual(list(idx), [])
 
     def test_inject_custom_attributes_skips_excluded(self):
-        mesh = MockMesh(face_count=4)
+        from types import SimpleNamespace
 
-        # Mock MeshData with both canonical and dead attributes
-        mock_mesh_data = MagicMock()
-        mock_mesh_data.attribute_names.return_value = [
-            "mtk_atlas_chunk_id",
-            "mtk_uv_transform",
-            "mtk_colormap_uv",
-            "mtk_material_slot",
-            "mtk_atlas_texture_id",
-            "mtk_anim_total_frames",
-        ]
-        mock_mesh_data.attribute_info.side_effect = lambda name: {
-            "mtk_atlas_chunk_id": ("face", "int32", 4),
-            "mtk_uv_transform": ("face", "float4", 4),
-            "mtk_colormap_uv": ("face", "float3", 4),
-            "mtk_material_slot": ("face", "int32", 4),
-            "mtk_atlas_texture_id": ("face", "uint32", 4),
-            "mtk_anim_total_frames": ("face", "float", 4),
-        }.get(name)
+        mesh = _make_real_mesh(face_count=4)
+        self.addCleanup(lambda: bpy.data.meshes.remove(mesh) if mesh.name in bpy.data.meshes else None)
 
-        mock_mesh_data.attribute_memoryview.return_value = None
+        mock_mesh_data = SimpleNamespace(
+            attribute_names=lambda: [
+                "mtk_atlas_chunk_id",
+                "mtk_uv_transform",
+                "mtk_colormap_uv",
+                "mtk_material_slot",
+                "mtk_atlas_texture_id",
+                "mtk_anim_total_frames",
+            ],
+            attribute_info=lambda name: {
+                "mtk_atlas_chunk_id": ("face", "int32", 4),
+                "mtk_uv_transform": ("face", "float4", 4),
+                "mtk_colormap_uv": ("face", "float3", 4),
+                "mtk_material_slot": ("face", "int32", 4),
+                "mtk_atlas_texture_id": ("face", "uint32", 4),
+                "mtk_anim_total_frames": ("face", "float", 4),
+            }.get(name),
+            attribute_memoryview=lambda name: None,
+        )
 
         inject_custom_attributes(mesh, mock_mesh_data)
 
@@ -203,7 +151,8 @@ class TestMeshAttributeCleanup(unittest.TestCase):
         self.assertNotIn("mtk_anim_total_frames", mesh.attributes)
 
     def test_prune_optional_attributes_by_context(self):
-        mesh = MockMesh(face_count=4)
+        mesh = _make_real_mesh(face_count=4)
+        self.addCleanup(lambda: bpy.data.meshes.remove(mesh) if mesh.name in bpy.data.meshes else None)
         for name in (
             ATTR_ANIM_TIMING,
             ATTR_ANIM_FRAME_SIZE,
@@ -211,7 +160,7 @@ class TestMeshAttributeCleanup(unittest.TestCase):
             ATTR_BLOCK_Y,
             ATTR_BLOCK_Z,
         ):
-            mesh.attributes[name] = MockAttributeData(name, 4)
+            mesh.attributes.new(name=name, type="FLOAT_VECTOR" if "anim" in name else "INT", domain="FACE")
 
         removed = prune_optional_mesh_attributes(
             mesh,

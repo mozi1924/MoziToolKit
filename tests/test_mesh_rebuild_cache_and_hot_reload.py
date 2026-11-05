@@ -21,16 +21,8 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = MagicMock()
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = MagicMock()
-    sys.modules["bpy.types"] = MagicMock()
-    sys.modules["bpy.app"] = MagicMock()
-    HAS_BPY = False
+import bpy
+import MoziToolKit.operators as operators
 
 from MoziToolKit.bridge.assets import (
     check_cache_dirty,
@@ -52,21 +44,17 @@ from MoziToolKit.bridge.sync import (
 class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if HAS_BPY:
-            import MoziToolKit.operators as operators
-            try:
-                operators.register()
-            except Exception:
-                pass
+        try:
+            operators.register()
+        except Exception:
+            pass
 
     @classmethod
     def tearDownClass(cls):
-        if HAS_BPY:
-            import MoziToolKit.operators as operators
-            try:
-                operators.unregister()
-            except Exception:
-                pass
+        try:
+            operators.unregister()
+        except Exception:
+            pass
 
     def setUp(self):
         self.tmp_dir = tempfile.TemporaryDirectory()
@@ -197,11 +185,6 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         self.assertGreater(re_mesh.vertex_count, 0)
 
     def test_reload_atlas_images_helper(self):
-        if not HAS_BPY:
-            # Under mock, should return 0 safely without crashing
-            self.assertEqual(reload_atlas_images(), 0)
-            return
-
         atlas_dir = self.cache_dir / "atlas"
         atlas_dir.mkdir(parents=True, exist_ok=True)
         img_path = atlas_dir / "blocks_chunk_001.png"
@@ -218,9 +201,6 @@ class TestMeshRebuildCacheAndHotReload(unittest.TestCase):
         bpy.data.images.remove(img)
 
     def test_sync_rebuild_operator_with_dirty_cache(self):
-        if not HAS_BPY:
-            self.skipTest("Requires Blender environment")
-
         from MoziToolKit.bridge.engine import get_libmtk
         mtk = get_libmtk()
         if not mtk or not hasattr(mtk, "LiveSyncSession"):

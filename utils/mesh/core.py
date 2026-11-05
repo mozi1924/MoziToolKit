@@ -7,12 +7,8 @@ from __future__ import annotations
 import math
 from contextlib import contextmanager
 
-try:
-    import bmesh
-    import bpy
-except ImportError:
-    bmesh = None
-    bpy = None
+import bmesh
+import bpy
 
 
 SELECTION_ACTION_ITEMS = [

@@ -7,29 +7,8 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional, Set
 
-try:
-    import bmesh
-    import bpy
-except ImportError:
-    bmesh = None
-    bpy = None
-
-if bpy is None:
-    class _DummyBpyApp:
-        class handlers:
-            depsgraph_update_post = []
-            persistent = staticmethod(lambda f: f)
-        class timers:
-            @staticmethod
-            def is_registered(func): return False
-            @staticmethod
-            def register(func, **kwargs): pass
-            @staticmethod
-            def unregister(func): pass
-    class _DummyBpy:
-        app = _DummyBpyApp
-        context = None
-    bpy = _DummyBpy()
+import bmesh
+import bpy
 
 from ...utils.mesh.random_extrude import repair_extruded_side_faces
 

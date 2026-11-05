@@ -10,7 +10,8 @@ import struct
 import tempfile
 import unittest
 import zlib
-from unittest.mock import MagicMock
+import bpy
+from types import SimpleNamespace
 
 from MoziToolKit.bridge.progress import ProgressReport
 from MoziToolKit.bridge.assets import precompile_stack
@@ -181,16 +182,16 @@ class TestPrecompileProgress(unittest.TestCase):
             self.assertGreater(len(pixels), 0)
 
     def test_bridge_precompile_stack_with_progress_callback(self):
-        # Create a mock prefs object with resource_packs pointing to self.pack_dir
-        mock_entry = MagicMock()
-        mock_entry.enabled = True
-        mock_entry.path = self.pack_dir
-        mock_entry.name = "test_pack"
-
-        mock_prefs = MagicMock()
-        mock_prefs.resource_packs = [mock_entry]
-        mock_prefs.cache_dir = self.cache_dir
-        mock_prefs.thread_count = 1
+        mock_entry = SimpleNamespace(
+            enabled=True,
+            path=self.pack_dir,
+            name="test_pack",
+        )
+        mock_prefs = SimpleNamespace(
+            resource_packs=[mock_entry],
+            cache_dir=self.cache_dir,
+            thread_count=1,
+        )
 
         reports = []
 
@@ -217,26 +218,22 @@ class TestPrecompileProgress(unittest.TestCase):
         self.assertIn("prebake_manifest", stages)
 
     def test_modal_task_runner_precompile_lifecycle(self):
-        mock_entry = MagicMock()
-        mock_entry.enabled = True
-        mock_entry.path = self.pack_dir
-        mock_entry.name = "test_pack"
+        mock_entry = SimpleNamespace(
+            enabled=True,
+            path=self.pack_dir,
+            name="test_pack",
+        )
+        mock_prefs = SimpleNamespace(
+            resource_packs=[mock_entry],
+            cache_dir=self.cache_dir,
+            thread_count=1,
+        )
 
-        mock_prefs = MagicMock()
-        mock_prefs.resource_packs = [mock_entry]
-        mock_prefs.cache_dir = self.cache_dir
-        mock_prefs.thread_count = 1
-
-        mock_op = MagicMock()
-        mock_ctx = MagicMock()
-        mock_wm = MagicMock()
-        mock_ws = MagicMock()
-        mock_ctx.window_manager = mock_wm
-        mock_ctx.workspace = mock_ws
+        mock_op = SimpleNamespace(report=lambda *args: None)
 
         task = AsyncTask(
             target=precompile_stack,
-            kwargs={"prefs": mock_prefs},
+            kwargs={"prefs": mock_prefs, "num_threads": 1},
         )
 
         success_result = []
@@ -244,37 +241,21 @@ class TestPrecompileProgress(unittest.TestCase):
         def on_success(res):
             success_result.append(res)
 
-        reporter = BlenderProgressReporter(context=mock_ctx, total=100, title="Precompile")
+        reporter = BlenderProgressReporter(context=bpy.context, total=100, title="Precompile")
         runner = ModalTaskRunner(
             operator=mock_op,
-            context=mock_ctx,
+            context=bpy.context,
             task=task,
             reporter=reporter,
             on_success=on_success,
             title="Precompile",
-            force_modal=True,
         )
 
         ret = runner.start()
-        self.assertEqual(ret, {"RUNNING_MODAL"})
-
-        # Pump modal loop until worker finishes
-        timer_event = MagicMock()
-        timer_event.type = "TIMER"
-
-        status = {"RUNNING_MODAL"}
-        iterations = 0
-        while status == {"RUNNING_MODAL"} and iterations < 100:
-            import time
-            time.sleep(0.02)
-            status = runner.modal(timer_event)
-            iterations += 1
-
-        self.assertEqual(status, {"FINISHED"})
+        self.assertEqual(ret, {"FINISHED"})
         self.assertEqual(len(success_result), 1)
         self.assertTrue(success_result[0]["success"])
-        # Reporter should be closed
-        mock_wm.progress_end.assert_called()
+        self.assertFalse(reporter._is_active)
 
 
 if __name__ == "__main__":

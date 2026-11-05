@@ -8,6 +8,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+import bpy
+
 from ...bridge.mesh import inject_mesh_data
 from ...bridge.world import resolve_dynamic_entity_atlases
 from ...utils.point_cloud import ensure_voxel_child_cloud
@@ -120,10 +122,6 @@ def apply_imported_save_to_blender(
       ├── World Mesh (Mesh, <Container>_Mesh)
       └── Point Cloud (Mesh, <Container>_VoxelCloud, hidden by default)
     """
-    try:
-        import bpy
-    except ImportError:
-        raise RuntimeError("bpy is not available in headless non-Blender environment.")
 
     if context is None:
         context = bpy.context

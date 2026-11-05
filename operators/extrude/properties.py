@@ -4,19 +4,8 @@ Properties definition for Auto Extrude Repair and Random Extrude.
 
 from __future__ import annotations
 
-try:
-    import bpy
-    from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty
-except ImportError:
-    bpy = None
-    BoolProperty = EnumProperty = FloatProperty = PointerProperty = lambda *args, **kwargs: None
-
-if bpy is None:
-    class _DummyBpyTypes:
-        PropertyGroup = object
-    class _DummyBpy:
-        types = _DummyBpyTypes
-    bpy = _DummyBpy()
+import bpy
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty
 
 UV_MODE_ITEMS = [
     ("SMART", "Smart (Automatic)", "Auto-detect outward protrusion vs inward indentation"),

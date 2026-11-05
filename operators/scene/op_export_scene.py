@@ -8,16 +8,9 @@ import json
 import logging
 from pathlib import Path
 
-try:
-    import bpy
-    from bpy.props import BoolProperty, IntProperty, StringProperty
-    from bpy_extras.io_utils import ExportHelper
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    ExportHelper = object
-    BoolProperty = IntProperty = StringProperty = lambda **kwargs: None
-    HAS_BPY = False
+import bpy
+from bpy.props import BoolProperty, IntProperty, StringProperty
+from bpy_extras.io_utils import ExportHelper
 
 from ...bridge.point_cloud import extract_voxel_point_cloud
 from ...bridge.scene import export_scene_package
@@ -35,8 +28,6 @@ logger = logging.getLogger("MoziToolKit.Operators.Scene.Export")
 
 def _resolve_export_dynamic_entities(active_obj: Any, cloud_obj: Any) -> Optional[dict[int, bytes]]:
     """Resolves dynamic entity atlas buffers (0xFFF0) via bridge.world.resolve_dynamic_entity_atlases."""
-    if not HAS_BPY:
-        return None
 
     # 1. Probe session key on active, cloud, or parent container
     session_key = (
@@ -116,8 +107,6 @@ def _resolve_export_enable_ctm(active_obj: Any, cloud_obj: Any, prefs: Any) -> b
 
 def _resolve_export_dynamic_entity_slots(active_obj: Any, cloud_obj: Any) -> Optional[dict[str, tuple[int, int]]]:
     """Resolves dynamic entity slot mapping via bridge.world.resolve_dynamic_entity_slots."""
-    if not HAS_BPY:
-        return None
 
     session_key = (
         active_obj.get("mtk:session_key") or active_obj.get("mozi_save_uuid")
@@ -199,7 +188,7 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        if not HAS_BPY or context is None:
+        if context is None:
             return False
         active = getattr(context, "active_object", None)
         if active is None:
@@ -214,8 +203,6 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
         return True
 
     def execute(self, context):
-        if not HAS_BPY:
-            return {"CANCELLED"}
 
         active = context.active_object
         cloud_obj = find_voxel_cloud(active)

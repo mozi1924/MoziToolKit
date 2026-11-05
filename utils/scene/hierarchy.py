@@ -11,12 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...bridge.world import resolve_dynamic_entity_atlases
 from ..mesh.ownership import ORIGIN_SCENE
@@ -52,8 +47,6 @@ def apply_imported_scene_to_blender(
       ├── World Mesh: Mesh, `[Scene] <name>_Mesh`
       └── Companion Point Cloud: Mesh, `[Scene] <name>_VoxelCloud` (hidden by default)
     """
-    if not HAS_BPY:
-        return {}
 
     mesh_data = data.get("mesh_data")
     point_cloud = data.get("point_cloud")

@@ -16,12 +16,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...config import get_config_manager
 
@@ -59,7 +54,7 @@ def resolve_material_shading_config(
     )
     if pref_engine == "AUTO":
         detected_engine = "CYCLES"
-        if HAS_BPY and bpy.context and hasattr(bpy.context, "scene") and bpy.context.scene:
+        if bpy.context and hasattr(bpy.context, "scene") and bpy.context.scene:
             engine = getattr(bpy.context.scene.render, "engine", "CYCLES")
             if engine in {"BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"}:
                 detected_engine = "EEVEE"

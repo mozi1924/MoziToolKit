@@ -11,12 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 logger = logging.getLogger("MoziToolKit.Scene.Materials")
 
@@ -35,7 +30,7 @@ def bind_scene_materials(
     Blender images, builds canonical PBR materials, and binds them to the mesh slots.
     Delegates to the authoritative ensure_world_materials pipeline.
     """
-    if not HAS_BPY or mesh_obj is None or reader is None:
+    if mesh_obj is None or reader is None:
         return []
 
     active_atlas = atlas

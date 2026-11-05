@@ -4,19 +4,8 @@ Operator: Random terrain extrusion with automatic integrated UV repair & edge cr
 
 from __future__ import annotations
 
-try:
-    import bpy
-    from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
-except ImportError:
-    bpy = None
-    BoolProperty = EnumProperty = FloatProperty = IntProperty = lambda *args, **kwargs: None
-
-if bpy is None:
-    class _DummyBpyTypes:
-        Operator = object
-    class _DummyBpy:
-        types = _DummyBpyTypes
-    bpy = _DummyBpy()
+import bpy
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 
 from .properties import NOISE_TYPE_ITEMS, UV_MODE_ITEMS
 

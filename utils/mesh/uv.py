@@ -7,12 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
 
-try:
-    import bpy
-    from mathutils import Vector
-except ImportError:
-    bpy = None
-    Vector = None
+import bpy
+from mathutils import Vector
 
 
 @dataclass

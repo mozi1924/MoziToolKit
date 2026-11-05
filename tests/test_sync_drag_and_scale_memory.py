@@ -24,53 +24,9 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from unittest.mock import MagicMock
-import types
-
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-if "bpy_extras" not in sys.modules:
-    bpy_extras = types.ModuleType("bpy_extras")
-    bpy_extras.__path__ = []
-    io_utils = types.ModuleType("bpy_extras.io_utils")
-    io_utils.ExportHelper = object
-    io_utils.ImportHelper = object
-    bpy_extras.io_utils = io_utils
-    sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = io_utils
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
-except ImportError:
-    bpy = MagicMock()
-    HAS_BPY = False
-
-if not HAS_BPY:
-    class _MockOperator: pass
-    class _MockPanel: pass
-    class _MockMenu: pass
-    class _MockPropertyGroup: pass
-    class _MockUIList: pass
-    class _MockAddonPreferences: pass
-
-    class _MockTypes:
-        Operator = _MockOperator
-        Panel = _MockPanel
-        Menu = _MockMenu
-        PropertyGroup = _MockPropertyGroup
-        UIList = _MockUIList
-        AddonPreferences = _MockAddonPreferences
-
-    bpy.types = _MockTypes
-    bpy.app = MagicMock()
-    bpy.props = MagicMock()
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = bpy.props
-    sys.modules["bpy.types"] = _MockTypes
-    sys.modules["bpy.app"] = bpy.app
-    sys.modules["bmesh"] = MagicMock()
+import bpy
+import bmesh
+import mathutils
 
 from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available
 from MoziToolKit.utils.world.sync_container import get_or_create_world_mesh_object
@@ -296,22 +252,12 @@ class TestSyncDragAndScaleMemory(unittest.TestCase):
     def setUp(self):
         if not is_sync_available():
             self.skipTest("libmtk_py LiveSyncSession not available")
-        self._orig_objects = getattr(bpy.data, "objects", None)
-        if not HAS_BPY:
-            from unittest.mock import MagicMock
-            mock_container = MagicMock()
-            mock_container.name = "Yefira_World"
-            mock_container.type = "EMPTY"
-            mock_container.get.side_effect = lambda k, d=None: True if k == "mtk:is_yefira_world" else d
-            mock_dict = {"Yefira_World": mock_container}
-            mock_objects = MagicMock()
-            mock_objects.__getitem__.side_effect = mock_dict.__getitem__
-            mock_objects.__contains__.side_effect = mock_dict.__contains__
-            mock_objects.get.side_effect = mock_dict.get
-            mock_objects.values.side_effect = mock_dict.values
-            bpy.data.objects = mock_objects
-            if hasattr(bpy, "context") and hasattr(bpy.context, "scene"):
-                bpy.context.scene.mozi_active_sync_container_name = "Yefira_World"
+        if "Yefira_World" not in bpy.data.objects:
+            obj = bpy.data.objects.new("Yefira_World", None)
+            obj["mtk:is_container"] = True
+            obj["mtk:is_yefira_world"] = True
+            bpy.context.collection.objects.link(obj)
+        bpy.context.scene.mozi_active_sync_container_name = "Yefira_World"
 
     def test_drag_and_scale_memory_stability(self):
         server = _TestControllableSyncServer(port=8797)
@@ -366,15 +312,12 @@ class TestSyncDragAndScaleMemory(unittest.TestCase):
         self.assertLess(total_growth, max_allowed_total, f"Total sync memory grew excessively by {total_growth:.2f} MB")
 
     def tearDown(self):
-        if not HAS_BPY:
-            bpy.data.objects = self._orig_objects
-        else:
-            obj = bpy.data.objects.get("Yefira_World")
-            if obj:
-                mesh = obj.data
-                bpy.data.objects.remove(obj)
-                if mesh:
-                    bpy.data.meshes.remove(mesh)
+        obj = bpy.data.objects.get("Yefira_World")
+        if obj:
+            mesh = obj.data
+            bpy.data.objects.remove(obj, do_unlink=True)
+            if mesh:
+                bpy.data.meshes.remove(mesh)
 
 
 if __name__ == "__main__":

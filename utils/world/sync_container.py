@@ -11,12 +11,7 @@ import logging
 import uuid
 from typing import Any, Optional, Tuple
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...bridge.mesh import inject_mesh_data
 from ...bridge.world import resolve_dynamic_entity_atlases
@@ -115,7 +110,7 @@ def resolve_world_root_object(obj: Optional[Any]) -> Optional[Any]:
     obj_name = getattr(obj, "name", "")
     if obj_name.endswith("_Mesh"):
         root_name = obj_name[:-5]
-        if HAS_BPY and hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
+        if hasattr(bpy, "data") and hasattr(bpy.data, "objects"):
             candidate = bpy.data.objects.get(root_name) if hasattr(bpy.data.objects, "get") else None
             if candidate and is_yefira_root_object(candidate):
                 return candidate
@@ -167,9 +162,6 @@ def get_or_create_world_container(
     target_name: str = DEFAULT_WORLD_OBJECT_NAME,
 ) -> Any:
     """Acquires or creates the root Empty container for Yefira Live Sync."""
-    if not HAS_BPY or bpy is None:
-        return None
-
     ctx = context or getattr(bpy, "context", None)
 
     active = getattr(ctx, "active_object", None) if ctx else None
@@ -225,9 +217,6 @@ def get_or_create_world_mesh_object(
     root_container: Optional[Any] = None,
 ) -> Any:
     """Acquires or creates the single unified mesh object representing the synchronized world."""
-    if not HAS_BPY or bpy is None:
-        return None
-
     ctx = context or getattr(bpy, "context", None)
 
     active = getattr(ctx, "active_object", None) if ctx else None

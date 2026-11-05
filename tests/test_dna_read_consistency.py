@@ -7,27 +7,10 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
-
 import numpy as np
-
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_DIR.parent
-dev_lib_path = PROJECT_DIR / "dev" / "lib"
-libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
-
-for p in [str(dev_lib_path), str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-if "bpy" not in sys.modules:
-    sys.modules["bpy"] = MagicMock()
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
 import bpy
-
-HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
+import bmesh
+import mathutils
 
 from MoziToolKit.bridge.dna import is_dna_available, is_dna_enabled
 from MoziToolKit.bridge.mesh import extract_mesh_data, extract_mesh_data_dna, inject_mesh_data
@@ -43,8 +26,7 @@ from MoziToolKit.bridge.point_cloud import (
 
 class TestDnaReadWriteConsistency(unittest.TestCase):
     def setUp(self):
-        if not HAS_BPY:
-            self.skipTest("Requires real Blender host environment (bpy)")
+        pass
 
     def _create_grid_mesh(self, num_x: int = 10, num_y: int = 10):
         """Creates a grid mesh of quads in Blender."""

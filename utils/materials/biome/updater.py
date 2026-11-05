@@ -10,12 +10,7 @@ from pathlib import Path
 from typing import Optional, Any
 import bpy
 
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    np = None
-    HAS_NUMPY = False
+import numpy as np
 
 from ....bridge.material import get_biome_meta
 from ..cleaner import clean_obsolete_mesh_attributes
@@ -215,8 +210,8 @@ def resolve_mesh_base_tint_types(
     Prevents faces from being permanently trapped in TINT_TYPE_HARDCODED (4.0) after imports from biomes
     with custom colors (such as dark_forest or badlands).
     """
-    if not HAS_NUMPY or mesh is None:
-        return np.empty(0, dtype=np.int32) if HAS_NUMPY else []
+    if mesh is None:
+        return np.empty(0, dtype=np.int32)
 
     num_polys = len(mesh.polygons) if hasattr(mesh, "polygons") else 0
     if num_polys == 0:
@@ -436,7 +431,7 @@ def resolve_and_apply_world_biome_tint(
         attr_y = target_mesh.attributes.get("mtk_block_y")
         attr_z = target_mesh.attributes.get("mtk_block_z")
 
-        if HAS_NUMPY and hasattr(attr_x.data, "foreach_get"):
+        if hasattr(attr_x.data, "foreach_get"):
             xs = np.empty(num_polys, dtype=np.int32)
             ys = np.empty(num_polys, dtype=np.int32)
             zs = np.empty(num_polys, dtype=np.int32)
@@ -607,7 +602,7 @@ def update_object_biome(
         has_tint_data = tint_data_attr is not None and len(tint_data_attr.data) == num_polys
         fast_path_done = False
 
-        if has_tint_data and HAS_NUMPY and hasattr(tint_data_attr.data, "foreach_get"):
+        if has_tint_data and hasattr(tint_data_attr.data, "foreach_get"):
             try:
                 raw_data = np.empty(num_polys * 4, dtype=np.float32)
                 tint_data_attr.data.foreach_get("color", raw_data)

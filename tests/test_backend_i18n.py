@@ -6,14 +6,9 @@ are properly translated and formatted for display in Blender status bar and UI p
 """
 
 import unittest
-from unittest.mock import MagicMock
+from types import SimpleNamespace
 
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and type(bpy).__name__ != "MagicMock" and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and type(bpy.data).__name__ != "MagicMock"
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from MoziToolKit.i18n import (
     format_backend_error,
@@ -32,23 +27,22 @@ class TestBackendI18n(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Ensures i18n is registered and active in Chinese during test execution."""
-        if HAS_BPY:
-            try:
-                import MoziToolKit.i18n as i18n
-                i18n.register()
-            except Exception:
-                pass
-            view = getattr(bpy.context.preferences, "view", None)
-            if view:
-                cls.saved_lang = getattr(view, "language", "DEFAULT")
-                cls.saved_ui = getattr(view, "use_translate_interface", False)
-                view.language = "zh_HANS"
-                view.use_translate_interface = True
+        try:
+            import MoziToolKit.i18n as i18n
+            i18n.register()
+        except Exception:
+            pass
+        view = getattr(bpy.context.preferences, "view", None)
+        if view:
+            cls.saved_lang = getattr(view, "language", "DEFAULT")
+            cls.saved_ui = getattr(view, "use_translate_interface", False)
+            view.language = "zh_HANS"
+            view.use_translate_interface = True
 
     @classmethod
     def tearDownClass(cls):
         """Restores original language preferences."""
-        if HAS_BPY and cls.saved_lang is not None:
+        if cls.saved_lang is not None:
             view = getattr(bpy.context.preferences, "view", None)
             if view:
                 view.language = cls.saved_lang
@@ -197,29 +191,30 @@ class TestBackendI18n(unittest.TestCase):
 
     def test_blender_progress_reporter_status_text(self):
         """Verifies that BlenderProgressReporter formats status bar without redundant ratio strings."""
-        mock_wm = MagicMock()
-        mock_ws = MagicMock()
-        mock_ctx = MagicMock()
-        mock_ctx.window_manager = mock_wm
-        mock_ctx.workspace = mock_ws
+        ws = SimpleNamespace(status=None)
+        ws.status_text_set = lambda text: setattr(ws, "status", text)
+        wm = SimpleNamespace(
+            progress_begin=lambda *a: None,
+            progress_update=lambda *a: None,
+            progress_end=lambda *a: None,
+        )
+        ctx = SimpleNamespace(window_manager=wm, workspace=ws)
 
-        reporter = BlenderProgressReporter(context=mock_ctx, total=100, title="Import overworld")
+        reporter = BlenderProgressReporter(context=ctx, total=100, title="Import overworld")
         reporter.start()
 
         # Update with throttler message containing ratio
         reporter.update(current=25, total=100, message="Loading chunk (25/100)")
-        mock_ws.status_text_set.assert_called_with("导入主世界: 加载区块切片 (25/100) (25%)")
+        self.assertEqual(ws.status, "导入主世界: 加载区块切片 (25/100) (25%)")
 
         # Update with simple text without ratio
         reporter.update(current=50, total=100, message="Extracting biome mappings and colormaps...")
-        mock_ws.status_text_set.assert_called_with("导入主世界: 正在提取生物群系映射与调色板... (50/100, 50%)")
+        self.assertEqual(ws.status, "导入主世界: 正在提取生物群系映射与调色板... (50/100, 50%)")
 
         reporter.close()
 
     def test_english_locale_preservation(self):
         """Verifies that when running under an English locale, original English strings are preserved."""
-        if not HAS_BPY:
-            return
         view = getattr(bpy.context.preferences, "view", None)
         if not view:
             return

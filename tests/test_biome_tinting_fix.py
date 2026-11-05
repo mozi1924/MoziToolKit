@@ -12,22 +12,9 @@ Integration and regression test suite for Biome Tinting fixes:
 import unittest
 import struct
 
-from unittest.mock import MagicMock
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = None
-    HAS_BPY = False
-
+import bpy
 from MoziToolKit.bridge.assets import load_biome_resolver_from_cache
-
-if HAS_BPY:
-    from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, BIOME_TINT_VERSION
-else:
-    ensure_biome_tint = None
-    BIOME_TINT_VERSION = None
+from MoziToolKit.utils.node_groups.biome import ensure_biome_tint, BIOME_TINT_VERSION
 
 try:
     import libmtk_py
@@ -39,8 +26,8 @@ except ImportError:
 class TestBiomeTintingFix(unittest.TestCase):
 
     def setUp(self):
-        if not HAS_BPY or not HAS_LIBMTK:
-            self.skipTest("Requires bpy and native libmtk_py")
+        if not HAS_LIBMTK:
+            self.skipTest("Requires native libmtk_py")
 
     def test_biome_tint_template(self):
         """Verifies that the MC_Biome_Tint template exposes the Tint Color input."""

@@ -5,6 +5,8 @@ Dependency isolation and wheel management is delegated entirely to Blender 4.2+ 
 
 from typing import Optional
 
+import bpy
+
 
 def has_libmtk() -> bool:
     """Check if LibMTK native Rust core is available."""
@@ -20,11 +22,6 @@ def get_prefs(context=None):
     Retrieve MoziToolKit AddonPreferences safely across legacy add-on
     and Blender 4.2+ extensions packaging environments.
     """
-    try:
-        import bpy
-    except ImportError:
-        return None
-
     if context is None:
         context = getattr(bpy, "context", None)
 

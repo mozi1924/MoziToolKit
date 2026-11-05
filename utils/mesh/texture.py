@@ -6,10 +6,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 
 def find_albedo_image_from_material(mat) -> Optional[bpy.types.Image]:

@@ -42,7 +42,12 @@ def main() -> int:
         ) from exc
 
     extra_args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    return pytest.main([str(PROJECT_DIR / "tests"), *extra_args])
+    targets = [arg for arg in extra_args if not arg.startswith("-")]
+    if not targets:
+        pytest_args = [str(PROJECT_DIR / "tests"), *extra_args]
+    else:
+        pytest_args = extra_args
+    return pytest.main(pytest_args)
 
 
 if __name__ == "__main__":

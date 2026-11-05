@@ -6,10 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Tuple
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 
 def is_save_root_container(obj: Optional[Any]) -> bool:

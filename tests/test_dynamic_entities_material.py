@@ -15,13 +15,7 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-try:
-    import bpy
-    from unittest.mock import MagicMock
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "materials") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 try:
     import libmtk_py
@@ -124,7 +118,6 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         )
         self.assertFalse(hasattr(mesh, "dynamic_entity_atlas"))
 
-    @unittest.skipUnless(HAS_BPY, "bpy is required for Blender material node tree test")
     def test_build_dynamic_entities_material_bpy(self):
         """build_dynamic_entities_material creates Principled BSDF with Closest texture."""
         mat = build_dynamic_entities_material()
@@ -137,7 +130,6 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         self.assertIsNotNone(tex_node)
         self.assertEqual(tex_node.interpolation, "Closest")
 
-    @unittest.skipUnless(HAS_BPY and HAS_LIBMTK, "bpy and libmtk_py required for full DCC hierarchy test")
     def test_update_world_mesh_dynamic_entity_binding_bpy(self):
         """update_world_mesh injects geometry, creates image in memory, and binds dynamic entity material slot."""
         world = libmtk_py.VoxelWorld()
@@ -208,7 +200,6 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh)
 
-    @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk material test")
     def test_multi_chunk_dynamic_entities_material_bpy(self):
         """Dynamic entities material builder creates unique materials and images per chunk ID."""
         chunk_0 = 0xFFF0
@@ -223,7 +214,6 @@ class TestDynamicEntitiesMaterial(unittest.TestCase):
         self.assertEqual(mat1.get("mtk_atlas_chunk_id"), chunk_1)
         self.assertEqual(mat1.name, "MTK:Atlas:entities:dynamic_FFF1")
 
-    @unittest.skipUnless(HAS_BPY, "bpy is required for multi-chunk world binding test")
     def test_multi_chunk_world_binding_bpy(self):
         """ensure_world_materials binds multiple dynamic entity chunk materials from a dict."""
         from MoziToolKit.utils.materials.builder.world_binding import ensure_world_materials

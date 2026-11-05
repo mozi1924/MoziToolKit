@@ -10,16 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Any, List, Optional, Sequence, Set, Tuple
 
-try:
-    import bmesh
-    import bpy
-    import mathutils
-    HAS_BPY = True
-except ImportError:
-    bmesh = None
-    bpy = None
-    mathutils = None
-    HAS_BPY = False
+import bmesh
+import bpy
+import mathutils
 
 from ...bridge.extrude import (
     generate_random_extrude_heights,
@@ -211,8 +204,6 @@ def process_random_extrude_mesh_batch(
     context=None,
 ) -> Tuple[int, int]:
     """Batch Data In, Data Out random discrete extrusion and UV repair."""
-    if not HAS_BPY or bmesh is None:
-        raise RuntimeError("bpy and bmesh are required for process_random_extrude_mesh_batch")
 
     bm.faces.ensure_lookup_table()
     bm.faces.index_update()

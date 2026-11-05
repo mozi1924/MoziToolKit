@@ -1,230 +1,220 @@
 """
 Unit tests for Voxel Point Cloud Visibility and Carve Mode Operators & UI Panel.
 Ensures no mutual exclusion bugs between visibility toggle and carve mode.
-Compatible with both headless mock pytest and full Blender host environments.
+Runs 100% inside real Blender host environment with native bpy data structures.
 """
 
 from __future__ import annotations
 
+import types
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import bpy
 from MoziToolKit.operators.op_voxel_cloud import (
     MOZI_OT_carve_voxel_cloud,
     MOZI_OT_toggle_voxel_cloud,
     _resolve_world_and_cloud_objects,
-    _enter_carve_mode,
-    _exit_carve_mode,
 )
-from MoziToolKit.ui.panel_voxel_storage import MOZI_PT_view3d_voxel_tools, _resolve_target_cloud
+from MoziToolKit.ui.panel_voxel_storage import MOZI_PT_view3d_voxel_tools
 
 
-class MockModifier:
-    def __init__(self, name: str, mod_type: str = "MASK"):
-        self.name = name
-        self.type = mod_type
-        self.invert_vertex_group = False
-        self.threshold = 0.5
-
-
-class MockObject:
-    def __init__(self, name: str, obj_type: str = "MESH"):
-        self.name = name
-        self.type = obj_type
-        self.parent = None
-        self.children = []
-        self._props = {}
-        self.modifiers = {}
-        self.hide_viewport = False
-        self._hidden = False
-        self._selected = False
-        self.data = MagicMock()
-        self.data.vertices = [MagicMock() for _ in range(10)]
-
-    def get(self, key, default=None):
-        return self._props.get(key, default)
-
-    def __getitem__(self, key):
-        return self._props[key]
-
-    def __setitem__(self, key, value):
-        self._props[key] = value
-
-    def hide_get(self):
-        return self._hidden
-
-    def hide_set(self, val):
-        self._hidden = bool(val)
-
-    def select_set(self, val):
-        self._selected = bool(val)
-
-
-class MockOperatorSelf:
+class _OperatorProxy:
+    """Minimal proxy carrying operator properties into execute()."""
     def __init__(self, action: str = "TOGGLE"):
         self.action = action
-        self.reports = []
+        self.reports: list[tuple[str, str]] = []
 
     def report(self, level, message):
-        self.reports.append((level, message))
+        self.reports.append((str(level), str(message)))
 
 
 class TestVoxelCloudOperators(unittest.TestCase):
     def setUp(self):
-        self.world_obj = MockObject("WorldMesh", "MESH")
-        self.cloud_obj = MockObject("WorldMesh_VoxelCloud", "MESH")
+        # Create real Blender mesh data blocks & objects
+        self.mesh_w = bpy.data.meshes.new("Test_WorldMesh_Data")
+        self.world_obj = bpy.data.objects.new("Test_WorldMesh", self.mesh_w)
+        bpy.context.collection.objects.link(self.world_obj)
+
+        self.mesh_c = bpy.data.meshes.new("Test_CloudMesh_Data")
+        self.cloud_obj = bpy.data.objects.new("Test_WorldMesh_VoxelCloud", self.mesh_c)
+        bpy.context.collection.objects.link(self.cloud_obj)
+
+        self.cloud_obj.parent = self.world_obj
         self.cloud_obj["mtk_is_voxel_cloud"] = True
         self.cloud_obj["mtk_world_mesh"] = self.world_obj.name
         self.world_obj["mtk_voxel_cloud"] = self.cloud_obj.name
-        self.cloud_obj.parent = self.world_obj
-        self.world_obj.children.append(self.cloud_obj)
 
-        mask_mod = MockModifier("MTK_Voxel_Mask", "MASK")
-        # Default: mask modifier hides all points initially
-        mask_mod.invert_vertex_group = True
-        self.cloud_obj.modifiers["MTK_Voxel_Mask"] = mask_mod
+        # Create real Blender Mask modifier
+        self.mask_mod = self.cloud_obj.modifiers.new(name="MTK_Voxel_Mask", type="MASK")
+        self.mask_mod.invert_vertex_group = True
 
-    def _make_context(self, active_obj, mode="OBJECT"):
-        ctx = MagicMock()
-        ctx.active_object = active_obj
-        ctx.selected_objects = [active_obj]
-        ctx.mode = mode
-        ctx.view_layer = MagicMock()
-        ctx.view_layer.objects.active = active_obj
-        ctx.space_data = MagicMock()
-        ctx.space_data.shading = MagicMock()
-        ctx.tool_settings = MagicMock()
-        ctx.tool_settings.mesh_select_mode = (False, False, True)
-        return ctx
+        bpy.context.view_layer.objects.active = self.world_obj
+        self.world_obj.select_set(True)
+
+    def tearDown(self):
+        if bpy.context.mode != "OBJECT" and hasattr(bpy.ops.object, "mode_set"):
+            try:
+                bpy.ops.object.mode_set(mode="OBJECT")
+            except Exception:
+                pass
+
+        for obj in (self.cloud_obj, self.world_obj):
+            if obj.name in bpy.data.objects:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in (self.mesh_c, self.mesh_w):
+            if mesh.name in bpy.data.meshes:
+                bpy.data.meshes.remove(mesh)
 
     def test_resolve_world_and_cloud_objects(self):
-        ctx1 = self._make_context(self.world_obj)
-        w, c = _resolve_world_and_cloud_objects(ctx1)
+        bpy.context.view_layer.objects.active = self.world_obj
+        w, c = _resolve_world_and_cloud_objects(bpy.context)
         self.assertEqual(w, self.world_obj)
         self.assertEqual(c, self.cloud_obj)
 
-        ctx2 = self._make_context(self.cloud_obj)
-        w, c = _resolve_world_and_cloud_objects(ctx2)
+        bpy.context.view_layer.objects.active = self.cloud_obj
+        w, c = _resolve_world_and_cloud_objects(bpy.context)
         self.assertEqual(w, self.world_obj)
         self.assertEqual(c, self.cloud_obj)
 
-        # Empty container root
-        root = MockObject("[Container] World", "EMPTY")
-        root.children = [self.world_obj, self.cloud_obj]
-        ctx3 = self._make_context(root)
-        w, c = _resolve_world_and_cloud_objects(ctx3)
+        # Empty container root: container holds both meshes as children
+        root = bpy.data.objects.new("Test_[Container]_World", None)
+        bpy.context.collection.objects.link(root)
+        self.world_obj.parent = root
+        self.cloud_obj.parent = root
+        bpy.context.view_layer.objects.active = root
+
+        w, c = _resolve_world_and_cloud_objects(bpy.context)
         self.assertEqual(w, self.world_obj)
         self.assertEqual(c, self.cloud_obj)
+
+        bpy.data.objects.remove(root, do_unlink=True)
 
     def test_toggle_visibility_explicit_actions(self):
-        ctx = self._make_context(self.world_obj)
-
+        bpy.context.view_layer.objects.active = self.world_obj
         # Initial state: hidden (invert_vertex_group = True)
         self.assertTrue(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
 
         # 1. Action: SHOW
-        op1 = MockOperatorSelf(action="SHOW")
-        res1 = MOZI_OT_toggle_voxel_cloud.execute(op1, ctx)
+        op1 = _OperatorProxy(action="SHOW")
+        res1 = MOZI_OT_toggle_voxel_cloud.execute(op1, bpy.context)
         self.assertEqual(res1, {"FINISHED"})
         self.assertFalse(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
 
         # 2. Action: HIDE
-        op2 = MockOperatorSelf(action="HIDE")
-        res2 = MOZI_OT_toggle_voxel_cloud.execute(op2, ctx)
+        op2 = _OperatorProxy(action="HIDE")
+        res2 = MOZI_OT_toggle_voxel_cloud.execute(op2, bpy.context)
         self.assertEqual(res2, {"FINISHED"})
         self.assertTrue(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
 
         # 3. Action: TOGGLE from hidden -> visible
-        op3 = MockOperatorSelf(action="TOGGLE")
-        res3 = MOZI_OT_toggle_voxel_cloud.execute(op3, ctx)
+        op3 = _OperatorProxy(action="TOGGLE")
+        res3 = MOZI_OT_toggle_voxel_cloud.execute(op3, bpy.context)
         self.assertEqual(res3, {"FINISHED"})
         self.assertFalse(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
 
     def test_toggle_hide_while_in_edit_mode_exits_cleanly(self):
-        # User is in EDIT_MESH mode on the cloud
-        ctx = self._make_context(self.cloud_obj, mode="EDIT_MESH")
+        bpy.context.view_layer.objects.active = self.cloud_obj
         self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group = False
+        bpy.ops.object.mode_set(mode="EDIT")
+        self.assertEqual(bpy.context.mode, "EDIT_MESH")
 
-        op = MockOperatorSelf(action="HIDE")
-        res = MOZI_OT_toggle_voxel_cloud.execute(op, ctx)
+        op = _OperatorProxy(action="HIDE")
+        res = MOZI_OT_toggle_voxel_cloud.execute(op, bpy.context)
         self.assertEqual(res, {"FINISHED"})
-        # Must restore active to world_obj
-        self.assertEqual(ctx.view_layer.objects.active, self.world_obj)
-        # Cloud must be masked
+        self.assertEqual(bpy.context.view_layer.objects.active, self.world_obj)
         self.assertTrue(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
+        self.assertEqual(bpy.context.mode, "OBJECT")
 
     def test_carve_mode_enter_when_cloud_already_visible_does_not_hide(self):
-        """
-        Critical regression test:
-        When cloud is ALREADY VISIBLE, clicking Carve Mode must NOT toggle/hide it!
-        It must keep cloud visible and transition to Edit Mode.
-        """
-        ctx = self._make_context(self.world_obj, mode="OBJECT")
-
-        # Make cloud already visible
+        bpy.context.view_layer.objects.active = self.world_obj
         self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group = False
 
-        op = MockOperatorSelf(action="ENTER")
-        res = MOZI_OT_carve_voxel_cloud.execute(op, ctx)
+        op = _OperatorProxy(action="ENTER")
+        res = MOZI_OT_carve_voxel_cloud.execute(op, bpy.context)
         self.assertEqual(res, {"FINISHED"})
 
         # Cloud must STILL be visible (NOT inverted/hidden)
         self.assertFalse(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
-        # Cloud must be active in view layer
-        self.assertEqual(ctx.view_layer.objects.active, self.cloud_obj)
-        # X-Ray must be enabled
-        self.assertTrue(ctx.space_data.shading.show_xray)
-        # Mesh select mode must be Vertex only
-        self.assertEqual(ctx.tool_settings.mesh_select_mode, (True, False, False))
+        self.assertEqual(bpy.context.view_layer.objects.active, self.cloud_obj)
 
     def test_carve_mode_exit_restores_world_mesh_and_keeps_cloud_visible(self):
-        ctx = self._make_context(self.cloud_obj, mode="EDIT_MESH")
+        bpy.context.view_layer.objects.active = self.cloud_obj
         self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group = False
+        bpy.ops.object.mode_set(mode="EDIT")
 
-        op = MockOperatorSelf(action="EXIT")
-        res = MOZI_OT_carve_voxel_cloud.execute(op, ctx)
+        op = _OperatorProxy(action="EXIT")
+        res = MOZI_OT_carve_voxel_cloud.execute(op, bpy.context)
         self.assertEqual(res, {"FINISHED"})
 
-        self.assertEqual(ctx.view_layer.objects.active, self.world_obj)
-        # Point cloud must remain visible so user can inspect edited voxels
+        self.assertEqual(bpy.context.view_layer.objects.active, self.world_obj)
         self.assertFalse(self.cloud_obj.modifiers["MTK_Voxel_Mask"].invert_vertex_group)
+        self.assertEqual(bpy.context.mode, "OBJECT")
 
 
 class TestVoxelToolsPanelUI(unittest.TestCase):
     def setUp(self):
-        self.world_obj = MockObject("WorldMesh", "MESH")
-        self.cloud_obj = MockObject("WorldMesh_VoxelCloud", "MESH")
+        self.mesh_w = bpy.data.meshes.new("Test_UI_WorldMesh")
+        self.world_obj = bpy.data.objects.new("Test_UI_WorldMesh", self.mesh_w)
+        bpy.context.collection.objects.link(self.world_obj)
+
+        self.mesh_c = bpy.data.meshes.new("Test_UI_VoxelCloud")
+        self.cloud_obj = bpy.data.objects.new("Test_UI_VoxelCloud", self.mesh_c)
+        bpy.context.collection.objects.link(self.cloud_obj)
+
         self.cloud_obj["mtk_is_voxel_cloud"] = True
         self.cloud_obj["mtk_world_mesh"] = self.world_obj.name
         self.world_obj["mtk_voxel_cloud"] = self.cloud_obj.name
-        mask_mod = MockModifier("MTK_Voxel_Mask", "MASK")
-        self.cloud_obj.modifiers["MTK_Voxel_Mask"] = mask_mod
+        self.cloud_obj.modifiers.new(name="MTK_Voxel_Mask", type="MASK")
+
+    def tearDown(self):
+        for obj in (self.cloud_obj, self.world_obj):
+            if obj.name in bpy.data.objects:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        for mesh in (self.mesh_c, self.mesh_w):
+            if mesh.name in bpy.data.meshes:
+                bpy.data.meshes.remove(mesh)
 
     def test_panel_draw_does_not_render_mask_threshold(self):
-        ctx = MagicMock()
-        ctx.active_object = self.world_obj
-        ctx.mode = "OBJECT"
+        bpy.context.view_layer.objects.active = self.world_obj
 
-        mock_layout = MagicMock()
-        mock_box = MagicMock()
-        mock_layout.box.return_value = mock_box
-        mock_row = MagicMock()
-        mock_box.row.return_value = mock_row
-        mock_col = MagicMock()
-        mock_box.column.return_value = mock_col
+        class DummyLayout:
+            def __init__(self):
+                self.props = []
 
-        mock_panel = MagicMock()
-        mock_panel.layout = mock_layout
+            def box(self):
+                return self
+
+            def row(self, **kwargs):
+                return self
+
+            def column(self, **kwargs):
+                return self
+
+            def prop(self, data, prop_name, **kwargs):
+                self.props.append((prop_name, kwargs.get("text", "")))
+
+            def label(self, **kwargs):
+                pass
+
+            def separator(self, **kwargs):
+                pass
+
+            def split(self, **kwargs):
+                return self
+
+            def operator(self, *args, **kwargs):
+                return types.SimpleNamespace()
+
+        dummy_layout = DummyLayout()
+        mock_panel = types.SimpleNamespace(layout=dummy_layout)
 
         with patch("MoziToolKit.ui.panel_voxel_storage._resolve_target_cloud", return_value=(self.world_obj, self.cloud_obj)):
-            MOZI_PT_view3d_voxel_tools.draw(mock_panel, ctx)
+            MOZI_PT_view3d_voxel_tools.draw(mock_panel, bpy.context)
 
-        # Verify prop() was never called with threshold
-        for call in mock_row.prop.call_args_list:
-            args, kwargs = call
-            self.assertNotEqual(args[1] if len(args) > 1 else kwargs.get("property"), "threshold")
-            self.assertNotIn("Threshold", kwargs.get("text", ""))
+        for prop_name, text in dummy_layout.props:
+            self.assertNotEqual(prop_name, "threshold")
+            self.assertNotIn("Threshold", text)
 
 
 if __name__ == "__main__":

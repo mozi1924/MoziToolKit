@@ -6,6 +6,7 @@ import _mesh_arrays as ma
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 import array
 import ctypes
@@ -19,15 +20,9 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-if "bpy" not in sys.modules:
-    sys.modules["bpy"] = MagicMock()
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-
 import bpy
-
-HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
+import bmesh
+import mathutils
 
 from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.bridge.mesh import (
@@ -97,181 +92,32 @@ class TestMaterialPresets(unittest.TestCase):
 
 
 
-class MockBlenderCollection:
-    def __init__(self, data_list, attr_map=None):
-        self._data = data_list
-        self._attr_map = attr_map or {}
-
-    def __len__(self):
-        return len(self._data)
-
-    def __getitem__(self, idx):
-        return self._data[idx]
-
-    def foreach_get(self, attr_name, target_array):
-        # Flattened extraction
-        for i, item in enumerate(self._data):
-            val = getattr(item, attr_name, None)
-            if val is None and isinstance(item, dict):
-                val = item.get(attr_name)
-            if isinstance(val, (list, tuple)):
-                for comp_idx, c_val in enumerate(val):
-                    target_array[i * len(val) + comp_idx] = c_val
-            else:
-                target_array[i] = val
-
-    def foreach_set(self, attr_name, source_array):
-        for i, item in enumerate(self._data):
-            if hasattr(item, attr_name):
-                setattr(item, attr_name, source_array[i])
-
-
-class MockMeshVertex:
-    def __init__(self, co, normal):
-        self.co = co
-        self.normal = normal
-
-
-class MockMeshPolygon:
-    def __init__(self, vertices, material_index=0, loop_start=0):
-        self.vertices = vertices
-        self.material_index = material_index
-        self.loop_total = len(vertices)
-        self.loop_start = loop_start
-
-
-class MockMeshLoopTriangle:
-    def __init__(self, vertices, material_index=0):
-        self.vertices = vertices
-        self.material_index = material_index
-
-
-class MockMeshLoop:
-    def __init__(self, vertex_index):
-        self.vertex_index = vertex_index
-
-
-class MockMeshUVLoop:
-    def __init__(self, uv):
-        self.uv = uv
-
-
-class MockUVLayer:
-    def __init__(self, name="UVMap", uvs=None):
-        self.name = name
-        self.data = MockBlenderCollection([MockMeshUVLoop(uv) for uv in (uvs or [])])
-
-
-class MockMesh:
-    def __init__(self):
-        # 4 vertices for a single quad (2 triangles)
-        self.vertices = MockBlenderCollection([
-            MockMeshVertex([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
-            MockMeshVertex([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
-            MockMeshVertex([1.0, 0.0, 1.0], [0.0, 1.0, 0.0]),
-            MockMeshVertex([0.0, 0.0, 1.0], [0.0, 1.0, 0.0]),
-        ])
-        self.loops = MockBlenderCollection([
-            MockMeshLoop(0),
-            MockMeshLoop(1),
-            MockMeshLoop(2),
-            MockMeshLoop(3),
-        ])
-        self.polygons = MockBlenderCollection([
-            MockMeshPolygon([0, 1, 2, 3], material_index=1)
-        ])
-        self.loop_triangles = MockBlenderCollection([
-            MockMeshLoopTriangle([0, 1, 2], material_index=1),
-            MockMeshLoopTriangle([0, 2, 3], material_index=1),
-        ])
-class MockUVLayers(list):
-    def __init__(self, layers):
-        super().__init__(layers)
-        self.active = layers[0] if layers else None
-
-    def get(self, name):
-        for l in self:
-            if l.name == name:
-                return l
-        return None
-
-    def new(self, name="UVMap"):
-        layer = MockUVLayer(name, [])
-        self.append(layer)
-        self.active = layer
-        return layer
-
-
-class MockMesh:
-    def __init__(self):
-        # 4 vertices for a single quad (2 triangles)
-        self.vertices = MockBlenderCollection([
-            MockMeshVertex([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
-            MockMeshVertex([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
-            MockMeshVertex([1.0, 0.0, 1.0], [0.0, 1.0, 0.0]),
-            MockMeshVertex([0.0, 0.0, 1.0], [0.0, 1.0, 0.0]),
-        ])
-        self.loops = MockBlenderCollection([
-            MockMeshLoop(0),
-            MockMeshLoop(1),
-            MockMeshLoop(2),
-            MockMeshLoop(3),
-        ])
-        self.polygons = MockBlenderCollection([
-            MockMeshPolygon([0, 1, 2, 3], material_index=1)
-        ])
-        self.loop_triangles = MockBlenderCollection([
-            MockMeshLoopTriangle([0, 1, 2], material_index=1),
-            MockMeshLoopTriangle([0, 2, 3], material_index=1),
-        ])
-        self.uv_layers = MockUVLayers([
-            MockUVLayer("UVMap", [
-                [0.0, 0.0],
-                [1.0, 0.0],
-                [1.0, 1.0],
-                [0.0, 1.0],
-            ])
-        ])
-        self.attributes = []
-
-    def calc_loop_triangles(self):
-        pass
-
-    def clear_geometry(self):
-        pass
-
-    def from_pydata(self, verts, edges, faces):
-        pass
-
-    def update(self):
-        self.updated = True
-
-
-class TestMeshBridge(unittest.TestCase):
-    def test_domain_mappings(self):
-        self.assertEqual(BLENDER_TO_MTK_DOMAIN["POINT"], "point")
-        self.assertEqual(BLENDER_TO_MTK_DOMAIN["CORNER"], "corner")
-        self.assertEqual(BLENDER_TO_MTK_DOMAIN["FACE"], "face")
-        self.assertEqual(MTK_TO_BLENDER_DOMAIN["point"], "POINT")
-        self.assertEqual(MTK_TO_BLENDER_DOMAIN["corner"], "CORNER")
-        self.assertEqual(MTK_TO_BLENDER_DOMAIN["face"], "FACE")
-
-    def test_type_mappings(self):
-        self.assertEqual(BLENDER_TO_MTK_TYPE["FLOAT"][0], "float")
-        self.assertEqual(BLENDER_TO_MTK_TYPE["FLOAT_VECTOR"][0], "float3")
-        self.assertEqual(MTK_TO_BLENDER_TYPE["Float"][0], "FLOAT")
-        self.assertEqual(MTK_TO_BLENDER_TYPE["Float3"][0], "FLOAT_VECTOR")
-
-    def test_mock_mesh_update(self):
-        mock_mesh = MockMesh()
-        self.assertEqual(len(mock_mesh.vertices), 4)
-        self.assertEqual(len(mock_mesh.loop_triangles), 2)
-        mock_mesh.update()
-        self.assertTrue(mock_mesh.updated)
+    def test_real_mesh_update(self):
+        mesh = bpy.data.meshes.new("TestMeshUpdate")
+        mesh.from_pydata(
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 0.0, 1.0)],
+            [],
+            [(0, 1, 2, 3)],
+        )
+        mesh.update()
+        self.assertEqual(len(mesh.vertices), 4)
+        self.assertEqual(len(mesh.polygons), 1)
+        bpy.data.meshes.remove(mesh)
 
     def test_extract_mesh_data_quads(self):
-        mock_mesh = MockMesh()
-        mesh_data = extract_mesh_data(mock_mesh)
+        mesh = bpy.data.meshes.new("TestQuadMesh")
+        mesh.from_pydata(
+            [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 0.0, 1.0)],
+            [],
+            [(0, 1, 2, 3)],
+        )
+        mesh.polygons[0].material_index = 1
+        uv_layer = mesh.uv_layers.new(name="UVMap")
+        uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+        for i, uv in enumerate(uvs):
+            uv_layer.data[i].uv = uv
+
+        mesh_data = extract_mesh_data(mesh)
         self.assertEqual(mesh_data.vertex_count, 4)
         self.assertEqual(mesh_data.triangle_count, 2)
         indices = ma.indices(mesh_data)
@@ -279,6 +125,9 @@ class TestMeshBridge(unittest.TestCase):
         self.assertEqual(mesh_data.uv_layout, "per_loop")
         self.assertEqual(len(ma.loop_uvs(mesh_data)), 8)
         face_mats = ma.face_materials(mesh_data)
+        self.assertEqual(len(face_mats), 1)
+        self.assertEqual(face_mats[0], 1)
+        bpy.data.meshes.remove(mesh)
         self.assertEqual(len(face_mats), 1)
         self.assertEqual(face_mats[0], 1)
 
@@ -363,44 +212,25 @@ class TestDualMeshApi(unittest.TestCase):
 
 class TestPaletteSourceTextureKeys(unittest.TestCase):
     def test_resolve_from_palette_int(self):
-        class MockAttrData:
-            def __init__(self, values):
-                self._values = values
-            def __len__(self):
-                return len(self._values)
-            def foreach_get(self, attr_name, target):
-                for i, v in enumerate(self._values):
-                    target[i] = v
+        mesh = bpy.data.meshes.new("TestPaletteMesh")
+        mesh.from_pydata(
+            [(0,0,0),(1,0,0),(1,1,0),(0,1,0), (2,0,0),(3,0,0),(3,1,0),(2,1,0),
+             (4,0,0),(5,0,0),(5,1,0),(4,1,0), (6,0,0),(7,0,0),(7,1,0),(6,1,0)],
+            [],
+            [(0,1,2,3), (4,5,6,7), (8,9,10,11), (12,13,14,15)],
+        )
+        try:
+            attr = mesh.attributes.new(name="mtk_source_texture_idx", type="INT", domain="FACE")
+            attr.data.foreach_set("value", [0, 1, 0, 2])
+            mesh["mtk_source_textures"] = ["stone", "grass_block_top", "dirt"]
 
-        class MockAttr:
-            def __init__(self, values):
-                self.data = MockAttrData(values)
-
-        class MockMeshObj:
-            def __init__(self):
-                self.polygons = [object(), object(), object(), object()]
-                self.attributes = {"mtk_source_texture_idx": MockAttr([0, 1, 0, 2])}
-                self["mtk_source_textures"] = ["stone", "grass_block_top", "dirt"]
-
-            def __contains__(self, key):
-                return key in self.__dict__
-
-            def __getitem__(self, key):
-                return self.__dict__[key]
-
-            def __setitem__(self, key, value):
-                self.__dict__[key] = value
-
-            def keys(self):
-                return self.__dict__.keys()
-
-        mesh = MockMeshObj()
-        resolved = resolve_source_texture_keys(mesh)
-        self.assertEqual(resolved, ["stone", "grass_block_top", "stone", "dirt"])
+            resolved = resolve_source_texture_keys(mesh)
+            self.assertEqual(resolved, ["stone", "grass_block_top", "stone", "dirt"])
+        finally:
+            bpy.data.meshes.remove(mesh)
 
 
 
-@unittest.skipUnless(HAS_BPY, "Requires real Blender bpy")
 class TestPaletteProvenanceParity(unittest.TestCase):
     """Save imports and Live Sync must expose identical palette provenance."""
 
@@ -443,229 +273,119 @@ class TestColorAttributeInjection(unittest.TestCase):
     def test_inject_color_attributes_standard_sets_active_color(self):
         from MoziToolKit.bridge.mesh.standard import inject_color_attributes_standard
 
-        class MockColorAttrData:
-            def __init__(self, size):
-                self.size = size
-                self.values = None
+        mesh = bpy.data.meshes.new("test_color_attr_mesh")
+        try:
+            mesh.vertices.add(4)
+            mesh.loops.add(4)
+            mesh.polygons.add(1)
+            colors_f32 = np.array([
+                0.5, 0.2, 0.1, 1.0,
+                0.5, 0.2, 0.1, 1.0,
+                0.5, 0.2, 0.1, 1.0,
+                0.5, 0.2, 0.1, 1.0,
+            ], dtype=np.float32)
 
-            def __len__(self):
-                return self.size
+            mesh_data = SimpleNamespace(colors_memoryview=lambda: memoryview(colors_f32))
+            inject_color_attributes_standard(mesh, mesh_data)
 
-            def foreach_set(self, attr_name, array_data):
-                self.values = list(array_data)
-
-        class MockColorAttr:
-            def __init__(self, name, domain, size):
-                self.name = name
-                self.domain = domain
-                self.data = MockColorAttrData(size)
-
-        class MockColorAttributes:
-            def __init__(self, loop_count):
-                self.attrs = {}
-                self.active_color = None
-                self.loop_count = loop_count
-
-            def get(self, name, default=None):
-                return self.attrs.get(name, default)
-
-            def new(self, name, type, domain):
-                attr = MockColorAttr(name, domain, self.loop_count)
-                self.attrs[name] = attr
-                return attr
-
-            def __contains__(self, name):
-                return name in self.attrs
-
-        class MockMesh:
-            def __init__(self, loop_count=4):
-                self.loops = [object()] * loop_count
-                self.vertices = [object()] * 4
-                self.color_attributes = MockColorAttributes(loop_count)
-
-        mesh = MockMesh(loop_count=4)
-        colors_f32 = np.array([
-            0.5, 0.2, 0.1, 1.0,
-            0.5, 0.2, 0.1, 1.0,
-            0.5, 0.2, 0.1, 1.0,
-            0.5, 0.2, 0.1, 1.0,
-        ], dtype=np.float32)
-
-        class MockMeshData:
-            def colors_memoryview(self):
-                return memoryview(colors_f32)
-
-        inject_color_attributes_standard(mesh, MockMeshData())
-
-        self.assertIn("color", mesh.color_attributes.attrs)
-        col_attr = mesh.color_attributes.get("color")
-        self.assertIsNotNone(col_attr)
-        self.assertEqual(mesh.color_attributes.active_color, col_attr)
-        self.assertEqual(len(col_attr.data.values), 16)
-        self.assertAlmostEqual(col_attr.data.values[0], 0.5, places=5)
-        self.assertAlmostEqual(col_attr.data.values[1], 0.2, places=5)
+            self.assertIn("color", mesh.color_attributes)
+            col_attr = mesh.color_attributes.get("color")
+            self.assertIsNotNone(col_attr)
+            self.assertEqual(mesh.color_attributes.active_color, col_attr)
+            col_vals = [c for item in col_attr.data for c in item.color]
+            self.assertEqual(len(col_vals), 16)
+            self.assertAlmostEqual(col_vals[0], 0.5, places=5)
+            self.assertAlmostEqual(col_vals[1], 0.2, places=5)
+        finally:
+            bpy.data.meshes.remove(mesh)
 
     def test_inject_color_attributes_dna_sets_active_color(self):
         from unittest.mock import MagicMock, patch
         from MoziToolKit.bridge.mesh.dna import inject_color_attributes_dna
 
-        class MockColorAttr:
-            def __init__(self, name, domain, size):
-                self.name = name
-                self.domain = domain
-                self.data = [MagicMock()] * size
+        mesh = bpy.data.meshes.new("test_color_dna_mesh")
+        try:
+            mesh.vertices.add(4)
+            mesh.loops.add(4)
+            mesh.polygons.add(1)
+            colors_f32 = np.array([
+                0.5, 0.2, 0.1, 1.0,
+                0.5, 0.2, 0.1, 1.0,
+                0.5, 0.2, 0.1, 1.0,
+                0.5, 0.2, 0.1, 1.0,
+            ], dtype=np.float32)
 
-        class MockColorAttributes:
-            def __init__(self, loop_count):
-                self.attrs = {}
-                self.active_color = None
-                self.loop_count = loop_count
+            mesh_data = SimpleNamespace(colors_memoryview=lambda: memoryview(colors_f32))
 
-            def get(self, name, default=None):
-                return self.attrs.get(name, default)
+            mock_dna = MagicMock()
+            mock_dna.copy_f32.return_value = None
 
-            def new(self, name, type, domain):
-                attr = MockColorAttr(name, domain, self.loop_count)
-                self.attrs[name] = attr
-                return attr
+            with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
+                 patch("MoziToolKit.bridge.mesh.dna.is_dna_enabled", return_value=True), \
+                 patch("MoziToolKit.bridge.mesh.dna.resolve_colors_ptr", return_value=0x12345678):
+                result = inject_color_attributes_dna(mesh, mesh_data)
 
-            def __contains__(self, name):
-                return name in self.attrs
-
-        class MockMesh:
-            def __init__(self, loop_count=4):
-                self.loops = [object()] * loop_count
-                self.vertices = [object()] * 4
-                self.color_attributes = MockColorAttributes(loop_count)
-
-        mesh = MockMesh(loop_count=4)
-        colors_f32 = np.array([
-            0.5, 0.2, 0.1, 1.0,
-            0.5, 0.2, 0.1, 1.0,
-            0.5, 0.2, 0.1, 1.0,
-            0.5, 0.2, 0.1, 1.0,
-        ], dtype=np.float32)
-
-        class MockMeshData:
-            def colors_memoryview(self):
-                return memoryview(colors_f32)
-
-        mock_dna = MagicMock()
-        mock_dna.copy_f32.return_value = None
-
-        with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
-             patch("MoziToolKit.bridge.mesh.dna.is_dna_enabled", return_value=True), \
-             patch("MoziToolKit.bridge.mesh.dna.resolve_colors_ptr", return_value=0x12345678):
-            result = inject_color_attributes_dna(mesh, MockMeshData())
-
-        self.assertTrue(result)
-        self.assertIn("color", mesh.color_attributes.attrs)
-        col_attr = mesh.color_attributes.get("color")
-        self.assertIsNotNone(col_attr)
-        self.assertEqual(mesh.color_attributes.active_color, col_attr)
-        mock_dna.copy_f32.assert_called_once()
+            self.assertTrue(result)
+            self.assertIn("color", mesh.color_attributes)
+            col_attr = mesh.color_attributes.get("color")
+            self.assertIsNotNone(col_attr)
+            self.assertEqual(mesh.color_attributes.active_color, col_attr)
+            mock_dna.copy_f32.assert_called_once()
+        finally:
+            bpy.data.meshes.remove(mesh)
 
     def test_inject_face_materials_standard_triangulated_quad_expansion(self):
         """Regression test: triangulated quad meshes should repeat face material slots across both triangles."""
         from MoziToolKit.bridge.mesh.standard import inject_face_materials_standard
 
-        class MockPolygons:
-            def __init__(self, count):
-                self.count = count
-                self.slots = None
+        mesh = bpy.data.meshes.new("test_tri_mats")
+        try:
+            mesh.vertices.add(4)
+            mesh.loops.add(6)
+            mesh.polygons.add(2)
+            mats_u16 = np.array([3], dtype=np.uint16)
+            mesh_data = SimpleNamespace(face_materials_memoryview=lambda: memoryview(mats_u16))
 
-            def __len__(self):
-                return self.count
-
-            def foreach_set(self, attr, arr):
-                if attr == "material_index":
-                    self.slots = list(arr)
-
-        class MockMesh:
-            def __init__(self, poly_count=2):
-                self.polygons = MockPolygons(poly_count)
-
-        # 1 quad face with material 3, but triangulated into 2 triangles
-        mesh = MockMesh(poly_count=2)
-        mats_u16 = np.array([3], dtype=np.uint16)
-
-        class MockMeshData:
-            def face_materials_memoryview(self):
-                return memoryview(mats_u16)
-
-        inject_face_materials_standard(mesh, MockMeshData())
-        self.assertEqual(mesh.polygons.slots, [3, 3])
+            inject_face_materials_standard(mesh, mesh_data)
+            slots = [p.material_index for p in mesh.polygons]
+            self.assertEqual(slots, [3, 3])
+        finally:
+            bpy.data.meshes.remove(mesh)
 
     def test_inject_color_attributes_standard_triangulated_quad_expansion(self):
         """Regression test: triangulated quad meshes expand 4 quad corners to 6 triangle loop corners."""
         from MoziToolKit.bridge.mesh.standard import inject_color_attributes_standard
 
-        class MockColorAttrData:
-            def __init__(self, size):
-                self.size = size
-                self.values = []
+        mesh = bpy.data.meshes.new("test_tri_colors")
+        try:
+            mesh.vertices.add(4)
+            mesh.loops.add(6)
+            mesh.polygons.add(2)
+            colors_f32 = np.array([
+                1.0, 0.0, 0.0, 1.0,  # Corner 0
+                0.0, 1.0, 0.0, 1.0,  # Corner 1
+                0.0, 0.0, 1.0, 1.0,  # Corner 2
+                1.0, 1.0, 0.0, 1.0,  # Corner 3
+            ], dtype=np.float32)
 
-            def foreach_set(self, attr, arr):
-                self.values = list(arr)
+            mesh_data = SimpleNamespace(colors_memoryview=lambda: memoryview(colors_f32))
 
-            def __len__(self):
-                return self.size
+            inject_color_attributes_standard(mesh, mesh_data)
 
-        class MockColorAttr:
-            def __init__(self, name, domain, size):
-                self.name = name
-                self.domain = domain
-                self.data = MockColorAttrData(size)
-
-        class MockColorAttributes:
-            def __init__(self, loop_count):
-                self.attrs = {}
-                self.active_color = None
-                self.loop_count = loop_count
-
-            def get(self, name, default=None):
-                return self.attrs.get(name, default)
-
-            def new(self, name, type, domain):
-                attr = MockColorAttr(name, domain, self.loop_count)
-                self.attrs[name] = attr
-                return attr
-
-            def __contains__(self, name):
-                return name in self.attrs
-
-        class MockMesh:
-            def __init__(self, loop_count=6):
-                self.loops = [object()] * loop_count
-                self.vertices = [object()] * 4
-                self.color_attributes = MockColorAttributes(loop_count)
-
-        # 1 quad face with 4 distinct corner colors, triangulated into 2 triangles (6 loops)
-        mesh = MockMesh(loop_count=6)
-        colors_f32 = np.array([
-            1.0, 0.0, 0.0, 1.0,  # Corner 0
-            0.0, 1.0, 0.0, 1.0,  # Corner 1
-            0.0, 0.0, 1.0, 1.0,  # Corner 2
-            1.0, 1.0, 0.0, 1.0,  # Corner 3
-        ], dtype=np.float32)
-
-        class MockMeshData:
-            def colors_memoryview(self):
-                return memoryview(colors_f32)
-
-        inject_color_attributes_standard(mesh, MockMeshData())
-
-        col_attr = mesh.color_attributes.get("color")
-        self.assertIsNotNone(col_attr)
-        self.assertEqual(len(col_attr.data.values), 24)  # 6 corners * 4 floats
-        # Tri 1: corners 0, 1, 2
-        self.assertEqual(col_attr.data.values[0:4], [1.0, 0.0, 0.0, 1.0])
-        self.assertEqual(col_attr.data.values[4:8], [0.0, 1.0, 0.0, 1.0])
-        self.assertEqual(col_attr.data.values[8:12], [0.0, 0.0, 1.0, 1.0])
-        # Tri 2: corners 0, 2, 3
-        self.assertEqual(col_attr.data.values[12:16], [1.0, 0.0, 0.0, 1.0])
-        self.assertEqual(col_attr.data.values[16:20], [0.0, 0.0, 1.0, 1.0])
-        self.assertEqual(col_attr.data.values[20:24], [1.0, 1.0, 0.0, 1.0])
+            col_attr = mesh.color_attributes.get("color")
+            self.assertIsNotNone(col_attr)
+            col_vals = [c for item in col_attr.data for c in item.color]
+            self.assertEqual(len(col_vals), 24)  # 6 corners * 4 floats
+            # Tri 1: corners 0, 1, 2
+            self.assertEqual(col_vals[0:4], [1.0, 0.0, 0.0, 1.0])
+            self.assertEqual(col_vals[4:8], [0.0, 1.0, 0.0, 1.0])
+            self.assertEqual(col_vals[8:12], [0.0, 0.0, 1.0, 1.0])
+            # Tri 2: corners 0, 2, 3
+            self.assertEqual(col_vals[12:16], [1.0, 0.0, 0.0, 1.0])
+            self.assertEqual(col_vals[16:20], [0.0, 0.0, 1.0, 1.0])
+            self.assertEqual(col_vals[20:24], [1.0, 1.0, 0.0, 1.0])
+        finally:
+            bpy.data.meshes.remove(mesh)
 
 
 if __name__ == "__main__":

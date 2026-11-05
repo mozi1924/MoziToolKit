@@ -11,11 +11,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-try:
-    import bpy
-    from bpy.props import BoolProperty
-except ImportError:
-    bpy = None
+import bpy
+from bpy.props import BoolProperty
 
 from ...utils.materials.builder.atlas_refresh import reload_atlas_images
 from ...bridge.world import prepare_world_mesh_context

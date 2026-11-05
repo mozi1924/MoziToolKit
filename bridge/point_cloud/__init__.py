@@ -10,12 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ..dna import is_dna_enabled
 from .constants import (
@@ -56,8 +51,6 @@ def inject_voxel_point_cloud(
     Features a dual-channel execution model: prioritizes hardware-speed zero-copy
     DNA raw pointer ingestion, seamlessly falling back to standard BPy foreach_set.
     """
-    if not HAS_BPY:
-        return False
 
     is_pc = False
     if hasattr(cloud_obj_or_mesh, "data"):

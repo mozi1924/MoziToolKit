@@ -13,12 +13,7 @@ from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger("MoziToolKit.Utils.World.Injector")
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...bridge.mesh import inject_mesh_data
 from ...bridge.world import resolve_dynamic_entity_atlases
@@ -54,8 +49,6 @@ def apply_voxel_mesh_to_blender(
     Instantiates or updates target Blender Mesh object, binds Atlas PBR chunk shaders
     or Standalone Principled/LabPBR materials, and synchronizes companion unculled VoxelPointCloud.
     """
-    if not HAS_BPY:
-        raise RuntimeError("bpy is not available.")
 
     if context is None:
         context = bpy.context

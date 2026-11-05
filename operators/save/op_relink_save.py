@@ -12,13 +12,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-try:
-    import bpy
-    from bpy.props import BoolProperty, StringProperty
-    from bpy_extras.io_utils import ImportHelper
-except ImportError:
-    bpy = None
-    ImportHelper = object
+import bpy
+from bpy.props import BoolProperty, StringProperty
+from bpy_extras.io_utils import ImportHelper
 
 from ...utils.system.save_registry import get_save_registry
 

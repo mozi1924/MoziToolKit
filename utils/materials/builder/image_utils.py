@@ -10,12 +10,8 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
+import numpy as np
 
 
 def set_material_displacement_method(mat: Any, method: str = "BOTH") -> None:
@@ -74,8 +70,6 @@ def get_or_create_image_from_f32(
     Creates or updates an image datablock directly from normalized float32 memory buffer.
     Zero disk IO, zero numpy conversion, and zero intermediate copies into Blender's Image.pixels.
     """
-    if not HAS_BPY:
-        return None
 
     img = bpy.data.images.get(image_name)
     if not force_reload and _is_valid_image(img, width, height):
@@ -149,8 +143,6 @@ def get_or_create_image_from_rgba(
     :param flip_y: If True (default), vertically flips image rows (np.flipud) to align
                    standard top-to-bottom image buffers with Blender's bottom-to-top img.pixels layout.
     """
-    if not HAS_BPY:
-        return None
 
     img = bpy.data.images.get(image_name)
     if not force_reload and _is_valid_image(img, width, height):
@@ -161,13 +153,6 @@ def get_or_create_image_from_rgba(
                 pass
         return img
 
-    try:
-        import numpy as np
-    except ImportError:
-        np = None
-
-    if np is None:
-        return None
 
     try:
         if img is None:
@@ -235,7 +220,7 @@ def get_or_create_image(
     Load or retrieve an image datablock from memory (.mtkcache) or disk.
     Prioritizes fast zero-disk memory streaming before falling back to filesystem.
     """
-    if not HAS_BPY or image_path_or_source is None:
+    if image_path_or_source is None:
         return None
 
     # 1. Handle in-memory (width, height, buffer) tuple directly

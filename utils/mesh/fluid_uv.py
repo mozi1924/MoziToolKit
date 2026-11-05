@@ -13,14 +13,9 @@ from typing import Any, Optional, Sequence
 
 import numpy as np
 
-try:
-    import bpy
-    import bmesh
-    from mathutils import Vector
-except ImportError:
-    bpy = None
-    bmesh = None
-    Vector = None
+import bpy
+import bmesh
+from mathutils import Vector
 
 from ...bridge.uv import (
     repair_mesh_fluid_uv_inplace,

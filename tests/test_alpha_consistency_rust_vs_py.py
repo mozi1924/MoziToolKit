@@ -21,16 +21,8 @@ import MoziToolKit.bridge.texture as tex_bridge
 from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.utils.materials.builder import ensure_material_node_tree
 
-from unittest.mock import MagicMock
-
-try:
-    import bpy
-    import bmesh
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = None
-    bmesh = None
-    HAS_BPY = False
+import bpy
+import bmesh
 
 
 class TestTextureAlphaBridge(unittest.TestCase):
@@ -70,7 +62,6 @@ class TestTextureAlphaBridge(unittest.TestCase):
         results = tex_bridge.batch_analyze_transparent_faces([face0, face1], width, height, pixels)
         self.assertEqual(results, [False, True])
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_select_transparent_faces_operator_end_to_end(self):
         import MoziToolKit.operators as operators
         import MoziToolKit.ui as ui

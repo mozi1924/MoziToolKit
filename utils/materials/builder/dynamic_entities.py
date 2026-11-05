@@ -10,12 +10,7 @@ from typing import Any, Optional
 
 logger = logging.getLogger("MoziToolKit.Materials.DynamicEntities")
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from .image_utils import (
     ensure_material_node_tree,
@@ -53,7 +48,7 @@ def update_dynamic_entities_image(
     """
     Creates or updates the Blender Image datablock with latest dynamic entities RGBA bytes.
     """
-    if not HAS_BPY or rgba_bytes_or_memview is None:
+    if rgba_bytes_or_memview is None:
         return None
 
     if image_name is None:
@@ -90,8 +85,6 @@ def build_dynamic_entities_material(
     Builds or retrieves the standard Principled BSDF material for player heads,
     custom skulls, and banners, hooking up the dynamic entities 1024x1024 atlas texture.
     """
-    if not HAS_BPY:
-        return None
 
     if mat_name is None:
         mat_name = dynamic_entities_material_name(chunk_id)
@@ -170,12 +163,9 @@ def extract_resident_dynamic_entity_atlases() -> Optional[dict[int, bytes]]:
     Converts Blender top-down float pixels into RGBA8 bytes.
     Returns a mapping of chunk_id -> raw_rgba_bytes, or None if no resident atlas exists.
     """
-    if not HAS_BPY or bpy is None:
-        return None
+    import numpy as np
 
     try:
-        import numpy as np
-
         extracted: dict[int, bytes] = {}
         for cid in range(DYNAMIC_CHUNK_START, DYNAMIC_CHUNK_END + 1):
             img_name = dynamic_entities_image_name(cid)

@@ -21,10 +21,7 @@ import time
 from typing import Any, Dict, Optional
 import uuid
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 logger = logging.getLogger("MoziToolKit.System.SaveRegistry")
 

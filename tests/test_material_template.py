@@ -5,9 +5,12 @@ Unit tests for the template material cloning engine (utils/materials/builder/tem
 from __future__ import annotations
 
 import array
+from pathlib import Path
 import unittest
-from unittest.mock import MagicMock
 
+import bpy
+
+from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 from MoziToolKit.utils.materials.builder.template import (
     get_template_key,
     find_archetype_material,
@@ -39,20 +42,15 @@ class TestMaterialTemplate(unittest.TestCase):
         k_no_tint = get_template_key("blocks", False, True, False, True, True, True, "CYCLES", False, "UVMap", enable_biome_tint=False)
         self.assertNotEqual(k_tint, k_no_tint)
 
-    def test_register_and_find_archetype_mock(self):
-        mock_mat = {}
-        register_archetype_material(mock_mat, "blocks_pbr_v1")
-        self.assertEqual(mock_mat.get("mtk_template_key"), "blocks_pbr_v1")
+    def test_register_and_find_archetype(self):
+        mat = bpy.data.materials.new("TestArchetype")
+        try:
+            register_archetype_material(mat, "blocks_pbr_v1")
+            self.assertEqual(mat.get("mtk_template_key"), "blocks_pbr_v1")
+        finally:
+            bpy.data.materials.remove(mat)
 
     def test_clone_atlas_chunk_material_blender(self):
-        try:
-            import bpy
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
-        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         albedo1 = (2, 2, array.array("f", [1.0, 0.0, 0.0, 1.0] * 4))
         normal1 = (2, 2, array.array("f", [0.5, 0.5, 1.0, 1.0] * 4))
@@ -96,14 +94,6 @@ class TestMaterialTemplate(unittest.TestCase):
         bpy.data.materials.remove(mat2)
 
     def test_clone_atlas_chunk_material_with_overlay(self):
-        try:
-            import bpy
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
-        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         albedo1 = (2, 2, array.array("f", [1.0, 0.0, 0.0, 1.0] * 4))
         overlay1 = (2, 2, array.array("f", [0.0, 1.0, 0.0, 0.5] * 4))
@@ -153,15 +143,6 @@ class TestMaterialTemplate(unittest.TestCase):
         bpy.data.materials.remove(mat2)
 
     def test_atlas_chunk_material_overlay_virtual_path(self):
-        try:
-            import bpy
-            from pathlib import Path
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
-        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         # Simulate .mtkcache behavior: create an image in bpy.data.images named
         # blocks_chunk_003_overlay.png, but pass a Path object pointing to a
@@ -199,14 +180,6 @@ class TestMaterialTemplate(unittest.TestCase):
         bpy.data.images.remove(ovr_img)
 
     def test_non_blocks_category_skips_biome_tint(self):
-        try:
-            import bpy
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
-        from MoziToolKit.utils.materials.builder.atlas_builder import build_atlas_chunk_material
 
         albedo = (2, 2, array.array("f", [0.8, 0.2, 0.2, 1.0] * 4))
 

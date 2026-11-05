@@ -5,60 +5,9 @@ import gzip
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
-import types
-
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-site_pkgs = PROJECT_DIR / "site-packages"
-for p in [str(site_pkgs), str(PROJECT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
-
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-if "bpy_extras" not in sys.modules:
-    bpy_extras = types.ModuleType("bpy_extras")
-    bpy_extras.__path__ = []
-    io_utils = types.ModuleType("bpy_extras.io_utils")
-    io_utils.ExportHelper = object
-    io_utils.ImportHelper = object
-    bpy_extras.io_utils = io_utils
-    sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = io_utils
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
-except ImportError:
-    bpy = MagicMock()
-    HAS_BPY = False
-
-if not HAS_BPY:
-    class _MockOperator: pass
-    class _MockPanel: pass
-    class _MockMenu: pass
-    class _MockPropertyGroup: pass
-    class _MockUIList: pass
-    class _MockAddonPreferences: pass
-
-    class _MockTypes:
-        Operator = _MockOperator
-        Panel = _MockPanel
-        Menu = _MockMenu
-        PropertyGroup = _MockPropertyGroup
-        UIList = _MockUIList
-        AddonPreferences = _MockAddonPreferences
-
-    bpy.types = _MockTypes
-    bpy.app = MagicMock()
-    bpy.props = MagicMock()
-
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = bpy.props
-    sys.modules["bpy.types"] = _MockTypes
-    sys.modules["bpy.app"] = bpy.app
-    sys.modules["bmesh"] = MagicMock()
+import bpy
+import bmesh
+import mathutils
 
 import libmtk_py
 
@@ -150,9 +99,6 @@ class TestDebugWorldBakeValidation(unittest.TestCase):
 
     def test_blender_mesh_ingestion_for_entity_blocks(self):
         """Under native Blender, validates that baked models convert into valid Blender mesh objects."""
-        if not HAS_BPY:
-            self.skipTest("Requires native Blender host environment")
-
         sample_entity_blocks = [
             "minecraft:chest[facing=north,type=single,waterlogged=false]",
             "minecraft:chest[facing=south,type=left,waterlogged=false]",

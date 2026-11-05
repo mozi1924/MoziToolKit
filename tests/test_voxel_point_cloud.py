@@ -17,14 +17,7 @@ try:
 except ImportError:
     HAS_LIBMTK = False
 
-from unittest.mock import MagicMock
-
-try:
-    import bpy
-    HAS_REAL_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "app")
-except ImportError:
-    bpy = None
-    HAS_REAL_BPY = False
+import bpy
 
 
 def _states(cloud):
@@ -76,7 +69,6 @@ class TestVoxelPointCloudBridge:
         assert s2.get_block(5, 5, 5) == "minecraft:gold_block"
         assert s2.get_biome(1, 2, 3) == "minecraft:desert"
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_blender_point_cloud_entity_palette_roundtrip(self):
         """Verifies Block Entity Palette & indices injection and extraction in Blender."""
         import numpy as np
@@ -130,7 +122,6 @@ class TestVoxelPointCloudBridge:
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_blender_point_cloud_injection_and_mask_modifier(self):
         """Verifies point cloud injection into Blender Mesh, attributes, and Mask modifier."""
         from MoziToolKit.bridge.point_cloud import (
@@ -189,7 +180,6 @@ class TestVoxelPointCloudBridge:
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_ensure_voxel_child_cloud_hierarchy_contract(self):
         """Verifies the unified ensure_voxel_child_cloud contract and deprecation of old API."""
         import warnings
@@ -243,7 +233,6 @@ class TestVoxelPointCloudBridge:
             if parent_obj.name in bpy.data.objects:
                 bpy.data.objects.remove(parent_obj, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_ingest_and_user_carving_remesh_flow(self):
         """Simulates end-to-end user carving workflow in Blender."""
         from MoziToolKit.utils.world import ingest_voxel_world
@@ -341,7 +330,6 @@ class TestVoxelPointCloudBridge:
             if obj.name in bpy.data.objects:
                 bpy.data.objects.remove(obj, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_fast_palette_point_cloud_large_batch_roundtrip(self):
         """Verifies fast palette-based bulk injection and reconstruction for large point clouds."""
         from MoziToolKit.bridge.point_cloud import (
@@ -395,7 +383,6 @@ class TestVoxelPointCloudBridge:
             bpy.data.objects.remove(b_obj, do_unlink=True)
             bpy.data.meshes.remove(b_mesh, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_direct_pointer_matches_foreach_set(self):
         """DNA and standard attribute writes produce identical mesh data."""
         from MoziToolKit.bridge.dna import set_dna_enabled
@@ -434,7 +421,6 @@ class TestVoxelPointCloudBridge:
             bpy.data.meshes.remove(dna_mesh, do_unlink=True)
             bpy.data.meshes.remove(std_mesh, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_direct_pointer_zero_copy_injection_mesh_and_native_pointcloud(self):
         """Verifies hardware-accelerated direct DNA raw pointer zero-copy injection on Mesh and PointCloud."""
         from MoziToolKit.bridge.point_cloud import (
@@ -484,7 +470,6 @@ class TestVoxelPointCloudBridge:
             finally:
                 bpy.data.pointclouds.remove(b_pc, do_unlink=True)
 
-    @pytest.mark.skipif(not HAS_REAL_BPY, reason="Blender (bpy) required for scene integration")
     def test_incremental_point_cloud_reuse_preserves_attributes_and_mask_modifier(self):
         """Verifies incremental in-place attribute reuse and fast modifier bypass when vertex count matches."""
         from MoziToolKit.bridge.point_cloud import (

@@ -30,20 +30,12 @@ SUPPORTED_VERSIONS = {
 
 def get_blender_version() -> Tuple[int, int, int]:
     """
-    Returns the current Blender version as a (major, minor, patch) tuple.
-    Safe when running outside Blender or in headless mock environments.
+    Returns the current Blender version as a (major, minor, patch) tuple from bpy.app.version.
     """
-    if "bpy" in sys.modules:
-        bpy = sys.modules["bpy"]
-        app = getattr(bpy, "app", None)
-        if app is not None:
-            ver = getattr(app, "version", None)
-            if isinstance(ver, tuple) and len(ver) >= 2:
-                patch = ver[2] if len(ver) > 2 else 0
-                return (int(ver[0]), int(ver[1]), int(patch))
-
-    # Default fallback for testing outside of Blender host
-    return (4, 2, 0)
+    import bpy
+    ver = getattr(bpy.app, "version", (5, 2, 0))
+    patch = ver[2] if len(ver) > 2 else 0
+    return (int(ver[0]), int(ver[1]), int(patch))
 
 
 def is_version_supported() -> bool:

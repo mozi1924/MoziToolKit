@@ -18,29 +18,15 @@ from .biome import (
     read_face_string_attribute,
     BIOME_ENUM_ITEMS,
 )
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
-
-if HAS_BPY:
-    from .updater import (
-        is_mtk_object,
-        detect_object_material_mode,
-        update_object_biome,
-        resolve_and_apply_world_biome_tint,
-        mark_world_biome,
-        clear_biome_updater_cache,
-    )
-else:
-    is_mtk_object = None
-    detect_object_material_mode = None
-    update_object_biome = None
-    resolve_and_apply_world_biome_tint = None
-    mark_world_biome = None
-    clear_biome_updater_cache = None
+import bpy
+from .updater import (
+    is_mtk_object,
+    detect_object_material_mode,
+    update_object_biome,
+    resolve_and_apply_world_biome_tint,
+    mark_world_biome,
+    clear_biome_updater_cache,
+)
 
 __all__ = [
     "TINT_TYPE_NONE",

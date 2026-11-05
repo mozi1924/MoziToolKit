@@ -10,12 +10,7 @@ import array
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    np = None
-    HAS_NUMPY = False
+import numpy as np
 
 from ....bridge.material import (
     BiomeResolver,
@@ -281,7 +276,7 @@ def apply_biome_tint_attributes(
         except Exception:
             attr_data = None
     if attr_data and len(attr_data.data) == target_len:
-        if HAS_NUMPY and isinstance(packed_tint_data, np.ndarray):
+        if isinstance(packed_tint_data, np.ndarray):
             flat_data = np.ascontiguousarray(packed_tint_data, dtype=np.float32).ravel()
         else:
             flat_data = array.array("f", [c for val in packed_tint_data for c in val])
@@ -301,7 +296,7 @@ def apply_biome_tint_attributes(
         except Exception:
             attr_col = None
     if attr_col and len(attr_col.data) == target_len:
-        if HAS_NUMPY and isinstance(tint_colors, np.ndarray):
+        if isinstance(tint_colors, np.ndarray):
             flat_col = np.ascontiguousarray(tint_colors, dtype=np.float32).ravel()
         else:
             flat_col = array.array("f", [c for val in tint_colors for c in val])

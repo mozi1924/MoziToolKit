@@ -21,6 +21,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+import bpy
+
 logger = logging.getLogger("MoziToolKit.Mesh.Ownership")
 
 #: Object custom property storing the construction origin.
@@ -111,14 +113,7 @@ def _children(obj: Any) -> list:
 
 
 def _bpy_objects() -> Any:
-    try:
-        import bpy  # local import: keep this module importable outside Blender
-    except ImportError:
-        return None
-    try:
-        return bpy.data.objects
-    except Exception:
-        return None
+    return bpy.data.objects
 
 
 def _lookup_mesh(name: Any) -> Optional[Any]:

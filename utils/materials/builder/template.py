@@ -10,12 +10,7 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from .image_utils import get_or_create_image, set_material_displacement_method
 
@@ -157,10 +152,10 @@ def preload_atlas_images(
         else None
     )
 
-    has_overlay = (overlay_img is not None) if HAS_BPY else bool(overlay_source)
-    has_normal = (normal_img is not None) if HAS_BPY else bool(normal_source)
-    has_orm = (orm_img is not None) if HAS_BPY else bool(orm_source)
-    has_aux = (aux_img is not None) if HAS_BPY else bool(aux_source)
+    has_overlay = overlay_img is not None
+    has_normal = normal_img is not None
+    has_orm = orm_img is not None
+    has_aux = aux_img is not None
 
     return {
         "c_stem": c_stem,
@@ -182,7 +177,7 @@ def find_archetype_material(
     exclude_name: Optional[str] = None,
 ) -> Optional[Any]:
     """Find an existing material in bpy.data.materials matching the template key."""
-    if not HAS_BPY or not hasattr(bpy, "data") or not hasattr(bpy.data, "materials"):
+    if not hasattr(bpy, "data") or not hasattr(bpy.data, "materials"):
         return None
 
     for mat in bpy.data.materials:
@@ -238,7 +233,7 @@ def clone_atlas_chunk_material(
     Instantly clone the archetype material and rebind chunk-specific images and attributes.
     Bypasses RNA node creation for a ~30x-150x speedup.
     """
-    if not HAS_BPY or archetype is None or albedo_img is None:
+    if archetype is None or albedo_img is None:
         return None
 
     try:
@@ -390,9 +385,9 @@ def try_clone_material(
     Check if a matching archetype exists, and if so, clone and return it.
     Returns (cloned_mat, template_key).
     """
-    has_normal_flag = images.get("has_normal", (images.get("normal_img") is not None) if HAS_BPY else bool(normal_path))
-    has_orm_flag = images.get("has_orm", (images.get("orm_img") is not None) if HAS_BPY else bool(orm_path))
-    has_aux_flag = images.get("has_aux", (images.get("aux_img") is not None) if HAS_BPY else bool(aux_path))
+    has_normal_flag = images.get("has_normal", images.get("normal_img") is not None)
+    has_orm_flag = images.get("has_orm", images.get("orm_img") is not None)
+    has_aux_flag = images.get("has_aux", images.get("aux_img") is not None)
 
     template_key = get_template_key(
         category=category,

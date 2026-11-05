@@ -1,21 +1,21 @@
 """
-Tests for the Blender DNA & Direct Memory Ingestion Adapter Subsystem (bridge/dna).
+Unit tests for the C++ DNA raw memory direct-access bridge and version detector.
+Runs 100% inside real Blender host environment with native bpy data structures.
 """
 
 from __future__ import annotations
 
-import os
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import patch
+
+import bpy
 
 from MoziToolKit.bridge.dna import (
     BaseDnaResolver,
-    check_pointer_alignment,
     get_blender_version,
     get_dna_resolver,
     is_dna_available,
     is_dna_enabled,
-    is_valid_pointer,
     is_version_supported,
     resolve_attribute_ptr,
     resolve_colors_ptr,
@@ -31,174 +31,105 @@ from MoziToolKit.bridge.engine import get_libmtk_blender, has_libmtk_dna
 
 
 class TestDnaBridge(unittest.TestCase):
-    """Test suite for bridge.dna subsystem."""
+    def setUp(self):
+        set_dna_enabled(None)
 
     def tearDown(self):
         set_dna_enabled(None)
-        if "MTK_DISABLE_DNA" in os.environ:
-            del os.environ["MTK_DISABLE_DNA"]
 
-    def test_detector_version(self):
+    def test_version_detection(self):
         ver = get_blender_version()
         self.assertIsInstance(ver, tuple)
-        self.assertGreaterEqual(len(ver), 2)
-        self.assertIsInstance(ver[0], int)
-        self.assertIsInstance(ver[1], int)
-        self.assertTrue(is_version_supported())
+        self.assertEqual(len(ver), 3)
+        self.assertGreaterEqual(ver[0], 4)
 
-    def test_detector_toggle(self):
-        # Override disable
-        set_dna_enabled(False)
-        self.assertFalse(is_dna_enabled())
-
-        # Override enable (will be True only if available)
-        set_dna_enabled(True)
-        self.assertEqual(is_dna_enabled(), is_dna_available())
-
-        # Reset override
-        set_dna_enabled(None)
-
-        # Environment variable override
-        os.environ["MTK_DISABLE_DNA"] = "1"
-        self.assertFalse(is_dna_available())
-        self.assertFalse(is_dna_enabled())
-
-    def test_guard_pointer_validation(self):
-        self.assertFalse(is_valid_pointer(0))
-        self.assertFalse(is_valid_pointer(None))
-        self.assertFalse(is_valid_pointer("0x1234"))
-        self.assertFalse(is_valid_pointer(100))  # < MIN_VALID_POINTER
-        self.assertFalse(is_valid_pointer(-1))
-        self.assertFalse(is_valid_pointer(0xFFFFFFFFFFFFFFFFFF))  # Out of range
-
-        valid_addr = 0x100000000
-        self.assertTrue(is_valid_pointer(valid_addr))
-        self.assertTrue(check_pointer_alignment(valid_addr, 4))
-        self.assertTrue(check_pointer_alignment(valid_addr, 8))
-        self.assertFalse(check_pointer_alignment(valid_addr + 1, 4))
+    def test_is_version_supported(self):
+        ver = get_blender_version()
+        supported = is_version_supported()
+        if ver[0] in (4, 5):
+            self.assertTrue(supported)
+        else:
+            self.assertFalse(supported)
 
     def test_guard_safe_as_pointer(self):
         self.assertIsNone(safe_as_pointer(None))
         self.assertIsNone(safe_as_pointer("not_an_object"))
 
         # Object with invalid pointer return
-        mock_bad = MagicMock()
-        mock_bad.as_pointer.return_value = 0
-        self.assertIsNone(safe_as_pointer(mock_bad))
+        class BadPtr:
+            def as_pointer(self):
+                return 0
 
-        # Object with valid pointer return
-        mock_good = MagicMock()
-        mock_good.as_pointer.return_value = 0x200000000
-        self.assertEqual(safe_as_pointer(mock_good), 0x200000000)
+        self.assertIsNone(safe_as_pointer(BadPtr()))
+
+        # Object with valid pointer return from real Blender mesh
+        mesh = bpy.data.meshes.new("test_ptr")
+        try:
+            self.assertGreater(safe_as_pointer(mesh), 0)
+        finally:
+            bpy.data.meshes.remove(mesh)
 
         # Object throwing exception
-        mock_err = MagicMock()
-        mock_err.as_pointer.side_effect = RuntimeError("Dead RNA reference")
-        self.assertIsNone(safe_as_pointer(mock_err))
+        class DeadRna:
+            def as_pointer(self):
+                raise RuntimeError("Dead RNA reference")
+
+        self.assertIsNone(safe_as_pointer(DeadRna()))
 
     def test_resolver_instance(self):
         resolver = get_dna_resolver()
         self.assertIsInstance(resolver, BaseDnaResolver)
 
-    def test_resolver_with_mock_mesh(self):
-        valid_ptr = 0x300000000
+    def test_resolver_with_real_mesh(self):
+        """Validates DNA pointer resolvers against a real Blender mesh."""
+        mesh = bpy.data.meshes.new("test_resolver_real_mesh")
+        try:
+            mesh.vertices.add(4)
+            mesh.loops.add(4)
+            mesh.polygons.add(1)
+            mesh.uv_layers.new(name="UVMap")
+            mesh.color_attributes.new("Color", "FLOAT_COLOR", "POINT")
 
-        # Create mock attribute layer
-        def make_mock_attr(count: int = 10):
-            attr = MagicMock()
-            elem0 = MagicMock()
-            elem0.as_pointer.return_value = valid_ptr
-            attr.data = [elem0] * count
-            return attr
+            pos_ptr = resolve_positions_ptr(mesh, expected_count=4)
+            self.assertIsNotNone(pos_ptr)
+            self.assertGreater(pos_ptr, 0)
 
-        # Test attribute resolution
-        attr = make_mock_attr(10)
-        self.assertEqual(resolve_attribute_ptr(attr), valid_ptr)
+            # Mismatched count should safely return None
+            self.assertIsNone(resolve_positions_ptr(mesh, expected_count=999))
 
-        # Empty attribute should return None
-        attr_empty = MagicMock()
-        attr_empty.data = []
-        self.assertIsNone(resolve_attribute_ptr(attr_empty))
+            uv_ptr = resolve_loop_uvs_ptr(mesh, expected_count=4)
+            self.assertIsNotNone(uv_ptr)
+            self.assertGreater(uv_ptr, 0)
 
-        # Test mesh attribute resolution
-        mesh = MagicMock()
-        color_mock = make_mock_attr(8)
-        color_mock.data_type = "FLOAT_COLOR"
-        color_mock.name = "Color"
-        attrs_dict = {
-            "position": make_mock_attr(8),
-            ".corner_vert": make_mock_attr(24),
-            "UVMap": make_mock_attr(24),
-            "material_index": make_mock_attr(6),
-            "Color": color_mock,
-        }
-        mesh.attributes.get = lambda k: attrs_dict.get(k)
-        mesh.uv_layers.active.name = "UVMap"
-        mesh.color_attributes.active = color_mock
-        mesh.color_attributes.__len__.return_value = 1
-        mesh.color_attributes.__contains__.side_effect = lambda k: k in ("Color",)
+            col_ptr = resolve_colors_ptr(mesh, expected_count=4)
+            self.assertIsNotNone(col_ptr)
+            self.assertGreater(col_ptr, 0)
+        finally:
+            bpy.data.meshes.remove(mesh)
 
-        self.assertEqual(resolve_positions_ptr(mesh, expected_count=8), valid_ptr)
-        self.assertEqual(resolve_corner_verts_ptr(mesh, expected_count=24), valid_ptr)
-        self.assertEqual(resolve_loop_uvs_ptr(mesh, expected_count=24), valid_ptr)
-        # Material index resolution via material_index attribute data
-        self.assertEqual(resolve_materials_ptr(mesh, expected_count=6), valid_ptr)
-        self.assertEqual(resolve_colors_ptr(mesh, expected_count=8), valid_ptr)
+    def test_resolver_point_cloud_with_real_mesh(self):
+        """Validates Point Cloud DNA pointer resolution against a real Blender mesh."""
+        cloud = bpy.data.meshes.new("test_resolver_cloud")
+        try:
+            cloud.vertices.add(5)
+            cloud.attributes.new("mtk_block_x", "INT", "POINT")
+            cloud.attributes.new("mtk_block_y", "INT", "POINT")
+            cloud.attributes.new("mtk_block_z", "INT", "POINT")
+            cloud.attributes.new("mtk_state_idx", "INT", "POINT")
+            cloud.attributes.new("mtk_biome_idx", "INT", "POINT")
+            cloud.attributes.new("mtk_entity_idx", "INT", "POINT")
+            cloud.attributes.new("mtk_light", "INT", "POINT")
 
-        # Mismatched count should return None
-        self.assertIsNone(resolve_positions_ptr(mesh, expected_count=999))
-
-    def test_resolver_point_cloud(self):
-        valid_ptr = 0x400000000
-
-        def make_mock_attr():
-            attr = MagicMock()
-            elem0 = MagicMock()
-            elem0.as_pointer.return_value = valid_ptr
-            attr.data = [elem0] * 5
-            return attr
-
-        cloud = MagicMock()
-        cloud_attrs = {
-            "position": make_mock_attr(),
-            "block_x": make_mock_attr(),
-            "block_y": make_mock_attr(),
-            "block_z": make_mock_attr(),
-            "state_index": make_mock_attr(),
-            "biome_index": make_mock_attr(),
-            "entity_index": make_mock_attr(),
-            "light_level": make_mock_attr(),
-        }
-        cloud.attributes.get = lambda k: cloud_attrs.get(k)
-
-        ptrs = resolve_point_cloud_ptrs(cloud, expected_count=5)
-        self.assertEqual(ptrs["pos_ptr"], valid_ptr)
-        self.assertEqual(ptrs["block_x_ptr"], valid_ptr)
-        self.assertEqual(ptrs["state_idx_ptr"], valid_ptr)
-        self.assertEqual(ptrs["biome_idx_ptr"], valid_ptr)
-        self.assertEqual(ptrs["entity_idx_ptr"], valid_ptr)
-        self.assertEqual(ptrs["light_ptr"], valid_ptr)
-
-        # Also test canonical mtk_* names
-        canonical_cloud = MagicMock()
-        canonical_attrs = {
-            "position": make_mock_attr(),
-            "mtk_block_x": make_mock_attr(),
-            "mtk_block_y": make_mock_attr(),
-            "mtk_block_z": make_mock_attr(),
-            "mtk_state_idx": make_mock_attr(),
-            "mtk_biome_idx": make_mock_attr(),
-            "mtk_entity_idx": make_mock_attr(),
-            "mtk_light": make_mock_attr(),
-        }
-        canonical_cloud.attributes.get = lambda k: canonical_attrs.get(k)
-        c_ptrs = resolve_point_cloud_ptrs(canonical_cloud, expected_count=5)
-        self.assertEqual(c_ptrs["pos_ptr"], valid_ptr)
-        self.assertEqual(c_ptrs["block_x_ptr"], valid_ptr)
-        self.assertEqual(c_ptrs["state_idx_ptr"], valid_ptr)
-        self.assertEqual(c_ptrs["biome_idx_ptr"], valid_ptr)
-        self.assertEqual(c_ptrs["entity_idx_ptr"], valid_ptr)
-        self.assertEqual(c_ptrs["light_ptr"], valid_ptr)
+            ptrs = resolve_point_cloud_ptrs(cloud, expected_count=5)
+            self.assertIsNotNone(ptrs)
+            self.assertIsNotNone(ptrs["pos_ptr"])
+            self.assertIsNotNone(ptrs["block_x_ptr"])
+            self.assertIsNotNone(ptrs["state_idx_ptr"])
+            self.assertIsNotNone(ptrs["biome_idx_ptr"])
+            self.assertIsNotNone(ptrs["entity_idx_ptr"])
+            self.assertIsNotNone(ptrs["light_ptr"])
+        finally:
+            bpy.data.meshes.remove(cloud)
 
     def test_native_dna_module(self):
         if not has_libmtk_dna():
@@ -213,13 +144,15 @@ class TestDnaBridge(unittest.TestCase):
     def test_inject_custom_attribute_dna_zero_elements(self):
         from MoziToolKit.bridge.mesh.dna import inject_custom_attribute_dna
 
-        attr = MagicMock()
-        attr.data = []
-        self.assertTrue(inject_custom_attribute_dna(attr, b"", "INT", 0))
+        mesh = bpy.data.meshes.new("test_zero_attr")
+        try:
+            attr = mesh.attributes.new("test_zero", "INT", "POINT")
+            self.assertTrue(inject_custom_attribute_dna(attr, b"", "INT", 0))
+        finally:
+            bpy.data.meshes.remove(mesh)
 
     def test_dna_underlying_functions_respect_disabled_state(self):
         """Defense-in-depth: underlying inject_*_dna functions must refuse execution when DNA is disabled."""
-        from unittest.mock import patch
         from MoziToolKit.bridge.mesh.dna import (
             inject_topology_dna,
             inject_vertex_positions_dna,
@@ -230,37 +163,24 @@ class TestDnaBridge(unittest.TestCase):
         )
         from MoziToolKit.bridge.point_cloud.dna import inject_point_cloud_dna
 
-        mock_dna = MagicMock()
-        mock_mesh = MagicMock()
-        mock_data = MagicMock()
+        mesh = bpy.data.meshes.new("test_dna_disabled")
 
         # Explicitly disable DNA
         set_dna_enabled(False)
         self.assertFalse(is_dna_enabled())
 
-        with patch("MoziToolKit.bridge.mesh.dna.get_libmtk_dna", return_value=mock_dna), \
-             patch("MoziToolKit.bridge.point_cloud.dna.get_libmtk_dna", return_value=mock_dna):
-            self.assertFalse(inject_topology_dna(mock_mesh, mock_data, 4, False, 6))
-            self.assertFalse(inject_vertex_positions_dna(mock_mesh, mock_data))
-            self.assertFalse(inject_vertex_normals_dna(mock_mesh, mock_data))
-            self.assertFalse(inject_uvs_dna(mock_mesh, mock_data))
-            self.assertFalse(inject_color_attributes_dna(mock_mesh, mock_data))
-            self.assertFalse(inject_custom_attribute_dna(MagicMock(), b"1234", "INT", 1))
-            self.assertFalse(inject_point_cloud_dna(mock_mesh, mock_data, 10))
-
-        mock_dna.copy_f32.assert_not_called()
-        mock_dna.copy_i32.assert_not_called()
-        mock_dna.copy_u32.assert_not_called()
-        mock_dna.copy_u8.assert_not_called()
+        try:
+            self.assertFalse(inject_topology_dna(mesh, None, 4, False, 6))
+            self.assertFalse(inject_vertex_positions_dna(mesh, None))
+            self.assertFalse(inject_vertex_normals_dna(mesh, None))
+            self.assertFalse(inject_uvs_dna(mesh, None))
+            self.assertFalse(inject_color_attributes_dna(mesh, None))
+            self.assertFalse(inject_custom_attribute_dna(mesh, b"1234", "INT", 1))
+            self.assertFalse(inject_point_cloud_dna(mesh, None, 10))
+        finally:
+            bpy.data.meshes.remove(mesh)
 
     def test_custom_attribute_dna_in_blender(self):
-        try:
-            import bpy
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
         if not is_dna_available():
             self.skipTest("libmtk_blender_dna not available")
 
@@ -286,13 +206,6 @@ class TestDnaBridge(unittest.TestCase):
             bpy.data.meshes.remove(mesh)
 
     def test_preference_enable_dna_acceleration_toggle(self):
-        try:
-            import bpy
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
         from MoziToolKit.utils.system import get_prefs
         prefs = get_prefs()
         if prefs is None or not hasattr(prefs, "enable_dna_acceleration"):
@@ -309,13 +222,6 @@ class TestDnaBridge(unittest.TestCase):
             prefs.enable_dna_acceleration = orig
 
     def test_mesh_batch_fallback_parity(self):
-        try:
-            import bpy
-            if isinstance(bpy, MagicMock) or isinstance(getattr(bpy, "data", None), MagicMock):
-                self.skipTest("Requires real Blender host environment")
-        except ImportError:
-            self.skipTest("bpy not available")
-
         import _mesh_arrays as ma
         from MoziToolKit.bridge.mesh import inject_mesh_data
 

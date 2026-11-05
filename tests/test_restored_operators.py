@@ -10,69 +10,13 @@ import math
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
+import unittest
 
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PARENT_DIR = PROJECT_DIR.parent
-libmtk_release_path = PROJECT_DIR.parent / "libmozitoolkit" / "target" / "release"
-
-for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+import bmesh
+import bpy
+import bpy_extras
 
 from MoziToolKit.utils.materials.builder import ensure_material_node_tree
-
-try:
-    import bpy
-    import bmesh
-    import bpy_extras
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = MagicMock()
-    bmesh = MagicMock()
-    import types
-    bpy_extras = types.ModuleType("bpy_extras")
-    bpy_extras.__path__ = []
-    
-    class _MockOperator: pass
-    class _MockPanel: pass
-    class _MockMenu: pass
-    class _MockPropertyGroup: pass
-    class _MockUIList: pass
-    class _MockAddonPreferences: pass
-    class _MockExportHelper: pass
-    class _MockImportHelper: pass
-
-    class _MockTypes:
-        Operator = _MockOperator
-        Panel = _MockPanel
-        Menu = _MockMenu
-        PropertyGroup = _MockPropertyGroup
-        UIList = _MockUIList
-        AddonPreferences = _MockAddonPreferences
-
-    class _MockIoUtils:
-        ExportHelper = _MockExportHelper
-        ImportHelper = _MockImportHelper
-
-    io_utils_mod = types.ModuleType("bpy_extras.io_utils")
-    io_utils_mod.ExportHelper = _MockExportHelper
-    io_utils_mod.ImportHelper = _MockImportHelper
-
-    bpy.types = _MockTypes
-    bpy.app = MagicMock()
-    bpy.props = MagicMock()
-    bpy_extras.io_utils = io_utils_mod
-
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = bpy.props
-    sys.modules["bpy.types"] = _MockTypes
-    sys.modules["bpy.app"] = bpy.app
-    sys.modules["bmesh"] = bmesh
-    sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = io_utils_mod
-    HAS_BPY = False
-
 import MoziToolKit.operators as operators
 import MoziToolKit.ui as ui
 
@@ -86,23 +30,26 @@ from MoziToolKit.utils.system.menu_registry import (
 class TestRestoredOperators(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if HAS_BPY:
+        try:
             operators.register()
+        except Exception:
+            pass
+        try:
             ui.register()
+        except Exception:
+            pass
 
     @classmethod
     def tearDownClass(cls):
-        if HAS_BPY:
-            try:
-                ui.unregister()
-            except Exception:
-                pass
-            try:
-                operators.unregister()
-            except Exception:
-                pass
+        try:
+            ui.unregister()
+        except Exception:
+            pass
+        try:
+            operators.unregister()
+        except Exception:
+            pass
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_operators_registered_in_menu_registry(self):
         all_ops = get_all_operators()
         self.assertIn("mozi.clear_custom_normals", all_ops)
@@ -110,7 +57,6 @@ class TestRestoredOperators(unittest.TestCase):
         self.assertIn("mozi.select_hard_edges", all_ops)
         self.assertIn("mozi.scale_uv", all_ops)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_clear_custom_normals(self):
         mesh = bpy.data.meshes.new("TestNormalMesh")
         bm = bmesh.new()
@@ -136,7 +82,6 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_texture_interpolation_closest(self):
         mesh = bpy.data.meshes.new("TestTexMesh")
         obj = bpy.data.objects.new("TestTexObj", mesh)
@@ -160,7 +105,6 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.meshes.remove(mesh)
         bpy.data.materials.remove(mat)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_select_hard_edges(self):
         mesh = bpy.data.meshes.new("TestEdgeMesh")
         bm = bmesh.new()
@@ -185,7 +129,6 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_scale_uv(self):
         mesh = bpy.data.meshes.new("TestUVMesh")
         bm = bmesh.new()
@@ -211,7 +154,6 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_repair_fluid_uv(self):
         mesh = bpy.data.meshes.new("TestFluidMesh")
         bm = bmesh.new()
@@ -259,7 +201,6 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_adaptive_pixel_split_operator(self):
         mesh = bpy.data.meshes.new("TestSplitMesh")
         bm = bmesh.new()
@@ -327,7 +268,6 @@ class TestRestoredOperators(unittest.TestCase):
         obj.select_set(True)
         return obj, mesh
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_adaptive_pixel_split_quadifies_rotated_uvs(self):
         """Rotated UV slicing must be recoverable to quads for extrusion workflows."""
         obj, mesh = self._make_diamond_object("TestSplitDiamond")
@@ -350,7 +290,6 @@ class TestRestoredOperators(unittest.TestCase):
         bpy.data.objects.remove(obj)
         bpy.data.meshes.remove(mesh)
 
-    @unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
     def test_adaptive_pixel_split_can_keep_triangles(self):
         """Disabling quadify must leave the raw triangulated slicing output."""
         obj, mesh = self._make_diamond_object("TestSplitDiamondRaw")

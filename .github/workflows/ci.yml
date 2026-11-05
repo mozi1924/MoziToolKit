@@ -30,51 +30,6 @@ env:
   BLENDER_VERSION: "5.2.1"
 
 jobs:
-  pytest-mock:
-    name: Pytest (mocked bpy, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x64
-          - os: windows-latest
-            platform: windows-x64
-    env:
-      # Sandbox config/cache so tests never touch the runner's user profile.
-      MOZI_CACHE_DIR: ${{ github.workspace }}/.ci-cache
-      MTK_TEST_CACHE: ${{ github.workspace }}/.ci-cache
-      MOZI_CONFIG_DIR: ${{ github.workspace }}/.ci-config
-    steps:
-      - uses: actions/checkout@v4
-
-      # Rust is only a fallback for building libmtk_py when the ci-latest wheel is
-      # unavailable. Do not use Swatinem/rust-cache here: this repository has no
-      # Cargo.toml, so its cargo metadata probe fails with exit code 101.
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Resolve libmtk_py wheel
-        run: bash .github/scripts/fetch_libmtk_wheel.sh wheel "${{ github.event.inputs.libmtk_ref }}" ${{ matrix.platform }}
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip pytest numpy
-          python -m pip install --no-index --find-links wheel libmtk_py libmtk_blender_dna
-
-      - name: Download real Minecraft assets
-        run: python .github/scripts/fetch_test_assets.py
-
-      - name: Precompile asset cache
-        run: python .github/scripts/precompile_cache.py
-
-      - name: Run test suite (mocked bpy)
-        run: python -m pytest tests/ -q -rs
-
   blender:
     name: Blender headless suite (bpy integration)
     runs-on: ubuntu-latest
@@ -200,7 +155,7 @@ jobs:
 
   rolling-build:
     name: Build & Publish Rolling Packages
-    needs: [pytest-mock, blender, blender-windows]
+    needs: [blender, blender-windows]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

@@ -4,7 +4,7 @@ and verification of N-panel removal (Scene properties panel retention).
 """
 
 import unittest
-from unittest.mock import MagicMock
+from types import SimpleNamespace
 
 from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
@@ -51,9 +51,7 @@ class TestLiveSyncProgress(unittest.TestCase):
 
     def test_sync_timer_tick_progress_handling(self):
         """Validates that _sync_timer_tick updates props.is_streaming, stage, and calls progress reporter."""
-        mock_props = MagicMock()
-        mock_props.is_streaming = False
-        mock_props.stream_stage = ""
+        props = SimpleNamespace(is_streaming=False, stream_stage="")
 
         # Test dictionary mimicking Rust STREAM_PROGRESS event
         fake_ev = {

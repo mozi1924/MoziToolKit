@@ -8,10 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 from ...utils.save import load_yefira_selection
 from ...utils.system.save_registry import get_save_registry

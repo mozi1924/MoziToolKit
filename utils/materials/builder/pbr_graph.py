@@ -18,12 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...node_groups.core import input_socket, node, output_socket
 
@@ -52,8 +47,6 @@ def build_pbr_shading(
     Returns the Principled node. The caller owns texture loading, UV animation
     and biome tinting; this function only consumes final color/scalar sockets.
     """
-    if not HAS_BPY:
-        return None
 
     principled = node(
         nodes,

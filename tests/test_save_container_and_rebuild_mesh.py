@@ -1,12 +1,15 @@
 """
 Unit and integration tests for Minecraft Save Containerization, Non-overwriting Auto-incrementing,
 and Unified Mesh Rebuild Operator (mozi.rebuild_mesh) with Right-Click Context Menu.
+Runs 100% inside real Blender host environment with native bpy data structures.
 """
 
 from __future__ import annotations
 
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import bpy
@@ -28,129 +31,40 @@ from MoziToolKit.utils.system.menu_registry import CANONICAL_DEFAULT_PRESETS, CA
 from MoziToolKit.utils.system.save_registry import get_save_registry
 
 
-class _MockObject:
-    def __init__(self, name: str, obj_type: str = "EMPTY", data: Any = None):
-        self.name = name
-        self.type = obj_type
-        self.data = data
-        self.parent = None
-        self.children = []
-        self._props = {}
-        self.users_collection = [MagicMock()]
-        self.location = (0.0, 0.0, 0.0)
-
-    def __getitem__(self, key):
-        return self._props[key]
-
-    def __setitem__(self, key, value):
-        self._props[key] = value
-
-    def __delitem__(self, key):
-        if key in self._props:
-            del self._props[key]
-
-    def __contains__(self, key):
-        return key in self._props
-
-    def get(self, key, default=None):
-        return self._props.get(key, default)
-
-    def select_set(self, val):
-        pass
-
-
-IS_REAL_BLENDER = (
-    not isinstance(bpy, MagicMock)
-    and hasattr(bpy, "app")
-    and not isinstance(bpy.app, MagicMock)
-    and hasattr(bpy.app, "version")
-    and isinstance(bpy.app.version, tuple)
-    and bpy.app.version[0] >= 4
-    and hasattr(bpy, "data")
-    and hasattr(bpy.data, "objects")
-    and not isinstance(bpy.data.objects, MagicMock)
-)
-
-
 class TestSaveContainerAndRebuildMesh(unittest.TestCase):
     def setUp(self):
-        self._created_names = []
-        if not IS_REAL_BLENDER:
-            self.orig_objects = getattr(bpy.data, "objects", {})
-            self.orig_meshes = getattr(bpy.data, "meshes", {})
-
-            class MockObjectsDict(dict):
-                def new(self, name, data=None):
-                    obj_type = "MESH" if data is not None else "EMPTY"
-                    obj = _MockObject(name, obj_type=obj_type, data=data)
-                    self[name] = obj
-                    return obj
-
-                def get(self, name, default=None):
-                    return super().get(name, default)
-
-            self.mock_objects = MockObjectsDict()
-            bpy.data.objects = self.mock_objects
-
-            class MockMeshesDict(dict):
-                def new(self, name):
-                    m = MagicMock()
-                    m.name = name
-                    m.vertices = [1, 2, 3]
-                    m.polygons = [1]
-                    self[name] = m
-                    return m
-
-                def get(self, name, default=None):
-                    return super().get(name, default)
-
-            self.mock_meshes = MockMeshesDict()
-            bpy.data.meshes = self.mock_meshes
+        self._created_objects: list[bpy.types.Object] = []
+        self._created_meshes: list[bpy.types.Mesh] = []
 
     def tearDown(self):
-        if not IS_REAL_BLENDER:
-            bpy.data.objects = self.orig_objects
-            bpy.data.meshes = self.orig_meshes
-        else:
-            cleanup_names = [
-                "Save_Skyblock_overworld", "Save_Skyblock_overworld_01",
-                "Save_Skyblock_overworld_Mesh", "Save_Skyblock_overworld_01_Mesh",
-                "Save_Test_overworld", "Save_Test_overworld_Mesh", "Save_Test_overworld_VoxelCloud",
-                "Yefira_World", "Yefira_World_Mesh", "Cube"
-            ]
-            for name in cleanup_names:
-                if hasattr(bpy.data, "objects") and name in bpy.data.objects:
-                    try:
-                        bpy.data.objects.remove(bpy.data.objects[name], do_unlink=True)
-                    except Exception:
-                        pass
-                mesh_name = name if name.endswith("_Mesh") else f"{name}_Mesh"
-                if hasattr(bpy.data, "meshes") and mesh_name in bpy.data.meshes:
-                    try:
-                        bpy.data.meshes.remove(bpy.data.meshes[mesh_name], do_unlink=True)
-                    except Exception:
-                        pass
+        for obj in reversed(self._created_objects):
+            try:
+                if obj.name in bpy.data.objects:
+                    bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:
+                pass
+        for mesh in reversed(self._created_meshes):
+            try:
+                if mesh.name in bpy.data.meshes:
+                    bpy.data.meshes.remove(mesh)
+            except Exception:
+                pass
 
-    def _make_obj(self, name: str, obj_type: str = "EMPTY", mesh_data=None):
-        if IS_REAL_BLENDER:
-            if name in bpy.data.objects:
-                obj = bpy.data.objects[name]
-            else:
-                data = None
-                if obj_type == "MESH":
-                    if isinstance(mesh_data, getattr(bpy.types, "Mesh", (type(None),))):
-                        data = mesh_data
-                    else:
-                        data = bpy.data.meshes.new(name)
-                obj = bpy.data.objects.new(name, data)
-                if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
-                    if obj.name not in bpy.context.scene.collection.objects:
-                        bpy.context.scene.collection.objects.link(obj)
-            return obj
+    def _make_obj(self, name: str, obj_type: str = "EMPTY", mesh_data=None) -> bpy.types.Object:
+        if name in bpy.data.objects:
+            obj = bpy.data.objects[name]
         else:
-            obj = _MockObject(name, obj_type=obj_type, data=mesh_data)
-            bpy.data.objects[name] = obj
-            return obj
+            if obj_type == "MESH":
+                mesh = mesh_data if isinstance(mesh_data, bpy.types.Mesh) else bpy.data.meshes.new(name)
+                self._created_meshes.append(mesh)
+                obj = bpy.data.objects.new(name, mesh)
+            else:
+                obj = bpy.data.objects.new(name, None)
+            if hasattr(bpy.context, "scene") and hasattr(bpy.context.scene, "collection"):
+                if obj.name not in bpy.context.scene.collection.objects:
+                    bpy.context.scene.collection.objects.link(obj)
+            self._created_objects.append(obj)
+        return obj
 
     def test_save_container_hierarchy_and_incrementing(self):
         """Verifies save imports create isolated Empty containers without overwriting."""
@@ -164,14 +78,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         mesh_data.used_materials.return_value = []
         storage = MagicMock()
 
-        if IS_REAL_BLENDER:
-            context = bpy.context
-        else:
-            context = types.SimpleNamespace(
-                collection=MagicMock(),
-                view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=None)),
-                mode="OBJECT",
-            )
+        context = bpy.context
 
         with patch("MoziToolKit.utils.save.hierarchy.inject_mesh_data"), patch("MoziToolKit.utils.save.hierarchy.ensure_world_materials"):
             # 1. First import
@@ -188,6 +95,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 weld_vertices=True,
                 origin_centered=True,
             )
+            self._created_objects.append(root1)
 
             self.assertEqual(root1.name, "Save_Skyblock_overworld")
             self.assertEqual(root1.type, "EMPTY")
@@ -201,6 +109,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             mesh_name = f"{root1.name}_Mesh"
             self.assertIn(mesh_name, bpy.data.objects)
             mesh1 = bpy.data.objects[mesh_name]
+            self._created_objects.append(mesh1)
             self.assertEqual(mesh1.parent, root1)
             self.assertTrue(mesh1["mtk:is_save_mesh"])
             self.assertEqual(mesh1["mtk:geometry_origin"], "SAVE")
@@ -216,6 +125,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 context=context,
                 reuse_existing=False,
             )
+            self._created_objects.append(root2)
 
             self.assertEqual(root2.name, "Save_Skyblock_overworld_01")
             self.assertNotEqual(root1.name, root2.name)
@@ -225,6 +135,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             mesh2_name = f"{root2.name}_Mesh"
             self.assertIn(mesh2_name, bpy.data.objects)
             mesh2 = bpy.data.objects[mesh2_name]
+            self._created_objects.append(mesh2)
             self.assertEqual(mesh2.parent, root2)
 
             # Both containers exist independently in the scene
@@ -242,8 +153,6 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         save_cloud = self._make_obj("Save_Test_overworld_VoxelCloud", "MESH")
         save_cloud.parent = save_root
         save_cloud["mtk_is_voxel_cloud"] = True
-        if isinstance(getattr(save_root, "children", None), list):
-            save_root.children = [save_mesh, save_cloud]
 
         # Test selecting Save root
         ctx1 = types.SimpleNamespace(active_object=save_root, selected_objects=[save_root])
@@ -268,8 +177,6 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         sync_root["mtk:is_yefira_world"] = True
         sync_mesh = self._make_obj("Yefira_World_Mesh", "MESH")
         sync_mesh.parent = sync_root
-        if isinstance(getattr(sync_root, "children", None), list):
-            sync_root.children = [sync_mesh]
 
         ctx3 = types.SimpleNamespace(active_object=sync_root, selected_objects=[sync_root])
         r, m, c, st = resolve_mesh_rebuild_targets(ctx3)
@@ -299,8 +206,6 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         save_cloud = self._make_obj("Save_Test_overworld_VoxelCloud", "MESH")
         save_cloud.parent = save_root
         save_cloud["mtk_is_voxel_cloud"] = True
-        if isinstance(getattr(save_root, "children", None), list):
-            save_root.children = [save_cloud]
 
         ctx_valid = types.SimpleNamespace(active_object=save_root, selected_objects=[save_root])
         # Gating check: returns False when pipeline assets are not ready
@@ -324,23 +229,19 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         save_root["mtk_enable_ao"] = True
         save_root["mtk_mesh_fluids"] = True
 
-        save_mesh_data = MagicMock()
-        save_mesh_data.polygons = [1, 2]
-        save_mesh = self._make_obj("Save_Test_overworld_Mesh", "MESH", mesh_data=save_mesh_data)
+        save_mesh = self._make_obj("Save_Test_overworld_Mesh", "MESH")
         save_mesh.parent = save_root
 
         save_cloud = self._make_obj("Save_Test_overworld_VoxelCloud", "MESH")
         save_cloud.parent = save_root
         save_cloud["mtk_is_voxel_cloud"] = True
-        if isinstance(getattr(save_root, "children", None), list):
-            save_root.children = [save_mesh, save_cloud]
 
         context = types.SimpleNamespace(
             active_object=save_root,
             selected_objects=[save_root],
             mode="OBJECT",
-            collection=MagicMock(),
-            scene=types.SimpleNamespace(),
+            collection=bpy.context.collection,
+            scene=bpy.context.scene,
         )
 
         mock_cloud_data = MagicMock()
@@ -375,7 +276,6 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             res = op.execute(context)
             self.assertEqual(res, {"FINISHED"})
             mock_mesh_fn.assert_called_once()
-            # Assert inherited settings from root container were passed
             kwargs = mock_mesh_fn.call_args[1]
             self.assertTrue(kwargs["enable_ao"])
             self.assertTrue(kwargs["mesh_fluids"])
@@ -388,17 +288,14 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         sync_root["mtk:container_type"] = "SYNC"
         sync_root["mtk:is_yefira_world"] = True
 
-        sync_mesh_data = MagicMock()
-        sync_mesh = self._make_obj("Yefira_World_Mesh", "MESH", mesh_data=sync_mesh_data)
+        sync_mesh = self._make_obj("Yefira_World_Mesh", "MESH")
         sync_mesh.parent = sync_root
-        if isinstance(getattr(sync_root, "children", None), list):
-            sync_root.children = [sync_mesh]
 
         context = types.SimpleNamespace(
             active_object=sync_root,
             selected_objects=[sync_root],
             mode="OBJECT",
-            collection=MagicMock(),
+            collection=bpy.context.collection,
             scene=types.SimpleNamespace(mozi_active_sync_container_name="Yefira_World"),
         )
 
@@ -441,16 +338,14 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         sync_root["mtk:container_type"] = "SYNC"
         sync_root["mtk:is_yefira_world"] = True
 
-        sync_mesh = self._make_obj("Yefira_World_Async_Mesh", "MESH", mesh_data=MagicMock())
+        sync_mesh = self._make_obj("Yefira_World_Async_Mesh", "MESH")
         sync_mesh.parent = sync_root
-        if isinstance(getattr(sync_root, "children", None), list):
-            sync_root.children = [sync_mesh]
 
         context = types.SimpleNamespace(
             active_object=sync_root,
             selected_objects=[sync_root],
             mode="OBJECT",
-            collection=MagicMock(),
+            collection=bpy.context.collection,
             scene=types.SimpleNamespace(mozi_active_sync_container_name="Yefira_World_Async"),
         )
 
@@ -495,14 +390,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         mesh_data.used_materials.return_value = []
         storage = MagicMock()
 
-        if IS_REAL_BLENDER:
-            context = bpy.context
-        else:
-            context = types.SimpleNamespace(
-                collection=MagicMock(),
-                view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=None)),
-                mode="OBJECT",
-            )
+        context = bpy.context
 
         with patch("MoziToolKit.utils.save.hierarchy.inject_mesh_data"), patch("MoziToolKit.utils.save.hierarchy.ensure_world_materials"):
             root, stats = apply_imported_save_to_blender(
@@ -514,6 +402,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 dimension="overworld",
                 context=context,
             )
+            self._created_objects.append(root)
 
             # 1. UUID must be assigned
             self.assertIn("mozi_save_uuid", root)
@@ -525,6 +414,7 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             mesh_name = f"{root.name}_Mesh"
             self.assertIn(mesh_name, bpy.data.objects)
             mesh = bpy.data.objects[mesh_name]
+            self._created_objects.append(mesh)
             self.assertNotIn("mtk_source_path", mesh)
 
             # 3. Privacy registry should record the mapping
@@ -557,17 +447,12 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
         save_mesh["mtk:is_save_mesh"] = True
         save_mesh["mozi_save_uuid"] = "test-uuid-12345"
 
-        if isinstance(getattr(save_root, "children", None), list):
-            save_root.children = [save_mesh]
-
         # 1. Test resolve_save_container
         r, m, c = resolve_save_container(save_mesh)
         self.assertEqual(r, save_root)
         self.assertEqual(m, save_mesh)
 
         # 2. Relink operator
-        import tempfile
-        from pathlib import Path
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir) / "World"
             tmp_path.mkdir()
@@ -591,8 +476,8 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
             ctx = types.SimpleNamespace(
                 active_object=save_mesh,
                 selected_objects=[save_mesh],
-                collection=MagicMock(),
-                view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=save_root)),
+                collection=bpy.context.collection,
+                view_layer=bpy.context.view_layer,
                 mode="OBJECT",
             )
 
@@ -613,3 +498,5 @@ class TestSaveContainerAndRebuildMesh(unittest.TestCase):
                 self.assertIn("mtk_last_refreshed", save_root)
 
 
+if __name__ == "__main__":
+    unittest.main()

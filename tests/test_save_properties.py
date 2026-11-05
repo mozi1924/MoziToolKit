@@ -1,6 +1,7 @@
 """
 Unit tests for Minecraft Save Container Properties (MoziSaveProperties),
 Collapsible Re-mesh Settings, Yefira Selection Reload, and Refresh Synchronization.
+Runs 100% inside real Blender host environment with native bpy data structures.
 """
 
 from __future__ import annotations
@@ -12,10 +13,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-try:
-    import bpy
-except ImportError:
-    bpy = MagicMock()
+import bpy
 
 from MoziToolKit.operators.save import (
     MOZI_OT_refresh_save_mesh,
@@ -33,38 +31,8 @@ from MoziToolKit.ui.panel_save import _draw_save_container_ui
 from MoziToolKit.utils.system.save_registry import get_save_registry
 
 
-class _MockObject:
-    def __init__(self, name: str, obj_type: str = "EMPTY", data: Any = None):
-        self.name = name
-        self.type = obj_type
-        self.data = data
-        self.parent = None
-        self.children = []
-        self._props = {}
-        self.users_collection = [MagicMock()]
-        self.location = (0.0, 0.0, 0.0)
-
-    def __getitem__(self, key):
-        return self._props[key]
-
-    def __setitem__(self, key, value):
-        self._props[key] = value
-
-    def __delitem__(self, key):
-        if key in self._props:
-            del self._props[key]
-
-    def __contains__(self, key):
-        return key in self._props
-
-    def get(self, key, default=None):
-        return self._props.get(key, default)
-
-    def select_set(self, val):
-        pass
-
-
-class _MockLayout:
+class _DummyLayout:
+    """Minimal Blender UI layout collector for panel draw assertions."""
     def __init__(self):
         self.labels = []
         self.props = []
@@ -79,7 +47,7 @@ class _MockLayout:
         return self
 
     def box(self):
-        b = _MockLayout()
+        b = _DummyLayout()
         self.boxes.append(b)
         return b
 
@@ -93,8 +61,7 @@ class _MockLayout:
         self.props.append((data, prop_name, text, icon))
 
     def operator(self, op_id, text="", icon="NONE"):
-        op = MagicMock()
-        op.bl_idname = op_id
+        op = types.SimpleNamespace(bl_idname=op_id)
         self.operators.append((op_id, text, icon))
         return op
 
@@ -111,23 +78,13 @@ class _MockLayout:
         return res
 
 
-IS_REAL_BLENDER = (
-    not isinstance(bpy, MagicMock)
-    and hasattr(bpy, "app")
-    and not isinstance(bpy.app, MagicMock)
-    and hasattr(bpy.app, "version")
-    and isinstance(bpy.app.version, tuple)
-    and bpy.app.version[0] >= 4
-    and hasattr(bpy, "data")
-    and hasattr(bpy.data, "objects")
-    and not isinstance(bpy.data.objects, MagicMock)
-)
-
-
 class TestSaveProperties(unittest.TestCase):
     def setUp(self):
-        if IS_REAL_BLENDER:
-            self.skipTest("Uses lightweight mock data blocks for save properties unit testing")
+        from MoziToolKit.operators.save.properties import register as register_save_props
+        try:
+            register_save_props()
+        except Exception:
+            pass
 
         self.tmp_reg_dir = tempfile.TemporaryDirectory()
         self.reg_file = Path(self.tmp_reg_dir.name) / "save_registry.json"
@@ -135,38 +92,8 @@ class TestSaveProperties(unittest.TestCase):
         reg.registry_file = self.reg_file
         reg._cache = {}
 
-        self.orig_objects = getattr(bpy.data, "objects", None)
-        self.orig_meshes = getattr(bpy.data, "meshes", None)
-
-        class MockObjectsDict(dict):
-            def new(self, name, data=None):
-                obj_type = "MESH" if data is not None else "EMPTY"
-                obj = _MockObject(name, obj_type=obj_type, data=data)
-                self[name] = obj
-                return obj
-
-            def get(self, name, default=None):
-                return super().get(name, default)
-
-        self.mock_objects = MockObjectsDict()
-        bpy.data.objects = self.mock_objects
-
-        class MockMeshesDict(dict):
-            def new(self, name):
-                m = MagicMock()
-                m.name = name
-                m.vertices = [1, 2, 3]
-                m.polygons = [1]
-                self[name] = m
-                return m
-
-            def get(self, name, default=None):
-                return super().get(name, default)
-
-        self.mock_meshes = MockMeshesDict()
-        bpy.data.meshes = self.mock_meshes
-
-        self.root = _MockObject("Save_TestWorld_overworld", "EMPTY")
+        self.root = bpy.data.objects.new("Save_TestWorld_overworld", None)
+        bpy.context.collection.objects.link(self.root)
         self.root["mtk:is_container"] = True
         self.root["mtk:container_type"] = "SAVE"
         self.root["mozi_save_uuid"] = "uuid-save-101"
@@ -182,20 +109,19 @@ class TestSaveProperties(unittest.TestCase):
         self.root["mtk_enable_ctm"] = True
         self.root["mtk_enable_animated_textures"] = True
 
-        self.mesh = _MockObject("Save_TestWorld_overworld_Mesh", "MESH", MagicMock())
+        self.mesh_data = bpy.data.meshes.new("Save_TestWorld_overworld_MeshData")
+        self.mesh = bpy.data.objects.new("Save_TestWorld_overworld_Mesh", self.mesh_data)
+        bpy.context.collection.objects.link(self.mesh)
         self.mesh.parent = self.root
         self.mesh["mtk:is_save_mesh"] = True
         self.mesh["mozi_save_uuid"] = "uuid-save-101"
-        self.mesh.data.vertices = [MagicMock()] * 10
-        self.mesh.data.polygons = [MagicMock()] * 5
-        self.root.children = [self.mesh]
 
     def tearDown(self):
-        if not IS_REAL_BLENDER:
-            if hasattr(self, "orig_objects") and self.orig_objects is not None:
-                bpy.data.objects = self.orig_objects
-            if hasattr(self, "orig_meshes") and self.orig_meshes is not None:
-                bpy.data.meshes = self.orig_meshes
+        for obj in (self.mesh, self.root):
+            if obj.name in bpy.data.objects:
+                bpy.data.objects.remove(obj, do_unlink=True)
+        if self.mesh_data.name in bpy.data.meshes:
+            bpy.data.meshes.remove(self.mesh_data)
         if hasattr(self, "tmp_reg_dir"):
             try:
                 self.tmp_reg_dir.cleanup()
@@ -230,12 +156,12 @@ class TestSaveProperties(unittest.TestCase):
         props.enable_ao = False
 
         sync_save_properties_to_custom_props(props, self.root, self.mesh)
-        self.assertEqual(self.root["mtk_min_coord"], [-16, 0, -16])
-        self.assertEqual(self.root["mtk_max_coord"], [16, 64, 16])
+        self.assertEqual(list(self.root["mtk_min_coord"]), [-16, 0, -16])
+        self.assertEqual(list(self.root["mtk_max_coord"]), [16, 64, 16])
         self.assertEqual(self.root["mtk_dimension"], "the_nether")
         self.assertFalse(self.root["mtk_enable_ao"])
 
-        self.assertEqual(self.mesh["mtk_min_coord"], [-16, 0, -16])
+        self.assertEqual(list(self.mesh["mtk_min_coord"]), [-16, 0, -16])
         self.assertEqual(self.mesh["mtk_dimension"], "the_nether")
 
     def test_reset_settings_operator(self):
@@ -247,9 +173,8 @@ class TestSaveProperties(unittest.TestCase):
         ctx = types.SimpleNamespace(active_object=self.root)
         self.assertTrue(MOZI_OT_save_reset_settings.poll(ctx))
 
-        op = MOZI_OT_save_reset_settings()
-        op.report = MagicMock()
-        res = op.execute(ctx)
+        op = types.SimpleNamespace(report=lambda *a: None)
+        res = MOZI_OT_save_reset_settings.execute(op, ctx)
         self.assertEqual(res, {"FINISHED"})
         self.assertEqual(tuple(props.min_coord), (-32, -64, -32))
         self.assertFalse(props.is_dirty)
@@ -275,9 +200,8 @@ class TestSaveProperties(unittest.TestCase):
             ctx = types.SimpleNamespace(active_object=self.mesh)
             self.assertTrue(MOZI_OT_save_load_yefira_selection.poll(ctx))
 
-            op = MOZI_OT_save_load_yefira_selection()
-            op.report = MagicMock()
-            res = op.execute(ctx)
+            op = types.SimpleNamespace(report=lambda *a: None)
+            res = MOZI_OT_save_load_yefira_selection.execute(op, ctx)
             self.assertEqual(res, {"FINISHED"})
 
             props = get_save_properties(self.mesh)
@@ -316,8 +240,8 @@ class TestSaveProperties(unittest.TestCase):
             ctx = types.SimpleNamespace(
                 active_object=self.mesh,
                 selected_objects=[self.mesh],
-                collection=MagicMock(),
-                view_layer=types.SimpleNamespace(objects=types.SimpleNamespace(active=self.root)),
+                collection=bpy.context.collection,
+                view_layer=bpy.context.view_layer,
                 mode="OBJECT",
             )
 
@@ -351,8 +275,8 @@ class TestSaveProperties(unittest.TestCase):
             self.assertFalse(captured_args["enable_ao"])
 
             # Verify that custom properties were updated and dirty flag cleared
-            self.assertEqual(self.root["mtk_min_coord"], [-10, 0, -10])
-            self.assertEqual(self.root["mtk_max_coord"], [10, 50, 10])
+            self.assertEqual(list(self.root["mtk_min_coord"]), [-10, 0, -10])
+            self.assertEqual(list(self.root["mtk_max_coord"]), [10, 50, 10])
             self.assertEqual(self.root["mtk_dimension"], "the_end")
             self.assertFalse(props.is_dirty)
 
@@ -364,7 +288,7 @@ class TestSaveProperties(unittest.TestCase):
         reg = get_save_registry()
         reg.relink_save("uuid-save-101", tmp_path)
 
-        layout = _MockLayout()
+        layout = _DummyLayout()
         ctx = types.SimpleNamespace(active_object=self.root)
 
         # 1. Collapsed state
@@ -378,7 +302,7 @@ class TestSaveProperties(unittest.TestCase):
         self.assertNotIn("dimension", prop_names)
 
         # 2. Expanded and dirty state
-        layout2 = _MockLayout()
+        layout2 = _DummyLayout()
         props.show_rebuild_settings = True
         props.is_dirty = True
         _draw_save_container_ui(layout2, ctx)

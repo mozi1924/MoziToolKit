@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -23,27 +23,15 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-try:
-    import bpy
-    HAS_BPY = (
-        not isinstance(bpy, MagicMock)
-        and hasattr(bpy, "data")
-        and hasattr(bpy.data, "meshes")
-        and not isinstance(bpy.data, MagicMock)
-    )
-except ImportError:
-    HAS_BPY = False
+import bpy
 
 
 def _write_dummy_png(path: Path):
-    if HAS_BPY:
-        img = bpy.data.images.new(path.name, width=16, height=64)
-        img.filepath_raw = str(path)
-        img.file_format = "PNG"
-        img.save()
-        bpy.data.images.remove(img)
-    else:
-        path.write_bytes(b"\x89PNG\r\n\x1a\n")
+    img = bpy.data.images.new(path.name, width=16, height=64)
+    img.filepath_raw = str(path)
+    img.file_format = "PNG"
+    img.save()
+    bpy.data.images.remove(img)
 
 
 ATLAS_MAPPING = {
@@ -108,7 +96,6 @@ ATLAS_MAPPING = {
 }
 
 
-@unittest.skipUnless(HAS_BPY, "Requires active Blender bpy environment")
 class TestExternalMaterialAnimation(unittest.TestCase):
     def _make_cache(self, root: Path) -> Path:
         cache_dir = root / "cache"

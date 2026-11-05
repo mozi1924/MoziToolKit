@@ -13,10 +13,7 @@ import queue
 import threading
 from typing import Any, Callable, Dict, Optional, Tuple
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 from ..bridge.progress import ProgressReport
 from .progress import BlenderProgressReporter

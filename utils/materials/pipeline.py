@@ -17,12 +17,7 @@ import numpy as np
 
 logger = logging.getLogger("MoziToolKit.Material.Pipeline")
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from ...bridge.material import (
     get_biome_meta,
@@ -593,8 +588,6 @@ def replace_materials(
     Returns:
         Summary dict containing processed face count, material slots, unmapped count, etc.
     """
-    if not HAS_BPY:
-        raise RuntimeError("Blender (bpy) is required to execute replace_materials.")
     if not is_material_bridge_available():
         raise RuntimeError("libmtk material bridge is not installed or available.")
 
@@ -808,8 +801,6 @@ def restore_materials_from_provenance(
             external ``MTK:Atlas:Ext:*`` materials; resolved from mesh ownership
             when omitted.
     """
-    if not HAS_BPY:
-        raise RuntimeError("Blender (bpy) is required to execute restore_materials_from_provenance.")
     if not is_material_bridge_available():
         raise RuntimeError("libmtk material bridge is not installed or available.")
 

@@ -13,7 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -23,22 +23,9 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    bpy = MagicMock()
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = MagicMock()
-    sys.modules["bpy.types"] = MagicMock()
-    sys.modules["bpy.app"] = MagicMock()
-    HAS_BPY = False
-
-if "bmesh" not in sys.modules:
-    sys.modules["bmesh"] = MagicMock()
+import bpy
+import bmesh
+import mathutils
 
 try:
     import libmtk_py as mtk_py
@@ -227,9 +214,6 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         Verify that ensure_world_materials correctly builds and assigns
         atlas chunk materials to mesh.materials matching chunk indices.
         """
-        if not HAS_BPY:
-            self.skipTest("bpy is required for Blender materials test")
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             atlas_dir = tmp_path / "atlas"
@@ -289,8 +273,8 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         palette-based provenance attributes, binds Atlas materials with
         use_attribute_node=False, and connects UVMap directly.
         """
-        if not HAS_BPY or not HAS_LIBMTK:
-            self.skipTest("bpy and libmtk are required for end-to-end injection test")
+        if not HAS_LIBMTK:
+            self.skipTest("libmtk is required for end-to-end injection test")
 
         from _assets import blender_datafiles_cache
 
@@ -364,9 +348,6 @@ class TestLiveSyncAtlasMaterials(unittest.TestCase):
         existing faces stay accurately addressed to their respective materials
         and do NOT accidentally get remapped to newly introduced materials.
         """
-        if not HAS_BPY:
-            self.skipTest("bpy is required for Live Sync material test")
-
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
             atlas_dir = tmp_path / "atlas"

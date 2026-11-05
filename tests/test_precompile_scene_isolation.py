@@ -8,12 +8,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from MoziToolKit.bridge.assets import precompile_stack
 from MoziToolKit.operators.op_precompile import MOZI_OT_precompile_cache
@@ -22,21 +17,12 @@ from MoziToolKit.operators.op_precompile import MOZI_OT_precompile_cache
 class TestPrecompileSceneIsolation(unittest.TestCase):
     def test_precompile_does_not_mutate_scene_images(self):
         """Verifies that precompiling the resource pack stack leaves existing loaded scene images untouched."""
-        is_real_bpy = (
-            HAS_BPY
-            and hasattr(bpy, "app")
-            and isinstance(getattr(bpy.app, "version", None), tuple)
-            and bpy.app.version[0] >= 4
-        )
-
-        img = None
-        if is_real_bpy:
-            img_name = "test_blocks_chunk_001.png"
-            img = bpy.data.images.new(img_name, width=4, height=4, alpha=True)
-            original_pixels = [0.2, 0.4, 0.6, 1.0] * 16
-            img.pixels.foreach_set(original_pixels)
-            img.update()
-            self.addCleanup(lambda: bpy.data.images.remove(img) if img.name in bpy.data.images else None)
+        img_name = "test_blocks_chunk_001.png"
+        img = bpy.data.images.new(img_name, width=4, height=4, alpha=True)
+        original_pixels = [0.2, 0.4, 0.6, 1.0] * 16
+        img.pixels.foreach_set(original_pixels)
+        img.update()
+        self.addCleanup(lambda: bpy.data.images.remove(img) if img.name in bpy.data.images else None)
 
         # Mock the underlying native precompiler
         mock_res = MagicMock()
@@ -63,10 +49,9 @@ class TestPrecompileSceneIsolation(unittest.TestCase):
             res = precompile_stack(stack=mock_stack, cache_dir="/tmp/dummy_cache")
             self.assertTrue(res.get("success"))
 
-        if is_real_bpy and img is not None:
-            current_pixels = list(img.pixels)
-            for i in range(len(original_pixels)):
-                self.assertAlmostEqual(current_pixels[i], original_pixels[i], places=4)
+        current_pixels = list(img.pixels)
+        for i in range(len(original_pixels)):
+            self.assertAlmostEqual(current_pixels[i], original_pixels[i], places=4)
 
     def test_operator_on_success_does_not_reload_scene_images(self):
         """Verifies MOZI_OT_precompile_cache does not import or reload scene images on precompile completion."""

@@ -5,17 +5,7 @@ Tests for CTM (Connected Textures) Internationalization & Localization.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
-
-PROJECT_DIR = Path(__file__).parent.parent.resolve()
-if str(PROJECT_DIR) not in sys.path:
-    sys.path.insert(0, str(PROJECT_DIR))
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes") and not isinstance(bpy.data, MagicMock)
-except ImportError:
-    HAS_BPY = False
+import bpy
 
 from MoziToolKit.i18n import tr, _get_expanded_translations_dict
 from MoziToolKit.i18n.dictionary import translations_dict
@@ -50,18 +40,15 @@ class TestCtmI18n(unittest.TestCase):
 
     def test_tr_function_fallback(self):
         """Verify the tr() helper returns the correct Chinese translations."""
-        saved_lang = None
-        saved_ui = False
-        if HAS_BPY and hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
-            try:
-                import MoziToolKit.i18n as i18n
-                i18n.register()
-            except Exception:
-                pass
-            saved_lang = getattr(bpy.context.preferences.view, "language", "DEFAULT")
-            saved_ui = getattr(bpy.context.preferences.view, "use_translate_interface", False)
-            bpy.context.preferences.view.language = "zh_HANS"
-            bpy.context.preferences.view.use_translate_interface = True
+        try:
+            import MoziToolKit.i18n as i18n
+            i18n.register()
+        except Exception:
+            pass
+        saved_lang = getattr(bpy.context.preferences.view, "language", "DEFAULT")
+        saved_ui = getattr(bpy.context.preferences.view, "use_translate_interface", False)
+        bpy.context.preferences.view.language = "zh_HANS"
+        bpy.context.preferences.view.use_translate_interface = True
 
         try:
             self.assertEqual(tr("Connected Textures (CTM)"), "连接纹理 (CTM)")
@@ -71,9 +58,8 @@ class TestCtmI18n(unittest.TestCase):
             self.assertEqual(tr("CTM Rules"), "CTM 规则")
             self.assertEqual(tr("CTM Solver"), "CTM 求解器")
         finally:
-            if saved_lang is not None and HAS_BPY and hasattr(bpy, "context") and hasattr(bpy.context, "preferences"):
-                bpy.context.preferences.view.language = saved_lang
-                bpy.context.preferences.view.use_translate_interface = saved_ui
+            bpy.context.preferences.view.language = saved_lang
+            bpy.context.preferences.view.use_translate_interface = saved_ui
 
     def test_expanded_translations_dict(self):
         """Verify expanded dictionary populates Operator/UI contexts and mirrors zh_HANS to zh_CN."""
@@ -89,9 +75,6 @@ class TestCtmI18n(unittest.TestCase):
 
     def test_blender_host_pgettext(self):
         """Verify real Blender host translations via bpy.app.translations."""
-        if not HAS_BPY:
-            self.skipTest("Requires real Blender host environment")
-
         import MoziToolKit.i18n as i18n
         i18n.register()
 

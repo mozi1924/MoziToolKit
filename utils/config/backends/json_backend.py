@@ -17,10 +17,7 @@ from ..models import ConfigData
 logger = logging.getLogger("MoziToolKit.Config.JSON")
 
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
 
 
 class JsonConfigBackend(ConfigBackend):

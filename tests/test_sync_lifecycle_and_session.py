@@ -6,7 +6,6 @@ timer safety, and cross-project load handlers.
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
@@ -16,11 +15,7 @@ for p in [str(dev_lib), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
-except ImportError:
-    HAS_BPY = False
+import bpy
 
 from MoziToolKit.bridge.sync import (
     SyncBridgeSession,
@@ -104,9 +99,6 @@ class TestSyncSessionLifecycle(unittest.TestCase):
         self.assertFalse(session.is_connected)
 
     def test_timer_idempotence(self):
-        if not HAS_BPY:
-            self.skipTest("Requires native Blender bpy")
-
         self.assertFalse(is_sync_timer_running())
 
         # Start timer twice - should not register duplicates
@@ -122,9 +114,6 @@ class TestSyncSessionLifecycle(unittest.TestCase):
         self.assertFalse(is_sync_timer_running())
 
     def test_pre_load_handler_stops_timer_and_session(self):
-        if not HAS_BPY:
-            self.skipTest("Requires native Blender bpy")
-
         start_sync_timer()
         self.assertTrue(is_sync_timer_running())
 
@@ -140,9 +129,6 @@ class TestSyncSessionLifecycle(unittest.TestCase):
         self.assertFalse(session.is_active, "Session must be stopped on blend file pre-load")
 
     def test_load_post_handler_resets_properties(self):
-        if not HAS_BPY:
-            self.skipTest("Requires native Blender bpy")
-
         scene = bpy.context.scene
         if hasattr(scene, "mozi_sync"):
             scene.mozi_sync.is_connected = True

@@ -19,22 +19,9 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 
-try:
-    from unittest.mock import MagicMock
-    import bpy
-    import bmesh
-    from mathutils import Vector
-    HAS_REAL_BPY = (
-        bpy is not None
-        and not isinstance(bpy, MagicMock)
-        and hasattr(bpy, "data")
-        and hasattr(bpy.data, "meshes")
-    )
-except ImportError:
-    bpy = None
-    bmesh = None
-    Vector = None
-    HAS_REAL_BPY = False
+import bpy
+import bmesh
+from mathutils import Vector
 
 from MoziToolKit.bridge.engine import get_libmtk
 from MoziToolKit.bridge.uv import (
@@ -289,7 +276,6 @@ class TestFluidUVBridge(unittest.TestCase):
         self.assertAlmostEqual(float(uvs[21]), 1.0, places=5)
 
 
-@unittest.skipIf(not HAS_REAL_BPY, "Blender environment not available")
 class TestFluidUVBlenderBMesh(unittest.TestCase):
     def setUp(self):
         self.mesh = bpy.data.meshes.new("TestFluidBMesh")

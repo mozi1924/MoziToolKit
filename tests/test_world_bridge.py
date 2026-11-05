@@ -149,39 +149,31 @@ class TestWorldBridgePipeline:
             (atlas_dir / "blocks_chunk_003.png").write_bytes(b"\x89PNG\r\n\x1a\n")  # chunk 2 (1-based index 3)
             (atlas_dir / "blocks_chunk_006.png").write_bytes(b"\x89PNG\r\n\x1a\n")  # chunk 5 (1-based index 6)
 
-            # Mock mesh object
-            class MockPoly:
-                def __init__(self, mat_idx):
-                    self.material_index = mat_idx
+            import bpy
 
-            class MockMesh:
-                def __init__(self):
-                    self.polygons = [MockPoly(2), MockPoly(5)]
-                    self.materials = []
+            mesh = bpy.data.meshes.new("TestUsedChunksMesh")
+            mesh.from_pydata(
+                [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0), (2, 0, 0), (3, 0, 0), (3, 1, 0), (2, 1, 0)],
+                [],
+                [(0, 1, 2, 3), (4, 5, 6, 7)],
+            )
+            attr = mesh.attributes.new(name="mtk_atlas_chunk_id", type="INT", domain="FACE")
+            attr.data.foreach_set("value", [2, 5])
+            mesh.polygons[0].material_index = 2
+            mesh.polygons[1].material_index = 5
+            test_obj = bpy.data.objects.new("TestUsedChunksObj", mesh)
 
-            class MockObject:
-                def __init__(self):
-                    self.type = "MESH"
-                    self.data = MockMesh()
-
-            test_obj = MockObject()
-
-            try:
-                import bpy
-                if hasattr(bpy, "data") and hasattr(bpy.data, "materials"):
-                    for m_name in ("MTK:Atlas:blocks:003", "MTK:Atlas:blocks:006"):
-                        if m_name in bpy.data.materials:
-                            bpy.data.materials.remove(bpy.data.materials[m_name])
-            except Exception:
-                pass
+            for m_name in ("MTK:Atlas:blocks:003", "MTK:Atlas:blocks:006"):
+                if m_name in bpy.data.materials:
+                    bpy.data.materials.remove(bpy.data.materials[m_name])
 
             with patch.dict("os.environ", {"MOZI_CACHE_DIR": str(tmp_path)}):
                 # Call ensure_world_materials with used_chunk_ids=[2, 5]
                 built_chunks = []
                 def mock_build(chunk_id, **kwargs):
                     built_chunks.append(chunk_id)
-                    mat = MagicMock()
-                    mat.name = f"MTK:Atlas:blocks:{chunk_id+1:03}"
+                    mat = bpy.data.materials.new(f"MTK:Atlas:blocks:{chunk_id+1:03}")
+                    mat["mtk_atlas_chunk_id"] = chunk_id
                     return mat
 
                 with patch("MoziToolKit.utils.materials.builder.atlas_builder.build_atlas_chunk_material", side_effect=mock_build):
@@ -203,15 +195,16 @@ class TestWorldBridgePipeline:
 
     def test_apply_voxel_mesh_to_blender_routes_to_atlas_when_atlas_arg_is_none(self):
         """Regression test: apply_voxel_mesh_to_blender with atlas=None must call ensure_world_materials in ATLAS mode."""
-        from unittest.mock import patch, MagicMock
+        from types import SimpleNamespace
+        from unittest.mock import patch
         from MoziToolKit.utils.world import apply_voxel_mesh_to_blender
 
-        mock_mesh_data = MagicMock()
-        mock_mesh_data.used_materials.return_value = [0]
-
-        mock_obj = MagicMock()
-        mock_obj.type = "MESH"
-        mock_obj.data = MagicMock()
+        mesh_data = SimpleNamespace(
+            used_materials=lambda: [0],
+            vertex_count=0,
+            polygon_count=0,
+        )
+        storage = libmtk_py.VoxelStorage()
 
         with patch("MoziToolKit.utils.world.injector.inject_mesh_data"), \
              patch("MoziToolKit.utils.world.injector.ensure_voxel_child_cloud"), \
@@ -219,8 +212,8 @@ class TestWorldBridgePipeline:
              patch("MoziToolKit.utils.materials.pipeline.restore_materials_from_provenance") as mock_standalone:
 
             obj, stats = apply_voxel_mesh_to_blender(
-                mesh_data=mock_mesh_data,
-                storage=MagicMock(),
+                mesh_data=mesh_data,
+                storage=storage,
                 name="TestWorld",
                 atlas=None,
                 material_mode="ATLAS",

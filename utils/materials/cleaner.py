@@ -23,12 +23,7 @@ from ...bridge.mesh.attribute_schema import (
 
 logger = logging.getLogger("MoziToolKit.Utils.Materials.Cleaner")
 
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    np = None
-    HAS_NUMPY = False
+import numpy as np
 
 
 def remap_indices_lut(
@@ -44,11 +39,11 @@ def remap_indices_lut(
     negative, empty, or exceed reasonable LUT bounds.
     """
     if not mapping or len(indices) == 0:
-        if HAS_NUMPY and isinstance(indices, np.ndarray):
+        if isinstance(indices, np.ndarray):
             return np.full_like(indices, default_value, dtype=np.int32)
         return [default_value] * len(indices)
 
-    if HAS_NUMPY and isinstance(indices, np.ndarray):
+    if isinstance(indices, np.ndarray):
         try:
             max_idx = int(indices.max())
             min_idx = int(indices.min())
@@ -106,7 +101,7 @@ def mesh_has_animation(mesh_or_obj: Any) -> bool:
     attr = attributes.get(ATTR_ANIM_TIMING)
     if attr is None or len(attr.data) == 0:
         return False
-    if HAS_NUMPY and hasattr(attr.data, "foreach_get"):
+    if hasattr(attr.data, "foreach_get"):
         raw = np.empty(len(attr.data) * 3, dtype=np.float32)
         attr.data.foreach_get("vector", raw)
         return bool((raw[0::3] > 1.0).any())

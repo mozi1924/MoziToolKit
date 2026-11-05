@@ -1,84 +1,81 @@
+"""
+Pytest configuration for the MoziToolKit test suite.
+
+STRICT INVARIANT (GEMINI.md Rule 9):
+All tests MUST execute inside a real Blender 5.x LTS host environment.
+MagicMock and headless mock bpy/bmesh/mathutils environments are strictly forbidden.
+"""
+
+from __future__ import annotations
+
 import os
 import sys
-import types
-from unittest.mock import MagicMock
 from pathlib import Path
+import pytest
 
+# 1. Enforce real Blender host environment gate
+try:
+    import bpy
+    import bmesh
+    import mathutils
+
+    if not hasattr(bpy, "data") or not hasattr(bpy.data, "meshes") or type(bpy).__name__ == "MagicMock":
+        raise ImportError("bpy.data is not accessible or is mocked")
+except (ImportError, AttributeError) as exc:
+    raise RuntimeError(
+        "\n===============================================================================\n"
+        "[FATAL] MoziToolKit tests must be run inside the real Blender host environment!\n"
+        "Standalone python / mock execution is strictly forbidden (see GEMINI.md Rule 9).\n\n"
+        "Run the test suite using:\n"
+        "  MTK_TEST_SITE_PACKAGES=\"$(uv run python -c 'import site; print(site.getsitepackages()[0])')\" \\\n"
+        "    blender --background --python tests/run_tests.py -- -q\n"
+        "==============================================================================="
+    ) from exc
+
+# 2. Setup project paths and dev direct-link bindings
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 TESTS_DIR = Path(__file__).parent.resolve()
 PARENT_DIR = PROJECT_DIR.parent
 site_pkgs = PROJECT_DIR / "site-packages"
 dev_lib = PROJECT_DIR / "dev" / "lib"
 
-# Make both `import MoziToolKit...` and top-level `import bridge...` work, and mount the
-# dev direct-link native library before test modules are collected (several modules do
-# `import libmtk_py` at import time).
 for _path in (PROJECT_DIR, TESTS_DIR, PARENT_DIR, site_pkgs, dev_lib):
     if _path.exists() and str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-if "bmesh" not in sys.modules:
-    sys.modules["bmesh"] = MagicMock()
-
-if "bpy_extras" not in sys.modules:
-    bpy_extras = types.ModuleType("bpy_extras")
-    bpy_extras.__path__ = []
-    io_utils = types.ModuleType("bpy_extras.io_utils")
-    io_utils.ExportHelper = object
-    io_utils.ImportHelper = object
-    bpy_extras.io_utils = io_utils
-    sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = io_utils
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
-except ImportError:
-    bpy = MagicMock()
-    HAS_BPY = False
-
-if not HAS_BPY:
-    class _MockOperator: pass
-    class _MockPanel: pass
-    class _MockMenu: pass
-    class _MockPropertyGroup: pass
-    class _MockUIList: pass
-    class _MockAddonPreferences: pass
-
-    class _MockTypes:
-        Operator = _MockOperator
-        Panel = _MockPanel
-        Menu = _MockMenu
-        PropertyGroup = _MockPropertyGroup
-        UIList = _MockUIList
-        AddonPreferences = _MockAddonPreferences
-
-    bpy.types = _MockTypes
-    bpy.app = MagicMock()
-    bpy.props = MagicMock()
-
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = bpy.props
-    sys.modules["bpy.types"] = _MockTypes
-    sys.modules["bpy.app"] = bpy.app
-    sys.modules["bmesh"] = MagicMock()
-
-# Best-effort native engine mount (dev direct-link). Runs after bpy is mocked so that
-# importing the `MoziToolKit` package does not pull real Blender APIs.
+# Dev native module loader
 try:
     from MoziToolKit.dev import loader as _dev_loader
-
     _dev_loader.setup_dev_environment()
 except Exception:
     pass
 
 try:
     from MoziToolKit.bridge.engine import get_libmtk
-
     get_libmtk()
 except Exception:
-    # The native engine is optional for the mock suite; tests that need it skip explicitly.
     pass
+
+# Ensure addon properties and operators are registered in Blender test runtime
+try:
+    import MoziToolKit
+    MoziToolKit.register()
+except Exception:
+    pass
+
+
+@pytest.fixture(autouse=True)
+def clean_blender_state():
+    """
+    Ensure each test starts and ends with a clean Blender state.
+    Purges temporary objects, meshes, and materials created during testing.
+    """
+    yield
+    # Cleanup any orphan test meshes and objects
+    try:
+        if hasattr(bpy.data, "objects"):
+            for obj in list(bpy.data.objects):
+                if obj.name.startswith(("test_", "Test_", "Yefira_", "MTK_", "Mesh_", "Cloud_")):
+                    bpy.data.objects.remove(obj, do_unlink=True)
+    except Exception:
+        pass

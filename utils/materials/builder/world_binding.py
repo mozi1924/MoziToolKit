@@ -10,6 +10,8 @@ import json
 import logging
 from typing import Any, Optional
 
+import bpy
+
 from ....bridge.assets import (
     ensure_atlas_textures_extracted,
     get_cache_fingerprint,
@@ -94,10 +96,6 @@ def ensure_world_materials(
     albedo, normals, specular, emission, animated sprites, and biome tinting.
     Avoids loading textures or instantiating materials for unused atlas chunks.
     """
-    try:
-        import bpy
-    except ImportError:
-        return
 
     if not world_obj or world_obj.type != "MESH":
         return

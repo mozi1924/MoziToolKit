@@ -11,17 +11,9 @@ from . import config
 from . import progress
 from . import async_task
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
-if HAS_BPY:
-    from . import node_groups
-else:
-    node_groups = None
+from . import node_groups
 
 __all__ = [
     "system",

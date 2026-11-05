@@ -16,6 +16,8 @@ import zlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import bpy
+
 from MoziToolKit.bridge.assets import (
     get_cache_fingerprint,
     invalidate_asset_cache_memory,
@@ -298,14 +300,11 @@ class TestAssetBakeGuard(unittest.TestCase):
         prefs_a = self._make_prefs([self.pack_a])
         self.assertEqual(check_asset_cache_status(prefs_a), "MISSING")
 
-        mock_obj = MagicMock()
-        mock_obj.type = "MESH"
-        mock_mesh = MagicMock()
-        mock_mesh.attributes = {}
-        mock_obj.data = mock_mesh
+        test_mesh = bpy.data.meshes.new("TestReplaceMesh")
+        test_obj = bpy.data.objects.new("TestReplaceObj", test_mesh)
 
         context = types.SimpleNamespace(
-            active_object=mock_obj,
+            active_object=test_obj,
             preferences=types.SimpleNamespace(addons={"MoziToolKit": types.SimpleNamespace(preferences=prefs_a)}),
         )
 
@@ -493,14 +492,11 @@ class TestAssetBakeGuard(unittest.TestCase):
         empty_prefs = types.SimpleNamespace(resource_packs=[], cache_dir=self.cache_dir, thread_count=0)
 
         # Context mock with empty prefs
-        mock_obj = MagicMock()
-        mock_obj.type = "MESH"
-        mock_mesh = MagicMock()
-        mock_mesh.attributes = {}
-        mock_obj.data = mock_mesh
+        test_mesh = bpy.data.meshes.new("TestReplaceMesh")
+        test_obj = bpy.data.objects.new("TestReplaceObj", test_mesh)
 
         context = types.SimpleNamespace(
-            active_object=mock_obj,
+            active_object=test_obj,
             preferences=types.SimpleNamespace(addons={"MoziToolKit": types.SimpleNamespace(preferences=empty_prefs)}),
         )
 

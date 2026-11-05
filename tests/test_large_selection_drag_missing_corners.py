@@ -27,53 +27,9 @@ for p in [str(libmtk_release_path), str(PROJECT_DIR), str(PARENT_DIR)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from unittest.mock import MagicMock
-import types
-
-if "mathutils" not in sys.modules:
-    sys.modules["mathutils"] = MagicMock()
-
-if "bpy_extras" not in sys.modules:
-    bpy_extras = types.ModuleType("bpy_extras")
-    bpy_extras.__path__ = []
-    io_utils = types.ModuleType("bpy_extras.io_utils")
-    io_utils.ExportHelper = object
-    io_utils.ImportHelper = object
-    bpy_extras.io_utils = io_utils
-    sys.modules["bpy_extras"] = bpy_extras
-    sys.modules["bpy_extras.io_utils"] = io_utils
-
-try:
-    import bpy
-    HAS_BPY = not isinstance(bpy, MagicMock) and hasattr(bpy, "data") and hasattr(bpy.data, "meshes")
-except ImportError:
-    bpy = MagicMock()
-    HAS_BPY = False
-
-if not HAS_BPY:
-    class _MockOperator: pass
-    class _MockPanel: pass
-    class _MockMenu: pass
-    class _MockPropertyGroup: pass
-    class _MockUIList: pass
-    class _MockAddonPreferences: pass
-
-    class _MockTypes:
-        Operator = _MockOperator
-        Panel = _MockPanel
-        Menu = _MockMenu
-        PropertyGroup = _MockPropertyGroup
-        UIList = _MockUIList
-        AddonPreferences = _MockAddonPreferences
-
-    bpy.types = _MockTypes
-    bpy.app = MagicMock()
-    bpy.props = MagicMock()
-    sys.modules["bpy"] = bpy
-    sys.modules["bpy.props"] = bpy.props
-    sys.modules["bpy.types"] = _MockTypes
-    sys.modules["bpy.app"] = bpy.app
-    sys.modules["bmesh"] = MagicMock()
+import bpy
+import bmesh
+import mathutils
 
 from MoziToolKit.bridge.sync import get_sync_bridge_session, is_sync_available
 from MoziToolKit.operators.sync.op_sync_connect import _sync_timer_tick
@@ -299,13 +255,12 @@ class TestLargeSelectionCornerRecovery(unittest.TestCase):
         session.stop()
 
     def tearDown(self):
-        if HAS_BPY:
-            obj = bpy.data.objects.get("Yefira_World")
-            if obj:
-                mesh = obj.data
-                bpy.data.objects.remove(obj)
-                if mesh:
-                    bpy.data.meshes.remove(mesh)
+        obj = bpy.data.objects.get("Yefira_World")
+        if obj:
+            mesh = obj.data
+            bpy.data.objects.remove(obj, do_unlink=True)
+            if mesh:
+                bpy.data.meshes.remove(mesh)
 
 
 if __name__ == "__main__":

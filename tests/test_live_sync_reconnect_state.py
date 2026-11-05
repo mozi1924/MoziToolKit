@@ -16,6 +16,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
+import bpy
+
 from MoziToolKit.bridge.sync import SyncBridgeSession
 from MoziToolKit.operators.sync import op_sync_connect
 
@@ -31,9 +33,9 @@ def _make_session(*, active: bool, connected: bool, status: str, events=None):
 
 
 def _run_tick(mock_session):
-    props = MagicMock()
-    container = MagicMock()
-    container.mozi_sync = props
+    container = bpy.data.objects.new("test_sync_container", None)
+    bpy.context.collection.objects.link(container)
+    props = container.mozi_sync
     with patch.object(op_sync_connect, "get_sync_bridge_session", return_value=mock_session), \
          patch.object(op_sync_connect, "get_active_sync_container", return_value=container), \
          patch.object(op_sync_connect, "get_or_create_world_container", return_value=container), \
@@ -45,6 +47,18 @@ def _run_tick(mock_session):
 
 
 class TestLiveSyncConnectionState(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from MoziToolKit.operators.sync.properties import register as register_sync_props
+        try:
+            register_sync_props()
+        except Exception:
+            pass
+
+    def tearDown(self):
+        for obj in list(bpy.data.objects):
+            if obj.name.startswith("test_"):
+                bpy.data.objects.remove(obj, do_unlink=True)
     def test_terminal_disconnect_is_applied_when_worker_already_stopped(self):
         session = _make_session(
             active=False,
@@ -110,24 +124,19 @@ class TestLiveSyncConnectionState(unittest.TestCase):
 
     def test_refresh_reports_not_connected_after_stale_ui(self):
         session = _make_session(active=False, connected=False, status="DISCONNECTED")
-        props = MagicMock()
-        props.is_connected = True  # stale UI state from before the silent drop
 
         class DummyOp:
             target_container = ""
-            report = MagicMock()
+            def report(self, type_set, msg):
+                pass
 
             def execute(self, ctx):
                 return op_sync_connect.MOZI_OT_sync_refresh.execute(self, ctx)
 
-        ctx = MagicMock()
-        ctx.scene = None
-        ctx.active_object = None
-
         op = DummyOp()
         with patch.object(op_sync_connect, "get_sync_bridge_session", return_value=session), \
              patch.object(op_sync_connect, "get_active_sync_container", return_value=None):
-            result = op.execute(ctx)
+            result = op.execute(bpy.context)
 
         self.assertIn("CANCELLED", result)
         session.request_resync.assert_not_called()
@@ -138,24 +147,26 @@ class TestLiveSyncConnectionState(unittest.TestCase):
 
         class DummyOp:
             target_container = ""
-            report = MagicMock()
+            def report(self, type_set, msg):
+                pass
 
             def execute(self, ctx):
                 return op_sync_connect.MOZI_OT_sync_refresh.execute(self, ctx)
 
         op = DummyOp()
-        container = MagicMock()
-        with patch.object(op_sync_connect, "get_sync_bridge_session", return_value=session), \
-             patch.object(op_sync_connect, "get_active_sync_container", return_value=container), \
-             patch.object(op_sync_connect, "_get_progress_reporter") as mock_reporter:
-            mock_reporter.return_value = MagicMock()
-            ctx = MagicMock()
-            ctx.scene = None
-            ctx.active_object = None
-            result = op.execute(ctx)
+        container = bpy.data.objects.new("test_refresh_container", None)
+        bpy.context.collection.objects.link(container)
+        try:
+            with patch.object(op_sync_connect, "get_sync_bridge_session", return_value=session), \
+                 patch.object(op_sync_connect, "get_active_sync_container", return_value=container), \
+                 patch.object(op_sync_connect, "_get_progress_reporter") as mock_reporter:
+                mock_reporter.return_value = MagicMock()
+                result = op.execute(bpy.context)
 
-        self.assertIn("FINISHED", result)
-        session.request_resync.assert_called_once()
+            self.assertIn("FINISHED", result)
+            session.request_resync.assert_called_once()
+        finally:
+            bpy.data.objects.remove(container)
 
 
 if __name__ == "__main__":

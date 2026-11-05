@@ -19,12 +19,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-try:
-    import bpy
-    HAS_BPY = True
-except ImportError:
-    bpy = None
-    HAS_BPY = False
+import bpy
 
 from .stage_builders import (
     build_atlas_uv_pipeline,
@@ -76,8 +71,6 @@ def build_atlas_chunk_material(
     texture_sources: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Optional[Any]:
     """Build or update an Atlas Chunk material with standard Principled PBR."""
-    if not HAS_BPY:
-        return None
 
     if enable_biome_tint is None:
         # Minecraft biome tinting only applies to 'blocks' category atlases
