@@ -36,6 +36,7 @@ from ...utils.save import (
 from ...utils.async_task import AsyncTask, ModalTaskRunner
 from ...utils.diagnostics import format_timing_parts
 from ...utils.progress import BlenderProgressReporter
+from ..common import CommonMeshingOptionsMixin
 
 logger = logging.getLogger("MoziToolKit.Operators.Save")
 
@@ -132,7 +133,7 @@ def _on_use_yefira_selection_update(self, context):
         apply_yefira_selection_to_op(self, context)
 
 
-class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
+class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper, CommonMeshingOptionsMixin):
     """Import Minecraft Java Edition world save folder (.mca / level.dat) within a bounded 3D selection"""
 
     bl_idname = "mtk.import_minecraft_save"
@@ -203,42 +204,6 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         default=(64, 320, 64),
     ) # type: ignore
 
-    enable_ao: BoolProperty(
-        name="Ambient Occlusion",
-        description="Calculate smooth 4-corner ambient occlusion lighting",
-        default=True,
-    ) # type: ignore
-
-    mesh_fluids: BoolProperty(
-        name="Mesh Fluids",
-        description="Mesh physically accurate top and side fluid surfaces",
-        default=True,
-    ) # type: ignore
-
-    weld_vertices: BoolProperty(
-        name="Weld Vertices",
-        description="Weld adjacent shared coplanar vertices into seamless manifold topology",
-        default=True,
-    ) # type: ignore
-
-    origin_centered: BoolProperty(
-        name="Origin Centered",
-        description="Center imported world geometry at the scene origin [0, 0, 0]",
-        default=True,
-    ) # type: ignore
-
-    enable_ctm: BoolProperty(
-        name="Connected Textures (CTM)",
-        description="Enable OptiFine / Continuity connected textures during world meshing",
-        default=True,
-    ) # type: ignore
-
-    enable_animated_textures: BoolProperty(
-        name="Animated Textures",
-        description="Enable animated texture frame playback for water, lava, fire, portals, and animated blocks",
-        default=True,
-    ) # type: ignore
-
     run_async: BoolProperty(
         name="Run Asynchronously",
         description="Run calculation in non-blocking background thread with live status bar progress",
@@ -293,14 +258,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper):
         )
 
         # 3. Meshing & Shading Options
-        box_mesh = layout.box()
-        box_mesh.label(text=tr("Meshing & Shaders"), icon="MATERIAL")
-        box_mesh.prop(self, "enable_ao", text=tr("Ambient Occlusion"))
-        box_mesh.prop(self, "mesh_fluids", text=tr("Mesh Fluids"))
-        box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
-        box_mesh.prop(self, "origin_centered", text=tr("Origin Centered"))
-        box_mesh.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
-        box_mesh.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
+        self.draw_meshing_options(layout)
 
     def execute(self, context):
         world_dir = resolve_operator_world_dir(self, context)

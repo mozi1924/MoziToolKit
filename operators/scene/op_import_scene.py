@@ -14,11 +14,12 @@ from bpy_extras.io_utils import ImportHelper
 from ...bridge.scene import inspect_scene_package, load_and_mesh_scene_package
 from ...utils.scene.hierarchy import apply_imported_scene_to_blender
 from ...utils.system.dependencies import get_prefs
+from ..common import CommonMeshingOptionsMixin
 
 logger = logging.getLogger("MoziToolKit.Operators.Scene.Import")
 
 
-class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
+class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper, CommonMeshingOptionsMixin):
     """Import an MTK Scene package (.mtkscene) with companion point cloud and mini-atlas"""
 
     bl_idname = "mozi.import_scene"
@@ -31,46 +32,10 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
         options={"HIDDEN"},
     )
 
-    enable_animated_textures: BoolProperty(  # type: ignore
-        name="Animated Textures",
-        description="Enable animated texture frame playback for water, lava, fire, and animated blocks",
-        default=True,
-    )
-
-    enable_ao: BoolProperty(  # type: ignore
-        name="Smooth AO",
-        description="Compute smooth ambient occlusion for block vertices",
-        default=True,
-    )
-
-    mesh_fluids: BoolProperty(  # type: ignore
-        name="Mesh Fluids",
-        description="Generate fluid surface geometry",
-        default=True,
-    )
-
-    weld_vertices: BoolProperty(  # type: ignore
-        name="Weld Vertices",
-        description="Weld spatial coplanar vertices for clean smooth shading",
-        default=True,
-    )
-
-    origin_centered: BoolProperty(  # type: ignore
-        name="Center Origin",
-        description="Center object geometry origin at bounding box center",
-        default=True,
-    )
-
     allow_host_fallback: BoolProperty(  # type: ignore
         name="Allow Host Fallback",
         description="Allow falling back to local asset cache if the scene package is missing models or textures",
         default=False,
-    )
-
-    enable_ctm: BoolProperty(  # type: ignore
-        name="Connected Textures (CTM)",
-        description="Apply the connected-texture rules embedded in the scene package",
-        default=True,
     )
 
     material_mode: EnumProperty(  # type: ignore
@@ -108,29 +73,21 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper):
                     u_biomes = meta.get("unique_biomes_count", 0)
                     u_entities = meta.get("unique_entities_count", 0)
                     box_info.label(
-                        text=f"{tr('Palette')}: {u_states} states, {u_biomes} biomes, {u_entities} entities",
+                        text=f"{tr('Palette')}: {u_states} {tr('states')}, {u_biomes} {tr('biomes')}, {u_entities} {tr('entities')}",
                     )
 
                     res = meta.get("atlas_resolution", [0, 0])
                     has_anim = meta.get("has_animated_atlas", False)
                     anim_badge = tr("Yes") if has_anim else tr("No")
                     box_info.label(
-                        text=f"{tr('Mini-Atlas')}: {res[0]}×{res[1]} (Animated: {anim_badge})",
+                        text=f"{tr('Mini-Atlas')}: {res[0]}×{res[1]} ({tr('Animated Textures')}: {anim_badge})",
                         icon="TEXTURE",
                     )
                 except Exception as e:
                     logger.debug("Failed inspecting scene package for UI preview: %s", e)
 
         # 2. Meshing & Shading Options
-        box_mesh = layout.box()
-        box_mesh.label(text=tr("Meshing & Shaders"), icon="SHADING_RENDERED")
-        box_mesh.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
-        box_mesh.prop(self, "enable_ao", text=tr("Smooth AO"))
-        box_mesh.prop(self, "mesh_fluids", text=tr("Mesh Fluids"))
-        box_mesh.prop(self, "weld_vertices", text=tr("Weld Vertices"))
-        box_mesh.prop(self, "origin_centered", text=tr("Center Origin"))
-        box_mesh.prop(self, "allow_host_fallback", text=tr("Allow Host Fallback"))
-        box_mesh.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
+        self.draw_meshing_options(layout, show_host_fallback=True)
 
     def execute(self, context):
 

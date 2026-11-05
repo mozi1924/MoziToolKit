@@ -175,6 +175,7 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
         name="Connected Textures (CTM)",
         description="Include connected-texture rules and sub-tiles in the exported scene package",
         default=True,
+        options={"HIDDEN"},
     )
 
     def draw(self, context):
@@ -184,7 +185,6 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
         box = layout.box()
         box.label(text=tr("Scene Export Options"), icon="SCENE_DATA")
         box.prop(self, "max_atlas_size", text=tr("Max Atlas Size"))
-        box.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
 
     @classmethod
     def poll(cls, context):
@@ -218,11 +218,8 @@ class MOZI_OT_export_scene(bpy.types.Operator, ExportHelper):
         prefs = get_prefs(context)
         dyn_entities = _resolve_export_dynamic_entities(active, cloud_obj)
         dyn_slots = _resolve_export_dynamic_entity_slots(active, cloud_obj)
-        ui_enable_ctm = getattr(self, "enable_ctm", None)
-        if isinstance(ui_enable_ctm, bool):
-            enable_ctm = ui_enable_ctm
-        else:
-            enable_ctm = _resolve_export_enable_ctm(active, cloud_obj, prefs)
+        # Frontend UI hides CTM option; scene export canonically includes CTM rules and sub-tiles.
+        enable_ctm = True
 
         try:
             meta = export_scene_package(
