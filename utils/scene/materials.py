@@ -33,19 +33,12 @@ def bind_scene_materials(
     if mesh_obj is None or reader is None:
         return []
 
-    active_atlas = atlas
-    if active_atlas is None and hasattr(reader, "read_atlas"):
-        try:
-            active_atlas = reader.read_atlas()
-        except Exception:
-            pass
-
     from ..materials.builder.world_binding import ensure_world_materials
 
     ensure_world_materials(
         mesh_obj,
         prefs=prefs,
-        atlas=active_atlas,
+        atlas=atlas,
         used_chunk_ids=used_chunk_ids,
         dynamic_entity_atlases=dynamic_entity_atlases,
         clean_unused_slots=True,

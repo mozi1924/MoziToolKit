@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_DIR.parent))
 sys.path.insert(0, str(PROJECT_DIR / "dev" / "lib"))
 
 import libmtk_py  # noqa: E402
@@ -28,6 +29,10 @@ FORBIDDEN = (
     "process_random_extrude_mesh",
     "get_block_states",
     "get_biomes",
+    "compute_canonical_state_hash",
+    "PyBufferOwner",
+    "ValidationReport",
+    "clear_cached_colormaps",
 )
 FORBIDDEN_PREFIXES = ("direct_copy_",)
 REQUIRED = (

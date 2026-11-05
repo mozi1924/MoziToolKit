@@ -329,16 +329,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertEqual(len(n_view), nw * nh * 4)
 
         # Verify colormaps and biome resolver are packaged and readable
-        self.assertTrue(reader.has_colormaps())
-        grass_cm = reader.read_colormap("grass")
-        self.assertIsNotNone(grass_cm)
-        self.assertGreater(len(grass_cm), 0)
+        self.assertIsNotNone(data.get("colormaps"))
         self.assertIsNotNone(data.get("biome_resolver"))
-
-        # Verify install_colormaps executes without error and clean up
-        reader.install_colormaps()
-        if hasattr(self.mtk, "clear_cached_colormaps"):
-            self.mtk.clear_cached_colormaps()
 
     def test_04_load_and_mesh_scene_package(self):
         """Loads and meshes the scene package headlessly using self-contained mini-atlas and models."""
@@ -524,12 +516,10 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
         # 1. Read back .mtkscene and verify CTM solver is restored
         data = read_scene_package(scene_path)
-        reader = data["reader"]
-        self.assertTrue(reader.has_ctm_rules())
         self.assertIsNotNone(data.get("ctm_solver"))
 
         # 2. Verify CTM sub-tiles are present in mini-atlas mapping
-        mapping_json = reader.read_atlas_mapping_json()
+        mapping_json = data.get("atlas_mapping_json")
         self.assertIsNotNone(mapping_json)
         mapping_dict = json.loads(mapping_json)
         sprites = mapping_dict.get("sprites", {})
@@ -561,11 +551,9 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertEqual(meta["voxel_count"], 2)
 
         data = read_scene_package(scene_path)
-        reader = data["reader"]
-        self.assertFalse(reader.has_ctm_rules())
         self.assertIsNone(data.get("ctm_solver"))
 
-        mapping_json = reader.read_atlas_mapping_json()
+        mapping_json = data.get("atlas_mapping_json")
         self.assertIsNotNone(mapping_json)
         mapping_dict = json.loads(mapping_json)
         sprites = mapping_dict.get("sprites", {})
@@ -621,20 +609,14 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
 
         data = read_scene_package(scene_path)
         reader = data["reader"]
-        self.assertTrue(reader.has_dynamic_entity_slots())
-        read_slots = reader.read_dynamic_entity_slots()
-        self.assertEqual(read_slots, slots_input)
         self.assertEqual(data.get("dynamic_entity_slots"), slots_input)
 
         # Validate that the exported package is 100% valid
         report = reader.validate()
-        self.assertTrue(report.is_valid, f"Expected valid package, got errors: {report.errors}")
-        self.assertEqual(len(report.errors), 0)
+        self.assertTrue(report["is_valid"], f"Expected valid package, got errors: {report['errors']}")
+        self.assertEqual(len(report["errors"]), 0)
 
         # Colormaps
-        self.assertTrue(reader.has_colormaps())
-        colormaps = reader.read_colormaps()
-        self.assertIsNotNone(colormaps)
         self.assertIsNotNone(data.get("colormaps"))
 
         # Completely headless self-contained loading without any prefs
@@ -715,23 +697,8 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         # Validate that reader validates this dynamic entity package as 100% valid
         reader = self.mtk.ScenePackageReader.open(scene_path)
         report = reader.validate()
-        self.assertTrue(report.is_valid, f"Expected valid scene package, got errors: {report.errors}")
-        self.assertEqual(len(report.errors), 0)
-
-        # Verify unused skin slot was pruned, and referenced slot was retained
-        packaged_slots = reader.read_dynamic_entity_slots()
-        self.assertIsNotNone(packaged_slots)
-        self.assertIn("player_TestHeroAlex", packaged_slots)
-        self.assertNotIn("unused_skin", packaged_slots)
-
-        # Verify effective_capabilities returns native dictionary with declared capabilities
-        eff_caps = reader.effective_capabilities()
-        self.assertIsInstance(eff_caps, dict)
-        self.assertTrue(eff_caps["has_dynamic_entities"])
-        self.assertIn("has_dynamic_entities", eff_caps)
-        self.assertEqual(eff_caps.get("has_dynamic_entities"), True)
-        self.assertEqual(eff_caps.get("nonexistent", False), False)
-        self.assertIn("has_dynamic_entities", eff_caps.keys())
+        self.assertTrue(report["is_valid"], f"Expected valid scene package, got errors: {report['errors']}")
+        self.assertEqual(len(report["errors"]), 0)
 
         # Verify unified reader.unpack() delivers all high-level components in one pass
         bundle = reader.unpack()
@@ -740,7 +707,14 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertIn("models", bundle)
         self.assertIn("atlas", bundle)
         self.assertIn("dynamic_entity_slots", bundle)
-        self.assertEqual(bundle["dynamic_entity_slots"], packaged_slots)
+        packaged_slots = bundle["dynamic_entity_slots"]
+        self.assertIsNotNone(packaged_slots)
+        self.assertIn("player_TestHeroAlex", packaged_slots)
+        self.assertNotIn("unused_skin", packaged_slots)
+
+        # Capabilities in metadata
+        caps = bundle["metadata"]["capabilities"]
+        self.assertTrue(caps["has_dynamic_entities"])
 
         # Test scene with NO dynamic entities, but session has unused slots: slots must be omitted and has_dynamic_entities=False
         cloud_no_dyn = self.mtk.VoxelPointCloud()
@@ -756,10 +730,11 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         )
         self.assertFalse(meta_no_dyn["capabilities"]["has_dynamic_entities"])
         reader_no_dyn = self.mtk.ScenePackageReader.open(no_dyn_path)
-        self.assertFalse(reader_no_dyn.has_dynamic_entity_slots())
+        bundle_no_dyn = reader_no_dyn.unpack()
+        self.assertIsNone(bundle_no_dyn["dynamic_entity_slots"])
         report_no_dyn = reader_no_dyn.validate()
-        self.assertTrue(report_no_dyn.is_valid, f"Expected valid report, got: {report_no_dyn.errors}")
-        self.assertEqual(len(report_no_dyn.errors), 0)
+        self.assertTrue(report_no_dyn["is_valid"], f"Expected valid report, got: {report_no_dyn['errors']}")
+        self.assertEqual(len(report_no_dyn["errors"]), 0)
 
         # Rejection test: if dynamic_entity_slots does not provide the skin, export must fail
         bad_scene_path = os.path.join(self.temp_dir, "test_skin_missing.mtkscene")
@@ -795,31 +770,26 @@ class TestSceneInterchangeEndToEnd(unittest.TestCase):
         self.assertIn("conflicting", str(ctx.exception).lower())
 
     def test_16_validate_report_bindings(self):
-        """Verifies that ScenePackageReader.validate() returns a ValidationReport object with is_valid, errors, warnings."""
+        """Verifies that ScenePackageReader.validate() returns a dictionary with is_valid, errors, warnings."""
         scene_path = self._ensure_exported_scene()
         reader = self.mtk.ScenePackageReader.open(scene_path)
         report = reader.validate()
-        self.assertTrue(hasattr(report, "is_valid"))
-        self.assertTrue(hasattr(report, "errors"))
-        self.assertTrue(hasattr(report, "warnings"))
-        self.assertTrue(report.is_valid)
-        self.assertEqual(len(report.errors), 0)
-        report_dict = report.to_dict()
-        self.assertTrue(report_dict["is_valid"])
-        self.assertIsInstance(report_dict["errors"], list)
-        self.assertIsInstance(report_dict["warnings"], list)
+        self.assertIsInstance(report, dict)
+        self.assertIn("is_valid", report)
+        self.assertIn("errors", report)
+        self.assertIn("warnings", report)
+        self.assertTrue(report["is_valid"])
+        self.assertEqual(len(report["errors"]), 0)
+        self.assertIsInstance(report["errors"], list)
+        self.assertIsInstance(report["warnings"], list)
 
-        # Capabilities and effective_capabilities bindings
-        caps = reader.metadata.capabilities
+        # Capabilities in metadata dictionary
+        meta_dict = reader.metadata.to_dict()
+        caps = meta_dict["capabilities"]
         self.assertIsInstance(caps, dict)
         self.assertIn("has_pbr", caps)
         self.assertIn("has_dynamic_entities", caps)
         self.assertIsInstance(caps["has_pbr"], bool)
-
-        eff_caps = reader.effective_capabilities()
-        self.assertIsInstance(eff_caps, dict)
-        self.assertIn("has_pbr", eff_caps)
-        self.assertIsInstance(eff_caps["has_pbr"], bool)
 
     def test_18_scene_import_ctm_toggle(self):
         """Verifies scene package CTM can be disabled at import time from the operator path."""

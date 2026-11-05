@@ -227,11 +227,6 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
 
     try:
         _ACTIVE_ASSET_CACHE = mtk.AssetCache.open(pkg_str)
-        if hasattr(_ACTIVE_ASSET_CACHE, "install_colormaps"):
-            try:
-                _ACTIVE_ASSET_CACHE.install_colormaps()
-            except Exception as ce:
-                logger.debug("Failed installing resident colormaps from active cache: %s", ce)
         _ACTIVE_CACHE_PKG_PATH = pkg_str
         _ACTIVE_CACHE_MTIME = mtime
         _ACTIVE_CACHE_MANIFEST = (
@@ -358,8 +353,6 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> O
 
     try:
         model_db = cache.load_models()
-        if hasattr(model_db, "deduplicate_all"):
-            model_db.deduplicate_all()
         if model_db is not None:
             _CACHED_MODEL_DB = model_db
             _CACHED_MODEL_DB_PKG_PATH = pkg_path

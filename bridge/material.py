@@ -279,8 +279,6 @@ def clean_material_name(name: str) -> str:
     mtk = get_libmtk()
     if mtk is not None and hasattr(mtk, "clean_material_identifier"):
         return mtk.clean_material_identifier(name)
-    if mtk is not None and hasattr(mtk, "MaterialResolver") and hasattr(mtk.MaterialResolver, "clean_name"):
-        return mtk.MaterialResolver.clean_name(name)
     return name
 
 

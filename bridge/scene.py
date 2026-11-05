@@ -39,7 +39,7 @@ def read_scene_package(
     z_up: bool = True,
 ) -> Dict[str, Any]:
     """
-    Reads an .mtkscene package into memory:
+    Reads an .mtkscene package into memory using unified reader.unpack():
     - metadata (dict)
     - point_cloud (VoxelPointCloud)
     - models (BakedModelDatabase or None)
@@ -56,35 +56,9 @@ def read_scene_package(
     target_path = str(Path(path).resolve())
 
     reader = mtk.ScenePackageReader.open(target_path)
-    if hasattr(reader, "unpack"):
-        bundle = reader.unpack(origin_centered=origin_centered, z_up=z_up)
-        bundle["reader"] = reader
-        return bundle
-
-    meta = reader.metadata.to_dict()
-    point_cloud = reader.read_point_cloud(origin_centered=origin_centered, z_up=z_up)
-    models = reader.read_models()
-    atlas = reader.read_atlas()
-    atlas_mapping_json = reader.read_atlas_mapping_json()
-    texture_names = reader.get_atlas_texture_names()
-    biome_resolver = reader.read_biome_resolver() if hasattr(reader, "read_biome_resolver") else None
-    ctm_solver = reader.read_ctm_solver() if hasattr(reader, "read_ctm_solver") else None
-    colormaps = reader.read_colormaps() if hasattr(reader, "read_colormaps") else None
-    dynamic_entity_slots = reader.read_dynamic_entity_slots() if hasattr(reader, "read_dynamic_entity_slots") else None
-
-    return {
-        "metadata": meta,
-        "point_cloud": point_cloud,
-        "models": models,
-        "atlas": atlas,
-        "atlas_mapping_json": atlas_mapping_json,
-        "texture_names": texture_names,
-        "biome_resolver": biome_resolver,
-        "colormaps": colormaps,
-        "dynamic_entity_slots": dynamic_entity_slots,
-        "ctm_solver": ctm_solver,
-        "reader": reader,
-    }
+    bundle = reader.unpack(origin_centered=origin_centered, z_up=z_up)
+    bundle["reader"] = reader
+    return bundle
 
 
 def load_and_mesh_scene_package(

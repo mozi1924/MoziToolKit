@@ -29,6 +29,10 @@ def test_removed_native_symbols_do_not_return():
         "process_mesh",
         "process_random_extrude_mesh",
         "process_mesh_extrude_repair",
+        "compute_canonical_state_hash",
+        "PyBufferOwner",
+        "ValidationReport",
+        "clear_cached_colormaps",
     ]
     for name in removed:
         assert not hasattr(mtk, name), f"removed symbol {name} leaked back into libmtk_py"
@@ -44,8 +48,34 @@ def test_removed_native_symbols_do_not_return():
         "get_quad_indices",
         "get_face_materials",
         "weld_spatial_vertices",
+        "has_dynamic_entity_chunks",
     ):
         assert not hasattr(mesh, name), f"removed MeshData API {name} leaked back"
+
+    for name in ("set_model_db",):
+        assert not hasattr(mtk.VoxelWorld, name), f"removed VoxelWorld API {name} leaked back"
+
+    assert not hasattr(mtk.MaterialResolver, "clean_name")
+
+    for name in (
+        "read_point_cloud",
+        "read_models",
+        "read_atlas",
+        "read_atlas_mapping_json",
+        "has_colormaps",
+        "read_colormap",
+        "read_colormaps",
+        "install_colormaps",
+        "effective_capabilities",
+        "has_dynamic_entity_slots",
+        "read_dynamic_entity_slots",
+        "read_biome_resolver",
+        "has_ctm_rules",
+        "read_ctm_rules_json",
+        "read_ctm_solver",
+        "extract_atlas_texture",
+    ):
+        assert not hasattr(mtk.ScenePackageReader, name), f"removed ScenePackageReader API {name} leaked back"
 
     assert not hasattr(mtk, "create_test_cache_package")
     assert hasattr(mtk, "unstable")
@@ -71,7 +101,6 @@ def test_removed_native_symbols_do_not_return():
         "batch_repair_fluid_uv",
         "repair_extruded_side_uv",
         "sample_uv_alpha_f32",
-        "is_face_transparent_f32",
         "encode_welcome",
         "encode_baseline_begin",
         "encode_baseline_chunk",
@@ -158,15 +187,18 @@ def test_standalone_dna_adapter_contract():
         "copy_i32",
         "copy_u32",
         "copy_u8",
-        "read_f32",
-        "read_i32",
-        "read_u32",
-        "read_u8",
         "as_memoryview_f32",
         "as_memoryview_i32",
         "as_memoryview_u32",
         "as_memoryview_u8",
-        "as_memoryview_raw",
     ):
         assert hasattr(dna, name)
-    assert not hasattr(dna, "copy_positions_to_ptr")
+    for removed in (
+        "read_f32",
+        "read_i32",
+        "read_u32",
+        "read_u8",
+        "as_memoryview_raw",
+        "copy_positions_to_ptr",
+    ):
+        assert not hasattr(dna, removed), f"removed DNA function {removed} leaked into libmtk_blender_dna"
