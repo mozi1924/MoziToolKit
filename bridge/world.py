@@ -130,6 +130,11 @@ def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bo
         skin_cache_dir = str(sc)
     except Exception as e:
         logger.debug("Failed configuring skin cache dir in prepare_world_mesh_context: %s", e)
+    unknown_block_strategy = (
+        getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE")
+        if prefs is not None
+        else "FALLBACK_CUBE"
+    )
     return {
         "model_db": model_db,
         "atlas": atlas,
@@ -142,6 +147,7 @@ def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bo
         "skin_cache_dir": skin_cache_dir,
         "cache_fingerprint": get_cache_fingerprint(prefs),
         "cache_timestamp": get_cache_timestamp(prefs),
+        "unknown_block_strategy": unknown_block_strategy,
     }
 
 
@@ -256,6 +262,7 @@ def mesh_voxel_storage(
     resolve_prefs: bool = True,
     resolve_ctm: bool = True,
     colormaps: Optional[Any] = None,
+    unknown_block_strategy: Optional[str] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -300,6 +307,9 @@ def mesh_voxel_storage(
     else:
         anim_tex_enabled = bool(anim_tex_enabled)
 
+    if unknown_block_strategy is None and resolve_prefs and prefs is not None:
+        unknown_block_strategy = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE")
+
     if config is None:
         config_kwargs = {
             "enable_ao": enable_ao,
@@ -316,6 +326,8 @@ def mesh_voxel_storage(
             config_kwargs["ctm_solver"] = ctm_solver
         if colormaps is not None:
             config_kwargs["colormaps"] = colormaps
+        if unknown_block_strategy is not None:
+            config_kwargs["unknown_block_strategy"] = unknown_block_strategy
         config = mtk.MesherConfig(**config_kwargs)
     else:
         if num_threads is not None and hasattr(config, "num_threads"):
@@ -326,6 +338,8 @@ def mesh_voxel_storage(
             config.enable_animated_textures = anim_tex_enabled
         if colormaps is not None and hasattr(config, "set_colormaps"):
             config.set_colormaps(colormaps)
+        if unknown_block_strategy is not None and hasattr(config, "unknown_block_strategy"):
+            config.unknown_block_strategy = unknown_block_strategy
 
     culler = get_shared_face_culler(mtk)
 
@@ -431,6 +445,38 @@ def mesh_voxel_storage(
     return mesh_data, elapsed_ms
 
 
+def scan_unknown_blocks(
+    storage_or_cloud: Any,
+    model_db: Optional[Any] = None,
+    atlas: Optional[Any] = None,
+    prefs=None,
+    custom_aliases: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    """Scans a VoxelStorage or VoxelPointCloud for unknown blocks that lack models and texture candidates.
+
+    Returns a sorted list of unique missing block state identifiers.
+    """
+    if storage_or_cloud is None or not hasattr(storage_or_cloud, "scan_unknown_blocks"):
+        return []
+
+    if model_db is None or atlas is None:
+        cached_model_db, cached_atlas, _ = get_world_pipeline_assets(prefs)
+        model_db = model_db or cached_model_db
+        atlas = atlas or cached_atlas
+
+    try:
+        return list(
+            storage_or_cloud.scan_unknown_blocks(
+                model_db=model_db,
+                atlas=atlas,
+                custom_aliases=custom_aliases,
+            )
+        )
+    except Exception as exc:
+        logger.warning("Failed scanning unknown blocks: %s", exc)
+        return []
+
+
 __all__ = [
     "get_shared_face_culler",
     "reset_shared_face_culler",
@@ -444,4 +490,5 @@ __all__ = [
     "resolve_dynamic_entity_slots",
     "get_world_session_dynamic_entity_slots",
     "mesh_voxel_storage",
+    "scan_unknown_blocks",
 ]

@@ -102,6 +102,8 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper, CommonMeshingOption
             enable_anim = getattr(self, "enable_animated_textures", True)
             allow_fallback = getattr(self, "allow_host_fallback", False)
             enable_ctm = getattr(self, "enable_ctm", True)
+            force = getattr(self, "force", False)
+            unknown_strat = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE") if prefs else "FALLBACK_CUBE"
             data = load_and_mesh_scene_package(
                 path=path,
                 prefs=prefs,
@@ -112,6 +114,8 @@ class MOZI_OT_import_scene(bpy.types.Operator, ImportHelper, CommonMeshingOption
                 enable_animated_textures=enable_anim,
                 allow_host_fallback=allow_fallback,
                 enable_ctm=enable_ctm,
+                force=force,
+                unknown_block_strategy=unknown_strat,
             )
 
             stem = path.stem

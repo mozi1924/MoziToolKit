@@ -315,6 +315,9 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper, CommonMeshi
         min_c = tuple(self.min_coord)
         max_c = tuple(self.max_coord)
 
+        force_import = getattr(self, "force", False)
+        unknown_strat = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE") if prefs else "FALLBACK_CUBE"
+
         # Synchronous fallback for CLI / tests when run_async is explicitly False
         if not self.run_async:
             try:
@@ -334,6 +337,8 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper, CommonMeshi
                         origin_centered=self.origin_centered,
                         enable_ctm=self.enable_ctm,
                         enable_animated_textures=self.enable_animated_textures,
+                        force=force_import,
+                        unknown_block_strategy=unknown_strat,
                         progress_callback=reporter.on_progress,
                     )
 
@@ -376,6 +381,8 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper, CommonMeshi
                     "cache_package_path": mesh_context.get("cache_package_path"),
                     "resolve_prefs": False,
                     "resolve_ctm": False,
+                    "force": force_import,
+                    "unknown_block_strategy": unknown_strat,
                 },
                 "prefs": prefs,
                 "task_title": f"Import {self.dimension}",

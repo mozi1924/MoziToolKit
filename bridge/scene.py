@@ -73,6 +73,8 @@ def load_and_mesh_scene_package(
     z_up: bool = True,
     allow_host_fallback: bool = False,
     enable_ctm: bool = True,
+    force: bool = False,
+    unknown_block_strategy: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     High-level headless scene loader: reads .mtkscene, reconstructs VoxelStorage,
@@ -109,6 +111,14 @@ def load_and_mesh_scene_package(
     elif biome_resolver is None and allow_host_fallback:
         degraded = True
 
+    from .world import scan_unknown_blocks
+    unknown_blocks = scan_unknown_blocks(storage, model_db=models, atlas=atlas, prefs=prefs)
+    if not force and unknown_blocks:
+        raise ValueError(
+            f"Found {len(unknown_blocks)} unknown block(s) without models or textures: "
+            f"{', '.join(unknown_blocks)}. To proceed with fallback cubes, set force=True."
+        )
+
     # Mesh voxel volume using package-embedded models and atlas
     resolve_prefs = allow_host_fallback and (models is None or atlas is None or biome_resolver is None)
     resolve_ctm = enable_ctm and allow_host_fallback and (not has_pkg_ctm)
@@ -128,6 +138,7 @@ def load_and_mesh_scene_package(
         num_threads=num_threads,
         resolve_prefs=resolve_prefs,
         resolve_ctm=resolve_ctm,
+        unknown_block_strategy=unknown_block_strategy,
     )
     total_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -150,6 +161,7 @@ def load_and_mesh_scene_package(
         "dynamic_entity_slots": dynamic_entity_slots,
         "ctm_solver": ctm_solver,
         "reader": reader,
+        "scene_path": str(Path(path).resolve()),
         "degraded": degraded,
         "mesher_ms": mesher_ms,
         "total_ms": total_ms,

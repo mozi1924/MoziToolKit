@@ -132,7 +132,7 @@ def resolve_mesh_rebuild_targets(
             is_cont = False
             if hasattr(parent, "get"):
                 is_cont = bool(parent.get("mtk:is_container") or parent.get("mtk:is_yefira_world"))
-            if is_cont or parent.name.startswith("Save_") or parent.name.startswith("Yefira_World"):
+            if is_cont or parent.name.startswith("Save_") or parent.name.startswith("Yefira_World") or parent.name.startswith("[Scene]"):
                 c_root, c_mesh, c_cloud, c_type = _resolve_mesh_rebuild_targets_from_root(parent)
                 if getattr(active, "name", "").endswith("_VoxelCloud") or (hasattr(active, "get") and active.get("mtk_is_voxel_cloud")):
                     c_cloud = active
@@ -251,6 +251,12 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         default=True,
     )
 
+    force: bpy.props.BoolProperty(
+        name="Force Rebuild",
+        description="Proceed with rebuild even if unknown blocks without models/textures are detected",
+        default=False,
+    )
+
     run_async: bpy.props.BoolProperty(
         name="Run Asynchronously",
         description="Run calculation in non-blocking background thread with live status bar progress",
@@ -259,17 +265,30 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
     )
 
     _runner: Optional[Any] = None
+    _unknown_blocks: List[str] = []
+
+    def draw(self, context):
+        layout = self.layout
+        unknown = getattr(self, "_unknown_blocks", [])
+        if unknown:
+            box = layout.box()
+            box.label(text=f"Detected {len(unknown)} unknown block(s):", icon="ERROR")
+            col = box.column(align=True)
+            for block_id in unknown[:10]:
+                col.label(text=f"  • {block_id}")
+            if len(unknown) > 10:
+                col.label(text=f"  ... and {len(unknown) - 10} more")
+
+            prefs = get_prefs(context)
+            strat = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE") if prefs else "FALLBACK_CUBE"
+            strat_desc = "Purple/Black Fallback Cube" if strat == "FALLBACK_CUBE" else "Ignored as Air"
+            layout.separator()
+            layout.label(text=f"Strategy: {strat_desc}")
+            layout.label(text="Click OK to proceed with meshing.")
 
     @classmethod
     def poll(cls, context):
         if not context:
-            return False
-
-        prefs = get_prefs(context)
-        can_run, reason = can_execute_asset_pipeline(prefs)
-        if not can_run:
-            if hasattr(cls, "poll_message_set"):
-                cls.poll_message_set(reason)
             return False
 
         root_container, world_mesh, cloud_obj, source_type = resolve_mesh_rebuild_targets(context)
@@ -278,9 +297,20 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
         # An external mesh parented under an MTK container must not be
         # overwritten with voxel-generated geometry.
-        if source_type in ("SAVE", "SYNC") and world_mesh is not None:
+        if source_type in ("SAVE", "SYNC", "SCENE") and world_mesh is not None:
             if classify_origin(world_mesh) == ORIGIN_EXTERNAL:
                 return False
+
+        if source_type == "SCENE":
+            # For self-contained .mtkscene packages, asset pipeline is not required
+            return cloud_obj is not None
+
+        prefs = get_prefs(context)
+        can_run, reason = can_execute_asset_pipeline(prefs)
+        if not can_run:
+            if hasattr(cls, "poll_message_set"):
+                cls.poll_message_set(reason)
+            return False
 
         if source_type == "SYNC":
             # Active sessions rebuild from in-memory storage; offline sessions
@@ -301,17 +331,17 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
     def execute(self, context):
         prefs = get_prefs(context)
-        can_run, reason = can_execute_asset_pipeline(prefs)
-        if not can_run:
-            self.report({"WARNING"}, reason)
-            return {"CANCELLED"}
-
         root_container, world_mesh_obj, cloud_obj, source_type = resolve_mesh_rebuild_targets(context)
         if source_type == "NONE" or (world_mesh_obj is None and cloud_obj is None and root_container is None):
             self.report({"WARNING"}, "No valid Live Sync, Save container, or Voxel Point Cloud found.")
             return {"CANCELLED"}
 
-        prefs = get_prefs(context)
+        if source_type != "SCENE":
+            can_run, reason = can_execute_asset_pipeline(prefs)
+            if not can_run:
+                self.report({"WARNING"}, reason)
+                return {"CANCELLED"}
+
         status = check_asset_cache_status(prefs)
 
         # Ensure Object mode
@@ -386,7 +416,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             return self._runner.start()
 
         # Branch B: Remesh from companion Voxel Point Cloud (Save container, offline Sync, or Carved cloud)
-        if status in ("NO_PACKS", "NO_VANILLA"):
+        if source_type != "SCENE" and status in ("NO_PACKS", "NO_VANILLA"):
             self.report({"WARNING"}, reason)
             return {"CANCELLED"}
         if cloud_obj is None:
@@ -458,29 +488,97 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
             raw_anim = getattr(prefs, "enable_animated_textures", True) if prefs is not None else True
             anim_tex_enabled = raw_anim if isinstance(raw_anim, bool) else True
 
+        package_reader = None
         did_precompile = False
-        if status in ("MISSING", "STALE"):
-            try:
-                ensure_pipeline_assets_ready_sync(prefs)
-            except Exception as e:
-                self.report({"ERROR"}, f"Failed to precompile assets: {e}")
-                return {"CANCELLED"}
-            did_precompile = True
-            status = "READY"
+        if source_type == "SCENE":
+            from pathlib import Path
+            scene_pkg_path = None
+            if root_container is not None and hasattr(root_container, "get"):
+                scene_pkg_path = root_container.get("mtk:scene_package_path")
 
-        # Resolve every bpy-backed value before launching the worker. The worker
-        # only receives plain Python/Rust objects and never touches bpy.
-        asset_context = prepare_asset_context(prefs)
-        mesh_context = prepare_world_mesh_context(prefs, enable_animated_textures=anim_tex_enabled)
-        model_db = mesh_context["model_db"]
-        atlas = mesh_context["atlas"]
-        biome_resolver = mesh_context["biome_resolver"]
-        colormaps = mesh_context.get("colormaps")
-        ctm_solver = mesh_context["ctm_solver"]
-        num_threads = mesh_context["num_threads"]
-        anim_tex_enabled = mesh_context["enable_animated_textures"]
-        cache_fingerprint = mesh_context["cache_fingerprint"]
-        cache_timestamp = mesh_context["cache_timestamp"]
+            scene_data = None
+            if scene_pkg_path and Path(scene_pkg_path).is_file():
+                try:
+                    from ...bridge.scene import read_scene_package
+                    scene_data = read_scene_package(scene_pkg_path, origin_centered=origin_centered, z_up=True)
+                except Exception as exc:
+                    logger.warning("Failed to read original .mtkscene package at %s: %s", scene_pkg_path, exc)
+
+            if scene_data is not None:
+                model_db = scene_data.get("models")
+                atlas = scene_data.get("atlas")
+                biome_resolver = scene_data.get("biome_resolver")
+                colormaps = scene_data.get("colormaps")
+                ctm_solver = scene_data.get("ctm_solver")
+                package_reader = scene_data.get("reader")
+                asset_context = {"status": "READY"}
+                mesh_context = {
+                    "skin_cache_dir": None,
+                    "enable_animated_textures": anim_tex_enabled,
+                }
+                raw_threads = getattr(prefs, "thread_count", 0) if prefs is not None else 0
+                num_threads = raw_threads if isinstance(raw_threads, int) and not isinstance(raw_threads, bool) and raw_threads > 0 else None
+                cache_fingerprint = None
+                cache_timestamp = None
+            else:
+                can_run, reason = can_execute_asset_pipeline(prefs)
+                if not can_run:
+                    self.report({"ERROR"}, f"Original .mtkscene package is missing ({scene_pkg_path}) and host asset cache is not ready: {reason}")
+                    return {"CANCELLED"}
+                if status in ("MISSING", "STALE"):
+                    try:
+                        ensure_pipeline_assets_ready_sync(prefs)
+                    except Exception as e:
+                        self.report({"ERROR"}, f"Failed to precompile assets: {e}")
+                        return {"CANCELLED"}
+                    did_precompile = True
+                asset_context = prepare_asset_context(prefs)
+                mesh_context = prepare_world_mesh_context(prefs, enable_animated_textures=anim_tex_enabled)
+                model_db = mesh_context["model_db"]
+                atlas = mesh_context["atlas"]
+                biome_resolver = mesh_context["biome_resolver"]
+                colormaps = mesh_context.get("colormaps")
+                ctm_solver = mesh_context["ctm_solver"]
+                num_threads = mesh_context["num_threads"]
+                anim_tex_enabled = mesh_context["enable_animated_textures"]
+                cache_fingerprint = mesh_context["cache_fingerprint"]
+                cache_timestamp = mesh_context["cache_timestamp"]
+        else:
+            if status in ("MISSING", "STALE"):
+                try:
+                    ensure_pipeline_assets_ready_sync(prefs)
+                except Exception as e:
+                    self.report({"ERROR"}, f"Failed to precompile assets: {e}")
+                    return {"CANCELLED"}
+                did_precompile = True
+                status = "READY"
+
+            asset_context = prepare_asset_context(prefs)
+            mesh_context = prepare_world_mesh_context(prefs, enable_animated_textures=anim_tex_enabled)
+            model_db = mesh_context["model_db"]
+            atlas = mesh_context["atlas"]
+            biome_resolver = mesh_context["biome_resolver"]
+            colormaps = mesh_context.get("colormaps")
+            ctm_solver = mesh_context["ctm_solver"]
+            num_threads = mesh_context["num_threads"]
+            anim_tex_enabled = mesh_context["enable_animated_textures"]
+            cache_fingerprint = mesh_context["cache_fingerprint"]
+            cache_timestamp = mesh_context["cache_timestamp"]
+
+        # Scan for unknown blocks before launching worker
+        from ...bridge.world import scan_unknown_blocks
+        unknown_blocks = scan_unknown_blocks(cloud_data, model_db=model_db, atlas=atlas, prefs=prefs)
+        if unknown_blocks and not getattr(self, "force", False):
+            self._unknown_blocks = unknown_blocks
+            if not getattr(bpy.app, "background", False) and hasattr(context, "window_manager"):
+                self.force = True
+                return context.window_manager.invoke_props_dialog(self, width=420)
+            self.report(
+                {"WARNING"},
+                f"Found {len(unknown_blocks)} unknown block(s): {', '.join(unknown_blocks)}. "
+                "Pass force=True to proceed with fallback cubes or air.",
+            )
+            return {"CANCELLED"}
 
         session_key = (
             getattr(root_container, "name", None)
@@ -491,6 +589,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
         def do_cloud_rebuild(progress_callback=None):
             storage = cloud_data.to_storage()
+            unknown_strat = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE") if prefs is not None else "FALLBACK_CUBE"
             mesh_data, elapsed_ms = mesh_voxel_storage(
                 storage=storage,
                 model_db=model_db,
@@ -513,6 +612,7 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 cache_timestamp=cache_timestamp,
                 resolve_prefs=False,
                 resolve_ctm=False,
+                unknown_block_strategy=unknown_strat,
             )
             # Keep the rebuilt storage so the success handler can cache it for
             # later WORLD biome re-tints.
@@ -578,14 +678,26 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
                 used_chunk_ids = mesh_data.used_materials() if hasattr(mesh_data, "used_materials") else None
                 from ...bridge.world import get_world_session_dynamic_entity_atlases
                 dyn_entities = get_world_session_dynamic_entity_atlases(session_key) if session_key else None
-                ensure_world_materials(
-                    world_mesh_obj,
-                    prefs=prefs,
-                    atlas=atlas,
-                    used_chunk_ids=used_chunk_ids,
-                    dynamic_entity_atlases=dyn_entities,
-                    clean_unused_slots=True,
-                )
+                if package_reader is not None:
+                    from ...utils.scene.materials import bind_scene_materials
+                    bind_scene_materials(
+                        world_mesh_obj,
+                        reader=package_reader,
+                        scene_name=root_container.name if root_container else "Scene",
+                        atlas=atlas,
+                        prefs=prefs,
+                        used_chunk_ids=used_chunk_ids,
+                        dynamic_entity_atlases=dyn_entities,
+                    )
+                else:
+                    ensure_world_materials(
+                        world_mesh_obj,
+                        prefs=prefs,
+                        atlas=atlas,
+                        used_chunk_ids=used_chunk_ids,
+                        dynamic_entity_atlases=dyn_entities,
+                        clean_unused_slots=True,
+                    )
                 mat_ms = (time.perf_counter() - t0_mat) * 1000.0
 
                 _safe_set_custom_prop(world_mesh_obj, "mtk_enable_animated_textures", bool(anim_tex_enabled))

@@ -287,6 +287,8 @@ def import_save_to_blender(
     material_mode: str = "ATLAS",
     enable_ctm: bool = True,
     enable_animated_textures: Optional[bool] = None,
+    force: bool = False,
+    unknown_block_strategy: Optional[str] = None,
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Full synchronous end-to-end Minecraft save importer pipeline for Blender:
@@ -329,6 +331,8 @@ def import_save_to_blender(
         enable_ctm=enable_ctm,
         enable_animated_textures=anim_tex_enabled,
         skin_cache_dir=skin_cache_dir,
+        force=force,
+        unknown_block_strategy=unknown_block_strategy,
     )
 
     return apply_imported_save_to_blender(

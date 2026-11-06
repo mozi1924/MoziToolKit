@@ -52,6 +52,12 @@ class CommonMeshingOptionsMixin:
         default=True,
     )
 
+    force: BoolProperty(  # type: ignore
+        name="Force Unknown Blocks",
+        description="Proceed with meshing even if unknown blocks without models/textures are detected",
+        default=False,
+    )
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Ensure subclass inherits annotations and class attributes for inspection and Blender RNA registration
@@ -100,5 +106,7 @@ def draw_meshing_options(
     if show_ctm and hasattr(target, "enable_ctm"):
         box_mesh.prop(target, "enable_ctm", text=tr("Connected Textures (CTM)"))
     box_mesh.prop(target, "enable_animated_textures", text=tr("Animated Textures"))
+    if hasattr(target, "force"):
+        box_mesh.prop(target, "force", text=tr("Force Unknown Blocks"))
     if show_host_fallback and hasattr(target, "allow_host_fallback"):
         box_mesh.prop(target, "allow_host_fallback", text=tr("Allow Host Fallback"))

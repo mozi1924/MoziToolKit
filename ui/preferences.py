@@ -237,6 +237,16 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         default=True,
     )
 
+    unknown_block_strategy: EnumProperty(
+        name="Unknown Blocks",
+        description="Choose how missing or unrecognized blocks are handled during import and meshing",
+        items=[
+            ('FALLBACK_CUBE', "Magenta/Black Cube", "Construct unit cubes with canonical mozi:fallback checkerboard material for unknown blocks (Default)"),
+            ('IGNORE_AS_AIR', "Ignore (Air)", "Skip unknown blocks completely without emitting geometry"),
+        ],
+        default='FALLBACK_CUBE',
+    )
+
     material_render_engine: EnumProperty(
         name="Render Engine Adaptation",
         description="Choose how standard PBR shading adapts to the active render engine",

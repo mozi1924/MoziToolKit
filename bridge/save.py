@@ -66,6 +66,8 @@ def load_and_mesh_minecraft_save(
     resolve_prefs: bool = True,
     resolve_ctm: bool = True,
     colormaps: Optional[Any] = None,
+    force: bool = False,
+    unknown_block_strategy: Optional[str] = None,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -103,6 +105,9 @@ def load_and_mesh_minecraft_save(
     else:
         anim_tex_enabled = bool(anim_tex_enabled)
 
+    if unknown_block_strategy is None and resolve_prefs and prefs is not None:
+        unknown_block_strategy = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE")
+
     config_kwargs = {
         "enable_ao": enable_ao,
         "mesh_fluids": mesh_fluids,
@@ -118,6 +123,8 @@ def load_and_mesh_minecraft_save(
         config_kwargs["ctm_solver"] = ctm_solver
     if colormaps is not None:
         config_kwargs["colormaps"] = colormaps
+    if unknown_block_strategy is not None:
+        config_kwargs["unknown_block_strategy"] = unknown_block_strategy
 
     config = mtk.MesherConfig(**config_kwargs)
 
@@ -139,6 +146,7 @@ def load_and_mesh_minecraft_save(
         "model_db": model_db,
         "num_threads": num_threads,
         "callback": wrapped_cb,
+        "force": force,
     }
     if skin_cache_dir is None:
         try:

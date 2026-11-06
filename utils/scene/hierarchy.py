@@ -80,6 +80,8 @@ def apply_imported_scene_to_blender(
         "mtk:generator": str(meta.get("generator", "MoziToolKit")),
         "mtk:enable_animated_textures": bool(enable_animated_textures),
     }
+    if data.get("scene_path"):
+        metadata_props["mtk:scene_package_path"] = str(data["scene_path"])
 
     req = VoxelWorldAssemblyRequest(
         container_type="SCENE",
