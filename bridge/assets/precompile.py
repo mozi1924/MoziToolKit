@@ -57,6 +57,8 @@ def precompile_stack(
     start_time = time.time()
     # cache_dir is resolved on the Blender main thread by the caller when this
     # function runs in an AsyncTask worker (resolve/precompile split).
+    if cache_dir is None and prefs is not None and getattr(prefs, "cache_dir", None):
+        cache_dir = getattr(prefs, "cache_dir")
     base_cache = Path(cache_dir) if cache_dir else get_cache_dir(prefs)
 
     wrapped_cb = wrap_progress_callback(progress_callback)

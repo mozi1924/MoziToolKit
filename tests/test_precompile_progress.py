@@ -45,6 +45,8 @@ class TestPrecompileProgress(unittest.TestCase):
         self.pack_dir = os.path.join(self.temp_dir, "test_pack")
         self.cache_dir = os.path.join(self.temp_dir, "cache")
         os.makedirs(self.cache_dir, exist_ok=True)
+        self._orig_mozi_cache_dir = os.environ.get("MOZI_CACHE_DIR")
+        os.environ["MOZI_CACHE_DIR"] = self.cache_dir
 
         # Setup standard pack structure
         tex_dir = os.path.join(self.pack_dir, "assets", "minecraft", "textures", "block")
@@ -89,6 +91,15 @@ class TestPrecompileProgress(unittest.TestCase):
             json.dump({"pack": {"pack_format": 15, "description": "Test Pack"}}, f)
 
     def tearDown(self):
+        if getattr(self, "_orig_mozi_cache_dir", None) is not None:
+            os.environ["MOZI_CACHE_DIR"] = self._orig_mozi_cache_dir
+        else:
+            os.environ.pop("MOZI_CACHE_DIR", None)
+        try:
+            from MoziToolKit.bridge.assets import invalidate_asset_cache_memory
+            invalidate_asset_cache_memory()
+        except Exception:
+            pass
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_direct_libmtk_py_precompile_with_callback(self):
@@ -201,6 +212,7 @@ class TestPrecompileProgress(unittest.TestCase):
 
         res = precompile_stack(
             prefs=mock_prefs,
+            cache_dir=self.cache_dir,
             num_threads=1,
             progress_callback=on_prog,
         )
@@ -233,7 +245,7 @@ class TestPrecompileProgress(unittest.TestCase):
 
         task = AsyncTask(
             target=precompile_stack,
-            kwargs={"prefs": mock_prefs, "num_threads": 1},
+            kwargs={"prefs": mock_prefs, "cache_dir": self.cache_dir, "num_threads": 1},
         )
 
         success_result = []
