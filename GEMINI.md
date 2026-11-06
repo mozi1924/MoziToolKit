@@ -35,6 +35,7 @@
 
 ### 规则 4：双轮子开发态直通与发布态隔离 (Dual-Wheel Architecture)
 - **开发态**：通过 `dev/lib/` 软链接直连相对路径 `../libmozitoolkit` 的 Rust 构建产物（`libmtk_py.so`, `libmtk_blender_dna.so`），由 `dev/loader.py` 动态加载，即改即生效。
+- **后端修改强制重编铁律 (Mandatory `cargo build-all-py`)**：任何对相对路径 `../libmozitoolkit`（核心计算库、模型解析、体素管线或 Python 绑定层）的代码修改或重构，**必须在任务交付前无条件执行 `(cd ../libmozitoolkit && cargo build-all-py)` 全量编译**。确保 `dev/lib/` 软链接指向的原生动态链接库（macOS `.dylib` / Linux `.so` / Windows `.pyd`）处于最新状态，供前端 Blender 插件与用户无缝即时测试，严禁遗漏后端编译让前端运行陈旧二进制。
 - **发布态**：由 `python3 build.py` 物理剔除 `dev/` 目录并注入平台 wheels，更新 `blender_manifest.toml`。
 - **严禁全局安装**：严禁通过 `pip install` 将轮子安装到宿主全局 bpy 或系统环境中。
 
