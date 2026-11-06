@@ -141,7 +141,8 @@
    ```
 
 3. **方块状态规范化表示**：
-   * 空气统一规范化为 `"minecraft:air"`（`cave_air`、`void_air`、`structure_void`，以及非含水的光源/屏障 `light`/`barrier[waterlogged=false]` 均映射为空气；`bubble_column` 以及含水的光源/屏障 `light`/`barrier[waterlogged=true]` 规范化为 `"minecraft:water"`）；
+   * 空气族统一规范化为 `"minecraft:air"`（`cave_air`、`void_air`、`structure_void` 映射为空气）；
+   * 方块状态如实保留真实原版语义与完整属性（包括 `bubble_column`、`light`、`barrier` 等），不在传输与存储阶段擅自修改为普通水或空气；流体网格与无实体多边形占位方块的网格行为由客户端构建期统一解释；
    * 属性键严格按 ASCII 字典序升序排序，无多余空格，例如：
      `"minecraft:chest[facing=north,type=single,waterlogged=false]"`；
    * Rust 端只对空气别名与旧版 `{"state":"..."}` 包装做规范化，**不重排属性**——属性排序由服务端 `BlockDataEncoder.serializeBlockState` 保证；两端必须逐字节一致。
