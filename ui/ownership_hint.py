@@ -42,6 +42,27 @@ def draw_mesh_origin_hint(layout: Any, context: Any, compact: bool = False) -> N
             )
         return
 
+    if getattr(obj, "type", "") == "EMPTY":
+        if compact:
+            layout.label(
+                text=tr("MTK World Container — use Rebuild Voxel Mesh"),
+                icon="WORLD",
+            )
+        else:
+            column = layout.column(align=True)
+            try:
+                column.alert = True
+            except Exception:
+                pass
+            column.label(
+                text=tr("MTK World Container: controls synchronized voxel world & sections."),
+                icon="WORLD",
+            )
+            column.label(
+                text=tr("Modify Biome, Rebuild Mesh, or toggle Point Cloud directly from here."),
+            )
+        return
+
     if compact:
         layout.label(
             text=tr("MTK mesh — use Rebuild Voxel Mesh (edit the Voxel Cloud)"),

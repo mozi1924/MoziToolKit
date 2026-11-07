@@ -35,7 +35,9 @@ class MOZI_OT_set_texture_interpolation_closest(bpy.types.Operator):
         return bool(context.selected_objects or context.active_object)
 
     def execute(self, context):
-        targets = context.selected_objects or ([context.active_object] if context.active_object else [])
+        from ..utils.world.hierarchy import resolve_target_meshes
+        raw_targets = context.selected_objects or ([context.active_object] if context.active_object else [])
+        targets = resolve_target_meshes(raw_targets) or raw_targets
         processed_materials = set()
         nodes_modified = 0
 

@@ -22,33 +22,9 @@ from .common import draw_vanilla_pack_warning
 
 
 def _resolve_target_cloud(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:
-    if context is None:
-        return None, None
-    active = getattr(context, "active_object", None)
-    if active is None:
-        selected = getattr(context, "selected_objects", [])
-        active = selected[0] if selected else None
-    if active is None:
-        return None, None
-
-    if getattr(active, "type", "") == "MESH":
-        if active.get("mtk_is_voxel_cloud"):
-            world_name = active.get("mtk_world_mesh") or (active.parent.name if active.parent else None)
-            world_obj = bpy.data.objects.get(world_name) if world_name else None
-            return world_obj, active
-        cloud_obj = get_associated_voxel_cloud(active)
-        return active, cloud_obj
-
-    if getattr(active, "type", "") == "EMPTY":
-        cloud_obj = get_associated_voxel_cloud(active)
-        world_obj = None
-        for child in getattr(active, "children", []):
-            if getattr(child, "type", "") == "MESH" and not child.get("mtk_is_voxel_cloud"):
-                world_obj = child
-                break
-        return world_obj, cloud_obj
-
-    return None, None
+    from ..utils.world.hierarchy import resolve_hierarchy
+    ctx = resolve_hierarchy(context)
+    return ctx.primary_mesh, ctx.point_cloud
 
 
 class MOZI_PT_view3d_voxel_tools(bpy.types.Panel):

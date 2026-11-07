@@ -45,9 +45,21 @@ def _resolve_biome_preset(obj) -> str:
     ``mtk:biome_preset``. Infer WORLD from the mesh origin + baked tint attribute
     instead of blindly reporting Plains; external meshes keep the PLAINS default.
     """
+    if obj is None:
+        return "PLAINS"
+
     preset = obj.get("mtk:biome_preset") if hasattr(obj, "get") else None
     if isinstance(preset, str) and preset:
         return preset
+
+    if getattr(obj, "type", "") == "EMPTY":
+        from ..utils.world.hierarchy import resolve_hierarchy
+        ctx = resolve_hierarchy(obj)
+        if ctx.primary_mesh is not None:
+            return _resolve_biome_preset(ctx.primary_mesh)
+        if ctx.origin in _WORLD_ORIGINS:
+            return "WORLD"
+        return "PLAINS"
 
     mesh = getattr(obj, "data", None)
     if mesh is not None and hasattr(mesh, "attributes"):
@@ -227,10 +239,33 @@ class MOZI_PT_object_biome(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return is_mtk_object(context.object)
+        obj = getattr(context, "object", None) or getattr(context, "active_object", None)
+        return is_mtk_object(obj)
 
     def draw(self, context):
-        _draw_biome_ui(self.layout, context, context.object)
+        obj = getattr(context, "object", None) or getattr(context, "active_object", None)
+        if obj is not None:
+            _draw_biome_ui(self.layout, context, obj)
+
+
+class MOZI_PT_container_biome_data(bpy.types.Panel):
+    """Minecraft Biome control panel in Data Properties tab (for Empty Container Root)."""
+
+    bl_label = "Minecraft Biome"
+    bl_idname = "MOZI_PT_container_biome_data"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "data"
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None) or getattr(context, "active_object", None)
+        return getattr(obj, "type", "") == "EMPTY" and is_mtk_object(obj)
+
+    def draw(self, context):
+        obj = getattr(context, "object", None) or getattr(context, "active_object", None)
+        if obj is not None:
+            _draw_biome_ui(self.layout, context, obj)
 
 
 class MOZI_PT_view3d_biome(bpy.types.Panel):
@@ -244,15 +279,19 @@ class MOZI_PT_view3d_biome(bpy.types.Panel):
 
     @classmethod
     def poll(cls, context):
-        return is_mtk_object(context.object)
+        obj = getattr(context, "object", None) or getattr(context, "active_object", None)
+        return is_mtk_object(obj)
 
     def draw(self, context):
-        _draw_biome_ui(self.layout, context, context.object)
+        obj = getattr(context, "object", None) or getattr(context, "active_object", None)
+        if obj is not None:
+            _draw_biome_ui(self.layout, context, obj)
 
 
 classes = (
     MOZI_OT_set_object_biome,
     MOZI_PT_object_biome,
+    MOZI_PT_container_biome_data,
     MOZI_PT_view3d_biome,
 )
 

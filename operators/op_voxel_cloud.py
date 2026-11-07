@@ -22,34 +22,9 @@ from ..utils.system import register_menu_item
 
 def _resolve_world_and_cloud_objects(context) -> tuple[Optional[bpy.types.Object], Optional[bpy.types.Object]]:
     """Resolves (world_mesh_obj, voxel_cloud_obj) from current context selection."""
-    if context is None:
-        return None, None
-    active = getattr(context, "active_object", None)
-    if active is None:
-        selected = getattr(context, "selected_objects", [])
-        active = selected[0] if selected else None
-    if active is None:
-        return None, None
-
-    if getattr(active, "type", "") == "MESH":
-        if active.get("mtk_is_voxel_cloud"):
-            cloud_obj = active
-            world_obj = get_associated_parent_mesh(active)
-            return world_obj, cloud_obj
-
-        cloud_obj = get_associated_voxel_cloud(active)
-        return active, cloud_obj
-
-    if getattr(active, "type", "") == "EMPTY":
-        cloud_obj = get_associated_voxel_cloud(active)
-        world_obj = None
-        for child in getattr(active, "children", []):
-            if getattr(child, "type", "") == "MESH" and not child.get("mtk_is_voxel_cloud"):
-                world_obj = child
-                break
-        return world_obj, cloud_obj
-
-    return None, None
+    from ..utils.world.hierarchy import resolve_hierarchy
+    ctx = resolve_hierarchy(context)
+    return ctx.primary_mesh, ctx.point_cloud
 
 
 def _enter_carve_mode(

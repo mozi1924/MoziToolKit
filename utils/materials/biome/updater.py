@@ -302,11 +302,20 @@ def resolve_mesh_base_tint_types(
 
 
 def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
-    """Check if the given object has MoziToolKit materials or face metadata."""
-    if not obj or obj.type != "MESH" or obj.data is None:
+    """Check if the given object or container belongs to MoziToolKit."""
+    if not obj:
+        return False
+    if getattr(obj, "type", "") == "EMPTY":
+        from ...world.hierarchy import is_mtk_container
+        return is_mtk_container(obj)
+    if obj.type != "MESH" or obj.data is None:
         return False
     if obj.get("mtk:provenance_schema_version") is not None or obj.get("mtk:biome_preset") is not None:
         return True
+    if obj.parent and getattr(obj.parent, "type", "") == "EMPTY":
+        from ...world.hierarchy import is_mtk_container
+        if is_mtk_container(obj.parent):
+            return True
     mesh = obj.data
     attrs = mesh.attributes
     if any(
@@ -336,7 +345,15 @@ def is_mtk_object(obj: Optional[bpy.types.Object]) -> bool:
 
 def detect_object_material_mode(obj: bpy.types.Object) -> str:
     """Determine whether an object is currently configured in Atlas mode."""
-    if not obj or obj.type != "MESH" or not obj.data:
+    if not obj:
+        return "UNKNOWN"
+    if getattr(obj, "type", "") == "EMPTY":
+        from ...world.hierarchy import resolve_hierarchy
+        ctx = resolve_hierarchy(obj)
+        if ctx.primary_mesh:
+            return detect_object_material_mode(ctx.primary_mesh)
+        return "ATLAS"
+    if obj.type != "MESH" or not obj.data:
         return "UNKNOWN"
     return "ATLAS"
 
@@ -506,11 +523,34 @@ def update_object_biome(
     if not is_mtk_object(obj):
         return False
 
+    is_custom = biome_name.upper() == "CUSTOM"
+
+    if getattr(obj, "type", "") == "EMPTY":
+        from ...world.hierarchy import resolve_hierarchy
+        ctx = resolve_hierarchy(obj)
+        target_meshes = ctx.child_meshes or ([ctx.primary_mesh] if ctx.primary_mesh else [])
+        updated = False
+        for m in target_meshes:
+            if is_custom:
+                for prop_name in (
+                    "mtk_biome_temp", "mtk_biome_humidity",
+                    "mtk_biome_use_custom_grass", "mtk_biome_grass_color",
+                    "mtk_biome_use_custom_foliage", "mtk_biome_foliage_color",
+                    "mtk_biome_use_custom_dry_foliage", "mtk_biome_dry_foliage_color",
+                    "mtk_biome_water_color",
+                ):
+                    if hasattr(obj, prop_name) and hasattr(m, prop_name):
+                        setattr(m, prop_name, getattr(obj, prop_name))
+            if update_object_biome(m, biome_name, pack_stack=pack_stack):
+                updated = True
+        try:
+            obj["mtk:biome_preset"] = biome_name
+        except Exception:
+            pass
+        return updated or bool(target_meshes)
+
     mesh = obj.data
     mode = detect_object_material_mode(obj)
-
-    # Read custom biome parameters if configured on the object
-    is_custom = biome_name.upper() == "CUSTOM"
     if is_custom:
         def _get_prop(k: str, default: Any) -> Any:
             if hasattr(obj, "get") and obj.get(k) is not None:
@@ -755,6 +795,11 @@ def update_object_biome(
                             pass
 
     obj["mtk:biome_preset"] = biome_name
+    if getattr(obj, "parent", None) and getattr(obj.parent, "type", "") == "EMPTY":
+        try:
+            obj.parent["mtk:biome_preset"] = biome_name
+        except Exception:
+            pass
     # Attribute writes via foreach_set already tag the mesh; update() is cheap and
     # guarantees the evaluated mesh / shader Attribute nodes see the new buffers.
     if hasattr(mesh, "update"):

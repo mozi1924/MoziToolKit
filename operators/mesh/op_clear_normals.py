@@ -23,12 +23,12 @@ class MOZI_OT_clear_custom_normals(bpy.types.Operator):
         return poll_mesh_object(context)
 
     def execute(self, context):
-        targets = [obj for obj in context.selected_objects if obj and obj.type == "MESH"]
-        if not targets and context.active_object and context.active_object.type == "MESH":
-            targets = [context.active_object]
+        from ...utils.world.hierarchy import resolve_target_meshes
+        raw_targets = context.selected_objects or ([context.active_object] if context.active_object else [])
+        targets = resolve_target_meshes(raw_targets)
 
         if not targets:
-            self.report({"WARNING"}, "No mesh objects selected.")
+            self.report({"WARNING"}, "No mesh objects found.")
             return {"CANCELLED"}
 
         saved_mode = context.mode

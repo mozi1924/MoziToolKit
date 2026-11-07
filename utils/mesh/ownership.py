@@ -207,11 +207,20 @@ def classify_origin(obj: Any) -> str:
     if obj_type == "EMPTY":
         container_type = _safe_get(obj, "mtk:container_type")
         if isinstance(container_type, str):
-            if container_type.strip().upper() == "SAVE":
+            c_type = container_type.strip().upper()
+            if c_type == "SAVE":
                 return ORIGIN_SAVE
-            if container_type.strip().upper() == "SYNC":
+            if c_type == "SYNC":
                 return ORIGIN_SYNC_WORLD
+            if c_type == "SCENE":
+                return ORIGIN_SCENE
         if _as_bool(_safe_get(obj, "mtk:is_container")) and _as_bool(_safe_get(obj, "mtk:is_yefira_world")):
+            return ORIGIN_SYNC_WORLD
+        if _as_bool(_safe_get(obj, "mtk:is_scene_container")) or name.startswith("[Scene]"):
+            return ORIGIN_SCENE
+        if _as_bool(_safe_get(obj, "mtk:is_save_world")) or name.startswith("Save_"):
+            return ORIGIN_SAVE
+        if name.startswith("Yefira_World"):
             return ORIGIN_SYNC_WORLD
 
     return ORIGIN_EXTERNAL

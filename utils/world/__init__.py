@@ -16,6 +16,13 @@ from .assembler import (
     safe_get_custom_prop,
     persist_dynamic_entity_slots,
 )
+from .hierarchy import (
+    HierarchyContext,
+    resolve_hierarchy,
+    is_mtk_container,
+    get_container_type,
+    resolve_target_meshes,
+)
 from .sync_container import (
     get_or_create_world_container,
     get_or_create_world_mesh_object,
@@ -40,4 +47,9 @@ __all__ = [
     "is_yefira_root_object",
     "is_yefira_world_object",
     "update_world_mesh",
+    "HierarchyContext",
+    "resolve_hierarchy",
+    "is_mtk_container",
+    "get_container_type",
+    "resolve_target_meshes",
 ]

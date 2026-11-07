@@ -43,11 +43,20 @@ def poll_edit_mesh(context) -> bool:
 
 
 def poll_mesh_object(context) -> bool:
-    """Check if there is at least one Mesh object selected or active in Object or Edit Mode."""
+    """Check if there is at least one Mesh object or MTK container selected or active in Object or Edit Mode."""
     if not context:
         return False
     selected = context.selected_objects or ([context.active_object] if context.active_object else [])
-    return any(obj and obj.type == "MESH" for obj in selected)
+    for obj in selected:
+        if not obj:
+            continue
+        if getattr(obj, "type", "") == "MESH":
+            return True
+        if getattr(obj, "type", "") == "EMPTY":
+            from ..world.hierarchy import is_mtk_container
+            if is_mtk_container(obj):
+                return True
+    return False
 
 
 def set_select_mode(context, mode: str):
