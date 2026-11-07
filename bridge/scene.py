@@ -139,6 +139,7 @@ def load_and_mesh_scene_package(
         resolve_prefs=resolve_prefs,
         resolve_ctm=resolve_ctm,
         unknown_block_strategy=unknown_block_strategy,
+        z_up=z_up,
     )
     total_ms = (time.perf_counter() - t0) * 1000.0
 

@@ -345,6 +345,15 @@ class TestUnknownBlocksAndSceneRebuild(unittest.TestCase):
         self.assertEqual(ret_force, {"FINISHED"})
         self.assertGreater(len(mesh_obj.data.polygons), 0)
 
+        # Case C: cancel() callback resets confirmation state and unknown blocks list
+        mock_op_cancel = types.SimpleNamespace(
+            _dialog_confirmed=True,
+            _unknown_blocks=["unknown_space:dark_matter"],
+        )
+        MOZI_OT_rebuild_mesh.cancel(mock_op_cancel, ctx)
+        self.assertFalse(mock_op_cancel._dialog_confirmed)
+        self.assertEqual(mock_op_cancel._unknown_blocks, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -253,6 +253,89 @@ class TestDnaReadWriteConsistency(unittest.TestCase):
         finally:
             bpy.data.meshes.remove(mesh)
 
+    def test_dna_attribute_types_consistency(self):
+        """Validates BYTE_COLOR, BOOLEAN, INT8, and STRING consistency between fast and safe paths."""
+        mesh = self._create_grid_mesh(2, 2)
+        try:
+            pt_count = len(mesh.vertices)
+            loop_count = len(mesh.loops)
+
+            # 1. BYTE_COLOR attribute on CORNER
+            byte_col = mesh.attributes.new(name="test_byte_color", type="BYTE_COLOR", domain="CORNER")
+            u8_vals = np.array([i % 256 for i in range(loop_count * 4)], dtype=np.uint8)
+            try:
+                byte_col.data.foreach_set("color_srgb", u8_vals.astype(np.float32) / 255.0)
+            except Exception:
+                byte_col.data.foreach_set("color", u8_vals.astype(np.float32) / 255.0)
+
+            # 2. BOOLEAN attribute on POINT
+            bool_attr = mesh.attributes.new(name="test_bool", type="BOOLEAN", domain="POINT")
+            bool_vals = np.array([bool(i % 2) for i in range(pt_count)], dtype=np.bool_)
+            bool_attr.data.foreach_set("value", bool_vals)
+
+            # 3. INT8 attribute on POINT
+            int8_attr = mesh.attributes.new(name="test_int8", type="INT8", domain="POINT")
+            int8_vals = np.array([(i * 7) % 127 for i in range(pt_count)], dtype=np.int8)
+            int8_attr.data.foreach_set("value", int8_vals)
+
+            # 4. STRING attribute on POINT
+            str_attr = mesh.attributes.new(name="test_str", type="STRING", domain="POINT")
+            for i, elem in enumerate(str_attr.data):
+                elem.value = f"str_val_{i}".encode("utf-8")
+
+            # Extract via Safe-Path (use_dna=False)
+            data_safe = extract_mesh_data(mesh, use_dna=False, include_attributes=True)
+            self.assertIsNotNone(data_safe)
+
+            # Extract via Fast-Path (use_dna=True)
+            data_fast = extract_mesh_data(mesh, use_dna=True, include_attributes=True)
+            self.assertIsNotNone(data_fast)
+
+            # Verify STRING attribute
+            safe_strs = data_safe.get_string_attribute("test_str")
+            fast_strs = data_fast.get_string_attribute("test_str")
+            self.assertEqual(safe_strs, [f"str_val_{i}" for i in range(pt_count)])
+            self.assertEqual(fast_strs, safe_strs)
+
+            # Verify BYTE_COLOR attribute
+            info_safe = data_safe.attribute_info("test_byte_color")
+            info_fast = data_fast.attribute_info("test_byte_color")
+            self.assertEqual(info_safe, ("corner", "float4", loop_count))
+            self.assertEqual(info_fast, ("corner", "float4", loop_count))
+            mv_safe = data_safe.attribute_memoryview("test_byte_color")
+            mv_fast = data_fast.attribute_memoryview("test_byte_color")
+            np.testing.assert_allclose(
+                np.frombuffer(mv_fast, dtype=np.float32),
+                np.frombuffer(mv_safe, dtype=np.float32),
+                atol=1e-2,
+            )
+
+            # Verify BOOLEAN attribute
+            info_safe = data_safe.attribute_info("test_bool")
+            info_fast = data_fast.attribute_info("test_bool")
+            self.assertEqual(info_safe, ("point", "int32", pt_count))
+            self.assertEqual(info_fast, ("point", "int32", pt_count))
+            mv_safe = data_safe.attribute_memoryview("test_bool")
+            mv_fast = data_fast.attribute_memoryview("test_bool")
+            np.testing.assert_array_equal(
+                np.frombuffer(mv_fast, dtype=np.int32),
+                np.frombuffer(mv_safe, dtype=np.int32),
+            )
+
+            # Verify INT8 attribute
+            info_safe = data_safe.attribute_info("test_int8")
+            info_fast = data_fast.attribute_info("test_int8")
+            self.assertEqual(info_safe, ("point", "int32", pt_count))
+            self.assertEqual(info_fast, ("point", "int32", pt_count))
+            mv_safe = data_safe.attribute_memoryview("test_int8")
+            mv_fast = data_fast.attribute_memoryview("test_int8")
+            np.testing.assert_array_equal(
+                np.frombuffer(mv_fast, dtype=np.int32),
+                np.frombuffer(mv_safe, dtype=np.int32),
+            )
+        finally:
+            bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     unittest.main()

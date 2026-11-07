@@ -214,7 +214,9 @@ class SyncBridgeSession:
         self._colormaps = colormaps
 
         try:
-            # Construct MesherConfig with target Z-up coordinates for Blender, origin centered, and welded vertices
+            # Product Constraint: Live Sync mesher intentionally mandates Blender 3D Viewport coordinate
+            # conventions (z_up_coordinates=True, origin_centered=True, weld_vertices=True)
+            # to guarantee seamless chunk meshing, watertight geometry, and immediate viewport alignment.
             config_kwargs = {
                 "enable_ao": enable_ao,
                 "mesh_fluids": mesh_fluids,

@@ -341,11 +341,12 @@ def check_asset_cache_status(prefs=None) -> str:
         _GUARD_STATUS_CACHE[cache_key] = "NO_VANILLA"
         return "NO_VANILLA"
 
-    # Test sandbox isolation guard: if isolated via MOZI_CACHE_DIR, caller did not specify custom pack prefs,
+    # Test sandbox isolation guard: if isolated via MTK_TEST_SANDBOX, caller did not specify custom pack prefs,
     # and a test package already exists in the sandbox directory, treat it as READY to prevent
     # host-level global preferences from overwriting mock test assets.
     has_custom_packs = prefs is not None and hasattr(prefs, "resource_packs")
-    if not has_custom_packs and os.environ.get("MOZI_CACHE_DIR") and existing_packages:
+    is_test_sandbox = os.environ.get("MTK_TEST_SANDBOX") == "1"
+    if not has_custom_packs and is_test_sandbox and existing_packages:
         active = _open_active_asset_cache(prefs)
         if active is not None:
             _GUARD_STATUS_CACHE[cache_key] = "READY"
@@ -395,7 +396,6 @@ def check_asset_cache_status(prefs=None) -> str:
     status = "STALE" if existing_packages else "MISSING"
     _GUARD_STATUS_CACHE[cache_key] = status
     return status
-    return "MISSING"
 
 
 def prepare_asset_context(prefs=None) -> Dict[str, Any]:

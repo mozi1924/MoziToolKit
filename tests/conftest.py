@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 import pytest
 
+os.environ.setdefault("MTK_TEST_SANDBOX", "1")
+
 # 1. Enforce real Blender host environment gate
 try:
     import bpy

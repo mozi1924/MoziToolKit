@@ -30,6 +30,8 @@ def analyze_mesh_hard_edges(
     :param explicit_sharp_edges: Optional uint8/bool numpy array of length len(mesh.edges).
     :return: uint8 numpy array of length len(mesh.edges) with 1 for hard edges and 0 for smooth edges,
              or None if libmtk is not available.
+
+    Note: Source buffer arrays must not be modified or reallocated concurrently by other threads.
     """
     mtk = require_libmtk("analyze_mesh_hard_edges")
     if not hasattr(mtk, "analyze_mesh_hard_edges"):

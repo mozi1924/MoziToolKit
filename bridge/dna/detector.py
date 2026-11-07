@@ -17,16 +17,6 @@ logger = logging.getLogger("MoziToolKit.Bridge.DNA.Detector")
 # Global runtime override for DNA mode (None = use auto-detection)
 _dna_enabled_override: Optional[bool] = None
 
-# Supported Blender versions for DNA direct access (major, minor)
-SUPPORTED_VERSIONS = {
-    (4, 0),
-    (4, 1),
-    (4, 2),  # Blender 4.2 LTS (Primary target)
-    (4, 3),
-    (4, 4),
-    (5, 0),  # Forward compatible
-}
-
 
 def get_blender_version() -> Tuple[int, int, int]:
     """
@@ -40,10 +30,10 @@ def get_blender_version() -> Tuple[int, int, int]:
 
 def is_version_supported() -> bool:
     """
-    Returns True if the current host Blender version is within the validated DNA compatibility matrix.
-    Supports all Blender 4.x LTS releases and 5.x releases.
+    Returns True if the current host Blender version is supported.
+    Supports all Blender 4.x LTS releases and 5.x releases (forward compatible).
     """
-    major, minor, _ = get_blender_version()
+    major, _, _ = get_blender_version()
     return major in (4, 5)
 
 

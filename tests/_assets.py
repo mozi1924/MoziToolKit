@@ -18,6 +18,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+os.environ.setdefault("MTK_TEST_SANDBOX", "1")
+
 # tests/_assets.py -> parents[0] = tests/, parents[1] = MoziToolKit/, parents[2] = <mtk>/
 _WORKSPACE_PARENT = Path(__file__).resolve().parents[2]
 

@@ -81,6 +81,7 @@ from .constants import (
     ATTR_ANIM_FRAME_SIZE,
     ATTR_BIOME_TINT_DATA,
     ATTR_BIOME_TINT_COLOR,
+    chunk_supports_tint,
 )
 
 from .uv_layers import (
@@ -106,7 +107,8 @@ def ensure_stack_precompiled(prefs: Optional[Any] = None) -> Path:
 
     if status in ("MISSING", "STALE"):
         has_custom_packs = prefs is not None and hasattr(prefs, "resource_packs")
-        if not (not has_custom_packs and os.environ.get("MOZI_CACHE_DIR")):
+        is_test_sandbox = os.environ.get("MTK_TEST_SANDBOX") == "1"
+        if not (not has_custom_packs and is_test_sandbox):
             logger.info("Asset cache is %s; running automated precompilation...", status)
             try:
                 precompile_stack(prefs)
@@ -332,7 +334,7 @@ def assign_atlas_chunk_materials(
             else:
                 material_name = f"MTK:Atlas:Ext:{cat}:{c_idx:03}"
 
-        enable_biome_tint = bool(cm.get("has_tint", True)) if cat == "blocks" else False
+        enable_biome_tint = chunk_supports_tint(cm, cat)
         texture_sources = resolve_chunk_texture_sources(cm, atlas_dir=atlas_dir)
         mat = build_atlas_chunk_material(
             chunk_id=chunk_id,

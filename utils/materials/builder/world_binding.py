@@ -19,6 +19,7 @@ from ....bridge.assets import (
     load_baked_atlas_from_cache,
 )
 from ....bridge.material import resolve_chunk_texture_sources
+from ..constants import chunk_supports_tint
 
 logger = logging.getLogger("MoziToolKit.Materials.WorldBinding")
 
@@ -301,7 +302,7 @@ def ensure_world_materials(
                     # `mtk_uv_transform` / `mtk_uv_rotation` attribute path below is reserved for
                     # imported external meshes, where UVs must be tiled in the shader
                     # (see utils/materials/pipeline.py, use_attribute_node=True).
-                    enable_biome_tint = bool(cm.get("has_tint", True)) if cat in ("blocks", "scene") else False
+                    enable_biome_tint = chunk_supports_tint(cm, cat)
                     texture_sources = resolve_chunk_texture_sources(
                         cm,
                         atlas_dir=atlas_dir,
@@ -369,10 +370,5 @@ def ensure_world_materials(
         "Failed to bind world materials: Atlas cache, mapping, or materials are unavailable. "
         "Strict Golden Rules forbid falling back to untextured grey models."
     )
-
-
-
-_WORLD_SESSIONS: Dict[str, Any] = {}
-_WORLD_SESSION_META: Dict[str, Dict[str, Any]] = {}
 
 

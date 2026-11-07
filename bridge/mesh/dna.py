@@ -28,6 +28,20 @@ from .standard import clean_zombie_attributes
 
 logger = logging.getLogger("MoziToolKit.Bridge.Mesh.DNA")
 
+_POLYGON_OFFSETS_CACHE: Dict[Tuple[int, int], np.ndarray] = {}
+
+
+def _get_polygon_offsets(total_loops: int, stride: int) -> np.ndarray:
+    key = (total_loops, stride)
+    cached = _POLYGON_OFFSETS_CACHE.get(key)
+    if cached is not None:
+        return cached
+    if len(_POLYGON_OFFSETS_CACHE) > 32:
+        _POLYGON_OFFSETS_CACHE.clear()
+    arr = np.arange(0, total_loops + stride, stride, dtype=np.int32)
+    _POLYGON_OFFSETS_CACHE[key] = arr
+    return arr
+
 
 def _byte_view(mv: Any) -> Any:
     """Normalizes a typed/raw core memoryview or array without unnecessary re-casting."""
@@ -113,7 +127,7 @@ def inject_topology_dna(
     offset_copied = False
     if offset_ptr is not None:
         try:
-            offsets = np.arange(0, total_loops + stride, stride, dtype=np.int32)
+            offsets = _get_polygon_offsets(total_loops, stride)
             blender_dna.copy_i32(
                 _byte_view(offsets),
                 offset_ptr,
@@ -125,7 +139,8 @@ def inject_topology_dna(
             logger.debug("DNA direct polygon offset copy failed: %s", e)
 
     if not offset_copied:
-        mesh.polygons.foreach_set("loop_start", np.arange(0, total_loops, stride, dtype=np.int32))
+        offsets = _get_polygon_offsets(total_loops, stride)
+        mesh.polygons.foreach_set("loop_start", offsets[:poly_count])
         mesh.polygons.foreach_set("loop_total", np.full(poly_count, stride, dtype=np.int32))
 
     return True

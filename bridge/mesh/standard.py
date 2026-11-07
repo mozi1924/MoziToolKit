@@ -91,38 +91,46 @@ def inject_topology_standard(
     return True
 
 
-def inject_vertex_positions_standard(mesh: Any, mesh_data: Any) -> None:
-    """Standard injection for vertex positions."""
+def inject_vertex_positions_standard(mesh: Any, mesh_data: Any) -> bool:
+    """Standard injection for vertex positions. Returns True on success, False on failure."""
     pos_mv = mesh_data.positions_memoryview()
+    if pos_mv is None or len(pos_mv) == 0:
+        return True
     pos_attr = safe_get_attribute(mesh, "position")
     if pos_attr is not None and len(pos_attr.data) > 0:
         try:
             pos_attr.data.foreach_set("vector", pos_mv)
-            return
-        except Exception:
-            pass
+            return True
+        except Exception as exc:
+            logger.warning("Failed injecting vertex positions to position attribute: %s", exc)
 
     try:
         mesh.vertices.foreach_set("co", pos_mv)
-    except Exception:
-        pass
+        return True
+    except Exception as exc:
+        logger.warning("Failed injecting vertex positions to mesh.vertices.co: %s", exc)
+        return False
 
 
-def inject_vertex_normals_standard(mesh: Any, mesh_data: Any) -> None:
-    """Standard injection for vertex normals."""
+def inject_vertex_normals_standard(mesh: Any, mesh_data: Any) -> bool:
+    """Standard injection for vertex normals. Returns True on success, False on failure."""
     norm_mv = mesh_data.normals_memoryview()
+    if norm_mv is None or len(norm_mv) == 0:
+        return True
     norm_attr = safe_get_attribute(mesh, "normal")
     if norm_attr is not None and len(norm_attr.data) > 0:
         try:
             norm_attr.data.foreach_set("vector", norm_mv)
-            return
-        except Exception:
-            pass
+            return True
+        except Exception as exc:
+            logger.warning("Failed injecting vertex normals to normal attribute: %s", exc)
 
     try:
         mesh.vertices.foreach_set("normal", norm_mv)
-    except Exception:
-        pass
+        return True
+    except Exception as exc:
+        logger.warning("Failed injecting vertex normals to mesh.vertices.normal: %s", exc)
+        return False
 
 
 def inject_uvs_standard(mesh: Any, mesh_data: Any, uv_layer_name: Optional[str] = None) -> None:

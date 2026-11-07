@@ -55,6 +55,9 @@ def repair_mesh_fluid_uv_inplace(
     In-place vectorized batch repair for inverted fluid UVs directly on indexed mesh geometry.
     Modifies the uvs numpy ndarray buffer directly in-place.
     Returns the number of quad faces repaired.
+
+    Note: `positions` and `uvs` must not share or overlap underlying memory buffers.
+    Source arrays must not be modified or reallocated concurrently by other threads during execution.
     """
     mtk = require_libmtk("repair_mesh_fluid_uv_inplace")
     return mtk.repair_mesh_fluid_uv_inplace(

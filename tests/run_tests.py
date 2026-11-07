@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+os.environ.setdefault("MTK_TEST_SANDBOX", "1")
+
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 for _path in (PROJECT_DIR, PROJECT_DIR.parent):
     if str(_path) not in sys.path:

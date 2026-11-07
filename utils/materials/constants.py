@@ -80,3 +80,8 @@ FACE_ORDER = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 # Atlas Format Version
 ATLAS_FORMAT_VERSION = 16
+
+
+def chunk_supports_tint(cm: dict, category: str) -> bool:
+    """Return whether an atlas chunk should have biome tint enabled."""
+    return bool(cm.get("has_tint", True)) if category in ("blocks", "scene") else False

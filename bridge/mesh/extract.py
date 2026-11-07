@@ -239,7 +239,10 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any, use_dna: bool = False)
             mtk_dtype, num_comp, typecode, value_key = type_info
 
             if attr.data_type == "STRING":
-                str_vals = [elem.value for elem in attr.data]
+                str_vals = [
+                    elem.value.decode("utf-8", "replace") if isinstance(elem.value, (bytes, bytearray)) else str(elem.value)
+                    for elem in attr.data
+                ]
                 mesh_data.add_string_attribute(attr_name, domain_str, str_vals)
             else:
                 elem_count = len(attr.data)
@@ -254,29 +257,50 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any, use_dna: bool = False)
                             if attr.data_type == "FLOAT_COLOR":
                                 mv = blender_dna.as_memoryview_f32(attr_ptr, elem_count * 4)
                                 mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", mv)
-                                dna_injected = True
                             elif attr.data_type == "BYTE_COLOR":
-                                mv = blender_dna.as_memoryview_u8(attr_ptr, elem_count * 4)
-                                mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", mv)
-                                dna_injected = True
+                                # Blender BYTE_COLOR is stored as u8*4 per element in C++,
+                                # but the canonical MTK float4 attribute expects 4 float32s in 0.0..1.0 range.
+                                u8_mv = blender_dna.as_memoryview_u8(attr_ptr, elem_count * 4)
+                                u8_arr = np.frombuffer(u8_mv, dtype=np.uint8)
+                                f32_arr = (u8_arr.astype(np.float32) / 255.0).astype(np.float32)
+                                mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", f32_arr)
                             elif attr.data_type in ("BOOLEAN", "INT8"):
-                                mv = blender_dna.as_memoryview_u8(attr_ptr, elem_count)
-                                mesh_data.add_attribute_from_buffer(attr_name, domain_str, "int32", mv)
-                                dna_injected = True
+                                # Blender BOOLEAN/INT8 is 1 byte per element in C++,
+                                # whereas the safe path standardizes on int32.
+                                u8_mv = blender_dna.as_memoryview_u8(attr_ptr, elem_count)
+                                np_in_dtype = np.int8 if attr.data_type == "INT8" else np.uint8
+                                i32_arr = np.frombuffer(u8_mv, dtype=np_in_dtype).astype(np.int32)
+                                mesh_data.add_attribute_from_buffer(attr_name, domain_str, "int32", i32_arr)
                             elif attr.data_type in ("INT", "INT32"):
                                 mv = blender_dna.as_memoryview_i32(attr_ptr, elem_count)
                                 mesh_data.add_attribute_from_buffer(attr_name, domain_str, "int32", mv)
-                                dna_injected = True
                             elif typecode == "f":
                                 total_vals = elem_count * num_comp
                                 mv = blender_dna.as_memoryview_f32(attr_ptr, total_vals)
                                 mesh_data.add_attribute_from_buffer(attr_name, domain_str, mtk_dtype, mv)
+
+                            info = mesh_data.attribute_info(attr_name)
+                            if info is not None and info[2] == elem_count:
                                 dna_injected = True
+                            else:
+                                logger.debug(
+                                    "DNA attribute verification failed for %s (expected %d, got %s), falling back to safe path",
+                                    attr_name,
+                                    elem_count,
+                                    info[2] if info else None,
+                                )
                         except Exception as e:
                             logger.debug("DNA attribute extraction failed for %s, falling back: %s", attr_name, e)
 
                 if not dna_injected:
-                    if attr.data_type in ("FLOAT_COLOR", "BYTE_COLOR"):
+                    if attr.data_type == "BYTE_COLOR":
+                        buf = np.empty(elem_count * 4, dtype=np.float32)
+                        try:
+                            attr.data.foreach_get("color_srgb", buf)
+                        except Exception:
+                            attr.data.foreach_get("color", buf)
+                        mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", buf)
+                    elif attr.data_type == "FLOAT_COLOR":
                         buf = np.empty(elem_count * 4, dtype=np.float32)
                         attr.data.foreach_get("color", buf)
                         mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", buf)

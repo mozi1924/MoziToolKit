@@ -266,6 +266,15 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
     _runner: Optional[Any] = None
     _unknown_blocks: List[str] = []
+    _dialog_confirmed: bool = False
+
+    def invoke(self, context, event):
+        self._dialog_confirmed = False
+        return self.execute(context)
+
+    def cancel(self, context):
+        self._dialog_confirmed = False
+        self._unknown_blocks = []
 
     def draw(self, context):
         layout = self.layout
@@ -567,18 +576,29 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
 
         # Scan for unknown blocks before launching worker
         from ...bridge.world import scan_unknown_blocks
-        unknown_blocks = scan_unknown_blocks(cloud_data, model_db=model_db, atlas=atlas, prefs=prefs)
+        try:
+            unknown_blocks = scan_unknown_blocks(cloud_data, model_db=model_db, atlas=atlas, prefs=prefs)
+        except Exception as exc:
+            if not getattr(self, "force", False):
+                self.report({"ERROR"}, f"Unknown block validation failed: {exc}")
+                return {"CANCELLED"}
+            unknown_blocks = []
+
         if unknown_blocks and not getattr(self, "force", False):
-            self._unknown_blocks = unknown_blocks
-            if not getattr(bpy.app, "background", False) and hasattr(context, "window_manager"):
-                self.force = True
-                return context.window_manager.invoke_props_dialog(self, width=420)
-            self.report(
-                {"WARNING"},
-                f"Found {len(unknown_blocks)} unknown block(s): {', '.join(unknown_blocks)}. "
-                "Pass force=True to proceed with fallback cubes or air.",
-            )
-            return {"CANCELLED"}
+            if getattr(self, "_dialog_confirmed", False):
+                self._dialog_confirmed = False
+            else:
+                self._unknown_blocks = unknown_blocks
+                if not getattr(bpy.app, "background", False) and hasattr(context, "window_manager"):
+                    self._dialog_confirmed = True
+                    return context.window_manager.invoke_props_dialog(self, width=420)
+                self.report(
+                    {"WARNING"},
+                    f"Found {len(unknown_blocks)} unknown block(s): {', '.join(unknown_blocks)}. "
+                    "Pass force=True to proceed with fallback cubes or air.",
+                )
+                self._dialog_confirmed = False
+                return {"CANCELLED"}
 
         session_key = (
             getattr(root_container, "name", None)

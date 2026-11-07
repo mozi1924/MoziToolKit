@@ -137,29 +137,39 @@ def clear_cache(prefs=None, on_invalidate_callback=None) -> int:
             pass
     cache_path = get_cache_dir(prefs)
     freed_bytes = 0
+
+    def _item_size(p: Path) -> int:
+        if p.is_file():
+            try:
+                return p.stat().st_size
+            except Exception:
+                return 0
+        total = 0
+        try:
+            for root, _, files in os.walk(p):
+                for f in files:
+                    try:
+                        total += (Path(root) / f).stat().st_size
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        return total
+
     if cache_path.exists():
-        for root, _, files in os.walk(cache_path):
-            for f in files:
-                try:
-                    freed_bytes += (Path(root) / f).stat().st_size
-                except Exception:
-                    pass
-        for item in cache_path.iterdir():
+        for item in list(cache_path.iterdir()):
+            size = _item_size(item)
             try:
                 if item.is_dir():
                     shutil.rmtree(item)
                 else:
                     item.unlink()
-            except Exception:
-                pass
+                freed_bytes += size
+            except Exception as exc:
+                logger.warning("Failed to remove cache entry %s: %s", item, exc)
 
-    _cached_cache_stats = {
-        "path": str(cache_path),
-        "size_bytes": 0,
-        "size_formatted": "0 B",
-        "files_count": 0,
-    }
-    _cached_cache_stats_path = str(cache_path)
+    _cached_cache_stats = None
+    _cached_cache_stats_path = None
     return freed_bytes
 
 

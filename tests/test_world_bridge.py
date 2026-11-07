@@ -245,5 +245,58 @@ class TestWorldBridgePipeline:
         with pytest.raises((ValueError, RuntimeError)):
             build_debug_world_data(prefs=empty_prefs)
 
+    def test_scan_unknown_blocks_fail_closed(self):
+        from MoziToolKit.bridge.world import scan_unknown_blocks
+
+        class BuggyStorage:
+            def scan_unknown_blocks(self, **kwargs):
+                raise ValueError("Simulated corrupt model database")
+
+        buggy = BuggyStorage()
+        with pytest.raises(RuntimeError, match="Failed scanning unknown blocks"):
+            scan_unknown_blocks(buggy, model_db=object(), atlas=object())
+
+    def test_world_sessions_lru_and_capacity(self):
+        from MoziToolKit.bridge.world import (
+            _WORLD_SESSIONS,
+            _WORLD_SESSION_META,
+            clear_world_sessions,
+            mesh_voxel_storage,
+            MAX_CACHED_WORLD_SESSIONS,
+        )
+
+        clear_world_sessions()
+        try:
+            storage = libmtk_py.VoxelStorage()
+            storage.set_bounds(0, 0, 0, 16, 16, 16)
+            storage.set_block(0, 0, 0, "minecraft:stone")
+
+            for i in range(MAX_CACHED_WORLD_SESSIONS + 2):
+                key = f"session_{i}"
+                mesh_data, _ = mesh_voxel_storage(
+                    storage=storage,
+                    world_session_key=key,
+                    enable_ao=False,
+                    mesh_fluids=False,
+                )
+                assert mesh_data is not None
+
+            assert len(_WORLD_SESSIONS) == MAX_CACHED_WORLD_SESSIONS
+            assert "session_0" not in _WORLD_SESSIONS
+            assert "session_1" not in _WORLD_SESSIONS
+            assert f"session_{MAX_CACHED_WORLD_SESSIONS + 1}" in _WORLD_SESSIONS
+            assert f"session_{MAX_CACHED_WORLD_SESSIONS + 1}" in _WORLD_SESSION_META
+        finally:
+            clear_world_sessions()
+
+    def test_chunk_supports_tint_helper(self):
+        from MoziToolKit.utils.materials.constants import chunk_supports_tint
+
+        assert chunk_supports_tint({"has_tint": True}, "blocks") is True
+        assert chunk_supports_tint({"has_tint": True}, "scene") is True
+        assert chunk_supports_tint({"has_tint": True}, "items") is False
+        assert chunk_supports_tint({"has_tint": False}, "blocks") is False
+        assert chunk_supports_tint({"has_tint": False}, "scene") is False
+
 
 

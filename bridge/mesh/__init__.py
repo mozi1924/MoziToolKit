@@ -81,6 +81,10 @@ def inject_mesh_data(
 
     Automatically dispatches between the high-throughput DNA raw memory channel
     and the 100% stable standard BPy channel with graceful fallback.
+
+    Topology Note: Topology injection directly supports pure quad meshes (is_quad=True)
+    and pure triangle meshes (is_quad=False). Meshes containing mixed polygon counts
+    are injected via their triangulated representation.
     """
     if isinstance(getattr(mesh_or_obj, "vertex_count", None), int) and not isinstance(getattr(mesh_data, "vertex_count", None), int):
         mesh_data, mesh_or_obj = mesh_or_obj, mesh_data
@@ -118,6 +122,9 @@ def inject_mesh_data(
             topology_updated = inject_topology_standard(
                 mesh, mesh_data, v_count, is_quad, total_indices, shade_smooth=shade_smooth
             )
+            if not topology_updated:
+                logger.error("Failed to inject mesh topology into mesh %s", getattr(mesh, "name", "<unnamed>"))
+                return False
 
     # Vertex positions injection if topology was not recreated
     if not topology_updated:
@@ -128,7 +135,9 @@ def inject_mesh_data(
             except Exception as e:
                 logger.debug("DNA direct positions injection fallback: %s", e)
         if not pos_injected:
-            inject_vertex_positions_standard(mesh, mesh_data)
+            if not inject_vertex_positions_standard(mesh, mesh_data):
+                logger.error("Failed to inject vertex positions into mesh %s", getattr(mesh, "name", "<unnamed>"))
+                return False
 
     # Normals injection
     if update_normals:
@@ -139,7 +148,9 @@ def inject_mesh_data(
             except Exception as e:
                 logger.debug("DNA direct normals injection fallback: %s", e)
         if not norm_injected:
-            inject_vertex_normals_standard(mesh, mesh_data)
+            if not inject_vertex_normals_standard(mesh, mesh_data):
+                logger.error("Failed to inject vertex normals into mesh %s", getattr(mesh, "name", "<unnamed>"))
+                return False
 
     # UVs injection
     uv_injected = False

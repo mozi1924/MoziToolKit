@@ -152,6 +152,9 @@ def prepare_world_mesh_context(prefs=None, enable_animated_textures: Optional[bo
 
 
 
+MAX_CACHED_WORLD_SESSIONS = 8
+DIRTY_SECTION_REBUILD_THRESHOLD = 30
+
 _WORLD_SESSIONS: Dict[str, Any] = {}
 _WORLD_SESSION_META: Dict[str, Dict[str, Any]] = {}
 
@@ -263,6 +266,7 @@ def mesh_voxel_storage(
     resolve_ctm: bool = True,
     colormaps: Optional[Any] = None,
     unknown_block_strategy: Optional[str] = None,
+    z_up: bool = True,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -314,7 +318,7 @@ def mesh_voxel_storage(
         config_kwargs = {
             "enable_ao": enable_ao,
             "mesh_fluids": mesh_fluids,
-            "z_up_coordinates": True,
+            "z_up_coordinates": z_up,
             "origin_centered": origin_centered,
             "weld_vertices": weld_vertices,
             "num_threads": num_threads,
@@ -381,10 +385,12 @@ def mesh_voxel_storage(
         )
 
         if is_cache_valid:
+            # Refresh LRU position
+            _WORLD_SESSIONS[world_session_key] = _WORLD_SESSIONS.pop(world_session_key)
             dirty_count = cached_world.sync_from_storage(storage)
             if dirty_count == 0:
                 mesh_data = cached_world.get_world_mesh()
-            elif dirty_count <= 30:
+            elif dirty_count <= DIRTY_SECTION_REBUILD_THRESHOLD:
                 cached_world.rebuild_dirty()
                 mesh_data = cached_world.get_world_mesh()
             else:
@@ -404,6 +410,18 @@ def mesh_voxel_storage(
                     cached_world.set_skin_cache_dir(skin_cache_dir)
                 except Exception:
                     pass
+
+            # Enforce LRU capacity limit
+            if len(_WORLD_SESSIONS) >= MAX_CACHED_WORLD_SESSIONS and world_session_key not in _WORLD_SESSIONS:
+                oldest_key = next(iter(_WORLD_SESSIONS))
+                oldest_world = _WORLD_SESSIONS.pop(oldest_key, None)
+                if oldest_world is not None and hasattr(oldest_world, "clear_cache"):
+                    try:
+                        oldest_world.clear_cache()
+                    except Exception:
+                        pass
+                _WORLD_SESSION_META.pop(oldest_key, None)
+
             _WORLD_SESSIONS[world_session_key] = cached_world
             _WORLD_SESSION_META[world_session_key] = {
                 "fingerprint": current_fp,
@@ -464,6 +482,8 @@ def scan_unknown_blocks(
         model_db = model_db or cached_model_db
         atlas = atlas or cached_atlas
 
+    # Fail-closed: do not swallow exceptions and silently return [].
+    # An error indicates invalid state/assets and must halt before fallback air/cubes.
     try:
         return list(
             storage_or_cloud.scan_unknown_blocks(
@@ -473,8 +493,8 @@ def scan_unknown_blocks(
             )
         )
     except Exception as exc:
-        logger.warning("Failed scanning unknown blocks: %s", exc)
-        return []
+        logger.error("Failed scanning unknown blocks: %s", exc)
+        raise RuntimeError(f"Failed scanning unknown blocks: {exc}") from exc
 
 
 __all__ = [

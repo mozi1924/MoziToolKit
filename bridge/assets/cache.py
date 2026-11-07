@@ -126,9 +126,11 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
 
     mtk = get_libmtk()
 
-    # Test sandbox isolation guard: if isolated via MOZI_CACHE_DIR and caller did not specify custom prefs,
+    is_test_sandbox = os.environ.get("MTK_TEST_SANDBOX") == "1"
+
+    # Test sandbox isolation guard: if isolated via MTK_TEST_SANDBOX and caller did not specify custom prefs,
     # avoid letting host-level global preferences override synthetic test packages.
-    if prefs is None and os.environ.get("MOZI_CACHE_DIR"):
+    if prefs is None and is_test_sandbox:
         compute_fingerprint = False
 
     if compute_fingerprint:
@@ -154,7 +156,7 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
 
                 # Test sandboxes may contain synthetic packages whose header does not
                 # match the host-level stack fingerprint.
-                if os.environ.get("MOZI_CACHE_DIR"):
+                if is_test_sandbox:
                     candidates = sorted(
                         cache_dir.glob("*.mtkcache"),
                         key=lambda p: p.stat().st_mtime,
@@ -253,15 +255,15 @@ def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
                 mapping_str = cache.load_atlas_mapping()
                 if mapping_str:
                     return json.loads(mapping_str)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed loading atlas mapping from cache container %s: %s", _ACTIVE_CACHE_PKG_PATH, exc)
         if hasattr(cache, "load_atlas"):
             try:
                 baked = cache.load_atlas()
                 if hasattr(baked, "to_mapping_json"):
                     return json.loads(baked.to_mapping_json())
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed converting baked atlas to mapping json from %s: %s", _ACTIVE_CACHE_PKG_PATH, exc)
 
     # Fallback to loose file if exists
     base_cache = get_cache_dir(prefs)
@@ -269,8 +271,8 @@ def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
     if loose_p.exists() and loose_p.is_file():
         try:
             return json.loads(loose_p.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed loading loose atlas mapping file %s: %s", loose_p, exc)
     return None
 
 
@@ -358,7 +360,8 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> O
             _CACHED_MODEL_DB_PKG_PATH = pkg_path
             _CACHED_MODEL_DB_MTIME = mtime
         return model_db
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed loading baked model database from %s: %s", pkg_path, exc)
         return None
 
 
@@ -392,8 +395,8 @@ def load_baked_atlas_from_cache(prefs=None) -> Optional[Any]:
                 _CACHED_ATLAS_PKG_PATH = pkg_path
                 _CACHED_ATLAS_MTIME = mtime
                 return atlas
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed loading baked atlas from %s: %s", pkg_path, exc)
     return None
 
 
@@ -425,14 +428,14 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
                 _CACHED_BIOME_RESOLVER_PKG_PATH = pkg_path
                 _CACHED_BIOME_RESOLVER_MTIME = mtime
                 return resolver
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed loading biome resolver from %s: %s", pkg_path, exc)
 
     if hasattr(mtk, "BiomeResolver"):
         try:
             return mtk.BiomeResolver()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed instantiating default BiomeResolver: %s", exc)
     return None
 
 
@@ -462,8 +465,8 @@ def load_colormaps_from_cache(prefs=None) -> Optional[Any]:
                     _CACHED_COLORMAPS_PKG_PATH = pkg_path
                     _CACHED_COLORMAPS_MTIME = mtime
                     return colormaps
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Failed loading colormaps from %s: %s", pkg_path, exc)
     return None
 
 
