@@ -8,18 +8,12 @@ from __future__ import annotations
 
 import logging
 import os
-import zipfile
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ...bridge.engine import get_libmtk
 from ...bridge.progress import ProgressCallback, ProgressReport
 from ...utils.system import get_prefs
-from ...utils.pack_detect import (
-    VALID_BASE_PACK_KINDS,
-    peek_cached_probe,
-    detect_pack_kind,
-)
 from ...i18n import tr
 
 
@@ -56,16 +50,9 @@ logger = logging.getLogger("MoziToolKit.Utils.Assets.Guard")
 ENV_ASSET_ROOTS = ("MC_DIR", "MC_ASSETS_DIR", "MTK_TEST_ASSETS")
 ENV_ASSET_ARCHIVES = ("MTK_TEST_JAR", "MC_JAR")
 
-
-#: Blocks that must be resolvable through blockstates -> models -> textures for a pack to
-#: qualify as the client foundation. Resource packs routinely override one of these, but a
-#: pack that *only* overrides textures (or ships incomplete/misspelled models) will miss at
-#: least one leg and is therefore treated as an overlay, not a base.
+#: Block identifiers probed by Rust core for canonical base foundation.
 BASE_PROBE_BLOCKS = ("stone", "dirt", "oak_planks")
 
-#: Archive asset probes keyed by (resolved path, mtime_ns, size) so UI redraws stay cheap.
-_ARCHIVE_ASSET_CACHE: Dict[Tuple[str, int, int], bool] = {}
-_DIR_ASSET_CACHE: Dict[Tuple[str, int], bool] = {}
 _VANILLA_PROBE_CACHE: Dict[Tuple[str, int, int], bool] = {}
 _VANILLA_CHECK_CACHE: Dict[Any, bool] = {}
 _GUARD_STATUS_CACHE: Dict[Any, str] = {}
@@ -73,8 +60,6 @@ _GUARD_STATUS_CACHE: Dict[Any, str] = {}
 
 def invalidate_guard_cache() -> None:
     """Invalidate all cached pack readiness and cache status evaluations."""
-    _ARCHIVE_ASSET_CACHE.clear()
-    _DIR_ASSET_CACHE.clear()
     _VANILLA_PROBE_CACHE.clear()
     _VANILLA_CHECK_CACHE.clear()
     _GUARD_STATUS_CACHE.clear()
@@ -110,76 +95,13 @@ def _get_pack_signature(prefs=None) -> tuple:
     return (tuple(entries), single, single_mtime, env_sig)
 
 
-def _probe_archive(path: Path) -> Any:
-    """Returns a cached probe when available, otherwise classifies the archive once."""
-    raw = str(path)
-    probe = peek_cached_probe(raw) or peek_cached_probe(str(path.resolve()))
-    return probe if probe is not None else detect_pack_kind(path)
-
-
-def _dir_has_client_assets(root: Path) -> bool:
-    """Cheap, version-stable proof that a directory can back the whole bake pipeline."""
-    try:
-        resolved = root.resolve()
-        stat = resolved.stat()
-        key = (str(resolved), stat.st_mtime_ns)
-    except OSError:
-        return False
-    if key in _DIR_ASSET_CACHE:
-        return _DIR_ASSET_CACHE[key]
-
-    mc = root / "assets" / "minecraft"
-    ok = True
-    for block in BASE_PROBE_BLOCKS:
-        if not (mc / "blockstates" / f"{block}.json").is_file():
-            ok = False
-            break
-        if not (mc / "models" / "block" / f"{block}.json").is_file():
-            ok = False
-            break
-        if not (mc / "textures" / "block" / f"{block}.png").is_file():
-            ok = False
-            break
-    _DIR_ASSET_CACHE[key] = ok
-    return ok
-
-
-def _archive_has_client_assets(path: Path) -> bool:
-    """Same probe for JAR/ZIP bases, including future assets-only "slim" packs."""
-    try:
-        stat = path.stat()
-        key = (str(path.resolve()), stat.st_mtime_ns, stat.st_size)
-    except OSError:
-        return False
-    if key in _ARCHIVE_ASSET_CACHE:
-        return _ARCHIVE_ASSET_CACHE[key]
-
-    try:
-        with zipfile.ZipFile(path) as archive:
-            names = set(archive.namelist())
-        ok = all(
-            f"assets/minecraft/blockstates/{block}.json" in names
-            and f"assets/minecraft/models/block/{block}.json" in names
-            and f"assets/minecraft/textures/block/{block}.png" in names
-            for block in BASE_PROBE_BLOCKS
-        )
-    except (OSError, zipfile.BadZipFile):
-        ok = False
-
-    _ARCHIVE_ASSET_CACHE[key] = ok
-    return ok
-
-
 def _path_provides_vanilla_client(path: Path) -> bool:
-    """Single source of truth for "can this path serve as the vanilla client foundation".
-
-    - An unpacked client tree must contain the canonical vanilla block assets across
-      blockstates, models and textures, so texture-only or model-less packs cannot pose
-      as a base.
-    - An archive must either be content-classified as a vanilla *client* jar, or carry the
-      same canonical asset set (future assets-only "slim" packs).
-    - ``pack_type`` / ``detected_kind`` metadata is never trusted: both are user-editable.
+    """Single source of truth for 'can this path serve as the vanilla client foundation'.
+    Delegates directly to libmtk native core (GEMINI.md Rule 1 & Rule 2).
     """
+    mtk = get_libmtk()
+    if mtk is None:
+        raise RuntimeError("libmtk native core is required for vanilla client validation")
     try:
         if not path.exists():
             return False
@@ -191,17 +113,7 @@ def _path_provides_vanilla_client(path: Path) -> bool:
     if key in _VANILLA_PROBE_CACHE:
         return _VANILLA_PROBE_CACHE[key]
 
-    if path.is_dir():
-        res = _dir_has_client_assets(path)
-    elif path.is_file() and path.suffix.lower() in (".jar", ".zip"):
-        probe = _probe_archive(path)
-        if probe is not None and probe.kind in VALID_BASE_PACK_KINDS:
-            res = True
-        else:
-            res = _archive_has_client_assets(path)
-    else:
-        res = False
-
+    res = mtk.path_provides_vanilla_client(str(path.resolve()))
     _VANILLA_PROBE_CACHE[key] = res
     return res
 
@@ -229,20 +141,6 @@ def _has_configured_packs(prefs: Any) -> bool:
 def has_valid_vanilla_pack(prefs=None) -> bool:
     """
     Checks whether the active configuration can provide Minecraft client assets.
-
-    Accepted sources, in order:
-    1. An enabled entry in ``prefs.resource_packs`` (JAR classified as vanilla client,
-       or an unpacked tree with the full client asset roots).
-    2. The legacy single ``prefs.resource_pack_path``.
-    3. A host-level asset root/archive from the environment (CLI/CI/dev), which must
-       satisfy the exact same content check.
-
-    Environment variables only apply while **no packs are configured at all**. Once the
-    user has configured a stack, a non-qualifying stack is a hard failure -- the
-    environment can never rescue a wrong configuration.
-
-    Resource packs that only override a namespace, mod JARs, vanilla server JARs, and
-    empty directories do NOT qualify.
     """
     sig = _get_pack_signature(prefs)
     if sig in _VANILLA_CHECK_CACHE:
@@ -326,38 +224,27 @@ def check_asset_cache_status(prefs=None) -> str:
         return "MISSING"
 
     stack = _get_configured_pack_stack(prefs)
-
-    # Discover all existing .mtkcache packages in the cache directory
-    existing_packages = list(cache_dir.glob("*.mtkcache")) if cache_dir.exists() else []
-
-    if stack is None or stack.get_pack_count() == 0:
-        # No enabled packs configured by user
-        # CRITICAL FIX: Never return "READY" just because stale packages exist on disk!
+    pack_count = stack.get_pack_count() if stack is not None else 0
+    if pack_count == 0:
         _GUARD_STATUS_CACHE[cache_key] = "NO_PACKS"
         return "NO_PACKS"
 
-    # Enforce base pack gate: must have a valid Vanilla Client pack
-    if not has_valid_vanilla_pack(prefs):
+    has_vanilla = has_valid_vanilla_pack(prefs)
+    if not has_vanilla:
         _GUARD_STATUS_CACHE[cache_key] = "NO_VANILLA"
         return "NO_VANILLA"
 
-    # Test sandbox isolation guard: if isolated via MTK_TEST_SANDBOX, caller did not specify custom pack prefs,
-    # and a test package already exists in the sandbox directory, treat it as READY to prevent
-    # host-level global preferences from overwriting mock test assets.
+    expected_fp = stack.compute_stack_fingerprint() if hasattr(stack, "compute_stack_fingerprint") else ""
+
+    # Test sandbox isolation guard
     has_custom_packs = prefs is not None and hasattr(prefs, "resource_packs")
     is_test_sandbox = os.environ.get("MTK_TEST_SANDBOX") == "1"
+    existing_packages = list(cache_dir.glob("*.mtkcache")) if cache_dir.exists() else []
     if not has_custom_packs and is_test_sandbox and existing_packages:
         active = _open_active_asset_cache(prefs)
         if active is not None:
             _GUARD_STATUS_CACHE[cache_key] = "READY"
             return "READY"
-
-    # Compute expected stack fingerprint
-    expected_fp = stack.compute_stack_fingerprint() if hasattr(stack, "compute_stack_fingerprint") else ""
-    if not expected_fp:
-        status = "MISSING" if not existing_packages else "STALE"
-        _GUARD_STATUS_CACHE[cache_key] = status
-        return status
 
     # Fast-path check: in-memory active cache matches expected fingerprint
     active = _open_active_asset_cache(prefs)
@@ -365,47 +252,13 @@ def check_asset_cache_status(prefs=None) -> str:
         _GUARD_STATUS_CACHE[cache_key] = "READY"
         return "READY"
 
-    # Direct file match: {expected_fp}.mtkcache
-    direct_pkg = cache_dir / f"{expected_fp}.mtkcache"
-    if direct_pkg.exists() and direct_pkg.is_file():
-        if hasattr(mtk, "is_valid_cache_package"):
-            try:
-                if mtk.is_valid_cache_package(str(direct_pkg), expected_fp):
-                    _GUARD_STATUS_CACHE[cache_key] = "READY"
-                    return "READY"
-            except Exception:
-                pass
-        else:
-            _GUARD_STATUS_CACHE[cache_key] = "READY"
-            return "READY"
-
-    # Search all packages for a matching fingerprint
-    for pkg in existing_packages:
-        if hasattr(mtk, "is_valid_cache_package"):
-            try:
-                if mtk.is_valid_cache_package(str(pkg), expected_fp):
-                    _GUARD_STATUS_CACHE[cache_key] = "READY"
-                    return "READY"
-            except Exception:
-                pass
-        else:
-            if pkg.stem == expected_fp:
-                _GUARD_STATUS_CACHE[cache_key] = "READY"
-                return "READY"
-
-    status = "STALE" if existing_packages else "MISSING"
+    status = mtk.evaluate_cache_status(str(cache_dir), pack_count, has_vanilla, expected_fp)
     _GUARD_STATUS_CACHE[cache_key] = status
     return status
 
 
 def prepare_asset_context(prefs=None) -> Dict[str, Any]:
-    """Resolve cache status/stack/path on the Blender main thread.
-
-    check_asset_cache_status reads Blender preferences/RNA and resolves the
-    cache directory through bpy. Doing that inside an AsyncTask worker is not
-    thread-safe. Operators call this helper before launching a worker and pass
-    the resulting dict to run_task_with_asset_guard.
-    """
+    """Resolve cache status/stack/path on the Blender main thread."""
     status = check_asset_cache_status(prefs)
     stack = _get_configured_pack_stack(prefs)
     try:
@@ -424,7 +277,6 @@ def ensure_pipeline_assets_ready_sync(
     """
     Synchronously verifies asset cache readiness, automatically triggering precompilation
     if the cache is MISSING or STALE.
-    Returns (success, status_or_message).
     """
     status = check_asset_cache_status(prefs)
     if status == "READY":
@@ -448,29 +300,30 @@ def ensure_pipeline_assets_ready_sync(
 
 def run_task_with_asset_guard(
     target_func: Any,
-    target_kwargs: Dict[str, Any],
-    prefs: Optional[Any] = None,
+    target_kwargs: Optional[Dict[str, Any]] = None,
+    prefs=None,
     progress_callback: Optional[ProgressCallback] = None,
-    task_title: str = "Voxel Operation",
+    task_title: str = "Processing",
     asset_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, bool]:
     """
-    Executes a heavy voxel or meshing background worker with an automated asset precompilation guard.
-    If assets are MISSING or STALE, runs precompile_stack as Stage 1 with progress reporting,
-    then chains into target_func as Stage 2.
+    Execution wrapper guarding operations requiring precompiled assets.
+    Executes a two-stage pipeline:
+    - Stage 1: Automated asset precompilation (0% - 50% progress) if cache is MISSING or STALE.
+    - Stage 2: Target operation execution (50% - 100% progress).
     Returns (result, did_precompile).
     """
-    if asset_context is not None:
-        status = str(asset_context.get("status", "READY"))
-    else:
-        status = check_asset_cache_status(prefs)
-    did_precompile = False
+    if target_kwargs is None:
+        target_kwargs = {}
+
+    status = asset_context.get("status") if asset_context else check_asset_cache_status(prefs)
 
     if status in ("NO_PACKS", "NO_VANILLA"):
         raise RuntimeError(
             f"Cannot execute task: asset cache status is '{status}'. A Minecraft Vanilla Client JAR must be configured."
         )
 
+    did_precompile = False
     if status in ("MISSING", "STALE"):
         did_precompile = True
         logger.info("Asset cache is %s. Executing Stage 1/2: automated precompilation...", status)

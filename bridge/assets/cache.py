@@ -246,7 +246,7 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
 def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
     """
     Loads precompiled atlas mapping table as dictionary directly from memory.
-    Prioritizes reading from .mtkcache container, falls back to loose atlas_mapping.json.
+    Reads from the canonical .mtkcache container.
     """
     cache = open_active_asset_cache(prefs)
     if cache is not None:
@@ -264,15 +264,6 @@ def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
                     return json.loads(baked.to_mapping_json())
             except Exception as exc:
                 logger.warning("Failed converting baked atlas to mapping json from %s: %s", _ACTIVE_CACHE_PKG_PATH, exc)
-
-    # Fallback to loose file if exists
-    base_cache = get_cache_dir(prefs)
-    loose_p = base_cache / "atlas" / "atlas_mapping.json"
-    if loose_p.exists() and loose_p.is_file():
-        try:
-            return json.loads(loose_p.read_text(encoding="utf-8"))
-        except Exception as exc:
-            logger.warning("Failed loading loose atlas mapping file %s: %s", loose_p, exc)
     return None
 
 
@@ -288,11 +279,6 @@ def get_cached_texture_rgba(chunk_id: str, prefs=None, flip_y: bool = True) -> O
     if cache is not None and hasattr(cache, "read_texture_rgba"):
         try:
             return cache.read_texture_rgba(chunk_id, flip_v=flip_y)
-        except TypeError:
-            try:
-                return cache.read_texture_rgba(chunk_id)
-            except Exception:
-                return None
         except Exception:
             return None
     return None
