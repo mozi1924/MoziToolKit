@@ -137,7 +137,7 @@ def load_and_mesh_minecraft_save(
 
     config = mtk.MesherConfig(**config_kwargs)
 
-    culler = mtk.FaceCuller() if hasattr(mtk, "FaceCuller") else None
+    culler = mtk.FaceCuller()
 
     wrapped_cb = None
     if progress_callback is not None:

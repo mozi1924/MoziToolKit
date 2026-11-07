@@ -222,13 +222,9 @@ def ensure_voxel_child_cloud(
     if cloud_data is None:
         if storage is None or mtk is None or not hasattr(storage, "to_point_cloud"):
             return None
-        cfg = (
-            mtk.MesherConfig(
-                z_up_coordinates=True,
-                origin_centered=origin_centered,
-            )
-            if hasattr(mtk, "MesherConfig")
-            else None
+        cfg = mtk.MesherConfig(
+            z_up_coordinates=True,
+            origin_centered=origin_centered,
         )
         try:
             cloud_data = storage.to_point_cloud(cfg)

@@ -49,7 +49,7 @@ def get_shared_face_culler(mtk: Optional[Any] = None) -> Optional[Any]:
     """
     global _SHARED_FACE_CULLER, _SHARED_FACE_CULLER_OWNER
     mtk = mtk or get_libmtk()
-    if mtk is None or not hasattr(mtk, "FaceCuller"):
+    if mtk is None:
         return None
     if _SHARED_FACE_CULLER is not None and _SHARED_FACE_CULLER_OWNER is mtk:
         return _SHARED_FACE_CULLER
@@ -164,16 +164,15 @@ def clear_world_sessions(session_key: Optional[str] = None) -> None:
     global _WORLD_SESSIONS, _WORLD_SESSION_META
     if session_key is None:
         for w in _WORLD_SESSIONS.values():
-            if hasattr(w, "clear_cache"):
-                try:
-                    w.clear_cache()
-                except Exception:
-                    pass
+            try:
+                w.clear_cache()
+            except Exception:
+                pass
         _WORLD_SESSIONS.clear()
         _WORLD_SESSION_META.clear()
     else:
         w = _WORLD_SESSIONS.pop(session_key, None)
-        if w is not None and hasattr(w, "clear_cache"):
+        if w is not None:
             try:
                 w.clear_cache()
             except Exception:
@@ -343,17 +342,15 @@ def mesh_voxel_storage(
             config_kwargs["unknown_block_strategy"] = unknown_block_strategy
         config = mtk.MesherConfig(**config_kwargs)
     else:
-        if num_threads is not None and hasattr(config, "num_threads"):
+        if num_threads is not None:
             config.num_threads = num_threads
-        if ctm_solver is not None and hasattr(config, "set_ctm_solver"):
+        if ctm_solver is not None:
             config.set_ctm_solver(ctm_solver)
-        if hasattr(config, "enable_animated_textures"):
-            config.enable_animated_textures = anim_tex_enabled
-        if hasattr(config, "set_smooth_biome_blend"):
-            config.set_smooth_biome_blend(smooth_blend)
-        if colormaps is not None and hasattr(config, "set_colormaps"):
+        config.enable_animated_textures = anim_tex_enabled
+        config.set_smooth_biome_blend(smooth_blend)
+        if colormaps is not None:
             config.set_colormaps(colormaps)
-        if unknown_block_strategy is not None and hasattr(config, "unknown_block_strategy"):
+        if unknown_block_strategy is not None:
             config.unknown_block_strategy = unknown_block_strategy
 
     culler = get_shared_face_culler(mtk)
@@ -416,7 +413,7 @@ def mesh_voxel_storage(
                 model_db=model_db,
                 num_threads=num_threads,
             )
-            if skin_cache_dir is not None and hasattr(cached_world, "set_skin_cache_dir"):
+            if skin_cache_dir is not None:
                 try:
                     cached_world.set_skin_cache_dir(skin_cache_dir)
                 except Exception:
@@ -426,7 +423,7 @@ def mesh_voxel_storage(
             if len(_WORLD_SESSIONS) >= MAX_CACHED_WORLD_SESSIONS and world_session_key not in _WORLD_SESSIONS:
                 oldest_key = next(iter(_WORLD_SESSIONS))
                 oldest_world = _WORLD_SESSIONS.pop(oldest_key, None)
-                if oldest_world is not None and hasattr(oldest_world, "clear_cache"):
+                if oldest_world is not None:
                     try:
                         oldest_world.clear_cache()
                     except Exception:
@@ -452,7 +449,7 @@ def mesh_voxel_storage(
             model_db=model_db,
             num_threads=num_threads,
         )
-        if skin_cache_dir is not None and hasattr(world, "set_skin_cache_dir"):
+        if skin_cache_dir is not None:
             try:
                 world.set_skin_cache_dir(skin_cache_dir)
             except Exception:

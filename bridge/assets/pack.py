@@ -121,18 +121,17 @@ def get_configured_ctm_solver(prefs=None, force: bool = False) -> Optional[Any]:
     if _CACHED_CTM_SOLVER is not None and _CACHED_CTM_SIGNATURE == ctm_sig:
         return _CACHED_CTM_SOLVER
 
-    if hasattr(stack, "build_ctm_solver"):
-        try:
-            if hasattr(stack, "get_ctm_rule_count") and stack.get_ctm_rule_count() == 0:
-                _CACHED_CTM_SOLVER = None
-                _CACHED_CTM_SIGNATURE = ctm_sig
-                return None
-            solver = stack.build_ctm_solver()
-            _CACHED_CTM_SOLVER = solver
+    try:
+        if stack.get_ctm_rule_count() == 0:
+            _CACHED_CTM_SOLVER = None
             _CACHED_CTM_SIGNATURE = ctm_sig
-            return solver
-        except Exception as e:
-            logger.warning("Failed building CTM solver: %s", e, exc_info=True)
+            return None
+        solver = stack.build_ctm_solver()
+        _CACHED_CTM_SOLVER = solver
+        _CACHED_CTM_SIGNATURE = ctm_sig
+        return solver
+    except Exception as e:
+        logger.warning("Failed building CTM solver: %s", e, exc_info=True)
     return None
 
 

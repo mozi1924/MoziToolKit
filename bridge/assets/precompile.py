@@ -70,45 +70,42 @@ def precompile_stack(
     invalidate_asset_cache_memory()
 
     # Use unified high-performance Rust engine with thread pool control & progress callback
-    if hasattr(mtk, "precompile_all_assets"):
-        res = mtk.precompile_all_assets(
-            stack,
-            str(base_cache.resolve()),
-            atlas_category="blocks",
-            max_atlas_width=4096,
-            max_atlas_height=4096,
-            compile_atlas=True,
-            compile_models=True,
-            num_threads=num_threads,
-            callback=wrapped_cb,
-            resolver_overrides_json=resolver_overrides_json,
-        )
-        package_path = getattr(res, "package_path", "")
-        if hasattr(res, "profile") and res.profile is not None:
-            from ..diagnostics import record_operation_profile
+    res = mtk.precompile_all_assets(
+        stack,
+        str(base_cache.resolve()),
+        atlas_category="blocks",
+        max_atlas_width=4096,
+        max_atlas_height=4096,
+        compile_atlas=True,
+        compile_models=True,
+        num_threads=num_threads,
+        callback=wrapped_cb,
+        resolver_overrides_json=resolver_overrides_json,
+    )
+    package_path = getattr(res, "package_path", "")
+    if hasattr(res, "profile") and res.profile is not None:
+        from ..diagnostics import record_operation_profile
 
-            record_operation_profile("Precompile Assets", res.profile)
-        invalidate_asset_cache_memory()
-        try:
-            from ..world import clear_world_sessions
-            clear_world_sessions()
-        except Exception:
-            pass
-        duration = time.time() - start_time
+        record_operation_profile("Precompile Assets", res.profile)
+    invalidate_asset_cache_memory()
+    try:
+        from ..world import clear_world_sessions
+        clear_world_sessions()
+    except Exception:
+        pass
+    duration = time.time() - start_time
 
-        return {
-            "success": getattr(res, "success", True),
-            "pack_count": getattr(res, "pack_count", 0),
-            "atlas_chunks": getattr(res, "atlas_chunks", 0),
-            "baked_models": getattr(res, "baked_models", 0),
-            "models": getattr(res, "baked_models", 0),
-            "duration_seconds": duration,
-            "fingerprint": getattr(res, "fingerprint", ""),
-            "package_path": package_path,
-            "cache_dir": getattr(res, "cache_dir", str(base_cache.resolve())),
-        }
-
-    raise RuntimeError("libmtk_py is missing precompile_all_assets export.")
+    return {
+        "success": getattr(res, "success", True),
+        "pack_count": getattr(res, "pack_count", 0),
+        "atlas_chunks": getattr(res, "atlas_chunks", 0),
+        "baked_models": getattr(res, "baked_models", 0),
+        "models": getattr(res, "baked_models", 0),
+        "duration_seconds": duration,
+        "fingerprint": getattr(res, "fingerprint", ""),
+        "package_path": package_path,
+        "cache_dir": getattr(res, "cache_dir", str(base_cache.resolve())),
+    }
 
 
 def precompile_stack_async(

@@ -20,12 +20,7 @@ logger = logging.getLogger(__name__)
 
 def is_material_bridge_available() -> bool:
     """Check if native libmtk_py material and biome functions are loaded."""
-    mtk = get_libmtk()
-    return bool(
-        mtk is not None
-        and hasattr(mtk, "MaterialResolver")
-        and hasattr(mtk, "BiomeResolver")
-    )
+    return get_libmtk() is not None
 
 
 def require_material_bridge() -> None:
@@ -58,9 +53,8 @@ def __getattr__(name: str) -> Any:
             raise AttributeError(f"libmtk_py does not expose '{name}'")
         return val
     if name.startswith("TINT_TYPE_"):
-        if mtk and hasattr(mtk, name):
-            return getattr(mtk, name)
         require_material_bridge()
+        return getattr(mtk, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
@@ -276,10 +270,8 @@ def compute_mesh_biome_attributes_from_storage(
 
 def clean_material_name(name: str) -> str:
     """Normalize and clean a material or texture name into an identifier stem."""
-    mtk = get_libmtk()
-    if mtk is not None and hasattr(mtk, "clean_material_identifier"):
-        return mtk.clean_material_identifier(name)
-    return name
+    mtk = require_libmtk("clean_material_identifier")
+    return mtk.clean_material_identifier(name)
 
 
 clean_material_identifier = clean_material_name
@@ -287,10 +279,8 @@ clean_material_identifier = clean_material_name
 
 def normalize_banner_pattern(code_or_name: str) -> str:
     """Normalize a legacy banner pattern short-code or identifier into standard pattern stem."""
-    mtk = get_libmtk()
-    if mtk is not None and hasattr(mtk, "normalize_banner_pattern"):
-        return mtk.normalize_banner_pattern(code_or_name)
-    return "base"
+    mtk = require_libmtk("normalize_banner_pattern")
+    return mtk.normalize_banner_pattern(code_or_name)
 
 
 def builtin_biome_suffixes() -> tuple[str, ...]:

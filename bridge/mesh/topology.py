@@ -34,8 +34,6 @@ def analyze_mesh_hard_edges(
     Note: Source buffer arrays must not be modified or reallocated concurrently by other threads.
     """
     mtk = require_libmtk("analyze_mesh_hard_edges")
-    if not hasattr(mtk, "analyze_mesh_hard_edges"):
-        return None
 
     num_verts = len(getattr(mesh, "vertices", []))
     num_edges = len(getattr(mesh, "edges", []))

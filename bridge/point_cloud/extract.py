@@ -46,7 +46,7 @@ def extract_voxel_point_cloud_dna(cloud_obj_or_mesh: Any) -> Optional[Any]:
 
     v_count = len(getattr(mesh, "vertices", []))
     if v_count == 0:
-        return mtk.VoxelPointCloud.new() if hasattr(mtk, "VoxelPointCloud") else None
+        return mtk.VoxelPointCloud.new()
 
     if not hasattr(mesh, "attributes"):
         return None
@@ -175,7 +175,7 @@ def extract_voxel_point_cloud(
 
     v_count = len(getattr(mesh, "vertices", []))
     if v_count == 0:
-        return mtk.VoxelPointCloud.new() if hasattr(mtk, "VoxelPointCloud") else None
+        return mtk.VoxelPointCloud.new()
 
     if not hasattr(mesh, "attributes"):
         return None

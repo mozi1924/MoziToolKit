@@ -27,7 +27,7 @@ from .assets import (
 def is_sync_available() -> bool:
     """Checks whether the native libmtk Live Sync backend is loaded and ready."""
     mtk = get_libmtk()
-    return bool(mtk and hasattr(mtk, "LiveSyncSession"))
+    return mtk is not None
 
 
 def require_sync() -> None:
@@ -167,7 +167,7 @@ class SyncBridgeSession:
         Starts the background LiveSync client thread connecting to `url`.
         """
         mtk = get_libmtk()
-        if mtk is None or not hasattr(mtk, "LiveSyncSession"):
+        if mtk is None:
             self._last_error = "Native libmtk_py core is not available."
             logger.error("Cannot start Live Sync: native libmtk_py core is not available.")
             return False
@@ -304,7 +304,7 @@ class SyncBridgeSession:
 
     def load_from_point_cloud(self, point_cloud: Any) -> bool:
         """Restores voxel storage in the native session from an existing point cloud without re-meshing."""
-        if self._session is not None and hasattr(self._session, "load_from_point_cloud"):
+        if self._session is not None:
             try:
                 self._session.load_from_point_cloud(point_cloud)
                 return True
@@ -342,7 +342,7 @@ class SyncBridgeSession:
         Restores VoxelStorage from `point_cloud` if provided.
         """
         mtk = get_libmtk()
-        if mtk is None or not hasattr(mtk, "LiveSyncSession"):
+        if mtk is None:
             self._last_error = "Native libmtk_py core is not available."
             logger.error("Cannot start Live Sync: native libmtk_py core is not available.")
             return False
@@ -414,7 +414,7 @@ class SyncBridgeSession:
             config = mtk.MesherConfig(**config_kwargs)
 
             def _start_cached_native(session: Any) -> None:
-                if point_cloud is not None and hasattr(session, "load_from_point_cloud"):
+                if point_cloud is not None:
                     session.load_from_point_cloud(point_cloud)
                 session.start_with_cache(
                     url=url,
@@ -565,7 +565,7 @@ class SyncBridgeSession:
         # 2. Reconfigure active native LiveSyncSession
         if self._session is not None:
             mtk = get_libmtk()
-            if mtk is not None and hasattr(mtk, "MesherConfig"):
+            if mtk is not None:
                 enable_ao = self._config_params.get("enable_ao", True)
                 mesh_fluids = self._config_params.get("mesh_fluids", True)
                 num_threads = self._config_params.get("num_threads", None)
@@ -664,8 +664,7 @@ class SyncBridgeSession:
         if self._session is None:
             return False
         try:
-            if hasattr(self._session, "request_resync"):
-                self._session.request_resync()
+            self._session.request_resync()
             return True
         except Exception as e:
             logger.error(f"Failed to send Resync Request: {e}")
@@ -686,7 +685,7 @@ class SyncBridgeSession:
     def set_skin_cache_dir(self, cache_dir: Optional[str]) -> None:
         """Sets the player head skin disk cache path on the native session."""
         self._skin_cache_dir = cache_dir
-        if self._session is not None and hasattr(self._session, "set_skin_cache_dir"):
+        if self._session is not None:
             try:
                 self._session.set_skin_cache_dir(cache_dir)
             except Exception as e:

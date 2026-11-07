@@ -97,13 +97,6 @@ def invalidate_asset_cache_memory() -> None:
     except Exception:
         pass
 
-    try:
-        mtk = get_libmtk()
-        if mtk is not None and hasattr(getattr(mtk, "VoxelStorage", None), "clear_debug_world_cache"):
-            mtk.VoxelStorage.clear_debug_world_cache()
-    except Exception:
-        pass
-
 
 def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) -> Optional[Path]:
     """
@@ -135,24 +128,23 @@ def get_active_cache_package_path(prefs=None, compute_fingerprint: bool = True) 
 
     if compute_fingerprint:
         stack = get_configured_pack_stack(prefs)
-        if stack is not None and hasattr(stack, "get_pack_count") and stack.get_pack_count() > 0:
-            if hasattr(stack, "compute_stack_fingerprint"):
-                fp = stack.compute_stack_fingerprint()
+        if stack is not None and stack.get_pack_count() > 0:
+            fp = stack.compute_stack_fingerprint()
 
-                # O(1) fast path: current package already matches the stack fingerprint.
-                if _ACTIVE_CACHE_PKG_PATH is not None:
-                    p = Path(_ACTIVE_CACHE_PKG_PATH)
-                    if p.parent == cache_dir and p.exists() and p.is_file():
-                        cached_fp = getattr(_ACTIVE_ASSET_CACHE, "fingerprint", None)
-                        if cached_fp == fp or p.stem == fp or p.stem == f"mtk_fp_{fp}":
-                            return p
-                    invalidate_asset_cache_memory()
+            # O(1) fast path: current package already matches the stack fingerprint.
+            if _ACTIVE_CACHE_PKG_PATH is not None:
+                p = Path(_ACTIVE_CACHE_PKG_PATH)
+                if p.parent == cache_dir and p.exists() and p.is_file():
+                    cached_fp = getattr(_ACTIVE_ASSET_CACHE, "fingerprint", None)
+                    if cached_fp == fp or p.stem == fp or p.stem == f"mtk_fp_{fp}":
+                        return p
+                invalidate_asset_cache_memory()
 
-                # Host-agnostic Rust resolver: header fingerprint validation + mtime fallback.
-                if mtk is not None and hasattr(mtk, "resolve_active_cache_package"):
-                    resolved = mtk.resolve_active_cache_package(str(cache_dir), fp)
-                    if resolved:
-                        return Path(resolved)
+            # Host-agnostic Rust resolver: header fingerprint validation + mtime fallback.
+            if mtk is not None:
+                resolved = mtk.resolve_active_cache_package(str(cache_dir), fp)
+                if resolved:
+                    return Path(resolved)
 
                 # Test sandboxes may contain synthetic packages whose header does not
                 # match the host-level stack fingerprint.
@@ -187,7 +179,7 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
     """Opens active AssetCache reader from .mtkcache package, reusing open instance when valid."""
     global _ACTIVE_ASSET_CACHE, _ACTIVE_CACHE_PKG_PATH, _ACTIVE_CACHE_MTIME, _ACTIVE_CACHE_MANIFEST
     mtk = get_libmtk()
-    if mtk is None or not hasattr(mtk, "AssetCache"):
+    if mtk is None:
         return None
 
     cache_dir = get_cache_dir(prefs).resolve()
@@ -231,11 +223,7 @@ def open_active_asset_cache(prefs=None) -> Optional[Any]:
         _ACTIVE_ASSET_CACHE = mtk.AssetCache.open(pkg_str)
         _ACTIVE_CACHE_PKG_PATH = pkg_str
         _ACTIVE_CACHE_MTIME = mtime
-        _ACTIVE_CACHE_MANIFEST = (
-            _ACTIVE_ASSET_CACHE.get_manifest()
-            if hasattr(_ACTIVE_ASSET_CACHE, "get_manifest")
-            else None
-        )
+        _ACTIVE_CACHE_MANIFEST = _ACTIVE_ASSET_CACHE.get_manifest()
         return _ACTIVE_ASSET_CACHE
     except Exception as e:
         logger.debug("Failed opening active asset cache: %s", e)
@@ -250,20 +238,12 @@ def load_atlas_mapping_from_cache(prefs=None) -> Optional[Dict[str, Any]]:
     """
     cache = open_active_asset_cache(prefs)
     if cache is not None:
-        if hasattr(cache, "load_atlas_mapping"):
-            try:
-                mapping_str = cache.load_atlas_mapping()
-                if mapping_str:
-                    return json.loads(mapping_str)
-            except Exception as exc:
-                logger.warning("Failed loading atlas mapping from cache container %s: %s", _ACTIVE_CACHE_PKG_PATH, exc)
-        if hasattr(cache, "load_atlas"):
-            try:
-                baked = cache.load_atlas()
-                if hasattr(baked, "to_mapping_json"):
-                    return json.loads(baked.to_mapping_json())
-            except Exception as exc:
-                logger.warning("Failed converting baked atlas to mapping json from %s: %s", _ACTIVE_CACHE_PKG_PATH, exc)
+        try:
+            mapping_str = cache.load_atlas_mapping()
+            if mapping_str:
+                return json.loads(mapping_str)
+        except Exception as exc:
+            logger.warning("Failed loading atlas mapping from cache container %s: %s", _ACTIVE_CACHE_PKG_PATH, exc)
     return None
 
 
@@ -276,7 +256,7 @@ def get_cached_texture_rgba(chunk_id: str, prefs=None, flip_y: bool = True) -> O
               to match Blender's native Image.pixels coordinate system with zero Python overhead.
     """
     cache = open_active_asset_cache(prefs)
-    if cache is not None and hasattr(cache, "read_texture_rgba"):
+    if cache is not None:
         try:
             return cache.read_texture_rgba(chunk_id, flip_v=flip_y)
         except Exception:
@@ -291,7 +271,7 @@ def get_cached_texture_f32(chunk_id: str, prefs=None, flip_y: bool = True) -> Op
     Allows zero-copy / direct feeding into `img.pixels.foreach_set` without any Python numpy conversion.
     """
     cache = open_active_asset_cache(prefs)
-    if cache is not None and hasattr(cache, "read_texture_f32"):
+    if cache is not None:
         try:
             return cache.read_texture_f32(chunk_id, flip_v=flip_y)
         except Exception:
@@ -326,7 +306,7 @@ def load_baked_model_database(prefs=None, verify_fingerprint: bool = False) -> O
 
     if verify_fingerprint:
         stack = get_configured_pack_stack(prefs)
-        if stack is not None and hasattr(stack, "compute_stack_fingerprint"):
+        if stack is not None:
             current_fp = stack.compute_stack_fingerprint()
             if getattr(cache, "fingerprint", None) != current_fp:
                 return None
@@ -417,11 +397,10 @@ def load_biome_resolver_from_cache(prefs=None) -> Optional[Any]:
         except Exception as exc:
             logger.warning("Failed loading biome resolver from %s: %s", pkg_path, exc)
 
-    if hasattr(mtk, "BiomeResolver"):
-        try:
-            return mtk.BiomeResolver()
-        except Exception as exc:
-            logger.warning("Failed instantiating default BiomeResolver: %s", exc)
+    try:
+        return mtk.BiomeResolver()
+    except Exception as exc:
+        logger.warning("Failed instantiating default BiomeResolver: %s", exc)
     return None
 
 
@@ -443,15 +422,14 @@ def load_colormaps_from_cache(prefs=None) -> Optional[Any]:
         ):
             return _CACHED_COLORMAPS
 
-        if hasattr(cache, "load_colormaps"):
-            try:
-                colormaps = cache.load_colormaps()
-                if colormaps is not None:
-                    _CACHED_COLORMAPS = colormaps
-                    _CACHED_COLORMAPS_PKG_PATH = pkg_path
-                    _CACHED_COLORMAPS_MTIME = mtime
-                    return colormaps
-            except Exception as exc:
+        try:
+            colormaps = cache.load_colormaps()
+            if colormaps is not None:
+                _CACHED_COLORMAPS = colormaps
+                _CACHED_COLORMAPS_PKG_PATH = pkg_path
+                _CACHED_COLORMAPS_MTIME = mtime
+                return colormaps
+        except Exception as exc:
                 logger.warning("Failed loading colormaps from %s: %s", pkg_path, exc)
     return None
 
@@ -464,7 +442,7 @@ def get_cache_manifest(prefs=None) -> Optional[Dict[str, Any]]:
         if _ACTIVE_CACHE_MANIFEST is not None:
             return _ACTIVE_CACHE_MANIFEST
         try:
-            _ACTIVE_CACHE_MANIFEST = cache.get_manifest() if hasattr(cache, "get_manifest") else None
+            _ACTIVE_CACHE_MANIFEST = cache.get_manifest()
             return _ACTIVE_CACHE_MANIFEST
         except Exception:
             pass

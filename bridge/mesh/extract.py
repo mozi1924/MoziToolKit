@@ -48,8 +48,6 @@ def extract_mesh_data_dna(
         return None
 
     mtk = require_libmtk("extract_mesh_data_dna")
-    if not hasattr(mtk, "MeshData"):
-        return None
 
     try:
         num_polys = len(getattr(mesh, "polygons", []))
@@ -136,8 +134,6 @@ def extract_mesh_data(
 
     # Official Safe-Path: standard foreach_get
     mtk = require_libmtk("extract_mesh_data")
-    if not hasattr(mtk, "MeshData"):
-        raise RuntimeError("Native libmtk does not provide MeshData.")
 
     num_polys = len(getattr(mesh, "polygons", []))
     num_verts = len(getattr(mesh, "vertices", []))
