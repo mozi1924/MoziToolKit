@@ -68,6 +68,7 @@ def load_and_mesh_minecraft_save(
     colormaps: Optional[Any] = None,
     force: bool = False,
     unknown_block_strategy: Optional[str] = None,
+    smooth_biome_blend: Optional[bool] = None,
 ) -> Tuple[Any, Dict[str, Any], Any, float]:
     """
     Directly streams and meshes a bounded 3D selection from an Anvil save.
@@ -105,6 +106,13 @@ def load_and_mesh_minecraft_save(
     else:
         anim_tex_enabled = bool(anim_tex_enabled)
 
+    smooth_blend = smooth_biome_blend
+    if smooth_blend is None:
+        raw_val = getattr(prefs, "smooth_biome_blend", True) if (resolve_prefs and prefs) else True
+        smooth_blend = raw_val if isinstance(raw_val, bool) else True
+    else:
+        smooth_blend = bool(smooth_blend)
+
     if unknown_block_strategy is None and resolve_prefs and prefs is not None:
         unknown_block_strategy = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE")
 
@@ -118,6 +126,7 @@ def load_and_mesh_minecraft_save(
         "atlas": atlas,
         "biome_resolver": biome_resolver,
         "enable_animated_textures": anim_tex_enabled,
+        "smooth_biome_blend": smooth_blend,
     }
     if ctm_solver is not None:
         config_kwargs["ctm_solver"] = ctm_solver

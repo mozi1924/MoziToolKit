@@ -237,6 +237,12 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         default=True,
     )
 
+    smooth_biome_blend: BoolProperty(
+        name="Smooth Biome Blending",
+        description="Enable bilinear interpolation of biome tints across quad corners for film-grade continuous gradients",
+        default=True,
+    )
+
     unknown_block_strategy: EnumProperty(
         name="Unknown Blocks",
         description="Choose how missing or unrecognized blocks are handled during import and meshing",
@@ -517,6 +523,7 @@ class MOZI_AddonPreferences(bpy.types.AddonPreferences):
         repl_row = col_repl.row(align=True)
         repl_row.prop(self, "enable_ctm", text=tr("Connected Textures (CTM)"))
         repl_row.prop(self, "enable_animated_textures", text=tr("Animated Textures"))
+        col_repl.prop(self, "smooth_biome_blend", text=tr("Smooth Biome Transition"))
         col_repl.prop(self, "material_enable_vertex_ao", text=tr("Vertex Ambient Occlusion (AO)"))
 
         # Group 2: Render Engine Adaptation & Presets

@@ -39,7 +39,7 @@ bridge/mesh/attributes.py / utils/materials/*
 | `mtk_uv_rotation` | FACE | FLOAT | material | UV 旋转着色器 |
 | `mtk_anim_timing` | FACE | FLOAT3 | material | 动画时序着色器 |
 | `mtk_anim_frame_size` | FACE | FLOAT3 | material | 动画帧尺寸着色器 |
-| `mtk_biome_tint_color` | FACE | FLOAT4 | material | 已解算的 Linear RGBA 染色 |
+| `mtk_biome_tint_color` | CORNER | FLOAT4 | material | 已解算的 Linear RGBA 染色（支持平滑生物群系过渡） |
 | `mtk_biome_tint_data` | FACE | FLOAT4 | material | 染色权重与类型 |
 | `mtk_block_x/y/z` | FACE | INT | metadata | 3D Biome 采样 |
 

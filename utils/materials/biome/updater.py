@@ -630,9 +630,12 @@ def update_object_biome(
                         attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
                         if attr_col is None:
                             try:
-                                attr_col = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+                                attr_col = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="CORNER")
                             except Exception:
                                 attr_col = None
+
+                        is_corner_domain = getattr(attr_col, "domain", None) == "CORNER"
+                        num_col_elems = len(attr_col.data) if attr_col is not None else 0
 
                         # Only hardcoded faces need the previous colors. Avoid a
                         # 4-byte-per-face read when the mesh has none.
@@ -640,11 +643,17 @@ def update_object_biome(
                         if (
                             needs_existing_colors
                             and attr_col is not None
-                            and len(attr_col.data) == num_polys
                             and hasattr(attr_col.data, "foreach_get")
                         ):
-                            old_cols = np.empty(num_polys * 4, dtype=np.float32)
-                            attr_col.data.foreach_get("color", old_cols)
+                            if is_corner_domain and num_col_elems >= num_polys * 4:
+                                raw_cols = np.empty(num_col_elems * 4, dtype=np.float32)
+                                attr_col.data.foreach_get("color", raw_cols)
+                                old_cols = raw_cols.reshape(-1, 4, 4)[:, 0, :].reshape(-1)
+                            elif num_col_elems == num_polys:
+                                old_cols = np.empty(num_polys * 4, dtype=np.float32)
+                                attr_col.data.foreach_get("color", old_cols)
+                            else:
+                                old_cols = np.empty(0, dtype=np.float32)
                         else:
                             old_cols = np.empty(0, dtype=np.float32)
 
@@ -664,10 +673,13 @@ def update_object_biome(
                         tint_data_attr.data.foreach_set(
                             "color", np.frombuffer(packed_mv, dtype=np.float32)
                         )
-                        if attr_col is not None and len(attr_col.data) == num_polys and hasattr(attr_col.data, "foreach_set"):
-                            attr_col.data.foreach_set(
-                                "color", np.frombuffer(colors_mv, dtype=np.float32)
-                            )
+                        if attr_col is not None and hasattr(attr_col.data, "foreach_set"):
+                            face_colors = np.frombuffer(colors_mv, dtype=np.float32)
+                            if is_corner_domain:
+                                loop_colors = np.repeat(face_colors.reshape(num_polys, 4), 4, axis=0).reshape(-1)
+                                attr_col.data.foreach_set("color", loop_colors)
+                            elif len(attr_col.data) == num_polys:
+                                attr_col.data.foreach_set("color", face_colors)
 
                         # Purge retired legacy attributes (e.g. mtk_colormap_uv).
                         clean_obsolete_mesh_attributes(mesh)

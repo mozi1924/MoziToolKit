@@ -371,6 +371,7 @@ class MTK_OT_import_minecraft_save(bpy.types.Operator, ImportHelper, CommonMeshi
                     "origin_centered": self.origin_centered,
                     "enable_ctm": self.enable_ctm,
                     "enable_animated_textures": self.enable_animated_textures,
+                    "smooth_biome_blend": getattr(self, "smooth_biome_blend", True),
                     "model_db": mesh_context["model_db"],
                     "atlas": mesh_context["atlas"],
                     "biome_resolver": mesh_context["biome_resolver"],

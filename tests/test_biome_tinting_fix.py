@@ -280,6 +280,30 @@ class TestBiomeTintingFix(unittest.TestCase):
             bpy.data.objects.remove(obj)
             bpy.data.meshes.remove(b_mesh)
 
+    def test_smooth_biome_blend_corner_interpolation(self):
+        """Verifies that smooth_biome_blend writes mtk_biome_tint_color as CORNER domain with smooth transitions."""
+        storage = libmtk_py.VoxelStorage()
+        storage.set_bounds(0, 0, 0, 32, 16, 16)
+        for x in range(16):
+            for z in range(16):
+                storage.set_block(x, 0, z, "minecraft:grass_block", "minecraft:plains")
+        for x in range(16, 32):
+            for z in range(16):
+                storage.set_block(x, 0, z, "minecraft:grass_block", "minecraft:desert")
+
+        # 1. Smooth blend ENABLED
+        cfg_smooth = libmtk_py.MesherConfig(smooth_biome_blend=True, origin_centered=False)
+        mesh_smooth = mesh_world(storage, config=cfg_smooth)
+        self.assertIn("mtk_biome_tint_color", mesh_smooth.attribute_names())
+        domain, dtype, count = mesh_smooth.attribute_info("mtk_biome_tint_color")
+        self.assertEqual(domain, "corner")
+
+        # 2. Smooth blend DISABLED
+        cfg_discrete = libmtk_py.MesherConfig(smooth_biome_blend=False, origin_centered=False)
+        mesh_discrete = mesh_world(storage, config=cfg_discrete)
+        domain_d, _, _ = mesh_discrete.attribute_info("mtk_biome_tint_color")
+        self.assertEqual(domain_d, "corner")
+
 
 if __name__ == "__main__":
     unittest.main()

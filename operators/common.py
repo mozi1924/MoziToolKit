@@ -52,6 +52,12 @@ class CommonMeshingOptionsMixin:
         default=True,
     )
 
+    smooth_biome_blend: BoolProperty(  # type: ignore
+        name="Smooth Biome Blending",
+        description="Enable bilinear interpolation of biome tints across face corners for film-grade continuous gradients",
+        default=True,
+    )
+
     force: BoolProperty(  # type: ignore
         name="Force Unknown Blocks",
         description="Proceed with meshing even if unknown blocks without models/textures are detected",
@@ -106,6 +112,8 @@ def draw_meshing_options(
     if show_ctm and hasattr(target, "enable_ctm"):
         box_mesh.prop(target, "enable_ctm", text=tr("Connected Textures (CTM)"))
     box_mesh.prop(target, "enable_animated_textures", text=tr("Animated Textures"))
+    if hasattr(target, "smooth_biome_blend"):
+        box_mesh.prop(target, "smooth_biome_blend", text=tr("Smooth Biome Transition"))
     if hasattr(target, "force"):
         box_mesh.prop(target, "force", text=tr("Force Unknown Blocks"))
     if show_host_fallback and hasattr(target, "allow_host_fallback"):

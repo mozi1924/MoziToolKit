@@ -282,9 +282,10 @@ def apply_biome_tint_attributes(
             flat_data = array.array("f", [c for val in packed_tint_data for c in val])
         attr_data.data.foreach_set("color", flat_data)
 
-    # 2. ATTR_BIOME_TINT_COLOR (FLOAT_COLOR, domain=FACE)
+    # 2. ATTR_BIOME_TINT_COLOR (FLOAT_COLOR, domain=CORNER)
     attr_col = mesh.attributes.get(ATTR_BIOME_TINT_COLOR)
-    if attr_col is not None and (getattr(attr_col, "domain", None) != "FACE" or len(attr_col.data) != target_len):
+    num_loops = len(mesh.loops) if hasattr(mesh, "loops") else (num_polys * 4)
+    if attr_col is not None and getattr(attr_col, "domain", None) not in ("CORNER", "FACE"):
         try:
             mesh.attributes.remove(attr_col)
         except Exception:
@@ -292,14 +293,22 @@ def apply_biome_tint_attributes(
         attr_col = None
     if attr_col is None:
         try:
-            attr_col = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="FACE")
+            attr_col = mesh.attributes.new(name=ATTR_BIOME_TINT_COLOR, type="FLOAT_COLOR", domain="CORNER")
         except Exception:
             attr_col = None
-    if attr_col and len(attr_col.data) == target_len:
+    if attr_col:
+        is_corner = getattr(attr_col, "domain", None) == "CORNER"
         if isinstance(tint_colors, np.ndarray):
-            flat_col = np.ascontiguousarray(tint_colors, dtype=np.float32).ravel()
+            raw_arr = np.ascontiguousarray(tint_colors, dtype=np.float32)
         else:
-            flat_col = array.array("f", [c for val in tint_colors for c in val])
+            raw_arr = np.array(tint_colors, dtype=np.float32)
+        if is_corner:
+            if raw_arr.size == num_loops * 4:
+                flat_col = raw_arr.ravel()
+            else:
+                flat_col = np.repeat(raw_arr.reshape(num_polys, 4), 4, axis=0).ravel()
+        else:
+            flat_col = raw_arr.ravel()
         attr_col.data.foreach_set("color", flat_col)
 
     # 3. Purge retired legacy attributes (e.g. mtk_colormap_uv).

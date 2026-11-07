@@ -161,6 +161,7 @@ class SyncBridgeSession:
         auth_token: Optional[str] = None,
         enable_animated_textures: Optional[bool] = None,
         colormaps: Optional[Any] = None,
+        smooth_biome_blend: Optional[bool] = None,
     ) -> bool:
         """
         Starts the background LiveSync client thread connecting to `url`.
@@ -192,6 +193,12 @@ class SyncBridgeSession:
         else:
             anim_enabled = bool(enable_animated_textures)
 
+        if smooth_biome_blend is None:
+            raw_smooth = getattr(prefs, "smooth_biome_blend", True) if prefs is not None else True
+            smooth_blend = raw_smooth if isinstance(raw_smooth, bool) else True
+        else:
+            smooth_blend = bool(smooth_biome_blend)
+
         self._model_db = model_db
         self._atlas = atlas
         self._biome_resolver = biome_resolver
@@ -201,6 +208,7 @@ class SyncBridgeSession:
             "mesh_fluids": mesh_fluids,
             "num_threads": num_threads,
             "enable_animated_textures": anim_enabled,
+            "smooth_biome_blend": smooth_blend,
         }
         self._cached_manifest_fingerprint = get_cache_fingerprint()
         self._cached_manifest_timestamp = get_cache_timestamp()
@@ -228,6 +236,7 @@ class SyncBridgeSession:
                 "biome_resolver": biome_resolver,
                 "custom_aliases": custom_aliases,
                 "enable_animated_textures": anim_enabled,
+                "smooth_biome_blend": smooth_blend,
             }
             if ctm_solver is not None:
                 config_kwargs["ctm_solver"] = ctm_solver
@@ -326,6 +335,7 @@ class SyncBridgeSession:
         auth_token: Optional[str] = None,
         enable_animated_textures: Optional[bool] = None,
         colormaps: Optional[Any] = None,
+        smooth_biome_blend: Optional[bool] = None,
     ) -> bool:
         """
         Starts the LiveSync client using cached handshake parameters for 0ms zero-rebuild reconnect.
@@ -355,6 +365,12 @@ class SyncBridgeSession:
         else:
             anim_enabled = bool(enable_animated_textures)
 
+        if smooth_biome_blend is None:
+            raw_smooth = getattr(prefs, "smooth_biome_blend", True) if prefs is not None else True
+            smooth_blend = raw_smooth if isinstance(raw_smooth, bool) else True
+        else:
+            smooth_blend = bool(smooth_biome_blend)
+
         self._model_db = model_db
         self._atlas = atlas
         self._biome_resolver = biome_resolver
@@ -364,6 +380,7 @@ class SyncBridgeSession:
             "mesh_fluids": mesh_fluids,
             "num_threads": num_threads,
             "enable_animated_textures": anim_enabled,
+            "smooth_biome_blend": smooth_blend,
         }
         self._cached_manifest_fingerprint = get_cache_fingerprint()
         self._cached_manifest_timestamp = get_cache_timestamp()
@@ -388,6 +405,7 @@ class SyncBridgeSession:
                 "biome_resolver": biome_resolver,
                 "custom_aliases": custom_aliases,
                 "enable_animated_textures": anim_enabled,
+                "smooth_biome_blend": smooth_blend,
             }
             if ctm_solver is not None:
                 config_kwargs["ctm_solver"] = ctm_solver

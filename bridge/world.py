@@ -267,6 +267,7 @@ def mesh_voxel_storage(
     colormaps: Optional[Any] = None,
     unknown_block_strategy: Optional[str] = None,
     z_up: bool = True,
+    smooth_biome_blend: Optional[bool] = None,
 ) -> Tuple[Any, float]:
     """
     Meshes a VoxelStorage volume with full model resolution, atlas UV remapping,
@@ -311,6 +312,13 @@ def mesh_voxel_storage(
     else:
         anim_tex_enabled = bool(anim_tex_enabled)
 
+    smooth_blend = smooth_biome_blend
+    if smooth_blend is None:
+        raw_val = getattr(prefs, "smooth_biome_blend", True) if (resolve_prefs and prefs) else True
+        smooth_blend = raw_val if isinstance(raw_val, bool) else True
+    else:
+        smooth_blend = bool(smooth_blend)
+
     if unknown_block_strategy is None and resolve_prefs and prefs is not None:
         unknown_block_strategy = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE")
 
@@ -325,6 +333,7 @@ def mesh_voxel_storage(
             "atlas": atlas,
             "biome_resolver": biome_resolver,
             "enable_animated_textures": anim_tex_enabled,
+            "smooth_biome_blend": smooth_blend,
         }
         if ctm_solver is not None:
             config_kwargs["ctm_solver"] = ctm_solver
@@ -340,6 +349,8 @@ def mesh_voxel_storage(
             config.set_ctm_solver(ctm_solver)
         if hasattr(config, "enable_animated_textures"):
             config.enable_animated_textures = anim_tex_enabled
+        if hasattr(config, "set_smooth_biome_blend"):
+            config.set_smooth_biome_blend(smooth_blend)
         if colormaps is not None and hasattr(config, "set_colormaps"):
             config.set_colormaps(colormaps)
         if unknown_block_strategy is not None and hasattr(config, "unknown_block_strategy"):

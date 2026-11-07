@@ -208,8 +208,12 @@ class Test3DBiomeTinting(unittest.TestCase):
         self.assertIn(ATTR_BIOME_TINT_COLOR, mesh.attributes)
         self.assertNotIn(RETIRED_COLORMAP_UV, mesh.attributes)
 
-        col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[0].color)
-        col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[1].color)
+        is_corner = getattr(mesh.attributes[ATTR_BIOME_TINT_COLOR], "domain", None) == "CORNER"
+        idx0 = mesh.polygons[0].loop_start if is_corner else 0
+        idx1 = mesh.polygons[1].loop_start if is_corner else 1
+
+        col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[idx0].color)
+        col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[idx1].color)
         self.assertNotEqual(col0, col1)
 
         mat = bpy.data.materials.new("mtk:grass_block_top")
@@ -217,13 +221,13 @@ class Test3DBiomeTinting(unittest.TestCase):
         obj.data.materials.append(mat)
 
         update_object_biome(obj, "PLAINS")
-        plains_col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[0].color)
-        plains_col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[1].color)
+        plains_col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[idx0].color)
+        plains_col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[idx1].color)
         self.assertEqual(plains_col0, plains_col1)
 
         update_object_biome(obj, "WORLD")
-        world_col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[0].color)
-        world_col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[1].color)
+        world_col0 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[idx0].color)
+        world_col1 = list(mesh.attributes[ATTR_BIOME_TINT_COLOR].data[idx1].color)
         self.assertNotEqual(world_col0, world_col1)
 
     def test_mark_world_biome_tags_object_and_caches_storage(self):

@@ -171,6 +171,7 @@ class MOZI_OT_refresh_save_mesh(bpy.types.Operator):
                         origin_centered=origin_centered,
                         enable_ctm=enable_ctm,
                         enable_animated_textures=enable_animated_textures,
+                        smooth_biome_blend=getattr(prefs, "smooth_biome_blend", True),
                         skin_cache_dir=mesh_context.get("skin_cache_dir"),
                         progress_callback=reporter.on_progress,
                     )

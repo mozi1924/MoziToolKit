@@ -7,7 +7,7 @@ Regenerate after changing the native attribute contract:
 
 from __future__ import annotations
 
-SCHEMA_HASH = "4a1374594c69aa06"
+SCHEMA_HASH = "80e831e3a4fb64c8"
 
 # (name, domain, data_type, role)
 ATTRIBUTE_SPECS: tuple[tuple[str, str, str, str], ...] = (
@@ -19,7 +19,7 @@ ATTRIBUTE_SPECS: tuple[tuple[str, str, str, str], ...] = (
     ("mtk_anim_timing", "face", "float3", "material"),
     ("mtk_anim_frame_size", "face", "float3", "material"),
     ("mtk_ao", "corner", "float", "material"),
-    ("mtk_biome_tint_color", "face", "float4", "material"),
+    ("mtk_biome_tint_color", "corner", "float4", "material"),
     ("mtk_biome_tint_data", "face", "float4", "material"),
     ("mtk_block_x", "face", "int32", "metadata"),
     ("mtk_block_y", "face", "int32", "metadata"),
