@@ -226,6 +226,21 @@ def format_backend_message(msg: str) -> str:
     if m:
         return f"数据包解码错误: {m.group(1)}"
 
+    # e.g. "Cleared custom normals from 3 object(s)."
+    m = re.match(r"^Cleared custom normals from\s+(\d+)\s+object\(s\)\.$", msg)
+    if m:
+        return f"已清除 {m.group(1)} 个物体的自定义法线。"
+
+    # e.g. "Created Live Sync Container: Container_Name"
+    m = re.match(r"^Created Live Sync Container:\s*(.*)$", msg)
+    if m:
+        return f"已创建实时同步容器: {m.group(1)}"
+
+    # e.g. "Selected parent container: Container_Name"
+    m = re.match(r"^Selected parent container:\s*(.*)$", msg)
+    if m:
+        return f"已选择父级容器: {m.group(1)}"
+
     # 4. ProgressThrottler prefix matching (e.g. "Loading chunk (5/20)" or "load_chunks: (5/20)")
     # Case A: prefix with colon: "load_chunks: (5/20)"
     m = re.match(r"^([a-zA-Z0-9_]+):\s*(\(\d+/\d+.*?\))$", msg)
@@ -315,5 +330,15 @@ def format_backend_error(error_msg: str) -> str:
     m = re.match(r"^World lock poisoned:\s*(.*)$", error_msg)
     if m:
         return f"世界锁中毒异常: {m.group(1)}"
+
+    # "Found 3 unknown block(s): ... Pass force=True to proceed with fallback cubes or air."
+    m = re.match(r"^Found\s+(\d+)\s+unknown block\(s\):\s*(.*?)\.\s*Pass force=True to proceed with fallback cubes or air\.$", error_msg)
+    if m:
+        return f"发现 {m.group(1)} 个未识别方块: {m.group(2)}。传入 force=True 可继续使用回退立方体或空气网格化。"
+
+    # "Folder does not exist: <path>"
+    m = re.match(r"^Folder does not exist:\s*(.*)$", error_msg)
+    if m:
+        return f"文件夹不存在: {m.group(1)}"
 
     return error_msg

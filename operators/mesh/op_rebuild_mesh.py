@@ -277,23 +277,29 @@ class MOZI_OT_rebuild_mesh(bpy.types.Operator):
         self._unknown_blocks = []
 
     def draw(self, context):
+        from ...i18n import tr
         layout = self.layout
         unknown = getattr(self, "_unknown_blocks", [])
         if unknown:
             box = layout.box()
-            box.label(text=f"Detected {len(unknown)} unknown block(s):", icon="ERROR")
+            box.label(
+                text=tr("Detected {count} unknown block(s):").format(count=len(unknown)),
+                icon="ERROR",
+            )
             col = box.column(align=True)
             for block_id in unknown[:10]:
                 col.label(text=f"  • {block_id}")
             if len(unknown) > 10:
-                col.label(text=f"  ... and {len(unknown) - 10} more")
+                col.label(
+                    text=tr("  ... and {count} more").format(count=len(unknown) - 10)
+                )
 
             prefs = get_prefs(context)
             strat = getattr(prefs, "unknown_block_strategy", "FALLBACK_CUBE") if prefs else "FALLBACK_CUBE"
-            strat_desc = "Purple/Black Fallback Cube" if strat == "FALLBACK_CUBE" else "Ignored as Air"
+            strat_desc = tr("Magenta/Black Cube") if strat == "FALLBACK_CUBE" else tr("Ignore (Air)")
             layout.separator()
-            layout.label(text=f"Strategy: {strat_desc}")
-            layout.label(text="Click OK to proceed with meshing.")
+            layout.label(text=f"{tr('Handling Strategy')}: {strat_desc}")
+            layout.label(text=tr("Click OK to proceed with meshing."))
 
     @classmethod
     def poll(cls, context):

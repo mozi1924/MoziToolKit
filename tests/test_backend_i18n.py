@@ -75,6 +75,29 @@ class TestBackendI18n(unittest.TestCase):
         self.assertEqual(tr("Live Sync: Mesh"), "实时同步: 构建网格")
         self.assertEqual(tr("Live Sync: Request"), "实时同步: 请求快照")
 
+        # Smooth Biome Blending & Transition
+        self.assertEqual(tr("Smooth Biome Blending"), "平滑生物群系混合")
+        self.assertEqual(tr("Smooth Biome Transition"), "平滑生物群系过渡")
+        self.assertEqual(
+            tr("Enable bilinear interpolation of biome tints across quad corners for film-grade continuous gradients"),
+            "在四边面角顶点间启用生物群系色彩双线性插值，呈现电影级连续平滑渐变",
+        )
+
+        # Unknown Blocks & Force Rebuild
+        self.assertEqual(tr("Unknown Blocks"), "未识别方块")
+        self.assertEqual(tr("Magenta/Black Cube"), "品红/黑回退立方体")
+        self.assertEqual(tr("Ignore (Air)"), "忽略 (作为空气)")
+        self.assertEqual(tr("Force Rebuild"), "强制重新构建")
+        self.assertEqual(tr("Force Unknown Blocks"), "强制未识别方块")
+        self.assertEqual(tr("Click OK to proceed with meshing."), "点击“确定”以继续构建网格。")
+
+        # Containers & Hierarchy
+        self.assertEqual(tr("MTK World Container — use Rebuild Voxel Mesh"), "MTK 世界容器 — 请使用“重新构建体素网格”")
+        self.assertEqual(tr("Container Root"), "容器根对象")
+        self.assertEqual(tr("Parent Container"), "父级容器")
+        self.assertEqual(tr("Select Parent"), "选择父级")
+        self.assertEqual(tr("New Live Sync Container"), "新建实时同步容器")
+
     def test_throttler_dynamic_messages(self):
         """Verifies throttler messages generated with .with_prefix() or stage fallbacks."""
         # Save loading chunk throttler
@@ -166,6 +189,15 @@ class TestBackendI18n(unittest.TestCase):
         w9 = format_backend_message("Packet decode error: unexpected EOF")
         self.assertEqual(w9, "数据包解码错误: unexpected EOF")
 
+        w10 = format_backend_message("Cleared custom normals from 5 object(s).")
+        self.assertEqual(w10, "已清除 5 个物体的自定义法线。")
+
+        w11 = format_backend_message("Created Live Sync Container: Yefira_World")
+        self.assertEqual(w11, "已创建实时同步容器: Yefira_World")
+
+        w12 = format_backend_message("Selected parent container: Yefira_World")
+        self.assertEqual(w12, "已选择父级容器: Yefira_World")
+
     def test_progress_title_formatting(self):
         """Verifies dynamic progress title translation."""
         self.assertEqual(format_progress_title("Import overworld"), "导入主世界")
@@ -188,6 +220,18 @@ class TestBackendI18n(unittest.TestCase):
 
         e4 = format_backend_error("Coordinate out of bounds: (100, 200, 300)")
         self.assertEqual(e4, "坐标超出边界: (100, 200, 300)")
+
+        e5 = format_backend_error(
+            "Found 2 unknown block(s): mod:unknown_ore, mod:unknown_plant. "
+            "Pass force=True to proceed with fallback cubes or air."
+        )
+        self.assertEqual(
+            e5,
+            "发现 2 个未识别方块: mod:unknown_ore, mod:unknown_plant。传入 force=True 可继续使用回退立方体或空气网格化。"
+        )
+
+        e6 = format_backend_error("Folder does not exist: /missing/path")
+        self.assertEqual(e6, "文件夹不存在: /missing/path")
 
     def test_blender_progress_reporter_status_text(self):
         """Verifies that BlenderProgressReporter formats status bar without redundant ratio strings."""
