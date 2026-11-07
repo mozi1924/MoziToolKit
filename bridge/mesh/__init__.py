@@ -75,7 +75,7 @@ def inject_mesh_data(
     shade_smooth: bool = False,
     skip_string_attributes: bool = False,
     use_dna: bool = True,
-) -> None:
+) -> bool:
     """
     Injects processed geometry and custom attributes from PyMeshData into a Blender Mesh.
 
@@ -85,14 +85,23 @@ def inject_mesh_data(
     Topology Note: Topology injection directly supports pure quad meshes (is_quad=True)
     and pure triangle meshes (is_quad=False). Meshes containing mixed polygon counts
     are injected via their triangulated representation.
+
+    Returns:
+        bool: True if mesh data was successfully injected; False if validation failed
+              or geometry/normal injection failed.
     """
     if isinstance(getattr(mesh_or_obj, "vertex_count", None), int) and not isinstance(getattr(mesh_data, "vertex_count", None), int):
         mesh_data, mesh_or_obj = mesh_or_obj, mesh_data
 
     mesh = get_mesh(mesh_or_obj)
+    if mesh is None:
+        logger.warning("inject_mesh_data: resolved mesh is None")
+        return False
+
     v_count = getattr(mesh_data, "vertex_count", 0)
     if v_count == 0:
-        return
+        logger.debug("inject_mesh_data: mesh_data has 0 vertices; skipping injection")
+        return False
 
     topology_updated = False
     needs_topology = update_topology or len(getattr(mesh, "vertices", [])) != v_count
@@ -192,6 +201,7 @@ def inject_mesh_data(
         )
 
     mesh.update(calc_edges=topology_updated)
+    return True
 
 
 __all__ = [

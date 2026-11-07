@@ -336,6 +336,45 @@ class TestDnaReadWriteConsistency(unittest.TestCase):
         finally:
             bpy.data.meshes.remove(mesh)
 
+    def test_color_attribute_color_space_contracts(self):
+        """Regression test validating color space semantics:
+        - FLOAT_COLOR extracts Scene-Linear RGBA float values identically in fast and safe paths.
+        - BYTE_COLOR extracts normalized sRGB (u8 / 255.0) float values identically in fast and safe paths.
+        """
+        mesh = self._create_grid_mesh(1, 1)
+        try:
+            loop_count = len(mesh.loops)
+
+            # 1. FLOAT_COLOR: Scene-Linear RGBA
+            linear_floats = np.array([0.18, 0.5, 0.75, 1.0] * loop_count, dtype=np.float32)
+            float_attr = mesh.attributes.new(name="test_linear_float", type="FLOAT_COLOR", domain="CORNER")
+            float_attr.data.foreach_set("color", linear_floats)
+
+            # 2. BYTE_COLOR: Discrete 8-bit sRGB
+            srgb_bytes = np.array([128, 64, 255, 255] * loop_count, dtype=np.uint8)
+            srgb_expected_f32 = srgb_bytes.astype(np.float32) / 255.0
+            byte_attr = mesh.attributes.new(name="test_srgb_byte", type="BYTE_COLOR", domain="CORNER")
+            byte_attr.data.foreach_set("color_srgb", srgb_expected_f32)
+
+            # Extract via Safe-Path and Fast-Path
+            data_safe = extract_mesh_data(mesh, use_dna=False, include_attributes=True)
+            data_fast = extract_mesh_data(mesh, use_dna=True, include_attributes=True)
+
+            # Assert FLOAT_COLOR contract: preserves exact linear values
+            mv_flt_safe = np.frombuffer(data_safe.attribute_memoryview("test_linear_float"), dtype=np.float32)
+            mv_flt_fast = np.frombuffer(data_fast.attribute_memoryview("test_linear_float"), dtype=np.float32)
+            np.testing.assert_allclose(mv_flt_safe, linear_floats, atol=1e-5)
+            np.testing.assert_allclose(mv_flt_fast, linear_floats, atol=1e-5)
+
+            # Assert BYTE_COLOR contract: preserves normalized sRGB values (u8 / 255.0)
+            mv_byte_safe = np.frombuffer(data_safe.attribute_memoryview("test_srgb_byte"), dtype=np.float32)
+            mv_byte_fast = np.frombuffer(data_fast.attribute_memoryview("test_srgb_byte"), dtype=np.float32)
+            np.testing.assert_allclose(mv_byte_safe, srgb_expected_f32, atol=1e-3)
+            np.testing.assert_allclose(mv_byte_fast, srgb_expected_f32, atol=1e-3)
+            np.testing.assert_allclose(mv_byte_fast, mv_byte_safe, atol=1e-6)
+        finally:
+            bpy.data.meshes.remove(mesh)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,14 @@ MTK_TO_BLENDER_DOMAIN: Dict[str, str] = {
     "mesh": "POINT",
 }
 
+# Color Space Contract for Color Attributes:
+# - FLOAT_COLOR: Maps to MTK "float4". Stores native scene-linear RGBA floats [0.0, 1.0].
+#   Extracted via Blender's linear `color` accessor and DNA `f32` buffer directly.
+#   All PBR shaders and biome tint attributes (e.g. mtk_biome_tint_color) expect scene-linear float4.
+# - BYTE_COLOR: Extracted as MTK "float4" normalized floats [0.0, 1.0] representing raw 8-bit
+#   sRGB channels (u8 / 255.0). Extracted via Blender's `color_srgb` accessor and DNA `u8` buffer.
+#   This guarantees 100% bit-for-bit parity between Fast-Path DNA direct read and Safe-Path foreach_get,
+#   preserving the original discrete 8-bit sRGB color space without round-trip loss.
 BLENDER_TO_MTK_TYPE: Dict[str, Tuple[str, int, str, str]] = {
     "FLOAT": ("float", 1, "f", "value"),
     "FLOAT_VECTOR": ("float3", 3, "f", "vector"),

@@ -232,13 +232,14 @@ class TestPaletteProvenanceParity(unittest.TestCase):
             obj = bpy.data.objects.new(name, b_mesh)
             bpy.context.scene.collection.objects.link(obj)
             try:
-                inject_mesh_data(
+                res = inject_mesh_data(
                     mesh_data,
                     b_mesh,
                     update_topology=True,
                     update_normals=True,
                     skip_string_attributes=skip,
                 )
+                self.assertTrue(res, "inject_mesh_data must return True on success")
                 self.assertIn("mtk_source_textures", b_mesh)
                 self.assertIn("mtk_source_texture_idx", b_mesh.attributes)
                 self.assertNotIn("mtk_source_texture_key", b_mesh.attributes)
@@ -249,6 +250,24 @@ class TestPaletteProvenanceParity(unittest.TestCase):
 
         self.assertEqual(resolved_by_mode[False], keys)
         self.assertEqual(resolved_by_mode[True], keys)
+
+    def test_inject_mesh_data_contract_return_bool(self):
+        """Validates that inject_mesh_data returns True on success and False on failures."""
+        # 1. None mesh should return False
+        mesh_data = ma.unit_quads(1)
+        self.assertFalse(inject_mesh_data(mesh_data, None))
+
+        # 2. Empty vertex count mesh_data should return False
+        b_mesh = bpy.data.meshes.new("test_contract_empty")
+        try:
+            empty_data = SimpleNamespace(vertex_count=0)
+            self.assertFalse(inject_mesh_data(empty_data, b_mesh))
+
+            # 3. Valid mesh_data should return True
+            res = inject_mesh_data(mesh_data, b_mesh, update_topology=True, update_normals=True)
+            self.assertTrue(res)
+        finally:
+            bpy.data.meshes.remove(b_mesh)
 
 
 class TestColorAttributeInjection(unittest.TestCase):

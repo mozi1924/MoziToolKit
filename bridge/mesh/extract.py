@@ -258,8 +258,10 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any, use_dna: bool = False)
                                 mv = blender_dna.as_memoryview_f32(attr_ptr, elem_count * 4)
                                 mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", mv)
                             elif attr.data_type == "BYTE_COLOR":
-                                # Blender BYTE_COLOR is stored as u8*4 per element in C++,
-                                # but the canonical MTK float4 attribute expects 4 float32s in 0.0..1.0 range.
+                                # Color Space Contract:
+                                # Blender BYTE_COLOR is stored as u8*4 per element in C++ representing discrete sRGB channels.
+                                # Extracted as normalized float4 (u8 / 255.0), maintaining exact 100% bit-for-bit parity
+                                # with the Safe-Path foreach_get("color_srgb") and preserving discrete sRGB color values.
                                 u8_mv = blender_dna.as_memoryview_u8(attr_ptr, elem_count * 4)
                                 u8_arr = np.frombuffer(u8_mv, dtype=np.uint8)
                                 f32_arr = (u8_arr.astype(np.float32) / 255.0).astype(np.float32)
@@ -294,6 +296,9 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any, use_dna: bool = False)
 
                 if not dna_injected:
                     if attr.data_type == "BYTE_COLOR":
+                        # Color Space Contract:
+                        # Prefer "color_srgb" to extract discrete normalized sRGB floats (u8 / 255.0),
+                        # matching DNA fast path bit-for-bit. If unavailable, falls back to "color".
                         buf = np.empty(elem_count * 4, dtype=np.float32)
                         try:
                             attr.data.foreach_get("color_srgb", buf)
@@ -301,6 +306,8 @@ def _extract_custom_attributes(mesh: Any, mesh_data: Any, use_dna: bool = False)
                             attr.data.foreach_get("color", buf)
                         mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", buf)
                     elif attr.data_type == "FLOAT_COLOR":
+                        # Color Space Contract:
+                        # FLOAT_COLOR stores native scene-linear floats [0.0..1.0] in Blender.
                         buf = np.empty(elem_count * 4, dtype=np.float32)
                         attr.data.foreach_get("color", buf)
                         mesh_data.add_attribute_from_buffer(attr_name, domain_str, "float4", buf)
